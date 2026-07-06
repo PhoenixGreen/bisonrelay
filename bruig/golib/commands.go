@@ -187,6 +187,12 @@ const (
 	CTDeclineKXSuggestion          CmdType = 0xb2
 	CTUpdateLastMsgReadTime        CmdType = 0xb3
 	CTDeclineGCInvite              CmdType = 0xb4
+	CTListPlugins                  CmdType = 0xb5
+	CTImportPlugin                 CmdType = 0xb6
+	CTSetPluginEnabled             CmdType = 0xb7
+	CTRemovePlugin                 CmdType = 0xb8
+	CTFetchLinkMetadata            CmdType = 0xb9
+	CTGetSpellcheckData            CmdType = 0xba
 
 	NTInviteReceived            = 0x1001
 	NTInviteAccepted            = 0x1002

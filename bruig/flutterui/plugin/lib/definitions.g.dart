@@ -341,7 +341,7 @@ GCAddressBookEntry _$GCAddressBookEntryFromJson(Map<String, dynamic> json) =>
       json['id'] as String,
       json['name'] as String,
       (json['members'] as List<dynamic>).map((e) => e as String).toList(),
-      DateTime.parse(json['last_read_msg_time'] as String),
+      _parseDateTime(json['last_read_msg_time']),
     );
 
 Map<String, dynamic> _$GCAddressBookEntryToJson(GCAddressBookEntry instance) =>
@@ -379,7 +379,7 @@ GroupChat _$GroupChatFromJson(Map<String, dynamic> json) => GroupChat(
       RMGroupList.fromJson(json['metadata'] as Map<String, dynamic>),
       json['alias'] as String,
       json['rtdt_session_rv'] as String? ?? '',
-      DateTime.parse(json['last_read_msg_time'] as String),
+      _parseDateTime(json['last_read_msg_time']),
     );
 
 Map<String, dynamic> _$GroupChatToJson(GroupChat instance) => <String, dynamic>{
@@ -465,11 +465,11 @@ AddressBookEntry _$AddressBookEntryFromJson(Map<String, dynamic> json) =>
       json['nick'] as String,
       json['name'] as String,
       json['ignored'] as bool,
-      DateTime.parse(json['first_created'] as String),
-      DateTime.parse(json['last_handshake_attempt'] as String),
+      _parseDateTime(json['first_created']),
+      _parseDateTime(json['last_handshake_attempt']),
       base64ToUint8list(json['avatar'] as String?),
-      DateTime.parse(json['last_completed_kx'] as String),
-      DateTime.parse(json['last_read_msg_time'] as String),
+      _parseDateTime(json['last_completed_kx']),
+      _parseDateTime(json['last_read_msg_time']),
     );
 
 Map<String, dynamic> _$AddressBookEntryToJson(AddressBookEntry instance) =>
@@ -565,6 +565,102 @@ Map<String, dynamic> _$FileMetadataToJson(FileMetadata instance) =>
       'manifest': instance.manifest,
       'signature': instance.signature,
       'attributes': instance.attributes,
+    };
+
+ImportPluginArgs _$ImportPluginArgsFromJson(Map<String, dynamic> json) =>
+    ImportPluginArgs(
+      json['path'] as String,
+    );
+
+Map<String, dynamic> _$ImportPluginArgsToJson(ImportPluginArgs instance) =>
+    <String, dynamic>{
+      'path': instance.path,
+    };
+
+SetPluginEnabledArgs _$SetPluginEnabledArgsFromJson(
+        Map<String, dynamic> json) =>
+    SetPluginEnabledArgs(
+      json['id'] as String,
+      json['enabled'] as bool,
+    );
+
+Map<String, dynamic> _$SetPluginEnabledArgsToJson(
+        SetPluginEnabledArgs instance) =>
+    <String, dynamic>{
+      'id': instance.id,
+      'enabled': instance.enabled,
+    };
+
+PluginManifest _$PluginManifestFromJson(Map<String, dynamic> json) =>
+    PluginManifest(
+      json['id'] as String,
+      json['name'] as String,
+      json['version'] as String,
+      json['description'] as String,
+      json['rendererKind'] as String,
+    );
+
+Map<String, dynamic> _$PluginManifestToJson(PluginManifest instance) =>
+    <String, dynamic>{
+      'id': instance.id,
+      'name': instance.name,
+      'version': instance.version,
+      'description': instance.description,
+      'rendererKind': instance.rendererKind,
+    };
+
+PluginInfo _$PluginInfoFromJson(Map<String, dynamic> json) => PluginInfo(
+      PluginManifest.fromJson(json['manifest'] as Map<String, dynamic>),
+      json['enabled'] as bool,
+    );
+
+Map<String, dynamic> _$PluginInfoToJson(PluginInfo instance) =>
+    <String, dynamic>{
+      'manifest': instance.manifest,
+      'enabled': instance.enabled,
+    };
+
+LinkMetadata _$LinkMetadataFromJson(Map<String, dynamic> json) => LinkMetadata(
+      json['title'] as String,
+      json['description'] as String,
+      json['author'] as String,
+      json['thumbnailB64'] as String,
+    );
+
+Map<String, dynamic> _$LinkMetadataToJson(LinkMetadata instance) =>
+    <String, dynamic>{
+      'title': instance.title,
+      'description': instance.description,
+      'author': instance.author,
+      'thumbnailB64': instance.thumbnailB64,
+    };
+
+GrammarRule _$GrammarRuleFromJson(Map<String, dynamic> json) => GrammarRule(
+      json['pattern'] as String,
+      json['message'] as String,
+      json['suggest'] as String,
+    );
+
+Map<String, dynamic> _$GrammarRuleToJson(GrammarRule instance) =>
+    <String, dynamic>{
+      'pattern': instance.pattern,
+      'message': instance.message,
+      'suggest': instance.suggest,
+    };
+
+SpellcheckData _$SpellcheckDataFromJson(Map<String, dynamic> json) =>
+    SpellcheckData(
+      (json['words'] as List<dynamic>?)?.map((e) => e as String).toList() ?? [],
+      (json['grammarRules'] as List<dynamic>?)
+              ?.map((e) => GrammarRule.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          [],
+    );
+
+Map<String, dynamic> _$SpellcheckDataToJson(SpellcheckData instance) =>
+    <String, dynamic>{
+      'words': instance.words,
+      'grammarRules': instance.grammarRules,
     };
 
 SharedFile _$SharedFileFromJson(Map<String, dynamic> json) => SharedFile(
@@ -684,8 +780,8 @@ PostSummary _$PostSummaryFromJson(Map<String, dynamic> json) => PostSummary(
       json['from'] as String,
       json['author_id'] as String,
       json['author_nick'] as String,
-      DateTime.parse(json['date'] as String),
-      DateTime.parse(json['last_status_ts'] as String),
+      _parseDateTime(json['date']),
+      _parseDateTime(json['last_status_ts']),
       json['title'] as String,
     );
 
@@ -1639,8 +1735,8 @@ RatchetDebugInfo _$RatchetDebugInfoFromJson(Map<String, dynamic> json) =>
       json['their_reset_rv'] as String,
       (json['nb_saved_keys'] as num).toInt(),
       json['will_ratchet'] as bool,
-      DateTime.parse(json['last_enc_time'] as String),
-      DateTime.parse(json['last_dec_time'] as String),
+      _parseDateTime(json['last_enc_time']),
+      _parseDateTime(json['last_dec_time']),
     );
 
 Map<String, dynamic> _$RatchetDebugInfoToJson(RatchetDebugInfo instance) =>
@@ -1816,7 +1912,7 @@ Map<String, dynamic> _$RMKXSearchToJson(RMKXSearch instance) =>
 KXSearchQuery _$KXSearchQueryFromJson(Map<String, dynamic> json) =>
     KXSearchQuery(
       json['user'] as String,
-      DateTime.parse(json['date_sent'] as String),
+      _parseDateTime(json['date_sent']),
       (json['ids_received'] as List<dynamic>?)
               ?.map((e) => e as String)
               .toList() ??
@@ -2139,7 +2235,7 @@ SSCart _$SSCartFromJson(Map<String, dynamic> json) => SSCart(
       (json['items'] as List<dynamic>)
           .map((e) => SSCartItem.fromJson(e as Map<String, dynamic>))
           .toList(),
-      DateTime.parse(json['updated'] as String),
+      _parseDateTime(json['updated']),
     );
 
 Map<String, dynamic> _$SSCartToJson(SSCart instance) => <String, dynamic>{
@@ -2177,8 +2273,8 @@ FetchedResource _$FetchedResourceFromJson(Map<String, dynamic> json) =>
       (json['session_id'] as num).toInt(),
       (json['parent_page'] as num).toInt(),
       (json['page_id'] as num).toInt(),
-      DateTime.parse(json['request_ts'] as String),
-      DateTime.parse(json['response_ts'] as String),
+      _parseDateTime(json['request_ts']),
+      _parseDateTime(json['response_ts']),
       RMFetchResource.fromJson(json['request'] as Map<String, dynamic>),
       RMFetchResourceReply.fromJson(json['response'] as Map<String, dynamic>),
       json['async_target_id'] as String,
@@ -2361,7 +2457,7 @@ KXData _$KXDataFromJson(Map<String, dynamic> json) => KXData(
       json['my_resetrv'] as String,
       json['their_resetrv'] as String,
       $enumDecode(_$KXStageEnumMap, json['stage']),
-      DateTime.parse(json['timestamp'] as String),
+      _parseDateTime(json['timestamp']),
       json['invitee'] == null
           ? null
           : PublicIdentity.fromJson(json['invitee'] as Map<String, dynamic>),
@@ -2393,7 +2489,7 @@ MediateIDRequest _$MediateIDRequestFromJson(Map<String, dynamic> json) =>
     MediateIDRequest(
       json['mediator'] as String,
       json['target'] as String,
-      DateTime.parse(json['date'] as String),
+      _parseDateTime(json['date']),
     );
 
 Map<String, dynamic> _$MediateIDRequestToJson(MediateIDRequest instance) =>

@@ -12,6 +12,7 @@ import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:bruig/components/chat/types.dart';
 import 'package:bruig/models/client.dart';
+import 'package:bruig/models/spellcheck.dart';
 import 'package:bruig/theme_manager.dart';
 import 'package:flutter/services.dart';
 import 'package:golib_plugin/golib_plugin.dart';
@@ -379,6 +380,8 @@ class _ChatInputState extends State<ChatInput> {
           ),
           style: theme.textStyleFor(context, TextSize.medium, null),
           keyboardType: TextInputType.multiline,
+          spellCheckConfiguration:
+              Provider.of<SpellCheckModel>(context).configuration,
           decoration: InputDecoration(
             isDense: true,
             border: const OutlineInputBorder(

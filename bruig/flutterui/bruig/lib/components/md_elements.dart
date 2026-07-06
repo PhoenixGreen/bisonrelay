@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 // import 'package:dart_vlc/dart_vlc.dart' as vlc;
 import 'package:bruig/components/context_menu.dart';
+import 'package:bruig/components/link_card.dart';
 import 'package:bruig/components/pages/forms.dart';
 import 'package:bruig/components/snackbars.dart';
 import 'package:bruig/components/text_dialog.dart';
@@ -86,6 +87,27 @@ class LnpayURLSyntax extends md.InlineSyntax {
 
     md.Element el = md.Element.text("lnpay", url);
 
+    parser.addNode(el);
+    return true;
+  }
+}
+
+/// Matches bare (not already markdown-linked) http(s) URLs so the "Pretty
+/// Links" plugin can offer a native preview card for known domains. Because
+/// user-supplied inline syntaxes are tried before flutter_markdown's
+/// built-in link/autolink syntaxes, this only ever fires on genuinely bare
+/// URLs in the source text -- an explicit `[text](url)` markdown link is
+/// fully consumed by the built-in LinkSyntax before the parser's cursor
+/// ever reaches the URL text on its own.
+class BareLinkSyntax extends md.InlineSyntax {
+  BareLinkSyntax({
+    String pattern = r'https?:\/\/\S+',
+  }) : super(pattern);
+
+  @override
+  bool onMatch(md.InlineParser parser, Match match) {
+    final url = match.group(0) ?? "";
+    md.Element el = md.Element.text("linkcard", url);
     parser.addNode(el);
     return true;
   }
@@ -367,8 +389,27 @@ class MarkdownAreaModel extends ChangeNotifier {
     FormBlockSyntax(),
   ];
 
+  bool _prettyLinksActive = false;
+
   MarkdownAreaModel(String dbroot) {
     inlineSyntaxes.add(EmbedInlineSyntax(dbroot));
+  }
+
+  /// Registers (or unregisters) the "Pretty Links" bare-URL renderer.
+  /// Called whenever PluginsModel's active state changes so that newly
+  /// rendered chat messages reflect the current setting (already-rendered
+  /// widgets on screen are unaffected until they rebuild).
+  void setPrettyLinksActive(bool active) {
+    if (active == _prettyLinksActive) return;
+    _prettyLinksActive = active;
+    if (active) {
+      builders["linkcard"] = LinkCardElementBuilder();
+      inlineSyntaxes.add(BareLinkSyntax());
+    } else {
+      builders.remove("linkcard");
+      inlineSyntaxes.removeWhere((s) => s is BareLinkSyntax);
+    }
+    notifyListeners();
   }
 }
 

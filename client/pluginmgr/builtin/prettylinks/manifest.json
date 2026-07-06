@@ -1,0 +1,20 @@
+{
+  "id": "prettylinks",
+  "name": "Pretty Links",
+  "version": "1.0.0",
+  "description": "Renders link previews for YouTube and X/Twitter links as native cards.",
+  "enabledByDefault": true,
+  "rendererKind": "link-card",
+  "matchers": [
+    {
+      "domains": ["youtube.com", "www.youtube.com", "youtu.be", "m.youtube.com"],
+      "metadataEndpoint": "https://www.youtube.com/oembed?url={url}&format=json",
+      "metadataFormat": "oembed-json"
+    },
+    {
+      "domains": ["twitter.com", "www.twitter.com", "x.com", "www.x.com"],
+      "metadataEndpoint": "https://publish.twitter.com/oembed?url={url}",
+      "metadataFormat": "oembed-json"
+    }
+  ]
+}

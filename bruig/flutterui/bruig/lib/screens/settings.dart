@@ -10,6 +10,7 @@ import 'package:bruig/components/snackbars.dart';
 import 'package:bruig/components/text.dart';
 import 'package:bruig/components/volume_control.dart';
 import 'package:bruig/models/audio.dart';
+import 'package:bruig/models/plugins.dart';
 import 'package:bruig/models/realtimechat.dart';
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/models/uistate.dart';
@@ -278,6 +279,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
             builder: (context, audio, child) =>
                 AudioSettingsScreen(audio: audio));
         break;
+      case "Plugins":
+        settingsView = const PluginsSettingsScreen();
+        break;
       default:
         break;
     }
@@ -323,6 +327,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       selected: settingsPage == "RPC",
                       title: const Txt.S("RPC"),
                       onTap: () => showRpcWarningDialog(),
+                    ),
+                    ListTile(
+                      selected: settingsPage == "Plugins",
+                      title: const Txt.S("Plugins"),
+                      onTap: () => changePage("Plugins"),
                     ),
                   ])),
       Expanded(child: settingsView),
@@ -415,6 +424,10 @@ class MainSettingsScreen extends StatelessWidget {
                     leading: const SidebarSvgIcon(
                         "assets/icons/icons-menu-files.svg"),
                     title: const Text("Manage Content")),
+                ListTile(
+                    onTap: () => changePage("Plugins"),
+                    leading: const Icon(Icons.extension_outlined),
+                    title: const Text("Plugins")),
                 ListTile(
                     onTap: () {
                       Navigator.of(context)
@@ -1081,6 +1094,88 @@ Following is a block quote section.
 >> that explains things.
 
 """;
+
+class PluginsSettingsScreen extends StatefulWidget {
+  const PluginsSettingsScreen({super.key});
+
+  @override
+  State<PluginsSettingsScreen> createState() => _PluginsSettingsScreenState();
+}
+
+class _PluginsSettingsScreenState extends State<PluginsSettingsScreen> {
+  bool importing = false;
+
+  void importPlugin() async {
+    var snackbar = SnackBarModel.of(context);
+    var model = Provider.of<PluginsModel>(context, listen: false);
+
+    var filePickRes = await FilePicker.platform.pickFiles(
+      allowMultiple: false,
+      dialogTitle: "Pick plugin folder or .zip file",
+      type: FileType.custom,
+      allowedExtensions: ["zip"],
+    );
+    if (filePickRes == null) return;
+    var fPath = filePickRes.files.first.path;
+    if (fPath == null) return;
+
+    setState(() => importing = true);
+    try {
+      var plugin = await model.import(fPath.trim());
+      snackbar.success("Imported plugin '${plugin.manifest.name}'");
+    } catch (exception) {
+      snackbar.error("Unable to import plugin: $exception");
+    } finally {
+      if (mounted) setState(() => importing = false);
+    }
+  }
+
+  void setEnabled(PluginInfo plugin, bool enabled) async {
+    var snackbar = SnackBarModel.of(context);
+    var model = Provider.of<PluginsModel>(context, listen: false);
+    try {
+      await model.setEnabled(plugin.manifest.id, enabled);
+    } catch (exception) {
+      snackbar.error("Unable to update plugin: $exception");
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Txt.L("Plugins"),
+          const SizedBox(height: 10),
+          Consumer<PluginsModel>(
+              builder: (context, model, child) => model.plugins.isEmpty
+                  ? const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 20),
+                      child: Txt.S("No plugins installed."),
+                    )
+                  : Column(
+                      children: model.plugins
+                          .map((plugin) => Material(
+                                type: MaterialType.transparency,
+                                child: SwitchListTile(
+                                  title: Txt.S(plugin.manifest.name),
+                                  subtitle: Txt.S(
+                                      "${plugin.manifest.description} (v${plugin.manifest.version})"),
+                                  value: plugin.enabled,
+                                  onChanged: (v) => setEnabled(plugin, v),
+                                ),
+                              ))
+                          .toList(),
+                    )),
+          const SizedBox(height: 20),
+          ElevatedButton.icon(
+            onPressed: importing ? null : importPlugin,
+            icon: const Icon(Icons.file_upload_outlined),
+            label: const Text("Import Plugin"),
+          ),
+        ]));
+  }
+}
 
 class ThemeTestScreen extends StatelessWidget {
   static String routeName = "/themeTest";

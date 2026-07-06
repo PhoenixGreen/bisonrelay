@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -22,6 +23,7 @@ import (
 	"github.com/companyzero/bisonrelay/client"
 	"github.com/companyzero/bisonrelay/client/clientdb"
 	"github.com/companyzero/bisonrelay/client/clientintf"
+	"github.com/companyzero/bisonrelay/client/pluginmgr"
 	"github.com/companyzero/bisonrelay/client/resources"
 	"github.com/companyzero/bisonrelay/client/resources/simplestore"
 	"github.com/companyzero/bisonrelay/client/rpcserver"
@@ -89,6 +91,8 @@ type clientCtx struct {
 	noterec *audio.NoteRecorder
 
 	serverState atomic.Value
+
+	pluginMgr *pluginmgr.Manager
 }
 
 var (
@@ -808,6 +812,24 @@ func handleInitClient(handle uint32, args initClient) error {
 		return err
 	}
 
+	pluginHTTPClient := &http.Client{
+		Transport: &http.Transport{
+			DialContext:           dialFunc,
+			ForceAttemptHTTP2:     true,
+			TLSHandshakeTimeout:   10 * time.Second,
+			ExpectContinueTimeout: 1 * time.Second,
+		},
+		Timeout: 10 * time.Second,
+	}
+	pluginMgr, err := pluginmgr.NewManager(pluginmgr.Config{
+		Root:       filepath.Join(args.DBRoot, "plugins"),
+		Log:        logBknd.logger("PLGN"),
+		HTTPClient: pluginHTTPClient,
+	})
+	if err != nil {
+		return fmt.Errorf("unable to initialize plugin manager: %v", err)
+	}
+
 	// Bind the selected upstream resource provider.
 	switch {
 	case strings.HasPrefix(args.ResourcesUpstream, "http://"),
@@ -1006,6 +1028,8 @@ func handleInitClient(handle uint32, args initClient) error {
 
 		confirmPayReqRecvChan: make(chan bool),
 		downloadConfChans:     make(map[zkidentity.ShortID]chan bool),
+
+		pluginMgr: pluginMgr,
 	}
 	cs[handle] = cctx
 
@@ -1281,6 +1305,40 @@ func handleClientCmd(cc *clientCtx, cmd *cmd) (interface{}, error) {
 
 	case CTListSharedFiles:
 		return c.ListLocalSharedFiles()
+
+	case CTListPlugins:
+		return cc.pluginMgr.List(), nil
+
+	case CTImportPlugin:
+		var args importPluginArgs
+		if err := cmd.decode(&args); err != nil {
+			return nil, err
+		}
+		return cc.pluginMgr.Import(args.Path)
+
+	case CTSetPluginEnabled:
+		var args setPluginEnabledArgs
+		if err := cmd.decode(&args); err != nil {
+			return nil, err
+		}
+		return nil, cc.pluginMgr.SetEnabled(args.ID, args.Enabled)
+
+	case CTRemovePlugin:
+		var id string
+		if err := cmd.decode(&id); err != nil {
+			return nil, err
+		}
+		return nil, cc.pluginMgr.Remove(id)
+
+	case CTFetchLinkMetadata:
+		var linkURL string
+		if err := cmd.decode(&linkURL); err != nil {
+			return nil, err
+		}
+		return cc.pluginMgr.FetchLinkMetadata(cc.ctx, linkURL)
+
+	case CTGetSpellcheckData:
+		return cc.pluginMgr.SpellcheckData(), nil
 
 	case CTListUserContent:
 		var uid clientintf.UserID

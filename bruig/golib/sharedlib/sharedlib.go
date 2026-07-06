@@ -69,7 +69,6 @@ func NextCallResult() (C.uintptr_t, C.ulonglong, C.ulonglong, C.ulonglong) {
 		if err != nil {
 			fmt.Println(err)
 		}
-		fmt.Println(string(errPayload))
 		r.Payload = errPayload
 	}
 	return C.uintptr_t(h), C.ulonglong(len(r.Payload)), C.ulonglong(r.Type), isErr

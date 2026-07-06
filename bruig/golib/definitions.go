@@ -202,6 +202,15 @@ type getRemoteFileArgs struct {
 	FID zkidentity.ShortID `json:"fid"`
 }
 
+type importPluginArgs struct {
+	Path string `json:"path"`
+}
+
+type setPluginEnabledArgs struct {
+	ID      string `json:"id"`
+	Enabled bool   `json:"enabled"`
+}
+
 type payTipArgs struct {
 	UID    clientintf.UserID `json:"uid"`
 	Amount float64           `json:"amount"`
