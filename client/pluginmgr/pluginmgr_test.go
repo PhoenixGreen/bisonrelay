@@ -3,7 +3,6 @@ package pluginmgr
 import (
 	"archive/zip"
 	"encoding/json"
-	"net/http"
 	"os"
 	"path/filepath"
 	"testing"
@@ -69,8 +68,7 @@ func testCapabilityManifest(id, capability string, domains ...string) Manifest {
 func newTestManager(t *testing.T, root string) *Manager {
 	t.Helper()
 	m, err := NewManager(Config{
-		Root:       root,
-		HTTPClient: http.DefaultClient,
+		Root: root,
 	})
 	if err != nil {
 		t.Fatalf("NewManager: %v", err)

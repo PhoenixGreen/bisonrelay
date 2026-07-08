@@ -900,9 +900,8 @@ func handleInitClient(handle uint32, args initClient) error {
 		Timeout: 10 * time.Second,
 	}
 	pluginMgr, err := pluginmgr.NewManager(pluginmgr.Config{
-		Root:       filepath.Join(args.DBRoot, "plugins"),
-		Log:        logBknd.logger("PLGN"),
-		HTTPClient: pluginHTTPClient,
+		Root: filepath.Join(args.DBRoot, "plugins"),
+		Log:  logBknd.logger("PLGN"),
 	})
 	if err != nil {
 		return fmt.Errorf("unable to initialize plugin manager: %v", err)

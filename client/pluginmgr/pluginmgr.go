@@ -16,7 +16,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -136,13 +135,6 @@ type Config struct {
 	Root string
 
 	Log slog.Logger
-
-	// HTTPClient is unused by pluginmgr itself today (no renderer kind
-	// left does its own fetching -- see client/pluginmgr/wasmhost, which
-	// takes its own HTTPClient for guest fetch_url/fetch_url_ex calls).
-	// Kept here for API stability / in case a future renderer kind needs
-	// it directly.
-	HTTPClient *http.Client
 }
 
 // Manager loads, validates, and tracks installed plugins.
