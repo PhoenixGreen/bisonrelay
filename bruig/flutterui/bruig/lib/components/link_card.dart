@@ -62,6 +62,16 @@ class LinkCard extends StatefulWidget {
   State<LinkCard> createState() => _LinkCardState();
 }
 
+// Caches successful metadata fetches for the lifetime of the app process,
+// keyed by URL. LinkCard is recreated (and would otherwise re-fetch over
+// the network) every time its message scrolls out of view and back --
+// e.g. in a long chat/feed's lazily-built list -- so without this cache
+// the same link refetches every time it's scrolled past. Only successful
+// fetches are cached: a null result (network hiccup, plugin not handling
+// the URL) is left uncached so a later render can still retry rather than
+// permanently freezing on a transient failure.
+final Map<String, LinkMetadata> _linkMetadataCache = {};
+
 class _LinkCardState extends State<LinkCard> {
   LinkMetadata? _metadata;
   bool _loading = true;
@@ -72,13 +82,22 @@ class _LinkCardState extends State<LinkCard> {
   @override
   void initState() {
     super.initState();
-    _fetch();
+    var cached = _linkMetadataCache[widget.url];
+    if (cached != null) {
+      _metadata = cached;
+      _loading = false;
+    } else {
+      _fetch();
+    }
   }
 
   void _fetch() async {
     LinkMetadata? metadata;
     try {
       metadata = await Golib.fetchLinkMetadata(widget.url);
+      if (metadata != null) {
+        _linkMetadataCache[widget.url] = metadata;
+      }
     } catch (_) {
       metadata = null;
     }

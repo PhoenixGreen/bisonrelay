@@ -726,6 +726,15 @@ class SetPluginEnabledArgs {
 }
 
 @JsonSerializable()
+class ScreenDef {
+  final String id;
+  final String label;
+  ScreenDef(this.id, this.label);
+  factory ScreenDef.fromJson(Map<String, dynamic> json) =>
+      _$ScreenDefFromJson(json);
+}
+
+@JsonSerializable()
 class PluginManifest {
   final String id;
   final String name;
@@ -733,8 +742,27 @@ class PluginManifest {
   final String description;
   @JsonKey(name: "rendererKind")
   final String rendererKind;
-  PluginManifest(
-      this.id, this.name, this.version, this.description, this.rendererKind);
+
+  // navLabel/navIcon/screens are populated only for rendererKind
+  // "dynamic-wasm" plugins (see DynPluginsModel), which contribute their
+  // own top-level nav item and sub-pages rendered by DynPluginScreen.
+  @JsonKey(name: "navLabel", defaultValue: "")
+  final String navLabel;
+  @JsonKey(name: "navIcon", defaultValue: "")
+  final String navIcon;
+  @JsonKey(name: "screens", defaultValue: [])
+  final List<ScreenDef> screens;
+
+  // capabilities declares optional headless behaviors a dynamic-wasm
+  // plugin implements independent of (and possibly in addition to) having
+  // a nav item -- e.g. "spellcheck-data" or "link-card". See
+  // PluginsModel.spellcheckActive/prettyLinksActive.
+  @JsonKey(name: "capabilities", defaultValue: [])
+  final List<String> capabilities;
+
+  PluginManifest(this.id, this.name, this.version, this.description,
+      this.rendererKind, this.navLabel, this.navIcon, this.screens,
+      this.capabilities);
   factory PluginManifest.fromJson(Map<String, dynamic> json) =>
       _$PluginManifestFromJson(json);
 }
@@ -746,6 +774,91 @@ class PluginInfo {
   PluginInfo(this.manifest, this.enabled);
   factory PluginInfo.fromJson(Map<String, dynamic> json) =>
       _$PluginInfoFromJson(json);
+}
+
+// DynWidget is one node of a dynamic-wasm plugin's declarative screen (see
+// DynScreenUI): the plugin describes what to show, this app decides how to
+// draw it (in components/dynplugin_screen.dart) -- named Dyn* rather than
+// the bare Go-side ScreenUI/Widget names to avoid colliding with Flutter's
+// own foundational Widget class.
+@JsonSerializable()
+class DynWidget {
+  final String type; // "text","list","textfield","button","switch"
+
+  @JsonKey(defaultValue: "")
+  final String text;
+  @JsonKey(defaultValue: "")
+  final String hint;
+  @JsonKey(defaultValue: "")
+  final String value;
+  @JsonKey(name: "bool", defaultValue: false)
+  final bool boolValue;
+  @JsonKey(defaultValue: "")
+  final String name;
+  @JsonKey(defaultValue: "")
+  final String event;
+  @JsonKey(name: "openUrl", defaultValue: "")
+  final String openUrl;
+  @JsonKey(defaultValue: false)
+  final bool danger;
+  @JsonKey(defaultValue: false)
+  final bool muted;
+  @JsonKey(defaultValue: false)
+  final bool bookmarkable;
+  @JsonKey(defaultValue: false)
+  final bool bookmarked;
+  @JsonKey(defaultValue: [])
+  final List<DynWidget> items;
+
+  DynWidget(
+      this.type,
+      this.text,
+      this.hint,
+      this.value,
+      this.boolValue,
+      this.name,
+      this.event,
+      this.openUrl,
+      this.danger,
+      this.muted,
+      this.bookmarkable,
+      this.bookmarked,
+      this.items);
+  factory DynWidget.fromJson(Map<String, dynamic> json) =>
+      _$DynWidgetFromJson(json);
+}
+
+@JsonSerializable()
+class DynScreenUI {
+  final String title;
+  @JsonKey(defaultValue: [])
+  final List<DynWidget> widgets;
+  DynScreenUI(this.title, this.widgets);
+  factory DynScreenUI.fromJson(Map<String, dynamic> json) =>
+      _$DynScreenUIFromJson(json);
+}
+
+@JsonSerializable()
+class DynPluginRenderScreenArgs {
+  @JsonKey(name: "pluginId")
+  final String pluginId;
+  @JsonKey(name: "screenId")
+  final String screenId;
+  DynPluginRenderScreenArgs(this.pluginId, this.screenId);
+  Map<String, dynamic> toJson() => _$DynPluginRenderScreenArgsToJson(this);
+}
+
+@JsonSerializable()
+class DynPluginHandleEventArgs {
+  @JsonKey(name: "pluginId")
+  final String pluginId;
+  @JsonKey(name: "screenId")
+  final String screenId;
+  final String event;
+  final Map<String, dynamic> payload;
+  DynPluginHandleEventArgs(
+      this.pluginId, this.screenId, this.event, this.payload);
+  Map<String, dynamic> toJson() => _$DynPluginHandleEventArgsToJson(this);
 }
 
 @JsonSerializable()
@@ -3195,6 +3308,13 @@ mixin NtfStreams {
       StreamController<SendFileProgress>();
   Stream<SendFileProgress> sendFileProgress() => ntfSendFileProgress.stream;
 
+  // Fired with a plugin id after that dynamic-wasm plugin's background
+  // poll (see wasmhost.Config.OnPollComplete) completes, so a currently
+  // open DynPluginScreen for that plugin knows to re-render.
+  StreamController<String> ntfDynPluginScreenUpdated =
+      StreamController<String>();
+  Stream<String> dynPluginScreenUpdated() => ntfDynPluginScreenUpdated.stream;
+
   handleNotifications(int cmd, bool isError, String jsonPayload) {
     dynamic payload;
     if (jsonPayload != "") {
@@ -3512,6 +3632,12 @@ mixin NtfStreams {
         ntfSendFileProgress.add(event);
         break;
 
+      case NTDynPluginScreenUpdated:
+        isError
+            ? ntfDynPluginScreenUpdated.addError(payload)
+            : ntfDynPluginScreenUpdated.add(payload as String);
+        break;
+
       default:
         debugPrint("Received unknown notification ${cmd.toRadixString(16)}");
     }
@@ -3556,6 +3682,7 @@ abstract class PluginPlatform {
       throw "unimplemented";
   Stream<RTDTRTT> rtdtRTTStream() => throw "unimplemented";
   Stream<SendFileProgress> sendFileProgress() => throw "unimplemented";
+  Stream<String> dynPluginScreenUpdated() => throw "unimplemented";
 
   Future<bool> hasServer() async => throw "unimplemented";
 
@@ -3739,6 +3866,24 @@ abstract class PluginPlatform {
     var res = await asyncCall(CTGetSpellcheckData, null);
     if (res == null) return SpellcheckData([], []);
     return SpellcheckData.fromJson(res);
+  }
+
+  /// Renders one screen of an enabled dynamic-wasm plugin (e.g. "feeds" on
+  /// the RSS plugin) by calling into its WebAssembly module.
+  Future<DynScreenUI> renderDynPluginScreen(
+      String pluginId, String screenId) async {
+    var res = await asyncCall(
+        CTDynPluginRenderScreen, DynPluginRenderScreenArgs(pluginId, screenId));
+    return DynScreenUI.fromJson(res);
+  }
+
+  /// Delivers a widget-originated event (button tap, form submit) to an
+  /// enabled dynamic-wasm plugin and returns the resulting updated screen.
+  Future<DynScreenUI> handleDynPluginEvent(String pluginId, String screenId,
+      String event, Map<String, dynamic> payload) async {
+    var res = await asyncCall(CTDynPluginHandleEvent,
+        DynPluginHandleEventArgs(pluginId, screenId, event, payload));
+    return DynScreenUI.fromJson(res);
   }
 
   Future<void> listUserContent(String uid) async =>
@@ -4656,6 +4801,8 @@ const int CTSetPluginEnabled = 0xb7;
 const int CTRemovePlugin = 0xb8;
 const int CTFetchLinkMetadata = 0xb9;
 const int CTGetSpellcheckData = 0xba;
+const int CTDynPluginRenderScreen = 0xbb;
+const int CTDynPluginHandleEvent = 0xbc;
 
 const int notificationsStartID = 0x1000;
 
@@ -4724,3 +4871,4 @@ const int NTRTDTRTTCalculated = 0x103e;
 const int NTRTDTJoinedInstantCall = 0x103f;
 const int NTRTDTSessionInviteCanceled = 0x1040;
 const int NTSendFileProgress = 0x1041;
+const int NTDynPluginScreenUpdated = 0x1042;

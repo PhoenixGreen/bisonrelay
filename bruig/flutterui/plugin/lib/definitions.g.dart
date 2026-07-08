@@ -591,6 +591,16 @@ Map<String, dynamic> _$SetPluginEnabledArgsToJson(
       'enabled': instance.enabled,
     };
 
+ScreenDef _$ScreenDefFromJson(Map<String, dynamic> json) => ScreenDef(
+      json['id'] as String,
+      json['label'] as String,
+    );
+
+Map<String, dynamic> _$ScreenDefToJson(ScreenDef instance) => <String, dynamic>{
+      'id': instance.id,
+      'label': instance.label,
+    };
+
 PluginManifest _$PluginManifestFromJson(Map<String, dynamic> json) =>
     PluginManifest(
       json['id'] as String,
@@ -598,6 +608,16 @@ PluginManifest _$PluginManifestFromJson(Map<String, dynamic> json) =>
       json['version'] as String,
       json['description'] as String,
       json['rendererKind'] as String,
+      json['navLabel'] as String? ?? '',
+      json['navIcon'] as String? ?? '',
+      (json['screens'] as List<dynamic>?)
+              ?.map((e) => ScreenDef.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          [],
+      (json['capabilities'] as List<dynamic>?)
+              ?.map((e) => e as String)
+              .toList() ??
+          [],
     );
 
 Map<String, dynamic> _$PluginManifestToJson(PluginManifest instance) =>
@@ -607,6 +627,10 @@ Map<String, dynamic> _$PluginManifestToJson(PluginManifest instance) =>
       'version': instance.version,
       'description': instance.description,
       'rendererKind': instance.rendererKind,
+      'navLabel': instance.navLabel,
+      'navIcon': instance.navIcon,
+      'screens': instance.screens,
+      'capabilities': instance.capabilities,
     };
 
 PluginInfo _$PluginInfoFromJson(Map<String, dynamic> json) => PluginInfo(
@@ -618,6 +642,87 @@ Map<String, dynamic> _$PluginInfoToJson(PluginInfo instance) =>
     <String, dynamic>{
       'manifest': instance.manifest,
       'enabled': instance.enabled,
+    };
+
+DynWidget _$DynWidgetFromJson(Map<String, dynamic> json) => DynWidget(
+      json['type'] as String,
+      json['text'] as String? ?? '',
+      json['hint'] as String? ?? '',
+      json['value'] as String? ?? '',
+      json['bool'] as bool? ?? false,
+      json['name'] as String? ?? '',
+      json['event'] as String? ?? '',
+      json['openUrl'] as String? ?? '',
+      json['danger'] as bool? ?? false,
+      json['muted'] as bool? ?? false,
+      json['bookmarkable'] as bool? ?? false,
+      json['bookmarked'] as bool? ?? false,
+      (json['items'] as List<dynamic>?)
+              ?.map((e) => DynWidget.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          [],
+    );
+
+Map<String, dynamic> _$DynWidgetToJson(DynWidget instance) => <String, dynamic>{
+      'type': instance.type,
+      'text': instance.text,
+      'hint': instance.hint,
+      'value': instance.value,
+      'bool': instance.boolValue,
+      'name': instance.name,
+      'event': instance.event,
+      'openUrl': instance.openUrl,
+      'danger': instance.danger,
+      'muted': instance.muted,
+      'bookmarkable': instance.bookmarkable,
+      'bookmarked': instance.bookmarked,
+      'items': instance.items,
+    };
+
+DynScreenUI _$DynScreenUIFromJson(Map<String, dynamic> json) => DynScreenUI(
+      json['title'] as String,
+      (json['widgets'] as List<dynamic>?)
+              ?.map((e) => DynWidget.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          [],
+    );
+
+Map<String, dynamic> _$DynScreenUIToJson(DynScreenUI instance) =>
+    <String, dynamic>{
+      'title': instance.title,
+      'widgets': instance.widgets,
+    };
+
+DynPluginRenderScreenArgs _$DynPluginRenderScreenArgsFromJson(
+        Map<String, dynamic> json) =>
+    DynPluginRenderScreenArgs(
+      json['pluginId'] as String,
+      json['screenId'] as String,
+    );
+
+Map<String, dynamic> _$DynPluginRenderScreenArgsToJson(
+        DynPluginRenderScreenArgs instance) =>
+    <String, dynamic>{
+      'pluginId': instance.pluginId,
+      'screenId': instance.screenId,
+    };
+
+DynPluginHandleEventArgs _$DynPluginHandleEventArgsFromJson(
+        Map<String, dynamic> json) =>
+    DynPluginHandleEventArgs(
+      json['pluginId'] as String,
+      json['screenId'] as String,
+      json['event'] as String,
+      json['payload'] as Map<String, dynamic>,
+    );
+
+Map<String, dynamic> _$DynPluginHandleEventArgsToJson(
+        DynPluginHandleEventArgs instance) =>
+    <String, dynamic>{
+      'pluginId': instance.pluginId,
+      'screenId': instance.screenId,
+      'event': instance.event,
+      'payload': instance.payload,
     };
 
 LinkMetadata _$LinkMetadataFromJson(Map<String, dynamic> json) => LinkMetadata(

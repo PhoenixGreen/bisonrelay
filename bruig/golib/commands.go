@@ -193,6 +193,8 @@ const (
 	CTRemovePlugin                 CmdType = 0xb8
 	CTFetchLinkMetadata            CmdType = 0xb9
 	CTGetSpellcheckData            CmdType = 0xba
+	CTDynPluginRenderScreen        CmdType = 0xbb
+	CTDynPluginHandleEvent         CmdType = 0xbc
 
 	NTInviteReceived            = 0x1001
 	NTInviteAccepted            = 0x1002
@@ -259,6 +261,7 @@ const (
 	NTRTDTJoinedInstantCall     = 0x103f
 	NTRTDTSessionInviteCanceled = 0x1040
 	NTSendFileProgress          = 0x1041
+	NTDynPluginScreenUpdated    = 0x1042
 )
 
 type cmd struct {

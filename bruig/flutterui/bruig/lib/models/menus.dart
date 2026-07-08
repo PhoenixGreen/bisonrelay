@@ -183,7 +183,39 @@ final List<MainMenuItem> mainMenu = [
 ];
 
 class MainMenuModel extends ChangeNotifier {
-  final List<MainMenuItem> menus = mainMenu;
+  // A mutable copy of the static mainMenu list: dynamic-wasm plugins (see
+  // DynPluginsModel) register/unregister their own nav item here at
+  // runtime. Both the sidebar (components/sidebar.dart) and the route
+  // dispatch (screens/overview.dart) already build off this list rather
+  // than a hardcoded per-item switch, so appending/removing here is all
+  // that's needed for a plugin's nav item to appear/disappear.
+  final List<MainMenuItem> menus = List<MainMenuItem>.from(mainMenu);
+
+  // registerDynamicItem adds (or replaces, if routeName already exists --
+  // e.g. re-enabling a plugin) a nav item contributed by a dynamic-wasm
+  // plugin.
+  void registerDynamicItem(MainMenuItem item) {
+    menus.removeWhere((e) => e.routeName == item.routeName);
+    menus.add(item);
+    notifyListeners();
+  }
+
+  // unregisterDynamicItem removes a previously-registered dynamic nav item
+  // (plugin disabled/removed), clearing the active route/menu if it was
+  // the one currently selected so the UI doesn't keep pointing at a
+  // MainMenuItem no longer in menus.
+  void unregisterDynamicItem(String routeName) {
+    var removed = menus.any((e) => e.routeName == routeName);
+    if (!removed) return;
+    menus.removeWhere((e) => e.routeName == routeName);
+    if (_activeRoute == routeName) {
+      _activeRoute = "";
+      _activeMenu = _emptyMenu;
+      _activeIndex = 0;
+      _activePageTab = 0;
+    }
+    notifyListeners();
+  }
 
   String _activeRoute = "";
   MainMenuItem _activeMenu = _emptyMenu;

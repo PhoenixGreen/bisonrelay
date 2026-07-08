@@ -211,6 +211,18 @@ type setPluginEnabledArgs struct {
 	Enabled bool   `json:"enabled"`
 }
 
+type dynPluginRenderScreenArgs struct {
+	PluginID string `json:"pluginId"`
+	ScreenID string `json:"screenId"`
+}
+
+type dynPluginHandleEventArgs struct {
+	PluginID string                 `json:"pluginId"`
+	ScreenID string                 `json:"screenId"`
+	Event    string                 `json:"event"`
+	Payload  map[string]interface{} `json:"payload"`
+}
+
 type payTipArgs struct {
 	UID    clientintf.UserID `json:"uid"`
 	Amount float64           `json:"amount"`

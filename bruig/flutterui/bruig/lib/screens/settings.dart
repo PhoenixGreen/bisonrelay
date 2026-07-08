@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:bruig/components/buttons.dart';
+import 'package:bruig/components/confirmation_dialog.dart';
 import 'package:bruig/components/containers.dart';
 import 'package:bruig/components/empty_widget.dart';
 import 'package:bruig/components/info_grid.dart';
@@ -1140,6 +1141,26 @@ class _PluginsSettingsScreenState extends State<PluginsSettingsScreen> {
     }
   }
 
+  void confirmRemovePlugin(PluginInfo plugin) {
+    showConfirmDialog(context,
+        title: "Remove plugin?",
+        content: "This will uninstall '${plugin.manifest.name}' and delete "
+            "any data it has stored. This cannot be undone.",
+        confirmButtonText: "Remove",
+        onConfirm: () => removePlugin(plugin));
+  }
+
+  void removePlugin(PluginInfo plugin) async {
+    var snackbar = SnackBarModel.of(context);
+    var model = Provider.of<PluginsModel>(context, listen: false);
+    try {
+      await model.remove(plugin.manifest.id);
+      snackbar.success("Removed plugin '${plugin.manifest.name}'");
+    } catch (exception) {
+      snackbar.error("Unable to remove plugin: $exception");
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -1157,12 +1178,28 @@ class _PluginsSettingsScreenState extends State<PluginsSettingsScreen> {
                       children: model.plugins
                           .map((plugin) => Material(
                                 type: MaterialType.transparency,
-                                child: SwitchListTile(
+                                child: ListTile(
                                   title: Txt.S(plugin.manifest.name),
                                   subtitle: Txt.S(
                                       "${plugin.manifest.description} (v${plugin.manifest.version})"),
-                                  value: plugin.enabled,
-                                  onChanged: (v) => setEnabled(plugin, v),
+                                  trailing: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Switch(
+                                        value: plugin.enabled,
+                                        onChanged: (v) =>
+                                            setEnabled(plugin, v),
+                                      ),
+                                      IconButton(
+                                        icon: const Icon(
+                                            Icons.delete_outline,
+                                            color: Colors.red),
+                                        tooltip: "Remove plugin",
+                                        onPressed: () =>
+                                            confirmRemovePlugin(plugin),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ))
                           .toList(),

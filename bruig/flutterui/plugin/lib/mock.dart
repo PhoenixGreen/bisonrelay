@@ -398,6 +398,14 @@ class MockPlugin with NtfStreams /*implements PluginPlatform*/ {
 
   Future<SpellcheckData> getSpellcheckData() => throw "unimplemented";
 
+  Future<DynScreenUI> renderDynPluginScreen(
+          String pluginId, String screenId) =>
+      throw "unimplemented";
+
+  Future<DynScreenUI> handleDynPluginEvent(String pluginId, String screenId,
+          String event, Map<String, dynamic> payload) =>
+      throw "unimplemented";
+
   Future<List<ReceivedFile>> listUserContent(String uid) =>
       throw "unimplemented";
 

@@ -9,6 +9,7 @@ import 'package:bruig/models/emoji.dart';
 import 'package:bruig/models/audio.dart';
 import 'package:bruig/models/menus.dart';
 import 'package:bruig/models/payments.dart';
+import 'package:bruig/models/dynplugins.dart';
 import 'package:bruig/models/plugins.dart';
 import 'package:bruig/models/realtimechat.dart';
 import 'package:bruig/models/resources.dart';
@@ -198,6 +199,18 @@ Future<void> runMainApp(Config cfg) async {
         create: (c) => SpellCheckModel(),
         update: (c, plugins, model) =>
             model!..update(plugins.spellcheckActive, plugins.spellcheckData),
+      ),
+      // lazy: false is required here: unlike MarkdownAreaModel/
+      // SpellCheckModel above, nothing ever reads DynPluginsModel's value
+      // -- it exists purely for the side effect of registering nav items
+      // into MainMenuModel -- so without this, provider's default laziness
+      // means create/update would never run at all.
+      ChangeNotifierProxyProvider2<PluginsModel, MainMenuModel,
+          DynPluginsModel>(
+        lazy: false,
+        create: (c) => DynPluginsModel(),
+        update: (c, plugins, mainMenu, dyn) =>
+            dyn!..update(plugins.plugins, mainMenu),
       ),
       ChangeNotifierProvider.value(value: rtc),
       ChangeNotifierProvider.value(value: rtc.active),

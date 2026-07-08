@@ -2,27 +2,12 @@ package pluginmgr
 
 import (
 	"archive/zip"
-	"context"
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
-	"net/url"
 	"os"
 	"path/filepath"
 	"testing"
 )
-
-// testServerHost returns the bare hostname (no port) of an httptest.Server
-// URL, for use as a manifest matcher domain so a test can point rawURL at
-// the local test server instead of a real domain.
-func testServerHost(t *testing.T, serverURL string) string {
-	t.Helper()
-	parsed, err := url.Parse(serverURL)
-	if err != nil {
-		t.Fatalf("parse test server url: %v", err)
-	}
-	return parsed.Hostname()
-}
 
 func writeManifest(t *testing.T, dir string, manifest Manifest) {
 	t.Helper()
@@ -38,10 +23,6 @@ func writeManifest(t *testing.T, dir string, manifest Manifest) {
 	}
 }
 
-// findPlugin returns the plugin with the given id, if present. Tests use
-// this instead of asserting on len(List()) because the manager always
-// auto-installs the bundled "prettylinks" plugin (see
-// installBuiltinsIfMissing), so a fresh manager's plugin count is never 0.
 func findPlugin(plugins []Plugin, id string) (Plugin, bool) {
 	for _, p := range plugins {
 		if p.Manifest.ID == id {
@@ -51,19 +32,37 @@ func findPlugin(plugins []Plugin, id string) (Plugin, bool) {
 	return Plugin{}, false
 }
 
-func testManifest(id string, domains ...string) Manifest {
+// testManifest returns a minimal valid manifest with a nav item (one
+// screen) -- the "has a UI" shape. Use testCapabilityManifest for the
+// headless shape.
+func testManifest(id string) Manifest {
 	return Manifest{
 		ID:               id,
 		Name:             "Test Plugin " + id,
 		Version:          "1.0.0",
 		Description:      "a test plugin",
 		EnabledByDefault: true,
-		RendererKind:     RendererKindLinkCard,
-		Matchers: []Matcher{{
-			Domains:          domains,
-			MetadataEndpoint: "https://example.invalid/oembed?url={url}",
-			MetadataFormat:   MetadataFormatOEmbedJSON,
-		}},
+		RendererKind:     RendererKindDynamicWasm,
+		WasmFile:         "plugin.wasm",
+		NavLabel:         "Test",
+		Screens:          []ScreenDef{{ID: "main", Label: "Main"}},
+	}
+}
+
+// testCapabilityManifest returns a minimal valid headless manifest (no nav
+// item) declaring capability, plus domains if capability is
+// CapabilityLinkCard.
+func testCapabilityManifest(id, capability string, domains ...string) Manifest {
+	return Manifest{
+		ID:               id,
+		Name:             "Test Plugin " + id,
+		Version:          "1.0.0",
+		Description:      "a test plugin",
+		EnabledByDefault: true,
+		RendererKind:     RendererKindDynamicWasm,
+		WasmFile:         "plugin.wasm",
+		Capabilities:     []string{capability},
+		Domains:          domains,
 	}
 }
 
@@ -81,43 +80,23 @@ func newTestManager(t *testing.T, root string) *Manager {
 
 func TestLoadInstalledAndDefaults(t *testing.T) {
 	root := t.TempDir()
-	writeManifest(t, filepath.Join(root, installedDirName, "prettylinks"),
-		testManifest("prettylinks", "youtube.com"))
+	writeManifest(t, filepath.Join(root, installedDirName, "myplugin"), testManifest("myplugin"))
 
 	m := newTestManager(t, root)
-	plugin, ok := findPlugin(m.List(), "prettylinks")
+	plugin, ok := findPlugin(m.List(), "myplugin")
 	if !ok {
-		t.Fatalf("expected prettylinks plugin to be loaded")
+		t.Fatalf("expected myplugin to be loaded")
 	}
 	if !plugin.Enabled {
 		t.Fatalf("expected plugin enabled by default")
 	}
 }
 
-func TestBuiltinPrettyLinksAutoInstalled(t *testing.T) {
+func TestFreshManagerHasNoPlugins(t *testing.T) {
 	root := t.TempDir()
 	m := newTestManager(t, root)
-
-	plugin, ok := findPlugin(m.List(), "prettylinks")
-	if !ok {
-		t.Fatalf("expected bundled prettylinks plugin to be auto-installed")
-	}
-	if !plugin.Enabled {
-		t.Fatalf("expected bundled prettylinks plugin to be enabled by default")
-	}
-	if _, err := os.Stat(filepath.Join(root, installedDirName, "prettylinks", manifestFileName)); err != nil {
-		t.Fatalf("expected bundled manifest written to disk: %v", err)
-	}
-
-	// A second manager instance over the same root must not clobber a
-	// user's choice to disable the bundled plugin.
-	if err := m.SetEnabled("prettylinks", false); err != nil {
-		t.Fatal(err)
-	}
-	m2 := newTestManager(t, root)
-	plugin2, ok := findPlugin(m2.List(), "prettylinks")
-	if !ok || plugin2.Enabled {
-		t.Fatalf("expected disabled state to persist across restarts, got %+v", plugin2)
+	if got := m.List(); len(got) != 0 {
+		t.Fatalf("expected a fresh manager to have no plugins, got %+v", got)
 	}
 }
 
@@ -134,8 +113,7 @@ func TestInvalidManifestSkipped(t *testing.T) {
 
 func TestManifestIDMustMatchDir(t *testing.T) {
 	root := t.TempDir()
-	writeManifest(t, filepath.Join(root, installedDirName, "dirname"),
-		testManifest("differentid", "youtube.com"))
+	writeManifest(t, filepath.Join(root, installedDirName, "dirname"), testManifest("differentid"))
 
 	m := newTestManager(t, root)
 	if _, ok := findPlugin(m.List(), "differentid"); ok {
@@ -148,16 +126,15 @@ func TestManifestIDMustMatchDir(t *testing.T) {
 
 func TestSetEnabledPersists(t *testing.T) {
 	root := t.TempDir()
-	writeManifest(t, filepath.Join(root, installedDirName, "prettylinks"),
-		testManifest("prettylinks", "youtube.com"))
+	writeManifest(t, filepath.Join(root, installedDirName, "myplugin"), testManifest("myplugin"))
 
 	m := newTestManager(t, root)
-	if err := m.SetEnabled("prettylinks", false); err != nil {
+	if err := m.SetEnabled("myplugin", false); err != nil {
 		t.Fatal(err)
 	}
 
 	m2 := newTestManager(t, root)
-	plugin, ok := findPlugin(m2.List(), "prettylinks")
+	plugin, ok := findPlugin(m2.List(), "myplugin")
 	if !ok || plugin.Enabled {
 		t.Fatalf("expected persisted disabled state, got %+v", plugin)
 	}
@@ -173,17 +150,16 @@ func TestSetEnabledUnknownID(t *testing.T) {
 
 func TestRemove(t *testing.T) {
 	root := t.TempDir()
-	writeManifest(t, filepath.Join(root, installedDirName, "prettylinks"),
-		testManifest("prettylinks", "youtube.com"))
+	writeManifest(t, filepath.Join(root, installedDirName, "myplugin"), testManifest("myplugin"))
 
 	m := newTestManager(t, root)
-	if err := m.Remove("prettylinks"); err != nil {
+	if err := m.Remove("myplugin"); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := findPlugin(m.List(), "prettylinks"); ok {
+	if _, ok := findPlugin(m.List(), "myplugin"); ok {
 		t.Fatalf("expected plugin removed")
 	}
-	if _, err := os.Stat(filepath.Join(root, installedDirName, "prettylinks")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(root, installedDirName, "myplugin")); !os.IsNotExist(err) {
 		t.Fatalf("expected plugin dir removed from disk")
 	}
 }
@@ -193,7 +169,7 @@ func TestImportFromDir(t *testing.T) {
 	m := newTestManager(t, root)
 
 	srcDir := t.TempDir()
-	writeManifest(t, srcDir, testManifest("imported", "example.com"))
+	writeManifest(t, srcDir, testManifest("imported"))
 
 	plugin, err := m.Import(srcDir)
 	if err != nil {
@@ -217,7 +193,7 @@ func TestImportFromZip(t *testing.T) {
 		t.Fatal(err)
 	}
 	zw := zip.NewWriter(f)
-	manifest := testManifest("zipped", "example.com")
+	manifest := testManifest("zipped")
 	manifestBytes, _ := json.Marshal(manifest)
 	w, err := zw.Create("zipped/manifest.json")
 	if err != nil {
@@ -271,301 +247,7 @@ func TestImportRejectsZipSlip(t *testing.T) {
 	}
 }
 
-func TestFetchLinkMetadataNotHandled(t *testing.T) {
-	root := t.TempDir()
-	writeManifest(t, filepath.Join(root, installedDirName, "prettylinks"),
-		testManifest("prettylinks", "youtube.com"))
-	m := newTestManager(t, root)
-
-	_, err := m.FetchLinkMetadata(context.Background(), "https://example.com/foo")
-	if err != ErrNotHandled {
-		t.Fatalf("expected ErrNotHandled, got %v", err)
-	}
-}
-
-func TestFetchLinkMetadataDisabledPluginNotHandled(t *testing.T) {
-	root := t.TempDir()
-	writeManifest(t, filepath.Join(root, installedDirName, "prettylinks"),
-		testManifest("prettylinks", "youtube.com"))
-	m := newTestManager(t, root)
-	if err := m.SetEnabled("prettylinks", false); err != nil {
-		t.Fatal(err)
-	}
-
-	_, err := m.FetchLinkMetadata(context.Background(), "https://youtube.com/watch?v=abc")
-	if err != ErrNotHandled {
-		t.Fatalf("expected disabled plugin to not handle url, got %v", err)
-	}
-}
-
-func TestFetchLinkMetadataSuccess(t *testing.T) {
-	var thumbSrv *httptest.Server
-	oembedSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(oEmbedResponse{
-			Title:        "A Video",
-			AuthorName:   "Someone",
-			ThumbnailURL: thumbSrv.URL + "/thumb.jpg",
-		})
-	}))
-	defer oembedSrv.Close()
-
-	thumbSrv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "image/jpeg")
-		w.Write([]byte("fake-jpeg-bytes"))
-	}))
-	defer thumbSrv.Close()
-
-	root := t.TempDir()
-	manifest := testManifest("prettylinks", "youtube.com")
-	manifest.Matchers[0].MetadataEndpoint = oembedSrv.URL + "/oembed?url={url}"
-	writeManifest(t, filepath.Join(root, installedDirName, "prettylinks"), manifest)
-
-	m := newTestManager(t, root)
-	metadata, err := m.FetchLinkMetadata(context.Background(), "https://youtube.com/watch?v=abc")
-	if err != nil {
-		t.Fatalf("FetchLinkMetadata: %v", err)
-	}
-	if metadata.Title != "A Video" || metadata.Author != "Someone" {
-		t.Fatalf("unexpected metadata: %+v", metadata)
-	}
-	if metadata.ThumbnailB64 == "" {
-		t.Fatalf("expected thumbnail bytes to be populated")
-	}
-}
-
-func TestFetchLinkMetadataDescriptionFallback(t *testing.T) {
-	oembedSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(oEmbedResponse{
-			Title:      "A Tweet",
-			AuthorName: "Someone",
-			HTML: `<blockquote class="twitter-tweet"><p lang="en" dir="ltr">Hello &amp; welcome ` +
-				`<a href="https://t.co/xyz">https://t.co/xyz</a></p>&mdash; Someone (@someone)</blockquote>`,
-		})
-	}))
-	defer oembedSrv.Close()
-
-	// The oEmbed response has no thumbnail, so FetchLinkMetadata will try
-	// an og:image fallback fetch against rawURL itself -- point rawURL at
-	// this same local test server (rather than a real domain) so that
-	// fallback request doesn't hit the network.
-	host := testServerHost(t, oembedSrv.URL)
-	root := t.TempDir()
-	manifest := testManifest("prettylinks", host)
-	manifest.Matchers[0].MetadataEndpoint = oembedSrv.URL + "/oembed?url={url}"
-	writeManifest(t, filepath.Join(root, installedDirName, "prettylinks"), manifest)
-
-	m := newTestManager(t, root)
-	metadata, err := m.FetchLinkMetadata(context.Background(), oembedSrv.URL+"/watch?v=abc")
-	if err != nil {
-		t.Fatalf("FetchLinkMetadata: %v", err)
-	}
-	wantDesc := "Hello & welcome https://t.co/xyz"
-	if metadata.Description != wantDesc {
-		t.Fatalf("unexpected description: got %q, want %q", metadata.Description, wantDesc)
-	}
-}
-
-// TestFetchLinkMetadataDescriptionNoRunOnWords covers stripping tags that
-// have no surrounding whitespace of their own in the source HTML (as
-// Twitter/X's embed HTML does around @mentions) -- naively dropping such a
-// tag would run the two sides together. It also covers that a <br> is
-// preserved as a line break (paragraph structure) rather than flattened
-// into a space.
-func TestFetchLinkMetadataDescriptionNoRunOnWords(t *testing.T) {
-	oembedSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(oEmbedResponse{
-			Title:      "A Tweet",
-			AuthorName: "Someone",
-			HTML: `<p lang="en" dir="ltr">Hello <a href="https://twitter.com/Mining_Dutch">@Mining_Dutch</a> and ` +
-				`<a href="https://twitter.com/DigiByteCoin">@DigiByteCoin</a> team.<br>Second line here.</p>`,
-		})
-	}))
-	defer oembedSrv.Close()
-
-	// No thumbnail in the oEmbed response here either -- same reasoning as
-	// TestFetchLinkMetadataDescriptionFallback for pointing rawURL at the
-	// local server.
-	host := testServerHost(t, oembedSrv.URL)
-	root := t.TempDir()
-	manifest := testManifest("prettylinks", host)
-	manifest.Matchers[0].MetadataEndpoint = oembedSrv.URL + "/oembed?url={url}"
-	writeManifest(t, filepath.Join(root, installedDirName, "prettylinks"), manifest)
-
-	m := newTestManager(t, root)
-	metadata, err := m.FetchLinkMetadata(context.Background(), oembedSrv.URL+"/watch?v=abc")
-	if err != nil {
-		t.Fatalf("FetchLinkMetadata: %v", err)
-	}
-	wantDesc := "Hello @Mining_Dutch and @DigiByteCoin team.\nSecond line here."
-	if metadata.Description != wantDesc {
-		t.Fatalf("unexpected description: got %q, want %q", metadata.Description, wantDesc)
-	}
-}
-
-// TestFetchLinkMetadataOpenGraphImageFallback covers a photo tweet: the
-// oEmbed response carries no thumbnail_url at all (the oEmbed spec has no
-// image field for a plain link/photo response), so FetchLinkMetadata should
-// fall back to scraping og:image (and, since the oEmbed response here also
-// has no description, og:description) from the linked page itself.
-func TestFetchLinkMetadataOpenGraphImageFallback(t *testing.T) {
-	var pageSrv *httptest.Server
-	pageSrv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/photo.jpg" {
-			w.Header().Set("Content-Type", "image/jpeg")
-			w.Write([]byte("fake-jpeg-bytes"))
-			return
-		}
-		w.Header().Set("Content-Type", "text/html")
-		w.Write([]byte(`<html><head>` +
-			`<meta property="og:title" content="A Tweet">` +
-			`<meta property="og:description" content="Tweet body from OG tags">` +
-			`<meta property="og:image" content="` + pageSrv.URL + `/photo.jpg">` +
-			`</head><body></body></html>`))
-	}))
-	defer pageSrv.Close()
-
-	oembedSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(oEmbedResponse{
-			Title:      "A Tweet",
-			AuthorName: "Someone",
-			HTML:       `<p lang="en" dir="ltr"></p>`,
-		})
-	}))
-	defer oembedSrv.Close()
-
-	host := testServerHost(t, pageSrv.URL)
-	root := t.TempDir()
-	manifest := testManifest("prettylinks", host)
-	manifest.Matchers[0].MetadataEndpoint = oembedSrv.URL + "/oembed?url={url}"
-	writeManifest(t, filepath.Join(root, installedDirName, "prettylinks"), manifest)
-
-	m := newTestManager(t, root)
-	metadata, err := m.FetchLinkMetadata(context.Background(), pageSrv.URL+"/status/123")
-	if err != nil {
-		t.Fatalf("FetchLinkMetadata: %v", err)
-	}
-	if metadata.ThumbnailB64 == "" {
-		t.Fatalf("expected og:image to be fetched as the thumbnail")
-	}
-	if metadata.Description != "Tweet body from OG tags" {
-		t.Fatalf("unexpected description: got %q", metadata.Description)
-	}
-}
-
-func TestBuiltinSpellcheckAutoInstalledDisabledByDefault(t *testing.T) {
-	root := t.TempDir()
-	m := newTestManager(t, root)
-
-	plugin, ok := findPlugin(m.List(), "spellcheck")
-	if !ok {
-		t.Fatalf("expected bundled spellcheck plugin to be auto-installed")
-	}
-	if plugin.Enabled {
-		t.Fatalf("expected bundled spellcheck plugin to be disabled by default")
-	}
-	if _, err := os.Stat(filepath.Join(root, installedDirName, "spellcheck", "words.txt")); err != nil {
-		t.Fatalf("expected bundled dictionary written to disk: %v", err)
-	}
-}
-
-func TestSpellcheckDataDisabledByDefault(t *testing.T) {
-	root := t.TempDir()
-	m := newTestManager(t, root)
-
-	data := m.SpellcheckData()
-	if len(data.Words) != 0 || len(data.GrammarRules) != 0 {
-		t.Fatalf("expected no spellcheck data while plugin disabled, got %+v", data)
-	}
-}
-
-func TestSpellcheckDataOnceEnabled(t *testing.T) {
-	root := t.TempDir()
-	m := newTestManager(t, root)
-
-	if err := m.SetEnabled("spellcheck", true); err != nil {
-		t.Fatal(err)
-	}
-	data := m.SpellcheckData()
-	if len(data.Words) == 0 {
-		t.Fatalf("expected non-empty dictionary once spellcheck is enabled")
-	}
-	if len(data.GrammarRules) == 0 {
-		t.Fatalf("expected non-empty grammar rules once spellcheck is enabled")
-	}
-}
-
-func spellcheckManifest(id, dictionary string, rules []GrammarRule) Manifest {
-	return Manifest{
-		ID:               id,
-		Name:             "Test Spellcheck " + id,
-		Version:          "1.0.0",
-		Description:      "a test spellcheck plugin",
-		EnabledByDefault: true,
-		RendererKind:     RendererKindSpellCheck,
-		Dictionary:       dictionary,
-		GrammarRules:     rules,
-	}
-}
-
-func TestSpellcheckDataMergesMultipleEnabledPlugins(t *testing.T) {
-	root := t.TempDir()
-
-	dir1 := filepath.Join(root, installedDirName, "custom1")
-	writeManifest(t, dir1, spellcheckManifest("custom1", "words.txt",
-		[]GrammarRule{{Pattern: "foo", Message: "m1", Suggest: "bar"}}))
-	if err := os.WriteFile(filepath.Join(dir1, "words.txt"), []byte("hello\nworld\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	dir2 := filepath.Join(root, installedDirName, "custom2")
-	writeManifest(t, dir2, spellcheckManifest("custom2", "words.txt", nil))
-	if err := os.WriteFile(filepath.Join(dir2, "words.txt"), []byte("world\nagain\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	m := newTestManager(t, root)
-	data := m.SpellcheckData()
-
-	seen := make(map[string]bool)
-	for _, w := range data.Words {
-		seen[w] = true
-	}
-	if !seen["hello"] || !seen["world"] || !seen["again"] {
-		t.Fatalf("expected merged words from both plugins, got %v", data.Words)
-	}
-	// "world" is declared by both plugins; it must not appear twice.
-	count := 0
-	for _, w := range data.Words {
-		if w == "world" {
-			count++
-		}
-	}
-	if count != 1 {
-		t.Fatalf("expected deduplicated word list, \"world\" appeared %d times", count)
-	}
-	if len(data.GrammarRules) != 1 {
-		t.Fatalf("expected 1 merged grammar rule, got %d", len(data.GrammarRules))
-	}
-}
-
-func TestSpellcheckDataSkipsMissingDictionary(t *testing.T) {
-	root := t.TempDir()
-	writeManifest(t, filepath.Join(root, installedDirName, "broken"),
-		spellcheckManifest("broken", "missing.txt", nil))
-	// Deliberately do not write missing.txt.
-
-	m := newTestManager(t, root)
-	data := m.SpellcheckData() // must not panic, just skip this plugin's words.
-	if len(data.Words) != 0 {
-		t.Fatalf("expected no words from a plugin with a missing dictionary file, got %v", data.Words)
-	}
-}
-
-func TestSpellcheckManifestValidation(t *testing.T) {
+func TestManifestValidation(t *testing.T) {
 	root := t.TempDir()
 	m := newTestManager(t, root)
 
@@ -573,15 +255,26 @@ func TestSpellcheckManifestValidation(t *testing.T) {
 		name     string
 		manifest Manifest
 	}{
-		{"missing dictionary", spellcheckManifest("t1", "", nil)},
-		{"path traversal dictionary", spellcheckManifest("t2", "../../etc/passwd", nil)},
-		{"dictionary with path separator", spellcheckManifest("t3", "sub/words.txt", nil)},
-		{"too many grammar rules", func() Manifest {
-			rules := make([]GrammarRule, maxGrammarRules+1)
-			for i := range rules {
-				rules[i] = GrammarRule{Pattern: "x", Message: "m"}
-			}
-			return spellcheckManifest("t4", "words.txt", rules)
+		{"missing wasmFile", func() Manifest { m := testManifest("t1"); m.WasmFile = ""; return m }()},
+		{"wasmFile without .wasm suffix", func() Manifest { m := testManifest("t2"); m.WasmFile = "plugin.exe"; return m }()},
+		{"screens without navLabel", func() Manifest { m := testManifest("t3"); m.NavLabel = ""; return m }()},
+		{"neither screens nor capabilities", func() Manifest {
+			m := testManifest("t4")
+			m.Screens = nil
+			return m
+		}()},
+		{"duplicate screen ids", func() Manifest {
+			m := testManifest("t5")
+			m.Screens = []ScreenDef{{ID: "a", Label: "A"}, {ID: "a", Label: "B"}}
+			return m
+		}()},
+		{"unknown capability", testCapabilityManifest("t6", "not-a-real-capability")},
+		{"link-card without domains", testCapabilityManifest("t7", CapabilityLinkCard)},
+		{"link-card with invalid domain", testCapabilityManifest("t8", CapabilityLinkCard, "not a domain")},
+		{"negative pollIntervalSeconds", func() Manifest {
+			m := testManifest("t9")
+			m.PollIntervalSeconds = -1
+			return m
 		}()},
 	}
 
@@ -596,37 +289,61 @@ func TestSpellcheckManifestValidation(t *testing.T) {
 	}
 }
 
-func TestFetchLinkMetadataRejectsBadContentType(t *testing.T) {
-	var thumbSrv *httptest.Server
-	oembedSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(oEmbedResponse{
-			Title:        "A Video",
-			ThumbnailURL: thumbSrv.URL + "/thumb.html",
-		})
-	}))
-	defer oembedSrv.Close()
-
-	thumbSrv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/html")
-		w.Write([]byte("<html>not an image</html>"))
-	}))
-	defer thumbSrv.Close()
-
+func TestHeadlessCapabilityOnlyManifestIsValid(t *testing.T) {
 	root := t.TempDir()
-	manifest := testManifest("prettylinks", "youtube.com")
-	manifest.Matchers[0].MetadataEndpoint = oembedSrv.URL + "/oembed?url={url}"
-	writeManifest(t, filepath.Join(root, installedDirName, "prettylinks"), manifest)
+	writeManifest(t, filepath.Join(root, installedDirName, "headless"),
+		testCapabilityManifest("headless", CapabilitySpellcheckData))
 
 	m := newTestManager(t, root)
-	metadata, err := m.FetchLinkMetadata(context.Background(), "https://youtube.com/watch?v=abc")
-	if err != nil {
-		t.Fatalf("FetchLinkMetadata should still succeed with degraded thumbnail: %v", err)
+	plugin, ok := findPlugin(m.List(), "headless")
+	if !ok {
+		t.Fatalf("expected headless capability-only plugin to load")
 	}
-	if metadata.ThumbnailB64 != "" {
-		t.Fatalf("expected thumbnail to be rejected for bad content type")
+	if len(plugin.Manifest.Screens) != 0 || plugin.Manifest.NavLabel != "" {
+		t.Fatalf("expected no nav item on a headless plugin, got %+v", plugin.Manifest)
 	}
-	if metadata.Title != "A Video" {
-		t.Fatalf("expected text metadata to still be returned")
+}
+
+func TestPluginsWithCapability(t *testing.T) {
+	root := t.TempDir()
+	writeManifest(t, filepath.Join(root, installedDirName, "sc1"),
+		testCapabilityManifest("sc1", CapabilitySpellcheckData))
+	writeManifest(t, filepath.Join(root, installedDirName, "sc2-disabled"), func() Manifest {
+		m := testCapabilityManifest("sc2-disabled", CapabilitySpellcheckData)
+		m.EnabledByDefault = false
+		return m
+	}())
+	writeManifest(t, filepath.Join(root, installedDirName, "lc1"),
+		testCapabilityManifest("lc1", CapabilityLinkCard, "example.com"))
+
+	m := newTestManager(t, root)
+
+	sc := m.PluginsWithCapability(CapabilitySpellcheckData)
+	if len(sc) != 1 || sc[0].ID != "sc1" {
+		t.Fatalf("PluginsWithCapability(spellcheck-data) = %+v, want just [sc1] (sc2 is disabled)", sc)
+	}
+
+	lc := m.PluginsWithCapability(CapabilityLinkCard)
+	if len(lc) != 1 || lc[0].ID != "lc1" {
+		t.Fatalf("PluginsWithCapability(link-card) = %+v, want just [lc1]", lc)
+	}
+
+	none := m.PluginsWithCapability("nonexistent-capability")
+	if len(none) != 0 {
+		t.Fatalf("PluginsWithCapability(nonexistent) = %+v, want empty", none)
+	}
+}
+
+func TestNormalizeHost(t *testing.T) {
+	cases := map[string]string{
+		"example.com":     "example.com",
+		"www.example.com": "example.com",
+		"EXAMPLE.com":     "example.com",
+		"WWW.Example.com": "example.com",
+	}
+	for in, want := range cases {
+		if got := NormalizeHost(in); got != want {
+			t.Errorf("NormalizeHost(%q) = %q, want %q", in, got, want)
+		}
 	}
 }
