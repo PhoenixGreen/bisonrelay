@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:bruig/components/chat/chat_side_menu.dart';
+import 'package:bruig/components/containers.dart';
 import 'package:bruig/components/text.dart';
 import 'package:bruig/models/client.dart';
 import 'package:bruig/models/uistate.dart';
@@ -14,7 +15,6 @@ import 'package:bruig/components/feed_bar.dart';
 import 'package:bruig/screens/feed/post_content.dart';
 import 'package:bruig/screens/feed/new_post.dart';
 import 'package:bruig/screens/feed/post_lists.dart';
-import 'package:bruig/components/empty_widget.dart';
 import 'package:bruig/models/menus.dart';
 import 'package:bruig/theme_manager.dart';
 import 'package:bruig/models/emoji.dart';
@@ -165,11 +165,20 @@ class _FeedScreenState extends State<FeedScreen> {
 
     return ScreenWithChatSideMenu(
         client,
-        Row(children: [
-          !isScreenSmall && !hasArgs
-              ? FeedBar(onItemChanged, tabIndex)
-              : const Empty(),
-          Expanded(child: activeTab())
-        ]));
+        !isScreenSmall
+            ? SecondarySideMenuLayout(
+                items: feedBarItems(onItemChanged, tabIndex),
+                // Detail views that don't need the tab list: reading a
+                // single post/user-post (showPost set) or composing a new
+                // one (tabIndex 3). hasArgs alone only reflects the route's
+                // *initial* navigation arguments, so it misses these once
+                // the user navigates within the already-mounted screen.
+                isDetail: hasArgs || showPost != null || tabIndex == 3,
+                // Distinguishes one detail view from the next (e.g. post A
+                // vs. post B) so a manual reopen of the submenu doesn't
+                // leak across into an unrelated detail view.
+                detailKey: showPost ?? tabIndex,
+                content: activeTab())
+            : activeTab());
   }
 }

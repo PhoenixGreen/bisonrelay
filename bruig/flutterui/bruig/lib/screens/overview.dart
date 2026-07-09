@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:bruig/components/clipper.dart';
+import 'package:bruig/components/containers.dart';
 import 'package:bruig/components/indicator.dart';
 import 'package:bruig/components/interactive_avatar.dart';
 import 'package:bruig/components/page_context_menu.dart';
@@ -8,6 +10,7 @@ import 'package:bruig/components/route_error.dart';
 import 'package:bruig/components/sidebar.dart';
 import 'package:bruig/components/snackbars.dart';
 import 'package:bruig/components/empty_widget.dart';
+import 'package:bruig/models/theme_preset.dart';
 import 'package:bruig/models/client.dart';
 import 'package:bruig/models/downloads.dart';
 import 'package:bruig/models/feed.dart';
@@ -117,8 +120,14 @@ class _MainAppBar extends StatefulWidget {
   final RealtimeChatModel rtc;
   final MainMenuModel mainMenu;
   final GlobalKey<NavigatorState> navKey;
+  // contentMode is true when HeaderPosition.content is selected: the header
+  // sits above just the content area (not the sidebar), so the app-wide
+  // logo/about-button and "new post" button (which belong to the global
+  // chrome) are omitted -- only the title remains.
+  final bool contentMode;
   const _MainAppBar(
-      this.client, this.feed, this.rtc, this.mainMenu, this.navKey);
+      this.client, this.feed, this.rtc, this.mainMenu, this.navKey,
+      {this.contentMode = false});
 
   @override
   State<_MainAppBar> createState() => __MainAppBarState();
@@ -208,19 +217,96 @@ class __MainAppBarState extends State<_MainAppBar>
     super.dispose();
   }
 
-  AppBar buildAppBar(BuildContext context) {
+  Widget buildAppBar(BuildContext context) {
     bool isScreenSmall = checkIsScreenSmall(context);
+    var theme = ThemeNotifier.of(context);
+    var headerStyle = theme.areaStyle(ThemeArea.header);
+    // Deliberately narrower than headerStyle.isUnmodified: height/
+    // contentAlign are applied unconditionally inside _buildInnerAppBar
+    // regardless of this flag, so they must NOT factor in here -- doing so
+    // would needlessly disable the live-call pulsing background color
+    // below whenever only the header's height or text alignment (not its
+    // background/border) was customized.
+    var headerOverridden = headerStyle.mode != AreaBackgroundMode.token ||
+        headerStyle.borderMode != AreaBackgroundMode.token ||
+        headerStyle.margin > 0;
+
+    var appBar = _buildInnerAppBar(context, isScreenSmall, theme, headerOverridden);
+
+    if (!headerOverridden) return appBar;
+    // Deliberately not using AppBar.flexibleSpace for this -- flexibleSpace
+    // is stacked internally with StackFit.passthrough, and getting a plain
+    // themed Container to actually fill the bar through that (rather than
+    // collapsing to its own near-zero intrinsic size) needs care that's
+    // easy to get subtly wrong. Wrapping the whole (transparent-background)
+    // AppBar in our own Stack, where we control every constraint, sidesteps
+    // that entirely: PreferredSize (set by the caller) already fixes this
+    // widget's height, so Positioned.fill here has an unambiguous area to
+    // fill.
+    return Stack(children: [
+      Positioned.fill(
+          child: theme.areaContainer(ThemeArea.header, SurfaceColor.surface,
+              child: const Empty())),
+      appBar,
+    ]);
+  }
+
+  AppBar _buildInnerAppBar(BuildContext context, bool isScreenSmall,
+      ThemeNotifier theme, bool headerOverridden) {
+    var headerStyle = theme.areaStyle(ThemeArea.header);
+    Widget titleWidget = headerStyle.contentAlign == ContentAlign.hidden
+        ? const Empty()
+        : ChangeNotifierProvider.value(
+            value: OverviewNavigatorModel(navKey),
+            builder: (context, _) => const _OverviewScreenTitle());
+    if (headerStyle.contentAlign == ContentAlign.end) {
+      // Left-aligned text already gets its gap from the leading content via
+      // titleSpacing (headerStyle.padding, below) -- using that same value
+      // here (not a separate hardcoded inset) keeps both sides governed by
+      // the one Padding setting, rather than right always having a fixed
+      // 20px gap regardless of it while left has none until Padding is
+      // raised.
+      titleWidget = Align(
+          alignment: Alignment.centerRight,
+          child: Padding(
+              padding: EdgeInsets.only(right: headerStyle.padding),
+              child: titleWidget));
+    }
+    bool? centerTitle = switch (headerStyle.contentAlign) {
+      ContentAlign.center => true,
+      ContentAlign.start => false,
+      ContentAlign.end || ContentAlign.hidden || null => null,
+    };
 
     if (!isScreenSmall) {
-      return AppBar(
-          titleSpacing: 0.0,
-          title: ChangeNotifierProvider.value(
-              value: OverviewNavigatorModel(navKey),
-              builder: (context, _) => const _OverviewScreenTitle()),
-          leadingWidth: 112,
-          backgroundColor:
-              hasHotAudio || hasLiveRTCSess ? bgColorAnim.value : null,
-          leading: Row(children: [
+      var logoSize = headerStyle.logoSize ?? 40;
+      // HeaderPosition.content strips the app-wide logo/about-button and
+      // "new post" button entirely -- they belong to the global chrome,
+      // not a bar scoped to just the content area -- leaving only the
+      // title.
+      Widget? leadingWidget;
+      double leadingWidthValue = 0;
+      if (!widget.contentMode) {
+        // AppBar always starts the title at exactly
+        // leadingWidth + titleSpacing, regardless of how much of
+        // leadingWidth the leading content actually uses -- so this must
+        // stay a *tight* fit for the icon row below (SizedBox(10) + the
+        // app icon IconButton (Material's minimum interactive width is
+        // 48, wider than its logoSize alone, when logoSize < 48) + the
+        // "new post" IconButton (also floors to 48) + the trailing
+        // SizedBox(20)), or the title ends up with a visible dead gap
+        // before it that grows with any extra margin added here. The row
+        // can still need a few pixels more than that at larger toolbar
+        // heights (a Material3 AppBar internal quirk, empirically ~1.5px
+        // past toolbarHeight~99) -- OverflowBox below absorbs that safely
+        // without stealing space from the title position, unlike just
+        // inflating this value.
+        leadingWidthValue = 10 + math.max(48, logoSize) + 48 + 20;
+        leadingWidget = OverflowBox(
+          maxWidth: leadingWidthValue + 24,
+          alignment: Alignment.centerLeft,
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            const SizedBox(width: 10),
             Consumer<ConnStateModel>(builder: (context, connState, child) {
               var connStateTagKey = connState.state.state;
               if (connStateTagKey == connStateOnline &&
@@ -228,17 +314,22 @@ class __MainAppBarState extends State<_MainAppBar>
                 connStateTagKey = connStateUpdate;
               }
               return Stack(children: [
-                Row(children: [
-                  const SizedBox(width: 10),
-                  IconButton(
-                      tooltip: "About Bison Relay",
-                      splashRadius: 20,
-                      iconSize: 40,
-                      onPressed: () => goToAbout(context),
-                      icon: Image.asset(
-                        "assets/images/icon.png",
-                      ))
-                ]),
+                IconButton(
+                    tooltip: "About Bison Relay",
+                    splashRadius: 20,
+                    // IconButton's iconSize reliably constrains an
+                    // Icon/ImageIcon, but a plain Image (like this logo)
+                    // doesn't consult IconTheme at all -- left
+                    // unconstrained, it was sizing itself based on
+                    // whatever space happened to be available, which
+                    // grows as the header's height setting increases.
+                    // BisonRelayLogo forces it to a fixed size (now
+                    // user-configurable via logoSize), preserving the
+                    // asset's true (non-square) aspect ratio, regardless
+                    // of the surrounding toolbar height.
+                    iconSize: logoSize,
+                    onPressed: () => goToAbout(context),
+                    icon: BisonRelayLogo(size: logoSize)),
                 _connStateStyles[connStateTagKey]?.tag ??
                     const SizedBox(width: 100),
               ]);
@@ -250,22 +341,37 @@ class __MainAppBarState extends State<_MainAppBar>
                 iconSize: 20,
                 icon: const Icon(size: 20, Icons.mode)),
             const SizedBox(width: 20),
-          ]));
+          ]),
+        );
+      }
+
+      return AppBar(
+          titleSpacing: headerStyle.padding,
+          title: titleWidget,
+          centerTitle: centerTitle,
+          toolbarHeight: headerStyle.height,
+          leadingWidth: leadingWidthValue,
+          automaticallyImplyLeading: !widget.contentMode,
+          backgroundColor: headerOverridden
+              ? Colors.transparent
+              : (hasHotAudio || hasLiveRTCSess ? bgColorAnim.value : null),
+          leading: leadingWidget);
     }
 
     List<ChatMenuItem?> contextMenu = [];
-    if (mainMenu.activeMenu.label == "Chat") {
+    if (mainMenu.activeMenu.routeName == ChatsScreen.routeName) {
       contextMenu = buildChatContextMenu(navKey);
     }
 
     return AppBar(
         leadingWidth: 60,
         titleSpacing: 0.0,
-        title: ChangeNotifierProvider.value(
-            value: OverviewNavigatorModel(navKey),
-            builder: (context, _) => const _OverviewScreenTitle()),
-        backgroundColor:
-            hasHotAudio || hasLiveRTCSess ? bgColorAnim.value : null,
+        title: titleWidget,
+        centerTitle: centerTitle,
+        toolbarHeight: headerStyle.height,
+        backgroundColor: headerOverridden
+            ? Colors.transparent
+            : (hasHotAudio || hasLiveRTCSess ? bgColorAnim.value : null),
         leading: Builder(builder: (BuildContext context) {
           return InkWell(onTap: () {
             // if (client.ui.showAddressBook.val) { // FIXME: How is this triggered?
@@ -501,51 +607,76 @@ class _OverviewScreenState extends State<OverviewScreen> {
   @override
   Widget build(BuildContext context) {
     bool isScreenSmall = checkIsScreenSmall(context);
+    var theme = ThemeNotifier.of(context);
+    var headerHeight = theme.areaStyle(ThemeArea.header).height ?? kToolbarHeight;
+    // HeaderPosition only applies to the desktop layout -- mobile's leading
+    // content is already a totally different (avatar/back-button based)
+    // widget with no sidebar to scope a "content" bar against.
+    var headerPosition = isScreenSmall
+        ? HeaderPosition.top
+        : (theme.areaStyle(ThemeArea.header).headerPosition ??
+            HeaderPosition.top);
+
+    Widget navigator = Navigator(
+      key: navKey,
+      observers: [client.ui.overviewRouteObserver],
+      initialRoute:
+          widget.initialRoute == "" ? ChatsScreen.routeName : widget.initialRoute,
+      onGenerateRoute: (settings) {
+        String routeName = settings.name!;
+        MainMenuItem? menu = widget.mainMenu.menuForRoute(routeName);
+
+        // These updates needs to be on a timer so that they are decoupled to
+        // the widget build stack frame.
+        Timer(const Duration(milliseconds: 1), () async {
+          widget.mainMenu.activeRoute = routeName;
+          client.ui.overviewActivePath.route = routeName;
+        });
+
+        return PageRouteBuilder(
+          pageBuilder: (context, animation, secondaryAnimation) => menu != null
+              ? (menu.area != null
+                  ? ThemedArea(area: menu.area!, child: menu.builder(context))
+                  : menu.builder(context))
+              : RouteErrorPage(settings.name ?? "", OverviewScreen.routeName),
+          transitionDuration: Duration.zero,
+          //reverseTransitionDuration: Duration.zero,
+          settings: settings,
+        );
+      },
+    );
+
+    Widget contentColumn = headerPosition == HeaderPosition.content
+        ? Column(children: [
+            SizedBox(
+                height: headerHeight,
+                child: _MainAppBar(
+                    client, feed, widget.rtc, widget.mainMenu, navKey,
+                    contentMode: true)),
+            Expanded(child: navigator),
+          ])
+        : navigator;
+
     return Scaffold(
       key: scaffoldKey,
-      appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(kToolbarHeight),
-        child: _MainAppBar(client, feed, widget.rtc, widget.mainMenu, navKey),
-      ),
+      appBar: headerPosition == HeaderPosition.top
+          ? PreferredSize(
+              preferredSize: Size.fromHeight(headerHeight),
+              child:
+                  _MainAppBar(client, feed, widget.rtc, widget.mainMenu, navKey),
+            )
+          : null,
       body: SnackbarDisplayer(
           widget.snackBar,
-          Row(children: [
+          ThemedArea(
+              area: ThemeArea.masterBackground,
+              child: Row(children: [
             isScreenSmall
                 ? const Empty()
                 : Sidebar(widget.client, widget.mainMenu, widget.ntfns, navKey,
                     widget.feed),
-            Expanded(
-              child: Navigator(
-                key: navKey,
-                observers: [client.ui.overviewRouteObserver],
-                initialRoute: widget.initialRoute == ""
-                    ? ChatsScreen.routeName
-                    : widget.initialRoute,
-                onGenerateRoute: (settings) {
-                  String routeName = settings.name!;
-                  MainMenuItem? menu = widget.mainMenu.menuForRoute(routeName);
-
-                  // These updates needs to be on a timer so that they are decoupled to
-                  // the widget build stack frame.
-                  Timer(const Duration(milliseconds: 1), () async {
-                    widget.mainMenu.activeRoute = routeName;
-                    client.ui.overviewActivePath.route = routeName;
-                  });
-
-                  return PageRouteBuilder(
-                    pageBuilder: (context, animation, secondaryAnimation) =>
-                        menu != null
-                            ? menu.builder(context)
-                            : RouteErrorPage(
-                                settings.name ?? "", OverviewScreen.routeName),
-                    transitionDuration: Duration.zero,
-                    //reverseTransitionDuration: Duration.zero,
-                    settings: settings,
-                  );
-                },
-              ),
-            )
-          ])),
+            Expanded(child: contentColumn),
+          ]))),
       bottomNavigationBar: isScreenSmall && !removeBottomBar
           ? Consumer<ThemeNotifier>(
               builder: (context, theme, _) => BottomNavigationBar(

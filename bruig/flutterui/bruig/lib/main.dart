@@ -179,7 +179,10 @@ Future<void> runMainApp(Config cfg) async {
       ChangeNotifierProvider(create: (c) => DownloadsModel()),
       ChangeNotifierProvider(create: (c) => AppNotifications()),
       ChangeNotifierProvider.value(value: theme),
-      ChangeNotifierProvider(create: (c) => MainMenuModel()),
+      ChangeNotifierProvider(
+          create: (c) => MainMenuModel(
+              initialLabels: theme.activePreset?.menuLabels,
+              initialOrder: theme.activePreset?.menuOrder)),
       ChangeNotifierProvider(create: (c) => ResourcesModel()),
       ChangeNotifierProvider.value(value: snackbar),
       ChangeNotifierProvider(create: (c) => PaymentsModel()),

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:bruig/components/containers.dart';
 import 'package:bruig/components/text.dart';
 import 'package:bruig/models/client.dart';
 import 'package:bruig/models/uistate.dart';
@@ -10,7 +11,6 @@ import 'package:bruig/models/downloads.dart';
 import 'package:bruig/screens/manage_content/downloads.dart';
 import 'package:bruig/components/manage_bar.dart';
 import 'package:bruig/screens/overview.dart';
-import 'package:bruig/components/empty_widget.dart';
 import 'package:bruig/models/menus.dart';
 import 'package:bruig/theme_manager.dart';
 
@@ -69,13 +69,15 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
       tabIndex = args.tabIndex;
     }
 
-    return Row(children: [
-      ModalRoute.of(context)!.settings.arguments == null
-          ? isScreenSmall
-              ? const Empty()
-              : ManageContentBar(onItemChanged, tabIndex)
-          : const Empty(),
-      Expanded(child: activeTab())
-    ]);
+    if (isScreenSmall) {
+      return activeTab();
+    }
+
+    return SecondarySideMenuLayout(
+      width: 130,
+      items: manageContentBarItems(onItemChanged, tabIndex),
+      isDetail: ModalRoute.of(context)!.settings.arguments != null,
+      content: activeTab(),
+    );
   }
 }

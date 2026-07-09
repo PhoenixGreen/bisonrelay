@@ -10,8 +10,10 @@ import 'package:bruig/components/snackbars.dart';
 import 'package:bruig/components/text.dart';
 import 'package:bruig/components/volume_control.dart';
 import 'package:bruig/models/audio.dart';
+import 'package:bruig/models/log.dart';
 import 'package:bruig/models/realtimechat.dart';
 import 'package:bruig/models/snackbar.dart';
+import 'package:bruig/models/theme_preset.dart';
 import 'package:bruig/models/uistate.dart';
 import 'package:bruig/notification_service.dart';
 import 'package:bruig/screens/config_network.dart';
@@ -19,11 +21,13 @@ import 'package:bruig/screens/list_kxs.dart';
 import 'package:bruig/screens/config_rpc.dart';
 import 'package:bruig/screens/ln_management.dart';
 import 'package:bruig/screens/log.dart';
+import 'package:bruig/screens/menu_settings.dart';
 import 'package:bruig/screens/manage_content/manage_content.dart';
 import 'package:bruig/screens/paystats.dart';
 import 'package:bruig/screens/about.dart';
 import 'package:bruig/screens/realtimechat/rtclist.dart';
 import 'package:bruig/screens/shutdown.dart';
+import 'package:bruig/screens/theme_editor.dart';
 import 'package:bruig/util.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
@@ -278,6 +282,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
             builder: (context, audio, child) =>
                 AudioSettingsScreen(audio: audio));
         break;
+      case "Stats":
+        settingsView = ThemedArea(
+            area: ThemeArea.stats,
+            child: Consumer<ClientModel>(
+                builder: (context, client, child) => PayStatsScreen(client)));
+        break;
+      case "Logs":
+        settingsView = ThemedArea(
+            area: ThemeArea.logs,
+            child: Consumer<LogModel>(
+                builder: (context, log, child) => LogScreen(log)));
+        break;
       default:
         break;
     }
@@ -289,44 +305,53 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
 
     // Desktop-sized version.
-    return Row(children: [
-      Consumer<ThemeNotifier>(
-          builder: (context, theme, _) => SecondarySideMenuList(
-                  width: 130 * (theme.fontScale > 0 ? theme.fontScale : 1),
-                  items: [
-                    ListTile(
-                      selected: settingsPage == "Account",
-                      title: const Txt.S("Account"),
-                      onTap: () => changePage("Account"),
-                    ),
-                    ListTile(
-                      selected: settingsPage == "Appearance",
-                      title: const Txt.S("Appearance"),
-                      onTap: () => changePage("Appearance"),
-                    ),
-                    ListTile(
-                      selected: settingsPage == "Notifications",
-                      title: const Txt.S("Notifications"),
-                      onTap: () => changePage("Notifications"),
-                    ),
-                    ListTile(
-                      selected: settingsPage == "Network",
-                      title: const Txt.S("Network"),
-                      onTap: () => changePage("Network"),
-                    ),
-                    ListTile(
-                      selected: settingsPage == "Audio",
-                      title: const Txt.S("Audio"),
-                      onTap: () => changePage("Audio"),
-                    ),
-                    ListTile(
-                      selected: settingsPage == "RPC",
-                      title: const Txt.S("RPC"),
-                      onTap: () => showRpcWarningDialog(),
-                    ),
-                  ])),
-      Expanded(child: settingsView),
-    ]);
+    return Consumer<ThemeNotifier>(
+        builder: (context, theme, _) => SecondarySideMenuLayout(
+              width: 130 * (theme.fontScale > 0 ? theme.fontScale : 1),
+              content: settingsView,
+              items: [
+                ListTile(
+                  selected: settingsPage == "Account",
+                  title: const Txt.S("Account"),
+                  onTap: () => changePage("Account"),
+                ),
+                ListTile(
+                  selected: settingsPage == "Appearance",
+                  title: const Txt.S("Appearance"),
+                  onTap: () => changePage("Appearance"),
+                ),
+                ListTile(
+                  selected: settingsPage == "Notifications",
+                  title: const Txt.S("Notifications"),
+                  onTap: () => changePage("Notifications"),
+                ),
+                ListTile(
+                  selected: settingsPage == "Network",
+                  title: const Txt.S("Network"),
+                  onTap: () => changePage("Network"),
+                ),
+                ListTile(
+                  selected: settingsPage == "Audio",
+                  title: const Txt.S("Audio"),
+                  onTap: () => changePage("Audio"),
+                ),
+                ListTile(
+                  selected: settingsPage == "RPC",
+                  title: const Txt.S("RPC"),
+                  onTap: () => showRpcWarningDialog(),
+                ),
+                ListTile(
+                  selected: settingsPage == "Stats",
+                  title: const Txt.S("Stats"),
+                  onTap: () => changePage("Stats"),
+                ),
+                ListTile(
+                  selected: settingsPage == "Logs",
+                  title: const Txt.S("Logs"),
+                  onTap: () => changePage("Logs"),
+                ),
+              ],
+            ));
   }
 }
 
@@ -416,18 +441,12 @@ class MainSettingsScreen extends StatelessWidget {
                         "assets/icons/icons-menu-files.svg"),
                     title: const Text("Manage Content")),
                 ListTile(
-                    onTap: () {
-                      Navigator.of(context)
-                          .pushReplacementNamed(PayStatsScreen.routeName);
-                    },
+                    onTap: () => changePage("Stats"),
                     leading: const SidebarSvgIcon(
                         "assets/icons/icons-menu-stats.svg"),
                     title: const Text("Payment Stats")),
                 ListTile(
-                    onTap: () {
-                      Navigator.of(context)
-                          .pushReplacementNamed(LogScreen.routeName);
-                    },
+                    onTap: () => changePage("Logs"),
                     leading: const Icon(Icons.list_outlined),
                     title: const Text("Logs")),
                 ListTile(
@@ -499,73 +518,87 @@ class AppearanceSettingsScreen extends StatefulWidget {
       _AppearanceSettingsScreenState();
 }
 
-void _showSelectThemeDialog(BuildContext context, ThemeNotifier theme) {
-  void switchToTheme(BuildContext context, String v) {
-    theme.switchTheme(v);
-    Navigator.of(context).pop();
-  }
-
-  showDialog(
-      context: context,
-      builder: (BuildContext context) => SimpleDialog(
-          backgroundColor: theme.colors.primaryContainer,
-          shape: const RoundedRectangleBorder(
-              borderRadius: BorderRadius.all(Radius.circular(16.0))),
-          children: appThemes.entries
-              .map((e) => ListTile(
-                  title:
-                      Txt(e.value.descr, color: TextColor.onPrimaryContainer),
-                  onTap: () => switchToTheme(context, e.key),
-                  leading: Radio<String>(
-                    value: e.key,
-                    groupValue: theme.getThemeMode(),
-                    onChanged: (_) => switchToTheme(context, e.key),
-                  )))
-              .toList()));
-}
-
-void _showSelectTextSizeDialog(BuildContext context, ThemeNotifier theme) {
-  void switchFontSize(BuildContext context, String key) {
-    theme.setFontSize(appFontSizes[key]?.scale ?? 1);
-  }
-
-  showDialog(
-      context: context,
-      builder: (BuildContext context) => SimpleDialog(
-          backgroundColor: theme.colors.primaryContainer,
-          shape: const RoundedRectangleBorder(
-            borderRadius: BorderRadius.all(Radius.circular(16.0)),
-          ),
-          children: appFontSizes.entries
-              .map((e) => ListTile(
-                  title:
-                      Txt(e.value.descr, color: TextColor.onPrimaryContainer),
-                  onTap: () => switchFontSize(context, e.key),
-                  leading: Radio<String>(
-                    value: e.key,
-                    groupValue: appFontSizeKeyForScale(theme.fontScale),
-                    onChanged: (_) => switchFontSize(context, e.key),
-                  )))
-              .toList()));
-}
-
 /// This is the private State class that goes with MyStatefulWidget.
 class _AppearanceSettingsScreenState extends State<AppearanceSettingsScreen> {
   ThemeNotifier get theme => widget.theme;
 
   @override
   Widget build(BuildContext context) {
+    var mainMenu = Provider.of<MainMenuModel>(context, listen: false);
     return ListView(
+      padding: const EdgeInsets.all(8),
       children: [
+        ListTile(title: Txt.S("Active Theme: ${theme.presetDisplayName}")),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Wrap(spacing: 8, runSpacing: 8, children: [
+            ThemeModeDropdown(theme, mainMenu),
+            OutlinedButton.icon(
+              onPressed: () => savePreset(context, theme, mainMenu),
+              icon: const Icon(Icons.save_outlined),
+              label: const Text("Save"),
+            ),
+            OutlinedButton.icon(
+              onPressed: theme.activePreset != null
+                  ? () => deletePreset(context, theme)
+                  : null,
+              icon: const Icon(Icons.delete_outline),
+              label: const Text("Delete"),
+            ),
+          ]),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Wrap(spacing: 8, runSpacing: 8, children: [
+            OutlinedButton.icon(
+              onPressed: () => createNewPreset(theme),
+              icon: const Icon(Icons.add_circle_outline),
+              label: const Text("New Preset"),
+            ),
+            OutlinedButton.icon(
+              onPressed: () => importPresetFile(context, theme, mainMenu),
+              icon: const Icon(Icons.file_upload_outlined),
+              label: const Text("Import"),
+            ),
+            OutlinedButton.icon(
+              onPressed: () => exportPresetFile(context, theme),
+              icon: const Icon(Icons.file_download_outlined),
+              label: const Text("Export"),
+            ),
+            OutlinedButton.icon(
+              onPressed: () => resetToDefaultTheme(theme, mainMenu),
+              icon: const Icon(Icons.restart_alt_outlined),
+              label: const Text("Reset to Default"),
+            ),
+          ]),
+        ),
+        const Divider(),
         ListTile(
-            onTap: () => _showSelectThemeDialog(context, theme),
-            leading: const Icon(Icons.color_lens_outlined),
-            title: const Text("Theme")),
-        ListTile(
-            onTap: () => _showSelectTextSizeDialog(context, theme),
-            leading: const Icon(Icons.text_increase),
-            title: const Text("Message font size")),
+          title: const Txt.S("Message font size"),
+          trailing: FontSizeDropdown(theme),
+        ),
+        const Divider(),
+        ExpansionTile(
+          title: const Txt.S("Color Palette"),
+          initiallyExpanded: false,
+          children: const [PaletteSection()],
+        ),
+        ExpansionTile(
+          title: const Txt.S("Theme Areas"),
+          initiallyExpanded: false,
+          children: const [
+            Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16),
+                child: AreasSection())
+          ],
+        ),
+        ExpansionTile(
+          title: const Txt.S("Menu"),
+          initiallyExpanded: false,
+          children: const [MenuSection()],
+        ),
         if (kDebugMode) ...[
+          const Divider(),
           ListTile(
               title: const Text("Widget Test Screen"),
               onTap: () {
@@ -1093,12 +1126,9 @@ class ThemeTestScreen extends StatelessWidget {
     return Scaffold(
       floatingActionButton:
           Column(mainAxisAlignment: MainAxisAlignment.end, children: [
-        IconButton(
-            onPressed: () => _showSelectThemeDialog(context, theme),
-            icon: const Icon(Icons.color_lens_outlined)),
-        IconButton(
-            onPressed: () => _showSelectTextSizeDialog(context, theme),
-            icon: const Icon(Icons.text_increase)),
+        ThemeModeDropdown(
+            theme, Provider.of<MainMenuModel>(context, listen: false)),
+        FontSizeDropdown(theme),
         IconButton(
             icon: const Icon(Icons.cancel_outlined),
             onPressed: () => Navigator.of(context).pop()),

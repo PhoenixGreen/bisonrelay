@@ -1,10 +1,14 @@
 import 'package:bruig/components/app_notifications.dart';
+import 'package:bruig/components/containers.dart';
 import 'package:bruig/components/empty_widget.dart';
 import 'package:bruig/components/indicator.dart';
 import 'package:bruig/models/client.dart';
 import 'package:bruig/models/feed.dart';
 import 'package:bruig/models/menus.dart';
 import 'package:bruig/models/notifications.dart';
+import 'package:bruig/models/theme_preset.dart';
+import 'package:bruig/screens/chats.dart';
+import 'package:bruig/screens/feed.dart';
 import 'package:bruig/theme_manager.dart';
 
 import 'package:flutter/material.dart';
@@ -136,17 +140,42 @@ class _SidebarState extends State<Sidebar> with WindowListener {
 
     return Consumer2<ClientModel, ThemeNotifier>(
         builder: (context, client, theme, child) {
-      return SidebarX(
+      var navStyle = theme.areaStyle(ThemeArea.navBar);
+      // A border (any mode) makes Container reserve extra inset for it on
+      // top of the existing padding, shrinking the content area -- the
+      // collapsed sidebar's icon layout already has ~zero slack at its
+      // hardcoded width, so any border at all overflows it by a couple of
+      // pixels unless the outer width grows to compensate. The parent Row
+      // (sidebar + Expanded(Navigator) in overview.dart) absorbs this fine
+      // since the Navigator side just gets very slightly narrower.
+      var borderInset = navStyle.borderMode != AreaBackgroundMode.token &&
+              navStyle.borderWidth > 0
+          ? navStyle.borderWidth * 2
+          : 0.0;
+      // SidebarXTheme.decoration (below) can only be a flat BoxDecoration,
+      // so it can't itself express a gradient/image border (only the
+      // background supports those directly here) -- wrapBorderOnly adds
+      // that border around the whole widget instead when needed.
+      return navStyle.wrapBorderOnly(
+        theme,
+        SurfaceColor.surfaceContainerLow,
+        presetDir: theme.fullTheme.presetDir,
+        child: SidebarX(
         theme: SidebarXTheme(
           margin: const EdgeInsets.all(1),
           padding: const EdgeInsets.all(2),
-          width: 70,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(3),
-            color: theme.colors.surfaceContainerLow,
-            border: Border(
-                right: BorderSide(color: theme.extraColors.sidebarDivider)),
-          ),
+          width: 70 + borderInset,
+          decoration: theme.areaStyle(ThemeArea.navBar).mode ==
+                  AreaBackgroundMode.token
+              ? BoxDecoration(
+                  borderRadius: BorderRadius.circular(3),
+                  color: theme.colors.surfaceContainerLow,
+                  border: Border(
+                      right:
+                          BorderSide(color: theme.extraColors.sidebarDivider)),
+                )
+              : theme.areaDecoration(
+                  ThemeArea.navBar, SurfaceColor.surfaceContainerLow),
           hoverTextStyle:
               theme.textStyleFor(context, null, TextColor.onSurfaceVariant),
           textStyle:
@@ -179,7 +208,29 @@ class _SidebarState extends State<Sidebar> with WindowListener {
             size: 21,
           ),
         ),
-        extendedTheme: const SidebarXTheme(width: 200),
+        extendedTheme: SidebarXTheme(width: 200 + borderInset),
+        // Intended for when the header is set to HeaderPosition.content or
+        // .none, since the header's own logo disappears in both of those.
+        headerBuilder: navStyle.showLogo
+            ? (context, extended) => Padding(
+                  // Left/right match the menu items' own left inset below
+                  // (SidebarXTheme.padding(2) + itemMargin.left(5) +
+                  // itemPadding.left(12) = 19), so a left/right-aligned
+                  // logo lines up with the icon column instead of sitting
+                  // flush against the sidebar's outer edge.
+                  padding: const EdgeInsets.only(
+                      top: 10, bottom: 10, left: 19, right: 19),
+                  child: Align(
+                    alignment: switch (navStyle.logoAlign) {
+                      ContentAlign.start => Alignment.centerLeft,
+                      ContentAlign.end => Alignment.centerRight,
+                      ContentAlign.center || ContentAlign.hidden || null =>
+                        Alignment.center,
+                    },
+                    child: BisonRelayLogo(size: navStyle.logoSize ?? 32),
+                  ),
+                )
+            : null,
         footerDivider:
             Divider(height: 2, color: theme.extraColors.sidebarDivider),
         footerBuilder: (context, something) => Container(
@@ -191,8 +242,9 @@ class _SidebarState extends State<Sidebar> with WindowListener {
             .map((e) => SidebarXItem(
                   label: e.label,
                   iconBuilder: (selected, hovered) =>
-                      (e.label == "Chat" && hasUnreadMsgs) ||
-                              (e.label == "Feed" && feed.hasUnreadPostsComments)
+                      (e.routeName == ChatsScreen.routeName && hasUnreadMsgs) ||
+                              (e.routeName == FeedScreen.routeName &&
+                                  feed.hasUnreadPostsComments)
                           ? Stack(children: [
                               Container(
                                   padding: const EdgeInsets.all(3),
@@ -205,7 +257,7 @@ class _SidebarState extends State<Sidebar> with WindowListener {
                   onTap: () => switchScreen(e.routeName),
                 ))
             .toList(),
-      );
+      ));
     });
   }
 }

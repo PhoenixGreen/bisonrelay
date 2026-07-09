@@ -1,5 +1,7 @@
 import 'dart:io';
 
+import 'package:bruig/models/theme_preset.dart';
+import 'package:bruig/theme_preset_storage.dart';
 import 'package:bruig/util.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
@@ -199,7 +201,7 @@ String appFontSizeKeyForScale(double scale) {
 
 String emojifont = Platform.isWindows ? "notoemoji_win" : "notoemoji_unix";
 
-final TextTheme _interTextTheme = TextTheme(
+final TextTheme interTextTheme = TextTheme(
   displayLarge: TextStyle(
       debugLabel: 'interdisplayLarge',
       fontFamily: 'Inter',
@@ -292,7 +294,7 @@ final TextTheme _interTextTheme = TextTheme(
       fontFamilyFallback: [emojifont]),
 );
 
-final TextTheme _interBlackTextTheme = TextTheme(
+final TextTheme interBlackTextTheme = TextTheme(
   displayLarge: TextStyle(
       debugLabel: 'interdisplayLarge',
       fontFamily: 'Inter',
@@ -395,6 +397,15 @@ class AppTheme {
   // Decoration used to fade the background in StartupScreen components.
   final BoxDecoration? startupScreenBoxDecoration;
 
+  // Per-area style overrides from a user-defined ThemePreset. Empty for the
+  // built-in "dark"/"light"/"system" themes, meaning every area falls back to
+  // its normal (pre-theming-feature) token-based rendering.
+  final Map<ThemeArea, AreaStyle> areaStyles;
+
+  // Directory a custom preset's areaStyles image paths are relative to. Null
+  // for built-in themes (which never reference preset-relative images).
+  final String? presetDir;
+
   AppTheme({
     required this.key,
     required this.descr,
@@ -402,6 +413,8 @@ class AppTheme {
     required this.extraColors,
     required this.extraTextStyles,
     this.startupScreenBoxDecoration,
+    this.areaStyles = const {},
+    this.presetDir,
   });
 
   factory AppTheme.empty() => AppTheme(
@@ -419,7 +432,7 @@ final appThemes = {
       data: ThemeData.from(
         // Base Material3 color scheme based on seed
         useMaterial3: true,
-        textTheme: _interTextTheme,
+        textTheme: interTextTheme,
         colorScheme: ColorScheme.fromSeed(
           seedColor: const Color(0xFF19172C),
           brightness: Brightness.dark,
@@ -474,7 +487,7 @@ final appThemes = {
       data: ThemeData.from(
         // Base Material3 color scheme based on seed
         useMaterial3: true,
-        textTheme: _interBlackTextTheme,
+        textTheme: interBlackTextTheme,
         colorScheme: ColorScheme.fromSeed(
           seedColor: const Color(0xFFE8E7F3),
           brightness: Brightness.light,
@@ -587,10 +600,142 @@ class ThemeNotifier with ChangeNotifier {
     var fontScaleCfg =
         await StorageManager.readData(StorageManager.fontScaleKey);
     _fontScale = double.parse(fontScaleCfg ?? "0");
+
+    // Register any saved custom presets into appThemes *before* resolving
+    // the persisted theme mode, so a stored "custom:<id>" selection is
+    // already available for switchTheme() to find.
+    try {
+      var presets = await ThemePresetStorage.listPresets();
+      for (var preset in presets) {
+        registerCustomPreset(preset, notify: false, markSaved: true);
+      }
+    } catch (exception) {
+      debugPrint("Error while loading custom theme presets: $exception");
+    }
+
     var themeModeCfg =
         await StorageManager.readData(StorageManager.themeModeKey);
     switchTheme(themeModeCfg ?? _defaultThemeName);
   }
+
+  // customPresets holds the raw (editable) ThemePreset behind each
+  // registered "custom:<id>" entry in appThemes -- appThemes only holds the
+  // compiled, read-only AppTheme, which isn't enough to drive a palette
+  // editor (it doesn't retain the original 10 seed colors).
+  final Map<String, ThemePreset> customPresets = {};
+
+  // savedPresetIds tracks which custom presets have actually been written
+  // to disk (via saveActivePreset/import) as opposed to existing only as an
+  // in-memory live-preview draft (via previewPreset). Only saved presets
+  // are offered in the "load preset" list or are exportable -- editing
+  // colors must never silently create a persisted, named preset on its
+  // own; that only happens when the user explicitly saves.
+  final Set<String> savedPresetIds = {};
+  bool isPresetSaved(String id) => savedPresetIds.contains(id);
+
+  // activePreset returns the raw ThemePreset behind the active theme, or
+  // null if the active theme is one of the built-ins (dark/light/system).
+  ThemePreset? get activePreset => _themeMode.startsWith("custom:")
+      ? customPresets[_themeMode.substring("custom:".length)]
+      : null;
+
+  // presetDisplayName returns the name to show the user for the active
+  // theme, defaulting to "Default Theme" for the unmodified built-in, and
+  // flagging an active draft that hasn't been saved yet.
+  String get presetDisplayName {
+    var p = activePreset;
+    if (p != null) {
+      return isPresetSaved(p.id) ? p.name : "${p.name} (unsaved)";
+    }
+    if (_themeMode == _defaultThemeName) return "Default Theme";
+    return appThemes[_themeMode]?.descr ?? "Default Theme";
+  }
+
+  // registerCustomPreset compiles a ThemePreset into an AppTheme and adds it
+  // to appThemes under a "custom:<id>" key, making it selectable/switchable
+  // exactly like the built-in "dark"/"light" themes. This alone never
+  // touches disk -- see saveActivePreset for that.
+  void registerCustomPreset(ThemePreset preset,
+      {bool notify = true, bool markSaved = false}) {
+    customPresets[preset.id] = preset;
+    appThemes["custom:${preset.id}"] = preset.toAppTheme();
+    if (markSaved) savedPresetIds.add(preset.id);
+    if (notify) notifyListeners();
+  }
+
+  // previewPreset applies an edited preset live (in memory only, no disk
+  // write) so editors (palette/area sections) can show immediate feedback
+  // without that turning into a persisted, named, loadable preset until the
+  // user explicitly presses Save.
+  void previewPreset(ThemePreset preset) {
+    registerCustomPreset(preset, notify: false);
+    switchTheme("custom:${preset.id}");
+  }
+
+  // saveActivePreset persists the currently active custom preset to disk,
+  // optionally renaming it and/or embedding a menu rename/reorder
+  // snapshot (see MainMenuModel.currentLabels/currentOrder) first, and
+  // marks it as a saved/loadable preset. No-op if the active theme isn't a
+  // custom preset.
+  Future<void> saveActivePreset(
+      {String? name,
+      Map<String, String>? menuLabels,
+      List<String>? menuOrder}) async {
+    var preset = activePreset;
+    if (preset == null) return;
+    if (name != null && name.trim().isNotEmpty) {
+      preset = preset.copyWith(name: name.trim());
+    }
+    if (menuLabels != null) preset = preset.copyWith(menuLabels: menuLabels);
+    if (menuOrder != null) preset = preset.copyWith(menuOrder: menuOrder);
+    var saved = await ThemePresetStorage.savePreset(preset);
+    registerCustomPreset(saved, markSaved: true);
+  }
+
+  // deleteActivePreset removes the currently active custom preset -- from
+  // disk too, if it had been saved -- and falls back to the default theme.
+  // No-op if the active theme isn't a custom preset.
+  Future<void> deleteActivePreset() async {
+    var preset = activePreset;
+    if (preset == null) return;
+    if (isPresetSaved(preset.id)) {
+      await ThemePresetStorage.deletePreset(preset.id);
+    }
+    unregisterCustomPreset(preset.id);
+  }
+
+  // unregisterCustomPreset removes a previously-registered custom preset
+  // from memory (does not touch disk -- see deleteActivePreset for that).
+  // If it's the currently active theme, falls back to the default theme.
+  void unregisterCustomPreset(String id) {
+    customPresets.remove(id);
+    appThemes.remove("custom:$id");
+    savedPresetIds.remove(id);
+    if (_themeMode == "custom:$id") {
+      switchTheme(_defaultThemeName);
+    }
+  }
+
+  // areaStyle returns the style override for the given area in the active
+  // theme, or the default (token-based, i.e. unchanged) style if the active
+  // theme doesn't customize that area.
+  AreaStyle areaStyle(ThemeArea area) =>
+      _fullTheme.areaStyles[area] ?? const AreaStyle();
+
+  // areaDecoration resolves the given area's style into a concrete
+  // BoxDecoration, falling back to the given SurfaceColor token. Only
+  // supports a flat-color border (see AreaStyle.toBoxDecoration) -- for the
+  // full solid/gradient/image border treatment, use areaContainer instead.
+  BoxDecoration areaDecoration(ThemeArea area, SurfaceColor fallback) =>
+      areaStyle(area)
+          .toBoxDecoration(this, fallback, presetDir: _fullTheme.presetDir);
+
+  // areaContainer wraps `child` in the given area's full background+border
+  // (solid/gradient/image, independently) + padding/margin styling.
+  Widget areaContainer(ThemeArea area, SurfaceColor fallback,
+          {required Widget child}) =>
+      areaStyle(area).buildContainer(this, fallback,
+          child: child, presetDir: _fullTheme.presetDir);
 
   void switchTheme(String value) async {
     // When using the special theme "system", determine the theme based on

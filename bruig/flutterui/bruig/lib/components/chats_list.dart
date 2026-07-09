@@ -184,8 +184,15 @@ class ActiveChatsListMenu extends StatefulWidget {
   final ClientModel client;
   final CustomInputFocusNode inputFocusNode;
   final RealtimeChatModel rtc;
+  // content/isDetail are only used on desktop-sized layouts, where this
+  // widget composes itself with the main chat pane via
+  // SecondarySideMenuLayout (see containers.dart) so the submenu
+  // Visibility theme setting applies here too.
+  final Widget? content;
+  final bool isDetail;
+  final Object? detailKey;
   const ActiveChatsListMenu(this.client, this.inputFocusNode, this.rtc,
-      {super.key});
+      {this.content, this.isDetail = false, this.detailKey, super.key});
 
   @override
   State<ActiveChatsListMenu> createState() => _ActiveChatsListMenuState();
@@ -467,8 +474,11 @@ class _ActiveChatsListMenuState extends State<ActiveChatsListMenu>
 
     // Desktop version, display side menu.
     return Consumer<ThemeNotifier>(
-      builder: (context, theme, _) => SecondarySideMenuList(
+      builder: (context, theme, _) => SecondarySideMenuLayout(
         width: 205 * (theme.fontScale > 0 ? theme.fontScale : 1),
+        isDetail: widget.isDetail,
+        detailKey: widget.detailKey,
+        content: widget.content ?? const SizedBox.shrink(),
         list: ListView.builder(
           controller: sortedListScroll,
           scrollDirection: Axis.vertical,

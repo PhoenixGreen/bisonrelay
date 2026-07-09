@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:bruig/components/buttons.dart';
+import 'package:bruig/components/containers.dart';
 import 'package:bruig/components/text.dart';
 import 'package:bruig/components/collapsable.dart';
 import 'package:bruig/components/copyable.dart';
@@ -20,7 +21,6 @@ import 'package:golib_plugin/golib_plugin.dart';
 import 'package:golib_plugin/util.dart';
 import 'package:bruig/components/ln_management_bar.dart';
 import 'package:bruig/screens/overview.dart';
-import 'package:bruig/components/empty_widget.dart';
 import 'package:bruig/models/menus.dart';
 import 'package:provider/provider.dart';
 import 'package:bruig/theme_manager.dart';
@@ -105,14 +105,16 @@ class _LNScreenState extends State<LNScreen> {
       tabIndex = args.tabIndex;
     }
 
-    return Row(children: [
-      ModalRoute.of(context)!.settings.arguments == null
-          ? isScreenSmall
-              ? const Empty()
-              : LNManagementBar(onItemChanged, tabIndex)
-          : const Empty(),
-      Expanded(child: activeTab())
-    ]);
+    if (isScreenSmall) {
+      return activeTab();
+    }
+
+    return SecondarySideMenuLayout(
+      width: 130,
+      items: lnManagementBarItems(onItemChanged, tabIndex),
+      isDetail: ModalRoute.of(context)!.settings.arguments != null,
+      content: activeTab(),
+    );
   }
 }
 

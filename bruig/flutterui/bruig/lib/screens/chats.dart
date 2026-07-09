@@ -404,14 +404,18 @@ class _ChatsScreenState extends State<ChatsScreen> {
 
     bool isScreenSmall = checkIsScreenSmall(context);
     return !isScreenSmall
-        ? Row(children: [
-            ActiveChatsListMenu(client, inputFocusNode, rtc),
-            Expanded(
-                child: Container(
-              margin: const EdgeInsets.all(1),
-              child: ActiveChat(client, rtc, audio, inputFocusNode),
-            )),
-          ])
+        ? Consumer<ActiveChatModel>(
+            builder: (context, activeChat, child) => ActiveChatsListMenu(
+                  client,
+                  inputFocusNode,
+                  rtc,
+                  isDetail: !activeChat.empty,
+                  detailKey: activeChat.chat?.id,
+                  content: Container(
+                    margin: const EdgeInsets.all(1),
+                    child: ActiveChat(client, rtc, audio, inputFocusNode),
+                  ),
+                ))
         : Consumer<ActiveChatModel>(
             builder: (context, activeChat, child) => activeChat.empty
                 ? ActiveChatsListMenu(client, inputFocusNode, rtc)
