@@ -184,7 +184,12 @@ Future<String> _tempInviteDownloadPath() async {
 }
 
 class FetchInviteScreen extends StatefulWidget {
-  const FetchInviteScreen({super.key});
+  // embedded is true when shown inline as Address Book tab content instead
+  // of pushed as a full-screen route -- skips StartupScreen's Scaffold/
+  // background/About-button chrome, since the embedding page already
+  // provides its own frame.
+  final bool embedded;
+  const FetchInviteScreen({this.embedded = false, super.key});
 
   @override
   State<FetchInviteScreen> createState() => _FetchInviteScreenState();
@@ -238,7 +243,7 @@ class _FetchInviteScreenState extends State<FetchInviteScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return StartupScreen([
+    var children = [
       const Txt.H("Fetch Invite"),
       const SizedBox(height: 20),
       ...(!loading
@@ -260,7 +265,17 @@ class _FetchInviteScreenState extends State<FetchInviteScreen> {
               ),
               const SizedBox(height: 20),
             ]),
-      CancelButton(onPressed: () => Navigator.pop(context)),
-    ]);
+      CancelButton(onPressed: () => Navigator.of(context).maybePop()),
+    ];
+
+    if (widget.embedded) {
+      return SingleChildScrollView(
+          child: Container(
+              padding: const EdgeInsets.all(20),
+              alignment: Alignment.topCenter,
+              child: Column(children: children)));
+    }
+
+    return StartupScreen(children);
   }
 }

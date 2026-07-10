@@ -12,7 +12,12 @@ import 'package:provider/provider.dart';
 
 class GCInvitationsScreen extends StatefulWidget {
   static String routeName = "/gcInvitations";
-  const GCInvitationsScreen({super.key});
+  // embedded is true when shown inline as Address Book tab content instead
+  // of pushed as a full-screen route -- skips StartupScreen's Scaffold/
+  // background/About-button chrome, since the embedding page already
+  // provides its own frame.
+  final bool embedded;
+  const GCInvitationsScreen({this.embedded = false, super.key});
 
   @override
   State<GCInvitationsScreen> createState() => _GCInvitationsScreenState();
@@ -65,42 +70,49 @@ class _GCInvitationsScreenState extends State<GCInvitationsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<ThemeNotifier>(
-        builder: (context, theme, child) => StartupScreen([
-              const Txt.H("Received GC Invitations"),
-              const SizedBox(height: 20),
-              ...(invites.map((i) => Container(
-                    //width: 200,
-                    //height: 100,
-                    margin: const EdgeInsets.symmetric(vertical: 20),
-                    // color: Colors.amber,
-                    child: Column(children: [
-                      Text("Name: ${i.name}"),
-                      Text("Inviter: ${i.inviter.nick}"),
-                      Text(
-                          "Expires: ${DateTime.fromMillisecondsSinceEpoch(i.invite.expires * 1000)}"),
-                      Text("GC ID ${i.invite.id}"),
-                      const SizedBox(height: 5),
-                      i.accepted
-                          ? const Txt(
-                              "Invite Accepted! Waiting for admin to add to GC.",
-                              color: TextColor.successOnSurface)
-                          : Wrap(spacing: 5, children: [
-                              OutlinedButton(
-                                  onPressed: () => acceptInvite(i.iid),
-                                  child: const Text("Accept Invite")),
-                              CancelButton(
-                                  onPressed: () => declineInvite(i.iid),
-                                  label: "Decline"),
-                            ]),
+    var children = [
+      const Txt.H("Received GC Invitations"),
+      const SizedBox(height: 20),
+      ...(invites.map((i) => Container(
+            //width: 200,
+            //height: 100,
+            margin: const EdgeInsets.symmetric(vertical: 20),
+            // color: Colors.amber,
+            child: Column(children: [
+              Text("Name: ${i.name}"),
+              Text("Inviter: ${i.inviter.nick}"),
+              Text(
+                  "Expires: ${DateTime.fromMillisecondsSinceEpoch(i.invite.expires * 1000)}"),
+              Text("GC ID ${i.invite.id}"),
+              const SizedBox(height: 5),
+              i.accepted
+                  ? const Txt(
+                      "Invite Accepted! Waiting for admin to add to GC.",
+                      color: TextColor.successOnSurface)
+                  : Wrap(spacing: 5, children: [
+                      OutlinedButton(
+                          onPressed: () => acceptInvite(i.iid),
+                          child: const Text("Accept Invite")),
+                      CancelButton(
+                          onPressed: () => declineInvite(i.iid),
+                          label: "Decline"),
                     ]),
-                  ))),
-              if (invites.isEmpty)
-                const Txt("No invitations", color: TextColor.onSurfaceVariant),
-              const SizedBox(height: 10),
-              ElevatedButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text("Done")),
-            ]));
+            ]),
+          ))),
+      if (invites.isEmpty)
+        const Txt("No invitations", color: TextColor.onSurfaceVariant),
+      const SizedBox(height: 10),
+      ElevatedButton(
+          onPressed: () => Navigator.of(context).maybePop(),
+          child: const Text("Done")),
+    ];
+
+    if (widget.embedded) {
+      return SingleChildScrollView(
+          child: Container(padding: const EdgeInsets.all(20), child: Column(children: children)));
+    }
+
+    return Consumer<ThemeNotifier>(
+        builder: (context, theme, child) => StartupScreen(children));
   }
 }

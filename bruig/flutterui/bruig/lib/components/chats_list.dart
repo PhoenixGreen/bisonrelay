@@ -9,7 +9,6 @@ import 'package:bruig/screens/chat/new_gc_screen.dart';
 import 'package:bruig/screens/chat/new_message_screen.dart';
 import 'package:bruig/screens/chats.dart';
 import 'package:bruig/screens/contacts_msg_times.dart';
-import 'package:bruig/screens/gc_invitations.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:bruig/components/interactive_avatar.dart';
@@ -215,51 +214,6 @@ Future<void> loadInvite(BuildContext context) async {
   }
 }
 
-class _FooterIconButton extends StatelessWidget {
-  final bool onlyWhenOnline;
-  final IconData icon;
-  final String tooltip;
-  final VoidCallback onPressed;
-  final String? tag;
-  const _FooterIconButton({
-    required this.icon,
-    required this.tooltip,
-    required this.onPressed,
-    this.onlyWhenOnline = false,
-    this.tag,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Consumer2<ThemeNotifier, ConnStateModel>(
-      builder: (context, theme, connState, child) => Stack(
-        children: [
-          IconButton(
-            splashRadius: 15,
-            iconSize: 15,
-            tooltip: !onlyWhenOnline || connState.isOnline
-                ? tooltip
-                : "Cannot perform this action when offline",
-            disabledColor: theme.theme.disabledColor,
-            onPressed: !onlyWhenOnline || connState.isOnline ? onPressed : null,
-            icon: Icon(icon, size: 20),
-          ),
-          if ((tag ?? "") != "")
-            Positioned(
-              right: 0,
-              child: Box(
-                borderRadius: BorderRadius.circular(5),
-                padding: EdgeInsets.all(2),
-                color: SurfaceColor.primary,
-                child: Txt.S(tag!),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
 class _SmallScreenFabIconButton extends StatelessWidget {
   final IconData icon;
   final String tooltip;
@@ -315,18 +269,6 @@ class _ActiveChatsListMenuState extends State<ActiveChatsListMenu>
   void activeChatsListUpdated() {
     // Limit changes when updating chat list very fast.
     debounce ??= Timer(const Duration(milliseconds: 250), doUpdateState);
-  }
-
-  void genInvite() async {
-    await generateInvite(context);
-    inputFocusNode.requestFocus();
-  }
-
-  void showGCInvitationsScreen() {
-    Navigator.of(
-      context,
-      rootNavigator: true,
-    ).pushNamed(GCInvitationsScreen.routeName);
   }
 
   // Returns a callback to make chat c active.
@@ -488,52 +430,11 @@ class _ActiveChatsListMenuState extends State<ActiveChatsListMenu>
                 chats[index].hasInstantCall),
           ),
         ),
-        footer: SizedBox(
-          width: double.infinity,
-          child: Wrap(
-            alignment: WrapAlignment.start,
-            children: [
-              _FooterIconButton(
-                onlyWhenOnline: true,
-                tooltip: "Generate Invite",
-                onPressed: genInvite,
-                icon: Icons.add_outlined,
-              ),
-              _FooterIconButton(
-                tooltip: "List last received message time",
-                onPressed: () => gotoContactsLastMsgTimeScreen(context),
-                icon: Icons.list_outlined,
-              ),
-              _FooterIconButton(
-                onlyWhenOnline: true,
-                tooltip: "Fetch, import or accept invite",
-                onPressed: () => fetchInvite(context),
-                icon: Icons.get_app_outlined,
-              ),
-              _FooterIconButton(
-                tooltip: "Create new group chat",
-                onPressed: gotoNewGroupChat,
-                icon: Icons.people_outline,
-              ),
-              _FooterIconButton(
-                tooltip: "New Message",
-                onPressed: gotoNewMessage,
-                icon: Icons.edit_outlined,
-              ),
-              Consumer<GCInviteCountModel>(
-                  builder: (context, gcInviteCount, child) => _FooterIconButton(
-                        tooltip: "Show GC Invitations",
-                        onPressed: showGCInvitationsScreen,
-                        icon: Icons.groups,
-                        tag: gcInviteCount.value == 0
-                            ? null
-                            : gcInviteCount.value > 9
-                                ? "9+"
-                                : gcInviteCount.value.toString(),
-                      )),
-            ],
-          ),
-        ),
+        // Generate Invite / Received Message Time / Fetch or Accept Invite /
+        // Show GC Invitations moved to the Address Book main menu item's
+        // submenu (see address_book_bar.dart). New Message/New Group Chat
+        // remain reachable here too via gotoNewMessage/gotoNewGroupChat
+        // (used by the mobile FAB buttons above).
       ),
     );
   }

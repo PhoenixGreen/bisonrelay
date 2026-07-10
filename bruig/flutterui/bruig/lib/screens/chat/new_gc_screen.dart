@@ -31,7 +31,7 @@ class _NewGcScreenState extends State<NewGcScreen> {
         selectingUsers = true;
       });
     } else {
-      Navigator.of(context).pop();
+      Navigator.of(context).maybePop();
     }
   }
 
@@ -43,7 +43,7 @@ class _NewGcScreenState extends State<NewGcScreen> {
       setState(() => creating = true);
       await client.createNewGCAndInvite(newGcName, userSel.selected);
       if (mounted) {
-        Navigator.of(context).pop();
+        Navigator.of(context).maybePop();
       }
       snackbar.success("Created GC $newGcName");
     } catch (exception) {

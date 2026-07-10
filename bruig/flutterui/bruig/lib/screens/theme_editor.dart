@@ -4,7 +4,9 @@ import 'dart:typed_data';
 import 'package:bruig/components/snackbars.dart';
 import 'package:bruig/components/text.dart';
 import 'package:bruig/models/menus.dart';
+import 'package:bruig/models/palette_library.dart';
 import 'package:bruig/models/theme_preset.dart';
+import 'package:bruig/palette_library_storage.dart';
 import 'package:bruig/theme_manager.dart';
 import 'package:bruig/theme_preset_storage.dart';
 import 'package:file_picker/file_picker.dart';
@@ -333,6 +335,61 @@ void resetToDefaultTheme(ThemeNotifier theme, MainMenuModel mainMenu) {
 // preset's 10-color palette. Tapping a color expands an inline picker in
 // place -- no modal popups -- committed via a "Done" button so a single
 // disk write happens per edit instead of one per drag frame.
+// PaletteSwatchStrip renders a row of colors as a thin horizontal bar --
+// used both for the collapsed-section preview (see PaletteExpansionTile)
+// and for each palette-library card's thumbnail.
+class PaletteSwatchStrip extends StatelessWidget {
+  final List<Color> colors;
+  final double height;
+  const PaletteSwatchStrip({required this.colors, this.height = 14, super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    if (colors.isEmpty) return SizedBox(height: height);
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(4),
+      child: SizedBox(
+        height: height,
+        child: Row(
+            children: colors.map((c) => Expanded(child: Container(color: c))).toList()),
+      ),
+    );
+  }
+}
+
+// PaletteExpansionTile wraps PaletteSection with a collapsed-state preview
+// (a horizontal strip of the active preset's current palette) so the
+// active palette is visible at a glance without expanding the section.
+class PaletteExpansionTile extends StatefulWidget {
+  const PaletteExpansionTile({super.key});
+
+  @override
+  State<PaletteExpansionTile> createState() => _PaletteExpansionTileState();
+}
+
+class _PaletteExpansionTileState extends State<PaletteExpansionTile> {
+  bool expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer<ThemeNotifier>(builder: (context, theme, _) {
+      var preset = displayPreset(theme);
+      return ExpansionTile(
+        title: const Txt.S("Color Palette"),
+        subtitle: !expanded
+            ? Padding(
+                padding: const EdgeInsets.only(top: 6, right: 16),
+                child: PaletteSwatchStrip(colors: preset.palette),
+              )
+            : null,
+        initiallyExpanded: false,
+        onExpansionChanged: (v) => setState(() => expanded = v),
+        children: const [PaletteSection()],
+      );
+    });
+  }
+}
+
 class PaletteSection extends StatefulWidget {
   const PaletteSection({super.key});
 
@@ -341,38 +398,286 @@ class PaletteSection extends StatefulWidget {
 }
 
 class _PaletteSectionState extends State<PaletteSection> {
-  PaletteSlot? expandedSlot;
+  int? expandedIndex; // index into displayPreset(theme).palette
   Color? draftColor;
+  List<ColorPalette> userPalettes = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserPalettes();
+  }
+
+  void _loadUserPalettes() async {
+    var palettes = await PaletteLibraryStorage.listPalettes();
+    if (mounted) setState(() => userPalettes = palettes);
+  }
+
+  Future<String?> _promptForName(String title, String hint) {
+    var ctrl = TextEditingController();
+    return showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: TextField(
+            controller: ctrl,
+            autofocus: true,
+            decoration: InputDecoration(hintText: hint)),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text("Cancel")),
+          TextButton(
+              onPressed: () => Navigator.of(context).pop(ctrl.text),
+              child: const Text("Save")),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _saveCurrentAsPalette(ThemeNotifier theme) async {
+    var preset = displayPreset(theme);
+    var name = await _promptForName("Save Palette", "Palette name");
+    if (name == null || name.trim().isEmpty) return;
+    var palette = ColorPalette(
+      id: "palette-${DateTime.now().millisecondsSinceEpoch}",
+      name: name.trim(),
+      colors: kVividPaletteSlots.map(preset.forSlot).toList(),
+    );
+    await PaletteLibraryStorage.savePalette(palette);
+    if (!mounted) return;
+    setState(() => userPalettes = [...userPalettes, palette]);
+  }
+
+  // _paletteSurfaceFor derives a background neutral tinted with the
+  // palette's own primary hue, but kept dark-or-light-appropriate for the
+  // active preset's brightness -- masterBackground/navBar/subMenuTabBar
+  // (and everything else left at their default "token" styling) all read
+  // this surface color (and its derived container tones), so without this
+  // the whole rest of the app never visibly reacted to picking a palette.
+  Color _paletteSurfaceFor(Color primary, Brightness brightness) {
+    var hsl = HSLColor.fromColor(primary);
+    var lightness = brightness == Brightness.dark ? 0.09 : 0.97;
+    var saturation = (hsl.saturation * (brightness == Brightness.dark ? 0.35 : 0.25))
+        .clamp(0.0, 1.0);
+    return hsl.withSaturation(saturation).withLightness(lightness).toColor();
+  }
+
+  Color _paletteOnSurfaceFor(Brightness brightness) => brightness == Brightness.dark
+      ? const Color(0xFFE6E1E5)
+      : const Color(0xFF1A1A1A);
+
+  Color _paletteOutlineFor(Brightness brightness) => brightness == Brightness.dark
+      ? const Color(0xFF938F99)
+      : const Color(0xFF79747E);
+
+  // Text-on-accent should stay legible regardless of how light/dark the
+  // palette's own accent color happens to be.
+  Color _paletteOnAccentFor(Color accent) =>
+      HSLColor.fromColor(accent).lightness > 0.55
+          ? const Color(0xFF1A1A1A)
+          : Colors.white;
+
+  void _applyPalette(ThemeNotifier theme, ColorPalette palette) {
+    var draft = ensureDraftPreset(theme);
+    var updated = draft;
+    for (var i = 0; i < kVividPaletteSlots.length && i < palette.colors.length; i++) {
+      updated = updated.withSlot(kVividPaletteSlots[i], palette.colors[i]);
+    }
+    var primary = palette.colors.isNotEmpty ? palette.colors[0] : draft.primary;
+    var accent = palette.colors.length > 4 ? palette.colors[4] : primary;
+    updated = updated.copyWith(
+      surface: _paletteSurfaceFor(primary, draft.brightness),
+      onSurface: _paletteOnSurfaceFor(draft.brightness),
+      outline: _paletteOutlineFor(draft.brightness),
+      onAccent: _paletteOnAccentFor(accent),
+    );
+    theme.previewPreset(updated);
+  }
+
+  Future<void> _exportPalette(ColorPalette palette) async {
+    var destPath = await FilePicker.platform.saveFile(
+      dialogTitle: "Export color palette",
+      fileName: "${palette.name.replaceAll(' ', '_')}.json",
+      type: FileType.custom,
+      allowedExtensions: ["json"],
+    );
+    if (destPath == null) return;
+    var bytes = await PaletteLibraryStorage.exportPalette(palette);
+    await File(destPath).writeAsBytes(bytes);
+    if (mounted) showSuccessSnackbar(context, "Exported palette to $destPath");
+  }
+
+  Future<void> _importPalette() async {
+    var res = await FilePicker.platform.pickFiles(
+      dialogTitle: "Import color palette",
+      type: FileType.custom,
+      allowedExtensions: ["json"],
+    );
+    if (res == null) return;
+    var filePath = res.files.first.path;
+    if (filePath == null) return;
+    try {
+      var bytes = await File(filePath).readAsBytes();
+      var palette = await PaletteLibraryStorage.importPalette(bytes);
+      if (!mounted) return;
+      setState(() => userPalettes = [...userPalettes, palette]);
+      showSuccessSnackbar(context, "Imported palette \"${palette.name}\"");
+    } catch (exception) {
+      if (mounted) {
+        showErrorSnackbar(context, "Unable to import palette: $exception");
+      }
+    }
+  }
+
+  Future<void> _deletePalette(ColorPalette palette) async {
+    await PaletteLibraryStorage.deletePalette(palette.id);
+    if (!mounted) return;
+    setState(() =>
+        userPalettes = userPalettes.where((p) => p.id != palette.id).toList());
+  }
+
+  Widget _paletteCard(ThemeNotifier theme, ColorPalette palette) {
+    return InkWell(
+      onTap: () => _applyPalette(theme, palette),
+      borderRadius: BorderRadius.circular(6),
+      child: Container(
+        width: 150,
+        margin: const EdgeInsets.only(right: 8),
+        padding: const EdgeInsets.all(6),
+        decoration: BoxDecoration(
+            border: Border.all(color: Colors.grey),
+            borderRadius: BorderRadius.circular(6)),
+        child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              PaletteSwatchStrip(colors: palette.colors, height: 28),
+              const SizedBox(height: 6),
+              SizedBox(
+                height: 22,
+                child: Row(children: [
+                  Expanded(
+                      child: Txt.S(palette.name,
+                          overflow: TextOverflow.ellipsis)),
+                  SizedBox(
+                    height: 22,
+                    width: 22,
+                    child: PopupMenuButton<String>(
+                      iconSize: 16,
+                      padding: EdgeInsets.zero,
+                      onSelected: (v) {
+                        if (v == "export") _exportPalette(palette);
+                        if (v == "delete") _deletePalette(palette);
+                      },
+                      itemBuilder: (context) => [
+                        const PopupMenuItem(
+                            value: "export", child: Text("Export")),
+                        if (!palette.builtin)
+                          const PopupMenuItem(
+                              value: "delete", child: Text("Delete")),
+                      ],
+                    ),
+                  ),
+                ]),
+              ),
+            ]),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     return Consumer<ThemeNotifier>(builder: (context, theme, _) {
       var preset = displayPreset(theme);
+      var fullPalette = preset.palette;
+      var seed = theme.brightness == Brightness.dark
+          ? ThemePreset.seedFromDark()
+          : ThemePreset.seedFromLight();
+      var defaultPalette = ColorPalette(
+        id: "default",
+        name: "Default Theme",
+        builtin: true,
+        colors: kVividPaletteSlots.map(seed.forSlot).toList(),
+      );
+      var allPalettes = [defaultPalette, ...builtinPalettes, ...userPalettes];
+      var canAddMore =
+          preset.extraPaletteColors.length < kMaxExtraPaletteColors;
 
-      return Column(
-        children: PaletteSlot.values.map((slot) {
-          var isExpanded = expandedSlot == slot;
-          var color = isExpanded ? (draftColor ?? preset.forSlot(slot)) : preset.forSlot(slot);
+      return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Row(children: [
+            Expanded(
+              child: SizedBox(
+                height: 92,
+                child: ListView(
+                    scrollDirection: Axis.horizontal,
+                    children:
+                        allPalettes.map((p) => _paletteCard(theme, p)).toList()),
+              ),
+            ),
+            const SizedBox(width: 4),
+            IconButton(
+                onPressed: () => _saveCurrentAsPalette(theme),
+                icon: const Icon(Icons.save_outlined),
+                tooltip: "Save current palette"),
+            IconButton(
+                onPressed: _importPalette,
+                icon: const Icon(Icons.file_upload_outlined),
+                tooltip: "Import palette"),
+          ]),
+        ),
+        const Divider(),
+        ...List.generate(fullPalette.length, (i) {
+          var isSlot = i < PaletteSlot.values.length;
+          var label = isSlot
+              ? paletteSlotLabel(PaletteSlot.values[i])
+              : "Extra color ${i - PaletteSlot.values.length + 1}";
+          var isExpanded = expandedIndex == i;
+          var color = isExpanded ? (draftColor ?? fullPalette[i]) : fullPalette[i];
 
           return Column(children: [
             ListTile(
-              title: Txt(paletteSlotLabel(slot)),
-              trailing: Container(
-                width: 28,
-                height: 28,
-                decoration: BoxDecoration(
-                  color: color,
-                  border: Border.all(color: Colors.grey),
-                  borderRadius: BorderRadius.circular(4),
+              title: Txt(label),
+              trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                Container(
+                  width: 28,
+                  height: 28,
+                  decoration: BoxDecoration(
+                    color: color,
+                    border: Border.all(color: Colors.grey),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
                 ),
-              ),
+                if (!isSlot)
+                  IconButton(
+                    icon: const Icon(Icons.close, size: 18),
+                    tooltip: "Remove color",
+                    onPressed: () {
+                      var extraIdx = i - PaletteSlot.values.length;
+                      var draft = ensureDraftPreset(theme);
+                      var updatedExtras =
+                          List<Color>.from(draft.extraPaletteColors)
+                            ..removeAt(extraIdx);
+                      setState(() {
+                        if (expandedIndex == i) {
+                          expandedIndex = null;
+                          draftColor = null;
+                        }
+                      });
+                      theme.previewPreset(
+                          draft.copyWith(extraPaletteColors: updatedExtras));
+                    },
+                  ),
+              ]),
               onTap: () => setState(() {
                 if (isExpanded) {
-                  expandedSlot = null;
+                  expandedIndex = null;
                   draftColor = null;
                 } else {
-                  expandedSlot = slot;
-                  draftColor = preset.forSlot(slot);
+                  expandedIndex = i;
+                  draftColor = fullPalette[i];
                 }
               }),
             ),
@@ -381,7 +686,7 @@ class _PaletteSectionState extends State<PaletteSection> {
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Column(children: [
                   ColorPicker(
-                    pickerColor: draftColor ?? preset.forSlot(slot),
+                    pickerColor: draftColor ?? fullPalette[i],
                     enableAlpha: false,
                     hexInputBar: true,
                     onColorChanged: (c) => setState(() => draftColor = c),
@@ -389,17 +694,28 @@ class _PaletteSectionState extends State<PaletteSection> {
                   Row(mainAxisAlignment: MainAxisAlignment.end, children: [
                     TextButton(
                       onPressed: () => setState(() {
-                        expandedSlot = null;
+                        expandedIndex = null;
                         draftColor = null;
                       }),
                       child: const Text("Cancel"),
                     ),
                     TextButton(
                       onPressed: () {
-                        var updated = ensureDraftPreset(theme)
-                            .withSlot(slot, draftColor ?? preset.forSlot(slot));
+                        var draft = ensureDraftPreset(theme);
+                        var chosen = draftColor ?? fullPalette[i];
+                        ThemePreset updated;
+                        if (isSlot) {
+                          updated =
+                              draft.withSlot(PaletteSlot.values[i], chosen);
+                        } else {
+                          var extraIdx = i - PaletteSlot.values.length;
+                          var colors =
+                              List<Color>.from(draft.extraPaletteColors);
+                          colors[extraIdx] = chosen;
+                          updated = draft.copyWith(extraPaletteColors: colors);
+                        }
                         setState(() {
-                          expandedSlot = null;
+                          expandedIndex = null;
                           draftColor = null;
                         });
                         theme.previewPreset(updated);
@@ -410,8 +726,26 @@ class _PaletteSectionState extends State<PaletteSection> {
                 ]),
               ),
           ]);
-        }).toList(),
-      );
+        }),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: OutlinedButton.icon(
+            onPressed: canAddMore
+                ? () {
+                    var draft = ensureDraftPreset(theme);
+                    theme.previewPreset(draft.copyWith(extraPaletteColors: [
+                      ...draft.extraPaletteColors,
+                      Colors.grey,
+                    ]));
+                  }
+                : null,
+            icon: const Icon(Icons.add),
+            label: Text(canAddMore
+                ? "Add Color"
+                : "Maximum of $kMaxPaletteColors colors reached"),
+          ),
+        ),
+      ]);
     });
   }
 }

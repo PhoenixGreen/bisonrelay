@@ -22,7 +22,12 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
 
 class GenerateInviteScreen extends StatefulWidget {
-  const GenerateInviteScreen({super.key});
+  // embedded is true when shown inline as Address Book tab content instead
+  // of pushed as a full-screen route -- skips StartupScreen's Scaffold/
+  // background/About-button chrome, since the embedding page already
+  // provides its own frame.
+  final bool embedded;
+  const GenerateInviteScreen({this.embedded = false, super.key});
 
   @override
   State<GenerateInviteScreen> createState() => _GenerateInviteScreenState();
@@ -291,7 +296,7 @@ class _GenerateInviteScreenState extends State<GenerateInviteScreen> {
               style: TextStyle(fontStyle: FontStyle.italic))),
       const SizedBox(height: 20),
       ElevatedButton(
-          onPressed: () => Navigator.pop(context), child: const Text("Done"))
+          onPressed: () => Navigator.of(context).maybePop(), child: const Text("Done"))
     ];
   }
 
@@ -358,14 +363,14 @@ class _GenerateInviteScreenState extends State<GenerateInviteScreen> {
                         ? generateInvite
                         : null,
                     child: const Text("Generate invite")),
-                CancelButton(onPressed: () => Navigator.pop(context))
+                CancelButton(onPressed: () => Navigator.of(context).maybePop())
               ])),
     ];
   }
 
   @override
   Widget build(BuildContext context) {
-    return StartupScreen(childrenWidth: 600, [
+    var children = [
       generated == null
           ? const Txt.H("Generate Invite")
           : const Txt.H("Generated Invite"),
@@ -373,6 +378,16 @@ class _GenerateInviteScreenState extends State<GenerateInviteScreen> {
       ...(generated == null
           ? buildGeneratePanel(context)
           : buildGeneratedInvite(context)),
-    ]);
+    ];
+
+    if (widget.embedded) {
+      return SingleChildScrollView(
+          child: Container(
+              padding: const EdgeInsets.all(20),
+              alignment: Alignment.topCenter,
+              child: SizedBox(width: 600, child: Column(children: children))));
+    }
+
+    return StartupScreen(childrenWidth: 600, children);
   }
 }

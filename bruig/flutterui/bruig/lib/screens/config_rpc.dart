@@ -4,7 +4,6 @@ import 'package:bruig/components/text.dart';
 import 'package:bruig/config.dart';
 import 'package:bruig/models/newconfig.dart';
 import 'package:bruig/screens/shutdown.dart';
-import 'package:bruig/screens/startupscreen.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -134,7 +133,7 @@ class _RpcConfigScreenState extends State<RpcConfigScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return StartupScreen(childrenWidth: 400, [
+    var children = [
       const Txt.H("Configure RPC Options"),
       const SizedBox(height: 20),
       TextField(
@@ -195,8 +194,14 @@ class _RpcConfigScreenState extends State<RpcConfigScreen> {
         OutlinedButton(
             onPressed: confirmAcceptChanges, child: const Text("Accept")),
         const SizedBox(width: 50),
-        CancelButton(onPressed: () => Navigator.pop(context)),
+        CancelButton(onPressed: () => Navigator.of(context).maybePop()),
       ]),
-    ]);
+    ];
+
+    return SingleChildScrollView(
+        child: Container(
+            padding: const EdgeInsets.all(20),
+            alignment: Alignment.topCenter,
+            child: SizedBox(width: 400, child: Column(children: children))));
   }
 }

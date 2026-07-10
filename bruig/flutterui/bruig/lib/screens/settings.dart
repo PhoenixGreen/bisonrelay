@@ -54,7 +54,7 @@ class SettingsScreenTitle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Consumer<SettingsTitleModel>(
-        builder: (context, settingsTitle, child) => Text(settingsTitle.title));
+        builder: (context, settingsTitle, child) => Txt.L(settingsTitle.title));
   }
 }
 
@@ -531,46 +531,45 @@ class _AppearanceSettingsScreenState extends State<AppearanceSettingsScreen> {
         ListTile(title: Txt.S("Active Theme: ${theme.presetDisplayName}")),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Wrap(spacing: 8, runSpacing: 8, children: [
-            ThemeModeDropdown(theme, mainMenu),
-            OutlinedButton.icon(
-              onPressed: () => savePreset(context, theme, mainMenu),
-              icon: const Icon(Icons.save_outlined),
-              label: const Text("Save"),
-            ),
-            OutlinedButton.icon(
-              onPressed: theme.activePreset != null
-                  ? () => deletePreset(context, theme)
-                  : null,
-              icon: const Icon(Icons.delete_outline),
-              label: const Text("Delete"),
-            ),
-          ]),
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Wrap(spacing: 8, runSpacing: 8, children: [
-            OutlinedButton.icon(
-              onPressed: () => createNewPreset(theme),
-              icon: const Icon(Icons.add_circle_outline),
-              label: const Text("New Preset"),
-            ),
-            OutlinedButton.icon(
-              onPressed: () => importPresetFile(context, theme, mainMenu),
-              icon: const Icon(Icons.file_upload_outlined),
-              label: const Text("Import"),
-            ),
-            OutlinedButton.icon(
-              onPressed: () => exportPresetFile(context, theme),
-              icon: const Icon(Icons.file_download_outlined),
-              label: const Text("Export"),
-            ),
-            OutlinedButton.icon(
-              onPressed: () => resetToDefaultTheme(theme, mainMenu),
-              icon: const Icon(Icons.restart_alt_outlined),
-              label: const Text("Reset to Default"),
-            ),
-          ]),
+          child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                ThemeModeDropdown(theme, mainMenu),
+                OutlinedButton.icon(
+                  onPressed: () => createNewPreset(theme),
+                  icon: const Icon(Icons.add_circle_outline),
+                  label: const Text("New Preset"),
+                ),
+                OutlinedButton.icon(
+                  onPressed: () => importPresetFile(context, theme, mainMenu),
+                  icon: const Icon(Icons.file_upload_outlined),
+                  label: const Text("Import"),
+                ),
+                OutlinedButton.icon(
+                  onPressed: () => exportPresetFile(context, theme),
+                  icon: const Icon(Icons.file_download_outlined),
+                  label: const Text("Export"),
+                ),
+                IconButton(
+                  onPressed: () => resetToDefaultTheme(theme, mainMenu),
+                  icon: const Icon(Icons.restart_alt_outlined),
+                  tooltip: "Reset to Default",
+                ),
+                IconButton(
+                  onPressed: () => savePreset(context, theme, mainMenu),
+                  icon: const Icon(Icons.save_outlined),
+                  tooltip: "Save",
+                ),
+                IconButton(
+                  onPressed: theme.activePreset != null
+                      ? () => deletePreset(context, theme)
+                      : null,
+                  icon: const Icon(Icons.delete_outline),
+                  tooltip: "Delete",
+                ),
+              ]),
         ),
         const Divider(),
         ListTile(
@@ -578,24 +577,30 @@ class _AppearanceSettingsScreenState extends State<AppearanceSettingsScreen> {
           trailing: FontSizeDropdown(theme),
         ),
         const Divider(),
-        ExpansionTile(
-          title: const Txt.S("Color Palette"),
-          initiallyExpanded: false,
-          children: const [PaletteSection()],
+        const SizedBox(height: 8),
+        _SettingsGroupCard(
+          theme: theme,
+          child: const PaletteExpansionTile(),
         ),
-        ExpansionTile(
-          title: const Txt.S("Theme Areas"),
-          initiallyExpanded: false,
-          children: const [
-            Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16),
-                child: AreasSection())
-          ],
+        _SettingsGroupCard(
+          theme: theme,
+          child: ExpansionTile(
+            title: const Txt.S("Theme Areas"),
+            initiallyExpanded: false,
+            children: const [
+              Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16),
+                  child: AreasSection())
+            ],
+          ),
         ),
-        ExpansionTile(
-          title: const Txt.S("Menu"),
-          initiallyExpanded: false,
-          children: const [MenuSection()],
+        _SettingsGroupCard(
+          theme: theme,
+          child: ExpansionTile(
+            title: const Txt.S("Menu"),
+            initiallyExpanded: false,
+            children: const [MenuSection()],
+          ),
         ),
         if (kDebugMode) ...[
           const Divider(),
@@ -614,6 +619,30 @@ class _AppearanceSettingsScreenState extends State<AppearanceSettingsScreen> {
               })
         ]
       ],
+    );
+  }
+}
+
+// _SettingsGroupCard wraps one of the Appearance page's collapsible
+// sections (Color Palette/Theme Areas/Menu) in a visibly distinct card, so
+// they read as separate groups instead of blending into one long list.
+// Uses surfaceContainerHigh explicitly (rather than relying on Card's own
+// default M3 elevation tint) since the active preset's own
+// surfaceContainerLow/Lowest tones are deliberately very subtle -- too
+// close to the page background to read as a separate section on their own.
+class _SettingsGroupCard extends StatelessWidget {
+  final ThemeNotifier theme;
+  final Widget child;
+  const _SettingsGroupCard({required this.theme, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 6),
+      clipBehavior: Clip.antiAlias,
+      color: theme.colors.surfaceContainerHigh,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      child: child,
     );
   }
 }

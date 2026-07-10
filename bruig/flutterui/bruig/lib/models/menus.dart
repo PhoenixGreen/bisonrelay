@@ -14,6 +14,7 @@ import 'package:bruig/models/realtimechat.dart';
 import 'package:bruig/models/resources.dart';
 import 'package:bruig/models/theme_preset.dart';
 import 'package:bruig/models/uploads.dart';
+import 'package:bruig/screens/address_book_screen.dart';
 import 'package:bruig/screens/chat/new_gc_screen.dart';
 import 'package:bruig/screens/chat/new_message_screen.dart';
 import 'package:bruig/screens/chats.dart';
@@ -101,6 +102,13 @@ final List<MainMenuItem> mainMenu = [
       const SidebarSvgIcon("assets/icons/icons-menu-chat.svg"),
       <SubMenuInfo>[],
       area: ThemeArea.chat),
+  MainMenuItem(
+      "Address Book",
+      AddressBookScreen.routeName,
+      (context) => const AddressBookScreen(),
+      (context) => const AddressBookScreenTitle(),
+      const SidebarIcon(Icons.contacts_outlined, false),
+      <SubMenuInfo>[]),
   MainMenuItem(
       "Feed",
       FeedScreen.routeName,

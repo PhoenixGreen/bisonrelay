@@ -710,6 +710,28 @@ enum PaletteSlot {
   accent,
 }
 
+// kMaxPaletteColors caps the *total* palette (10 fixed roles +
+// extraPaletteColors) a preset can carry; kMaxExtraPaletteColors is the
+// remaining room for extras once the 10 fixed roles are accounted for.
+const int kMaxPaletteColors = 20;
+// 20 - 10 fixed PaletteSlot roles.
+const int kMaxExtraPaletteColors = kMaxPaletteColors - 10;
+
+// kVividPaletteSlots are the 5 roles a ColorPalette library entry (see
+// palette_library.dart) actually carries and overwrites when applied --
+// error/surface/onSurface/onAccent/outline are functional/neutral roles
+// that must stay dark-vs-light-theme-appropriate, so a library palette
+// deliberately leaves them alone rather than clobbering them with
+// (possibly brightness-mismatched, e.g. a white surface in a dark theme)
+// baked-in values.
+const List<PaletteSlot> kVividPaletteSlots = [
+  PaletteSlot.primary,
+  PaletteSlot.secondary,
+  PaletteSlot.tertiary,
+  PaletteSlot.success,
+  PaletteSlot.accent,
+];
+
 String paletteSlotLabel(PaletteSlot slot) {
   switch (slot) {
     case PaletteSlot.primary:
@@ -756,6 +778,14 @@ class ThemePreset {
   final Color success;
   final Color accent;
 
+  // extraPaletteColors are user-added swatches beyond the 10 fixed roles
+  // above -- free-form, no fixed semantic meaning, just additional options
+  // offered wherever an area style needs a color picked (see `palette`
+  // below and theme_editor.dart's palette-color dropdowns). Capped at
+  // kMaxExtraPaletteColors (see below) so the total palette never exceeds
+  // kMaxPaletteColors.
+  final List<Color> extraPaletteColors;
+
   final Map<ThemeArea, AreaStyle> areas;
 
   // Menu rename/reorder customization is saved as *part of this preset*
@@ -788,6 +818,7 @@ class ThemePreset {
     required this.outline,
     required this.success,
     required this.accent,
+    this.extraPaletteColors = const [],
     this.areas = const {},
     this.menuLabels,
     this.menuOrder,
@@ -844,10 +875,12 @@ class ThemePreset {
     }
   }
 
-  // palette returns all 10 colors in PaletteSlot order -- this is the set of
-  // colors offered wherever an area style needs a color picked (see
-  // theme_editor.dart's palette-color dropdowns).
-  List<Color> get palette => PaletteSlot.values.map(forSlot).toList();
+  // palette returns the 10 fixed-role colors (in PaletteSlot order) plus
+  // any extraPaletteColors -- this is the full set of colors offered
+  // wherever an area style needs a color picked (see theme_editor.dart's
+  // palette-color dropdowns).
+  List<Color> get palette =>
+      [...PaletteSlot.values.map(forSlot), ...extraPaletteColors];
 
   ThemePreset copyWith({
     String? id,
@@ -863,6 +896,7 @@ class ThemePreset {
     Color? outline,
     Color? success,
     Color? accent,
+    List<Color>? extraPaletteColors,
     Map<ThemeArea, AreaStyle>? areas,
     Map<String, String>? menuLabels,
     List<String>? menuOrder,
@@ -882,6 +916,7 @@ class ThemePreset {
         outline: outline ?? this.outline,
         success: success ?? this.success,
         accent: accent ?? this.accent,
+        extraPaletteColors: extraPaletteColors ?? this.extraPaletteColors,
         areas: areas ?? this.areas,
         menuLabels: menuLabels ?? this.menuLabels,
         menuOrder: menuOrder ?? this.menuOrder,
@@ -971,6 +1006,8 @@ class ThemePreset {
           for (var slot in PaletteSlot.values)
             slot.name: _hex(forSlot(slot)),
         },
+        if (extraPaletteColors.isNotEmpty)
+          "extraPaletteColors": extraPaletteColors.map(_hex).toList(),
         "areas": areas.map((k, v) => MapEntry(k.name, v.toJson())),
         if (menuLabels != null) "menuLabels": menuLabels,
         if (menuOrder != null) "menuOrder": menuOrder,
@@ -989,6 +1026,11 @@ class ThemePreset {
       if (hex != null) preset = preset.withSlot(slot, _fromHex(hex));
     }
     return preset.copyWith(
+      extraPaletteColors: j["extraPaletteColors"] != null
+          ? (j["extraPaletteColors"] as List)
+              .map((h) => _fromHex(h as String))
+              .toList()
+          : const [],
       // Skip any area key that no longer matches a known ThemeArea (e.g.
       // saved by a future/older version of the app) instead of throwing.
       areas: Map.fromEntries((j["areas"] as Map<String, dynamic>? ?? {})

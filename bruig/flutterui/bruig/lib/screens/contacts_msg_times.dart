@@ -11,7 +11,13 @@ import 'package:golib_plugin/golib_plugin.dart';
 class ContactsLastMsgTimesScreen extends StatefulWidget {
   static const routeName = "contactsLastMsgTimes";
   final ClientModel client;
-  const ContactsLastMsgTimesScreen(this.client, {super.key});
+  // embedded is true when shown inline as Address Book tab content instead
+  // of pushed as a full-screen route -- skips StartupScreen's Scaffold/
+  // background/About-button/fab chrome, since the embedding page already
+  // provides its own frame and there's nothing to "pop" back to.
+  final bool embedded;
+  const ContactsLastMsgTimesScreen(this.client,
+      {this.embedded = false, super.key});
 
   @override
   State<ContactsLastMsgTimesScreen> createState() =>
@@ -81,22 +87,29 @@ class _ContactsLastMsgTimesScreenState
   }
 
   void onDone() {
-    Navigator.pop(context);
+    Navigator.of(context).maybePop();
   }
 
   @override
   Widget build(BuildContext context) {
+    var children = [
+      const Txt.H("Last Message Time"),
+      Container(
+          padding: const EdgeInsets.only(right: 12),
+          child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: users.length,
+              itemBuilder: (context, index) => _UserLastMsgTime(
+                  users[index], client.getExistingChat(users[index].uid)!))),
+    ];
+
+    if (widget.embedded) {
+      return SingleChildScrollView(
+          child: Container(padding: const EdgeInsets.all(20), child: Column(children: children)));
+    }
+
     return StartupScreen(
-      [
-        const Txt.H("Last Message Time"),
-        Container(
-            padding: const EdgeInsets.only(right: 12),
-            child: ListView.builder(
-                shrinkWrap: true,
-                itemCount: users.length,
-                itemBuilder: (context, index) => _UserLastMsgTime(
-                    users[index], client.getExistingChat(users[index].uid)!))),
-      ],
+      children,
       fab: FloatingActionButton.small(
           onPressed: onDone, child: const Icon(Icons.done)),
     );
