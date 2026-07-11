@@ -6,11 +6,15 @@ import 'package:bruig/components/pages/forms.dart';
 import 'package:bruig/components/snackbars.dart';
 import 'package:bruig/components/text_dialog.dart';
 import 'package:bruig/components/audio_element.dart';
+import 'package:bruig/components/interactive_avatar.dart';
 import 'package:bruig/models/audio.dart';
+import 'package:bruig/models/client.dart';
 import 'package:bruig/models/downloads.dart';
+import 'package:bruig/models/feed.dart';
 import 'package:bruig/models/payments.dart';
 import 'package:bruig/models/resources.dart';
 import 'package:bruig/models/snackbar.dart';
+import 'package:bruig/screens/feed.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -109,6 +113,17 @@ class EmbedInlineSyntax extends md.InlineSyntax {
       if (p == -1) return;
       parms[element.substring(0, p)] = element.substring(p + 1);
     });
+
+    // Quote embed: a reference to another post (rendered as a nested
+    // card). Only ever produced by the feed's Quote Post action, which is
+    // gated behind AreaStyle.feedCardActions.
+    if (parms["type"] == "quote") {
+      var el = md.Element.text("quote", "");
+      el.attributes["from"] = parms["from"] ?? "";
+      el.attributes["post"] = parms["post"] ?? "";
+      parser.addNode(el);
+      return true;
+    }
 
     // Only accept valid download FIDs.
     var download = parms["download"] ?? "";
@@ -358,6 +373,7 @@ class MarkdownAreaModel extends ChangeNotifier {
     "form": FormElementBuilder(),
     "lnpay": _LNPayURLElementBuilder(),
     "avif": AVIFElementBuilder(),
+    "quote": QuoteMarkdownElementBuilder(),
   };
 
   final List<md.InlineSyntax> inlineSyntaxes = [
@@ -688,6 +704,107 @@ class DownloadLinkElementBuilder extends MarkdownElementBuilder {
     var download = element.attributes["fid"] ?? "";
     var tip = "Click to download file $download";
     return Downloadable(tip, download, Text(element.textContent));
+  }
+}
+
+class QuoteMarkdownElementBuilder extends MarkdownElementBuilder {
+  @override
+  Widget visitElementAfter(md.Element element, TextStyle? preferredStyle) {
+    return _QuotedPostCard(
+      from: element.attributes["from"] ?? "",
+      postId: element.attributes["post"] ?? "",
+    );
+  }
+}
+
+class _QuotedPostCard extends StatefulWidget {
+  final String from;
+  final String postId;
+  const _QuotedPostCard({required this.from, required this.postId});
+  @override
+  State<_QuotedPostCard> createState() => _QuotedPostCardState();
+}
+
+class _QuotedPostCardState extends State<_QuotedPostCard> {
+  bool _requested = false;
+
+  Widget _shell(BuildContext context, Widget child, VoidCallback? onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 8),
+        decoration: BoxDecoration(
+          color: const Color(0xFF141614),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFF2A2E2B)),
+        ),
+        child: child,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final feed = Provider.of<FeedModel>(context);
+    final client = Provider.of<ClientModel>(context, listen: false);
+    final post = feed.getPost(widget.from, widget.postId);
+
+    if (post == null) {
+      if (!_requested && widget.from.isNotEmpty && widget.postId.isNotEmpty) {
+        _requested = true;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          feed.getUserPost(widget.from, widget.postId);
+        });
+      }
+      return _shell(
+        context,
+        const Padding(
+          padding: EdgeInsets.all(12),
+          child: Text("Loading quoted post...",
+              style: TextStyle(fontSize: 13, color: Color(0xFF9AA3A0))),
+        ),
+        null,
+      );
+    }
+
+    var nick = client.getNick(widget.from);
+    if (nick == "") nick = post.summ.authorNick;
+    if (nick == "") nick = widget.from;
+
+    return _shell(
+      context,
+      Padding(
+        padding: const EdgeInsets.all(11),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: UserAvatarFromID(client, widget.from, nick: nick)),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(nick,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFFCED4D2))),
+              ),
+            ]),
+            const SizedBox(height: 6),
+            Provider<DownloadSource>(
+              create: (_) => DownloadSource(widget.from),
+              child: MarkdownArea(post.content, false),
+            ),
+          ],
+        ),
+      ),
+      () => FeedScreen.showPost(context, post),
+    );
   }
 }
 

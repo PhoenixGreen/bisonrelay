@@ -1,13 +1,18 @@
+import 'dart:convert';
+
 import 'package:bruig/components/empty_widget.dart';
 import 'package:bruig/components/interactive_avatar.dart';
+import 'package:bruig/components/pay_tip.dart';
 import 'package:bruig/components/text.dart';
 import 'package:bruig/models/client.dart';
 import 'package:bruig/models/feed.dart';
 import 'package:bruig/models/theme_preset.dart';
 import 'package:bruig/screens/feed/post_content.dart';
+import 'package:bruig/storage_manager.dart';
 import 'package:bruig/theme_manager.dart';
 import 'package:bruig/util.dart';
 import 'package:flutter/material.dart';
+import 'package:golib_plugin/golib_plugin.dart';
 import 'package:provider/provider.dart';
 import 'package:bruig/components/md_elements.dart';
 
@@ -93,6 +98,8 @@ class _FeedPostWState extends State<FeedPostW> {
     if (post.comments.isNotEmpty) _commentCount = post.comments.length;
     _loadCommentCount();
     _loadFullContent();
+    FeedBookmarks.instance.ensureLoaded();
+    FeedHidden.instance.ensureLoaded();
   }
 
   @override
@@ -125,8 +132,11 @@ class _FeedPostWState extends State<FeedPostW> {
     }
 
     var sincePost = formatTerseTime(widget.post.summ.date);
-    var redesign =
-        ThemeNotifier.of(context).areaStyle(ThemeArea.feed).feedCardRedesign;
+    var feedStyle = ThemeNotifier.of(context).areaStyle(ThemeArea.feed);
+    var redesign = feedStyle.feedCardRedesign;
+    var cardActions = feedStyle.feedCardActions;
+    var bookmarks = feedStyle.feedBookmarks;
+    var hidePosts = feedStyle.feedHidePosts;
 
     if (!redesign) {
       var markdownData = widget.post.summ.title;
@@ -215,6 +225,63 @@ class _FeedPostWState extends State<FeedPostW> {
                     Text("· $sincePost",
                         style: const TextStyle(
                             fontSize: 12.5, color: Color(0xFF5F6764))),
+                    const Spacer(),
+                    if (bookmarks || hidePosts)
+                      ListenableBuilder(
+                        listenable: FeedHidden.instance,
+                        builder: (context, _) {
+                          final hidden = FeedHidden.instance.contains(
+                              widget.post.summ.from, widget.post.summ.id);
+                          return SizedBox(
+                            height: 22,
+                            width: 28,
+                            child: PopupMenuButton<String>(
+                              tooltip: "More",
+                              padding: EdgeInsets.zero,
+                              iconSize: 18,
+                              position: PopupMenuPosition.under,
+                              color: const Color(0xFF15171A),
+                              icon: const Icon(Icons.more_horiz,
+                                  color: Color(0xFF5F6764)),
+                              onSelected: (v) {
+                                if (v == "hide") {
+                                  FeedHidden.instance.toggle(
+                                      widget.post.summ.from,
+                                      widget.post.summ.id);
+                                } else if (v == "bookmark") {
+                                  FeedBookmarks.instance.toggle(
+                                      widget.post.summ.from,
+                                      widget.post.summ.id);
+                                }
+                              },
+                              itemBuilder: (context) => [
+                                if (bookmarks)
+                                  PopupMenuItem(
+                                    value: "bookmark",
+                                    child: Text(
+                                        FeedBookmarks.instance.contains(
+                                                widget.post.summ.from,
+                                                widget.post.summ.id)
+                                            ? "Remove bookmark"
+                                            : "Bookmark",
+                                        style: const TextStyle(
+                                            fontSize: 13,
+                                            color: Color(0xFFF2F4F3))),
+                                  ),
+                                if (hidePosts)
+                                  PopupMenuItem(
+                                    value: "hide",
+                                    child: Text(
+                                        hidden ? "Unhide post" : "Hide post",
+                                        style: const TextStyle(
+                                            fontSize: 13,
+                                            color: Color(0xFFF2F4F3))),
+                                  ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
                   ]),
                   const SizedBox(height: 6),
                   _ClampedContent(
@@ -251,6 +318,86 @@ class _FeedPostWState extends State<FeedPostW> {
                               color: Color(0xFF4D9FFF),
                               fontWeight: FontWeight.w500)),
                     ],
+                    const Spacer(),
+                    if (cardActions) ...[
+                      Tooltip(
+                        message: "Relay to your subscribers",
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () => Golib.relayPostToAll(
+                              widget.post.summ.from, widget.post.summ.id),
+                          child: const Padding(
+                            padding: EdgeInsets.symmetric(
+                                horizontal: 4, vertical: 2),
+                            child: Icon(Icons.cached,
+                                size: 18, color: Color(0xFF5F6764)),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      if (!mine)
+                        Tooltip(
+                          message: "Tip the author",
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: () {
+                              final c =
+                                  widget.client.getExistingChat(authorID);
+                              if (c != null) showPayTipModalBottom(context, c);
+                            },
+                            child: const Padding(
+                              padding: EdgeInsets.symmetric(
+                                  horizontal: 4, vertical: 2),
+                              child: Icon(Icons.bolt,
+                                  size: 18, color: Color(0xFF4D9FFF)),
+                            ),
+                          ),
+                        ),
+                      if (!mine) const SizedBox(width: 4),
+                      Tooltip(
+                        message: "Quote post",
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () {
+                            widget.feed.newPost.content =
+                                "\n\n--embed[type=quote,from=${widget.post.summ.authorID},post=${widget.post.summ.id}]--\n";
+                            widget.onTabChange(3, null);
+                          },
+                          child: const Padding(
+                            padding: EdgeInsets.symmetric(
+                                horizontal: 4, vertical: 2),
+                            child: Icon(Icons.repeat,
+                                size: 18, color: Color(0xFF5F6764)),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                    ],
+                    if (bookmarks)
+                      ListenableBuilder(
+                        listenable: FeedBookmarks.instance,
+                        builder: (context, _) {
+                          final marked = FeedBookmarks.instance.contains(
+                              widget.post.summ.from, widget.post.summ.id);
+                          return GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: () => FeedBookmarks.instance.toggle(
+                                widget.post.summ.from, widget.post.summ.id),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 4, vertical: 2),
+                              child: Icon(
+                                  marked
+                                      ? Icons.bookmark
+                                      : Icons.bookmark_border,
+                                  size: 18,
+                                  color: marked
+                                      ? const Color(0xFF4D9FFF)
+                                      : const Color(0xFF5F6764)),
+                            ),
+                          );
+                        },
+                      ),
                   ]),
                 ]),
           ),
@@ -406,5 +553,90 @@ class _ClampedContentState extends State<_ClampedContent> {
         ),
       ),
     ]);
+  }
+}
+
+// Local-only bookmarks for feed posts, gated by AreaStyle.feedBookmarks.
+// Persisted to device storage as a JSON list of "from\tid" keys.
+// Self-contained singleton so it needs no provider wiring. Bookmarks do not
+// sync across devices (BR has no sync layer).
+class FeedBookmarks extends ChangeNotifier {
+  FeedBookmarks._();
+  static final FeedBookmarks instance = FeedBookmarks._();
+  static const String _storeKey = "feedBookmarks";
+
+  final Set<String> _ids = {};
+  bool _loaded = false;
+
+  String _k(String from, String id) => "$from\t$id";
+
+  Future<void> ensureLoaded() async {
+    if (_loaded) return;
+    _loaded = true;
+    try {
+      final raw = await StorageManager.readString(_storeKey, defaultVal: "");
+      if (raw.isNotEmpty) {
+        final list = (jsonDecode(raw) as List).cast<String>();
+        _ids.addAll(list);
+        notifyListeners();
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _persist() async {
+    try {
+      await StorageManager.saveString(_storeKey, jsonEncode(_ids.toList()));
+    } catch (_) {}
+  }
+
+  int get count => _ids.length;
+  bool contains(String from, String id) => _ids.contains(_k(from, id));
+
+  Future<void> toggle(String from, String id) async {
+    final k = _k(from, id);
+    if (!_ids.remove(k)) _ids.add(k);
+    notifyListeners();
+    await _persist();
+  }
+}
+
+// Local-only hidden/muted posts, gated by AreaStyle.feedHidePosts. Same
+// storage pattern as bookmarks.
+class FeedHidden extends ChangeNotifier {
+  FeedHidden._();
+  static final FeedHidden instance = FeedHidden._();
+  static const String _storeKey = "feedHidden";
+
+  final Set<String> _ids = {};
+  bool _loaded = false;
+
+  String _k(String from, String id) => "$from\t$id";
+
+  Future<void> ensureLoaded() async {
+    if (_loaded) return;
+    _loaded = true;
+    try {
+      final raw = await StorageManager.readString(_storeKey, defaultVal: "");
+      if (raw.isNotEmpty) {
+        _ids.addAll((jsonDecode(raw) as List).cast<String>());
+        notifyListeners();
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _persist() async {
+    try {
+      await StorageManager.saveString(_storeKey, jsonEncode(_ids.toList()));
+    } catch (_) {}
+  }
+
+  int get count => _ids.length;
+  bool contains(String from, String id) => _ids.contains(_k(from, id));
+
+  Future<void> toggle(String from, String id) async {
+    final k = _k(from, id);
+    if (!_ids.remove(k)) _ids.add(k);
+    notifyListeners();
+    await _persist();
   }
 }
