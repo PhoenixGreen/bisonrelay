@@ -211,8 +211,61 @@ class ChatModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  ChatModel(this.id, this._nick, this.isGC);
+  ChatModel(this.id, this._nick, this.isGC) {
+    _loadPin();
+  }
   factory ChatModel.empty() => ChatModel("", "", false);
+
+  // Locally pinned message (persists via StorageManager, keyed by chat id).
+  // Gated behind AreaStyle.enableMessageActions in the chat UI.
+  String? _pinnedMsg;
+  String? _pinnedNick;
+  String? get pinnedMsg => _pinnedMsg;
+  String? get pinnedNick => _pinnedNick;
+
+  Future<void> _loadPin() async {
+    final m = await StorageManager.readData('pinnedmsg_$id') as String?;
+    final n = await StorageManager.readData('pinnednick_$id') as String?;
+    if (m != null && m.isNotEmpty) {
+      _pinnedMsg = m;
+      _pinnedNick = n;
+      notifyListeners();
+    }
+  }
+
+  void setPin(String nick, String msg) {
+    _pinnedMsg = msg;
+    _pinnedNick = nick;
+    StorageManager.saveData('pinnedmsg_$id', msg);
+    StorageManager.saveData('pinnednick_$id', nick);
+    notifyListeners();
+  }
+
+  void clearPin() {
+    _pinnedMsg = null;
+    _pinnedNick = null;
+    StorageManager.saveData('pinnedmsg_$id', '');
+    StorageManager.saveData('pinnednick_$id', '');
+    notifyListeners();
+  }
+
+  // Pending reply target (quoted message); null when not replying. Gated
+  // behind AreaStyle.enableMessageActions in the chat UI.
+  String? _replyToNick;
+  String? _replyToMsg;
+  String? get replyToNick => _replyToNick;
+  String? get replyToMsg => _replyToMsg;
+  void setReplyTo(String nick, String msg) {
+    _replyToNick = nick;
+    _replyToMsg = msg;
+    notifyListeners();
+  }
+
+  void clearReplyTo() {
+    _replyToNick = null;
+    _replyToMsg = null;
+    notifyListeners();
+  }
 
   bool isSubscribed = false;
 

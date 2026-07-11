@@ -3,10 +3,31 @@ import 'package:bruig/components/gc_context_menu.dart';
 import 'package:bruig/components/text.dart';
 import 'package:bruig/components/user_context_menu.dart';
 import 'package:bruig/models/client.dart';
+import 'package:bruig/models/theme_preset.dart';
 import 'package:bruig/util.dart';
 import 'package:flutter/material.dart';
 import 'package:bruig/theme_manager.dart';
 import 'package:provider/provider.dart';
+
+// graphiteFromNick deterministically maps a nick to one of a small set of
+// neutral gray shades, used as the avatar fallback color when the chat
+// area's monochromeAvatars toggle is on (see AreaStyle.monochromeAvatars).
+const List<Color> _graphitePalette = [
+  Color(0xFF363B3A),
+  Color(0xFF3A4048),
+  Color(0xFF40433F),
+  Color(0xFF383F44),
+  Color(0xFF44423F),
+  Color(0xFF3C4441),
+];
+
+Color graphiteFromNick(String nick) {
+  var h = 0;
+  for (final c in nick.codeUnits) {
+    h = (h * 31 + c) & 0x7fffffff;
+  }
+  return _graphitePalette[h % _graphitePalette.length];
+}
 
 class InteractiveAvatar extends StatelessWidget {
   const InteractiveAvatar(
@@ -29,7 +50,9 @@ class InteractiveAvatar extends StatelessWidget {
   Widget build(BuildContext context) {
     var nickInitial = chatNick.isNotEmpty ? chatNick[0].toUpperCase() : "?";
     return Consumer<ThemeNotifier>(builder: (context, theme, _) {
-      var avatarColor = colorFromNick(chatNick, theme.brightness);
+      var avatarColor = theme.areaStyle(ThemeArea.chat).monochromeAvatars
+          ? graphiteFromNick(chatNick)
+          : colorFromNick(chatNick, theme.brightness);
       var avatarTextTs =
           ThemeData.estimateBrightnessForColor(avatarColor) == Brightness.dark
               ? (radius != null && radius! >= 100)

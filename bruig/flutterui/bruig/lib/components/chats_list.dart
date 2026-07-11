@@ -4,6 +4,7 @@ import 'package:bruig/components/containers.dart';
 import 'package:bruig/components/text.dart';
 import 'package:bruig/models/client.dart';
 import 'package:bruig/models/realtimechat.dart';
+import 'package:bruig/models/theme_preset.dart';
 import 'package:bruig/models/uistate.dart';
 import 'package:bruig/screens/chat/new_gc_screen.dart';
 import 'package:bruig/screens/chat/new_message_screen.dart';
@@ -17,7 +18,14 @@ import 'package:bruig/components/gc_context_menu.dart';
 import 'package:bruig/components/chat/types.dart';
 import 'package:bruig/theme_manager.dart';
 import 'package:golib_plugin/golib_plugin.dart';
+import 'package:golib_plugin/definitions.dart';
 import 'package:file_picker/file_picker.dart';
+
+// --- Chat list preview redesign tokens (AreaStyle.showChatListPreviews). ---
+const _clpBlue = Color(0xFF4D9FFF); // you / unread / search
+const _clpNickColor = Color(0xFFE6EAE8);
+const _clpPreviewMuted = Color(0xFF9AA3A0);
+const _clpPreviewBright = Color(0xFFCED4D2);
 
 class _ChatHeadingW extends StatefulWidget {
   final ChatModel chat;
@@ -64,8 +72,164 @@ class _ChatHeadingWState extends State<_ChatHeadingW> {
     super.dispose();
   }
 
+  // Replace --embed[...]-- markers with a clean label based on their type,
+  // so previews show "Audio note" / "Image" instead of raw embed markup.
+  String _cleanEmbeds(String src) {
+    return src.replaceAllMapped(RegExp(r'--embed\[(.*?)\]--'), (m) {
+      final attrs = m.group(1) ?? '';
+      final type =
+          RegExp(r'type=([^,\]]+)').firstMatch(attrs)?.group(1) ?? '';
+      if (type.startsWith('image/')) return 'Image';
+      if (type.startsWith('audio/')) return 'Audio note';
+      if (type.startsWith('video/')) return 'Video';
+      return 'File';
+    });
+  }
+
+  // Reduce markdown to plain text for the one-line preview: drop blockquote
+  // markers, bold/italic/strike/code punctuation, link syntax and headers.
+  String _stripMarkdown(String src) {
+    var s = src;
+    s = s.replaceAll(RegExp(r'^\s*>+\s?', multiLine: true), '');
+    s = s.replaceAllMapped(
+        RegExp(r'\[([^\]]*)\]\([^)]*\)'), (m) => m.group(1) ?? '');
+    s = s.replaceAll(RegExp(r'^\s*#{1,6}\s*', multiLine: true), '');
+    s = s.replaceAll(RegExp(r'[*_~`]'), '');
+    return s;
+  }
+
+  // Cheap last-message preview: first loaded message event's text. Blank
+  // for chats whose history isn't loaded this session. Prefix "You: " for
+  // your own messages; in group chats, prefix the sender's nick.
+  String? _lastMsgPreview() {
+    final draft = chat.workingMsg.trim();
+    if (draft.isNotEmpty) return "Draft: ${draft.replaceAll('\n', ' ')}";
+    for (final e in chat.msgs) {
+      if (e.isMessage) {
+        final t = _stripMarkdown(_cleanEmbeds(e.event.msg))
+            .replaceAll(RegExp(r'\s+'), ' ')
+            .trim();
+        if (t.isEmpty) continue;
+        if (e.source == null) return "You: $t";
+        if (chat.isGC) {
+          final who = e.source!.nick;
+          if (who.isNotEmpty) return "$who: $t";
+        }
+        return t;
+      }
+    }
+    return null;
+  }
+
+  // Relative time of the last loaded message: HH:MM if today, else 3d / 2w
+  // / date.
+  String _lastMsgTime() {
+    for (final e in chat.msgs) {
+      if (!e.isMessage) continue;
+      if (e.event.msg.trim().isEmpty) continue;
+      final ev = e.event;
+      int raw;
+      if (ev is PM) {
+        raw = ev.timestamp;
+      } else if (ev is GCMsg) {
+        raw = ev.timestamp;
+      } else {
+        continue;
+      }
+      final ms = e.source?.nick == null ? raw : raw * 1000;
+      final dt = DateTime.fromMillisecondsSinceEpoch(ms);
+      final diff = DateTime.now().difference(dt);
+      if (diff.inHours < 24) {
+        return "${dt.hour.toString().padLeft(2, '0')}:"
+            "${dt.minute.toString().padLeft(2, '0')}";
+      }
+      final days = diff.inDays;
+      if (days < 7) return "${days}d";
+      if (days < 28) return "${(days / 7).floor()}w";
+      return "${dt.month}/${dt.day}";
+    }
+    return "";
+  }
+
+  // Rounded card w/ soft glow (inactive) or a blue selected-left-edge +
+  // glow (active). Only used when showChatListPreviews is on -- otherwise
+  // the tile keeps its plain ListTile selected/tileColor styling.
+  Widget _wrapSelected(bool isActive, Widget tile) {
+    const radius = 14.0;
+    // ListTile.tileColor/selectedTileColor need a nearby Material ancestor
+    // to paint into and to render ink splashes -- the ClipRRect below
+    // otherwise leaves them without one. MaterialType.transparency paints
+    // nothing itself, so the surrounding Container's decoration still
+    // shows through.
+    tile = Material(type: MaterialType.transparency, child: tile);
+    if (!isActive) {
+      return Container(
+        margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(radius),
+          gradient: const RadialGradient(
+            center: Alignment(-0.76, -1.2),
+            radius: 1.2,
+            colors: [Color(0xFF242424), Color(0xFF0E0E0E)],
+            stops: [0.0, 0.52],
+          ),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(radius),
+          child: Stack(
+            children: [
+              tile,
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: IgnorePointer(
+                  child:
+                      Container(height: 1, color: const Color(0xFF2E2E2E)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: _clpBlue.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(radius),
+        boxShadow: [
+          BoxShadow(
+            color: _clpBlue.withValues(alpha: 0.15),
+            blurRadius: 10,
+            spreadRadius: 0,
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.only(left: 3),
+        child: ClipRRect(
+          borderRadius: const BorderRadius.horizontal(
+            left: Radius.circular(radius - 3),
+            right: Radius.circular(radius),
+          ),
+          child: Container(
+            color: const Color(0xFF0B0F16),
+            child: tile,
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    var showPreviews = ThemeNotifier.of(context)
+        .areaStyle(ThemeArea.chat)
+        .showChatListPreviews;
+    var isActive = chat.active;
+    var hasUnread = chat.unreadMsgCount > 0 || chat.unreadEventCount > 0;
+
     // Show 1k+ if unread cound goes about 1000
     var unreadCount = chat.unreadMsgCount > 1000 ? "1k+" : chat.unreadMsgCount;
 
@@ -74,13 +238,27 @@ class _ChatHeadingWState extends State<_ChatHeadingW> {
       // Show unread message count.
       unreadIndicator = Container(
         margin: const EdgeInsets.all(1),
-        child: CircleAvatar(radius: 10, child: Txt.S("$unreadCount")),
+        child: CircleAvatar(
+          radius: 10,
+          backgroundColor: showPreviews ? _clpBlue : null,
+          child: Text(
+            "$unreadCount",
+            style: showPreviews
+                ? const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF07101D),
+                  )
+                : null,
+          ),
+        ),
       );
     } else if (chat.unreadEventCount > 0) {
       // Show only a dot indicator.
       unreadIndicator = Container(
         margin: const EdgeInsets.all(1),
-        child: const CircleAvatar(radius: 3),
+        child: CircleAvatar(
+            radius: 3, backgroundColor: showPreviews ? _clpBlue : null),
       );
     } else {
       // Show nothing.
@@ -89,6 +267,7 @@ class _ChatHeadingWState extends State<_ChatHeadingW> {
 
     var popMenuButton = InteractiveAvatar(
       chatNick: chat.nick,
+      radius: showPreviews ? 23 : null,
       onTap: () {
         widget.makeActive(chat);
         widget.showSubMenu();
@@ -96,6 +275,74 @@ class _ChatHeadingWState extends State<_ChatHeadingW> {
       avatar: chat.avatar.image,
       toolTip: true,
     );
+
+    Widget titleWidget = showPreviews
+        ? Text(
+            chat.nick,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: hasUnread
+                  ? FontWeight.w700
+                  : (isActive ? FontWeight.w600 : FontWeight.w500),
+              color: isActive ? _clpBlue : _clpNickColor,
+            ),
+          )
+        : Txt(
+            chat.nick,
+            overflow: TextOverflow.ellipsis,
+            color: TextColor.onSurfaceVariant,
+          );
+
+    Widget? subtitleWidget;
+    if (showPreviews) {
+      final preview = _lastMsgPreview();
+      if (preview != null) {
+        subtitleWidget = Padding(
+          padding: const EdgeInsets.only(top: 3),
+          child: Text(
+            preview,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 13.5,
+              height: 1.25,
+              color: hasUnread ? _clpPreviewBright : _clpPreviewMuted,
+              fontWeight: hasUnread ? FontWeight.w500 : FontWeight.w400,
+            ),
+          ),
+        );
+      }
+    }
+
+    Widget trailingWith(Widget bottom) {
+      if (!showPreviews) return bottom;
+      final timeStr = _lastMsgTime();
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          if (timeStr.isNotEmpty) ...[
+            Text(
+              timeStr,
+              style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w500,
+                color: hasUnread ? _clpBlue : const Color(0xFF5F6764),
+              ),
+            ),
+            const SizedBox(height: 6),
+          ],
+          bottom,
+        ],
+      );
+    }
+
+    Widget wrap(Widget tile) =>
+        showPreviews ? _wrapSelected(isActive, tile) : tile;
+
     bool isScreenSmall = checkIsScreenSmall(context);
     return Consumer<ThemeNotifier>(
       builder: (context, theme, _) => Container(
@@ -108,55 +355,62 @@ class _ChatHeadingWState extends State<_ChatHeadingW> {
                       }
                     : null,
                 targetGcChat: chat,
-                child: ListTile(
-                  horizontalTitleGap: 12,
-                  contentPadding: const EdgeInsets.only(
-                    left: 10,
-                    right: 8,
+                child: wrap(
+                  ListTile(
+                    tileColor: showPreviews ? Colors.transparent : null,
+                    selectedTileColor:
+                        showPreviews ? Colors.transparent : null,
+                    horizontalTitleGap: 12,
+                    contentPadding: const EdgeInsets.only(
+                      left: 10,
+                      right: 8,
+                    ),
+                    minVerticalPadding: showPreviews ? 20 : 4,
+                    enabled: true,
+                    title: titleWidget,
+                    subtitle: subtitleWidget,
+                    leading: popMenuButton,
+                    trailing: trailingWith(Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          "gc",
+                          style: theme.extraTextStyles.chatListGcIndicator,
+                        ),
+                        const SizedBox(width: 5),
+                        unreadIndicator,
+                      ],
+                    )),
+                    selected: chat.active,
+                    onTap: () => widget.makeActive(chat),
                   ),
-                  enabled: true,
-                  title: Txt(
-                    chat.nick,
-                    overflow: TextOverflow.ellipsis,
-                    color: TextColor.onSurfaceVariant,
-                  ),
-                  leading: popMenuButton,
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        "gc",
-                        style: theme.extraTextStyles.chatListGcIndicator,
-                      ),
-                      const SizedBox(width: 5),
-                      unreadIndicator,
-                    ],
-                  ),
-                  selected: chat.active,
-                  onTap: () => widget.makeActive(chat),
                 ),
               )
             : UserContextMenu(
                 client: client,
                 targetUserChat: chat,
-                child: ListTile(
-                  tileColor: isActiveRTC ? Colors.green.shade600 : null,
-                  selectedTileColor: isActiveRTC ? Colors.green.shade600 : null,
-                  horizontalTitleGap: 12,
-                  contentPadding: const EdgeInsets.only(
-                    left: 10,
-                    right: 8,
+                child: wrap(
+                  ListTile(
+                    tileColor: isActiveRTC
+                        ? Colors.green.shade600
+                        : (showPreviews ? Colors.transparent : null),
+                    selectedTileColor: isActiveRTC
+                        ? Colors.green.shade600
+                        : (showPreviews ? Colors.transparent : null),
+                    horizontalTitleGap: 12,
+                    contentPadding: const EdgeInsets.only(
+                      left: 10,
+                      right: 8,
+                    ),
+                    minVerticalPadding: showPreviews ? 20 : 4,
+                    enabled: true,
+                    title: titleWidget,
+                    subtitle: subtitleWidget,
+                    leading: popMenuButton,
+                    trailing: trailingWith(unreadIndicator),
+                    selected: chat.active,
+                    onTap: () => widget.makeActive(chat),
                   ),
-                  enabled: true,
-                  title: Txt(
-                    chat.nick,
-                    overflow: TextOverflow.ellipsis,
-                    color: TextColor.onSurfaceVariant,
-                  ),
-                  leading: popMenuButton,
-                  trailing: unreadIndicator,
-                  selected: chat.active,
-                  onTap: () => widget.makeActive(chat),
                 ),
               ),
       ),

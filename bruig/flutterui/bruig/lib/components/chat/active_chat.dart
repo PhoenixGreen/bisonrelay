@@ -15,6 +15,7 @@ import 'package:bruig/models/uistate.dart';
 import 'package:bruig/screens/chats.dart';
 import 'package:bruig/models/client.dart';
 import 'package:bruig/storage_manager.dart';
+import 'package:bruig/models/theme_preset.dart';
 import 'package:bruig/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:bruig/components/profile.dart';
@@ -212,6 +213,72 @@ class _ActiveChatState extends State<ActiveChat> with RouteAware {
     super.dispose();
   }
 
+  // _pinnedBar renders the pinned-message bar above the conversation, when
+  // AreaStyle.enableMessageActions is on and a message is pinned.
+  Widget _pinnedBar(ChatModel chat) {
+    return AnimatedBuilder(
+      animation: chat,
+      builder: (context, _) {
+        final msg = chat.pinnedMsg;
+        if (msg == null || msg.isEmpty) return const SizedBox.shrink();
+        var preview = msg.replaceAll(RegExp(r'\s+'), ' ').trim();
+        if (preview.contains('--embed[')) preview = '[attachment]';
+        final nick = chat.pinnedNick ?? '';
+        return Container(
+          margin: const EdgeInsets.only(bottom: 5),
+          decoration: const BoxDecoration(
+            color: Color(0xFF141414),
+            border: Border(
+              left: BorderSide(color: Color(0xFF2C6BED), width: 3),
+              bottom: BorderSide(color: Color(0xFF1C1C1C), width: 1),
+            ),
+          ),
+          padding: const EdgeInsets.fromLTRB(11, 8, 8, 8),
+          child: Row(children: [
+            const Icon(Icons.push_pin_outlined,
+                color: Color(0xFF2C6BED), size: 17),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text("Pinned message",
+                      style: TextStyle(
+                          color: Color(0xFF5B8FE8),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500)),
+                  const SizedBox(height: 1),
+                  Text.rich(
+                    TextSpan(children: [
+                      if (nick.isNotEmpty)
+                        TextSpan(
+                            text: "$nick: ",
+                            style: const TextStyle(color: Color(0xFFA9C56C))),
+                      TextSpan(text: preview),
+                    ]),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        color: Color(0xFFCED4D2), fontSize: 13),
+                  ),
+                ],
+              ),
+            ),
+            IconButton(
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+              iconSize: 17,
+              tooltip: "Unpin",
+              onPressed: chat.clearPin,
+              icon: const Icon(Icons.close, color: Color(0xFF6B6B6B)),
+            ),
+          ]),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (this.chat == null) return Container();
@@ -243,6 +310,10 @@ class _ActiveChatState extends State<ActiveChat> with RouteAware {
                   child:
                       RTCSessionHeader(rtc, rtcSession!, widget.audio, client),
                 ),
+              if (ThemeNotifier.of(context)
+                  .areaStyle(ThemeArea.chat)
+                  .enableMessageActions)
+                _pinnedBar(chat),
               Expanded(
                 child: Stack(children: [
                   Messages(chat, client, _itemScrollController,

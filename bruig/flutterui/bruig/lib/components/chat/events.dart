@@ -29,6 +29,7 @@ import 'package:open_filex/open_filex.dart';
 import 'package:file_icon/file_icon.dart';
 import 'package:bruig/components/interactive_avatar.dart';
 import 'package:bruig/components/user_context_menu.dart';
+import 'package:bruig/models/theme_preset.dart';
 import 'package:bruig/theme_manager.dart';
 import 'package:path/path.dart' as path;
 
@@ -166,9 +167,44 @@ class _ReceivedSentPMState extends State<ReceivedSentPM> {
     showSuccessSnackbar(context, "Copied \"$textMsg\" to clipboard");
   }
 
+  // _showMsgMenu is the enhanced Copy/Reply/Pin popup shown when
+  // AreaStyle.enableMessageActions is on for ThemeArea.chat.
+  void _showMsgMenu(Offset pos, String msg, String fullDate, String nick,
+      String toCopy) async {
+    final overlay =
+        Overlay.of(context).context.findRenderObject() as RenderBox;
+    final local = overlay.globalToLocal(pos);
+    final selected = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromRect(
+        Rect.fromLTWH(local.dx, local.dy, 0, 0),
+        Offset.zero & overlay.size,
+      ),
+      items: const [
+        PopupMenuItem<String>(value: 'reply', child: Text('Reply')),
+        PopupMenuItem<String>(value: 'pin', child: Text('Pin')),
+        PopupMenuItem<String>(value: 'copy', child: Text('Copy')),
+      ],
+    );
+    if (!mounted) return;
+    if (selected == 'reply') {
+      widget.chat.setReplyTo(nick, msg);
+    } else if (selected == 'pin') {
+      widget.chat.setPin(nick, msg);
+    } else if (selected == 'copy') {
+      copy(context, toCopy);
+    }
+  }
+
   void messageSecondaryTapContext(
       TapDownDetails details, String msg, String fullDate, String nick) {
     var toCopy = "$fullDate $nick - $msg";
+    if (ThemeNotifier.of(context, listen: false)
+        .areaStyle(ThemeArea.chat)
+        .enableMessageActions) {
+      _showMsgMenu(details.globalPosition, msg, fullDate, nick, toCopy);
+      return;
+    }
     _contextMenuController.show(
       context: context,
       contextMenuBuilder: (context) {
@@ -195,6 +231,12 @@ class _ReceivedSentPMState extends State<ReceivedSentPM> {
   void messageLongDownContext(
       LongPressDownDetails details, String msg, String fullDate, String nick) {
     var toCopy = "$fullDate $nick - $msg";
+    if (ThemeNotifier.of(context, listen: false)
+        .areaStyle(ThemeArea.chat)
+        .enableMessageActions) {
+      _showMsgMenu(details.globalPosition, msg, fullDate, nick, toCopy);
+      return;
+    }
     _contextMenuController.show(
       context: context,
       contextMenuBuilder: (context) {
