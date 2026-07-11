@@ -10,16 +10,17 @@ import 'package:bruig/components/text.dart';
 import 'package:bruig/models/client.dart';
 import 'package:bruig/models/feed.dart';
 import 'package:bruig/models/snackbar.dart';
+import 'package:bruig/models/theme_preset.dart';
 import 'package:bruig/models/uistate.dart';
 import 'package:bruig/screens/overview.dart';
 import 'package:bruig/screens/chats.dart';
+import 'package:bruig/theme_manager.dart';
 import 'package:bruig/util.dart';
 import 'package:flutter/material.dart';
 import 'package:golib_plugin/golib_plugin.dart';
 import 'package:golib_plugin/definitions.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:bruig/theme_manager.dart';
 import 'package:bruig/models/emoji.dart';
 
 class PostContentScreenArgs {
@@ -791,13 +792,10 @@ class _PostContentScreenForArgsState extends State<_PostContentScreenForArgs> {
     }
 
     bool isScreenSmall = checkIsScreenSmall(context);
-    return Align(
-        alignment: Alignment.topLeft,
-        child: Stack(alignment: Alignment.topLeft, children: [
-          SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 10),
-              child:
-                  Column(mainAxisAlignment: MainAxisAlignment.start, children: [
+    bool feedCardRedesign =
+        ThemeNotifier.of(context).areaStyle(ThemeArea.feed).feedCardRedesign;
+
+    Widget postAreaColumn = Column(mainAxisAlignment: MainAxisAlignment.start, children: [
                 const SizedBox(height: 10),
 
                 // Post Area
@@ -805,10 +803,15 @@ class _PostContentScreenForArgsState extends State<_PostContentScreenForArgs> {
                     margin: isScreenSmall
                         ? const EdgeInsets.only(
                             left: 19, right: 10, top: 0, bottom: 0)
-                        : const EdgeInsets.only(
-                            left: 50, right: 50, top: 0, bottom: 0),
+                        : EdgeInsets.only(
+                            left: feedCardRedesign ? 0 : 50,
+                            right: feedCardRedesign ? 0 : 50,
+                            top: 0,
+                            bottom: 0),
                     borderRadius: BorderRadius.circular(3),
-                    color: SurfaceColor.secondaryContainer,
+                    color: feedCardRedesign
+                        ? SurfaceColor.surface
+                        : SurfaceColor.secondaryContainer,
                     padding: const EdgeInsets.all(16),
                     child: Column(
                       children: [
@@ -887,7 +890,20 @@ class _PostContentScreenForArgsState extends State<_PostContentScreenForArgs> {
                 // Comments section
                 ...commentsWidgets,
                 ...receiveReceiptsWidgets,
-              ])),
+              ]);
+
+    return Align(
+        alignment: Alignment.topLeft,
+        child: Stack(alignment: Alignment.topLeft, children: [
+          SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              child: feedCardRedesign
+                  ? Center(
+                      child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 780),
+                          child: postAreaColumn),
+                    )
+                  : postAreaColumn),
 
           // Back button on desktop.
           if (!isScreenSmall)
