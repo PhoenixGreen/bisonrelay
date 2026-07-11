@@ -18,6 +18,7 @@ import 'package:bruig/storage_manager.dart';
 import 'package:bruig/models/theme_preset.dart';
 import 'package:bruig/theme_manager.dart';
 import 'package:flutter/material.dart';
+import 'package:golib_plugin/definitions.dart';
 import 'package:bruig/components/profile.dart';
 import 'package:bruig/components/chat/messages.dart';
 import 'package:provider/provider.dart';
@@ -48,9 +49,42 @@ class _ActiveChatState extends State<ActiveChat> with RouteAware {
   late ItemPositionsListener _itemPositionsListener;
   Timer? _debounce;
 
+  // --- Per-chat local search state (opened from the chat header), only
+  // meaningful when AreaStyle.enableChatSearch is on. ---
+  final TextEditingController _searchCtrl = TextEditingController();
+  String _searchQuery = "";
+  bool get _searchOpen => ui.chatSearch.val;
+
+  // Reacts to the header Search button toggling ui.chatSearch.
+  void _onSearchFlagChanged() {
+    if (!mounted) return;
+    if (!ui.chatSearch.val) {
+      _searchQuery = "";
+      _searchCtrl.clear();
+    }
+    setState(() {});
+  }
+
+  void _closeSearch() => ui.chatSearch.val = false;
+
+  // Scroll the conversation to the message at the given index in chat.msgs.
+  void _jumpToMsg(int index) {
+    _closeSearch();
+    if (_itemScrollController.isAttached) {
+      _itemScrollController.scrollTo(
+        index: index,
+        alignment: 0.35,
+        duration: const Duration(milliseconds: 350),
+        curve: Curves.easeInOut,
+      );
+    }
+  }
+
   void activeChatChanged() {
     var newChat = client.active;
     if (newChat != chat) {
+      // Reset search when switching chats.
+      if (ui.chatSearch.val) ui.chatSearch.val = false;
       setState(() {
         chat = newChat;
         rtcSession = rtc.gcSession(newChat?.id ?? "");
@@ -164,6 +198,7 @@ class _ActiveChatState extends State<ActiveChat> with RouteAware {
     client.activeChat.addListener(activeChatChanged);
     ui.showProfile.addListener(showProfileChanged);
     ui.chatSideMenuActive.addListener(chatSideMenuActiveChanged);
+    ui.chatSearch.addListener(_onSearchFlagChanged);
     rtc.addListener(rtcSessionsChanged);
   }
 
@@ -206,8 +241,10 @@ class _ActiveChatState extends State<ActiveChat> with RouteAware {
   void dispose() {
     ui.showProfile.removeListener(showProfileChanged);
     ui.chatSideMenuActive.removeListener(chatSideMenuActiveChanged);
+    ui.chatSearch.removeListener(_onSearchFlagChanged);
     ui.overviewRouteObserver.unsubscribe(this);
     _debounce?.cancel();
+    _searchCtrl.dispose();
     client.activeChat.removeListener(activeChatChanged);
     rtc.removeListener(rtcSessionsChanged);
     super.dispose();
@@ -298,10 +335,21 @@ class _ActiveChatState extends State<ActiveChat> with RouteAware {
       return InstantCallScreen(
           rtc, currentInstantSession!, widget.audio, client, chat);
     } else {
+      var enableChatSearch =
+          ThemeNotifier.of(context).areaStyle(ThemeArea.chat).enableChatSearch;
       return ScreenWithChatSideMenu(
           client,
           Column(
             children: [
+              if (enableChatSearch && _searchOpen)
+                _ChatSearchPanel(
+                  chat: chat,
+                  controller: _searchCtrl,
+                  query: _searchQuery,
+                  onChanged: (v) => setState(() => _searchQuery = v),
+                  onClose: _closeSearch,
+                  onJump: _jumpToMsg,
+                ),
               if (rtcSession != null)
                 Box(
                   color: SurfaceColor.primaryContainer,
@@ -347,5 +395,167 @@ class _ActiveChatState extends State<ActiveChat> with RouteAware {
             ],
           ));
     }
+  }
+}
+
+// A single search match within the active chat.
+class _SearchHit {
+  final int index; // position in chat.msgs (maps directly to the scroll list)
+  final String text;
+  final String sender;
+  final bool mine;
+  final int tsMs;
+  const _SearchHit({
+    required this.index,
+    required this.text,
+    required this.sender,
+    required this.mine,
+    required this.tsMs,
+  });
+}
+
+// Search bar + live results list, pinned to the top of the active chat.
+// Searches only the locally-loaded messages of the selected chat. Only
+// shown when AreaStyle.enableChatSearch is on.
+class _ChatSearchPanel extends StatelessWidget {
+  final ChatModel chat;
+  final TextEditingController controller;
+  final String query;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onClose;
+  final ValueChanged<int> onJump;
+
+  const _ChatSearchPanel({
+    required this.chat,
+    required this.controller,
+    required this.query,
+    required this.onChanged,
+    required this.onClose,
+    required this.onJump,
+  });
+
+  static const _months = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun", //
+    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+  ];
+
+  String _fmtTime(int ms) {
+    final d = DateTime.fromMillisecondsSinceEpoch(ms);
+    final hh = d.hour.toString().padLeft(2, '0');
+    final mm = d.minute.toString().padLeft(2, '0');
+    return "${_months[d.month - 1]} ${d.day}, $hh:$mm";
+  }
+
+  List<_SearchHit> _computeHits() {
+    final q = query.trim().toLowerCase();
+    final hits = <_SearchHit>[];
+    if (q.isEmpty) return hits;
+    final msgs = chat.msgs; // newest-first; index maps to the scroll list.
+    for (var i = 0; i < msgs.length; i++) {
+      final m = msgs[i];
+      if (!m.isMessage) continue;
+      final text = m.event.msg;
+      if (text.toLowerCase().contains(q)) {
+        final mine = m.source == null;
+        final ev = m.event;
+        int rawTs = 0;
+        if (ev is PM) {
+          rawTs = ev.timestamp;
+        } else if (ev is GCMsg) {
+          rawTs = ev.timestamp;
+        }
+        hits.add(_SearchHit(
+          index: i,
+          text: text,
+          sender: m.source?.nick ?? "You",
+          mine: mine,
+          tsMs: mine ? rawTs : rawTs * 1000,
+        ));
+        if (hits.length >= 200) break; // cap for performance
+      }
+    }
+    return hits;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final hits = _computeHits();
+    return Container(
+      margin: const EdgeInsets.only(bottom: 5),
+      decoration: const BoxDecoration(
+        color: Color(0xFF141414),
+        border: Border(bottom: BorderSide(color: Color(0xFF1C1C1C), width: 1)),
+      ),
+      constraints: const BoxConstraints(maxHeight: 320),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(10, 8, 6, 8),
+          child: Row(children: [
+            const Icon(Icons.search, size: 18, color: Color(0xFF5F6764)),
+            const SizedBox(width: 8),
+            Expanded(
+              child: TextField(
+                controller: controller,
+                autofocus: true,
+                onChanged: onChanged,
+                style: const TextStyle(fontSize: 13.5),
+                decoration: const InputDecoration(
+                  isDense: true,
+                  border: InputBorder.none,
+                  hintText: "Search this conversation",
+                ),
+              ),
+            ),
+            if (query.isNotEmpty)
+              Text("${hits.length} match${hits.length == 1 ? '' : 'es'}",
+                  style: const TextStyle(
+                      fontSize: 12, color: Color(0xFF5F6764))),
+            IconButton(
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+              iconSize: 18,
+              onPressed: onClose,
+              icon: const Icon(Icons.close, color: Color(0xFF6B6B6B)),
+            ),
+          ]),
+        ),
+        if (query.isNotEmpty)
+          Flexible(
+            child: hits.isEmpty
+                ? const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 12),
+                    child: Text("No matches",
+                        style: TextStyle(
+                            fontSize: 13, color: Color(0xFF5F6764))),
+                  )
+                : ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: hits.length,
+                    itemBuilder: (context, i) {
+                      final h = hits[i];
+                      var preview = h.text.replaceAll(RegExp(r'\s+'), ' ').trim();
+                      if (preview.contains('--embed[')) preview = '[attachment]';
+                      return ListTile(
+                        dense: true,
+                        onTap: () => onJump(h.index),
+                        title: Text(h.mine ? "You" : h.sender,
+                            style: const TextStyle(
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w500,
+                                color: Color(0xFF9A9A9A))),
+                        subtitle: Text(preview,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                fontSize: 13, color: Color(0xFFCED4D2))),
+                        trailing: Text(_fmtTime(h.tsMs),
+                            style: const TextStyle(
+                                fontSize: 11, color: Color(0xFF5F6764))),
+                      );
+                    },
+                  ),
+          ),
+      ]),
+    );
   }
 }

@@ -302,14 +302,25 @@ class _ReceivedSentPMState extends State<ReceivedSentPM> {
     var showAvatar = !widget.evnt.showAvatar && !isOwnMessage && !isScreenSmall;
     var showNick = !(widget.evnt.sameUser || isOwnMessage) && !isScreenSmall;
 
-    return Consumer<ThemeNotifier>(
-        builder: (context, theme, _) => Container(
-            margin: EdgeInsets.only(
-                top: widget.evnt.sameUser ? 2 : 10,
-                right: isOwnMessage ? 20 : 0),
+    return LayoutBuilder(
+        builder: (context, constraints) => Consumer<ThemeNotifier>(
+        builder: (context, theme, _) {
+      var chatStyle = theme.areaStyle(ThemeArea.chat);
+      var leftAlign = chatStyle.leftAlignMessages;
+      var narrow = chatStyle.narrowChat;
+      return Container(
+            margin: EdgeInsets.fromLTRB(
+                0,
+                widget.evnt.sameUser ? 2 : 10,
+                narrow
+                    ? (constraints.maxWidth > 700
+                        ? constraints.maxWidth * 0.32
+                        : 20)
+                    : ((isOwnMessage && !leftAlign) ? 20 : 0),
+                0),
             child: Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
-                mainAxisAlignment: isOwnMessage
+                mainAxisAlignment: (isOwnMessage && !leftAlign)
                     ? MainAxisAlignment.end
                     : MainAxisAlignment.start,
                 children: <Widget>[
@@ -360,7 +371,8 @@ class _ReceivedSentPMState extends State<ReceivedSentPM> {
                                     color: isOwnMessage
                                         ? theme.colors.surfaceContainer
                                         : theme.colors.surfaceContainerHighest,
-                                    borderRadius: BorderRadius.circular(10),
+                                    borderRadius: BorderRadius.circular(
+                                        chatStyle.squareBubbles ? 4 : 10),
                                   ),
                                   child: Column(
                                       crossAxisAlignment: isOwnMessage
@@ -389,7 +401,8 @@ class _ReceivedSentPMState extends State<ReceivedSentPM> {
                                                     color: TextColor
                                                         .onSurfaceVariant)))
                                       ])))))
-                ])));
+                ]));
+    }));
   }
 
   @override

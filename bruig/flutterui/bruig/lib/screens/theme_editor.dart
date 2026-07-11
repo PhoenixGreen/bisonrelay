@@ -890,6 +890,33 @@ class _AreasSectionState extends State<AreasSection> {
     ]);
   }
 
+  // _widthSlider is a Width control where the minimum (0) means "use this
+  // area's built-in default width" (AreaStyle.width left null) rather than
+  // an actual zero-width panel -- dragging above 0 sets an explicit
+  // override in pixels. This keeps "reset to default" reachable directly
+  // from the slider instead of requiring a separate reset affordance.
+  Widget _widthSlider(ThemeNotifier theme, AreaStyle style) {
+    const key = "width";
+    var shown = _dragValues[key] ?? style.width ?? 0;
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(shown <= 0 ? "Width: Default" : "Width: ${shown.toStringAsFixed(1)}"),
+      Slider(
+        value: shown,
+        min: 0,
+        max: 400,
+        onChanged: (v) => setState(() => _dragValues[key] = v),
+        onChangeEnd: (v) {
+          setState(() => _dragValues.remove(key));
+          if (v <= 0) {
+            _setStyle(theme, (s) => s.copyWith(clearWidth: true));
+          } else {
+            _setStyle(theme, (s) => s.copyWith(width: v));
+          }
+        },
+      ),
+    ]);
+  }
+
   // _fillEditor builds the mode dropdown + conditional color/gradient-
   // direction/image controls shared by both the background and the border
   // fill -- they support the same four modes, just against different
@@ -1205,14 +1232,7 @@ class _AreasSectionState extends State<AreasSection> {
         if (selected != ThemeArea.navBar)
           _slider("margin", "Margin", style.margin, 0, 48,
               (v) => _setStyle(theme, (s) => s.copyWith(margin: v))),
-        if (hasWidth)
-          _slider(
-              "width",
-              "Width",
-              style.width ?? 120,
-              40,
-              400,
-              (v) => _setStyle(theme, (s) => s.copyWith(width: v))),
+        if (hasWidth) _widthSlider(theme, style),
         if (selected == ThemeArea.subMenuTabBar) ...[
           const SizedBox(height: 8),
           Row(children: [

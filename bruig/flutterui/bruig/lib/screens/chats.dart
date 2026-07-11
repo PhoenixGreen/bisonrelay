@@ -8,6 +8,7 @@ import 'package:bruig/models/client.dart';
 import 'package:bruig/models/emoji.dart';
 import 'package:bruig/models/notifications.dart';
 import 'package:bruig/models/realtimechat.dart';
+import 'package:bruig/models/theme_preset.dart';
 import 'package:bruig/models/uistate.dart';
 import 'package:bruig/screens/needs_out_channel.dart';
 import 'package:bruig/screens/realtimechat/instantcallmodal.dart';
@@ -35,6 +36,20 @@ class ChatsScreenTitle extends StatelessWidget {
         icon: Icon(Icons.call_outlined));
   }
 
+  // buildSearchButton toggles the in-chat search panel, when
+  // AreaStyle.enableChatSearch is on.
+  Widget buildSearchButton(BuildContext context, ChatModel chat) {
+    var ui = Provider.of<ClientModel>(context, listen: false).ui;
+    return AnimatedBuilder(
+      animation: ui.chatSearch,
+      builder: (context, _) => IconButton(
+        tooltip: "Search",
+        onPressed: () => ui.chatSearch.val = !ui.chatSearch.val,
+        icon: Icon(ui.chatSearch.val ? Icons.search_off : Icons.search),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Consumer4<RealtimeChatModel, ActiveChatModel, ShowProfileModel,
@@ -50,6 +65,8 @@ class ChatsScreenTitle extends StatelessWidget {
 
       // Has active chat.
       ChatModel chat = activeChat.chat!;
+      var enableChatSearch =
+          theme.areaStyle(ThemeArea.chat).enableChatSearch;
 
       // On small screen, show only chat nick/title.
       bool isScreenSmall = checkIsScreenSmall(context);
@@ -62,6 +79,7 @@ class ChatsScreenTitle extends StatelessWidget {
               child: UserMenuAvatar(client, chat, showChatSideMenuOnTap: true)),
           Txt.L(chat.nick),
           const Spacer(),
+          if (enableChatSearch) buildSearchButton(context, chat),
           if (!chat.isGC && rtc.active.active == null)
             buildInstantCallIcon(context, rtc, chat),
         ]);
@@ -78,6 +96,10 @@ class ChatsScreenTitle extends StatelessWidget {
 
       return Row(children: [
         Txt.L("Chat$suffix$profileSuffix"),
+        if (enableChatSearch) ...[
+          const SizedBox(width: 10),
+          buildSearchButton(context, chat),
+        ],
         if (!chat.isGC && rtc.active.active == null) ...[
           const SizedBox(width: 10),
           buildInstantCallIcon(context, rtc, chat),

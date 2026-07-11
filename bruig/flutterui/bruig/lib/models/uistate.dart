@@ -8,6 +8,10 @@ class ShowProfileModel extends BoolFlagModel {}
 
 class CreateGroupChatModel extends BoolFlagModel {}
 
+// ChatSearchModel tracks whether the active chat's in-chat search panel is
+// open. Only meaningful when AreaStyle.enableChatSearch is on.
+class ChatSearchModel extends BoolFlagModel {}
+
 class ChatSideMenuActiveModel extends ChangeNotifier {
   ChatModel? _chat;
   ChatModel? get chat => _chat;
@@ -67,6 +71,7 @@ class OverviewActivePath extends ChangeNotifier {
 // UIStateModel holds state related to the app's UI.
 class UIStateModel {
   final ShowProfileModel showProfile = ShowProfileModel();
+  final ChatSearchModel chatSearch = ChatSearchModel();
   final ChatSideMenuActiveModel chatSideMenuActive = ChatSideMenuActiveModel();
   final SettingsTitleModel settingsTitle = SettingsTitleModel();
   final SmallScreenActiveTabModel smallScreenActiveTab =
