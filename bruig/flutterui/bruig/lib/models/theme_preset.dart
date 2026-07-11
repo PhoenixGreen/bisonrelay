@@ -294,7 +294,6 @@ class AreaStyle {
   // on inactive rows (vs. a flat background); default on.
   final bool monochromeAvatars; // Graphite fallback avatars.
   final bool chatBackdropWash; // Radial-gradient wash behind messages.
-  final bool showAdvancedChatOptions; // Reveals the toggles below in the editor.
   final bool enableChatSearch; // In-chat message search panel.
   final bool resizableChatList; // Draggable-width chat list + search bar.
   final bool formattingToolbar; // Composer markdown formatting toolbar.
@@ -342,7 +341,6 @@ class AreaStyle {
       chatListTopHighlight == true &&
       monochromeAvatars == false &&
       chatBackdropWash == false &&
-      showAdvancedChatOptions == false &&
       enableChatSearch == false &&
       resizableChatList == false &&
       formattingToolbar == false &&
@@ -394,7 +392,6 @@ class AreaStyle {
     this.chatListTopHighlight = true,
     this.monochromeAvatars = false,
     this.chatBackdropWash = false,
-    this.showAdvancedChatOptions = false,
     this.enableChatSearch = false,
     this.resizableChatList = false,
     this.formattingToolbar = false,
@@ -454,7 +451,6 @@ class AreaStyle {
     bool? chatListTopHighlight,
     bool? monochromeAvatars,
     bool? chatBackdropWash,
-    bool? showAdvancedChatOptions,
     bool? enableChatSearch,
     bool? resizableChatList,
     bool? formattingToolbar,
@@ -520,8 +516,6 @@ class AreaStyle {
             chatListTopHighlight ?? this.chatListTopHighlight,
         monochromeAvatars: monochromeAvatars ?? this.monochromeAvatars,
         chatBackdropWash: chatBackdropWash ?? this.chatBackdropWash,
-        showAdvancedChatOptions:
-            showAdvancedChatOptions ?? this.showAdvancedChatOptions,
         enableChatSearch: enableChatSearch ?? this.enableChatSearch,
         resizableChatList: resizableChatList ?? this.resizableChatList,
         formattingToolbar: formattingToolbar ?? this.formattingToolbar,
@@ -596,8 +590,6 @@ class AreaStyle {
         if (!chatListTopHighlight) "chatListTopHighlight": chatListTopHighlight,
         if (monochromeAvatars) "monochromeAvatars": monochromeAvatars,
         if (chatBackdropWash) "chatBackdropWash": chatBackdropWash,
-        if (showAdvancedChatOptions)
-          "showAdvancedChatOptions": showAdvancedChatOptions,
         if (enableChatSearch) "enableChatSearch": enableChatSearch,
         if (resizableChatList) "resizableChatList": resizableChatList,
         if (formattingToolbar) "formattingToolbar": formattingToolbar,
@@ -694,8 +686,6 @@ class AreaStyle {
         chatListTopHighlight: j["chatListTopHighlight"] as bool? ?? true,
         monochromeAvatars: j["monochromeAvatars"] as bool? ?? false,
         chatBackdropWash: j["chatBackdropWash"] as bool? ?? false,
-        showAdvancedChatOptions:
-            j["showAdvancedChatOptions"] as bool? ?? false,
         enableChatSearch: j["enableChatSearch"] as bool? ?? false,
         resizableChatList: j["resizableChatList"] as bool? ?? false,
         formattingToolbar: j["formattingToolbar"] as bool? ?? false,

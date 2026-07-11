@@ -1419,87 +1419,79 @@ class _AreasSectionState extends State<AreasSection> {
                 _setStyle(theme, (s) => s.copyWith(chatBackdropWash: v)),
           ),
           SwitchListTile(
-            title: const Text("Show advanced chat options"),
-            value: style.showAdvancedChatOptions,
-            onChanged: (v) => _setStyle(
-                theme, (s) => s.copyWith(showAdvancedChatOptions: v)),
+            title: const Text("In-chat search"),
+            subtitle: const Text(
+                "Adds a search button to the chat title bar for "
+                "searching loaded messages"),
+            value: style.enableChatSearch,
+            onChanged: (v) =>
+                _setStyle(theme, (s) => s.copyWith(enableChatSearch: v)),
           ),
-          if (style.showAdvancedChatOptions) ...[
+          SwitchListTile(
+            title: const Text("Resizable chat list"),
+            subtitle: const Text(
+                "Makes the chat list pane drag-resizable and adds a "
+                "persistent search/start-chat bar above it"),
+            value: style.resizableChatList,
+            onChanged: (v) =>
+                _setStyle(theme, (s) => s.copyWith(resizableChatList: v)),
+          ),
+          SwitchListTile(
+            title: const Text("Formatting toolbar"),
+            subtitle: const Text(
+                "Adds a Bold/Italic/Code/Strikethrough/Link toolbar to "
+                "the message composer"),
+            value: style.formattingToolbar,
+            onChanged: (v) =>
+                _setStyle(theme, (s) => s.copyWith(formattingToolbar: v)),
+          ),
+          SwitchListTile(
+            title: const Text("Composer polish"),
+            subtitle: const Text(
+                "Inline tip button on 1:1 chats, a glowing send button, "
+                "and a per-contact message hint"),
+            value: style.composerPolish,
+            onChanged: (v) =>
+                _setStyle(theme, (s) => s.copyWith(composerPolish: v)),
+          ),
+          SwitchListTile(
+            title: const Text("Square message bubbles"),
+            value: style.squareBubbles,
+            onChanged: (v) =>
+                _setStyle(theme, (s) => s.copyWith(squareBubbles: v)),
+          ),
+          const SizedBox(height: 8),
+          Row(children: [
+            const Txt("Message layout: "),
+            const SizedBox(width: 8),
+            DropdownButton<MessageLayoutMode>(
+              value: style.messageLayoutMode ?? MessageLayoutMode.standard,
+              items: MessageLayoutMode.values
+                  .map((m) => DropdownMenuItem(
+                      value: m, child: Text(messageLayoutModeLabel(m))))
+                  .toList(),
+              onChanged: (m) {
+                if (m == null) return;
+                _setStyle(
+                    theme,
+                    (s) => m == MessageLayoutMode.standard
+                        ? s.copyWith(clearMessageLayoutMode: true)
+                        : s.copyWith(messageLayoutMode: m));
+              },
+            ),
+          ]),
+          if ((style.messageLayoutMode ?? MessageLayoutMode.standard) !=
+              MessageLayoutMode.standard)
             SwitchListTile(
-              title: const Text("In-chat search"),
+              title: const Text("Expand to fill panel"),
               subtitle: const Text(
-                  "Adds a search button to the chat title bar for "
-                  "searching loaded messages"),
-              value: style.enableChatSearch,
-              onChanged: (v) =>
-                  _setStyle(theme, (s) => s.copyWith(enableChatSearch: v)),
+                  "Uses the full conversation panel width instead of "
+                  "margining the message list in"),
+              value: style.expandMessageWidth,
+              onChanged: (v) => _setStyle(
+                  theme, (s) => s.copyWith(expandMessageWidth: v)),
             ),
-            SwitchListTile(
-              title: const Text("Resizable chat list"),
-              subtitle: const Text(
-                  "Makes the chat list pane drag-resizable and adds a "
-                  "persistent search/start-chat bar above it"),
-              value: style.resizableChatList,
-              onChanged: (v) =>
-                  _setStyle(theme, (s) => s.copyWith(resizableChatList: v)),
-            ),
-            SwitchListTile(
-              title: const Text("Formatting toolbar"),
-              subtitle: const Text(
-                  "Adds a Bold/Italic/Code/Strikethrough/Link toolbar to "
-                  "the message composer"),
-              value: style.formattingToolbar,
-              onChanged: (v) =>
-                  _setStyle(theme, (s) => s.copyWith(formattingToolbar: v)),
-            ),
-            SwitchListTile(
-              title: const Text("Composer polish"),
-              subtitle: const Text(
-                  "Inline tip button on 1:1 chats, a glowing send button, "
-                  "and a per-contact message hint"),
-              value: style.composerPolish,
-              onChanged: (v) =>
-                  _setStyle(theme, (s) => s.copyWith(composerPolish: v)),
-            ),
-            SwitchListTile(
-              title: const Text("Square message bubbles"),
-              value: style.squareBubbles,
-              onChanged: (v) =>
-                  _setStyle(theme, (s) => s.copyWith(squareBubbles: v)),
-            ),
-            const SizedBox(height: 8),
-            Row(children: [
-              const Txt("Message layout: "),
-              const SizedBox(width: 8),
-              DropdownButton<MessageLayoutMode>(
-                value: style.messageLayoutMode ?? MessageLayoutMode.standard,
-                items: MessageLayoutMode.values
-                    .map((m) => DropdownMenuItem(
-                        value: m, child: Text(messageLayoutModeLabel(m))))
-                    .toList(),
-                onChanged: (m) {
-                  if (m == null) return;
-                  _setStyle(
-                      theme,
-                      (s) => m == MessageLayoutMode.standard
-                          ? s.copyWith(clearMessageLayoutMode: true)
-                          : s.copyWith(messageLayoutMode: m));
-                },
-              ),
-            ]),
-            if ((style.messageLayoutMode ?? MessageLayoutMode.standard) !=
-                MessageLayoutMode.standard)
-              SwitchListTile(
-                title: const Text("Expand to fill panel"),
-                subtitle: const Text(
-                    "Uses the full conversation panel width instead of "
-                    "margining the message list in"),
-                value: style.expandMessageWidth,
-                onChanged: (v) => _setStyle(
-                    theme, (s) => s.copyWith(expandMessageWidth: v)),
-              ),
-            if (style.expandMessageWidth) _expandPaddingSlider(theme, style),
-          ],
+          if (style.expandMessageWidth) _expandPaddingSlider(theme, style),
         ],
         if (selected == ThemeArea.realtimeChat) ...[
           SwitchListTile(
