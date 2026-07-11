@@ -914,6 +914,7 @@ class _AreasSectionState extends State<AreasSection> {
     required bool allowSolidNone,
     required String? imagePath,
     required VoidCallback onPickImage,
+    VoidCallback? onRemoveImage,
     String? defaultAssetPath,
     // Only meaningful for the background fill -- the border already has an
     // equivalent "no border at all" via its own token/tokenLabel ("None"),
@@ -1000,6 +1001,14 @@ class _AreasSectionState extends State<AreasSection> {
                                   : "Pick image..."),
                         ),
                       ),
+                      if (mode == AreaBackgroundMode.image &&
+                          imagePath != null &&
+                          onRemoveImage != null)
+                        IconButton(
+                          onPressed: onRemoveImage,
+                          icon: const Icon(Icons.close),
+                          tooltip: "Remove image",
+                        ),
                     ]),
                   ]),
             ),
@@ -1113,6 +1122,10 @@ class _AreasSectionState extends State<AreasSection> {
           }),
           imagePath: style.imagePath,
           onPickImage: () => _pickImage(theme, preset, forBorder: false),
+          onRemoveImage: () => _setStyle(
+              theme,
+              (s) => s.copyWith(
+                  mode: AreaBackgroundMode.token, clearImagePath: true)),
           defaultAssetPath: selected == ThemeArea.loginScreen
               ? "assets/images/loading-bg.png"
               : null,
@@ -1161,6 +1174,11 @@ class _AreasSectionState extends State<AreasSection> {
           }),
           imagePath: style.borderImagePath,
           onPickImage: () => _pickImage(theme, preset, forBorder: true),
+          onRemoveImage: () => _setStyle(
+              theme,
+              (s) => s.copyWith(
+                  borderMode: AreaBackgroundMode.token,
+                  clearBorderImagePath: true)),
         ),
         const SizedBox(height: 8),
         _slider("borderWidth", "Border width", style.borderWidth, 0, 10,

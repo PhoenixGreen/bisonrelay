@@ -167,6 +167,11 @@ class _FeedScreenState extends State<FeedScreen> {
         client,
         !isScreenSmall
             ? SecondarySideMenuLayout(
+                // Matches ln_management.dart/manage_content_screen.dart's
+                // width -- left unset here it fell back to
+                // SecondarySideMenu's 120 default, too narrow for
+                // "Subscriptions" to fit on one line.
+                width: 140,
                 items: feedBarItems(onItemChanged, tabIndex),
                 // Detail views that don't need the tab list: reading a
                 // single post/user-post (showPost set) or composing a new
