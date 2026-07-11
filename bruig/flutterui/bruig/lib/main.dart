@@ -9,8 +9,11 @@ import 'package:bruig/models/emoji.dart';
 import 'package:bruig/models/audio.dart';
 import 'package:bruig/models/menus.dart';
 import 'package:bruig/models/payments.dart';
+import 'package:bruig/models/dynplugins.dart';
+import 'package:bruig/models/plugins.dart';
 import 'package:bruig/models/realtimechat.dart';
 import 'package:bruig/models/resources.dart';
+import 'package:bruig/models/spellcheck.dart';
 import 'package:bruig/models/uploads.dart';
 import 'package:bruig/models/wallet.dart';
 import 'package:bruig/models/shutdown.dart';
@@ -186,10 +189,32 @@ Future<void> runMainApp(Config cfg) async {
       ChangeNotifierProvider(create: (c) => ResourcesModel()),
       ChangeNotifierProvider.value(value: snackbar),
       ChangeNotifierProvider(create: (c) => PaymentsModel()),
+      ChangeNotifierProvider(create: (c) => PluginsModel()..reload()),
       ChangeNotifierProvider(create: (c) => WalletModel()),
       ChangeNotifierProvider(create: (c) => TypingEmojiSelModel()),
       ChangeNotifierProvider(create: (c) => AudioModel(), lazy: false),
-      ChangeNotifierProvider(create: (c) => MarkdownAreaModel(cfg.dbRoot)),
+      ChangeNotifierProxyProvider<PluginsModel, MarkdownAreaModel>(
+        create: (c) => MarkdownAreaModel(cfg.dbRoot),
+        update: (c, plugins, mk) =>
+            mk!..setPrettyLinksActive(plugins.prettyLinksActive),
+      ),
+      ChangeNotifierProxyProvider<PluginsModel, SpellCheckModel>(
+        create: (c) => SpellCheckModel(),
+        update: (c, plugins, model) =>
+            model!..update(plugins.spellcheckActive, plugins.spellcheckData),
+      ),
+      // lazy: false is required here: unlike MarkdownAreaModel/
+      // SpellCheckModel above, nothing ever reads DynPluginsModel's value
+      // -- it exists purely for the side effect of registering nav items
+      // into MainMenuModel -- so without this, provider's default laziness
+      // means create/update would never run at all.
+      ChangeNotifierProxyProvider2<PluginsModel, MainMenuModel,
+          DynPluginsModel>(
+        lazy: false,
+        create: (c) => DynPluginsModel(),
+        update: (c, plugins, mainMenu, dyn) =>
+            dyn!..update(plugins.plugins, mainMenu),
+      ),
       ChangeNotifierProvider.value(value: rtc),
       ChangeNotifierProvider.value(value: rtc.active),
       ChangeNotifierProvider.value(value: rtc.liveSessions),

@@ -11,6 +11,7 @@ list(APPEND FLUTTER_PLUGIN_LIST
   irondash_engine_context
   media_kit_libs_windows_audio
   permission_handler_windows
+  restart_app
   screen_retriever_windows
   share_plus
   super_native_extensions
@@ -20,6 +21,7 @@ list(APPEND FLUTTER_PLUGIN_LIST
 
 list(APPEND FLUTTER_FFI_PLUGIN_LIST
   flutter_local_notifications_windows
+  jni
   pdfrx
 )
 

@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -22,6 +24,8 @@ import (
 	"github.com/companyzero/bisonrelay/client"
 	"github.com/companyzero/bisonrelay/client/clientdb"
 	"github.com/companyzero/bisonrelay/client/clientintf"
+	"github.com/companyzero/bisonrelay/client/pluginmgr"
+	"github.com/companyzero/bisonrelay/client/pluginmgr/wasmhost"
 	"github.com/companyzero/bisonrelay/client/resources"
 	"github.com/companyzero/bisonrelay/client/resources/simplestore"
 	"github.com/companyzero/bisonrelay/client/rpcserver"
@@ -89,6 +93,84 @@ type clientCtx struct {
 	noterec *audio.NoteRecorder
 
 	serverState atomic.Value
+
+	pluginMgr *pluginmgr.Manager
+
+	// dynRuntime executes the guest code of any installed
+	// RendererKindDynamicWasm plugin (e.g. the RSS plugin). Its lifecycle
+	// (Load/Unload) is kept in sync with pluginMgr's Import/SetEnabled/
+	// Remove calls -- see syncDynPlugin.
+	dynRuntime *wasmhost.Runtime
+}
+
+// syncDynPlugin loads or unloads p in cc.dynRuntime to match its current
+// enabled state and RendererKind, following any pluginMgr mutation
+// (Import/SetEnabled/Remove) that may have changed either. It's a no-op for
+// non-dynamic-wasm plugins. Load errors (e.g. a corrupt wasm file) are
+// logged rather than propagated: pluginMgr's own state is already
+// authoritative and shouldn't be rolled back over a runtime that failed to
+// start.
+func (cc *clientCtx) syncDynPlugin(p pluginmgr.Plugin) {
+	if p.Manifest.RendererKind != pluginmgr.RendererKindDynamicWasm {
+		return
+	}
+	if !p.Enabled {
+		cc.dynRuntime.Unload(p.Manifest.ID)
+		return
+	}
+
+	wasmPath := filepath.Join(cc.pluginMgr.InstallDir(p.Manifest.ID), p.Manifest.WasmFile)
+	pollInterval := time.Duration(p.Manifest.PollIntervalSeconds) * time.Second
+	if err := cc.dynRuntime.Load(cc.ctx, p.Manifest.ID, wasmPath, pollInterval); err != nil {
+		cc.log.Warnf("dynplugin: unable to load %s: %v", p.Manifest.ID, err)
+	}
+}
+
+// mergedSpellcheckData gathers get_spellcheck_data from every enabled
+// CapabilitySpellcheckData plugin and merges them: words deduplicated,
+// grammar rules concatenated as-is. A single plugin's failure (e.g. it
+// hasn't finished loading) is logged and skipped rather than failing the
+// whole result -- a partial word list is still useful.
+func (cc *clientCtx) mergedSpellcheckData() wasmhost.SpellcheckData {
+	var data wasmhost.SpellcheckData
+	seenWords := make(map[string]bool)
+	for _, manifest := range cc.pluginMgr.PluginsWithCapability(pluginmgr.CapabilitySpellcheckData) {
+		pluginData, err := cc.dynRuntime.GetSpellcheckData(cc.ctx, manifest.ID)
+		if err != nil {
+			cc.log.Warnf("dynplugin: unable to get spellcheck data from %s: %v", manifest.ID, err)
+			continue
+		}
+		for _, w := range pluginData.Words {
+			if !seenWords[w] {
+				seenWords[w] = true
+				data.Words = append(data.Words, w)
+			}
+		}
+		data.GrammarRules = append(data.GrammarRules, pluginData.GrammarRules...)
+	}
+	return data
+}
+
+// fetchLinkCard resolves linkURL against the Domains of every enabled
+// CapabilityLinkCard plugin and, on the first match, calls that plugin's
+// fetch_link_card. Returns an error (which Dart's link_card.dart already
+// treats identically to "no match", falling back to a plain link) if no
+// plugin claims the URL's host.
+func (cc *clientCtx) fetchLinkCard(linkURL string) (wasmhost.LinkMetadata, error) {
+	parsed, err := url.Parse(linkURL)
+	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return wasmhost.LinkMetadata{}, fmt.Errorf("invalid url")
+	}
+	host := pluginmgr.NormalizeHost(parsed.Hostname())
+
+	for _, manifest := range cc.pluginMgr.PluginsWithCapability(pluginmgr.CapabilityLinkCard) {
+		for _, domain := range manifest.Domains {
+			if pluginmgr.NormalizeHost(domain) == host {
+				return cc.dynRuntime.FetchLinkCard(cc.ctx, manifest.ID, linkURL)
+			}
+		}
+	}
+	return wasmhost.LinkMetadata{}, fmt.Errorf("no enabled plugin handles this url")
 }
 
 var (
@@ -808,6 +890,44 @@ func handleInitClient(handle uint32, args initClient) error {
 		return err
 	}
 
+	pluginHTTPClient := &http.Client{
+		Transport: &http.Transport{
+			DialContext:           dialFunc,
+			ForceAttemptHTTP2:     true,
+			TLSHandshakeTimeout:   10 * time.Second,
+			ExpectContinueTimeout: 1 * time.Second,
+		},
+		Timeout: 10 * time.Second,
+	}
+	pluginMgr, err := pluginmgr.NewManager(pluginmgr.Config{
+		Root: filepath.Join(args.DBRoot, "plugins"),
+		Log:  logBknd.logger("PLGN"),
+	})
+	if err != nil {
+		return fmt.Errorf("unable to initialize plugin manager: %v", err)
+	}
+
+	dynRuntime, err := wasmhost.NewRuntime(ctx, wasmhost.Config{
+		Root:       filepath.Join(args.DBRoot, "plugins"),
+		Log:        logBknd.logger("PLGN"),
+		HTTPClient: pluginHTTPClient,
+		OnPollComplete: func(pluginID string) {
+			notify(NTDynPluginScreenUpdated, pluginID, nil)
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("unable to initialize dynamic plugin runtime: %v", err)
+	}
+	for _, p := range pluginMgr.List() {
+		if p.Enabled && p.Manifest.RendererKind == pluginmgr.RendererKindDynamicWasm {
+			wasmPath := filepath.Join(pluginMgr.InstallDir(p.Manifest.ID), p.Manifest.WasmFile)
+			pollInterval := time.Duration(p.Manifest.PollIntervalSeconds) * time.Second
+			if err := dynRuntime.Load(ctx, p.Manifest.ID, wasmPath, pollInterval); err != nil {
+				logBknd.logger("PLGN").Warnf("unable to load dynamic plugin %s: %v", p.Manifest.ID, err)
+			}
+		}
+	}
+
 	// Bind the selected upstream resource provider.
 	switch {
 	case strings.HasPrefix(args.ResourcesUpstream, "http://"),
@@ -1006,6 +1126,9 @@ func handleInitClient(handle uint32, args initClient) error {
 
 		confirmPayReqRecvChan: make(chan bool),
 		downloadConfChans:     make(map[zkidentity.ShortID]chan bool),
+
+		pluginMgr:  pluginMgr,
+		dynRuntime: dynRuntime,
 	}
 	cs[handle] = cctx
 
@@ -1030,6 +1153,7 @@ func handleInitClient(handle uint32, args initClient) error {
 		cctx.runMtx.Lock()
 		cctx.runErr = err
 		cctx.runMtx.Unlock()
+		cctx.dynRuntime.Close(context.Background())
 		cmtx.Lock()
 		delete(cs, handle)
 		cmtx.Unlock()
@@ -1281,6 +1405,80 @@ func handleClientCmd(cc *clientCtx, cmd *cmd) (interface{}, error) {
 
 	case CTListSharedFiles:
 		return c.ListLocalSharedFiles()
+
+	case CTListPlugins:
+		return cc.pluginMgr.List(), nil
+
+	case CTImportPlugin:
+		var args importPluginArgs
+		if err := cmd.decode(&args); err != nil {
+			return nil, err
+		}
+		p, err := cc.pluginMgr.Import(args.Path)
+		if err == nil {
+			cc.syncDynPlugin(p)
+		}
+		return p, err
+
+	case CTSetPluginEnabled:
+		var args setPluginEnabledArgs
+		if err := cmd.decode(&args); err != nil {
+			return nil, err
+		}
+		if err := cc.pluginMgr.SetEnabled(args.ID, args.Enabled); err != nil {
+			return nil, err
+		}
+		for _, p := range cc.pluginMgr.List() {
+			if p.Manifest.ID == args.ID {
+				cc.syncDynPlugin(p)
+				break
+			}
+		}
+		return nil, nil
+
+	case CTRemovePlugin:
+		var id string
+		if err := cmd.decode(&id); err != nil {
+			return nil, err
+		}
+		cc.dynRuntime.Unload(id)
+		// Only an actual removal (not a plugin update/re-import, which
+		// goes through CTImportPlugin instead) deletes persisted data --
+		// see wasmhost.Config.Root's doc for why data lives outside the
+		// directory a re-import replaces.
+		if err := cc.dynRuntime.DeleteData(id); err != nil {
+			cc.log.Warnf("dynplugin: unable to delete data for %s: %v", id, err)
+		}
+		return nil, cc.pluginMgr.Remove(id)
+
+	case CTFetchLinkMetadata:
+		var linkURL string
+		if err := cmd.decode(&linkURL); err != nil {
+			return nil, err
+		}
+		return cc.fetchLinkCard(linkURL)
+
+	case CTGetSpellcheckData:
+		return cc.mergedSpellcheckData(), nil
+
+	case CTDynPluginRenderScreen:
+		var args dynPluginRenderScreenArgs
+		if err := cmd.decode(&args); err != nil {
+			return nil, err
+		}
+		return cc.dynRuntime.RenderScreen(cc.ctx, args.PluginID, args.ScreenID)
+
+	case CTDynPluginHandleEvent:
+		var args dynPluginHandleEventArgs
+		if err := cmd.decode(&args); err != nil {
+			return nil, err
+		}
+		// The updated ScreenUI is returned directly below -- no separate
+		// NTDynPluginScreenUpdated notification needed here, unlike the
+		// background poll path (see wasmhost.Config.OnPollComplete), since
+		// there's no pending Dart-side listener to wake up: the caller is
+		// already waiting on this very call's result.
+		return cc.dynRuntime.HandleEvent(cc.ctx, args.PluginID, args.ScreenID, args.Event, args.Payload)
 
 	case CTListUserContent:
 		var uid clientintf.UserID

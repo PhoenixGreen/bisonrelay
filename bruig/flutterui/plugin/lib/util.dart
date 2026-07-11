@@ -36,7 +36,10 @@ String dateTimeToGoTime(DateTime dt) {
   var ms = dt.millisecond.toString().padLeft(3, "0");
   var tzOff = dt.timeZoneOffset.inMinutes;
   var offHours = (tzOff ~/ 60).abs().toString().padLeft(2, "0");
-  if (tzOff < 0) offHours = "-$offHours";
+  // Go's time.Time JSON unmarshaling requires an explicit sign on the UTC
+  // offset (RFC3339's "Z07:00"); a bare "00:00"/"01:00" with no leading "+"
+  // for a non-negative offset fails to parse there.
+  offHours = tzOff < 0 ? "-$offHours" : "+$offHours";
   var offMins = (tzOff % 60).toString().padLeft(2, "0");
   return "$y-$M-${d}T$h:$m:${s}.$ms$offHours:$offMins";
 }

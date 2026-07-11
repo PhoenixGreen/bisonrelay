@@ -5,6 +5,7 @@ import 'package:bruig/components/buttons.dart';
 import 'package:bruig/components/text.dart';
 import 'package:bruig/models/feed.dart';
 import 'package:bruig/models/snackbar.dart';
+import 'package:bruig/models/spellcheck.dart';
 import 'package:bruig/screens/feed.dart';
 import 'package:bruig/util.dart';
 import 'package:flutter/material.dart';
@@ -13,6 +14,7 @@ import 'package:golib_plugin/definitions.dart';
 import 'package:golib_plugin/golib_plugin.dart';
 import 'package:bruig/components/snackbars.dart';
 import 'package:bruig/theme_manager.dart';
+import 'package:provider/provider.dart';
 
 void showAltTextModal(BuildContext context, String mime, String data,
     NewPostModel post, TextEditingController contentCtrl) {
@@ -289,6 +291,8 @@ class _NewPostScreenState extends State<NewPostScreen> {
                 controller: contentCtrl,
                 keyboardType: TextInputType.multiline,
                 maxLines: null,
+                spellCheckConfiguration:
+                    Provider.of<SpellCheckModel>(context).configuration,
               ),
             ),
           ),

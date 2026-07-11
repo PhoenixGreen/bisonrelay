@@ -14,6 +14,55 @@ import 'package:blake_hash/blake_hash.dart';
 
 part 'definitions.g.dart';
 
+String _normalizeDateTimeString(String value) {
+  final trimmed = value.trim();
+  if (trimmed.isEmpty) {
+    return trimmed;
+  }
+
+  final looseOffsetMatch = RegExp(r'(\d{2}:\d{2})$').firstMatch(trimmed);
+  if (looseOffsetMatch != null &&
+      !trimmed.endsWith('Z') &&
+      !trimmed.contains(RegExp(r'[+-]\d{2}:\d{2}$'))) {
+    return '${trimmed.substring(0, looseOffsetMatch.start)}+${looseOffsetMatch.group(0)!}';
+  }
+
+  return trimmed;
+}
+
+DateTime _parseDateTime(dynamic value) {
+  if (value is DateTime) {
+    return value;
+  }
+
+  if (value is int) {
+    return DateTime.fromMillisecondsSinceEpoch(value);
+  }
+
+  if (value is num) {
+    return DateTime.fromMillisecondsSinceEpoch(value.toInt());
+  }
+
+  if (value is String) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) {
+      return DateTime.fromMillisecondsSinceEpoch(0);
+    }
+
+    try {
+      return DateTime.parse(_normalizeDateTimeString(trimmed));
+    } on FormatException {
+      try {
+        return DateTime.parse(trimmed);
+      } on FormatException {
+        return DateTime.fromMillisecondsSinceEpoch(0);
+      }
+    }
+  }
+
+  return DateTime.fromMillisecondsSinceEpoch(0);
+}
+
 @JsonSerializable()
 class InitClient {
   @JsonKey(name: 'dbroot')
@@ -405,7 +454,7 @@ class GCAddressBookEntry {
   final String id;
   final String name;
   final List<String> members;
-  @JsonKey(name: "last_read_msg_time")
+  @JsonKey(name: "last_read_msg_time", fromJson: _parseDateTime)
   final DateTime lastReadMsgTime;
   GCAddressBookEntry(this.id, this.name, this.members, this.lastReadMsgTime);
 
@@ -437,7 +486,7 @@ class GroupChat {
   final String alias;
   @JsonKey(name: "rtdt_session_rv", defaultValue: "")
   final String rtdtSessionRV;
-  @JsonKey(name: "last_read_msg_time")
+  @JsonKey(name: "last_read_msg_time", fromJson: _parseDateTime)
   final DateTime lastReadMsgTime;
 
   GroupChat(
@@ -520,15 +569,15 @@ class AddressBookEntry {
   final String nick;
   final String name;
   final bool ignored;
-  @JsonKey(name: "first_created")
+  @JsonKey(name: "first_created", fromJson: _parseDateTime)
   final DateTime firstCreated;
-  @JsonKey(name: "last_handshake_attempt")
+  @JsonKey(name: "last_handshake_attempt", fromJson: _parseDateTime)
   final DateTime lastHandshakeAttempt;
   @JsonKey(fromJson: base64ToUint8list)
   final Uint8List? avatar;
-  @JsonKey(name: "last_completed_kx")
+  @JsonKey(name: "last_completed_kx", fromJson: _parseDateTime)
   final DateTime lastCompletedKx;
-  @JsonKey(name: "last_read_msg_time")
+  @JsonKey(name: "last_read_msg_time", fromJson: _parseDateTime)
   final DateTime lastReadMsgTime;
 
   AddressBookEntry(
@@ -659,6 +708,190 @@ class FileMetadata {
 
   factory FileMetadata.fromJson(Map<String, dynamic> json) =>
       _$FileMetadataFromJson(json);
+}
+
+@JsonSerializable()
+class ImportPluginArgs {
+  final String path;
+  ImportPluginArgs(this.path);
+  Map<String, dynamic> toJson() => _$ImportPluginArgsToJson(this);
+}
+
+@JsonSerializable()
+class SetPluginEnabledArgs {
+  final String id;
+  final bool enabled;
+  SetPluginEnabledArgs(this.id, this.enabled);
+  Map<String, dynamic> toJson() => _$SetPluginEnabledArgsToJson(this);
+}
+
+@JsonSerializable()
+class ScreenDef {
+  final String id;
+  final String label;
+  ScreenDef(this.id, this.label);
+  factory ScreenDef.fromJson(Map<String, dynamic> json) =>
+      _$ScreenDefFromJson(json);
+}
+
+@JsonSerializable()
+class PluginManifest {
+  final String id;
+  final String name;
+  final String version;
+  final String description;
+  @JsonKey(name: "rendererKind")
+  final String rendererKind;
+
+  // navLabel/navIcon/screens are populated only for rendererKind
+  // "dynamic-wasm" plugins (see DynPluginsModel), which contribute their
+  // own top-level nav item and sub-pages rendered by DynPluginScreen.
+  @JsonKey(name: "navLabel", defaultValue: "")
+  final String navLabel;
+  @JsonKey(name: "navIcon", defaultValue: "")
+  final String navIcon;
+  @JsonKey(name: "screens", defaultValue: [])
+  final List<ScreenDef> screens;
+
+  // capabilities declares optional headless behaviors a dynamic-wasm
+  // plugin implements independent of (and possibly in addition to) having
+  // a nav item -- e.g. "spellcheck-data" or "link-card". See
+  // PluginsModel.spellcheckActive/prettyLinksActive.
+  @JsonKey(name: "capabilities", defaultValue: [])
+  final List<String> capabilities;
+
+  PluginManifest(this.id, this.name, this.version, this.description,
+      this.rendererKind, this.navLabel, this.navIcon, this.screens,
+      this.capabilities);
+  factory PluginManifest.fromJson(Map<String, dynamic> json) =>
+      _$PluginManifestFromJson(json);
+}
+
+@JsonSerializable()
+class PluginInfo {
+  final PluginManifest manifest;
+  final bool enabled;
+  PluginInfo(this.manifest, this.enabled);
+  factory PluginInfo.fromJson(Map<String, dynamic> json) =>
+      _$PluginInfoFromJson(json);
+}
+
+// DynWidget is one node of a dynamic-wasm plugin's declarative screen (see
+// DynScreenUI): the plugin describes what to show, this app decides how to
+// draw it (in components/dynplugin_screen.dart) -- named Dyn* rather than
+// the bare Go-side ScreenUI/Widget names to avoid colliding with Flutter's
+// own foundational Widget class.
+@JsonSerializable()
+class DynWidget {
+  final String type; // "text","list","textfield","button","switch"
+
+  @JsonKey(defaultValue: "")
+  final String text;
+  @JsonKey(defaultValue: "")
+  final String hint;
+  @JsonKey(defaultValue: "")
+  final String value;
+  @JsonKey(name: "bool", defaultValue: false)
+  final bool boolValue;
+  @JsonKey(defaultValue: "")
+  final String name;
+  @JsonKey(defaultValue: "")
+  final String event;
+  @JsonKey(name: "openUrl", defaultValue: "")
+  final String openUrl;
+  @JsonKey(defaultValue: false)
+  final bool danger;
+  @JsonKey(defaultValue: false)
+  final bool muted;
+  @JsonKey(defaultValue: false)
+  final bool bookmarkable;
+  @JsonKey(defaultValue: false)
+  final bool bookmarked;
+  @JsonKey(defaultValue: [])
+  final List<DynWidget> items;
+
+  DynWidget(
+      this.type,
+      this.text,
+      this.hint,
+      this.value,
+      this.boolValue,
+      this.name,
+      this.event,
+      this.openUrl,
+      this.danger,
+      this.muted,
+      this.bookmarkable,
+      this.bookmarked,
+      this.items);
+  factory DynWidget.fromJson(Map<String, dynamic> json) =>
+      _$DynWidgetFromJson(json);
+}
+
+@JsonSerializable()
+class DynScreenUI {
+  final String title;
+  @JsonKey(defaultValue: [])
+  final List<DynWidget> widgets;
+  DynScreenUI(this.title, this.widgets);
+  factory DynScreenUI.fromJson(Map<String, dynamic> json) =>
+      _$DynScreenUIFromJson(json);
+}
+
+@JsonSerializable()
+class DynPluginRenderScreenArgs {
+  @JsonKey(name: "pluginId")
+  final String pluginId;
+  @JsonKey(name: "screenId")
+  final String screenId;
+  DynPluginRenderScreenArgs(this.pluginId, this.screenId);
+  Map<String, dynamic> toJson() => _$DynPluginRenderScreenArgsToJson(this);
+}
+
+@JsonSerializable()
+class DynPluginHandleEventArgs {
+  @JsonKey(name: "pluginId")
+  final String pluginId;
+  @JsonKey(name: "screenId")
+  final String screenId;
+  final String event;
+  final Map<String, dynamic> payload;
+  DynPluginHandleEventArgs(
+      this.pluginId, this.screenId, this.event, this.payload);
+  Map<String, dynamic> toJson() => _$DynPluginHandleEventArgsToJson(this);
+}
+
+@JsonSerializable()
+class LinkMetadata {
+  final String title;
+  final String description;
+  final String author;
+  @JsonKey(name: "thumbnailB64")
+  final String thumbnailB64;
+  LinkMetadata(this.title, this.description, this.author, this.thumbnailB64);
+  factory LinkMetadata.fromJson(Map<String, dynamic> json) =>
+      _$LinkMetadataFromJson(json);
+}
+
+@JsonSerializable()
+class GrammarRule {
+  final String pattern;
+  final String message;
+  final String suggest;
+  GrammarRule(this.pattern, this.message, this.suggest);
+  factory GrammarRule.fromJson(Map<String, dynamic> json) =>
+      _$GrammarRuleFromJson(json);
+}
+
+@JsonSerializable()
+class SpellcheckData {
+  @JsonKey(defaultValue: [])
+  final List<String> words;
+  @JsonKey(name: "grammarRules", defaultValue: [])
+  final List<GrammarRule> grammarRules;
+  SpellcheckData(this.words, this.grammarRules);
+  factory SpellcheckData.fromJson(Map<String, dynamic> json) =>
+      _$SpellcheckDataFromJson(json);
 }
 
 @JsonSerializable()
@@ -814,8 +1047,9 @@ class PostSummary {
   final String authorID;
   @JsonKey(name: "author_nick")
   final String authorNick;
+  @JsonKey(fromJson: _parseDateTime)
   final DateTime date;
-  @JsonKey(name: "last_status_ts")
+  @JsonKey(name: "last_status_ts", fromJson: _parseDateTime)
   final DateTime lastStatusTS;
   final String title;
 
@@ -1732,9 +1966,9 @@ class RatchetDebugInfo {
   final int nbSavedKeys;
   @JsonKey(name: "will_ratchet")
   final bool willRatchet;
-  @JsonKey(name: "last_enc_time")
+  @JsonKey(name: "last_enc_time", fromJson: _parseDateTime)
   final DateTime lastEncTime;
-  @JsonKey(name: "last_dec_time")
+  @JsonKey(name: "last_dec_time", fromJson: _parseDateTime)
   final DateTime lastDecTime;
 
   RatchetDebugInfo(
@@ -1911,7 +2145,7 @@ class RMKXSearch {
 @JsonSerializable()
 class KXSearchQuery {
   final String user;
-  @JsonKey(name: "date_sent")
+  @JsonKey(name: "date_sent", fromJson: _parseDateTime)
   final DateTime dateSent;
   @JsonKey(name: "ids_received", defaultValue: [])
   final List<String> idsReceived;
@@ -2222,6 +2456,7 @@ class SSCartItem {
 @JsonSerializable()
 class SSCart {
   final List<SSCartItem> items;
+  @JsonKey(fromJson: _parseDateTime)
   final DateTime updated;
 
   SSCart(this.items, this.updated);
@@ -2258,9 +2493,9 @@ class FetchedResource {
   final int parentPage;
   @JsonKey(name: "page_id")
   final int pageID;
-  @JsonKey(name: "request_ts")
+  @JsonKey(name: "request_ts", fromJson: _parseDateTime)
   final DateTime requestTS;
-  @JsonKey(name: "response_ts")
+  @JsonKey(name: "response_ts", fromJson: _parseDateTime)
   final DateTime responseTS;
 
   final RMFetchResource request;
@@ -2463,6 +2698,7 @@ class KXData {
   final String theirResetRV;
   @JsonKey(name: "stage")
   final KXStage stage;
+  @JsonKey(fromJson: _parseDateTime)
   final DateTime timestamp;
   final PublicIdentity? invitee;
   @JsonKey(name: "is_for_reset")
@@ -2489,6 +2725,7 @@ class KXData {
 class MediateIDRequest {
   final String mediator;
   final String target;
+  @JsonKey(fromJson: _parseDateTime)
   final DateTime date;
 
   MediateIDRequest(this.mediator, this.target, this.date);
@@ -3071,6 +3308,13 @@ mixin NtfStreams {
       StreamController<SendFileProgress>();
   Stream<SendFileProgress> sendFileProgress() => ntfSendFileProgress.stream;
 
+  // Fired with a plugin id after that dynamic-wasm plugin's background
+  // poll (see wasmhost.Config.OnPollComplete) completes, so a currently
+  // open DynPluginScreen for that plugin knows to re-render.
+  StreamController<String> ntfDynPluginScreenUpdated =
+      StreamController<String>();
+  Stream<String> dynPluginScreenUpdated() => ntfDynPluginScreenUpdated.stream;
+
   handleNotifications(int cmd, bool isError, String jsonPayload) {
     dynamic payload;
     if (jsonPayload != "") {
@@ -3388,6 +3632,12 @@ mixin NtfStreams {
         ntfSendFileProgress.add(event);
         break;
 
+      case NTDynPluginScreenUpdated:
+        isError
+            ? ntfDynPluginScreenUpdated.addError(payload)
+            : ntfDynPluginScreenUpdated.add(payload as String);
+        break;
+
       default:
         debugPrint("Received unknown notification ${cmd.toRadixString(16)}");
     }
@@ -3432,6 +3682,7 @@ abstract class PluginPlatform {
       throw "unimplemented";
   Stream<RTDTRTT> rtdtRTTStream() => throw "unimplemented";
   Stream<SendFileProgress> sendFileProgress() => throw "unimplemented";
+  Stream<String> dynPluginScreenUpdated() => throw "unimplemented";
 
   Future<bool> hasServer() async => throw "unimplemented";
 
@@ -3571,6 +3822,68 @@ abstract class PluginPlatform {
     return (res as List)
         .map<SharedFileAndShares>((v) => SharedFileAndShares.fromJson(v))
         .toList();
+  }
+
+  Future<List<PluginInfo>> listPlugins() async {
+    var res = await asyncCall(CTListPlugins, "");
+    if (res == null) {
+      return List<PluginInfo>.empty();
+    }
+    return (res as List)
+        .map<PluginInfo>((v) => PluginInfo.fromJson(v))
+        .toList();
+  }
+
+  Future<PluginInfo> importPlugin(String path) async {
+    var res = await asyncCall(CTImportPlugin, ImportPluginArgs(path));
+    return PluginInfo.fromJson(res);
+  }
+
+  Future<void> setPluginEnabled(String id, bool enabled) async {
+    await asyncCall(CTSetPluginEnabled, SetPluginEnabledArgs(id, enabled));
+  }
+
+  Future<void> removePlugin(String id) async {
+    await asyncCall(CTRemovePlugin, id);
+  }
+
+  /// Returns link preview metadata for [url] if an enabled plugin handles
+  /// it, or null if no plugin matches (or the fetch otherwise fails) so
+  /// callers can fall back to plain-link rendering.
+  Future<LinkMetadata?> fetchLinkMetadata(String url) async {
+    try {
+      var res = await asyncCall(CTFetchLinkMetadata, url);
+      if (res == null) return null;
+      return LinkMetadata.fromJson(res);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Returns the merged dictionary and grammar rules from all currently
+  /// enabled spellcheck-capability plugins (empty if none are enabled).
+  Future<SpellcheckData> getSpellcheckData() async {
+    var res = await asyncCall(CTGetSpellcheckData, null);
+    if (res == null) return SpellcheckData([], []);
+    return SpellcheckData.fromJson(res);
+  }
+
+  /// Renders one screen of an enabled dynamic-wasm plugin (e.g. "feeds" on
+  /// the RSS plugin) by calling into its WebAssembly module.
+  Future<DynScreenUI> renderDynPluginScreen(
+      String pluginId, String screenId) async {
+    var res = await asyncCall(
+        CTDynPluginRenderScreen, DynPluginRenderScreenArgs(pluginId, screenId));
+    return DynScreenUI.fromJson(res);
+  }
+
+  /// Delivers a widget-originated event (button tap, form submit) to an
+  /// enabled dynamic-wasm plugin and returns the resulting updated screen.
+  Future<DynScreenUI> handleDynPluginEvent(String pluginId, String screenId,
+      String event, Map<String, dynamic> payload) async {
+    var res = await asyncCall(CTDynPluginHandleEvent,
+        DynPluginHandleEventArgs(pluginId, screenId, event, payload));
+    return DynScreenUI.fromJson(res);
   }
 
   Future<void> listUserContent(String uid) async =>
@@ -4482,6 +4795,14 @@ const int CTRTDTCancelInvite = 0xb1;
 const int CTDeclineKXSuggestion = 0xb2;
 const int CTUpdateLastMsgReadTime = 0xb3;
 const int CTDeclineGCInvite = 0xb4;
+const int CTListPlugins = 0xb5;
+const int CTImportPlugin = 0xb6;
+const int CTSetPluginEnabled = 0xb7;
+const int CTRemovePlugin = 0xb8;
+const int CTFetchLinkMetadata = 0xb9;
+const int CTGetSpellcheckData = 0xba;
+const int CTDynPluginRenderScreen = 0xbb;
+const int CTDynPluginHandleEvent = 0xbc;
 
 const int notificationsStartID = 0x1000;
 
@@ -4550,3 +4871,4 @@ const int NTRTDTRTTCalculated = 0x103e;
 const int NTRTDTJoinedInstantCall = 0x103f;
 const int NTRTDTSessionInviteCanceled = 0x1040;
 const int NTSendFileProgress = 0x1041;
+const int NTDynPluginScreenUpdated = 0x1042;

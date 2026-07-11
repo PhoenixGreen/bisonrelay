@@ -202,6 +202,27 @@ type getRemoteFileArgs struct {
 	FID zkidentity.ShortID `json:"fid"`
 }
 
+type importPluginArgs struct {
+	Path string `json:"path"`
+}
+
+type setPluginEnabledArgs struct {
+	ID      string `json:"id"`
+	Enabled bool   `json:"enabled"`
+}
+
+type dynPluginRenderScreenArgs struct {
+	PluginID string `json:"pluginId"`
+	ScreenID string `json:"screenId"`
+}
+
+type dynPluginHandleEventArgs struct {
+	PluginID string                 `json:"pluginId"`
+	ScreenID string                 `json:"screenId"`
+	Event    string                 `json:"event"`
+	Payload  map[string]interface{} `json:"payload"`
+}
+
 type payTipArgs struct {
 	UID    clientintf.UserID `json:"uid"`
 	Amount float64           `json:"amount"`
