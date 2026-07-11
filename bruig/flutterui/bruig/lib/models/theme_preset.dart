@@ -262,6 +262,27 @@ class AreaStyle {
   // for subMenuTabBar. True (shown) is the default/unmodified state.
   final bool showHoverArrow;
 
+  // The following toggles are only meaningful for ThemeArea.chat. Each
+  // gates a distinct chat-page feature ported from the exitus1 fork; all
+  // default to false (off) so existing chat behavior is unchanged until a
+  // user opts in via the theme editor.
+  final bool enableMessageActions; // Reply + Pin context-menu actions.
+  final bool showChatListPreviews; // Last-message preview/timestamp/rows.
+  final bool monochromeAvatars; // Graphite fallback avatars.
+  final bool chatBackdropWash; // Radial-gradient wash behind messages.
+  final bool showAdvancedChatOptions; // Reveals the toggles below in the editor.
+  final bool enableChatSearch; // In-chat message search panel.
+  final bool resizableChatList; // Draggable-width chat list + search bar.
+  final bool formattingToolbar; // Composer markdown formatting toolbar.
+  final bool composerPolish; // Tip button, glow send, dynamic hint.
+  final bool squareBubbles; // Sharp vs. rounded message bubble corners.
+  final bool leftAlignMessages; // Single-column message stack.
+  final bool narrowChat; // Centered, narrower message column.
+
+  // The following toggles are only meaningful for ThemeArea.realtimeChat.
+  final bool autoUnmuteOnJoin; // Auto-unmute + snackbar on joining a call.
+  final bool enhancedCallIndicators; // Mic-live/mute/warning-chip indicators.
+
   // isUnmodified is true only when nothing about this style differs from
   // the area's original, pre-theming-feature appearance. A few render call
   // sites (SecondarySideMenu, the header, the login screen) have a cheaper
@@ -284,7 +305,21 @@ class AreaStyle {
       showLogo == false &&
       logoAlign == null &&
       subMenuStyle == null &&
-      showHoverArrow == true;
+      showHoverArrow == true &&
+      enableMessageActions == false &&
+      showChatListPreviews == false &&
+      monochromeAvatars == false &&
+      chatBackdropWash == false &&
+      showAdvancedChatOptions == false &&
+      enableChatSearch == false &&
+      resizableChatList == false &&
+      formattingToolbar == false &&
+      composerPolish == false &&
+      squareBubbles == false &&
+      leftAlignMessages == false &&
+      narrowChat == false &&
+      autoUnmuteOnJoin == false &&
+      enhancedCallIndicators == false;
 
   const AreaStyle({
     this.mode = AreaBackgroundMode.token,
@@ -317,6 +352,20 @@ class AreaStyle {
     this.logoAlign,
     this.subMenuStyle,
     this.showHoverArrow = true,
+    this.enableMessageActions = false,
+    this.showChatListPreviews = false,
+    this.monochromeAvatars = false,
+    this.chatBackdropWash = false,
+    this.showAdvancedChatOptions = false,
+    this.enableChatSearch = false,
+    this.resizableChatList = false,
+    this.formattingToolbar = false,
+    this.composerPolish = false,
+    this.squareBubbles = false,
+    this.leftAlignMessages = false,
+    this.narrowChat = false,
+    this.autoUnmuteOnJoin = false,
+    this.enhancedCallIndicators = false,
   });
 
   AreaStyle copyWith({
@@ -354,6 +403,20 @@ class AreaStyle {
     ContentAlign? logoAlign,
     SubMenuStyle? subMenuStyle,
     bool? showHoverArrow,
+    bool? enableMessageActions,
+    bool? showChatListPreviews,
+    bool? monochromeAvatars,
+    bool? chatBackdropWash,
+    bool? showAdvancedChatOptions,
+    bool? enableChatSearch,
+    bool? resizableChatList,
+    bool? formattingToolbar,
+    bool? composerPolish,
+    bool? squareBubbles,
+    bool? leftAlignMessages,
+    bool? narrowChat,
+    bool? autoUnmuteOnJoin,
+    bool? enhancedCallIndicators,
   }) =>
       AreaStyle(
         mode: mode ?? this.mode,
@@ -388,6 +451,24 @@ class AreaStyle {
         logoAlign: logoAlign ?? this.logoAlign,
         subMenuStyle: subMenuStyle ?? this.subMenuStyle,
         showHoverArrow: showHoverArrow ?? this.showHoverArrow,
+        enableMessageActions:
+            enableMessageActions ?? this.enableMessageActions,
+        showChatListPreviews:
+            showChatListPreviews ?? this.showChatListPreviews,
+        monochromeAvatars: monochromeAvatars ?? this.monochromeAvatars,
+        chatBackdropWash: chatBackdropWash ?? this.chatBackdropWash,
+        showAdvancedChatOptions:
+            showAdvancedChatOptions ?? this.showAdvancedChatOptions,
+        enableChatSearch: enableChatSearch ?? this.enableChatSearch,
+        resizableChatList: resizableChatList ?? this.resizableChatList,
+        formattingToolbar: formattingToolbar ?? this.formattingToolbar,
+        composerPolish: composerPolish ?? this.composerPolish,
+        squareBubbles: squareBubbles ?? this.squareBubbles,
+        leftAlignMessages: leftAlignMessages ?? this.leftAlignMessages,
+        narrowChat: narrowChat ?? this.narrowChat,
+        autoUnmuteOnJoin: autoUnmuteOnJoin ?? this.autoUnmuteOnJoin,
+        enhancedCallIndicators:
+            enhancedCallIndicators ?? this.enhancedCallIndicators,
       );
 
   static String _colorToHex(Color c) =>
@@ -433,6 +514,23 @@ class AreaStyle {
         if (logoAlign != null) "logoAlign": logoAlign!.name,
         if (subMenuStyle != null) "subMenuStyle": subMenuStyle!.name,
         if (!showHoverArrow) "showHoverArrow": showHoverArrow,
+        if (enableMessageActions) "enableMessageActions": enableMessageActions,
+        if (showChatListPreviews)
+          "showChatListPreviews": showChatListPreviews,
+        if (monochromeAvatars) "monochromeAvatars": monochromeAvatars,
+        if (chatBackdropWash) "chatBackdropWash": chatBackdropWash,
+        if (showAdvancedChatOptions)
+          "showAdvancedChatOptions": showAdvancedChatOptions,
+        if (enableChatSearch) "enableChatSearch": enableChatSearch,
+        if (resizableChatList) "resizableChatList": resizableChatList,
+        if (formattingToolbar) "formattingToolbar": formattingToolbar,
+        if (composerPolish) "composerPolish": composerPolish,
+        if (squareBubbles) "squareBubbles": squareBubbles,
+        if (leftAlignMessages) "leftAlignMessages": leftAlignMessages,
+        if (narrowChat) "narrowChat": narrowChat,
+        if (autoUnmuteOnJoin) "autoUnmuteOnJoin": autoUnmuteOnJoin,
+        if (enhancedCallIndicators)
+          "enhancedCallIndicators": enhancedCallIndicators,
       };
 
   factory AreaStyle.fromJson(Map<String, dynamic> j) => AreaStyle(
@@ -503,6 +601,21 @@ class AreaStyle {
             ? SubMenuStyle.values.firstWhere((e) => e.name == j["subMenuStyle"])
             : null,
         showHoverArrow: j["showHoverArrow"] as bool? ?? true,
+        enableMessageActions: j["enableMessageActions"] as bool? ?? false,
+        showChatListPreviews: j["showChatListPreviews"] as bool? ?? false,
+        monochromeAvatars: j["monochromeAvatars"] as bool? ?? false,
+        chatBackdropWash: j["chatBackdropWash"] as bool? ?? false,
+        showAdvancedChatOptions:
+            j["showAdvancedChatOptions"] as bool? ?? false,
+        enableChatSearch: j["enableChatSearch"] as bool? ?? false,
+        resizableChatList: j["resizableChatList"] as bool? ?? false,
+        formattingToolbar: j["formattingToolbar"] as bool? ?? false,
+        composerPolish: j["composerPolish"] as bool? ?? false,
+        squareBubbles: j["squareBubbles"] as bool? ?? false,
+        leftAlignMessages: j["leftAlignMessages"] as bool? ?? false,
+        narrowChat: j["narrowChat"] as bool? ?? false,
+        autoUnmuteOnJoin: j["autoUnmuteOnJoin"] as bool? ?? false,
+        enhancedCallIndicators: j["enhancedCallIndicators"] as bool? ?? false,
       );
 
   _Fill _resolveFill(

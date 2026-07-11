@@ -1273,6 +1273,130 @@ class _AreasSectionState extends State<AreasSection> {
             ]),
           ],
         ],
+        if (selected == ThemeArea.chat) ...[
+          SwitchListTile(
+            title: const Text("Reply & pin messages"),
+            subtitle: const Text(
+                "Adds Reply and Pin to the message context menu, with a "
+                "reply chip and pinned-message bar in the conversation"),
+            value: style.enableMessageActions,
+            onChanged: (v) =>
+                _setStyle(theme, (s) => s.copyWith(enableMessageActions: v)),
+          ),
+          SwitchListTile(
+            title: const Text("Chat list previews"),
+            subtitle: const Text(
+                "Shows a last-message preview and relative timestamp on "
+                "each contact/GC row"),
+            value: style.showChatListPreviews,
+            onChanged: (v) =>
+                _setStyle(theme, (s) => s.copyWith(showChatListPreviews: v)),
+          ),
+          SwitchListTile(
+            title: const Text("Monochrome avatars"),
+            subtitle: const Text(
+                "Uses a graphite-gray fallback avatar instead of a "
+                "colorful hashed hue (real avatar images are unaffected)"),
+            value: style.monochromeAvatars,
+            onChanged: (v) =>
+                _setStyle(theme, (s) => s.copyWith(monochromeAvatars: v)),
+          ),
+          SwitchListTile(
+            title: const Text("Chat backdrop glow"),
+            subtitle:
+                const Text("Adds a subtle gradient wash behind messages"),
+            value: style.chatBackdropWash,
+            onChanged: (v) =>
+                _setStyle(theme, (s) => s.copyWith(chatBackdropWash: v)),
+          ),
+          SwitchListTile(
+            title: const Text("Show advanced chat options"),
+            value: style.showAdvancedChatOptions,
+            onChanged: (v) => _setStyle(
+                theme, (s) => s.copyWith(showAdvancedChatOptions: v)),
+          ),
+          if (style.showAdvancedChatOptions) ...[
+            SwitchListTile(
+              title: const Text("In-chat search"),
+              subtitle: const Text(
+                  "Adds a search button to the chat title bar for "
+                  "searching loaded messages"),
+              value: style.enableChatSearch,
+              onChanged: (v) =>
+                  _setStyle(theme, (s) => s.copyWith(enableChatSearch: v)),
+            ),
+            SwitchListTile(
+              title: const Text("Resizable chat list"),
+              subtitle: const Text(
+                  "Makes the chat list pane drag-resizable and adds a "
+                  "persistent search/start-chat bar above it"),
+              value: style.resizableChatList,
+              onChanged: (v) =>
+                  _setStyle(theme, (s) => s.copyWith(resizableChatList: v)),
+            ),
+            SwitchListTile(
+              title: const Text("Formatting toolbar"),
+              subtitle: const Text(
+                  "Adds a Bold/Italic/Code/Strikethrough/Link toolbar to "
+                  "the message composer"),
+              value: style.formattingToolbar,
+              onChanged: (v) =>
+                  _setStyle(theme, (s) => s.copyWith(formattingToolbar: v)),
+            ),
+            SwitchListTile(
+              title: const Text("Composer polish"),
+              subtitle: const Text(
+                  "Inline tip button on 1:1 chats, a glowing send button, "
+                  "and a per-contact message hint"),
+              value: style.composerPolish,
+              onChanged: (v) =>
+                  _setStyle(theme, (s) => s.copyWith(composerPolish: v)),
+            ),
+            SwitchListTile(
+              title: const Text("Square message bubbles"),
+              value: style.squareBubbles,
+              onChanged: (v) =>
+                  _setStyle(theme, (s) => s.copyWith(squareBubbles: v)),
+            ),
+            SwitchListTile(
+              title: const Text("Left-align messages"),
+              subtitle: const Text(
+                  "Stacks all messages in a single column instead of "
+                  "splitting by sender"),
+              value: style.leftAlignMessages,
+              onChanged: (v) =>
+                  _setStyle(theme, (s) => s.copyWith(leftAlignMessages: v)),
+            ),
+            SwitchListTile(
+              title: const Text("Narrow conversation"),
+              subtitle: const Text(
+                  "Centers the message list into a narrower column"),
+              value: style.narrowChat,
+              onChanged: (v) =>
+                  _setStyle(theme, (s) => s.copyWith(narrowChat: v)),
+            ),
+          ],
+        ],
+        if (selected == ThemeArea.realtimeChat) ...[
+          SwitchListTile(
+            title: const Text("Auto-unmute on join"),
+            subtitle: const Text(
+                "Automatically unmutes (with a snackbar notice) when "
+                "joining a live session"),
+            value: style.autoUnmuteOnJoin,
+            onChanged: (v) =>
+                _setStyle(theme, (s) => s.copyWith(autoUnmuteOnJoin: v)),
+          ),
+          SwitchListTile(
+            title: const Text("Enhanced call status indicators"),
+            subtitle: const Text(
+                "Pulsing mic-live indicator, clearer mute/unmute button "
+                "states, and a warning chip while in a live session"),
+            value: style.enhancedCallIndicators,
+            onChanged: (v) => _setStyle(
+                theme, (s) => s.copyWith(enhancedCallIndicators: v)),
+          ),
+        ],
         if (selected == ThemeArea.header) ...[
           Row(children: [
             const Txt("Position: "),
