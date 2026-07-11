@@ -296,6 +296,15 @@ class _AppState extends State<App> with WindowListener {
     var isPreventClose = await windowManager.isPreventClose();
     if (!isPreventClose) return;
     if (!pushedToShutdown) {
+      // Dispose the (libmpv-backed on desktop) audio player while the
+      // engine is still fully alive, before starting the rest of the
+      // shutdown flow -- see AudioModel.shutdown() for why this ordering
+      // matters (avoids a native-thread-vs-isolate-teardown crash).
+      try {
+        await AudioModel.of(context, listen: false).shutdown();
+      } catch (exception) {
+        debugPrint("Error shutting down audio player: $exception");
+      }
       ShutdownScreen.startShutdownFromNavKey(navkey);
       pushedToShutdown = true;
     }
