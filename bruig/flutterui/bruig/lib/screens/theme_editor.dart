@@ -917,6 +917,52 @@ class _AreasSectionState extends State<AreasSection> {
     ]);
   }
 
+  // _glowSlider controls the intensity of the selected-row glow in the chat
+  // list (AreaStyle.chatListGlowIntensity). 0 turns the glow off entirely;
+  // 1.0 (the default when unset) matches the original design; above 1
+  // exaggerates it.
+  Widget _glowSlider(ThemeNotifier theme, AreaStyle style) {
+    const key = "chatListGlowIntensity";
+    var shown = _dragValues[key] ?? style.chatListGlowIntensity ?? 1.0;
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(shown <= 0.05
+          ? "Selected glow: Off"
+          : "Selected glow: ${shown.toStringAsFixed(1)}"),
+      Slider(
+        value: shown,
+        min: 0,
+        max: 2,
+        onChanged: (v) => setState(() => _dragValues[key] = v),
+        onChangeEnd: (v) {
+          setState(() => _dragValues.remove(key));
+          _setStyle(theme, (s) => s.copyWith(chatListGlowIntensity: v));
+        },
+      ),
+    ]);
+  }
+
+  // _expandPaddingSlider controls the space around the whole conversation
+  // viewport (top, sides, and before the input bar) when
+  // AreaStyle.expandMessageWidth is on (AreaStyle.expandMessagePadding); 0
+  // (the default when unset) fills the panel edge-to-edge.
+  Widget _expandPaddingSlider(ThemeNotifier theme, AreaStyle style) {
+    const key = "expandMessagePadding";
+    var shown = _dragValues[key] ?? style.expandMessagePadding ?? 0;
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text("Panel padding: ${shown.toStringAsFixed(1)}"),
+      Slider(
+        value: shown,
+        min: 0,
+        max: 48,
+        onChanged: (v) => setState(() => _dragValues[key] = v),
+        onChangeEnd: (v) {
+          setState(() => _dragValues.remove(key));
+          _setStyle(theme, (s) => s.copyWith(expandMessagePadding: v));
+        },
+      ),
+    ]);
+  }
+
   // _fillEditor builds the mode dropdown + conditional color/gradient-
   // direction/image controls shared by both the background and the border
   // fill -- they support the same four modes, just against different
@@ -1304,14 +1350,57 @@ class _AreasSectionState extends State<AreasSection> {
                 _setStyle(theme, (s) => s.copyWith(enableMessageActions: v)),
           ),
           SwitchListTile(
-            title: const Text("Chat list previews"),
+            title: const Text("Show last message & timestamp"),
             subtitle: const Text(
                 "Shows a last-message preview and relative timestamp on "
                 "each contact/GC row"),
-            value: style.showChatListPreviews,
-            onChanged: (v) =>
-                _setStyle(theme, (s) => s.copyWith(showChatListPreviews: v)),
+            value: style.showChatListLastMessage,
+            onChanged: (v) => _setStyle(
+                theme, (s) => s.copyWith(showChatListLastMessage: v)),
           ),
+          SwitchListTile(
+            title: const Text("Chat list design"),
+            subtitle: const Text(
+                "Rounded, glowing rows with a highlighted selected chat, "
+                "instead of the plain list"),
+            value: style.chatListDesignEnabled,
+            onChanged: (v) => _setStyle(
+                theme, (s) => s.copyWith(chatListDesignEnabled: v)),
+          ),
+          if (style.chatListDesignEnabled) ...[
+            _slider(
+                "chatListCornerRadius",
+                "Row corner radius",
+                style.chatListCornerRadius ?? 14,
+                0,
+                28,
+                (v) => _setStyle(
+                    theme, (s) => s.copyWith(chatListCornerRadius: v))),
+            Row(children: [
+              const Txt("Accent color: "),
+              const SizedBox(width: 8),
+              PaletteColorDropdown(
+                preset: preset,
+                value: style.chatListAccentColor,
+                allowNone: true,
+                onChanged: (c) => _setStyle(
+                    theme,
+                    (s) => c == null
+                        ? s.copyWith(clearChatListAccentColor: true)
+                        : s.copyWith(chatListAccentColor: c)),
+              ),
+            ]),
+            _glowSlider(theme, style),
+            SwitchListTile(
+              title: const Text("Row top highlight"),
+              subtitle: const Text(
+                  "Top-left ambient glow and lit hairline on unselected "
+                  "rows, instead of a flat background"),
+              value: style.chatListTopHighlight,
+              onChanged: (v) => _setStyle(
+                  theme, (s) => s.copyWith(chatListTopHighlight: v)),
+            ),
+          ],
           SwitchListTile(
             title: const Text("Monochrome avatars"),
             subtitle: const Text(
@@ -1378,23 +1467,38 @@ class _AreasSectionState extends State<AreasSection> {
               onChanged: (v) =>
                   _setStyle(theme, (s) => s.copyWith(squareBubbles: v)),
             ),
-            SwitchListTile(
-              title: const Text("Left-align messages"),
-              subtitle: const Text(
-                  "Stacks all messages in a single column instead of "
-                  "splitting by sender"),
-              value: style.leftAlignMessages,
-              onChanged: (v) =>
-                  _setStyle(theme, (s) => s.copyWith(leftAlignMessages: v)),
-            ),
-            SwitchListTile(
-              title: const Text("Narrow conversation"),
-              subtitle: const Text(
-                  "Centers the message list into a narrower column"),
-              value: style.narrowChat,
-              onChanged: (v) =>
-                  _setStyle(theme, (s) => s.copyWith(narrowChat: v)),
-            ),
+            const SizedBox(height: 8),
+            Row(children: [
+              const Txt("Message layout: "),
+              const SizedBox(width: 8),
+              DropdownButton<MessageLayoutMode>(
+                value: style.messageLayoutMode ?? MessageLayoutMode.standard,
+                items: MessageLayoutMode.values
+                    .map((m) => DropdownMenuItem(
+                        value: m, child: Text(messageLayoutModeLabel(m))))
+                    .toList(),
+                onChanged: (m) {
+                  if (m == null) return;
+                  _setStyle(
+                      theme,
+                      (s) => m == MessageLayoutMode.standard
+                          ? s.copyWith(clearMessageLayoutMode: true)
+                          : s.copyWith(messageLayoutMode: m));
+                },
+              ),
+            ]),
+            if ((style.messageLayoutMode ?? MessageLayoutMode.standard) !=
+                MessageLayoutMode.standard)
+              SwitchListTile(
+                title: const Text("Expand to fill panel"),
+                subtitle: const Text(
+                    "Uses the full conversation panel width instead of "
+                    "margining the message list in"),
+                value: style.expandMessageWidth,
+                onChanged: (v) => _setStyle(
+                    theme, (s) => s.copyWith(expandMessageWidth: v)),
+              ),
+            if (style.expandMessageWidth) _expandPaddingSlider(theme, style),
           ],
         ],
         if (selected == ThemeArea.realtimeChat) ...[

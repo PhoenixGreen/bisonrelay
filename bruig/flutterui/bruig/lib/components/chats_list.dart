@@ -22,7 +22,8 @@ import 'package:golib_plugin/golib_plugin.dart';
 import 'package:golib_plugin/definitions.dart';
 import 'package:file_picker/file_picker.dart';
 
-// --- Chat list preview redesign tokens (AreaStyle.showChatListPreviews). ---
+// --- Chat list preview redesign tokens (AreaStyle.chatListDesignEnabled/
+// showChatListLastMessage). ---
 const _clpBlue = Color(0xFF4D9FFF); // you / unread / search
 const _clpNickColor = Color(0xFFE6EAE8);
 const _clpPreviewMuted = Color(0xFF9AA3A0);
@@ -152,11 +153,11 @@ class _ChatHeadingWState extends State<_ChatHeadingW> {
     return "";
   }
 
-  // Rounded card w/ soft glow (inactive) or a blue selected-left-edge +
-  // glow (active). Only used when showChatListPreviews is on -- otherwise
-  // the tile keeps its plain ListTile selected/tileColor styling.
-  Widget _wrapSelected(bool isActive, Widget tile) {
-    const radius = 14.0;
+  // Rounded card w/ soft glow (inactive) or an accent-colored selected-left-
+  // edge + glow (active). Only used when chatListDesignEnabled is on --
+  // otherwise the tile keeps its plain ListTile selected/tileColor styling.
+  Widget _wrapSelected(bool isActive, double radius, Color accent,
+      double glowIntensity, bool topHighlight, Widget tile) {
     // ListTile.tileColor/selectedTileColor need a nearby Material ancestor
     // to paint into and to render ink splashes -- the ClipRRect below
     // otherwise leaves them without one. MaterialType.transparency paints
@@ -168,27 +169,31 @@ class _ChatHeadingWState extends State<_ChatHeadingW> {
         margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(radius),
-          gradient: const RadialGradient(
-            center: Alignment(-0.76, -1.2),
-            radius: 1.2,
-            colors: [Color(0xFF242424), Color(0xFF0E0E0E)],
-            stops: [0.0, 0.52],
-          ),
+          color: topHighlight ? null : const Color(0xFF171717),
+          gradient: topHighlight
+              ? const RadialGradient(
+                  center: Alignment(-0.76, -1.2),
+                  radius: 1.2,
+                  colors: [Color(0xFF242424), Color(0xFF0E0E0E)],
+                  stops: [0.0, 0.52],
+                )
+              : null,
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(radius),
           child: Stack(
             children: [
               tile,
-              Positioned(
-                top: 0,
-                left: 0,
-                right: 0,
-                child: IgnorePointer(
-                  child:
-                      Container(height: 1, color: const Color(0xFF2E2E2E)),
+              if (topHighlight)
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  child: IgnorePointer(
+                    child:
+                        Container(height: 1, color: const Color(0xFF2E2E2E)),
+                  ),
                 ),
-              ),
             ],
           ),
         ),
@@ -197,21 +202,24 @@ class _ChatHeadingWState extends State<_ChatHeadingW> {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
-        color: _clpBlue.withValues(alpha: 0.55),
+        color: accent.withValues(alpha: 0.55),
         borderRadius: BorderRadius.circular(radius),
-        boxShadow: [
-          BoxShadow(
-            color: _clpBlue.withValues(alpha: 0.15),
-            blurRadius: 10,
-            spreadRadius: 0,
-          ),
-        ],
+        boxShadow: glowIntensity <= 0
+            ? const []
+            : [
+                BoxShadow(
+                  color: accent.withValues(
+                      alpha: (0.15 * glowIntensity).clamp(0, 1)),
+                  blurRadius: 10 * glowIntensity,
+                  spreadRadius: 0,
+                ),
+              ],
       ),
       child: Padding(
         padding: const EdgeInsets.only(left: 3),
         child: ClipRRect(
-          borderRadius: const BorderRadius.horizontal(
-            left: Radius.circular(radius - 3),
+          borderRadius: BorderRadius.horizontal(
+            left: Radius.circular(radius > 3 ? radius - 3 : 0),
             right: Radius.circular(radius),
           ),
           child: Container(
@@ -225,9 +233,13 @@ class _ChatHeadingWState extends State<_ChatHeadingW> {
 
   @override
   Widget build(BuildContext context) {
-    var showPreviews = ThemeNotifier.of(context)
-        .areaStyle(ThemeArea.chat)
-        .showChatListPreviews;
+    var chatStyle = ThemeNotifier.of(context).areaStyle(ThemeArea.chat);
+    var showLastMessage = chatStyle.showChatListLastMessage;
+    var chatListDesign = chatStyle.chatListDesignEnabled;
+    var cornerRadius = chatStyle.chatListCornerRadius ?? 14;
+    var accentColor = chatStyle.chatListAccentColor ?? _clpBlue;
+    var glowIntensity = chatStyle.chatListGlowIntensity ?? 1.0;
+    var topHighlight = chatStyle.chatListTopHighlight;
     var isActive = chat.active;
     var hasUnread = chat.unreadMsgCount > 0 || chat.unreadEventCount > 0;
 
@@ -241,10 +253,10 @@ class _ChatHeadingWState extends State<_ChatHeadingW> {
         margin: const EdgeInsets.all(1),
         child: CircleAvatar(
           radius: 10,
-          backgroundColor: showPreviews ? _clpBlue : null,
+          backgroundColor: chatListDesign ? accentColor : null,
           child: Text(
             "$unreadCount",
-            style: showPreviews
+            style: chatListDesign
                 ? const TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
@@ -259,7 +271,7 @@ class _ChatHeadingWState extends State<_ChatHeadingW> {
       unreadIndicator = Container(
         margin: const EdgeInsets.all(1),
         child: CircleAvatar(
-            radius: 3, backgroundColor: showPreviews ? _clpBlue : null),
+            radius: 3, backgroundColor: chatListDesign ? accentColor : null),
       );
     } else {
       // Show nothing.
@@ -268,7 +280,7 @@ class _ChatHeadingWState extends State<_ChatHeadingW> {
 
     var popMenuButton = InteractiveAvatar(
       chatNick: chat.nick,
-      radius: showPreviews ? 23 : null,
+      radius: chatListDesign ? 23 : null,
       onTap: () {
         widget.makeActive(chat);
         widget.showSubMenu();
@@ -277,7 +289,7 @@ class _ChatHeadingWState extends State<_ChatHeadingW> {
       toolTip: true,
     );
 
-    Widget titleWidget = showPreviews
+    Widget titleWidget = chatListDesign
         ? Text(
             chat.nick,
             maxLines: 1,
@@ -287,7 +299,7 @@ class _ChatHeadingWState extends State<_ChatHeadingW> {
               fontWeight: hasUnread
                   ? FontWeight.w700
                   : (isActive ? FontWeight.w600 : FontWeight.w500),
-              color: isActive ? _clpBlue : _clpNickColor,
+              color: isActive ? accentColor : _clpNickColor,
             ),
           )
         : Txt(
@@ -297,7 +309,7 @@ class _ChatHeadingWState extends State<_ChatHeadingW> {
           );
 
     Widget? subtitleWidget;
-    if (showPreviews) {
+    if (showLastMessage) {
       final preview = _lastMsgPreview();
       if (preview != null) {
         subtitleWidget = Padding(
@@ -318,31 +330,32 @@ class _ChatHeadingWState extends State<_ChatHeadingW> {
     }
 
     Widget trailingWith(Widget bottom) {
-      if (!showPreviews) return bottom;
+      if (!showLastMessage) return bottom;
       final timeStr = _lastMsgTime();
+      if (timeStr.isEmpty) return bottom;
       return Column(
         mainAxisSize: MainAxisSize.min,
         mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          if (timeStr.isNotEmpty) ...[
-            Text(
-              timeStr,
-              style: TextStyle(
-                fontSize: 11.5,
-                fontWeight: FontWeight.w500,
-                color: hasUnread ? _clpBlue : const Color(0xFF5F6764),
-              ),
+          Text(
+            timeStr,
+            style: TextStyle(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w500,
+              color: hasUnread ? accentColor : const Color(0xFF5F6764),
             ),
-            const SizedBox(height: 6),
-          ],
+          ),
+          const SizedBox(height: 6),
           bottom,
         ],
       );
     }
 
-    Widget wrap(Widget tile) =>
-        showPreviews ? _wrapSelected(isActive, tile) : tile;
+    Widget wrap(Widget tile) => chatListDesign
+        ? _wrapSelected(isActive, cornerRadius, accentColor, glowIntensity,
+            topHighlight, tile)
+        : tile;
 
     bool isScreenSmall = checkIsScreenSmall(context);
     return Consumer<ThemeNotifier>(
@@ -358,15 +371,15 @@ class _ChatHeadingWState extends State<_ChatHeadingW> {
                 targetGcChat: chat,
                 child: wrap(
                   ListTile(
-                    tileColor: showPreviews ? Colors.transparent : null,
+                    tileColor: chatListDesign ? Colors.transparent : null,
                     selectedTileColor:
-                        showPreviews ? Colors.transparent : null,
+                        chatListDesign ? Colors.transparent : null,
                     horizontalTitleGap: 12,
                     contentPadding: const EdgeInsets.only(
                       left: 10,
                       right: 8,
                     ),
-                    minVerticalPadding: showPreviews ? 20 : 4,
+                    minVerticalPadding: chatListDesign ? 20 : 4,
                     enabled: true,
                     title: titleWidget,
                     subtitle: subtitleWidget,
@@ -394,16 +407,16 @@ class _ChatHeadingWState extends State<_ChatHeadingW> {
                   ListTile(
                     tileColor: isActiveRTC
                         ? Colors.green.shade600
-                        : (showPreviews ? Colors.transparent : null),
+                        : (chatListDesign ? Colors.transparent : null),
                     selectedTileColor: isActiveRTC
                         ? Colors.green.shade600
-                        : (showPreviews ? Colors.transparent : null),
+                        : (chatListDesign ? Colors.transparent : null),
                     horizontalTitleGap: 12,
                     contentPadding: const EdgeInsets.only(
                       left: 10,
                       right: 8,
                     ),
-                    minVerticalPadding: showPreviews ? 20 : 4,
+                    minVerticalPadding: chatListDesign ? 20 : 4,
                     enabled: true,
                     title: titleWidget,
                     subtitle: subtitleWidget,

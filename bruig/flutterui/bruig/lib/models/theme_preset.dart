@@ -120,6 +120,24 @@ String subMenuStyleLabel(SubMenuStyle s) {
   }
 }
 
+// MessageLayoutMode controls how chat messages are arranged in the
+// conversation view; only meaningful for ThemeArea.chat.
+// - standard: today's behavior (own messages right-aligned, others left).
+// - leftAlign: every message stacks in a single left-hand column.
+// - narrow: the message list is centered into a narrower column.
+enum MessageLayoutMode { standard, leftAlign, narrow }
+
+String messageLayoutModeLabel(MessageLayoutMode m) {
+  switch (m) {
+    case MessageLayoutMode.standard:
+      return "Default";
+    case MessageLayoutMode.leftAlign:
+      return "Left-align messages";
+    case MessageLayoutMode.narrow:
+      return "Narrow conversation";
+  }
+}
+
 // AreaBackgroundMode selects how a fill (background or border) is painted.
 // token = "use the app's normal color scheme" (opaque, matches how the area
 // looked before this feature existed). none is a distinct, explicit "no
@@ -267,7 +285,13 @@ class AreaStyle {
   // default to false (off) so existing chat behavior is unchanged until a
   // user opts in via the theme editor.
   final bool enableMessageActions; // Reply + Pin context-menu actions.
-  final bool showChatListPreviews; // Last-message preview/timestamp/rows.
+  final bool showChatListLastMessage; // Last-message preview + timestamp.
+  final bool chatListDesignEnabled; // Rounded/glow chat list row styling.
+  final double? chatListCornerRadius; // Null = built-in default (14).
+  final Color? chatListAccentColor; // Null = built-in default (blue).
+  final double? chatListGlowIntensity; // Null = built-in default (1.0); 0 = off.
+  final bool chatListTopHighlight; // Ambient top-left glow + lit hairline
+  // on inactive rows (vs. a flat background); default on.
   final bool monochromeAvatars; // Graphite fallback avatars.
   final bool chatBackdropWash; // Radial-gradient wash behind messages.
   final bool showAdvancedChatOptions; // Reveals the toggles below in the editor.
@@ -276,8 +300,11 @@ class AreaStyle {
   final bool formattingToolbar; // Composer markdown formatting toolbar.
   final bool composerPolish; // Tip button, glow send, dynamic hint.
   final bool squareBubbles; // Sharp vs. rounded message bubble corners.
-  final bool leftAlignMessages; // Single-column message stack.
-  final bool narrowChat; // Centered, narrower message column.
+  final MessageLayoutMode? messageLayoutMode; // Null = standard/default.
+  final bool expandMessageWidth; // Fill the panel instead of margining in;
+  // only meaningful when messageLayoutMode != null/standard.
+  final double? expandMessagePadding; // Null = built-in default (0); only
+  // meaningful when expandMessageWidth is on.
 
   // The following toggles are only meaningful for ThemeArea.realtimeChat.
   final bool autoUnmuteOnJoin; // Auto-unmute + snackbar on joining a call.
@@ -307,7 +334,12 @@ class AreaStyle {
       subMenuStyle == null &&
       showHoverArrow == true &&
       enableMessageActions == false &&
-      showChatListPreviews == false &&
+      showChatListLastMessage == false &&
+      chatListDesignEnabled == false &&
+      chatListCornerRadius == null &&
+      chatListAccentColor == null &&
+      chatListGlowIntensity == null &&
+      chatListTopHighlight == true &&
       monochromeAvatars == false &&
       chatBackdropWash == false &&
       showAdvancedChatOptions == false &&
@@ -316,8 +348,9 @@ class AreaStyle {
       formattingToolbar == false &&
       composerPolish == false &&
       squareBubbles == false &&
-      leftAlignMessages == false &&
-      narrowChat == false &&
+      messageLayoutMode == null &&
+      expandMessageWidth == false &&
+      expandMessagePadding == null &&
       autoUnmuteOnJoin == false &&
       enhancedCallIndicators == false;
 
@@ -353,7 +386,12 @@ class AreaStyle {
     this.subMenuStyle,
     this.showHoverArrow = true,
     this.enableMessageActions = false,
-    this.showChatListPreviews = false,
+    this.showChatListLastMessage = false,
+    this.chatListDesignEnabled = false,
+    this.chatListCornerRadius,
+    this.chatListAccentColor,
+    this.chatListGlowIntensity,
+    this.chatListTopHighlight = true,
     this.monochromeAvatars = false,
     this.chatBackdropWash = false,
     this.showAdvancedChatOptions = false,
@@ -362,8 +400,9 @@ class AreaStyle {
     this.formattingToolbar = false,
     this.composerPolish = false,
     this.squareBubbles = false,
-    this.leftAlignMessages = false,
-    this.narrowChat = false,
+    this.messageLayoutMode,
+    this.expandMessageWidth = false,
+    this.expandMessagePadding,
     this.autoUnmuteOnJoin = false,
     this.enhancedCallIndicators = false,
   });
@@ -404,7 +443,15 @@ class AreaStyle {
     SubMenuStyle? subMenuStyle,
     bool? showHoverArrow,
     bool? enableMessageActions,
-    bool? showChatListPreviews,
+    bool? showChatListLastMessage,
+    bool? chatListDesignEnabled,
+    double? chatListCornerRadius,
+    bool clearChatListCornerRadius = false,
+    Color? chatListAccentColor,
+    bool clearChatListAccentColor = false,
+    double? chatListGlowIntensity,
+    bool clearChatListGlowIntensity = false,
+    bool? chatListTopHighlight,
     bool? monochromeAvatars,
     bool? chatBackdropWash,
     bool? showAdvancedChatOptions,
@@ -413,8 +460,11 @@ class AreaStyle {
     bool? formattingToolbar,
     bool? composerPolish,
     bool? squareBubbles,
-    bool? leftAlignMessages,
-    bool? narrowChat,
+    MessageLayoutMode? messageLayoutMode,
+    bool clearMessageLayoutMode = false,
+    bool? expandMessageWidth,
+    double? expandMessagePadding,
+    bool clearExpandMessagePadding = false,
     bool? autoUnmuteOnJoin,
     bool? enhancedCallIndicators,
   }) =>
@@ -453,8 +503,21 @@ class AreaStyle {
         showHoverArrow: showHoverArrow ?? this.showHoverArrow,
         enableMessageActions:
             enableMessageActions ?? this.enableMessageActions,
-        showChatListPreviews:
-            showChatListPreviews ?? this.showChatListPreviews,
+        showChatListLastMessage:
+            showChatListLastMessage ?? this.showChatListLastMessage,
+        chatListDesignEnabled:
+            chatListDesignEnabled ?? this.chatListDesignEnabled,
+        chatListCornerRadius: clearChatListCornerRadius
+            ? null
+            : (chatListCornerRadius ?? this.chatListCornerRadius),
+        chatListAccentColor: clearChatListAccentColor
+            ? null
+            : (chatListAccentColor ?? this.chatListAccentColor),
+        chatListGlowIntensity: clearChatListGlowIntensity
+            ? null
+            : (chatListGlowIntensity ?? this.chatListGlowIntensity),
+        chatListTopHighlight:
+            chatListTopHighlight ?? this.chatListTopHighlight,
         monochromeAvatars: monochromeAvatars ?? this.monochromeAvatars,
         chatBackdropWash: chatBackdropWash ?? this.chatBackdropWash,
         showAdvancedChatOptions:
@@ -464,8 +527,13 @@ class AreaStyle {
         formattingToolbar: formattingToolbar ?? this.formattingToolbar,
         composerPolish: composerPolish ?? this.composerPolish,
         squareBubbles: squareBubbles ?? this.squareBubbles,
-        leftAlignMessages: leftAlignMessages ?? this.leftAlignMessages,
-        narrowChat: narrowChat ?? this.narrowChat,
+        messageLayoutMode: clearMessageLayoutMode
+            ? null
+            : (messageLayoutMode ?? this.messageLayoutMode),
+        expandMessageWidth: expandMessageWidth ?? this.expandMessageWidth,
+        expandMessagePadding: clearExpandMessagePadding
+            ? null
+            : (expandMessagePadding ?? this.expandMessagePadding),
         autoUnmuteOnJoin: autoUnmuteOnJoin ?? this.autoUnmuteOnJoin,
         enhancedCallIndicators:
             enhancedCallIndicators ?? this.enhancedCallIndicators,
@@ -515,8 +583,17 @@ class AreaStyle {
         if (subMenuStyle != null) "subMenuStyle": subMenuStyle!.name,
         if (!showHoverArrow) "showHoverArrow": showHoverArrow,
         if (enableMessageActions) "enableMessageActions": enableMessageActions,
-        if (showChatListPreviews)
-          "showChatListPreviews": showChatListPreviews,
+        if (showChatListLastMessage)
+          "showChatListLastMessage": showChatListLastMessage,
+        if (chatListDesignEnabled)
+          "chatListDesignEnabled": chatListDesignEnabled,
+        if (chatListCornerRadius != null)
+          "chatListCornerRadius": chatListCornerRadius,
+        if (chatListAccentColor != null)
+          "chatListAccentColor": _colorToHex(chatListAccentColor!),
+        if (chatListGlowIntensity != null)
+          "chatListGlowIntensity": chatListGlowIntensity,
+        if (!chatListTopHighlight) "chatListTopHighlight": chatListTopHighlight,
         if (monochromeAvatars) "monochromeAvatars": monochromeAvatars,
         if (chatBackdropWash) "chatBackdropWash": chatBackdropWash,
         if (showAdvancedChatOptions)
@@ -526,8 +603,11 @@ class AreaStyle {
         if (formattingToolbar) "formattingToolbar": formattingToolbar,
         if (composerPolish) "composerPolish": composerPolish,
         if (squareBubbles) "squareBubbles": squareBubbles,
-        if (leftAlignMessages) "leftAlignMessages": leftAlignMessages,
-        if (narrowChat) "narrowChat": narrowChat,
+        if (messageLayoutMode != null)
+          "messageLayoutMode": messageLayoutMode!.name,
+        if (expandMessageWidth) "expandMessageWidth": expandMessageWidth,
+        if (expandMessagePadding != null)
+          "expandMessagePadding": expandMessagePadding,
         if (autoUnmuteOnJoin) "autoUnmuteOnJoin": autoUnmuteOnJoin,
         if (enhancedCallIndicators)
           "enhancedCallIndicators": enhancedCallIndicators,
@@ -602,7 +682,16 @@ class AreaStyle {
             : null,
         showHoverArrow: j["showHoverArrow"] as bool? ?? true,
         enableMessageActions: j["enableMessageActions"] as bool? ?? false,
-        showChatListPreviews: j["showChatListPreviews"] as bool? ?? false,
+        showChatListLastMessage:
+            j["showChatListLastMessage"] as bool? ?? false,
+        chatListDesignEnabled: j["chatListDesignEnabled"] as bool? ?? false,
+        chatListCornerRadius: (j["chatListCornerRadius"] as num?)?.toDouble(),
+        chatListAccentColor: j["chatListAccentColor"] != null
+            ? _colorFromHex(j["chatListAccentColor"])
+            : null,
+        chatListGlowIntensity:
+            (j["chatListGlowIntensity"] as num?)?.toDouble(),
+        chatListTopHighlight: j["chatListTopHighlight"] as bool? ?? true,
         monochromeAvatars: j["monochromeAvatars"] as bool? ?? false,
         chatBackdropWash: j["chatBackdropWash"] as bool? ?? false,
         showAdvancedChatOptions:
@@ -612,8 +701,13 @@ class AreaStyle {
         formattingToolbar: j["formattingToolbar"] as bool? ?? false,
         composerPolish: j["composerPolish"] as bool? ?? false,
         squareBubbles: j["squareBubbles"] as bool? ?? false,
-        leftAlignMessages: j["leftAlignMessages"] as bool? ?? false,
-        narrowChat: j["narrowChat"] as bool? ?? false,
+        messageLayoutMode: j["messageLayoutMode"] != null
+            ? MessageLayoutMode.values
+                .firstWhere((e) => e.name == j["messageLayoutMode"])
+            : null,
+        expandMessageWidth: j["expandMessageWidth"] as bool? ?? false,
+        expandMessagePadding:
+            (j["expandMessagePadding"] as num?)?.toDouble(),
         autoUnmuteOnJoin: j["autoUnmuteOnJoin"] as bool? ?? false,
         enhancedCallIndicators: j["enhancedCallIndicators"] as bool? ?? false,
       );

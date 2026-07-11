@@ -306,17 +306,24 @@ class _ReceivedSentPMState extends State<ReceivedSentPM> {
         builder: (context, constraints) => Consumer<ThemeNotifier>(
         builder: (context, theme, _) {
       var chatStyle = theme.areaStyle(ThemeArea.chat);
-      var leftAlign = chatStyle.leftAlignMessages;
-      var narrow = chatStyle.narrowChat;
+      var layoutMode = chatStyle.messageLayoutMode ?? MessageLayoutMode.standard;
+      var leftAlign = layoutMode == MessageLayoutMode.leftAlign;
+      var narrow = layoutMode == MessageLayoutMode.narrow;
+      // expandMessageWidth's panel padding is applied once around the whole
+      // conversation viewport (see active_chat.dart), not per-message here.
+      var expand = layoutMode != MessageLayoutMode.standard &&
+          chatStyle.expandMessageWidth;
       return Container(
             margin: EdgeInsets.fromLTRB(
                 0,
                 widget.evnt.sameUser ? 2 : 10,
-                narrow
-                    ? (constraints.maxWidth > 700
-                        ? constraints.maxWidth * 0.32
-                        : 20)
-                    : ((isOwnMessage && !leftAlign) ? 20 : 0),
+                expand
+                    ? 0
+                    : (narrow
+                        ? (constraints.maxWidth > 700
+                            ? constraints.maxWidth * 0.32
+                            : 20)
+                        : ((isOwnMessage && !leftAlign) ? 20 : 0)),
                 0),
             child: Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
@@ -360,9 +367,13 @@ class _ReceivedSentPMState extends State<ReceivedSentPM> {
                           },
                           child: ConstrainedBox(
                               constraints: BoxConstraints(
-                                maxWidth: isScreenSmall
-                                    ? MediaQuery.sizeOf(context).width * 0.75
-                                    : MediaQuery.sizeOf(context).width * 0.4,
+                                maxWidth: expand
+                                    ? constraints.maxWidth
+                                    : (isScreenSmall
+                                        ? MediaQuery.sizeOf(context).width *
+                                            0.75
+                                        : MediaQuery.sizeOf(context).width *
+                                            0.4),
                               ),
                               child: Container(
                                   padding: const EdgeInsets.only(

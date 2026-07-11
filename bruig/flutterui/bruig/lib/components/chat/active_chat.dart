@@ -335,8 +335,16 @@ class _ActiveChatState extends State<ActiveChat> with RouteAware {
       return InstantCallScreen(
           rtc, currentInstantSession!, widget.audio, client, chat);
     } else {
-      var enableChatSearch =
-          ThemeNotifier.of(context).areaStyle(ThemeArea.chat).enableChatSearch;
+      var chatStyle = ThemeNotifier.of(context).areaStyle(ThemeArea.chat);
+      var enableChatSearch = chatStyle.enableChatSearch;
+      // expandPad reserves space around the conversation viewport (between
+      // it and the pinned bar/RTC header above, and the input bar below)
+      // when AreaStyle.expandMessageWidth is on -- separate from the
+      // per-message maxWidth handled in chat/events.dart.
+      var expand = (chatStyle.messageLayoutMode ?? MessageLayoutMode.standard) !=
+              MessageLayoutMode.standard &&
+          chatStyle.expandMessageWidth;
+      var expandPad = expand ? (chatStyle.expandMessagePadding ?? 0) : 0.0;
       return ScreenWithChatSideMenu(
           client,
           Column(
@@ -358,34 +366,36 @@ class _ActiveChatState extends State<ActiveChat> with RouteAware {
                   child:
                       RTCSessionHeader(rtc, rtcSession!, widget.audio, client),
                 ),
-              if (ThemeNotifier.of(context)
-                  .areaStyle(ThemeArea.chat)
-                  .enableMessageActions)
-                _pinnedBar(chat),
+              if (chatStyle.enableMessageActions) _pinnedBar(chat),
+              if (expandPad > 0) SizedBox(height: expandPad),
               Expanded(
-                child: Stack(children: [
-                  Messages(chat, client, _itemScrollController,
-                      _itemPositionsListener),
-                  Positioned(
-                      bottom: 10,
-                      left: 10,
-                      right: 10,
-                      child: Consumer<TypingEmojiSelModel>(
-                          builder: (context, typingEmoji, child) =>
-                              TypingEmojiPanel(
-                                model: typingEmoji,
-                                focusNode: inputFocusNode,
-                              ))),
-                  if (isScreenSmall)
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: expandPad),
+                  child: Stack(children: [
+                    Messages(chat, client, _itemScrollController,
+                        _itemPositionsListener),
                     Positioned(
-                        left: 10,
                         bottom: 10,
+                        left: 10,
                         right: 10,
-                        child: Consumer<AudioModel>(
-                            builder: (context, audio, child) =>
-                                SmallScreenRecordInfoPanel(audio: audio))),
-                ]),
+                        child: Consumer<TypingEmojiSelModel>(
+                            builder: (context, typingEmoji, child) =>
+                                TypingEmojiPanel(
+                                  model: typingEmoji,
+                                  focusNode: inputFocusNode,
+                                ))),
+                    if (isScreenSmall)
+                      Positioned(
+                          left: 10,
+                          bottom: 10,
+                          right: 10,
+                          child: Consumer<AudioModel>(
+                              builder: (context, audio, child) =>
+                                  SmallScreenRecordInfoPanel(audio: audio))),
+                  ]),
+                ),
               ),
+              if (expandPad > 0) SizedBox(height: expandPad),
               if (!chat.killed)
                 Container(
                     padding: isScreenSmall
