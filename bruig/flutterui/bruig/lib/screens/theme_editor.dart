@@ -1513,6 +1513,91 @@ class _AreasSectionState extends State<AreasSection> {
                 theme, (s) => s.copyWith(enhancedCallIndicators: v)),
           ),
         ],
+        if (selected == ThemeArea.feed) ...[
+          SwitchListTile(
+            title: const Text("Feed card redesign"),
+            subtitle: const Text(
+                "X-style borderless post cards, live comment count, a "
+                "height-clamped body with \"Show more\", and a centered "
+                "post-detail view"),
+            value: style.feedCardRedesign,
+            onChanged: (v) =>
+                _setStyle(theme, (s) => s.copyWith(feedCardRedesign: v)),
+          ),
+          SwitchListTile(
+            title: const Text("Post actions: relay, tip, quote"),
+            subtitle: const Text(
+                "Relay-to-subscribers, tip-the-author, and quote-post "
+                "icons on each card, with nested quote-post rendering "
+                "(requires Feed card redesign)"),
+            value: style.feedCardActions,
+            onChanged: (v) =>
+                _setStyle(theme, (s) => s.copyWith(feedCardActions: v)),
+          ),
+          SwitchListTile(
+            title: const Text("Bookmarks"),
+            subtitle: const Text(
+                "Per-post bookmark toggle and a Bookmarks section in the "
+                "feed side panel (requires Feed side panel for the list)"),
+            value: style.feedBookmarks,
+            onChanged: (v) =>
+                _setStyle(theme, (s) => s.copyWith(feedBookmarks: v)),
+          ),
+          SwitchListTile(
+            title: const Text("Hide posts"),
+            subtitle: const Text(
+                "Per-post hide/unhide and a Hidden section in the feed "
+                "side panel (requires Feed side panel for the list)"),
+            value: style.feedHidePosts,
+            onChanged: (v) =>
+                _setStyle(theme, (s) => s.copyWith(feedHidePosts: v)),
+          ),
+          SwitchListTile(
+            title: const Text("Feed side panel"),
+            subtitle: const Text(
+                "Search, sort, and an unread-only filter in a nav rail, "
+                "replacing the plain tab bar on the main feed tab"),
+            value: style.feedSidePanel,
+            onChanged: (v) =>
+                _setStyle(theme, (s) => s.copyWith(feedSidePanel: v)),
+          ),
+          SwitchListTile(
+            title: const Text("Inline composer"),
+            subtitle: const Text(
+                "A pinned \"What's happening?\" composer at the top of "
+                "the feed"),
+            value: style.feedInlineComposer,
+            onChanged: (v) =>
+                _setStyle(theme, (s) => s.copyWith(feedInlineComposer: v)),
+          ),
+          SwitchListTile(
+            title: const Text("Composer formatting toolbar"),
+            subtitle: const Text(
+                "Bold/Italic/Code/Strikethrough/Link toolbar in the "
+                "inline composer (requires Inline composer)"),
+            value: style.feedComposerFormatting,
+            onChanged: (v) => _setStyle(
+                theme, (s) => s.copyWith(feedComposerFormatting: v)),
+          ),
+          SwitchListTile(
+            title: const Text("Composer image/file attach"),
+            subtitle: const Text(
+                "Attach an image or file from the inline composer "
+                "(requires Inline composer)"),
+            value: style.feedComposerAttach,
+            onChanged: (v) =>
+                _setStyle(theme, (s) => s.copyWith(feedComposerAttach: v)),
+          ),
+          SwitchListTile(
+            title: const Text("Drafts"),
+            subtitle: const Text(
+                "Save/reuse/delete post drafts (requires Inline composer "
+                "and Feed side panel)"),
+            value: style.feedDrafts,
+            onChanged: (v) =>
+                _setStyle(theme, (s) => s.copyWith(feedDrafts: v)),
+          ),
+        ],
         if (selected == ThemeArea.header) ...[
           Row(children: [
             const Txt("Position: "),

@@ -309,6 +309,27 @@ class AreaStyle {
   final bool autoUnmuteOnJoin; // Auto-unmute + snackbar on joining a call.
   final bool enhancedCallIndicators; // Mic-live/mute/warning-chip indicators.
 
+  // The following toggles are only meaningful for ThemeArea.feed. Each
+  // gates a distinct feed-page feature ported from the exitus1 fork; all
+  // default to false (off). Several only have a visible effect when
+  // feedCardRedesign is also on (they render into the new card's action
+  // bar, which the old card layout doesn't have).
+  final bool feedCardRedesign; // X-style card layout, comment count,
+  // clamped body + "Show more", and the post-detail screen's centered width.
+  final bool feedCardActions; // Relay/tip/quote-post action-bar icons +
+  // nested quote-post rendering. Needs feedCardRedesign.
+  final bool feedBookmarks; // Per-post bookmark + "Bookmarks" nav section.
+  final bool feedHidePosts; // Per-post hide/unhide + "Hidden" nav section.
+  final bool feedSidePanel; // Search/sort/filter nav rail, replacing FeedBar
+  // on the main feed tab.
+  final bool feedInlineComposer; // Pinned "What's happening?" composer.
+  final bool feedComposerFormatting; // Formatting toolbar in the composer.
+  // Needs feedInlineComposer.
+  final bool feedComposerAttach; // Image/file attach in the composer. Needs
+  // feedInlineComposer.
+  final bool feedDrafts; // Save/reuse/delete drafts. Needs
+  // feedInlineComposer (save button) + feedSidePanel (drafts list).
+
   // isUnmodified is true only when nothing about this style differs from
   // the area's original, pre-theming-feature appearance. A few render call
   // sites (SecondarySideMenu, the header, the login screen) have a cheaper
@@ -350,7 +371,16 @@ class AreaStyle {
       expandMessageWidth == false &&
       expandMessagePadding == null &&
       autoUnmuteOnJoin == false &&
-      enhancedCallIndicators == false;
+      enhancedCallIndicators == false &&
+      feedCardRedesign == false &&
+      feedCardActions == false &&
+      feedBookmarks == false &&
+      feedHidePosts == false &&
+      feedSidePanel == false &&
+      feedInlineComposer == false &&
+      feedComposerFormatting == false &&
+      feedComposerAttach == false &&
+      feedDrafts == false;
 
   const AreaStyle({
     this.mode = AreaBackgroundMode.token,
@@ -402,6 +432,15 @@ class AreaStyle {
     this.expandMessagePadding,
     this.autoUnmuteOnJoin = false,
     this.enhancedCallIndicators = false,
+    this.feedCardRedesign = false,
+    this.feedCardActions = false,
+    this.feedBookmarks = false,
+    this.feedHidePosts = false,
+    this.feedSidePanel = false,
+    this.feedInlineComposer = false,
+    this.feedComposerFormatting = false,
+    this.feedComposerAttach = false,
+    this.feedDrafts = false,
   });
 
   AreaStyle copyWith({
@@ -463,6 +502,15 @@ class AreaStyle {
     bool clearExpandMessagePadding = false,
     bool? autoUnmuteOnJoin,
     bool? enhancedCallIndicators,
+    bool? feedCardRedesign,
+    bool? feedCardActions,
+    bool? feedBookmarks,
+    bool? feedHidePosts,
+    bool? feedSidePanel,
+    bool? feedInlineComposer,
+    bool? feedComposerFormatting,
+    bool? feedComposerAttach,
+    bool? feedDrafts,
   }) =>
       AreaStyle(
         mode: mode ?? this.mode,
@@ -531,6 +579,16 @@ class AreaStyle {
         autoUnmuteOnJoin: autoUnmuteOnJoin ?? this.autoUnmuteOnJoin,
         enhancedCallIndicators:
             enhancedCallIndicators ?? this.enhancedCallIndicators,
+        feedCardRedesign: feedCardRedesign ?? this.feedCardRedesign,
+        feedCardActions: feedCardActions ?? this.feedCardActions,
+        feedBookmarks: feedBookmarks ?? this.feedBookmarks,
+        feedHidePosts: feedHidePosts ?? this.feedHidePosts,
+        feedSidePanel: feedSidePanel ?? this.feedSidePanel,
+        feedInlineComposer: feedInlineComposer ?? this.feedInlineComposer,
+        feedComposerFormatting:
+            feedComposerFormatting ?? this.feedComposerFormatting,
+        feedComposerAttach: feedComposerAttach ?? this.feedComposerAttach,
+        feedDrafts: feedDrafts ?? this.feedDrafts,
       );
 
   static String _colorToHex(Color c) =>
@@ -603,6 +661,16 @@ class AreaStyle {
         if (autoUnmuteOnJoin) "autoUnmuteOnJoin": autoUnmuteOnJoin,
         if (enhancedCallIndicators)
           "enhancedCallIndicators": enhancedCallIndicators,
+        if (feedCardRedesign) "feedCardRedesign": feedCardRedesign,
+        if (feedCardActions) "feedCardActions": feedCardActions,
+        if (feedBookmarks) "feedBookmarks": feedBookmarks,
+        if (feedHidePosts) "feedHidePosts": feedHidePosts,
+        if (feedSidePanel) "feedSidePanel": feedSidePanel,
+        if (feedInlineComposer) "feedInlineComposer": feedInlineComposer,
+        if (feedComposerFormatting)
+          "feedComposerFormatting": feedComposerFormatting,
+        if (feedComposerAttach) "feedComposerAttach": feedComposerAttach,
+        if (feedDrafts) "feedDrafts": feedDrafts,
       };
 
   factory AreaStyle.fromJson(Map<String, dynamic> j) => AreaStyle(
@@ -700,6 +768,16 @@ class AreaStyle {
             (j["expandMessagePadding"] as num?)?.toDouble(),
         autoUnmuteOnJoin: j["autoUnmuteOnJoin"] as bool? ?? false,
         enhancedCallIndicators: j["enhancedCallIndicators"] as bool? ?? false,
+        feedCardRedesign: j["feedCardRedesign"] as bool? ?? false,
+        feedCardActions: j["feedCardActions"] as bool? ?? false,
+        feedBookmarks: j["feedBookmarks"] as bool? ?? false,
+        feedHidePosts: j["feedHidePosts"] as bool? ?? false,
+        feedSidePanel: j["feedSidePanel"] as bool? ?? false,
+        feedInlineComposer: j["feedInlineComposer"] as bool? ?? false,
+        feedComposerFormatting:
+            j["feedComposerFormatting"] as bool? ?? false,
+        feedComposerAttach: j["feedComposerAttach"] as bool? ?? false,
+        feedDrafts: j["feedDrafts"] as bool? ?? false,
       );
 
   _Fill _resolveFill(
