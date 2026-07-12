@@ -419,9 +419,29 @@ class FeedPosts extends StatefulWidget {
   State<FeedPosts> createState() => _FeedPostsState();
 }
 
+enum _FeedView { all, bookmarks, hidden }
+
+enum _FeedSort { newest, oldest, mostComments }
+
 class _FeedPostsState extends State<FeedPosts> {
+  final TextEditingController _searchCtrl = TextEditingController();
+  _FeedView _view = _FeedView.all;
+  _FeedSort _sort = _FeedSort.newest;
+  bool _unreadOnly = false;
+  String _search = "";
+
+  @override
+  void initState() {
+    super.initState();
+    FeedBookmarks.instance.ensureLoaded();
+    FeedHidden.instance.ensureLoaded();
+    widget.feed.addListener(feedChanged);
+    FeedBookmarks.instance.addListener(feedChanged);
+    FeedHidden.instance.addListener(feedChanged);
+  }
+
   void feedChanged() async {
-    setState(() {});
+    if (mounted) setState(() {});
   }
 
   @override
@@ -434,28 +454,423 @@ class _FeedPostsState extends State<FeedPosts> {
   @override
   void dispose() {
     widget.feed.removeListener(feedChanged);
+    FeedBookmarks.instance.removeListener(feedChanged);
+    FeedHidden.instance.removeListener(feedChanged);
+    _searchCtrl.dispose();
     super.dispose();
   }
 
+  List<FeedPostModel> _applyFilters(bool bookmarks, bool hidePosts) {
+    Iterable<FeedPostModel> posts = widget.onlyShowOwnPosts
+        ? widget.feed.posts
+            .where((p) => p.summ.authorID == widget.client.publicID)
+        : widget.feed.posts;
+
+    bool isHidden(FeedPostModel p) =>
+        hidePosts && FeedHidden.instance.contains(p.summ.from, p.summ.id);
+
+    switch (_view) {
+      case _FeedView.bookmarks:
+        posts = posts.where((p) =>
+            FeedBookmarks.instance.contains(p.summ.from, p.summ.id) &&
+            !isHidden(p));
+        break;
+      case _FeedView.hidden:
+        posts = posts.where(isHidden);
+        break;
+      case _FeedView.all:
+        posts = posts.where((p) => !isHidden(p));
+        break;
+    }
+
+    if (_unreadOnly) {
+      posts = posts.where((p) => p.hasUnreadPost || p.hasUnreadComments);
+    }
+
+    if (_search.trim().isNotEmpty) {
+      final q = _search.trim().toLowerCase();
+      posts = posts.where((p) {
+        final author =
+            (widget.client.getExistingChat(p.summ.authorID)?.nick ??
+                    p.summ.authorNick)
+                .toLowerCase();
+        return author.contains(q) ||
+            p.summ.title.toLowerCase().contains(q) ||
+            p.content.toLowerCase().contains(q);
+      });
+    }
+
+    final list = posts.toList();
+    switch (_sort) {
+      case _FeedSort.newest:
+        list.sort((a, b) => b.summ.date.compareTo(a.summ.date));
+        break;
+      case _FeedSort.oldest:
+        list.sort((a, b) => a.summ.date.compareTo(b.summ.date));
+        break;
+      case _FeedSort.mostComments:
+        list.sort((a, b) => b.comments.length.compareTo(a.comments.length));
+        break;
+    }
+    return list;
+  }
+
+  Widget _plainList(List<FeedPostModel> posts) => SelectionArea(
+          child: Container(
+        padding:
+            const EdgeInsets.only(left: 10, right: 0, top: 0, bottom: 10),
+        child: ListView.builder(
+            itemCount: posts.length,
+            itemBuilder: (context, index) {
+              var post = posts[index];
+              var author = widget.client.getExistingChat(post.summ.authorID);
+              var from = widget.client.getExistingChat(post.summ.from);
+              return FeedPostW(widget.feed, post, author, from, widget.client,
+                  widget.tabChange);
+            }),
+      ));
+
   @override
   Widget build(BuildContext context) {
-    var posts = widget.onlyShowOwnPosts
-        ? widget.feed.posts
-            .where((post) => (post.summ.authorID == widget.client.publicID))
-        : widget.feed.posts;
+    var feedStyle = ThemeNotifier.of(context).areaStyle(ThemeArea.feed);
+    var sidePanel = feedStyle.feedSidePanel;
+    var bookmarks = feedStyle.feedBookmarks;
+    var hidePosts = feedStyle.feedHidePosts;
+
+    // The side panel (with its own Your Posts/Subscriptions/New Post
+    // shortcuts, bookmarks/hidden views, search/sort/filter) only makes
+    // sense on the main "All posts" tab -- showing it again inside the
+    // "Your Posts" tab would just duplicate navigation that's already
+    // reachable there.
+    if (!sidePanel || widget.onlyShowOwnPosts) {
+      final posts = _applyFilters(bookmarks, hidePosts);
+      return _plainList(posts);
+    }
+
+    final postList = _applyFilters(bookmarks, hidePosts);
+    final Widget body = postList.isEmpty
+        ? Center(
+            child: Padding(
+              padding: const EdgeInsets.all(40),
+              child: Text(
+                  _view == _FeedView.bookmarks
+                      ? "No bookmarks yet.\nTap the bookmark icon on a post to save it."
+                      : _view == _FeedView.hidden
+                          ? "No hidden posts."
+                          : _search.isNotEmpty
+                              ? "No posts match your search."
+                              : "No posts yet.",
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                      color: Color(0xFF5F6764), height: 1.5, fontSize: 14)),
+            ),
+          )
+        : ListView.builder(
+            padding: const EdgeInsets.only(bottom: 24),
+            itemCount: postList.length,
+            itemBuilder: (context, index) {
+              final post = postList[index];
+              final author = widget.client.getExistingChat(post.summ.authorID);
+              final from = widget.client.getExistingChat(post.summ.from);
+              return FeedPostW(
+                  widget.feed, post, author, from, widget.client, widget.tabChange);
+            },
+          );
+
+    final feedColumn = Container(
+      decoration: const BoxDecoration(
+        border: Border(
+          left: BorderSide(color: Color(0xFF1C1F1D)),
+          right: BorderSide(color: Color(0xFF1C1F1D)),
+        ),
+      ),
+      child: Column(children: [Expanded(child: body)]),
+    );
+
+    final panel = _FeedSidePanel(
+      view: _view,
+      sort: _sort,
+      unreadOnly: _unreadOnly,
+      searchController: _searchCtrl,
+      showBookmarks: bookmarks,
+      showHidden: hidePosts,
+      onView: (v) => setState(() => _view = v),
+      onSort: (s) => setState(() => _sort = s),
+      onUnreadOnly: (b) => setState(() => _unreadOnly = b),
+      onSearch: (t) => setState(() => _search = t),
+      onYourPosts: () => widget.tabChange(1, null),
+      onSubscriptions: () => widget.tabChange(2, null),
+      onNewPost: () => widget.tabChange(3, null),
+    );
+
     return SelectionArea(
-        child: Container(
-      padding: const EdgeInsets.only(left: 10, right: 0, top: 0, bottom: 10),
-      child: ListView.builder(
-          itemCount: posts.length,
-          itemBuilder: (context, index) {
-            var post = posts.elementAt(index);
-            var author = widget.client.getExistingChat(post.summ.authorID);
-            var from = widget.client.getExistingChat(post.summ.from);
-            return FeedPostW(widget.feed, post, author, from, widget.client,
-                widget.tabChange);
-          }),
-    ));
+      child: LayoutBuilder(builder: (context, c) {
+        // crossAxisAlignment.stretch gives children a bounded height so the
+        // inner ListView lays out correctly.
+        List<Widget> rowChildren;
+        if (c.maxWidth >= 1400) {
+          rowChildren = [
+            const Spacer(),
+            SizedBox(width: 260, child: panel),
+            const SizedBox(width: 48),
+            SizedBox(width: 780, child: feedColumn),
+            const SizedBox(width: 308),
+            const Spacer(),
+          ];
+        } else if (c.maxWidth >= 900) {
+          rowChildren = [
+            const SizedBox(width: 16),
+            SizedBox(width: 260, child: panel),
+            const SizedBox(width: 48),
+            Expanded(child: feedColumn),
+          ];
+        } else if (c.maxWidth >= 600) {
+          rowChildren = [
+            const Spacer(),
+            SizedBox(width: 600, child: feedColumn),
+            const Spacer(),
+          ];
+        } else {
+          rowChildren = [Expanded(child: feedColumn)];
+        }
+        return Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: rowChildren);
+      }),
+    );
+  }
+}
+
+// Left-side tools rail (X-style): search, views, sort, filters. Only shown
+// when AreaStyle.feedSidePanel is on.
+class _FeedSidePanel extends StatelessWidget {
+  final _FeedView view;
+  final _FeedSort sort;
+  final bool unreadOnly;
+  final TextEditingController searchController;
+  final bool showBookmarks;
+  final bool showHidden;
+  final ValueChanged<_FeedView> onView;
+  final ValueChanged<_FeedSort> onSort;
+  final ValueChanged<bool> onUnreadOnly;
+  final ValueChanged<String> onSearch;
+  final VoidCallback onYourPosts;
+  final VoidCallback onSubscriptions;
+  final VoidCallback onNewPost;
+  const _FeedSidePanel({
+    required this.view,
+    required this.sort,
+    required this.unreadOnly,
+    required this.searchController,
+    required this.showBookmarks,
+    required this.showHidden,
+    required this.onView,
+    required this.onSort,
+    required this.onUnreadOnly,
+    required this.onSearch,
+    required this.onYourPosts,
+    required this.onSubscriptions,
+    required this.onNewPost,
+  });
+
+  Widget _navItem(IconData ic, String label, _FeedView v, {String? trailing}) {
+    final selected = view == v;
+    return GestureDetector(
+      onTap: () => onView(v),
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+        decoration: BoxDecoration(
+          color: selected ? const Color(0xFF101826) : Colors.transparent,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(children: [
+          Icon(ic,
+              size: 19,
+              color: selected
+                  ? const Color(0xFF4D9FFF)
+                  : const Color(0xFF9AA3A0)),
+          const SizedBox(width: 12),
+          Text(label,
+              style: TextStyle(
+                  fontSize: 14.5,
+                  fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                  color: selected
+                      ? const Color(0xFF4D9FFF)
+                      : const Color(0xFFF2F4F3))),
+          if (trailing != null) ...[
+            const Spacer(),
+            Text(trailing,
+                style:
+                    const TextStyle(fontSize: 12.5, color: Color(0xFF5F6764))),
+          ],
+        ]),
+      ),
+    );
+  }
+
+  Widget _actionItem(IconData ic, String label, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+        child: Row(children: [
+          Icon(ic, size: 19, color: const Color(0xFF9AA3A0)),
+          const SizedBox(width: 12),
+          Text(label,
+              style: const TextStyle(
+                  fontSize: 14.5,
+                  fontWeight: FontWeight.w500,
+                  color: Color(0xFFF2F4F3))),
+        ]),
+      ),
+    );
+  }
+
+  Widget _sortItem(String label, _FeedSort s) {
+    final selected = sort == s;
+    return GestureDetector(
+      onTap: () => onSort(s),
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 2),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+        child: Row(children: [
+          Icon(
+              selected
+                  ? Icons.radio_button_checked
+                  : Icons.radio_button_unchecked,
+              size: 16,
+              color:
+                  selected ? const Color(0xFF4D9FFF) : const Color(0xFF5F6764)),
+          const SizedBox(width: 10),
+          Text(label,
+              style: TextStyle(
+                  fontSize: 14,
+                  color: selected
+                      ? const Color(0xFF4D9FFF)
+                      : const Color(0xFFF2F4F3))),
+        ]),
+      ),
+    );
+  }
+
+  Widget _sectionLabel(String s) => Padding(
+        padding: const EdgeInsets.only(left: 12, top: 18, bottom: 8),
+        child: Text(s,
+            style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.8,
+                color: Color(0xFF5F6764))),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: Listenable.merge([
+        FeedBookmarks.instance,
+        FeedHidden.instance,
+        searchController,
+      ]),
+      builder: (context, _) {
+        return SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(8, 16, 16, 16),
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 4),
+              decoration: BoxDecoration(
+                  color: const Color(0xFF0E100E),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0xFF1F231F))),
+              child: TextField(
+                controller: searchController,
+                onChanged: onSearch,
+                style: const TextStyle(fontSize: 14, color: Color(0xFFF2F4F3)),
+                decoration: InputDecoration(
+                  isDense: true,
+                  prefixIcon: const Icon(Icons.search,
+                      size: 18, color: Color(0xFF5F6764)),
+                  prefixIconConstraints: const BoxConstraints(minWidth: 36),
+                  hintText: "Search posts",
+                  hintStyle:
+                      const TextStyle(fontSize: 14, color: Color(0xFF5F6764)),
+                  border: InputBorder.none,
+                  contentPadding: const EdgeInsets.symmetric(vertical: 11),
+                  suffixIcon: searchController.text.isNotEmpty
+                      ? GestureDetector(
+                          onTap: () {
+                            searchController.clear();
+                            onSearch("");
+                          },
+                          child: const Icon(Icons.close,
+                              size: 16, color: Color(0xFF5F6764)))
+                      : null,
+                ),
+              ),
+            ),
+            _sectionLabel("FEED"),
+            _navItem(Icons.dynamic_feed_outlined, "All posts", _FeedView.all),
+            if (showBookmarks)
+              _navItem(
+                  Icons.bookmark_outline, "Bookmarks", _FeedView.bookmarks,
+                  trailing: "${FeedBookmarks.instance.count}"),
+            if (showHidden)
+              _navItem(
+                  Icons.visibility_off_outlined, "Hidden", _FeedView.hidden,
+                  trailing: "${FeedHidden.instance.count}"),
+            _sectionLabel("POSTS"),
+            _actionItem(Icons.article_outlined, "Your Posts", onYourPosts),
+            _actionItem(Icons.rss_feed, "Subscriptions", onSubscriptions),
+            _actionItem(Icons.add_box_outlined, "New Post", onNewPost),
+            _sectionLabel("SORT"),
+            _sortItem("Newest", _FeedSort.newest),
+            _sortItem("Oldest", _FeedSort.oldest),
+            _sortItem("Most comments", _FeedSort.mostComments),
+            _sectionLabel("FILTER"),
+            GestureDetector(
+              onTap: () => onUnreadOnly(!unreadOnly),
+              behavior: HitTestBehavior.opaque,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                child: Row(children: [
+                  const Icon(Icons.mark_chat_unread_outlined,
+                      size: 18, color: Color(0xFF9AA3A0)),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                      child: Text("Unread only",
+                          style: TextStyle(
+                              fontSize: 14.5, color: Color(0xFFF2F4F3)))),
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 150),
+                    width: 38,
+                    height: 22,
+                    decoration: BoxDecoration(
+                        color: unreadOnly
+                            ? const Color(0xFF1DFF8C)
+                            : const Color(0xFF23262B),
+                        borderRadius: BorderRadius.circular(11)),
+                    alignment: unreadOnly
+                        ? Alignment.centerRight
+                        : Alignment.centerLeft,
+                    padding: const EdgeInsets.all(2),
+                    child: Container(
+                        width: 18,
+                        height: 18,
+                        decoration: const BoxDecoration(
+                            shape: BoxShape.circle, color: Colors.white)),
+                  ),
+                ]),
+              ),
+            ),
+          ]),
+        );
+      },
+    );
   }
 }
 

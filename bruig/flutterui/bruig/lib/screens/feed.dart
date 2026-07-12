@@ -16,6 +16,7 @@ import 'package:bruig/screens/feed/post_content.dart';
 import 'package:bruig/screens/feed/new_post.dart';
 import 'package:bruig/screens/feed/post_lists.dart';
 import 'package:bruig/models/menus.dart';
+import 'package:bruig/models/theme_preset.dart';
 import 'package:bruig/theme_manager.dart';
 import 'package:bruig/models/emoji.dart';
 
@@ -162,6 +163,17 @@ class _FeedScreenState extends State<FeedScreen> {
     }
 
     var client = Provider.of<ClientModel>(context);
+
+    // The Feed side panel (AreaStyle.feedSidePanel) renders its own Your
+    // Posts/Subscriptions/New Post shortcuts inline on the main "All posts"
+    // tab, replacing the need for this screen's own sub-menu there.
+    bool feedSidePanel =
+        ThemeNotifier.of(context).areaStyle(ThemeArea.feed).feedSidePanel;
+    bool onMainFeedTab = tabIndex == 0 && showPost == null && !hasArgs;
+
+    if (feedSidePanel && onMainFeedTab) {
+      return ScreenWithChatSideMenu(client, activeTab());
+    }
 
     return ScreenWithChatSideMenu(
         client,
