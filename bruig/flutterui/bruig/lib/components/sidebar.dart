@@ -156,108 +156,126 @@ class _SidebarState extends State<Sidebar> with WindowListener {
       // so it can't itself express a gradient/image border (only the
       // background supports those directly here) -- wrapBorderOnly adds
       // that border around the whole widget instead when needed.
-      return navStyle.wrapBorderOnly(
-        theme,
-        SurfaceColor.surfaceContainerLow,
-        presetDir: theme.fullTheme.presetDir,
-        child: SidebarX(
-        theme: SidebarXTheme(
-          margin: const EdgeInsets.all(1),
-          padding: const EdgeInsets.all(2),
-          width: 70 + borderInset,
-          decoration: theme.areaStyle(ThemeArea.navBar).mode ==
-                  AreaBackgroundMode.token
-              ? BoxDecoration(
-                  borderRadius: BorderRadius.circular(3),
-                  color: theme.colors.surfaceContainerLow,
-                  border: Border(
-                      right:
-                          BorderSide(color: theme.extraColors.sidebarDivider)),
-                )
-              : theme.areaDecoration(
-                  ThemeArea.navBar, SurfaceColor.surfaceContainerLow),
-          hoverTextStyle:
-              theme.textStyleFor(context, null, TextColor.onSurfaceVariant),
-          textStyle:
-              theme.textStyleFor(context, null, TextColor.onSurfaceVariant),
-          selectedTextStyle:
-              theme.textStyleFor(context, null, TextColor.onSurface),
-          itemPadding:
-              const EdgeInsets.only(top: 7, bottom: 6, left: 12, right: 12),
-          itemMargin:
-              const EdgeInsets.only(top: 5, bottom: 0, left: 5, right: 5),
-          selectedItemMargin:
-              const EdgeInsets.only(top: 5, bottom: 0, left: 5, right: 5),
-          selectedItemPadding:
-              const EdgeInsets.only(top: 7, bottom: 6, left: 12, right: 12),
-          selectedItemTextPadding: const EdgeInsets.only(left: 7),
-          itemTextPadding: const EdgeInsets.only(left: 7),
-          itemDecoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(5),
-          ),
-          selectedItemDecoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(5),
-            color: theme.surfaceColor(SurfaceColor.surfaceContainerHighest),
-          ),
-          iconTheme: IconThemeData(
-            color: theme.colors.onSurfaceVariant,
-            size: 21,
-          ),
-          selectedIconTheme: IconThemeData(
-            color: selectedColor,
-            size: 21,
-          ),
-        ),
-        extendedTheme: SidebarXTheme(width: 200 + borderInset),
-        // Intended for when the header is set to HeaderPosition.content or
-        // .none, since the header's own logo disappears in both of those.
-        headerBuilder: navStyle.showLogo
-            ? (context, extended) => Padding(
-                  // Left/right match the menu items' own left inset below
-                  // (SidebarXTheme.padding(2) + itemMargin.left(5) +
-                  // itemPadding.left(12) = 19), so a left/right-aligned
-                  // logo lines up with the icon column instead of sitting
-                  // flush against the sidebar's outer edge.
-                  padding: const EdgeInsets.only(
-                      top: 10, bottom: 10, left: 19, right: 19),
-                  child: Align(
-                    alignment: switch (navStyle.logoAlign) {
-                      ContentAlign.start => Alignment.centerLeft,
-                      ContentAlign.end => Alignment.centerRight,
-                      ContentAlign.center || ContentAlign.hidden || null =>
-                        Alignment.center,
-                    },
-                    child: BisonRelayLogo(size: navStyle.logoSize ?? 32),
-                  ),
-                )
-            : null,
-        footerDivider:
-            Divider(height: 2, color: theme.extraColors.sidebarDivider),
-        footerBuilder: (context, something) => Container(
-            margin: const EdgeInsets.all(5),
-            child: NotificationsDrawerHeader(widget.ntfns)),
-        controller: ctrl,
-        items: mainMenu.menus
-            .where((m) => m.hiddenFromSideBar == false)
-            .map((e) => SidebarXItem(
-                  label: e.label,
-                  iconBuilder: (selected, hovered) =>
-                      (e.routeName == ChatsScreen.routeName && hasUnreadMsgs) ||
-                              (e.routeName == FeedScreen.routeName &&
-                                  feed.hasUnreadPostsComments)
-                          ? Stack(children: [
-                              Container(
+      return navStyle.wrapBorderOnly(theme, SurfaceColor.surfaceContainerLow,
+          presetDir: theme.fullTheme.presetDir,
+          child: SidebarX(
+            theme: SidebarXTheme(
+              margin: const EdgeInsets.all(1),
+              padding: const EdgeInsets.all(2),
+              width: 70 + borderInset,
+              decoration: theme.areaStyle(ThemeArea.navBar).mode ==
+                      AreaBackgroundMode.token
+                  ? BoxDecoration(
+                      borderRadius: BorderRadius.circular(3),
+                      color: theme.colors.surfaceContainerLow,
+                      border: Border(
+                          right: BorderSide(
+                              color: theme.extraColors.sidebarDivider)),
+                    )
+                  : theme.areaDecoration(
+                      ThemeArea.navBar, SurfaceColor.surfaceContainerLow),
+              hoverTextStyle:
+                  theme.textStyleFor(context, null, TextColor.onSurfaceVariant),
+              textStyle:
+                  theme.textStyleFor(context, null, TextColor.onSurfaceVariant),
+              selectedTextStyle:
+                  theme.textStyleFor(context, null, TextColor.onSurface),
+              itemPadding:
+                  const EdgeInsets.only(top: 7, bottom: 6, left: 12, right: 12),
+              itemMargin:
+                  const EdgeInsets.only(top: 5, bottom: 0, left: 5, right: 5),
+              selectedItemMargin:
+                  const EdgeInsets.only(top: 5, bottom: 0, left: 5, right: 5),
+              selectedItemPadding:
+                  const EdgeInsets.only(top: 7, bottom: 6, left: 12, right: 12),
+              selectedItemTextPadding: const EdgeInsets.only(left: 7),
+              itemTextPadding: const EdgeInsets.only(left: 7),
+              itemDecoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(5),
+              ),
+              selectedItemDecoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(5),
+                color: theme.surfaceColor(SurfaceColor.surfaceContainerHighest),
+              ),
+              iconTheme: IconThemeData(
+                color: theme.colors.onSurfaceVariant,
+                size: 21,
+              ),
+              selectedIconTheme: IconThemeData(
+                color: selectedColor,
+                size: 21,
+              ),
+            ),
+            extendedTheme: SidebarXTheme(width: 200 + borderInset),
+            // Intended for when the header is set to HeaderPosition.content or
+            // .none, since the header's own logo disappears in both of those.
+            headerBuilder: navStyle.showLogo
+                ? (context, extended) => Padding(
+                      // Left/right match the menu items' own left inset below
+                      // (SidebarXTheme.padding(2) + itemMargin.left(5) +
+                      // itemPadding.left(12) = 19), so a left/right-aligned
+                      // logo lines up with the icon column instead of sitting
+                      // flush against the sidebar's outer edge.
+                      padding: const EdgeInsets.only(
+                          top: 10, bottom: 10, left: 19, right: 19),
+                      child: Align(
+                        alignment: switch (navStyle.logoAlign) {
+                          ContentAlign.start => Alignment.centerLeft,
+                          ContentAlign.end => Alignment.centerRight,
+                          ContentAlign.center ||
+                          ContentAlign.hidden ||
+                          null =>
+                            Alignment.center,
+                        },
+                        child: BisonRelayLogo(size: navStyle.logoSize ?? 32),
+                      ),
+                    )
+                : null,
+            footerDivider:
+                Divider(height: 2, color: theme.extraColors.sidebarDivider),
+            footerBuilder: (context, extended) => Container(
+                margin: const EdgeInsets.all(5),
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  if (client.countRelays)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: Text(
+                          extended == true
+                              ? "Relay Counter: ${client.msgsSent}"
+                              : "${client.msgsSent}",
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                              color: theme.colors.onSurfaceVariant,
+                              fontSize: 12)),
+                    ),
+                  NotificationsDrawerHeader(widget.ntfns),
+                ])),
+            controller: ctrl,
+            items: mainMenu.menus
+                .where((m) => m.hiddenFromSideBar == false)
+                .map((e) => SidebarXItem(
+                      label: e.label,
+                      iconBuilder: (selected, hovered) =>
+                          (e.routeName == ChatsScreen.routeName &&
+                                      hasUnreadMsgs) ||
+                                  (e.routeName == FeedScreen.routeName &&
+                                      feed.hasUnreadPostsComments)
+                              ? Stack(children: [
+                                  Container(
+                                      padding: const EdgeInsets.all(3),
+                                      child: e.icon ?? const Empty()),
+                                  const Positioned(
+                                      top: 1,
+                                      right: 1,
+                                      child: RedDotIndicator()),
+                                ])
+                              : Container(
                                   padding: const EdgeInsets.all(3),
-                                  child: e.icon ?? const Empty()),
-                              const Positioned(
-                                  top: 1, right: 1, child: RedDotIndicator()),
-                            ])
-                          : Container(
-                              padding: const EdgeInsets.all(3), child: e.icon),
-                  onTap: () => switchScreen(e.routeName),
-                ))
-            .toList(),
-      ));
+                                  child: e.icon),
+                      onTap: () => switchScreen(e.routeName),
+                    ))
+                .toList(),
+          ));
     });
   }
 }

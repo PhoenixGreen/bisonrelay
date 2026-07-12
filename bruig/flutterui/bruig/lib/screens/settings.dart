@@ -489,6 +489,23 @@ class AccountSettingsScreen extends StatelessWidget {
       const SizedBox(height: 10),
       Expanded(
           child: ListView(children: [
+        AnimatedBuilder(
+          animation: client,
+          builder: (context, _) => Column(children: [
+            ListTile(
+              title: const Text("Relay Counter"),
+              subtitle: const Text("Messages you've sent"),
+              trailing: Text("${client.msgsSent}"),
+            ),
+            SwitchListTile(
+              title: const Text("Count Relays"),
+              subtitle: const Text("Show a running count of messages you send"),
+              value: client.countRelays,
+              onChanged: (v) => client.setCountRelays(v),
+            ),
+          ]),
+        ),
+        const Divider(),
         ListTile(
           title: const Text("Reset all KX"),
           onTap: () => resetAllKXCB(context),
