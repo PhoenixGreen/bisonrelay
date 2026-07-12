@@ -28,8 +28,7 @@ ThemePreset ensureDraftPreset(ThemeNotifier theme) {
       ? ThemePreset.seedFromDark()
       : ThemePreset.seedFromLight();
   var withId = seed.copyWith(
-      id: "preset-${DateTime.now().millisecondsSinceEpoch}",
-      name: "New Theme");
+      id: "preset-${DateTime.now().millisecondsSinceEpoch}", name: "New Theme");
   theme.previewPreset(withId);
   return withId;
 }
@@ -85,8 +84,7 @@ class PaletteColorDropdown extends StatelessWidget {
     return DropdownButton<int>(
       value: matchIdx,
       items: [
-        if (allowNone)
-          const DropdownMenuItem(value: -1, child: Text("None")),
+        if (allowNone) const DropdownMenuItem(value: -1, child: Text("None")),
         for (var i = 0; i < PaletteSlot.values.length; i++)
           DropdownMenuItem(
             value: i,
@@ -212,8 +210,8 @@ class FontSizeDropdown extends StatelessWidget {
     return DropdownButton<String>(
       value: appFontSizeKeyForScale(theme.fontScale),
       items: appFontSizes.entries
-          .map((e) =>
-              DropdownMenuItem(value: e.key, child: Text(e.value.descr)))
+          .map(
+              (e) => DropdownMenuItem(value: e.key, child: Text(e.value.descr)))
           .toList(),
       onChanged: (key) {
         if (key != null) theme.setFontSize(appFontSizes[key]?.scale ?? 1);
@@ -259,8 +257,7 @@ void createNewPreset(ThemeNotifier theme) {
       ? ThemePreset.seedFromDark()
       : ThemePreset.seedFromLight();
   var withId = seed.copyWith(
-      id: "preset-${DateTime.now().millisecondsSinceEpoch}",
-      name: "New Theme");
+      id: "preset-${DateTime.now().millisecondsSinceEpoch}", name: "New Theme");
   theme.previewPreset(withId);
 }
 
@@ -351,7 +348,9 @@ class PaletteSwatchStrip extends StatelessWidget {
       child: SizedBox(
         height: height,
         child: Row(
-            children: colors.map((c) => Expanded(child: Container(color: c))).toList()),
+            children: colors
+                .map((c) => Expanded(child: Container(color: c)))
+                .toList()),
       ),
     );
   }
@@ -458,18 +457,21 @@ class _PaletteSectionState extends State<PaletteSection> {
   Color _paletteSurfaceFor(Color primary, Brightness brightness) {
     var hsl = HSLColor.fromColor(primary);
     var lightness = brightness == Brightness.dark ? 0.09 : 0.97;
-    var saturation = (hsl.saturation * (brightness == Brightness.dark ? 0.35 : 0.25))
-        .clamp(0.0, 1.0);
+    var saturation =
+        (hsl.saturation * (brightness == Brightness.dark ? 0.35 : 0.25))
+            .clamp(0.0, 1.0);
     return hsl.withSaturation(saturation).withLightness(lightness).toColor();
   }
 
-  Color _paletteOnSurfaceFor(Brightness brightness) => brightness == Brightness.dark
-      ? const Color(0xFFE6E1E5)
-      : const Color(0xFF1A1A1A);
+  Color _paletteOnSurfaceFor(Brightness brightness) =>
+      brightness == Brightness.dark
+          ? const Color(0xFFE6E1E5)
+          : const Color(0xFF1A1A1A);
 
-  Color _paletteOutlineFor(Brightness brightness) => brightness == Brightness.dark
-      ? const Color(0xFF938F99)
-      : const Color(0xFF79747E);
+  Color _paletteOutlineFor(Brightness brightness) =>
+      brightness == Brightness.dark
+          ? const Color(0xFF938F99)
+          : const Color(0xFF79747E);
 
   // Text-on-accent should stay legible regardless of how light/dark the
   // palette's own accent color happens to be.
@@ -481,7 +483,9 @@ class _PaletteSectionState extends State<PaletteSection> {
   void _applyPalette(ThemeNotifier theme, ColorPalette palette) {
     var draft = ensureDraftPreset(theme);
     var updated = draft;
-    for (var i = 0; i < kVividPaletteSlots.length && i < palette.colors.length; i++) {
+    for (var i = 0;
+        i < kVividPaletteSlots.length && i < palette.colors.length;
+        i++) {
       updated = updated.withSlot(kVividPaletteSlots[i], palette.colors[i]);
     }
     var primary = palette.colors.isNotEmpty ? palette.colors[0] : draft.primary;
@@ -558,8 +562,8 @@ class _PaletteSectionState extends State<PaletteSection> {
                 height: 22,
                 child: Row(children: [
                   Expanded(
-                      child: Txt.S(palette.name,
-                          overflow: TextOverflow.ellipsis)),
+                      child:
+                          Txt.S(palette.name, overflow: TextOverflow.ellipsis)),
                   SizedBox(
                     height: 22,
                     width: 22,
@@ -613,8 +617,9 @@ class _PaletteSectionState extends State<PaletteSection> {
                 height: 92,
                 child: ListView(
                     scrollDirection: Axis.horizontal,
-                    children:
-                        allPalettes.map((p) => _paletteCard(theme, p)).toList()),
+                    children: allPalettes
+                        .map((p) => _paletteCard(theme, p))
+                        .toList()),
               ),
             ),
             const SizedBox(width: 4),
@@ -635,7 +640,8 @@ class _PaletteSectionState extends State<PaletteSection> {
               ? paletteSlotLabel(PaletteSlot.values[i])
               : "Extra color ${i - PaletteSlot.values.length + 1}";
           var isExpanded = expandedIndex == i;
-          var color = isExpanded ? (draftColor ?? fullPalette[i]) : fullPalette[i];
+          var color =
+              isExpanded ? (draftColor ?? fullPalette[i]) : fullPalette[i];
 
           return Column(children: [
             ListTile(
@@ -811,8 +817,7 @@ class _AreasSectionState extends State<AreasSection> {
     var style = forBorder
         ? current.copyWith(
             borderMode: AreaBackgroundMode.image, borderImagePath: relPath)
-        : current.copyWith(
-            mode: AreaBackgroundMode.image, imagePath: relPath);
+        : current.copyWith(mode: AreaBackgroundMode.image, imagePath: relPath);
     theme.previewPreset(draft.copyWith(
         sourceDir: presetDir, areas: {...draft.areas, selected: style}));
   }
@@ -868,14 +873,14 @@ class _AreasSectionState extends State<AreasSection> {
     var draft = ensureDraftPreset(theme);
     var current = draft.areas[selected] ?? const AreaStyle();
     var next = update(current);
-    theme.previewPreset(
-        draft.copyWith(areas: {...draft.areas, selected: next}));
+    theme
+        .previewPreset(draft.copyWith(areas: {...draft.areas, selected: next}));
   }
 
   // _slider is a drag-buffered Slider (only commits to previewPreset -- and
   // so only writes to the preset -- when the drag ends, not per-frame).
-  Widget _slider(String key, String label, double value, double min,
-      double max, ValueChanged<double> onCommit) {
+  Widget _slider(String key, String label, double value, double min, double max,
+      ValueChanged<double> onCommit) {
     var shown = _dragValues[key] ?? value;
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text("$label: ${shown.toStringAsFixed(1)}"),
@@ -901,7 +906,8 @@ class _AreasSectionState extends State<AreasSection> {
     const key = "width";
     var shown = _dragValues[key] ?? style.width ?? 0;
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text(shown <= 0 ? "Width: Default" : "Width: ${shown.toStringAsFixed(1)}"),
+      Text(
+          shown <= 0 ? "Width: Default" : "Width: ${shown.toStringAsFixed(1)}"),
       Slider(
         value: shown,
         min: 0,
@@ -960,6 +966,50 @@ class _AreasSectionState extends State<AreasSection> {
         onChangeEnd: (v) {
           setState(() => _dragValues.remove(key));
           _setStyle(theme, (s) => s.copyWith(expandMessagePadding: v));
+        },
+      ),
+    ]);
+  }
+
+  // _feedImageCropHeightSlider controls the max height (px) a feed post's
+  // first image is capped to when FeedImageLayout.cropped is selected (or
+  // when FeedImageLayout.random happens to assign "cropped" to a post).
+  Widget _feedImageCropHeightSlider(ThemeNotifier theme, AreaStyle style) {
+    const key = "feedImageCropHeight";
+    var shown = _dragValues[key] ?? style.feedImageCropHeight;
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text("Cropped image max height: ${shown.toStringAsFixed(0)}"),
+      Slider(
+        value: shown,
+        min: 100,
+        max: 800,
+        onChanged: (v) => setState(() => _dragValues[key] = v),
+        onChangeEnd: (v) {
+          setState(() => _dragValues.remove(key));
+          _setStyle(theme, (s) => s.copyWith(feedImageCropHeight: v));
+        },
+      ),
+    ]);
+  }
+
+  // _feedTextLimitSlider caps how many characters of a feed post's body are
+  // shown; 0 (the default/leftmost position) means unlimited.
+  Widget _feedTextLimitSlider(ThemeNotifier theme, AreaStyle style) {
+    const key = "feedTextLimit";
+    var shown = _dragValues[key] ?? style.feedTextLimit;
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(shown == 0
+          ? "Limit text: No limit"
+          : "Limit text: ${shown.toStringAsFixed(0)} characters"),
+      Slider(
+        value: shown,
+        min: 0,
+        max: 2000,
+        divisions: 40,
+        onChanged: (v) => setState(() => _dragValues[key] = v),
+        onChangeEnd: (v) {
+          setState(() => _dragValues.remove(key));
+          _setStyle(theme, (s) => s.copyWith(feedTextLimit: v));
         },
       ),
     ]);
@@ -1039,8 +1089,10 @@ class _AreasSectionState extends State<AreasSection> {
                     const SizedBox(height: 4),
                     PaletteColorDropdown(
                       preset: preset,
-                      value: mode == AreaBackgroundMode.solid ? solidColor : null,
-                      allowNone: allowSolidNone || mode != AreaBackgroundMode.solid,
+                      value:
+                          mode == AreaBackgroundMode.solid ? solidColor : null,
+                      allowNone:
+                          allowSolidNone || mode != AreaBackgroundMode.solid,
                       onChanged: (c) {
                         onModeChanged(AreaBackgroundMode.solid);
                         onSolidChanged(c);
@@ -1059,10 +1111,9 @@ class _AreasSectionState extends State<AreasSection> {
                       _imagePreview(
                           mode == AreaBackgroundMode.image ? imagePath : null,
                           sourceDir,
-                          defaultAssetPath:
-                              mode == AreaBackgroundMode.token
-                                  ? defaultAssetPath
-                                  : null),
+                          defaultAssetPath: mode == AreaBackgroundMode.token
+                              ? defaultAssetPath
+                              : null),
                       const SizedBox(width: 8),
                       Flexible(
                         child: OutlinedButton(
@@ -1070,10 +1121,10 @@ class _AreasSectionState extends State<AreasSection> {
                             onModeChanged(AreaBackgroundMode.image);
                             onPickImage();
                           },
-                          child: Text(
-                              mode == AreaBackgroundMode.image && imagePath != null
-                                  ? "Change..."
-                                  : "Pick image..."),
+                          child: Text(mode == AreaBackgroundMode.image &&
+                                  imagePath != null
+                              ? "Change..."
+                              : "Pick image..."),
                         ),
                       ),
                       if (mode == AreaBackgroundMode.image &&
@@ -1146,8 +1197,8 @@ class _AreasSectionState extends State<AreasSection> {
           value: selected,
           isExpanded: true,
           items: _editableAreas
-              .map((a) => DropdownMenuItem(
-                  value: a, child: Text(themeAreaLabel(a))))
+              .map((a) =>
+                  DropdownMenuItem(value: a, child: Text(themeAreaLabel(a))))
               .toList(),
           onChanged: (a) => setState(() {
             if (a != null) {
@@ -1174,8 +1225,8 @@ class _AreasSectionState extends State<AreasSection> {
             }
             if (m == AreaBackgroundMode.gradient &&
                 next.gradientColors.length < 2) {
-              next = next.copyWith(
-                  gradientColors: [preset.surface, preset.primary]);
+              next = next
+                  .copyWith(gradientColors: [preset.surface, preset.primary]);
             }
             return next;
           }),
@@ -1319,8 +1370,7 @@ class _AreasSectionState extends State<AreasSection> {
                 "Displays the Bison Relay logo at the top of the nav bar -- "
                 "useful when the header is set to Content or None"),
             value: style.showLogo,
-            onChanged: (v) =>
-                _setStyle(theme, (s) => s.copyWith(showLogo: v)),
+            onChanged: (v) => _setStyle(theme, (s) => s.copyWith(showLogo: v)),
           ),
           if (style.showLogo) ...[
             _slider("logoSize", "Logo size", style.logoSize ?? 32, 16, 80,
@@ -1331,7 +1381,11 @@ class _AreasSectionState extends State<AreasSection> {
               const SizedBox(width: 8),
               DropdownButton<ContentAlign>(
                 value: style.logoAlign ?? ContentAlign.center,
-                items: const [ContentAlign.start, ContentAlign.center, ContentAlign.end]
+                items: const [
+                  ContentAlign.start,
+                  ContentAlign.center,
+                  ContentAlign.end
+                ]
                     .map((a) => DropdownMenuItem(
                         value: a, child: Text(contentAlignLabel(a))))
                     .toList(),
@@ -1360,8 +1414,8 @@ class _AreasSectionState extends State<AreasSection> {
                 "Shows a last-message preview and relative timestamp on "
                 "each contact/GC row"),
             value: style.showChatListLastMessage,
-            onChanged: (v) => _setStyle(
-                theme, (s) => s.copyWith(showChatListLastMessage: v)),
+            onChanged: (v) =>
+                _setStyle(theme, (s) => s.copyWith(showChatListLastMessage: v)),
           ),
           SwitchListTile(
             title: const Text("Chat list design"),
@@ -1369,8 +1423,8 @@ class _AreasSectionState extends State<AreasSection> {
                 "Rounded, glowing rows with a highlighted selected chat, "
                 "instead of the plain list"),
             value: style.chatListDesignEnabled,
-            onChanged: (v) => _setStyle(
-                theme, (s) => s.copyWith(chatListDesignEnabled: v)),
+            onChanged: (v) =>
+                _setStyle(theme, (s) => s.copyWith(chatListDesignEnabled: v)),
           ),
           if (style.chatListDesignEnabled) ...[
             _slider(
@@ -1402,41 +1456,40 @@ class _AreasSectionState extends State<AreasSection> {
                   "Top-left ambient glow and lit hairline on unselected "
                   "rows, instead of a flat background"),
               value: style.chatListTopHighlight,
-              onChanged: (v) => _setStyle(
-                  theme, (s) => s.copyWith(chatListTopHighlight: v)),
+              onChanged: (v) =>
+                  _setStyle(theme, (s) => s.copyWith(chatListTopHighlight: v)),
             ),
           ],
           SwitchListTile(
             title: const Text("Monochrome avatars"),
-            subtitle: const Text(
-                "Uses a graphite-gray fallback avatar instead of a "
-                "colorful hashed hue (real avatar images are unaffected)"),
+            subtitle:
+                const Text("Uses a graphite-gray fallback avatar instead of a "
+                    "colorful hashed hue (real avatar images are unaffected)"),
             value: style.monochromeAvatars,
             onChanged: (v) =>
                 _setStyle(theme, (s) => s.copyWith(monochromeAvatars: v)),
           ),
           SwitchListTile(
             title: const Text("Chat backdrop glow"),
-            subtitle:
-                const Text("Adds a subtle gradient wash behind messages"),
+            subtitle: const Text("Adds a subtle gradient wash behind messages"),
             value: style.chatBackdropWash,
             onChanged: (v) =>
                 _setStyle(theme, (s) => s.copyWith(chatBackdropWash: v)),
           ),
           SwitchListTile(
             title: const Text("In-chat search"),
-            subtitle: const Text(
-                "Adds a search button to the chat title bar for "
-                "searching loaded messages"),
+            subtitle:
+                const Text("Adds a search button to the chat title bar for "
+                    "searching loaded messages"),
             value: style.enableChatSearch,
             onChanged: (v) =>
                 _setStyle(theme, (s) => s.copyWith(enableChatSearch: v)),
           ),
           SwitchListTile(
             title: const Text("Resizable chat list"),
-            subtitle: const Text(
-                "Makes the chat list pane drag-resizable and adds a "
-                "persistent search/start-chat bar above it"),
+            subtitle:
+                const Text("Makes the chat list pane drag-resizable and adds a "
+                    "persistent search/start-chat bar above it"),
             value: style.resizableChatList,
             onChanged: (v) =>
                 _setStyle(theme, (s) => s.copyWith(resizableChatList: v)),
@@ -1493,8 +1546,8 @@ class _AreasSectionState extends State<AreasSection> {
                   "Uses the full conversation panel width instead of "
                   "margining the message list in"),
               value: style.expandMessageWidth,
-              onChanged: (v) => _setStyle(
-                  theme, (s) => s.copyWith(expandMessageWidth: v)),
+              onChanged: (v) =>
+                  _setStyle(theme, (s) => s.copyWith(expandMessageWidth: v)),
             ),
           if (style.expandMessageWidth) _expandPaddingSlider(theme, style),
         ],
@@ -1514,8 +1567,8 @@ class _AreasSectionState extends State<AreasSection> {
                 "Pulsing mic-live indicator, clearer mute/unmute button "
                 "states, and a warning chip while in a live session"),
             value: style.enhancedCallIndicators,
-            onChanged: (v) => _setStyle(
-                theme, (s) => s.copyWith(enhancedCallIndicators: v)),
+            onChanged: (v) =>
+                _setStyle(theme, (s) => s.copyWith(enhancedCallIndicators: v)),
           ),
         ],
         if (selected == ThemeArea.feed) ...[
@@ -1577,18 +1630,18 @@ class _AreasSectionState extends State<AreasSection> {
           ),
           SwitchListTile(
             title: const Text("Composer formatting toolbar"),
-            subtitle: const Text(
-                "Bold/Italic/Code/Strikethrough/Link toolbar in the "
-                "inline composer (requires Inline composer)"),
+            subtitle:
+                const Text("Bold/Italic/Code/Strikethrough/Link toolbar in the "
+                    "inline composer (requires Inline composer)"),
             value: style.feedComposerFormatting,
-            onChanged: (v) => _setStyle(
-                theme, (s) => s.copyWith(feedComposerFormatting: v)),
+            onChanged: (v) =>
+                _setStyle(theme, (s) => s.copyWith(feedComposerFormatting: v)),
           ),
           SwitchListTile(
             title: const Text("Composer image/file attach"),
-            subtitle: const Text(
-                "Attach an image or file from the inline composer "
-                "(requires Inline composer)"),
+            subtitle:
+                const Text("Attach an image or file from the inline composer "
+                    "(requires Inline composer)"),
             value: style.feedComposerAttach,
             onChanged: (v) =>
                 _setStyle(theme, (s) => s.copyWith(feedComposerAttach: v)),
@@ -1609,8 +1662,84 @@ class _AreasSectionState extends State<AreasSection> {
                 "a more focused reading experience (requires Feed side "
                 "panel)"),
             value: style.feedHideSidebarOnPost,
-            onChanged: (v) => _setStyle(
-                theme, (s) => s.copyWith(feedHideSidebarOnPost: v)),
+            onChanged: (v) =>
+                _setStyle(theme, (s) => s.copyWith(feedHideSidebarOnPost: v)),
+          ),
+          const SizedBox(height: 8),
+          Row(children: [
+            const Txt("First image display: "),
+            const SizedBox(width: 8),
+            DropdownButton<FeedImageLayout>(
+              value: style.feedImageLayout,
+              items: FeedImageLayout.values
+                  .map((m) => DropdownMenuItem(
+                      value: m, child: Text(feedImageLayoutLabel(m))))
+                  .toList(),
+              onChanged: (m) {
+                if (m == null) return;
+                _setStyle(theme, (s) => s.copyWith(feedImageLayout: m));
+              },
+            ),
+          ]),
+          if (style.feedImageLayout == FeedImageLayout.cropped ||
+              style.feedImageLayout == FeedImageLayout.random)
+            _feedImageCropHeightSlider(theme, style),
+          const SizedBox(height: 8),
+          Row(children: [
+            const Txt("Text order: "),
+            const SizedBox(width: 8),
+            DropdownButton<FeedTextOrder>(
+              value: style.feedTextOrder,
+              items: FeedTextOrder.values
+                  .map((o) => DropdownMenuItem(
+                      value: o, child: Text(feedTextOrderLabel(o))))
+                  .toList(),
+              onChanged: (o) {
+                if (o == null) return;
+                _setStyle(theme, (s) => s.copyWith(feedTextOrder: o));
+              },
+            ),
+          ]),
+          const Padding(
+            padding: EdgeInsets.only(left: 4),
+            child: Text(
+                "Only affects Default, Full width, and Full width cropped "
+                "(text before or after the image); Left/Right are "
+                "unaffected.",
+                style: TextStyle(fontSize: 12, color: Color(0xFF9AA3A0))),
+          ),
+          const SizedBox(height: 8),
+          Row(children: [
+            const Txt("Links: "),
+            const SizedBox(width: 8),
+            DropdownButton<FeedLinksMode>(
+              value: style.feedLinksMode,
+              items: FeedLinksMode.values
+                  .map((m) => DropdownMenuItem(
+                      value: m, child: Text(feedLinksModeLabel(m))))
+                  .toList(),
+              onChanged: (m) {
+                if (m == null) return;
+                _setStyle(theme, (s) => s.copyWith(feedLinksMode: m));
+              },
+            ),
+          ]),
+          const Padding(
+            padding: EdgeInsets.only(left: 4),
+            child: Text(
+                "Strips links out of post bodies on the feed page, either "
+                "always or only for posts that have an image.",
+                style: TextStyle(fontSize: 12, color: Color(0xFF9AA3A0))),
+          ),
+          _feedTextLimitSlider(theme, style),
+          SwitchListTile(
+            title: const Text("Strip markdown formatting"),
+            subtitle: const Text(
+                "Renders post text as plain text -- headers, bold, italic, "
+                "and strikethrough all look like normal text"),
+            value: style.feedStripMarkdown,
+            onChanged: (v) =>
+                _setStyle(theme, (s) => s.copyWith(feedStripMarkdown: v)),
           ),
         ],
         if (selected == ThemeArea.header) ...[

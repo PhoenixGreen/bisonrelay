@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:bruig/components/empty_widget.dart';
 import 'package:bruig/components/interactive_avatar.dart';
@@ -65,7 +67,8 @@ class _NewCommentTag extends StatelessWidget {
   }
 }
 
-class _FeedPostWState extends State<FeedPostW> {
+class _FeedPostWState extends State<FeedPostW>
+    with AutomaticKeepAliveClientMixin {
   FeedModel get feed => widget.feed;
   FeedPostModel get post => widget.post;
   showContent(BuildContext context) {
@@ -73,11 +76,21 @@ class _FeedPostWState extends State<FeedPostW> {
     widget.onTabChange(0, PostContentScreenArgs(post));
   }
 
+  // Keeps each post's built state (markdown, images, loaded comments/
+  // content) alive once scrolled past instead of tearing it down and
+  // rebuilding -- plus redoing the async readComments/readPost Golib calls
+  // -- every time it re-enters the ListView's cache range. That
+  // repeated teardown/rebuild-from-scratch cycle was the remaining source
+  // of scroll jank after the height-clamp flash was fixed.
+  @override
+  bool get wantKeepAlive => true;
+
   void authorUpdated() => setState(() {});
 
   int? _commentCount;
 
   Future<void> _loadCommentCount() async {
+    if (_commentCount != null) return;
     try {
       await post.readComments();
       if (mounted) setState(() => _commentCount = post.comments.length);
@@ -118,6 +131,7 @@ class _FeedPostWState extends State<FeedPostW> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     var hasUnreadComments = post.hasUnreadComments;
     var hasUnreadPost = post.hasUnreadPost;
     var authorNick = widget.author?.nick ?? "";
@@ -146,9 +160,17 @@ class _FeedPostWState extends State<FeedPostW> {
         // that in feedposts without the rest of the post content.
         var firstIndex = widget.post.content.indexOf("--");
         var nextIndex = widget.post.content.indexOf("--", firstIndex + 1);
-        markdownData =
-            widget.post.content.substring(firstIndex, nextIndex + 2);
+        markdownData = widget.post.content.substring(firstIndex, nextIndex + 2);
       }
+
+      if (feedStyle.feedImageLayout == FeedImageLayout.none) {
+        markdownData = _stripAllImages(markdownData);
+      }
+
+      final legacyStripLinks = feedStyle.feedLinksMode == FeedLinksMode.off ||
+          (feedStyle.feedLinksMode == FeedLinksMode.offIfImage &&
+              _hasImageEmbed(markdownData));
+      if (legacyStripLinks) markdownData = _stripLinks(markdownData);
 
       return Card.filled(
           margin: const EdgeInsets.only(right: 15, bottom: 15),
@@ -170,7 +192,9 @@ class _FeedPostWState extends State<FeedPostW> {
                 Provider<DownloadSource>(
                     create: (context) =>
                         DownloadSource(widget.post.summ.authorID),
-                    child: MarkdownArea(markdownData, false)),
+                    child: MarkdownArea(markdownData, false,
+                        disableLinks: legacyStripLinks,
+                        plainText: feedStyle.feedStripMarkdown)),
 
                 // Third row: read more button.
                 const Divider(),
@@ -193,9 +217,116 @@ class _FeedPostWState extends State<FeedPostW> {
 
     // X-style redesign: full post body (loaded lazily), height-clamped
     // below, never string-truncated so embeds/images render intact.
-    final markdownData = widget.post.content.isNotEmpty
+    var markdownData = widget.post.content.isNotEmpty
         ? widget.post.content
         : widget.post.summ.title;
+
+    // Checked against the original, unmodified content -- whether a post
+    // "has an image" for FeedLinksMode.offIfImage shouldn't depend on
+    // whether the image layout/text order settings happen to pull that
+    // image out for special positioning.
+    final postHasImage = _hasImageEmbed(markdownData);
+
+    // Only the first image is ever pulled out for separate placement --
+    // posts with no image fall straight through to the original
+    // inline-embed rendering. Extraction also kicks in with the image
+    // layout otherwise left at Default, as long as a text order has been
+    // chosen -- picking "Text first"/"Text last" is meaningless unless the
+    // image actually gets pulled out of the text flow and stacked.
+    final wantsTextOrder = feedStyle.feedTextOrder != FeedTextOrder.standard;
+    _ExtractedImage? firstImage;
+    var resolvedImageLayout = FeedImageLayout.standard;
+    if (feedStyle.feedImageLayout == FeedImageLayout.none) {
+      // Every image is removed, not just the first -- there's nothing left
+      // to extract/position.
+      markdownData = _stripAllImages(markdownData);
+    } else if (feedStyle.feedImageLayout != FeedImageLayout.standard ||
+        wantsTextOrder) {
+      final (extracted, stripped) = _extractFirstImage(markdownData);
+      if (extracted != null) {
+        firstImage = extracted;
+        markdownData = stripped;
+        resolvedImageLayout =
+            feedStyle.feedImageLayout == FeedImageLayout.standard
+                ? FeedImageLayout.standard
+                : _resolveFeedImageLayout(feedStyle.feedImageLayout,
+                    widget.post.summ.from, widget.post.summ.id);
+      }
+    }
+
+    // Limits how much of the (possibly image-stripped) body text is shown;
+    // 0 (the default) leaves it unlimited, same as before this setting
+    // existed.
+    if (feedStyle.feedTextLimit > 0 &&
+        markdownData.length > feedStyle.feedTextLimit) {
+      markdownData =
+          "${markdownData.substring(0, feedStyle.feedTextLimit.toInt())}…";
+    }
+
+    final stripLinks = feedStyle.feedLinksMode == FeedLinksMode.off ||
+        (feedStyle.feedLinksMode == FeedLinksMode.offIfImage && postHasImage);
+    if (stripLinks) markdownData = _stripLinks(markdownData);
+
+    final textContent = _ClampedContent(
+      cacheKey: "${widget.post.summ.from}:${widget.post.summ.id}",
+      maxHeight: 300,
+      onShowMore: () => showContent(context),
+      child: Provider<DownloadSource>(
+          create: (context) => DownloadSource(widget.post.summ.authorID),
+          child: MarkdownArea(markdownData, false,
+              disableLinks: stripLinks,
+              plainText: feedStyle.feedStripMarkdown)),
+    );
+
+    Widget postBody;
+    if (firstImage == null) {
+      postBody = textContent;
+    } else {
+      final imageWidget = _FeedFirstImage(
+        bytes: firstImage.bytes,
+        tip: firstImage.tip,
+        layout: resolvedImageLayout,
+        cropHeight: feedStyle.feedImageCropHeight,
+        onTap: () => showContent(context),
+      );
+      switch (resolvedImageLayout) {
+        case FeedImageLayout.left:
+          postBody =
+              Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            SizedBox(width: 140, child: imageWidget),
+            const SizedBox(width: 12),
+            Expanded(child: textContent),
+          ]);
+          break;
+        case FeedImageLayout.right:
+          postBody =
+              Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Expanded(child: textContent),
+            const SizedBox(width: 12),
+            SizedBox(width: 140, child: imageWidget),
+          ]);
+          break;
+        case FeedImageLayout.full:
+        case FeedImageLayout.cropped:
+        case FeedImageLayout.standard:
+          postBody = feedStyle.feedTextOrder == FeedTextOrder.textLast
+              ? Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  imageWidget,
+                  const SizedBox(height: 10),
+                  textContent,
+                ])
+              : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  textContent,
+                  const SizedBox(height: 10),
+                  imageWidget,
+                ]);
+          break;
+        case FeedImageLayout.random:
+        case FeedImageLayout.none:
+          postBody = textContent; // Unreachable: resolved/handled above.
+          break;
+      }
+    }
 
     return InkWell(
       onTap: () => showContent(context),
@@ -212,195 +343,182 @@ class _FeedPostWState extends State<FeedPostW> {
                   widget.client, authorID, hasUnreadPost, authorNick)),
           const SizedBox(width: 12),
           Expanded(
-            child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(children: [
-                    Flexible(
-                        child: Text(authorNick,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                                fontWeight: FontWeight.w600, fontSize: 14.5))),
-                    const SizedBox(width: 6),
-                    Text("· $sincePost",
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Flexible(
+                    child: Text(authorNick,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
-                            fontSize: 12.5, color: Color(0xFF5F6764))),
-                    const Spacer(),
-                    if (bookmarks || hidePosts)
-                      ListenableBuilder(
-                        listenable: FeedHidden.instance,
-                        builder: (context, _) {
-                          final hidden = FeedHidden.instance.contains(
-                              widget.post.summ.from, widget.post.summ.id);
-                          return SizedBox(
-                            height: 22,
-                            width: 28,
-                            child: PopupMenuButton<String>(
-                              tooltip: "More",
-                              padding: EdgeInsets.zero,
-                              iconSize: 18,
-                              position: PopupMenuPosition.under,
-                              color: const Color(0xFF15171A),
-                              icon: const Icon(Icons.more_horiz,
-                                  color: Color(0xFF5F6764)),
-                              onSelected: (v) {
-                                if (v == "hide") {
-                                  FeedHidden.instance.toggle(
-                                      widget.post.summ.from,
-                                      widget.post.summ.id);
-                                } else if (v == "bookmark") {
-                                  FeedBookmarks.instance.toggle(
-                                      widget.post.summ.from,
-                                      widget.post.summ.id);
-                                }
-                              },
-                              itemBuilder: (context) => [
-                                if (bookmarks)
-                                  PopupMenuItem(
-                                    value: "bookmark",
-                                    child: Text(
-                                        FeedBookmarks.instance.contains(
-                                                widget.post.summ.from,
-                                                widget.post.summ.id)
-                                            ? "Remove bookmark"
-                                            : "Bookmark",
-                                        style: const TextStyle(
-                                            fontSize: 13,
-                                            color: Color(0xFFF2F4F3))),
-                                  ),
-                                if (hidePosts)
-                                  PopupMenuItem(
-                                    value: "hide",
-                                    child: Text(
-                                        hidden ? "Unhide post" : "Hide post",
-                                        style: const TextStyle(
-                                            fontSize: 13,
-                                            color: Color(0xFFF2F4F3))),
-                                  ),
-                              ],
-                            ),
-                          );
-                        },
-                      ),
-                  ]),
-                  const SizedBox(height: 6),
-                  _ClampedContent(
-                    maxHeight: 300,
-                    onShowMore: () => showContent(context),
-                    child: Provider<DownloadSource>(
-                        create: (context) =>
-                            DownloadSource(widget.post.summ.authorID),
-                        child: MarkdownArea(markdownData, false)),
-                  ),
-                  const SizedBox(height: 10),
-                  Row(children: [
-                    const Icon(Icons.mode_comment_outlined,
-                        size: 16, color: Color(0xFF5F6764)),
-                    const SizedBox(width: 6),
-                    Text(
-                        _commentCount == null
-                            ? "—"
-                            : "${_commentCount!} ${_commentCount == 1 ? "comment" : "comments"}",
-                        style: const TextStyle(
-                            fontSize: 12.5, color: Color(0xFF9AA3A0))),
-                    if (hasUnreadComments) ...[
-                      const SizedBox(width: 9),
-                      Container(
-                        width: 7,
-                        height: 7,
-                        decoration: const BoxDecoration(
-                            shape: BoxShape.circle, color: Color(0xFF4D9FFF)),
-                      ),
-                      const SizedBox(width: 5),
-                      const Text("new",
-                          style: TextStyle(
-                              fontSize: 11.5,
-                              color: Color(0xFF4D9FFF),
-                              fontWeight: FontWeight.w500)),
-                    ],
-                    const Spacer(),
-                    if (cardActions) ...[
-                      Tooltip(
-                        message: "Relay to your subscribers",
-                        child: GestureDetector(
-                          behavior: HitTestBehavior.opaque,
-                          onTap: () => Golib.relayPostToAll(
-                              widget.post.summ.from, widget.post.summ.id),
-                          child: const Padding(
-                            padding: EdgeInsets.symmetric(
-                                horizontal: 4, vertical: 2),
-                            child: Icon(Icons.cached,
-                                size: 18, color: Color(0xFF5F6764)),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 4),
-                      if (!mine)
-                        Tooltip(
-                          message: "Tip the author",
-                          child: GestureDetector(
-                            behavior: HitTestBehavior.opaque,
-                            onTap: () {
-                              final c =
-                                  widget.client.getExistingChat(authorID);
-                              if (c != null) showPayTipModalBottom(context, c);
-                            },
-                            child: const Padding(
-                              padding: EdgeInsets.symmetric(
-                                  horizontal: 4, vertical: 2),
-                              child: Icon(Icons.bolt,
-                                  size: 18, color: Color(0xFF4D9FFF)),
-                            ),
-                          ),
-                        ),
-                      if (!mine) const SizedBox(width: 4),
-                      Tooltip(
-                        message: "Quote post",
-                        child: GestureDetector(
-                          behavior: HitTestBehavior.opaque,
-                          onTap: () {
-                            widget.feed.newPost.content =
-                                "\n\n--embed[type=quote,from=${widget.post.summ.authorID},post=${widget.post.summ.id}]--\n";
-                            widget.onTabChange(3, null);
+                            fontWeight: FontWeight.w600, fontSize: 14.5))),
+                const SizedBox(width: 6),
+                Text("· $sincePost",
+                    style: const TextStyle(
+                        fontSize: 12.5, color: Color(0xFF5F6764))),
+                const Spacer(),
+                if (bookmarks || hidePosts)
+                  ListenableBuilder(
+                    listenable: FeedHidden.instance,
+                    builder: (context, _) {
+                      final hidden = FeedHidden.instance
+                          .contains(widget.post.summ.from, widget.post.summ.id);
+                      return SizedBox(
+                        height: 22,
+                        width: 28,
+                        child: PopupMenuButton<String>(
+                          tooltip: "More",
+                          padding: EdgeInsets.zero,
+                          iconSize: 18,
+                          position: PopupMenuPosition.under,
+                          color: const Color(0xFF15171A),
+                          icon: const Icon(Icons.more_horiz,
+                              color: Color(0xFF5F6764)),
+                          onSelected: (v) {
+                            if (v == "hide") {
+                              FeedHidden.instance.toggle(
+                                  widget.post.summ.from, widget.post.summ.id);
+                            } else if (v == "bookmark") {
+                              FeedBookmarks.instance.toggle(
+                                  widget.post.summ.from, widget.post.summ.id);
+                            }
                           },
-                          child: const Padding(
-                            padding: EdgeInsets.symmetric(
-                                horizontal: 4, vertical: 2),
-                            child: Icon(Icons.repeat,
-                                size: 18, color: Color(0xFF5F6764)),
-                          ),
+                          itemBuilder: (context) => [
+                            if (bookmarks)
+                              PopupMenuItem(
+                                value: "bookmark",
+                                child: Text(
+                                    FeedBookmarks.instance.contains(
+                                            widget.post.summ.from,
+                                            widget.post.summ.id)
+                                        ? "Remove bookmark"
+                                        : "Bookmark",
+                                    style: const TextStyle(
+                                        fontSize: 13,
+                                        color: Color(0xFFF2F4F3))),
+                              ),
+                            if (hidePosts)
+                              PopupMenuItem(
+                                value: "hide",
+                                child: Text(
+                                    hidden ? "Unhide post" : "Hide post",
+                                    style: const TextStyle(
+                                        fontSize: 13,
+                                        color: Color(0xFFF2F4F3))),
+                              ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+              ]),
+              const SizedBox(height: 6),
+              postBody,
+              const SizedBox(height: 10),
+              Row(children: [
+                const Icon(Icons.mode_comment_outlined,
+                    size: 16, color: Color(0xFF5F6764)),
+                const SizedBox(width: 6),
+                Text(
+                    _commentCount == null
+                        ? "—"
+                        : "${_commentCount!} ${_commentCount == 1 ? "comment" : "comments"}",
+                    style: const TextStyle(
+                        fontSize: 12.5, color: Color(0xFF9AA3A0))),
+                if (hasUnreadComments) ...[
+                  const SizedBox(width: 9),
+                  Container(
+                    width: 7,
+                    height: 7,
+                    decoration: const BoxDecoration(
+                        shape: BoxShape.circle, color: Color(0xFF4D9FFF)),
+                  ),
+                  const SizedBox(width: 5),
+                  const Text("new",
+                      style: TextStyle(
+                          fontSize: 11.5,
+                          color: Color(0xFF4D9FFF),
+                          fontWeight: FontWeight.w500)),
+                ],
+                const Spacer(),
+                if (cardActions) ...[
+                  Tooltip(
+                    message: "Relay to your subscribers",
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => Golib.relayPostToAll(
+                          widget.post.summ.from, widget.post.summ.id),
+                      child: const Padding(
+                        padding:
+                            EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                        child: Icon(Icons.cached,
+                            size: 18, color: Color(0xFF5F6764)),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  if (!mine)
+                    Tooltip(
+                      message: "Tip the author",
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () {
+                          final c = widget.client.getExistingChat(authorID);
+                          if (c != null) showPayTipModalBottom(context, c);
+                        },
+                        child: const Padding(
+                          padding:
+                              EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                          child: Icon(Icons.bolt,
+                              size: 18, color: Color(0xFF4D9FFF)),
                         ),
                       ),
-                      const SizedBox(width: 4),
-                    ],
-                    if (bookmarks)
-                      ListenableBuilder(
-                        listenable: FeedBookmarks.instance,
-                        builder: (context, _) {
-                          final marked = FeedBookmarks.instance.contains(
-                              widget.post.summ.from, widget.post.summ.id);
-                          return GestureDetector(
-                            behavior: HitTestBehavior.opaque,
-                            onTap: () => FeedBookmarks.instance.toggle(
-                                widget.post.summ.from, widget.post.summ.id),
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 4, vertical: 2),
-                              child: Icon(
-                                  marked
-                                      ? Icons.bookmark
-                                      : Icons.bookmark_border,
-                                  size: 18,
-                                  color: marked
-                                      ? const Color(0xFF4D9FFF)
-                                      : const Color(0xFF5F6764)),
-                            ),
-                          );
-                        },
+                    ),
+                  if (!mine) const SizedBox(width: 4),
+                  Tooltip(
+                    message: "Quote post",
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () {
+                        widget.feed.newPost.content =
+                            "\n\n--embed[type=quote,from=${widget.post.summ.authorID},post=${widget.post.summ.id}]--\n";
+                        widget.onTabChange(3, null);
+                      },
+                      child: const Padding(
+                        padding:
+                            EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                        child: Icon(Icons.repeat,
+                            size: 18, color: Color(0xFF5F6764)),
                       ),
-                  ]),
-                ]),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                ],
+                if (bookmarks)
+                  ListenableBuilder(
+                    listenable: FeedBookmarks.instance,
+                    builder: (context, _) {
+                      final marked = FeedBookmarks.instance
+                          .contains(widget.post.summ.from, widget.post.summ.id);
+                      return GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => FeedBookmarks.instance
+                            .toggle(widget.post.summ.from, widget.post.summ.id),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 4, vertical: 2),
+                          child: Icon(
+                              marked ? Icons.bookmark : Icons.bookmark_border,
+                              size: 18,
+                              color: marked
+                                  ? const Color(0xFF4D9FFF)
+                                  : const Color(0xFF5F6764)),
+                        ),
+                      );
+                    },
+                  ),
+              ]),
+            ]),
           ),
         ]),
       ),
@@ -444,8 +562,18 @@ class _FeedPostsState extends State<FeedPosts> {
     FeedDrafts.instance.addListener(feedChanged);
   }
 
-  void feedChanged() async {
-    if (mounted) setState(() {});
+  // Bursts of post-status events (e.g. catching up on a backlog of comment
+  // notifications right after connecting) can each trigger a FeedModel
+  // notification in quick succession. Coalescing them into a single
+  // setState per short window avoids rebuilding (and re-reconciling) the
+  // whole visible post list once per event, which was visibly janky while
+  // scrolling.
+  Timer? _feedChangedDebounce;
+  void feedChanged() {
+    _feedChangedDebounce?.cancel();
+    _feedChangedDebounce = Timer(const Duration(milliseconds: 150), () {
+      if (mounted) setState(() {});
+    });
   }
 
   @override
@@ -457,6 +585,7 @@ class _FeedPostsState extends State<FeedPosts> {
 
   @override
   void dispose() {
+    _feedChangedDebounce?.cancel();
     widget.feed.removeListener(feedChanged);
     FeedBookmarks.instance.removeListener(feedChanged);
     FeedHidden.instance.removeListener(feedChanged);
@@ -502,26 +631,44 @@ class _FeedPostsState extends State<FeedPosts> {
     if (_search.trim().isNotEmpty) {
       final q = _search.trim().toLowerCase();
       posts = posts.where((p) {
-        final author =
-            (widget.client.getExistingChat(p.summ.authorID)?.nick ??
-                    p.summ.authorNick)
-                .toLowerCase();
+        final author = (widget.client.getExistingChat(p.summ.authorID)?.nick ??
+                p.summ.authorNick)
+            .toLowerCase();
         return author.contains(q) ||
             p.summ.title.toLowerCase().contains(q) ||
             p.content.toLowerCase().contains(q);
       });
     }
 
+    // Tie-break by a stable per-post identifier so posts sharing the exact
+    // same primary sort value (e.g. identical timestamps) always land in
+    // the same relative order across rebuilds. Without this, Dart's
+    // List.sort isn't guaranteed stable, so ties could shuffle on every
+    // rebuild -- and with FeedPostW's list items now carrying real keys,
+    // Flutter faithfully reconciles that shuffle instead of masking it,
+    // which made scrolling feel like it never settled.
+    int tiebreak(FeedPostModel a, FeedPostModel b) =>
+        "${a.summ.from}:${a.summ.id}".compareTo("${b.summ.from}:${b.summ.id}");
+
     final list = posts.toList();
     switch (_sort) {
       case FeedSort.newest:
-        list.sort((a, b) => b.summ.date.compareTo(a.summ.date));
+        list.sort((a, b) {
+          final c = b.summ.date.compareTo(a.summ.date);
+          return c != 0 ? c : tiebreak(a, b);
+        });
         break;
       case FeedSort.oldest:
-        list.sort((a, b) => a.summ.date.compareTo(b.summ.date));
+        list.sort((a, b) {
+          final c = a.summ.date.compareTo(b.summ.date);
+          return c != 0 ? c : tiebreak(a, b);
+        });
         break;
       case FeedSort.mostComments:
-        list.sort((a, b) => b.comments.length.compareTo(a.comments.length));
+        list.sort((a, b) {
+          final c = b.comments.length.compareTo(a.comments.length);
+          return c != 0 ? c : tiebreak(a, b);
+        });
         break;
     }
     return list;
@@ -529,8 +676,7 @@ class _FeedPostsState extends State<FeedPosts> {
 
   Widget _plainList(List<FeedPostModel> posts) => SelectionArea(
           child: Container(
-        padding:
-            const EdgeInsets.only(left: 10, right: 0, top: 0, bottom: 10),
+        padding: const EdgeInsets.only(left: 10, right: 0, top: 0, bottom: 10),
         child: ListView.builder(
             itemCount: posts.length,
             itemBuilder: (context, index) {
@@ -538,7 +684,8 @@ class _FeedPostsState extends State<FeedPosts> {
               var author = widget.client.getExistingChat(post.summ.authorID);
               var from = widget.client.getExistingChat(post.summ.from);
               return FeedPostW(widget.feed, post, author, from, widget.client,
-                  widget.tabChange);
+                  widget.tabChange,
+                  key: ValueKey("${post.summ.from}:${post.summ.id}"));
             }),
       ));
 
@@ -588,7 +735,8 @@ class _FeedPostsState extends State<FeedPosts> {
           final author = widget.client.getExistingChat(post.summ.authorID);
           final from = widget.client.getExistingChat(post.summ.from);
           return FeedPostW(
-              widget.feed, post, author, from, widget.client, widget.tabChange);
+              widget.feed, post, author, from, widget.client, widget.tabChange,
+              key: ValueKey("${post.summ.from}:${post.summ.id}"));
         },
       );
     }
@@ -610,7 +758,12 @@ class _FeedPostsState extends State<FeedPosts> {
             showAttach: composerAttach,
             showDrafts: drafts,
           ),
-        Expanded(child: body),
+        // SelectionArea is scoped to just the post list (as it was before
+        // the side panel existed) rather than the whole row -- wrapping the
+        // sidebar/search/sort controls in it too made its drag-to-select
+        // gesture recognizers compete with the list's own scroll gesture
+        // across a much bigger surface, which is what broke scrolling.
+        Expanded(child: SelectionArea(child: body)),
       ]),
     );
 
@@ -643,41 +796,39 @@ class _FeedPostsState extends State<FeedPosts> {
       onNewPost: () => widget.tabChange(3, null),
     );
 
-    return SelectionArea(
-      child: LayoutBuilder(builder: (context, c) {
-        // crossAxisAlignment.stretch gives children a bounded height so the
-        // inner ListView lays out correctly.
-        List<Widget> rowChildren;
-        if (c.maxWidth >= 1400) {
-          rowChildren = [
-            const Spacer(),
-            SizedBox(width: 260, child: panel),
-            const SizedBox(width: 48),
-            SizedBox(width: 780, child: feedColumn),
-            const SizedBox(width: 308),
-            const Spacer(),
-          ];
-        } else if (c.maxWidth >= 900) {
-          rowChildren = [
-            const SizedBox(width: 16),
-            SizedBox(width: 260, child: panel),
-            const SizedBox(width: 48),
-            Expanded(child: feedColumn),
-          ];
-        } else if (c.maxWidth >= 600) {
-          rowChildren = [
-            const Spacer(),
-            SizedBox(width: 600, child: feedColumn),
-            const Spacer(),
-          ];
-        } else {
-          rowChildren = [Expanded(child: feedColumn)];
-        }
-        return Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: rowChildren);
-      }),
-    );
+    return LayoutBuilder(builder: (context, c) {
+      // crossAxisAlignment.stretch gives children a bounded height so the
+      // inner ListView lays out correctly.
+      List<Widget> rowChildren;
+      if (c.maxWidth >= 1400) {
+        rowChildren = [
+          const Spacer(),
+          SizedBox(width: 260, child: panel),
+          const SizedBox(width: 48),
+          SizedBox(width: 780, child: feedColumn),
+          const SizedBox(width: 308),
+          const Spacer(),
+        ];
+      } else if (c.maxWidth >= 900) {
+        rowChildren = [
+          const SizedBox(width: 16),
+          SizedBox(width: 260, child: panel),
+          const SizedBox(width: 48),
+          Expanded(child: feedColumn),
+        ];
+      } else if (c.maxWidth >= 600) {
+        rowChildren = [
+          const Spacer(),
+          SizedBox(width: 600, child: feedColumn),
+          const Spacer(),
+        ];
+      } else {
+        rowChildren = [Expanded(child: feedColumn)];
+      }
+      return Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: rowChildren);
+    });
   }
 }
 
@@ -737,9 +888,8 @@ class FeedSidePanel extends StatelessWidget {
         child: Row(children: [
           Icon(ic,
               size: 19,
-              color: selected
-                  ? const Color(0xFF4D9FFF)
-                  : const Color(0xFF9AA3A0)),
+              color:
+                  selected ? const Color(0xFF4D9FFF) : const Color(0xFF9AA3A0)),
           const SizedBox(width: 12),
           Text(label,
               style: TextStyle(
@@ -774,9 +924,8 @@ class FeedSidePanel extends StatelessWidget {
         child: Row(children: [
           Icon(ic,
               size: 19,
-              color: selected
-                  ? const Color(0xFF4D9FFF)
-                  : const Color(0xFF9AA3A0)),
+              color:
+                  selected ? const Color(0xFF4D9FFF) : const Color(0xFF9AA3A0)),
           const SizedBox(width: 12),
           Text(label,
               style: TextStyle(
@@ -877,12 +1026,10 @@ class FeedSidePanel extends StatelessWidget {
             _sectionLabel("FEED"),
             _navItem(Icons.dynamic_feed_outlined, "All posts", FeedView.all),
             if (showBookmarks)
-              _navItem(
-                  Icons.bookmark_outline, "Bookmarks", FeedView.bookmarks,
+              _navItem(Icons.bookmark_outline, "Bookmarks", FeedView.bookmarks,
                   trailing: "${FeedBookmarks.instance.count}"),
             if (showHidden)
-              _navItem(
-                  Icons.visibility_off_outlined, "Hidden", FeedView.hidden,
+              _navItem(Icons.visibility_off_outlined, "Hidden", FeedView.hidden,
                   trailing: "${FeedHidden.instance.count}"),
             if (showDrafts)
               _navItem(Icons.edit_note_outlined, "Drafts", FeedView.drafts,
@@ -903,7 +1050,8 @@ class FeedSidePanel extends StatelessWidget {
               onTap: () => onUnreadOnly(!unreadOnly),
               behavior: HitTestBehavior.opaque,
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 child: Row(children: [
                   const Icon(Icons.mark_chat_unread_outlined,
                       size: 18, color: Color(0xFF9AA3A0)),
@@ -949,37 +1097,68 @@ class _ClampedContent extends StatefulWidget {
   final Widget child;
   final double maxHeight;
   final VoidCallback onShowMore;
+  // Identifies the underlying post so the measured overflow/no-overflow
+  // result can be cached across ListView.builder recycling. Without this,
+  // scrolling a post out of the cache range and back into view recreates
+  // this State from scratch, replaying the "render full height, then snap
+  // down to maxHeight next frame" flash every time -- which, repeated for
+  // every item revealed while scrolling up, made the list feel like it
+  // fought the scroll and never reached the top.
+  final String cacheKey;
   const _ClampedContent(
       {required this.child,
       required this.maxHeight,
-      required this.onShowMore});
+      required this.onShowMore,
+      required this.cacheKey});
 
   @override
   State<_ClampedContent> createState() => _ClampedContentState();
 }
 
 class _ClampedContentState extends State<_ClampedContent> {
+  static final Map<String, bool> _overflowCache = {};
+
   final GlobalKey _key = GlobalKey();
-  bool _overflows = false;
+  late bool _overflows = _overflowCache[widget.cacheKey] ?? false;
+  bool _measured = false;
 
   void _measure() {
+    // Once a post's overflow state has been measured, trust the cache on
+    // subsequent builds/recreations instead of re-measuring -- content for
+    // an already-rendered post doesn't change shape, so there's nothing to
+    // gain from remeasuring except another height-changing flash.
+    if (_measured) return;
     final ctx = _key.currentContext;
     if (ctx == null) return;
     final h = ctx.size?.height ?? 0;
     final over = h > widget.maxHeight + 2;
+    _measured = true;
+    _overflowCache[widget.cacheKey] = over;
     if (over != _overflows && mounted) setState(() => _overflows = over);
   }
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _measure());
+    if (!_overflowCache.containsKey(widget.cacheKey)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _measure());
+    } else {
+      _measured = true;
+    }
   }
 
   @override
   void didUpdateWidget(_ClampedContent old) {
     super.didUpdateWidget(old);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _measure());
+    if (old.cacheKey != widget.cacheKey) {
+      _measured = false;
+      _overflows = _overflowCache[widget.cacheKey] ?? false;
+      if (!_overflowCache.containsKey(widget.cacheKey)) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => _measure());
+      } else {
+        _measured = true;
+      }
+    }
   }
 
   @override
@@ -1035,6 +1214,178 @@ class _ClampedContentState extends State<_ClampedContent> {
         ),
       ),
     ]);
+  }
+}
+
+class _ExtractedImage {
+  final Uint8List bytes;
+  final String tip;
+  _ExtractedImage(this.bytes, this.tip);
+}
+
+final RegExp _embedRe = RegExp(r'--embed\[(.*?)\]--');
+
+// Finds the first image embed in a post's raw markdown content (skipping
+// non-image embeds like quote-posts or file downloads), decodes it, and
+// returns it alongside the content with that embed's raw tag removed --
+// so callers that pull the image out for separate placement (see
+// FeedImageLayout) don't also render it a second time inline via
+// MarkdownArea. Returns (null, content unchanged) if there's no image, or
+// if AreaStyle.feedImageLayout is FeedImageLayout.standard (the caller is
+// expected to skip calling this in that case, but it's harmless either
+// way).
+(_ExtractedImage?, String) _extractFirstImage(String content) {
+  for (final m in _embedRe.allMatches(content)) {
+    final raw = m.group(1) ?? "";
+    final parms = <String, String>{};
+    for (final part in raw.split(",")) {
+      final p = part.indexOf("=");
+      if (p == -1) continue;
+      parms[part.substring(0, p)] = part.substring(p + 1);
+    }
+    final type = parms["type"] ?? "";
+    if (!type.startsWith("image/")) continue;
+    final data = parms["data"] ?? "";
+    if (data == "") continue;
+    try {
+      final bytes = base64Decode(data);
+      var alt = parms["alt"] ?? "";
+      if (alt != "") {
+        try {
+          alt = Uri.decodeComponent(alt);
+        } catch (_) {
+          // Keep the raw (undecoded) alt text.
+        }
+      }
+      final stripped = content.replaceRange(m.start, m.end, "");
+      return (_ExtractedImage(bytes, alt != "" ? alt : "Image"), stripped);
+    } catch (_) {
+      continue;
+    }
+  }
+  return (null, content);
+}
+
+// Whether a post's raw content contains at least one image embed --
+// independent of FeedImageLayout/FeedTextOrder, which only control
+// whether/how the *first* image gets specially positioned. Used by
+// FeedLinksMode.offIfImage.
+bool _hasImageEmbed(String content) => _extractFirstImage(content).$1 != null;
+
+// Removes every image embed from a post's raw content, not just the first
+// -- used by FeedImageLayout.none.
+String _stripAllImages(String content) {
+  var result = content;
+  while (true) {
+    final (extracted, stripped) = _extractFirstImage(result);
+    if (extracted == null) return result;
+    result = stripped;
+  }
+}
+
+// Strips links out of a post's raw markdown content for FeedLinksMode.off/
+// offIfImage: markdown-style links ("[label](url)") are reduced to just
+// their label text, and bare http(s) URLs are removed outright.
+String _stripLinks(String content) {
+  var result = content.replaceAllMapped(
+      RegExp(r'\[([^\]]*)\]\([^)]*\)'), (m) => m.group(1) ?? "");
+  result = result.replaceAll(RegExp(r'https?://\S+'), "");
+  return result;
+}
+
+// FeedImageLayout.random deterministically picks one of the concrete
+// (non-standard) layouts per post, so the mix looks varied but a given
+// post doesn't reshuffle between rebuilds.
+const _randomFeedImageLayouts = [
+  FeedImageLayout.left,
+  FeedImageLayout.right,
+  FeedImageLayout.full,
+  FeedImageLayout.cropped,
+];
+
+FeedImageLayout _resolveFeedImageLayout(
+    FeedImageLayout layout, String from, String id) {
+  if (layout != FeedImageLayout.random) return layout;
+  final hash = "$from:$id".hashCode.abs();
+  return _randomFeedImageLayouts[hash % _randomFeedImageLayouts.length];
+}
+
+// Renders a feed post's first (extracted) image per FeedImageLayout. Only
+// ever called with a concrete (non-standard, non-random) layout --
+// FeedImageLayout.random is resolved to one of these by
+// _resolveFeedImageLayout before this widget is built.
+class _FeedFirstImage extends StatelessWidget {
+  final Uint8List bytes;
+  final String tip;
+  final FeedImageLayout layout;
+  final double cropHeight;
+  final VoidCallback onTap;
+  const _FeedFirstImage(
+      {required this.bytes,
+      required this.tip,
+      required this.layout,
+      required this.cropHeight,
+      required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    Widget image;
+    switch (layout) {
+      case FeedImageLayout.left:
+      case FeedImageLayout.right:
+        image = SizedBox(
+          height: 140,
+          width: double.infinity,
+          child: Image.memory(bytes,
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) =>
+                  const SizedBox.shrink()),
+        );
+        break;
+      case FeedImageLayout.full:
+        image = Image.memory(bytes,
+            width: double.infinity,
+            fit: BoxFit.fitWidth,
+            errorBuilder: (context, error, stackTrace) =>
+                const SizedBox.shrink());
+        break;
+      case FeedImageLayout.cropped:
+        image = SizedBox(
+          height: cropHeight,
+          width: double.infinity,
+          child: Image.memory(bytes,
+              fit: BoxFit.cover,
+              alignment: Alignment.topCenter,
+              errorBuilder: (context, error, stackTrace) =>
+                  const SizedBox.shrink()),
+        );
+        break;
+      case FeedImageLayout.standard:
+        // Reached only when the image layout is left at Default but a
+        // Text order has been chosen -- the image still needs to be
+        // extracted to be positioned, but keeps its natural (inline-like)
+        // size rather than being stretched or cropped.
+        image = ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 400, maxHeight: 400),
+          child: Image.memory(bytes,
+              fit: BoxFit.contain,
+              errorBuilder: (context, error, stackTrace) =>
+                  const SizedBox.shrink()),
+        );
+        break;
+      case FeedImageLayout.random:
+      case FeedImageLayout.none:
+        image = const SizedBox.shrink(); // Unreachable: resolved earlier.
+        break;
+    }
+    return Tooltip(
+      message: tip,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: onTap,
+        child: ClipRRect(borderRadius: BorderRadius.circular(8), child: image),
+      ),
+    );
   }
 }
 
@@ -1456,8 +1807,7 @@ class _FeedComposerState extends State<_FeedComposer> {
             // Bigger compose box (~3x a normal input).
             Container(
               constraints: const BoxConstraints(minHeight: 96),
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               decoration: BoxDecoration(
                 color: const Color(0xFF0E100E),
                 borderRadius: BorderRadius.circular(14),
@@ -1483,8 +1833,7 @@ class _FeedComposerState extends State<_FeedComposer> {
                   focusedErrorBorder: InputBorder.none,
                   contentPadding: EdgeInsets.zero,
                   hintText: "What's happening?",
-                  hintStyle:
-                      TextStyle(fontSize: 16, color: Color(0xFF5F6764)),
+                  hintStyle: TextStyle(fontSize: 16, color: Color(0xFF5F6764)),
                 ),
               ),
             ),
@@ -1527,8 +1876,8 @@ class _FeedComposerState extends State<_FeedComposer> {
               GestureDetector(
                 onTap: _posting ? null : _relay,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 26, vertical: 10),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 26, vertical: 10),
                   decoration: BoxDecoration(
                     gradient: const LinearGradient(
                       colors: [Color(0xFF1DFF8C), Color(0xFF13D673)],
@@ -1538,8 +1887,7 @@ class _FeedComposerState extends State<_FeedComposer> {
                     borderRadius: BorderRadius.circular(22),
                     boxShadow: [
                       BoxShadow(
-                        color:
-                            const Color(0xFF1DFF8C).withValues(alpha: 0.30),
+                        color: const Color(0xFF1DFF8C).withValues(alpha: 0.30),
                         blurRadius: 14,
                         offset: const Offset(0, 3),
                       ),

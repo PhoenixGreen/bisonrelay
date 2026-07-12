@@ -138,6 +138,86 @@ String messageLayoutModeLabel(MessageLayoutMode m) {
   }
 }
 
+// FeedImageLayout controls how a feed post's first embedded image is
+// displayed; only meaningful for ThemeArea.feed. Only ever applies to the
+// first image in a post -- any further embedded images stay wherever they
+// fall in the post's normal markdown flow.
+// - standard: today's behavior (image renders inline, wherever it appears
+//   in the post text -- no special extraction/placement).
+// - left/right: image is pulled out of the text flow and placed beside it.
+// - full: image is pulled out and placed below the text, full width,
+//   uncropped (may be tall).
+// - cropped: same as full, but the image is capped to feedImageCropHeight
+//   and clipped if it exceeds that.
+// - random: each post independently and stably picks one of left/right/
+//   full/cropped (never standard) based on the post's own id, so the mix
+//   looks varied but doesn't reshuffle on every rebuild.
+// - none: every image is stripped out of the post entirely (not just the
+//   first).
+enum FeedImageLayout { standard, left, right, full, cropped, random, none }
+
+String feedImageLayoutLabel(FeedImageLayout m) {
+  switch (m) {
+    case FeedImageLayout.standard:
+      return "Default";
+    case FeedImageLayout.left:
+      return "Left";
+    case FeedImageLayout.right:
+      return "Right";
+    case FeedImageLayout.full:
+      return "Full width";
+    case FeedImageLayout.cropped:
+      return "Full width, cropped";
+    case FeedImageLayout.random:
+      return "Random";
+    case FeedImageLayout.none:
+      return "None";
+  }
+}
+
+// FeedTextOrder controls whether a post's text renders before or after its
+// first image; only meaningful for ThemeArea.feed, and only when the image
+// is actually stacked above/below the text -- i.e. FeedImageLayout.standard
+// (once an image has been extracted for ordering purposes), .full, or
+// .cropped (including .random when it resolves to one of those). Ignored
+// for .left/.right, which already have a fixed side-by-side arrangement.
+// - standard: today's behavior -- text first, then the image below it.
+// - textFirst: same as standard (explicit, in case standard's meaning
+//   changes later).
+// - textLast: image first, then the text below it.
+enum FeedTextOrder { standard, textFirst, textLast }
+
+String feedTextOrderLabel(FeedTextOrder o) {
+  switch (o) {
+    case FeedTextOrder.standard:
+      return "Default";
+    case FeedTextOrder.textFirst:
+      return "Text first";
+    case FeedTextOrder.textLast:
+      return "Text last";
+  }
+}
+
+// FeedLinksMode controls whether links are stripped out of feed post
+// bodies entirely; only meaningful for ThemeArea.feed.
+// - standard: today's behavior -- links render and work normally.
+// - off: links are stripped from every post's body.
+// - offIfImage: links are stripped only from posts that contain an image
+//   (regardless of the chosen FeedImageLayout/whether that image ends up
+//   specially positioned).
+enum FeedLinksMode { standard, off, offIfImage }
+
+String feedLinksModeLabel(FeedLinksMode m) {
+  switch (m) {
+    case FeedLinksMode.standard:
+      return "Default";
+    case FeedLinksMode.off:
+      return "Turn off links";
+    case FeedLinksMode.offIfImage:
+      return "Turn off links if image available";
+  }
+}
+
 // AreaBackgroundMode selects how a fill (background or border) is painted.
 // token = "use the app's normal color scheme" (opaque, matches how the area
 // looked before this feature existed). none is a distinct, explicit "no
@@ -289,7 +369,8 @@ class AreaStyle {
   final bool chatListDesignEnabled; // Rounded/glow chat list row styling.
   final double? chatListCornerRadius; // Null = built-in default (14).
   final Color? chatListAccentColor; // Null = built-in default (blue).
-  final double? chatListGlowIntensity; // Null = built-in default (1.0); 0 = off.
+  final double?
+      chatListGlowIntensity; // Null = built-in default (1.0); 0 = off.
   final bool chatListTopHighlight; // Ambient top-left glow + lit hairline
   // on inactive rows (vs. a flat background); default on.
   final bool monochromeAvatars; // Graphite fallback avatars.
@@ -332,6 +413,19 @@ class AreaStyle {
   final bool feedHideSidebarOnPost; // Drops the feed sidebar entirely while
   // reading a single post, for a more focused reading experience. Needs
   // feedSidePanel.
+  final FeedImageLayout feedImageLayout; // How each post's first embedded
+  // image is displayed (see FeedImageLayout).
+  final double feedImageCropHeight; // Max height (px) for
+  // FeedImageLayout.cropped (and for posts randomly assigned "cropped" by
+  // FeedImageLayout.random).
+  final FeedTextOrder feedTextOrder; // Text before/after the first image
+  // (see FeedTextOrder).
+  final FeedLinksMode feedLinksMode; // Strips links from feed post bodies
+  // (see FeedLinksMode).
+  final double feedTextLimit; // Max characters shown per post body; 0 (the
+  // default) means unlimited (today's behavior).
+  final bool feedStripMarkdown; // Renders post bodies as plain text --
+  // headers/bold/italic/strikethrough all render as normal body text.
 
   // isUnmodified is true only when nothing about this style differs from
   // the area's original, pre-theming-feature appearance. A few render call
@@ -384,7 +478,13 @@ class AreaStyle {
       feedComposerFormatting == false &&
       feedComposerAttach == false &&
       feedDrafts == false &&
-      feedHideSidebarOnPost == false;
+      feedHideSidebarOnPost == false &&
+      feedImageLayout == FeedImageLayout.standard &&
+      feedImageCropHeight == 300 &&
+      feedTextOrder == FeedTextOrder.standard &&
+      feedLinksMode == FeedLinksMode.standard &&
+      feedTextLimit == 0 &&
+      feedStripMarkdown == false;
 
   const AreaStyle({
     this.mode = AreaBackgroundMode.token,
@@ -446,6 +546,12 @@ class AreaStyle {
     this.feedComposerAttach = false,
     this.feedDrafts = false,
     this.feedHideSidebarOnPost = false,
+    this.feedImageLayout = FeedImageLayout.standard,
+    this.feedImageCropHeight = 300,
+    this.feedTextOrder = FeedTextOrder.standard,
+    this.feedLinksMode = FeedLinksMode.standard,
+    this.feedTextLimit = 0,
+    this.feedStripMarkdown = false,
   });
 
   AreaStyle copyWith({
@@ -517,6 +623,12 @@ class AreaStyle {
     bool? feedComposerAttach,
     bool? feedDrafts,
     bool? feedHideSidebarOnPost,
+    FeedImageLayout? feedImageLayout,
+    double? feedImageCropHeight,
+    FeedTextOrder? feedTextOrder,
+    FeedLinksMode? feedLinksMode,
+    double? feedTextLimit,
+    bool? feedStripMarkdown,
   }) =>
       AreaStyle(
         mode: mode ?? this.mode,
@@ -551,8 +663,7 @@ class AreaStyle {
         logoAlign: logoAlign ?? this.logoAlign,
         subMenuStyle: subMenuStyle ?? this.subMenuStyle,
         showHoverArrow: showHoverArrow ?? this.showHoverArrow,
-        enableMessageActions:
-            enableMessageActions ?? this.enableMessageActions,
+        enableMessageActions: enableMessageActions ?? this.enableMessageActions,
         showChatListLastMessage:
             showChatListLastMessage ?? this.showChatListLastMessage,
         chatListDesignEnabled:
@@ -566,8 +677,7 @@ class AreaStyle {
         chatListGlowIntensity: clearChatListGlowIntensity
             ? null
             : (chatListGlowIntensity ?? this.chatListGlowIntensity),
-        chatListTopHighlight:
-            chatListTopHighlight ?? this.chatListTopHighlight,
+        chatListTopHighlight: chatListTopHighlight ?? this.chatListTopHighlight,
         monochromeAvatars: monochromeAvatars ?? this.monochromeAvatars,
         chatBackdropWash: chatBackdropWash ?? this.chatBackdropWash,
         enableChatSearch: enableChatSearch ?? this.enableChatSearch,
@@ -597,6 +707,12 @@ class AreaStyle {
         feedDrafts: feedDrafts ?? this.feedDrafts,
         feedHideSidebarOnPost:
             feedHideSidebarOnPost ?? this.feedHideSidebarOnPost,
+        feedImageLayout: feedImageLayout ?? this.feedImageLayout,
+        feedImageCropHeight: feedImageCropHeight ?? this.feedImageCropHeight,
+        feedTextOrder: feedTextOrder ?? this.feedTextOrder,
+        feedLinksMode: feedLinksMode ?? this.feedLinksMode,
+        feedTextLimit: feedTextLimit ?? this.feedTextLimit,
+        feedStripMarkdown: feedStripMarkdown ?? this.feedStripMarkdown,
       );
 
   static String _colorToHex(Color c) =>
@@ -622,7 +738,8 @@ class AreaStyle {
         "borderMode": borderMode.name,
         if (borderColor != null) "borderColor": _colorToHex(borderColor!),
         if (borderGradientColors.isNotEmpty)
-          "borderGradientColors": borderGradientColors.map(_colorToHex).toList(),
+          "borderGradientColors":
+              borderGradientColors.map(_colorToHex).toList(),
         if (borderGradientStops != null)
           "borderGradientStops": borderGradientStops,
         "borderGradientBegin": _alignToJson(borderGradientBegin),
@@ -681,13 +798,24 @@ class AreaStyle {
         if (feedDrafts) "feedDrafts": feedDrafts,
         if (feedHideSidebarOnPost)
           "feedHideSidebarOnPost": feedHideSidebarOnPost,
+        if (feedImageLayout != FeedImageLayout.standard)
+          "feedImageLayout": feedImageLayout.name,
+        if (feedImageCropHeight != 300)
+          "feedImageCropHeight": feedImageCropHeight,
+        if (feedTextOrder != FeedTextOrder.standard)
+          "feedTextOrder": feedTextOrder.name,
+        if (feedLinksMode != FeedLinksMode.standard)
+          "feedLinksMode": feedLinksMode.name,
+        if (feedTextLimit != 0) "feedTextLimit": feedTextLimit,
+        if (feedStripMarkdown) "feedStripMarkdown": feedStripMarkdown,
       };
 
   factory AreaStyle.fromJson(Map<String, dynamic> j) => AreaStyle(
         mode: AreaBackgroundMode.values.firstWhere((e) => e.name == j["mode"],
             orElse: () => AreaBackgroundMode.token),
         tokenOverride: j["tokenOverride"] != null
-            ? SurfaceColor.values.firstWhere((e) => e.name == j["tokenOverride"])
+            ? SurfaceColor.values
+                .firstWhere((e) => e.name == j["tokenOverride"])
             : null,
         solidColor:
             j["solidColor"] != null ? _colorFromHex(j["solidColor"]) : null,
@@ -726,9 +854,9 @@ class AreaStyle {
         borderGradientEnd:
             _alignFromJson(j["borderGradientEnd"], Alignment.bottomRight),
         borderImagePath: j["borderImagePath"],
-        borderImageFit: BoxFit.values
-            .firstWhere((e) => e.name == j["borderImageFit"],
-                orElse: () => BoxFit.cover),
+        borderImageFit: BoxFit.values.firstWhere(
+            (e) => e.name == j["borderImageFit"],
+            orElse: () => BoxFit.cover),
         borderWidth: (j["borderWidth"] as num?)?.toDouble() ?? 0,
         borderRadius: (j["borderRadius"] as num?)?.toDouble() ?? 0,
         padding: (j["padding"] as num?)?.toDouble() ?? 0,
@@ -752,15 +880,13 @@ class AreaStyle {
             : null,
         showHoverArrow: j["showHoverArrow"] as bool? ?? true,
         enableMessageActions: j["enableMessageActions"] as bool? ?? false,
-        showChatListLastMessage:
-            j["showChatListLastMessage"] as bool? ?? false,
+        showChatListLastMessage: j["showChatListLastMessage"] as bool? ?? false,
         chatListDesignEnabled: j["chatListDesignEnabled"] as bool? ?? false,
         chatListCornerRadius: (j["chatListCornerRadius"] as num?)?.toDouble(),
         chatListAccentColor: j["chatListAccentColor"] != null
             ? _colorFromHex(j["chatListAccentColor"])
             : null,
-        chatListGlowIntensity:
-            (j["chatListGlowIntensity"] as num?)?.toDouble(),
+        chatListGlowIntensity: (j["chatListGlowIntensity"] as num?)?.toDouble(),
         chatListTopHighlight: j["chatListTopHighlight"] as bool? ?? true,
         monochromeAvatars: j["monochromeAvatars"] as bool? ?? false,
         chatBackdropWash: j["chatBackdropWash"] as bool? ?? false,
@@ -774,8 +900,7 @@ class AreaStyle {
                 .firstWhere((e) => e.name == j["messageLayoutMode"])
             : null,
         expandMessageWidth: j["expandMessageWidth"] as bool? ?? false,
-        expandMessagePadding:
-            (j["expandMessagePadding"] as num?)?.toDouble(),
+        expandMessagePadding: (j["expandMessagePadding"] as num?)?.toDouble(),
         autoUnmuteOnJoin: j["autoUnmuteOnJoin"] as bool? ?? false,
         enhancedCallIndicators: j["enhancedCallIndicators"] as bool? ?? false,
         feedCardRedesign: j["feedCardRedesign"] as bool? ?? false,
@@ -784,11 +909,29 @@ class AreaStyle {
         feedHidePosts: j["feedHidePosts"] as bool? ?? false,
         feedSidePanel: j["feedSidePanel"] as bool? ?? false,
         feedInlineComposer: j["feedInlineComposer"] as bool? ?? false,
-        feedComposerFormatting:
-            j["feedComposerFormatting"] as bool? ?? false,
+        feedComposerFormatting: j["feedComposerFormatting"] as bool? ?? false,
         feedComposerAttach: j["feedComposerAttach"] as bool? ?? false,
         feedDrafts: j["feedDrafts"] as bool? ?? false,
         feedHideSidebarOnPost: j["feedHideSidebarOnPost"] as bool? ?? false,
+        feedImageLayout: j["feedImageLayout"] != null
+            ? FeedImageLayout.values.firstWhere(
+                (e) => e.name == j["feedImageLayout"],
+                orElse: () => FeedImageLayout.standard)
+            : FeedImageLayout.standard,
+        feedImageCropHeight:
+            (j["feedImageCropHeight"] as num?)?.toDouble() ?? 300,
+        feedTextOrder: j["feedTextOrder"] != null
+            ? FeedTextOrder.values.firstWhere(
+                (e) => e.name == j["feedTextOrder"],
+                orElse: () => FeedTextOrder.standard)
+            : FeedTextOrder.standard,
+        feedLinksMode: j["feedLinksMode"] != null
+            ? FeedLinksMode.values.firstWhere(
+                (e) => e.name == j["feedLinksMode"],
+                orElse: () => FeedLinksMode.standard)
+            : FeedLinksMode.standard,
+        feedTextLimit: (j["feedTextLimit"] as num?)?.toDouble() ?? 0,
+        feedStripMarkdown: j["feedStripMarkdown"] as bool? ?? false,
       );
 
   _Fill _resolveFill(
@@ -975,7 +1118,8 @@ class AreaStyle {
         color: borderFill.color,
         gradient: borderFill.gradient,
         image: borderFill.image,
-        borderRadius: borderRadius > 0 ? BorderRadius.circular(borderRadius) : null,
+        borderRadius:
+            borderRadius > 0 ? BorderRadius.circular(borderRadius) : null,
       ),
       child: child,
     );
@@ -1219,7 +1363,9 @@ class ThemePreset {
   // render through the same pipeline the rest of the app already trusts.
   static Color _darken(Color c, double amount) {
     var hsl = HSLColor.fromColor(c);
-    return hsl.withLightness((hsl.lightness - amount).clamp(0.0, 1.0)).toColor();
+    return hsl
+        .withLightness((hsl.lightness - amount).clamp(0.0, 1.0))
+        .toColor();
   }
 
   // toAppTheme deliberately does NOT force primary/secondary/tertiary/error
@@ -1254,9 +1400,8 @@ class ThemePreset {
     ).copyWith(
       listTileTheme: ListTileThemeData(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(3)),
-        selectedTileColor: brightness == Brightness.dark
-            ? Colors.grey[850]
-            : Colors.grey[100],
+        selectedTileColor:
+            brightness == Brightness.dark ? Colors.grey[850] : Colors.grey[100],
         iconColor: onSurface,
       ),
       hintColor: onSurface.withValues(alpha: 0.6),
@@ -1293,8 +1438,7 @@ class ThemePreset {
         "name": name,
         "brightness": brightness.name,
         "palette": {
-          for (var slot in PaletteSlot.values)
-            slot.name: _hex(forSlot(slot)),
+          for (var slot in PaletteSlot.values) slot.name: _hex(forSlot(slot)),
         },
         if (extraPaletteColors.isNotEmpty)
           "extraPaletteColors": extraPaletteColors.map(_hex).toList(),
