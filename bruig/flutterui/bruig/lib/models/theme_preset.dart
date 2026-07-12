@@ -329,6 +329,9 @@ class AreaStyle {
   // feedInlineComposer.
   final bool feedDrafts; // Save/reuse/delete drafts. Needs
   // feedInlineComposer (save button) + feedSidePanel (drafts list).
+  final bool feedHideSidebarOnPost; // Drops the feed sidebar entirely while
+  // reading a single post, for a more focused reading experience. Needs
+  // feedSidePanel.
 
   // isUnmodified is true only when nothing about this style differs from
   // the area's original, pre-theming-feature appearance. A few render call
@@ -380,7 +383,8 @@ class AreaStyle {
       feedInlineComposer == false &&
       feedComposerFormatting == false &&
       feedComposerAttach == false &&
-      feedDrafts == false;
+      feedDrafts == false &&
+      feedHideSidebarOnPost == false;
 
   const AreaStyle({
     this.mode = AreaBackgroundMode.token,
@@ -441,6 +445,7 @@ class AreaStyle {
     this.feedComposerFormatting = false,
     this.feedComposerAttach = false,
     this.feedDrafts = false,
+    this.feedHideSidebarOnPost = false,
   });
 
   AreaStyle copyWith({
@@ -511,6 +516,7 @@ class AreaStyle {
     bool? feedComposerFormatting,
     bool? feedComposerAttach,
     bool? feedDrafts,
+    bool? feedHideSidebarOnPost,
   }) =>
       AreaStyle(
         mode: mode ?? this.mode,
@@ -589,6 +595,8 @@ class AreaStyle {
             feedComposerFormatting ?? this.feedComposerFormatting,
         feedComposerAttach: feedComposerAttach ?? this.feedComposerAttach,
         feedDrafts: feedDrafts ?? this.feedDrafts,
+        feedHideSidebarOnPost:
+            feedHideSidebarOnPost ?? this.feedHideSidebarOnPost,
       );
 
   static String _colorToHex(Color c) =>
@@ -671,6 +679,8 @@ class AreaStyle {
           "feedComposerFormatting": feedComposerFormatting,
         if (feedComposerAttach) "feedComposerAttach": feedComposerAttach,
         if (feedDrafts) "feedDrafts": feedDrafts,
+        if (feedHideSidebarOnPost)
+          "feedHideSidebarOnPost": feedHideSidebarOnPost,
       };
 
   factory AreaStyle.fromJson(Map<String, dynamic> j) => AreaStyle(
@@ -778,6 +788,7 @@ class AreaStyle {
             j["feedComposerFormatting"] as bool? ?? false,
         feedComposerAttach: j["feedComposerAttach"] as bool? ?? false,
         feedDrafts: j["feedDrafts"] as bool? ?? false,
+        feedHideSidebarOnPost: j["feedHideSidebarOnPost"] as bool? ?? false,
       );
 
   _Fill _resolveFill(

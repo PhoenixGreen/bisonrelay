@@ -68,11 +68,29 @@ class _FeedScreenState extends State<FeedScreen> {
 
   GlobalKey<NavigatorState> navKey = GlobalKey(debugLabel: "overview nav key");
 
+  // Dummy search controller for the minimal side panel shown on tabs that
+  // don't own a post list (Subscriptions, New Post, and any post/user-post
+  // detail view) -- search/sort/filter don't apply there, only the nav
+  // shortcuts do, but AreaStyle.feedSidePanel still needs to render
+  // *something* consistent instead of the old sub-menu.
+  final TextEditingController _dummySearchCtrl = TextEditingController();
+
+  // Bumped every time "Your Posts" is navigated to, forcing a fresh
+  // FeedPosts instance (and so a fresh FeedView.all default) via its key.
+  // Without this, Your Posts would keep whatever Bookmarks/Hidden/Drafts
+  // sub-view was last selected *while on that tab*, making the Your Posts
+  // link look like it "stopped working" until you bounced through All
+  // Posts first. All posts doesn't need this -- browsing its own
+  // Bookmarks/Hidden/Drafts sub-views and having them persist there is
+  // expected, since those are part of that tab's own experience.
+  int _yourPostsResetToken = 0;
+
   Widget activeTab() {
     switch (tabIndex) {
       case 0:
         if (showPost == null) {
           return Consumer2<FeedModel, ClientModel>(
+              key: const ValueKey('feed-tab-all'),
               builder: (context, feed, client, child) =>
                   FeedPosts(feed, client, onItemChanged, false));
         } else {
@@ -82,6 +100,7 @@ class _FeedScreenState extends State<FeedScreen> {
       case 1:
         if (showPost == null) {
           return Consumer2<FeedModel, ClientModel>(
+            key: ValueKey('feed-tab-own-$_yourPostsResetToken'),
             builder: (context, feed, client, child) =>
                 FeedPosts(feed, client, onItemChanged, true),
           );
@@ -114,6 +133,7 @@ class _FeedScreenState extends State<FeedScreen> {
     setState(() {
       showPost = args;
       tabIndex = index;
+      if (index == 1) _yourPostsResetToken++;
     });
     Timer(const Duration(milliseconds: 1),
         () async => widget.mainMenu.activePageTab = index);
@@ -150,7 +170,58 @@ class _FeedScreenState extends State<FeedScreen> {
 
   @override
   void dispose() {
+    _dummySearchCtrl.dispose();
     super.dispose();
+  }
+
+  // Jump to the main "All posts" tab, matching what tapping a FEED-section
+  // nav item means when there's no post-list-owning FeedPosts around to
+  // interpret it (Subscriptions/New Post/detail views).
+  void _gotoFeedView(FeedView v) => onItemChanged(0, null);
+
+  Widget _minimalSidePanelLayout(BuildContext context, AreaStyle feedStyle) {
+    final panel = FeedSidePanel(
+      view: FeedView.all,
+      sort: FeedSort.newest,
+      unreadOnly: false,
+      searchController: _dummySearchCtrl,
+      showBookmarks: feedStyle.feedBookmarks,
+      showHidden: feedStyle.feedHidePosts,
+      showDrafts: feedStyle.feedDrafts,
+      currentTabIndex: tabIndex,
+      onView: _gotoFeedView,
+      onSort: (_) {},
+      onUnreadOnly: (_) {},
+      onSearch: (_) {},
+      onYourPosts: () => onItemChanged(1, null),
+      onSubscriptions: () => onItemChanged(2, null),
+      onNewPost: () => onItemChanged(3, null),
+    );
+    return LayoutBuilder(builder: (context, c) {
+      List<Widget> rowChildren;
+      if (c.maxWidth >= 1400) {
+        rowChildren = [
+          const Spacer(),
+          SizedBox(width: 260, child: panel),
+          const SizedBox(width: 48),
+          SizedBox(width: 780, child: activeTab()),
+          const SizedBox(width: 308),
+          const Spacer(),
+        ];
+      } else if (c.maxWidth >= 900) {
+        rowChildren = [
+          const SizedBox(width: 16),
+          SizedBox(width: 260, child: panel),
+          const SizedBox(width: 48),
+          Expanded(child: activeTab()),
+        ];
+      } else {
+        rowChildren = [Expanded(child: activeTab())];
+      }
+      return Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: rowChildren);
+    });
   }
 
   @override
@@ -164,15 +235,30 @@ class _FeedScreenState extends State<FeedScreen> {
 
     var client = Provider.of<ClientModel>(context);
 
-    // The Feed side panel (AreaStyle.feedSidePanel) renders its own Your
-    // Posts/Subscriptions/New Post shortcuts inline on the main "All posts"
-    // tab, replacing the need for this screen's own sub-menu there.
-    bool feedSidePanel =
-        ThemeNotifier.of(context).areaStyle(ThemeArea.feed).feedSidePanel;
-    bool onMainFeedTab = tabIndex == 0 && showPost == null && !hasArgs;
+    // AreaStyle.feedSidePanel replaces this screen's own sub-menu
+    // everywhere: tabs 0/1 (All posts/Your Posts) render their own full
+    // panel inline (FeedPosts owns that state), while Subscriptions/New
+    // Post/detail views get a minimal nav-only panel instead, so the
+    // sidebar experience stays consistent across the whole Feed screen
+    // rather than falling back to the old plain tab list.
+    var feedStyle = ThemeNotifier.of(context).areaStyle(ThemeArea.feed);
+    bool feedSidePanel = feedStyle.feedSidePanel;
+    bool viewingPost = showPost != null;
+    bool onOwnPanelTab =
+        (tabIndex == 0 || tabIndex == 1) && !viewingPost && !hasArgs;
 
-    if (feedSidePanel && onMainFeedTab) {
-      return ScreenWithChatSideMenu(client, activeTab());
+    if (feedSidePanel && !isScreenSmall) {
+      // Reading a single post: optionally drop the sidebar entirely for a
+      // more focused reading experience, instead of falling back to the
+      // minimal nav-only panel.
+      if (viewingPost && feedStyle.feedHideSidebarOnPost) {
+        return ScreenWithChatSideMenu(client, activeTab());
+      }
+      return ScreenWithChatSideMenu(
+          client,
+          onOwnPanelTab
+              ? activeTab()
+              : _minimalSidePanelLayout(context, feedStyle));
     }
 
     return ScreenWithChatSideMenu(

@@ -1597,6 +1597,16 @@ class _AreasSectionState extends State<AreasSection> {
             onChanged: (v) =>
                 _setStyle(theme, (s) => s.copyWith(feedDrafts: v)),
           ),
+          SwitchListTile(
+            title: const Text("Hide sidebar when reading a post"),
+            subtitle: const Text(
+                "Drops the feed sidebar while viewing a single post, for "
+                "a more focused reading experience (requires Feed side "
+                "panel)"),
+            value: style.feedHideSidebarOnPost,
+            onChanged: (v) => _setStyle(
+                theme, (s) => s.copyWith(feedHideSidebarOnPost: v)),
+          ),
         ],
         if (selected == ThemeArea.header) ...[
           Row(children: [

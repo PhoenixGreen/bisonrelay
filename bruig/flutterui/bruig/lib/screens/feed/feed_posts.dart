@@ -420,15 +420,15 @@ class FeedPosts extends StatefulWidget {
   State<FeedPosts> createState() => _FeedPostsState();
 }
 
-enum _FeedView { all, bookmarks, hidden, drafts }
+enum FeedView { all, bookmarks, hidden, drafts }
 
-enum _FeedSort { newest, oldest, mostComments }
+enum FeedSort { newest, oldest, mostComments }
 
 class _FeedPostsState extends State<FeedPosts> {
   final TextEditingController _searchCtrl = TextEditingController();
   final TextEditingController _composerCtrl = TextEditingController();
-  _FeedView _view = _FeedView.all;
-  _FeedSort _sort = _FeedSort.newest;
+  FeedView _view = FeedView.all;
+  FeedSort _sort = FeedSort.newest;
   bool _unreadOnly = false;
   String _search = "";
 
@@ -468,7 +468,7 @@ class _FeedPostsState extends State<FeedPosts> {
 
   void _loadDraft(String text) {
     _composerCtrl.text = text;
-    setState(() => _view = _FeedView.all);
+    setState(() => _view = FeedView.all);
   }
 
   List<FeedPostModel> _applyFilters(bool bookmarks, bool hidePosts) {
@@ -481,16 +481,16 @@ class _FeedPostsState extends State<FeedPosts> {
         hidePosts && FeedHidden.instance.contains(p.summ.from, p.summ.id);
 
     switch (_view) {
-      case _FeedView.bookmarks:
+      case FeedView.bookmarks:
         posts = posts.where((p) =>
             FeedBookmarks.instance.contains(p.summ.from, p.summ.id) &&
             !isHidden(p));
         break;
-      case _FeedView.hidden:
+      case FeedView.hidden:
         posts = posts.where(isHidden);
         break;
-      case _FeedView.all:
-      case _FeedView.drafts:
+      case FeedView.all:
+      case FeedView.drafts:
         posts = posts.where((p) => !isHidden(p));
         break;
     }
@@ -514,13 +514,13 @@ class _FeedPostsState extends State<FeedPosts> {
 
     final list = posts.toList();
     switch (_sort) {
-      case _FeedSort.newest:
+      case FeedSort.newest:
         list.sort((a, b) => b.summ.date.compareTo(a.summ.date));
         break;
-      case _FeedSort.oldest:
+      case FeedSort.oldest:
         list.sort((a, b) => a.summ.date.compareTo(b.summ.date));
         break;
-      case _FeedSort.mostComments:
+      case FeedSort.mostComments:
         list.sort((a, b) => b.comments.length.compareTo(a.comments.length));
         break;
     }
@@ -553,28 +553,23 @@ class _FeedPostsState extends State<FeedPosts> {
     var composerAttach = feedStyle.feedComposerAttach;
     var drafts = feedStyle.feedDrafts;
 
-    // The side panel (with its own Your Posts/Subscriptions/New Post
-    // shortcuts, bookmarks/hidden views, search/sort/filter) only makes
-    // sense on the main "All posts" tab -- showing it again inside the
-    // "Your Posts" tab would just duplicate navigation that's already
-    // reachable there.
-    if (!sidePanel || widget.onlyShowOwnPosts) {
+    if (!sidePanel) {
       final posts = _applyFilters(bookmarks, hidePosts);
       return _plainList(posts);
     }
 
     final postList = _applyFilters(bookmarks, hidePosts);
     final Widget body;
-    if (drafts && _view == _FeedView.drafts) {
+    if (drafts && _view == FeedView.drafts) {
       body = _DraftsView(onUse: _loadDraft);
     } else if (postList.isEmpty) {
       body = Center(
         child: Padding(
           padding: const EdgeInsets.all(40),
           child: Text(
-              _view == _FeedView.bookmarks
+              _view == FeedView.bookmarks
                   ? "No bookmarks yet.\nTap the bookmark icon on a post to save it."
-                  : _view == _FeedView.hidden
+                  : _view == FeedView.hidden
                       ? "No hidden posts."
                       : _search.isNotEmpty
                           ? "No posts match your search."
@@ -619,7 +614,7 @@ class _FeedPostsState extends State<FeedPosts> {
       ]),
     );
 
-    final panel = _FeedSidePanel(
+    final panel = FeedSidePanel(
       view: _view,
       sort: _sort,
       unreadOnly: _unreadOnly,
@@ -627,7 +622,19 @@ class _FeedPostsState extends State<FeedPosts> {
       showBookmarks: bookmarks,
       showHidden: hidePosts,
       showDrafts: drafts,
-      onView: (v) => setState(() => _view = v),
+      currentTabIndex: widget.onlyShowOwnPosts ? 1 : 0,
+      onView: (v) {
+        // "All posts" from within the Your Posts tab means "go to the
+        // actual All posts tab", not "filter Your Posts down to itself"
+        // (a no-op that looked like the link didn't work). Bookmarks/
+        // Hidden/Drafts are feed-wide sets, so filtering in place still
+        // makes sense for those regardless of which tab this panel is on.
+        if (widget.onlyShowOwnPosts && v == FeedView.all) {
+          widget.tabChange(0, null);
+        } else {
+          setState(() => _view = v);
+        }
+      },
       onSort: (s) => setState(() => _sort = s),
       onUnreadOnly: (b) => setState(() => _unreadOnly = b),
       onSearch: (t) => setState(() => _search = t),
@@ -676,22 +683,28 @@ class _FeedPostsState extends State<FeedPosts> {
 
 // Left-side tools rail (X-style): search, views, sort, filters. Only shown
 // when AreaStyle.feedSidePanel is on.
-class _FeedSidePanel extends StatelessWidget {
-  final _FeedView view;
-  final _FeedSort sort;
+class FeedSidePanel extends StatelessWidget {
+  final FeedView view;
+  final FeedSort sort;
   final bool unreadOnly;
   final TextEditingController searchController;
   final bool showBookmarks;
   final bool showHidden;
   final bool showDrafts;
-  final ValueChanged<_FeedView> onView;
-  final ValueChanged<_FeedSort> onSort;
+  // Which Feed screen tab (0=All posts, 1=Your Posts, 2=Subscriptions,
+  // 3=New Post) is currently active, so the Your Posts/Subscriptions/New
+  // Post shortcuts below can highlight themselves like the FEED-section
+  // nav items already do.
+  final int currentTabIndex;
+  final ValueChanged<FeedView> onView;
+  final ValueChanged<FeedSort> onSort;
   final ValueChanged<bool> onUnreadOnly;
   final ValueChanged<String> onSearch;
   final VoidCallback onYourPosts;
   final VoidCallback onSubscriptions;
   final VoidCallback onNewPost;
-  const _FeedSidePanel({
+  const FeedSidePanel({
+    super.key,
     required this.view,
     required this.sort,
     required this.unreadOnly,
@@ -699,6 +712,7 @@ class _FeedSidePanel extends StatelessWidget {
     required this.showBookmarks,
     required this.showHidden,
     required this.showDrafts,
+    required this.currentTabIndex,
     required this.onView,
     required this.onSort,
     required this.onUnreadOnly,
@@ -708,7 +722,7 @@ class _FeedSidePanel extends StatelessWidget {
     required this.onNewPost,
   });
 
-  Widget _navItem(IconData ic, String label, _FeedView v, {String? trailing}) {
+  Widget _navItem(IconData ic, String label, FeedView v, {String? trailing}) {
     final selected = view == v;
     return GestureDetector(
       onTap: () => onView(v),
@@ -745,27 +759,38 @@ class _FeedSidePanel extends StatelessWidget {
     );
   }
 
-  Widget _actionItem(IconData ic, String label, VoidCallback onTap) {
+  Widget _actionItem(IconData ic, String label, VoidCallback onTap,
+      {bool selected = false}) {
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
       child: Container(
         margin: const EdgeInsets.only(bottom: 4),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+        decoration: BoxDecoration(
+          color: selected ? const Color(0xFF101826) : Colors.transparent,
+          borderRadius: BorderRadius.circular(10),
+        ),
         child: Row(children: [
-          Icon(ic, size: 19, color: const Color(0xFF9AA3A0)),
+          Icon(ic,
+              size: 19,
+              color: selected
+                  ? const Color(0xFF4D9FFF)
+                  : const Color(0xFF9AA3A0)),
           const SizedBox(width: 12),
           Text(label,
-              style: const TextStyle(
+              style: TextStyle(
                   fontSize: 14.5,
-                  fontWeight: FontWeight.w500,
-                  color: Color(0xFFF2F4F3))),
+                  fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                  color: selected
+                      ? const Color(0xFF4D9FFF)
+                      : const Color(0xFFF2F4F3))),
         ]),
       ),
     );
   }
 
-  Widget _sortItem(String label, _FeedSort s) {
+  Widget _sortItem(String label, FeedSort s) {
     final selected = sort == s;
     return GestureDetector(
       onTap: () => onSort(s),
@@ -850,26 +875,29 @@ class _FeedSidePanel extends StatelessWidget {
               ),
             ),
             _sectionLabel("FEED"),
-            _navItem(Icons.dynamic_feed_outlined, "All posts", _FeedView.all),
+            _navItem(Icons.dynamic_feed_outlined, "All posts", FeedView.all),
             if (showBookmarks)
               _navItem(
-                  Icons.bookmark_outline, "Bookmarks", _FeedView.bookmarks,
+                  Icons.bookmark_outline, "Bookmarks", FeedView.bookmarks,
                   trailing: "${FeedBookmarks.instance.count}"),
             if (showHidden)
               _navItem(
-                  Icons.visibility_off_outlined, "Hidden", _FeedView.hidden,
+                  Icons.visibility_off_outlined, "Hidden", FeedView.hidden,
                   trailing: "${FeedHidden.instance.count}"),
             if (showDrafts)
-              _navItem(Icons.edit_note_outlined, "Drafts", _FeedView.drafts,
+              _navItem(Icons.edit_note_outlined, "Drafts", FeedView.drafts,
                   trailing: "${FeedDrafts.instance.count}"),
             _sectionLabel("POSTS"),
-            _actionItem(Icons.article_outlined, "Your Posts", onYourPosts),
-            _actionItem(Icons.rss_feed, "Subscriptions", onSubscriptions),
-            _actionItem(Icons.add_box_outlined, "New Post", onNewPost),
+            _actionItem(Icons.article_outlined, "Your Posts", onYourPosts,
+                selected: currentTabIndex == 1),
+            _actionItem(Icons.rss_feed, "Subscriptions", onSubscriptions,
+                selected: currentTabIndex == 2),
+            _actionItem(Icons.add_box_outlined, "New Post", onNewPost,
+                selected: currentTabIndex == 3),
             _sectionLabel("SORT"),
-            _sortItem("Newest", _FeedSort.newest),
-            _sortItem("Oldest", _FeedSort.oldest),
-            _sortItem("Most comments", _FeedSort.mostComments),
+            _sortItem("Newest", FeedSort.newest),
+            _sortItem("Oldest", FeedSort.oldest),
+            _sortItem("Most comments", FeedSort.mostComments),
             _sectionLabel("FILTER"),
             GestureDetector(
               onTap: () => onUnreadOnly(!unreadOnly),
