@@ -527,105 +527,126 @@ class _AppearanceSettingsScreenState extends State<AppearanceSettingsScreen> {
   @override
   Widget build(BuildContext context) {
     var mainMenu = Provider.of<MainMenuModel>(context, listen: false);
-    return ListView(
-      padding: const EdgeInsets.all(8),
+    return Column(
       children: [
-        ListTile(title: Txt.S("Active Theme: ${theme.presetDisplayName}")),
+        // Kept outside the ListView (rather than as a pinned/sliver header)
+        // so it stays fixed in place while the rest of the page scrolls --
+        // the active preset and its actions are relevant no matter which
+        // section below is being edited.
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                ThemeModeDropdown(theme, mainMenu),
-                OutlinedButton.icon(
-                  onPressed: () => createNewPreset(theme),
-                  icon: const Icon(Icons.add_circle_outline),
-                  label: const Text("New Preset"),
-                ),
-                OutlinedButton.icon(
-                  onPressed: () => importPresetFile(context, theme, mainMenu),
-                  icon: const Icon(Icons.file_upload_outlined),
-                  label: const Text("Import"),
-                ),
-                OutlinedButton.icon(
-                  onPressed: () => exportPresetFile(context, theme),
-                  icon: const Icon(Icons.file_download_outlined),
-                  label: const Text("Export"),
-                ),
-                IconButton(
-                  onPressed: () => resetToDefaultTheme(theme, mainMenu),
-                  icon: const Icon(Icons.restart_alt_outlined),
-                  tooltip: "Reset to Default",
-                ),
-                IconButton(
-                  onPressed: () => savePreset(context, theme, mainMenu),
-                  icon: const Icon(Icons.save_outlined),
-                  tooltip: "Save",
-                ),
-                IconButton(
-                  onPressed: theme.activePreset != null
-                      ? () => deletePreset(context, theme)
-                      : null,
-                  icon: const Icon(Icons.delete_outline),
-                  tooltip: "Delete",
-                ),
-              ]),
-        ),
-        const Divider(),
-        ListTile(
-          title: const Txt.S("Message font size"),
-          trailing: FontSizeDropdown(theme),
-        ),
-        const Divider(),
-        const SizedBox(height: 8),
-        _SettingsGroupCard(
-          theme: theme,
-          child: const PaletteExpansionTile(),
-        ),
-        _SettingsGroupCard(
-          theme: theme,
-          child: ExpansionTile(
-            title: const Txt.S("Theme Areas"),
-            initiallyExpanded: client.ui.settingsNav.themeAreasExpanded,
-            onExpansionChanged: (v) =>
-                client.ui.settingsNav.themeAreasExpanded = v,
+          padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              ListTile(
+                  title: Txt.S("Active Theme: ${theme.presetDisplayName}")),
               Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: AreasSection(
-                    initialArea: client.ui.settingsNav.selectedThemeArea,
-                    onAreaChanged: (a) =>
-                        client.ui.settingsNav.selectedThemeArea = a,
-                  ))
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      ThemeModeDropdown(theme, mainMenu),
+                      OutlinedButton.icon(
+                        onPressed: () => createNewPreset(theme),
+                        icon: const Icon(Icons.add_circle_outline),
+                        label: const Text("New Preset"),
+                      ),
+                      IconButton(
+                        onPressed: () =>
+                            importPresetFile(context, theme, mainMenu),
+                        icon: const Icon(Icons.file_upload_outlined),
+                        tooltip: "Import",
+                      ),
+                      IconButton(
+                        onPressed: () => exportPresetFile(context, theme),
+                        icon: const Icon(Icons.file_download_outlined),
+                        tooltip: "Export",
+                      ),
+                      IconButton(
+                        onPressed: () => resetToDefaultTheme(theme, mainMenu),
+                        icon: const Icon(Icons.restart_alt_outlined),
+                        tooltip: "Reset to Default",
+                      ),
+                      IconButton(
+                        onPressed: () => savePreset(context, theme, mainMenu),
+                        icon: const Icon(Icons.save_outlined),
+                        tooltip: "Save",
+                      ),
+                      IconButton(
+                        onPressed: theme.activePreset != null
+                            ? () => deletePreset(context, theme)
+                            : null,
+                        icon: const Icon(Icons.delete_outline),
+                        tooltip: "Delete",
+                      ),
+                    ]),
+              ),
+              const Divider(),
             ],
           ),
         ),
-        _SettingsGroupCard(
-          theme: theme,
-          child: ExpansionTile(
-            title: const Txt.S("Menu"),
-            initiallyExpanded: false,
-            children: const [MenuSection()],
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.all(8),
+            children: [
+              _SettingsGroupCard(
+                theme: theme,
+                child: const PaletteExpansionTile(),
+              ),
+              _SettingsGroupCard(
+                theme: theme,
+                child: ExpansionTile(
+                  title: const Txt.S("Theme Areas"),
+                  initiallyExpanded: client.ui.settingsNav.themeAreasExpanded,
+                  onExpansionChanged: (v) =>
+                      client.ui.settingsNav.themeAreasExpanded = v,
+                  children: [
+                    Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: AreasSection(
+                          initialArea: client.ui.settingsNav.selectedThemeArea,
+                          onAreaChanged: (a) =>
+                              client.ui.settingsNav.selectedThemeArea = a,
+                        ))
+                  ],
+                ),
+              ),
+              _SettingsGroupCard(
+                theme: theme,
+                child: ExpansionTile(
+                  title: const Txt.S("Menu"),
+                  initiallyExpanded: false,
+                  children: const [MenuSection()],
+                ),
+              ),
+              const Divider(),
+              ListTile(
+                title: const Txt.S("Message font size"),
+                trailing: FontSizeDropdown(theme),
+              ),
+              if (kDebugMode) ...[
+                const Divider(),
+                ListTile(
+                    title: const Text("Widget Test Screen"),
+                    onTap: () {
+                      Navigator.of(context, rootNavigator: true)
+                          .pushNamed(ThemeTestScreen.routeName);
+                    }),
+                ListTile(
+                    title: const Text("Unset Unkx Members Notice Flag"),
+                    onTap: () async {
+                      await StorageManager.saveBool(
+                          StorageManager.notifiedGCUnkxdMembers, false);
+                      if (context.mounted) {
+                        showSuccessSnackbar(context, "Done");
+                      }
+                    })
+              ]
+            ],
           ),
         ),
-        if (kDebugMode) ...[
-          const Divider(),
-          ListTile(
-              title: const Text("Widget Test Screen"),
-              onTap: () {
-                Navigator.of(context, rootNavigator: true)
-                    .pushNamed(ThemeTestScreen.routeName);
-              }),
-          ListTile(
-              title: const Text("Unset Unkx Members Notice Flag"),
-              onTap: () async {
-                await StorageManager.saveBool(
-                    StorageManager.notifiedGCUnkxdMembers, false);
-                if (context.mounted) showSuccessSnackbar(context, "Done");
-              })
-        ]
       ],
     );
   }
