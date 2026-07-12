@@ -1345,6 +1345,16 @@ class _AreasSectionState extends State<AreasSection> {
             onChanged: (v) =>
                 _setStyle(theme, (s) => s.copyWith(settingsShellRestyle: v)),
           ),
+          SwitchListTile(
+            title: const Text("Monochrome avatars"),
+            subtitle:
+                const Text("Uses a graphite-gray fallback avatar instead of a "
+                    "colorful hashed hue (real avatar images are unaffected) "
+                    "-- applies to every avatar in the app"),
+            value: style.monochromeAvatars,
+            onChanged: (v) =>
+                _setStyle(theme, (s) => s.copyWith(monochromeAvatars: v)),
+          ),
         ],
         if (selected == ThemeArea.subMenuTabBar) ...[
           const SizedBox(height: 8),
@@ -1471,15 +1481,6 @@ class _AreasSectionState extends State<AreasSection> {
                   _setStyle(theme, (s) => s.copyWith(chatListTopHighlight: v)),
             ),
           ],
-          SwitchListTile(
-            title: const Text("Monochrome avatars"),
-            subtitle:
-                const Text("Uses a graphite-gray fallback avatar instead of a "
-                    "colorful hashed hue (real avatar images are unaffected)"),
-            value: style.monochromeAvatars,
-            onChanged: (v) =>
-                _setStyle(theme, (s) => s.copyWith(monochromeAvatars: v)),
-          ),
           SwitchListTile(
             title: const Text("Chat backdrop glow"),
             subtitle: const Text("Adds a subtle gradient wash behind messages"),

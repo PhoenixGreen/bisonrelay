@@ -373,7 +373,12 @@ class AreaStyle {
       chatListGlowIntensity; // Null = built-in default (1.0); 0 = off.
   final bool chatListTopHighlight; // Ambient top-left glow + lit hairline
   // on inactive rows (vs. a flat background); default on.
-  final bool monochromeAvatars; // Graphite fallback avatars.
+  // monochromeAvatars is read from ThemeArea.masterBackground (not chat) --
+  // every avatar in the app funnels through the same InteractiveAvatar
+  // widget, so this has always behaved as an app-wide toggle regardless of
+  // which area's style it lived under; the field lives here rather than by
+  // masterBackground's other fields for historical reasons only.
+  final bool monochromeAvatars; // Graphite fallback avatars, app-wide.
   final bool chatBackdropWash; // Radial-gradient wash behind messages.
   final bool enableChatSearch; // In-chat message search panel.
   final bool resizableChatList; // Draggable-width chat list + search bar.
@@ -753,8 +758,7 @@ class AreaStyle {
         rtcStyledSessionList: rtcStyledSessionList ?? this.rtcStyledSessionList,
         rtcSessionListIntro: rtcSessionListIntro ?? this.rtcSessionListIntro,
         payStatsCardStyle: payStatsCardStyle ?? this.payStatsCardStyle,
-        settingsShellRestyle:
-            settingsShellRestyle ?? this.settingsShellRestyle,
+        settingsShellRestyle: settingsShellRestyle ?? this.settingsShellRestyle,
         feedCardRedesign: feedCardRedesign ?? this.feedCardRedesign,
         feedCardActions: feedCardActions ?? this.feedCardActions,
         feedBookmarks: feedBookmarks ?? this.feedBookmarks,
@@ -854,8 +858,7 @@ class AreaStyle {
         if (rtcStyledSessionList) "rtcStyledSessionList": rtcStyledSessionList,
         if (rtcSessionListIntro) "rtcSessionListIntro": rtcSessionListIntro,
         if (payStatsCardStyle) "payStatsCardStyle": payStatsCardStyle,
-        if (settingsShellRestyle)
-          "settingsShellRestyle": settingsShellRestyle,
+        if (settingsShellRestyle) "settingsShellRestyle": settingsShellRestyle,
         if (feedCardRedesign) "feedCardRedesign": feedCardRedesign,
         if (feedCardActions) "feedCardActions": feedCardActions,
         if (feedBookmarks) "feedBookmarks": feedBookmarks,
