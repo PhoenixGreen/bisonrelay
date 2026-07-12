@@ -1,4 +1,5 @@
 import 'package:bruig/models/client.dart';
+import 'package:bruig/models/theme_preset.dart';
 import 'package:bruig/screens/chats.dart';
 import 'package:bruig/screens/feed.dart';
 import 'package:bruig/screens/viewpage_screen.dart';
@@ -49,6 +50,35 @@ class SmallScreenActiveTabModel extends ChangeNotifier {
   }
 }
 
+// SettingsNavModel remembers where the user last was in Settings >
+// Appearance (which sub-page, whether the Theme Areas section was expanded,
+// and which area was selected) so navigating away to check a setting (e.g.
+// visiting the chat page to see an area style take effect) and back doesn't
+// lose the spot -- Settings is rebuilt from scratch on every navigation to
+// it (pushReplacementNamed), so this can't just live in State.
+class SettingsNavModel extends ChangeNotifier {
+  String _page = "main";
+  String get page => _page;
+  set page(String v) {
+    _page = v;
+    notifyListeners();
+  }
+
+  bool _themeAreasExpanded = false;
+  bool get themeAreasExpanded => _themeAreasExpanded;
+  set themeAreasExpanded(bool v) {
+    _themeAreasExpanded = v;
+    notifyListeners();
+  }
+
+  ThemeArea _selectedThemeArea = ThemeArea.chat;
+  ThemeArea get selectedThemeArea => _selectedThemeArea;
+  set selectedThemeArea(ThemeArea v) {
+    _selectedThemeArea = v;
+    notifyListeners();
+  }
+}
+
 class OverviewActivePath extends ChangeNotifier {
   String _route = "";
   String get route => _route;
@@ -74,6 +104,7 @@ class UIStateModel {
   final ChatSearchModel chatSearch = ChatSearchModel();
   final ChatSideMenuActiveModel chatSideMenuActive = ChatSideMenuActiveModel();
   final SettingsTitleModel settingsTitle = SettingsTitleModel();
+  final SettingsNavModel settingsNav = SettingsNavModel();
   final SmallScreenActiveTabModel smallScreenActiveTab =
       SmallScreenActiveTabModel();
   final OverviewActivePath overviewActivePath = OverviewActivePath();
