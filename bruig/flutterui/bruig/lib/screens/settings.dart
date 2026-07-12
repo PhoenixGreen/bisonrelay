@@ -306,53 +306,130 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
 
     // Desktop-sized version.
-    return Consumer<ThemeNotifier>(
-        builder: (context, theme, _) => SecondarySideMenuLayout(
-              width: 130 * (theme.fontScale > 0 ? theme.fontScale : 1),
-              content: settingsView,
-              items: [
-                ListTile(
-                  selected: settingsPage == "Account",
-                  title: const Txt.S("Account"),
-                  onTap: () => changePage("Account"),
-                ),
-                ListTile(
-                  selected: settingsPage == "Appearance",
-                  title: const Txt.S("Appearance"),
-                  onTap: () => changePage("Appearance"),
-                ),
-                ListTile(
-                  selected: settingsPage == "Notifications",
-                  title: const Txt.S("Notifications"),
-                  onTap: () => changePage("Notifications"),
-                ),
-                ListTile(
-                  selected: settingsPage == "Network",
-                  title: const Txt.S("Network"),
-                  onTap: () => changePage("Network"),
-                ),
-                ListTile(
-                  selected: settingsPage == "Audio",
-                  title: const Txt.S("Audio"),
-                  onTap: () => changePage("Audio"),
-                ),
-                ListTile(
-                  selected: settingsPage == "RPC",
-                  title: const Txt.S("RPC"),
-                  onTap: () => showRpcWarningDialog(),
-                ),
-                ListTile(
-                  selected: settingsPage == "Stats",
-                  title: const Txt.S("Stats"),
-                  onTap: () => changePage("Stats"),
-                ),
-                ListTile(
-                  selected: settingsPage == "Logs",
-                  title: const Txt.S("Logs"),
-                  onTap: () => changePage("Logs"),
-                ),
-              ],
-            ));
+    return Consumer<ThemeNotifier>(builder: (context, theme, _) {
+      if (theme.areaStyle(ThemeArea.masterBackground).settingsShellRestyle) {
+        return Row(children: [
+          _RestyledSettingsNav(
+              settingsPage: settingsPage,
+              changePage: changePage,
+              showRpcWarningDialog: showRpcWarningDialog),
+          Expanded(child: settingsView),
+        ]);
+      }
+      return SecondarySideMenuLayout(
+        width: 130 * (theme.fontScale > 0 ? theme.fontScale : 1),
+        content: settingsView,
+        items: [
+          ListTile(
+            selected: settingsPage == "Account",
+            title: const Txt.S("Account"),
+            onTap: () => changePage("Account"),
+          ),
+          ListTile(
+            selected: settingsPage == "Appearance",
+            title: const Txt.S("Appearance"),
+            onTap: () => changePage("Appearance"),
+          ),
+          ListTile(
+            selected: settingsPage == "Notifications",
+            title: const Txt.S("Notifications"),
+            onTap: () => changePage("Notifications"),
+          ),
+          ListTile(
+            selected: settingsPage == "Network",
+            title: const Txt.S("Network"),
+            onTap: () => changePage("Network"),
+          ),
+          ListTile(
+            selected: settingsPage == "Audio",
+            title: const Txt.S("Audio"),
+            onTap: () => changePage("Audio"),
+          ),
+          ListTile(
+            selected: settingsPage == "RPC",
+            title: const Txt.S("RPC"),
+            onTap: () => showRpcWarningDialog(),
+          ),
+          ListTile(
+            selected: settingsPage == "Stats",
+            title: const Txt.S("Stats"),
+            onTap: () => changePage("Stats"),
+          ),
+          ListTile(
+            selected: settingsPage == "Logs",
+            title: const Txt.S("Logs"),
+            onTap: () => changePage("Logs"),
+          ),
+        ],
+      );
+    });
+  }
+}
+
+// Restyled left nav for AreaStyle.settingsShellRestyle: icon + pill
+// highlight rows instead of plain ListTiles.
+class _RestyledSettingsNav extends StatelessWidget {
+  final String settingsPage;
+  final ChangePageCB changePage;
+  final VoidCallback showRpcWarningDialog;
+  const _RestyledSettingsNav(
+      {required this.settingsPage,
+      required this.changePage,
+      required this.showRpcWarningDialog});
+
+  Widget _navItem(BuildContext context, String page, IconData icon) {
+    final cs = Theme.of(context).colorScheme;
+    final sel = settingsPage == page;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      child: Material(
+        color: sel ? cs.surfaceContainerHighest : Colors.transparent,
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () =>
+              page == "RPC" ? showRpcWarningDialog() : changePage(page),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            child: Row(children: [
+              Icon(icon,
+                  size: 19, color: sel ? cs.primary : cs.onSurfaceVariant),
+              const SizedBox(width: 12),
+              Text(page,
+                  style: TextStyle(
+                    fontSize: 14.5,
+                    fontWeight: sel ? FontWeight.w600 : FontWeight.w500,
+                    color: sel ? cs.onSurface : cs.onSurfaceVariant,
+                  )),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 200,
+      decoration: BoxDecoration(
+        border: Border(
+            right: BorderSide(color: Theme.of(context).colorScheme.outline)),
+      ),
+      child: ListView(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        children: [
+          _navItem(context, "Account", Icons.person_outline),
+          _navItem(context, "Appearance", Icons.palette_outlined),
+          _navItem(context, "Notifications", Icons.notifications_outlined),
+          _navItem(context, "Network", Icons.public),
+          _navItem(context, "Audio", Icons.volume_up_outlined),
+          _navItem(context, "RPC", Icons.terminal),
+          _navItem(context, "Stats", Icons.bar_chart_outlined),
+          _navItem(context, "Logs", Icons.list_outlined),
+        ],
+      ),
+    );
   }
 }
 
@@ -474,8 +551,229 @@ class AccountSettingsScreen extends StatelessWidget {
       this.pickAvatarCB, this.subAllPostsCB, this.listKXs,
       {super.key});
 
+  Widget _settLabel(String text, ColorScheme cs) => Padding(
+        padding: const EdgeInsets.fromLTRB(4, 0, 4, 9),
+        child: Text(text.toUpperCase(),
+            style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.8,
+                color: cs.onSurfaceVariant)),
+      );
+
+  Widget _settCard(ColorScheme cs, List<Widget> children) => Container(
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: cs.outlineVariant),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Column(children: children),
+      );
+
+  Widget _settChip(IconData icon, ColorScheme cs) => Container(
+        width: 36,
+        height: 36,
+        decoration: BoxDecoration(
+            color: cs.surfaceContainerHigh,
+            borderRadius: BorderRadius.circular(9)),
+        alignment: Alignment.center,
+        child: Icon(icon, size: 19, color: cs.onSurfaceVariant),
+      );
+
+  Widget _settDivider(ColorScheme cs) =>
+      Divider(height: 1, thickness: 1, indent: 66, color: cs.outlineVariant);
+
+  Widget _settRow(ColorScheme cs,
+          {required IconData icon,
+          required String title,
+          String? subtitle,
+          Widget? trailing,
+          VoidCallback? onTap}) =>
+      InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Row(children: [
+            _settChip(icon, cs),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title,
+                      style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w500,
+                          color: cs.onSurface)),
+                  if (subtitle != null) ...[
+                    const SizedBox(height: 2),
+                    Text(subtitle,
+                        style: TextStyle(
+                            fontSize: 12.5, color: cs.onSurfaceVariant)),
+                  ],
+                ],
+              ),
+            ),
+            if (trailing != null) ...[const SizedBox(width: 8), trailing],
+            if (onTap != null && trailing == null)
+              Icon(Icons.chevron_right, size: 20, color: cs.onSurfaceVariant),
+          ]),
+        ),
+      );
+
+  Widget _restyled(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 18, 16, 24),
+      children: [
+        Center(
+          child: Column(children: [
+            Stack(alignment: Alignment.center, children: [
+              SizedBox(
+                  width: 96,
+                  height: 96,
+                  child: SelfAvatar(client, onTap: pickAvatarCB)),
+              Positioned(
+                right: 0,
+                bottom: 0,
+                child: IgnorePointer(
+                  child: Container(
+                    width: 30,
+                    height: 30,
+                    decoration: BoxDecoration(
+                      color: cs.primary,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: cs.surface, width: 2),
+                    ),
+                    child:
+                        Icon(Icons.photo_camera, size: 16, color: cs.onPrimary),
+                  ),
+                ),
+              ),
+            ]),
+            const SizedBox(height: 10),
+            Text(client.nick,
+                style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    color: cs.onSurface)),
+            const SizedBox(height: 2),
+            Text("Tap the avatar to change it",
+                style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant)),
+          ]),
+        ),
+        const SizedBox(height: 24),
+        _settLabel("Identity", cs),
+        _settCard(cs, [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
+            child: Row(children: [
+              _settChip(Icons.fingerprint, cs),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text("Public identity",
+                        style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w500,
+                            color: cs.onSurface)),
+                    const SizedBox(height: 2),
+                    Text(
+                        "Your unique Bison Relay ID. Share it so others "
+                        "can add you.",
+                        style: TextStyle(
+                            fontSize: 12.5, color: cs.onSurfaceVariant)),
+                  ],
+                ),
+              ),
+            ]),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+            child: Copyable(client.publicID),
+          ),
+        ]),
+        const SizedBox(height: 22),
+        _settLabel("Relay Counter", cs),
+        AnimatedBuilder(
+          animation: client,
+          builder: (context, _) => _settCard(cs, [
+            _settRow(cs,
+                icon: Icons.insights,
+                title: "Relay Counter",
+                subtitle: "Messages you've sent",
+                trailing: Text("${client.msgsSent}",
+                    style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        color: cs.primary))),
+            _settDivider(cs),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+              child: Row(children: [
+                _settChip(Icons.tag, cs),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text("Count Relays",
+                          style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w500,
+                              color: cs.onSurface)),
+                      const SizedBox(height: 2),
+                      Text("Show a running count of messages you send",
+                          style: TextStyle(
+                              fontSize: 12.5, color: cs.onSurfaceVariant)),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Switch(
+                    value: client.countRelays,
+                    onChanged: (v) => client.setCountRelays(v)),
+              ]),
+            ),
+          ]),
+        ),
+        const SizedBox(height: 22),
+        _settLabel("Account", cs),
+        _settCard(cs, [
+          _settRow(cs,
+              icon: Icons.refresh,
+              title: "Reset all KX",
+              onTap: () => resetAllKXCB(context)),
+          _settDivider(cs),
+          _settRow(cs,
+              icon: Icons.history,
+              title: "Reset KX from users 30d stale",
+              onTap: () => resetKXCB(context)),
+          _settDivider(cs),
+          _settRow(cs,
+              icon: Icons.rss_feed,
+              title: "Subscribe to all posts",
+              onTap: () => subAllPostsCB()),
+          _settDivider(cs),
+          _settRow(cs,
+              icon: Icons.list_alt,
+              title: "List ongoing KX attempts",
+              onTap: () => listKXs()),
+        ]),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    var theme = ThemeNotifier.of(context);
+    if (theme.areaStyle(ThemeArea.masterBackground).settingsShellRestyle) {
+      return _restyled(context);
+    }
+
     return Column(children: [
       const SizedBox(height: 10),
       SizedBox(

@@ -1335,6 +1335,17 @@ class _AreasSectionState extends State<AreasSection> {
           _slider("margin", "Margin", style.margin, 0, 48,
               (v) => _setStyle(theme, (s) => s.copyWith(margin: v))),
         if (hasWidth) _widthSlider(theme, style),
+        if (selected == ThemeArea.masterBackground) ...[
+          SwitchListTile(
+            title: const Text("Settings page restyle"),
+            subtitle: const Text(
+                "Icon + highlight rows in the Settings page's left nav, "
+                "and a card-based layout for the Account page"),
+            value: style.settingsShellRestyle,
+            onChanged: (v) =>
+                _setStyle(theme, (s) => s.copyWith(settingsShellRestyle: v)),
+          ),
+        ],
         if (selected == ThemeArea.subMenuTabBar) ...[
           const SizedBox(height: 8),
           Row(children: [

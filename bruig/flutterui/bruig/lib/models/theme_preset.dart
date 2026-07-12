@@ -409,6 +409,13 @@ class AreaStyle {
   // redesigned per-user rows (avatar, inline sent-amount bar chart,
   // DCR-formatted amounts) on the Payment Stats page.
 
+  // Only meaningful for ThemeArea.masterBackground (the Settings screen
+  // isn't itself a per-content ThemeArea, so this rides on the closest
+  // "global chrome" area).
+  final bool settingsShellRestyle; // Icon + pill-highlight rows in the
+  // Settings page's left nav, and a card-based restyle of the Account
+  // page (avatar camera badge, Identity/Relay Counter/Account cards).
+
   // The following toggles are only meaningful for ThemeArea.feed. Each
   // gates a distinct feed-page feature ported from the exitus1 fork; all
   // default to false (off). Several only have a visible effect when
@@ -495,6 +502,7 @@ class AreaStyle {
       rtcStyledSessionList == false &&
       rtcSessionListIntro == false &&
       payStatsCardStyle == false &&
+      settingsShellRestyle == false &&
       feedCardRedesign == false &&
       feedCardActions == false &&
       feedBookmarks == false &&
@@ -569,6 +577,7 @@ class AreaStyle {
     this.rtcStyledSessionList = false,
     this.rtcSessionListIntro = false,
     this.payStatsCardStyle = false,
+    this.settingsShellRestyle = false,
     this.feedCardRedesign = false,
     this.feedCardActions = false,
     this.feedBookmarks = false,
@@ -653,6 +662,7 @@ class AreaStyle {
     bool? rtcStyledSessionList,
     bool? rtcSessionListIntro,
     bool? payStatsCardStyle,
+    bool? settingsShellRestyle,
     bool? feedCardRedesign,
     bool? feedCardActions,
     bool? feedBookmarks,
@@ -743,6 +753,8 @@ class AreaStyle {
         rtcStyledSessionList: rtcStyledSessionList ?? this.rtcStyledSessionList,
         rtcSessionListIntro: rtcSessionListIntro ?? this.rtcSessionListIntro,
         payStatsCardStyle: payStatsCardStyle ?? this.payStatsCardStyle,
+        settingsShellRestyle:
+            settingsShellRestyle ?? this.settingsShellRestyle,
         feedCardRedesign: feedCardRedesign ?? this.feedCardRedesign,
         feedCardActions: feedCardActions ?? this.feedCardActions,
         feedBookmarks: feedBookmarks ?? this.feedBookmarks,
@@ -842,6 +854,8 @@ class AreaStyle {
         if (rtcStyledSessionList) "rtcStyledSessionList": rtcStyledSessionList,
         if (rtcSessionListIntro) "rtcSessionListIntro": rtcSessionListIntro,
         if (payStatsCardStyle) "payStatsCardStyle": payStatsCardStyle,
+        if (settingsShellRestyle)
+          "settingsShellRestyle": settingsShellRestyle,
         if (feedCardRedesign) "feedCardRedesign": feedCardRedesign,
         if (feedCardActions) "feedCardActions": feedCardActions,
         if (feedBookmarks) "feedBookmarks": feedBookmarks,
@@ -967,6 +981,7 @@ class AreaStyle {
         rtcStyledSessionList: j["rtcStyledSessionList"] as bool? ?? false,
         rtcSessionListIntro: j["rtcSessionListIntro"] as bool? ?? false,
         payStatsCardStyle: j["payStatsCardStyle"] as bool? ?? false,
+        settingsShellRestyle: j["settingsShellRestyle"] as bool? ?? false,
         feedCardRedesign: j["feedCardRedesign"] as bool? ?? false,
         feedCardActions: j["feedCardActions"] as bool? ?? false,
         feedBookmarks: j["feedBookmarks"] as bool? ?? false,
