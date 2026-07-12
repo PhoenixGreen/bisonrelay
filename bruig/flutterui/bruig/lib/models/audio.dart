@@ -347,6 +347,22 @@ class AudioModel extends ChangeNotifier {
     player.playingStream.listen(_handlePlayingEvents);
     player.playbackEventStream.listen(_handlePlayerEvents);
     player.createPositionStream().listen(_handlePositionEvents);
+
+    // Windows-only warm-up: play 1ms of silence at startup to avoid
+    // latency on the first real playback. just_audio always represents
+    // even a single source as a playlist at the platform layer, so on the
+    // media_kit/libmpv backend this becomes an mpv `loadlist` of a
+    // synthetic `av://lavfi:anullsrc` source -- a URI scheme outside
+    // mpv's playlist-safety whitelist. mpv refuses it ("Refusing to load
+    // potentially unsafe URL from a playlist"), and the resulting cleanup
+    // path appears to trigger libmpv's native shutdown thread while the
+    // engine/isolate is still settling from app startup, causing the same
+    // FFI-callback-into-torn-down-isolate crash that shutdown() above
+    // guards against at app close (just triggered here spontaneously
+    // instead). Skipping this warm-up outside Windows -- where it was
+    // actually needed -- avoids the crash; elsewhere it's just a minor
+    // first-playback latency nicety, not worth a process crash.
+    if (!Platform.isWindows) return;
     var audioSource =
         SilenceAudioSource(duration: const Duration(milliseconds: 1));
     await player.setAudioSources([audioSource]);
