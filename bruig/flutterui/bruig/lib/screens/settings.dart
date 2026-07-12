@@ -70,7 +70,7 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   ClientModel get client => widget.client;
   bool loading = false;
-  String settingsPage = "main";
+  late String settingsPage = client.ui.settingsNav.page;
   bool showRPCWarning = true;
 
   void loadSettings() async {
@@ -158,6 +158,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void changePage(String newPage) {
     setState(() {
       client.ui.settingsTitle.title = newPage;
+      client.ui.settingsNav.page = newPage;
       settingsPage = newPage;
     });
   }
@@ -237,7 +238,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           StorageManager.showRPCWarningKey, false);
                       setState(() => showRPCWarning = false);
                     }
-                    setState(() => settingsPage = "RPC");
+                    changePage("RPC");
                   },
                   child: const Text("Continue"),
                 ),
@@ -521,6 +522,7 @@ class AppearanceSettingsScreen extends StatefulWidget {
 /// This is the private State class that goes with MyStatefulWidget.
 class _AppearanceSettingsScreenState extends State<AppearanceSettingsScreen> {
   ThemeNotifier get theme => widget.theme;
+  ClientModel get client => widget.client;
 
   @override
   Widget build(BuildContext context) {
@@ -586,11 +588,17 @@ class _AppearanceSettingsScreenState extends State<AppearanceSettingsScreen> {
           theme: theme,
           child: ExpansionTile(
             title: const Txt.S("Theme Areas"),
-            initiallyExpanded: false,
-            children: const [
+            initiallyExpanded: client.ui.settingsNav.themeAreasExpanded,
+            onExpansionChanged: (v) =>
+                client.ui.settingsNav.themeAreasExpanded = v,
+            children: [
               Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 16),
-                  child: AreasSection())
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: AreasSection(
+                    initialArea: client.ui.settingsNav.selectedThemeArea,
+                    onAreaChanged: (a) =>
+                        client.ui.settingsNav.selectedThemeArea = a,
+                  ))
             ],
           ),
         ),

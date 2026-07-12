@@ -774,14 +774,16 @@ const List<ThemeArea> _editableAreas = [
 // border styling, sourcing every color from the active palette via
 // dropdowns (see PaletteColorDropdown) rather than a color-picker popup.
 class AreasSection extends StatefulWidget {
-  const AreasSection({super.key});
+  final ThemeArea? initialArea;
+  final ValueChanged<ThemeArea>? onAreaChanged;
+  const AreasSection({this.initialArea, this.onAreaChanged, super.key});
 
   @override
   State<AreasSection> createState() => _AreasSectionState();
 }
 
 class _AreasSectionState extends State<AreasSection> {
-  ThemeArea selected = _editableAreas.first;
+  late ThemeArea selected = widget.initialArea ?? _editableAreas.first;
   final Map<String, double> _dragValues = {};
 
   Future<void> _pickImage(ThemeNotifier theme, ThemePreset preset,
@@ -1148,7 +1150,10 @@ class _AreasSectionState extends State<AreasSection> {
                   value: a, child: Text(themeAreaLabel(a))))
               .toList(),
           onChanged: (a) => setState(() {
-            if (a != null) selected = a;
+            if (a != null) {
+              selected = a;
+              widget.onAreaChanged?.call(a);
+            }
             _dragValues.clear();
           }),
         ),
