@@ -404,6 +404,11 @@ class AreaStyle {
   final bool rtcSessionListIntro; // Empty-state explainer + "Create your
   // first Realtime Chat" button when no session is active.
 
+  // Only meaningful for ThemeArea.stats.
+  final bool payStatsCardStyle; // Summary cards (total sent/received) +
+  // redesigned per-user rows (avatar, inline sent-amount bar chart,
+  // DCR-formatted amounts) on the Payment Stats page.
+
   // The following toggles are only meaningful for ThemeArea.feed. Each
   // gates a distinct feed-page feature ported from the exitus1 fork; all
   // default to false (off). Several only have a visible effect when
@@ -489,6 +494,7 @@ class AreaStyle {
       rtcLiveStage == false &&
       rtcStyledSessionList == false &&
       rtcSessionListIntro == false &&
+      payStatsCardStyle == false &&
       feedCardRedesign == false &&
       feedCardActions == false &&
       feedBookmarks == false &&
@@ -562,6 +568,7 @@ class AreaStyle {
     this.rtcLiveStage = false,
     this.rtcStyledSessionList = false,
     this.rtcSessionListIntro = false,
+    this.payStatsCardStyle = false,
     this.feedCardRedesign = false,
     this.feedCardActions = false,
     this.feedBookmarks = false,
@@ -645,6 +652,7 @@ class AreaStyle {
     bool? rtcLiveStage,
     bool? rtcStyledSessionList,
     bool? rtcSessionListIntro,
+    bool? payStatsCardStyle,
     bool? feedCardRedesign,
     bool? feedCardActions,
     bool? feedBookmarks,
@@ -732,9 +740,9 @@ class AreaStyle {
             rtcCollapsibleSessionInfo ?? this.rtcCollapsibleSessionInfo,
         rtcLobbyHero: rtcLobbyHero ?? this.rtcLobbyHero,
         rtcLiveStage: rtcLiveStage ?? this.rtcLiveStage,
-        rtcStyledSessionList:
-            rtcStyledSessionList ?? this.rtcStyledSessionList,
+        rtcStyledSessionList: rtcStyledSessionList ?? this.rtcStyledSessionList,
         rtcSessionListIntro: rtcSessionListIntro ?? this.rtcSessionListIntro,
+        payStatsCardStyle: payStatsCardStyle ?? this.payStatsCardStyle,
         feedCardRedesign: feedCardRedesign ?? this.feedCardRedesign,
         feedCardActions: feedCardActions ?? this.feedCardActions,
         feedBookmarks: feedBookmarks ?? this.feedBookmarks,
@@ -831,9 +839,9 @@ class AreaStyle {
           "rtcCollapsibleSessionInfo": rtcCollapsibleSessionInfo,
         if (rtcLobbyHero) "rtcLobbyHero": rtcLobbyHero,
         if (rtcLiveStage) "rtcLiveStage": rtcLiveStage,
-        if (rtcStyledSessionList)
-          "rtcStyledSessionList": rtcStyledSessionList,
+        if (rtcStyledSessionList) "rtcStyledSessionList": rtcStyledSessionList,
         if (rtcSessionListIntro) "rtcSessionListIntro": rtcSessionListIntro,
+        if (payStatsCardStyle) "payStatsCardStyle": payStatsCardStyle,
         if (feedCardRedesign) "feedCardRedesign": feedCardRedesign,
         if (feedCardActions) "feedCardActions": feedCardActions,
         if (feedBookmarks) "feedBookmarks": feedBookmarks,
@@ -958,6 +966,7 @@ class AreaStyle {
         rtcLiveStage: j["rtcLiveStage"] as bool? ?? false,
         rtcStyledSessionList: j["rtcStyledSessionList"] as bool? ?? false,
         rtcSessionListIntro: j["rtcSessionListIntro"] as bool? ?? false,
+        payStatsCardStyle: j["payStatsCardStyle"] as bool? ?? false,
         feedCardRedesign: j["feedCardRedesign"] as bool? ?? false,
         feedCardActions: j["feedCardActions"] as bool? ?? false,
         feedBookmarks: j["feedBookmarks"] as bool? ?? false,

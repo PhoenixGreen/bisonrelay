@@ -1609,9 +1609,9 @@ class _AreasSectionState extends State<AreasSection> {
           ),
           SwitchListTile(
             title: const Text("Styled session list"),
-            subtitle: const Text(
-                "Redesigned Realtime Chat session-list rows with a "
-                "live-status dot and active-row highlight"),
+            subtitle:
+                const Text("Redesigned Realtime Chat session-list rows with a "
+                    "live-status dot and active-row highlight"),
             value: style.rtcStyledSessionList,
             onChanged: (v) =>
                 _setStyle(theme, (s) => s.copyWith(rtcStyledSessionList: v)),
@@ -1624,6 +1624,18 @@ class _AreasSectionState extends State<AreasSection> {
             value: style.rtcSessionListIntro,
             onChanged: (v) =>
                 _setStyle(theme, (s) => s.copyWith(rtcSessionListIntro: v)),
+          ),
+        ],
+        if (selected == ThemeArea.stats) ...[
+          SwitchListTile(
+            title: const Text("Redesigned stats page"),
+            subtitle: const Text(
+                "Total sent/received summary cards and redesigned rows "
+                "with an avatar and an inline sent-amount bar chart on "
+                "the Payment Stats page"),
+            value: style.payStatsCardStyle,
+            onChanged: (v) =>
+                _setStyle(theme, (s) => s.copyWith(payStatsCardStyle: v)),
           ),
         ],
         if (selected == ThemeArea.feed) ...[
