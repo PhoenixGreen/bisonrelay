@@ -1570,6 +1570,61 @@ class _AreasSectionState extends State<AreasSection> {
             onChanged: (v) =>
                 _setStyle(theme, (s) => s.copyWith(enhancedCallIndicators: v)),
           ),
+          SwitchListTile(
+            title: const Text("Pre-join audio test panel"),
+            subtitle: const Text(
+                "Lets you pick a mic/speaker and record+play back a test "
+                "clip before joining a session"),
+            value: style.rtcAudioTestPanel,
+            onChanged: (v) =>
+                _setStyle(theme, (s) => s.copyWith(rtcAudioTestPanel: v)),
+          ),
+          SwitchListTile(
+            title: const Text("Lobby header"),
+            subtitle: const Text(
+                "Icon badge, session title, and member count shown while "
+                "not yet in a live session"),
+            value: style.rtcLobbyHero,
+            onChanged: (v) =>
+                _setStyle(theme, (s) => s.copyWith(rtcLobbyHero: v)),
+          ),
+          SwitchListTile(
+            title: const Text("Collapsible session info"),
+            subtitle: const Text(
+                "Tucks RV/Size/Peer ID/Owner behind an expandable row "
+                "instead of always showing them"),
+            value: style.rtcCollapsibleSessionInfo,
+            onChanged: (v) => _setStyle(
+                theme, (s) => s.copyWith(rtcCollapsibleSessionInfo: v)),
+          ),
+          SwitchListTile(
+            title: const Text("Live session stage"),
+            subtitle: const Text(
+                "Session timer, LIVE badge, connection-quality signal "
+                "bars, speaking-aware avatar rings, and mic/speaker "
+                "device panels while in a live session"),
+            value: style.rtcLiveStage,
+            onChanged: (v) =>
+                _setStyle(theme, (s) => s.copyWith(rtcLiveStage: v)),
+          ),
+          SwitchListTile(
+            title: const Text("Styled session list"),
+            subtitle: const Text(
+                "Redesigned Realtime Chat session-list rows with a "
+                "live-status dot and active-row highlight"),
+            value: style.rtcStyledSessionList,
+            onChanged: (v) =>
+                _setStyle(theme, (s) => s.copyWith(rtcStyledSessionList: v)),
+          ),
+          SwitchListTile(
+            title: const Text("Session list empty-state intro"),
+            subtitle: const Text(
+                "Explains what Realtime Chat is and offers a \"Create your "
+                "first Realtime Chat\" button when no session is active"),
+            value: style.rtcSessionListIntro,
+            onChanged: (v) =>
+                _setStyle(theme, (s) => s.copyWith(rtcSessionListIntro: v)),
+          ),
         ],
         if (selected == ThemeArea.feed) ...[
           SwitchListTile(

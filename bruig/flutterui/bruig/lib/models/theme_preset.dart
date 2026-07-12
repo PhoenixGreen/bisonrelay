@@ -389,6 +389,20 @@ class AreaStyle {
   // The following toggles are only meaningful for ThemeArea.realtimeChat.
   final bool autoUnmuteOnJoin; // Auto-unmute + snackbar on joining a call.
   final bool enhancedCallIndicators; // Mic-live/mute/warning-chip indicators.
+  final bool rtcAudioTestPanel; // Pre-join mic/speaker test panel (pick
+  // devices, record, play back) before joining a session.
+  final bool rtcCollapsibleSessionInfo; // Tucks RV/Size/Peer ID/Owner behind
+  // an expandable "Session info" row instead of always showing them.
+  final bool rtcLobbyHero; // Icon-badge + title + member-count header shown
+  // while not yet in a live session.
+  final bool rtcLiveStage; // Rich live-session view: LIVE badge, session
+  // timer, RTT signal bars, speaking-aware avatar rings, mic/speaker device
+  // panels, mic activity bars. Needs the RTDTSessionModel.localHasSound
+  // model support (always present; not conditional on this toggle).
+  final bool rtcStyledSessionList; // Redesigned RTC session-list rows
+  // (live-status dot + glow, active-row highlight).
+  final bool rtcSessionListIntro; // Empty-state explainer + "Create your
+  // first Realtime Chat" button when no session is active.
 
   // The following toggles are only meaningful for ThemeArea.feed. Each
   // gates a distinct feed-page feature ported from the exitus1 fork; all
@@ -469,6 +483,12 @@ class AreaStyle {
       expandMessagePadding == null &&
       autoUnmuteOnJoin == false &&
       enhancedCallIndicators == false &&
+      rtcAudioTestPanel == false &&
+      rtcCollapsibleSessionInfo == false &&
+      rtcLobbyHero == false &&
+      rtcLiveStage == false &&
+      rtcStyledSessionList == false &&
+      rtcSessionListIntro == false &&
       feedCardRedesign == false &&
       feedCardActions == false &&
       feedBookmarks == false &&
@@ -536,6 +556,12 @@ class AreaStyle {
     this.expandMessagePadding,
     this.autoUnmuteOnJoin = false,
     this.enhancedCallIndicators = false,
+    this.rtcAudioTestPanel = false,
+    this.rtcCollapsibleSessionInfo = false,
+    this.rtcLobbyHero = false,
+    this.rtcLiveStage = false,
+    this.rtcStyledSessionList = false,
+    this.rtcSessionListIntro = false,
     this.feedCardRedesign = false,
     this.feedCardActions = false,
     this.feedBookmarks = false,
@@ -613,6 +639,12 @@ class AreaStyle {
     bool clearExpandMessagePadding = false,
     bool? autoUnmuteOnJoin,
     bool? enhancedCallIndicators,
+    bool? rtcAudioTestPanel,
+    bool? rtcCollapsibleSessionInfo,
+    bool? rtcLobbyHero,
+    bool? rtcLiveStage,
+    bool? rtcStyledSessionList,
+    bool? rtcSessionListIntro,
     bool? feedCardRedesign,
     bool? feedCardActions,
     bool? feedBookmarks,
@@ -695,6 +727,14 @@ class AreaStyle {
         autoUnmuteOnJoin: autoUnmuteOnJoin ?? this.autoUnmuteOnJoin,
         enhancedCallIndicators:
             enhancedCallIndicators ?? this.enhancedCallIndicators,
+        rtcAudioTestPanel: rtcAudioTestPanel ?? this.rtcAudioTestPanel,
+        rtcCollapsibleSessionInfo:
+            rtcCollapsibleSessionInfo ?? this.rtcCollapsibleSessionInfo,
+        rtcLobbyHero: rtcLobbyHero ?? this.rtcLobbyHero,
+        rtcLiveStage: rtcLiveStage ?? this.rtcLiveStage,
+        rtcStyledSessionList:
+            rtcStyledSessionList ?? this.rtcStyledSessionList,
+        rtcSessionListIntro: rtcSessionListIntro ?? this.rtcSessionListIntro,
         feedCardRedesign: feedCardRedesign ?? this.feedCardRedesign,
         feedCardActions: feedCardActions ?? this.feedCardActions,
         feedBookmarks: feedBookmarks ?? this.feedBookmarks,
@@ -786,6 +826,14 @@ class AreaStyle {
         if (autoUnmuteOnJoin) "autoUnmuteOnJoin": autoUnmuteOnJoin,
         if (enhancedCallIndicators)
           "enhancedCallIndicators": enhancedCallIndicators,
+        if (rtcAudioTestPanel) "rtcAudioTestPanel": rtcAudioTestPanel,
+        if (rtcCollapsibleSessionInfo)
+          "rtcCollapsibleSessionInfo": rtcCollapsibleSessionInfo,
+        if (rtcLobbyHero) "rtcLobbyHero": rtcLobbyHero,
+        if (rtcLiveStage) "rtcLiveStage": rtcLiveStage,
+        if (rtcStyledSessionList)
+          "rtcStyledSessionList": rtcStyledSessionList,
+        if (rtcSessionListIntro) "rtcSessionListIntro": rtcSessionListIntro,
         if (feedCardRedesign) "feedCardRedesign": feedCardRedesign,
         if (feedCardActions) "feedCardActions": feedCardActions,
         if (feedBookmarks) "feedBookmarks": feedBookmarks,
@@ -903,6 +951,13 @@ class AreaStyle {
         expandMessagePadding: (j["expandMessagePadding"] as num?)?.toDouble(),
         autoUnmuteOnJoin: j["autoUnmuteOnJoin"] as bool? ?? false,
         enhancedCallIndicators: j["enhancedCallIndicators"] as bool? ?? false,
+        rtcAudioTestPanel: j["rtcAudioTestPanel"] as bool? ?? false,
+        rtcCollapsibleSessionInfo:
+            j["rtcCollapsibleSessionInfo"] as bool? ?? false,
+        rtcLobbyHero: j["rtcLobbyHero"] as bool? ?? false,
+        rtcLiveStage: j["rtcLiveStage"] as bool? ?? false,
+        rtcStyledSessionList: j["rtcStyledSessionList"] as bool? ?? false,
+        rtcSessionListIntro: j["rtcSessionListIntro"] as bool? ?? false,
         feedCardRedesign: j["feedCardRedesign"] as bool? ?? false,
         feedCardActions: j["feedCardActions"] as bool? ?? false,
         feedBookmarks: j["feedBookmarks"] as bool? ?? false,
