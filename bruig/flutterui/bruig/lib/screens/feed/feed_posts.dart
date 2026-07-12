@@ -11,6 +11,7 @@ import 'package:bruig/screens/feed/post_content.dart';
 import 'package:bruig/storage_manager.dart';
 import 'package:bruig/theme_manager.dart';
 import 'package:bruig/util.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:golib_plugin/golib_plugin.dart';
 import 'package:provider/provider.dart';
@@ -419,12 +420,13 @@ class FeedPosts extends StatefulWidget {
   State<FeedPosts> createState() => _FeedPostsState();
 }
 
-enum _FeedView { all, bookmarks, hidden }
+enum _FeedView { all, bookmarks, hidden, drafts }
 
 enum _FeedSort { newest, oldest, mostComments }
 
 class _FeedPostsState extends State<FeedPosts> {
   final TextEditingController _searchCtrl = TextEditingController();
+  final TextEditingController _composerCtrl = TextEditingController();
   _FeedView _view = _FeedView.all;
   _FeedSort _sort = _FeedSort.newest;
   bool _unreadOnly = false;
@@ -435,9 +437,11 @@ class _FeedPostsState extends State<FeedPosts> {
     super.initState();
     FeedBookmarks.instance.ensureLoaded();
     FeedHidden.instance.ensureLoaded();
+    FeedDrafts.instance.ensureLoaded();
     widget.feed.addListener(feedChanged);
     FeedBookmarks.instance.addListener(feedChanged);
     FeedHidden.instance.addListener(feedChanged);
+    FeedDrafts.instance.addListener(feedChanged);
   }
 
   void feedChanged() async {
@@ -456,8 +460,15 @@ class _FeedPostsState extends State<FeedPosts> {
     widget.feed.removeListener(feedChanged);
     FeedBookmarks.instance.removeListener(feedChanged);
     FeedHidden.instance.removeListener(feedChanged);
+    FeedDrafts.instance.removeListener(feedChanged);
     _searchCtrl.dispose();
+    _composerCtrl.dispose();
     super.dispose();
+  }
+
+  void _loadDraft(String text) {
+    _composerCtrl.text = text;
+    setState(() => _view = _FeedView.all);
   }
 
   List<FeedPostModel> _applyFilters(bool bookmarks, bool hidePosts) {
@@ -479,6 +490,7 @@ class _FeedPostsState extends State<FeedPosts> {
         posts = posts.where(isHidden);
         break;
       case _FeedView.all:
+      case _FeedView.drafts:
         posts = posts.where((p) => !isHidden(p));
         break;
     }
@@ -536,6 +548,10 @@ class _FeedPostsState extends State<FeedPosts> {
     var sidePanel = feedStyle.feedSidePanel;
     var bookmarks = feedStyle.feedBookmarks;
     var hidePosts = feedStyle.feedHidePosts;
+    var inlineComposer = feedStyle.feedInlineComposer;
+    var composerFormatting = feedStyle.feedComposerFormatting;
+    var composerAttach = feedStyle.feedComposerAttach;
+    var drafts = feedStyle.feedDrafts;
 
     // The side panel (with its own Your Posts/Subscriptions/New Post
     // shortcuts, bookmarks/hidden views, search/sort/filter) only makes
@@ -548,34 +564,39 @@ class _FeedPostsState extends State<FeedPosts> {
     }
 
     final postList = _applyFilters(bookmarks, hidePosts);
-    final Widget body = postList.isEmpty
-        ? Center(
-            child: Padding(
-              padding: const EdgeInsets.all(40),
-              child: Text(
-                  _view == _FeedView.bookmarks
-                      ? "No bookmarks yet.\nTap the bookmark icon on a post to save it."
-                      : _view == _FeedView.hidden
-                          ? "No hidden posts."
-                          : _search.isNotEmpty
-                              ? "No posts match your search."
-                              : "No posts yet.",
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                      color: Color(0xFF5F6764), height: 1.5, fontSize: 14)),
-            ),
-          )
-        : ListView.builder(
-            padding: const EdgeInsets.only(bottom: 24),
-            itemCount: postList.length,
-            itemBuilder: (context, index) {
-              final post = postList[index];
-              final author = widget.client.getExistingChat(post.summ.authorID);
-              final from = widget.client.getExistingChat(post.summ.from);
-              return FeedPostW(
-                  widget.feed, post, author, from, widget.client, widget.tabChange);
-            },
-          );
+    final Widget body;
+    if (drafts && _view == _FeedView.drafts) {
+      body = _DraftsView(onUse: _loadDraft);
+    } else if (postList.isEmpty) {
+      body = Center(
+        child: Padding(
+          padding: const EdgeInsets.all(40),
+          child: Text(
+              _view == _FeedView.bookmarks
+                  ? "No bookmarks yet.\nTap the bookmark icon on a post to save it."
+                  : _view == _FeedView.hidden
+                      ? "No hidden posts."
+                      : _search.isNotEmpty
+                          ? "No posts match your search."
+                          : "No posts yet.",
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                  color: Color(0xFF5F6764), height: 1.5, fontSize: 14)),
+        ),
+      );
+    } else {
+      body = ListView.builder(
+        padding: const EdgeInsets.only(bottom: 24),
+        itemCount: postList.length,
+        itemBuilder: (context, index) {
+          final post = postList[index];
+          final author = widget.client.getExistingChat(post.summ.authorID);
+          final from = widget.client.getExistingChat(post.summ.from);
+          return FeedPostW(
+              widget.feed, post, author, from, widget.client, widget.tabChange);
+        },
+      );
+    }
 
     final feedColumn = Container(
       decoration: const BoxDecoration(
@@ -584,7 +605,18 @@ class _FeedPostsState extends State<FeedPosts> {
           right: BorderSide(color: Color(0xFF1C1F1D)),
         ),
       ),
-      child: Column(children: [Expanded(child: body)]),
+      child: Column(children: [
+        if (inlineComposer)
+          _FeedComposer(
+            client: widget.client,
+            feed: widget.feed,
+            controller: _composerCtrl,
+            showFormatting: composerFormatting,
+            showAttach: composerAttach,
+            showDrafts: drafts,
+          ),
+        Expanded(child: body),
+      ]),
     );
 
     final panel = _FeedSidePanel(
@@ -594,6 +626,7 @@ class _FeedPostsState extends State<FeedPosts> {
       searchController: _searchCtrl,
       showBookmarks: bookmarks,
       showHidden: hidePosts,
+      showDrafts: drafts,
       onView: (v) => setState(() => _view = v),
       onSort: (s) => setState(() => _sort = s),
       onUnreadOnly: (b) => setState(() => _unreadOnly = b),
@@ -650,6 +683,7 @@ class _FeedSidePanel extends StatelessWidget {
   final TextEditingController searchController;
   final bool showBookmarks;
   final bool showHidden;
+  final bool showDrafts;
   final ValueChanged<_FeedView> onView;
   final ValueChanged<_FeedSort> onSort;
   final ValueChanged<bool> onUnreadOnly;
@@ -664,6 +698,7 @@ class _FeedSidePanel extends StatelessWidget {
     required this.searchController,
     required this.showBookmarks,
     required this.showHidden,
+    required this.showDrafts,
     required this.onView,
     required this.onSort,
     required this.onUnreadOnly,
@@ -774,6 +809,7 @@ class _FeedSidePanel extends StatelessWidget {
       listenable: Listenable.merge([
         FeedBookmarks.instance,
         FeedHidden.instance,
+        FeedDrafts.instance,
         searchController,
       ]),
       builder: (context, _) {
@@ -823,6 +859,9 @@ class _FeedSidePanel extends StatelessWidget {
               _navItem(
                   Icons.visibility_off_outlined, "Hidden", _FeedView.hidden,
                   trailing: "${FeedHidden.instance.count}"),
+            if (showDrafts)
+              _navItem(Icons.edit_note_outlined, "Drafts", _FeedView.drafts,
+                  trailing: "${FeedDrafts.instance.count}"),
             _sectionLabel("POSTS"),
             _actionItem(Icons.article_outlined, "Your Posts", onYourPosts),
             _actionItem(Icons.rss_feed, "Subscriptions", onSubscriptions),
@@ -1053,5 +1092,449 @@ class FeedHidden extends ChangeNotifier {
     if (!_ids.remove(k)) _ids.add(k);
     notifyListeners();
     await _persist();
+  }
+}
+
+// Local-only post drafts, gated by AreaStyle.feedDrafts. Stored as a JSON
+// list of strings.
+class FeedDrafts extends ChangeNotifier {
+  FeedDrafts._();
+  static final FeedDrafts instance = FeedDrafts._();
+  static const String _storeKey = "feedDrafts";
+
+  List<String> _drafts = [];
+  bool _loaded = false;
+
+  Future<void> ensureLoaded() async {
+    if (_loaded) return;
+    _loaded = true;
+    try {
+      final raw = await StorageManager.readString(_storeKey, defaultVal: "");
+      if (raw.isNotEmpty) {
+        _drafts = (jsonDecode(raw) as List).cast<String>();
+        notifyListeners();
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _persist() async {
+    try {
+      await StorageManager.saveString(_storeKey, jsonEncode(_drafts));
+    } catch (_) {}
+  }
+
+  List<String> get drafts => List.unmodifiable(_drafts);
+  int get count => _drafts.length;
+
+  Future<void> add(String content) async {
+    final c = content.trim();
+    if (c.isEmpty) return;
+    _drafts.insert(0, c);
+    notifyListeners();
+    await _persist();
+  }
+
+  Future<void> removeAt(int i) async {
+    if (i < 0 || i >= _drafts.length) return;
+    _drafts.removeAt(i);
+    notifyListeners();
+    await _persist();
+  }
+}
+
+// Drafts list (shown in the feed column when the Drafts view is active).
+// Only reachable when AreaStyle.feedDrafts is on.
+class _DraftsView extends StatelessWidget {
+  final ValueChanged<String> onUse;
+  const _DraftsView({required this.onUse});
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: FeedDrafts.instance,
+      builder: (context, _) {
+        final drafts = FeedDrafts.instance.drafts;
+        if (drafts.isEmpty) {
+          return const Center(
+            child: Padding(
+              padding: EdgeInsets.all(40),
+              child: Text(
+                  "No drafts.\nWrite something and tap the draft icon to save it.",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                      color: Color(0xFF5F6764), height: 1.5, fontSize: 14)),
+            ),
+          );
+        }
+        return ListView.builder(
+          padding: const EdgeInsets.all(12),
+          itemCount: drafts.length,
+          itemBuilder: (context, i) {
+            final d = drafts[i];
+            return Container(
+              margin: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                  color: const Color(0xFF0C0D0C),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFF1C1F1D))),
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(d,
+                        maxLines: 4,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                            fontSize: 14,
+                            height: 1.4,
+                            color: Color(0xFFCDD3D1))),
+                    const SizedBox(height: 12),
+                    Row(children: [
+                      GestureDetector(
+                        onTap: () => onUse(d),
+                        behavior: HitTestBehavior.opaque,
+                        child: const Text("Use",
+                            style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF1DFF8C))),
+                      ),
+                      const SizedBox(width: 22),
+                      GestureDetector(
+                        onTap: () => FeedDrafts.instance.removeAt(i),
+                        behavior: HitTestBehavior.opaque,
+                        child: const Text("Delete",
+                            style: TextStyle(
+                                fontSize: 13, color: Color(0xFF5F6764))),
+                      ),
+                    ]),
+                  ]),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+// "What's happening?" composer pinned at the top of the feed. Lets the user
+// write, attach a file, format text and relay a post directly from the feed.
+// Only shown when AreaStyle.feedInlineComposer is on.
+class _FeedComposer extends StatefulWidget {
+  final ClientModel client;
+  final FeedModel feed;
+  final TextEditingController controller;
+  final bool showFormatting;
+  final bool showAttach;
+  final bool showDrafts;
+  const _FeedComposer({
+    required this.client,
+    required this.feed,
+    required this.controller,
+    required this.showFormatting,
+    required this.showAttach,
+    required this.showDrafts,
+  });
+
+  @override
+  State<_FeedComposer> createState() => _FeedComposerState();
+}
+
+class _FeedComposerState extends State<_FeedComposer> {
+  TextEditingController get _ctrl => widget.controller;
+  final FocusNode _focus = FocusNode();
+  final MenuController _fmtMenu = MenuController();
+  bool _posting = false;
+  // Captured when the format menu opens, since opening it steals focus and
+  // invalidates the live selection.
+  TextSelection _savedSel = const TextSelection.collapsed(offset: -1);
+
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_onCtrl);
+  }
+
+  void _onCtrl() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_onCtrl);
+    _focus.dispose();
+    super.dispose();
+  }
+
+  TextSelection _effectiveSel() {
+    if (_savedSel.isValid && _savedSel.end <= _ctrl.text.length) {
+      return _savedSel;
+    }
+    return TextSelection.collapsed(offset: _ctrl.text.length);
+  }
+
+  void _wrap(String l, String r) {
+    final sel = _effectiveSel();
+    final text = _ctrl.text;
+    final selected = sel.textInside(text);
+    _ctrl.text = sel.textBefore(text) + l + selected + r + sel.textAfter(text);
+    // Put the cursor between the markers (no selection) or after the wrapped
+    // text (had a selection).
+    final cursor = selected.isEmpty
+        ? sel.start + l.length
+        : sel.start + l.length + selected.length + r.length;
+    _ctrl.selection = TextSelection.collapsed(offset: cursor);
+    _savedSel = _ctrl.selection;
+    _focus.requestFocus();
+    setState(() {});
+  }
+
+  void _insertLink() {
+    final sel = _effectiveSel();
+    final text = _ctrl.text;
+    const tmpl = "[text](url)";
+    _ctrl.text = sel.textBefore(text) + tmpl + sel.textAfter(text);
+    // Select the word "text" so it can be typed over.
+    _ctrl.selection =
+        TextSelection(baseOffset: sel.start + 1, extentOffset: sel.start + 5);
+    _savedSel = _ctrl.selection;
+    _focus.requestFocus();
+    setState(() {});
+  }
+
+  void _fmt(VoidCallback fn) {
+    _fmtMenu.close();
+    fn();
+  }
+
+  Future<void> _attach() async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final res = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: const [
+          "avif",
+          "bmp",
+          "gif",
+          "jpg",
+          "jpeg",
+          "jxl",
+          "png",
+          "webp",
+          "txt"
+        ],
+        withData: true,
+      );
+      if (res == null) return;
+      final f = res.files.first;
+      if (f.bytes == null) return;
+      if (f.size > Golib.maxPayloadSize) {
+        messenger.showSnackBar(SnackBar(
+            content: Text("File too large (max ${Golib.maxPayloadSizeStr})")));
+        return;
+      }
+      String mime;
+      switch (f.extension) {
+        case "txt":
+          mime = "text/plain";
+          break;
+        case "avif":
+          mime = "image/avif";
+          break;
+        case "bmp":
+          mime = "image/bmp";
+          break;
+        case "gif":
+          mime = "image/gif";
+          break;
+        case "jpg":
+        case "jpeg":
+          mime = "image/jpeg";
+          break;
+        case "jxl":
+          mime = "image/jxl";
+          break;
+        case "png":
+          mime = "image/png";
+          break;
+        case "webp":
+          mime = "image/webp";
+          break;
+        default:
+          messenger.showSnackBar(
+              const SnackBar(content: Text("Unsupported file type")));
+          return;
+      }
+      final data = const Base64Encoder().convert(f.bytes!);
+      _ctrl.text = "${_ctrl.text}\n--embed[type=$mime,data=$data]--\n";
+      setState(() {});
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text("Attach failed: $e")));
+    }
+  }
+
+  Future<void> _relay() async {
+    final content = _ctrl.text.trim();
+    if (content.isEmpty || _posting) return;
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _posting = true);
+    try {
+      await widget.feed.createPost(content);
+      _ctrl.clear();
+      messenger.showSnackBar(const SnackBar(content: Text("Relayed")));
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text("Relay failed: $e")));
+    } finally {
+      if (mounted) setState(() => _posting = false);
+    }
+  }
+
+  Widget _iconBtn(IconData ic, String tip, VoidCallback onTap) => IconButton(
+        icon: Icon(ic, size: 20, color: const Color(0xFF9AA3A0)),
+        tooltip: tip,
+        onPressed: onTap,
+        visualDensity: VisualDensity.compact,
+        splashRadius: 18,
+        padding: const EdgeInsets.all(6),
+        constraints: const BoxConstraints(),
+      );
+
+  void _openFmtMenu() {
+    // Capture the selection before the menu steals focus.
+    _savedSel = _ctrl.selection;
+    if (_fmtMenu.isOpen) {
+      _fmtMenu.close();
+    } else {
+      _fmtMenu.open();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: Color(0xFF2F3336))),
+      ),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: SelfAvatar(widget.client, radius: 20),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            // Bigger compose box (~3x a normal input).
+            Container(
+              constraints: const BoxConstraints(minHeight: 96),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                color: const Color(0xFF0E100E),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFF1F231F)),
+              ),
+              child: TextField(
+                controller: _ctrl,
+                focusNode: _focus,
+                minLines: 3,
+                maxLines: 12,
+                onChanged: (_) => setState(() {}),
+                onTap: () => _savedSel = _ctrl.selection,
+                textAlignVertical: TextAlignVertical.top,
+                style: const TextStyle(
+                    fontSize: 16, height: 1.4, color: Color(0xFFF2F4F3)),
+                decoration: const InputDecoration(
+                  isDense: true,
+                  border: InputBorder.none,
+                  enabledBorder: InputBorder.none,
+                  focusedBorder: InputBorder.none,
+                  disabledBorder: InputBorder.none,
+                  errorBorder: InputBorder.none,
+                  focusedErrorBorder: InputBorder.none,
+                  contentPadding: EdgeInsets.zero,
+                  hintText: "What's happening?",
+                  hintStyle:
+                      TextStyle(fontSize: 16, color: Color(0xFF5F6764)),
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Row(children: [
+              if (widget.showAttach)
+                _iconBtn(Icons.image_outlined, "Attach", _attach),
+              if (widget.showAttach) const SizedBox(width: 2),
+              if (widget.showFormatting) ...[
+                MenuAnchor(
+                  controller: _fmtMenu,
+                  menuChildren: [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        _iconBtn(Icons.format_bold, "Bold",
+                            () => _fmt(() => _wrap("**", "**"))),
+                        _iconBtn(Icons.format_italic, "Italic",
+                            () => _fmt(() => _wrap("_", "_"))),
+                        _iconBtn(Icons.code, "Code",
+                            () => _fmt(() => _wrap("`", "`"))),
+                        _iconBtn(Icons.format_strikethrough, "Strikethrough",
+                            () => _fmt(() => _wrap("~~", "~~"))),
+                        _iconBtn(Icons.link, "Link", () => _fmt(_insertLink)),
+                      ]),
+                    ),
+                  ],
+                  child: _iconBtn(Icons.text_format, "Format", _openFmtMenu),
+                ),
+                const SizedBox(width: 2),
+              ],
+              if (widget.showDrafts)
+                _iconBtn(Icons.bookmark_add_outlined, "Save draft", () {
+                  final messenger = ScaffoldMessenger.of(context);
+                  FeedDrafts.instance.add(_ctrl.text);
+                  messenger.showSnackBar(
+                      const SnackBar(content: Text("Draft saved")));
+                }),
+              const Spacer(),
+              GestureDetector(
+                onTap: _posting ? null : _relay,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 26, vertical: 10),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF1DFF8C), Color(0xFF13D673)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(22),
+                    boxShadow: [
+                      BoxShadow(
+                        color:
+                            const Color(0xFF1DFF8C).withValues(alpha: 0.30),
+                        blurRadius: 14,
+                        offset: const Offset(0, 3),
+                      ),
+                    ],
+                  ),
+                  child: _posting
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: Color(0xFF04130B)))
+                      : const Text("Relay",
+                          style: TextStyle(
+                              fontSize: 14.5,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.2,
+                              color: Color(0xFF04130B))),
+                ),
+              ),
+            ]),
+          ]),
+        ),
+      ]),
+    );
   }
 }
