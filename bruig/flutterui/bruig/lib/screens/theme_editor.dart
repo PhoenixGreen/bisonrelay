@@ -1419,87 +1419,79 @@ class _AreasSectionState extends State<AreasSection> {
                 _setStyle(theme, (s) => s.copyWith(chatBackdropWash: v)),
           ),
           SwitchListTile(
-            title: const Text("Show advanced chat options"),
-            value: style.showAdvancedChatOptions,
-            onChanged: (v) => _setStyle(
-                theme, (s) => s.copyWith(showAdvancedChatOptions: v)),
+            title: const Text("In-chat search"),
+            subtitle: const Text(
+                "Adds a search button to the chat title bar for "
+                "searching loaded messages"),
+            value: style.enableChatSearch,
+            onChanged: (v) =>
+                _setStyle(theme, (s) => s.copyWith(enableChatSearch: v)),
           ),
-          if (style.showAdvancedChatOptions) ...[
+          SwitchListTile(
+            title: const Text("Resizable chat list"),
+            subtitle: const Text(
+                "Makes the chat list pane drag-resizable and adds a "
+                "persistent search/start-chat bar above it"),
+            value: style.resizableChatList,
+            onChanged: (v) =>
+                _setStyle(theme, (s) => s.copyWith(resizableChatList: v)),
+          ),
+          SwitchListTile(
+            title: const Text("Formatting toolbar"),
+            subtitle: const Text(
+                "Adds a Bold/Italic/Code/Strikethrough/Link toolbar to "
+                "the message composer"),
+            value: style.formattingToolbar,
+            onChanged: (v) =>
+                _setStyle(theme, (s) => s.copyWith(formattingToolbar: v)),
+          ),
+          SwitchListTile(
+            title: const Text("Composer polish"),
+            subtitle: const Text(
+                "Inline tip button on 1:1 chats, a glowing send button, "
+                "and a per-contact message hint"),
+            value: style.composerPolish,
+            onChanged: (v) =>
+                _setStyle(theme, (s) => s.copyWith(composerPolish: v)),
+          ),
+          SwitchListTile(
+            title: const Text("Square message bubbles"),
+            value: style.squareBubbles,
+            onChanged: (v) =>
+                _setStyle(theme, (s) => s.copyWith(squareBubbles: v)),
+          ),
+          const SizedBox(height: 8),
+          Row(children: [
+            const Txt("Message layout: "),
+            const SizedBox(width: 8),
+            DropdownButton<MessageLayoutMode>(
+              value: style.messageLayoutMode ?? MessageLayoutMode.standard,
+              items: MessageLayoutMode.values
+                  .map((m) => DropdownMenuItem(
+                      value: m, child: Text(messageLayoutModeLabel(m))))
+                  .toList(),
+              onChanged: (m) {
+                if (m == null) return;
+                _setStyle(
+                    theme,
+                    (s) => m == MessageLayoutMode.standard
+                        ? s.copyWith(clearMessageLayoutMode: true)
+                        : s.copyWith(messageLayoutMode: m));
+              },
+            ),
+          ]),
+          if ((style.messageLayoutMode ?? MessageLayoutMode.standard) !=
+              MessageLayoutMode.standard)
             SwitchListTile(
-              title: const Text("In-chat search"),
+              title: const Text("Expand to fill panel"),
               subtitle: const Text(
-                  "Adds a search button to the chat title bar for "
-                  "searching loaded messages"),
-              value: style.enableChatSearch,
-              onChanged: (v) =>
-                  _setStyle(theme, (s) => s.copyWith(enableChatSearch: v)),
+                  "Uses the full conversation panel width instead of "
+                  "margining the message list in"),
+              value: style.expandMessageWidth,
+              onChanged: (v) => _setStyle(
+                  theme, (s) => s.copyWith(expandMessageWidth: v)),
             ),
-            SwitchListTile(
-              title: const Text("Resizable chat list"),
-              subtitle: const Text(
-                  "Makes the chat list pane drag-resizable and adds a "
-                  "persistent search/start-chat bar above it"),
-              value: style.resizableChatList,
-              onChanged: (v) =>
-                  _setStyle(theme, (s) => s.copyWith(resizableChatList: v)),
-            ),
-            SwitchListTile(
-              title: const Text("Formatting toolbar"),
-              subtitle: const Text(
-                  "Adds a Bold/Italic/Code/Strikethrough/Link toolbar to "
-                  "the message composer"),
-              value: style.formattingToolbar,
-              onChanged: (v) =>
-                  _setStyle(theme, (s) => s.copyWith(formattingToolbar: v)),
-            ),
-            SwitchListTile(
-              title: const Text("Composer polish"),
-              subtitle: const Text(
-                  "Inline tip button on 1:1 chats, a glowing send button, "
-                  "and a per-contact message hint"),
-              value: style.composerPolish,
-              onChanged: (v) =>
-                  _setStyle(theme, (s) => s.copyWith(composerPolish: v)),
-            ),
-            SwitchListTile(
-              title: const Text("Square message bubbles"),
-              value: style.squareBubbles,
-              onChanged: (v) =>
-                  _setStyle(theme, (s) => s.copyWith(squareBubbles: v)),
-            ),
-            const SizedBox(height: 8),
-            Row(children: [
-              const Txt("Message layout: "),
-              const SizedBox(width: 8),
-              DropdownButton<MessageLayoutMode>(
-                value: style.messageLayoutMode ?? MessageLayoutMode.standard,
-                items: MessageLayoutMode.values
-                    .map((m) => DropdownMenuItem(
-                        value: m, child: Text(messageLayoutModeLabel(m))))
-                    .toList(),
-                onChanged: (m) {
-                  if (m == null) return;
-                  _setStyle(
-                      theme,
-                      (s) => m == MessageLayoutMode.standard
-                          ? s.copyWith(clearMessageLayoutMode: true)
-                          : s.copyWith(messageLayoutMode: m));
-                },
-              ),
-            ]),
-            if ((style.messageLayoutMode ?? MessageLayoutMode.standard) !=
-                MessageLayoutMode.standard)
-              SwitchListTile(
-                title: const Text("Expand to fill panel"),
-                subtitle: const Text(
-                    "Uses the full conversation panel width instead of "
-                    "margining the message list in"),
-                value: style.expandMessageWidth,
-                onChanged: (v) => _setStyle(
-                    theme, (s) => s.copyWith(expandMessageWidth: v)),
-              ),
-            if (style.expandMessageWidth) _expandPaddingSlider(theme, style),
-          ],
+          if (style.expandMessageWidth) _expandPaddingSlider(theme, style),
         ],
         if (selected == ThemeArea.realtimeChat) ...[
           SwitchListTile(
@@ -1519,6 +1511,91 @@ class _AreasSectionState extends State<AreasSection> {
             value: style.enhancedCallIndicators,
             onChanged: (v) => _setStyle(
                 theme, (s) => s.copyWith(enhancedCallIndicators: v)),
+          ),
+        ],
+        if (selected == ThemeArea.feed) ...[
+          SwitchListTile(
+            title: const Text("Feed card redesign"),
+            subtitle: const Text(
+                "X-style borderless post cards, live comment count, a "
+                "height-clamped body with \"Show more\", and a centered "
+                "post-detail view"),
+            value: style.feedCardRedesign,
+            onChanged: (v) =>
+                _setStyle(theme, (s) => s.copyWith(feedCardRedesign: v)),
+          ),
+          SwitchListTile(
+            title: const Text("Post actions: relay, tip, quote"),
+            subtitle: const Text(
+                "Relay-to-subscribers, tip-the-author, and quote-post "
+                "icons on each card, with nested quote-post rendering "
+                "(requires Feed card redesign)"),
+            value: style.feedCardActions,
+            onChanged: (v) =>
+                _setStyle(theme, (s) => s.copyWith(feedCardActions: v)),
+          ),
+          SwitchListTile(
+            title: const Text("Bookmarks"),
+            subtitle: const Text(
+                "Per-post bookmark toggle and a Bookmarks section in the "
+                "feed side panel (requires Feed side panel for the list)"),
+            value: style.feedBookmarks,
+            onChanged: (v) =>
+                _setStyle(theme, (s) => s.copyWith(feedBookmarks: v)),
+          ),
+          SwitchListTile(
+            title: const Text("Hide posts"),
+            subtitle: const Text(
+                "Per-post hide/unhide and a Hidden section in the feed "
+                "side panel (requires Feed side panel for the list)"),
+            value: style.feedHidePosts,
+            onChanged: (v) =>
+                _setStyle(theme, (s) => s.copyWith(feedHidePosts: v)),
+          ),
+          SwitchListTile(
+            title: const Text("Feed side panel"),
+            subtitle: const Text(
+                "Search, sort, and an unread-only filter in a nav rail, "
+                "replacing the plain tab bar on the main feed tab"),
+            value: style.feedSidePanel,
+            onChanged: (v) =>
+                _setStyle(theme, (s) => s.copyWith(feedSidePanel: v)),
+          ),
+          SwitchListTile(
+            title: const Text("Inline composer"),
+            subtitle: const Text(
+                "A pinned \"What's happening?\" composer at the top of "
+                "the feed"),
+            value: style.feedInlineComposer,
+            onChanged: (v) =>
+                _setStyle(theme, (s) => s.copyWith(feedInlineComposer: v)),
+          ),
+          SwitchListTile(
+            title: const Text("Composer formatting toolbar"),
+            subtitle: const Text(
+                "Bold/Italic/Code/Strikethrough/Link toolbar in the "
+                "inline composer (requires Inline composer)"),
+            value: style.feedComposerFormatting,
+            onChanged: (v) => _setStyle(
+                theme, (s) => s.copyWith(feedComposerFormatting: v)),
+          ),
+          SwitchListTile(
+            title: const Text("Composer image/file attach"),
+            subtitle: const Text(
+                "Attach an image or file from the inline composer "
+                "(requires Inline composer)"),
+            value: style.feedComposerAttach,
+            onChanged: (v) =>
+                _setStyle(theme, (s) => s.copyWith(feedComposerAttach: v)),
+          ),
+          SwitchListTile(
+            title: const Text("Drafts"),
+            subtitle: const Text(
+                "Save/reuse/delete post drafts (requires Inline composer "
+                "and Feed side panel)"),
+            value: style.feedDrafts,
+            onChanged: (v) =>
+                _setStyle(theme, (s) => s.copyWith(feedDrafts: v)),
           ),
         ],
         if (selected == ThemeArea.header) ...[
