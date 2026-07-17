@@ -400,8 +400,10 @@ class __RTDTSessionsListState extends State<_RTDTSessionsList> {
     var sessions = rtc.sessions;
     return ListView(
         shrinkWrap: true,
-        children:
-            sessions.map((sess) => _RTDTSessionW(rtc, client, sess)).toList());
+        children: sessions
+            .map((sess) =>
+                SecondarySideMenuItem(_RTDTSessionW(rtc, client, sess)))
+            .toList());
   }
 }
 
@@ -429,18 +431,18 @@ class _RealtimeChatScreenState extends State<RealtimeChatScreen> {
     var client = ClientModel.of(context, listen: false);
     var audio = AudioModel.of(context, listen: false);
     var style = ThemeNotifier.of(context).areaStyle(ThemeArea.realtimeChat);
-    return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      SecondarySideMenu(width: 200, child: _RTDTSessionsList(rtc, client)),
-      Expanded(
-          child: Consumer<ActiveRealTimeSessionChatModel>(
-              builder: (context, activeModel, child) =>
-                  activeModel.active != null
-                      ? ActiveRealtimeChatScreen(
-                          rtc, activeModel.active!, audio, inputFocusNode)
-                      : (style.rtcSessionListIntro
-                          ? _RTDTIntro(hasSessions: rtc.sessions.isNotEmpty)
-                          : const Empty()))),
-    ]);
+    return SecondarySideMenuLayout(
+      width: 200,
+      storageKey: "realtimeChat",
+      list: _RTDTSessionsList(rtc, client),
+      content: Consumer<ActiveRealTimeSessionChatModel>(
+          builder: (context, activeModel, child) => activeModel.active != null
+              ? ActiveRealtimeChatScreen(
+                  rtc, activeModel.active!, audio, inputFocusNode)
+              : (style.rtcSessionListIntro
+                  ? _RTDTIntro(hasSessions: rtc.sessions.isNotEmpty)
+                  : const Empty())),
+    );
   }
 }
 

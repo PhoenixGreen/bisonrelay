@@ -684,35 +684,38 @@ class _OverviewScreenState extends State<OverviewScreen> {
                     iconSize: 40,
                     items: <BottomNavigationBarItem>[
                       BottomNavigationBarItem(
-                        icon: client.activeChats.hasUnreadMsgs
-                            ? Stack(children: [
-                                Container(
-                                    padding: const EdgeInsets.all(3),
-                                    child: const SidebarSvgIcon(
-                                        "assets/icons/icons-menu-chat.svg")),
-                                const Positioned(
-                                    top: 1, right: 1, child: RedDotIndicator()),
-                              ])
-                            : Container(
-                                padding: const EdgeInsets.all(3),
-                                child: const SidebarSvgIcon(
-                                    "assets/icons/icons-menu-chat.svg")),
+                        // Always the same Stack/SidebarSvgIcon element,
+                        // regardless of unread state -- only the dot's
+                        // visibility toggles. Branching between a Stack and
+                        // a bare Container here (as this used to) swaps the
+                        // SidebarSvgIcon's element out and back in on every
+                        // unread-state change, forcing flutter_svg to
+                        // re-mount its underlying VectorGraphic State; that
+                        // widget's didChangeDependencies() calls setState()
+                        // synchronously on a cache hit, which then fires
+                        // mid-build ("setState() or markNeedsBuild() called
+                        // during build").
+                        icon: Stack(children: [
+                          Container(
+                              padding: const EdgeInsets.all(3),
+                              child: const SidebarSvgIcon(
+                                  "assets/icons/icons-menu-chat.svg")),
+                          if (client.activeChats.hasUnreadMsgs)
+                            const Positioned(
+                                top: 1, right: 1, child: RedDotIndicator()),
+                        ]),
                         label: 'Chat',
                       ),
                       BottomNavigationBarItem(
-                        icon: widget.feed.hasUnreadPostsComments
-                            ? Stack(children: [
-                                Container(
-                                    padding: const EdgeInsets.all(3),
-                                    child: const SidebarSvgIcon(
-                                        "assets/icons/icons-menu-news.svg")),
-                                const Positioned(
-                                    top: 1, right: 1, child: RedDotIndicator()),
-                              ])
-                            : Container(
-                                padding: const EdgeInsets.all(3),
-                                child: const SidebarSvgIcon(
-                                    "assets/icons/icons-menu-news.svg")),
+                        icon: Stack(children: [
+                          Container(
+                              padding: const EdgeInsets.all(3),
+                              child: const SidebarSvgIcon(
+                                  "assets/icons/icons-menu-news.svg")),
+                          if (widget.feed.hasUnreadPostsComments)
+                            const Positioned(
+                                top: 1, right: 1, child: RedDotIndicator()),
+                        ]),
                         label: 'Feed',
                       ),
                       BottomNavigationBarItem(

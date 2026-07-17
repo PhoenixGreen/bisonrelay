@@ -645,13 +645,16 @@ class SidebarIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    var theme = Theme.of(context);
-    var unselectedTextColor = theme.colorScheme.onSurfaceVariant;
     if (alert) {
       return Icon(icon, color: Colors.amber);
-    } else {
-      return Icon(icon, color: unselectedTextColor);
     }
+    // No explicit color here (unlike the alert case above, which is
+    // deliberately always amber regardless of selection) -- letting Icon
+    // fall back to the ambient IconTheme (e.g. one a caller wraps around
+    // this with IconTheme.merge to reflect selected/unselected state) is
+    // what actually makes the selected-item accent color apply; hardcoding
+    // onSurfaceVariant here, like this used to, ignored selection entirely.
+    return Icon(icon);
   }
 }
 
@@ -661,11 +664,16 @@ class SidebarSvgIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    var theme = Theme.of(context);
-    var unselectedTextColor = theme.colorScheme.onSurfaceVariant;
+    // Reads the ambient IconTheme (e.g. one a caller wraps around this with
+    // IconTheme.merge to reflect selected/unselected state) rather than
+    // always hardcoding onSurfaceVariant -- this used to ignore selection
+    // entirely, since SvgPicture's own explicit colorFilter doesn't consult
+    // IconTheme on its own the way a plain Icon widget does.
+    var color = IconTheme.of(context).color ??
+        Theme.of(context).colorScheme.onSurfaceVariant;
     return SvgPicture.asset(
       assetName,
-      colorFilter: ColorFilter.mode(unselectedTextColor, BlendMode.srcIn),
+      colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
     );
   }
 }
