@@ -445,6 +445,13 @@ final appThemes = {
           surface: const Color(0xFF19172C),
           surfaceContainerLow: const Color(0xFF17152A),
           surfaceContainerLowest: const Color(0xFF161429),
+          // Matches ThemePreset.seedFromDark()'s tertiary exactly -- without
+          // this, colorScheme.tertiary is left to Material's own tonal
+          // derivation from the seed, which doesn't equal the "Default
+          // Theme" palette card's tertiary swatch (nor, therefore, the
+          // Settings group panels / Feed post cards that read
+          // colorScheme.tertiary directly).
+          tertiary: const Color(0xFF232030),
         ),
       ).copyWith(
         // Bruig theme customizations.
@@ -500,6 +507,9 @@ final appThemes = {
           surface: const Color(0xFFE8E7F3),
           surfaceContainerLow: const Color(0xFFE6E5F2),
           surfaceContainerLowest: const Color(0xFFE2E1ED),
+          // Matches ThemePreset.seedFromLight()'s tertiary -- see the dark
+          // theme's comment above.
+          tertiary: const Color(0xFFF5F4FA),
         ),
       ).copyWith(
         // Bruig theme customizations.

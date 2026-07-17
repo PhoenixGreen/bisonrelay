@@ -71,6 +71,13 @@ class SettingsNavModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  bool _paletteExpanded = false;
+  bool get paletteExpanded => _paletteExpanded;
+  set paletteExpanded(bool v) {
+    _paletteExpanded = v;
+    notifyListeners();
+  }
+
   ThemeArea _selectedThemeArea = ThemeArea.chat;
   ThemeArea get selectedThemeArea => _selectedThemeArea;
   set selectedThemeArea(ThemeArea v) {

@@ -10,8 +10,8 @@ import 'package:bruig/theme_manager.dart';
 import 'package:provider/provider.dart';
 
 // graphiteFromNick deterministically maps a nick to one of a small set of
-// neutral gray shades, used as the avatar fallback color when the chat
-// area's monochromeAvatars toggle is on (see AreaStyle.monochromeAvatars).
+// neutral gray shades, used as the avatar fallback color when the
+// (app-wide) monochromeAvatars toggle is on (see AreaStyle.monochromeAvatars).
 const List<Color> _graphitePalette = [
   Color(0xFF363B3A),
   Color(0xFF3A4048),
@@ -50,9 +50,10 @@ class InteractiveAvatar extends StatelessWidget {
   Widget build(BuildContext context) {
     var nickInitial = chatNick.isNotEmpty ? chatNick[0].toUpperCase() : "?";
     return Consumer<ThemeNotifier>(builder: (context, theme, _) {
-      var avatarColor = theme.areaStyle(ThemeArea.chat).monochromeAvatars
-          ? graphiteFromNick(chatNick)
-          : colorFromNick(chatNick, theme.brightness);
+      var avatarColor =
+          theme.areaStyle(ThemeArea.masterBackground).monochromeAvatars
+              ? graphiteFromNick(chatNick)
+              : colorFromNick(chatNick, theme.brightness);
       var avatarTextTs =
           ThemeData.estimateBrightnessForColor(avatarColor) == Brightness.dark
               ? (radius != null && radius! >= 100)
