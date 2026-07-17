@@ -159,10 +159,11 @@ class _SidebarState extends State<Sidebar> with WindowListener {
       // pixels unless the outer width grows to compensate. The parent Row
       // (sidebar + Expanded(Navigator) in overview.dart) absorbs this fine
       // since the Navigator side just gets very slightly narrower.
-      var borderInset = navStyle.borderMode != AreaBackgroundMode.token &&
-              navStyle.borderWidth > 0
-          ? navStyle.borderWidth * 2
-          : 0.0;
+      var liveBorderColor = navStyle.resolveBorderColor(theme);
+      var hasCustomBorder = navStyle.borderMode != AreaBackgroundMode.token &&
+          liveBorderColor != null &&
+          navStyle.borderWidth > 0;
+      var borderInset = hasCustomBorder ? navStyle.borderWidth * 2 : 0.0;
       // SidebarXTheme.decoration (below) can only be a flat BoxDecoration,
       // so it can't itself express a gradient/image border (only the
       // background supports those directly here) -- wrapBorderOnly adds
@@ -174,20 +175,37 @@ class _SidebarState extends State<Sidebar> with WindowListener {
               margin: const EdgeInsets.all(1),
               padding: const EdgeInsets.all(2),
               width: 70 + borderInset,
+              // Background and border are independently checked here --
+              // previously the custom Border settings (color/width/radius)
+              // were only ever read when Background was ALSO switched away
+              // from Default, forcing a background change just to get a
+              // border to show at all. navBackground (not a generic
+              // SurfaceColor fallback) is used whenever Background itself
+              // is still Default, so it stays live-bound to the preset's
+              // own Secondary color regardless of whether a custom border
+              // is set.
               decoration: theme.areaStyle(ThemeArea.navBar).mode ==
                       AreaBackgroundMode.token
                   ? BoxDecoration(
-                      // No borderRadius here: a Border with only one side
-                      // set (the other 3 default to BorderSide.none, a
+                      color: navBackground,
+                      border: hasCustomBorder
+                          ? Border.all(
+                              color: liveBorderColor,
+                              width: navStyle.borderWidth)
+                          : Border(
+                              right: BorderSide(
+                                  color: theme.extraColors.sidebarDivider)),
+                      // No borderRadius when falling back to the plain
+                      // right-edge divider: a Border with only one side set
+                      // (the other 3 default to BorderSide.none, a
                       // different color/width) can never satisfy Flutter's
                       // "uniform border" requirement for combining with a
                       // borderRadius -- Border.paint asserts on this
                       // combination unconditionally, regardless of which
                       // colors are actually used.
-                      color: navBackground,
-                      border: Border(
-                          right: BorderSide(
-                              color: theme.extraColors.sidebarDivider)),
+                      borderRadius: hasCustomBorder && navStyle.borderRadius > 0
+                          ? BorderRadius.circular(navStyle.borderRadius)
+                          : null,
                     )
                   : theme.areaDecoration(
                       ThemeArea.navBar, SurfaceColor.surfaceContainerLow),

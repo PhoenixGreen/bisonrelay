@@ -142,7 +142,16 @@ class ScreenWithChatSideMenu extends StatelessWidget {
     // Alternate chat menu layout: stack on top of main view (avoids reflows
     // and overflow errors).
     return Stack(children: [
-      child,
+      // Positioned.fill forces tight constraints matching the Stack's own
+      // bounds -- left as a bare (non-Positioned) child, child only got
+      // StackFit.loose's *up-to* constraints, so a Row inside it (e.g.
+      // SecondarySideMenuLayout's sidebar+content Row, which relies on
+      // crossAxisAlignment.stretch to make the sidebar's background fill
+      // the full height) sized itself to its shortest content instead of
+      // the actual available screen height, leaving the sidebar's painted
+      // background visibly cut short with the page's own background
+      // showing through below it.
+      Positioned.fill(child: child),
       Consumer2<ChatSideMenuActiveModel, ClientModel>(
           builder: (context, chatSideMenuActive, client, child) => Visibility(
                 visible: !chatSideMenuActive.empty,

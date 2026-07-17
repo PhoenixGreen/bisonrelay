@@ -318,6 +318,16 @@ class AreaStyle {
   final AreaBackgroundMode mode;
   final SurfaceColor? tokenOverride;
   final Color? solidColor;
+  // solidColorIndex, when set, is an index into the active preset's
+  // palette (ThemePreset.palette) that solidColor was picked from --
+  // resolution always prefers re-reading palette[solidColorIndex] live
+  // over the frozen solidColor snapshot, so editing that palette slot's
+  // own color later is picked up automatically instead of solidColor
+  // silently going stale (and, if some other slot happens to now hold the
+  // old value, appearing to "jump" to a different slot entirely). Null
+  // means solidColor is a plain custom-picked color with no live slot to
+  // track.
+  final int? solidColorIndex;
   final List<Color> gradientColors;
   final List<double>? gradientStops;
   final Alignment gradientBegin;
@@ -327,6 +337,8 @@ class AreaStyle {
 
   final AreaBackgroundMode borderMode;
   final Color? borderColor;
+  // Same live-slot-tracking role as solidColorIndex above, for borderColor.
+  final int? borderColorIndex;
   final List<Color> borderGradientColors;
   final List<double>? borderGradientStops;
   final Alignment borderGradientBegin;
@@ -395,10 +407,15 @@ class AreaStyle {
   // SecondarySideMenuList/SecondarySideMenuItem (Settings, LN Management,
   // Feed, Manage Content, Address Book, page-view sessions, the chat list,
   // and the Realtime Chat session list) -- not just one screen.
-  final bool sidebarIconRows; // Icon + pill-highlight rows instead of plain
-  // ListTiles, generalized from the old Settings-only restyled nav.
-  final bool sidebarShowIcons; // Nested under sidebarIconRows: keep the pill
-  // highlight but hide the leading icon. Default true (shown).
+  final double sidebarCornerRadius; // Corner radius of the pill-highlight
+  // rows (generalized from the old Settings-only restyled nav) -- rows are
+  // always the pill-highlight style now, this only controls how rounded.
+  // 0 reads as a plain square-cornered row. Independent of
+  // sidebarShowIcons below (previously nested under a since-removed
+  // sidebarIconRows toggle).
+  final bool sidebarShowIcons; // Leading icon on each row. Default false
+  // (hidden) -- previously defaulted true, but only had any effect when
+  // sidebarIconRows was also on, which itself defaulted off.
   // Sidebar/nav bar text+accent colors are no longer per-area overrides --
   // they're always-present top-level palette slots now (sidebarText/
   // sidebarAccent/navText/navAccent on ThemePreset itself), since there's
@@ -534,8 +551,8 @@ class AreaStyle {
       logoAlign == null &&
       subMenuStyle == null &&
       showHoverArrow == true &&
-      sidebarIconRows == false &&
-      sidebarShowIcons == true &&
+      sidebarCornerRadius == 12 &&
+      sidebarShowIcons == false &&
       sidebarShowRightDivider == true &&
       sidebarDividerColor == null &&
       sidebarDividerWidth == 1 &&
@@ -587,6 +604,7 @@ class AreaStyle {
     this.mode = AreaBackgroundMode.token,
     this.tokenOverride,
     this.solidColor,
+    this.solidColorIndex,
     this.gradientColors = const [],
     this.gradientStops,
     this.gradientBegin = Alignment.topLeft,
@@ -595,6 +613,7 @@ class AreaStyle {
     this.imageFit = BoxFit.cover,
     this.borderMode = AreaBackgroundMode.token,
     this.borderColor,
+    this.borderColorIndex,
     this.borderGradientColors = const [],
     this.borderGradientStops,
     this.borderGradientBegin = Alignment.topLeft,
@@ -614,8 +633,8 @@ class AreaStyle {
     this.logoAlign,
     this.subMenuStyle,
     this.showHoverArrow = true,
-    this.sidebarIconRows = false,
-    this.sidebarShowIcons = true,
+    this.sidebarCornerRadius = 12,
+    this.sidebarShowIcons = false,
     this.sidebarShowRightDivider = true,
     this.sidebarDividerColor,
     this.sidebarDividerWidth = 1,
@@ -668,6 +687,8 @@ class AreaStyle {
     AreaBackgroundMode? mode,
     SurfaceColor? tokenOverride,
     Color? solidColor,
+    int? solidColorIndex,
+    bool clearSolidColorIndex = false,
     List<Color>? gradientColors,
     List<double>? gradientStops,
     Alignment? gradientBegin,
@@ -677,6 +698,8 @@ class AreaStyle {
     BoxFit? imageFit,
     AreaBackgroundMode? borderMode,
     Color? borderColor,
+    int? borderColorIndex,
+    bool clearBorderColorIndex = false,
     List<Color>? borderGradientColors,
     List<double>? borderGradientStops,
     Alignment? borderGradientBegin,
@@ -699,7 +722,7 @@ class AreaStyle {
     ContentAlign? logoAlign,
     SubMenuStyle? subMenuStyle,
     bool? showHoverArrow,
-    bool? sidebarIconRows,
+    double? sidebarCornerRadius,
     bool? sidebarShowIcons,
     bool? sidebarShowRightDivider,
     Color? sidebarDividerColor,
@@ -758,6 +781,9 @@ class AreaStyle {
         mode: mode ?? this.mode,
         tokenOverride: tokenOverride ?? this.tokenOverride,
         solidColor: solidColor ?? this.solidColor,
+        solidColorIndex: clearSolidColorIndex
+            ? null
+            : (solidColorIndex ?? this.solidColorIndex),
         gradientColors: gradientColors ?? this.gradientColors,
         gradientStops: gradientStops ?? this.gradientStops,
         gradientBegin: gradientBegin ?? this.gradientBegin,
@@ -766,6 +792,9 @@ class AreaStyle {
         imageFit: imageFit ?? this.imageFit,
         borderMode: borderMode ?? this.borderMode,
         borderColor: borderColor ?? this.borderColor,
+        borderColorIndex: clearBorderColorIndex
+            ? null
+            : (borderColorIndex ?? this.borderColorIndex),
         borderGradientColors: borderGradientColors ?? this.borderGradientColors,
         borderGradientStops: borderGradientStops ?? this.borderGradientStops,
         borderGradientBegin: borderGradientBegin ?? this.borderGradientBegin,
@@ -787,7 +816,7 @@ class AreaStyle {
         logoAlign: logoAlign ?? this.logoAlign,
         subMenuStyle: subMenuStyle ?? this.subMenuStyle,
         showHoverArrow: showHoverArrow ?? this.showHoverArrow,
-        sidebarIconRows: sidebarIconRows ?? this.sidebarIconRows,
+        sidebarCornerRadius: sidebarCornerRadius ?? this.sidebarCornerRadius,
         sidebarShowIcons: sidebarShowIcons ?? this.sidebarShowIcons,
         sidebarShowRightDivider:
             sidebarShowRightDivider ?? this.sidebarShowRightDivider,
@@ -869,6 +898,7 @@ class AreaStyle {
         "mode": mode.name,
         if (tokenOverride != null) "tokenOverride": tokenOverride!.name,
         if (solidColor != null) "solidColor": _colorToHex(solidColor!),
+        if (solidColorIndex != null) "solidColorIndex": solidColorIndex,
         if (gradientColors.isNotEmpty)
           "gradientColors": gradientColors.map(_colorToHex).toList(),
         if (gradientStops != null) "gradientStops": gradientStops,
@@ -878,6 +908,7 @@ class AreaStyle {
         "imageFit": imageFit.name,
         "borderMode": borderMode.name,
         if (borderColor != null) "borderColor": _colorToHex(borderColor!),
+        if (borderColorIndex != null) "borderColorIndex": borderColorIndex,
         if (borderGradientColors.isNotEmpty)
           "borderGradientColors":
               borderGradientColors.map(_colorToHex).toList(),
@@ -900,8 +931,9 @@ class AreaStyle {
         if (logoAlign != null) "logoAlign": logoAlign!.name,
         if (subMenuStyle != null) "subMenuStyle": subMenuStyle!.name,
         if (!showHoverArrow) "showHoverArrow": showHoverArrow,
-        if (sidebarIconRows) "sidebarIconRows": sidebarIconRows,
-        if (!sidebarShowIcons) "sidebarShowIcons": sidebarShowIcons,
+        if (sidebarCornerRadius != 12)
+          "sidebarCornerRadius": sidebarCornerRadius,
+        if (sidebarShowIcons) "sidebarShowIcons": sidebarShowIcons,
         if (!sidebarShowRightDivider)
           "sidebarShowRightDivider": sidebarShowRightDivider,
         if (sidebarDividerColor != null)
@@ -978,6 +1010,7 @@ class AreaStyle {
             : null,
         solidColor:
             j["solidColor"] != null ? _colorFromHex(j["solidColor"]) : null,
+        solidColorIndex: (j["solidColorIndex"] as num?)?.toInt(),
         gradientColors: j["gradientColors"] != null
             ? (j["gradientColors"] as List)
                 .map((e) => _colorFromHex(e as String))
@@ -998,6 +1031,7 @@ class AreaStyle {
             orElse: () => AreaBackgroundMode.token),
         borderColor:
             j["borderColor"] != null ? _colorFromHex(j["borderColor"]) : null,
+        borderColorIndex: (j["borderColorIndex"] as num?)?.toInt(),
         borderGradientColors: j["borderGradientColors"] != null
             ? (j["borderGradientColors"] as List)
                 .map((e) => _colorFromHex(e as String))
@@ -1038,8 +1072,9 @@ class AreaStyle {
             ? SubMenuStyle.values.firstWhere((e) => e.name == j["subMenuStyle"])
             : null,
         showHoverArrow: j["showHoverArrow"] as bool? ?? true,
-        sidebarIconRows: j["sidebarIconRows"] as bool? ?? false,
-        sidebarShowIcons: j["sidebarShowIcons"] as bool? ?? true,
+        sidebarCornerRadius:
+            (j["sidebarCornerRadius"] as num?)?.toDouble() ?? 12,
+        sidebarShowIcons: j["sidebarShowIcons"] as bool? ?? false,
         sidebarShowRightDivider: j["sidebarShowRightDivider"] as bool? ?? true,
         sidebarDividerColor: j["sidebarDividerColor"] != null
             ? _colorFromHex(j["sidebarDividerColor"])
@@ -1114,6 +1149,27 @@ class AreaStyle {
         feedStripMarkdown: j["feedStripMarkdown"] as bool? ?? false,
       );
 
+  // _liveColor prefers re-reading preset.palette[index] over the frozen
+  // `raw` snapshot whenever index is set -- see solidColorIndex's doc.
+  Color? _liveColor(ThemeNotifier theme, int? index, Color? raw) {
+    if (index != null) {
+      var palette = theme.activePreset?.palette;
+      if (palette != null && index < palette.length) return palette[index];
+    }
+    return raw;
+  }
+
+  // resolveBorderColor/resolveSolidColor are _liveColor's public form --
+  // for the handful of render sites (navBar, the Sidebar's own
+  // SecondarySideMenu) that build their decoration by hand instead of
+  // going through toBoxDecoration/buildContainer, and for the theme
+  // editor's own Color dropdown, which needs the live-resolved value (not
+  // the frozen snapshot) to display the right slot selected.
+  Color? resolveBorderColor(ThemeNotifier theme) =>
+      _liveColor(theme, borderColorIndex, borderColor);
+  Color? resolveSolidColor(ThemeNotifier theme) =>
+      _liveColor(theme, solidColorIndex, solidColor);
+
   _Fill _resolveFill(
     AreaBackgroundMode m,
     ThemeNotifier theme,
@@ -1164,8 +1220,9 @@ class AreaStyle {
   // original appearance exactly when mode is token and there's no border.
   BoxDecoration toBoxDecoration(ThemeNotifier theme, SurfaceColor fallback,
       {String? presetDir}) {
+    var liveBorderColor = _liveColor(theme, borderColorIndex, borderColor);
     var bg = _resolveFill(mode, theme, fallback,
-        solid: solidColor,
+        solid: _liveColor(theme, solidColorIndex, solidColor),
         gradColors: gradientColors,
         gradStops: gradientStops,
         gradBegin: gradientBegin,
@@ -1178,9 +1235,9 @@ class AreaStyle {
       gradient: bg.gradient,
       image: bg.image,
       border: (borderMode != AreaBackgroundMode.token &&
-              borderColor != null &&
+              liveBorderColor != null &&
               borderWidth > 0)
-          ? Border.all(color: borderColor!, width: borderWidth)
+          ? Border.all(color: liveBorderColor, width: borderWidth)
           : null,
       borderRadius:
           borderRadius > 0 ? BorderRadius.circular(borderRadius) : null,
@@ -1202,7 +1259,7 @@ class AreaStyle {
     String? presetDir,
   }) {
     var bg = _resolveFill(mode, theme, fallback,
-        solid: solidColor,
+        solid: _liveColor(theme, solidColorIndex, solidColor),
         gradColors: gradientColors,
         gradStops: gradientStops,
         gradBegin: gradientBegin,
@@ -1244,7 +1301,8 @@ class AreaStyle {
             image: bg.image,
             borderRadius: radius,
             border: Border.all(
-                color: borderColor ?? theme.surfaceColor(fallback),
+                color: _liveColor(theme, borderColorIndex, borderColor) ??
+                    theme.surfaceColor(fallback),
                 width: borderWidth),
           ),
           child: child,
@@ -1329,7 +1387,9 @@ enum PaletteSlot {
   sidebarBackground,
   speechBackground,
   speechBackgroundSent,
+  accentContainer,
   onSurface,
+  onSurfaceVariant,
   navText,
   navAccent,
   sidebarText,
@@ -1390,8 +1450,12 @@ String paletteSlotLabel(PaletteSlot slot) {
       return "Speech background (received)";
     case PaletteSlot.speechBackgroundSent:
       return "Speech background (sent)";
+    case PaletteSlot.accentContainer:
+      return "Accent (Buttons/Toggles)";
     case PaletteSlot.onSurface:
       return "On surface text";
+    case PaletteSlot.onSurfaceVariant:
+      return "Secondary text/icons";
     case PaletteSlot.navText:
       return "Nav text color";
     case PaletteSlot.navAccent:
@@ -1436,8 +1500,21 @@ class ThemePreset {
   // background -- previously unthemed (always theme.colors.surfaceContainer,
   // a Primary-derived tone), so sent bubbles never actually followed any
   // preset color the way received bubbles did.
+  final Color accentContainer; // Backs Material's primaryContainer/secondary/
+  // secondaryContainer roles (default Switch track+thumb, FilledButton.tonal,
+  // success snackbar, etc.) -- these were never pinned to anything in
+  // toAppTheme's ColorScheme.fromSeed, so they were left to Material's own
+  // tonal derivation from Primary's seed color, same as the bug that made
+  // colorScheme.primary itself render as an unrelated, oddly-tinted color
+  // (see navAccent's doc) -- except here nothing was pinned at all, so it
+  // surfaced as a stray, uncontrollable pink showing up across the app with
+  // no palette field to fix it from.
   final Color onSurface; // General app text/icons -- NOT the nav bar or
   // sidebar, which have their own dedicated text/accent slots below.
+  final Color onSurfaceVariant; // Muted/secondary text+icons -- toolbar
+  // icon buttons, hint text, etc. Previously hardcoded (Colors.grey[600])
+  // in toAppTheme with no palette field behind it at all, so it couldn't
+  // be themed like onSurface can.
   final Color navText; // Nav bar's unselected-item text+icon color.
   final Color navAccent; // Nav bar's selected-item text+icon color.
   final Color sidebarText; // Sidebar's unselected-item text+icon color.
@@ -1483,7 +1560,9 @@ class ThemePreset {
     required this.sidebarBackground,
     required this.speechBackground,
     required this.speechBackgroundSent,
+    required this.accentContainer,
     required this.onSurface,
+    required this.onSurfaceVariant,
     required this.navText,
     required this.navAccent,
     required this.sidebarText,
@@ -1514,8 +1593,12 @@ class ThemePreset {
         return speechBackground;
       case PaletteSlot.speechBackgroundSent:
         return speechBackgroundSent;
+      case PaletteSlot.accentContainer:
+        return accentContainer;
       case PaletteSlot.onSurface:
         return onSurface;
+      case PaletteSlot.onSurfaceVariant:
+        return onSurfaceVariant;
       case PaletteSlot.navText:
         return navText;
       case PaletteSlot.navAccent:
@@ -1549,8 +1632,12 @@ class ThemePreset {
         return copyWith(speechBackground: color);
       case PaletteSlot.speechBackgroundSent:
         return copyWith(speechBackgroundSent: color);
+      case PaletteSlot.accentContainer:
+        return copyWith(accentContainer: color);
       case PaletteSlot.onSurface:
         return copyWith(onSurface: color);
+      case PaletteSlot.onSurfaceVariant:
+        return copyWith(onSurfaceVariant: color);
       case PaletteSlot.navText:
         return copyWith(navText: color);
       case PaletteSlot.navAccent:
@@ -1586,7 +1673,9 @@ class ThemePreset {
     Color? sidebarBackground,
     Color? speechBackground,
     Color? speechBackgroundSent,
+    Color? accentContainer,
     Color? onSurface,
+    Color? onSurfaceVariant,
     Color? navText,
     Color? navAccent,
     Color? sidebarText,
@@ -1612,7 +1701,9 @@ class ThemePreset {
         speechBackground: speechBackground ?? this.speechBackground,
         speechBackgroundSent:
             speechBackgroundSent ?? this.speechBackgroundSent,
+        accentContainer: accentContainer ?? this.accentContainer,
         onSurface: onSurface ?? this.onSurface,
+        onSurfaceVariant: onSurfaceVariant ?? this.onSurfaceVariant,
         navText: navText ?? this.navText,
         navAccent: navAccent ?? this.navAccent,
         sidebarText: sidebarText ?? this.sidebarText,
@@ -1670,7 +1761,7 @@ class ThemePreset {
         seedColor: primary,
         brightness: brightness,
         onSurface: onSurface,
-        onSurfaceVariant: Colors.grey[600],
+        onSurfaceVariant: onSurfaceVariant,
         surface: primary,
         surfaceContainerLow: _darken(primary, 0.012),
         surfaceContainerLowest: _darken(primary, 0.022),
@@ -1686,6 +1777,13 @@ class ThemePreset {
         surfaceContainerHighest: _darken(primary, -0.01),
         tertiary: tertiary,
         error: error,
+        // errorContainer (CancelButton/destructive-action button
+        // backgrounds, e.g. "Clear Post") had the same never-pinned
+        // problem -- reusing the existing Error field directly rather than
+        // adding a whole new one, since a destructive-action button and
+        // this app's own "Error" color are the same semantic red already.
+        errorContainer: error,
+        onErrorContainer: onSurface,
         // Without this, ColorScheme.fromSeed computes its own tonal
         // derivation of "primary" from the seed rather than using the
         // literal color -- every other unthemed Material widget that falls
@@ -1701,6 +1799,24 @@ class ThemePreset {
         // consistent with the app's own accent instead of a hidden,
         // seed-derived one.
         primary: navAccent,
+        // onPrimary had the exact same never-pinned problem -- Material's
+        // default Switch uses it for the ON-state thumb color (track is
+        // colorScheme.primary, already pinned above), so it showed the
+        // same kind of stray, unpredictable tint (a dark maroon) with no
+        // palette field to control it from.
+        onPrimary: onSurface,
+        // primaryContainer/secondary/secondaryContainer had the exact same
+        // problem as primary above, just never pinned at all -- Material's
+        // default Switch (track+thumb), FilledButton.tonal, and this app's
+        // own success snackbar all read one of these, and all three showed
+        // the same stray, unpredictable seed-derived tint (see
+        // accentContainer's doc) with no palette field to control it from.
+        primaryContainer: accentContainer,
+        secondary: accentContainer,
+        secondaryContainer: accentContainer,
+        onPrimaryContainer: onSurface,
+        onSecondary: onSurface,
+        onSecondaryContainer: onSurface,
       ),
     ).copyWith(
       // DropdownButton's popup menu (e.g. the Theme Areas section's select)
@@ -1828,7 +1944,9 @@ class ThemePreset {
       sidebarBackground: scheme.surfaceContainerLowest,
       speechBackground: const Color(0xFF232030),
       speechBackgroundSent: const Color(0xFF1C1930),
+      accentContainer: scheme.primary,
       onSurface: const Color(0xFFE5E1E9),
+      onSurfaceVariant: scheme.onSurfaceVariant,
       navText: scheme.onSurfaceVariant,
       navAccent: scheme.primary,
       sidebarText: scheme.onSurfaceVariant,
@@ -1858,7 +1976,9 @@ class ThemePreset {
       sidebarBackground: scheme.surfaceContainerLowest,
       speechBackground: const Color(0xFFF5F4FA),
       speechBackgroundSent: const Color(0xFFEDEBF5),
+      accentContainer: scheme.primary,
       onSurface: const Color(0xFF1B1B1F),
+      onSurfaceVariant: scheme.onSurfaceVariant,
       navText: scheme.onSurfaceVariant,
       navAccent: scheme.primary,
       sidebarText: scheme.onSurfaceVariant,

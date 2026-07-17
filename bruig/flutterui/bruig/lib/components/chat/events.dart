@@ -43,11 +43,22 @@ class ServerEvent extends StatelessWidget {
   Widget build(BuildContext context) {
     assert(child != null || msg != null);
 
-    return Box(
-        padding: const EdgeInsets.only(left: 41, top: 5, bottom: 5),
-        margin: const EdgeInsets.all(5),
-        color: bgColor ?? SurfaceColor.surfaceContainer,
-        child: child ?? Txt.S(msg!));
+    return Consumer<ThemeNotifier>(
+        builder: (context, theme, _) => Box(
+            padding: const EdgeInsets.only(left: 41, top: 5, bottom: 5),
+            margin: const EdgeInsets.all(5),
+            color: bgColor ?? SurfaceColor.surfaceContainer,
+            // Matches received chat bubbles' own background -- previously
+            // these system/event alerts (GC membership changes, invite
+            // responses, file transfers, etc.) always fell back to
+            // SurfaceColor.surfaceContainer, a Primary-derived tone, with
+            // no way to follow the "Speech background (received)" palette
+            // slot. bgColor (e.g. errorContainer for a failed upload) still
+            // takes priority when explicitly passed.
+            overrideColor: bgColor == null
+                ? theme.activePreset?.speechBackground
+                : null,
+            child: child ?? Txt.S(msg!)));
   }
 }
 
