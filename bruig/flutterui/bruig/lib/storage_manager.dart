@@ -17,6 +17,9 @@ class StorageManager {
   static const String audioCaptureDeviceIdKey = "audioCaptureDeviceId";
   static const String audioPlaybackDeviceIdKey = "audioPlaybackDeviceId";
   static const String showRPCWarningKey = "showRPCWarning";
+  static const String notesToSelfKey = "notesToSelf";
+  static const String msgsSentCountKey = "msgsSentCount";
+  static const String countRelaysEnabledKey = "countRelaysEnabled";
 
   static Future<void> saveData(String key, dynamic value) async {
     final prefs = await SharedPreferences.getInstance();

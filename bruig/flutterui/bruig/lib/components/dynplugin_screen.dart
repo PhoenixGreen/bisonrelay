@@ -315,18 +315,17 @@ class _DynPluginScreenState extends State<DynPluginScreen> {
       return content;
     }
 
-    return Row(children: [
-      SecondarySideMenuList(
-        width: 180,
-        items: widget.screens
-            .map((s) => ListTile(
-                  selected: activeScreen == s.id,
-                  title: Txt.S(s.label),
-                  onTap: () => changeScreen(s.id),
-                ))
-            .toList(),
-      ),
-      Expanded(child: content),
-    ]);
+    return SecondarySideMenuLayout(
+      width: 180,
+      storageKey: "pluginScreens",
+      items: widget.screens
+          .map((s) => SidebarNavItem(
+                selected: activeScreen == s.id,
+                label: s.label,
+                onTap: () => changeScreen(s.id),
+              ))
+          .toList(),
+      content: content,
+    );
   }
 }

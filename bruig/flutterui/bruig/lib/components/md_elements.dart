@@ -440,7 +440,20 @@ class MarkdownArea extends StatelessWidget {
 
   final String text;
   final bool hasNick;
-  MarkdownArea(srcText, this.hasNick, {super.key})
+  // When true, links render with their normal styling but don't navigate on
+  // tap. Used by the Feed page's AreaStyle.feedHideLinks toggle -- only
+  // affects this MarkdownArea instance, not markdown rendering elsewhere
+  // (chat, pages, etc).
+  final bool disableLinks;
+  // When true, headers/bold/italic/strikethrough all render with normal
+  // body text styling instead of their usual formatting -- the markdown is
+  // still parsed (embeds/links/etc still work), only the *visual*
+  // formatting is flattened. Used by the Feed page's
+  // AreaStyle.feedStripMarkdown toggle -- only affects this MarkdownArea
+  // instance, not markdown rendering elsewhere (chat, pages, etc).
+  final bool plainText;
+  MarkdownArea(srcText, this.hasNick,
+      {this.disableLinks = false, this.plainText = false, super.key})
       : text = MarkdownArea._cleanupSrcText(srcText);
 
   Future<void> launchUrlAwait(context, url) async {
@@ -477,16 +490,37 @@ class MarkdownArea extends StatelessWidget {
     }
   }
 
+  // Flattens header/bold/italic/strikethrough styles down to plain body
+  // text, leaving everything else (code, blockquote, links, etc) alone.
+  MarkdownStyleSheet _plainStyleSheet(
+      MarkdownStyleSheet base, BuildContext context) {
+    final plain = DefaultTextStyle.of(context).style;
+    return base.copyWith(
+      h1: plain,
+      h2: plain,
+      h3: plain,
+      h4: plain,
+      h5: plain,
+      h6: plain,
+      strong: plain,
+      em: plain,
+      del: plain,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Consumer3<ThemeNotifier, PaymentsModel, MarkdownAreaModel>(
         builder: (context, theme, payments, mk, _) => MarkdownBody(
               codeBlockMaxHeight: 200,
-              styleSheet: theme.mdStyleSheet,
+              styleSheet: plainText
+                  ? _plainStyleSheet(theme.mdStyleSheet, context)
+                  : theme.mdStyleSheet,
               data: text.trim(),
               extensionSet: mk.extensionSet,
               builders: mk.builders,
               onTapLink: (text, url, _) {
+                if (disableLinks) return;
                 launchUrlAwait(context, url);
               },
               inlineSyntaxes: mk.inlineSyntaxes,

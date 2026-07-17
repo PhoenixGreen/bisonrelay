@@ -2,6 +2,7 @@
 
 import 'dart:async';
 import 'dart:collection';
+import 'dart:convert';
 
 import 'package:bruig/config.dart';
 import 'package:bruig/models/realtimechat.dart';
@@ -204,6 +205,13 @@ class ChatModel extends ChangeNotifier {
   final String id; // RemoteUID or GC ID
   final bool isGC;
 
+  // True for the local-only "Notes to self" pseudo-chat (see
+  // ClientModel.ensureNotesChat/notesChatID). Behaves like a normal chat in
+  // the chat list, but sendMsg persists locally instead of going through
+  // Golib.pm, and there's no real remote counterparty -- actions that need
+  // one (tips, instant calls, subscriptions, KX reset) are no-ops here.
+  final bool isNotes;
+
   String _nick; // Nick or GC name
   String get nick => _nick;
   set nick(String nn) {
@@ -211,10 +219,38 @@ class ChatModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  ChatModel(this.id, this._nick, this.isGC) {
+  ChatModel(this.id, this._nick, this.isGC, {this.isNotes = false}) {
     _loadPin();
+    if (isNotes) _loadNotes();
   }
   factory ChatModel.empty() => ChatModel("", "", false);
+
+  Future<void> _loadNotes() async {
+    final raw =
+        await StorageManager.readData(StorageManager.notesToSelfKey) as String?;
+    if (raw == null || raw.isEmpty) return;
+    try {
+      final List<dynamic> list = jsonDecode(raw);
+      for (final e in list) {
+        final m = PM(id, e['msg'] as String, true, e['ts'] as int);
+        append(ChatEventModel(m, null), true);
+      }
+    } catch (_) {
+      // Ignore malformed/corrupt local notes storage.
+    }
+  }
+
+  void _persistNotes() {
+    final list = <Map<String, dynamic>>[];
+    // _msgs is newest-first; storing oldest-first so _loadNotes' replay
+    // (which re-inserts each at the front, same as normal message receipt)
+    // reconstructs the original newest-first order.
+    for (final e in _msgs.reversed) {
+      final ev = e.event;
+      if (ev is PM) list.add({"msg": ev.msg, "ts": ev.timestamp});
+    }
+    StorageManager.saveData(StorageManager.notesToSelfKey, jsonEncode(list));
+  }
 
   // Locally pinned message (persists via StorageManager, keyed by chat id).
   // Gated behind AreaStyle.enableMessageActions in the chat UI.
@@ -472,12 +508,14 @@ class ChatModel extends ChangeNotifier {
   }
 
   void payTip(double amount) async {
+    if (isNotes) return; // No real counterparty to tip.
     var tip = Golib.payTip(id, amount);
     _msgs.insert(0, ChatEventModel(tip, this));
     notifyListeners();
   }
 
   void startInstantCall(RTDTSessionModel? currentSession) async {
+    if (isNotes) return; // No real counterparty to call.
     var startInstantCall = InstantCallEvent(DateTime.now());
     startInstantCall.state = ICE_starting;
     _msgs.insert(0, ChatEventModel(startInstantCall, null));
@@ -535,11 +573,16 @@ class ChatModel extends ChangeNotifier {
       _msgs.insert(0, evnt);
       notifyListeners();
 
-      try {
-        await Golib.pm(m);
+      if (isNotes) {
         evnt.sentState = CMS_sent;
-      } catch (exception) {
-        evnt.sendError = "$exception";
+        _persistNotes();
+      } else {
+        try {
+          await Golib.pm(m);
+          evnt.sentState = CMS_sent;
+        } catch (exception) {
+          evnt.sendError = "$exception";
+        }
       }
     }
   }
@@ -553,6 +596,7 @@ class ChatModel extends ChangeNotifier {
   }
 
   Future<void> subscribeToPosts() async {
+    if (isNotes) return; // No real counterparty to subscribe to.
     var event = SynthChatEvent("Subscribing to user's posts");
     event.state = SCE_sending;
     _isSubscribing = true;
@@ -567,6 +611,7 @@ class ChatModel extends ChangeNotifier {
   }
 
   Future<void> unsubscribeToPosts() async {
+    if (isNotes) return; // No real counterparty to unsubscribe from.
     var event = SynthChatEvent("Unsubscribing from user's posts");
     event.state = SCE_sending;
     append(ChatEventModel(event, null), false);
@@ -582,6 +627,7 @@ class ChatModel extends ChangeNotifier {
   }
 
   void requestKXReset() {
+    if (isNotes) return; // No real counterparty to KX with.
     var event = SynthChatEvent("Requesting KX reset", SCE_sending);
     append(ChatEventModel(event, null), false);
     (() async {
@@ -833,6 +879,31 @@ class ClientModel extends ChangeNotifier {
   final ChatsListModel activeChats = ChatsListModel();
   final ChatsListModel hiddenChats = ChatsListModel();
 
+  // Relay Counter: a running count of messages sent, shown in Settings >
+  // Account and (optionally) the sidebar footer.
+  int _msgsSent = 0;
+  int get msgsSent => _msgsSent;
+
+  bool _countRelays = true;
+  bool get countRelays => _countRelays;
+  void setCountRelays(bool v) {
+    _countRelays = v;
+    StorageManager.saveData(StorageManager.countRelaysEnabledKey, v);
+    notifyListeners();
+  }
+
+  // "Notes to self": a persistent, local-only pseudo-chat that behaves like
+  // a normal chat in the chat list but never talks to the network (see
+  // ChatModel.isNotes).
+  static const notesChatID = "_notes_to_self_";
+
+  void ensureNotesChat() {
+    if (_activeChats.containsKey(notesChatID)) return;
+    var c = ChatModel(notesChatID, "Notes to self", false, isNotes: true);
+    _activeChats[notesChatID] = c;
+    activeChats._addInactive(c);
+  }
+
   // searchChats searches all chats that match the given string (both actice and
   // hidden).
   UnmodifiableListView<ChatModel> searchChats(
@@ -1014,6 +1085,11 @@ class ClientModel extends ChangeNotifier {
   Future<void> newSentMsg(ChatModel chat) async {
     activeChats._addActive(chat);
     hiddenChats._remove(chat);
+    if (_countRelays) {
+      _msgsSent += 1;
+      StorageManager.saveData(StorageManager.msgsSentCountKey, _msgsSent);
+      notifyListeners();
+    }
   }
 
   final Map<String, ChatModel> _activeChats = {};
@@ -1347,6 +1423,13 @@ class ClientModel extends ChangeNotifier {
         _savedHiddenChats = value;
       }
     });
+    await StorageManager.readData(StorageManager.msgsSentCountKey)
+        .then((value) {
+      if (value != null) _msgsSent = (value as num).toInt();
+    });
+    _countRelays = await StorageManager.readBool(
+        StorageManager.countRelaysEnabledKey,
+        defaultVal: true);
     var info = await Golib.getLocalInfo();
     _publicID = info.id;
     _nick = info.nick;
@@ -1361,6 +1444,8 @@ class ClientModel extends ChangeNotifier {
     for (var v in gcs) {
       await _newChat(v.id, v.name, true, gcAB: v);
     }
+
+    ensureNotesChat();
 
     // Re-sort list of chats.
     activeChats._sort();

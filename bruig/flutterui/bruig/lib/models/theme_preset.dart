@@ -466,11 +466,10 @@ class AreaStyle {
 
   // Only meaningful for ThemeArea.masterBackground (the Settings screen
   // isn't itself a per-content ThemeArea, so this rides on the closest
-  // "global chrome" area). Only affects the Account page itself -- the
-  // Settings sidebar's own look is controlled by sidebarIconRows above,
-  // shared with every other sidebar in the app.
-  final bool settingsShellRestyle; // Card-based restyle of the Account page
-  // (avatar camera badge, Identity/Relay Counter/Account cards).
+  // "global chrome" area).
+  final bool settingsShellRestyle; // Icon + pill-highlight rows in the
+  // Settings page's left nav, and a card-based restyle of the Account
+  // page (avatar camera badge, Identity/Relay Counter/Account cards).
 
   // Only meaningful for ThemeArea.loginScreen.
   final LoginBackgroundPreset loginBgPreset; // See LoginBackgroundPreset.

@@ -312,6 +312,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     // Desktop-sized version.
     return Consumer<ThemeNotifier>(builder: (context, theme, _) {
+      if (theme.areaStyle(ThemeArea.masterBackground).settingsShellRestyle) {
+        return Row(children: [
+          _RestyledSettingsNav(
+              settingsPage: settingsPage,
+              changePage: changePage,
+              showRpcWarningDialog: showRpcWarningDialog),
+          Expanded(child: settingsView),
+        ]);
+      }
       return SecondarySideMenuLayout(
         width: 130 * (theme.fontScale > 0 ? theme.fontScale : 1),
         storageKey: "settings",
@@ -374,6 +383,81 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ],
       );
     });
+  }
+}
+
+// Restyled left nav for AreaStyle.settingsShellRestyle: icon + pill
+// highlight rows instead of plain ListTiles.
+class _RestyledSettingsNav extends StatelessWidget {
+  final String settingsPage;
+  final ChangePageCB changePage;
+  final VoidCallback showRpcWarningDialog;
+  const _RestyledSettingsNav(
+      {required this.settingsPage,
+      required this.changePage,
+      required this.showRpcWarningDialog});
+
+  Widget _navItem(
+      BuildContext context, ThemeNotifier theme, String page, IconData icon) {
+    final cs = Theme.of(context).colorScheme;
+    final sel = settingsPage == page;
+    // Matches the same preset-driven accent every other sidebar in the app
+    // uses (see containers.dart's _SidebarNavRow) instead of falling back
+    // to colorScheme.primary/surfaceContainerHighest, which don't follow
+    // the user's chosen Sidebar Accent color.
+    final accent = theme.activePreset?.sidebarAccent ?? cs.primary;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      child: Material(
+        color: sel ? accent.withValues(alpha: 0.18) : Colors.transparent,
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () =>
+              page == "RPC" ? showRpcWarningDialog() : changePage(page),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            child: Row(children: [
+              Icon(icon, size: 19, color: sel ? accent : cs.onSurfaceVariant),
+              const SizedBox(width: 12),
+              Text(page,
+                  style: TextStyle(
+                    fontSize: 14.5,
+                    fontWeight: sel ? FontWeight.w600 : FontWeight.w500,
+                    color: sel ? cs.onSurface : cs.onSurfaceVariant,
+                  )),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    var theme = ThemeNotifier.of(context);
+    return Container(
+      width: 200,
+      decoration: BoxDecoration(
+        border: Border(
+            right: BorderSide(color: Theme.of(context).colorScheme.outline)),
+      ),
+      child: ListView(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        children: [
+          _navItem(context, theme, "Account", Icons.person_outline),
+          _navItem(context, theme, "Appearance", Icons.palette_outlined),
+          _navItem(context, theme, "Notifications",
+              Icons.notifications_outlined),
+          _navItem(context, theme, "Network", Icons.public),
+          _navItem(context, theme, "Audio", Icons.volume_up_outlined),
+          _navItem(context, theme, "RPC", Icons.terminal),
+          _navItem(context, theme, "Stats", Icons.bar_chart_outlined),
+          _navItem(context, theme, "Logs", Icons.list_outlined),
+          _navItem(context, theme, "Plugins", Icons.extension_outlined),
+        ],
+      ),
+    );
   }
 }
 

@@ -1486,10 +1486,10 @@ class _AreasSectionState extends State<AreasSection> {
         if (hasWidth) _widthSlider(theme, style),
         if (selected == ThemeArea.masterBackground) ...[
           SwitchListTile(
-            title: const Text("Account page card style"),
+            title: const Text("Settings page restyle"),
             subtitle: const Text(
-                "Card-based layout for the Account page (avatar camera "
-                "badge, Identity/Relay Counter/Account cards)"),
+                "Icon + highlight rows in the Settings page's left nav, "
+                "and a card-based layout for the Account page"),
             value: style.settingsShellRestyle,
             onChanged: (v) =>
                 _setStyle(theme, (s) => s.copyWith(settingsShellRestyle: v)),

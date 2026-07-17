@@ -60,6 +60,7 @@ class _AddressBookScreenState extends State<AddressBookScreen> {
     return Consumer<ConnStateModel>(
       builder: (context, connState, _) => SecondarySideMenuLayout(
         width: 200,
+        storageKey: "addressBook",
         items: addressBookBarItems(onItemChanged, tabIndex, connState.isOnline),
         content: activeTab(),
       ),
