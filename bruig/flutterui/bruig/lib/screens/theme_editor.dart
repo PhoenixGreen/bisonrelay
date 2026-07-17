@@ -51,7 +51,16 @@ ThemePreset displayPreset(ThemeNotifier theme) =>
 class PaletteColorDropdown extends StatelessWidget {
   final ThemePreset preset;
   final Color? value;
-  final ValueChanged<Color?> onChanged;
+  // onChanged's second argument is the picked palette slot's index (into
+  // preset.palette), or null for "None"/a custom-picked color -- callers
+  // that persist it (rather than just the resolved Color) get a live
+  // binding: re-resolving preset.palette[index] on every rebuild means
+  // editing that slot's own color later is picked up automatically,
+  // instead of the field being stuck on a frozen snapshot of whatever the
+  // slot's color happened to be at pick time (which stops matching, or
+  // worse, silently starts matching a *different* slot, the moment any
+  // slot's value changes).
+  final void Function(Color? color, int? index) onChanged;
   final bool allowNone;
   // noneLabel overrides the "None" entry's label -- e.g. "Default" for a
   // field whose null value doesn't mean "no color at all" but "use the
@@ -94,10 +103,10 @@ class PaletteColorDropdown extends StatelessWidget {
       // behind it, not the dialog's own chrome.
       if (!context.mounted) return;
       var picked = await pickColorFromApp(context);
-      if (picked != null) onChanged(picked);
+      if (picked != null) onChanged(picked, null);
       return;
     }
-    if (result.color != null) onChanged(result.color);
+    if (result.color != null) onChanged(result.color, null);
   }
 
   @override
@@ -142,9 +151,9 @@ class PaletteColorDropdown extends StatelessWidget {
         if (i == _customValue) {
           _pickCustomColor(context, value ?? palette.first);
         } else if (i < 0) {
-          onChanged(null);
+          onChanged(null, null);
         } else {
-          onChanged(palette[i]);
+          onChanged(palette[i], i);
         }
       },
     );
@@ -1160,7 +1169,7 @@ class _AreasSectionState extends State<AreasSection> {
     required AreaBackgroundMode mode,
     required ValueChanged<AreaBackgroundMode> onModeChanged,
     required Color? solidColor,
-    required ValueChanged<Color?> onSolidChanged,
+    required void Function(Color? color, int? index) onSolidChanged,
     required List<Color> gradientColors,
     required void Function(int index, Color? c) onGradientColorChanged,
     required Alignment gradientBegin,
@@ -1223,9 +1232,9 @@ class _AreasSectionState extends State<AreasSection> {
                           mode == AreaBackgroundMode.solid ? solidColor : null,
                       allowNone:
                           allowSolidNone || mode != AreaBackgroundMode.solid,
-                      onChanged: (c) {
+                      onChanged: (c, i) {
                         onModeChanged(AreaBackgroundMode.solid);
-                        onSolidChanged(c);
+                        onSolidChanged(c, i);
                       },
                     ),
                   ]),
@@ -1279,7 +1288,7 @@ class _AreasSectionState extends State<AreasSection> {
             PaletteColorDropdown(
               preset: preset,
               value: gradientColors.isNotEmpty ? gradientColors[0] : null,
-              onChanged: (c) => onGradientColorChanged(0, c),
+              onChanged: (c, i) => onGradientColorChanged(0, c),
             ),
           ]),
         ),
@@ -1290,7 +1299,7 @@ class _AreasSectionState extends State<AreasSection> {
           PaletteColorDropdown(
             preset: preset,
             value: gradientColors.length > 1 ? gradientColors[1] : null,
-            onChanged: (c) => onGradientColorChanged(1, c),
+            onChanged: (c, i) => onGradientColorChanged(1, c),
           ),
         ]),
         const SizedBox(height: 8),
@@ -1338,58 +1347,71 @@ class _AreasSectionState extends State<AreasSection> {
             _dragValues.clear();
           }),
         ),
-        const SizedBox(height: 12),
-        _fillEditor(
-          preset: preset,
-          sourceDir: preset.sourceDir,
-          label: "Background",
-          tokenLabel: "Default",
-          mode: style.mode,
-          onModeChanged: (m) => _setStyle(theme, (s) {
-            var next = s.copyWith(mode: m);
-            // Seed a real color immediately when switching into a mode
-            // that requires one, so the color dropdown(s) always have a
-            // valid palette-backed value to show.
-            if (m == AreaBackgroundMode.solid && next.solidColor == null) {
-              next = next.copyWith(solidColor: preset.primary);
-            }
-            if (m == AreaBackgroundMode.gradient &&
-                next.gradientColors.length < 2) {
-              next = next
-                  .copyWith(gradientColors: [preset.primary, preset.secondary]);
-            }
-            return next;
-          }),
-          solidColor: style.solidColor,
-          onSolidChanged: (c) =>
-              _setStyle(theme, (s) => s.copyWith(solidColor: c)),
-          allowSolidNone: false,
-          gradientColors: style.gradientColors,
-          onGradientColorChanged: (i, c) => _setStyle(theme, (s) {
-            var colors = List<Color>.from(s.gradientColors);
-            while (colors.length < 2) {
-              colors.add(preset.primary);
-            }
-            colors[i] = c ?? preset.primary;
-            return s.copyWith(gradientColors: colors);
-          }),
-          gradientBegin: style.gradientBegin,
-          gradientEnd: style.gradientEnd,
-          onDirectionChanged: (d) => _setStyle(theme, (s) {
-            var (b, e) = gradientDirectionAlignments(d);
-            return s.copyWith(gradientBegin: b, gradientEnd: e);
-          }),
-          imagePath: style.imagePath,
-          onPickImage: () => _pickImage(theme, preset, forBorder: false),
-          onRemoveImage: () => _setStyle(
-              theme,
-              (s) => s.copyWith(
-                  mode: AreaBackgroundMode.token, clearImagePath: true)),
-          defaultAssetPath: selected == ThemeArea.loginScreen
-              ? "assets/images/loading-bg.png"
-              : null,
-          supportsNone: true,
-        ),
+        // Sidebar's background is deliberately not user-overridable here --
+        // it always reads the "Sidebar background" color palette slot
+        // directly (see SecondarySideMenu in containers.dart), so editing
+        // it lives in the Color Palette section, not a per-area fill mode
+        // that could silently diverge from it.
+        if (selected != ThemeArea.subMenuTabBar) ...[
+          const SizedBox(height: 12),
+          _fillEditor(
+            preset: preset,
+            sourceDir: preset.sourceDir,
+            label: "Background",
+            tokenLabel: "Default",
+            mode: style.mode,
+            onModeChanged: (m) => _setStyle(theme, (s) {
+              var next = s.copyWith(mode: m);
+              // Seed a real color immediately when switching into a mode
+              // that requires one, so the color dropdown(s) always have a
+              // valid palette-backed value to show.
+              if (m == AreaBackgroundMode.solid && next.solidColor == null) {
+                next = next.copyWith(
+                    solidColor: preset.primary,
+                    solidColorIndex: PaletteSlot.primary.index);
+              }
+              if (m == AreaBackgroundMode.gradient &&
+                  next.gradientColors.length < 2) {
+                next = next.copyWith(
+                    gradientColors: [preset.primary, preset.secondary]);
+              }
+              return next;
+            }),
+            solidColor: style.resolveSolidColor(theme),
+            onSolidChanged: (c, i) => _setStyle(
+                theme,
+                (s) => s.copyWith(
+                    solidColor: c,
+                    solidColorIndex: i,
+                    clearSolidColorIndex: i == null)),
+            allowSolidNone: false,
+            gradientColors: style.gradientColors,
+            onGradientColorChanged: (i, c) => _setStyle(theme, (s) {
+              var colors = List<Color>.from(s.gradientColors);
+              while (colors.length < 2) {
+                colors.add(preset.primary);
+              }
+              colors[i] = c ?? preset.primary;
+              return s.copyWith(gradientColors: colors);
+            }),
+            gradientBegin: style.gradientBegin,
+            gradientEnd: style.gradientEnd,
+            onDirectionChanged: (d) => _setStyle(theme, (s) {
+              var (b, e) = gradientDirectionAlignments(d);
+              return s.copyWith(gradientBegin: b, gradientEnd: e);
+            }),
+            imagePath: style.imagePath,
+            onPickImage: () => _pickImage(theme, preset, forBorder: false),
+            onRemoveImage: () => _setStyle(
+                theme,
+                (s) => s.copyWith(
+                    mode: AreaBackgroundMode.token, clearImagePath: true)),
+            defaultAssetPath: selected == ThemeArea.loginScreen
+                ? "assets/images/loading-bg.png"
+                : null,
+            supportsNone: true,
+          ),
+        ],
         if (selected == ThemeArea.loginScreen &&
             style.mode == AreaBackgroundMode.token) ...[
           const SizedBox(height: 12),
@@ -1419,7 +1441,9 @@ class _AreasSectionState extends State<AreasSection> {
           onModeChanged: (m) => _setStyle(theme, (s) {
             var next = s.copyWith(borderMode: m);
             if (m == AreaBackgroundMode.solid && next.borderColor == null) {
-              next = next.copyWith(borderColor: preset.outline);
+              next = next.copyWith(
+                  borderColor: preset.outline,
+                  borderColorIndex: PaletteSlot.outline.index);
             }
             if (m == AreaBackgroundMode.gradient &&
                 next.borderGradientColors.length < 2) {
@@ -1431,9 +1455,13 @@ class _AreasSectionState extends State<AreasSection> {
             }
             return next;
           }),
-          solidColor: style.borderColor,
-          onSolidChanged: (c) =>
-              _setStyle(theme, (s) => s.copyWith(borderColor: c)),
+          solidColor: style.resolveBorderColor(theme),
+          onSolidChanged: (c, i) => _setStyle(
+              theme,
+              (s) => s.copyWith(
+                  borderColor: c,
+                  borderColorIndex: i,
+                  clearBorderColorIndex: i == null)),
           allowSolidNone: true,
           gradientColors: style.borderGradientColors,
           onGradientColorChanged: (i, c) => _setStyle(theme, (s) {
@@ -1533,24 +1561,19 @@ class _AreasSectionState extends State<AreasSection> {
                   _setStyle(theme, (s) => s.copyWith(showHoverArrow: v)),
             ),
           const SizedBox(height: 8),
+          _slider("sidebarCornerRadius", "List Rounded Corners",
+              style.sidebarCornerRadius, 0, 24,
+              (v) => _setStyle(theme, (s) => s.copyWith(sidebarCornerRadius: v))),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
-            title: const Text("Icon + highlight rows"),
+            title: const Text("Show icons"),
             subtitle: const Text(
-                "Pill-highlighted rows with a leading icon, instead of "
-                "plain rows -- applies to every sidebar in the app"),
-            value: style.sidebarIconRows,
+                "Leading icon on each row -- applies to every sidebar in "
+                "the app"),
+            value: style.sidebarShowIcons,
             onChanged: (v) =>
-                _setStyle(theme, (s) => s.copyWith(sidebarIconRows: v)),
+                _setStyle(theme, (s) => s.copyWith(sidebarShowIcons: v)),
           ),
-          if (style.sidebarIconRows)
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text("Show icons"),
-              value: style.sidebarShowIcons,
-              onChanged: (v) =>
-                  _setStyle(theme, (s) => s.copyWith(sidebarShowIcons: v)),
-            ),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
             title: const Text("Show right-edge divider"),
@@ -1567,7 +1590,7 @@ class _AreasSectionState extends State<AreasSection> {
                 value: style.sidebarDividerColor,
                 allowNone: true,
                 noneLabel: "Default",
-                onChanged: (c) => _setStyle(
+                onChanged: (c, i) => _setStyle(
                     theme,
                     (s) => c == null
                         ? s.copyWith(clearSidebarDividerColor: true)
@@ -1659,7 +1682,7 @@ class _AreasSectionState extends State<AreasSection> {
                 value: style.chatListAccentColor,
                 allowNone: true,
                 noneLabel: "Default",
-                onChanged: (c) => _setStyle(
+                onChanged: (c, i) => _setStyle(
                     theme,
                     (s) => c == null
                         ? s.copyWith(clearChatListAccentColor: true)

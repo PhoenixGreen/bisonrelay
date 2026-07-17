@@ -1802,6 +1802,11 @@ class _FeedComposerState extends State<_FeedComposer> {
 
   @override
   Widget build(BuildContext context) {
+    var theme = ThemeNotifier.of(context);
+    var relayAccent =
+        theme.activePreset?.accentContainer ?? const Color(0xFF1DFF8C);
+    var relayOnAccent =
+        theme.activePreset?.onSurface ?? const Color(0xFF04130B);
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
       decoration: const BoxDecoration(
@@ -1891,32 +1896,34 @@ class _FeedComposerState extends State<_FeedComposer> {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 26, vertical: 10),
                   decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF1DFF8C), Color(0xFF13D673)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
+                    // Was a hardcoded bright-green gradient with no palette
+                    // field behind it -- now uses the same "Accent
+                    // (Buttons/Toggles)" slot the rest of the app's
+                    // unthemed buttons/toggles were pinned to, so it
+                    // actually follows the active preset instead of always
+                    // being neon green.
+                    color: relayAccent,
                     borderRadius: BorderRadius.circular(22),
                     boxShadow: [
                       BoxShadow(
-                        color: const Color(0xFF1DFF8C).withValues(alpha: 0.30),
+                        color: relayAccent.withValues(alpha: 0.30),
                         blurRadius: 14,
                         offset: const Offset(0, 3),
                       ),
                     ],
                   ),
                   child: _posting
-                      ? const SizedBox(
+                      ? SizedBox(
                           width: 16,
                           height: 16,
                           child: CircularProgressIndicator(
-                              strokeWidth: 2, color: Color(0xFF04130B)))
-                      : const Text("Relay",
+                              strokeWidth: 2, color: relayOnAccent))
+                      : Text("Relay",
                           style: TextStyle(
                               fontSize: 14.5,
                               fontWeight: FontWeight.w800,
                               letterSpacing: 0.2,
-                              color: Color(0xFF04130B))),
+                              color: relayOnAccent)),
                 ),
               ),
             ]),

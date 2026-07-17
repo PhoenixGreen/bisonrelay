@@ -57,6 +57,20 @@ class ColorPalette {
 // pick -- users can save/build their own beyond these via the theme
 // editor's "Save current palette".
 const List<ColorPalette> builtinPalettes = [
+  // Exact values tuned live in the theme editor and exported (see
+  // Dark_Palette_T2.json in the conversation this was pulled from), not run
+  // through any re-derivation. Kept first in this list (right after the
+  // synthetic "Default Theme" card prepended in theme_editor.dart) since
+  // it's the primary dark option.
+  ColorPalette(id: "builtin-dark-theme", name: "Dark Theme", builtin: true, colors: [
+    Color(0xFF000000), // primary
+    Color(0xFF000000), // secondary (nav bg)
+    Color(0xFF262A32), // tertiary
+    Color(0xFF0B0C0C), // sidebar bg
+    Color(0xFF2F303B), // speech bg
+    Color(0xFF1D9BF0), // navAccent
+    Color(0xFFFFFFFF), // sidebarAccent
+  ]),
   // X (Twitter)'s "Lights out" dark theme -- exact values tuned live in the
   // theme editor and exported (see preset.json in the conversation this was
   // pulled from), not run through any re-derivation. Primary/secondary/

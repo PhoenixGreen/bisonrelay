@@ -452,6 +452,17 @@ final appThemes = {
           // Settings group panels / Feed post cards that read
           // colorScheme.tertiary directly).
           tertiary: const Color(0xFF232030),
+          // Matches this seed's own colorScheme.primary (0xFFC6BFFF, the
+          // tonal-derived value navAccent/accentContainer both read via
+          // ThemePreset.seedFromDark()) -- without this,
+          // primaryContainer/secondary/secondaryContainer are each left to
+          // their own independent tonal derivation from the seed, which
+          // doesn't reliably land on the same color, so Material's default
+          // Switch/FilledButton.tonal/snackbar could show yet another
+          // stray tint even on the untouched, no-custom-preset app.
+          primaryContainer: const Color(0xFFC6BFFF),
+          secondary: const Color(0xFFC6BFFF),
+          secondaryContainer: const Color(0xFFC6BFFF),
         ),
       ).copyWith(
         // Bruig theme customizations.
@@ -510,6 +521,12 @@ final appThemes = {
           // Matches ThemePreset.seedFromLight()'s tertiary -- see the dark
           // theme's comment above.
           tertiary: const Color(0xFFF5F4FA),
+          // Matches this seed's own colorScheme.primary (0xFF4F5B92) -- see
+          // the dark theme's primaryContainer/secondary/secondaryContainer
+          // comment above.
+          primaryContainer: const Color(0xFF4F5B92),
+          secondary: const Color(0xFF4F5B92),
+          secondaryContainer: const Color(0xFF4F5B92),
         ),
       ).copyWith(
         // Bruig theme customizations.

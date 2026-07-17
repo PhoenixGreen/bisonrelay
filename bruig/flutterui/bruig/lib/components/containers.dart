@@ -117,7 +117,19 @@ class SecondarySideMenuItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(child: child);
+    // type: MaterialType.transparency is required here -- Material's
+    // default type (canvas) paints an opaque fill using canvasColor when
+    // no explicit color is given, and canvasColor is pinned to Primary in
+    // ThemePreset.toAppTheme(). That silently painted every single row
+    // Primary-colored, hiding the Sidebar background underneath it
+    // entirely -- only the empty space past the last row (never wrapped in
+    // a Material at all) ever showed the real Sidebar background, which is
+    // exactly the "rows are one color, empty space below is another" split
+    // that kept getting reported. This Material's only job is to give each
+    // row's InkWell something to paint ink splashes into, so it should be
+    // as invisible as the same fix already applied to
+    // SecondarySideMenuList's own wrapping Material.
+    return Material(type: MaterialType.transparency, child: child);
   }
 }
 
@@ -172,34 +184,8 @@ class _SidebarNavRow extends StatelessWidget {
           ? (preset?.sidebarAccent ?? theme.colors.primary)
           : (preset?.sidebarText ?? theme.colors.onSurfaceVariant);
 
-      if (!style.sidebarIconRows) {
-        // ListTile's own textColor/iconColor (rather than styling the
-        // title/leading widgets directly) is the reliable way to force its
-        // colors -- ListTile computes its title's effective color from
-        // these, and a plain Text/Icon-level style can get clobbered by
-        // ListTile's own internal selected-state color logic otherwise.
-        // textColor/iconColor only apply when NOT selected, though --
-        // ListTile's selected state uses the separate selectedColor
-        // property instead, which defaults to colorScheme.primary (a
-        // Material-derived tone of the seed color, not the literal Primary
-        // swatch) when left unset. Without setting it explicitly here, the
-        // selected row silently followed Primary instead of Sidebar Accent.
-        return Material(
-          child: ListTile(
-            selected: item.selected,
-            enabled: item.enabled,
-            textColor: color,
-            iconColor: color,
-            selectedColor: color,
-            leading: item.icon != null ? Icon(item.icon) : null,
-            title: Text(item.label, style: baseStyle),
-            trailing: item.trailing,
-            onTap: item.onTap,
-          ),
-        );
-      }
-
       var showIcon = style.sidebarShowIcons && item.icon != null;
+      var radius = BorderRadius.circular(style.sidebarCornerRadius);
       return Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
         child: Material(
@@ -211,9 +197,9 @@ class _SidebarNavRow extends StatelessWidget {
           // edits while the actual Sidebar Accent color field only ever
           // affected the much less noticeable icon/text tint inside it.
           color: item.selected ? color.withValues(alpha: 0.18) : Colors.transparent,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: radius,
           child: InkWell(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: radius,
             onTap: item.enabled ? item.onTap : null,
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -251,43 +237,69 @@ class SecondarySideMenu extends StatelessWidget {
     return Consumer<ThemeNotifier>(builder: (context, theme, _) {
       var areaStyle = theme.areaStyle(ThemeArea.subMenuTabBar);
       var effectiveWidth = areaStyle.width ?? width ?? 120;
-      // width is already accounted for above regardless of this check, so
-      // it's deliberately left out here -- but padding/margin must be
-      // included alongside mode/borderMode, or setting either while mode
-      // is still Default would silently be ignored by this shortcut.
-      if (areaStyle.mode == AreaBackgroundMode.token &&
-          areaStyle.borderMode == AreaBackgroundMode.token &&
-          areaStyle.padding == 0 &&
-          areaStyle.margin == 0) {
+      // Deliberately not driven by the generic per-area Background fill
+      // mode (Token/Solid/Gradient/Image) every other area uses -- the
+      // Sidebar's background always reads the "Sidebar background" color
+      // palette slot directly, live, so it can never silently diverge from
+      // what the palette editor shows (a stored solidColor snapshot
+      // wouldn't update when the palette color is edited later). Border/
+      // padding/margin still come from AreaStyle as usual, just with a
+      // flat-color-only border (no gradient/image border support here,
+      // matching what the "unmodified" case already only ever supported).
+      var background =
+          theme.activePreset?.sidebarBackground ?? theme.colors.surface;
+      var liveBorderColor = areaStyle.resolveBorderColor(theme);
+      var hasCustomBorder = areaStyle.borderMode != AreaBackgroundMode.token &&
+              liveBorderColor != null &&
+              areaStyle.borderWidth > 0 ||
+          areaStyle.padding != 0 ||
+          areaStyle.margin != 0;
+      if (!hasCustomBorder) {
         // Unmodified: reproduce the original plain divider exactly.
         return Container(
           margin: const EdgeInsets.all(1),
           width: effectiveWidth,
-          decoration: areaStyle.sidebarShowRightDivider
-              ? BoxDecoration(
-                  border: Border(
-                      right: BorderSide(
-                          // "Default" should look the same as explicitly
-                          // picking Outline (Borders) from the palette --
-                          // extraColors.sidebarDivider is an unrelated,
-                          // hardcoded fallback (black for every custom
-                          // preset), not the preset's own outline swatch.
-                          // Built-in (non-custom) themes have no preset to
-                          // read, so they keep their original divider color.
-                          color: areaStyle.sidebarDividerColor ??
-                              theme.activePreset?.outline ??
-                              theme.extraColors.sidebarDivider,
-                          width: areaStyle.sidebarDividerWidth)))
-              : null,
+          decoration: BoxDecoration(
+            color: background,
+            border: areaStyle.sidebarShowRightDivider
+                ? Border(
+                    right: BorderSide(
+                        // "Default" should look the same as explicitly
+                        // picking Outline (Borders) from the palette --
+                        // extraColors.sidebarDivider is an unrelated,
+                        // hardcoded fallback (black for every custom
+                        // preset), not the preset's own outline swatch.
+                        // Built-in (non-custom) themes have no preset to
+                        // read, so they keep their original divider color.
+                        color: areaStyle.sidebarDividerColor ??
+                            theme.activePreset?.outline ??
+                            theme.extraColors.sidebarDivider,
+                        width: areaStyle.sidebarDividerWidth))
+                : null,
+          ),
           child: child,
         );
       }
-      // Customized: use the full background+border (solid/gradient/image)
-      // treatment, not just a flat-color border.
+      // Customized border/padding/margin: still an explicit sidebarBackground
+      // fill, just with the area's own border/spacing treatment on top.
       return SizedBox(
         width: effectiveWidth,
-        child: theme.areaContainer(ThemeArea.subMenuTabBar, SurfaceColor.surface,
-            child: child ?? const Empty()),
+        child: Container(
+          margin: EdgeInsets.all(areaStyle.margin),
+          padding: EdgeInsets.all(areaStyle.padding),
+          decoration: BoxDecoration(
+            color: background,
+            border: (areaStyle.borderMode != AreaBackgroundMode.token &&
+                    liveBorderColor != null &&
+                    areaStyle.borderWidth > 0)
+                ? Border.all(color: liveBorderColor, width: areaStyle.borderWidth)
+                : null,
+            borderRadius: areaStyle.borderRadius > 0
+                ? BorderRadius.circular(areaStyle.borderRadius)
+                : null,
+          ),
+          child: child,
+        ),
       );
     });
   }
@@ -557,7 +569,7 @@ class _SecondarySideMenuLayoutState extends State<SecondarySideMenuLayout> {
 
       if (style == SubMenuStyle.autoHideOnDetail && widget.isDetail) {
         if (_forceShowInDetail) {
-          return Row(children: [
+          return Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             _menuList(widget.width),
             _toggleHandle(theme,
                 collapsed: false,
@@ -652,7 +664,7 @@ class _SecondarySideMenuLayoutState extends State<SecondarySideMenuLayout> {
       }
 
       if (style == SubMenuStyle.manualToggle) {
-        return Row(children: [
+        return Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           if (!_manuallyCollapsed) _menuList(widget.width),
           _toggleHandle(theme,
               collapsed: _manuallyCollapsed,
@@ -663,7 +675,7 @@ class _SecondarySideMenuLayoutState extends State<SecondarySideMenuLayout> {
       }
 
       // alwaysVisible (default).
-      return Row(children: [
+      return Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         _menuList(widget.width),
         Expanded(child: widget.content),
       ]);

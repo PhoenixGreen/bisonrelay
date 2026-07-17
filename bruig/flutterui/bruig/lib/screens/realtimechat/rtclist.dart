@@ -485,6 +485,13 @@ class _RTDTIntro extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    var theme = ThemeNotifier.of(context);
+    // Was a hardcoded bright-green gradient with no palette field behind
+    // it -- now uses the same "Accent (Buttons/Toggles)" slot the rest of
+    // the app's unthemed buttons/toggles were pinned to.
+    var accent =
+        theme.activePreset?.accentContainer ?? const Color(0xFF1DFF8C);
+    var onAccent = theme.activePreset?.onSurface ?? const Color(0xFF04130B);
     return Center(
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
@@ -496,20 +503,15 @@ class _RTDTIntro extends StatelessWidget {
               height: 60,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF13D673), Color(0xFF1DFF8C)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
+                color: accent,
                 boxShadow: [
                   BoxShadow(
-                      color: const Color(0xFF1DFF8C).withValues(alpha: 0.30),
+                      color: accent.withValues(alpha: 0.30),
                       blurRadius: 20,
                       spreadRadius: 1),
                 ],
               ),
-              child: const Icon(Icons.graphic_eq,
-                  size: 29, color: Color(0xFF04130B)),
+              child: Icon(Icons.graphic_eq, size: 29, color: onAccent),
             ),
             const SizedBox(height: 16),
             const Text("Realtime Chat",
@@ -562,17 +564,17 @@ class _RTDTIntro extends StatelessWidget {
               child: ElevatedButton.icon(
                 onPressed: () => Navigator.of(context, rootNavigator: true)
                     .pushNamed(CreateRealtimeChatScreen.routeName),
-                icon: const Icon(Icons.add, size: 18, color: Color(0xFF04130B)),
+                icon: Icon(Icons.add, size: 18, color: onAccent),
                 label: Text(
                     hasSessions
                         ? "Create a new Realtime Chat"
                         : "Create your first Realtime Chat",
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 13.5,
                         fontWeight: FontWeight.w700,
-                        color: Color(0xFF04130B))),
+                        color: onAccent)),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF1DFF8C),
+                  backgroundColor: accent,
                   padding: const EdgeInsets.symmetric(vertical: 13),
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(11)),
