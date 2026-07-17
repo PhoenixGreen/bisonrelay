@@ -2,11 +2,12 @@ import 'package:flutter/material.dart';
 
 // ColorPalette is a small, named, standalone set of colors -- distinct from
 // a full ThemePreset (which also carries area styles, menu customization,
-// etc). Applying one overwrites the active preset's 5 "vivid" palette
+// etc). Applying one overwrites the active preset's 7 "vivid" palette
 // roles (see kVividPaletteSlots in theme_preset.dart: primary, secondary,
-// tertiary, success, accent) with this palette's `colors`, in that order.
-// error/surface/onSurface/onAccent/outline are deliberately left alone --
-// those are functional/neutral roles that need to stay appropriate for the
+// tertiary, sidebarBackground, speechBackground, navAccent, sidebarAccent)
+// with this palette's `colors`, in that order. fourth/onSurface/navText/
+// sidebarText/outline/error/success are deliberately left alone -- those
+// are functional/neutral roles that need to stay appropriate for the
 // active preset's own light/dark brightness, not baked into a portable
 // palette.
 class ColorPalette {
@@ -40,94 +41,138 @@ class ColorPalette {
       );
 }
 
-// Each entry's 5 colors are ordered [primary, secondary, tertiary, success,
-// accent] -- primary is used as ColorScheme.fromSeed's seed color when
-// applied, so it's chosen as the palette's most saturated, mid-lightness
-// hue (the one that seeds an attractive Material tonal palette), not just
-// whichever color came first left-to-right in the reference swatches.
+// Each entry's 7 colors are ordered [primary, secondary, tertiary,
+// sidebarBackground, speechBackground, navAccent, sidebarAccent], applied
+// *exactly as stored* (see theme_editor.dart's _applyPalette) -- no
+// brightness-aware re-derivation, no hue rotation.
+// Each entry is a self-contained, already-tuned look: pick the colors as
+// they should actually render, not as a "hue hint" for a formula to
+// reinterpret. Two entries can legitimately reuse the same swatch across
+// multiple slots (e.g. a deliberately flat, uniform dark theme) -- that's
+// the author's choice, not something to compensate for algorithmically.
+//
+// Curated to exactly 10, each modeled on a real, recognizable app's actual
+// brand palette (rather than an arbitrary named hue) so every entry reads
+// as a deliberate, professional design instead of a generic color-wheel
+// pick -- users can save/build their own beyond these via the theme
+// editor's "Save current palette".
 const List<ColorPalette> builtinPalettes = [
-  ColorPalette(id: "builtin-meadow-green", name: "Meadow Green", builtin: true, colors: [
-    Color(0xFF4A8FA8), // primary: mid blue-teal
-    Color(0xFF5FAE8C), // secondary: teal-green
-    Color(0xFF8FCB7E), // tertiary: green
-    Color(0xFF2C5F82), // success: dark blue
-    Color(0xFFD4E88A), // accent: pale yellow-green
+  // X (Twitter)'s "Lights out" dark theme -- exact values tuned live in the
+  // theme editor and exported (see preset.json in the conversation this was
+  // pulled from), not run through any re-derivation. Primary/secondary/
+  // sidebar background are deliberately identical, matching X's genuinely
+  // flat black chrome; X blue and white carry the accents.
+  ColorPalette(id: "builtin-x-dark", name: "X (Twitter) Dark", builtin: true, colors: [
+    Color(0xFF121417), // primary
+    Color(0xFF121417), // secondary (nav bg) -- same as primary, deliberately flat
+    Color(0xFF262A32), // tertiary
+    Color(0xFF121417), // sidebar bg -- same as primary, deliberately flat
+    Color(0xFF2F303B), // speech bg
+    Color(0xFF1D9BF0), // navAccent: X blue
+    Color(0xFFFFFFFF), // sidebarAccent: white (X's icon/text color)
   ]),
-  ColorPalette(id: "builtin-fiery-palette", name: "Fiery Palette", builtin: true, colors: [
-    Color(0xFFC86A28), // primary: burnt orange
-    Color(0xFF8C1F28), // secondary: dark red
-    Color(0xFFE8912D), // tertiary: orange
-    Color(0xFF1F4E5F), // success: dark teal
-    Color(0xFF4A1942), // accent: deep plum
+  // VS Code's default Dark+ theme: near-neutral blue-grey panels (editor/
+  // sidebar/activity bar/status bar are each a subtly different grey) with
+  // its signature status-bar blue as the accent.
+  ColorPalette(id: "builtin-vscode-dark", name: "VS Code", builtin: true, colors: [
+    Color(0xFF1E1F22), // primary hue: editor background, faint blue-grey
+    Color(0xFF2A2D31), // secondary (nav bg) hue: activity bar
+    Color(0xFF33363B), // tertiary hue
+    Color(0xFF232529), // sidebar bg hue: explorer panel
+    Color(0xFF2C2F33), // speech bg hue
+    Color(0xFF007ACC), // navAccent: VS Code status-bar blue
+    Color(0xFF3794FF), // sidebarAccent: VS Code active-item blue
   ]),
-  ColorPalette(id: "builtin-ocean-sunset", name: "Ocean Sunset", builtin: true, colors: [
-    Color(0xFF1F4E5C), // primary: teal
-    Color(0xFFD4A055), // secondary: gold
-    Color(0xFFA8482E), // tertiary: rust
-    Color(0xFF8C2A2A), // success: dark red
-    Color(0xFF0D1B2A), // accent: dark navy
+  // Facebook: a genuine tonal ramp of brand blue -- Secondary deliberately
+  // darker/deeper than the rest so the nav rail reads as clearly recessed,
+  // Speech deliberately lighter so the chat area reads as clearly raised.
+  ColorPalette(id: "builtin-facebook", name: "Facebook", builtin: true, colors: [
+    Color(0xFF1E5FBF), // primary hue
+    Color(0xFF0B2D5C), // secondary (nav bg) hue: deep FB blue
+    Color(0xFF5B9BF2), // tertiary hue: light FB blue
+    Color(0xFF1650A3), // sidebar bg hue
+    Color(0xFF7FB3FF), // speech bg hue: brightest FB blue
+    Color(0xFF1877F2), // navAccent: Facebook blue
+    Color(0xFF42A5F5), // sidebarAccent: light Facebook blue
   ]),
-  ColorPalette(id: "builtin-summer-dream", name: "Summer Dream", builtin: true, colors: [
-    Color(0xFF3E7C97), // primary: steel blue
-    Color(0xFF4FA8AD), // secondary: teal
-    Color(0xFFE07856), // tertiary: coral
-    Color(0xFFF4C9A0), // success: peach
-    Color(0xFFFBF3C9), // accent: cream
+  // Snapchat: near-black panels (a tight cluster, like its real all-black
+  // chrome) with just a faint gold-yellow undertone, so the unmistakable
+  // pure yellow accent is what actually carries the brand.
+  ColorPalette(id: "builtin-snapchat", name: "Snapchat", builtin: true, colors: [
+    Color(0xFF24200A), // primary hue
+    Color(0xFF2F2B0E), // secondary (nav bg) hue
+    Color(0xFF433D14), // tertiary hue
+    Color(0xFF393411), // sidebar bg hue
+    Color(0xFF3D3712), // speech bg hue
+    Color(0xFFFFFC00), // navAccent: Snapchat yellow
+    Color(0xFFFFD500), // sidebarAccent: deeper gold-yellow
   ]),
-  ColorPalette(id: "builtin-cool-waters", name: "Cool Waters", builtin: true, colors: [
-    Color(0xFF3E8E90), // primary: teal
-    Color(0xFF1F4E5C), // secondary: dark teal
-    Color(0xFF6FC29A), // tertiary: green
-    Color(0xFF97DDA0), // success: light green
-    Color(0xFFCDF3CB), // accent: pale green
+  // Instagram: a magenta/pink tonal ramp (the gradient's darkest stop) with
+  // its orange accent providing the complementary pop from the other end
+  // of the real gradient.
+  ColorPalette(id: "builtin-instagram", name: "Instagram", builtin: true, colors: [
+    Color(0xFFA6306B), // primary hue
+    Color(0xFF571938), // secondary (nav bg) hue
+    Color(0xFFD3699E), // tertiary hue
+    Color(0xFF962C61), // sidebar bg hue
+    Color(0xFFDD88B2), // speech bg hue
+    Color(0xFFE1306C), // navAccent: Instagram pink
+    Color(0xFFF77737), // sidebarAccent: Instagram orange
   ]),
-  ColorPalette(id: "builtin-soft-sand", name: "Soft Sand", builtin: true, colors: [
-    Color(0xFFB79E88), // primary: tan
-    Color(0xFF8C7B68), // secondary: dark tan
-    Color(0xFFD9CFC1), // tertiary: beige
-    Color(0xFFC9C4BE), // success: gray
-    Color(0xFFEDE6DD), // accent: cream
+  // WhatsApp: a green tonal ramp with its real two-tone brand accent --
+  // bright action green paired with the darker teal-green used in its own
+  // header/nav chrome.
+  ColorPalette(id: "builtin-whatsapp", name: "WhatsApp", builtin: true, colors: [
+    Color(0xFF3B9B6E), // primary hue
+    Color(0xFF1F513A), // secondary (nav bg) hue
+    Color(0xFF72CAA1), // tertiary hue
+    Color(0xFF358D64), // sidebar bg hue
+    Color(0xFF90D5B5), // speech bg hue
+    Color(0xFF25D366), // navAccent: WhatsApp green
+    Color(0xFF128C7E), // sidebarAccent: WhatsApp teal
   ]),
-  ColorPalette(id: "builtin-midnight-sky", name: "Midnight Sky", builtin: true, colors: [
-    Color(0xFF1E5AA8), // primary: blue
-    Color(0xFF123A75), // secondary: navy
-    Color(0xFFF0B429), // tertiary: gold
-    Color(0xFF0B1D42), // success: dark navy
-    Color(0xFFF5D949), // accent: yellow
+  // Reddit: a burnt-orange tonal ramp with the real upvote-orange and
+  // comment-blue accent pairing from Reddit's own UI.
+  ColorPalette(id: "builtin-reddit", name: "Reddit", builtin: true, colors: [
+    Color(0xFF9B583B), // primary hue
+    Color(0xFF512E1F), // secondary (nav bg) hue
+    Color(0xFFCA8D72), // tertiary hue
+    Color(0xFF8D4F35), // sidebar bg hue
+    Color(0xFFD5A590), // speech bg hue
+    Color(0xFFFF4500), // navAccent: Reddit orangered
+    Color(0xFF0079D3), // sidebarAccent: Reddit blue
   ]),
-  ColorPalette(id: "builtin-watermelon-sorbet", name: "Watermelon Sorbet", builtin: true, colors: [
-    Color(0xFFE1587A), // primary: pink
-    Color(0xFF4A8FA3), // secondary: blue
-    Color(0xFF6FD9A8), // tertiary: mint
-    Color(0xFF1B3B4B), // success: dark teal
-    Color(0xFFF5CE85), // accent: peach
+  // Matrix/Element: a teal-green tonal ramp with Element's link blue as the
+  // secondary accent.
+  ColorPalette(id: "builtin-matrix", name: "Matrix", builtin: true, colors: [
+    Color(0xFF3B9B83), // primary hue
+    Color(0xFF1F5145), // secondary (nav bg) hue
+    Color(0xFF72CAB4), // tertiary hue
+    Color(0xFF358D77), // sidebar bg hue
+    Color(0xFF90D5C4), // speech bg hue
+    Color(0xFF0DBD8B), // navAccent: Matrix/Element green
+    Color(0xFF368BD6), // sidebarAccent: Element blue
   ]),
-  ColorPalette(id: "builtin-vibrant-color-fiesta", name: "Vibrant Color Fiesta", builtin: true, colors: [
-    Color(0xFF4C7CF0), // primary: blue
-    Color(0xFF8A3FE0), // secondary: purple
-    Color(0xFFE0247E), // tertiary: pink
-    Color(0xFFE8631E), // success: orange
-    Color(0xFFF0A830), // accent: gold
+  // Gmail: a red tonal ramp with Google's own red/blue duo -- red for the
+  // compose/primary action, blue for links and selected states.
+  ColorPalette(id: "builtin-gmail", name: "Gmail", builtin: true, colors: [
+    Color(0xFF9B433B), // primary hue
+    Color(0xFF51231F), // secondary (nav bg) hue
+    Color(0xFFCA7A72), // tertiary hue
+    Color(0xFF8D3D35), // sidebar bg hue
+    Color(0xFFD59690), // speech bg hue
+    Color(0xFFEA4335), // navAccent: Google red
+    Color(0xFF4285F4), // sidebarAccent: Google blue
   ]),
-  ColorPalette(id: "builtin-dusty-rose", name: "Dusty Rose", builtin: true, colors: [
-    Color(0xFFB5A3AC), // primary: mauve
-    Color(0xFF7A6670), // secondary: dark mauve
-    Color(0xFFC7CEE3), // tertiary: pale blue
-    Color(0xFFE0D3D9), // success: pale pink
-    Color(0xFFE8E3F0), // accent: lavender-white
-  ]),
-  ColorPalette(id: "builtin-autumn-sage", name: "Autumn Sage", builtin: true, colors: [
-    Color(0xFFC87456), // primary: terracotta
-    Color(0xFF8FB89A), // secondary: sage
-    Color(0xFFE0C283), // tertiary: tan
-    Color(0xFF2E2E4E), // success: dark navy
-    Color(0xFFF0EEDD), // accent: cream
-  ]),
-  ColorPalette(id: "builtin-slate-night", name: "Slate Night", builtin: true, colors: [
-    Color(0xFF3D5372), // primary: slate blue
-    Color(0xFF16213A), // secondary: navy
-    Color(0xFF7891A8), // tertiary: gray-blue
-    Color(0xFF0A0E1A), // success: near-black
-    Color(0xFFDCDEE0), // accent: light gray
+  // YouTube: near-black panels (a tight cluster, like its real dark-mode
+  // chrome) with just a faint red undertone, pure brand red for the accent.
+  ColorPalette(id: "builtin-youtube", name: "YouTube", builtin: true, colors: [
+    Color(0xFF220B0C), // primary hue
+    Color(0xFF2E0F10), // secondary (nav bg) hue
+    Color(0xFF411617), // tertiary hue
+    Color(0xFF371214), // sidebar bg hue
+    Color(0xFF3B1415), // speech bg hue
+    Color(0xFFFF0000), // navAccent: YouTube red
+    Color(0xFFFF4444), // sidebarAccent: lighter YouTube red
   ]),
 ];

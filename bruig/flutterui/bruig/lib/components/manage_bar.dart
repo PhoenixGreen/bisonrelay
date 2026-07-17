@@ -1,21 +1,25 @@
-import 'package:bruig/components/text.dart';
+import 'package:bruig/components/containers.dart';
 import 'package:flutter/material.dart';
 
 // manageContentBarItems returns the Manage Content submenu's tabs, for use
 // with SecondarySideMenuLayout (see containers.dart).
-List<ListTile> manageContentBarItems(Function tabChange, int selectedIndex) {
+List<SidebarNavItem> manageContentBarItems(
+    Function tabChange, int selectedIndex) {
   return [
-    ListTile(
+    SidebarNavItem(
+        icon: Icons.add_circle_outline,
         selected: selectedIndex == 0,
-        title: const Txt.S("Add"),
+        label: "Add",
         onTap: () => tabChange(0)),
-    ListTile(
+    SidebarNavItem(
+        icon: Icons.folder_shared_outlined,
         selected: selectedIndex == 1,
-        title: const Txt.S("Shared"),
+        label: "Shared",
         onTap: () => tabChange(1)),
-    ListTile(
+    SidebarNavItem(
+        icon: Icons.download_outlined,
         selected: selectedIndex == 2,
-        title: const Txt.S("Downloads"),
+        label: "Downloads",
         onTap: () => tabChange(2)),
   ];
 }

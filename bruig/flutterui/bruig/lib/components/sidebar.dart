@@ -135,12 +135,23 @@ class _SidebarState extends State<Sidebar> with WindowListener {
 
   @override
   Widget build(BuildContext context) {
-    var theme = Theme.of(context);
-    var selectedColor = theme.highlightColor;
-
     return Consumer2<ClientModel, ThemeNotifier>(
         builder: (context, client, theme, child) {
       var navStyle = theme.areaStyle(ThemeArea.navBar);
+      // Computed once and reused both for SidebarXTheme's iconTheme/
+      // selectedIconTheme (which only take effect for the package's own
+      // default icon rendering, unused here) and for the iconBuilder below
+      // (used instead, since it's the only way to also show the unread
+      // dot) -- iconBuilder bypasses SidebarXTheme's icon theming entirely,
+      // so this app has to apply the selected/unselected color itself.
+      // Nav text/accent colors are top-level palette slots now (not
+      // per-area overrides), since there's only ever one nav bar per theme.
+      var navUnselectedIconColor =
+          theme.activePreset?.navText ?? theme.colors.onSurfaceVariant;
+      var navSelectedIconColor =
+          theme.activePreset?.navAccent ?? theme.colors.primary;
+      var navBackground =
+          theme.activePreset?.secondary ?? theme.colors.surfaceContainerLow;
       // A border (any mode) makes Container reserve extra inset for it on
       // top of the existing padding, shrinking the content area -- the
       // collapsed sidebar's icon layout already has ~zero slack at its
@@ -166,20 +177,32 @@ class _SidebarState extends State<Sidebar> with WindowListener {
               decoration: theme.areaStyle(ThemeArea.navBar).mode ==
                       AreaBackgroundMode.token
                   ? BoxDecoration(
-                      borderRadius: BorderRadius.circular(3),
-                      color: theme.colors.surfaceContainerLow,
+                      // No borderRadius here: a Border with only one side
+                      // set (the other 3 default to BorderSide.none, a
+                      // different color/width) can never satisfy Flutter's
+                      // "uniform border" requirement for combining with a
+                      // borderRadius -- Border.paint asserts on this
+                      // combination unconditionally, regardless of which
+                      // colors are actually used.
+                      color: navBackground,
                       border: Border(
                           right: BorderSide(
                               color: theme.extraColors.sidebarDivider)),
                     )
                   : theme.areaDecoration(
                       ThemeArea.navBar, SurfaceColor.surfaceContainerLow),
-              hoverTextStyle:
-                  theme.textStyleFor(context, null, TextColor.onSurfaceVariant),
-              textStyle:
-                  theme.textStyleFor(context, null, TextColor.onSurfaceVariant),
-              selectedTextStyle:
-                  theme.textStyleFor(context, null, TextColor.onSurface),
+              hoverTextStyle: theme
+                  .textStyleFor(context, null, TextColor.onSurfaceVariant)
+                  ?.copyWith(color: navUnselectedIconColor),
+              textStyle: theme
+                  .textStyleFor(context, null, TextColor.onSurfaceVariant)
+                  ?.copyWith(color: navUnselectedIconColor),
+              // Shares the same accent (and fallback chain) as
+              // selectedIconTheme below -- "Nav accent color" is one slot
+              // driving both the label and the icon, not just the icon.
+              selectedTextStyle: theme
+                  .textStyleFor(context, null, TextColor.onSurface)
+                  ?.copyWith(color: navSelectedIconColor),
               itemPadding:
                   const EdgeInsets.only(top: 7, bottom: 6, left: 12, right: 12),
               itemMargin:
@@ -195,16 +218,18 @@ class _SidebarState extends State<Sidebar> with WindowListener {
               ),
               selectedItemDecoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(5),
-                color: theme.surfaceColor(SurfaceColor.surfaceContainerHighest),
+                // A translucent tint of the same navAccent used for the
+                // selected icon/text above -- previously this read
+                // theme.surfaceColor(SurfaceColor.surfaceContainerHighest),
+                // a Material tone derived from Primary via
+                // ColorScheme.fromSeed, so this highlight pill silently
+                // followed Primary edits instead of the Nav accent color
+                // field.
+                color: navSelectedIconColor.withValues(alpha: 0.18),
               ),
-              iconTheme: IconThemeData(
-                color: theme.colors.onSurfaceVariant,
-                size: 21,
-              ),
-              selectedIconTheme: IconThemeData(
-                color: selectedColor,
-                size: 21,
-              ),
+              iconTheme: IconThemeData(color: navUnselectedIconColor, size: 21),
+              selectedIconTheme:
+                  IconThemeData(color: navSelectedIconColor, size: 21),
             ),
             extendedTheme: SidebarXTheme(width: 200 + borderInset),
             // Intended for when the header is set to HeaderPosition.content or
@@ -255,23 +280,39 @@ class _SidebarState extends State<Sidebar> with WindowListener {
                 .where((m) => m.hiddenFromSideBar == false)
                 .map((e) => SidebarXItem(
                       label: e.label,
-                      iconBuilder: (selected, hovered) =>
-                          (e.routeName == ChatsScreen.routeName &&
-                                      hasUnreadMsgs) ||
-                                  (e.routeName == FeedScreen.routeName &&
-                                      feed.hasUnreadPostsComments)
-                              ? Stack(children: [
-                                  Container(
-                                      padding: const EdgeInsets.all(3),
-                                      child: e.icon ?? const Empty()),
-                                  const Positioned(
-                                      top: 1,
-                                      right: 1,
-                                      child: RedDotIndicator()),
-                                ])
-                              : Container(
-                                  padding: const EdgeInsets.all(3),
-                                  child: e.icon),
+                      // Always the same Stack/icon element regardless of
+                      // unread state -- only the dot's visibility toggles.
+                      // Branching between a Stack and a bare Container here
+                      // swaps the icon's element (an SvgPicture for most
+                      // menu entries) out and back in on every unread-state
+                      // change, which can trip flutter_svg's
+                      // didChangeDependencies() into calling setState()
+                      // synchronously mid-build on a cache hit ("setState()
+                      // or markNeedsBuild() called during build").
+                      // A custom iconBuilder bypasses SidebarXTheme's own
+                      // iconTheme/selectedIconTheme entirely (the package
+                      // only applies those when rendering item.icon itself,
+                      // via its built-in _Icon widget) -- so the
+                      // selected/unselected color has to be applied here,
+                      // via IconTheme.merge, for it to have any effect at
+                      // all on e.icon (a SidebarSvgIcon).
+                      iconBuilder: (selected, hovered) => IconTheme.merge(
+                        data: IconThemeData(
+                            color: selected
+                                ? navSelectedIconColor
+                                : navUnselectedIconColor),
+                        child: Stack(children: [
+                          Container(
+                              padding: const EdgeInsets.all(3),
+                              child: e.icon ?? const Empty()),
+                          if ((e.routeName == ChatsScreen.routeName &&
+                                  hasUnreadMsgs) ||
+                              (e.routeName == FeedScreen.routeName &&
+                                  feed.hasUnreadPostsComments))
+                            const Positioned(
+                                top: 1, right: 1, child: RedDotIndicator()),
+                        ]),
+                      ),
                       onTap: () => switchScreen(e.routeName),
                     ))
                 .toList(),

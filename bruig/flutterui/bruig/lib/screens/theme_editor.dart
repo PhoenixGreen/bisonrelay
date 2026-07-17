@@ -1,8 +1,10 @@
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:bruig/components/eyedropper.dart';
 import 'package:bruig/components/snackbars.dart';
 import 'package:bruig/components/text.dart';
+import 'package:bruig/models/client.dart';
 import 'package:bruig/models/menus.dart';
 import 'package:bruig/models/palette_library.dart';
 import 'package:bruig/models/theme_preset.dart';
@@ -43,7 +45,7 @@ ThemePreset displayPreset(ThemeNotifier theme) =>
         ? ThemePreset.seedFromDark()
         : ThemePreset.seedFromLight());
 
-// PaletteColorDropdown lets the user pick one of the active palette's 10
+// PaletteColorDropdown lets the user pick one of the active palette's 11
 // colors (plus, optionally, "None") for a single field -- no popup dialog,
 // just a standard dropdown menu.
 class PaletteColorDropdown extends StatelessWidget {
@@ -51,11 +53,17 @@ class PaletteColorDropdown extends StatelessWidget {
   final Color? value;
   final ValueChanged<Color?> onChanged;
   final bool allowNone;
+  // noneLabel overrides the "None" entry's label -- e.g. "Default" for a
+  // field whose null value doesn't mean "no color at all" but "use the
+  // built-in computed default" (unlike, say, an accent color that's truly
+  // absent when unset).
+  final String noneLabel;
   const PaletteColorDropdown(
       {required this.preset,
       required this.value,
       required this.onChanged,
       this.allowNone = false,
+      this.noneLabel = "None",
       super.key});
 
   Widget _swatch(Color color) => Container(
@@ -68,23 +76,47 @@ class PaletteColorDropdown extends StatelessWidget {
         ),
       );
 
+  // -2 is a sentinel dropdown value for "Custom color..." -- distinct from
+  // -1 (None, only present when allowNone) and from any real palette index
+  // (>= 0). Picking it opens a full color picker so a field isn't limited
+  // to the fixed palette slots.
+  static const _customValue = -2;
+
+  Future<void> _pickCustomColor(BuildContext context, Color initial) async {
+    var result = await showDialog<_ColorPickResult>(
+      context: context,
+      builder: (context) => _CustomColorDialog(initial: initial),
+    );
+    if (result == null) return;
+    if (result.useEyedropper) {
+      // The dialog is already closed at this point (see _CustomColorDialog's
+      // eyedropper button), so the capture below sees whatever's actually
+      // behind it, not the dialog's own chrome.
+      if (!context.mounted) return;
+      var picked = await pickColorFromApp(context);
+      if (picked != null) onChanged(picked);
+      return;
+    }
+    if (result.color != null) onChanged(result.color);
+  }
+
   @override
   Widget build(BuildContext context) {
     var palette = preset.palette;
     var matchIdx = value == null
         ? -1
         : palette.indexWhere((c) => c.toARGB32() == value!.toARGB32());
-    // -1 is only a valid dropdown value when a "None" item is present (i.e.
-    // allowNone). Otherwise (e.g. value is an off-palette color, or null on
-    // a field that's supposed to always carry a real color) fall back to
-    // the first palette entry rather than passing an unmatched value to
-    // DropdownButton, which asserts on that.
-    if (matchIdx < 0 && !allowNone) matchIdx = 0;
+    // A value that doesn't match any current palette slot is a previously
+    // picked custom color -- show it as such instead of silently falling
+    // back to the first palette entry.
+    var isCustom = value != null && matchIdx < 0;
+    if (matchIdx < 0 && !allowNone && !isCustom) matchIdx = 0;
+    if (isCustom) matchIdx = _customValue;
 
     return DropdownButton<int>(
       value: matchIdx,
       items: [
-        if (allowNone) const DropdownMenuItem(value: -1, child: Text("None")),
+        if (allowNone) DropdownMenuItem(value: -1, child: Text(noneLabel)),
         for (var i = 0; i < PaletteSlot.values.length; i++)
           DropdownMenuItem(
             value: i,
@@ -94,14 +126,89 @@ class PaletteColorDropdown extends StatelessWidget {
               Text(paletteSlotLabel(PaletteSlot.values[i])),
             ]),
           ),
+        DropdownMenuItem(
+          value: _customValue,
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            isCustom
+                ? _swatch(value!)
+                : const Icon(Icons.palette_outlined, size: 18),
+            const SizedBox(width: 8),
+            const Text("Custom color..."),
+          ]),
+        ),
       ],
       onChanged: (i) {
-        if (i == null || i < 0) {
+        if (i == null) return;
+        if (i == _customValue) {
+          _pickCustomColor(context, value ?? palette.first);
+        } else if (i < 0) {
           onChanged(null);
         } else {
           onChanged(palette[i]);
         }
       },
+    );
+  }
+}
+
+// _ColorPickResult is _CustomColorDialog's pop() value: either a committed
+// color (Select) or a request to hand off to the in-app eyedropper (which
+// needs the dialog closed first so it can capture what's behind it).
+class _ColorPickResult {
+  final Color? color;
+  final bool useEyedropper;
+  const _ColorPickResult.color(this.color) : useEyedropper = false;
+  const _ColorPickResult.eyedropper()
+      : color = null,
+        useEyedropper = true;
+}
+
+// _CustomColorDialog lets the user pick an arbitrary color (not limited to
+// the active preset's fixed palette slots) for a single AreaStyle field,
+// via PaletteColorDropdown's "Custom color..." entry.
+class _CustomColorDialog extends StatefulWidget {
+  final Color initial;
+  const _CustomColorDialog({required this.initial});
+
+  @override
+  State<_CustomColorDialog> createState() => _CustomColorDialogState();
+}
+
+class _CustomColorDialogState extends State<_CustomColorDialog> {
+  late Color _color = widget.initial;
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Row(children: [
+        const Expanded(child: Text("Custom color")),
+        IconButton(
+          icon: const Icon(Icons.colorize),
+          tooltip: "Pick color from app (eyedropper)",
+          onPressed: () => Navigator.of(context)
+              .pop(const _ColorPickResult.eyedropper()),
+        ),
+      ]),
+      content: SingleChildScrollView(
+        child: ColorPicker(
+          pickerColor: _color,
+          enableAlpha: true,
+          displayThumbColor: true,
+          hexInputBar: true,
+          onColorChanged: (c) => setState(() => _color = c),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text("Cancel"),
+        ),
+        TextButton(
+          onPressed: () =>
+              Navigator.of(context).pop(_ColorPickResult.color(_color)),
+          child: const Text("Select"),
+        ),
+      ],
     );
   }
 }
@@ -329,7 +436,7 @@ void resetToDefaultTheme(ThemeNotifier theme, MainMenuModel mainMenu) {
 }
 
 // PaletteSection is an embeddable (non-routed) editor for the active
-// preset's 10-color palette. Tapping a color expands an inline picker in
+// preset's 11-color palette. Tapping a color expands an inline picker in
 // place -- no modal popups -- committed via a "Done" button so a single
 // disk write happens per edit instead of one per drag frame.
 // PaletteSwatchStrip renders a row of colors as a thin horizontal bar --
@@ -367,22 +474,21 @@ class PaletteExpansionTile extends StatefulWidget {
 }
 
 class _PaletteExpansionTileState extends State<PaletteExpansionTile> {
-  bool expanded = false;
-
   @override
   Widget build(BuildContext context) {
+    var settingsNav = ClientModel.of(context, listen: false).ui.settingsNav;
     return Consumer<ThemeNotifier>(builder: (context, theme, _) {
       var preset = displayPreset(theme);
       return ExpansionTile(
         title: const Txt.S("Color Palette"),
-        subtitle: !expanded
+        subtitle: !settingsNav.paletteExpanded
             ? Padding(
                 padding: const EdgeInsets.only(top: 6, right: 16),
                 child: PaletteSwatchStrip(colors: preset.palette),
               )
             : null,
-        initiallyExpanded: false,
-        onExpansionChanged: (v) => setState(() => expanded = v),
+        initiallyExpanded: settingsNav.paletteExpanded,
+        onExpansionChanged: (v) => setState(() => settingsNav.paletteExpanded = v),
         children: const [PaletteSection()],
       );
     });
@@ -448,53 +554,60 @@ class _PaletteSectionState extends State<PaletteSection> {
     setState(() => userPalettes = [...userPalettes, palette]);
   }
 
-  // _paletteSurfaceFor derives a background neutral tinted with the
-  // palette's own primary hue, but kept dark-or-light-appropriate for the
-  // active preset's brightness -- masterBackground/navBar/subMenuTabBar
-  // (and everything else left at their default "token" styling) all read
-  // this surface color (and its derived container tones), so without this
-  // the whole rest of the app never visibly reacted to picking a palette.
-  Color _paletteSurfaceFor(Color primary, Brightness brightness) {
-    var hsl = HSLColor.fromColor(primary);
-    var lightness = brightness == Brightness.dark ? 0.09 : 0.97;
-    var saturation =
-        (hsl.saturation * (brightness == Brightness.dark ? 0.35 : 0.25))
-            .clamp(0.0, 1.0);
-    return hsl.withSaturation(saturation).withLightness(lightness).toColor();
+  // _applyDefaultTheme special-cases the synthetic "Default Theme" card
+  // (see `defaultPalette` in build() below): unlike every other palette,
+  // it should reproduce the actual built-in dark/light theme exactly, not
+  // run its colors back through the generic per-palette derivation
+  // formulas below (_paletteBgFor/OnSurfaceFor/OutlineFor) -- those
+  // approximate a *reasonable* neutral set for an arbitrary third-party
+  // palette, but don't reliably reproduce the seed's own hand-picked
+  // values.
+  void _applyDefaultTheme(ThemeNotifier theme) {
+    var draft = ensureDraftPreset(theme);
+    var seed = draft.brightness == Brightness.dark
+        ? ThemePreset.seedFromDark()
+        : ThemePreset.seedFromLight();
+    theme.previewPreset(draft.copyWith(
+      primary: seed.primary,
+      secondary: seed.secondary,
+      tertiary: seed.tertiary,
+      fourth: seed.fourth,
+      sidebarBackground: seed.sidebarBackground,
+      speechBackground: seed.speechBackground,
+      onSurface: seed.onSurface,
+      navText: seed.navText,
+      navAccent: seed.navAccent,
+      sidebarText: seed.sidebarText,
+      sidebarAccent: seed.sidebarAccent,
+      outline: seed.outline,
+      error: seed.error,
+      success: seed.success,
+    ));
   }
 
-  Color _paletteOnSurfaceFor(Brightness brightness) =>
-      brightness == Brightness.dark
-          ? const Color(0xFFE6E1E5)
-          : const Color(0xFF1A1A1A);
-
-  Color _paletteOutlineFor(Brightness brightness) =>
-      brightness == Brightness.dark
-          ? const Color(0xFF938F99)
-          : const Color(0xFF79747E);
-
-  // Text-on-accent should stay legible regardless of how light/dark the
-  // palette's own accent color happens to be.
-  Color _paletteOnAccentFor(Color accent) =>
-      HSLColor.fromColor(accent).lightness > 0.55
-          ? const Color(0xFF1A1A1A)
-          : Colors.white;
-
+  // _applyPalette applies a ColorPalette's 7 stored colors exactly as
+  // stored -- no brightness-aware re-derivation, no hue rotation. Each
+  // built-in/saved palette is a self-contained, already-tuned look (e.g.
+  // "X (Twitter) Dark" was tuned live in the editor and exported), so
+  // recomputing its colors through a generic formula only fights whatever
+  // the palette's author actually intended and made results depend on
+  // which base theme (dark/light) was active before applying -- applying
+  // as-is is both simpler and matches what the user sees when they tune a
+  // palette by hand. Fourth/onSurface/navText/sidebarText/outline/error/
+  // success aren't part of the 7 stored colors and are left at whatever
+  // the draft preset already had.
   void _applyPalette(ThemeNotifier theme, ColorPalette palette) {
     var draft = ensureDraftPreset(theme);
-    var updated = draft;
-    for (var i = 0;
-        i < kVividPaletteSlots.length && i < palette.colors.length;
-        i++) {
-      updated = updated.withSlot(kVividPaletteSlots[i], palette.colors[i]);
-    }
-    var primary = palette.colors.isNotEmpty ? palette.colors[0] : draft.primary;
-    var accent = palette.colors.length > 4 ? palette.colors[4] : primary;
-    updated = updated.copyWith(
-      surface: _paletteSurfaceFor(primary, draft.brightness),
-      onSurface: _paletteOnSurfaceFor(draft.brightness),
-      outline: _paletteOutlineFor(draft.brightness),
-      onAccent: _paletteOnAccentFor(accent),
+    Color colorAt(int i, Color fallback) =>
+        i < palette.colors.length ? palette.colors[i] : fallback;
+    var updated = draft.copyWith(
+      primary: colorAt(0, draft.primary),
+      secondary: colorAt(1, draft.secondary),
+      tertiary: colorAt(2, draft.tertiary),
+      sidebarBackground: colorAt(3, draft.sidebarBackground),
+      speechBackground: colorAt(4, draft.speechBackground),
+      navAccent: colorAt(5, draft.navAccent),
+      sidebarAccent: colorAt(6, draft.sidebarAccent),
     );
     theme.previewPreset(updated);
   }
@@ -543,7 +656,9 @@ class _PaletteSectionState extends State<PaletteSection> {
 
   Widget _paletteCard(ThemeNotifier theme, ColorPalette palette) {
     return InkWell(
-      onTap: () => _applyPalette(theme, palette),
+      onTap: () => palette.id == "default"
+          ? _applyDefaultTheme(theme)
+          : _applyPalette(theme, palette),
       borderRadius: BorderRadius.circular(6),
       child: Container(
         width: 150,
@@ -693,41 +808,56 @@ class _PaletteSectionState extends State<PaletteSection> {
                 child: Column(children: [
                   ColorPicker(
                     pickerColor: draftColor ?? fullPalette[i],
-                    enableAlpha: false,
+                    // Lets a palette color blend into whatever it's
+                    // painted over (e.g. a semi-transparent divider or
+                    // overlay) instead of always being fully opaque.
+                    enableAlpha: true,
+                    displayThumbColor: true,
                     hexInputBar: true,
                     onColorChanged: (c) => setState(() => draftColor = c),
                   ),
-                  Row(mainAxisAlignment: MainAxisAlignment.end, children: [
-                    TextButton(
-                      onPressed: () => setState(() {
-                        expandedIndex = null;
-                        draftColor = null;
-                      }),
-                      child: const Text("Cancel"),
+                  Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                    IconButton(
+                      icon: const Icon(Icons.colorize),
+                      tooltip: "Pick color from app (eyedropper)",
+                      onPressed: () async {
+                        var picked = await pickColorFromApp(context);
+                        if (picked != null) setState(() => draftColor = picked);
+                      },
                     ),
-                    TextButton(
-                      onPressed: () {
-                        var draft = ensureDraftPreset(theme);
-                        var chosen = draftColor ?? fullPalette[i];
-                        ThemePreset updated;
-                        if (isSlot) {
-                          updated =
-                              draft.withSlot(PaletteSlot.values[i], chosen);
-                        } else {
-                          var extraIdx = i - PaletteSlot.values.length;
-                          var colors =
-                              List<Color>.from(draft.extraPaletteColors);
-                          colors[extraIdx] = chosen;
-                          updated = draft.copyWith(extraPaletteColors: colors);
-                        }
-                        setState(() {
+                    Row(children: [
+                      TextButton(
+                        onPressed: () => setState(() {
                           expandedIndex = null;
                           draftColor = null;
-                        });
-                        theme.previewPreset(updated);
-                      },
-                      child: const Text("Done"),
-                    ),
+                        }),
+                        child: const Text("Cancel"),
+                      ),
+                      TextButton(
+                        onPressed: () {
+                          var draft = ensureDraftPreset(theme);
+                          var chosen = draftColor ?? fullPalette[i];
+                          ThemePreset updated;
+                          if (isSlot) {
+                            updated =
+                                draft.withSlot(PaletteSlot.values[i], chosen);
+                          } else {
+                            var extraIdx = i - PaletteSlot.values.length;
+                            var colors =
+                                List<Color>.from(draft.extraPaletteColors);
+                            colors[extraIdx] = chosen;
+                            updated =
+                                draft.copyWith(extraPaletteColors: colors);
+                          }
+                          setState(() {
+                            expandedIndex = null;
+                            draftColor = null;
+                          });
+                          theme.previewPreset(updated);
+                        },
+                        child: const Text("Done"),
+                      ),
+                    ]),
                   ]),
                 ]),
               ),
@@ -1221,12 +1351,12 @@ class _AreasSectionState extends State<AreasSection> {
             // that requires one, so the color dropdown(s) always have a
             // valid palette-backed value to show.
             if (m == AreaBackgroundMode.solid && next.solidColor == null) {
-              next = next.copyWith(solidColor: preset.surface);
+              next = next.copyWith(solidColor: preset.primary);
             }
             if (m == AreaBackgroundMode.gradient &&
                 next.gradientColors.length < 2) {
               next = next
-                  .copyWith(gradientColors: [preset.surface, preset.primary]);
+                  .copyWith(gradientColors: [preset.primary, preset.secondary]);
             }
             return next;
           }),
@@ -1238,9 +1368,9 @@ class _AreasSectionState extends State<AreasSection> {
           onGradientColorChanged: (i, c) => _setStyle(theme, (s) {
             var colors = List<Color>.from(s.gradientColors);
             while (colors.length < 2) {
-              colors.add(preset.surface);
+              colors.add(preset.primary);
             }
-            colors[i] = c ?? preset.surface;
+            colors[i] = c ?? preset.primary;
             return s.copyWith(gradientColors: colors);
           }),
           gradientBegin: style.gradientBegin,
@@ -1260,6 +1390,25 @@ class _AreasSectionState extends State<AreasSection> {
               : null,
           supportsNone: true,
         ),
+        if (selected == ThemeArea.loginScreen &&
+            style.mode == AreaBackgroundMode.token) ...[
+          const SizedBox(height: 12),
+          Row(children: [
+            const Txt("Background preset: "),
+            const SizedBox(width: 8),
+            DropdownButton<LoginBackgroundPreset>(
+              value: style.loginBgPreset,
+              items: LoginBackgroundPreset.values
+                  .map((p) => DropdownMenuItem(
+                      value: p, child: Text(loginBackgroundPresetLabel(p))))
+                  .toList(),
+              onChanged: (p) {
+                if (p == null) return;
+                _setStyle(theme, (s) => s.copyWith(loginBgPreset: p));
+              },
+            ),
+          ]),
+        ],
         const Divider(height: 32),
         _fillEditor(
           preset: preset,
@@ -1383,6 +1532,52 @@ class _AreasSectionState extends State<AreasSection> {
               onChanged: (v) =>
                   _setStyle(theme, (s) => s.copyWith(showHoverArrow: v)),
             ),
+          const SizedBox(height: 8),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text("Icon + highlight rows"),
+            subtitle: const Text(
+                "Pill-highlighted rows with a leading icon, instead of "
+                "plain rows -- applies to every sidebar in the app"),
+            value: style.sidebarIconRows,
+            onChanged: (v) =>
+                _setStyle(theme, (s) => s.copyWith(sidebarIconRows: v)),
+          ),
+          if (style.sidebarIconRows)
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text("Show icons"),
+              value: style.sidebarShowIcons,
+              onChanged: (v) =>
+                  _setStyle(theme, (s) => s.copyWith(sidebarShowIcons: v)),
+            ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text("Show right-edge divider"),
+            value: style.sidebarShowRightDivider,
+            onChanged: (v) => _setStyle(
+                theme, (s) => s.copyWith(sidebarShowRightDivider: v)),
+          ),
+          if (style.sidebarShowRightDivider) ...[
+            Row(children: [
+              const Txt("Divider color: "),
+              const SizedBox(width: 8),
+              PaletteColorDropdown(
+                preset: preset,
+                value: style.sidebarDividerColor,
+                allowNone: true,
+                noneLabel: "Default",
+                onChanged: (c) => _setStyle(
+                    theme,
+                    (s) => c == null
+                        ? s.copyWith(clearSidebarDividerColor: true)
+                        : s.copyWith(sidebarDividerColor: c)),
+              ),
+            ]),
+            _slider("sidebarDividerWidth", "Divider width",
+                style.sidebarDividerWidth, 0.5, 6,
+                (v) => _setStyle(theme, (s) => s.copyWith(sidebarDividerWidth: v))),
+          ],
         ],
         if (selected == ThemeArea.navBar) ...[
           SwitchListTile(
@@ -1463,6 +1658,7 @@ class _AreasSectionState extends State<AreasSection> {
                 preset: preset,
                 value: style.chatListAccentColor,
                 allowNone: true,
+                noneLabel: "Default",
                 onChanged: (c) => _setStyle(
                     theme,
                     (s) => c == null
@@ -1496,15 +1692,6 @@ class _AreasSectionState extends State<AreasSection> {
             value: style.enableChatSearch,
             onChanged: (v) =>
                 _setStyle(theme, (s) => s.copyWith(enableChatSearch: v)),
-          ),
-          SwitchListTile(
-            title: const Text("Resizable chat list"),
-            subtitle:
-                const Text("Makes the chat list pane drag-resizable and adds a "
-                    "persistent search/start-chat bar above it"),
-            value: style.resizableChatList,
-            onChanged: (v) =>
-                _setStyle(theme, (s) => s.copyWith(resizableChatList: v)),
           ),
           SwitchListTile(
             title: const Text("Formatting toolbar"),

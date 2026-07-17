@@ -421,12 +421,13 @@ class _ChatInputState extends State<ChatInput> {
         var preview = rMsg.replaceAll(RegExp(r'\s+'), ' ').trim();
         if (preview.contains('--embed[')) preview = '[attachment]';
         if (preview.length > 80) preview = '${preview.substring(0, 80)}...';
+        var theme = Provider.of<ThemeNotifier>(context);
+        var accent = theme.activePreset?.sidebarAccent ?? const Color(0xFF2C6BED);
         return Container(
           margin: const EdgeInsets.only(bottom: 6),
-          decoration: const BoxDecoration(
-            color: Color(0xFF171A1F),
-            border:
-                Border(left: BorderSide(color: Color(0xFF2C6BED), width: 3)),
+          decoration: BoxDecoration(
+            color: theme.activePreset?.fourth ?? const Color(0xFF171A1F),
+            border: Border(left: BorderSide(color: accent, width: 3)),
           ),
           padding: const EdgeInsets.fromLTRB(9, 6, 6, 6),
           child: Row(children: [
@@ -436,8 +437,8 @@ class _ChatInputState extends State<ChatInput> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text("Replying to $rNick",
-                      style: const TextStyle(
-                          color: Color(0xFF5B8FE8),
+                      style: TextStyle(
+                          color: accent,
                           fontSize: 12,
                           fontWeight: FontWeight.w500)),
                   Text(preview,

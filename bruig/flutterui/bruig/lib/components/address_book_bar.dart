@@ -1,3 +1,4 @@
+import 'package:bruig/components/containers.dart';
 import 'package:bruig/components/text.dart';
 import 'package:bruig/models/client.dart';
 import 'package:flutter/material.dart';
@@ -10,34 +11,40 @@ import 'package:provider/provider.dart';
 // routes with their own page-transition animation and login-screen
 // theming (via StartupScreen), which is why the 4 embedded screens below
 // take an `embedded: true` flag to skip that chrome.
-List<ListTile> addressBookBarItems(
+List<SidebarNavItem> addressBookBarItems(
     Function(int) tabChange, int selectedIndex, bool isOnline) {
   return [
-    ListTile(
+    SidebarNavItem(
+        icon: Icons.chat_bubble_outline,
         selected: selectedIndex == 0,
-        title: const Txt.S("New Message"),
+        label: "New Message",
         onTap: () => tabChange(0)),
-    ListTile(
+    SidebarNavItem(
+        icon: Icons.group_add_outlined,
         selected: selectedIndex == 1,
-        title: const Txt.S("New Group Chat"),
+        label: "New Group Chat",
         onTap: () => tabChange(1)),
-    ListTile(
+    SidebarNavItem(
+        icon: Icons.person_add_alt_outlined,
         selected: selectedIndex == 2,
         enabled: isOnline,
-        title: const Txt.S("Generate Invite"),
+        label: "Generate Invite",
         onTap: () => tabChange(2)),
-    ListTile(
+    SidebarNavItem(
+        icon: Icons.schedule_outlined,
         selected: selectedIndex == 3,
-        title: const Txt.S("Received Message Time"),
+        label: "Received Message Time",
         onTap: () => tabChange(3)),
-    ListTile(
+    SidebarNavItem(
+        icon: Icons.mail_outline,
         selected: selectedIndex == 4,
         enabled: isOnline,
-        title: const Txt.S("Fetch or Accept Invite"),
+        label: "Fetch or Accept Invite",
         onTap: () => tabChange(4)),
-    ListTile(
+    SidebarNavItem(
+        icon: Icons.mark_email_unread_outlined,
         selected: selectedIndex == 5,
-        title: const Txt.S("Show GC Invitations"),
+        label: "Show GC Invitations",
         trailing: Consumer<GCInviteCountModel>(
             builder: (context, gcInviteCount, child) => gcInviteCount.value == 0
                 ? const SizedBox.shrink()

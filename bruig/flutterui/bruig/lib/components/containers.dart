@@ -1,5 +1,6 @@
 import 'package:bruig/components/empty_widget.dart';
 import 'package:bruig/models/theme_preset.dart';
+import 'package:bruig/storage_manager.dart';
 import 'package:bruig/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -56,6 +57,13 @@ class ThemedArea extends StatelessWidget {
 // all text rendered inside to (by default) use the corresponding onXXX color.
 class Box extends StatelessWidget {
   final SurfaceColor color;
+  // overrideColor paints over `color`'s resolved ColorScheme token with a
+  // specific raw Color instead -- for palette fields (e.g. "News
+  // background") that aren't part of the compiled ColorScheme at all, so
+  // there's no SurfaceColor token to point `color` at. `color`'s own
+  // token is still used to pick the auto-contrasting text color below,
+  // since overrideColor has no equivalent "on this color" role to read.
+  final Color? overrideColor;
   final Widget? child;
   final EdgeInsetsGeometry? padding;
   final BoxConstraints? constraints;
@@ -65,6 +73,7 @@ class Box extends StatelessWidget {
   final BorderRadiusGeometry? borderRadius;
   const Box(
       {this.color = SurfaceColor.surface,
+      this.overrideColor,
       this.child,
       this.padding,
       this.constraints,
@@ -77,23 +86,25 @@ class Box extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Consumer<ThemeNotifier>(
-        builder: (context, theme, _) => Container(
+        builder: (context, theme, _) {
+          var resolvedColor = overrideColor ?? theme.surfaceColor(color);
+          return Container(
               margin: margin,
               padding: padding,
               constraints: constraints,
-              color: borderRadius == null ? theme.surfaceColor(color) : null,
+              color: borderRadius == null ? resolvedColor : null,
               decoration: borderRadius == null
                   ? null
                   : BoxDecoration(
-                      borderRadius: borderRadius,
-                      color: theme.surfaceColor(color)),
+                      borderRadius: borderRadius, color: resolvedColor),
               width: width,
               height: height,
               child: DefaultTextStyle.merge(
                   style: theme.textStyleFor(context, null,
                       textColorForSurfaceColor[color] ?? TextColor.onSurface),
                   child: child ?? const Empty()),
-            ));
+            );
+        });
   }
 }
 
@@ -107,6 +118,125 @@ class SecondarySideMenuItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(child: child);
+  }
+}
+
+// SidebarNavItem describes one fixed-list nav row (Settings' Account/
+// Appearance/..., LN Management's Overview/Accounts/..., etc.) in a
+// screen-agnostic way, so SecondarySideMenuList/Layout can render every such
+// sidebar identically -- including the optional icon+pill-highlight look
+// (see AreaStyle.sidebarIconRows) -- from one shared implementation instead
+// of each screen (or, previously, just Settings) rolling its own row widget.
+class SidebarNavItem {
+  final IconData? icon;
+  final String label;
+  final Widget? trailing;
+  final bool selected;
+  final bool enabled;
+  final VoidCallback onTap;
+  const SidebarNavItem({
+    this.icon,
+    required this.label,
+    this.trailing,
+    this.selected = false,
+    this.enabled = true,
+    required this.onTap,
+  });
+}
+
+// _SidebarNavRow renders a single SidebarNavItem, in either of the Sidebar
+// area's two looks:
+// - plain (AreaStyle.sidebarIconRows == false, the default/unmodified
+//   look): today's ListTile.
+// - icon-row (sidebarIconRows == true): a pill-highlight row with a leading
+//   icon, generalized from the old Settings-only _RestyledSettingsNav.
+// Both modes share the same text+icon color resolution -- Sidebar text/
+// accent are top-level palette slots now (not per-area overrides), since
+// there's only ever one sidebar per theme.
+class _SidebarNavRow extends StatelessWidget {
+  final SidebarNavItem item;
+  const _SidebarNavRow(this.item);
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer<ThemeNotifier>(builder: (context, theme, _) {
+      var style = theme.areaStyle(ThemeArea.subMenuTabBar);
+      // theme.textStyleFor(..., null) only carries a fontSize (color is left
+      // null/inherited) -- copyWith below only overrides color when we pass
+      // a non-null one, so the default (unmodified) look is untouched.
+      var baseStyle =
+          theme.textStyleFor(context, TextSize.small, null) ?? const TextStyle();
+
+      var preset = theme.activePreset;
+      var color = item.selected
+          ? (preset?.sidebarAccent ?? theme.colors.primary)
+          : (preset?.sidebarText ?? theme.colors.onSurfaceVariant);
+
+      if (!style.sidebarIconRows) {
+        // ListTile's own textColor/iconColor (rather than styling the
+        // title/leading widgets directly) is the reliable way to force its
+        // colors -- ListTile computes its title's effective color from
+        // these, and a plain Text/Icon-level style can get clobbered by
+        // ListTile's own internal selected-state color logic otherwise.
+        // textColor/iconColor only apply when NOT selected, though --
+        // ListTile's selected state uses the separate selectedColor
+        // property instead, which defaults to colorScheme.primary (a
+        // Material-derived tone of the seed color, not the literal Primary
+        // swatch) when left unset. Without setting it explicitly here, the
+        // selected row silently followed Primary instead of Sidebar Accent.
+        return Material(
+          child: ListTile(
+            selected: item.selected,
+            enabled: item.enabled,
+            textColor: color,
+            iconColor: color,
+            selectedColor: color,
+            leading: item.icon != null ? Icon(item.icon) : null,
+            title: Text(item.label, style: baseStyle),
+            trailing: item.trailing,
+            onTap: item.onTap,
+          ),
+        );
+      }
+
+      var showIcon = style.sidebarShowIcons && item.icon != null;
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+        child: Material(
+          // A translucent tint of the same sidebarAccent used for the
+          // icon/text above -- previously this read
+          // theme.colors.surfaceContainerHighest, a Material tone derived
+          // from Primary via ColorScheme.fromSeed, so this (far more
+          // visually prominent) highlight pill silently followed Primary
+          // edits while the actual Sidebar Accent color field only ever
+          // affected the much less noticeable icon/text tint inside it.
+          color: item.selected ? color.withValues(alpha: 0.18) : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: item.enabled ? item.onTap : null,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              child: Row(children: [
+                if (showIcon) ...[
+                  Icon(item.icon, size: 19, color: color),
+                  const SizedBox(width: 12),
+                ],
+                Expanded(
+                  child: Text(item.label,
+                      style: baseStyle.copyWith(
+                        fontWeight:
+                            item.selected ? FontWeight.w600 : FontWeight.w500,
+                        color: color,
+                      )),
+                ),
+                if (item.trailing != null) item.trailing!,
+              ]),
+            ),
+          ),
+        ),
+      );
+    });
   }
 }
 
@@ -133,9 +263,22 @@ class SecondarySideMenu extends StatelessWidget {
         return Container(
           margin: const EdgeInsets.all(1),
           width: effectiveWidth,
-          decoration: BoxDecoration(
-              border: Border(
-                  right: BorderSide(color: theme.extraColors.sidebarDivider))),
+          decoration: areaStyle.sidebarShowRightDivider
+              ? BoxDecoration(
+                  border: Border(
+                      right: BorderSide(
+                          // "Default" should look the same as explicitly
+                          // picking Outline (Borders) from the palette --
+                          // extraColors.sidebarDivider is an unrelated,
+                          // hardcoded fallback (black for every custom
+                          // preset), not the preset's own outline swatch.
+                          // Built-in (non-custom) themes have no preset to
+                          // read, so they keep their original divider color.
+                          color: areaStyle.sidebarDividerColor ??
+                              theme.activePreset?.outline ??
+                              theme.extraColors.sidebarDivider,
+                          width: areaStyle.sidebarDividerWidth)))
+              : null,
           child: child,
         );
       }
@@ -152,11 +295,12 @@ class SecondarySideMenu extends StatelessWidget {
 
 class SecondarySideMenuList extends StatelessWidget {
   final double? width;
-  final List<ListTile>? items;
-  final ListView? list;
+  final List<SidebarNavItem>? items;
+  final Widget? list;
+  final Widget? header;
   final Widget? footer;
   const SecondarySideMenuList(
-      {this.width, this.items, this.list, this.footer, super.key});
+      {this.width, this.items, this.list, this.header, this.footer, super.key});
 
   Widget _child() {
     if (list != null) {
@@ -166,7 +310,8 @@ class SecondarySideMenuList extends StatelessWidget {
     if (items != null) {
       return ListView(
           shrinkWrap: true,
-          children: items!.map((e) => SecondarySideMenuItem(e)).toList());
+          children:
+              items!.map((e) => SecondarySideMenuItem(_SidebarNavRow(e))).toList());
     }
 
     return const Empty();
@@ -180,9 +325,11 @@ class SecondarySideMenuList extends StatelessWidget {
               child: Column(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
+                    ...(header != null ? [header!] : []),
                     Expanded(
                         child: ListTileTheme.merge(
-                            tileColor: theme.colors.surfaceContainerLowest,
+                            tileColor: theme.activePreset?.sidebarBackground ??
+                                theme.colors.surfaceContainerLowest,
                             // tileColor: Colors.amber,
                             // ListTile.tileColor needs a nearby Material
                             // ancestor to paint into and to render ink
@@ -221,18 +368,27 @@ class SecondarySideMenuList extends StatelessWidget {
 // another, e.g. clicking a different chat), any manual reopen of the
 // submenu resets, so the new detail view starts collapsed again too.
 class SecondarySideMenuLayout extends StatefulWidget {
-  final List<ListTile>? items;
-  final ListView? list;
+  final List<SidebarNavItem>? items;
+  final Widget? list;
   final double? width;
+  final Widget? header;
   final Widget? footer;
   final Widget content;
   final bool isDetail;
   final Object? detailKey;
+  // storageKey identifies this screen's sidebar for width persistence when
+  // AreaStyle.subMenuStyle is SubMenuStyle.resizable -- since subMenuTabBar
+  // is one shared style for every sidebar in the app, each screen must
+  // remember its own dragged width independently (e.g. Settings' sidebar
+  // shouldn't jump to whatever width the chat list was last dragged to).
+  final String storageKey;
   const SecondarySideMenuLayout(
       {this.items,
       this.list,
       required this.content,
+      required this.storageKey,
       this.width,
+      this.header,
       this.footer,
       this.isDetail = false,
       this.detailKey,
@@ -242,6 +398,18 @@ class SecondarySideMenuLayout extends StatefulWidget {
   State<SecondarySideMenuLayout> createState() =>
       _SecondarySideMenuLayoutState();
 }
+
+// _sidebarWidthCache holds the last-known resizable width for each
+// storageKey for the lifetime of the app process. A screen's
+// SecondarySideMenuLayout State gets torn down and recreated on every
+// navigation away and back (each screen is a fresh Navigator route), so
+// relying solely on an async StorageManager read in initState races: by the
+// time the read resolves the State may already be gone (or the user may
+// already be looking at the default width). Reading this synchronous cache
+// first means a revisited screen shows its last dragged width immediately,
+// with StorageManager only needed to seed it once per app run and to
+// survive an app restart.
+final Map<String, double> _sidebarWidthCache = {};
 
 class _SecondarySideMenuLayoutState extends State<SecondarySideMenuLayout> {
   bool _hovering = false;
@@ -254,6 +422,48 @@ class _SecondarySideMenuLayoutState extends State<SecondarySideMenuLayout> {
   // collapsed again.
   bool _forceShowInDetail = false;
 
+  // Drag-resized width for SubMenuStyle.resizable, persisted per screen (see
+  // storageKey doc above). Null until loaded/dragged, meaning "use the
+  // caller's declared default width".
+  double? _resizableWidth;
+  static const _resizableMinWidth = 180.0;
+  static const _resizableMaxWidth = 560.0;
+
+  String get _widthStorageKey => "sidebarWidth_${widget.storageKey}";
+
+  @override
+  void initState() {
+    super.initState();
+    final cached = _sidebarWidthCache[widget.storageKey];
+    if (cached != null) {
+      _resizableWidth = cached;
+    } else {
+      _loadResizableWidth();
+    }
+  }
+
+  Future<void> _loadResizableWidth() async {
+    final v = await StorageManager.readData(_widthStorageKey);
+    if (v is num) {
+      _sidebarWidthCache[widget.storageKey] = v.toDouble();
+      if (mounted) {
+        setState(() => _resizableWidth = v.toDouble());
+      }
+    }
+  }
+
+  void _setResizableWidth(double w) {
+    _sidebarWidthCache[widget.storageKey] = w;
+    setState(() => _resizableWidth = w);
+  }
+
+  void _saveResizableWidth() {
+    final w = _resizableWidth;
+    if (w != null) {
+      StorageManager.saveData(_widthStorageKey, w);
+    }
+  }
+
   @override
   void didUpdateWidget(SecondarySideMenuLayout oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -265,20 +475,37 @@ class _SecondarySideMenuLayoutState extends State<SecondarySideMenuLayout> {
   }
 
   Widget _menuList(double? width) => SecondarySideMenuList(
-      width: width, items: widget.items, list: widget.list, footer: widget.footer);
+      width: width,
+      items: widget.items,
+      list: widget.list,
+      header: widget.header,
+      footer: widget.footer);
 
   // Thin edge strip for hoverReveal's collapsed state: a divider line with
   // a pill-shaped chevron indicator, centered vertically -- styled like an
   // active-item highlight so it reads as part of the submenu rather than a
   // bare divider.
+  //
+  // _dividerColor/_dividerWidth resolve the same way as SecondarySideMenu's
+  // own plain-divider path above -- sidebarDividerColor, when set, should
+  // apply to every divider the sidebar draws, not just the always-visible
+  // one.
+  Color _dividerColor(ThemeNotifier theme) =>
+      theme.areaStyle(ThemeArea.subMenuTabBar).sidebarDividerColor ??
+      theme.activePreset?.outline ??
+      theme.extraColors.sidebarDivider;
+  double _dividerWidth(ThemeNotifier theme) =>
+      theme.areaStyle(ThemeArea.subMenuTabBar).sidebarDividerWidth;
+
   Widget _hoverEdgeStrip(ThemeNotifier theme, {required bool showArrow}) {
     const width = 22.0;
     const pillHeight = 40.0;
     return Container(
       width: width,
       decoration: BoxDecoration(
-        border:
-            Border(right: BorderSide(color: theme.extraColors.sidebarDivider)),
+        border: Border(
+            right: BorderSide(
+                color: _dividerColor(theme), width: _dividerWidth(theme))),
       ),
       child: !showArrow
           ? null
@@ -312,7 +539,9 @@ class _SecondarySideMenuLayoutState extends State<SecondarySideMenuLayout> {
             width: 16,
             decoration: BoxDecoration(
               border: Border(
-                  right: BorderSide(color: theme.extraColors.sidebarDivider)),
+                  right: BorderSide(
+                      color: _dividerColor(theme),
+                      width: _dividerWidth(theme))),
             ),
             child: Icon(collapsed ? Icons.chevron_right : Icons.chevron_left,
                 size: 16),
@@ -384,6 +613,42 @@ class _SecondarySideMenuLayoutState extends State<SecondarySideMenuLayout> {
             ),
           ),
         ]);
+      }
+
+      if (style == SubMenuStyle.resizable) {
+        var defaultWidth = widget.width ?? 130;
+        var currentWidth =
+            (_resizableWidth ?? defaultWidth).clamp(_resizableMinWidth, _resizableMaxWidth);
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _menuList(currentWidth),
+            MouseRegion(
+              cursor: SystemMouseCursors.resizeLeftRight,
+              child: GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onHorizontalDragUpdate: (d) => _setResizableWidth(
+                    (currentWidth + d.delta.dx)
+                        .clamp(_resizableMinWidth, _resizableMaxWidth)),
+                onHorizontalDragEnd: (_) => _saveResizableWidth(),
+                onDoubleTap: () {
+                  _setResizableWidth(defaultWidth);
+                  _saveResizableWidth();
+                },
+                child: SizedBox(
+                  width: 8,
+                  child: Center(
+                    child: SizedBox(
+                      width: _dividerWidth(theme),
+                      child: ColoredBox(color: _dividerColor(theme)),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            Expanded(child: widget.content),
+          ],
+        );
       }
 
       if (style == SubMenuStyle.manualToggle) {

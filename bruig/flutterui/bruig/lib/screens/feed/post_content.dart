@@ -809,9 +809,7 @@ class _PostContentScreenForArgsState extends State<_PostContentScreenForArgs> {
                             top: 0,
                             bottom: 0),
                     borderRadius: BorderRadius.circular(3),
-                    color: feedCardRedesign
-                        ? SurfaceColor.surface
-                        : SurfaceColor.secondaryContainer,
+                    color: SurfaceColor.tertiary,
                     padding: const EdgeInsets.all(16),
                     child: Column(
                       children: [
@@ -827,7 +825,10 @@ class _PostContentScreenForArgsState extends State<_PostContentScreenForArgs> {
                                   nick: authorNick),
                             ),
                             const SizedBox(width: 6),
-                            Txt.S(authorNick),
+                            Txt.S(authorNick,
+                                style: TextStyle(
+                                    color:
+                                        ThemeNotifier.of(context).activePreset?.onSurface)),
                             const SizedBox(width: 8),
                             !myPost && !hasChat
                                 ? SizedBox(
@@ -857,9 +858,15 @@ class _PostContentScreenForArgsState extends State<_PostContentScreenForArgs> {
                             Expanded(
                                 child: Align(
                                     alignment: Alignment.centerRight,
-                                    child: Txt.S(widget.args.post.summ.date
-                                        .toLocal()
-                                        .toIso8601String())))
+                                    child: Txt.S(
+                                        widget.args.post.summ.date
+                                            .toLocal()
+                                            .toIso8601String(),
+                                        style: TextStyle(
+                                            color: ThemeNotifier.of(context)
+                                                .activePreset
+                                                ?.onSurface
+                                                .withValues(alpha: 0.6)))))
                           ],
                         ),
 

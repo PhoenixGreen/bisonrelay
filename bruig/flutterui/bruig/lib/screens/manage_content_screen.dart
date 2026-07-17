@@ -75,6 +75,7 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
 
     return SecondarySideMenuLayout(
       width: 130,
+      storageKey: "manageContent",
       items: manageContentBarItems(onItemChanged, tabIndex),
       isDetail: ModalRoute.of(context)!.settings.arguments != null,
       content: activeTab(),

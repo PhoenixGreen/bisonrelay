@@ -147,7 +147,8 @@ class _FeedPostWState extends State<FeedPostW>
     }
 
     var sincePost = formatTerseTime(widget.post.summ.date);
-    var feedStyle = ThemeNotifier.of(context).areaStyle(ThemeArea.feed);
+    var theme = ThemeNotifier.of(context);
+    var feedStyle = theme.areaStyle(ThemeArea.feed);
     var redesign = feedStyle.feedCardRedesign;
     var cardActions = feedStyle.feedCardActions;
     var bookmarks = feedStyle.feedBookmarks;
@@ -173,6 +174,7 @@ class _FeedPostWState extends State<FeedPostW>
       if (legacyStripLinks) markdownData = _stripLinks(markdownData);
 
       return Card.filled(
+          color: theme.colors.tertiary,
           margin: const EdgeInsets.only(right: 15, bottom: 15),
           child: Container(
               padding: const EdgeInsets.all(10),
@@ -184,8 +186,13 @@ class _FeedPostWState extends State<FeedPostW>
                       child: _AvatarOrUnread(
                           widget.client, authorID, hasUnreadPost, authorNick)),
                   const SizedBox(width: 6),
-                  Expanded(child: Text(authorNick)),
-                  Text(sincePost),
+                  Expanded(
+                      child: Text(authorNick,
+                          style: TextStyle(color: theme.activePreset?.onSurface))),
+                  Text(sincePost,
+                      style: TextStyle(
+                          color: theme.activePreset?.onSurface
+                              .withValues(alpha: 0.6))),
                 ]),
 
                 // Second row: post summary.
@@ -350,12 +357,17 @@ class _FeedPostWState extends State<FeedPostW>
                     child: Text(authorNick,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                            fontWeight: FontWeight.w600, fontSize: 14.5))),
+                        style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14.5,
+                            color: theme.activePreset?.onSurface))),
                 const SizedBox(width: 6),
                 Text("· $sincePost",
-                    style: const TextStyle(
-                        fontSize: 12.5, color: Color(0xFF5F6764))),
+                    style: TextStyle(
+                        fontSize: 12.5,
+                        color: theme.activePreset?.onSurface
+                                .withValues(alpha: 0.6) ??
+                            const Color(0xFF5F6764))),
                 const Spacer(),
                 if (bookmarks || hidePosts)
                   ListenableBuilder(

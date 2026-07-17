@@ -39,7 +39,8 @@ class StartupScreen extends StatelessWidget {
       ));
     }
     var bg = theme.areaDecoration(ThemeArea.loginScreen, SurfaceColor.surface);
-    return BoxDecoration(color: bg.color, gradient: bg.gradient, image: bg.image);
+    return BoxDecoration(
+        color: bg.color, gradient: bg.gradient, image: bg.image);
   }
 
   // _buildLoginContainer wraps the login form: unmodified, it reproduces the
@@ -61,34 +62,66 @@ class StartupScreen extends StatelessWidget {
 
     if (!overridden) {
       return Container(
-          decoration: theme.fullTheme.startupScreenBoxDecoration,
-          child: inner);
+          decoration: theme.fullTheme.startupScreenBoxDecoration, child: inner);
     }
     return theme.areaContainer(ThemeArea.loginScreen, SurfaceColor.surface,
         child: inner);
   }
 
+  // Soft radial scrim behind the login form: darkens the center so the
+  // form stays legible over the exitus1 photo background, fading out at
+  // the edges. Only used with LoginBackgroundPreset.exitus1.
+  static const _exitus1Scrim = RadialGradient(
+    center: Alignment.center,
+    radius: 0.55,
+    colors: [
+      Color(0x9E000000), // black, alpha 0.62
+      Color(0x4D000000), // black, alpha 0.30
+      Color(0x00000000),
+    ],
+    stops: [0.0, 0.45, 0.8],
+  );
+
   @override
   Widget build(BuildContext context) {
     bool isScreenSmall = checkIsScreenSmall(context);
     return Scaffold(
-        body: Consumer<ThemeNotifier>(
-            builder: (context, theme, child) => Container(
-                decoration: _outerBackground(
-                    theme, theme.areaStyle(ThemeArea.loginScreen)),
-                child: Stack(children: [
-                  _buildLoginContainer(theme),
-                  !hideAboutButton
-                      ? Positioned(
-                          top: 5,
-                          left: 5,
-                          child: SizedBox(
-                              height: isScreenSmall ? 70 : 100,
-                              width: isScreenSmall ? 70 : 100,
-                              child: const Center(child: AboutButton())))
-                      : const Empty(),
-                  if (fab != null)
-                    Positioned(right: 10, bottom: 10, child: fab!),
-                ]))));
+        body: Consumer<ThemeNotifier>(builder: (context, theme, child) {
+      var style = theme.areaStyle(ThemeArea.loginScreen);
+      var useExitus1Bg = style.mode == AreaBackgroundMode.token &&
+          style.loginBgPreset == LoginBackgroundPreset.exitus1;
+      return Container(
+          decoration: useExitus1Bg
+              ? const BoxDecoration(color: Color(0xFF0E0E0E))
+              : _outerBackground(theme, style),
+          child: Stack(children: [
+            if (useExitus1Bg) ...[
+              Positioned.fill(
+                  child: Image.asset("assets/images/login_bg.png",
+                      fit: BoxFit.cover,
+                      alignment: Alignment.center,
+                      errorBuilder: (context, error, stack) =>
+                          const SizedBox.shrink())),
+              const Positioned.fill(
+                  child: DecoratedBox(
+                      decoration: BoxDecoration(gradient: _exitus1Scrim))),
+            ],
+            Align(
+              alignment:
+                  useExitus1Bg ? const Alignment(0.0, -0.06) : Alignment.center,
+              child: _buildLoginContainer(theme),
+            ),
+            !hideAboutButton
+                ? Positioned(
+                    top: 5,
+                    left: 5,
+                    child: SizedBox(
+                        height: isScreenSmall ? 70 : 100,
+                        width: isScreenSmall ? 70 : 100,
+                        child: const Center(child: AboutButton())))
+                : const Empty(),
+            if (fab != null) Positioned(right: 10, bottom: 10, child: fab!),
+          ]));
+    }));
   }
 }

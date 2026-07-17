@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:math';
 import 'dart:developer' as developer;
 
+import 'package:bruig/components/eyedropper.dart';
 import 'package:bruig/components/md_elements.dart';
 import 'package:bruig/components/route_error.dart';
 import 'package:bruig/models/emoji.dart';
@@ -617,15 +618,23 @@ class _AppState extends State<App> with WindowListener {
                 );
               },
               builder: (context, child) {
+                // Wraps the whole navigated app in a RepaintBoundary keyed
+                // by appRepaintBoundaryKey (see components/eyedropper.dart)
+                // so its current frame can be captured for the in-app
+                // eyedropper color picker.
+                Widget wrapped = RepaintBoundary(
+                    key: appRepaintBoundaryKey,
+                    child: child ?? const Text("no child"));
+
                 if (theme.fontScale <= 0) {
                   // Use system default font scale.
-                  return child ?? const Text("no child");
+                  return wrapped;
                 }
 
                 return MediaQuery(
                     data: MediaQuery.of(context).copyWith(
                         textScaler: TextScaler.linear(theme.fontScale)),
-                    child: child ?? const Text("no child"));
+                    child: wrapped);
               },
             ));
   }

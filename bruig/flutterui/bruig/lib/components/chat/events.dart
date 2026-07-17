@@ -380,8 +380,11 @@ class _ReceivedSentPMState extends State<ReceivedSentPM> {
                                       top: 5, left: 10, right: 10, bottom: 5),
                                   decoration: BoxDecoration(
                                     color: isOwnMessage
-                                        ? theme.colors.surfaceContainer
-                                        : theme.colors.surfaceContainerHighest,
+                                        ? (theme.activePreset
+                                                ?.speechBackgroundSent ??
+                                            theme.colors.surfaceContainer)
+                                        : (theme.activePreset?.speechBackground ??
+                                            theme.colors.surfaceContainerHighest),
                                     borderRadius: BorderRadius.circular(
                                         chatStyle.squareBubbles ? 4 : 10),
                                   ),

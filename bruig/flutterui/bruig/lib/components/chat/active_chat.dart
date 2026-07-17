@@ -261,28 +261,29 @@ class _ActiveChatState extends State<ActiveChat> with RouteAware {
         var preview = msg.replaceAll(RegExp(r'\s+'), ' ').trim();
         if (preview.contains('--embed[')) preview = '[attachment]';
         final nick = chat.pinnedNick ?? '';
+        var theme = Provider.of<ThemeNotifier>(context);
+        var accent = theme.activePreset?.sidebarAccent ?? const Color(0xFF2C6BED);
         return Container(
           margin: const EdgeInsets.only(bottom: 5),
-          decoration: const BoxDecoration(
-            color: Color(0xFF141414),
+          decoration: BoxDecoration(
+            color: theme.activePreset?.fourth ?? const Color(0xFF141414),
             border: Border(
-              left: BorderSide(color: Color(0xFF2C6BED), width: 3),
-              bottom: BorderSide(color: Color(0xFF1C1C1C), width: 1),
+              left: BorderSide(color: accent, width: 3),
+              bottom: const BorderSide(color: Color(0xFF1C1C1C), width: 1),
             ),
           ),
           padding: const EdgeInsets.fromLTRB(11, 8, 8, 8),
           child: Row(children: [
-            const Icon(Icons.push_pin_outlined,
-                color: Color(0xFF2C6BED), size: 17),
+            Icon(Icons.push_pin_outlined, color: accent, size: 17),
             const SizedBox(width: 10),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Text("Pinned message",
+                  Text("Pinned message",
                       style: TextStyle(
-                          color: Color(0xFF5B8FE8),
+                          color: accent,
                           fontSize: 11,
                           fontWeight: FontWeight.w500)),
                   const SizedBox(height: 1),

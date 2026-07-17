@@ -25,7 +25,7 @@ enum ThemeArea {
 String themeAreaLabel(ThemeArea area) {
   switch (area) {
     case ThemeArea.masterBackground:
-      return "Master Background";
+      return "Master";
     case ThemeArea.loginScreen:
       return "Login Screen";
     case ThemeArea.header:
@@ -33,7 +33,7 @@ String themeAreaLabel(ThemeArea area) {
     case ThemeArea.navBar:
       return "Navigation Bar";
     case ThemeArea.subMenuTabBar:
-      return "Submenu / Tab Bar";
+      return "Sidebar";
     case ThemeArea.chat:
       return "Chat";
     case ThemeArea.feed:
@@ -91,12 +91,13 @@ String contentAlignLabel(ContentAlign a) {
   }
 }
 
-// SubMenuStyle controls how a page's submenu (its sub-navigation tabs, e.g.
+// SubMenuStyle controls how a page's sidebar (its sub-navigation tabs, e.g.
 // Settings' Account/Appearance/Notifications/... list) shows or hides
-// itself; only meaningful for subMenuTabBar, and only wired up for the
-// "tab-style" submenus with a small fixed set of destinations (Settings, LN
-// Management, Feed, the plugin screen switcher) -- not the dynamic,
-// potentially-long lists (chat list, RTC sessions, page-view sessions).
+// itself; only meaningful for subMenuTabBar. Every sidebar in the app --
+// the "tab-style" ones with a small fixed set of destinations (Settings, LN
+// Management, Feed, Manage Content, Address Book, the plugin screen
+// switcher) as well as the dynamic, potentially-long lists (chat list, RTC
+// sessions, page-view sessions) -- is driven by this same setting.
 // - alwaysVisible: today's behavior, a persistent column beside the content.
 // - hoverReveal: collapses to a thin edge strip and expands to full width
 //   while the mouse hovers over it.
@@ -105,7 +106,15 @@ String contentAlignLabel(ContentAlign a) {
 //   shown otherwise.
 // - manualToggle: a persistent collapse/expand handle next to the content,
 //   like the primary nav sidebar's own collapse button.
-enum SubMenuStyle { alwaysVisible, hoverReveal, autoHideOnDetail, manualToggle }
+// - resizable: a plain, always-visible, drag-resizable pane (each screen
+//   remembers its own width locally -- see SecondarySideMenuLayout).
+enum SubMenuStyle {
+  alwaysVisible,
+  hoverReveal,
+  autoHideOnDetail,
+  manualToggle,
+  resizable
+}
 
 String subMenuStyleLabel(SubMenuStyle s) {
   switch (s) {
@@ -117,6 +126,8 @@ String subMenuStyleLabel(SubMenuStyle s) {
       return "Auto-hide when not needed";
     case SubMenuStyle.manualToggle:
       return "Manual show/hide";
+    case SubMenuStyle.resizable:
+      return "Resizable (drag to resize)";
   }
 }
 
@@ -215,6 +226,25 @@ String feedLinksModeLabel(FeedLinksMode m) {
       return "Turn off links";
     case FeedLinksMode.offIfImage:
       return "Turn off links if image available";
+  }
+}
+
+// LoginBackgroundPreset picks between the two built-in login-screen
+// background looks; only meaningful for ThemeArea.loginScreen, and only
+// consulted when mode == AreaBackgroundMode.token (a fully custom
+// solid/gradient/image fill via the theme editor's fill picker overrides
+// this entirely).
+// - standard: today's behavior (the original "network pattern" image).
+// - exitus1: a full-bleed portrait background with a soft radial scrim
+//   behind the login form, ported from exitus1/chat-redesign.
+enum LoginBackgroundPreset { standard, exitus1 }
+
+String loginBackgroundPresetLabel(LoginBackgroundPreset p) {
+  switch (p) {
+    case LoginBackgroundPreset.standard:
+      return "Default";
+    case LoginBackgroundPreset.exitus1:
+      return "Exitus1 style";
   }
 }
 
@@ -360,6 +390,27 @@ class AreaStyle {
   // for subMenuTabBar. True (shown) is the default/unmodified state.
   final bool showHoverArrow;
 
+  // The following fields are only meaningful for ThemeArea.subMenuTabBar
+  // ("Sidebar") and apply uniformly to every sidebar built from
+  // SecondarySideMenuList/SecondarySideMenuItem (Settings, LN Management,
+  // Feed, Manage Content, Address Book, page-view sessions, the chat list,
+  // and the Realtime Chat session list) -- not just one screen.
+  final bool sidebarIconRows; // Icon + pill-highlight rows instead of plain
+  // ListTiles, generalized from the old Settings-only restyled nav.
+  final bool sidebarShowIcons; // Nested under sidebarIconRows: keep the pill
+  // highlight but hide the leading icon. Default true (shown).
+  // Sidebar/nav bar text+accent colors are no longer per-area overrides --
+  // they're always-present top-level palette slots now (sidebarText/
+  // sidebarAccent/navText/navAccent on ThemePreset itself), since there's
+  // only ever one sidebar/nav bar per theme.
+  final bool sidebarShowRightDivider; // The plain right-edge divider line
+  // shown when the sidebar is otherwise unmodified; default on. Independent
+  // of the general border editor, which can already replace it entirely.
+  final Color? sidebarDividerColor; // Null = built-in default
+  // (extraColors.sidebarDivider). Only meaningful when
+  // sidebarShowRightDivider is on.
+  final double sidebarDividerWidth; // Default 1 (BorderSide's own default).
+
   // The following toggles are only meaningful for ThemeArea.chat. Each
   // gates a distinct chat-page feature ported from the exitus1 fork; all
   // default to false (off) so existing chat behavior is unchanged until a
@@ -381,7 +432,6 @@ class AreaStyle {
   final bool monochromeAvatars; // Graphite fallback avatars, app-wide.
   final bool chatBackdropWash; // Radial-gradient wash behind messages.
   final bool enableChatSearch; // In-chat message search panel.
-  final bool resizableChatList; // Draggable-width chat list + search bar.
   final bool formattingToolbar; // Composer markdown formatting toolbar.
   final bool composerPolish; // Tip button, glow send, dynamic hint.
   final bool squareBubbles; // Sharp vs. rounded message bubble corners.
@@ -420,6 +470,9 @@ class AreaStyle {
   final bool settingsShellRestyle; // Icon + pill-highlight rows in the
   // Settings page's left nav, and a card-based restyle of the Account
   // page (avatar camera badge, Identity/Relay Counter/Account cards).
+
+  // Only meaningful for ThemeArea.loginScreen.
+  final LoginBackgroundPreset loginBgPreset; // See LoginBackgroundPreset.
 
   // The following toggles are only meaningful for ThemeArea.feed. Each
   // gates a distinct feed-page feature ported from the exitus1 fork; all
@@ -481,6 +534,11 @@ class AreaStyle {
       logoAlign == null &&
       subMenuStyle == null &&
       showHoverArrow == true &&
+      sidebarIconRows == false &&
+      sidebarShowIcons == true &&
+      sidebarShowRightDivider == true &&
+      sidebarDividerColor == null &&
+      sidebarDividerWidth == 1 &&
       enableMessageActions == false &&
       showChatListLastMessage == false &&
       chatListDesignEnabled == false &&
@@ -491,7 +549,6 @@ class AreaStyle {
       monochromeAvatars == false &&
       chatBackdropWash == false &&
       enableChatSearch == false &&
-      resizableChatList == false &&
       formattingToolbar == false &&
       composerPolish == false &&
       squareBubbles == false &&
@@ -508,6 +565,7 @@ class AreaStyle {
       rtcSessionListIntro == false &&
       payStatsCardStyle == false &&
       settingsShellRestyle == false &&
+      loginBgPreset == LoginBackgroundPreset.standard &&
       feedCardRedesign == false &&
       feedCardActions == false &&
       feedBookmarks == false &&
@@ -556,6 +614,11 @@ class AreaStyle {
     this.logoAlign,
     this.subMenuStyle,
     this.showHoverArrow = true,
+    this.sidebarIconRows = false,
+    this.sidebarShowIcons = true,
+    this.sidebarShowRightDivider = true,
+    this.sidebarDividerColor,
+    this.sidebarDividerWidth = 1,
     this.enableMessageActions = false,
     this.showChatListLastMessage = false,
     this.chatListDesignEnabled = false,
@@ -566,7 +629,6 @@ class AreaStyle {
     this.monochromeAvatars = false,
     this.chatBackdropWash = false,
     this.enableChatSearch = false,
-    this.resizableChatList = false,
     this.formattingToolbar = false,
     this.composerPolish = false,
     this.squareBubbles = false,
@@ -583,6 +645,7 @@ class AreaStyle {
     this.rtcSessionListIntro = false,
     this.payStatsCardStyle = false,
     this.settingsShellRestyle = false,
+    this.loginBgPreset = LoginBackgroundPreset.standard,
     this.feedCardRedesign = false,
     this.feedCardActions = false,
     this.feedBookmarks = false,
@@ -636,6 +699,12 @@ class AreaStyle {
     ContentAlign? logoAlign,
     SubMenuStyle? subMenuStyle,
     bool? showHoverArrow,
+    bool? sidebarIconRows,
+    bool? sidebarShowIcons,
+    bool? sidebarShowRightDivider,
+    Color? sidebarDividerColor,
+    bool clearSidebarDividerColor = false,
+    double? sidebarDividerWidth,
     bool? enableMessageActions,
     bool? showChatListLastMessage,
     bool? chatListDesignEnabled,
@@ -649,7 +718,6 @@ class AreaStyle {
     bool? monochromeAvatars,
     bool? chatBackdropWash,
     bool? enableChatSearch,
-    bool? resizableChatList,
     bool? formattingToolbar,
     bool? composerPolish,
     bool? squareBubbles,
@@ -668,6 +736,7 @@ class AreaStyle {
     bool? rtcSessionListIntro,
     bool? payStatsCardStyle,
     bool? settingsShellRestyle,
+    LoginBackgroundPreset? loginBgPreset,
     bool? feedCardRedesign,
     bool? feedCardActions,
     bool? feedBookmarks,
@@ -718,6 +787,14 @@ class AreaStyle {
         logoAlign: logoAlign ?? this.logoAlign,
         subMenuStyle: subMenuStyle ?? this.subMenuStyle,
         showHoverArrow: showHoverArrow ?? this.showHoverArrow,
+        sidebarIconRows: sidebarIconRows ?? this.sidebarIconRows,
+        sidebarShowIcons: sidebarShowIcons ?? this.sidebarShowIcons,
+        sidebarShowRightDivider:
+            sidebarShowRightDivider ?? this.sidebarShowRightDivider,
+        sidebarDividerColor: clearSidebarDividerColor
+            ? null
+            : (sidebarDividerColor ?? this.sidebarDividerColor),
+        sidebarDividerWidth: sidebarDividerWidth ?? this.sidebarDividerWidth,
         enableMessageActions: enableMessageActions ?? this.enableMessageActions,
         showChatListLastMessage:
             showChatListLastMessage ?? this.showChatListLastMessage,
@@ -736,7 +813,6 @@ class AreaStyle {
         monochromeAvatars: monochromeAvatars ?? this.monochromeAvatars,
         chatBackdropWash: chatBackdropWash ?? this.chatBackdropWash,
         enableChatSearch: enableChatSearch ?? this.enableChatSearch,
-        resizableChatList: resizableChatList ?? this.resizableChatList,
         formattingToolbar: formattingToolbar ?? this.formattingToolbar,
         composerPolish: composerPolish ?? this.composerPolish,
         squareBubbles: squareBubbles ?? this.squareBubbles,
@@ -759,6 +835,7 @@ class AreaStyle {
         rtcSessionListIntro: rtcSessionListIntro ?? this.rtcSessionListIntro,
         payStatsCardStyle: payStatsCardStyle ?? this.payStatsCardStyle,
         settingsShellRestyle: settingsShellRestyle ?? this.settingsShellRestyle,
+        loginBgPreset: loginBgPreset ?? this.loginBgPreset,
         feedCardRedesign: feedCardRedesign ?? this.feedCardRedesign,
         feedCardActions: feedCardActions ?? this.feedCardActions,
         feedBookmarks: feedBookmarks ?? this.feedBookmarks,
@@ -823,6 +900,14 @@ class AreaStyle {
         if (logoAlign != null) "logoAlign": logoAlign!.name,
         if (subMenuStyle != null) "subMenuStyle": subMenuStyle!.name,
         if (!showHoverArrow) "showHoverArrow": showHoverArrow,
+        if (sidebarIconRows) "sidebarIconRows": sidebarIconRows,
+        if (!sidebarShowIcons) "sidebarShowIcons": sidebarShowIcons,
+        if (!sidebarShowRightDivider)
+          "sidebarShowRightDivider": sidebarShowRightDivider,
+        if (sidebarDividerColor != null)
+          "sidebarDividerColor": _colorToHex(sidebarDividerColor!),
+        if (sidebarDividerWidth != 1)
+          "sidebarDividerWidth": sidebarDividerWidth,
         if (enableMessageActions) "enableMessageActions": enableMessageActions,
         if (showChatListLastMessage)
           "showChatListLastMessage": showChatListLastMessage,
@@ -838,7 +923,6 @@ class AreaStyle {
         if (monochromeAvatars) "monochromeAvatars": monochromeAvatars,
         if (chatBackdropWash) "chatBackdropWash": chatBackdropWash,
         if (enableChatSearch) "enableChatSearch": enableChatSearch,
-        if (resizableChatList) "resizableChatList": resizableChatList,
         if (formattingToolbar) "formattingToolbar": formattingToolbar,
         if (composerPolish) "composerPolish": composerPolish,
         if (squareBubbles) "squareBubbles": squareBubbles,
@@ -859,6 +943,8 @@ class AreaStyle {
         if (rtcSessionListIntro) "rtcSessionListIntro": rtcSessionListIntro,
         if (payStatsCardStyle) "payStatsCardStyle": payStatsCardStyle,
         if (settingsShellRestyle) "settingsShellRestyle": settingsShellRestyle,
+        if (loginBgPreset != LoginBackgroundPreset.standard)
+          "loginBgPreset": loginBgPreset.name,
         if (feedCardRedesign) "feedCardRedesign": feedCardRedesign,
         if (feedCardActions) "feedCardActions": feedCardActions,
         if (feedBookmarks) "feedBookmarks": feedBookmarks,
@@ -952,6 +1038,14 @@ class AreaStyle {
             ? SubMenuStyle.values.firstWhere((e) => e.name == j["subMenuStyle"])
             : null,
         showHoverArrow: j["showHoverArrow"] as bool? ?? true,
+        sidebarIconRows: j["sidebarIconRows"] as bool? ?? false,
+        sidebarShowIcons: j["sidebarShowIcons"] as bool? ?? true,
+        sidebarShowRightDivider: j["sidebarShowRightDivider"] as bool? ?? true,
+        sidebarDividerColor: j["sidebarDividerColor"] != null
+            ? _colorFromHex(j["sidebarDividerColor"])
+            : null,
+        sidebarDividerWidth:
+            (j["sidebarDividerWidth"] as num?)?.toDouble() ?? 1,
         enableMessageActions: j["enableMessageActions"] as bool? ?? false,
         showChatListLastMessage: j["showChatListLastMessage"] as bool? ?? false,
         chatListDesignEnabled: j["chatListDesignEnabled"] as bool? ?? false,
@@ -964,7 +1058,6 @@ class AreaStyle {
         monochromeAvatars: j["monochromeAvatars"] as bool? ?? false,
         chatBackdropWash: j["chatBackdropWash"] as bool? ?? false,
         enableChatSearch: j["enableChatSearch"] as bool? ?? false,
-        resizableChatList: j["resizableChatList"] as bool? ?? false,
         formattingToolbar: j["formattingToolbar"] as bool? ?? false,
         composerPolish: j["composerPolish"] as bool? ?? false,
         squareBubbles: j["squareBubbles"] as bool? ?? false,
@@ -985,6 +1078,11 @@ class AreaStyle {
         rtcSessionListIntro: j["rtcSessionListIntro"] as bool? ?? false,
         payStatsCardStyle: j["payStatsCardStyle"] as bool? ?? false,
         settingsShellRestyle: j["settingsShellRestyle"] as bool? ?? false,
+        loginBgPreset: j["loginBgPreset"] != null
+            ? LoginBackgroundPreset.values.firstWhere(
+                (e) => e.name == j["loginBgPreset"],
+                orElse: () => LoginBackgroundPreset.standard)
+            : LoginBackgroundPreset.standard,
         feedCardRedesign: j["feedCardRedesign"] as bool? ?? false,
         feedCardActions: j["feedCardActions"] as bool? ?? false,
         feedBookmarks: j["feedBookmarks"] as bool? ?? false,
@@ -1114,6 +1212,16 @@ class AreaStyle {
         presetDir: presetDir);
     var radius = borderRadius > 0 ? BorderRadius.circular(borderRadius) : null;
 
+    // Any descendant ListTile needs a Material ancestor to paint its
+    // background/ink splashes into. When this style paints a real
+    // background/border below, the Containers built below would otherwise
+    // be the nearest DecoratedBox sitting between the ListTile and whatever
+    // Material happens to be further up the tree (e.g. Scaffold's), which
+    // trips Flutter's "ListTile background may be invisible" assertion.
+    // MaterialType.transparency paints nothing itself, so it just supplies
+    // that ancestor without changing this area's appearance.
+    child = Material(type: MaterialType.transparency, child: child);
+
     Widget content = Container(
       padding: padding > 0 ? EdgeInsets.all(padding) : null,
       decoration: BoxDecoration(
@@ -1217,84 +1325,128 @@ enum PaletteSlot {
   primary,
   secondary,
   tertiary,
-  error,
-  surface,
+  fourth,
+  sidebarBackground,
+  speechBackground,
+  speechBackgroundSent,
   onSurface,
-  onAccent,
+  navText,
+  navAccent,
+  sidebarText,
+  sidebarAccent,
   outline,
+  error,
   success,
-  accent,
 }
 
-// kMaxPaletteColors caps the *total* palette (10 fixed roles +
+// kMaxPaletteColors caps the *total* palette (15 fixed roles +
 // extraPaletteColors) a preset can carry; kMaxExtraPaletteColors is the
-// remaining room for extras once the 10 fixed roles are accounted for.
+// remaining room for extras once the 15 fixed roles are accounted for.
 const int kMaxPaletteColors = 20;
-// 20 - 10 fixed PaletteSlot roles.
-const int kMaxExtraPaletteColors = kMaxPaletteColors - 10;
+// 20 - 15 fixed PaletteSlot roles.
+const int kMaxExtraPaletteColors = kMaxPaletteColors - 15;
 
-// kVividPaletteSlots are the 5 roles a ColorPalette library entry (see
+// kVividPaletteSlots are the 7 roles a ColorPalette library entry (see
 // palette_library.dart) actually carries and overwrites when applied --
-// error/surface/onSurface/onAccent/outline are functional/neutral roles
-// that must stay dark-vs-light-theme-appropriate, so a library palette
-// deliberately leaves them alone rather than clobbering them with
-// (possibly brightness-mismatched, e.g. a white surface in a dark theme)
-// baked-in values.
+// 5 background-tier hues (re-derived through brightness-aware lightness/
+// saturation clamping, not used raw -- see theme_editor.dart's
+// _applyPalette) plus the 2 real accent colors. Each background tier gets
+// its own hue input (rather than all deriving from `primary`) so a
+// palette's sidebar/chat areas can each have a distinct character instead
+// of looking like minor tints of the same background. Tertiary also drives
+// the Feed post card/post-detail background and the Settings page's group
+// panels (see post_content.dart/feed_posts.dart/settings.dart's
+// _SettingsGroupCard) -- previously a separate `newsBackground` slot
+// duplicated this role for feed cards only, leaving Settings on an
+// unrelated color; merged into Tertiary so every "second background" tier
+// in the app reads as the same deliberate color. fourth/onSurface/navText/
+// sidebarText/outline/error/success are functional/neutral roles that must
+// stay dark-vs-light-theme-appropriate, so a library palette deliberately
+// leaves them alone rather than clobbering them with (possibly
+// brightness-mismatched) baked-in values.
 const List<PaletteSlot> kVividPaletteSlots = [
   PaletteSlot.primary,
   PaletteSlot.secondary,
   PaletteSlot.tertiary,
-  PaletteSlot.success,
-  PaletteSlot.accent,
+  PaletteSlot.sidebarBackground,
+  PaletteSlot.speechBackground,
+  PaletteSlot.navAccent,
+  PaletteSlot.sidebarAccent,
 ];
 
 String paletteSlotLabel(PaletteSlot slot) {
   switch (slot) {
     case PaletteSlot.primary:
-      return "Primary";
+      return "Primary (Background)";
     case PaletteSlot.secondary:
-      return "Secondary";
+      return "Secondary (Nav background)";
     case PaletteSlot.tertiary:
-      return "Tertiary";
-    case PaletteSlot.error:
-      return "Error";
-    case PaletteSlot.surface:
-      return "Surface (Background)";
+      return "Tertiary (Second Background)";
+    case PaletteSlot.fourth:
+      return "Fourth (third Background)";
+    case PaletteSlot.sidebarBackground:
+      return "Sidebar background";
+    case PaletteSlot.speechBackground:
+      return "Speech background (received)";
+    case PaletteSlot.speechBackgroundSent:
+      return "Speech background (sent)";
     case PaletteSlot.onSurface:
-      return "On Surface (Text)";
-    case PaletteSlot.onAccent:
-      return "On Accent (Text on Color)";
+      return "On surface text";
+    case PaletteSlot.navText:
+      return "Nav text color";
+    case PaletteSlot.navAccent:
+      return "Nav accent color";
+    case PaletteSlot.sidebarText:
+      return "Sidebar text color";
+    case PaletteSlot.sidebarAccent:
+      return "Sidebar Accent color";
     case PaletteSlot.outline:
       return "Outline (Borders)";
+    case PaletteSlot.error:
+      return "Error";
     case PaletteSlot.success:
       return "Success";
-    case PaletteSlot.accent:
-      return "Accent (Custom)";
   }
 }
 
-// ThemePreset is one full, nameable, exportable custom theme: a 10-color
+// ThemePreset is one full, nameable, exportable custom theme: a 12-color
 // palette plus a set of per-area style overrides.
 class ThemePreset {
   final String id;
   final String name;
   final Brightness brightness;
 
-  // The 10-color palette (see PaletteSlot for the rationale behind these
-  // specific roles). "accent" carries no fixed ColorScheme role -- it's a
-  // free extra swatch available for area styling.
-  final Color primary;
-  final Color secondary;
-  final Color tertiary;
+  // The 15-color palette (see PaletteSlot for the rationale behind these
+  // specific roles).
+  final Color primary; // Main app background (and ColorScheme.fromSeed's
+  // seed color). Also the Theme Areas section's select-menu popup
+  // background.
+  final Color secondary; // Nav bar's background fill.
+  final Color tertiary; // Shares the compiled ColorScheme's tertiary/
+  // tertiaryContainer roles -- the RTC instant-call banner, voice-recorder
+  // box, markdown blockquotes, Feed post card/post-detail background, and
+  // the Settings page's group panels (_SettingsGroupCard) -- this app's
+  // general-purpose "second background" tier.
+  final Color fourth; // A 4th, more deeply nested background tier (e.g.
+  // the chat reply-preview box).
+  final Color sidebarBackground; // Sidebar (subMenuTabBar) row/tile
+  // background -- Settings/LN Management/Feed/etc.'s left nav list.
+  final Color speechBackground; // Chat message bubble (received) background.
+  final Color speechBackgroundSent; // Chat message bubble (sent/own)
+  // background -- previously unthemed (always theme.colors.surfaceContainer,
+  // a Primary-derived tone), so sent bubbles never actually followed any
+  // preset color the way received bubbles did.
+  final Color onSurface; // General app text/icons -- NOT the nav bar or
+  // sidebar, which have their own dedicated text/accent slots below.
+  final Color navText; // Nav bar's unselected-item text+icon color.
+  final Color navAccent; // Nav bar's selected-item text+icon color.
+  final Color sidebarText; // Sidebar's unselected-item text+icon color.
+  final Color sidebarAccent; // Sidebar's selected-item text+icon color.
+  final Color outline; // Borders/dividers.
   final Color error;
-  final Color surface;
-  final Color onSurface;
-  final Color onAccent;
-  final Color outline;
   final Color success;
-  final Color accent;
 
-  // extraPaletteColors are user-added swatches beyond the 10 fixed roles
+  // extraPaletteColors are user-added swatches beyond the 12 fixed roles
   // above -- free-form, no fixed semantic meaning, just additional options
   // offered wherever an area style needs a color picked (see `palette`
   // below and theme_editor.dart's palette-color dropdowns). Capped at
@@ -1327,13 +1479,18 @@ class ThemePreset {
     required this.primary,
     required this.secondary,
     required this.tertiary,
-    required this.error,
-    required this.surface,
+    required this.fourth,
+    required this.sidebarBackground,
+    required this.speechBackground,
+    required this.speechBackgroundSent,
     required this.onSurface,
-    required this.onAccent,
+    required this.navText,
+    required this.navAccent,
+    required this.sidebarText,
+    required this.sidebarAccent,
     required this.outline,
+    required this.error,
     required this.success,
-    required this.accent,
     this.extraPaletteColors = const [],
     this.areas = const {},
     this.menuLabels,
@@ -1349,20 +1506,30 @@ class ThemePreset {
         return secondary;
       case PaletteSlot.tertiary:
         return tertiary;
-      case PaletteSlot.error:
-        return error;
-      case PaletteSlot.surface:
-        return surface;
+      case PaletteSlot.fourth:
+        return fourth;
+      case PaletteSlot.sidebarBackground:
+        return sidebarBackground;
+      case PaletteSlot.speechBackground:
+        return speechBackground;
+      case PaletteSlot.speechBackgroundSent:
+        return speechBackgroundSent;
       case PaletteSlot.onSurface:
         return onSurface;
-      case PaletteSlot.onAccent:
-        return onAccent;
+      case PaletteSlot.navText:
+        return navText;
+      case PaletteSlot.navAccent:
+        return navAccent;
+      case PaletteSlot.sidebarText:
+        return sidebarText;
+      case PaletteSlot.sidebarAccent:
+        return sidebarAccent;
       case PaletteSlot.outline:
         return outline;
+      case PaletteSlot.error:
+        return error;
       case PaletteSlot.success:
         return success;
-      case PaletteSlot.accent:
-        return accent;
     }
   }
 
@@ -1374,24 +1541,34 @@ class ThemePreset {
         return copyWith(secondary: color);
       case PaletteSlot.tertiary:
         return copyWith(tertiary: color);
-      case PaletteSlot.error:
-        return copyWith(error: color);
-      case PaletteSlot.surface:
-        return copyWith(surface: color);
+      case PaletteSlot.fourth:
+        return copyWith(fourth: color);
+      case PaletteSlot.sidebarBackground:
+        return copyWith(sidebarBackground: color);
+      case PaletteSlot.speechBackground:
+        return copyWith(speechBackground: color);
+      case PaletteSlot.speechBackgroundSent:
+        return copyWith(speechBackgroundSent: color);
       case PaletteSlot.onSurface:
         return copyWith(onSurface: color);
-      case PaletteSlot.onAccent:
-        return copyWith(onAccent: color);
+      case PaletteSlot.navText:
+        return copyWith(navText: color);
+      case PaletteSlot.navAccent:
+        return copyWith(navAccent: color);
+      case PaletteSlot.sidebarText:
+        return copyWith(sidebarText: color);
+      case PaletteSlot.sidebarAccent:
+        return copyWith(sidebarAccent: color);
       case PaletteSlot.outline:
         return copyWith(outline: color);
+      case PaletteSlot.error:
+        return copyWith(error: color);
       case PaletteSlot.success:
         return copyWith(success: color);
-      case PaletteSlot.accent:
-        return copyWith(accent: color);
     }
   }
 
-  // palette returns the 10 fixed-role colors (in PaletteSlot order) plus
+  // palette returns the 12 fixed-role colors (in PaletteSlot order) plus
   // any extraPaletteColors -- this is the full set of colors offered
   // wherever an area style needs a color picked (see theme_editor.dart's
   // palette-color dropdowns).
@@ -1405,13 +1582,18 @@ class ThemePreset {
     Color? primary,
     Color? secondary,
     Color? tertiary,
-    Color? error,
-    Color? surface,
+    Color? fourth,
+    Color? sidebarBackground,
+    Color? speechBackground,
+    Color? speechBackgroundSent,
     Color? onSurface,
-    Color? onAccent,
+    Color? navText,
+    Color? navAccent,
+    Color? sidebarText,
+    Color? sidebarAccent,
     Color? outline,
+    Color? error,
     Color? success,
-    Color? accent,
     List<Color>? extraPaletteColors,
     Map<ThemeArea, AreaStyle>? areas,
     Map<String, String>? menuLabels,
@@ -1425,13 +1607,19 @@ class ThemePreset {
         primary: primary ?? this.primary,
         secondary: secondary ?? this.secondary,
         tertiary: tertiary ?? this.tertiary,
-        error: error ?? this.error,
-        surface: surface ?? this.surface,
+        fourth: fourth ?? this.fourth,
+        sidebarBackground: sidebarBackground ?? this.sidebarBackground,
+        speechBackground: speechBackground ?? this.speechBackground,
+        speechBackgroundSent:
+            speechBackgroundSent ?? this.speechBackgroundSent,
         onSurface: onSurface ?? this.onSurface,
-        onAccent: onAccent ?? this.onAccent,
+        navText: navText ?? this.navText,
+        navAccent: navAccent ?? this.navAccent,
+        sidebarText: sidebarText ?? this.sidebarText,
+        sidebarAccent: sidebarAccent ?? this.sidebarAccent,
         outline: outline ?? this.outline,
+        error: error ?? this.error,
         success: success ?? this.success,
-        accent: accent ?? this.accent,
         extraPaletteColors: extraPaletteColors ?? this.extraPaletteColors,
         areas: areas ?? this.areas,
         menuLabels: menuLabels ?? this.menuLabels,
@@ -1450,36 +1638,76 @@ class ThemePreset {
         .toColor();
   }
 
-  // toAppTheme deliberately does NOT force primary/secondary/tertiary/error
-  // (or their "on" counterparts) into ColorScheme.fromSeed the way an
-  // earlier version of this method did -- those roles drive the foreground
-  // of many standard Material widgets (e.g. OutlinedButton's text/icon
-  // color defaults to colorScheme.primary), and forcing them to the user's
-  // raw palette swatch (which can easily equal or nearly equal `surface`,
-  // as the seed defaults below do) produces illegible text-on-background.
-  // Only `seedColor` (== primary, exactly as the original hand-built
-  // "dark"/"light" AppThemes below only ever passed a single seed) and the
-  // background-ish `surface`/its container tones are passed explicitly;
-  // Material safely derives properly-contrasting primary/secondary/
-  // tertiary/error/onX tones from the seed, exactly like "dark"/"light" do.
-  // This also keeps an unedited draft preset (see seedFromDark/Light)
-  // visually near-identical to the built-in theme it was cloned from,
-  // since it's produced by the same formula with the same seed value.
+  // toAppTheme deliberately does NOT force secondary (or most
+  // Material-derived roles) into ColorScheme.fromSeed -- those roles drive
+  // the foreground of many standard Material widgets, and forcing them to
+  // the user's raw palette swatch can produce illegible text-on-background.
+  // `primary` (the seed), `tertiary`, `error`, and `onSurface` are safe to
+  // pass through directly since ColorScheme.fromSeed independently derives
+  // a full, properly-contrasting tonal ramp (onTertiary/tertiaryContainer/
+  // onError/errorContainer/etc.) from each -- the same way `surface`
+  // already was. `onSurface` in particular is what "On surface text"
+  // actually needs to drive general app text/icon color (most Text/Icon
+  // widgets read colorScheme.onSurface when given no explicit color) --
+  // without passing it here, editing that palette slot had no visible
+  // effect anywhere in the app.
   AppTheme toAppTheme() {
-    var textTheme =
-        brightness == Brightness.dark ? interTextTheme : interBlackTextTheme;
+    // interTextTheme/interBlackTextTheme hardcode Colors.white70/black54 on
+    // every style -- reused as-is, a plain Text widget with no explicit
+    // color (i.e. most of them; only this app's own Txt component with an
+    // explicit TextColor reads colorScheme.onSurface directly) would never
+    // reflect a custom preset's "On surface text" pick at all, regardless
+    // of the colorScheme.onSurface override above. .apply() recolors every
+    // style to the preset's own onSurface instead.
+    var textTheme = (brightness == Brightness.dark
+            ? interTextTheme
+            : interBlackTextTheme)
+        .apply(displayColor: onSurface, bodyColor: onSurface);
     var data = ThemeData.from(
       useMaterial3: true,
       textTheme: textTheme,
       colorScheme: ColorScheme.fromSeed(
         seedColor: primary,
         brightness: brightness,
+        onSurface: onSurface,
         onSurfaceVariant: Colors.grey[600],
-        surface: surface,
-        surfaceContainerLow: _darken(surface, 0.012),
-        surfaceContainerLowest: _darken(surface, 0.022),
+        surface: primary,
+        surfaceContainerLow: _darken(primary, 0.012),
+        surfaceContainerLowest: _darken(primary, 0.022),
+        // Continues the same explicit elevation ladder as
+        // surfaceContainerLow/Lowest above, rather than leaving these 3
+        // tiers to Material's own tonal derivation -- otherwise any
+        // unthemed Card/Container that reads one of these (several plain
+        // settings panels do) shows the same unpredictable seed-derived
+        // tint described above instead of a shade of the actual chosen
+        // Primary color.
+        surfaceContainer: _darken(primary, 0.006),
+        surfaceContainerHigh: _darken(primary, 0.0),
+        surfaceContainerHighest: _darken(primary, -0.01),
+        tertiary: tertiary,
+        error: error,
+        // Without this, ColorScheme.fromSeed computes its own tonal
+        // derivation of "primary" from the seed rather than using the
+        // literal color -- every other unthemed Material widget that falls
+        // back to colorScheme.primary (default OutlinedButton/TextButton
+        // foreground, container backgrounds, etc.) then shows that
+        // computed tone instead of anything the user actually picked. That
+        // tone is also unpredictable at the extremes: a fully desaturated
+        // seed (e.g. pure black "Primary") has no well-defined hue, and
+        // Material's algorithm can resolve it to an unrelated, oddly-tinted
+        // color (seen here as a washed-out pink). navAccent is what this
+        // app treats as its actual "accent" role, so pinning
+        // colorScheme.primary to it keeps every unthemed widget visually
+        // consistent with the app's own accent instead of a hidden,
+        // seed-derived one.
+        primary: navAccent,
       ),
     ).copyWith(
+      // DropdownButton's popup menu (e.g. the Theme Areas section's select)
+      // falls back to canvasColor when no explicit dropdownColor is set
+      // (true everywhere in this app) -- this connects it to "Primary"
+      // without needing to touch every DropdownButton call site.
+      canvasColor: primary,
       listTileTheme: ListTileThemeData(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(3)),
         selectedTileColor:
@@ -1488,7 +1716,7 @@ class ThemePreset {
       ),
       hintColor: onSurface.withValues(alpha: 0.6),
       appBarTheme: AppBarTheme(
-        backgroundColor: surface,
+        backgroundColor: primary,
         scrolledUnderElevation: 0,
       ),
       disabledColor: Colors.grey[850],
@@ -1498,7 +1726,11 @@ class ThemePreset {
       key: "custom:$id",
       descr: name,
       data: data,
-      extraColors: CustomColors(successOnSurface: success),
+      extraColors: CustomColors(
+        successOnSurface: success,
+        sidebarDivider: outline,
+        selectedItemOnSurfaceListView: sidebarAccent,
+      ),
       extraTextStyles: CustomTextStyles(
         chatListGcIndicator: TextStyle(
           fontStyle: FontStyle.italic,
@@ -1566,36 +1798,74 @@ class ThemePreset {
   }
 
   // Seed palettes to pre-fill the palette editor from - not separate
-  // installable presets, just starting points.
-  static ThemePreset seedFromDark() => const ThemePreset(
-        id: "custom",
-        name: "Default Theme",
-        brightness: Brightness.dark,
-        primary: Color(0xFF19172C),
-        secondary: Color(0xFF47464F),
-        tertiary: Color(0xFF6F5573),
-        error: Color(0xFFBA1A1A),
-        surface: Color(0xFF19172C),
-        onSurface: Color(0xFFE5E1E9),
-        onAccent: Color(0xFFFFFFFF),
-        outline: Color(0xFF47464F),
-        success: Color(0xFF2D882D),
-        accent: Color(0xFFFFC107),
-      );
+  // installable presets, just starting points. secondary/sidebarBackground/
+  // navText/navAccent/sidebarText/sidebarAccent are read straight off
+  // appThemes' real ColorScheme (theme_manager.dart) rather than
+  // independently-guessed hex literals, so the "Default Theme" card can
+  // never silently drift from what the untouched, no-custom-preset app
+  // actually looks like (this previously caused the seed's navAccent to be
+  // amber/orange while the real default nav accent is ColorScheme.primary,
+  // a lavender-purple/indigo).
+  //
+  // navText/sidebarText and navAccent/sidebarAccent are intentionally set
+  // to the *same* source value (onSurfaceVariant / primary) because that's
+  // what the real fallback rendering does when no preset is active (see
+  // sidebar.dart's navUnselectedIconColor/navSelectedIconColor and
+  // containers.dart's sidebarText/sidebarAccent fallbacks) -- Nav and
+  // Sidebar are only meant to visibly diverge on sidebarBackground
+  // (surfaceContainerLowest vs secondary's surfaceContainerLow), not on
+  // text/accent, unless the user explicitly customizes one of them.
+  static ThemePreset seedFromDark() {
+    var scheme = appThemes["dark"]!.data.colorScheme;
+    return ThemePreset(
+      id: "custom",
+      name: "Default Theme",
+      brightness: Brightness.dark,
+      primary: const Color(0xFF19172C),
+      secondary: scheme.surfaceContainerLow,
+      tertiary: const Color(0xFF232030),
+      fourth: const Color(0xFF1C1930),
+      sidebarBackground: scheme.surfaceContainerLowest,
+      speechBackground: const Color(0xFF232030),
+      speechBackgroundSent: const Color(0xFF1C1930),
+      onSurface: const Color(0xFFE5E1E9),
+      navText: scheme.onSurfaceVariant,
+      navAccent: scheme.primary,
+      sidebarText: scheme.onSurfaceVariant,
+      sidebarAccent: scheme.primary,
+      // Matches extraColors.sidebarDivider, the fallback borders/dividers
+      // use when NO preset is active at all -- once any preset (including
+      // this "Default Theme" one) is active, activePreset?.outline always
+      // takes precedence over extraColors.sidebarDivider (see
+      // containers.dart's border color chains), so this must equal that
+      // fallback or borders visibly shift the moment a preset is applied.
+      outline: appThemes["dark"]!.extraColors.sidebarDivider,
+      error: const Color(0xFFBA1A1A),
+      success: const Color(0xFF2D882D),
+    );
+  }
 
-  static ThemePreset seedFromLight() => const ThemePreset(
-        id: "custom",
-        name: "Default Theme",
-        brightness: Brightness.light,
-        primary: Color(0xFFE8E7F3),
-        secondary: Color(0xFF45464F),
-        tertiary: Color(0xFF6F5573),
-        error: Color(0xFFBA1A1A),
-        surface: Color(0xFFE8E7F3),
-        onSurface: Color(0xFF1B1B1F),
-        onAccent: Color(0xFFFFFFFF),
-        outline: Color(0xFF45464F),
-        success: Color(0xFF2D882D),
-        accent: Color(0xFFFF6F00),
-      );
+  static ThemePreset seedFromLight() {
+    var scheme = appThemes["light"]!.data.colorScheme;
+    return ThemePreset(
+      id: "custom",
+      name: "Default Theme",
+      brightness: Brightness.light,
+      primary: const Color(0xFFE8E7F3),
+      secondary: scheme.surfaceContainerLow,
+      tertiary: const Color(0xFFF5F4FA),
+      fourth: const Color(0xFFEDEBF5),
+      sidebarBackground: scheme.surfaceContainerLowest,
+      speechBackground: const Color(0xFFF5F4FA),
+      speechBackgroundSent: const Color(0xFFEDEBF5),
+      onSurface: const Color(0xFF1B1B1F),
+      navText: scheme.onSurfaceVariant,
+      navAccent: scheme.primary,
+      sidebarText: scheme.onSurfaceVariant,
+      sidebarAccent: scheme.primary,
+      outline: appThemes["light"]!.extraColors.sidebarDivider,
+      error: const Color(0xFFBA1A1A),
+      success: const Color(0xFF2D882D),
+    );
+  }
 }

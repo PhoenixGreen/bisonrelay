@@ -111,6 +111,7 @@ class _LNScreenState extends State<LNScreen> {
 
     return SecondarySideMenuLayout(
       width: 130,
+      storageKey: "lnManagement",
       items: lnManagementBarItems(onItemChanged, tabIndex),
       isDetail: ModalRoute.of(context)!.settings.arguments != null,
       content: activeTab(),

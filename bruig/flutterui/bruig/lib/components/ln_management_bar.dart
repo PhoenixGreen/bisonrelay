@@ -1,37 +1,45 @@
-import 'package:bruig/components/text.dart';
+import 'package:bruig/components/containers.dart';
 import 'package:flutter/material.dart';
 
 // lnManagementBarItems returns the LN Management submenu's tabs, for use
 // with SecondarySideMenuLayout (see containers.dart).
-List<ListTile> lnManagementBarItems(Function tabChange, int selectedIndex) {
+List<SidebarNavItem> lnManagementBarItems(
+    Function tabChange, int selectedIndex) {
   return [
-    ListTile(
+    SidebarNavItem(
+        icon: Icons.dashboard_outlined,
         selected: selectedIndex == 0,
-        title: const Txt.S("Overview"),
+        label: "Overview",
         onTap: () => tabChange(0)),
-    ListTile(
+    SidebarNavItem(
+        icon: Icons.account_balance_wallet_outlined,
         selected: selectedIndex == 1,
-        title: const Txt.S("Accounts"),
+        label: "Accounts",
         onTap: () => tabChange(1)),
-    ListTile(
+    SidebarNavItem(
+        icon: Icons.link,
         selected: selectedIndex == 2,
-        title: const Txt.S("On-Chain"),
+        label: "On-Chain",
         onTap: () => tabChange(2)),
-    ListTile(
+    SidebarNavItem(
+        icon: Icons.hub_outlined,
         selected: selectedIndex == 3,
-        title: const Txt.S("Channels"),
+        label: "Channels",
         onTap: () => tabChange(3)),
-    ListTile(
+    SidebarNavItem(
+        icon: Icons.swap_horiz,
         selected: selectedIndex == 4,
-        title: const Txt.S("Payments"),
+        label: "Payments",
         onTap: () => tabChange(4)),
-    ListTile(
+    SidebarNavItem(
+        icon: Icons.public,
         selected: selectedIndex == 5,
-        title: const Txt.S("Network"),
+        label: "Network",
         onTap: () => tabChange(5)),
-    ListTile(
+    SidebarNavItem(
+        icon: Icons.backup_outlined,
         selected: selectedIndex == 6,
-        title: const Txt.S("Backups"),
+        label: "Backups",
         onTap: () => tabChange(6)),
   ];
 }

@@ -318,46 +318,55 @@ class _SettingsScreenState extends State<SettingsScreen> {
       }
       return SecondarySideMenuLayout(
         width: 130 * (theme.fontScale > 0 ? theme.fontScale : 1),
+        storageKey: "settings",
         content: settingsView,
         items: [
-          ListTile(
+          SidebarNavItem(
+            icon: Icons.person_outline,
             selected: settingsPage == "Account",
-            title: const Txt.S("Account"),
+            label: "Account",
             onTap: () => changePage("Account"),
           ),
-          ListTile(
+          SidebarNavItem(
+            icon: Icons.palette_outlined,
             selected: settingsPage == "Appearance",
-            title: const Txt.S("Appearance"),
+            label: "Appearance",
             onTap: () => changePage("Appearance"),
           ),
-          ListTile(
+          SidebarNavItem(
+            icon: Icons.notifications_outlined,
             selected: settingsPage == "Notifications",
-            title: const Txt.S("Notifications"),
+            label: "Notifications",
             onTap: () => changePage("Notifications"),
           ),
-          ListTile(
+          SidebarNavItem(
+            icon: Icons.public,
             selected: settingsPage == "Network",
-            title: const Txt.S("Network"),
+            label: "Network",
             onTap: () => changePage("Network"),
           ),
-          ListTile(
+          SidebarNavItem(
+            icon: Icons.volume_up_outlined,
             selected: settingsPage == "Audio",
-            title: const Txt.S("Audio"),
+            label: "Audio",
             onTap: () => changePage("Audio"),
           ),
-          ListTile(
+          SidebarNavItem(
+            icon: Icons.terminal,
             selected: settingsPage == "RPC",
-            title: const Txt.S("RPC"),
+            label: "RPC",
             onTap: () => showRpcWarningDialog(),
           ),
-          ListTile(
+          SidebarNavItem(
+            icon: Icons.bar_chart_outlined,
             selected: settingsPage == "Stats",
-            title: const Txt.S("Stats"),
+            label: "Stats",
             onTap: () => changePage("Stats"),
           ),
-          ListTile(
+          SidebarNavItem(
+            icon: Icons.list_outlined,
             selected: settingsPage == "Logs",
-            title: const Txt.S("Logs"),
+            label: "Logs",
             onTap: () => changePage("Logs"),
           ),
         ],
@@ -377,13 +386,19 @@ class _RestyledSettingsNav extends StatelessWidget {
       required this.changePage,
       required this.showRpcWarningDialog});
 
-  Widget _navItem(BuildContext context, String page, IconData icon) {
+  Widget _navItem(
+      BuildContext context, ThemeNotifier theme, String page, IconData icon) {
     final cs = Theme.of(context).colorScheme;
     final sel = settingsPage == page;
+    // Matches the same preset-driven accent every other sidebar in the app
+    // uses (see containers.dart's _SidebarNavRow) instead of falling back
+    // to colorScheme.primary/surfaceContainerHighest, which don't follow
+    // the user's chosen Sidebar Accent color.
+    final accent = theme.activePreset?.sidebarAccent ?? cs.primary;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       child: Material(
-        color: sel ? cs.surfaceContainerHighest : Colors.transparent,
+        color: sel ? accent.withValues(alpha: 0.18) : Colors.transparent,
         borderRadius: BorderRadius.circular(12),
         child: InkWell(
           borderRadius: BorderRadius.circular(12),
@@ -392,8 +407,7 @@ class _RestyledSettingsNav extends StatelessWidget {
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             child: Row(children: [
-              Icon(icon,
-                  size: 19, color: sel ? cs.primary : cs.onSurfaceVariant),
+              Icon(icon, size: 19, color: sel ? accent : cs.onSurfaceVariant),
               const SizedBox(width: 12),
               Text(page,
                   style: TextStyle(
@@ -410,6 +424,7 @@ class _RestyledSettingsNav extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    var theme = ThemeNotifier.of(context);
     return Container(
       width: 200,
       decoration: BoxDecoration(
@@ -419,14 +434,15 @@ class _RestyledSettingsNav extends StatelessWidget {
       child: ListView(
         padding: const EdgeInsets.symmetric(vertical: 10),
         children: [
-          _navItem(context, "Account", Icons.person_outline),
-          _navItem(context, "Appearance", Icons.palette_outlined),
-          _navItem(context, "Notifications", Icons.notifications_outlined),
-          _navItem(context, "Network", Icons.public),
-          _navItem(context, "Audio", Icons.volume_up_outlined),
-          _navItem(context, "RPC", Icons.terminal),
-          _navItem(context, "Stats", Icons.bar_chart_outlined),
-          _navItem(context, "Logs", Icons.list_outlined),
+          _navItem(context, theme, "Account", Icons.person_outline),
+          _navItem(context, theme, "Appearance", Icons.palette_outlined),
+          _navItem(context, theme, "Notifications",
+              Icons.notifications_outlined),
+          _navItem(context, theme, "Network", Icons.public),
+          _navItem(context, theme, "Audio", Icons.volume_up_outlined),
+          _navItem(context, theme, "RPC", Icons.terminal),
+          _navItem(context, theme, "Stats", Icons.bar_chart_outlined),
+          _navItem(context, theme, "Logs", Icons.list_outlined),
         ],
       ),
     );

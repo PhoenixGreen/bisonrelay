@@ -6,7 +6,6 @@ import 'package:bruig/models/client.dart';
 import 'package:bruig/models/realtimechat.dart';
 import 'package:bruig/models/theme_preset.dart';
 import 'package:bruig/models/uistate.dart';
-import 'package:bruig/storage_manager.dart';
 import 'package:bruig/screens/chat/new_gc_screen.dart';
 import 'package:bruig/screens/chat/new_message_screen.dart';
 import 'package:bruig/screens/chats.dart';
@@ -233,11 +232,14 @@ class _ChatHeadingWState extends State<_ChatHeadingW> {
 
   @override
   Widget build(BuildContext context) {
-    var chatStyle = ThemeNotifier.of(context).areaStyle(ThemeArea.chat);
+    var theme = ThemeNotifier.of(context);
+    var chatStyle = theme.areaStyle(ThemeArea.chat);
     var showLastMessage = chatStyle.showChatListLastMessage;
     var chatListDesign = chatStyle.chatListDesignEnabled;
     var cornerRadius = chatStyle.chatListCornerRadius ?? 14;
-    var accentColor = chatStyle.chatListAccentColor ?? _clpBlue;
+    var accentColor = chatStyle.chatListAccentColor ??
+        theme.activePreset?.sidebarAccent ??
+        _clpBlue;
     var glowIntensity = chatStyle.chatListGlowIntensity ?? 1.0;
     var topHighlight = chatStyle.chatListTopHighlight;
     var isActive = chat.active;
@@ -525,23 +527,6 @@ class _ActiveChatsListMenuState extends State<ActiveChatsListMenu>
   Timer? debounce;
   ScrollController sortedListScroll = ScrollController();
 
-  // Width of the resizable chat list pane (AreaStyle.resizableChatList),
-  // persisted independently of the theme preset system since it's a
-  // per-device layout preference, not a themeable style.
-  static const _listWidthKey = "chatListWidth";
-  double _listWidth = 320;
-
-  Future<void> _loadListWidth() async {
-    final v = await StorageManager.readData(_listWidthKey);
-    if (v is num && mounted) {
-      setState(() => _listWidth = v.toDouble());
-    }
-  }
-
-  void _saveListWidth() {
-    StorageManager.saveData(_listWidthKey, _listWidth);
-  }
-
   void doUpdateState() {
     if (mounted) {
       setState(() {
@@ -595,7 +580,6 @@ class _ActiveChatsListMenuState extends State<ActiveChatsListMenu>
     super.initState();
     client.activeChats.addListener(activeChatsListUpdated);
     activeChatsListUpdated();
-    _loadListWidth();
 
     rtc.hotAudioSession.addListener(rtcChanged);
     rtc.liveSessions.addListener(rtcChanged);
@@ -703,7 +687,6 @@ class _ActiveChatsListMenuState extends State<ActiveChatsListMenu>
     // Desktop version, display side menu.
     return Consumer<ThemeNotifier>(
       builder: (context, theme, _) {
-        var resizable = theme.areaStyle(ThemeArea.chat).resizableChatList;
         var chatList = ListView.builder(
           controller: sortedListScroll,
           scrollDirection: Axis.vertical,
@@ -714,88 +697,47 @@ class _ActiveChatsListMenuState extends State<ActiveChatsListMenu>
           ),
         );
 
-        if (!resizable) {
-          return SecondarySideMenuLayout(
-            width: 205 * (theme.fontScale > 0 ? theme.fontScale : 1),
-            isDetail: widget.isDetail,
-            detailKey: widget.detailKey,
-            content: widget.content ?? const SizedBox.shrink(),
-            list: chatList,
-            // Generate Invite / Received Message Time / Fetch or Accept
-            // Invite / Show GC Invitations moved to the Address Book main
-            // menu item's submenu (see address_book_bar.dart). New
-            // Message/New Group Chat remain reachable here too via
-            // gotoNewMessage/gotoNewGroupChat (used by the mobile FAB
-            // buttons above).
-          );
-        }
+        var showSearchBar = theme.areaStyle(ThemeArea.chat).enableChatSearch;
 
-        // Resizable variant: a plain drag-resizable pane + persistent
-        // search bar, bypassing SecondarySideMenuLayout's hover-reveal/
-        // collapse machinery (shared with subMenuTabBar-driven screens)
-        // in favor of a simple always-visible resizable list.
-        return Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            SizedBox(
-              width: _listWidth,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  GestureDetector(
-                    onTap: gotoNewMessage,
-                    child: Container(
-                      margin: const EdgeInsets.fromLTRB(10, 12, 10, 6),
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 11),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF0D0E0D),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: const Color(0xFF1C1F1D)),
+        return SecondarySideMenuLayout(
+          width: 205 * (theme.fontScale > 0 ? theme.fontScale : 1),
+          storageKey: "chats",
+          isDetail: widget.isDetail,
+          detailKey: widget.detailKey,
+          content: widget.content ?? const SizedBox.shrink(),
+          header: !showSearchBar
+              ? null
+              : GestureDetector(
+                  onTap: gotoNewMessage,
+                  child: Container(
+                    margin: const EdgeInsets.fromLTRB(10, 12, 10, 6),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF0D0E0D),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFF1C1F1D)),
+                    ),
+                    child: const Row(children: [
+                      Icon(Icons.search, size: 18, color: Color(0xFF5F6764)),
+                      SizedBox(width: 10),
+                      Expanded(
+                        child: Text("Search or start a chat",
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontSize: 13.5, color: Color(0xFF5F6764))),
                       ),
-                      child: const Row(children: [
-                        Icon(Icons.search, size: 18, color: Color(0xFF5F6764)),
-                        SizedBox(width: 10),
-                        Expanded(
-                          child: Text("Search or start a chat",
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                  fontSize: 13.5, color: Color(0xFF5F6764))),
-                        ),
-                      ]),
-                    ),
-                  ),
-                  Expanded(child: chatList),
-                ],
-              ),
-            ),
-            MouseRegion(
-              cursor: SystemMouseCursors.resizeLeftRight,
-              child: GestureDetector(
-                behavior: HitTestBehavior.translucent,
-                onHorizontalDragUpdate: (d) => setState(() {
-                  _listWidth =
-                      (_listWidth + d.delta.dx).clamp(220.0, 560.0).toDouble();
-                }),
-                onHorizontalDragEnd: (_) => _saveListWidth(),
-                onDoubleTap: () {
-                  setState(() => _listWidth = 320);
-                  _saveListWidth();
-                },
-                child: const SizedBox(
-                  width: 8,
-                  child: Center(
-                    child: SizedBox(
-                      width: 1,
-                      child: ColoredBox(color: Color(0xFF2F3336)),
-                    ),
+                    ]),
                   ),
                 ),
-              ),
-            ),
-            Expanded(child: widget.content ?? const SizedBox.shrink()),
-          ],
+          list: chatList,
+          // Generate Invite / Received Message Time / Fetch or Accept
+          // Invite / Show GC Invitations moved to the Address Book main
+          // menu item's submenu (see address_book_bar.dart). New
+          // Message/New Group Chat remain reachable here too via
+          // gotoNewMessage/gotoNewGroupChat (used by the mobile FAB
+          // buttons above).
         );
       },
     );
