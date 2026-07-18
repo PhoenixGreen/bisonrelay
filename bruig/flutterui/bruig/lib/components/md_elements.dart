@@ -185,6 +185,7 @@ class EmbedInlineSyntax extends md.InlineSyntax {
           break;
         case "image/avif":
           tag = "avif";
+          break;
         case "text/plain":
           // Decode plain text directly.
           tag = "pre";

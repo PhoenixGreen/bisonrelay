@@ -27,6 +27,7 @@ import 'package:bruig/screens/realtimechat/rtclist.dart';
 import 'package:bruig/screens/settings.dart';
 import 'package:bruig/screens/viewpage_screen.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:golib_plugin/golib_plugin.dart';
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
@@ -301,8 +302,30 @@ class MainMenuModel extends ChangeNotifier {
   void registerDynamicItem(MainMenuItem item) {
     var idx = menus.indexWhere((e) => e.routeName == item.routeName);
     if (idx >= 0) {
-      var existingLabel = menus[idx].label;
-      menus[idx] = MainMenuItem(existingLabel, item.routeName, item.builder,
+      var existing = menus[idx];
+      // DynPluginsModel.update calls this on every rebuild of the provider
+      // tree it's wired into (see the class comment above), passing a
+      // freshly-built MainMenuItem each time even when nothing about the
+      // plugin actually changed. Notifying unconditionally here would
+      // notify MainMenuModel's own listeners -- including that same
+      // provider tree -- which re-runs update() and calls back in here,
+      // forever. Only touch state/notify when something render-relevant
+      // actually differs.
+      var unchanged = existing.hiddenFromSideBar == item.hiddenFromSideBar &&
+          existing.area == item.area &&
+          _sameIcon(existing.icon, item.icon) &&
+          existing.subMenuInfo.length == item.subMenuInfo.length;
+      if (unchanged) {
+        // Still refresh the builder/titleBuilder closures (e.g. manifest
+        // screens may have changed) since that's cheap and doesn't need a
+        // rebuild -- they're only invoked on demand when the route is
+        // navigated to, not eagerly.
+        menus[idx] = MainMenuItem(existing.label, item.routeName,
+            item.builder, item.titleBuilder, item.icon, item.subMenuInfo,
+            hiddenFromSideBar: item.hiddenFromSideBar, area: item.area);
+        return;
+      }
+      menus[idx] = MainMenuItem(existing.label, item.routeName, item.builder,
           item.titleBuilder, item.icon, item.subMenuInfo,
           hiddenFromSideBar: item.hiddenFromSideBar, area: item.area);
     } else {
@@ -314,7 +337,14 @@ class MainMenuModel extends ChangeNotifier {
           hiddenFromSideBar: item.hiddenFromSideBar, area: item.area));
       if (_customOrder != null) _sortByOrder(_customOrder!);
     }
-    notifyListeners();
+    _notifyListenersAfterBuild();
+  }
+
+  static bool _sameIcon(Widget? a, Widget? b) {
+    if (a is SidebarIcon && b is SidebarIcon) {
+      return a.icon == b.icon && a.alert == b.alert;
+    }
+    return a == b;
   }
 
   // unregisterDynamicItem removes a previously-registered dynamic nav item
@@ -331,7 +361,19 @@ class MainMenuModel extends ChangeNotifier {
       _activeIndex = 0;
       _activePageTab = 0;
     }
-    notifyListeners();
+    _notifyListenersAfterBuild();
+  }
+
+  // registerDynamicItem/unregisterDynamicItem are called from
+  // DynPluginsModel.update, itself invoked by a ChangeNotifierProxyProvider2
+  // while it (and, transitively, MainMenuModel's own already-built
+  // InheritedProviderScope) are mid-build -- calling notifyListeners()
+  // directly there trips Flutter's "setState() or markNeedsBuild() called
+  // during build" assertion. Deferring to a post-frame callback lets the
+  // mutation apply immediately (so synchronous reads see it) while the
+  // widget-rebuild notification fires safely once the frame is done.
+  void _notifyListenersAfterBuild() {
+    SchedulerBinding.instance.addPostFrameCallback((_) => notifyListeners());
   }
 
   String _activeRoute = "";

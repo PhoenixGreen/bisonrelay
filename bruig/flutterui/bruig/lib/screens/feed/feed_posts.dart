@@ -1339,6 +1339,21 @@ class _FeedFirstImage extends StatelessWidget {
       required this.cropHeight,
       required this.onTap});
 
+  // Surfaces decode failures instead of silently swallowing them into an
+  // invisible SizedBox.shrink() -- previously a failed decode left a blank,
+  // unexplained gap (the reserved box from the layout's fixed height/width
+  // stayed, but nothing indicated why nothing was drawn inside it).
+  Widget _errorPlaceholder(Object error, {double? height}) {
+    debugPrint("_FeedFirstImage unable to decode image: $error");
+    return SizedBox(
+      height: height,
+      width: double.infinity,
+      child: const Center(
+        child: Icon(Icons.broken_image_outlined, color: Colors.grey),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     Widget image;
@@ -1351,7 +1366,7 @@ class _FeedFirstImage extends StatelessWidget {
           child: Image.memory(bytes,
               fit: BoxFit.cover,
               errorBuilder: (context, error, stackTrace) =>
-                  const SizedBox.shrink()),
+                  _errorPlaceholder(error, height: 140)),
         );
         break;
       case FeedImageLayout.full:
@@ -1359,7 +1374,7 @@ class _FeedFirstImage extends StatelessWidget {
             width: double.infinity,
             fit: BoxFit.fitWidth,
             errorBuilder: (context, error, stackTrace) =>
-                const SizedBox.shrink());
+                _errorPlaceholder(error, height: 140));
         break;
       case FeedImageLayout.cropped:
         image = SizedBox(
@@ -1369,7 +1384,7 @@ class _FeedFirstImage extends StatelessWidget {
               fit: BoxFit.cover,
               alignment: Alignment.topCenter,
               errorBuilder: (context, error, stackTrace) =>
-                  const SizedBox.shrink()),
+                  _errorPlaceholder(error, height: cropHeight)),
         );
         break;
       case FeedImageLayout.standard:
@@ -1382,7 +1397,7 @@ class _FeedFirstImage extends StatelessWidget {
           child: Image.memory(bytes,
               fit: BoxFit.contain,
               errorBuilder: (context, error, stackTrace) =>
-                  const SizedBox.shrink()),
+                  _errorPlaceholder(error, height: 140)),
         );
         break;
       case FeedImageLayout.random:

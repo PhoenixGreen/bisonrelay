@@ -494,30 +494,35 @@ class MainSettingsScreen extends StatelessWidget {
                     leading: const Icon(Icons.notifications_outlined),
                     title: const Text("Notifications")),
                 Consumer<ConnStateModel>(
-                    builder: (context, connState, child) => ListTile(
-                        tileColor: connState.state.state == connStateOffline
-                            ? Colors.red
-                            : (connState.checkWalletErr ?? "") != ""
-                                ? Colors.amber[800]
-                                : null,
-                        onTap: () => changePage("Network"),
-                        leading: const Icon(Icons.shield),
-                        title: const Text("Network"))),
+                    builder: (context, connState, child) => Material(
+                        type: MaterialType.transparency,
+                        child: ListTile(
+                            tileColor: connState.state.state ==
+                                    connStateOffline
+                                ? Colors.red
+                                : (connState.checkWalletErr ?? "") != ""
+                                    ? Colors.amber[800]
+                                    : null,
+                            onTap: () => changePage("Network"),
+                            leading: const Icon(Icons.shield),
+                            title: const Text("Network")))),
                 ListTile(
                     onTap: () => changePage("Audio"),
                     leading: const Icon(Icons.perm_camera_mic_outlined),
                     title: const Text("Audio")),
                 Consumer<LiveRTDTSessionsModel>(
-                    builder: (context, liveSessions, child) => ListTile(
-                        tileColor: liveSessions.hasSessions
-                            ? Colors.green.shade700
-                            : null,
-                        onTap: () {
-                          Navigator.of(context).pushReplacementNamed(
-                              RealtimeChatScreen.routeName);
-                        },
-                        leading: const Icon(Icons.voice_chat),
-                        title: const Text("Realtime chat"))),
+                    builder: (context, liveSessions, child) => Material(
+                        type: MaterialType.transparency,
+                        child: ListTile(
+                            tileColor: liveSessions.hasSessions
+                                ? Colors.green.shade700
+                                : null,
+                            onTap: () {
+                              Navigator.of(context).pushReplacementNamed(
+                                  RealtimeChatScreen.routeName);
+                            },
+                            leading: const Icon(Icons.voice_chat),
+                            title: const Text("Realtime chat")))),
                 ListTile(
                     onTap: () {
                       Navigator.of(context)

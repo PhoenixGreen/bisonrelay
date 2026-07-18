@@ -370,7 +370,9 @@ class _PayStatsScreenState extends State<PayStatsScreen> {
           child: ListView.builder(
               itemCount: stats.length,
               padding: const EdgeInsets.all(0),
-              itemBuilder: (context, index) => ListTile(
+              itemBuilder: (context, index) => Material(
+                  type: MaterialType.transparency,
+                  child: ListTile(
                     horizontalTitleGap: 0,
                     minVerticalPadding: 0,
                     contentPadding: const EdgeInsets.all(3),
@@ -405,7 +407,7 @@ class _PayStatsScreenState extends State<PayStatsScreen> {
                           },
                           icon: const Icon(Icons.delete)),
                     ]),
-                  )),
+                  ))),
         ),
         const Divider(),
         _userStatsPanel(theme),
