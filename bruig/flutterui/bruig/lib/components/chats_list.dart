@@ -354,10 +354,13 @@ class _ChatHeadingWState extends State<_ChatHeadingW> {
       );
     }
 
+    // Even with the redesign off, the tile below may set a real tileColor
+    // (e.g. isActiveRTC's green highlight) that needs a nearby Material to
+    // paint into -- see the comment on _wrapSelected.
     Widget wrap(Widget tile) => chatListDesign
         ? _wrapSelected(isActive, cornerRadius, accentColor, glowIntensity,
             topHighlight, tile)
-        : tile;
+        : Material(type: MaterialType.transparency, child: tile);
 
     bool isScreenSmall = checkIsScreenSmall(context);
     return Consumer<ThemeNotifier>(
