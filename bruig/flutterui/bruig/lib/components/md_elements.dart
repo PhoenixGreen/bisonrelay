@@ -525,6 +525,22 @@ class Downloadable extends StatelessWidget {
       );
 }
 
+// chatImageConstraints resolves the configured chat image size setting into
+// concrete BoxConstraints, given the width available to the image within its
+// chat bubble (as reported by an enclosing LayoutBuilder).
+BoxConstraints chatImageConstraints(String size, double availableWidth) {
+  switch (size) {
+    case "half":
+      return BoxConstraints(
+          maxWidth: availableWidth.isFinite ? availableWidth * 0.5 : 250);
+    case "full":
+      return BoxConstraints(
+          maxWidth: availableWidth.isFinite ? availableWidth : 250);
+    default:
+      return const BoxConstraints(maxHeight: 250, maxWidth: 250);
+  }
+}
+
 class ImageMd extends StatelessWidget {
   final String tip;
   final Uint8List imgContent;
@@ -533,22 +549,25 @@ class ImageMd extends StatelessWidget {
   const ImageMd(this.tip, this.imgContent, this.type, {this.name, super.key});
 
   @override
-  Widget build(BuildContext context) => Tooltip(
-        message: tip,
-        child: InkWell(
-          borderRadius: const BorderRadius.all(Radius.circular(30)),
-          onTap: () {
-            showDialog(
-                context: context,
-                builder: (_) => ImageDialog(imgContent, type, name: name));
-          },
-          child: Container(
-            margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
-            child: ClipRRect(
-              borderRadius: const BorderRadius.all(Radius.circular(8.0)),
-              child: ConstrainedBox(
+  Widget build(BuildContext context) {
+    var chatImageSize = ThemeNotifier.of(context).chatImageSize;
+    return Tooltip(
+      message: tip,
+      child: InkWell(
+        borderRadius: const BorderRadius.all(Radius.circular(30)),
+        onTap: () {
+          showDialog(
+              context: context,
+              builder: (_) => ImageDialog(imgContent, type, name: name));
+        },
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+          child: ClipRRect(
+            borderRadius: const BorderRadius.all(Radius.circular(8.0)),
+            child: LayoutBuilder(
+              builder: (context, constraints) => ConstrainedBox(
                 constraints:
-                    const BoxConstraints(maxHeight: 250, maxWidth: 250),
+                    chatImageConstraints(chatImageSize, constraints.maxWidth),
                 child: Image.memory(
                   imgContent,
                   fit: BoxFit.contain,
@@ -561,7 +580,9 @@ class ImageMd extends StatelessWidget {
             ),
           ),
         ),
-      );
+      ),
+    );
+  }
 }
 
 class AvifMd extends StatelessWidget {
@@ -570,29 +591,38 @@ class AvifMd extends StatelessWidget {
   const AvifMd(this.tip, this.imgContent, {super.key});
 
   @override
-  Widget build(BuildContext context) => Tooltip(
-        message: tip,
-        child: InkWell(
-          borderRadius: const BorderRadius.all(Radius.circular(30)),
-          onTap: () {
-            showDialog(
-                context: context, builder: (_) => AvifDialog(imgContent));
-          },
-          child: Container(
-            constraints: const BoxConstraints(maxHeight: 250, maxWidth: 250),
-            margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
-            decoration: BoxDecoration(
-              borderRadius: const BorderRadius.all(Radius.circular(8.0)),
-              image: DecorationImage(
-                image: AvifImage.memory(imgContent).image,
-                onError: (exception, stackTrace) {
-                  debugPrint("AvifMd unable to decode image: $exception");
-                },
+  Widget build(BuildContext context) {
+    var chatImageSize = ThemeNotifier.of(context).chatImageSize;
+    return Tooltip(
+      message: tip,
+      child: InkWell(
+        borderRadius: const BorderRadius.all(Radius.circular(30)),
+        onTap: () {
+          showDialog(context: context, builder: (_) => AvifDialog(imgContent));
+        },
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+          child: ClipRRect(
+            borderRadius: const BorderRadius.all(Radius.circular(8.0)),
+            child: LayoutBuilder(
+              builder: (context, constraints) => ConstrainedBox(
+                constraints:
+                    chatImageConstraints(chatImageSize, constraints.maxWidth),
+                child: Image(
+                  image: AvifImage.memory(imgContent).image,
+                  fit: BoxFit.contain,
+                  errorBuilder: (context, error, stackTrace) {
+                    debugPrint("AvifMd unable to decode image: $error");
+                    return const SizedBox.shrink();
+                  },
+                ),
               ),
             ),
           ),
         ),
-      );
+      ),
+    );
+  }
 }
 
 class PreformattedElementBuilder extends MarkdownElementBuilder {

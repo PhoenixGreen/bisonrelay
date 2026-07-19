@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 class StorageManager {
   static const String themeModeKey = "themeMode";
   static const String fontScaleKey = "fontScale";
+  static const String chatImageSizeKey = "chatImageSize";
   static const String goProfilerEnabledKey = "goProfilerEnabled";
   static const String goTimedProfilingKey = "goTimedProfiling";
   static const String ntfnFgSvcKey = "foregroundService";

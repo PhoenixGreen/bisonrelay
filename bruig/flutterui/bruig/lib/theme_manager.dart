@@ -199,6 +199,21 @@ String appFontSizeKeyForScale(double scale) {
   return key;
 }
 
+class AppImageSize {
+  final String descr;
+
+  AppImageSize({required this.descr});
+}
+
+// Available chat image display sizes.
+final Map<String, AppImageSize> appImageSizes = {
+  "default": AppImageSize(descr: "Default"),
+  "half": AppImageSize(descr: "Half width"),
+  "full": AppImageSize(descr: "Full width"),
+};
+
+const String _defaultChatImageSize = "default";
+
 String emojifont = Platform.isWindows ? "notoemoji_win" : "notoemoji_unix";
 
 final TextTheme interTextTheme = TextTheme(
@@ -602,6 +617,9 @@ class ThemeNotifier with ChangeNotifier {
   late double _fontScale = _defaultFontScale;
   double get fontScale => _fontScale;
 
+  late String _chatImageSize = _defaultChatImageSize;
+  String get chatImageSize => _chatImageSize;
+
   bool _themeLoaded = false;
   bool get themeLoaded => _themeLoaded;
 
@@ -627,6 +645,12 @@ class ThemeNotifier with ChangeNotifier {
     var fontScaleCfg =
         await StorageManager.readData(StorageManager.fontScaleKey);
     _fontScale = double.parse(fontScaleCfg ?? "0");
+
+    var chatImageSizeCfg =
+        await StorageManager.readData(StorageManager.chatImageSizeKey);
+    _chatImageSize = appImageSizes.containsKey(chatImageSizeCfg)
+        ? chatImageSizeCfg!
+        : _defaultChatImageSize;
 
     // Register any saved custom presets into appThemes *before* resolving
     // the persisted theme mode, so a stored "custom:<id>" selection is
@@ -824,6 +848,13 @@ class ThemeNotifier with ChangeNotifier {
     _fontScale = fs;
     StorageManager.saveData(StorageManager.fontScaleKey, fs.toString());
     _clearTxtStyleCache();
+    notifyListeners();
+  }
+
+  void setChatImageSize(String size) async {
+    if (!appImageSizes.containsKey(size)) return;
+    _chatImageSize = size;
+    StorageManager.saveData(StorageManager.chatImageSizeKey, size);
     notifyListeners();
   }
 
