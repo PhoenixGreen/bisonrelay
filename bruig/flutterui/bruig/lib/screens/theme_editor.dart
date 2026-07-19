@@ -336,6 +336,26 @@ class FontSizeDropdown extends StatelessWidget {
   }
 }
 
+// ImageSizeDropdown picks how large chat images are displayed.
+class ImageSizeDropdown extends StatelessWidget {
+  final ThemeNotifier theme;
+  const ImageSizeDropdown(this.theme, {super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return DropdownButton<String>(
+      value: theme.chatImageSize,
+      items: appImageSizes.entries
+          .map(
+              (e) => DropdownMenuItem(value: e.key, child: Text(e.value.descr)))
+          .toList(),
+      onChanged: (key) {
+        if (key != null) theme.setChatImageSize(key);
+      },
+    );
+  }
+}
+
 // switchToTheme switches the active color theme *and* applies that theme's
 // own saved menu customization (or none, for a built-in) -- every place
 // that changes which theme is active must go through this (not
@@ -1772,6 +1792,12 @@ class _AreasSectionState extends State<AreasSection> {
                   _setStyle(theme, (s) => s.copyWith(expandMessageWidth: v)),
             ),
           if (style.expandMessageWidth) _expandPaddingSlider(theme, style),
+          const SizedBox(height: 8),
+          Row(children: [
+            const Txt("Image size: "),
+            const SizedBox(width: 8),
+            ImageSizeDropdown(theme),
+          ]),
         ],
         if (selected == ThemeArea.realtimeChat) ...[
           SwitchListTile(
