@@ -428,8 +428,11 @@ class _RestyledSettingsNav extends StatelessWidget {
     return Container(
       width: 200,
       decoration: BoxDecoration(
+        // outlineVariant (not outline) -- a plain panel divider should
+        // blend into the background, not stand out like a button border.
         border: Border(
-            right: BorderSide(color: Theme.of(context).colorScheme.outline)),
+            right: BorderSide(
+                color: Theme.of(context).colorScheme.outlineVariant)),
       ),
       child: ListView(
         padding: const EdgeInsets.symmetric(vertical: 10),

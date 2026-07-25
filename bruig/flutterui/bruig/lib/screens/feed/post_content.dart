@@ -825,10 +825,7 @@ class _PostContentScreenForArgsState extends State<_PostContentScreenForArgs> {
                                   nick: authorNick),
                             ),
                             const SizedBox(width: 6),
-                            Txt.S(authorNick,
-                                style: TextStyle(
-                                    color:
-                                        ThemeNotifier.of(context).activePreset?.onSurface)),
+                            Txt.S(authorNick, color: TextColor.onSurface),
                             const SizedBox(width: 8),
                             !myPost && !hasChat
                                 ? SizedBox(
@@ -864,9 +861,8 @@ class _PostContentScreenForArgsState extends State<_PostContentScreenForArgs> {
                                             .toIso8601String(),
                                         style: TextStyle(
                                             color: ThemeNotifier.of(context)
-                                                .activePreset
-                                                ?.onSurface
-                                                .withValues(alpha: 0.6)))))
+                                                .textColor(TextColor.onSurface)
+                                                .withValues(alpha: 0.6))))),
                           ],
                         ),
 
@@ -877,6 +873,7 @@ class _PostContentScreenForArgsState extends State<_PostContentScreenForArgs> {
                             : Row(children: [
                                 Expanded(
                                     child: Txt.S("Relayed by $relayer",
+                                        color: TextColor.onSurfaceVariant,
                                         style: const TextStyle(
                                             fontStyle: FontStyle.italic)))
                               ]),

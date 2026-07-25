@@ -799,15 +799,17 @@ class _QuotedPostCardState extends State<_QuotedPostCard> {
   bool _requested = false;
 
   Widget _shell(BuildContext context, Widget child, VoidCallback? onTap) {
+    final theme = ThemeNotifier.of(context);
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
       child: Container(
         margin: const EdgeInsets.symmetric(vertical: 8),
         decoration: BoxDecoration(
-          color: const Color(0xFF141614),
+          color: theme.surfaceColor(SurfaceColor.surfaceContainer),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: const Color(0xFF2A2E2B)),
+          border: Border.all(
+              color: theme.surfaceColor(SurfaceColor.surfaceContainerHigh)),
         ),
         child: child,
       ),
@@ -819,6 +821,7 @@ class _QuotedPostCardState extends State<_QuotedPostCard> {
     final feed = Provider.of<FeedModel>(context);
     final client = Provider.of<ClientModel>(context, listen: false);
     final post = feed.getPost(widget.from, widget.postId);
+    final theme = ThemeNotifier.of(context);
 
     if (post == null) {
       if (!_requested && widget.from.isNotEmpty && widget.postId.isNotEmpty) {
@@ -829,10 +832,12 @@ class _QuotedPostCardState extends State<_QuotedPostCard> {
       }
       return _shell(
         context,
-        const Padding(
-          padding: EdgeInsets.all(12),
+        Padding(
+          padding: const EdgeInsets.all(12),
           child: Text("Loading quoted post...",
-              style: TextStyle(fontSize: 13, color: Color(0xFF9AA3A0))),
+              style: TextStyle(
+                  fontSize: 13,
+                  color: theme.textColor(TextColor.onSurfaceVariant))),
         ),
         null,
       );
@@ -859,10 +864,10 @@ class _QuotedPostCardState extends State<_QuotedPostCard> {
                 child: Text(nick,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
-                        color: Color(0xFFCED4D2))),
+                        color: theme.textColor(TextColor.onSurface))),
               ),
             ]),
             const SizedBox(height: 6),
