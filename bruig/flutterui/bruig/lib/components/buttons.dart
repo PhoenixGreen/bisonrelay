@@ -7,6 +7,19 @@ import 'package:flutter/material.dart';
 import 'package:bruig/theme_manager.dart';
 import 'package:provider/provider.dart';
 
+// CancelButton is a neutral dismiss/decline action (closing a dialog
+// without saving, declining an invite, discarding an in-progress draft,
+// etc) -- reused across ~24 call sites throughout the app, the overwhelming
+// majority of which are not destructive/dangerous, just "step back". It
+// used to be styled with theme.colors.errorContainer (the "Error" palette
+// color), which routed every one of those call sites through a field meant
+// for genuine failure/danger states -- readers reasonably expect a "Cancel"
+// button to be neutral, not red, and reserving red for an actual confirmed
+// destructive action (which this app doesn't currently route through this
+// widget) matches how most apps distinguish the two. Now uses
+// secondaryContainer (driven by the "Accent (Buttons/Toggles)" palette
+// field, already tuned per-palette as a readable, muted button surface)
+// instead.
 class CancelButton extends StatelessWidget {
   final VoidCallback? onPressed;
   final bool loading;
@@ -22,11 +35,11 @@ class CancelButton extends StatelessWidget {
     return Consumer<ThemeNotifier>(
         builder: (context, theme, child) => ElevatedButton(
             style: ElevatedButton.styleFrom(
-                backgroundColor: theme.colors.errorContainer),
+                backgroundColor: theme.colors.secondaryContainer),
             onPressed: !loading ? onPressed : null,
             child: Text(label,
                 style: theme.textStyleFor(
-                    context, null, TextColor.onErrorContainer))));
+                    context, null, TextColor.onSecondaryContainer))));
   }
 }
 
@@ -49,7 +62,9 @@ ButtonStyle emptyButtonStyle(ThemeNotifier theme) {
     minimumSize: const Size(150, 55),
     shape: RoundedRectangleBorder(
         borderRadius: const BorderRadius.all(Radius.circular(30)),
-        side: BorderSide(color: theme.colors.outlineVariant, width: 2)),
+        // outline (not outlineVariant) -- a button's border needs to
+        // contrast against the background, unlike a plain divider.
+        side: BorderSide(color: theme.colors.outline, width: 2)),
   );
 }
 

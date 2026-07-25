@@ -577,66 +577,73 @@ class _PaletteSectionState extends State<PaletteSection> {
       id: "palette-${DateTime.now().millisecondsSinceEpoch}",
       name: name.trim(),
       colors: kVividPaletteSlots.map(preset.forSlot).toList(),
+      brightness: preset.brightness,
     );
     await PaletteLibraryStorage.savePalette(palette);
     if (!mounted) return;
     setState(() => userPalettes = [...userPalettes, palette]);
   }
 
-  // _applyDefaultTheme special-cases the synthetic "Default Theme" card
-  // (see `defaultPalette` in build() below): unlike every other palette,
-  // it should reproduce the actual built-in dark/light theme exactly, not
-  // run its colors back through the generic per-palette derivation
-  // formulas below (_paletteBgFor/OnSurfaceFor/OutlineFor) -- those
-  // approximate a *reasonable* neutral set for an arbitrary third-party
-  // palette, but don't reliably reproduce the seed's own hand-picked
-  // values.
-  void _applyDefaultTheme(ThemeNotifier theme) {
-    var draft = ensureDraftPreset(theme);
-    var seed = draft.brightness == Brightness.dark
-        ? ThemePreset.seedFromDark()
-        : ThemePreset.seedFromLight();
-    theme.previewPreset(draft.copyWith(
-      primary: seed.primary,
-      secondary: seed.secondary,
-      tertiary: seed.tertiary,
-      fourth: seed.fourth,
-      sidebarBackground: seed.sidebarBackground,
-      speechBackground: seed.speechBackground,
-      onSurface: seed.onSurface,
-      navText: seed.navText,
-      navAccent: seed.navAccent,
-      sidebarText: seed.sidebarText,
-      sidebarAccent: seed.sidebarAccent,
-      outline: seed.outline,
-      error: seed.error,
-      success: seed.success,
-    ));
-  }
-
-  // _applyPalette applies a ColorPalette's 7 stored colors exactly as
-  // stored -- no brightness-aware re-derivation, no hue rotation. Each
-  // built-in/saved palette is a self-contained, already-tuned look (e.g.
-  // "X (Twitter) Dark" was tuned live in the editor and exported), so
-  // recomputing its colors through a generic formula only fights whatever
-  // the palette's author actually intended and made results depend on
-  // which base theme (dark/light) was active before applying -- applying
-  // as-is is both simpler and matches what the user sees when they tune a
-  // palette by hand. Fourth/onSurface/navText/sidebarText/outline/error/
-  // success aren't part of the 7 stored colors and are left at whatever
-  // the draft preset already had.
+  // _applyPalette applies a ColorPalette's 12 stored vivid colors exactly as
+  // stored -- no hue rotation, no re-deriving them. Each built-in/saved
+  // palette is a self-contained, already-tuned look (e.g. "X (Twitter)
+  // Dark" was tuned live in the editor and exported), so recomputing its
+  // colors through a generic formula only fights whatever the palette's
+  // author actually intended.
+  //
+  // The neutral/functional roles (fourth/onSurface/onSurfaceVariant/
+  // navText/sidebarText/success) and the overall brightness, however, ARE
+  // reset -- to palette.brightness's own seed -- rather than left at
+  // whatever the draft preset already had. Every built-in palette's colors
+  // are tuned against one specific brightness (nearly always dark; only
+  // "Light" targets light), so leaving old neutrals in place made the
+  // exact same palette render completely differently -- sometimes
+  // unreadably, e.g. dark text surviving under a freshly-applied
+  // near-black background -- depending on whether the dark or light base
+  // theme happened to be active before the palette was clicked. Resetting
+  // them from palette.brightness's seed makes applying any given palette
+  // produce the same, internally-consistent result regardless of prior
+  // state.
   void _applyPalette(ThemeNotifier theme, ColorPalette palette) {
     var draft = ensureDraftPreset(theme);
+    var base = palette.brightness == Brightness.dark
+        ? ThemePreset.seedFromDark()
+        : ThemePreset.seedFromLight();
     Color colorAt(int i, Color fallback) =>
         i < palette.colors.length ? palette.colors[i] : fallback;
+    // Palettes saved/exported before speechBackgroundSent became a stored
+    // vivid slot only have 7 colors, ending in [..., navAccent,
+    // sidebarAccent] -- read the accents from their old positions for
+    // those instead of misreading a leftover sidebarAccent as navAccent.
+    // accentContainer/error/outline/buttonBorder are newer still (appended
+    // at the tail), so any palette shorter than their index naturally
+    // falls back to the seed's own value for them via colorAt's length
+    // check below -- no extra legacy-length branching needed for those.
+    var legacySevenColor = palette.colors.length == 7;
+    var navAccentIdx = legacySevenColor ? 5 : 6;
+    var sidebarAccentIdx = legacySevenColor ? 6 : 7;
     var updated = draft.copyWith(
-      primary: colorAt(0, draft.primary),
-      secondary: colorAt(1, draft.secondary),
-      tertiary: colorAt(2, draft.tertiary),
-      sidebarBackground: colorAt(3, draft.sidebarBackground),
-      speechBackground: colorAt(4, draft.speechBackground),
-      navAccent: colorAt(5, draft.navAccent),
-      sidebarAccent: colorAt(6, draft.sidebarAccent),
+      brightness: palette.brightness,
+      primary: colorAt(0, base.primary),
+      secondary: colorAt(1, base.secondary),
+      tertiary: colorAt(2, base.tertiary),
+      fourth: base.fourth,
+      sidebarBackground: colorAt(3, base.sidebarBackground),
+      speechBackground: colorAt(4, base.speechBackground),
+      speechBackgroundSent: legacySevenColor
+          ? base.speechBackgroundSent
+          : colorAt(5, base.speechBackgroundSent),
+      accentContainer: colorAt(8, base.accentContainer),
+      onSurface: base.onSurface,
+      onSurfaceVariant: base.onSurfaceVariant,
+      navText: base.navText,
+      navAccent: colorAt(navAccentIdx, base.navAccent),
+      sidebarText: base.sidebarText,
+      sidebarAccent: colorAt(sidebarAccentIdx, base.sidebarAccent),
+      outline: colorAt(10, base.outline),
+      buttonBorder: colorAt(11, base.buttonBorder),
+      error: colorAt(9, base.error),
+      success: base.success,
     );
     theme.previewPreset(updated);
   }
@@ -685,9 +692,7 @@ class _PaletteSectionState extends State<PaletteSection> {
 
   Widget _paletteCard(ThemeNotifier theme, ColorPalette palette) {
     return InkWell(
-      onTap: () => palette.id == "default"
-          ? _applyDefaultTheme(theme)
-          : _applyPalette(theme, palette),
+      onTap: () => _applyPalette(theme, palette),
       borderRadius: BorderRadius.circular(6),
       child: Container(
         width: 150,
@@ -739,16 +744,32 @@ class _PaletteSectionState extends State<PaletteSection> {
     return Consumer<ThemeNotifier>(builder: (context, theme, _) {
       var preset = displayPreset(theme);
       var fullPalette = preset.palette;
-      var seed = theme.brightness == Brightness.dark
-          ? ThemePreset.seedFromDark()
-          : ThemePreset.seedFromLight();
+      // Always built from their own fixed seed, never from
+      // theme.brightness/the currently active preset -- these two cards
+      // must reproduce the same look every time regardless of which base
+      // theme (or palette) happens to be active when they're shown.
       var defaultPalette = ColorPalette(
         id: "default",
-        name: "Default Theme",
+        name: "Default",
         builtin: true,
-        colors: kVividPaletteSlots.map(seed.forSlot).toList(),
+        colors:
+            kVividPaletteSlots.map(ThemePreset.seedFromDark().forSlot).toList(),
       );
-      var allPalettes = [defaultPalette, ...builtinPalettes, ...userPalettes];
+      var lightPalette = ColorPalette(
+        id: "light",
+        name: "Light",
+        builtin: true,
+        brightness: Brightness.light,
+        colors: kVividPaletteSlots
+            .map(ThemePreset.seedFromLight().forSlot)
+            .toList(),
+      );
+      var allPalettes = [
+        defaultPalette,
+        lightPalette,
+        ...builtinPalettes,
+        ...userPalettes
+      ];
       var canAddMore =
           preset.extraPaletteColors.length < kMaxExtraPaletteColors;
 
@@ -1131,8 +1152,10 @@ class _AreasSectionState extends State<AreasSection> {
   }
 
   // _feedImageCropHeightSlider controls the max height (px) a feed post's
-  // first image is capped to when FeedImageLayout.cropped is selected (or
-  // when FeedImageLayout.random happens to assign "cropped" to a post).
+  // first image is capped to when FeedImageLayout.cropped is selected, or
+  // when FeedImageLayout.random is selected (applied to whichever concrete
+  // layout the rotation picks, not just when it happens to land on
+  // "cropped").
   Widget _feedImageCropHeightSlider(ThemeNotifier theme, AreaStyle style) {
     const key = "feedImageCropHeight";
     var shown = _dragValues[key] ?? style.feedImageCropHeight;

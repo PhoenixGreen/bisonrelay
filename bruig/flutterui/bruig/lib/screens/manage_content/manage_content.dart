@@ -120,7 +120,10 @@ class SharedContent extends StatelessWidget {
                     const EdgeInsets.only(bottom: 5, left: 5, right: 5, top: 5),
                 decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: theme.colors.outline)),
+                    // outlineVariant (not outline) -- a file-card border
+                    // should blend into the background like other panel
+                    // borders, not stand out like a button border.
+                    border: Border.all(color: theme.colors.outlineVariant)),
                 child: SharedContentFile(files[index], removeContent, client)),
             onTap: fileSelectedCB != null
                 ? () => fileSelectedCB!(files[index].sf)

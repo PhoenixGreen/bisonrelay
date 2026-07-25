@@ -1,3 +1,4 @@
+import 'package:bruig/components/buttons.dart';
 import 'package:bruig/components/snackbars.dart';
 import 'package:bruig/components/text.dart';
 import 'package:bruig/models/client.dart';
@@ -88,21 +89,7 @@ class _InstantCallModalState extends State<InstantCallModal> {
                       Txt.S("Make group call")
                     ],
                   )),
-              Consumer<ThemeNotifier>(
-                  builder: (context, theme, child) => ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                          backgroundColor: theme.colors.errorContainer),
-                      onPressed: () {
-                        Navigator.of(context).pop();
-                      },
-                      child: Row(children: [
-                        Icon(Icons.cancel_outlined,
-                            color: theme.colors.onErrorContainer),
-                        const SizedBox(width: 10),
-                        Txt.S("Cancel",
-                            style: theme.textStyleFor(
-                                context, null, TextColor.onErrorContainer))
-                      ]))),
+              CancelButton(onPressed: () => Navigator.of(context).pop()),
             ]));
   }
 }

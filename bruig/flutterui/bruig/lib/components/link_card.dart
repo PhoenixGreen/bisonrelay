@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:bruig/components/text.dart';
 import 'package:bruig/components/youtube_video_player.dart';
 import 'package:bruig/models/snackbar.dart';
+import 'package:bruig/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:golib_plugin/definitions.dart';
@@ -229,6 +230,7 @@ class _LinkCardState extends State<LinkCard> {
                 children: [
                   if (metadata.title.isNotEmpty)
                     Txt.S(metadata.title,
+                        color: TextColor.onSurface,
                         style: const TextStyle(fontWeight: FontWeight.bold)),
                   // Author acts as the card's header when there's no title
                   // (e.g. tweets, whose oEmbed response has no title field
@@ -236,6 +238,7 @@ class _LinkCardState extends State<LinkCard> {
                   // unstyled paragraph text.
                   if (metadata.author.isNotEmpty)
                     Txt.S(metadata.author,
+                        color: TextColor.onSurface,
                         style: const TextStyle(fontWeight: FontWeight.bold)),
                   if (metadata.description.isNotEmpty)
                     Padding(
@@ -248,6 +251,7 @@ class _LinkCardState extends State<LinkCard> {
                                   color: theme.dividerColor, width: 2)),
                         ),
                         child: Txt.S(metadata.description,
+                            color: TextColor.onSurfaceVariant,
                             style: const TextStyle(
                                 fontStyle: FontStyle.italic)),
                       ),

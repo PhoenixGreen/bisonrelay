@@ -1395,6 +1395,7 @@ enum PaletteSlot {
   sidebarText,
   sidebarAccent,
   outline,
+  buttonBorder,
   error,
   success,
 }
@@ -1406,12 +1407,11 @@ const int kMaxPaletteColors = 20;
 // 20 - 15 fixed PaletteSlot roles.
 const int kMaxExtraPaletteColors = kMaxPaletteColors - 15;
 
-// kVividPaletteSlots are the 7 roles a ColorPalette library entry (see
+// kVividPaletteSlots are the 12 roles a ColorPalette library entry (see
 // palette_library.dart) actually carries and overwrites when applied --
-// 5 background-tier hues (re-derived through brightness-aware lightness/
-// saturation clamping, not used raw -- see theme_editor.dart's
-// _applyPalette) plus the 2 real accent colors. Each background tier gets
-// its own hue input (rather than all deriving from `primary`) so a
+// 6 background-tier hues (used exactly as stored -- see theme_editor.dart's
+// _applyPalette) plus 6 real accent/semantic colors. Each background tier
+// gets its own hue input (rather than all deriving from `primary`) so a
 // palette's sidebar/chat areas can each have a distinct character instead
 // of looking like minor tints of the same background. Tertiary also drives
 // the Feed post card/post-detail background and the Settings page's group
@@ -1419,19 +1419,45 @@ const int kMaxExtraPaletteColors = kMaxPaletteColors - 15;
 // _SettingsGroupCard) -- previously a separate `newsBackground` slot
 // duplicated this role for feed cards only, leaving Settings on an
 // unrelated color; merged into Tertiary so every "second background" tier
-// in the app reads as the same deliberate color. fourth/onSurface/navText/
-// sidebarText/outline/error/success are functional/neutral roles that must
-// stay dark-vs-light-theme-appropriate, so a library palette deliberately
-// leaves them alone rather than clobbering them with (possibly
-// brightness-mismatched) baked-in values.
+// in the app reads as the same deliberate color. speechBackgroundSent (the
+// "sent"/own chat bubble) is included alongside speechBackground (the
+// "received" bubble) so the two can read as deliberately distinct colors
+// per palette -- e.g. WhatsApp's real outgoing-bubble teal -- instead of
+// speechBackgroundSent silently falling back to the Default/Light seed's
+// own value (identical across every other palette) the way it used to.
+// accentContainer (drives Switch/tonal-button backgrounds) is included for
+// the same reason -- it used to always fall back to the Default/Light
+// seed's own pale lavender, which reads as a random, brand-mismatched
+// "Buttons/Toggles" color on e.g. WhatsApp-green or Reddit-orange palettes.
+// error is included too so each palette can use a dark-mode-appropriate
+// red tuned for its own background instead of a single flat value that was
+// occasionally too dark/muddy against certain panel tones -- it's still
+// deliberately kept a similar, conventional "danger" red across every
+// palette (not brand-tinted) since a semantic color like error should stay
+// visually predictable regardless of theme. outline and buttonBorder are
+// included so each palette can tune its own divider color (which should
+// blend into that palette's specific background tone -- a single flat
+// grey doesn't blend equally well with, say, WhatsApp's teal-black vs
+// Snapchat's amber-black) and its own button-border color (which needs
+// the opposite: real contrast against that same background) separately
+// per palette. fourth/onSurface/navText/sidebarText/success are
+// functional/neutral roles that must stay dark-vs-light-theme-appropriate,
+// so a library palette deliberately leaves them alone (they're reset from
+// palette.brightness's own seed instead -- see _applyPalette) rather than
+// clobbering them with (possibly brightness-mismatched) baked-in values.
 const List<PaletteSlot> kVividPaletteSlots = [
   PaletteSlot.primary,
   PaletteSlot.secondary,
   PaletteSlot.tertiary,
   PaletteSlot.sidebarBackground,
   PaletteSlot.speechBackground,
+  PaletteSlot.speechBackgroundSent,
   PaletteSlot.navAccent,
   PaletteSlot.sidebarAccent,
+  PaletteSlot.accentContainer,
+  PaletteSlot.error,
+  PaletteSlot.outline,
+  PaletteSlot.buttonBorder,
 ];
 
 String paletteSlotLabel(PaletteSlot slot) {
@@ -1465,7 +1491,9 @@ String paletteSlotLabel(PaletteSlot slot) {
     case PaletteSlot.sidebarAccent:
       return "Sidebar Accent color";
     case PaletteSlot.outline:
-      return "Outline (Borders)";
+      return "Outline (Borders/Dividers)";
+    case PaletteSlot.buttonBorder:
+      return "Button Border";
     case PaletteSlot.error:
       return "Error";
     case PaletteSlot.success:
@@ -1502,13 +1530,17 @@ class ThemePreset {
   // preset color the way received bubbles did.
   final Color accentContainer; // Backs Material's primaryContainer/secondary/
   // secondaryContainer roles (default Switch track+thumb, FilledButton.tonal,
-  // success snackbar, etc.) -- these were never pinned to anything in
-  // toAppTheme's ColorScheme.fromSeed, so they were left to Material's own
-  // tonal derivation from Primary's seed color, same as the bug that made
-  // colorScheme.primary itself render as an unrelated, oddly-tinted color
-  // (see navAccent's doc) -- except here nothing was pinned at all, so it
-  // surfaced as a stray, uncontrollable pink showing up across the app with
-  // no palette field to fix it from.
+  // success snackbar, CancelButton's background, etc.) -- these were never
+  // pinned to anything in toAppTheme's ColorScheme.fromSeed, so they were
+  // left to Material's own tonal derivation from Primary's seed color, same
+  // as the bug that made colorScheme.primary itself render as an unrelated,
+  // oddly-tinted color (see navAccent's doc) -- except here nothing was
+  // pinned at all, so it surfaced as a stray, uncontrollable pink showing up
+  // across the app with no palette field to fix it from. CancelButton
+  // previously used `error` instead (a genuine mislabeling -- "Cancel"
+  // is a neutral dismiss action at nearly every one of its ~24 call sites,
+  // not a failure/danger state), which is what made "Error" appear to
+  // control far more of the UI than its name suggested.
   final Color onSurface; // General app text/icons -- NOT the nav bar or
   // sidebar, which have their own dedicated text/accent slots below.
   final Color onSurfaceVariant; // Muted/secondary text+icons -- toolbar
@@ -1519,8 +1551,19 @@ class ThemePreset {
   final Color navAccent; // Nav bar's selected-item text+icon color.
   final Color sidebarText; // Sidebar's unselected-item text+icon color.
   final Color sidebarAccent; // Sidebar's selected-item text+icon color.
-  final Color outline; // Borders/dividers.
-  final Color error;
+  final Color outline; // Borders/dividers that should blend into the
+  // background (drives colorScheme.outlineVariant) -- panel dividers,
+  // card/list-item borders, muted icon tints. Deliberately low-contrast.
+  final Color buttonBorder; // Borders that need to stand out *against* the
+  // background (drives colorScheme.outline, which is what OutlinedButton's
+  // own default border reads) -- button outlines, focused input borders.
+  // Split from `outline` because the two need opposite contrast
+  // characteristics: a divider should disappear into the background, a
+  // button's clickable edge should not.
+  final Color error; // Genuine failure/danger states only -- validation
+  // errors, exception messages, upload/parse failures, hanging up a live
+  // call. Deliberately NOT used for the generic CancelButton (see
+  // accentContainer's doc) or any other plain "step back"/dismiss action.
   final Color success;
 
   // extraPaletteColors are user-added swatches beyond the 12 fixed roles
@@ -1568,6 +1611,7 @@ class ThemePreset {
     required this.sidebarText,
     required this.sidebarAccent,
     required this.outline,
+    required this.buttonBorder,
     required this.error,
     required this.success,
     this.extraPaletteColors = const [],
@@ -1609,6 +1653,8 @@ class ThemePreset {
         return sidebarAccent;
       case PaletteSlot.outline:
         return outline;
+      case PaletteSlot.buttonBorder:
+        return buttonBorder;
       case PaletteSlot.error:
         return error;
       case PaletteSlot.success:
@@ -1648,6 +1694,8 @@ class ThemePreset {
         return copyWith(sidebarAccent: color);
       case PaletteSlot.outline:
         return copyWith(outline: color);
+      case PaletteSlot.buttonBorder:
+        return copyWith(buttonBorder: color);
       case PaletteSlot.error:
         return copyWith(error: color);
       case PaletteSlot.success:
@@ -1681,6 +1729,7 @@ class ThemePreset {
     Color? sidebarText,
     Color? sidebarAccent,
     Color? outline,
+    Color? buttonBorder,
     Color? error,
     Color? success,
     List<Color>? extraPaletteColors,
@@ -1709,6 +1758,7 @@ class ThemePreset {
         sidebarText: sidebarText ?? this.sidebarText,
         sidebarAccent: sidebarAccent ?? this.sidebarAccent,
         outline: outline ?? this.outline,
+        buttonBorder: buttonBorder ?? this.buttonBorder,
         error: error ?? this.error,
         success: success ?? this.success,
         extraPaletteColors: extraPaletteColors ?? this.extraPaletteColors,
@@ -1762,6 +1812,23 @@ class ThemePreset {
         brightness: brightness,
         onSurface: onSurface,
         onSurfaceVariant: onSurfaceVariant,
+        // colorScheme.outline is what OutlinedButton's own default M3
+        // border reads (plus a few of this app's own custom button
+        // styles) -- pinned to `buttonBorder`, the higher-contrast field,
+        // since a clickable button's edge needs to stand out against the
+        // background, unlike a plain divider.
+        outline: buttonBorder,
+        // colorScheme.outlineVariant is the separate, subtler Material
+        // role that this app's own panel/card/divider borders read
+        // (Settings' left-nav panel border, Manage Content's card border,
+        // the emoji picker's category icons, the About page border, the
+        // feed post-detail divider) -- pinned to `outline`, the
+        // blend-with-background field. Previously neither role was pinned
+        // at all, so every one of these borders (buttons included) showed
+        // Material's auto-derived tonal color regardless of what the user
+        // picked; now the two palette fields cleanly map to the two roles
+        // instead of colliding on one.
+        outlineVariant: outline,
         surface: primary,
         surfaceContainerLow: _darken(primary, 0.012),
         surfaceContainerLowest: _darken(primary, 0.022),
@@ -1776,14 +1843,23 @@ class ThemePreset {
         surfaceContainerHigh: _darken(primary, 0.0),
         surfaceContainerHighest: _darken(primary, -0.01),
         tertiary: tertiary,
+        // Only `error` (not errorContainer/onErrorContainer) is pinned --
+        // same reasoning as tertiary/surface above: ColorScheme.fromSeed
+        // independently derives a properly-contrasting errorContainer/
+        // onErrorContainer pair from this seed. Previously errorContainer
+        // was force-pinned to the exact same flat value as `error` (with
+        // onErrorContainer force-pinned to onSurface) because CancelButton
+        // read errorContainer for its background -- collapsing Material's
+        // normal two-tier tonal system (a brighter `error` for text/icons
+        // directly on the background vs. a darker `errorContainer` for
+        // surfaces with light text on top) into one flat color that
+        // couldn't satisfy both contrast needs at once. Now that
+        // CancelButton no longer uses errorContainer (see accentContainer's
+        // doc), only genuine error-surface call sites (snackbar error
+        // background, failed-upload/unsupported-GC-version event cards)
+        // read it, so letting Material derive it properly is strictly
+        // better than a hand-pinned flat value.
         error: error,
-        // errorContainer (CancelButton/destructive-action button
-        // backgrounds, e.g. "Clear Post") had the same never-pinned
-        // problem -- reusing the existing Error field directly rather than
-        // adding a whole new one, since a destructive-action button and
-        // this app's own "Error" color are the same semantic red already.
-        errorContainer: error,
-        onErrorContainer: onSurface,
         // Without this, ColorScheme.fromSeed computes its own tonal
         // derivation of "primary" from the seed rather than using the
         // literal color -- every other unthemed Material widget that falls
@@ -1958,6 +2034,10 @@ class ThemePreset {
       // containers.dart's border color chains), so this must equal that
       // fallback or borders visibly shift the moment a preset is applied.
       outline: appThemes["dark"]!.extraColors.sidebarDivider,
+      // Matches navAccent/scheme.primary -- a button's border should stand
+      // out against the background the same way an accent does, unlike
+      // `outline` above which deliberately blends in.
+      buttonBorder: scheme.primary,
       error: const Color(0xFFBA1A1A),
       success: const Color(0xFF2D882D),
     );
@@ -1984,6 +2064,7 @@ class ThemePreset {
       sidebarText: scheme.onSurfaceVariant,
       sidebarAccent: scheme.primary,
       outline: appThemes["light"]!.extraColors.sidebarDivider,
+      buttonBorder: scheme.primary,
       error: const Color(0xFFBA1A1A),
       success: const Color(0xFF2D882D),
     );

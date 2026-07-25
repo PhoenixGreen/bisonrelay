@@ -820,7 +820,9 @@ class ThemeNotifier with ChangeNotifier {
       emojiTextStyle: TextStyle(fontFamily: emojifont),
       categoryViewConfig: emoji_picker.CategoryViewConfig(
         backgroundColor: colors.secondaryContainer,
-        iconColor: colors.outline,
+        // outlineVariant (not outline) -- a muted, blend-in icon tint,
+        // not a button border that needs to stand out.
+        iconColor: colors.outlineVariant,
         iconColorSelected: colors.secondary,
         indicatorColor: colors.secondary,
       ),
@@ -1024,7 +1026,14 @@ class ThemeNotifier with ChangeNotifier {
   MarkdownStyleSheet get mdStyleSheet => _mdStyleSheet;
   void _rebuildMarkdownStyleSheet() {
     _mdStyleSheet = MarkdownStyleSheet(
-      code: extraTextStyles.monospaced,
+      // Explicit color: without it, flutter_markdown falls back to the raw
+      // Material3 seed ColorScheme instead of this app's theme, which is
+      // where the stray, un-themed purple tint on inline code/relayed text
+      // came from.
+      code: extraTextStyles.monospaced
+          .copyWith(color: textColor(TextColor.onSurfaceVariant)),
+      codeblockDecoration:
+          BoxDecoration(color: surfaceColor(SurfaceColor.surfaceContainer)),
       blockquote: TextStyle(color: textColor(TextColor.onTertiaryContainer)),
       blockquoteDecoration: BoxDecoration(
           color: surfaceColor(SurfaceColor.tertiaryContainer),
