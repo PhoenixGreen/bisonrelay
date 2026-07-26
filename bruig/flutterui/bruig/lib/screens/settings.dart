@@ -1455,9 +1455,9 @@ class _AudioSettingsScreenState extends State<AudioSettingsScreen> {
             padding: const EdgeInsets.all(10),
             margin:
                 const EdgeInsets.only(top: 2, bottom: 5, left: 10, right: 12),
-            color: SurfaceColor.secondaryContainer,
+            color: SurfaceColor.tertiary,
             child: Wrap(spacing: 5, runSpacing: 10, children: [
-              const Text("Microphone Volume"),
+              const Txt.S("Microphone Volume", color: TextColor.onSurface),
               VolumeGainControl(
                 initialValue: audio.captureGain.value,
                 onChanged: (value) async {
@@ -1471,9 +1471,9 @@ class _AudioSettingsScreenState extends State<AudioSettingsScreen> {
             padding: const EdgeInsets.all(10),
             margin:
                 const EdgeInsets.only(top: 2, bottom: 5, left: 10, right: 12),
-            color: SurfaceColor.secondaryContainer,
+            color: SurfaceColor.tertiary,
             child: Wrap(spacing: 5, runSpacing: 10, children: [
-              const Text("Output Volume"),
+              const Txt.S("Output Volume", color: TextColor.onSurface),
               VolumeGainControl(
                 initialValue: audio.playbackGain.value,
                 onChanged: (value) async {

@@ -27,13 +27,24 @@ class _SnackbarDisplayerState extends State<SnackbarDisplayer> {
         setState(() {
           snackBarMsg = newSnackbarMessage;
         });
-        var bgColor = snackBarMsg.error
-            ? SurfaceColor.errorContainer
-            : SurfaceColor.primaryContainer;
-        var textColor = textColorForSurfaceColor[bgColor];
         var theme = Provider.of<ThemeNotifier>(context, listen: false);
+        // Success (and error) toasts are "Notifications Background" --
+        // the same palette slot as Pinned Messages -- rather than "Button
+        // Background", so they read as a distinct notification surface
+        // instead of looking like an accent/button element. Error toasts
+        // keep reading the Material errorContainer role since there's no
+        // dedicated error-notification palette slot.
+        var bgColor = snackBarMsg.error
+            ? theme.surfaceColor(SurfaceColor.errorContainer)
+            : (theme.activePreset?.fourth ??
+                (theme.brightness == Brightness.dark
+                    ? const Color(0xFF1C1930)
+                    : const Color(0xFFEDEBF5)));
+        var textColor = snackBarMsg.error
+            ? textColorForSurfaceColor[SurfaceColor.errorContainer]
+            : TextColor.onSurface;
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            backgroundColor: theme.surfaceColor(bgColor),
+            backgroundColor: bgColor,
             content: Copyable(snackBarMsg.msg,
                 textStyle:
                     theme.textStyleFor(context, TextSize.small, textColor),
