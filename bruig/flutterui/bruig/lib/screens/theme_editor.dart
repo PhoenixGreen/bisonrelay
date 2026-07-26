@@ -591,8 +591,8 @@ class _PaletteSectionState extends State<PaletteSection> {
   // colors through a generic formula only fights whatever the palette's
   // author actually intended.
   //
-  // The neutral/functional roles (fourth/onSurface/onSurfaceVariant/
-  // navText/sidebarText/success) and the overall brightness, however, ARE
+  // The neutral/functional roles (onSurface/onSurfaceVariant/navText/
+  // sidebarText/success) and the overall brightness, however, ARE
   // reset -- to palette.brightness's own seed -- rather than left at
   // whatever the draft preset already had. Every built-in palette's colors
   // are tuned against one specific brightness (nearly always dark; only
@@ -615,10 +615,13 @@ class _PaletteSectionState extends State<PaletteSection> {
     // vivid slot only have 7 colors, ending in [..., navAccent,
     // sidebarAccent] -- read the accents from their old positions for
     // those instead of misreading a leftover sidebarAccent as navAccent.
-    // accentContainer/error/outline/buttonBorder are newer still (appended
-    // at the tail), so any palette shorter than their index naturally
-    // falls back to the seed's own value for them via colorAt's length
-    // check below -- no extra legacy-length branching needed for those.
+    // accentContainer/error/outline/fourth are newer still (appended at
+    // the tail, in that order), so any palette shorter than their index
+    // naturally falls back to the seed's own value for them via colorAt's
+    // length check below -- no extra legacy-length branching needed for
+    // those. (buttonBorder, once between outline and fourth in this tail
+    // sequence, was removed and merged into navAccent -- see
+    // theme_preset.dart.)
     var legacySevenColor = palette.colors.length == 7;
     var navAccentIdx = legacySevenColor ? 5 : 6;
     var sidebarAccentIdx = legacySevenColor ? 6 : 7;
@@ -627,7 +630,7 @@ class _PaletteSectionState extends State<PaletteSection> {
       primary: colorAt(0, base.primary),
       secondary: colorAt(1, base.secondary),
       tertiary: colorAt(2, base.tertiary),
-      fourth: base.fourth,
+      fourth: colorAt(11, base.fourth),
       sidebarBackground: colorAt(3, base.sidebarBackground),
       speechBackground: colorAt(4, base.speechBackground),
       speechBackgroundSent: legacySevenColor
@@ -641,7 +644,6 @@ class _PaletteSectionState extends State<PaletteSection> {
       sidebarText: base.sidebarText,
       sidebarAccent: colorAt(sidebarAccentIdx, base.sidebarAccent),
       outline: colorAt(10, base.outline),
-      buttonBorder: colorAt(11, base.buttonBorder),
       error: colorAt(9, base.error),
       success: base.success,
     );

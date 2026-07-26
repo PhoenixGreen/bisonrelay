@@ -349,8 +349,14 @@ class _PayStatsScreenState extends State<PayStatsScreen> {
       return _redesignedStats(theme);
     }
 
-    var evenBgColor = theme.colors.surfaceDim;
-    var oddBgColor = theme.colors.surfaceBright;
+    // surfaceDim/surfaceBright were never pinned in toAppTheme, so they
+    // were left to Material's own seed-derived auto-tinting instead of
+    // following a chosen palette color -- surface/tertiary ("Primary
+    // Background"/"Secondary Background") are the same two-tier zebra
+    // stripe already used elsewhere (Settings group panels, Feed post
+    // cards) for a "second background" over the base page.
+    var evenBgColor = theme.colors.surface;
+    var oddBgColor = theme.colors.tertiary;
     var evenTxtStyle =
         theme.textStyleFor(context, TextSize.small, TextColor.onSurface);
     var oddTxtStyle =

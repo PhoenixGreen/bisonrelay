@@ -1374,38 +1374,42 @@ class AreaStyle {
   }
 }
 
-// PaletteSlot identifies one of the 10 palette colors. Deliberately fewer,
+// PaletteSlot identifies one of the 17 palette colors. Deliberately fewer,
 // more distinct roles than Material3's ColorScheme (which has 4 near-
 // identical onPrimary/onSecondary/onTertiary/onError slots in practice) --
 // every slot here has a clearly different purpose so there's minimal visual
-// overlap between them.
+// overlap between them. Grouped by tier (backgrounds, then text, then
+// accents, then semantic) so the palette editor and dropdowns read as a
+// coherent list rather than an arbitrary historical order. `buttonBorder`
+// used to be its own slot here; it's been removed and merged into
+// `navAccent` (see toAppTheme) since every built-in palette already set it
+// to an exact duplicate of navAccent's own value.
 enum PaletteSlot {
   primary,
-  secondary,
   tertiary,
-  fourth,
+  secondary,
   sidebarBackground,
+  fourth,
   speechBackground,
   speechBackgroundSent,
-  accentContainer,
+  outline,
   onSurface,
   onSurfaceVariant,
   navText,
-  navAccent,
   sidebarText,
+  accentContainer,
+  navAccent,
   sidebarAccent,
-  outline,
-  buttonBorder,
   error,
   success,
 }
 
-// kMaxPaletteColors caps the *total* palette (15 fixed roles +
+// kMaxPaletteColors caps the *total* palette (17 fixed roles +
 // extraPaletteColors) a preset can carry; kMaxExtraPaletteColors is the
-// remaining room for extras once the 15 fixed roles are accounted for.
+// remaining room for extras once the 17 fixed roles are accounted for.
 const int kMaxPaletteColors = 20;
-// 20 - 15 fixed PaletteSlot roles.
-const int kMaxExtraPaletteColors = kMaxPaletteColors - 15;
+// 20 - 17 fixed PaletteSlot roles.
+const int kMaxExtraPaletteColors = kMaxPaletteColors - 17;
 
 // kVividPaletteSlots are the 12 roles a ColorPalette library entry (see
 // palette_library.dart) actually carries and overwrites when applied --
@@ -1434,17 +1438,21 @@ const int kMaxExtraPaletteColors = kMaxPaletteColors - 15;
 // occasionally too dark/muddy against certain panel tones -- it's still
 // deliberately kept a similar, conventional "danger" red across every
 // palette (not brand-tinted) since a semantic color like error should stay
-// visually predictable regardless of theme. outline and buttonBorder are
-// included so each palette can tune its own divider color (which should
-// blend into that palette's specific background tone -- a single flat
-// grey doesn't blend equally well with, say, WhatsApp's teal-black vs
-// Snapchat's amber-black) and its own button-border color (which needs
-// the opposite: real contrast against that same background) separately
-// per palette. fourth/onSurface/navText/sidebarText/success are
-// functional/neutral roles that must stay dark-vs-light-theme-appropriate,
-// so a library palette deliberately leaves them alone (they're reset from
-// palette.brightness's own seed instead -- see _applyPalette) rather than
-// clobbering them with (possibly brightness-mismatched) baked-in values.
+// visually predictable regardless of theme. outline is included so each
+// palette can tune its own divider color to blend into that palette's
+// specific background tone -- a single flat grey doesn't blend equally
+// well with, say, WhatsApp's teal-black vs Snapchat's amber-black.
+// onSurface/navText/sidebarText/success are functional/neutral roles that
+// must stay dark-vs-light-theme-appropriate, so a library palette
+// deliberately leaves them alone (they're reset from palette.brightness's
+// own seed instead -- see _applyPalette) rather than clobbering them with
+// (possibly brightness-mismatched) baked-in values. fourth (the reply-
+// preview box and success/error toast background) IS included, appended
+// at the tail -- it used to always fall back to the Default/Light seed's
+// own flat purple-blue regardless of which palette was active, so e.g.
+// applying WhatsApp's teal-black or Snapchat's warm amber-black look
+// still showed an unrelated purple notification box; each built-in
+// palette now tunes its own third-background-tier tone to match.
 const List<PaletteSlot> kVividPaletteSlots = [
   PaletteSlot.primary,
   PaletteSlot.secondary,
@@ -1457,43 +1465,41 @@ const List<PaletteSlot> kVividPaletteSlots = [
   PaletteSlot.accentContainer,
   PaletteSlot.error,
   PaletteSlot.outline,
-  PaletteSlot.buttonBorder,
+  PaletteSlot.fourth,
 ];
 
 String paletteSlotLabel(PaletteSlot slot) {
   switch (slot) {
     case PaletteSlot.primary:
-      return "Primary (Background)";
-    case PaletteSlot.secondary:
-      return "Secondary (Nav background)";
+      return "Primary Background";
     case PaletteSlot.tertiary:
-      return "Tertiary (Second Background)";
-    case PaletteSlot.fourth:
-      return "Fourth (third Background)";
+      return "Secondary Background";
+    case PaletteSlot.secondary:
+      return "Navigation Background";
     case PaletteSlot.sidebarBackground:
-      return "Sidebar background";
+      return "Sidebar Background";
+    case PaletteSlot.fourth:
+      return "Notifications Background";
     case PaletteSlot.speechBackground:
-      return "Speech background (received)";
+      return "Speech Background (Receive)";
     case PaletteSlot.speechBackgroundSent:
-      return "Speech background (sent)";
-    case PaletteSlot.accentContainer:
-      return "Accent (Buttons/Toggles)";
-    case PaletteSlot.onSurface:
-      return "On surface text";
-    case PaletteSlot.onSurfaceVariant:
-      return "Secondary text/icons";
-    case PaletteSlot.navText:
-      return "Nav text color";
-    case PaletteSlot.navAccent:
-      return "Nav accent color";
-    case PaletteSlot.sidebarText:
-      return "Sidebar text color";
-    case PaletteSlot.sidebarAccent:
-      return "Sidebar Accent color";
+      return "Speech Background (Send)";
     case PaletteSlot.outline:
       return "Outline (Borders/Dividers)";
-    case PaletteSlot.buttonBorder:
-      return "Button Border";
+    case PaletteSlot.onSurface:
+      return "Primary Text Color";
+    case PaletteSlot.onSurfaceVariant:
+      return "Secondary Text Color";
+    case PaletteSlot.navText:
+      return "Navigation Text Color";
+    case PaletteSlot.sidebarText:
+      return "Sidebar Text Color";
+    case PaletteSlot.accentContainer:
+      return "Button Background";
+    case PaletteSlot.navAccent:
+      return "Button Accent Background";
+    case PaletteSlot.sidebarAccent:
+      return "Sidebar Accent Color";
     case PaletteSlot.error:
       return "Error";
     case PaletteSlot.success:
@@ -1516,11 +1522,13 @@ class ThemePreset {
   final Color secondary; // Nav bar's background fill.
   final Color tertiary; // Shares the compiled ColorScheme's tertiary/
   // tertiaryContainer roles -- the RTC instant-call banner, voice-recorder
-  // box, markdown blockquotes, Feed post card/post-detail background, and
-  // the Settings page's group panels (_SettingsGroupCard) -- this app's
-  // general-purpose "second background" tier.
-  final Color fourth; // A 4th, more deeply nested background tier (e.g.
-  // the chat reply-preview box).
+  // box, markdown blockquotes, Feed post card/post-detail background, the
+  // Settings page's group panels (_SettingsGroupCard), and the Settings >
+  // Audio microphone/output volume sliders' track background -- this
+  // app's general-purpose "second background" tier.
+  final Color fourth; // A 4th, more deeply nested background tier -- the
+  // chat reply-preview box and the success/error snackbar ("popup
+  // notification") background.
   final Color sidebarBackground; // Sidebar (subMenuTabBar) row/tile
   // background -- Settings/LN Management/Feed/etc.'s left nav list.
   final Color speechBackground; // Chat message bubble (received) background.
@@ -1530,7 +1538,7 @@ class ThemePreset {
   // preset color the way received bubbles did.
   final Color accentContainer; // Backs Material's primaryContainer/secondary/
   // secondaryContainer roles (default Switch track+thumb, FilledButton.tonal,
-  // success snackbar, CancelButton's background, etc.) -- these were never
+  // CancelButton's background, etc.) -- these were never
   // pinned to anything in toAppTheme's ColorScheme.fromSeed, so they were
   // left to Material's own tonal derivation from Primary's seed color, same
   // as the bug that made colorScheme.primary itself render as an unrelated,
@@ -1554,12 +1562,6 @@ class ThemePreset {
   final Color outline; // Borders/dividers that should blend into the
   // background (drives colorScheme.outlineVariant) -- panel dividers,
   // card/list-item borders, muted icon tints. Deliberately low-contrast.
-  final Color buttonBorder; // Borders that need to stand out *against* the
-  // background (drives colorScheme.outline, which is what OutlinedButton's
-  // own default border reads) -- button outlines, focused input borders.
-  // Split from `outline` because the two need opposite contrast
-  // characteristics: a divider should disappear into the background, a
-  // button's clickable edge should not.
   final Color error; // Genuine failure/danger states only -- validation
   // errors, exception messages, upload/parse failures, hanging up a live
   // call. Deliberately NOT used for the generic CancelButton (see
@@ -1611,7 +1613,6 @@ class ThemePreset {
     required this.sidebarText,
     required this.sidebarAccent,
     required this.outline,
-    required this.buttonBorder,
     required this.error,
     required this.success,
     this.extraPaletteColors = const [],
@@ -1653,8 +1654,6 @@ class ThemePreset {
         return sidebarAccent;
       case PaletteSlot.outline:
         return outline;
-      case PaletteSlot.buttonBorder:
-        return buttonBorder;
       case PaletteSlot.error:
         return error;
       case PaletteSlot.success:
@@ -1694,8 +1693,6 @@ class ThemePreset {
         return copyWith(sidebarAccent: color);
       case PaletteSlot.outline:
         return copyWith(outline: color);
-      case PaletteSlot.buttonBorder:
-        return copyWith(buttonBorder: color);
       case PaletteSlot.error:
         return copyWith(error: color);
       case PaletteSlot.success:
@@ -1729,7 +1726,6 @@ class ThemePreset {
     Color? sidebarText,
     Color? sidebarAccent,
     Color? outline,
-    Color? buttonBorder,
     Color? error,
     Color? success,
     List<Color>? extraPaletteColors,
@@ -1758,7 +1754,6 @@ class ThemePreset {
         sidebarText: sidebarText ?? this.sidebarText,
         sidebarAccent: sidebarAccent ?? this.sidebarAccent,
         outline: outline ?? this.outline,
-        buttonBorder: buttonBorder ?? this.buttonBorder,
         error: error ?? this.error,
         success: success ?? this.success,
         extraPaletteColors: extraPaletteColors ?? this.extraPaletteColors,
@@ -1814,10 +1809,13 @@ class ThemePreset {
         onSurfaceVariant: onSurfaceVariant,
         // colorScheme.outline is what OutlinedButton's own default M3
         // border reads (plus a few of this app's own custom button
-        // styles) -- pinned to `buttonBorder`, the higher-contrast field,
+        // styles) -- pinned to `navAccent` ("Button Accent Background"),
         // since a clickable button's edge needs to stand out against the
-        // background, unlike a plain divider.
-        outline: buttonBorder,
+        // background, unlike a plain divider. This used to be its own
+        // `buttonBorder` field, but every built-in palette already set it
+        // to an exact duplicate of navAccent's value, so the two were
+        // merged into one slot.
+        outline: navAccent,
         // colorScheme.outlineVariant is the separate, subtler Material
         // role that this app's own panel/card/divider borders read
         // (Settings' left-nav panel border, Manage Content's card border,
@@ -1883,10 +1881,10 @@ class ThemePreset {
         onPrimary: onSurface,
         // primaryContainer/secondary/secondaryContainer had the exact same
         // problem as primary above, just never pinned at all -- Material's
-        // default Switch (track+thumb), FilledButton.tonal, and this app's
-        // own success snackbar all read one of these, and all three showed
-        // the same stray, unpredictable seed-derived tint (see
-        // accentContainer's doc) with no palette field to control it from.
+        // default Switch (track+thumb) and FilledButton.tonal both read
+        // one of these, and showed the same stray, unpredictable
+        // seed-derived tint (see accentContainer's doc) with no palette
+        // field to control it from.
         primaryContainer: accentContainer,
         secondary: accentContainer,
         secondaryContainer: accentContainer,
@@ -1943,6 +1941,13 @@ class ThemePreset {
         "id": id,
         "name": name,
         "brightness": brightness.name,
+        // paletteVersion 2 marks presets saved after PaletteSlot's reorder/
+        // buttonBorder removal -- see _legacyPaletteOrderV1 below. The
+        // palette map itself is keyed by slot *name*, so it's unaffected by
+        // reordering; only AreaStyle's solidColorIndex/borderColorIndex
+        // (raw positions into the flat `palette` list) need this to know
+        // whether they still need remapping on load.
+        "paletteVersion": 2,
         "palette": {
           for (var slot in PaletteSlot.values) slot.name: _hex(forSlot(slot)),
         },
@@ -1952,6 +1957,44 @@ class ThemePreset {
         if (menuLabels != null) "menuLabels": menuLabels,
         if (menuOrder != null) "menuOrder": menuOrder,
       };
+
+  // _legacyPaletteOrderV1 is PaletteSlot's order as it existed before
+  // paletteVersion 2 (i.e. before Button Border was removed and merged into
+  // navAccent, and the remaining slots were regrouped by
+  // background/text/accent tier). Used only to remap solidColorIndex/
+  // borderColorIndex values -- raw positions into the flat `palette` list
+  // -- saved by presets written before this change; the old buttonBorder
+  // slot maps to navAccent, its merge target.
+  static const List<PaletteSlot> _legacyPaletteOrderV1 = [
+    PaletteSlot.primary,
+    PaletteSlot.secondary,
+    PaletteSlot.tertiary,
+    PaletteSlot.fourth,
+    PaletteSlot.sidebarBackground,
+    PaletteSlot.speechBackground,
+    PaletteSlot.speechBackgroundSent,
+    PaletteSlot.accentContainer,
+    PaletteSlot.onSurface,
+    PaletteSlot.onSurfaceVariant,
+    PaletteSlot.navText,
+    PaletteSlot.navAccent,
+    PaletteSlot.sidebarText,
+    PaletteSlot.sidebarAccent,
+    PaletteSlot.outline,
+    PaletteSlot.navAccent, // was buttonBorder; merged into navAccent
+    PaletteSlot.error,
+    PaletteSlot.success,
+  ];
+
+  static int? _migrateLegacyColorIndex(int? oldIndex) {
+    if (oldIndex == null) return null;
+    if (oldIndex < _legacyPaletteOrderV1.length) {
+      return _legacyPaletteOrderV1[oldIndex].index;
+    }
+    // An extra (user-added) color, appended after the fixed roles -- shift
+    // down by one since the fixed-role count shrank by one.
+    return oldIndex - 1;
+  }
 
   factory ThemePreset.fromJson(Map<String, dynamic> j) {
     var p = j["palette"] as Map<String, dynamic>;
@@ -1965,6 +2008,22 @@ class ThemePreset {
       var hex = p[slot.name];
       if (hex != null) preset = preset.withSlot(slot, _fromHex(hex));
     }
+    var isLegacyPalette = (j["paletteVersion"] as num?)?.toInt() != 2;
+    var rawAreas = j["areas"] as Map<String, dynamic>? ?? {};
+    if (isLegacyPalette) {
+      rawAreas = rawAreas.map((k, v) {
+        var area = Map<String, dynamic>.from(v as Map<String, dynamic>);
+        if (area["solidColorIndex"] != null) {
+          area["solidColorIndex"] = _migrateLegacyColorIndex(
+              (area["solidColorIndex"] as num).toInt());
+        }
+        if (area["borderColorIndex"] != null) {
+          area["borderColorIndex"] = _migrateLegacyColorIndex(
+              (area["borderColorIndex"] as num).toInt());
+        }
+        return MapEntry(k, area);
+      });
+    }
     return preset.copyWith(
       extraPaletteColors: j["extraPaletteColors"] != null
           ? (j["extraPaletteColors"] as List)
@@ -1973,8 +2032,7 @@ class ThemePreset {
           : const [],
       // Skip any area key that no longer matches a known ThemeArea (e.g.
       // saved by a future/older version of the app) instead of throwing.
-      areas: Map.fromEntries((j["areas"] as Map<String, dynamic>? ?? {})
-          .entries
+      areas: Map.fromEntries(rawAreas.entries
           .where((e) => ThemeArea.values.any((a) => a.name == e.key))
           .map((e) => MapEntry(
               ThemeArea.values.firstWhere((a) => a.name == e.key),
@@ -2034,10 +2092,6 @@ class ThemePreset {
       // containers.dart's border color chains), so this must equal that
       // fallback or borders visibly shift the moment a preset is applied.
       outline: appThemes["dark"]!.extraColors.sidebarDivider,
-      // Matches navAccent/scheme.primary -- a button's border should stand
-      // out against the background the same way an accent does, unlike
-      // `outline` above which deliberately blends in.
-      buttonBorder: scheme.primary,
       error: const Color(0xFFBA1A1A),
       success: const Color(0xFF2D882D),
     );
@@ -2064,7 +2118,6 @@ class ThemePreset {
       sidebarText: scheme.onSurfaceVariant,
       sidebarAccent: scheme.primary,
       outline: appThemes["light"]!.extraColors.sidebarDivider,
-      buttonBorder: scheme.primary,
       error: const Color(0xFFBA1A1A),
       success: const Color(0xFF2D882D),
     );
