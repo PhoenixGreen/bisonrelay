@@ -237,7 +237,7 @@ class _ChatHeadingWState extends State<_ChatHeadingW> {
     var showLastMessage = chatStyle.showChatListLastMessage;
     var chatListDesign = chatStyle.chatListDesignEnabled;
     var cornerRadius = chatStyle.chatListCornerRadius ?? 14;
-    var accentColor = chatStyle.chatListAccentColor ??
+    var accentColor = chatStyle.resolveChatListAccentColor(theme) ??
         theme.activePreset?.sidebarAccent ??
         _clpBlue;
     var glowIntensity = chatStyle.chatListGlowIntensity ?? 1.0;

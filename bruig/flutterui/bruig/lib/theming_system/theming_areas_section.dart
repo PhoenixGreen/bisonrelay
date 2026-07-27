@@ -133,9 +133,16 @@ class AreaEditorContext {
 
   // colorPick is a labelled palette-color dropdown for an optional color,
   // where null means "use the built-in default".
+  //
+  // Callers pass the field's stored palette slot as `valueIndex` and record
+  // the one handed back, so the color keeps following that slot when the
+  // palette is edited later, and the dropdown shows the slot it's really
+  // bound to rather than the first one that happens to hold the same color
+  // -- see PaletteColorDropdown.valueIndex for why that distinction bites.
   Widget colorPick(String label,
           {required Color? value,
-          required ValueChanged<Color?> onChanged,
+          required int? valueIndex,
+          required void Function(Color? color, int? index) onChanged,
           String noneLabel = "Default"}) =>
       Row(children: [
         Txt("$label: "),
@@ -143,9 +150,10 @@ class AreaEditorContext {
         PaletteColorDropdown(
           preset: preset,
           value: value,
+          valueIndex: valueIndex,
           allowNone: true,
           noneLabel: noneLabel,
-          onChanged: (c, _) => onChanged(c),
+          onChanged: onChanged,
         ),
       ]);
 
@@ -329,9 +337,16 @@ class _AreasSectionState extends State<AreasSection> {
     required AreaBackgroundMode mode,
     required ValueChanged<AreaBackgroundMode> onModeChanged,
     required Color? solidColor,
+    // The palette slot each color was picked from, when it came from one.
+    // Passing these (rather than letting the dropdown search the palette
+    // for a matching color) is what makes it show the slot the fill is
+    // really bound to -- see PaletteColorDropdown.valueIndex.
+    required int? solidColorIndex,
     required void Function(Color? color, int? index) onSolidChanged,
     required List<Color> gradientColors,
-    required void Function(int index, Color? c) onGradientColorChanged,
+    required List<int?> gradientColorIndexes,
+    required void Function(int index, Color? c, int? colorIndex)
+        onGradientColorChanged,
     required Alignment gradientBegin,
     required Alignment gradientEnd,
     required ValueChanged<GradientDirection> onDirectionChanged,
@@ -434,6 +449,8 @@ class _AreasSectionState extends State<AreasSection> {
               PaletteColorDropdown(
                 preset: preset,
                 value: mode == AreaBackgroundMode.solid ? solidColor : null,
+                valueIndex:
+                    mode == AreaBackgroundMode.solid ? solidColorIndex : null,
                 isExpanded: true,
                 // Always offered, so a picked color is always undoable: this
                 // entry ("Default" for a background, "None" for a border) is
@@ -488,8 +505,11 @@ class _AreasSectionState extends State<AreasSection> {
                 PaletteColorDropdown(
                   preset: preset,
                   value: gradientColors.length > i ? gradientColors[i] : null,
+                  valueIndex: gradientColorIndexes.length > i
+                      ? gradientColorIndexes[i]
+                      : null,
                   isExpanded: true,
-                  onChanged: (c, _) => onGradientColorChanged(i, c),
+                  onChanged: (c, ci) => onGradientColorChanged(i, c, ci),
                 ),
               ),
             _labelled(
@@ -692,25 +712,31 @@ class _AreasSectionState extends State<AreasSection> {
             if (m == AreaBackgroundMode.gradient &&
                 next.gradientColors.length < 2) {
               next = next.copyWith(
-                  gradientColors: [preset.primary, preset.secondary]);
+                  gradientColors: [preset.primary, preset.secondary],
+                  gradientColorIndexes: [
+                    PaletteSlot.primary.index,
+                    PaletteSlot.secondary.index
+                  ]);
             }
             return next;
           }),
           solidColor: style.resolveSolidColor(theme),
+          solidColorIndex: style.solidColorIndex,
           onSolidChanged: (c, i) => _setStyle(
               theme,
               (s) => s.copyWith(
                   solidColor: c,
                   solidColorIndex: i,
                   clearSolidColorIndex: i == null)),
-          gradientColors: style.gradientColors,
-          onGradientColorChanged: (i, c) => _setStyle(theme, (s) {
-            var colors = List<Color>.from(s.gradientColors);
-            while (colors.length < 2) {
-              colors.add(preset.primary);
-            }
-            colors[i] = c ?? preset.primary;
-            return s.copyWith(gradientColors: colors);
+          gradientColors: style.resolveGradientColors(theme),
+          gradientColorIndexes: style.gradientColorIndexes,
+          onGradientColorChanged: (i, c, ci) => _setStyle(theme, (s) {
+            var (colors, indexes) = _withGradientColor(
+                s.gradientColors, s.gradientColorIndexes, i, c, ci,
+                fallback: preset.primary,
+                fallbackIndex: PaletteSlot.primary.index);
+            return s.copyWith(
+                gradientColors: colors, gradientColorIndexes: indexes);
           }),
           gradientBegin: style.gradientBegin,
           gradientEnd: style.gradientEnd,
@@ -748,7 +774,11 @@ class _AreasSectionState extends State<AreasSection> {
             if (m == AreaBackgroundMode.gradient &&
                 next.borderGradientColors.length < 2) {
               next = next.copyWith(
-                  borderGradientColors: [preset.outline, preset.primary]);
+                  borderGradientColors: [preset.outline, preset.primary],
+                  borderGradientColorIndexes: [
+                    PaletteSlot.outline.index,
+                    PaletteSlot.primary.index
+                  ]);
             }
             if (m != AreaBackgroundMode.token && next.borderWidth <= 0) {
               next = next.copyWith(borderWidth: 2);
@@ -756,20 +786,23 @@ class _AreasSectionState extends State<AreasSection> {
             return next;
           }),
           solidColor: style.resolveBorderColor(theme),
+          solidColorIndex: style.borderColorIndex,
           onSolidChanged: (c, i) => _setStyle(
               theme,
               (s) => s.copyWith(
                   borderColor: c,
                   borderColorIndex: i,
                   clearBorderColorIndex: i == null)),
-          gradientColors: style.borderGradientColors,
-          onGradientColorChanged: (i, c) => _setStyle(theme, (s) {
-            var colors = List<Color>.from(s.borderGradientColors);
-            while (colors.length < 2) {
-              colors.add(preset.outline);
-            }
-            colors[i] = c ?? preset.outline;
-            return s.copyWith(borderGradientColors: colors);
+          gradientColors: style.resolveBorderGradientColors(theme),
+          gradientColorIndexes: style.borderGradientColorIndexes,
+          onGradientColorChanged: (i, c, ci) => _setStyle(theme, (s) {
+            var (colors, indexes) = _withGradientColor(
+                s.borderGradientColors, s.borderGradientColorIndexes, i, c, ci,
+                fallback: preset.outline,
+                fallbackIndex: PaletteSlot.outline.index);
+            return s.copyWith(
+                borderGradientColors: colors,
+                borderGradientColorIndexes: indexes);
           }),
           gradientBegin: style.borderGradientBegin,
           gradientEnd: style.borderGradientEnd,
@@ -1008,6 +1041,36 @@ Widget _responsiveRow(List<Widget> cells, {double minWidth = 150}) {
       ],
     );
   });
+}
+
+// _withGradientColor sets one of a gradient's two colors, returning the
+// color list and the matching list of palette slots it was picked from
+// (null for a custom color). The two are kept the same length and updated
+// together so an index can never end up describing a different color than
+// the one it was stored for -- the failure that makes a bound color follow
+// the wrong palette slot.
+(List<Color>, List<int?>) _withGradientColor(
+  List<Color> colors,
+  List<int?> indexes,
+  int at,
+  Color? color,
+  int? colorIndex, {
+  required Color fallback,
+  required int fallbackIndex,
+}) {
+  var nextColors = List<Color>.from(colors);
+  var nextIndexes = List<int?>.from(indexes);
+  // A gradient always has two colors; older data (or a style switched into
+  // gradient mode without both seeded) may have fewer.
+  while (nextColors.length < 2) {
+    nextColors.add(fallback);
+  }
+  while (nextIndexes.length < nextColors.length) {
+    nextIndexes.add(fallbackIndex);
+  }
+  nextColors[at] = color ?? fallback;
+  nextIndexes[at] = color == null ? fallbackIndex : colorIndex;
+  return (nextColors, nextIndexes);
 }
 
 // _labelled is one cell of a _responsiveRow: a caption over its control.

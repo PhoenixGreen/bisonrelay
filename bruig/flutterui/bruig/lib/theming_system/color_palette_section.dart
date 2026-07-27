@@ -326,7 +326,19 @@ class _PaletteSectionState extends State<PaletteSection> {
       var updatedExtras = List<Color>.from(draft.extraPaletteColors)
         ..removeAt(i - PaletteSlot.values.length);
       if (isExpanded) _collapse();
-      theme.previewPreset(draft.copyWith(extraPaletteColors: updatedExtras));
+      // Area styles bind a color by its index into the whole palette (the
+      // fixed slots then the extras -- see ThemePreset.palette), so dropping
+      // an extra shifts every later one down a place. Without remapping,
+      // each area bound past this point silently starts following its
+      // neighbour's color instead, and one bound to the removed color keeps
+      // whatever it last resolved to.
+      theme.previewPreset(draft.copyWith(
+        extraPaletteColors: updatedExtras,
+        areas: {
+          for (var e in draft.areas.entries)
+            e.key: e.value.remapPaletteIndexes(i),
+        },
+      ));
     }
 
     return Column(children: [

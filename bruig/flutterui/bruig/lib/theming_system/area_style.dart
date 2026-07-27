@@ -53,6 +53,12 @@ class AreaStyle {
   // track.
   final int? solidColorIndex;
   final List<Color> gradientColors;
+  // gradientColorIndexes gives each gradient color the same live palette
+  // binding solidColorIndex gives the solid one: entry i is the slot
+  // gradientColors[i] was picked from, or null for a custom color. Without
+  // it a gradient froze whichever colors the palette happened to hold at
+  // pick time and then ignored every later edit to those slots.
+  final List<int?> gradientColorIndexes;
   final List<double>? gradientStops;
   final Alignment gradientBegin;
   final Alignment gradientEnd;
@@ -73,6 +79,8 @@ class AreaStyle {
   // Same live-slot-tracking role as solidColorIndex above, for borderColor.
   final int? borderColorIndex;
   final List<Color> borderGradientColors;
+  // Same live-slot-tracking role as gradientColorIndexes, for the border.
+  final List<int?> borderGradientColorIndexes;
   final List<double>? borderGradientStops;
   final Alignment borderGradientBegin;
   final Alignment borderGradientEnd;
@@ -174,6 +182,8 @@ class AreaStyle {
   final Color? sidebarDividerColor; // Null = built-in default
   // (extraColors.sidebarDivider). Only meaningful when
   // sidebarShowRightDivider is on.
+  // Same live-slot-tracking role as solidColorIndex, for the divider color.
+  final int? sidebarDividerColorIndex;
   final double sidebarDividerWidth; // Default 1 (BorderSide's own default).
 
   // -------------------------------------------------------------------------
@@ -186,6 +196,8 @@ class AreaStyle {
   final bool chatListDesignEnabled; // Rounded/glow chat list row styling.
   final double? chatListCornerRadius; // Null = built-in default (14).
   final Color? chatListAccentColor; // Null = built-in default (blue).
+  // Same live-slot-tracking role as solidColorIndex, for the accent color.
+  final int? chatListAccentColorIndex;
   final double?
       chatListGlowIntensity; // Null = built-in default (1.0); 0 = off.
   final bool chatListTopHighlight; // Ambient top-left glow + lit hairline
@@ -284,6 +296,7 @@ class AreaStyle {
     this.solidColor,
     this.solidColorIndex,
     this.gradientColors = const [],
+    this.gradientColorIndexes = const [],
     this.gradientStops,
     this.gradientBegin = Alignment.topLeft,
     this.gradientEnd = Alignment.bottomRight,
@@ -294,6 +307,7 @@ class AreaStyle {
     this.borderColor,
     this.borderColorIndex,
     this.borderGradientColors = const [],
+    this.borderGradientColorIndexes = const [],
     this.borderGradientStops,
     this.borderGradientBegin = Alignment.topLeft,
     this.borderGradientEnd = Alignment.bottomRight,
@@ -320,12 +334,14 @@ class AreaStyle {
     this.sidebarShowIcons = false,
     this.sidebarShowRightDivider = true,
     this.sidebarDividerColor,
+    this.sidebarDividerColorIndex,
     this.sidebarDividerWidth = 1,
     this.enableMessageActions = false,
     this.showChatListLastMessage = false,
     this.chatListDesignEnabled = false,
     this.chatListCornerRadius,
     this.chatListAccentColor,
+    this.chatListAccentColorIndex,
     this.chatListGlowIntensity,
     this.chatListTopHighlight = true,
     this.monochromeAvatars = false,
@@ -371,6 +387,7 @@ class AreaStyle {
     int? solidColorIndex,
     bool clearSolidColorIndex = false,
     List<Color>? gradientColors,
+    List<int?>? gradientColorIndexes,
     List<double>? gradientStops,
     Alignment? gradientBegin,
     Alignment? gradientEnd,
@@ -383,6 +400,7 @@ class AreaStyle {
     int? borderColorIndex,
     bool clearBorderColorIndex = false,
     List<Color>? borderGradientColors,
+    List<int?>? borderGradientColorIndexes,
     List<double>? borderGradientStops,
     Alignment? borderGradientBegin,
     Alignment? borderGradientEnd,
@@ -419,6 +437,8 @@ class AreaStyle {
     bool? sidebarShowIcons,
     bool? sidebarShowRightDivider,
     Color? sidebarDividerColor,
+    int? sidebarDividerColorIndex,
+    bool clearSidebarDividerColorIndex = false,
     bool clearSidebarDividerColor = false,
     double? sidebarDividerWidth,
     bool? enableMessageActions,
@@ -427,6 +447,8 @@ class AreaStyle {
     double? chatListCornerRadius,
     bool clearChatListCornerRadius = false,
     Color? chatListAccentColor,
+    int? chatListAccentColorIndex,
+    bool clearChatListAccentColorIndex = false,
     bool clearChatListAccentColor = false,
     double? chatListGlowIntensity,
     bool clearChatListGlowIntensity = false,
@@ -476,6 +498,8 @@ class AreaStyle {
             ? null
             : (solidColorIndex ?? this.solidColorIndex),
         gradientColors: gradientColors ?? this.gradientColors,
+        gradientColorIndexes:
+            gradientColorIndexes ?? this.gradientColorIndexes,
         gradientStops: gradientStops ?? this.gradientStops,
         gradientBegin: gradientBegin ?? this.gradientBegin,
         gradientEnd: gradientEnd ?? this.gradientEnd,
@@ -488,6 +512,8 @@ class AreaStyle {
             ? null
             : (borderColorIndex ?? this.borderColorIndex),
         borderGradientColors: borderGradientColors ?? this.borderGradientColors,
+        borderGradientColorIndexes:
+            borderGradientColorIndexes ?? this.borderGradientColorIndexes,
         borderGradientStops: borderGradientStops ?? this.borderGradientStops,
         borderGradientBegin: borderGradientBegin ?? this.borderGradientBegin,
         borderGradientEnd: borderGradientEnd ?? this.borderGradientEnd,
@@ -522,6 +548,9 @@ class AreaStyle {
         sidebarShowIcons: sidebarShowIcons ?? this.sidebarShowIcons,
         sidebarShowRightDivider:
             sidebarShowRightDivider ?? this.sidebarShowRightDivider,
+        sidebarDividerColorIndex: clearSidebarDividerColorIndex
+            ? null
+            : (sidebarDividerColorIndex ?? this.sidebarDividerColorIndex),
         sidebarDividerColor: clearSidebarDividerColor
             ? null
             : (sidebarDividerColor ?? this.sidebarDividerColor),
@@ -534,6 +563,9 @@ class AreaStyle {
         chatListCornerRadius: clearChatListCornerRadius
             ? null
             : (chatListCornerRadius ?? this.chatListCornerRadius),
+        chatListAccentColorIndex: clearChatListAccentColorIndex
+            ? null
+            : (chatListAccentColorIndex ?? this.chatListAccentColorIndex),
         chatListAccentColor: clearChatListAccentColor
             ? null
             : (chatListAccentColor ?? this.chatListAccentColor),
@@ -594,6 +626,8 @@ class AreaStyle {
         if (solidColorIndex != null) "solidColorIndex": solidColorIndex,
         if (gradientColors.isNotEmpty)
           "gradientColors": gradientColors.map(colorToHex).toList(),
+        if (gradientColorIndexes.isNotEmpty)
+          "gradientColorIndexes": gradientColorIndexes,
         if (gradientStops != null) "gradientStops": gradientStops,
         "gradientBegin": _alignToJson(gradientBegin),
         "gradientEnd": _alignToJson(gradientEnd),
@@ -606,6 +640,8 @@ class AreaStyle {
         if (borderColorIndex != null) "borderColorIndex": borderColorIndex,
         if (borderGradientColors.isNotEmpty)
           "borderGradientColors": borderGradientColors.map(colorToHex).toList(),
+        if (borderGradientColorIndexes.isNotEmpty)
+          "borderGradientColorIndexes": borderGradientColorIndexes,
         if (borderGradientStops != null)
           "borderGradientStops": borderGradientStops,
         "borderGradientBegin": _alignToJson(borderGradientBegin),
@@ -638,6 +674,8 @@ class AreaStyle {
           "sidebarShowRightDivider": sidebarShowRightDivider,
         if (sidebarDividerColor != null)
           "sidebarDividerColor": colorToHex(sidebarDividerColor!),
+        if (sidebarDividerColorIndex != null)
+          "sidebarDividerColorIndex": sidebarDividerColorIndex,
         if (sidebarDividerWidth != 1)
           "sidebarDividerWidth": sidebarDividerWidth,
         if (enableMessageActions) "enableMessageActions": enableMessageActions,
@@ -649,6 +687,8 @@ class AreaStyle {
           "chatListCornerRadius": chatListCornerRadius,
         if (chatListAccentColor != null)
           "chatListAccentColor": colorToHex(chatListAccentColor!),
+        if (chatListAccentColorIndex != null)
+          "chatListAccentColorIndex": chatListAccentColorIndex,
         if (chatListGlowIntensity != null)
           "chatListGlowIntensity": chatListGlowIntensity,
         if (!chatListTopHighlight) "chatListTopHighlight": chatListTopHighlight,
@@ -711,6 +751,11 @@ class AreaStyle {
     List<double>? stops(String key) => j[key] != null
         ? (j[key] as List).map((e) => (e as num).toDouble()).toList()
         : null;
+    // Entries are deliberately nullable -- a null slot means that gradient
+    // color was custom-picked and has no palette slot to follow.
+    List<int?> indexes(String key) => j[key] != null
+        ? (j[key] as List).map((e) => (e as num?)?.toInt()).toList()
+        : const [];
 
     return AreaStyle(
       mode: _enumOr(
@@ -718,6 +763,7 @@ class AreaStyle {
       solidColor: color("solidColor"),
       solidColorIndex: (j["solidColorIndex"] as num?)?.toInt(),
       gradientColors: colors("gradientColors"),
+      gradientColorIndexes: indexes("gradientColorIndexes"),
       gradientStops: stops("gradientStops"),
       gradientBegin: _alignFromJson(j["gradientBegin"], Alignment.topLeft),
       gradientEnd: _alignFromJson(j["gradientEnd"], Alignment.bottomRight),
@@ -733,6 +779,7 @@ class AreaStyle {
       borderColor: color("borderColor"),
       borderColorIndex: (j["borderColorIndex"] as num?)?.toInt(),
       borderGradientColors: colors("borderGradientColors"),
+      borderGradientColorIndexes: indexes("borderGradientColorIndexes"),
       borderGradientStops: stops("borderGradientStops"),
       borderGradientBegin:
           _alignFromJson(j["borderGradientBegin"], Alignment.topLeft),
@@ -761,12 +808,15 @@ class AreaStyle {
       sidebarShowIcons: flag("sidebarShowIcons"),
       sidebarShowRightDivider: flag("sidebarShowRightDivider", fallback: true),
       sidebarDividerColor: color("sidebarDividerColor"),
+      sidebarDividerColorIndex:
+          (j["sidebarDividerColorIndex"] as num?)?.toInt(),
       sidebarDividerWidth: number("sidebarDividerWidth") ?? 1,
       enableMessageActions: flag("enableMessageActions"),
       showChatListLastMessage: flag("showChatListLastMessage"),
       chatListDesignEnabled: flag("chatListDesignEnabled"),
       chatListCornerRadius: number("chatListCornerRadius"),
       chatListAccentColor: color("chatListAccentColor"),
+      chatListAccentColorIndex: (j["chatListAccentColorIndex"] as num?)?.toInt(),
       chatListGlowIntensity: number("chatListGlowIntensity"),
       chatListTopHighlight: flag("chatListTopHighlight", fallback: true),
       monochromeAvatars: flag("monochromeAvatars"),
@@ -863,13 +913,64 @@ class AreaStyle {
       _liveColor(theme, borderColorIndex, borderColor);
   Color? resolveSolidColor(ThemeNotifier theme) =>
       _liveColor(theme, solidColorIndex, solidColor);
+  Color? resolveSidebarDividerColor(ThemeNotifier theme) =>
+      _liveColor(theme, sidebarDividerColorIndex, sidebarDividerColor);
+  Color? resolveChatListAccentColor(ThemeNotifier theme) =>
+      _liveColor(theme, chatListAccentColorIndex, chatListAccentColor);
+
+  // _liveColors is _liveColor over a gradient's color list, pairing each
+  // color with its own slot binding. `indexes` may be shorter than `raw`
+  // (a gradient saved before those bindings existed, or one whose trailing
+  // colors were custom-picked), in which case those fall back to the
+  // stored color.
+  List<Color> _liveColors(
+          ThemeNotifier theme, List<Color> raw, List<int?> indexes) =>
+      [
+        for (var i = 0; i < raw.length; i++)
+          _liveColor(theme, i < indexes.length ? indexes[i] : null, raw[i]) ??
+              raw[i],
+      ];
+
+  // remapPaletteIndexes rewrites every stored palette-slot binding for the
+  // removal of palette entry `removed` (see ThemePreset.palette): anything
+  // bound past it shifts down a place to keep pointing at the same color,
+  // and anything bound to the removed entry itself is unbound, keeping the
+  // color it last resolved to as a plain custom color rather than silently
+  // adopting whichever color slid into that index.
+  AreaStyle remapPaletteIndexes(int removed) {
+    int? remap(int? i) => i == null || i < removed
+        ? i
+        : i == removed
+            ? null
+            : i - 1;
+    return copyWith(
+      solidColorIndex: remap(solidColorIndex),
+      clearSolidColorIndex: remap(solidColorIndex) == null,
+      borderColorIndex: remap(borderColorIndex),
+      clearBorderColorIndex: remap(borderColorIndex) == null,
+      gradientColorIndexes: gradientColorIndexes.map(remap).toList(),
+      borderGradientColorIndexes:
+          borderGradientColorIndexes.map(remap).toList(),
+      sidebarDividerColorIndex: remap(sidebarDividerColorIndex),
+      clearSidebarDividerColorIndex: remap(sidebarDividerColorIndex) == null,
+      chatListAccentColorIndex: remap(chatListAccentColorIndex),
+      clearChatListAccentColorIndex: remap(chatListAccentColorIndex) == null,
+    );
+  }
+
+  // resolveGradientColors/resolveBorderGradientColors are the public form,
+  // for the theme editor's own dropdowns.
+  List<Color> resolveGradientColors(ThemeNotifier theme) =>
+      _liveColors(theme, gradientColors, gradientColorIndexes);
+  List<Color> resolveBorderGradientColors(ThemeNotifier theme) =>
+      _liveColors(theme, borderGradientColors, borderGradientColorIndexes);
 
   // _backgroundFill/_borderFill resolve this style's two paint layers.
   AreaFill _backgroundFill(
           ThemeNotifier theme, SurfaceColor fallback, String? presetDir) =>
       _resolveFill(mode, theme, fallback,
           solid: resolveSolidColor(theme),
-          gradColors: gradientColors,
+          gradColors: _liveColors(theme, gradientColors, gradientColorIndexes),
           gradStops: gradientStops,
           gradBegin: gradientBegin,
           gradEnd: gradientEnd,
@@ -881,7 +982,8 @@ class AreaStyle {
   AreaFill _borderFill(
           ThemeNotifier theme, SurfaceColor fallback, String? presetDir) =>
       _resolveFill(borderMode, theme, fallback,
-          gradColors: borderGradientColors,
+          gradColors: _liveColors(
+              theme, borderGradientColors, borderGradientColorIndexes),
           gradStops: borderGradientStops,
           gradBegin: borderGradientBegin,
           gradEnd: borderGradientEnd,

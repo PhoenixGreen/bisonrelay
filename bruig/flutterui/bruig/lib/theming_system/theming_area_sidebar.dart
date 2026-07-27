@@ -52,10 +52,16 @@ List<Widget> sidebarAreaEditor(AreaEditorContext ctx) {
     if (style.sidebarShowRightDivider) ...[
       ctx.colorPick(
         "Divider color",
-        value: style.sidebarDividerColor,
-        onChanged: (c) => ctx.setStyle((s) => c == null
-            ? s.copyWith(clearSidebarDividerColor: true)
-            : s.copyWith(sidebarDividerColor: c)),
+        value: style.resolveSidebarDividerColor(ctx.theme),
+        valueIndex: style.sidebarDividerColorIndex,
+        onChanged: (c, i) => ctx.setStyle((s) => c == null
+            ? s.copyWith(
+                clearSidebarDividerColor: true,
+                clearSidebarDividerColorIndex: true)
+            : s.copyWith(
+                sidebarDividerColor: c,
+                sidebarDividerColorIndex: i,
+                clearSidebarDividerColorIndex: i == null)),
       ),
       ctx.slider("sidebarDividerWidth", style.sidebarDividerWidth,
           label: (v) => "Divider width: ${v.toStringAsFixed(1)}",

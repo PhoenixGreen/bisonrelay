@@ -21,6 +21,19 @@ class PaletteColorDropdown extends StatelessWidget {
   // worse, silently starts matching a *different* slot, the moment any
   // slot's value changes).
   final void Function(Color? color, int? index) onChanged;
+  // valueIndex is the palette slot `value` was picked from, for a caller
+  // that persists one (see onChanged). Given it, this shows that exact
+  // slot as selected instead of searching the palette for one holding the
+  // same color -- a search that can't tell duplicate slots apart, and
+  // duplicates are normal: in the stock Default Theme six of the seventeen
+  // slots hold a color an earlier slot already holds (speechBackground
+  // repeats tertiary, speechBackgroundSent repeats fourth, navText and
+  // sidebarText repeat onSurfaceVariant, navAccent and sidebarAccent
+  // repeat accentContainer). A color-matched lookup lands on the first of
+  // each group, so a field bound to "Sidebar Accent Color" displayed as
+  // "Button Background" -- and then editing the slot it named changed
+  // nothing, while editing the one it didn't name moved it.
+  final int? valueIndex;
   final bool allowNone;
   // noneLabel overrides the "None" entry's label -- e.g. "Default" for a
   // field whose null value doesn't mean "no color at all" but "use the
@@ -36,6 +49,7 @@ class PaletteColorDropdown extends StatelessWidget {
       {required this.preset,
       required this.value,
       required this.onChanged,
+      this.valueIndex,
       this.allowNone = false,
       this.noneLabel = "None",
       this.isExpanded = false,
@@ -68,13 +82,21 @@ class PaletteColorDropdown extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     var palette = preset.palette;
-    var matchIdx = value == null
-        ? -1
-        : palette.indexWhere((c) => c.toARGB32() == value!.toARGB32());
-    // A value that doesn't match any current palette slot is a previously
-    // picked custom color -- show it as such instead of silently falling
-    // back to the first palette entry.
-    var isCustom = value != null && matchIdx < 0;
+    // A stored slot binding is authoritative; only a caller that has none
+    // falls back to finding the palette entry holding this exact color.
+    var bound = valueIndex != null &&
+            valueIndex! >= 0 &&
+            valueIndex! < palette.length
+        ? valueIndex
+        : null;
+    var matchIdx = bound ??
+        (value == null
+            ? -1
+            : palette.indexWhere((c) => c.toARGB32() == value!.toARGB32()));
+    // A value that matches no palette slot is a previously picked custom
+    // color -- show it as such instead of silently falling back to the
+    // first palette entry.
+    var isCustom = bound == null && value != null && matchIdx < 0;
     if (matchIdx < 0 && !allowNone && !isCustom) matchIdx = 0;
     if (isCustom) matchIdx = _customValue;
 
