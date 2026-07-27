@@ -4,7 +4,7 @@ import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
 import 'package:bruig/config.dart';
-import 'package:bruig/models/theme_preset.dart';
+import 'package:bruig/theming_system/theme_preset.dart';
 import 'package:path/path.dart' as path;
 
 // ThemePresetStorage persists custom ThemePresets as directories under

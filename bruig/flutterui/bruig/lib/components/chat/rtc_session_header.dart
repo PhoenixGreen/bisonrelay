@@ -9,11 +9,11 @@ import 'package:bruig/components/text.dart';
 import 'package:bruig/models/client.dart';
 import 'package:bruig/models/audio.dart';
 import 'package:bruig/models/realtimechat.dart';
-import 'package:bruig/models/theme_preset.dart';
+import 'package:bruig/theming_system/theme_preset.dart';
 import 'package:bruig/models/uistate.dart';
 import 'package:bruig/screens/realtimechat/invitetortc.dart';
 import 'package:bruig/screens/realtimechat/rtclist.dart';
-import 'package:bruig/theme_manager.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 

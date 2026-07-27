@@ -3,10 +3,10 @@ import 'package:bruig/components/gc_context_menu.dart';
 import 'package:bruig/components/text.dart';
 import 'package:bruig/components/user_context_menu.dart';
 import 'package:bruig/models/client.dart';
-import 'package:bruig/models/theme_preset.dart';
+import 'package:bruig/theming_system/theme_preset.dart';
 import 'package:bruig/util.dart';
 import 'package:flutter/material.dart';
-import 'package:bruig/theme_manager.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:provider/provider.dart';
 
 // graphiteFromNick deterministically maps a nick to one of a small set of

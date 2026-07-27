@@ -1,10 +1,12 @@
+import 'package:bruig/theming_system/color_hex.dart';
 import 'package:flutter/material.dart';
 
 // ColorPalette is a small, named, standalone set of colors -- distinct from
 // a full ThemePreset (which also carries area styles, menu customization,
-// etc). Applying one (see theme_editor.dart's _applyPalette) overwrites the
-// active preset's 12 "vivid" palette roles (see kVividPaletteSlots in
-// theme_preset.dart: primary, secondary, tertiary, sidebarBackground,
+// etc). Applying one (see color_palette_section.dart's applyColorPalette)
+// overwrites the active preset's 12 "vivid" palette roles (see
+// kVividPaletteSlots in color_palette.dart: primary, secondary, tertiary,
+// sidebarBackground,
 // speechBackground, speechBackgroundSent, navAccent, sidebarAccent,
 // accentContainer, error, outline, fourth) with this palette's `colors`,
 // in that order. It also resets every other functional/neutral
@@ -20,7 +22,7 @@ class ColorPalette {
   // also never persisted to disk (see PaletteLibraryStorage).
   final bool builtin;
   // The brightness this palette's 12 colors were designed against --
-  // applying it (see theme_editor.dart's _applyPalette) also resets the
+  // applying it (see color_palette_section.dart's applyColorPalette) also resets the
   // preset's neutral/functional roles (text, success, etc.) to this
   // brightness's own seed values, not just the 12 vivid slots. Without
   // this,
@@ -39,24 +41,18 @@ class ColorPalette {
     this.brightness = Brightness.dark,
   });
 
-  static String hexOf(Color c) =>
-      '#${(c.toARGB32() & 0xFFFFFFFF).toRadixString(16).padLeft(8, '0')}';
-  static Color colorFromHex(String s) =>
-      Color(int.parse(s.replaceFirst('#', ''), radix: 16));
-
   Map<String, dynamic> toJson() => {
         "id": id,
         "name": name,
-        "colors": colors.map(hexOf).toList(),
+        "colors": colors.map(colorToHex).toList(),
         "brightness": brightness == Brightness.light ? "light" : "dark",
       };
 
   factory ColorPalette.fromJson(Map<String, dynamic> j) => ColorPalette(
         id: j["id"] as String,
         name: j["name"] as String,
-        colors: (j["colors"] as List)
-            .map((h) => colorFromHex(h as String))
-            .toList(),
+        colors:
+            (j["colors"] as List).map((h) => colorFromHex(h as String)).toList(),
         // Absent for palettes saved/exported before this field existed --
         // they were only ever produced from a dark-base draft, so dark is
         // the correct fallback.
@@ -68,7 +64,7 @@ class ColorPalette {
 // Each entry's 12 colors are ordered [primary, secondary, tertiary,
 // sidebarBackground, speechBackground, speechBackgroundSent, navAccent,
 // sidebarAccent, accentContainer, error, outline, fourth], applied
-// *exactly as stored* (see theme_editor.dart's _applyPalette) -- no
+// *exactly as stored* (see color_palette_section.dart's applyColorPalette) -- no
 // brightness-aware re-derivation, no hue rotation.
 // speechBackground is the "received" chat bubble; speechBackgroundSent is
 // the "sent"/own bubble -- kept as its own deliberately-chosen color (e.g.
@@ -77,7 +73,7 @@ class ColorPalette {
 // read as visibly distinct per palette, matching each app's real chat UI.
 // accentContainer ("Accent (Buttons/Toggles)", drives Switch/tonal-button
 // backgrounds, and -- since CancelButton no longer misuses `error` for its
-// background, see theme_preset.dart's doc -- the "Cancel" button too) is a
+// background, see preset.dart's doc -- the "Cancel" button too) is a
 // muted, readable-with-light-text tone pulled from each palette's own
 // accent hue rather than the Default/Light seed's pale lavender, which
 // clashed badly as a "Buttons/Toggles" color on e.g. a WhatsApp-green or
@@ -89,7 +85,7 @@ class ColorPalette {
 // button's icon) -- a dark red reads at a poor ~2.5:1 contrast there, even
 // though it looks fine as a *container background* with light text on
 // top. errorContainer is no longer forced to equal `error` (see
-// theme_preset.dart's toAppTheme), so this single field only has to be
+// preset.dart's toAppTheme), so this single field only has to be
 // legible as foreground text/icons now, not also serve as a background.
 // outline (plain dividers/panel borders) is tuned to sit roughly halfway
 // between each palette's own primary and tertiary tones, so it reads as a

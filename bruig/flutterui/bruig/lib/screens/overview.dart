@@ -10,7 +10,7 @@ import 'package:bruig/components/route_error.dart';
 import 'package:bruig/components/sidebar.dart';
 import 'package:bruig/components/snackbars.dart';
 import 'package:bruig/components/empty_widget.dart';
-import 'package:bruig/models/theme_preset.dart';
+import 'package:bruig/theming_system/theme_preset.dart';
 import 'package:bruig/models/client.dart';
 import 'package:bruig/models/downloads.dart';
 import 'package:bruig/models/feed.dart';
@@ -27,7 +27,7 @@ import 'package:bruig/screens/settings.dart';
 import 'package:bruig/screens/viewpage_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:golib_plugin/definitions.dart';
-import 'package:bruig/theme_manager.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:provider/provider.dart';
 
 // These are hacks. Find a way to remove them.
@@ -221,12 +221,12 @@ class __MainAppBarState extends State<_MainAppBar>
     bool isScreenSmall = checkIsScreenSmall(context);
     var theme = ThemeNotifier.of(context);
     var headerStyle = theme.areaStyle(ThemeArea.header);
-    // Deliberately narrower than headerStyle.isUnmodified: height/
-    // contentAlign are applied unconditionally inside _buildInnerAppBar
-    // regardless of this flag, so they must NOT factor in here -- doing so
-    // would needlessly disable the live-call pulsing background color
-    // below whenever only the header's height or text alignment (not its
-    // background/border) was customized.
+    // Deliberately only the background/border/margin fields, not every
+    // header setting: height/contentAlign are applied unconditionally
+    // inside _buildInnerAppBar regardless of this flag, so they must NOT
+    // factor in here -- doing so would needlessly disable the live-call
+    // pulsing background color below whenever only the header's height or
+    // text alignment (not its background/border) was customized.
     var headerOverridden = headerStyle.mode != AreaBackgroundMode.token ||
         headerStyle.borderMode != AreaBackgroundMode.token ||
         headerStyle.margin > 0;

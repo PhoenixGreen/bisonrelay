@@ -5,7 +5,7 @@ import 'package:bruig/models/client.dart';
 import 'package:bruig/models/realtimechat.dart';
 import 'package:bruig/screens/overview.dart';
 import 'package:bruig/screens/realtimechat/creatertc.dart';
-import 'package:bruig/theme_manager.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 

@@ -9,7 +9,7 @@ import 'package:bruig/screens/chats.dart';
 import 'package:flutter/material.dart';
 import 'package:golib_plugin/definitions.dart';
 import 'package:golib_plugin/golib_plugin.dart';
-import 'package:bruig/theme_manager.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
 
 class UserProfile extends StatefulWidget {
   static String routeName = "${ChatsScreen.routeName}/profile";

@@ -32,7 +32,7 @@ import 'package:bruig/screens/realtimechat/rtclist.dart';
 import 'package:bruig/screens/server_unwelcome_error.dart';
 import 'package:bruig/screens/settings.dart';
 import 'package:bruig/storage_manager.dart';
-import 'package:bruig/theme_manager.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:bruig/config.dart';
 import 'package:bruig/models/downloads.dart';
 import 'package:bruig/screens/overview.dart';
