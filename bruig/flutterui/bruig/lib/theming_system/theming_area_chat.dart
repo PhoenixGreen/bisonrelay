@@ -40,10 +40,16 @@ List<Widget> chatAreaEditor(AreaEditorContext ctx) {
               ctx.setStyle((s) => s.copyWith(chatListCornerRadius: v))),
       ctx.colorPick(
         "Accent color",
-        value: style.chatListAccentColor,
-        onChanged: (c) => ctx.setStyle((s) => c == null
-            ? s.copyWith(clearChatListAccentColor: true)
-            : s.copyWith(chatListAccentColor: c)),
+        value: style.resolveChatListAccentColor(ctx.theme),
+        valueIndex: style.chatListAccentColorIndex,
+        onChanged: (c, i) => ctx.setStyle((s) => c == null
+            ? s.copyWith(
+                clearChatListAccentColor: true,
+                clearChatListAccentColorIndex: true)
+            : s.copyWith(
+                chatListAccentColor: c,
+                chatListAccentColorIndex: i,
+                clearChatListAccentColorIndex: i == null)),
       ),
       // 0 turns the selected-row glow off entirely; 1.0 (the default when
       // unset) matches the original design; above 1 exaggerates it.

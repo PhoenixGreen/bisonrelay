@@ -275,7 +275,7 @@ class SecondarySideMenu extends StatelessWidget {
                         // preset), not the preset's own outline swatch.
                         // Built-in (non-custom) themes have no preset to
                         // read, so they keep their original divider color.
-                        color: areaStyle.sidebarDividerColor ??
+                        color: areaStyle.resolveSidebarDividerColor(theme) ??
                             theme.activePreset?.outline ??
                             theme.extraColors.sidebarDivider,
                         width: areaStyle.sidebarDividerWidth))
@@ -510,7 +510,9 @@ class _SecondarySideMenuLayoutState extends State<SecondarySideMenuLayout> {
   // apply to every divider the sidebar draws, not just the always-visible
   // one.
   Color _dividerColor(ThemeNotifier theme) =>
-      theme.areaStyle(ThemeArea.subMenuTabBar).sidebarDividerColor ??
+      theme
+          .areaStyle(ThemeArea.subMenuTabBar)
+          .resolveSidebarDividerColor(theme) ??
       theme.activePreset?.outline ??
       theme.extraColors.sidebarDivider;
   double _dividerWidth(ThemeNotifier theme) =>
