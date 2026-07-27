@@ -304,17 +304,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: settingsView));
     }
 
-    // Desktop-sized version.
+    // Desktop-sized version. The left nav is a plain SecondarySideMenuLayout
+    // like every other screen's, so it picks up the Sidebar theme area's own
+    // settings (icons, rounded rows, visibility, width) -- it used to have a
+    // second, near-duplicate implementation of its own behind a "Settings
+    // page restyle" toggle, which those settings supersede.
     return Consumer<ThemeNotifier>(builder: (context, theme, _) {
-      if (theme.areaStyle(ThemeArea.masterBackground).settingsShellRestyle) {
-        return Row(children: [
-          _RestyledSettingsNav(
-              settingsPage: settingsPage,
-              changePage: changePage,
-              showRpcWarningDialog: showRpcWarningDialog),
-          Expanded(child: settingsView),
-        ]);
-      }
       return SecondarySideMenuLayout(
         width: 130 * (theme.fontScale > 0 ? theme.fontScale : 1),
         storageKey: "settings",
@@ -371,83 +366,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ],
       );
     });
-  }
-}
-
-// Restyled left nav for AreaStyle.settingsShellRestyle: icon + pill
-// highlight rows instead of plain ListTiles.
-class _RestyledSettingsNav extends StatelessWidget {
-  final String settingsPage;
-  final ChangePageCB changePage;
-  final VoidCallback showRpcWarningDialog;
-  const _RestyledSettingsNav(
-      {required this.settingsPage,
-      required this.changePage,
-      required this.showRpcWarningDialog});
-
-  Widget _navItem(
-      BuildContext context, ThemeNotifier theme, String page, IconData icon) {
-    final cs = Theme.of(context).colorScheme;
-    final sel = settingsPage == page;
-    // Matches the same preset-driven accent every other sidebar in the app
-    // uses (see containers.dart's _SidebarNavRow) instead of falling back
-    // to colorScheme.primary/surfaceContainerHighest, which don't follow
-    // the user's chosen Sidebar Accent color.
-    final accent = theme.activePreset?.sidebarAccent ?? cs.primary;
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-      child: Material(
-        color: sel ? accent.withValues(alpha: 0.18) : Colors.transparent,
-        borderRadius: BorderRadius.circular(12),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(12),
-          onTap: () =>
-              page == "RPC" ? showRpcWarningDialog() : changePage(page),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            child: Row(children: [
-              Icon(icon, size: 19, color: sel ? accent : cs.onSurfaceVariant),
-              const SizedBox(width: 12),
-              Text(page,
-                  style: TextStyle(
-                    fontSize: 14.5,
-                    fontWeight: sel ? FontWeight.w600 : FontWeight.w500,
-                    color: sel ? cs.onSurface : cs.onSurfaceVariant,
-                  )),
-            ]),
-          ),
-        ),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    var theme = ThemeNotifier.of(context);
-    return Container(
-      width: 200,
-      decoration: BoxDecoration(
-        // outlineVariant (not outline) -- a plain panel divider should
-        // blend into the background, not stand out like a button border.
-        border: Border(
-            right: BorderSide(
-                color: Theme.of(context).colorScheme.outlineVariant)),
-      ),
-      child: ListView(
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        children: [
-          _navItem(context, theme, "Account", Icons.person_outline),
-          _navItem(context, theme, "Appearance", Icons.palette_outlined),
-          _navItem(context, theme, "Notifications",
-              Icons.notifications_outlined),
-          _navItem(context, theme, "Network", Icons.public),
-          _navItem(context, theme, "Audio", Icons.volume_up_outlined),
-          _navItem(context, theme, "RPC", Icons.terminal),
-          _navItem(context, theme, "Stats", Icons.bar_chart_outlined),
-          _navItem(context, theme, "Logs", Icons.list_outlined),
-        ],
-      ),
-    );
   }
 }
 
@@ -793,10 +711,18 @@ class AccountSettingsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     var theme = ThemeNotifier.of(context);
-    if (theme.areaStyle(ThemeArea.masterBackground).settingsShellRestyle) {
-      return _restyled(context);
-    }
+    // ThemedArea is what gives the Account Page area's background/border/
+    // spacing settings something to apply to; unstyled it renders exactly
+    // as a plain container would. Both layouts sit inside it, so the two
+    // choices differ only in their content.
+    return ThemedArea(
+        area: ThemeArea.account,
+        child: theme.areaStyle(ThemeArea.account).accountCardLayout
+            ? _restyled(context)
+            : _plain(context));
+  }
 
+  Widget _plain(BuildContext context) {
     return Column(children: [
       const SizedBox(height: 10),
       SizedBox(

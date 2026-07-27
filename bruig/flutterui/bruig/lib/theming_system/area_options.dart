@@ -90,6 +90,34 @@ const Map<MessageLayoutMode, String> _messageLayoutModeLabels = {
 String messageLayoutModeLabel(MessageLayoutMode m) =>
     _messageLayoutModeLabels[m]!;
 
+// AvatarTheme picks how the *fallback* avatar (the colored circle behind a
+// user's initial, shown when they have no avatar image of their own) is
+// colored. A real avatar image is never affected. Every avatar in the app
+// funnels through InteractiveAvatar, so this is app-wide despite living on
+// the Chat area -- that's simply where users look for it.
+//
+// All five hash the nick, so a given user always gets the same color; they
+// differ in what they hash it into. See avatarColorFromNick.
+// - standard: today's behavior -- a hue from right around the color wheel
+//   at middling saturation.
+// - monochrome: neutral graphite grays, for a deliberately colorless look.
+// - muted: standard's hue, heavily desaturated.
+// - vivid: standard's hue, near-fully saturated.
+// - palette: one of the active theme's own accent colors, so avatars read
+//   as part of the theme rather than an unrelated rainbow. Falls back to
+//   standard for the built-in themes, which have no palette to draw on.
+enum AvatarTheme { standard, monochrome, muted, vivid, palette }
+
+const Map<AvatarTheme, String> _avatarThemeLabels = {
+  AvatarTheme.standard: "Default (colorful)",
+  AvatarTheme.monochrome: "Monochrome",
+  AvatarTheme.muted: "Muted",
+  AvatarTheme.vivid: "Vivid",
+  AvatarTheme.palette: "Theme palette",
+};
+
+String avatarThemeLabel(AvatarTheme t) => _avatarThemeLabels[t]!;
+
 // ---------------------------------------------------------------------------
 // Feed (ThemeArea.feed)
 // ---------------------------------------------------------------------------
