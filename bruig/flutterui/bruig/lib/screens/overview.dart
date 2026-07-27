@@ -229,7 +229,11 @@ class __MainAppBarState extends State<_MainAppBar>
     // text alignment (not its background/border) was customized.
     var headerOverridden = headerStyle.mode != AreaBackgroundMode.token ||
         headerStyle.borderMode != AreaBackgroundMode.token ||
-        headerStyle.margin > 0;
+        // A non-default image preset paints over the Default background,
+        // so it needs the themed container too even though `mode` is still
+        // Default.
+        headerStyle.imagePreset != AreaImagePreset.standard ||
+        !headerStyle.margins.isZero;
 
     var appBar = _buildInnerAppBar(context, isScreenSmall, theme, headerOverridden);
 
@@ -261,15 +265,16 @@ class __MainAppBarState extends State<_MainAppBar>
             builder: (context, _) => const _OverviewScreenTitle());
     if (headerStyle.contentAlign == ContentAlign.end) {
       // Left-aligned text already gets its gap from the leading content via
-      // titleSpacing (headerStyle.padding, below) -- using that same value
-      // here (not a separate hardcoded inset) keeps both sides governed by
-      // the one Padding setting, rather than right always having a fixed
-      // 20px gap regardless of it while left has none until Padding is
-      // raised.
+      // titleSpacing (the padding's left side, below) -- using this setting
+      // here too (not a separate hardcoded inset) keeps both sides governed
+      // by Padding, rather than right always having a fixed 20px gap
+      // regardless of it while left has none until Padding is raised. Each
+      // side reads its own value, so splitting Padding per side controls
+      // the two gaps independently.
       titleWidget = Align(
           alignment: Alignment.centerRight,
           child: Padding(
-              padding: EdgeInsets.only(right: headerStyle.padding),
+              padding: EdgeInsets.only(right: headerStyle.paddings.right),
               child: titleWidget));
     }
     bool? centerTitle = switch (headerStyle.contentAlign) {
@@ -346,7 +351,7 @@ class __MainAppBarState extends State<_MainAppBar>
       }
 
       return AppBar(
-          titleSpacing: headerStyle.padding,
+          titleSpacing: headerStyle.paddings.left,
           title: titleWidget,
           centerTitle: centerTitle,
           toolbarHeight: headerStyle.height,

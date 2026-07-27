@@ -237,23 +237,25 @@ class SecondarySideMenu extends StatelessWidget {
     return Consumer<ThemeNotifier>(builder: (context, theme, _) {
       var areaStyle = theme.areaStyle(ThemeArea.subMenuTabBar);
       var effectiveWidth = areaStyle.width ?? width ?? 120;
-      // Deliberately not driven by the generic per-area Background fill
-      // mode (Token/Solid/Gradient/Image) every other area uses -- the
-      // Sidebar's background always reads the "Sidebar background" color
-      // palette slot directly, live, so it can never silently diverge from
-      // what the palette editor shows (a stored solidColor snapshot
-      // wouldn't update when the palette color is edited later). Border/
-      // padding/margin still come from AreaStyle as usual, just with a
-      // flat-color-only border (no gradient/image border support here,
-      // matching what the "unmodified" case already only ever supported).
-      var background =
-          theme.activePreset?.sidebarBackground ?? theme.colors.surface;
+      // The Sidebar's *Default* background is the "Sidebar background"
+      // color palette slot, read live, so it can never silently diverge
+      // from what the palette editor shows (a stored solidColor snapshot
+      // wouldn't update when the palette color is edited later). Any other
+      // Background mode resolves through AreaStyle like every other area,
+      // just with a flat-color-only border (no gradient/image border
+      // support here, matching what the "unmodified" case already only
+      // ever supported).
+      var bg = areaStyle.toBoxDecoration(theme, SurfaceColor.surface,
+          presetDir: theme.fullTheme.presetDir);
+      var background = areaStyle.mode == AreaBackgroundMode.token
+          ? (theme.activePreset?.sidebarBackground ?? theme.colors.surface)
+          : bg.color;
       var liveBorderColor = areaStyle.resolveBorderColor(theme);
       var hasCustomBorder = areaStyle.borderMode != AreaBackgroundMode.token &&
               liveBorderColor != null &&
-              areaStyle.borderWidth > 0 ||
-          areaStyle.padding != 0 ||
-          areaStyle.margin != 0;
+              areaStyle.hasBorderWidth ||
+          !areaStyle.paddings.isZero ||
+          !areaStyle.margins.isZero;
       if (!hasCustomBorder) {
         // Unmodified: reproduce the original plain divider exactly.
         return Container(
@@ -261,6 +263,8 @@ class SecondarySideMenu extends StatelessWidget {
           width: effectiveWidth,
           decoration: BoxDecoration(
             color: background,
+            gradient: bg.gradient,
+            image: bg.image,
             border: areaStyle.sidebarShowRightDivider
                 ? Border(
                     right: BorderSide(
@@ -280,23 +284,26 @@ class SecondarySideMenu extends StatelessWidget {
           child: child,
         );
       }
-      // Customized border/padding/margin: still an explicit sidebarBackground
-      // fill, just with the area's own border/spacing treatment on top.
+      // Customized border/padding/margin: same background fill as above,
+      // just with the area's own border/spacing treatment on top.
       return SizedBox(
         width: effectiveWidth,
         child: Container(
-          margin: EdgeInsets.all(areaStyle.margin),
-          padding: EdgeInsets.all(areaStyle.padding),
+          margin: areaStyle.margins.insets,
+          padding: areaStyle.paddings.insets,
           decoration: BoxDecoration(
             color: background,
+            gradient: bg.gradient,
+            image: bg.image,
+            // bg (from toBoxDecoration) already resolved the per-side
+            // border and, with it, whether the radius can survive alongside
+            // one -- reuse both rather than re-deriving them here.
             border: (areaStyle.borderMode != AreaBackgroundMode.token &&
                     liveBorderColor != null &&
-                    areaStyle.borderWidth > 0)
-                ? Border.all(color: liveBorderColor, width: areaStyle.borderWidth)
+                    areaStyle.hasBorderWidth)
+                ? areaStyle.borderSides(liveBorderColor)
                 : null,
-            borderRadius: areaStyle.borderRadius > 0
-                ? BorderRadius.circular(areaStyle.borderRadius)
-                : null,
+            borderRadius: bg.borderRadius,
           ),
           child: child,
         ),

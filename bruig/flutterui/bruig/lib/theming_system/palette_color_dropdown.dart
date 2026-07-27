@@ -27,12 +27,18 @@ class PaletteColorDropdown extends StatelessWidget {
   // built-in computed default" (unlike, say, an accent color that's truly
   // absent when unset).
   final String noneLabel;
+  // isExpanded fills the available width instead of sizing to the current
+  // entry -- for a caller that lays this out in a fixed-width column
+  // (rather than a Row that sizes around it), where the intrinsic width
+  // would otherwise overflow on the longer palette slot names.
+  final bool isExpanded;
   const PaletteColorDropdown(
       {required this.preset,
       required this.value,
       required this.onChanged,
       this.allowNone = false,
       this.noneLabel = "None",
+      this.isExpanded = false,
       super.key});
 
   // -2 is a sentinel dropdown value for "Custom color..." -- distinct from
@@ -72,28 +78,59 @@ class PaletteColorDropdown extends StatelessWidget {
     if (matchIdx < 0 && !allowNone && !isCustom) matchIdx = 0;
     if (isCustom) matchIdx = _customValue;
 
+    // Each entry is a swatch beside its name. A Row lays a plain Text out
+    // with unbounded width, so in a fixed-width column (isExpanded) the
+    // longer slot names -- "Outline (Borders/Dividers)" -- overflow the
+    // button instead of being cut short: only Flexible gives the Text a
+    // width to ellipsize within.
+    Widget entry(Widget leading, String label, {bool clip = false}) =>
+        Row(mainAxisSize: MainAxisSize.min, children: [
+          leading,
+          const SizedBox(width: 8),
+          if (clip)
+            Flexible(child: Text(label, overflow: TextOverflow.ellipsis))
+          else
+            Text(label),
+        ]);
+
+    // ...but only the closed button clips. The open menu builds from
+    // `items` below, which stay unclipped so every name is readable in
+    // full there -- and, when this dropdown is sizing itself to its own
+    // content rather than filling a column, an unbounded Row is what
+    // RenderFlex asserts a Flexible child can't live in anyway.
+    List<Widget> selectedItems(BuildContext context) => [
+          if (allowNone) Text(noneLabel),
+          for (var i = 0; i < PaletteSlot.values.length; i++)
+            entry(colorSwatchBox(palette[i]),
+                paletteSlotLabel(PaletteSlot.values[i]),
+                clip: true),
+          entry(
+              isCustom
+                  ? colorSwatchBox(value!)
+                  : const Icon(Icons.palette_outlined, size: 18),
+              "Custom color...",
+              clip: true),
+        ];
+
     return DropdownButton<int>(
       value: matchIdx,
+      isExpanded: isExpanded,
+      selectedItemBuilder: isExpanded ? selectedItems : null,
       items: [
         if (allowNone) DropdownMenuItem(value: -1, child: Text(noneLabel)),
         for (var i = 0; i < PaletteSlot.values.length; i++)
           DropdownMenuItem(
             value: i,
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              colorSwatchBox(palette[i]),
-              const SizedBox(width: 8),
-              Text(paletteSlotLabel(PaletteSlot.values[i])),
-            ]),
+            child: entry(colorSwatchBox(palette[i]),
+                paletteSlotLabel(PaletteSlot.values[i])),
           ),
         DropdownMenuItem(
           value: _customValue,
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            isCustom
-                ? colorSwatchBox(value!)
-                : const Icon(Icons.palette_outlined, size: 18),
-            const SizedBox(width: 8),
-            const Text("Custom color..."),
-          ]),
+          child: entry(
+              isCustom
+                  ? colorSwatchBox(value!)
+                  : const Icon(Icons.palette_outlined, size: 18),
+              "Custom color..."),
         ),
       ],
       onChanged: (i) {
