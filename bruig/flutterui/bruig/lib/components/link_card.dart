@@ -4,7 +4,7 @@ import 'dart:typed_data';
 import 'package:bruig/components/text.dart';
 import 'package:bruig/components/youtube_video_player.dart';
 import 'package:bruig/models/snackbar.dart';
-import 'package:bruig/theme_manager.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:golib_plugin/definitions.dart';
