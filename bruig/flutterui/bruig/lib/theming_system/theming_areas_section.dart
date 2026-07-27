@@ -12,10 +12,10 @@ import 'package:bruig/theming_system/theme_area.dart';
 import 'package:bruig/theming_system/theme_editor.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:bruig/theming_system/theme_preset_storage.dart';
+import 'package:bruig/theming_system/theming_area_account.dart';
 import 'package:bruig/theming_system/theming_area_chat.dart';
 import 'package:bruig/theming_system/theming_area_feed.dart';
 import 'package:bruig/theming_system/theming_area_header.dart';
-import 'package:bruig/theming_system/theming_area_master.dart';
 import 'package:bruig/theming_system/theming_area_navbar.dart';
 import 'package:bruig/theming_system/theming_area_realtimechat.dart';
 import 'package:bruig/theming_system/theming_area_sidebar.dart';
@@ -44,6 +44,7 @@ const List<ThemeArea> _editableAreas = [
   ThemeArea.chat,
   ThemeArea.feed,
   ThemeArea.realtimeChat,
+  ThemeArea.account,
   ThemeArea.lnManagement,
   ThemeArea.pages,
   ThemeArea.manageContent,
@@ -185,12 +186,12 @@ class AreaEditorContext {
 
 // _areaEditor returns the settings specific to one area, or nothing for the
 // areas whose only settings are the shared background/border/spacing ones
-// (LN Management, Pages, Manage Content, Logs).
+// (Master, Login Screen, LN Management, Pages, Manage Content, Logs).
 List<Widget> _areaEditor(AreaEditorContext ctx) => switch (ctx.area) {
-      ThemeArea.masterBackground => masterAreaEditor(ctx),
       ThemeArea.header => headerAreaEditor(ctx),
       ThemeArea.navBar => navBarAreaEditor(ctx),
       ThemeArea.subMenuTabBar => sidebarAreaEditor(ctx),
+      ThemeArea.account => accountAreaEditor(ctx),
       ThemeArea.chat => chatAreaEditor(ctx),
       ThemeArea.feed => feedAreaEditor(ctx),
       ThemeArea.realtimeChat => realtimeChatAreaEditor(ctx),

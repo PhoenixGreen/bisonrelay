@@ -4,11 +4,24 @@ import 'package:bruig/theming_system/theme_editor.dart';
 import 'package:flutter/material.dart';
 
 // theming_area_chat.dart is the "Chat" area's own settings: the chat list's
-// styling, the conversation's message layout, and the composer's extras.
+// styling, the conversation's message layout, the composer's extras, and
+// the app-wide avatar theme (which lives here because chat is where avatars
+// are most visible -- see AreaStyle.avatarTheme).
 List<Widget> chatAreaEditor(AreaEditorContext ctx) {
   var style = ctx.style;
   var layout = style.messageLayoutMode ?? MessageLayoutMode.standard;
   return [
+    ctx.choice<AvatarTheme>(
+      "Avatar theme",
+      value: style.avatarTheme,
+      options: AvatarTheme.values,
+      labelOf: avatarThemeLabel,
+      onChanged: (v) => ctx.setStyle((s) => s.copyWith(avatarTheme: v)),
+    ),
+    ctx.note("Colors the fallback circle behind a user's initial, for every "
+        "avatar in the app. Users with an avatar image of their own are "
+        "unaffected."),
+    const SizedBox(height: 8),
     ctx.toggle(
       "Reply & pin messages",
       subtitle: "Adds Reply and Pin to the message context menu, with a "

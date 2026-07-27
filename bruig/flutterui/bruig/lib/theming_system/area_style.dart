@@ -208,6 +208,11 @@ class AreaStyle {
   final bool composerPolish; // Tip button, glow send, dynamic hint.
   final bool squareBubbles; // Sharp vs. rounded message bubble corners.
   final MessageLayoutMode? messageLayoutMode; // Null = standard/default.
+  // avatarTheme colors the fallback avatar circle. Despite living on the
+  // Chat area it applies app-wide -- every avatar in the app funnels
+  // through the same InteractiveAvatar widget -- but chat is where users
+  // see avatars most, and so where they look for the setting.
+  final AvatarTheme avatarTheme;
   final bool expandMessageWidth; // Fill the panel instead of margining in;
   // only meaningful when messageLayoutMode != null/standard.
   final double? expandMessagePadding; // Null = built-in default (0); only
@@ -241,16 +246,16 @@ class AreaStyle {
   // DCR-formatted amounts) on the Payment Stats page.
 
   // -------------------------------------------------------------------------
-  // Master background -- see theming_area_master.dart. The app-wide chrome
-  // settings; the Settings screen isn't itself a per-content ThemeArea, so
-  // its restyle rides on the closest "global chrome" area.
+  // Account page -- see theming_area_account.dart.
   // -------------------------------------------------------------------------
-  final bool settingsShellRestyle; // Icon + pill-highlight rows in the
-  // Settings page's left nav, and a card-based restyle of the Account
-  // page (avatar camera badge, Identity/Relay Counter/Account cards).
-  // monochromeAvatars is app-wide: every avatar in the app funnels through
-  // the same InteractiveAvatar widget.
-  final bool monochromeAvatars; // Graphite fallback avatars, app-wide.
+  // accountCardLayout is a card-based restyle of the Account page: avatar
+  // camera badge, and Identity/Relay Counter/Account cards in place of the
+  // plain ListTile column. It used to be half of a "Settings page restyle"
+  // toggle on the Master area, whose other half -- icon + pill-highlight
+  // rows in the Settings left nav -- is gone: every sidebar in the app,
+  // Settings' included, already gets that from the Sidebar area's own
+  // "Show icons" and "List Rounded Corners" settings.
+  final bool accountCardLayout;
 
   // -------------------------------------------------------------------------
   // Feed -- see theming_area_feed.dart. Each toggle gates a distinct feed
@@ -344,13 +349,13 @@ class AreaStyle {
     this.chatListAccentColorIndex,
     this.chatListGlowIntensity,
     this.chatListTopHighlight = true,
-    this.monochromeAvatars = false,
     this.chatBackdropWash = false,
     this.enableChatSearch = false,
     this.formattingToolbar = false,
     this.composerPolish = false,
     this.squareBubbles = false,
     this.messageLayoutMode,
+    this.avatarTheme = AvatarTheme.standard,
     this.expandMessageWidth = false,
     this.expandMessagePadding,
     this.autoUnmuteOnJoin = false,
@@ -362,7 +367,7 @@ class AreaStyle {
     this.rtcStyledSessionList = false,
     this.rtcSessionListIntro = false,
     this.payStatsCardStyle = false,
-    this.settingsShellRestyle = false,
+    this.accountCardLayout = false,
     this.feedCardRedesign = false,
     this.feedCardActions = false,
     this.feedBookmarks = false,
@@ -453,13 +458,13 @@ class AreaStyle {
     double? chatListGlowIntensity,
     bool clearChatListGlowIntensity = false,
     bool? chatListTopHighlight,
-    bool? monochromeAvatars,
     bool? chatBackdropWash,
     bool? enableChatSearch,
     bool? formattingToolbar,
     bool? composerPolish,
     bool? squareBubbles,
     MessageLayoutMode? messageLayoutMode,
+    AvatarTheme? avatarTheme,
     bool clearMessageLayoutMode = false,
     bool? expandMessageWidth,
     double? expandMessagePadding,
@@ -473,7 +478,7 @@ class AreaStyle {
     bool? rtcStyledSessionList,
     bool? rtcSessionListIntro,
     bool? payStatsCardStyle,
-    bool? settingsShellRestyle,
+    bool? accountCardLayout,
     bool? feedCardRedesign,
     bool? feedCardActions,
     bool? feedBookmarks,
@@ -573,12 +578,12 @@ class AreaStyle {
             ? null
             : (chatListGlowIntensity ?? this.chatListGlowIntensity),
         chatListTopHighlight: chatListTopHighlight ?? this.chatListTopHighlight,
-        monochromeAvatars: monochromeAvatars ?? this.monochromeAvatars,
         chatBackdropWash: chatBackdropWash ?? this.chatBackdropWash,
         enableChatSearch: enableChatSearch ?? this.enableChatSearch,
         formattingToolbar: formattingToolbar ?? this.formattingToolbar,
         composerPolish: composerPolish ?? this.composerPolish,
         squareBubbles: squareBubbles ?? this.squareBubbles,
+        avatarTheme: avatarTheme ?? this.avatarTheme,
         messageLayoutMode: clearMessageLayoutMode
             ? null
             : (messageLayoutMode ?? this.messageLayoutMode),
@@ -597,7 +602,7 @@ class AreaStyle {
         rtcStyledSessionList: rtcStyledSessionList ?? this.rtcStyledSessionList,
         rtcSessionListIntro: rtcSessionListIntro ?? this.rtcSessionListIntro,
         payStatsCardStyle: payStatsCardStyle ?? this.payStatsCardStyle,
-        settingsShellRestyle: settingsShellRestyle ?? this.settingsShellRestyle,
+        accountCardLayout: accountCardLayout ?? this.accountCardLayout,
         feedCardRedesign: feedCardRedesign ?? this.feedCardRedesign,
         feedCardActions: feedCardActions ?? this.feedCardActions,
         feedBookmarks: feedBookmarks ?? this.feedBookmarks,
@@ -692,7 +697,6 @@ class AreaStyle {
         if (chatListGlowIntensity != null)
           "chatListGlowIntensity": chatListGlowIntensity,
         if (!chatListTopHighlight) "chatListTopHighlight": chatListTopHighlight,
-        if (monochromeAvatars) "monochromeAvatars": monochromeAvatars,
         if (chatBackdropWash) "chatBackdropWash": chatBackdropWash,
         if (enableChatSearch) "enableChatSearch": enableChatSearch,
         if (formattingToolbar) "formattingToolbar": formattingToolbar,
@@ -700,6 +704,8 @@ class AreaStyle {
         if (squareBubbles) "squareBubbles": squareBubbles,
         if (messageLayoutMode != null)
           "messageLayoutMode": messageLayoutMode!.name,
+        if (avatarTheme != AvatarTheme.standard)
+          "avatarTheme": avatarTheme.name,
         if (expandMessageWidth) "expandMessageWidth": expandMessageWidth,
         if (expandMessagePadding != null)
           "expandMessagePadding": expandMessagePadding,
@@ -714,7 +720,7 @@ class AreaStyle {
         if (rtcStyledSessionList) "rtcStyledSessionList": rtcStyledSessionList,
         if (rtcSessionListIntro) "rtcSessionListIntro": rtcSessionListIntro,
         if (payStatsCardStyle) "payStatsCardStyle": payStatsCardStyle,
-        if (settingsShellRestyle) "settingsShellRestyle": settingsShellRestyle,
+        if (accountCardLayout) "accountCardLayout": accountCardLayout,
         if (feedCardRedesign) "feedCardRedesign": feedCardRedesign,
         if (feedCardActions) "feedCardActions": feedCardActions,
         if (feedBookmarks) "feedBookmarks": feedBookmarks,
@@ -819,7 +825,6 @@ class AreaStyle {
       chatListAccentColorIndex: (j["chatListAccentColorIndex"] as num?)?.toInt(),
       chatListGlowIntensity: number("chatListGlowIntensity"),
       chatListTopHighlight: flag("chatListTopHighlight", fallback: true),
-      monochromeAvatars: flag("monochromeAvatars"),
       chatBackdropWash: flag("chatBackdropWash"),
       enableChatSearch: flag("enableChatSearch"),
       formattingToolbar: flag("formattingToolbar"),
@@ -827,6 +832,15 @@ class AreaStyle {
       squareBubbles: flag("squareBubbles"),
       messageLayoutMode:
           _enumOrNull(MessageLayoutMode.values, j["messageLayoutMode"]),
+      // "monochromeAvatars" is what this was before it grew from a toggle
+      // into a set of variants, back when it lived on the Master area (see
+      // ThemePreset.fromJson for moving it across).
+      avatarTheme: _enumOr(
+          AvatarTheme.values,
+          j["avatarTheme"],
+          flag("monochromeAvatars")
+              ? AvatarTheme.monochrome
+              : AvatarTheme.standard),
       expandMessageWidth: flag("expandMessageWidth"),
       expandMessagePadding: number("expandMessagePadding"),
       autoUnmuteOnJoin: flag("autoUnmuteOnJoin"),
@@ -838,7 +852,11 @@ class AreaStyle {
       rtcStyledSessionList: flag("rtcStyledSessionList"),
       rtcSessionListIntro: flag("rtcSessionListIntro"),
       payStatsCardStyle: flag("payStatsCardStyle"),
-      settingsShellRestyle: flag("settingsShellRestyle"),
+      // "settingsShellRestyle" is accountCardLayout's old name, from when
+      // it lived on the Master area (see ThemePreset.fromJson, which moves
+      // it across to the Account area a preset saved then won't have).
+      accountCardLayout:
+          flag("accountCardLayout") || flag("settingsShellRestyle"),
       feedCardRedesign: flag("feedCardRedesign"),
       feedCardActions: flag("feedCardActions"),
       feedBookmarks: flag("feedBookmarks"),

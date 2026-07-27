@@ -161,7 +161,8 @@ class SidebarNavItem {
 // - plain (AreaStyle.sidebarIconRows == false, the default/unmodified
 //   look): today's ListTile.
 // - icon-row (sidebarIconRows == true): a pill-highlight row with a leading
-//   icon, generalized from the old Settings-only _RestyledSettingsNav.
+//   icon, generalized from a Settings-only nav that used to implement this
+//   look itself, behind its own toggle, for that one screen.
 // Both modes share the same text+icon color resolution -- Sidebar text/
 // accent are top-level palette slots now (not per-area overrides), since
 // there's only ever one sidebar per theme.

@@ -1,4 +1,5 @@
 import 'package:bruig/theming_system/app_theme.dart';
+import 'package:bruig/theming_system/area_options.dart';
 import 'package:bruig/theming_system/area_style.dart';
 import 'package:bruig/theming_system/color_hex.dart';
 import 'package:bruig/theming_system/color_palette.dart';
@@ -490,12 +491,12 @@ class ThemePreset {
           : const [],
       // Skip any area key that no longer matches a known ThemeArea (e.g.
       // saved by a future/older version of the app) instead of throwing.
-      areas: {
+      areas: _migrateAreas({
         for (var e in rawAreas.entries)
           if (ThemeArea.values.where((a) => a.name == e.key).firstOrNull
               case var area?)
             area: AreaStyle.fromJson(e.value as Map<String, dynamic>)
-      },
+      }),
       menuLabels: j["menuLabels"] != null
           ? (j["menuLabels"] as Map<String, dynamic>)
               .map((k, v) => MapEntry(k, v as String))
@@ -504,6 +505,40 @@ class ThemePreset {
           ? (j["menuOrder"] as List).cast<String>()
           : null,
     );
+  }
+
+  // _migrateAreas moves settings that have since changed areas out of the
+  // area they were saved under. Two lived on Master and were read from
+  // there app-wide; each now belongs to the area it actually describes, so
+  // a preset saved before the move still has them on Master, where nothing
+  // reads them any more. AreaStyle.fromJson parses both legacy keys into
+  // their new fields (see there), leaving only the hop across areas here.
+  //
+  // The destination wins if it already has a value of its own, so this
+  // can't undo a later edit; and Master keeps its own (now inert) copy
+  // rather than being rewritten, so an older build reading the same file
+  // still finds what it expects.
+  static Map<ThemeArea, AreaStyle> _migrateAreas(
+      Map<ThemeArea, AreaStyle> areas) {
+    var master = areas[ThemeArea.masterBackground];
+    if (master == null) return areas;
+
+    var migrated = Map<ThemeArea, AreaStyle>.from(areas);
+    if (master.accountCardLayout) {
+      var account = migrated[ThemeArea.account] ?? const AreaStyle();
+      if (!account.accountCardLayout) {
+        migrated[ThemeArea.account] =
+            account.copyWith(accountCardLayout: true);
+      }
+    }
+    if (master.avatarTheme != AvatarTheme.standard) {
+      var chat = migrated[ThemeArea.chat] ?? const AreaStyle();
+      if (chat.avatarTheme == AvatarTheme.standard) {
+        migrated[ThemeArea.chat] =
+            chat.copyWith(avatarTheme: master.avatarTheme);
+      }
+    }
+    return migrated;
   }
 
   // ---------------------------------------------------------------------------
