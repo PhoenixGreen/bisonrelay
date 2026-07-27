@@ -1,7 +1,7 @@
 import 'package:bruig/components/copyable.dart';
 import 'package:bruig/models/snackbar.dart';
 import 'package:flutter/material.dart';
-import 'package:bruig/theme_manager.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:provider/provider.dart';
 
 class SnackbarDisplayer extends StatefulWidget {

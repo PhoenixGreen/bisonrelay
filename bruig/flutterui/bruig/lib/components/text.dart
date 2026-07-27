@@ -2,7 +2,7 @@
 
 import 'dart:io';
 
-import 'package:bruig/theme_manager.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/material.dart' as material;
 import 'package:provider/provider.dart';

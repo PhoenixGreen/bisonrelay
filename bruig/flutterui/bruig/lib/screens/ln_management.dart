@@ -23,7 +23,7 @@ import 'package:bruig/components/ln_management_bar.dart';
 import 'package:bruig/screens/overview.dart';
 import 'package:bruig/models/menus.dart';
 import 'package:provider/provider.dart';
-import 'package:bruig/theme_manager.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
 
 class LNScreenTitle extends StatelessWidget {
   const LNScreenTitle({super.key});

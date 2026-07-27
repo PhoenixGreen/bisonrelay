@@ -29,8 +29,8 @@ import 'package:open_filex/open_filex.dart';
 import 'package:file_icon/file_icon.dart';
 import 'package:bruig/components/interactive_avatar.dart';
 import 'package:bruig/components/user_context_menu.dart';
-import 'package:bruig/models/theme_preset.dart';
-import 'package:bruig/theme_manager.dart';
+import 'package:bruig/theming_system/theme_preset.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:path/path.dart' as path;
 
 class ServerEvent extends StatelessWidget {

@@ -12,7 +12,7 @@ import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/models/uploads.dart';
 import 'package:bruig/screens/compress.dart';
 import 'package:bruig/screens/send_file.dart';
-import 'package:bruig/theme_manager.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:bruig/util.dart';
 import 'package:flutter_avif/flutter_avif.dart';
 import 'package:golib_plugin/golib_plugin.dart';

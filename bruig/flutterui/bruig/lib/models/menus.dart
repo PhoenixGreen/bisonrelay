@@ -12,7 +12,7 @@ import 'package:bruig/models/emoji.dart';
 import 'package:bruig/models/notifications.dart';
 import 'package:bruig/models/realtimechat.dart';
 import 'package:bruig/models/resources.dart';
-import 'package:bruig/models/theme_preset.dart';
+import 'package:bruig/theming_system/theme_preset.dart';
 import 'package:bruig/models/uploads.dart';
 import 'package:bruig/screens/address_book_screen.dart';
 import 'package:bruig/screens/chat/new_gc_screen.dart';

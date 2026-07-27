@@ -8,7 +8,7 @@ import 'package:bruig/screens/startupscreen.dart';
 import 'package:bruig/screens/unlock_ln.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:bruig/theme_manager.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
 
 class ServerPage extends StatefulWidget {
   final NewConfigModel newconf;

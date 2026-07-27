@@ -21,7 +21,7 @@ import 'package:bruig/screens/about.dart';
 import 'package:bruig/screens/shutdown.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:bruig/theme_manager.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
 
 Future<void> runNewConfigApp(List<String> args) async {
   runApp(MultiProvider(

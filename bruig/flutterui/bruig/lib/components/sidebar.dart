@@ -6,10 +6,10 @@ import 'package:bruig/models/client.dart';
 import 'package:bruig/models/feed.dart';
 import 'package:bruig/models/menus.dart';
 import 'package:bruig/models/notifications.dart';
-import 'package:bruig/models/theme_preset.dart';
+import 'package:bruig/theming_system/theme_preset.dart';
 import 'package:bruig/screens/chats.dart';
 import 'package:bruig/screens/feed.dart';
-import 'package:bruig/theme_manager.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';

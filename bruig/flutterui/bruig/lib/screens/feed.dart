@@ -16,8 +16,8 @@ import 'package:bruig/screens/feed/post_content.dart';
 import 'package:bruig/screens/feed/new_post.dart';
 import 'package:bruig/screens/feed/post_lists.dart';
 import 'package:bruig/models/menus.dart';
-import 'package:bruig/models/theme_preset.dart';
-import 'package:bruig/theme_manager.dart';
+import 'package:bruig/theming_system/theme_preset.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:bruig/models/emoji.dart';
 
 class FeedScreenTitle extends StatelessWidget {

@@ -4,14 +4,14 @@ import 'package:bruig/components/interactive_avatar.dart';
 import 'package:bruig/components/snackbars.dart';
 import 'package:bruig/components/text.dart';
 import 'package:bruig/models/client.dart';
-import 'package:bruig/models/theme_preset.dart';
+import 'package:bruig/theming_system/theme_preset.dart';
 import 'package:flutter/material.dart';
 import 'package:golib_plugin/definitions.dart';
 import 'package:golib_plugin/golib_plugin.dart';
 import 'package:golib_plugin/util.dart';
 import 'package:tuple/tuple.dart';
 import 'package:bruig/components/empty_widget.dart';
-import 'package:bruig/theme_manager.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
 
 class PayStatsScreenTitle extends StatelessWidget {
   const PayStatsScreenTitle({super.key});

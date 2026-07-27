@@ -4,7 +4,7 @@ import 'dart:math';
 import 'package:bruig/components/empty_widget.dart';
 import 'package:bruig/components/text.dart';
 import 'package:flutter/material.dart';
-import 'package:bruig/theme_manager.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:provider/provider.dart';
 
 // CancelButton is a neutral dismiss/decline action (closing a dialog

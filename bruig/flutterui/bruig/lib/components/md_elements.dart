@@ -26,7 +26,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:bruig/theme_manager.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:bruig/components/image_dialog.dart';
 import 'package:pdfrx/pdfrx.dart';
 import 'package:path/path.dart' as path;

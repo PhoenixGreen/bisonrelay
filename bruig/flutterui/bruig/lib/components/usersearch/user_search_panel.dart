@@ -4,7 +4,7 @@ import 'package:bruig/components/usersearch/user_search_model.dart';
 import 'package:bruig/models/client.dart';
 import 'package:bruig/models/uistate.dart';
 import 'package:bruig/screens/ln/components.dart';
-import 'package:bruig/theme_manager.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
 class _SearchChatItemW extends StatefulWidget {

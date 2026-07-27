@@ -13,7 +13,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:golib_plugin/definitions.dart';
 import 'package:golib_plugin/golib_plugin.dart';
 import 'package:bruig/components/snackbars.dart';
-import 'package:bruig/theme_manager.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:provider/provider.dart';
 
 void showAltTextModal(BuildContext context, String mime, String data,

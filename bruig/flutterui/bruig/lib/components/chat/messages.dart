@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:bruig/components/empty_widget.dart';
-import 'package:bruig/models/theme_preset.dart';
-import 'package:bruig/theme_manager.dart';
+import 'package:bruig/theming_system/theme_preset.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:bruig/models/client.dart';
 import 'package:bruig/components/chat/events.dart';

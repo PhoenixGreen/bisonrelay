@@ -3,7 +3,7 @@ import 'package:bruig/components/empty_widget.dart';
 import 'package:bruig/components/text.dart';
 import 'package:bruig/models/emoji.dart';
 import 'package:bruig/screens/chats.dart';
-import 'package:bruig/theme_manager.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import 'package:flutter/material.dart';
 

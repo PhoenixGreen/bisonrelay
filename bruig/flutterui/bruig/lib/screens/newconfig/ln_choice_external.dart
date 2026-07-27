@@ -7,7 +7,7 @@ import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/util.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:bruig/theme_manager.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:bruig/screens/startupscreen.dart';
 
 class LNExternalWalletPage extends StatefulWidget {

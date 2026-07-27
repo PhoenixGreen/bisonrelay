@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:bruig/config.dart';
-import 'package:bruig/models/palette_library.dart';
+import 'package:bruig/theming_system/palette_library.dart';
 import 'package:path/path.dart' as path;
 
 // PaletteLibraryStorage persists user-saved ColorPalettes (see
@@ -60,11 +60,15 @@ class PaletteLibraryStorage {
   // saves it, and returns the resulting ColorPalette.
   static Future<ColorPalette> importPalette(List<int> jsonBytes) async {
     var j = jsonDecode(utf8.decode(jsonBytes));
-    var palette = ColorPalette.fromJson(j);
-    palette = ColorPalette(
+    var imported = ColorPalette.fromJson(j);
+    // brightness must be carried over: it's what applying the palette
+    // resets the preset's neutral/text roles from, so dropping it here
+    // silently turned every imported dark palette into a light one.
+    var palette = ColorPalette(
         id: "imported-${DateTime.now().millisecondsSinceEpoch}",
-        name: palette.name,
-        colors: palette.colors);
+        name: imported.name,
+        colors: imported.colors,
+        brightness: imported.brightness);
     await savePalette(palette);
     return palette;
   }
