@@ -162,8 +162,17 @@ class _SidebarState extends State<Sidebar> with WindowListener {
       var liveBorderColor = navStyle.resolveBorderColor(theme);
       var hasCustomBorder = navStyle.borderMode != AreaBackgroundMode.token &&
           liveBorderColor != null &&
-          navStyle.borderWidth > 0;
-      var borderInset = hasCustomBorder ? navStyle.borderWidth * 2 : 0.0;
+          navStyle.hasBorderWidth;
+      var navBorder = navStyle.borderWidths;
+      var borderInset =
+          hasCustomBorder ? navBorder.left + navBorder.right : 0.0;
+      // Padding/margin go to SidebarXTheme's own fields (the package lays
+      // this bar out itself, so a Container of ours around it wouldn't inset
+      // the content). Zero -- this app's "use the default" for all four
+      // spacing settings -- keeps the small hardcoded insets the bar has
+      // always had, rather than collapsing them to nothing.
+      var navPadding = navStyle.paddings;
+      var navMargin = navStyle.margins;
       // SidebarXTheme.decoration (below) can only be a flat BoxDecoration,
       // so it can't itself express a gradient/image border (only the
       // background supports those directly here) -- wrapBorderOnly adds
@@ -172,8 +181,12 @@ class _SidebarState extends State<Sidebar> with WindowListener {
           presetDir: theme.fullTheme.presetDir,
           child: SidebarX(
             theme: SidebarXTheme(
-              margin: const EdgeInsets.all(1),
-              padding: const EdgeInsets.all(2),
+              margin: navMargin.isZero
+                  ? const EdgeInsets.all(1)
+                  : navMargin.insets,
+              padding: navPadding.isZero
+                  ? const EdgeInsets.all(2)
+                  : navPadding.insets,
               width: 70 + borderInset,
               // Background and border are independently checked here --
               // previously the custom Border settings (color/width/radius)
@@ -184,27 +197,30 @@ class _SidebarState extends State<Sidebar> with WindowListener {
               // is still Default, so it stays live-bound to the preset's
               // own Secondary color regardless of whether a custom border
               // is set.
-              decoration: theme.areaStyle(ThemeArea.navBar).mode ==
-                      AreaBackgroundMode.token
+              decoration: navStyle.mode == AreaBackgroundMode.token
                   ? BoxDecoration(
                       color: navBackground,
+                      // A non-default image preset paints over that
+                      // Secondary background rather than replacing it (the
+                      // tiled patterns are translucent), matching what
+                      // AreaStyle does for every other area's Default
+                      // background.
+                      image: navStyle.imagePreset != AreaImagePreset.standard
+                          ? areaImagePresetImage(navStyle.imagePreset)
+                          : null,
                       border: hasCustomBorder
-                          ? Border.all(
-                              color: liveBorderColor,
-                              width: navStyle.borderWidth)
+                          ? navStyle.borderSides(liveBorderColor)
                           : Border(
                               right: BorderSide(
                                   color: theme.extraColors.sidebarDivider)),
-                      // No borderRadius when falling back to the plain
-                      // right-edge divider: a Border with only one side set
-                      // (the other 3 default to BorderSide.none, a
-                      // different color/width) can never satisfy Flutter's
-                      // "uniform border" requirement for combining with a
-                      // borderRadius -- Border.paint asserts on this
-                      // combination unconditionally, regardless of which
-                      // colors are actually used.
-                      borderRadius: hasCustomBorder && navStyle.borderRadius > 0
-                          ? BorderRadius.circular(navStyle.borderRadius)
+                      // No borderRadius unless the border is uniform on all
+                      // four sides -- neither the plain right-edge divider
+                      // fallback nor a deliberately per-side border can
+                      // satisfy Flutter's "uniform border" requirement for
+                      // combining with a borderRadius, and Border.paint
+                      // asserts on that combination unconditionally.
+                      borderRadius: hasCustomBorder && navBorder.isUniform
+                          ? navStyle.borderRadii.radius
                           : null,
                     )
                   : theme.areaDecoration(

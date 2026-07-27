@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:bruig/theming_system/area_fill.dart';
 import 'package:bruig/theming_system/area_options.dart';
+import 'package:bruig/theming_system/area_sides.dart';
 import 'package:bruig/theming_system/color_hex.dart';
 import 'package:bruig/theming_system/theme_area.dart';
 import 'package:bruig/theming_system/theme_notifier.dart';
@@ -57,6 +58,11 @@ class AreaStyle {
   final Alignment gradientEnd;
   final String? imagePath; // Relative path within the preset's directory.
   final BoxFit imageFit;
+  // imagePreset picks one of the built-in background images, for the four
+  // areas that offer them (see imageAreas in theming_areas_section.dart).
+  // It applies when mode is token (painted over the area's normal color) or
+  // image-with-no-imagePath; a user-picked imagePath always wins over it.
+  final AreaImagePreset imagePreset;
 
   // -------------------------------------------------------------------------
   // Border fill -- every area. Same four modes as the background, applied
@@ -80,6 +86,17 @@ class AreaStyle {
   // -------------------------------------------------------------------------
   final double padding; // Inset between the border and the content.
   final double margin; // Outer spacing around the whole area.
+
+  // The four *Sides fields are the per-side (per-corner, for the radius)
+  // split of the four settings above: null -- the default -- means "not
+  // split", i.e. the single value applies all round. Read them through the
+  // borderWidths/borderRadii/paddings/margins getters rather than directly,
+  // which resolve that fallback. Zero is this app's "use the built-in
+  // default" for all four, split or not.
+  final SideValues? borderWidthSides;
+  final SideValues? borderRadiusSides;
+  final SideValues? paddingSides;
+  final SideValues? marginSides;
 
   // width overrides the area's own layout width -- only meaningful for
   // subMenuTabBar (the one area with a fixed, configurable panel width);
@@ -224,11 +241,6 @@ class AreaStyle {
   final bool monochromeAvatars; // Graphite fallback avatars, app-wide.
 
   // -------------------------------------------------------------------------
-  // Login screen -- see theming_area_login.dart.
-  // -------------------------------------------------------------------------
-  final LoginBackgroundPreset loginBgPreset; // See LoginBackgroundPreset.
-
-  // -------------------------------------------------------------------------
   // Feed -- see theming_area_feed.dart. Each toggle gates a distinct feed
   // feature ported from the exitus1 fork; all default to false (off).
   // Several only have a visible effect when feedCardRedesign is also on
@@ -277,6 +289,7 @@ class AreaStyle {
     this.gradientEnd = Alignment.bottomRight,
     this.imagePath,
     this.imageFit = BoxFit.cover,
+    this.imagePreset = AreaImagePreset.standard,
     this.borderMode = AreaBackgroundMode.token,
     this.borderColor,
     this.borderColorIndex,
@@ -290,6 +303,10 @@ class AreaStyle {
     this.borderRadius = 0,
     this.padding = 0,
     this.margin = 0,
+    this.borderWidthSides,
+    this.borderRadiusSides,
+    this.paddingSides,
+    this.marginSides,
     this.width,
     this.height,
     this.contentAlign,
@@ -330,7 +347,6 @@ class AreaStyle {
     this.rtcSessionListIntro = false,
     this.payStatsCardStyle = false,
     this.settingsShellRestyle = false,
-    this.loginBgPreset = LoginBackgroundPreset.standard,
     this.feedCardRedesign = false,
     this.feedCardActions = false,
     this.feedBookmarks = false,
@@ -361,6 +377,7 @@ class AreaStyle {
     String? imagePath,
     bool clearImagePath = false,
     BoxFit? imageFit,
+    AreaImagePreset? imagePreset,
     AreaBackgroundMode? borderMode,
     Color? borderColor,
     int? borderColorIndex,
@@ -376,6 +393,17 @@ class AreaStyle {
     double? borderRadius,
     double? padding,
     double? margin,
+    // Each of these four takes a clear flag rather than treating null as
+    // "leave alone", since null is itself the meaningful "not split" value
+    // the editor's per-side toggle switches back to.
+    SideValues? borderWidthSides,
+    bool clearBorderWidthSides = false,
+    SideValues? borderRadiusSides,
+    bool clearBorderRadiusSides = false,
+    SideValues? paddingSides,
+    bool clearPaddingSides = false,
+    SideValues? marginSides,
+    bool clearMarginSides = false,
     double? width,
     bool clearWidth = false,
     double? height,
@@ -424,7 +452,6 @@ class AreaStyle {
     bool? rtcSessionListIntro,
     bool? payStatsCardStyle,
     bool? settingsShellRestyle,
-    LoginBackgroundPreset? loginBgPreset,
     bool? feedCardRedesign,
     bool? feedCardActions,
     bool? feedBookmarks,
@@ -454,6 +481,7 @@ class AreaStyle {
         gradientEnd: gradientEnd ?? this.gradientEnd,
         imagePath: clearImagePath ? null : (imagePath ?? this.imagePath),
         imageFit: imageFit ?? this.imageFit,
+        imagePreset: imagePreset ?? this.imagePreset,
         borderMode: borderMode ?? this.borderMode,
         borderColor: borderColor ?? this.borderColor,
         borderColorIndex: clearBorderColorIndex
@@ -471,6 +499,16 @@ class AreaStyle {
         borderRadius: borderRadius ?? this.borderRadius,
         padding: padding ?? this.padding,
         margin: margin ?? this.margin,
+        borderWidthSides: clearBorderWidthSides
+            ? null
+            : (borderWidthSides ?? this.borderWidthSides),
+        borderRadiusSides: clearBorderRadiusSides
+            ? null
+            : (borderRadiusSides ?? this.borderRadiusSides),
+        paddingSides:
+            clearPaddingSides ? null : (paddingSides ?? this.paddingSides),
+        marginSides:
+            clearMarginSides ? null : (marginSides ?? this.marginSides),
         width: clearWidth ? null : (width ?? this.width),
         height: clearHeight ? null : (height ?? this.height),
         contentAlign: contentAlign ?? this.contentAlign,
@@ -528,7 +566,6 @@ class AreaStyle {
         rtcSessionListIntro: rtcSessionListIntro ?? this.rtcSessionListIntro,
         payStatsCardStyle: payStatsCardStyle ?? this.payStatsCardStyle,
         settingsShellRestyle: settingsShellRestyle ?? this.settingsShellRestyle,
-        loginBgPreset: loginBgPreset ?? this.loginBgPreset,
         feedCardRedesign: feedCardRedesign ?? this.feedCardRedesign,
         feedCardActions: feedCardActions ?? this.feedCardActions,
         feedBookmarks: feedBookmarks ?? this.feedBookmarks,
@@ -562,6 +599,8 @@ class AreaStyle {
         "gradientEnd": _alignToJson(gradientEnd),
         if (imagePath != null) "imagePath": imagePath,
         "imageFit": imageFit.name,
+        if (imagePreset != AreaImagePreset.standard)
+          "imagePreset": imagePreset.name,
         "borderMode": borderMode.name,
         if (borderColor != null) "borderColor": colorToHex(borderColor!),
         if (borderColorIndex != null) "borderColorIndex": borderColorIndex,
@@ -577,6 +616,12 @@ class AreaStyle {
         "borderRadius": borderRadius,
         "padding": padding,
         "margin": margin,
+        if (borderWidthSides != null)
+          "borderWidthSides": borderWidthSides!.toJson(),
+        if (borderRadiusSides != null)
+          "borderRadiusSides": borderRadiusSides!.toJson(),
+        if (paddingSides != null) "paddingSides": paddingSides!.toJson(),
+        if (marginSides != null) "marginSides": marginSides!.toJson(),
         if (width != null) "width": width,
         if (height != null) "height": height,
         if (contentAlign != null) "contentAlign": contentAlign!.name,
@@ -630,8 +675,6 @@ class AreaStyle {
         if (rtcSessionListIntro) "rtcSessionListIntro": rtcSessionListIntro,
         if (payStatsCardStyle) "payStatsCardStyle": payStatsCardStyle,
         if (settingsShellRestyle) "settingsShellRestyle": settingsShellRestyle,
-        if (loginBgPreset != LoginBackgroundPreset.standard)
-          "loginBgPreset": loginBgPreset.name,
         if (feedCardRedesign) "feedCardRedesign": feedCardRedesign,
         if (feedCardActions) "feedCardActions": feedCardActions,
         if (feedBookmarks) "feedBookmarks": feedBookmarks,
@@ -680,6 +723,11 @@ class AreaStyle {
       gradientEnd: _alignFromJson(j["gradientEnd"], Alignment.bottomRight),
       imagePath: j["imagePath"],
       imageFit: _enumOr(BoxFit.values, j["imageFit"], BoxFit.cover),
+      // "loginBgPreset" is imagePreset's old, login-screen-only name -- read
+      // it as a fallback so presets saved before this became a shared
+      // setting keep the login background they were saved with.
+      imagePreset: _enumOr(AreaImagePreset.values,
+          j["imagePreset"] ?? j["loginBgPreset"], AreaImagePreset.standard),
       borderMode: _enumOr(
           AreaBackgroundMode.values, j["borderMode"], AreaBackgroundMode.token),
       borderColor: color("borderColor"),
@@ -696,6 +744,10 @@ class AreaStyle {
       borderRadius: number("borderRadius") ?? 0,
       padding: number("padding") ?? 0,
       margin: number("margin") ?? 0,
+      borderWidthSides: SideValues.fromJson(j["borderWidthSides"]),
+      borderRadiusSides: SideValues.fromJson(j["borderRadiusSides"]),
+      paddingSides: SideValues.fromJson(j["paddingSides"]),
+      marginSides: SideValues.fromJson(j["marginSides"]),
       width: number("width"),
       height: number("height"),
       contentAlign: _enumOrNull(ContentAlign.values, j["contentAlign"]),
@@ -737,8 +789,6 @@ class AreaStyle {
       rtcSessionListIntro: flag("rtcSessionListIntro"),
       payStatsCardStyle: flag("payStatsCardStyle"),
       settingsShellRestyle: flag("settingsShellRestyle"),
-      loginBgPreset: _enumOr(LoginBackgroundPreset.values, j["loginBgPreset"],
-          LoginBackgroundPreset.standard),
       feedCardRedesign: flag("feedCardRedesign"),
       feedCardActions: flag("feedCardActions"),
       feedBookmarks: flag("feedBookmarks"),
@@ -764,6 +814,34 @@ class AreaStyle {
   // ---------------------------------------------------------------------------
   // Rendering
   // ---------------------------------------------------------------------------
+
+  // borderWidths/borderRadii/paddings/margins are the four spacing settings
+  // resolved to a value per side: the per-side split if the user made one,
+  // otherwise that setting's single value on all four sides.
+  SideValues get borderWidths => borderWidthSides ?? SideValues.all(borderWidth);
+  SideValues get borderRadii => borderRadiusSides ?? SideValues.all(borderRadius);
+  SideValues get paddings => paddingSides ?? SideValues.all(padding);
+  SideValues get margins => marginSides ?? SideValues.all(margin);
+
+  // hasBorderWidth is "this style asks for a border on at least one side",
+  // the per-side-aware replacement for the old `borderWidth > 0` checks.
+  bool get hasBorderWidth => borderWidths.largest > 0;
+
+  // borderSides builds a flat-color Border honoring each side's own width.
+  // Note a zero-width side is BorderSide.none rather than a hairline, so
+  // splitting a border and zeroing one side really does drop that edge.
+  Border borderSides(Color color) {
+    var w = borderWidths;
+    BorderSide side(double width) => width > 0
+        ? BorderSide(color: color, width: width)
+        : BorderSide.none;
+    return Border(
+      left: side(w.left),
+      top: side(w.top),
+      right: side(w.right),
+      bottom: side(w.bottom),
+    );
+  }
 
   // _liveColor prefers re-reading preset.palette[index] over the frozen
   // `raw` snapshot whenever index is set -- see solidColorIndex's doc.
@@ -797,6 +875,7 @@ class AreaStyle {
           gradEnd: gradientEnd,
           imgPath: imagePath,
           imgFit: imageFit,
+          preset: imagePreset,
           presetDir: presetDir);
 
   AreaFill _borderFill(
@@ -821,11 +900,21 @@ class AreaStyle {
     Alignment gradEnd = Alignment.bottomRight,
     String? imgPath,
     BoxFit imgFit = BoxFit.cover,
+    // preset is only passed for the background layer -- borders have no
+    // built-in image presets (and no image picker of their own).
+    AreaImagePreset? preset,
     String? presetDir,
   }) {
     switch (m) {
       case AreaBackgroundMode.token:
-        return AreaFill(color: theme.surfaceColor(fallback));
+        // A non-default image preset paints *over* the area's normal color
+        // rather than replacing it: the tiled patterns are translucent, so
+        // the theme's own surface color still shows through behind them.
+        return AreaFill(
+            color: theme.surfaceColor(fallback),
+            image: (preset != null && preset != AreaImagePreset.standard)
+                ? areaImagePresetImage(preset)
+                : null);
       case AreaBackgroundMode.none:
         return const AreaFill(color: Colors.transparent);
       case AreaBackgroundMode.solid:
@@ -841,18 +930,25 @@ class AreaStyle {
         }
         return AreaFill(color: theme.surfaceColor(fallback));
       case AreaBackgroundMode.image:
+        // A user-picked image file wins over the built-in presets; with no
+        // file picked, the chosen preset is the image (including "Default",
+        // unlike token mode above where Default means "no image at all").
         if (imgPath != null && presetDir != null) {
           return AreaFill(
               image: DecorationImage(
                   image: FileImage(File(path.join(presetDir, imgPath))),
                   fit: imgFit));
         }
-        return AreaFill(color: theme.surfaceColor(fallback));
+        return AreaFill(
+            color: theme.surfaceColor(fallback),
+            image: preset != null ? areaImagePresetImage(preset) : null);
     }
   }
 
-  BorderRadius? get _radius =>
-      borderRadius > 0 ? BorderRadius.circular(borderRadius) : null;
+  BorderRadius? get _radius {
+    var r = borderRadii;
+    return r.isZero ? null : r.radius;
+  }
 
   // toBoxDecoration resolves this style's *background* (and, if the border
   // is a flat color, a matching BorderSide) into a single BoxDecoration.
@@ -865,27 +961,34 @@ class AreaStyle {
       {String? presetDir}) {
     var liveBorderColor = resolveBorderColor(theme);
     var bg = _backgroundFill(theme, fallback, presetDir);
+    var border = (borderMode != AreaBackgroundMode.token &&
+            liveBorderColor != null &&
+            hasBorderWidth)
+        ? borderSides(liveBorderColor)
+        : null;
     return BoxDecoration(
       color: bg.color,
       gradient: bg.gradient,
       image: bg.image,
-      border: (borderMode != AreaBackgroundMode.token &&
-              liveBorderColor != null &&
-              borderWidth > 0)
-          ? Border.all(color: liveBorderColor, width: borderWidth)
-          : null,
-      borderRadius: _radius,
+      border: border,
+      // Flutter can't paint a border whose sides differ together with a
+      // borderRadius (Border.paint throws outright), so a per-side border
+      // loses the rounding on this flat path. buildContainer, which owns
+      // its own widgets, keeps both by nesting instead -- see there.
+      borderRadius: border == null || border.isUniform ? _radius : null,
     );
   }
 
   // buildContainer wraps `child` in this style's full background + border
   // (solid/gradient/image, matching modes independently) + padding/margin.
-  // A gradient or image border can't be expressed as a single BoxDecoration
-  // (Border only supports flat per-side colors), so when the border isn't
-  // a flat color, this nests two containers: an outer one painted with the
-  // border's fill, inset by borderWidth, framing an inner one painted with
-  // the background fill -- the standard technique for non-solid borders in
-  // Flutter.
+  // Two kinds of border can't be expressed as a single BoxDecoration -- a
+  // gradient/image one (Border only supports flat per-side colors) and a
+  // per-side one that also wants rounded corners (Border.paint refuses to
+  // combine a non-uniform border with a borderRadius) -- so for both, this
+  // nests two containers: an outer one painted with the border's fill,
+  // inset by each side's own width, framing an inner one painted with the
+  // background fill. That's the standard technique for non-solid borders in
+  // Flutter, and it happens to express per-side widths exactly.
   Widget buildContainer(
     ThemeNotifier theme,
     SurfaceColor fallback, {
@@ -893,9 +996,11 @@ class AreaStyle {
     String? presetDir,
   }) {
     var bg = _backgroundFill(theme, fallback, presetDir);
-    var hasBorder =
-        borderMode != AreaBackgroundMode.token && borderWidth > 0;
-    var solidBorder = hasBorder && borderMode == AreaBackgroundMode.solid;
+    var widths = borderWidths;
+    var hasBorder = borderMode != AreaBackgroundMode.token && hasBorderWidth;
+    var inlineBorder = hasBorder &&
+        borderMode == AreaBackgroundMode.solid &&
+        widths.isUniform;
 
     // Any descendant ListTile needs a Material ancestor to paint its
     // background/ink splashes into. When this style paints a real
@@ -905,29 +1010,37 @@ class AreaStyle {
     // trips Flutter's "ListTile background may be invisible" assertion.
     // MaterialType.transparency paints nothing itself, so it just supplies
     // that ancestor without changing this area's appearance.
+    var pad = paddings;
     Widget content = Container(
-      padding: padding > 0 ? EdgeInsets.all(padding) : null,
+      padding: pad.isZero ? null : pad.insets,
       decoration: BoxDecoration(
         color: bg.color,
         gradient: bg.gradient,
         image: bg.image,
         borderRadius: _radius,
-        // A flat color border goes on this same box (matching
+        // A uniform flat color border goes on this same box (matching
         // toBoxDecoration's cheaper path), no extra nesting needed.
-        border: solidBorder
+        border: inlineBorder
             ? Border.all(
                 color: resolveBorderColor(theme) ??
                     theme.surfaceColor(fallback),
-                width: borderWidth)
+                width: widths.left)
             : null,
       ),
       child: Material(type: MaterialType.transparency, child: child),
     );
 
-    if (hasBorder && !solidBorder) {
-      var borderFill = _borderFill(theme, fallback, presetDir);
+    if (hasBorder && !inlineBorder) {
+      // A solid border only lands here when its sides differ, in which case
+      // there's no border *fill* to resolve -- just the flat color, painted
+      // as the outer box's own background.
+      var borderFill = borderMode == AreaBackgroundMode.solid
+          ? AreaFill(
+              color:
+                  resolveBorderColor(theme) ?? theme.surfaceColor(fallback))
+          : _borderFill(theme, fallback, presetDir);
       content = Container(
-        padding: EdgeInsets.all(borderWidth),
+        padding: widths.insets,
         decoration: BoxDecoration(
             color: borderFill.color,
             gradient: borderFill.gradient,
@@ -937,8 +1050,9 @@ class AreaStyle {
       );
     }
 
-    if (margin > 0) {
-      content = Container(margin: EdgeInsets.all(margin), child: content);
+    var mar = margins;
+    if (!mar.isZero) {
+      content = Container(margin: mar.insets, child: content);
     }
     return content;
   }
@@ -958,12 +1072,12 @@ class AreaStyle {
   }) {
     if (borderMode == AreaBackgroundMode.token ||
         borderMode == AreaBackgroundMode.solid ||
-        borderWidth <= 0) {
+        !hasBorderWidth) {
       return child;
     }
     var borderFill = _borderFill(theme, fallback, presetDir);
     return Container(
-      padding: EdgeInsets.all(borderWidth),
+      padding: borderWidths.insets,
       decoration: BoxDecoration(
         color: borderFill.color,
         gradient: borderFill.gradient,

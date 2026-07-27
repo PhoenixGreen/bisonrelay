@@ -30,13 +30,14 @@ class StartupScreen extends StatelessWidget {
   // this is what exposes that pattern as removable/replaceable, rather than
   // it being an always-on hardcoded asset outside of any themed area.
   BoxDecoration _outerBackground(ThemeNotifier theme, AreaStyle style) {
-    if (style.mode == AreaBackgroundMode.token) {
-      return const BoxDecoration(
-          image: DecorationImage(
-        alignment: Alignment.topRight,
-        fit: BoxFit.fitHeight,
-        image: AssetImage("assets/images/loading-bg.png"),
-      ));
+    // Background "Default" with the "Default" image preset is the app's
+    // original look: the network pattern alone, with no surface color
+    // painted behind it. Any other preset goes through areaDecoration
+    // below, which does paint the theme's surface color under the (tiled,
+    // translucent) pattern.
+    if (style.mode == AreaBackgroundMode.token &&
+        style.imagePreset == AreaImagePreset.standard) {
+      return const BoxDecoration(image: loginDefaultBackgroundImage);
     }
     var bg = theme.areaDecoration(ThemeArea.loginScreen, SurfaceColor.surface);
     return BoxDecoration(
@@ -53,8 +54,8 @@ class StartupScreen extends StatelessWidget {
     var style = theme.areaStyle(ThemeArea.loginScreen);
     var overridden = style.mode != AreaBackgroundMode.token ||
         style.borderMode != AreaBackgroundMode.token ||
-        style.padding > 0 ||
-        style.margin > 0;
+        !style.paddings.isZero ||
+        !style.margins.isZero;
     var inner = Container(
         alignment: Alignment.center,
         padding: const EdgeInsets.all(30),
@@ -70,7 +71,7 @@ class StartupScreen extends StatelessWidget {
 
   // Soft radial scrim behind the login form: darkens the center so the
   // form stays legible over the exitus1 photo background, fading out at
-  // the edges. Only used with LoginBackgroundPreset.exitus1.
+  // the edges. Only used with AreaImagePreset.exitus1.
   static const _exitus1Scrim = RadialGradient(
     center: Alignment.center,
     radius: 0.55,
@@ -88,8 +89,14 @@ class StartupScreen extends StatelessWidget {
     return Scaffold(
         body: Consumer<ThemeNotifier>(builder: (context, theme, child) {
       var style = theme.areaStyle(ThemeArea.loginScreen);
-      var useExitus1Bg = style.mode == AreaBackgroundMode.token &&
-          style.loginBgPreset == LoginBackgroundPreset.exitus1;
+      // The exitus1 look (photo + scrim + slightly raised form) applies
+      // wherever its image preset is what's actually being painted -- with
+      // the background on Default, or on Image with no image file of the
+      // user's own picked to override it.
+      var useExitus1Bg = style.imagePreset == AreaImagePreset.exitus1 &&
+          (style.mode == AreaBackgroundMode.token ||
+              (style.mode == AreaBackgroundMode.image &&
+                  style.imagePath == null));
       return Container(
           decoration: useExitus1Bg
               ? const BoxDecoration(color: Color(0xFF0E0E0E))

@@ -162,22 +162,35 @@ const Map<FeedLinksMode, String> _feedLinksModeLabels = {
 String feedLinksModeLabel(FeedLinksMode m) => _feedLinksModeLabels[m]!;
 
 // ---------------------------------------------------------------------------
-// Login screen (ThemeArea.loginScreen)
+// Image preset -- the four areas with a background image (Master, Header,
+// Login Screen, Navigation Bar; see imageAreas in theming_areas_section.dart)
 // ---------------------------------------------------------------------------
 
-// LoginBackgroundPreset picks between the two built-in login-screen
-// background looks. Only consulted when mode == AreaBackgroundMode.token (a
-// fully custom solid/gradient/image fill via the theme editor's fill picker
-// overrides this entirely).
-// - standard: today's behavior (the original "network pattern" image).
-// - exitus1: a full-bleed portrait background with a soft radial scrim
-//   behind the login form, ported from exitus1/chat-redesign.
-enum LoginBackgroundPreset { standard, exitus1 }
+// AreaImagePreset picks one of the built-in background images, for an area
+// whose background mode is Default or Image (a solid/gradient fill, or a
+// user-picked image file, overrides it entirely). See areaImagePresetImage
+// in area_fill.dart for what each one paints.
+//
+// - standard: the original "network pattern" image -- the Default Theme's
+//   login background, and so the default here.
+// - exitus1: a full-bleed portrait photo, ported from exitus1/chat-redesign
+//   (on the login screen it also gets a radial scrim behind the form; see
+//   StartupScreen).
+// - grid/dots/diagonal/crosshatch/waves: small seamless tiles drawn in a
+//   mid-grey that reads over both light and dark backgrounds. Being tiled
+//   rather than stretched, they suit any area's size -- a full-screen
+//   Master background, a thin Header strip or the narrow Navigation Bar
+//   column all get the same-sized motif.
+enum AreaImagePreset { standard, exitus1, grid, dots, diagonal, crosshatch, waves }
 
-const Map<LoginBackgroundPreset, String> _loginBackgroundPresetLabels = {
-  LoginBackgroundPreset.standard: "Default",
-  LoginBackgroundPreset.exitus1: "Exitus1 style",
+const Map<AreaImagePreset, String> _areaImagePresetLabels = {
+  AreaImagePreset.standard: "Default",
+  AreaImagePreset.exitus1: "Exitus1 style",
+  AreaImagePreset.grid: "Grid",
+  AreaImagePreset.dots: "Dots",
+  AreaImagePreset.diagonal: "Diagonal lines",
+  AreaImagePreset.crosshatch: "Crosshatch",
+  AreaImagePreset.waves: "Waves",
 };
 
-String loginBackgroundPresetLabel(LoginBackgroundPreset p) =>
-    _loginBackgroundPresetLabels[p]!;
+String areaImagePresetLabel(AreaImagePreset p) => _areaImagePresetLabels[p]!;

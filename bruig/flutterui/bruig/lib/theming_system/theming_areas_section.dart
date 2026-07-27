@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:bruig/components/text.dart';
 import 'package:bruig/theming_system/area_fill.dart';
+import 'package:bruig/theming_system/area_options.dart';
+import 'package:bruig/theming_system/area_sides.dart';
 import 'package:bruig/theming_system/area_style.dart';
 import 'package:bruig/theming_system/color_palette.dart';
 import 'package:bruig/theming_system/palette_color_dropdown.dart';
@@ -13,7 +15,6 @@ import 'package:bruig/theming_system/theme_preset_storage.dart';
 import 'package:bruig/theming_system/theming_area_chat.dart';
 import 'package:bruig/theming_system/theming_area_feed.dart';
 import 'package:bruig/theming_system/theming_area_header.dart';
-import 'package:bruig/theming_system/theming_area_login.dart';
 import 'package:bruig/theming_system/theming_area_master.dart';
 import 'package:bruig/theming_system/theming_area_navbar.dart';
 import 'package:bruig/theming_system/theming_area_realtimechat.dart';
@@ -49,6 +50,20 @@ const List<ThemeArea> _editableAreas = [
   ThemeArea.stats,
   ThemeArea.logs,
 ];
+
+// _imageAreas is the subset of areas offering a background image at all --
+// the four big, mostly-empty surfaces where a full-bleed photo or a tiled
+// pattern actually reads as a background. Everywhere else (chat, feed,
+// panels, list screens) an image behind dense content just fights it, so
+// those areas get color/gradient backgrounds only.
+//
+// Borders never offer an image, in any area.
+const Set<ThemeArea> _imageAreas = {
+  ThemeArea.masterBackground,
+  ThemeArea.header,
+  ThemeArea.loginScreen,
+  ThemeArea.navBar,
+};
 
 // AreaEditorContext is what a theming_area_<name>.dart file is handed to
 // build its own settings: the current preset/style plus the small set of
@@ -138,13 +153,19 @@ class AreaEditorContext {
   // to the preset) when the drag ends, not once per frame. `label` renders
   // the live value, so an area can spell out what its own zero/default
   // position means ("Width: Default", "Selected glow: Off", ...).
+  //
+  // Pass numberField: true to add a type-in box beside it, for a value
+  // worth setting exactly. Leave it off where `label` already spells the
+  // number out, or the same figure would just appear twice.
   Widget slider(String key, double value,
-          {required String Function(double) label,
+          {required String Function(double)? label,
           double min = 0,
           required double max,
           int? divisions,
+          bool numberField = false,
           required ValueChanged<double> onCommit}) =>
-      _host._slider(key, value, label, min, max, divisions, onCommit);
+      _host._slider(key, value, label, min, max, divisions, numberField,
+          onCommit);
 
   // note is the small explanatory caption shown under some controls.
   Widget note(String text) => Padding(
@@ -183,9 +204,6 @@ class AreasSection extends StatefulWidget {
 
 class _AreasSectionState extends State<AreasSection> {
   late ThemeArea selected = widget.initialArea ?? _editableAreas.first;
-  // _dragValues holds the in-flight value of any slider currently being
-  // dragged, keyed by that slider's own key -- see _slider.
-  final Map<String, double> _dragValues = {};
 
   void _setStyle(ThemeNotifier theme, AreaStyle Function(AreaStyle) update) {
     var draft = ensureDraftPreset(theme);
@@ -194,29 +212,27 @@ class _AreasSectionState extends State<AreasSection> {
         draft.copyWith(areas: {...draft.areas, selected: update(current)}));
   }
 
-  Widget _slider(String key, double value, String Function(double) label,
-      double min, double max, int? divisions, ValueChanged<double> onCommit) {
-    var shown = _dragValues[key] ?? value;
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text(label(shown)),
-      Slider(
-        value: shown,
+  // _slider keys each _ValueSlider by area *and* setting, so switching areas
+  // gives the new area's value a fresh widget state rather than one still
+  // holding the previous area's half-typed text.
+  Widget _slider(String key, double value, String Function(double)? label,
+          double min, double max, int? divisions, bool numberField,
+          ValueChanged<double> onCommit) =>
+      _ValueSlider(
+        key: ValueKey("$selected/$key"),
+        label: label,
+        value: value,
         min: min,
         max: max,
         divisions: divisions,
-        onChanged: (v) => setState(() => _dragValues[key] = v),
-        onChangeEnd: (v) {
-          setState(() => _dragValues.remove(key));
-          onCommit(v);
-        },
-      ),
-    ]);
-  }
+        numberField: numberField,
+        onCommit: onCommit,
+      );
 
-  Future<void> _pickImage(ThemeNotifier theme, {required bool forBorder}) async {
+  Future<void> _pickImage(ThemeNotifier theme) async {
     var res = await FilePicker.platform.pickFiles(
       allowMultiple: false,
-      dialogTitle: "Pick ${forBorder ? 'border' : 'background'} image",
+      dialogTitle: "Pick background image",
       type: FileType.custom,
       allowedExtensions: ["bmp", "gif", "jpeg", "jpg", "png", "webp"],
     );
@@ -224,69 +240,87 @@ class _AreasSectionState extends State<AreasSection> {
     if (srcPath == null) return;
 
     var draft = ensureDraftPreset(theme);
-    var relPath = await ThemePresetStorage.saveAreaImage(
-        draft.id, selected, srcPath,
-        suffix: forBorder ? "border" : "bg");
+    var relPath =
+        await ThemePresetStorage.saveAreaImage(draft.id, selected, srcPath,
+            suffix: "bg");
     // saveAreaImage copies the file to disk immediately (even for an
     // unsaved draft), so sourceDir must be set right away too -- otherwise
     // the preview (and eventual rendering) can't resolve imagePath until
     // the preset happens to get saved/reloaded.
     var presetDir = await ThemePresetStorage.presetDir(draft.id);
     var current = draft.areas[selected] ?? const AreaStyle();
-    var style = forBorder
-        ? current.copyWith(
-            borderMode: AreaBackgroundMode.image, borderImagePath: relPath)
-        : current.copyWith(mode: AreaBackgroundMode.image, imagePath: relPath);
+    var style =
+        current.copyWith(mode: AreaBackgroundMode.image, imagePath: relPath);
     theme.previewPreset(draft.copyWith(
         sourceDir: presetDir, areas: {...draft.areas, selected: style}));
   }
 
   // _imagePreview shows the user's own picked image if one is set;
-  // otherwise, for areas with a built-in default image (currently just the
-  // login screen's pattern), shows that as a reference so users can see
-  // what's currently active before deciding to replace it; otherwise a
-  // plain placeholder. Uses BoxFit.contain (not cover) deliberately -- the
-  // source images here are full-screen-sized (e.g. 1024x768), and cover
-  // would crop a tiny, often near-blank corner of a sparse pattern into the
-  // thumbnail instead of showing the whole image shrunk down.
+  // otherwise the built-in image preset that would be painted instead, so
+  // users can see what's currently active before deciding to replace it.
+  // Uses BoxFit.contain (not cover) deliberately -- the full-bleed presets
+  // are screen-sized (e.g. 1024x768), and cover would crop a tiny, often
+  // near-blank corner of a sparse image into the thumbnail instead of
+  // showing the whole thing shrunk down.
+  // The box itself is the control -- clicking it opens the file picker, so
+  // there's no separate "Pick image..." button beside it.
   Widget _imagePreview(String? relPath, String? sourceDir,
-      {String? defaultAssetPath}) {
+      {AreaImagePreset? defaultPreset, VoidCallback? onPick}) {
     const size = 64.0;
     ImageProvider? image;
     if (relPath != null && sourceDir != null) {
       image = FileImage(File(path.join(sourceDir, relPath)));
-    } else if (defaultAssetPath != null) {
-      image = AssetImage(defaultAssetPath);
+    } else if (defaultPreset != null) {
+      image = AssetImage(areaImagePresetAsset(defaultPreset));
     }
 
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        // A neutral mid-grey backdrop (not just the surrounding page
-        // background) so a sparse/mostly-dark or mostly-transparent image
-        // still reads as "there's an image here" at this small a size,
-        // instead of blending into a dark theme's own background.
-        color: image != null ? Colors.grey.shade700 : null,
-        border: Border.all(color: Colors.grey),
-        borderRadius: BorderRadius.circular(4),
-        image: image != null
-            ? DecorationImage(image: image, fit: BoxFit.contain)
-            : null,
+    var radius = BorderRadius.circular(4);
+    return Tooltip(
+      message: relPath != null ? "Change image..." : "Pick image...",
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: radius,
+        child: InkWell(
+          onTap: onPick,
+          borderRadius: radius,
+          child: Ink(
+            width: size,
+            height: size,
+            decoration: BoxDecoration(
+              // A neutral mid-grey backdrop (not just the surrounding page
+              // background) so a sparse/mostly-dark or mostly-transparent
+              // image still reads as "there's an image here" at this small
+              // a size, instead of blending into a dark theme's own
+              // background.
+              color: image != null ? Colors.grey.shade700 : null,
+              border: Border.all(color: Colors.grey),
+              borderRadius: radius,
+              image: image != null
+                  ? DecorationImage(image: image, fit: BoxFit.contain)
+                  : null,
+            ),
+            child: image == null
+                ? const Icon(Icons.add_photo_alternate_outlined,
+                    color: Colors.grey)
+                : null,
+          ),
+        ),
       ),
-      child: image == null
-          ? const Icon(Icons.image_outlined, color: Colors.grey)
-          : null,
     );
   }
 
   // _fillEditor builds the mode dropdown + conditional color/gradient-
   // direction/image controls shared by both the background and the border
-  // fill -- they support the same four modes, just against different
-  // AreaStyle fields. Color and Image are shown side by side (not nested
-  // under separate mode selections) since picking either one is just a
-  // different way to fill the same area -- picking a color switches to
-  // Solid, picking an image switches to Image.
+  // fill -- they support the same modes, just against different AreaStyle
+  // fields (except Image, which only the background has).
+  //
+  // Mode, Color and Image sit side by side across one row (wrapping when
+  // the settings pane is too narrow for that), rather than the colour and
+  // image being nested under a mode selection: picking any of them is just
+  // a different way to fill the same area. Picking a color switches to
+  // Solid, picking an image switches to Image, and picking the Color
+  // dropdown's own first entry (labelled with this fill's `tokenLabel`)
+  // switches back to where it started.
   Widget _fillEditor({
     required ThemePreset preset,
     required String? sourceDir,
@@ -301,141 +335,318 @@ class _AreasSectionState extends State<AreasSection> {
     required Alignment gradientBegin,
     required Alignment gradientEnd,
     required ValueChanged<GradientDirection> onDirectionChanged,
-    required bool allowSolidNone,
-    required String? imagePath,
-    required VoidCallback onPickImage,
+    // allowImage is false for every border, and for the background of every
+    // area outside _imageAreas.
+    bool allowImage = false,
+    String? imagePath,
+    AreaImagePreset imagePreset = AreaImagePreset.standard,
+    VoidCallback? onPickImage,
     VoidCallback? onRemoveImage,
-    String? defaultAssetPath,
+    // imagePresetCell is the built-in-image picker, passed in as a ready
+    // cell so it lines up in this same row (Image, Color and the preset all
+    // describe the one fill) rather than sitting under it. Only shown
+    // alongside the image controls -- see _imagePresetEditor for the
+    // separate case where it appears on its own instead.
+    Widget? imagePresetCell,
     // Only meaningful for the background fill -- the border already has an
     // equivalent "no border at all" via its own token/tokenLabel ("None"),
     // so a separate none entry there would just be a confusing duplicate.
     bool supportsNone = false,
+    // tokenShownAs replaces this dropdown's "default" entry with whichever
+    // real mode that default actually amounts to -- Solid for an area whose
+    // untouched background is a color palette slot, Image for one painting
+    // a built-in image (the login screen). The dropdown then always names
+    // what's in use, rather than hiding it behind an opaque "Default";
+    // going back is still one click, via the Color dropdown's own "Default"
+    // entry below. Null (borders) keeps the distinct token entry, since
+    // "no border" isn't any of the other modes.
+    AreaBackgroundMode? tokenShownAs,
   }) {
+    var shownMode = mode == AreaBackgroundMode.token && tokenShownAs != null
+        ? tokenShownAs
+        : mode;
+    // The Image entry stays listed for a style that's already on it even
+    // when this fill no longer offers images (an older preset with a border
+    // image, say): DropdownButton asserts if `value` matches no item. It
+    // disappears for good once the user picks anything else.
+    var offerImageMode = allowImage || shownMode == AreaBackgroundMode.image;
+    // The image controls themselves only belong to a fill that's actually
+    // showing an image, in a fill that offers images at all. Offering them
+    // beside a Solid one implied a Solid fill could have an image too, when
+    // picking one just switches the mode -- which the Image entry in the
+    // dropdown already does, plainly. (A border, or an older preset from
+    // before this area lost its image picker, can still *be* on image mode;
+    // it just gets no dead controls for it, only the dropdown entry above
+    // to switch back out.)
+    var showImage = allowImage && shownMode == AreaBackgroundMode.image;
+    // Color describes every fill except a gradient, which has its own pair
+    // of colors below, and None, which has nothing to set.
+    var showColor = mode == AreaBackgroundMode.token ||
+        mode == AreaBackgroundMode.solid ||
+        mode == AreaBackgroundMode.image;
+
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Row(children: [
-        Txt("$label: "),
-        const SizedBox(width: 8),
-        DropdownButton<AreaBackgroundMode>(
-          value: mode,
-          items: [
-            DropdownMenuItem(
-                value: AreaBackgroundMode.token, child: Text(tokenLabel)),
-            if (supportsNone)
-              const DropdownMenuItem(
-                  value: AreaBackgroundMode.none, child: Text("None")),
-            const DropdownMenuItem(
-                value: AreaBackgroundMode.gradient, child: Text("Gradient")),
-            // Solid/Image aren't meant to be picked from here directly
-            // (use the Color/Image controls below instead), but they must
-            // still be valid items -- the style's mode can already be one
-            // of these (existing data, or set via those controls), and
-            // DropdownButton asserts if `value` doesn't match any item.
-            const DropdownMenuItem(
-                value: AreaBackgroundMode.solid, child: Text("Solid")),
-            const DropdownMenuItem(
-                value: AreaBackgroundMode.image, child: Text("Image")),
-          ],
-          onChanged: (m) {
-            if (m != null) onModeChanged(m);
-          },
-        ),
-      ]),
-      if (mode == AreaBackgroundMode.token ||
-          mode == AreaBackgroundMode.solid ||
-          mode == AreaBackgroundMode.image)
-        Padding(
-          padding: const EdgeInsets.only(top: 8),
-          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Expanded(
-              child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Txt("Color"),
-                    const SizedBox(height: 4),
-                    PaletteColorDropdown(
-                      preset: preset,
-                      value:
-                          mode == AreaBackgroundMode.solid ? solidColor : null,
-                      allowNone:
-                          allowSolidNone || mode != AreaBackgroundMode.solid,
-                      onChanged: (c, i) {
-                        onModeChanged(AreaBackgroundMode.solid);
-                        onSolidChanged(c, i);
-                      },
-                    ),
-                  ]),
+      _responsiveRow(
+        // A little narrower than the default: these are all dropdowns,
+        // which ellipsize their longest entries rather than becoming
+        // unusable, and fitting the widest case (four of them, for a
+        // gradient or an image) on one line matters more here.
+        minWidth: 140,
+        [
+          _labelled(
+            label,
+            DropdownButton<AreaBackgroundMode>(
+              value: shownMode,
+              isExpanded: true,
+              items: [
+                if (tokenShownAs == null)
+                  DropdownMenuItem(
+                      value: AreaBackgroundMode.token, child: Text(tokenLabel)),
+                if (supportsNone)
+                  const DropdownMenuItem(
+                      value: AreaBackgroundMode.none, child: Text("None")),
+                const DropdownMenuItem(
+                    value: AreaBackgroundMode.gradient, child: Text("Gradient")),
+                // Solid isn't usually picked from here directly (the Color
+                // control beside it is the way in), but it must still be a
+                // valid item -- it's what most areas' default background
+                // shows as, and DropdownButton asserts if `value` matches no
+                // item.
+                const DropdownMenuItem(
+                    value: AreaBackgroundMode.solid, child: Text("Solid")),
+                if (offerImageMode)
+                  const DropdownMenuItem(
+                      value: AreaBackgroundMode.image, child: Text("Image")),
+              ],
+              onChanged: (m) {
+                // Re-picking what's already shown is a no-op -- notably when
+                // that's the folded-in token mode, where acting on it would
+                // quietly convert an area's live palette-backed default into
+                // a frozen Solid/Image of its own.
+                if (m == null || m == shownMode) return;
+                onModeChanged(m);
+              },
             ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Txt("Image"),
-                    const SizedBox(height: 4),
-                    Row(children: [
-                      _imagePreview(
-                          mode == AreaBackgroundMode.image ? imagePath : null,
-                          sourceDir,
-                          defaultAssetPath: mode == AreaBackgroundMode.token
-                              ? defaultAssetPath
-                              : null),
-                      const SizedBox(width: 8),
-                      Flexible(
-                        child: OutlinedButton(
-                          onPressed: () {
-                            onModeChanged(AreaBackgroundMode.image);
-                            onPickImage();
-                          },
-                          child: Text(mode == AreaBackgroundMode.image &&
-                                  imagePath != null
-                              ? "Change..."
-                              : "Pick image..."),
-                        ),
-                      ),
-                      if (mode == AreaBackgroundMode.image &&
-                          imagePath != null &&
-                          onRemoveImage != null)
-                        IconButton(
-                          onPressed: onRemoveImage,
-                          icon: const Icon(Icons.close),
-                          tooltip: "Remove image",
-                        ),
-                    ]),
-                  ]),
-            ),
-          ]),
-        ),
-      if (mode == AreaBackgroundMode.gradient) ...[
-        for (var i = 0; i < 2; i++)
-          Padding(
-            padding: const EdgeInsets.only(top: 8),
-            child: Row(children: [
-              Txt("Color ${i + 1}: "),
-              const SizedBox(width: 8),
+          ),
+          if (showColor)
+            _labelled(
+              "Color",
               PaletteColorDropdown(
                 preset: preset,
-                value: gradientColors.length > i ? gradientColors[i] : null,
-                onChanged: (c, _) => onGradientColorChanged(i, c),
+                value: mode == AreaBackgroundMode.solid ? solidColor : null,
+                isExpanded: true,
+                // Always offered, so a picked color is always undoable: this
+                // entry ("Default" for a background, "None" for a border) is
+                // the only way back to the area's untouched fill, since the
+                // mode dropdown beside it no longer lists it separately.
+                allowNone: true,
+                noneLabel: tokenLabel,
+                onChanged: (c, i) {
+                  if (c == null) {
+                    onModeChanged(AreaBackgroundMode.token);
+                    return;
+                  }
+                  onModeChanged(AreaBackgroundMode.solid);
+                  onSolidChanged(c, i);
+                },
               ),
-            ]),
-          ),
-        const SizedBox(height: 8),
-        Row(children: [
-          const Txt("Direction: "),
-          const SizedBox(width: 8),
-          DropdownButton<GradientDirection>(
-            value: gradientDirectionFor(gradientBegin, gradientEnd),
-            items: GradientDirection.values
-                .map((d) => DropdownMenuItem(
-                    value: d, child: Text(gradientDirectionLabel(d))))
-                .toList(),
-            onChanged: (d) {
-              if (d != null) onDirectionChanged(d);
-            },
-          ),
+            ),
+          if (showImage)
+            _labelled(
+              "Image",
+              Row(children: [
+                _imagePreview(
+                  mode == AreaBackgroundMode.image ? imagePath : null,
+                  sourceDir,
+                  // With no file of the user's own picked, the thumbnail
+                  // shows whichever built-in preset is actually being
+                  // painted.
+                  defaultPreset: imagePreset,
+                  onPick: () {
+                    onModeChanged(AreaBackgroundMode.image);
+                    onPickImage?.call();
+                  },
+                ),
+                if (mode == AreaBackgroundMode.image &&
+                    imagePath != null &&
+                    onRemoveImage != null)
+                  IconButton(
+                    onPressed: onRemoveImage,
+                    icon: const Icon(Icons.close),
+                    tooltip: "Remove image",
+                  ),
+              ]),
+            ),
+          if (showImage && imagePresetCell != null) imagePresetCell,
+          // The gradient's own two colors and direction join the same row
+          // rather than stacking below it -- they're this mode's equivalent
+          // of the single Color dropdown the other modes show there.
+          if (mode == AreaBackgroundMode.gradient) ...[
+            for (var i = 0; i < 2; i++)
+              _labelled(
+                "Color ${i + 1}",
+                PaletteColorDropdown(
+                  preset: preset,
+                  value: gradientColors.length > i ? gradientColors[i] : null,
+                  isExpanded: true,
+                  onChanged: (c, _) => onGradientColorChanged(i, c),
+                ),
+              ),
+            _labelled(
+              "Direction",
+              DropdownButton<GradientDirection>(
+                value: gradientDirectionFor(gradientBegin, gradientEnd),
+                isExpanded: true,
+                items: GradientDirection.values
+                    .map((d) => DropdownMenuItem(
+                        value: d,
+                        child: Text(gradientDirectionLabel(d),
+                            // The longest labels in any of these dropdowns;
+                            // in a narrow column they ellipsize rather than
+                            // overflowing the button.
+                            overflow: TextOverflow.ellipsis)))
+                    .toList(),
+                onChanged: (d) {
+                  if (d != null) onDirectionChanged(d);
+                },
+              ),
+            ),
+          ],
         ]),
-      ],
     ]);
+  }
+
+  // _spacingSetting builds one of the four spacing settings every area has
+  // (border width, border radius, padding, margin): a single slider
+  // covering all four sides, or -- once split with the button beside its
+  // name -- one slider per side laid out across the width.
+  //
+  // Splitting seeds all four sides from the single value; collapsing drops
+  // them and goes back to that same single value, which is left untouched
+  // while split. Zero means "use this area's built-in default" throughout,
+  // split or not, which is why the name reads "...: Default" there rather
+  // than the setting genuinely being zero.
+  List<Widget> _spacingSetting(
+    AreaEditorContext ctx, {
+    required String key,
+    required String name,
+    required double max,
+    required double single,
+    required SideValues? sides,
+    required List<String> slotLabels,
+    required ValueChanged<double> onSingle,
+    // updateSides is handed a transform rather than a finished value, so
+    // that editing one side re-reads the other three from the *current*
+    // style instead of this build's snapshot of them -- see setStyle.
+    required void Function(SideValues? Function(SideValues?, double))
+        updateSides,
+  }) {
+    var split = sides != null;
+    var isDefault = split ? sides.isZero : single <= 0;
+    return [
+      Row(children: [
+        Expanded(child: Text(isDefault ? "$name: Default" : name)),
+        TextButton.icon(
+          onPressed: () => updateSides(
+              (cur, one) => cur == null ? SideValues.all(one) : null),
+          icon: Icon(split ? Icons.call_merge : Icons.call_split, size: 16),
+          label: Text(split ? "One value" : "Per side"),
+          style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              visualDensity: VisualDensity.compact),
+        ),
+      ]),
+      if (!split)
+        ctx.slider(key, single,
+            label: null, max: max, numberField: true, onCommit: onSingle)
+      else
+        _responsiveRow(
+          [
+            for (var i = 0; i < 4; i++)
+              ctx.slider("$key.$i", sides[i],
+                  label: (_) => slotLabels[i],
+                  max: max,
+                  numberField: true,
+                  onCommit: (v) => updateSides(
+                      (cur, one) => (cur ?? SideValues.all(one)).withValue(i, v))),
+          ],
+          // Wide enough for a usable slider plus its number box; below
+          // that the four stack instead of all becoming unusable.
+          minWidth: 190,
+        ),
+      // Keeps consecutive settings from reading as one block, which
+      // matters most when several are split into four at once.
+      const SizedBox(height: 8),
+    ];
+  }
+
+  // _backgroundTokenShownAs is the real background mode an area's untouched
+  // "default" amounts to, and so what the Background dropdown names while
+  // the style is still on token -- see _fillEditor's tokenShownAs. Every
+  // area's default background is its palette color, except the login
+  // screen's, which has always been a built-in image.
+  AreaBackgroundMode _backgroundTokenShownAs(ThemeArea area) =>
+      area == ThemeArea.loginScreen
+          ? AreaBackgroundMode.image
+          : AreaBackgroundMode.solid;
+
+  // _imagePresetCell is the built-in-image picker, as a cell for the
+  // background fill's own row -- it's part of choosing that background, so
+  // it belongs beside the Image control rather than under it. Null for an
+  // area with no images, or one whose background isn't showing one.
+  Widget? _imagePresetCell(AreaEditorContext ctx) {
+    var shownMode = ctx.style.mode == AreaBackgroundMode.token
+        ? _backgroundTokenShownAs(ctx.area)
+        : ctx.style.mode;
+    if (!_imageAreas.contains(ctx.area) ||
+        shownMode != AreaBackgroundMode.image) {
+      return null;
+    }
+    return _labelled("Image preset", _imagePresetDropdown(ctx));
+  }
+
+  Widget _imagePresetDropdown(AreaEditorContext ctx) =>
+      DropdownButton<AreaImagePreset>(
+        value: ctx.style.imagePreset,
+        isExpanded: true,
+        items: AreaImagePreset.values
+            .map((p) => DropdownMenuItem(
+                value: p,
+                child: Text(areaImagePresetLabel(p),
+                    overflow: TextOverflow.ellipsis)))
+            .toList(),
+        onChanged: (p) {
+          if (p != null) ctx.setStyle((s) => s.copyWith(imagePreset: p));
+        },
+      );
+
+  // _imagePresetEditor covers what the fill's own row can't: the note for
+  // when a picked image file is overriding the preset, and the one case
+  // where the preset needs its own line -- a non-default preset layered
+  // over an otherwise default background, where the fill row shows Solid
+  // and so has no image controls to sit beside. Leaving that reachable is
+  // what keeps such a preset undoable rather than stranded.
+  List<Widget> _imagePresetEditor(AreaEditorContext ctx) {
+    if (!_imageAreas.contains(ctx.area)) return const [];
+    var mode = ctx.style.mode;
+    var stranded = mode == AreaBackgroundMode.token &&
+        _backgroundTokenShownAs(ctx.area) != AreaBackgroundMode.image &&
+        ctx.style.imagePreset != AreaImagePreset.standard;
+    return [
+      if (stranded) ...[
+        const SizedBox(height: 12),
+        ctx.choice<AreaImagePreset>(
+          "Image preset",
+          value: ctx.style.imagePreset,
+          options: AreaImagePreset.values,
+          labelOf: areaImagePresetLabel,
+          onChanged: (p) => ctx.setStyle((s) => s.copyWith(imagePreset: p)),
+        ),
+      ],
+      if (mode == AreaBackgroundMode.image && ctx.style.imagePath != null)
+        ctx.note("A picked image file is in use -- remove it to go back to "
+            "the image preset."),
+    ];
   }
 
   @override
@@ -459,75 +670,67 @@ class _AreasSectionState extends State<AreasSection> {
               selected = a;
               widget.onAreaChanged?.call(a);
             }
-            _dragValues.clear();
           }),
         ),
-        // Sidebar's background is deliberately not user-overridable here --
-        // it always reads the "Sidebar background" color palette slot
-        // directly (see SecondarySideMenu in containers.dart), so editing
-        // it lives in the Color Palette section, not a per-area fill mode
-        // that could silently diverge from it.
-        if (selected != ThemeArea.subMenuTabBar) ...[
-          const SizedBox(height: 12),
-          _fillEditor(
-            preset: preset,
-            sourceDir: preset.sourceDir,
-            label: "Background",
-            tokenLabel: "Default",
-            mode: style.mode,
-            onModeChanged: (m) => _setStyle(theme, (s) {
-              var next = s.copyWith(mode: m);
-              // Seed a real color immediately when switching into a mode
-              // that requires one, so the color dropdown(s) always have a
-              // valid palette-backed value to show.
-              if (m == AreaBackgroundMode.solid && next.solidColor == null) {
-                next = next.copyWith(
-                    solidColor: preset.primary,
-                    solidColorIndex: PaletteSlot.primary.index);
-              }
-              if (m == AreaBackgroundMode.gradient &&
-                  next.gradientColors.length < 2) {
-                next = next.copyWith(
-                    gradientColors: [preset.primary, preset.secondary]);
-              }
-              return next;
-            }),
-            solidColor: style.resolveSolidColor(theme),
-            onSolidChanged: (c, i) => _setStyle(
-                theme,
-                (s) => s.copyWith(
-                    solidColor: c,
-                    solidColorIndex: i,
-                    clearSolidColorIndex: i == null)),
-            allowSolidNone: false,
-            gradientColors: style.gradientColors,
-            onGradientColorChanged: (i, c) => _setStyle(theme, (s) {
-              var colors = List<Color>.from(s.gradientColors);
-              while (colors.length < 2) {
-                colors.add(preset.primary);
-              }
-              colors[i] = c ?? preset.primary;
-              return s.copyWith(gradientColors: colors);
-            }),
-            gradientBegin: style.gradientBegin,
-            gradientEnd: style.gradientEnd,
-            onDirectionChanged: (d) => _setStyle(theme, (s) {
-              var (b, e) = gradientDirectionAlignments(d);
-              return s.copyWith(gradientBegin: b, gradientEnd: e);
-            }),
-            imagePath: style.imagePath,
-            onPickImage: () => _pickImage(theme, forBorder: false),
-            onRemoveImage: () => _setStyle(
-                theme,
-                (s) => s.copyWith(
-                    mode: AreaBackgroundMode.token, clearImagePath: true)),
-            defaultAssetPath: selected == ThemeArea.loginScreen
-                ? "assets/images/loading-bg.png"
-                : null,
-            supportsNone: true,
-          ),
-        ],
-        ...loginAreaBackgroundEditor(ctx),
+        const SizedBox(height: 12),
+        _fillEditor(
+          preset: preset,
+          sourceDir: preset.sourceDir,
+          label: "Background",
+          tokenLabel: "Default",
+          mode: style.mode,
+          onModeChanged: (m) => _setStyle(theme, (s) {
+            var next = s.copyWith(mode: m);
+            // Seed a real color immediately when switching into a mode
+            // that requires one, so the color dropdown(s) always have a
+            // valid palette-backed value to show.
+            if (m == AreaBackgroundMode.solid && next.solidColor == null) {
+              next = next.copyWith(
+                  solidColor: preset.primary,
+                  solidColorIndex: PaletteSlot.primary.index);
+            }
+            if (m == AreaBackgroundMode.gradient &&
+                next.gradientColors.length < 2) {
+              next = next.copyWith(
+                  gradientColors: [preset.primary, preset.secondary]);
+            }
+            return next;
+          }),
+          solidColor: style.resolveSolidColor(theme),
+          onSolidChanged: (c, i) => _setStyle(
+              theme,
+              (s) => s.copyWith(
+                  solidColor: c,
+                  solidColorIndex: i,
+                  clearSolidColorIndex: i == null)),
+          gradientColors: style.gradientColors,
+          onGradientColorChanged: (i, c) => _setStyle(theme, (s) {
+            var colors = List<Color>.from(s.gradientColors);
+            while (colors.length < 2) {
+              colors.add(preset.primary);
+            }
+            colors[i] = c ?? preset.primary;
+            return s.copyWith(gradientColors: colors);
+          }),
+          gradientBegin: style.gradientBegin,
+          gradientEnd: style.gradientEnd,
+          onDirectionChanged: (d) => _setStyle(theme, (s) {
+            var (b, e) = gradientDirectionAlignments(d);
+            return s.copyWith(gradientBegin: b, gradientEnd: e);
+          }),
+          allowImage: _imageAreas.contains(selected),
+          imagePath: style.imagePath,
+          imagePreset: style.imagePreset,
+          imagePresetCell: _imagePresetCell(ctx),
+          onPickImage: () => _pickImage(theme),
+          onRemoveImage: () => _setStyle(
+              theme,
+              (s) => s.copyWith(
+                  mode: AreaBackgroundMode.token, clearImagePath: true)),
+          supportsNone: true,
+          tokenShownAs: _backgroundTokenShownAs(selected),
+        ),
+        ..._imagePresetEditor(ctx),
         const Divider(height: 32),
         _fillEditor(
           preset: preset,
@@ -559,7 +762,6 @@ class _AreasSectionState extends State<AreasSection> {
                   borderColor: c,
                   borderColorIndex: i,
                   clearBorderColorIndex: i == null)),
-          allowSolidNone: true,
           gradientColors: style.borderGradientColors,
           onGradientColorChanged: (i, c) => _setStyle(theme, (s) {
             var colors = List<Color>.from(s.borderGradientColors);
@@ -575,39 +777,67 @@ class _AreasSectionState extends State<AreasSection> {
             var (b, e) = gradientDirectionAlignments(d);
             return s.copyWith(borderGradientBegin: b, borderGradientEnd: e);
           }),
+          // No allowImage/onPickImage: borders are never image-filled.
           imagePath: style.borderImagePath,
-          onPickImage: () => _pickImage(theme, forBorder: true),
-          onRemoveImage: () => _setStyle(
-              theme,
-              (s) => s.copyWith(
-                  borderMode: AreaBackgroundMode.token,
-                  clearBorderImagePath: true)),
         ),
         const SizedBox(height: 8),
-        ctx.slider("borderWidth", style.borderWidth,
-            label: (v) => "Border width: ${v.toStringAsFixed(1)}",
+        ..._spacingSetting(ctx,
+            key: "borderWidth",
+            name: "Border width",
             max: 10,
-            onCommit: (v) => ctx.setStyle((s) => s.copyWith(borderWidth: v))),
-        ctx.slider("borderRadius", style.borderRadius,
-            label: (v) => "Border radius: ${v.toStringAsFixed(1)}",
+            single: style.borderWidth,
+            sides: style.borderWidthSides,
+            slotLabels: sideLabels,
+            onSingle: (v) => ctx.setStyle((s) => s.copyWith(borderWidth: v)),
+            updateSides: (f) => ctx.setStyle((s) {
+              var next = f(s.borderWidthSides, s.borderWidth);
+              return s.copyWith(
+                  borderWidthSides: next, clearBorderWidthSides: next == null);
+            })),
+        ..._spacingSetting(ctx,
+            key: "borderRadius",
+            name: "Border radius",
             max: 48,
-            onCommit: (v) => ctx.setStyle((s) => s.copyWith(borderRadius: v))),
-        // Padding and margin have no visible effect on navBar -- it's
-        // composed by the third-party sidebarx package's own fixed layout,
-        // which doesn't consult either field -- so both are hidden there as
-        // dead controls. For header, padding maps to titleSpacing (the gap
-        // around the title), so it's kept, just with a larger range
+            single: style.borderRadius,
+            sides: style.borderRadiusSides,
+            // Radius is the one of the four measured at the corners rather
+            // than along the edges.
+            slotLabels: cornerLabels,
+            onSingle: (v) => ctx.setStyle((s) => s.copyWith(borderRadius: v)),
+            updateSides: (f) => ctx.setStyle((s) {
+              var next = f(s.borderRadiusSides, s.borderRadius);
+              return s.copyWith(
+                  borderRadiusSides: next, clearBorderRadiusSides: next == null);
+            })),
+        // Header padding maps to titleSpacing (the gap either side of the
+        // title) rather than a container inset, so it gets a larger range
         // appropriate for that.
-        if (selected != ThemeArea.navBar) ...[
-          ctx.slider("padding", style.padding,
-              label: (v) => "Padding: ${v.toStringAsFixed(1)}",
-              max: selected == ThemeArea.header ? 100 : 48,
-              onCommit: (v) => ctx.setStyle((s) => s.copyWith(padding: v))),
-          ctx.slider("margin", style.margin,
-              label: (v) => "Margin: ${v.toStringAsFixed(1)}",
-              max: 48,
-              onCommit: (v) => ctx.setStyle((s) => s.copyWith(margin: v))),
-        ],
+        ..._spacingSetting(ctx,
+            key: "padding",
+            name: "Padding",
+            max: selected == ThemeArea.header ? 100 : 48,
+            single: style.padding,
+            sides: style.paddingSides,
+            slotLabels: sideLabels,
+            onSingle: (v) => ctx.setStyle((s) => s.copyWith(padding: v)),
+            updateSides: (f) => ctx.setStyle((s) {
+              var next = f(s.paddingSides, s.padding);
+              return s.copyWith(
+                  paddingSides: next, clearPaddingSides: next == null);
+            })),
+        ..._spacingSetting(ctx,
+            key: "margin",
+            name: "Margin",
+            max: 48,
+            single: style.margin,
+            sides: style.marginSides,
+            slotLabels: sideLabels,
+            onSingle: (v) => ctx.setStyle((s) => s.copyWith(margin: v)),
+            updateSides: (f) => ctx.setStyle((s) {
+              var next = f(s.marginSides, s.margin);
+              return s.copyWith(
+                  marginSides: next, clearMarginSides: next == null);
+            })),
         // Width is only wired for the Sidebar. navBar's width is
         // deliberately not user-configurable -- the sidebarx package's
         // collapse/extend toggle button assumes specific width values for
@@ -627,3 +857,163 @@ class _AreasSectionState extends State<AreasSection> {
     });
   }
 }
+
+// _ValueSlider is one numeric setting: a slider, and optionally a type-in
+// box over the same value, so it can be dragged roughly or set exactly.
+//
+// Neither control writes on every change. The slider commits when the drag
+// ends, not once per frame, and the box when it's submitted or loses focus,
+// not per keystroke -- each commit rewrites the draft preset and rebuilds
+// the whole app's theme through it, which is far too much work to do per
+// frame or per character.
+class _ValueSlider extends StatefulWidget {
+  // label renders the live value above the slider; null leaves it off, for
+  // a caller that has already labelled this value itself.
+  final String Function(double)? label;
+  final double value;
+  final double min;
+  final double max;
+  final int? divisions;
+  final bool numberField;
+  final ValueChanged<double> onCommit;
+
+  const _ValueSlider({
+    required this.label,
+    required this.value,
+    required this.min,
+    required this.max,
+    required this.divisions,
+    required this.numberField,
+    required this.onCommit,
+    super.key,
+  });
+
+  @override
+  State<_ValueSlider> createState() => _ValueSliderState();
+}
+
+class _ValueSliderState extends State<_ValueSlider> {
+  // _dragging holds the in-flight value while the slider's thumb is down,
+  // so the label and box track the drag before it's committed.
+  double? _dragging;
+  late final TextEditingController _ctrl =
+      TextEditingController(text: _format(widget.value));
+  late final FocusNode _focus = FocusNode()..addListener(_focusChanged);
+
+  double get _shown => _dragging ?? widget.value;
+
+  static String _format(double v) => v.toStringAsFixed(1);
+
+  @override
+  void didUpdateWidget(covariant _ValueSlider old) {
+    super.didUpdateWidget(old);
+    // Mirror an outside change (the slider, or a reset elsewhere) into the
+    // box -- but never while it's focused, which would rewrite what the
+    // user is in the middle of typing.
+    if (!_focus.hasFocus && widget.value != old.value) {
+      _ctrl.text = _format(widget.value);
+    }
+  }
+
+  @override
+  void dispose() {
+    _focus.dispose();
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  void _focusChanged() {
+    if (!_focus.hasFocus) _commitText();
+  }
+
+  void _commitText() {
+    // Anything unparseable, negative or past this setting's range snaps
+    // back to what's actually set, rather than quietly applying something
+    // else or leaving the box disagreeing with the slider beside it.
+    var parsed = double.tryParse(_ctrl.text.trim());
+    var v = parsed == null
+        ? widget.value
+        : parsed.clamp(widget.min, widget.max).toDouble();
+    if (_ctrl.text != _format(v)) _ctrl.text = _format(v);
+    if (v != widget.value) widget.onCommit(v);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    var slider = Slider(
+      value: _shown.clamp(widget.min, widget.max),
+      min: widget.min,
+      max: widget.max,
+      divisions: widget.divisions,
+      onChanged: (v) => setState(() {
+        _dragging = v;
+        if (!_focus.hasFocus) _ctrl.text = _format(v);
+      }),
+      onChangeEnd: (v) {
+        setState(() => _dragging = null);
+        // Commit exactly what the box shows. A continuous slider otherwise
+        // lands on values with more precision than the box displays, and
+        // the box would then "change" the setting to its own rounded
+        // reading the next time it merely lost focus.
+        widget.onCommit(double.parse(_format(v)));
+      },
+    );
+
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      if (widget.label != null) Text(widget.label!(_shown)),
+      Row(children: [
+        Expanded(child: slider),
+        if (widget.numberField)
+          SizedBox(
+            width: 58,
+            child: TextField(
+              controller: _ctrl,
+              focusNode: _focus,
+              textAlign: TextAlign.center,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              style: const TextStyle(fontSize: 13),
+              decoration: const InputDecoration(
+                isDense: true,
+                contentPadding:
+                    EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+                border: OutlineInputBorder(),
+              ),
+              onSubmitted: (_) => _commitText(),
+            ),
+          ),
+      ]),
+    ]);
+  }
+}
+
+// _responsiveRow lays `cells` out side by side in equal columns, wrapping
+// onto further rows -- and in the narrowest case one per row -- as soon as
+// the available width can't give every cell at least `minWidth`. Equal
+// widths (rather than each cell taking what it needs) are what keeps the
+// controls lined up in columns across a wrap.
+Widget _responsiveRow(List<Widget> cells, {double minWidth = 150}) {
+  if (cells.isEmpty) return const SizedBox.shrink();
+  const gap = 16.0;
+  return LayoutBuilder(builder: (context, constraints) {
+    var perRow = ((constraints.maxWidth + gap) / (minWidth + gap))
+        .floor()
+        .clamp(1, cells.length);
+    var width = (constraints.maxWidth - gap * (perRow - 1)) / perRow;
+    return Wrap(
+      spacing: gap,
+      runSpacing: 12,
+      children: [
+        for (var cell in cells) SizedBox(width: width, child: cell),
+      ],
+    );
+  });
+}
+
+// _labelled is one cell of a _responsiveRow: a caption over its control.
+Widget _labelled(String label, Widget control) =>
+    Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Txt(label),
+      const SizedBox(height: 4),
+      control,
+    ]);

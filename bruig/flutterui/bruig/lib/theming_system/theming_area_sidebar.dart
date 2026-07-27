@@ -7,9 +7,9 @@ import 'package:flutter/material.dart';
 // Content, Address Book, page-view sessions, the chat list, and the Realtime
 // Chat session list), not just one screen.
 //
-// The sidebar's *background* isn't editable here -- it always reads the
-// "Sidebar Background" palette slot directly, so it's edited in the Color
-// Palette section instead (see theming_areas_section.dart).
+// The sidebar's Background "Default" is the "Sidebar Background" palette
+// slot, read live (see SecondarySideMenu in containers.dart), so leaving it
+// on Default means it stays edited from the Color Palette section instead.
 List<Widget> sidebarAreaEditor(AreaEditorContext ctx) {
   var style = ctx.style;
   var visibility = style.subMenuStyle ?? SubMenuStyle.alwaysVisible;
