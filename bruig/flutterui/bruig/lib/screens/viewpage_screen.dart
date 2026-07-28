@@ -169,7 +169,7 @@ class _ViewPageScreenState extends State<ViewPageScreen> {
     var activeSess = resources.mostRecent;
     return Consumer<ThemeNotifier>(
         builder: (context, theme, _) => SecondarySideMenuLayout(
-              width: 130 * (theme.fontScale > 0 ? theme.fontScale : 1),
+              width: 200 * (theme.fontScale > 0 ? theme.fontScale : 1),
               storageKey: "pages",
               list: ListView.builder(
                   itemCount: sessions.length,

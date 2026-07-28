@@ -316,7 +316,6 @@ class _DynPluginScreenState extends State<DynPluginScreen> {
     }
 
     return SecondarySideMenuLayout(
-      width: 180,
       storageKey: "pluginScreens",
       items: widget.screens
           .map((s) => SidebarNavItem(
