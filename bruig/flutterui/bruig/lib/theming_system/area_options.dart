@@ -43,28 +43,22 @@ String headerPositionLabel(HeaderPosition p) => _headerPositionLabels[p]!;
 // potentially-long lists (chat list, RTC sessions, page-view sessions) --
 // is driven by this same setting.
 // - alwaysVisible: today's behavior, a persistent column beside the content.
-// - hoverReveal: collapses to a thin edge strip and expands to full width
-//   while the mouse hovers over it.
 // - autoHideOnDetail: hidden entirely while viewing content that doesn't
 //   need sub-navigation (e.g. an individual post, a specific chat), and
 //   shown otherwise.
-// - manualToggle: a persistent collapse/expand handle next to the content,
-//   like the primary nav sidebar's own collapse button.
 // - resizable: a plain, always-visible, drag-resizable pane (each screen
 //   remembers its own width locally -- see SecondarySideMenuLayout).
-enum SubMenuStyle {
-  alwaysVisible,
-  hoverReveal,
-  autoHideOnDetail,
-  manualToggle,
-  resizable
-}
+//
+// Two more used to sit here: hoverReveal (collapse to an edge strip,
+// expand while hovered) and manualToggle (a persistent collapse handle).
+// Both were removed as not good enough to keep. A preset saved with either
+// one falls back to alwaysVisible, since the stored name no longer matches
+// any value (see AreaStyle.fromJson's _enumOrNull).
+enum SubMenuStyle { alwaysVisible, autoHideOnDetail, resizable }
 
 const Map<SubMenuStyle, String> _subMenuStyleLabels = {
   SubMenuStyle.alwaysVisible: "Default (Always visible)",
-  SubMenuStyle.hoverReveal: "Reveal on hover",
   SubMenuStyle.autoHideOnDetail: "Auto-hide when not needed",
-  SubMenuStyle.manualToggle: "Manual show/hide",
   SubMenuStyle.resizable: "Resizable (drag to resize)",
 };
 
@@ -89,6 +83,28 @@ const Map<MessageLayoutMode, String> _messageLayoutModeLabels = {
 
 String messageLayoutModeLabel(MessageLayoutMode m) =>
     _messageLayoutModeLabels[m]!;
+
+// BubbleCornerStyle shapes how a message bubble's corners are cut, at
+// whatever radius AreaStyle.bubbleRadius{Sent,Received} sets. Only consulted
+// when AreaStyle.bubbleCorners is on.
+// - rounded: the ordinary rounded rectangle.
+// - beveled: corners cut straight across, an angular/faceted look.
+// - speech: rounded, except the bottom corner on the speaker's own side is
+//   left square -- the corner a comic speech bubble's tail grows out of, and
+//   the shape most chat apps use to point a bubble back at its sender.
+// - inverted: corners curve inward rather than out, scooped instead of
+//   rounded.
+enum BubbleCornerStyle { rounded, beveled, speech, inverted }
+
+const Map<BubbleCornerStyle, String> _bubbleCornerStyleLabels = {
+  BubbleCornerStyle.rounded: "Rounded",
+  BubbleCornerStyle.beveled: "Cut corners",
+  BubbleCornerStyle.speech: "Speech bubble",
+  BubbleCornerStyle.inverted: "Inverted corners",
+};
+
+String bubbleCornerStyleLabel(BubbleCornerStyle s) =>
+    _bubbleCornerStyleLabels[s]!;
 
 // AvatarTheme picks how the *fallback* avatar (the colored circle behind a
 // user's initial, shown when they have no avatar image of their own) is

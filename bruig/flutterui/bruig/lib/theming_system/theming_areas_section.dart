@@ -120,14 +120,25 @@ class AreaEditorContext {
         child: Row(children: [
           Txt("$label: "),
           const SizedBox(width: 8),
-          DropdownButton<T>(
-            value: value,
-            items: options
-                .map((o) => DropdownMenuItem(value: o, child: Text(labelOf(o))))
-                .toList(),
-            onChanged: (v) {
-              if (v != null) onChanged(v);
-            },
+          // Flexible + isExpanded, and ellipsis on the labels: several of
+          // these options are long ("Default (Always visible)", "Auto-hide
+          // when not needed"), and a bare DropdownButton in a Row is handed
+          // unbounded width, so it overflows rather than shrinking once the
+          // settings pane is narrow.
+          Flexible(
+            child: DropdownButton<T>(
+              value: value,
+              isExpanded: true,
+              items: options
+                  .map((o) => DropdownMenuItem(
+                      value: o,
+                      child: Text(labelOf(o),
+                          overflow: TextOverflow.ellipsis)))
+                  .toList(),
+              onChanged: (v) {
+                if (v != null) onChanged(v);
+              },
+            ),
           ),
         ]),
       );
@@ -175,6 +186,32 @@ class AreaEditorContext {
           required ValueChanged<double> onCommit}) =>
       _host._slider(key, value, label, min, max, divisions, numberField,
           onCommit);
+
+  // spacing is a numeric setting that can be split into four -- per side,
+  // or per corner for a radius. It's what the shared Border width/radius/
+  // Padding/Margin controls are built from; an area's own settings use it
+  // for anything with the same shape (a bubble's corners, a panel's inset).
+  // See _spacingSetting for how the two states behave.
+  List<Widget> spacing({
+    required String key,
+    required String name,
+    required double max,
+    required double single,
+    required SideValues? sides,
+    List<String> slotLabels = sideLabels,
+    required ValueChanged<double> onSingle,
+    required void Function(SideValues? Function(SideValues?, double))
+        updateSides,
+  }) =>
+      _host._spacingSetting(this,
+          key: key,
+          name: name,
+          max: max,
+          single: single,
+          sides: sides,
+          slotLabels: slotLabels,
+          onSingle: onSingle,
+          updateSides: updateSides);
 
   // note is the small explanatory caption shown under some controls.
   Widget note(String text) => Padding(
@@ -872,20 +909,6 @@ class _AreasSectionState extends State<AreasSection> {
               return s.copyWith(
                   marginSides: next, clearMarginSides: next == null);
             })),
-        // Width is only wired for the Sidebar. navBar's width is
-        // deliberately not user-configurable -- the sidebarx package's
-        // collapse/extend toggle button assumes specific width values for
-        // its own animation, and overriding them broke it.
-        if (selected == ThemeArea.subMenuTabBar)
-          ctx.slider("width", style.width ?? 0,
-              // 0 means "use this area's built-in default width" rather
-              // than an actual zero-width panel, so "reset to default"
-              // stays reachable from the slider itself.
-              label: (v) =>
-                  v <= 0 ? "Width: Default" : "Width: ${v.toStringAsFixed(1)}",
-              max: 400,
-              onCommit: (v) => ctx.setStyle((s) =>
-                  v <= 0 ? s.copyWith(clearWidth: true) : s.copyWith(width: v))),
         ..._areaEditor(ctx),
       ]);
     });

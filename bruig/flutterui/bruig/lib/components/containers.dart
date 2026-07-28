@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:bruig/components/empty_widget.dart';
 import 'package:bruig/theming_system/theme_preset.dart';
 import 'package:bruig/storage_manager.dart';
@@ -211,6 +213,15 @@ class _SidebarNavRow extends StatelessWidget {
                 ],
                 Expanded(
                   child: Text(item.label,
+                      // A nav label is a name, not prose: too little room
+                      // should shorten it, never wrap it onto a second line
+                      // -- which Flutter does by breaking mid-word when a
+                      // single word doesn't fit ("Overvie/w"). sidebarWidth
+                      // keeps there being room in the first place; this
+                      // makes the degradation graceful if a caller or a
+                      // large font scale still runs out.
+                      softWrap: false,
+                      overflow: TextOverflow.ellipsis,
                       style: baseStyle.copyWith(
                         fontWeight:
                             item.selected ? FontWeight.w600 : FontWeight.w500,
@@ -227,6 +238,67 @@ class _SidebarNavRow extends StatelessWidget {
   }
 }
 
+// sidebarWidth is how wide any of the app's sidebars actually renders: what
+// was asked for, never below a floor that keeps a row from collapsing into
+// unreadability. The default is only reached by a sidebar whose width can
+// be neither measured nor declared.
+const double _sidebarDefaultWidth = 200;
+const double _sidebarMinWidth = 120;
+
+double sidebarWidth(double? requested) =>
+    math.max(requested ?? _sidebarDefaultWidth, _sidebarMinWidth);
+
+// measuredSidebarWidth is the width a fixed-item sidebar's own labels need:
+// the widest of them at its boldest (selected) weight, plus everything the
+// row puts around it.
+//
+// Sizing to this beats any fixed number, because the right number differs
+// per screen and per setting: the hardcoded 130-200px these screens each
+// declared were both too narrow for some (labels wrapping mid-word --
+// "Overvie/w" -- once Show icons was turned on) and too wide for others (a
+// column of short names with dead space beside them). It also follows the
+// font scale and the icon toggle for free, since both feed into what's
+// measured here.
+//
+// Only fixed-item sidebars can be measured. A dynamic `list:` one -- the
+// chat list, RTC sessions, page-view sessions -- has no labels to measure
+// at this level, so those keep the width their screen declares.
+double measuredSidebarWidth(
+    BuildContext context, ThemeNotifier theme, List<SidebarNavItem> items) {
+  var areaStyle = theme.areaStyle(ThemeArea.subMenuTabBar);
+  var base =
+      theme.textStyleFor(context, TextSize.small, null) ?? const TextStyle();
+  var labelStyle = base.copyWith(fontWeight: FontWeight.w600);
+  var scaler = MediaQuery.textScalerOf(context);
+
+  var widest = 0.0;
+  var hasTrailing = false;
+  var hasIcons = false;
+  for (var item in items) {
+    hasTrailing = hasTrailing || item.trailing != null;
+    hasIcons = hasIcons || item.icon != null;
+    var painter = TextPainter(
+      text: TextSpan(text: item.label, style: labelStyle),
+      textDirection: Directionality.of(context),
+      textScaler: scaler,
+      maxLines: 1,
+    )..layout();
+    widest = math.max(widest, painter.width);
+  }
+
+  // Everything a row puts either side of its label: _SidebarNavRow's outer
+  // 8 and inner 14 horizontal padding, the leading icon and its gap when
+  // icons are on, an allowance for a trailing badge, the container's own
+  // 1px margin and its divider, and a few px of slack so text never sits
+  // flush against the edge.
+  var chrome = (8 + 14) * 2 +
+      (areaStyle.sidebarShowIcons && hasIcons ? 19 + 12 : 0) +
+      (hasTrailing ? 28 : 0) +
+      3 +
+      6;
+  return widest + chrome;
+}
+
 // Used on pages that have a secondary side menu when window has desktop size.
 class SecondarySideMenu extends StatelessWidget {
   final Widget? child;
@@ -237,7 +309,7 @@ class SecondarySideMenu extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer<ThemeNotifier>(builder: (context, theme, _) {
       var areaStyle = theme.areaStyle(ThemeArea.subMenuTabBar);
-      var effectiveWidth = areaStyle.width ?? width ?? 120;
+      var effectiveWidth = sidebarWidth(width);
       // The Sidebar's *Default* background is the "Sidebar background"
       // color palette slot, read live, so it can never silently diverge
       // from what the palette editor shows (a stored solidColor snapshot
@@ -251,13 +323,36 @@ class SecondarySideMenu extends StatelessWidget {
       var background = areaStyle.mode == AreaBackgroundMode.token
           ? (theme.activePreset?.sidebarBackground ?? theme.colors.surface)
           : bg.color;
+      // The right edge, by one rule in both branches below so that merely
+      // adding padding or a margin can't make the divider disappear: the
+      // area's own Border once one is set, otherwise the built-in divider.
+      // Setting a Border color is therefore also the only route to *no*
+      // divider -- split Border width per side and leave the right at 0.
+      //
+      // The built-in divider's "Default" looks the same as explicitly
+      // picking Outline (Borders/Dividers) from the palette; extraColors
+      // .sidebarDivider is an unrelated hardcoded fallback (black for every
+      // custom preset), not the preset's own outline swatch, so it's only
+      // reached by the built-in themes, which have no preset to read and so
+      // keep their original divider color.
       var liveBorderColor = areaStyle.resolveBorderColor(theme);
-      var hasCustomBorder = areaStyle.borderMode != AreaBackgroundMode.token &&
-              liveBorderColor != null &&
-              areaStyle.hasBorderWidth ||
-          !areaStyle.paddings.isZero ||
-          !areaStyle.margins.isZero;
-      if (!hasCustomBorder) {
+      var hasOwnBorder = areaStyle.borderMode != AreaBackgroundMode.token &&
+          liveBorderColor != null &&
+          areaStyle.hasBorderWidth;
+      var border = hasOwnBorder
+          ? areaStyle.borderSides(liveBorderColor)
+          : Border(
+              right: BorderSide(
+                  color: theme.activePreset?.outline ??
+                      theme.extraColors.sidebarDivider));
+      // Flutter refuses to paint a non-uniform border with a borderRadius,
+      // and a lone right-hand divider never is uniform (see AreaStyle
+      // .toBoxDecoration, which drops the radius on the same grounds).
+      var borderRadius = border.isUniform ? bg.borderRadius : null;
+
+      var spaced =
+          !areaStyle.paddings.isZero || !areaStyle.margins.isZero;
+      if (!hasOwnBorder && !spaced) {
         // Unmodified: reproduce the original plain divider exactly.
         return Container(
           margin: const EdgeInsets.all(1),
@@ -266,27 +361,13 @@ class SecondarySideMenu extends StatelessWidget {
             color: background,
             gradient: bg.gradient,
             image: bg.image,
-            border: areaStyle.sidebarShowRightDivider
-                ? Border(
-                    right: BorderSide(
-                        // "Default" should look the same as explicitly
-                        // picking Outline (Borders) from the palette --
-                        // extraColors.sidebarDivider is an unrelated,
-                        // hardcoded fallback (black for every custom
-                        // preset), not the preset's own outline swatch.
-                        // Built-in (non-custom) themes have no preset to
-                        // read, so they keep their original divider color.
-                        color: areaStyle.resolveSidebarDividerColor(theme) ??
-                            theme.activePreset?.outline ??
-                            theme.extraColors.sidebarDivider,
-                        width: areaStyle.sidebarDividerWidth))
-                : null,
+            border: border,
           ),
           child: child,
         );
       }
-      // Customized border/padding/margin: same background fill as above,
-      // just with the area's own border/spacing treatment on top.
+      // Customized border/padding/margin: same background fill and right
+      // edge as above, with the area's own spacing on top.
       return SizedBox(
         width: effectiveWidth,
         child: Container(
@@ -296,15 +377,8 @@ class SecondarySideMenu extends StatelessWidget {
             color: background,
             gradient: bg.gradient,
             image: bg.image,
-            // bg (from toBoxDecoration) already resolved the per-side
-            // border and, with it, whether the radius can survive alongside
-            // one -- reuse both rather than re-deriving them here.
-            border: (areaStyle.borderMode != AreaBackgroundMode.token &&
-                    liveBorderColor != null &&
-                    areaStyle.hasBorderWidth)
-                ? areaStyle.borderSides(liveBorderColor)
-                : null,
-            borderRadius: bg.borderRadius,
+            border: border,
+            borderRadius: borderRadius,
           ),
           child: child,
         ),
@@ -432,8 +506,6 @@ class SecondarySideMenuLayout extends StatefulWidget {
 final Map<String, double> _sidebarWidthCache = {};
 
 class _SecondarySideMenuLayoutState extends State<SecondarySideMenuLayout> {
-  bool _hovering = false;
-  bool _manuallyCollapsed = false;
   // Lets the user reopen the submenu with the toggle handle even while
   // autoHideOnDetail would otherwise keep it hidden (e.g. to jump to a
   // different tab while composing a post or reading a chat). Reset once
@@ -501,56 +573,30 @@ class _SecondarySideMenuLayoutState extends State<SecondarySideMenuLayout> {
       header: widget.header,
       footer: widget.footer);
 
-  // Thin edge strip for hoverReveal's collapsed state: a divider line with
-  // a pill-shaped chevron indicator, centered vertically -- styled like an
-  // active-item highlight so it reads as part of the submenu rather than a
-  // bare divider.
-  //
-  // _dividerColor/_dividerWidth resolve the same way as SecondarySideMenu's
-  // own plain-divider path above -- sidebarDividerColor, when set, should
-  // apply to every divider the sidebar draws, not just the always-visible
-  // one.
-  Color _dividerColor(ThemeNotifier theme) =>
-      theme
-          .areaStyle(ThemeArea.subMenuTabBar)
-          .resolveSidebarDividerColor(theme) ??
-      theme.activePreset?.outline ??
-      theme.extraColors.sidebarDivider;
-  double _dividerWidth(ThemeNotifier theme) =>
-      theme.areaStyle(ThemeArea.subMenuTabBar).sidebarDividerWidth;
-
-  Widget _hoverEdgeStrip(ThemeNotifier theme, {required bool showArrow}) {
-    const width = 22.0;
-    const pillHeight = 40.0;
-    return Container(
-      width: width,
-      decoration: BoxDecoration(
-        border: Border(
-            right: BorderSide(
-                color: _dividerColor(theme), width: _dividerWidth(theme))),
-      ),
-      child: !showArrow
-          ? null
-          : Center(
-              child: Container(
-                width: width,
-                height: pillHeight,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: theme.colors.primary.withValues(alpha: 0.16),
-                  borderRadius:
-                      const BorderRadius.horizontal(right: Radius.circular(8)),
-                ),
-                child: Icon(Icons.chevron_right,
-                    size: 22, color: theme.colors.primary),
-              ),
-            ),
-    );
+  // _dividerColor/_dividerWidth resolve the sidebar's right edge the same
+  // way SecondarySideMenu does -- the area's own Border once one is set,
+  // otherwise the built-in divider -- so every divider this sidebar draws
+  // matches, not just the always-visible one.
+  Color _dividerColor(ThemeNotifier theme) {
+    var style = theme.areaStyle(ThemeArea.subMenuTabBar);
+    if (style.borderMode != AreaBackgroundMode.token) {
+      var c = style.resolveBorderColor(theme);
+      if (c != null) return c;
+    }
+    return theme.activePreset?.outline ?? theme.extraColors.sidebarDivider;
   }
 
-  // Persistent handle for manualToggle and for reopening an
-  // autoHideOnDetail submenu -- always shown/tappable, not tied to any
-  // particular item, since the user is explicitly choosing to open/close it.
+  double _dividerWidth(ThemeNotifier theme) {
+    var style = theme.areaStyle(ThemeArea.subMenuTabBar);
+    var right = style.borderWidths.right;
+    return style.borderMode != AreaBackgroundMode.token && right > 0
+        ? right
+        : 1;
+  }
+
+  // Persistent handle for reopening an autoHideOnDetail submenu -- always
+  // shown/tappable, not tied to any particular item, since the user is
+  // explicitly choosing to open/close it.
   Widget _toggleHandle(ThemeNotifier theme,
           {required bool collapsed, required VoidCallback onTap}) =>
       Material(
@@ -576,11 +622,17 @@ class _SecondarySideMenuLayoutState extends State<SecondarySideMenuLayout> {
     return Consumer<ThemeNotifier>(builder: (context, theme, _) {
       var style = theme.areaStyle(ThemeArea.subMenuTabBar).subMenuStyle ??
           SubMenuStyle.alwaysVisible;
+      // A fixed-item sidebar sizes to its own labels; only a dynamic list,
+      // which has none to measure, falls back to the width its screen
+      // declared. See measuredSidebarWidth.
+      var menuWidth = widget.items != null
+          ? measuredSidebarWidth(context, theme, widget.items!)
+          : widget.width;
 
       if (style == SubMenuStyle.autoHideOnDetail && widget.isDetail) {
         if (_forceShowInDetail) {
           return Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            _menuList(widget.width),
+            _menuList(menuWidth),
             _toggleHandle(theme,
                 collapsed: false,
                 onTap: () => setState(() => _forceShowInDetail = false)),
@@ -595,50 +647,8 @@ class _SecondarySideMenuLayoutState extends State<SecondarySideMenuLayout> {
         ]);
       }
 
-      if (style == SubMenuStyle.hoverReveal) {
-        var expandedWidth = widget.width ?? 130;
-        // The panel is built once at its full width and slides in/out via
-        // position, not width -- animating width instead would reflow the
-        // text inside on every frame, reading as the labels "being typed
-        // out" rather than a clean slide.
-        return Stack(children: [
-          Row(children: [
-            const SizedBox(width: 22),
-            Expanded(child: widget.content),
-          ]),
-          Positioned(
-            top: 0,
-            bottom: 0,
-            left: 0,
-            width: 22,
-            child: MouseRegion(
-              onEnter: (_) => setState(() => _hovering = true),
-              child: IgnorePointer(
-                ignoring: _hovering,
-                child: _hoverEdgeStrip(theme,
-                    showArrow:
-                        theme.areaStyle(ThemeArea.subMenuTabBar).showHoverArrow),
-              ),
-            ),
-          ),
-          AnimatedPositioned(
-            duration: const Duration(milliseconds: 180),
-            curve: Curves.easeOut,
-            top: 0,
-            bottom: 0,
-            left: _hovering ? 0 : -expandedWidth,
-            width: expandedWidth,
-            child: MouseRegion(
-              onEnter: (_) => setState(() => _hovering = true),
-              onExit: (_) => setState(() => _hovering = false),
-              child: _menuList(expandedWidth),
-            ),
-          ),
-        ]);
-      }
-
       if (style == SubMenuStyle.resizable) {
-        var defaultWidth = widget.width ?? 130;
+        var defaultWidth = sidebarWidth(menuWidth);
         var currentWidth =
             (_resizableWidth ?? defaultWidth).clamp(_resizableMinWidth, _resizableMaxWidth);
         return Row(
@@ -673,20 +683,9 @@ class _SecondarySideMenuLayoutState extends State<SecondarySideMenuLayout> {
         );
       }
 
-      if (style == SubMenuStyle.manualToggle) {
-        return Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          if (!_manuallyCollapsed) _menuList(widget.width),
-          _toggleHandle(theme,
-              collapsed: _manuallyCollapsed,
-              onTap: () =>
-                  setState(() => _manuallyCollapsed = !_manuallyCollapsed)),
-          Expanded(child: widget.content),
-        ]);
-      }
-
       // alwaysVisible (default).
       return Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        _menuList(widget.width),
+        _menuList(menuWidth),
         Expanded(child: widget.content),
       ]);
     });

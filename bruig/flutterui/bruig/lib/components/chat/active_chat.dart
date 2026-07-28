@@ -345,7 +345,11 @@ class _ActiveChatState extends State<ActiveChat> with RouteAware {
       var expand = (chatStyle.messageLayoutMode ?? MessageLayoutMode.standard) !=
               MessageLayoutMode.standard &&
           chatStyle.expandMessageWidth;
-      var expandPad = expand ? (chatStyle.expandMessagePadding ?? 0) : 0.0;
+      // Per side, so the gap above the messages, beside them, and before
+      // the input bar can each be set independently.
+      var expandPad = expand
+          ? chatStyle.expandMessagePaddings
+          : SideValues.all(0);
       return ScreenWithChatSideMenu(
           client,
           Column(
@@ -368,10 +372,11 @@ class _ActiveChatState extends State<ActiveChat> with RouteAware {
                       RTCSessionHeader(rtc, rtcSession!, widget.audio, client),
                 ),
               if (chatStyle.enableMessageActions) _pinnedBar(chat),
-              if (expandPad > 0) SizedBox(height: expandPad),
+              if (expandPad.top > 0) SizedBox(height: expandPad.top),
               Expanded(
                 child: Padding(
-                  padding: EdgeInsets.symmetric(horizontal: expandPad),
+                  padding: EdgeInsets.only(
+                      left: expandPad.left, right: expandPad.right),
                   child: Stack(children: [
                     Messages(chat, client, _itemScrollController,
                         _itemPositionsListener),
@@ -396,7 +401,7 @@ class _ActiveChatState extends State<ActiveChat> with RouteAware {
                   ]),
                 ),
               ),
-              if (expandPad > 0) SizedBox(height: expandPad),
+              if (expandPad.bottom > 0) SizedBox(height: expandPad.bottom),
               if (!chat.killed)
                 Container(
                     padding: isScreenSmall

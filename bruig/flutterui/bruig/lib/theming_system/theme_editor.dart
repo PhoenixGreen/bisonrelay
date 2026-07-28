@@ -221,22 +221,33 @@ class _ThemeModeDropdownState extends State<ThemeModeDropdown> {
     var hasCurrent = entries.any((e) => e.key == current);
 
     return Row(mainAxisSize: MainAxisSize.min, children: [
-      DropdownButton<String>(
-        value: hasCurrent ? current : null,
-        hint: Text(theme.presetDisplayName),
-        items: entries
-            .map((e) => DropdownMenuItem(
-                  value: e.key,
-                  child: Text(e.key == "dark"
-                      ? "Default Theme"
-                      : (theme.customPresets[e.key.replaceFirst("custom:", "")]
-                              ?.name ??
-                          e.value.descr)),
-                ))
-            .toList(),
-        onChanged: (key) {
-          if (key != null) switchToTheme(theme, widget.mainMenu, key);
-        },
+      // Flexible + isExpanded, and ellipsis on every label: a preset name is
+      // arbitrary user text ("New Theme (unsaved)" already overflows a
+      // narrow window), and a bare DropdownButton in a Row is handed
+      // unbounded width, so it overflows rather than shrinking.
+      Flexible(
+        child: DropdownButton<String>(
+          value: hasCurrent ? current : null,
+          isExpanded: true,
+          hint: Text(theme.presetDisplayName,
+              overflow: TextOverflow.ellipsis),
+          items: entries
+              .map((e) => DropdownMenuItem(
+                    value: e.key,
+                    child: Text(
+                        e.key == "dark"
+                            ? "Default Theme"
+                            : (theme.customPresets[
+                                        e.key.replaceFirst("custom:", "")]
+                                    ?.name ??
+                                e.value.descr),
+                        overflow: TextOverflow.ellipsis),
+                  ))
+              .toList(),
+          onChanged: (key) {
+            if (key != null) switchToTheme(theme, widget.mainMenu, key);
+          },
+        ),
       ),
       if (preset != null)
         IconButton(

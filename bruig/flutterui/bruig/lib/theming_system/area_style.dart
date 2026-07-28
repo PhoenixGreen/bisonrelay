@@ -106,13 +106,6 @@ class AreaStyle {
   final SideValues? paddingSides;
   final SideValues? marginSides;
 
-  // width overrides the area's own layout width -- only meaningful for
-  // subMenuTabBar (the one area with a fixed, configurable panel width);
-  // null means "use that area's built-in default". Deliberately not
-  // exposed for navBar -- the sidebarx package's collapse/extend toggle
-  // assumes specific width values for its own animation.
-  final double? width;
-
   // height overrides the area's own layout height -- only meaningful for
   // header (the app bar's height); null means "use the default toolbar
   // height".
@@ -167,24 +160,15 @@ class AreaStyle {
   // means SubMenuStyle.alwaysVisible (today's behavior).
   final SubMenuStyle? subMenuStyle;
 
-  // showHoverArrow toggles the small chevron indicator shown on the
-  // collapsed edge strip when subMenuStyle is hoverReveal. True (shown) is
-  // the default/unmodified state.
-  final bool showHoverArrow;
-
   // sidebarCornerRadius is the corner radius of the pill-highlight rows;
   // 0 reads as a plain square-cornered row.
   final double sidebarCornerRadius;
   final bool sidebarShowIcons; // Leading icon on each row.
-  final bool sidebarShowRightDivider; // The plain right-edge divider line
-  // shown when the sidebar is otherwise unmodified; default on. Independent
-  // of the general border editor, which can already replace it entirely.
-  final Color? sidebarDividerColor; // Null = built-in default
-  // (extraColors.sidebarDivider). Only meaningful when
-  // sidebarShowRightDivider is on.
-  // Same live-slot-tracking role as solidColorIndex, for the divider color.
-  final int? sidebarDividerColorIndex;
-  final double sidebarDividerWidth; // Default 1 (BorderSide's own default).
+  // The sidebar's right edge used to have its own show/color/width
+  // settings here. It's the area's ordinary Border now -- Border color plus
+  // the right side of a per-side Border width -- which expresses the same
+  // thing without a second, sidebar-only way to say it. Left alone, the
+  // sidebar still draws its built-in divider (see SecondarySideMenu).
 
   // -------------------------------------------------------------------------
   // Chat -- see theming_area_chat.dart. Each toggle gates a distinct chat
@@ -196,6 +180,11 @@ class AreaStyle {
   final bool chatListDesignEnabled; // Rounded/glow chat list row styling.
   final double? chatListCornerRadius; // Null = built-in default (14).
   final Color? chatListAccentColor; // Null = built-in default (blue).
+  // chatListBackgroundColor is the row background the whole chat-list
+  // design is shaded from -- its hover and selected treatments included.
+  // Null = the built-in near-black.
+  final Color? chatListBackgroundColor;
+  final int? chatListBackgroundColorIndex;
   // Same live-slot-tracking role as solidColorIndex, for the accent color.
   final int? chatListAccentColorIndex;
   final double?
@@ -206,7 +195,18 @@ class AreaStyle {
   final bool enableChatSearch; // In-chat message search panel.
   final bool formattingToolbar; // Composer markdown formatting toolbar.
   final bool composerPolish; // Tip button, glow send, dynamic hint.
-  final bool squareBubbles; // Sharp vs. rounded message bubble corners.
+  // bubbleCorners hands the message bubbles' corners to the user: a radius
+  // per direction (each splittable per corner via the *Sides fields) and a
+  // shape for how those corners are cut. Off -- the default -- leaves both
+  // directions on the built-in radius. It replaces a "Square bubbles"
+  // toggle, whose one alternative (a 4px radius) is now just one of the
+  // values these express.
+  final bool bubbleCorners;
+  final double bubbleRadiusSent;
+  final SideValues? bubbleRadiusSentSides;
+  final double bubbleRadiusReceived;
+  final SideValues? bubbleRadiusReceivedSides;
+  final BubbleCornerStyle bubbleCornerStyle;
   final MessageLayoutMode? messageLayoutMode; // Null = standard/default.
   // avatarTheme colors the fallback avatar circle. Despite living on the
   // Chat area it applies app-wide -- every avatar in the app funnels
@@ -217,6 +217,7 @@ class AreaStyle {
   // only meaningful when messageLayoutMode != null/standard.
   final double? expandMessagePadding; // Null = built-in default (0); only
   // meaningful when expandMessageWidth is on.
+  final SideValues? expandMessagePaddingSides; // Per-side split of it.
 
   // -------------------------------------------------------------------------
   // Realtime chat -- see theming_area_realtimechat.dart.
@@ -326,7 +327,6 @@ class AreaStyle {
     this.borderRadiusSides,
     this.paddingSides,
     this.marginSides,
-    this.width,
     this.height,
     this.contentAlign,
     this.logoSize,
@@ -334,18 +334,15 @@ class AreaStyle {
     this.showLogo = false,
     this.logoAlign,
     this.subMenuStyle,
-    this.showHoverArrow = true,
     this.sidebarCornerRadius = 12,
     this.sidebarShowIcons = false,
-    this.sidebarShowRightDivider = true,
-    this.sidebarDividerColor,
-    this.sidebarDividerColorIndex,
-    this.sidebarDividerWidth = 1,
     this.enableMessageActions = false,
     this.showChatListLastMessage = false,
     this.chatListDesignEnabled = false,
     this.chatListCornerRadius,
     this.chatListAccentColor,
+    this.chatListBackgroundColor,
+    this.chatListBackgroundColorIndex,
     this.chatListAccentColorIndex,
     this.chatListGlowIntensity,
     this.chatListTopHighlight = true,
@@ -353,11 +350,17 @@ class AreaStyle {
     this.enableChatSearch = false,
     this.formattingToolbar = false,
     this.composerPolish = false,
-    this.squareBubbles = false,
+    this.bubbleCorners = false,
+    this.bubbleRadiusSent = 10,
+    this.bubbleRadiusSentSides,
+    this.bubbleRadiusReceived = 10,
+    this.bubbleRadiusReceivedSides,
+    this.bubbleCornerStyle = BubbleCornerStyle.rounded,
     this.messageLayoutMode,
     this.avatarTheme = AvatarTheme.standard,
     this.expandMessageWidth = false,
     this.expandMessagePadding,
+    this.expandMessagePaddingSides,
     this.autoUnmuteOnJoin = false,
     this.enhancedCallIndicators = false,
     this.rtcAudioTestPanel = false,
@@ -427,8 +430,6 @@ class AreaStyle {
     bool clearPaddingSides = false,
     SideValues? marginSides,
     bool clearMarginSides = false,
-    double? width,
-    bool clearWidth = false,
     double? height,
     bool clearHeight = false,
     ContentAlign? contentAlign,
@@ -437,21 +438,18 @@ class AreaStyle {
     bool? showLogo,
     ContentAlign? logoAlign,
     SubMenuStyle? subMenuStyle,
-    bool? showHoverArrow,
     double? sidebarCornerRadius,
     bool? sidebarShowIcons,
-    bool? sidebarShowRightDivider,
-    Color? sidebarDividerColor,
-    int? sidebarDividerColorIndex,
-    bool clearSidebarDividerColorIndex = false,
-    bool clearSidebarDividerColor = false,
-    double? sidebarDividerWidth,
     bool? enableMessageActions,
     bool? showChatListLastMessage,
     bool? chatListDesignEnabled,
     double? chatListCornerRadius,
     bool clearChatListCornerRadius = false,
     Color? chatListAccentColor,
+    Color? chatListBackgroundColor,
+    bool clearChatListBackgroundColor = false,
+    int? chatListBackgroundColorIndex,
+    bool clearChatListBackgroundColorIndex = false,
     int? chatListAccentColorIndex,
     bool clearChatListAccentColorIndex = false,
     bool clearChatListAccentColor = false,
@@ -462,12 +460,21 @@ class AreaStyle {
     bool? enableChatSearch,
     bool? formattingToolbar,
     bool? composerPolish,
-    bool? squareBubbles,
+    bool? bubbleCorners,
+    double? bubbleRadiusSent,
+    SideValues? bubbleRadiusSentSides,
+    bool clearBubbleRadiusSentSides = false,
+    double? bubbleRadiusReceived,
+    SideValues? bubbleRadiusReceivedSides,
+    bool clearBubbleRadiusReceivedSides = false,
+    BubbleCornerStyle? bubbleCornerStyle,
     MessageLayoutMode? messageLayoutMode,
     AvatarTheme? avatarTheme,
     bool clearMessageLayoutMode = false,
     bool? expandMessageWidth,
     double? expandMessagePadding,
+    SideValues? expandMessagePaddingSides,
+    bool clearExpandMessagePaddingSides = false,
     bool clearExpandMessagePadding = false,
     bool? autoUnmuteOnJoin,
     bool? enhancedCallIndicators,
@@ -540,7 +547,6 @@ class AreaStyle {
             clearPaddingSides ? null : (paddingSides ?? this.paddingSides),
         marginSides:
             clearMarginSides ? null : (marginSides ?? this.marginSides),
-        width: clearWidth ? null : (width ?? this.width),
         height: clearHeight ? null : (height ?? this.height),
         contentAlign: contentAlign ?? this.contentAlign,
         logoSize: logoSize ?? this.logoSize,
@@ -548,18 +554,8 @@ class AreaStyle {
         showLogo: showLogo ?? this.showLogo,
         logoAlign: logoAlign ?? this.logoAlign,
         subMenuStyle: subMenuStyle ?? this.subMenuStyle,
-        showHoverArrow: showHoverArrow ?? this.showHoverArrow,
         sidebarCornerRadius: sidebarCornerRadius ?? this.sidebarCornerRadius,
         sidebarShowIcons: sidebarShowIcons ?? this.sidebarShowIcons,
-        sidebarShowRightDivider:
-            sidebarShowRightDivider ?? this.sidebarShowRightDivider,
-        sidebarDividerColorIndex: clearSidebarDividerColorIndex
-            ? null
-            : (sidebarDividerColorIndex ?? this.sidebarDividerColorIndex),
-        sidebarDividerColor: clearSidebarDividerColor
-            ? null
-            : (sidebarDividerColor ?? this.sidebarDividerColor),
-        sidebarDividerWidth: sidebarDividerWidth ?? this.sidebarDividerWidth,
         enableMessageActions: enableMessageActions ?? this.enableMessageActions,
         showChatListLastMessage:
             showChatListLastMessage ?? this.showChatListLastMessage,
@@ -571,6 +567,13 @@ class AreaStyle {
         chatListAccentColorIndex: clearChatListAccentColorIndex
             ? null
             : (chatListAccentColorIndex ?? this.chatListAccentColorIndex),
+        chatListBackgroundColor: clearChatListBackgroundColor
+            ? null
+            : (chatListBackgroundColor ?? this.chatListBackgroundColor),
+        chatListBackgroundColorIndex: clearChatListBackgroundColorIndex
+            ? null
+            : (chatListBackgroundColorIndex ??
+                this.chatListBackgroundColorIndex),
         chatListAccentColor: clearChatListAccentColor
             ? null
             : (chatListAccentColor ?? this.chatListAccentColor),
@@ -582,12 +585,25 @@ class AreaStyle {
         enableChatSearch: enableChatSearch ?? this.enableChatSearch,
         formattingToolbar: formattingToolbar ?? this.formattingToolbar,
         composerPolish: composerPolish ?? this.composerPolish,
-        squareBubbles: squareBubbles ?? this.squareBubbles,
+        bubbleCorners: bubbleCorners ?? this.bubbleCorners,
+        bubbleRadiusSent: bubbleRadiusSent ?? this.bubbleRadiusSent,
+        bubbleRadiusSentSides: clearBubbleRadiusSentSides
+            ? null
+            : (bubbleRadiusSentSides ?? this.bubbleRadiusSentSides),
+        bubbleRadiusReceived:
+            bubbleRadiusReceived ?? this.bubbleRadiusReceived,
+        bubbleRadiusReceivedSides: clearBubbleRadiusReceivedSides
+            ? null
+            : (bubbleRadiusReceivedSides ?? this.bubbleRadiusReceivedSides),
+        bubbleCornerStyle: bubbleCornerStyle ?? this.bubbleCornerStyle,
         avatarTheme: avatarTheme ?? this.avatarTheme,
         messageLayoutMode: clearMessageLayoutMode
             ? null
             : (messageLayoutMode ?? this.messageLayoutMode),
         expandMessageWidth: expandMessageWidth ?? this.expandMessageWidth,
+        expandMessagePaddingSides: clearExpandMessagePaddingSides
+            ? null
+            : (expandMessagePaddingSides ?? this.expandMessagePaddingSides),
         expandMessagePadding: clearExpandMessagePadding
             ? null
             : (expandMessagePadding ?? this.expandMessagePadding),
@@ -663,7 +679,6 @@ class AreaStyle {
           "borderRadiusSides": borderRadiusSides!.toJson(),
         if (paddingSides != null) "paddingSides": paddingSides!.toJson(),
         if (marginSides != null) "marginSides": marginSides!.toJson(),
-        if (width != null) "width": width,
         if (height != null) "height": height,
         if (contentAlign != null) "contentAlign": contentAlign!.name,
         if (logoSize != null) "logoSize": logoSize,
@@ -671,18 +686,9 @@ class AreaStyle {
         if (showLogo) "showLogo": showLogo,
         if (logoAlign != null) "logoAlign": logoAlign!.name,
         if (subMenuStyle != null) "subMenuStyle": subMenuStyle!.name,
-        if (!showHoverArrow) "showHoverArrow": showHoverArrow,
         if (sidebarCornerRadius != 12)
           "sidebarCornerRadius": sidebarCornerRadius,
         if (sidebarShowIcons) "sidebarShowIcons": sidebarShowIcons,
-        if (!sidebarShowRightDivider)
-          "sidebarShowRightDivider": sidebarShowRightDivider,
-        if (sidebarDividerColor != null)
-          "sidebarDividerColor": colorToHex(sidebarDividerColor!),
-        if (sidebarDividerColorIndex != null)
-          "sidebarDividerColorIndex": sidebarDividerColorIndex,
-        if (sidebarDividerWidth != 1)
-          "sidebarDividerWidth": sidebarDividerWidth,
         if (enableMessageActions) "enableMessageActions": enableMessageActions,
         if (showChatListLastMessage)
           "showChatListLastMessage": showChatListLastMessage,
@@ -692,6 +698,10 @@ class AreaStyle {
           "chatListCornerRadius": chatListCornerRadius,
         if (chatListAccentColor != null)
           "chatListAccentColor": colorToHex(chatListAccentColor!),
+        if (chatListBackgroundColor != null)
+          "chatListBackgroundColor": colorToHex(chatListBackgroundColor!),
+        if (chatListBackgroundColorIndex != null)
+          "chatListBackgroundColorIndex": chatListBackgroundColorIndex,
         if (chatListAccentColorIndex != null)
           "chatListAccentColorIndex": chatListAccentColorIndex,
         if (chatListGlowIntensity != null)
@@ -701,7 +711,16 @@ class AreaStyle {
         if (enableChatSearch) "enableChatSearch": enableChatSearch,
         if (formattingToolbar) "formattingToolbar": formattingToolbar,
         if (composerPolish) "composerPolish": composerPolish,
-        if (squareBubbles) "squareBubbles": squareBubbles,
+        if (bubbleCorners) "bubbleCorners": bubbleCorners,
+        if (bubbleRadiusSent != 10) "bubbleRadiusSent": bubbleRadiusSent,
+        if (bubbleRadiusSentSides != null)
+          "bubbleRadiusSentSides": bubbleRadiusSentSides!.toJson(),
+        if (bubbleRadiusReceived != 10)
+          "bubbleRadiusReceived": bubbleRadiusReceived,
+        if (bubbleRadiusReceivedSides != null)
+          "bubbleRadiusReceivedSides": bubbleRadiusReceivedSides!.toJson(),
+        if (bubbleCornerStyle != BubbleCornerStyle.rounded)
+          "bubbleCornerStyle": bubbleCornerStyle.name,
         if (messageLayoutMode != null)
           "messageLayoutMode": messageLayoutMode!.name,
         if (avatarTheme != AvatarTheme.standard)
@@ -709,6 +728,8 @@ class AreaStyle {
         if (expandMessageWidth) "expandMessageWidth": expandMessageWidth,
         if (expandMessagePadding != null)
           "expandMessagePadding": expandMessagePadding,
+        if (expandMessagePaddingSides != null)
+          "expandMessagePaddingSides": expandMessagePaddingSides!.toJson(),
         if (autoUnmuteOnJoin) "autoUnmuteOnJoin": autoUnmuteOnJoin,
         if (enhancedCallIndicators)
           "enhancedCallIndicators": enhancedCallIndicators,
@@ -801,7 +822,6 @@ class AreaStyle {
       borderRadiusSides: SideValues.fromJson(j["borderRadiusSides"]),
       paddingSides: SideValues.fromJson(j["paddingSides"]),
       marginSides: SideValues.fromJson(j["marginSides"]),
-      width: number("width"),
       height: number("height"),
       contentAlign: _enumOrNull(ContentAlign.values, j["contentAlign"]),
       logoSize: number("logoSize"),
@@ -809,19 +829,16 @@ class AreaStyle {
       showLogo: flag("showLogo"),
       logoAlign: _enumOrNull(ContentAlign.values, j["logoAlign"]),
       subMenuStyle: _enumOrNull(SubMenuStyle.values, j["subMenuStyle"]),
-      showHoverArrow: flag("showHoverArrow", fallback: true),
       sidebarCornerRadius: number("sidebarCornerRadius") ?? 12,
       sidebarShowIcons: flag("sidebarShowIcons"),
-      sidebarShowRightDivider: flag("sidebarShowRightDivider", fallback: true),
-      sidebarDividerColor: color("sidebarDividerColor"),
-      sidebarDividerColorIndex:
-          (j["sidebarDividerColorIndex"] as num?)?.toInt(),
-      sidebarDividerWidth: number("sidebarDividerWidth") ?? 1,
       enableMessageActions: flag("enableMessageActions"),
       showChatListLastMessage: flag("showChatListLastMessage"),
       chatListDesignEnabled: flag("chatListDesignEnabled"),
       chatListCornerRadius: number("chatListCornerRadius"),
       chatListAccentColor: color("chatListAccentColor"),
+      chatListBackgroundColor: color("chatListBackgroundColor"),
+      chatListBackgroundColorIndex:
+          (j["chatListBackgroundColorIndex"] as num?)?.toInt(),
       chatListAccentColorIndex: (j["chatListAccentColorIndex"] as num?)?.toInt(),
       chatListGlowIntensity: number("chatListGlowIntensity"),
       chatListTopHighlight: flag("chatListTopHighlight", fallback: true),
@@ -829,7 +846,18 @@ class AreaStyle {
       enableChatSearch: flag("enableChatSearch"),
       formattingToolbar: flag("formattingToolbar"),
       composerPolish: flag("composerPolish"),
-      squareBubbles: flag("squareBubbles"),
+      // "squareBubbles" is what this was before the corners became fully
+      // adjustable: a toggle whose on state meant a 4px radius both ways.
+      bubbleCorners: flag("bubbleCorners") || flag("squareBubbles"),
+      bubbleRadiusSent:
+          number("bubbleRadiusSent") ?? (flag("squareBubbles") ? 4 : 10),
+      bubbleRadiusSentSides: SideValues.fromJson(j["bubbleRadiusSentSides"]),
+      bubbleRadiusReceived:
+          number("bubbleRadiusReceived") ?? (flag("squareBubbles") ? 4 : 10),
+      bubbleRadiusReceivedSides:
+          SideValues.fromJson(j["bubbleRadiusReceivedSides"]),
+      bubbleCornerStyle: _enumOr(BubbleCornerStyle.values,
+          j["bubbleCornerStyle"], BubbleCornerStyle.rounded),
       messageLayoutMode:
           _enumOrNull(MessageLayoutMode.values, j["messageLayoutMode"]),
       // "monochromeAvatars" is what this was before it grew from a toggle
@@ -843,6 +871,8 @@ class AreaStyle {
               : AvatarTheme.standard),
       expandMessageWidth: flag("expandMessageWidth"),
       expandMessagePadding: number("expandMessagePadding"),
+      expandMessagePaddingSides:
+          SideValues.fromJson(j["expandMessagePaddingSides"]),
       autoUnmuteOnJoin: flag("autoUnmuteOnJoin"),
       enhancedCallIndicators: flag("enhancedCallIndicators"),
       rtcAudioTestPanel: flag("rtcAudioTestPanel"),
@@ -891,6 +921,16 @@ class AreaStyle {
   SideValues get paddings => paddingSides ?? SideValues.all(padding);
   SideValues get margins => marginSides ?? SideValues.all(margin);
 
+  // The chat bubbles' corner radii and the conversation panel's inset,
+  // resolved the same way: the per-side split if there is one, otherwise
+  // the single value all round.
+  SideValues get bubbleRadiiSent =>
+      bubbleRadiusSentSides ?? SideValues.all(bubbleRadiusSent);
+  SideValues get bubbleRadiiReceived =>
+      bubbleRadiusReceivedSides ?? SideValues.all(bubbleRadiusReceived);
+  SideValues get expandMessagePaddings =>
+      expandMessagePaddingSides ?? SideValues.all(expandMessagePadding ?? 0);
+
   // hasBorderWidth is "this style asks for a border on at least one side",
   // the per-side-aware replacement for the old `borderWidth > 0` checks.
   bool get hasBorderWidth => borderWidths.largest > 0;
@@ -931,10 +971,10 @@ class AreaStyle {
       _liveColor(theme, borderColorIndex, borderColor);
   Color? resolveSolidColor(ThemeNotifier theme) =>
       _liveColor(theme, solidColorIndex, solidColor);
-  Color? resolveSidebarDividerColor(ThemeNotifier theme) =>
-      _liveColor(theme, sidebarDividerColorIndex, sidebarDividerColor);
   Color? resolveChatListAccentColor(ThemeNotifier theme) =>
       _liveColor(theme, chatListAccentColorIndex, chatListAccentColor);
+  Color? resolveChatListBackgroundColor(ThemeNotifier theme) =>
+      _liveColor(theme, chatListBackgroundColorIndex, chatListBackgroundColor);
 
   // _liveColors is _liveColor over a gradient's color list, pairing each
   // color with its own slot binding. `indexes` may be shorter than `raw`
@@ -969,10 +1009,11 @@ class AreaStyle {
       gradientColorIndexes: gradientColorIndexes.map(remap).toList(),
       borderGradientColorIndexes:
           borderGradientColorIndexes.map(remap).toList(),
-      sidebarDividerColorIndex: remap(sidebarDividerColorIndex),
-      clearSidebarDividerColorIndex: remap(sidebarDividerColorIndex) == null,
       chatListAccentColorIndex: remap(chatListAccentColorIndex),
       clearChatListAccentColorIndex: remap(chatListAccentColorIndex) == null,
+      chatListBackgroundColorIndex: remap(chatListBackgroundColorIndex),
+      clearChatListBackgroundColorIndex:
+          remap(chatListBackgroundColorIndex) == null,
     );
   }
 

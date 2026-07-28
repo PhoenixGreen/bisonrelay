@@ -19,6 +19,7 @@ export 'package:bruig/theming_system/area_fill.dart';
 export 'package:bruig/theming_system/area_options.dart';
 export 'package:bruig/theming_system/area_sides.dart';
 export 'package:bruig/theming_system/area_style.dart';
+export 'package:bruig/theming_system/bubble_shape.dart';
 export 'package:bruig/theming_system/color_hex.dart';
 export 'package:bruig/theming_system/color_palette.dart';
 export 'package:bruig/theming_system/preset.dart';

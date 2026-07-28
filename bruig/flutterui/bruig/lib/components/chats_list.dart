@@ -152,11 +152,27 @@ class _ChatHeadingWState extends State<_ChatHeadingW> {
     return "";
   }
 
+  // _shade lightens (positive) or darkens (negative) a color by a fixed
+  // step of HSL lightness. The chat-list design derives every one of its
+  // row treatments from a single background color this way, so picking a
+  // new background re-shades the hover glow, the top hairline and the
+  // selected row's fill along with it, instead of those staying pinned to
+  // the near-blacks the design was originally drawn against.
+  static Color _shade(Color base, double delta) {
+    var hsl = HSLColor.fromColor(base);
+    return hsl.withLightness((hsl.lightness + delta).clamp(0.0, 1.0)).toColor();
+  }
+
   // Rounded card w/ soft glow (inactive) or an accent-colored selected-left-
   // edge + glow (active). Only used when chatListDesignEnabled is on --
   // otherwise the tile keeps its plain ListTile selected/tileColor styling.
+  //
+  // The deltas below reproduce the original design's own relationships to
+  // its background (0xFF171717): the hover/ambient glow sits about 5% of
+  // lightness above it, its far edge ~3.5% below, the top hairline ~9%
+  // above, and a selected row's fill ~3% below.
   Widget _wrapSelected(bool isActive, double radius, Color accent,
-      double glowIntensity, bool topHighlight, Widget tile) {
+      double glowIntensity, bool topHighlight, Color background, Widget tile) {
     // ListTile.tileColor/selectedTileColor need a nearby Material ancestor
     // to paint into and to render ink splashes -- the ClipRRect below
     // otherwise leaves them without one. MaterialType.transparency paints
@@ -168,13 +184,16 @@ class _ChatHeadingWState extends State<_ChatHeadingW> {
         margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(radius),
-          color: topHighlight ? null : const Color(0xFF171717),
+          color: topHighlight ? null : background,
           gradient: topHighlight
-              ? const RadialGradient(
-                  center: Alignment(-0.76, -1.2),
+              ? RadialGradient(
+                  center: const Alignment(-0.76, -1.2),
                   radius: 1.2,
-                  colors: [Color(0xFF242424), Color(0xFF0E0E0E)],
-                  stops: [0.0, 0.52],
+                  colors: [
+                    _shade(background, 0.05),
+                    _shade(background, -0.035),
+                  ],
+                  stops: const [0.0, 0.52],
                 )
               : null,
         ),
@@ -189,8 +208,8 @@ class _ChatHeadingWState extends State<_ChatHeadingW> {
                   left: 0,
                   right: 0,
                   child: IgnorePointer(
-                    child:
-                        Container(height: 1, color: const Color(0xFF2E2E2E)),
+                    child: Container(
+                        height: 1, color: _shade(background, 0.09)),
                   ),
                 ),
             ],
@@ -222,7 +241,7 @@ class _ChatHeadingWState extends State<_ChatHeadingW> {
             right: Radius.circular(radius),
           ),
           child: Container(
-            color: const Color(0xFF0B0F16),
+            color: _shade(background, -0.03),
             child: tile,
           ),
         ),
@@ -240,6 +259,10 @@ class _ChatHeadingWState extends State<_ChatHeadingW> {
     var accentColor = chatStyle.resolveChatListAccentColor(theme) ??
         theme.activePreset?.sidebarAccent ??
         _clpBlue;
+    // The near-black the chat-list design was drawn against; every other
+    // shade in it is derived from whatever this is set to (see _shade).
+    var backgroundColor = chatStyle.resolveChatListBackgroundColor(theme) ??
+        const Color(0xFF171717);
     var glowIntensity = chatStyle.chatListGlowIntensity ?? 1.0;
     var topHighlight = chatStyle.chatListTopHighlight;
     var isActive = chat.active;
@@ -359,7 +382,7 @@ class _ChatHeadingWState extends State<_ChatHeadingW> {
     // paint into -- see the comment on _wrapSelected.
     Widget wrap(Widget tile) => chatListDesign
         ? _wrapSelected(isActive, cornerRadius, accentColor, glowIntensity,
-            topHighlight, tile)
+            topHighlight, backgroundColor, tile)
         : Material(type: MaterialType.transparency, child: tile);
 
     bool isScreenSmall = checkIsScreenSmall(context);
@@ -379,6 +402,13 @@ class _ChatHeadingWState extends State<_ChatHeadingW> {
                     tileColor: chatListDesign ? Colors.transparent : null,
                     selectedTileColor:
                         chatListDesign ? Colors.transparent : null,
+                    // Hovering lifts the row off its own background rather
+                    // than washing it with Material's theme-wide hover
+                    // color, which is derived from the app's primary and so
+                    // wouldn't follow the background chosen here.
+                    hoverColor: chatListDesign
+                        ? _shade(backgroundColor, 0.06)
+                        : null,
                     horizontalTitleGap: 12,
                     contentPadding: const EdgeInsets.only(
                       left: 10,

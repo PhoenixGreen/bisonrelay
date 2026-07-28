@@ -269,7 +269,6 @@ class _FeedScreenState extends State<FeedScreen> {
                 // width -- left unset here it fell back to
                 // SecondarySideMenu's 120 default, too narrow for
                 // "Subscriptions" to fit on one line.
-                width: 140,
                 storageKey: "feed",
                 items: feedBarItems(onItemChanged, tabIndex),
                 // Detail views that don't need the tab list: reading a
