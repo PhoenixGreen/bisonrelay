@@ -84,6 +84,55 @@ class OverviewScreen extends StatefulWidget {
   State<OverviewScreen> createState() => _OverviewScreenState();
 }
 
+// _CollapsedSidebarDrawer paints whichever sidebar the current screen has
+// handed over, sliding it in from the left edge over everything else. It
+// renders nothing at all until one is both registered and opened.
+class _CollapsedSidebarDrawer extends StatelessWidget {
+  final ClientModel client;
+  const _CollapsedSidebarDrawer(this.client);
+
+  @override
+  Widget build(BuildContext context) {
+    var collapsed = client.ui.collapsedSidebar;
+    return ListenableBuilder(
+      listenable: collapsed,
+      builder: (context, _) {
+        if (!collapsed.available) return const Empty();
+        var builder = collapsed.builder!;
+        return Stack(fit: StackFit.expand, children: [
+          // A tap anywhere off the drawer puts it away. IgnorePointer while
+          // closed so the scrim doesn't swallow taps meant for the content
+          // underneath it. Positioned.fill because a ColoredBox has no size
+          // of its own -- left to size itself the whole drawer collapsed to
+          // nothing and the button appeared to do nothing at all.
+          Positioned.fill(
+            child: IgnorePointer(
+              ignoring: !collapsed.open,
+              child: AnimatedOpacity(
+                duration: const Duration(milliseconds: 180),
+                opacity: collapsed.open ? 1 : 0,
+                child: GestureDetector(
+                  onTap: collapsed.close,
+                  child: const ColoredBox(color: Color(0x99000000)),
+                ),
+              ),
+            ),
+          ),
+          AnimatedPositioned(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOut,
+            top: 0,
+            bottom: 0,
+            left: collapsed.open ? 0 : -collapsed.width,
+            width: collapsed.width,
+            child: Builder(builder: builder),
+          ),
+        ]);
+      },
+    );
+  }
+}
+
 class _OverviewScreenAppBarConnState {
   final Widget tag;
 
@@ -675,13 +724,21 @@ class _OverviewScreenState extends State<OverviewScreen> {
           widget.snackBar,
           ThemedArea(
               area: ThemeArea.masterBackground,
-              child: Row(children: [
-            isScreenSmall
-                ? const Empty()
-                : Sidebar(widget.client, widget.mainMenu, widget.ntfns, navKey,
-                    widget.feed),
-            Expanded(child: contentColumn),
-          ]))),
+              child: Stack(fit: StackFit.expand, children: [
+                Row(children: [
+                  isScreenSmall
+                      ? const Empty()
+                      : Sidebar(widget.client, widget.mainMenu, widget.ntfns,
+                          navKey, widget.feed),
+                  Expanded(child: contentColumn),
+                ]),
+                // The narrow-window sidebar drawer. It's painted here, above
+                // the Row, so it can slide over the main navigation -- the
+                // screen that owns the sidebar sits inside the content area
+                // and could only ever draw to the right of it. See
+                // CollapsedSidebarModel.
+                Positioned.fill(child: _CollapsedSidebarDrawer(widget.client)),
+              ]))),
       bottomNavigationBar: isScreenSmall && !removeBottomBar
           ? Consumer<ThemeNotifier>(
               builder: (context, theme, _) => BottomNavigationBar(

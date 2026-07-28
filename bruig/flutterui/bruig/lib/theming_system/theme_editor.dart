@@ -220,42 +220,50 @@ class _ThemeModeDropdownState extends State<ThemeModeDropdown> {
     var current = theme.getThemeMode();
     var hasCurrent = entries.any((e) => e.key == current);
 
-    return Row(mainAxisSize: MainAxisSize.min, children: [
-      // Flexible + isExpanded, and ellipsis on every label: a preset name is
-      // arbitrary user text ("New Theme (unsaved)" already overflows a
-      // narrow window), and a bare DropdownButton in a Row is handed
-      // unbounded width, so it overflows rather than shrinking.
-      Flexible(
-        child: DropdownButton<String>(
-          value: hasCurrent ? current : null,
-          isExpanded: true,
-          hint: Text(theme.presetDisplayName,
-              overflow: TextOverflow.ellipsis),
-          items: entries
-              .map((e) => DropdownMenuItem(
-                    value: e.key,
-                    child: Text(
-                        e.key == "dark"
-                            ? "Default Theme"
-                            : (theme.customPresets[
-                                        e.key.replaceFirst("custom:", "")]
-                                    ?.name ??
-                                e.value.descr),
-                        overflow: TextOverflow.ellipsis),
-                  ))
-              .toList(),
-          onChanged: (key) {
-            if (key != null) switchToTheme(theme, widget.mainMenu, key);
-          },
+    // Capped rather than left to fill: this sits in a Wrap beside the New
+    // Preset/import/export buttons, and a Wrap hands its children the whole
+    // line, which isExpanded below would then take -- pushing every button
+    // onto its own row. Inside the cap the dropdown still shrinks, so a
+    // narrow window wraps the buttons instead of overflowing.
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 260),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        // Flexible + isExpanded, and ellipsis on every label: a preset name is
+        // arbitrary user text ("New Theme (unsaved)" already overflows a
+        // narrow window), and a bare DropdownButton in a Row is handed
+        // unbounded width, so it overflows rather than shrinking.
+        Flexible(
+          child: DropdownButton<String>(
+            value: hasCurrent ? current : null,
+            isExpanded: true,
+            hint: Text(theme.presetDisplayName,
+                overflow: TextOverflow.ellipsis),
+            items: entries
+                .map((e) => DropdownMenuItem(
+                      value: e.key,
+                      child: Text(
+                          e.key == "dark"
+                              ? "Default Theme"
+                              : (theme.customPresets[
+                                          e.key.replaceFirst("custom:", "")]
+                                      ?.name ??
+                                  e.value.descr),
+                          overflow: TextOverflow.ellipsis),
+                    ))
+                .toList(),
+            onChanged: (key) {
+              if (key != null) switchToTheme(theme, widget.mainMenu, key);
+            },
+          ),
         ),
-      ),
-      if (preset != null)
-        IconButton(
-          icon: const Icon(Icons.edit_outlined, size: 18),
-          tooltip: "Rename",
-          onPressed: () => _startRename(preset),
-        ),
-    ]);
+        if (preset != null)
+          IconButton(
+            icon: const Icon(Icons.edit_outlined, size: 18),
+            tooltip: "Rename",
+            onPressed: () => _startRename(preset),
+          ),
+      ]),
+    );
   }
 }
 

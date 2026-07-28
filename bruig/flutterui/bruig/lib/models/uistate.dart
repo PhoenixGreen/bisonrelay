@@ -105,6 +105,69 @@ class OverviewActivePath extends ChangeNotifier {
       ].contains(route);
 }
 
+// CollapsedSidebarModel connects the three parts of the narrow-window
+// sidebar drawer, which live in three different places in the tree:
+//
+// - the screen that owns a sidebar (SecondarySideMenuLayout, or the feed's
+//   own panel) registers how to build it, and stops rendering it inline;
+// - the main navigation opens it, when its already-selected destination is
+//   tapped again (see Sidebar.switchScreen);
+// - OverviewScreen paints it, above everything, when it's open -- which is
+//   what lets the drawer cover the main navigation rather than starting
+//   beside it.
+//
+// The screen can't paint it itself: it sits inside the content area, so
+// anything it draws is clipped to the right of the main nav.
+class CollapsedSidebarModel extends ChangeNotifier {
+  WidgetBuilder? _builder;
+  double _width = 200;
+  bool _open = false;
+
+  // available is "some screen currently has a collapsed sidebar", which is
+  // what decides whether the main nav's re-tap opens anything.
+  bool get available => _builder != null;
+  WidgetBuilder? get builder => _builder;
+  double get width => _width;
+  bool get open => _open && available;
+
+  // register/unregister are called from a screen's build, so they defer
+  // notifying until the frame is done -- listeners rebuilding mid-build
+  // would throw.
+  //
+  // The builder itself is stored every time (it's a fresh closure on each
+  // build, so it can never compare equal), but only a change in whether
+  // there *is* one, or in how wide it is, is worth telling anyone about --
+  // notifying on every build would wake the drawer once per frame for no
+  // visible change.
+  void register(WidgetBuilder builder, double width) {
+    var changed = _builder == null || _width != width;
+    _builder = builder;
+    _width = width;
+    if (changed) _notifyLater();
+  }
+
+  void unregister() {
+    if (_builder == null) return;
+    _builder = null;
+    _open = false;
+    _notifyLater();
+  }
+
+  void toggle() {
+    _open = !_open;
+    notifyListeners();
+  }
+
+  void close() {
+    if (!_open) return;
+    _open = false;
+    notifyListeners();
+  }
+
+  void _notifyLater() => WidgetsBinding.instance
+      .addPostFrameCallback((_) => notifyListeners());
+}
+
 // UIStateModel holds state related to the app's UI.
 class UIStateModel {
   final ShowProfileModel showProfile = ShowProfileModel();
@@ -115,6 +178,7 @@ class UIStateModel {
   final SmallScreenActiveTabModel smallScreenActiveTab =
       SmallScreenActiveTabModel();
   final OverviewActivePath overviewActivePath = OverviewActivePath();
+  final CollapsedSidebarModel collapsedSidebar = CollapsedSidebarModel();
   final RouteObserver<ModalRoute<void>> overviewRouteObserver =
       RouteObserver<ModalRoute<void>>();
 }

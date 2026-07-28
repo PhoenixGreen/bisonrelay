@@ -7,7 +7,7 @@ import 'package:bruig/models/realtimechat.dart';
 import 'package:bruig/theming_system/theme_preset.dart';
 import 'package:bruig/models/uistate.dart';
 import 'package:bruig/screens/chat/new_gc_screen.dart';
-import 'package:bruig/screens/chat/new_message_screen.dart';
+import 'package:bruig/screens/address_book_screen.dart';
 import 'package:bruig/screens/chats.dart';
 import 'package:bruig/screens/contacts_msg_times.dart';
 import 'package:flutter/material.dart';
@@ -579,8 +579,12 @@ class _ActiveChatsListMenuState extends State<ActiveChatsListMenu>
 
   void showSubMenu() => client.ui.chatSideMenuActive.chat = client.active;
 
+  // The Address Book rather than the bare New Message screen: it opens on
+  // New Message anyway (its first tab), but with its own sidebar alongside,
+  // so creating a GC, generating or fetching an invite and the rest are all
+  // one click away instead of being dead ends from here.
   void gotoNewMessage() =>
-      Navigator.of(context).pushNamed(NewMessageScreen.routeName);
+      Navigator.of(context).pushNamed(AddressBookScreen.routeName);
 
   void gotoNewGroupChat() =>
       Navigator.of(context).pushNamed(NewGcScreen.routeName);

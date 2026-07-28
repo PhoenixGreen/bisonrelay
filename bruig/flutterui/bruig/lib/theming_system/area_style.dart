@@ -269,17 +269,18 @@ class AreaStyle {
   // clamped body + "Show more", and the post-detail screen's centered width.
   final bool feedCardActions; // Relay/tip/quote-post action-bar icons +
   // nested quote-post rendering. Needs feedCardRedesign.
-  final bool feedBookmarks; // Per-post bookmark + "Bookmarks" nav section.
-  final bool feedHidePosts; // Per-post hide/unhide + "Hidden" nav section.
+  // Bookmarks (per-post bookmark + "Bookmarks" nav section) and hiding
+  // (per-post hide/unhide + "Hidden" section) used to be their own
+  // toggles; they're part of feedCardActions now. They live on the same
+  // action bar and are the same kind of thing -- something you do to a
+  // post -- so splitting them three ways only made the settings longer.
   final bool feedSidePanel; // Search/sort/filter nav rail, replacing FeedBar
   // on the main feed tab.
   final bool feedInlineComposer; // Pinned "What's happening?" composer.
-  final bool feedComposerFormatting; // Formatting toolbar in the composer.
-  // Needs feedInlineComposer.
-  final bool feedComposerAttach; // Image/file attach in the composer. Needs
-  // feedInlineComposer.
-  final bool feedDrafts; // Save/reuse/delete drafts. Needs
-  // feedInlineComposer (save button) + feedSidePanel (drafts list).
+  // The composer's formatting toolbar, image/file attach and drafts were
+  // once three more toggles. They're all part of feedInlineComposer now:
+  // each was useless without it, and anyone who wants a composer wants it
+  // to work.
   final bool feedHideSidebarOnPost; // Drops the feed sidebar entirely while
   // reading a single post, for a more focused reading experience. Needs
   // feedSidePanel.
@@ -373,13 +374,8 @@ class AreaStyle {
     this.accountCardLayout = false,
     this.feedCardRedesign = false,
     this.feedCardActions = false,
-    this.feedBookmarks = false,
-    this.feedHidePosts = false,
     this.feedSidePanel = false,
     this.feedInlineComposer = false,
-    this.feedComposerFormatting = false,
-    this.feedComposerAttach = false,
-    this.feedDrafts = false,
     this.feedHideSidebarOnPost = false,
     this.feedImageLayout = FeedImageLayout.standard,
     this.feedImageCropHeight = 300,
@@ -488,13 +484,8 @@ class AreaStyle {
     bool? accountCardLayout,
     bool? feedCardRedesign,
     bool? feedCardActions,
-    bool? feedBookmarks,
-    bool? feedHidePosts,
     bool? feedSidePanel,
     bool? feedInlineComposer,
-    bool? feedComposerFormatting,
-    bool? feedComposerAttach,
-    bool? feedDrafts,
     bool? feedHideSidebarOnPost,
     FeedImageLayout? feedImageLayout,
     double? feedImageCropHeight,
@@ -621,14 +612,8 @@ class AreaStyle {
         accountCardLayout: accountCardLayout ?? this.accountCardLayout,
         feedCardRedesign: feedCardRedesign ?? this.feedCardRedesign,
         feedCardActions: feedCardActions ?? this.feedCardActions,
-        feedBookmarks: feedBookmarks ?? this.feedBookmarks,
-        feedHidePosts: feedHidePosts ?? this.feedHidePosts,
         feedSidePanel: feedSidePanel ?? this.feedSidePanel,
         feedInlineComposer: feedInlineComposer ?? this.feedInlineComposer,
-        feedComposerFormatting:
-            feedComposerFormatting ?? this.feedComposerFormatting,
-        feedComposerAttach: feedComposerAttach ?? this.feedComposerAttach,
-        feedDrafts: feedDrafts ?? this.feedDrafts,
         feedHideSidebarOnPost:
             feedHideSidebarOnPost ?? this.feedHideSidebarOnPost,
         feedImageLayout: feedImageLayout ?? this.feedImageLayout,
@@ -744,14 +729,8 @@ class AreaStyle {
         if (accountCardLayout) "accountCardLayout": accountCardLayout,
         if (feedCardRedesign) "feedCardRedesign": feedCardRedesign,
         if (feedCardActions) "feedCardActions": feedCardActions,
-        if (feedBookmarks) "feedBookmarks": feedBookmarks,
-        if (feedHidePosts) "feedHidePosts": feedHidePosts,
         if (feedSidePanel) "feedSidePanel": feedSidePanel,
         if (feedInlineComposer) "feedInlineComposer": feedInlineComposer,
-        if (feedComposerFormatting)
-          "feedComposerFormatting": feedComposerFormatting,
-        if (feedComposerAttach) "feedComposerAttach": feedComposerAttach,
-        if (feedDrafts) "feedDrafts": feedDrafts,
         if (feedHideSidebarOnPost)
           "feedHideSidebarOnPost": feedHideSidebarOnPost,
         if (feedImageLayout != FeedImageLayout.standard)
@@ -888,14 +867,17 @@ class AreaStyle {
       accountCardLayout:
           flag("accountCardLayout") || flag("settingsShellRestyle"),
       feedCardRedesign: flag("feedCardRedesign"),
-      feedCardActions: flag("feedCardActions"),
-      feedBookmarks: flag("feedBookmarks"),
-      feedHidePosts: flag("feedHidePosts"),
+      // Bookmarks and hiding were folded into feedCardActions; a preset
+      // that had either on gets the bundle.
+      feedCardActions: flag("feedCardActions") ||
+          flag("feedBookmarks") ||
+          flag("feedHidePosts"),
       feedSidePanel: flag("feedSidePanel"),
-      feedInlineComposer: flag("feedInlineComposer"),
-      feedComposerFormatting: flag("feedComposerFormatting"),
-      feedComposerAttach: flag("feedComposerAttach"),
-      feedDrafts: flag("feedDrafts"),
+      // Likewise the composer's formatting/attach/drafts toggles.
+      feedInlineComposer: flag("feedInlineComposer") ||
+          flag("feedComposerFormatting") ||
+          flag("feedComposerAttach") ||
+          flag("feedDrafts"),
       feedHideSidebarOnPost: flag("feedHideSidebarOnPost"),
       feedImageLayout: _enumOr(
           FeedImageLayout.values, j["feedImageLayout"], FeedImageLayout.standard),

@@ -43,22 +43,19 @@ String headerPositionLabel(HeaderPosition p) => _headerPositionLabels[p]!;
 // potentially-long lists (chat list, RTC sessions, page-view sessions) --
 // is driven by this same setting.
 // - alwaysVisible: today's behavior, a persistent column beside the content.
-// - autoHideOnDetail: hidden entirely while viewing content that doesn't
-//   need sub-navigation (e.g. an individual post, a specific chat), and
-//   shown otherwise.
 // - resizable: a plain, always-visible, drag-resizable pane (each screen
 //   remembers its own width locally -- see SecondarySideMenuLayout).
 //
-// Two more used to sit here: hoverReveal (collapse to an edge strip,
-// expand while hovered) and manualToggle (a persistent collapse handle).
-// Both were removed as not good enough to keep. A preset saved with either
-// one falls back to alwaysVisible, since the stored name no longer matches
-// any value (see AreaStyle.fromJson's _enumOrNull).
-enum SubMenuStyle { alwaysVisible, autoHideOnDetail, resizable }
+// Three more used to sit here and were removed as not good enough to keep:
+// hoverReveal (collapse to an edge strip, expand while hovered),
+// manualToggle (a persistent collapse handle) and autoHideOnDetail (hidden
+// while viewing content that needs no sub-navigation). A preset saved with
+// any of them falls back to alwaysVisible, since the stored name no longer
+// matches a value (see AreaStyle.fromJson's _enumOrNull).
+enum SubMenuStyle { alwaysVisible, resizable }
 
 const Map<SubMenuStyle, String> _subMenuStyleLabels = {
   SubMenuStyle.alwaysVisible: "Default (Always visible)",
-  SubMenuStyle.autoHideOnDetail: "Auto-hide when not needed",
   SubMenuStyle.resizable: "Resizable (drag to resize)",
 };
 

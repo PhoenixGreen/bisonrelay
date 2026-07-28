@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:bruig/components/containers.dart';
 import 'package:bruig/components/empty_widget.dart';
 import 'package:bruig/components/interactive_avatar.dart';
 import 'package:bruig/components/pay_tip.dart';
@@ -152,8 +153,6 @@ class _FeedPostWState extends State<FeedPostW>
     var feedStyle = theme.areaStyle(ThemeArea.feed);
     var redesign = feedStyle.feedCardRedesign;
     var cardActions = feedStyle.feedCardActions;
-    var bookmarks = feedStyle.feedBookmarks;
-    var hidePosts = feedStyle.feedHidePosts;
 
     if (!redesign) {
       var markdownData = widget.post.summ.title;
@@ -374,60 +373,6 @@ class _FeedPostWState extends State<FeedPostW>
                             .textColor(TextColor.onSurface)
                             .withValues(alpha: 0.6))),
                 const Spacer(),
-                if (bookmarks || hidePosts)
-                  ListenableBuilder(
-                    listenable: FeedHidden.instance,
-                    builder: (context, _) {
-                      final hidden = FeedHidden.instance
-                          .contains(widget.post.summ.from, widget.post.summ.id);
-                      return SizedBox(
-                        height: 22,
-                        width: 28,
-                        child: PopupMenuButton<String>(
-                          tooltip: "More",
-                          padding: EdgeInsets.zero,
-                          iconSize: 18,
-                          position: PopupMenuPosition.under,
-                          color: const Color(0xFF15171A),
-                          icon: const Icon(Icons.more_horiz,
-                              color: Color(0xFF5F6764)),
-                          onSelected: (v) {
-                            if (v == "hide") {
-                              FeedHidden.instance.toggle(
-                                  widget.post.summ.from, widget.post.summ.id);
-                            } else if (v == "bookmark") {
-                              FeedBookmarks.instance.toggle(
-                                  widget.post.summ.from, widget.post.summ.id);
-                            }
-                          },
-                          itemBuilder: (context) => [
-                            if (bookmarks)
-                              PopupMenuItem(
-                                value: "bookmark",
-                                child: Text(
-                                    FeedBookmarks.instance.contains(
-                                            widget.post.summ.from,
-                                            widget.post.summ.id)
-                                        ? "Remove bookmark"
-                                        : "Bookmark",
-                                    style: const TextStyle(
-                                        fontSize: 13,
-                                        color: Color(0xFFF2F4F3))),
-                              ),
-                            if (hidePosts)
-                              PopupMenuItem(
-                                value: "hide",
-                                child: Text(
-                                    hidden ? "Unhide post" : "Hide post",
-                                    style: const TextStyle(
-                                        fontSize: 13,
-                                        color: Color(0xFFF2F4F3))),
-                              ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
               ]),
               const SizedBox(height: 6),
               postBody,
@@ -511,7 +456,7 @@ class _FeedPostWState extends State<FeedPostW>
                   ),
                   const SizedBox(width: 4),
                 ],
-                if (bookmarks)
+                if (cardActions)
                   ListenableBuilder(
                     listenable: FeedBookmarks.instance,
                     builder: (context, _) {
@@ -530,6 +475,45 @@ class _FeedPostWState extends State<FeedPostW>
                               color: marked
                                   ? const Color(0xFF4D9FFF)
                                   : const Color(0xFF5F6764)),
+                        ),
+                      );
+                    },
+                  ),
+                // The overflow menu sits at the end of this bar, beside the
+                // other things you can do to a post, rather than up beside
+                // the author's name where it used to be. Bookmarking isn't
+                // in it: it's already one tap away, immediately to its left.
+                if (cardActions)
+                  ListenableBuilder(
+                    listenable: FeedHidden.instance,
+                    builder: (context, _) {
+                      final hidden = FeedHidden.instance
+                          .contains(widget.post.summ.from, widget.post.summ.id);
+                      return SizedBox(
+                        height: 22,
+                        width: 28,
+                        child: PopupMenuButton<String>(
+                          tooltip: "More",
+                          padding: EdgeInsets.zero,
+                          iconSize: 18,
+                          position: PopupMenuPosition.under,
+                          color: const Color(0xFF15171A),
+                          icon: const Icon(Icons.more_horiz,
+                              color: Color(0xFF5F6764)),
+                          onSelected: (v) {
+                            if (v == "hide") {
+                              FeedHidden.instance.toggle(
+                                  widget.post.summ.from, widget.post.summ.id);
+                            }
+                          },
+                          itemBuilder: (context) => [
+                            PopupMenuItem(
+                              value: "hide",
+                              child: Text(hidden ? "Unhide post" : "Hide post",
+                                  style: const TextStyle(
+                                      fontSize: 13, color: Color(0xFFF2F4F3))),
+                            ),
+                          ],
                         ),
                       );
                     },
@@ -710,12 +694,14 @@ class _FeedPostsState extends State<FeedPosts> {
   Widget build(BuildContext context) {
     var feedStyle = ThemeNotifier.of(context).areaStyle(ThemeArea.feed);
     var sidePanel = feedStyle.feedSidePanel;
-    var bookmarks = feedStyle.feedBookmarks;
-    var hidePosts = feedStyle.feedHidePosts;
+    // Bookmarks/hiding ride with the post action bar, and the composer's
+    // formatting/attach/drafts ride with the composer itself.
+    var bookmarks = feedStyle.feedCardActions;
+    var hidePosts = feedStyle.feedCardActions;
     var inlineComposer = feedStyle.feedInlineComposer;
-    var composerFormatting = feedStyle.feedComposerFormatting;
-    var composerAttach = feedStyle.feedComposerAttach;
-    var drafts = feedStyle.feedDrafts;
+    var composerFormatting = inlineComposer;
+    var composerAttach = inlineComposer;
+    var drafts = inlineComposer;
 
     if (!sidePanel) {
       final posts = _applyFilters(bookmarks, hidePosts);
@@ -813,39 +799,77 @@ class _FeedPostsState extends State<FeedPosts> {
       onNewPost: () => widget.tabChange(3, null),
     );
 
-    return LayoutBuilder(builder: (context, c) {
-      // crossAxisAlignment.stretch gives children a bounded height so the
-      // inner ListView lays out correctly.
-      List<Widget> rowChildren;
-      if (c.maxWidth >= 1400) {
-        rowChildren = [
-          const Spacer(),
-          SizedBox(width: 260, child: panel),
-          const SizedBox(width: 48),
-          SizedBox(width: 780, child: feedColumn),
-          const SizedBox(width: 308),
-          const Spacer(),
-        ];
-      } else if (c.maxWidth >= 900) {
-        rowChildren = [
-          const SizedBox(width: 16),
-          SizedBox(width: 260, child: panel),
-          const SizedBox(width: 48),
-          Expanded(child: feedColumn),
-        ];
-      } else if (c.maxWidth >= 600) {
-        rowChildren = [
-          const Spacer(),
-          SizedBox(width: 600, child: feedColumn),
-          const Spacer(),
-        ];
-      } else {
-        rowChildren = [Expanded(child: feedColumn)];
-      }
-      return Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: rowChildren);
-    });
+    // The Sidebar area's "Resizable" visibility applies here too: this
+    // panel is a sidebar like any other, it just lays itself out centered
+    // rather than docked, so it borrows the drag strip and the per-screen
+    // width store instead of the whole SecondarySideMenuLayout.
+    var resizable = ThemeNotifier.of(context)
+            .areaStyle(ThemeArea.subMenuTabBar)
+            .subMenuStyle ==
+        SubMenuStyle.resizable;
+
+    Widget layout(double panelWidth, Widget? handle) {
+      return LayoutBuilder(builder: (context, c) {
+        // crossAxisAlignment.stretch gives children a bounded height so the
+        // inner ListView lays out correctly.
+        //
+        // No gap: the feed column starts immediately beside the sidebar,
+        // the way content does in SecondarySideMenuLayout. The posts carry
+        // their own horizontal padding, and the drag strip its own 8px.
+        const gap = 0.0;
+        List<Widget> rowChildren;
+        if (c.maxWidth >= 1400) {
+          rowChildren = [
+            const Spacer(),
+            SizedBox(width: panelWidth, child: panel),
+            if (handle != null) handle,
+            SizedBox(width: gap),
+            SizedBox(width: 780, child: feedColumn),
+            const SizedBox(width: 308),
+            const Spacer(),
+          ];
+        } else if (c.maxWidth >= 900) {
+          rowChildren = [
+            // No leading gap: the panel butts against the nav bar the way
+            // every other sidebar does.
+            SizedBox(width: panelWidth, child: panel),
+            if (handle != null) handle,
+            SizedBox(width: gap),
+            Expanded(child: feedColumn),
+          ];
+        } else {
+          // Too narrow for a column of its own: hand the panel over as a
+          // drawer, opened by re-tapping this page in the main navigation
+          // (see CollapsedSidebarModel). Registering here rather
+          // than dropping it is what gives this panel the same way back as
+          // every other sidebar -- it used to just disappear, which is why
+          // no way back existed at these widths.
+          ClientModel.of(context, listen: false)
+              .ui
+              .collapsedSidebar
+              .register((context) => panel, kCollapsedSidebarWidth);
+          if (c.maxWidth >= 600) {
+            return Row(children: [
+              const Spacer(),
+              SizedBox(width: 600, child: feedColumn),
+              const Spacer(),
+            ]);
+          }
+          return feedColumn;
+        }
+        ClientModel.of(context, listen: false).ui.collapsedSidebar.unregister();
+        return Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: rowChildren);
+      });
+    }
+
+    if (!resizable) return layout(260, null);
+    return ResizableSidebar(
+      storageKey: "feedPanel",
+      defaultWidth: 260,
+      builder: (context, width, handle) => layout(width, handle),
+    );
   }
 }
 
@@ -890,8 +914,18 @@ class FeedSidePanel extends StatelessWidget {
     required this.onNewPost,
   });
 
-  Widget _navItem(IconData ic, String label, FeedView v, {String? trailing}) {
+  // The palette's Sidebar Accent, the same color every other sidebar in
+  // the app highlights its selected row with -- this panel used to hardcode
+  // its own blue, so it was the one sidebar that ignored the theme.
+  Color _accent(BuildContext context) {
+    var theme = ThemeNotifier.of(context);
+    return theme.activePreset?.sidebarAccent ?? theme.colors.primary;
+  }
+
+  Widget _navItem(BuildContext context, IconData ic, String label, FeedView v,
+      {String? trailing}) {
     final selected = view == v;
+    final accent = _accent(context);
     return GestureDetector(
       onTap: () => onView(v),
       behavior: HitTestBehavior.opaque,
@@ -899,35 +933,40 @@ class FeedSidePanel extends StatelessWidget {
         margin: const EdgeInsets.only(bottom: 4),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
         decoration: BoxDecoration(
-          color: selected ? const Color(0xFF101826) : Colors.transparent,
+          color: selected ? accent.withValues(alpha: 0.18) : Colors.transparent,
           borderRadius: BorderRadius.circular(10),
         ),
         child: Row(children: [
           Icon(ic,
               size: 19,
-              color:
-                  selected ? const Color(0xFF4D9FFF) : const Color(0xFF9AA3A0)),
+              color: selected ? accent : const Color(0xFF9AA3A0)),
           const SizedBox(width: 12),
-          Text(label,
-              style: TextStyle(
-                  fontSize: 14.5,
-                  fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-                  color: selected
-                      ? const Color(0xFF4D9FFF)
-                      : const Color(0xFFF2F4F3))),
-          if (trailing != null) ...[
-            const Spacer(),
+          // Expanded + ellipsis: this panel is drag-resizable, and the
+          // longer labels ("Subscriptions", "Most comments") overflow it
+          // well before its minimum width. Expanded also does the Spacer's
+          // old job of pushing any trailing count to the far edge.
+          Expanded(
+            child: Text(label,
+                softWrap: false,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                    fontSize: 14.5,
+                    fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                    color: selected ? accent : const Color(0xFFF2F4F3))),
+          ),
+          if (trailing != null)
             Text(trailing,
                 style:
                     const TextStyle(fontSize: 12.5, color: Color(0xFF5F6764))),
-          ],
         ]),
       ),
     );
   }
 
-  Widget _actionItem(IconData ic, String label, VoidCallback onTap,
+  Widget _actionItem(BuildContext context, IconData ic, String label,
+      VoidCallback onTap,
       {bool selected = false}) {
+    final accent = _accent(context);
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
@@ -935,29 +974,31 @@ class FeedSidePanel extends StatelessWidget {
         margin: const EdgeInsets.only(bottom: 4),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
         decoration: BoxDecoration(
-          color: selected ? const Color(0xFF101826) : Colors.transparent,
+          color: selected ? accent.withValues(alpha: 0.18) : Colors.transparent,
           borderRadius: BorderRadius.circular(10),
         ),
         child: Row(children: [
           Icon(ic,
               size: 19,
-              color:
-                  selected ? const Color(0xFF4D9FFF) : const Color(0xFF9AA3A0)),
+              color: selected ? accent : const Color(0xFF9AA3A0)),
           const SizedBox(width: 12),
-          Text(label,
-              style: TextStyle(
-                  fontSize: 14.5,
-                  fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-                  color: selected
-                      ? const Color(0xFF4D9FFF)
-                      : const Color(0xFFF2F4F3))),
+          Expanded(
+            child: Text(label,
+                softWrap: false,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                    fontSize: 14.5,
+                    fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                    color: selected ? accent : const Color(0xFFF2F4F3))),
+          ),
         ]),
       ),
     );
   }
 
-  Widget _sortItem(String label, FeedSort s) {
+  Widget _sortItem(BuildContext context, String label, FeedSort s) {
     final selected = sort == s;
+    final accent = _accent(context);
     return GestureDetector(
       onTap: () => onSort(s),
       behavior: HitTestBehavior.opaque,
@@ -970,15 +1011,16 @@ class FeedSidePanel extends StatelessWidget {
                   ? Icons.radio_button_checked
                   : Icons.radio_button_unchecked,
               size: 16,
-              color:
-                  selected ? const Color(0xFF4D9FFF) : const Color(0xFF5F6764)),
+              color: selected ? accent : const Color(0xFF5F6764)),
           const SizedBox(width: 10),
-          Text(label,
-              style: TextStyle(
-                  fontSize: 14,
-                  color: selected
-                      ? const Color(0xFF4D9FFF)
-                      : const Color(0xFFF2F4F3))),
+          Expanded(
+            child: Text(label,
+                softWrap: false,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                    fontSize: 14,
+                    color: selected ? accent : const Color(0xFFF2F4F3))),
+          ),
         ]),
       ),
     );
@@ -1004,8 +1046,18 @@ class FeedSidePanel extends StatelessWidget {
         searchController,
       ]),
       builder: (context, _) {
-        return SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(8, 16, 16, 16),
+        // Wrapped in the same SecondarySideMenu every other sidebar is
+        // built from, so it gets the Sidebar area's background, its border
+        // on all four sides, and its padding/margin/radius -- rather than
+        // this panel painting an approximation of its own. fillWidth
+        // because the feed lays out (and drag-resizes) its width itself.
+        return SecondarySideMenu(
+          fillWidth: true,
+          child: SingleChildScrollView(
+          // Matches _SidebarNavRow's own 8px inset, so this panel's rows sit
+          // where every other sidebar's do rather than floating in from
+          // both edges.
+          padding: const EdgeInsets.fromLTRB(8, 16, 8, 16),
           child:
               Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Container(
@@ -1041,27 +1093,27 @@ class FeedSidePanel extends StatelessWidget {
               ),
             ),
             _sectionLabel("FEED"),
-            _navItem(Icons.dynamic_feed_outlined, "All posts", FeedView.all),
+            _navItem(context, Icons.dynamic_feed_outlined, "All posts", FeedView.all),
             if (showBookmarks)
-              _navItem(Icons.bookmark_outline, "Bookmarks", FeedView.bookmarks,
+              _navItem(context, Icons.bookmark_outline, "Bookmarks", FeedView.bookmarks,
                   trailing: "${FeedBookmarks.instance.count}"),
             if (showHidden)
-              _navItem(Icons.visibility_off_outlined, "Hidden", FeedView.hidden,
+              _navItem(context, Icons.visibility_off_outlined, "Hidden", FeedView.hidden,
                   trailing: "${FeedHidden.instance.count}"),
             if (showDrafts)
-              _navItem(Icons.edit_note_outlined, "Drafts", FeedView.drafts,
+              _navItem(context, Icons.edit_note_outlined, "Drafts", FeedView.drafts,
                   trailing: "${FeedDrafts.instance.count}"),
             _sectionLabel("POSTS"),
-            _actionItem(Icons.article_outlined, "Your Posts", onYourPosts,
+            _actionItem(context, Icons.article_outlined, "Your Posts", onYourPosts,
                 selected: currentTabIndex == 1),
-            _actionItem(Icons.rss_feed, "Subscriptions", onSubscriptions,
+            _actionItem(context, Icons.rss_feed, "Subscriptions", onSubscriptions,
                 selected: currentTabIndex == 2),
-            _actionItem(Icons.add_box_outlined, "New Post", onNewPost,
+            _actionItem(context, Icons.add_box_outlined, "New Post", onNewPost,
                 selected: currentTabIndex == 3),
             _sectionLabel("SORT"),
-            _sortItem("Newest", FeedSort.newest),
-            _sortItem("Oldest", FeedSort.oldest),
-            _sortItem("Most comments", FeedSort.mostComments),
+            _sortItem(context, "Newest", FeedSort.newest),
+            _sortItem(context, "Oldest", FeedSort.oldest),
+            _sortItem(context, "Most comments", FeedSort.mostComments),
             _sectionLabel("FILTER"),
             GestureDetector(
               onTap: () => onUnreadOnly(!unreadOnly),
@@ -1100,7 +1152,7 @@ class FeedSidePanel extends StatelessWidget {
               ),
             ),
           ]),
-        );
+        ));
       },
     );
   }
@@ -1740,7 +1792,15 @@ class _FeedComposerState extends State<_FeedComposer> {
   void initState() {
     super.initState();
     widget.controller.addListener(_onCtrl);
+    _focus.addListener(_onCtrl);
   }
+
+  // _open is "the composer is in use": focused, or holding text typed
+  // earlier. Collapsed it's a single-line box with nothing but the hint --
+  // it sits pinned above the feed, so at its full height with a toolbar and
+  // a Post button it pushed the first post most of the way off the screen
+  // just by existing.
+  bool get _open => _focus.hasFocus || _ctrl.text.isNotEmpty;
 
   void _onCtrl() {
     if (mounted) setState(() {});
@@ -1748,6 +1808,7 @@ class _FeedComposerState extends State<_FeedComposer> {
 
   @override
   void dispose() {
+    _focus.removeListener(_onCtrl);
     widget.controller.removeListener(_onCtrl);
     _focus.dispose();
     super.dispose();
@@ -1917,9 +1978,12 @@ class _FeedComposerState extends State<_FeedComposer> {
         Expanded(
           child:
               Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            // Bigger compose box (~3x a normal input).
-            Container(
-              constraints: const BoxConstraints(minHeight: 96),
+            // One line until it's in use, then the full ~3x compose box.
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 140),
+              curve: Curves.easeOut,
+              constraints:
+                  BoxConstraints(minHeight: _open ? 96 : 0),
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               decoration: BoxDecoration(
                 color: const Color(0xFF0E100E),
@@ -1929,8 +1993,8 @@ class _FeedComposerState extends State<_FeedComposer> {
               child: TextField(
                 controller: _ctrl,
                 focusNode: _focus,
-                minLines: 3,
-                maxLines: 12,
+                minLines: 1,
+                maxLines: _open ? 12 : 1,
                 onChanged: (_) => setState(() {}),
                 onTap: () => _savedSel = _ctrl.selection,
                 textAlignVertical: TextAlignVertical.top,
@@ -1950,79 +2014,83 @@ class _FeedComposerState extends State<_FeedComposer> {
                 ),
               ),
             ),
-            const SizedBox(height: 10),
-            Row(children: [
-              if (widget.showAttach)
-                _iconBtn(Icons.image_outlined, "Attach", _attach),
-              if (widget.showAttach) const SizedBox(width: 2),
-              if (widget.showFormatting) ...[
-                MenuAnchor(
-                  controller: _fmtMenu,
-                  menuChildren: [
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 4),
-                      child: Row(mainAxisSize: MainAxisSize.min, children: [
-                        _iconBtn(Icons.format_bold, "Bold",
-                            () => _fmt(() => _wrap("**", "**"))),
-                        _iconBtn(Icons.format_italic, "Italic",
-                            () => _fmt(() => _wrap("_", "_"))),
-                        _iconBtn(Icons.code, "Code",
-                            () => _fmt(() => _wrap("`", "`"))),
-                        _iconBtn(Icons.format_strikethrough, "Strikethrough",
-                            () => _fmt(() => _wrap("~~", "~~"))),
-                        _iconBtn(Icons.link, "Link", () => _fmt(_insertLink)),
-                      ]),
-                    ),
-                  ],
-                  child: _iconBtn(Icons.text_format, "Format", _openFmtMenu),
-                ),
-                const SizedBox(width: 2),
-              ],
-              if (widget.showDrafts)
-                _iconBtn(Icons.bookmark_add_outlined, "Save draft", () {
-                  final messenger = ScaffoldMessenger.of(context);
-                  FeedDrafts.instance.add(_ctrl.text);
-                  messenger.showSnackBar(
-                      const SnackBar(content: Text("Draft saved")));
-                }),
-              const Spacer(),
-              GestureDetector(
-                onTap: _posting ? null : _relay,
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 26, vertical: 10),
-                  decoration: BoxDecoration(
-                    // Was a hardcoded bright-green gradient with no palette
-                    // field behind it -- now uses the same "Accent
-                    // (Buttons/Toggles)" slot the rest of the app's
-                    // unthemed buttons/toggles were pinned to, so it
-                    // actually follows the active preset instead of always
-                    // being neon green.
-                    color: relayAccent,
-                    borderRadius: BorderRadius.circular(22),
-                    boxShadow: [
-                      BoxShadow(
-                        color: relayAccent.withValues(alpha: 0.30),
-                        blurRadius: 14,
-                        offset: const Offset(0, 3),
+            // The tools and the Relay button only appear once there's
+            // something to use them on.
+            if (_open) ...[
+              const SizedBox(height: 10),
+              Row(children: [
+                if (widget.showAttach)
+                  _iconBtn(Icons.image_outlined, "Attach", _attach),
+                if (widget.showAttach) const SizedBox(width: 2),
+                if (widget.showFormatting) ...[
+                  MenuAnchor(
+                    controller: _fmtMenu,
+                    menuChildren: [
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        child: Row(mainAxisSize: MainAxisSize.min, children: [
+                          _iconBtn(Icons.format_bold, "Bold",
+                              () => _fmt(() => _wrap("**", "**"))),
+                          _iconBtn(Icons.format_italic, "Italic",
+                              () => _fmt(() => _wrap("_", "_"))),
+                          _iconBtn(Icons.code, "Code",
+                              () => _fmt(() => _wrap("`", "`"))),
+                          _iconBtn(Icons.format_strikethrough, "Strikethrough",
+                              () => _fmt(() => _wrap("~~", "~~"))),
+                          _iconBtn(Icons.link, "Link", () => _fmt(_insertLink)),
+                        ]),
                       ),
                     ],
+                    child: _iconBtn(Icons.text_format, "Format", _openFmtMenu),
                   ),
-                  child: _posting
-                      ? SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(
-                              strokeWidth: 2, color: relayOnAccent))
-                      : Text("Relay",
-                          style: TextStyle(
-                              fontSize: 14.5,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 0.2,
-                              color: relayOnAccent)),
+                  const SizedBox(width: 2),
+                ],
+                if (widget.showDrafts)
+                  _iconBtn(Icons.bookmark_add_outlined, "Save draft", () {
+                    final messenger = ScaffoldMessenger.of(context);
+                    FeedDrafts.instance.add(_ctrl.text);
+                    messenger.showSnackBar(
+                        const SnackBar(content: Text("Draft saved")));
+                  }),
+                const Spacer(),
+                GestureDetector(
+                  onTap: _posting ? null : _relay,
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 26, vertical: 10),
+                    decoration: BoxDecoration(
+                      // Was a hardcoded bright-green gradient with no palette
+                      // field behind it -- now uses the same "Accent
+                      // (Buttons/Toggles)" slot the rest of the app's
+                      // unthemed buttons/toggles were pinned to, so it
+                      // actually follows the active preset instead of always
+                      // being neon green.
+                      color: relayAccent,
+                      borderRadius: BorderRadius.circular(22),
+                      boxShadow: [
+                        BoxShadow(
+                          color: relayAccent.withValues(alpha: 0.30),
+                          blurRadius: 14,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
+                    ),
+                    child: _posting
+                        ? SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: relayOnAccent))
+                        : Text("Relay",
+                            style: TextStyle(
+                                fontSize: 14.5,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 0.2,
+                                color: relayOnAccent)),
+                  ),
                 ),
-              ),
-            ]),
+              ]),
+            ],
           ]),
         ),
       ]),
