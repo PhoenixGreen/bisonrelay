@@ -56,10 +56,22 @@ class _SidebarState extends State<Sidebar> with WindowListener {
       return true;
     });
 
+    var collapsed = client.ui.collapsedSidebar;
     if (currentPath == route) {
+      // Already on this destination, so there's nothing to navigate to --
+      // re-tapping it opens that page's own sidebar instead, when the
+      // window is narrow enough that it's collapsed into the drawer. This
+      // is the only way the drawer opens: re-tapping the destination you're
+      // already on is where you'd reach for that page's own list anyway.
+      // It toggles, so a third tap puts it away.
+      if (collapsed.available) collapsed.toggle();
       return;
     }
 
+    // Actually going somewhere else: don't leave the drawer sitting open
+    // over the new page. The destination registers its own sidebar, so
+    // leaving it open would swap the contents out from under the user.
+    collapsed.close();
     widget.navKey.currentState!.pushReplacementNamed(route);
   }
 

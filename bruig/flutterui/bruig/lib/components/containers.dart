@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:bruig/components/empty_widget.dart';
+import 'package:bruig/models/client.dart';
 import 'package:bruig/theming_system/theme_preset.dart';
 import 'package:bruig/storage_manager.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
@@ -299,17 +300,47 @@ double measuredSidebarWidth(
   return widest + chrome;
 }
 
+// sidebarEdgeColor/sidebarEdgeWidth resolve the sidebar's right edge the
+// same way SecondarySideMenu paints it -- the area's own Border once one is
+// set, otherwise the built-in divider -- so every edge any sidebar draws
+// matches, not just the always-visible one's.
+Color sidebarEdgeColor(ThemeNotifier theme) {
+  var style = theme.areaStyle(ThemeArea.subMenuTabBar);
+  if (style.borderMode != AreaBackgroundMode.token) {
+    var c = style.resolveBorderColor(theme);
+    if (c != null) return c;
+  }
+  return theme.activePreset?.outline ?? theme.extraColors.sidebarDivider;
+}
+
+double sidebarEdgeWidth(ThemeNotifier theme) {
+  var style = theme.areaStyle(ThemeArea.subMenuTabBar);
+  var right = style.borderWidths.right;
+  return style.borderMode != AreaBackgroundMode.token && right > 0 ? right : 1;
+}
+
+// sidebarBackgroundColor is the fill every sidebar in the app shares -- the
+// "Sidebar Background" palette slot, read live so it follows palette edits.
+Color sidebarBackgroundColor(ThemeNotifier theme) =>
+    theme.activePreset?.sidebarBackground ?? theme.colors.surface;
+
 // Used on pages that have a secondary side menu when window has desktop size.
 class SecondarySideMenu extends StatelessWidget {
   final Widget? child;
   final double? width;
-  const SecondarySideMenu({this.child, this.width, super.key});
+  // fillWidth takes whatever width the parent gives instead of setting one.
+  // For a screen that sizes its own sidebar (the feed's drag-resizable
+  // panel) but still wants the background, border and spacing every other
+  // sidebar gets from here.
+  final bool fillWidth;
+  const SecondarySideMenu(
+      {this.child, this.width, this.fillWidth = false, super.key});
 
   @override
   Widget build(BuildContext context) {
     return Consumer<ThemeNotifier>(builder: (context, theme, _) {
       var areaStyle = theme.areaStyle(ThemeArea.subMenuTabBar);
-      var effectiveWidth = sidebarWidth(width);
+      var effectiveWidth = fillWidth ? null : sidebarWidth(width);
       // The Sidebar's *Default* background is the "Sidebar background"
       // color palette slot, read live, so it can never silently diverge
       // from what the palette editor shows (a stored solidColor snapshot
@@ -321,7 +352,7 @@ class SecondarySideMenu extends StatelessWidget {
       var bg = areaStyle.toBoxDecoration(theme, SurfaceColor.surface,
           presetDir: theme.fullTheme.presetDir);
       var background = areaStyle.mode == AreaBackgroundMode.token
-          ? (theme.activePreset?.sidebarBackground ?? theme.colors.surface)
+          ? sidebarBackgroundColor(theme)
           : bg.color;
       // The right edge, by one rule in both branches below so that merely
       // adding padding or a margin can't make the divider disappear: the
@@ -506,13 +537,9 @@ class SecondarySideMenuLayout extends StatefulWidget {
 final Map<String, double> _sidebarWidthCache = {};
 
 class _SecondarySideMenuLayoutState extends State<SecondarySideMenuLayout> {
-  // Lets the user reopen the submenu with the toggle handle even while
-  // autoHideOnDetail would otherwise keep it hidden (e.g. to jump to a
-  // different tab while composing a post or reading a chat). Reset once
-  // the caller reports we're no longer in a detail view (or have moved to
-  // a different one, per detailKey), so the next detail view starts
-  // collapsed again.
-  bool _forceShowInDetail = false;
+  // Below this width the sidebar becomes an overlay drawer instead of a
+  // column. See _compactLayout.
+  static const _collapseBelowWidth = 900.0;
 
   // Drag-resized width for SubMenuStyle.resizable, persisted per screen (see
   // storageKey doc above). Null until loaded/dragged, meaning "use the
@@ -556,139 +583,220 @@ class _SecondarySideMenuLayoutState extends State<SecondarySideMenuLayout> {
     }
   }
 
-  @override
-  void didUpdateWidget(SecondarySideMenuLayout oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.isDetail && !widget.isDetail) {
-      _forceShowInDetail = false;
-    } else if (widget.isDetail && oldWidget.detailKey != widget.detailKey) {
-      _forceShowInDetail = false;
-    }
+  Widget _menuList(double? width, {bool closeOnTap = false}) =>
+      SecondarySideMenuList(
+          width: width,
+          // In the overlay drawer, picking a destination should also put the
+          // drawer away -- leaving it covering the very content you just
+          // asked for is the classic mobile-nav annoyance. Only possible for
+          // a fixed item list; a dynamic `list:` owns its own taps.
+          items: closeOnTap && widget.items != null
+              ? [
+                  for (var item in widget.items!)
+                    SidebarNavItem(
+                      icon: item.icon,
+                      label: item.label,
+                      trailing: item.trailing,
+                      selected: item.selected,
+                      enabled: item.enabled,
+                      onTap: () {
+                        item.onTap();
+                        ClientModel.of(context, listen: false)
+                            .ui
+                            .collapsedSidebar
+                            .close();
+                      },
+                    )
+                ]
+              : widget.items,
+          list: widget.list,
+          header: widget.header,
+          footer: widget.footer);
+
+  // _compactLayout is the narrow-window form: the sidebar stops taking a
+  // column of its own and is handed to CollapsedSidebarModel, which the
+  // main navigation opens on a re-tap and OverviewScreen paints over the
+  // top of everything -- the main nav included. Below ~900px a
+  // fixed sidebar leaves too little room for content, which is why the
+  // feed's own panel already dropped itself there.
+  Widget _compactLayout(ClientModel client, double panelWidth) {
+    client.ui.collapsedSidebar
+        .register((context) => _menuList(panelWidth, closeOnTap: true),
+            panelWidth);
+    return widget.content;
   }
-
-  Widget _menuList(double? width) => SecondarySideMenuList(
-      width: width,
-      items: widget.items,
-      list: widget.list,
-      header: widget.header,
-      footer: widget.footer);
-
-  // _dividerColor/_dividerWidth resolve the sidebar's right edge the same
-  // way SecondarySideMenu does -- the area's own Border once one is set,
-  // otherwise the built-in divider -- so every divider this sidebar draws
-  // matches, not just the always-visible one.
-  Color _dividerColor(ThemeNotifier theme) {
-    var style = theme.areaStyle(ThemeArea.subMenuTabBar);
-    if (style.borderMode != AreaBackgroundMode.token) {
-      var c = style.resolveBorderColor(theme);
-      if (c != null) return c;
-    }
-    return theme.activePreset?.outline ?? theme.extraColors.sidebarDivider;
-  }
-
-  double _dividerWidth(ThemeNotifier theme) {
-    var style = theme.areaStyle(ThemeArea.subMenuTabBar);
-    var right = style.borderWidths.right;
-    return style.borderMode != AreaBackgroundMode.token && right > 0
-        ? right
-        : 1;
-  }
-
-  // Persistent handle for reopening an autoHideOnDetail submenu -- always
-  // shown/tappable, not tied to any particular item, since the user is
-  // explicitly choosing to open/close it.
-  Widget _toggleHandle(ThemeNotifier theme,
-          {required bool collapsed, required VoidCallback onTap}) =>
-      Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          child: Container(
-            width: 16,
-            decoration: BoxDecoration(
-              border: Border(
-                  right: BorderSide(
-                      color: _dividerColor(theme),
-                      width: _dividerWidth(theme))),
-            ),
-            child: Icon(collapsed ? Icons.chevron_right : Icons.chevron_left,
-                size: 16),
-          ),
-        ),
-      );
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<ThemeNotifier>(builder: (context, theme, _) {
-      var style = theme.areaStyle(ThemeArea.subMenuTabBar).subMenuStyle ??
-          SubMenuStyle.alwaysVisible;
-      // A fixed-item sidebar sizes to its own labels; only a dynamic list,
-      // which has none to measure, falls back to the width its screen
-      // declared. See measuredSidebarWidth.
-      var menuWidth = widget.items != null
-          ? measuredSidebarWidth(context, theme, widget.items!)
-          : widget.width;
+    return LayoutBuilder(builder: (context, constraints) {
+      return Consumer<ThemeNotifier>(builder: (context, theme, _) {
+        var style = theme.areaStyle(ThemeArea.subMenuTabBar).subMenuStyle ??
+            SubMenuStyle.alwaysVisible;
+        // A fixed-item sidebar sizes to its own labels; only a dynamic list,
+        // which has none to measure, falls back to the width its screen
+        // declared. See measuredSidebarWidth.
+        var menuWidth = widget.items != null
+            ? measuredSidebarWidth(context, theme, widget.items!)
+            : widget.width;
 
-      if (style == SubMenuStyle.autoHideOnDetail && widget.isDetail) {
-        if (_forceShowInDetail) {
-          return Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            _menuList(menuWidth),
-            _toggleHandle(theme,
-                collapsed: false,
-                onTap: () => setState(() => _forceShowInDetail = false)),
-            Expanded(child: widget.content),
-          ]);
+        // Narrow windows get the overlay drawer regardless of which
+        // visibility is set: neither always-visible nor resizable leaves
+        // usable room for content at this width.
+        var client = ClientModel.of(context, listen: false);
+        if (constraints.maxWidth < _collapseBelowWidth) {
+          return _compactLayout(client, kCollapsedSidebarWidth);
         }
-        return Row(children: [
-          _toggleHandle(theme,
-              collapsed: true,
-              onTap: () => setState(() => _forceShowInDetail = true)),
-          Expanded(child: widget.content),
-        ]);
-      }
+        // Wide again: hand the drawer back, so re-tapping this page in the
+        // main nav can't open a sidebar that's already on screen.
+        client.ui.collapsedSidebar.unregister();
 
-      if (style == SubMenuStyle.resizable) {
-        var defaultWidth = sidebarWidth(menuWidth);
-        var currentWidth =
-            (_resizableWidth ?? defaultWidth).clamp(_resizableMinWidth, _resizableMaxWidth);
-        return Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _menuList(currentWidth),
-            MouseRegion(
-              cursor: SystemMouseCursors.resizeLeftRight,
-              child: GestureDetector(
-                behavior: HitTestBehavior.translucent,
-                onHorizontalDragUpdate: (d) => _setResizableWidth(
-                    (currentWidth + d.delta.dx)
-                        .clamp(_resizableMinWidth, _resizableMaxWidth)),
-                onHorizontalDragEnd: (_) => _saveResizableWidth(),
-                onDoubleTap: () {
-                  _setResizableWidth(defaultWidth);
-                  _saveResizableWidth();
-                },
-                child: SizedBox(
-                  width: 8,
-                  child: Center(
-                    child: SizedBox(
-                      width: _dividerWidth(theme),
-                      child: ColoredBox(color: _dividerColor(theme)),
+        if (style == SubMenuStyle.resizable) {
+          var defaultWidth = sidebarWidth(menuWidth);
+          var currentWidth =
+              (_resizableWidth ?? defaultWidth).clamp(_resizableMinWidth, _resizableMaxWidth);
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _menuList(currentWidth),
+              MouseRegion(
+                cursor: SystemMouseCursors.resizeLeftRight,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.translucent,
+                  onHorizontalDragUpdate: (d) => _setResizableWidth(
+                      (currentWidth + d.delta.dx)
+                          .clamp(_resizableMinWidth, _resizableMaxWidth)),
+                  onHorizontalDragEnd: (_) => _saveResizableWidth(),
+                  onDoubleTap: () {
+                    _setResizableWidth(defaultWidth);
+                    _saveResizableWidth();
+                  },
+                  child: SizedBox(
+                    width: 8,
+                    child: Center(
+                      child: SizedBox(
+                        width: sidebarEdgeWidth(theme),
+                        child: ColoredBox(color: sidebarEdgeColor(theme)),
+                      ),
                     ),
                   ),
                 ),
               ),
-            ),
-            Expanded(child: widget.content),
-          ],
-        );
-      }
+              Expanded(child: widget.content),
+            ],
+          );
+        }
 
-      // alwaysVisible (default).
-      return Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        _menuList(menuWidth),
-        Expanded(child: widget.content),
-      ]);
+        // alwaysVisible (default).
+        return Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          _menuList(menuWidth),
+          Expanded(child: widget.content),
+        ]);
+      });
     });
   }
 }
 
+
+// kCollapsedSidebarWidth is how wide the narrow-window drawer is, for every
+// sidebar. Deliberately one figure rather than each screen's own width: as a
+// drawer it's an overlay on a small screen, where what matters is being
+// comfortably readable, not matching the column it replaced.
+const double kCollapsedSidebarWidth = 260;
+
+// kSidebarResizeMin/Max bound every drag-resizable sidebar in the app.
+const double kSidebarResizeMin = 180;
+const double kSidebarResizeMax = 560;
+
+// ResizableSidebar remembers a drag-resized width for one screen's sidebar
+// and hands back the grab strip to put between it and the content.
+//
+// SecondarySideMenuLayout has this built in for SubMenuStyle.resizable, but
+// a screen that lays its own sidebar out -- the feed's side panel, which
+// centers a fixed-width panel and column rather than docking left -- can't
+// use that layout without losing its own. The builder form lets it keep
+// its layout and still honor the same setting, off the same per-screen
+// width store, so a width dragged here survives navigation the same way.
+class ResizableSidebar extends StatefulWidget {
+  final String storageKey;
+  final double defaultWidth;
+  final Widget Function(BuildContext context, double width, Widget handle)
+      builder;
+  const ResizableSidebar({
+    required this.storageKey,
+    required this.defaultWidth,
+    required this.builder,
+    super.key,
+  });
+
+  @override
+  State<ResizableSidebar> createState() => _ResizableSidebarState();
+}
+
+class _ResizableSidebarState extends State<ResizableSidebar> {
+  double? _width;
+
+  String get _storeKey => "sidebarWidth_${widget.storageKey}";
+
+  @override
+  void initState() {
+    super.initState();
+    // Same two-step as SecondarySideMenuLayout: the synchronous cache first
+    // so a revisited screen shows its width immediately, with the async read
+    // only needed to seed it once per app run.
+    final cached = _sidebarWidthCache[widget.storageKey];
+    if (cached != null) {
+      _width = cached;
+    } else {
+      _load();
+    }
+  }
+
+  Future<void> _load() async {
+    final v = await StorageManager.readData(_storeKey);
+    if (v is num) {
+      _sidebarWidthCache[widget.storageKey] = v.toDouble();
+      if (mounted) setState(() => _width = v.toDouble());
+    }
+  }
+
+  void _set(double w) {
+    _sidebarWidthCache[widget.storageKey] = w;
+    setState(() => _width = w);
+  }
+
+  void _save() {
+    final w = _width;
+    if (w != null) StorageManager.saveData(_storeKey, w);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer<ThemeNotifier>(builder: (context, theme, _) {
+      var width = (_width ?? widget.defaultWidth)
+          .clamp(kSidebarResizeMin, kSidebarResizeMax);
+      var handle = MouseRegion(
+        cursor: SystemMouseCursors.resizeLeftRight,
+        child: GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onHorizontalDragUpdate: (d) => _set((width + d.delta.dx)
+              .clamp(kSidebarResizeMin, kSidebarResizeMax)),
+          onHorizontalDragEnd: (_) => _save(),
+          onDoubleTap: () {
+            _set(widget.defaultWidth);
+            _save();
+          },
+          child: SizedBox(
+            width: 8,
+            child: Center(
+              child: SizedBox(
+                width: sidebarEdgeWidth(theme),
+                child: ColoredBox(color: sidebarEdgeColor(theme)),
+              ),
+            ),
+          ),
+        ),
+      );
+      return widget.builder(context, width, handle);
+    });
+  }
+}

@@ -185,9 +185,9 @@ class _FeedScreenState extends State<FeedScreen> {
       sort: FeedSort.newest,
       unreadOnly: false,
       searchController: _dummySearchCtrl,
-      showBookmarks: feedStyle.feedBookmarks,
-      showHidden: feedStyle.feedHidePosts,
-      showDrafts: feedStyle.feedDrafts,
+      showBookmarks: feedStyle.feedCardActions,
+      showHidden: feedStyle.feedCardActions,
+      showDrafts: feedStyle.feedInlineComposer,
       currentTabIndex: tabIndex,
       onView: _gotoFeedView,
       onSort: (_) {},
@@ -197,31 +197,60 @@ class _FeedScreenState extends State<FeedScreen> {
       onSubscriptions: () => onItemChanged(2, null),
       onNewPost: () => onItemChanged(3, null),
     );
-    return LayoutBuilder(builder: (context, c) {
-      List<Widget> rowChildren;
-      if (c.maxWidth >= 1400) {
-        rowChildren = [
-          const Spacer(),
-          SizedBox(width: 260, child: panel),
-          const SizedBox(width: 48),
-          SizedBox(width: 780, child: activeTab()),
-          const SizedBox(width: 308),
-          const Spacer(),
-        ];
-      } else if (c.maxWidth >= 900) {
-        rowChildren = [
-          const SizedBox(width: 16),
-          SizedBox(width: 260, child: panel),
-          const SizedBox(width: 48),
-          Expanded(child: activeTab()),
-        ];
-      } else {
-        rowChildren = [Expanded(child: activeTab())];
-      }
-      return Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: rowChildren);
-    });
+    // Resizes with -- and to the same width as -- the full panel on the
+    // All Posts/Your Posts tabs: same storageKey, so dragging either one
+    // moves both and the panel doesn't jump width when switching tabs.
+    var resizable = ThemeNotifier.of(context)
+            .areaStyle(ThemeArea.subMenuTabBar)
+            .subMenuStyle ==
+        SubMenuStyle.resizable;
+
+    Widget layout(double panelWidth, Widget? handle) {
+      return LayoutBuilder(builder: (context, c) {
+        const gap = 0.0;
+        List<Widget> rowChildren;
+        if (c.maxWidth >= 1400) {
+          rowChildren = [
+            const Spacer(),
+            SizedBox(width: panelWidth, child: panel),
+            if (handle != null) handle,
+            SizedBox(width: gap),
+            SizedBox(width: 780, child: activeTab()),
+            const SizedBox(width: 308),
+            const Spacer(),
+          ];
+        } else if (c.maxWidth >= 900) {
+          rowChildren = [
+            SizedBox(width: panelWidth, child: panel),
+            if (handle != null) handle,
+            SizedBox(width: gap),
+            Expanded(child: activeTab()),
+          ];
+        } else {
+          // Too narrow for a column of its own: hand the panel over as a
+          // drawer, opened by re-tapping this page in the main navigation
+          // (see CollapsedSidebarModel). Registering here rather
+          // than dropping it is what gives this panel the same way back as
+          // every other sidebar -- it used to just disappear.
+          ClientModel.of(context, listen: false)
+              .ui
+              .collapsedSidebar
+              .register((context) => panel, kCollapsedSidebarWidth);
+          return activeTab();
+        }
+        ClientModel.of(context, listen: false).ui.collapsedSidebar.unregister();
+        return Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: rowChildren);
+      });
+    }
+
+    if (!resizable) return layout(260, null);
+    return ResizableSidebar(
+      storageKey: "feedPanel",
+      defaultWidth: 260,
+      builder: (context, width, handle) => layout(width, handle),
+    );
   }
 
   @override
@@ -248,9 +277,8 @@ class _FeedScreenState extends State<FeedScreen> {
         (tabIndex == 0 || tabIndex == 1) && !viewingPost && !hasArgs;
 
     if (feedSidePanel && !isScreenSmall) {
-      // Reading a single post: optionally drop the sidebar entirely for a
-      // more focused reading experience, instead of falling back to the
-      // minimal nav-only panel.
+      // Reading a single post: drop the sidebar entirely for a more focused
+      // read, instead of falling back to the minimal nav-only panel.
       if (viewingPost && feedStyle.feedHideSidebarOnPost) {
         return ScreenWithChatSideMenu(client, activeTab());
       }

@@ -18,61 +18,28 @@ List<Widget> feedAreaEditor(AreaEditorContext ctx) {
     ),
     ctx.toggle(
       "Post actions: relay, tip, quote",
-      subtitle: "Relay-to-subscribers, tip-the-author, and quote-post "
-          "icons on each card, with nested quote-post rendering "
-          "(requires Feed card redesign)",
+      subtitle: "Relay, tip, quote, bookmark and hide, on each card's "
+          "action bar, with nested quote-post rendering (requires Feed "
+          "card redesign)",
       value: style.feedCardActions,
       onChanged: (v) => ctx.setStyle((s) => s.copyWith(feedCardActions: v)),
     ),
     ctx.toggle(
-      "Bookmarks",
-      subtitle: "Per-post bookmark toggle and a Bookmarks section in the "
-          "feed side panel (requires Feed side panel for the list)",
-      value: style.feedBookmarks,
-      onChanged: (v) => ctx.setStyle((s) => s.copyWith(feedBookmarks: v)),
-    ),
-    ctx.toggle(
-      "Hide posts",
-      subtitle: "Per-post hide/unhide and a Hidden section in the feed "
-          "side panel (requires Feed side panel for the list)",
-      value: style.feedHidePosts,
-      onChanged: (v) => ctx.setStyle((s) => s.copyWith(feedHidePosts: v)),
-    ),
-    ctx.toggle(
       "Feed side panel",
       subtitle: "Search, sort, and an unread-only filter in a nav rail, "
-          "replacing the plain tab bar on the main feed tab",
+          "replacing the plain tab bar on the main feed tab. Follows the "
+          "Sidebar area's Visibility, Sidebar Accent and Sidebar "
+          "Background",
       value: style.feedSidePanel,
       onChanged: (v) => ctx.setStyle((s) => s.copyWith(feedSidePanel: v)),
     ),
     ctx.toggle(
       "Inline composer",
-      subtitle: "A pinned \"What's happening?\" composer at the top of "
-          "the feed",
+      subtitle: "A \"What's happening?\" composer at the top of the feed. "
+          "Collapsed to a single line until you start typing, then it "
+          "opens up with formatting, attachments and drafts",
       value: style.feedInlineComposer,
       onChanged: (v) => ctx.setStyle((s) => s.copyWith(feedInlineComposer: v)),
-    ),
-    ctx.toggle(
-      "Composer formatting toolbar",
-      subtitle: "Bold/Italic/Code/Strikethrough/Link toolbar in the "
-          "inline composer (requires Inline composer)",
-      value: style.feedComposerFormatting,
-      onChanged: (v) =>
-          ctx.setStyle((s) => s.copyWith(feedComposerFormatting: v)),
-    ),
-    ctx.toggle(
-      "Composer image/file attach",
-      subtitle: "Attach an image or file from the inline composer "
-          "(requires Inline composer)",
-      value: style.feedComposerAttach,
-      onChanged: (v) => ctx.setStyle((s) => s.copyWith(feedComposerAttach: v)),
-    ),
-    ctx.toggle(
-      "Drafts",
-      subtitle: "Save/reuse/delete post drafts (requires Inline composer "
-          "and Feed side panel)",
-      value: style.feedDrafts,
-      onChanged: (v) => ctx.setStyle((s) => s.copyWith(feedDrafts: v)),
     ),
     ctx.toggle(
       "Hide sidebar when reading a post",
