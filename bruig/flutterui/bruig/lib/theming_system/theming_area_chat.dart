@@ -1,5 +1,6 @@
 import 'package:bruig/components/text.dart';
 import 'package:bruig/theming_system/area_options.dart';
+import 'package:bruig/theming_system/area_sides.dart';
 import 'package:bruig/theming_system/theme_editor.dart';
 import 'package:flutter/material.dart';
 
@@ -51,6 +52,21 @@ List<Widget> chatAreaEditor(AreaEditorContext ctx) {
           max: 28,
           onCommit: (v) =>
               ctx.setStyle((s) => s.copyWith(chatListCornerRadius: v))),
+      ctx.colorPick(
+        "Background color",
+        value: style.resolveChatListBackgroundColor(ctx.theme),
+        valueIndex: style.chatListBackgroundColorIndex,
+        onChanged: (c, i) => ctx.setStyle((s) => c == null
+            ? s.copyWith(
+                clearChatListBackgroundColor: true,
+                clearChatListBackgroundColorIndex: true)
+            : s.copyWith(
+                chatListBackgroundColor: c,
+                chatListBackgroundColorIndex: i,
+                clearChatListBackgroundColorIndex: i == null)),
+      ),
+      ctx.note("The row background. The hover highlight, the top highlight "
+          "and the selected row's fill are all shaded from it."),
       ctx.colorPick(
         "Accent color",
         value: style.resolveChatListAccentColor(ctx.theme),
@@ -110,10 +126,55 @@ List<Widget> chatAreaEditor(AreaEditorContext ctx) {
       onChanged: (v) => ctx.setStyle((s) => s.copyWith(composerPolish: v)),
     ),
     ctx.toggle(
-      "Square message bubbles",
-      value: style.squareBubbles,
-      onChanged: (v) => ctx.setStyle((s) => s.copyWith(squareBubbles: v)),
+      "Message bubble corners",
+      subtitle: "Sets the corner radius of sent and received bubbles "
+          "separately, and how those corners are shaped",
+      value: style.bubbleCorners,
+      onChanged: (v) => ctx.setStyle((s) => s.copyWith(bubbleCorners: v)),
     ),
+    if (style.bubbleCorners) ...[
+      ctx.choice<BubbleCornerStyle>(
+        "Corner style",
+        value: style.bubbleCornerStyle,
+        options: BubbleCornerStyle.values,
+        labelOf: bubbleCornerStyleLabel,
+        onChanged: (v) => ctx.setStyle((s) => s.copyWith(bubbleCornerStyle: v)),
+      ),
+      const SizedBox(height: 8),
+      // Both radii are per *corner* rather than per side, so the split
+      // sliders are labelled with corner names.
+      ...ctx.spacing(
+        key: "bubbleRadiusSent",
+        name: "Sent bubble radius",
+        max: 28,
+        single: style.bubbleRadiusSent,
+        sides: style.bubbleRadiusSentSides,
+        slotLabels: cornerLabels,
+        onSingle: (v) => ctx.setStyle((s) => s.copyWith(bubbleRadiusSent: v)),
+        updateSides: (f) => ctx.setStyle((s) {
+          var next = f(s.bubbleRadiusSentSides, s.bubbleRadiusSent);
+          return s.copyWith(
+              bubbleRadiusSentSides: next,
+              clearBubbleRadiusSentSides: next == null);
+        }),
+      ),
+      ...ctx.spacing(
+        key: "bubbleRadiusReceived",
+        name: "Received bubble radius",
+        max: 28,
+        single: style.bubbleRadiusReceived,
+        sides: style.bubbleRadiusReceivedSides,
+        slotLabels: cornerLabels,
+        onSingle: (v) =>
+            ctx.setStyle((s) => s.copyWith(bubbleRadiusReceived: v)),
+        updateSides: (f) => ctx.setStyle((s) {
+          var next = f(s.bubbleRadiusReceivedSides, s.bubbleRadiusReceived);
+          return s.copyWith(
+              bubbleRadiusReceivedSides: next,
+              clearBubbleRadiusReceivedSides: next == null);
+        }),
+      ),
+    ],
     ctx.choice<MessageLayoutMode>(
       "Message layout",
       value: layout,
@@ -135,11 +196,22 @@ List<Widget> chatAreaEditor(AreaEditorContext ctx) {
     // The space around the whole conversation viewport (top, sides, and
     // before the input bar); 0 (the default) fills the panel edge-to-edge.
     if (style.expandMessageWidth)
-      ctx.slider("expandMessagePadding", style.expandMessagePadding ?? 0,
-          label: (v) => "Panel padding: ${v.toStringAsFixed(1)}",
-          max: 48,
-          onCommit: (v) =>
-              ctx.setStyle((s) => s.copyWith(expandMessagePadding: v))),
+      ...ctx.spacing(
+        key: "expandMessagePadding",
+        name: "Panel padding",
+        max: 48,
+        single: style.expandMessagePadding ?? 0,
+        sides: style.expandMessagePaddingSides,
+        onSingle: (v) =>
+            ctx.setStyle((s) => s.copyWith(expandMessagePadding: v)),
+        updateSides: (f) => ctx.setStyle((s) {
+          var next =
+              f(s.expandMessagePaddingSides, s.expandMessagePadding ?? 0);
+          return s.copyWith(
+              expandMessagePaddingSides: next,
+              clearExpandMessagePaddingSides: next == null);
+        }),
+      ),
     // Chat image size is a global preference (ThemeNotifier.chatImageSize),
     // not a per-preset AreaStyle field, but it belongs with the rest of the
     // chat settings.

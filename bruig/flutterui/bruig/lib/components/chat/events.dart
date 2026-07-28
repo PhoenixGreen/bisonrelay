@@ -389,15 +389,36 @@ class _ReceivedSentPMState extends State<ReceivedSentPM> {
                               child: Container(
                                   padding: const EdgeInsets.only(
                                       top: 5, left: 10, right: 10, bottom: 5),
-                                  decoration: BoxDecoration(
+                                  // ShapeDecoration (not BoxDecoration): the
+                                  // corner styles include shapes a
+                                  // borderRadius can't describe -- cut and
+                                  // inverted corners -- so the bubble is
+                                  // painted from a ShapeBorder instead. See
+                                  // bubbleShape.
+                                  decoration: ShapeDecoration(
                                     color: isOwnMessage
                                         ? (theme.activePreset
                                                 ?.speechBackgroundSent ??
                                             theme.colors.surfaceContainer)
                                         : (theme.activePreset?.speechBackground ??
                                             theme.colors.surfaceContainerHighest),
-                                    borderRadius: BorderRadius.circular(
-                                        chatStyle.squareBubbles ? 4 : 10),
+                                    // With the corner settings off, the
+                                    // bubble is the plain 10px rounded box
+                                    // it has always been -- whatever radii
+                                    // the settings happen to still hold
+                                    // from last time they were on.
+                                    shape: !chatStyle.bubbleCorners
+                                        ? bubbleShape(
+                                            BubbleCornerStyle.rounded,
+                                            SideValues.all(10),
+                                            isOwnMessage)
+                                        : bubbleShape(
+                                            chatStyle.bubbleCornerStyle,
+                                            isOwnMessage
+                                                ? chatStyle.bubbleRadiiSent
+                                                : chatStyle
+                                                    .bubbleRadiiReceived,
+                                            isOwnMessage),
                                   ),
                                   child: Column(
                                       crossAxisAlignment: isOwnMessage

@@ -311,72 +311,70 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     // Desktop-sized version. The left nav is a plain SecondarySideMenuLayout
     // like every other screen's, so it picks up the Sidebar theme area's own
-    // settings (icons, rounded rows, visibility, width) -- it used to have a
-    // second, near-duplicate implementation of its own behind a "Settings
-    // page restyle" toggle, which those settings supersede.
-    return Consumer<ThemeNotifier>(builder: (context, theme, _) {
-      return SecondarySideMenuLayout(
-        width: 130 * (theme.fontScale > 0 ? theme.fontScale : 1),
-        storageKey: "settings",
-        content: settingsView,
-        items: [
-          SidebarNavItem(
-            icon: Icons.person_outline,
-            selected: settingsPage == "Account",
-            label: "Account",
-            onTap: () => changePage("Account"),
-          ),
-          SidebarNavItem(
-            icon: Icons.palette_outlined,
-            selected: settingsPage == "Appearance",
-            label: "Appearance",
-            onTap: () => changePage("Appearance"),
-          ),
-          SidebarNavItem(
-            icon: Icons.notifications_outlined,
-            selected: settingsPage == "Notifications",
-            label: "Notifications",
-            onTap: () => changePage("Notifications"),
-          ),
-          SidebarNavItem(
-            icon: Icons.public,
-            selected: settingsPage == "Network",
-            label: "Network",
-            onTap: () => changePage("Network"),
-          ),
-          SidebarNavItem(
-            icon: Icons.volume_up_outlined,
-            selected: settingsPage == "Audio",
-            label: "Audio",
-            onTap: () => changePage("Audio"),
-          ),
-          SidebarNavItem(
-            icon: Icons.terminal,
-            selected: settingsPage == "RPC",
-            label: "RPC",
-            onTap: () => showRpcWarningDialog(),
-          ),
-          SidebarNavItem(
-            icon: Icons.bar_chart_outlined,
-            selected: settingsPage == "Stats",
-            label: "Stats",
-            onTap: () => changePage("Stats"),
-          ),
-          SidebarNavItem(
-            icon: Icons.list_outlined,
-            selected: settingsPage == "Logs",
-            label: "Logs",
-            onTap: () => changePage("Logs"),
-          ),
-          SidebarNavItem(
-            icon: Icons.extension_outlined,
-            selected: settingsPage == "Plugins",
-            label: "Plugins",
-            onTap: () => changePage("Plugins"),
-          ),
-        ],
-      );
-    });
+    // settings (icons, rounded rows, visibility) and sizes itself to its own
+    // labels -- it used to have a second, near-duplicate implementation of
+    // its own behind a "Settings page restyle" toggle, which those settings
+    // supersede.
+    return SecondarySideMenuLayout(
+      storageKey: "settings",
+      content: settingsView,
+      items: [
+        SidebarNavItem(
+          icon: Icons.person_outline,
+          selected: settingsPage == "Account",
+          label: "Account",
+          onTap: () => changePage("Account"),
+        ),
+        SidebarNavItem(
+          icon: Icons.palette_outlined,
+          selected: settingsPage == "Appearance",
+          label: "Appearance",
+          onTap: () => changePage("Appearance"),
+        ),
+        SidebarNavItem(
+          icon: Icons.notifications_outlined,
+          selected: settingsPage == "Notifications",
+          label: "Notifications",
+          onTap: () => changePage("Notifications"),
+        ),
+        SidebarNavItem(
+          icon: Icons.public,
+          selected: settingsPage == "Network",
+          label: "Network",
+          onTap: () => changePage("Network"),
+        ),
+        SidebarNavItem(
+          icon: Icons.volume_up_outlined,
+          selected: settingsPage == "Audio",
+          label: "Audio",
+          onTap: () => changePage("Audio"),
+        ),
+        SidebarNavItem(
+          icon: Icons.terminal,
+          selected: settingsPage == "RPC",
+          label: "RPC",
+          onTap: () => showRpcWarningDialog(),
+        ),
+        SidebarNavItem(
+          icon: Icons.bar_chart_outlined,
+          selected: settingsPage == "Stats",
+          label: "Stats",
+          onTap: () => changePage("Stats"),
+        ),
+        SidebarNavItem(
+          icon: Icons.list_outlined,
+          selected: settingsPage == "Logs",
+          label: "Logs",
+          onTap: () => changePage("Logs"),
+        ),
+        SidebarNavItem(
+          icon: Icons.extension_outlined,
+          selected: settingsPage == "Plugins",
+          label: "Plugins",
+          onTap: () => changePage("Plugins"),
+        ),
+      ],
+    );
   }
 }
 
@@ -798,10 +796,35 @@ class AppearanceSettingsScreen extends StatefulWidget {
       _AppearanceSettingsScreenState();
 }
 
+// _appearanceScrollOffset survives this screen's State being torn down and
+// rebuilt, which happens every time you navigate away and back (each
+// main-menu destination is a fresh Navigator route). Editing a theme means
+// constantly hopping to the screen you're restyling to see the change and
+// back again, and this page is long enough that landing at the top each
+// time loses your place. A plain top-level double outlives the route the
+// way PageStorage, scoped to a route that no longer exists, would not.
+double _appearanceScrollOffset = 0;
+
 /// This is the private State class that goes with MyStatefulWidget.
 class _AppearanceSettingsScreenState extends State<AppearanceSettingsScreen> {
   ThemeNotifier get theme => widget.theme;
   ClientModel get client => widget.client;
+
+  late final ScrollController _scrollCtrl =
+      ScrollController(initialScrollOffset: _appearanceScrollOffset)
+        ..addListener(_rememberScroll);
+
+  // hasClients is false while the controller is detached mid-teardown, and
+  // reading offset then throws.
+  void _rememberScroll() {
+    if (_scrollCtrl.hasClients) _appearanceScrollOffset = _scrollCtrl.offset;
+  }
+
+  @override
+  void dispose() {
+    _scrollCtrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -870,6 +893,7 @@ class _AppearanceSettingsScreenState extends State<AppearanceSettingsScreen> {
         ),
         Expanded(
           child: ListView(
+            controller: _scrollCtrl,
             padding: const EdgeInsets.all(8),
             children: [
               _SettingsGroupCard(

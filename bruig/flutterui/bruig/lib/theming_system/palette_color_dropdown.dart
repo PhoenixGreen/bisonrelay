@@ -101,11 +101,10 @@ class PaletteColorDropdown extends StatelessWidget {
     if (isCustom) matchIdx = _customValue;
 
     // Each entry is a swatch beside its name. A Row lays a plain Text out
-    // with unbounded width, so in a fixed-width column (isExpanded) the
-    // longer slot names -- "Outline (Borders/Dividers)" -- overflow the
-    // button instead of being cut short: only Flexible gives the Text a
-    // width to ellipsize within.
-    Widget entry(Widget leading, String label, {bool clip = false}) =>
+    // with unbounded width, so a name too long for the space it's in --
+    // "Outline (Borders/Dividers)" -- overflows rather than being cut
+    // short; only Flexible gives the Text a width to ellipsize within.
+    Widget entry(Widget leading, String label, {bool clip = true}) =>
         Row(mainAxisSize: MainAxisSize.min, children: [
           leading,
           const SizedBox(width: 8),
@@ -115,29 +114,32 @@ class PaletteColorDropdown extends StatelessWidget {
             Text(label),
         ]);
 
-    // ...but only the closed button clips. The open menu builds from
-    // `items` below, which stay unclipped so every name is readable in
-    // full there -- and, when this dropdown is sizing itself to its own
-    // content rather than filling a column, an unbounded Row is what
-    // RenderFlex asserts a Flexible child can't live in anyway.
+    Widget customLeading() => isCustom
+        ? colorSwatchBox(value!)
+        : const Icon(Icons.palette_outlined, size: 18);
+
+    // The open menu is only ever as wide as the button that opened it, so
+    // its entries need clipping too -- in a narrow column (four of these
+    // side by side for a gradient) the longer names overflow the menu.
+    //
+    // The closed button is built separately, by selectedItemBuilder, for
+    // one reason: a dropdown left to size itself to its content (rather
+    // than filling a column) hands its row unbounded width, and RenderFlex
+    // asserts outright on a Flexible child there. The menu is bounded
+    // either way, so only this copy has to care.
     List<Widget> selectedItems(BuildContext context) => [
           if (allowNone) Text(noneLabel),
           for (var i = 0; i < PaletteSlot.values.length; i++)
             entry(colorSwatchBox(palette[i]),
                 paletteSlotLabel(PaletteSlot.values[i]),
-                clip: true),
-          entry(
-              isCustom
-                  ? colorSwatchBox(value!)
-                  : const Icon(Icons.palette_outlined, size: 18),
-              "Custom color...",
-              clip: true),
+                clip: isExpanded),
+          entry(customLeading(), "Custom color...", clip: isExpanded),
         ];
 
     return DropdownButton<int>(
       value: matchIdx,
       isExpanded: isExpanded,
-      selectedItemBuilder: isExpanded ? selectedItems : null,
+      selectedItemBuilder: selectedItems,
       items: [
         if (allowNone) DropdownMenuItem(value: -1, child: Text(noneLabel)),
         for (var i = 0; i < PaletteSlot.values.length; i++)
@@ -148,11 +150,7 @@ class PaletteColorDropdown extends StatelessWidget {
           ),
         DropdownMenuItem(
           value: _customValue,
-          child: entry(
-              isCustom
-                  ? colorSwatchBox(value!)
-                  : const Icon(Icons.palette_outlined, size: 18),
-              "Custom color..."),
+          child: entry(customLeading(), "Custom color..."),
         ),
       ],
       onChanged: (i) {
