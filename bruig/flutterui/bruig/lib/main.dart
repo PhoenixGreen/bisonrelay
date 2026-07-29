@@ -45,6 +45,7 @@ import 'package:bruig/screens/confirm_file_download.dart';
 import 'package:bruig/screens/fatal_error.dart';
 // import 'package:dart_vlc/dart_vlc.dart';
 import 'package:bruig/models/client.dart';
+import 'package:bruig/models/exchange_rate.dart';
 import 'package:bruig/models/feed.dart';
 import 'package:bruig/screens/init_local_id.dart';
 import 'package:bruig/screens/ln_management.dart';
@@ -192,6 +193,10 @@ Future<void> runMainApp(Config cfg) async {
       ChangeNotifierProvider(create: (c) => PaymentsModel()),
       ChangeNotifierProvider(create: (c) => PluginsModel()..reload()),
       ChangeNotifierProvider(create: (c) => WalletModel()),
+      // Started here rather than lazily inside the nav bar: the direction
+      // arrows need a previous price to compare against, so the poll has to
+      // be running before the setting is switched on, not after.
+      ChangeNotifierProvider(create: (c) => ExchangeRateModel()),
       ChangeNotifierProvider(create: (c) => TypingEmojiSelModel()),
       ChangeNotifierProvider(create: (c) => AudioModel(), lazy: false),
       ChangeNotifierProxyProvider<PluginsModel, MarkdownAreaModel>(

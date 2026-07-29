@@ -2616,6 +2616,22 @@ class ProfileUpdated extends ChatEvent {
 }
 
 @JsonSerializable()
+// ExchangeRate is the USD price pair the client's rate tracker holds. Its
+// fromJson is hand-written rather than generated: this type has no
+// json_serializable part, so adding it doesn't require regenerating
+// definitions.g.dart.
+class ExchangeRate {
+  final double dcrPrice;
+  final double btcPrice;
+
+  const ExchangeRate({required this.dcrPrice, required this.btcPrice});
+
+  factory ExchangeRate.fromJson(Map<String, dynamic> json) => ExchangeRate(
+        dcrPrice: (json["dcr_price"] as num?)?.toDouble() ?? 0,
+        btcPrice: (json["btc_price"] as num?)?.toDouble() ?? 0,
+      );
+}
+
 class RunState {
   @JsonKey(name: "dcrlnd_running")
   final bool dcrlndRunning;
@@ -4425,6 +4441,9 @@ abstract class PluginPlatform {
   Future<void> zipLogs(ZipLogsArgs args) async =>
       await asyncCall(CTZipLogs, args);
 
+  Future<ExchangeRate> getExchangeRate() async =>
+      ExchangeRate.fromJson(await asyncCall(CTGetExchangeRate, null));
+
   Future<void> notifyServerSessionState() async =>
       await asyncCall(CTNotifyServerSessionState, null);
 
@@ -4803,6 +4822,7 @@ const int CTFetchLinkMetadata = 0xb9;
 const int CTGetSpellcheckData = 0xba;
 const int CTDynPluginRenderScreen = 0xbb;
 const int CTDynPluginHandleEvent = 0xbc;
+const int CTGetExchangeRate = 0xbd;
 
 const int notificationsStartID = 0x1000;
 

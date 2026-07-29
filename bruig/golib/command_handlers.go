@@ -2673,6 +2673,14 @@ func handleClientCmd(cc *clientCtx, cmd *cmd) (interface{}, error) {
 
 		return res, nil
 
+	case CTGetExchangeRate:
+		// The rates the client already tracks (see rates.Rates), surfaced
+		// to the UI. Reading the cached pair, not fetching: Rates refreshes
+		// itself on its own schedule, and a UI poll shouldn't drive network
+		// requests to the rate API.
+		dcrPrice, btcPrice := c.Rates().Get()
+		return exchangeRate{DCRPrice: dcrPrice, BTCPrice: btcPrice}, nil
+
 	case CTListKXs:
 		return c.ListKXs()
 
