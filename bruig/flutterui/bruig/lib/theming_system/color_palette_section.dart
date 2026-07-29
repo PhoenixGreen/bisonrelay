@@ -58,6 +58,13 @@ void applyColorPalette(ThemeNotifier theme, ColorPalette palette) {
   theme.previewPreset(draft.copyWith(
     brightness: palette.brightness,
     primary: colorAt(0, base.primary),
+    // Follow primary rather than being left at the previous theme's value:
+    // a library palette carries no entry for these two (its stored colors
+    // are positional, so appending would break every palette saved before
+    // now), and leaving them behind would strand two regions on a
+    // background from a palette that's no longer applied.
+    dualBackground: colorAt(0, base.primary),
+    contentBackground: colorAt(0, base.primary),
     secondary: colorAt(1, base.secondary),
     tertiary: colorAt(2, base.tertiary),
     sidebarBackground: colorAt(3, base.sidebarBackground),

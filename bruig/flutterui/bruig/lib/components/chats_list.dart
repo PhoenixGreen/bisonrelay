@@ -172,7 +172,8 @@ class _ChatHeadingWState extends State<_ChatHeadingW> {
   // lightness above it, its far edge ~3.5% below, the top hairline ~9%
   // above, and a selected row's fill ~3% below.
   Widget _wrapSelected(bool isActive, double radius, Color accent,
-      double glowIntensity, bool topHighlight, Color background, Widget tile) {
+      double glowIntensity, bool topHighlight, Color background,
+      Color selectedBackground, Widget tile) {
     // ListTile.tileColor/selectedTileColor need a nearby Material ancestor
     // to paint into and to render ink splashes -- the ClipRRect below
     // otherwise leaves them without one. MaterialType.transparency paints
@@ -241,7 +242,7 @@ class _ChatHeadingWState extends State<_ChatHeadingW> {
             right: Radius.circular(radius),
           ),
           child: Container(
-            color: _shade(background, -0.03),
+            color: selectedBackground,
             child: tile,
           ),
         ),
@@ -259,10 +260,25 @@ class _ChatHeadingWState extends State<_ChatHeadingW> {
     var accentColor = chatStyle.resolveChatListAccentColor(theme) ??
         theme.activePreset?.sidebarAccent ??
         _clpBlue;
-    // The near-black the chat-list design was drawn against; every other
-    // shade in it is derived from whatever this is set to (see _shade).
+    // Defaults to the palette's "Secondary Background" so the chat list
+    // sits on a color the theme actually names, rather than the near-black
+    // the design was originally drawn against -- which is still the
+    // fallback for the built-in themes, which have no palette to read.
+    // Every other shade in the design derives from this (see _shade).
     var backgroundColor = chatStyle.resolveChatListBackgroundColor(theme) ??
+        theme.activePreset?.tertiary ??
         const Color(0xFF171717);
+    // The selected row's fill: its own setting when one is picked, else the
+    // palette's "Speech Background (Send)" -- the same color the selected
+    // chat's own outgoing bubbles use, so the list and the conversation
+    // agree on what "this chat" looks like. Falls back to the design's own
+    // slightly-darker shade for the built-in themes.
+    // Null for the built-in dark/light themes, which have no palette to
+    // read: they keep Material's own selectedTileColor from the app theme
+    // (a distinctly lighter grey), which is what the app has always shown
+    // when no preset is active.
+    var selectedBackgroundColor = chatStyle.resolveChatListSelectedColor(theme) ??
+        theme.activePreset?.speechBackgroundSent;
     var glowIntensity = chatStyle.chatListGlowIntensity ?? 1.0;
     var topHighlight = chatStyle.chatListTopHighlight;
     var isActive = chat.active;
@@ -381,8 +397,15 @@ class _ChatHeadingWState extends State<_ChatHeadingW> {
     // (e.g. isActiveRTC's green highlight) that needs a nearby Material to
     // paint into -- see the comment on _wrapSelected.
     Widget wrap(Widget tile) => chatListDesign
-        ? _wrapSelected(isActive, cornerRadius, accentColor, glowIntensity,
-            topHighlight, backgroundColor, tile)
+        ? _wrapSelected(
+            isActive,
+            cornerRadius,
+            accentColor,
+            glowIntensity,
+            topHighlight,
+            backgroundColor,
+            selectedBackgroundColor ?? _shade(backgroundColor, -0.03),
+            tile)
         : Material(type: MaterialType.transparency, child: tile);
 
     bool isScreenSmall = checkIsScreenSmall(context);
@@ -400,8 +423,14 @@ class _ChatHeadingWState extends State<_ChatHeadingW> {
                 child: wrap(
                   ListTile(
                     tileColor: chatListDesign ? Colors.transparent : null,
-                    selectedTileColor:
-                        chatListDesign ? Colors.transparent : null,
+                    // With the design on, the selected fill is painted by
+                    // _wrapSelected and this stays out of the way; with it
+                    // off, the plain list used Material's own selected
+                    // color, which no palette slot named. Both routes end
+                    // up on the same setting now.
+                    selectedTileColor: chatListDesign
+                        ? Colors.transparent
+                        : selectedBackgroundColor,
                     // Hovering lifts the row off its own background rather
                     // than washing it with Material's theme-wide hover
                     // color, which is derived from the app's primary and so

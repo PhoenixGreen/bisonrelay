@@ -41,10 +41,15 @@ class BisonRelayLogo extends StatelessWidget {
 class ThemedArea extends StatelessWidget {
   final ThemeArea area;
   final SurfaceColor fallback;
+  // tokenColor is what this area's "Default" background paints, for the
+  // areas whose default is a palette slot of their own rather than a
+  // ColorScheme token. Null keeps the token.
+  final Color? tokenColor;
   final Widget? child;
   const ThemedArea(
       {required this.area,
       this.fallback = SurfaceColor.surface,
+      this.tokenColor,
       this.child,
       super.key});
 
@@ -52,7 +57,7 @@ class ThemedArea extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer<ThemeNotifier>(
         builder: (context, theme, _) => theme.areaContainer(area, fallback,
-            child: child ?? const Empty()));
+            tokenColor: tokenColor, child: child ?? const Empty()));
   }
 }
 
@@ -328,20 +333,34 @@ double sidebarEdgeWidth(ThemeNotifier theme) {
 // Only wrapped once that area has actually been given something: an
 // untouched area still resolves to an opaque token-colored box, which would
 // paint over content that never had a background of its own.
-Widget contentAreaFrame(ThemeNotifier theme, Widget content) =>
-    theme.areaStyle(ThemeArea.contentArea).hasVisibleFrame
-        ? ThemedArea(area: ThemeArea.contentArea, child: content)
-        : content;
+Widget contentAreaFrame(ThemeNotifier theme, Widget content) {
+  // Its Background "Default" is the palette's Content Background, seeded to
+  // the same value as Master Background so this paints what showed through
+  // before it existed. The built-in themes have no palette to read, so they
+  // keep the old behavior of only wrapping once something is set.
+  var token = theme.activePreset?.contentBackground;
+  if (token == null &&
+      !theme.areaStyle(ThemeArea.contentArea).hasVisibleFrame) {
+    return content;
+  }
+  return ThemedArea(
+      area: ThemeArea.contentArea, tokenColor: token, child: content);
+}
 
 // dualPanelFrame wraps a whole page -- its sidebar and its content, as one
 // region -- in the Dual Panel area's styling, so a border on it goes round
 // the outside of both. Same gate as contentAreaFrame: an untouched area
 // still resolves to an opaque token-colored box, which would paint over
 // every page in the app.
-Widget dualPanelFrame(ThemeNotifier theme, Widget page) =>
-    theme.areaStyle(ThemeArea.dualPanel).hasVisibleFrame
-        ? ThemedArea(area: ThemeArea.dualPanel, child: page)
-        : page;
+Widget dualPanelFrame(ThemeNotifier theme, Widget page) {
+  // Same as contentAreaFrame: "Default" is the palette's Dual Background.
+  var token = theme.activePreset?.dualBackground;
+  if (token == null && !theme.areaStyle(ThemeArea.dualPanel).hasVisibleFrame) {
+    return page;
+  }
+  return ThemedArea(
+      area: ThemeArea.dualPanel, tokenColor: token, child: page);
+}
 
 // sidebarBackgroundColor is the fill every sidebar in the app shares -- the
 // "Sidebar Background" palette slot, read live so it follows palette edits.

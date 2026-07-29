@@ -210,9 +210,11 @@ class ThemeNotifier with ChangeNotifier {
   // areaContainer wraps `child` in the given area's full background+border
   // (solid/gradient/image, independently) + padding/margin styling.
   Widget areaContainer(ThemeArea area, SurfaceColor fallback,
-          {required Widget child}) =>
+          {required Widget child, Color? tokenColor}) =>
       areaStyle(area).buildContainer(this, fallback,
-          child: child, presetDir: _fullTheme.presetDir);
+          child: child,
+          presetDir: _fullTheme.presetDir,
+          tokenColor: tokenColor);
 
   void switchTheme(String value) async {
     // "system" has no theme of its own -- on every platform it resolves to
