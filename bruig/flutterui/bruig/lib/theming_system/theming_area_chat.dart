@@ -83,7 +83,7 @@ List<Widget> chatAreaEditor(AreaEditorContext ctx) {
                 chatListBackgroundColorIndex: i,
                 clearChatListBackgroundColorIndex: i == null)),
       ),
-      ctx.note("The row background, defaulting to Secondary Background. "
+      ctx.note("The row background, defaulting to Content Background. "
           "The hover and top highlights are shaded from it."),
       ctx.colorPick(
         "Accent color",

@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:bruig/components/empty_widget.dart';
@@ -6,17 +7,29 @@ import 'package:bruig/theming_system/theme_preset.dart';
 import 'package:bruig/storage_manager.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
+import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
 
-// BisonRelayLogo renders the app's logo preserving its true (non-square)
-// aspect ratio. The source asset (assets/images/icon.png) is 102x157 --
-// taller than it is wide -- so forcing it into a square SizedBox (as
-// earlier code in overview.dart/sidebar.dart did) let the image center
-// itself within that square by its own aspect ratio, leaving visible empty
-// space on the left and right that a left/right Align couldn't close,
-// since it only positioned the (mostly-empty) square box, not the glyph.
+// BisonRelayLogo renders the app's icon at a given size, wherever the app
+// draws it -- the header, the nav bar, the About button.
+//
+// Unmodified it's the built-in asset, kept at its true (non-square) aspect
+// ratio: assets/images/icon.png is 102x157 -- taller than it is wide -- so
+// forcing it into a square SizedBox (as earlier code in overview.dart/
+// sidebar.dart did) let the image center itself within that square by its
+// own aspect ratio, leaving visible empty space on the left and right that
+// a left/right Align couldn't close, since it only positioned the
+// (mostly-empty) square box, not the glyph.
+//
+// A user-supplied icon (AreaStyle.logoPath on the header area, applied
+// app-wide) can be any shape, so it gets a square box of the requested size
+// and is fitted inside it -- there's no aspect ratio to build the box from
+// without decoding the image first, and contain within a known box keeps
+// every call site's layout predictable while never distorting the picture.
 class BisonRelayLogo extends StatelessWidget {
   static const double aspectRatio = 102 / 157;
+  static const String assetPath = "assets/images/icon.png";
 
   // size is the taller (height) dimension; width is derived from it.
   final double size;
@@ -24,12 +37,42 @@ class BisonRelayLogo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: size * aspectRatio,
-      height: size,
-      child: Image.asset("assets/images/icon.png", fit: BoxFit.fill),
-    );
+    return Consumer<ThemeNotifier>(builder: (context, theme, _) {
+      var custom = customAppIcon(theme, size);
+      if (custom != null) return custom;
+      return SizedBox(
+        width: size * aspectRatio,
+        height: size,
+        child: Image.asset(assetPath, fit: BoxFit.fill),
+      );
+    });
   }
+}
+
+// customAppIcon is the user's own app icon at `size`, or null when they
+// haven't set one. Separate from BisonRelayLogo for the call sites that
+// draw the icon themselves rather than through it (the About button).
+//
+// SVG is resolved through flutter_svg, which the app already uses for its
+// menu icons; anything else goes through Image.file.
+Widget? customAppIcon(ThemeNotifier theme, double size) {
+  var logoPath = theme.areaStyle(ThemeArea.header).logoPath;
+  var dir = theme.fullTheme.presetDir;
+  if (logoPath == null || dir == null) return null;
+  var file = File(p.join(dir, logoPath));
+  return SizedBox(
+    width: size,
+    height: size,
+    child: logoPath.toLowerCase().endsWith(".svg")
+        ? SvgPicture.file(file, fit: BoxFit.contain)
+        : Image.file(file,
+            fit: BoxFit.contain,
+            // A path that no longer resolves (the preset's directory moved
+            // or was cleaned up) shouldn't leave a broken-image box in the
+            // app's chrome.
+            errorBuilder: (context, error, stack) =>
+                Image.asset(BisonRelayLogo.assetPath, fit: BoxFit.contain)),
+  );
 }
 
 // ThemedArea wraps a whole visual region (e.g. the master background, the

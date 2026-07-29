@@ -123,6 +123,14 @@ class AreaStyle {
   // means HeaderPosition.top (today's behavior).
   final HeaderPosition? headerPosition;
 
+  // logoPath replaces the Bison Relay icon app-wide with the user's own
+  // image, as a path relative to the preset's directory (same storage as
+  // the background images). Null -- the default -- is the built-in icon,
+  // which is what clearing this returns to. It lives on the header area
+  // because that's where it's edited, but every place the app draws its
+  // icon reads it (see BisonRelayLogo).
+  final String? logoPath;
+
   // logoSize overrides the app-icon logo size; meaningful for header (its
   // own logo, independent of the header's height) and navBar (see
   // showLogo below). Null means the built-in default (40 for header, 32
@@ -227,22 +235,23 @@ class AreaStyle {
   // -------------------------------------------------------------------------
   // Realtime chat -- see theming_area_realtimechat.dart.
   // -------------------------------------------------------------------------
+  // The screen's own layout -- the lobby header, the live stage, the
+  // session-info row, the pre-join audio test, the styled session list and
+  // its empty-state intro -- used to be seven toggles here. They're just
+  // how the page is built now: they described the page's structure, not a
+  // theme, and a theme area is the wrong place to decide whether a screen
+  // has a header.
   final bool autoUnmuteOnJoin; // Auto-unmute + snackbar on joining a call.
-  final bool enhancedCallIndicators; // Mic-live/mute/warning-chip indicators.
-  final bool rtcAudioTestPanel; // Pre-join mic/speaker test panel (pick
-  // devices, record, play back) before joining a session.
-  final bool rtcCollapsibleSessionInfo; // Tucks RV/Size/Peer ID/Owner behind
-  // an expandable "Session info" row instead of always showing them.
-  final bool rtcLobbyHero; // Icon-badge + title + member-count header shown
-  // while not yet in a live session.
-  final bool rtcLiveStage; // Rich live-session view: LIVE badge, session
-  // timer, RTT signal bars, speaking-aware avatar rings, mic/speaker device
-  // panels, mic activity bars. Needs the RTDTSessionModel.localHasSound
-  // model support (always present; not conditional on this toggle).
-  final bool rtcStyledSessionList; // Redesigned RTC session-list rows
-  // (live-status dot + glow, active-row highlight).
-  final bool rtcSessionListIntro; // Empty-state explainer + "Create your
-  // first Realtime Chat" button when no session is active.
+  // The session-list row's own corner radius, matching the chat list's --
+  // 0 reads as a plain square-cornered row. Null = the built-in 12.
+  final double? rtcSessionCornerRadius;
+  // The active session row's fill. Null = the built-in near-black.
+  final Color? rtcActiveSessionColor;
+  final int? rtcActiveSessionColorIndex;
+  // The live/speaking accent: the live dot, its glow, and the speaking
+  // ring around an avatar. Null = the built-in green.
+  final Color? rtcLiveColor;
+  final int? rtcLiveColorIndex;
 
   // -------------------------------------------------------------------------
   // Stats -- see theming_area_stats.dart.
@@ -335,6 +344,7 @@ class AreaStyle {
     this.marginSides,
     this.height,
     this.contentAlign,
+    this.logoPath,
     this.logoSize,
     this.headerPosition,
     this.showLogo = false,
@@ -370,13 +380,11 @@ class AreaStyle {
     this.expandMessagePadding,
     this.expandMessagePaddingSides,
     this.autoUnmuteOnJoin = false,
-    this.enhancedCallIndicators = false,
-    this.rtcAudioTestPanel = false,
-    this.rtcCollapsibleSessionInfo = false,
-    this.rtcLobbyHero = false,
-    this.rtcLiveStage = false,
-    this.rtcStyledSessionList = false,
-    this.rtcSessionListIntro = false,
+    this.rtcSessionCornerRadius,
+    this.rtcActiveSessionColor,
+    this.rtcActiveSessionColorIndex,
+    this.rtcLiveColor,
+    this.rtcLiveColorIndex,
     this.payStatsCardStyle = false,
     this.accountCardLayout = false,
     this.feedCardRedesign = false,
@@ -436,6 +444,8 @@ class AreaStyle {
     double? height,
     bool clearHeight = false,
     ContentAlign? contentAlign,
+    String? logoPath,
+    bool clearLogoPath = false,
     double? logoSize,
     HeaderPosition? headerPosition,
     bool? showLogo,
@@ -484,13 +494,16 @@ class AreaStyle {
     bool clearExpandMessagePaddingSides = false,
     bool clearExpandMessagePadding = false,
     bool? autoUnmuteOnJoin,
-    bool? enhancedCallIndicators,
-    bool? rtcAudioTestPanel,
-    bool? rtcCollapsibleSessionInfo,
-    bool? rtcLobbyHero,
-    bool? rtcLiveStage,
-    bool? rtcStyledSessionList,
-    bool? rtcSessionListIntro,
+    double? rtcSessionCornerRadius,
+    bool clearRtcSessionCornerRadius = false,
+    Color? rtcActiveSessionColor,
+    bool clearRtcActiveSessionColor = false,
+    int? rtcActiveSessionColorIndex,
+    bool clearRtcActiveSessionColorIndex = false,
+    Color? rtcLiveColor,
+    bool clearRtcLiveColor = false,
+    int? rtcLiveColorIndex,
+    bool clearRtcLiveColorIndex = false,
     bool? payStatsCardStyle,
     bool? accountCardLayout,
     bool? feedCardRedesign,
@@ -551,6 +564,7 @@ class AreaStyle {
             clearMarginSides ? null : (marginSides ?? this.marginSides),
         height: clearHeight ? null : (height ?? this.height),
         contentAlign: contentAlign ?? this.contentAlign,
+        logoPath: clearLogoPath ? null : (logoPath ?? this.logoPath),
         logoSize: logoSize ?? this.logoSize,
         headerPosition: headerPosition ?? this.headerPosition,
         showLogo: showLogo ?? this.showLogo,
@@ -616,15 +630,20 @@ class AreaStyle {
             ? null
             : (expandMessagePadding ?? this.expandMessagePadding),
         autoUnmuteOnJoin: autoUnmuteOnJoin ?? this.autoUnmuteOnJoin,
-        enhancedCallIndicators:
-            enhancedCallIndicators ?? this.enhancedCallIndicators,
-        rtcAudioTestPanel: rtcAudioTestPanel ?? this.rtcAudioTestPanel,
-        rtcCollapsibleSessionInfo:
-            rtcCollapsibleSessionInfo ?? this.rtcCollapsibleSessionInfo,
-        rtcLobbyHero: rtcLobbyHero ?? this.rtcLobbyHero,
-        rtcLiveStage: rtcLiveStage ?? this.rtcLiveStage,
-        rtcStyledSessionList: rtcStyledSessionList ?? this.rtcStyledSessionList,
-        rtcSessionListIntro: rtcSessionListIntro ?? this.rtcSessionListIntro,
+        rtcSessionCornerRadius: clearRtcSessionCornerRadius
+            ? null
+            : (rtcSessionCornerRadius ?? this.rtcSessionCornerRadius),
+        rtcActiveSessionColor: clearRtcActiveSessionColor
+            ? null
+            : (rtcActiveSessionColor ?? this.rtcActiveSessionColor),
+        rtcActiveSessionColorIndex: clearRtcActiveSessionColorIndex
+            ? null
+            : (rtcActiveSessionColorIndex ?? this.rtcActiveSessionColorIndex),
+        rtcLiveColor:
+            clearRtcLiveColor ? null : (rtcLiveColor ?? this.rtcLiveColor),
+        rtcLiveColorIndex: clearRtcLiveColorIndex
+            ? null
+            : (rtcLiveColorIndex ?? this.rtcLiveColorIndex),
         payStatsCardStyle: payStatsCardStyle ?? this.payStatsCardStyle,
         accountCardLayout: accountCardLayout ?? this.accountCardLayout,
         feedCardRedesign: feedCardRedesign ?? this.feedCardRedesign,
@@ -683,6 +702,7 @@ class AreaStyle {
         if (marginSides != null) "marginSides": marginSides!.toJson(),
         if (height != null) "height": height,
         if (contentAlign != null) "contentAlign": contentAlign!.name,
+        if (logoPath != null) "logoPath": logoPath,
         if (logoSize != null) "logoSize": logoSize,
         if (headerPosition != null) "headerPosition": headerPosition!.name,
         if (showLogo) "showLogo": showLogo,
@@ -737,15 +757,14 @@ class AreaStyle {
         if (expandMessagePaddingSides != null)
           "expandMessagePaddingSides": expandMessagePaddingSides!.toJson(),
         if (autoUnmuteOnJoin) "autoUnmuteOnJoin": autoUnmuteOnJoin,
-        if (enhancedCallIndicators)
-          "enhancedCallIndicators": enhancedCallIndicators,
-        if (rtcAudioTestPanel) "rtcAudioTestPanel": rtcAudioTestPanel,
-        if (rtcCollapsibleSessionInfo)
-          "rtcCollapsibleSessionInfo": rtcCollapsibleSessionInfo,
-        if (rtcLobbyHero) "rtcLobbyHero": rtcLobbyHero,
-        if (rtcLiveStage) "rtcLiveStage": rtcLiveStage,
-        if (rtcStyledSessionList) "rtcStyledSessionList": rtcStyledSessionList,
-        if (rtcSessionListIntro) "rtcSessionListIntro": rtcSessionListIntro,
+        if (rtcSessionCornerRadius != null)
+          "rtcSessionCornerRadius": rtcSessionCornerRadius,
+        if (rtcActiveSessionColor != null)
+          "rtcActiveSessionColor": colorToHex(rtcActiveSessionColor!),
+        if (rtcActiveSessionColorIndex != null)
+          "rtcActiveSessionColorIndex": rtcActiveSessionColorIndex,
+        if (rtcLiveColor != null) "rtcLiveColor": colorToHex(rtcLiveColor!),
+        if (rtcLiveColorIndex != null) "rtcLiveColorIndex": rtcLiveColorIndex,
         if (payStatsCardStyle) "payStatsCardStyle": payStatsCardStyle,
         if (accountCardLayout) "accountCardLayout": accountCardLayout,
         if (feedCardRedesign) "feedCardRedesign": feedCardRedesign,
@@ -824,6 +843,7 @@ class AreaStyle {
       marginSides: SideValues.fromJson(j["marginSides"]),
       height: number("height"),
       contentAlign: _enumOrNull(ContentAlign.values, j["contentAlign"]),
+      logoPath: j["logoPath"],
       logoSize: number("logoSize"),
       headerPosition: _enumOrNull(HeaderPosition.values, j["headerPosition"]),
       showLogo: flag("showLogo"),
@@ -877,13 +897,12 @@ class AreaStyle {
       expandMessagePaddingSides:
           SideValues.fromJson(j["expandMessagePaddingSides"]),
       autoUnmuteOnJoin: flag("autoUnmuteOnJoin"),
-      enhancedCallIndicators: flag("enhancedCallIndicators"),
-      rtcAudioTestPanel: flag("rtcAudioTestPanel"),
-      rtcCollapsibleSessionInfo: flag("rtcCollapsibleSessionInfo"),
-      rtcLobbyHero: flag("rtcLobbyHero"),
-      rtcLiveStage: flag("rtcLiveStage"),
-      rtcStyledSessionList: flag("rtcStyledSessionList"),
-      rtcSessionListIntro: flag("rtcSessionListIntro"),
+      rtcSessionCornerRadius: number("rtcSessionCornerRadius"),
+      rtcActiveSessionColor: color("rtcActiveSessionColor"),
+      rtcActiveSessionColorIndex:
+          (j["rtcActiveSessionColorIndex"] as num?)?.toInt(),
+      rtcLiveColor: color("rtcLiveColor"),
+      rtcLiveColorIndex: (j["rtcLiveColorIndex"] as num?)?.toInt(),
       payStatsCardStyle: flag("payStatsCardStyle"),
       // "settingsShellRestyle" is accountCardLayout's old name, from when
       // it lived on the Master area (see ThemePreset.fromJson, which moves
@@ -991,6 +1010,10 @@ class AreaStyle {
       _liveColor(theme, solidColorIndex, solidColor);
   Color? resolveChatListAccentColor(ThemeNotifier theme) =>
       _liveColor(theme, chatListAccentColorIndex, chatListAccentColor);
+  Color? resolveRtcActiveSessionColor(ThemeNotifier theme) =>
+      _liveColor(theme, rtcActiveSessionColorIndex, rtcActiveSessionColor);
+  Color? resolveRtcLiveColor(ThemeNotifier theme) =>
+      _liveColor(theme, rtcLiveColorIndex, rtcLiveColor);
   Color? resolveChatListBackgroundColor(ThemeNotifier theme) =>
       _liveColor(theme, chatListBackgroundColorIndex, chatListBackgroundColor);
   Color? resolveChatListSelectedColor(ThemeNotifier theme) =>
@@ -1031,6 +1054,11 @@ class AreaStyle {
           borderGradientColorIndexes.map(remap).toList(),
       chatListAccentColorIndex: remap(chatListAccentColorIndex),
       clearChatListAccentColorIndex: remap(chatListAccentColorIndex) == null,
+      rtcActiveSessionColorIndex: remap(rtcActiveSessionColorIndex),
+      clearRtcActiveSessionColorIndex:
+          remap(rtcActiveSessionColorIndex) == null,
+      rtcLiveColorIndex: remap(rtcLiveColorIndex),
+      clearRtcLiveColorIndex: remap(rtcLiveColorIndex) == null,
       chatListBackgroundColorIndex: remap(chatListBackgroundColorIndex),
       clearChatListBackgroundColorIndex:
           remap(chatListBackgroundColorIndex) == null,

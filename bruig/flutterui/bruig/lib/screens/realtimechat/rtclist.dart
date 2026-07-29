@@ -1,6 +1,5 @@
 import 'package:bruig/components/confirmation_dialog.dart';
 import 'package:bruig/components/containers.dart';
-import 'package:bruig/components/empty_widget.dart';
 import 'package:bruig/components/equalizer_icon.dart';
 import 'package:bruig/components/inputs.dart';
 import 'package:bruig/components/interactive_avatar.dart';
@@ -10,11 +9,11 @@ import 'package:bruig/models/audio.dart';
 import 'package:bruig/models/client.dart';
 import 'package:bruig/models/emoji.dart';
 import 'package:bruig/models/realtimechat.dart';
-import 'package:bruig/theming_system/theme_preset.dart';
 import 'package:bruig/screens/chats.dart';
 import 'package:bruig/screens/realtimechat/activertc.dart';
 import 'package:bruig/screens/realtimechat/creatertc.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
+import 'package:bruig/theming_system/theme_preset.dart';
 import 'package:flutter/material.dart';
 import 'package:golib_plugin/definitions.dart';
 import 'package:provider/provider.dart';
@@ -273,31 +272,27 @@ class __RTDTSessionWState extends State<_RTDTSessionW> {
 
   @override
   Widget build(BuildContext context) {
-    var style = ThemeNotifier.of(context).areaStyle(ThemeArea.realtimeChat);
-    if (!style.rtcStyledSessionList) {
-      return ListTile(
-          onTap: () => !isActive ? rtc.active.active = session : null,
-          selected: isActive,
-          trailing: session.hasHotAudio
-              ? const Icon(Icons.mic)
-              : session.inLiveSession
-                  ? const Icon(Icons.headphones)
-                  : null,
-          title:
-              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Txt.L(session.info.metadata.description),
-            Txt.S(session.info.metadata.rv.substring(0, 10)),
-          ]));
-    }
 
     final live = session.hasHotAudio || session.inLiveSession;
+    // The three things a theme decides about this row (see the Realtime
+    // Chat theme area); each keeps its built-in value until set.
+    var rtcStyle = ThemeNotifier.of(context).areaStyle(ThemeArea.realtimeChat);
+    var radius =
+        BorderRadius.circular(rtcStyle.rtcSessionCornerRadius ?? 12);
+    var activeColor = rtcStyle.resolveRtcActiveSessionColor(
+            ThemeNotifier.of(context)) ??
+        const Color(0xFF0B0F16);
+    var liveColor =
+        rtcStyle.resolveRtcLiveColor(ThemeNotifier.of(context)) ??
+            const Color(0xFF1DFF8C);
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       child: Material(
-        color: isActive ? const Color(0xFF0B0F16) : Colors.transparent,
-        borderRadius: BorderRadius.circular(12),
+        color: isActive ? activeColor : Colors.transparent,
+        borderRadius: radius,
         child: InkWell(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: radius,
           onTap: () => !isActive ? rtc.active.active = session : null,
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
@@ -309,13 +304,12 @@ class __RTDTSessionWState extends State<_RTDTSessionW> {
                 margin: const EdgeInsets.only(right: 10),
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color:
-                      live ? const Color(0xFF1DFF8C) : const Color(0xFF3A403D),
+                  color: live ? liveColor : const Color(0xFF3A403D),
                   boxShadow: live
                       ? [
                           BoxShadow(
                             color:
-                                const Color(0xFF1DFF8C).withValues(alpha: 0.6),
+                                liveColor.withValues(alpha: 0.6),
                             blurRadius: 7,
                           )
                         ]
@@ -344,7 +338,7 @@ class __RTDTSessionWState extends State<_RTDTSessionW> {
                     ]),
               ),
               if (session.hasHotAudio)
-                const Icon(Icons.mic, size: 18, color: Color(0xFF1DFF8C))
+                Icon(Icons.mic, size: 18, color: liveColor)
               else if (session.inLiveSession)
                 const Icon(Icons.headphones,
                     size: 18, color: Color(0xFF4D9FFF)),
@@ -430,7 +424,6 @@ class _RealtimeChatScreenState extends State<RealtimeChatScreen> {
     var rtc = RealtimeChatModel.of(context, listen: false);
     var client = ClientModel.of(context, listen: false);
     var audio = AudioModel.of(context, listen: false);
-    var style = ThemeNotifier.of(context).areaStyle(ThemeArea.realtimeChat);
     return SecondarySideMenuLayout(
       width: 200,
       storageKey: "realtimeChat",
@@ -439,16 +432,13 @@ class _RealtimeChatScreenState extends State<RealtimeChatScreen> {
           builder: (context, activeModel, child) => activeModel.active != null
               ? ActiveRealtimeChatScreen(
                   rtc, activeModel.active!, audio, inputFocusNode)
-              : (style.rtcSessionListIntro
-                  ? _RTDTIntro(hasSessions: rtc.sessions.isNotEmpty)
-                  : const Empty())),
+              : _RTDTIntro(hasSessions: rtc.sessions.isNotEmpty)),
     );
   }
 }
 
-// Empty-state / intro shown when no realtime session is active (and
-// AreaStyle.rtcSessionListIntro is on). Explains what Realtime Chat (RTDT)
-// actually is and urges the user to create one.
+// Empty-state / intro shown when no realtime session is active. Explains
+// what Realtime Chat (RTDT) actually is and urges the user to create one.
 class _RTDTIntro extends StatelessWidget {
   final bool hasSessions;
   const _RTDTIntro({required this.hasSessions});
