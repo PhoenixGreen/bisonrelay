@@ -178,13 +178,6 @@ class _SidebarState extends State<Sidebar> with WindowListener {
       var navBorder = navStyle.borderWidths;
       var borderInset =
           hasCustomBorder ? navBorder.left + navBorder.right : 0.0;
-      // Padding/margin go to SidebarXTheme's own fields (the package lays
-      // this bar out itself, so a Container of ours around it wouldn't inset
-      // the content). Zero -- this app's "use the default" for all four
-      // spacing settings -- keeps the small hardcoded insets the bar has
-      // always had, rather than collapsing them to nothing.
-      var navPadding = navStyle.paddings;
-      var navMargin = navStyle.margins;
       // SidebarXTheme.decoration (below) can only be a flat BoxDecoration,
       // so it can't itself express a gradient/image border (only the
       // background supports those directly here) -- wrapBorderOnly adds
@@ -193,12 +186,13 @@ class _SidebarState extends State<Sidebar> with WindowListener {
           presetDir: theme.fullTheme.presetDir,
           child: SidebarX(
             theme: SidebarXTheme(
-              margin: navMargin.isZero
-                  ? const EdgeInsets.all(1)
-                  : navMargin.insets,
-              padding: navPadding.isZero
-                  ? const EdgeInsets.all(2)
-                  : navPadding.insets,
+              // Fixed, not themed: the Padding/Margin settings are hidden
+              // for this area (see theming_areas_section.dart). Routing them
+              // to SidebarXTheme's own fields was tried and doesn't move
+              // anything -- the package lays this bar out from its own
+              // metrics -- so they'd have been two dead sliders.
+              margin: const EdgeInsets.all(1),
+              padding: const EdgeInsets.all(2),
               width: 70 + borderInset,
               // Background and border are independently checked here --
               // previously the custom Border settings (color/width/radius)

@@ -45,6 +45,10 @@ String headerPositionLabel(HeaderPosition p) => _headerPositionLabels[p]!;
 // - alwaysVisible: today's behavior, a persistent column beside the content.
 // - resizable: a plain, always-visible, drag-resizable pane (each screen
 //   remembers its own width locally -- see SecondarySideMenuLayout).
+// - collapsed: not beside the content at all; it opens as a drawer over
+//   everything, by tapping the already-selected item in the main
+//   navigation. This is what a window too narrow for a sidebar column
+//   falls back to on its own; picking it here asks for it at any width.
 //
 // Three more used to sit here and were removed as not good enough to keep:
 // hoverReveal (collapse to an edge strip, expand while hovered),
@@ -52,11 +56,12 @@ String headerPositionLabel(HeaderPosition p) => _headerPositionLabels[p]!;
 // while viewing content that needs no sub-navigation). A preset saved with
 // any of them falls back to alwaysVisible, since the stored name no longer
 // matches a value (see AreaStyle.fromJson's _enumOrNull).
-enum SubMenuStyle { alwaysVisible, resizable }
+enum SubMenuStyle { alwaysVisible, resizable, collapsed }
 
 const Map<SubMenuStyle, String> _subMenuStyleLabels = {
   SubMenuStyle.alwaysVisible: "Default (Always visible)",
   SubMenuStyle.resizable: "Resizable (drag to resize)",
+  SubMenuStyle.collapsed: "Collapsed (tap the Nav item again to open)",
 };
 
 String subMenuStyleLabel(SubMenuStyle s) => _subMenuStyleLabels[s]!;

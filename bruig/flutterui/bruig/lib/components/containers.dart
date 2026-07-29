@@ -319,6 +319,20 @@ double sidebarEdgeWidth(ThemeNotifier theme) {
   return style.borderMode != AreaBackgroundMode.token && right > 0 ? right : 1;
 }
 
+// contentAreaFrame wraps a screen's content in the Content Area's own
+// styling -- what puts space or a border between a sidebar and the content
+// beside it, and what draws a border around, say, the chat area. Screens
+// that lay their own sidebar out (the feed's panel) call this themselves;
+// SecondarySideMenuLayout does it for everything else.
+//
+// Only wrapped once that area has actually been given something: an
+// untouched area still resolves to an opaque token-colored box, which would
+// paint over content that never had a background of its own.
+Widget contentAreaFrame(ThemeNotifier theme, Widget content) =>
+    theme.areaStyle(ThemeArea.contentArea).hasVisibleFrame
+        ? ThemedArea(area: ThemeArea.contentArea, child: content)
+        : content;
+
 // sidebarBackgroundColor is the fill every sidebar in the app shares -- the
 // "Sidebar Background" palette slot, read live so it follows palette edits.
 Color sidebarBackgroundColor(ThemeNotifier theme) =>
@@ -623,7 +637,7 @@ class _SecondarySideMenuLayoutState extends State<SecondarySideMenuLayout> {
     client.ui.collapsedSidebar
         .register((context) => _menuList(panelWidth, closeOnTap: true),
             panelWidth);
-    return widget.content;
+    return contentAreaFrame(ThemeNotifier.of(context), widget.content);
   }
 
   @override
@@ -639,11 +653,12 @@ class _SecondarySideMenuLayoutState extends State<SecondarySideMenuLayout> {
             ? measuredSidebarWidth(context, theme, widget.items!)
             : widget.width;
 
-        // Narrow windows get the overlay drawer regardless of which
-        // visibility is set: neither always-visible nor resizable leaves
-        // usable room for content at this width.
+        // The drawer, either because it was asked for or because a window
+        // this narrow has no usable room for a sidebar column whichever
+        // visibility is set.
         var client = ClientModel.of(context, listen: false);
-        if (constraints.maxWidth < _collapseBelowWidth) {
+        if (style == SubMenuStyle.collapsed ||
+            constraints.maxWidth < _collapseBelowWidth) {
           return _compactLayout(client, kCollapsedSidebarWidth);
         }
         // Wide again: hand the drawer back, so re-tapping this page in the
@@ -681,7 +696,7 @@ class _SecondarySideMenuLayoutState extends State<SecondarySideMenuLayout> {
                   ),
                 ),
               ),
-              Expanded(child: widget.content),
+              Expanded(child: contentAreaFrame(theme, widget.content)),
             ],
           );
         }
@@ -689,7 +704,7 @@ class _SecondarySideMenuLayoutState extends State<SecondarySideMenuLayout> {
         // alwaysVisible (default).
         return Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           _menuList(menuWidth),
-          Expanded(child: widget.content),
+          Expanded(child: contentAreaFrame(theme, widget.content)),
         ]);
       });
     });
@@ -701,7 +716,7 @@ class _SecondarySideMenuLayoutState extends State<SecondarySideMenuLayout> {
 // sidebar. Deliberately one figure rather than each screen's own width: as a
 // drawer it's an overlay on a small screen, where what matters is being
 // comfortably readable, not matching the column it replaced.
-const double kCollapsedSidebarWidth = 260;
+const double kCollapsedSidebarWidth = 325;
 
 // kSidebarResizeMin/Max bound every drag-resizable sidebar in the app.
 const double kSidebarResizeMin = 180;

@@ -200,13 +200,26 @@ class _FeedScreenState extends State<FeedScreen> {
     // Resizes with -- and to the same width as -- the full panel on the
     // All Posts/Your Posts tabs: same storageKey, so dragging either one
     // moves both and the panel doesn't jump width when switching tabs.
-    var resizable = ThemeNotifier.of(context)
+    var sidebarStyle = ThemeNotifier.of(context)
             .areaStyle(ThemeArea.subMenuTabBar)
-            .subMenuStyle ==
-        SubMenuStyle.resizable;
+            .subMenuStyle ??
+        SubMenuStyle.alwaysVisible;
+    var resizable = sidebarStyle == SubMenuStyle.resizable;
+
+    // Same Content Area treatment SecondarySideMenuLayout gives every other
+    // screen's content -- this layout doesn't go through it, so it applies
+    // it itself.
+    var content = contentAreaFrame(ThemeNotifier.of(context), activeTab());
 
     Widget layout(double panelWidth, Widget? handle) {
       return LayoutBuilder(builder: (context, c) {
+        if (sidebarStyle == SubMenuStyle.collapsed) {
+          ClientModel.of(context, listen: false)
+              .ui
+              .collapsedSidebar
+              .register((context) => panel, kCollapsedSidebarWidth);
+          return content;
+        }
         const gap = 0.0;
         List<Widget> rowChildren;
         if (c.maxWidth >= 1400) {
@@ -215,7 +228,7 @@ class _FeedScreenState extends State<FeedScreen> {
             SizedBox(width: panelWidth, child: panel),
             if (handle != null) handle,
             SizedBox(width: gap),
-            SizedBox(width: 780, child: activeTab()),
+            SizedBox(width: 780, child: content),
             const SizedBox(width: 308),
             const Spacer(),
           ];
@@ -224,7 +237,7 @@ class _FeedScreenState extends State<FeedScreen> {
             SizedBox(width: panelWidth, child: panel),
             if (handle != null) handle,
             SizedBox(width: gap),
-            Expanded(child: activeTab()),
+            Expanded(child: content),
           ];
         } else {
           // Too narrow for a column of its own: hand the panel over as a
@@ -236,7 +249,7 @@ class _FeedScreenState extends State<FeedScreen> {
               .ui
               .collapsedSidebar
               .register((context) => panel, kCollapsedSidebarWidth);
-          return activeTab();
+          return content;
         }
         ClientModel.of(context, listen: false).ui.collapsedSidebar.unregister();
         return Row(
@@ -280,7 +293,11 @@ class _FeedScreenState extends State<FeedScreen> {
       // Reading a single post: drop the sidebar entirely for a more focused
       // read, instead of falling back to the minimal nav-only panel.
       if (viewingPost && feedStyle.feedHideSidebarOnPost) {
-        return ScreenWithChatSideMenu(client, activeTab());
+        // Still the Content Area, even with no sidebar beside it -- a
+        // border around the reading area shouldn't vanish just because the
+        // panel did.
+        return ScreenWithChatSideMenu(client,
+            contentAreaFrame(ThemeNotifier.of(context), activeTab()));
       }
       return ScreenWithChatSideMenu(
           client,
