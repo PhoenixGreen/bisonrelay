@@ -41,6 +41,7 @@ const List<ThemeArea> _editableAreas = [
   ThemeArea.loginScreen,
   ThemeArea.navBar,
   ThemeArea.subMenuTabBar,
+  ThemeArea.contentArea,
   ThemeArea.chat,
   ThemeArea.feed,
   ThemeArea.realtimeChat,
@@ -223,7 +224,8 @@ class AreaEditorContext {
 
 // _areaEditor returns the settings specific to one area, or nothing for the
 // areas whose only settings are the shared background/border/spacing ones
-// (Master, Login Screen, LN Management, Pages, Manage Content, Logs).
+// (Master, Login Screen, Content Area, LN Management, Pages, Manage
+// Content, Logs).
 List<Widget> _areaEditor(AreaEditorContext ctx) => switch (ctx.area) {
       ThemeArea.header => headerAreaEditor(ctx),
       ThemeArea.navBar => navBarAreaEditor(ctx),
@@ -883,6 +885,11 @@ class _AreasSectionState extends State<AreasSection> {
         // Header padding maps to titleSpacing (the gap either side of the
         // title) rather than a container inset, so it gets a larger range
         // appropriate for that.
+        //
+        // The nav bar has neither: the sidebarx package lays that bar out
+        // from its own metrics and ignores anything handed to it here, so
+        // both sliders are left out rather than left dead.
+        if (selected != ThemeArea.navBar) ...[
         ..._spacingSetting(ctx,
             key: "padding",
             name: "Padding",
@@ -909,6 +916,7 @@ class _AreasSectionState extends State<AreasSection> {
               return s.copyWith(
                   marginSides: next, clearMarginSides: next == null);
             })),
+        ],
         ..._areaEditor(ctx),
       ]);
     });

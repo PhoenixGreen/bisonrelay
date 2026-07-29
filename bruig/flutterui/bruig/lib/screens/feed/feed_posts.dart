@@ -744,7 +744,12 @@ class _FeedPostsState extends State<FeedPosts> {
       );
     }
 
-    final feedColumn = Container(
+    // Wrapped once here rather than at each breakpoint below, so the
+    // Content Area applies to the feed's own layout the same way
+    // SecondarySideMenuLayout applies it to every other screen's.
+    final feedColumn = contentAreaFrame(
+        ThemeNotifier.of(context),
+        Container(
       decoration: const BoxDecoration(
         border: Border(
           left: BorderSide(color: Color(0xFF1C1F1D)),
@@ -768,7 +773,7 @@ class _FeedPostsState extends State<FeedPosts> {
         // across a much bigger surface, which is what broke scrolling.
         Expanded(child: SelectionArea(child: body)),
       ]),
-    );
+    ));
 
     final panel = FeedSidePanel(
       view: _view,
@@ -803,13 +808,21 @@ class _FeedPostsState extends State<FeedPosts> {
     // panel is a sidebar like any other, it just lays itself out centered
     // rather than docked, so it borrows the drag strip and the per-screen
     // width store instead of the whole SecondarySideMenuLayout.
-    var resizable = ThemeNotifier.of(context)
+    var sidebarStyle = ThemeNotifier.of(context)
             .areaStyle(ThemeArea.subMenuTabBar)
-            .subMenuStyle ==
-        SubMenuStyle.resizable;
+            .subMenuStyle ??
+        SubMenuStyle.alwaysVisible;
+    var resizable = sidebarStyle == SubMenuStyle.resizable;
 
     Widget layout(double panelWidth, Widget? handle) {
       return LayoutBuilder(builder: (context, c) {
+        if (sidebarStyle == SubMenuStyle.collapsed) {
+          ClientModel.of(context, listen: false)
+              .ui
+              .collapsedSidebar
+              .register((context) => panel, kCollapsedSidebarWidth);
+          return feedColumn;
+        }
         // crossAxisAlignment.stretch gives children a bounded height so the
         // inner ListView lays out correctly.
         //

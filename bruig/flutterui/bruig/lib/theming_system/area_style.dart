@@ -913,6 +913,18 @@ class AreaStyle {
   SideValues get expandMessagePaddings =>
       expandMessagePaddingSides ?? SideValues.all(expandMessagePadding ?? 0);
 
+  // hasVisibleFrame is "this area has been given something to paint or some
+  // space to take", which a render site checks before wrapping its content
+  // at all: an area left alone still resolves to an opaque token-colored
+  // box, so wrapping unconditionally would paint a background over regions
+  // that never had one.
+  bool get hasVisibleFrame =>
+      mode != AreaBackgroundMode.token ||
+      borderMode != AreaBackgroundMode.token ||
+      !paddings.isZero ||
+      !margins.isZero ||
+      !borderRadii.isZero;
+
   // hasBorderWidth is "this style asks for a border on at least one side",
   // the per-side-aware replacement for the old `borderWidth > 0` checks.
   bool get hasBorderWidth => borderWidths.largest > 0;
