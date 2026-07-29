@@ -148,6 +148,24 @@ class AreaStyle {
   // independent toggle either way.
   final bool showLogo;
 
+  // The DCR/BTC price rows at the foot of the nav bar: a coin icon with a
+  // direction arrow over it, and the price beside it while the bar is
+  // extended. Off by default -- the prices come from the client's own rate
+  // tracker (see ExchangeRateModel), so showing them costs nothing, but
+  // they're not something every theme wants.
+  final bool showDcrPrice;
+  final bool showBtcPrice;
+  final double? priceIconSize; // Null = the built-in 26.
+  // Inset around each price row, and its per-side split -- one per coin,
+  // so a row can be nudged or spaced independently of the other. Applied
+  // only while the nav bar is extended: collapsed, the icons are centred in
+  // a column with barely more room than the icon itself, so a horizontal
+  // inset there could only push them off-centre or clip them.
+  final double dcrPricePadding;
+  final SideValues? dcrPricePaddingSides;
+  final double btcPricePadding;
+  final SideValues? btcPricePaddingSides;
+
   // logoAlign positions the nav bar logo (showLogo above) horizontally;
   // only start/center/end are used (hidden doesn't apply -- showLogo
   // already covers visibility). Null means center.
@@ -348,6 +366,13 @@ class AreaStyle {
     this.logoSize,
     this.headerPosition,
     this.showLogo = false,
+    this.showDcrPrice = false,
+    this.showBtcPrice = false,
+    this.priceIconSize,
+    this.dcrPricePadding = 0,
+    this.dcrPricePaddingSides,
+    this.btcPricePadding = 0,
+    this.btcPricePaddingSides,
     this.logoAlign,
     this.subMenuStyle,
     this.sidebarCornerRadius = 12,
@@ -449,6 +474,16 @@ class AreaStyle {
     double? logoSize,
     HeaderPosition? headerPosition,
     bool? showLogo,
+    bool? showDcrPrice,
+    bool? showBtcPrice,
+    double? priceIconSize,
+    double? dcrPricePadding,
+    SideValues? dcrPricePaddingSides,
+    bool clearDcrPricePaddingSides = false,
+    double? btcPricePadding,
+    SideValues? btcPricePaddingSides,
+    bool clearBtcPricePaddingSides = false,
+    bool clearPriceIconSize = false,
     ContentAlign? logoAlign,
     SubMenuStyle? subMenuStyle,
     double? sidebarCornerRadius,
@@ -568,6 +603,19 @@ class AreaStyle {
         logoSize: logoSize ?? this.logoSize,
         headerPosition: headerPosition ?? this.headerPosition,
         showLogo: showLogo ?? this.showLogo,
+        showDcrPrice: showDcrPrice ?? this.showDcrPrice,
+        showBtcPrice: showBtcPrice ?? this.showBtcPrice,
+        dcrPricePadding: dcrPricePadding ?? this.dcrPricePadding,
+        dcrPricePaddingSides: clearDcrPricePaddingSides
+            ? null
+            : (dcrPricePaddingSides ?? this.dcrPricePaddingSides),
+        btcPricePadding: btcPricePadding ?? this.btcPricePadding,
+        btcPricePaddingSides: clearBtcPricePaddingSides
+            ? null
+            : (btcPricePaddingSides ?? this.btcPricePaddingSides),
+        priceIconSize: clearPriceIconSize
+            ? null
+            : (priceIconSize ?? this.priceIconSize),
         logoAlign: logoAlign ?? this.logoAlign,
         subMenuStyle: subMenuStyle ?? this.subMenuStyle,
         sidebarCornerRadius: sidebarCornerRadius ?? this.sidebarCornerRadius,
@@ -706,6 +754,15 @@ class AreaStyle {
         if (logoSize != null) "logoSize": logoSize,
         if (headerPosition != null) "headerPosition": headerPosition!.name,
         if (showLogo) "showLogo": showLogo,
+        if (showDcrPrice) "showDcrPrice": showDcrPrice,
+        if (showBtcPrice) "showBtcPrice": showBtcPrice,
+        if (priceIconSize != null) "priceIconSize": priceIconSize,
+        if (dcrPricePadding != 0) "dcrPricePadding": dcrPricePadding,
+        if (dcrPricePaddingSides != null)
+          "dcrPricePaddingSides": dcrPricePaddingSides!.toJson(),
+        if (btcPricePadding != 0) "btcPricePadding": btcPricePadding,
+        if (btcPricePaddingSides != null)
+          "btcPricePaddingSides": btcPricePaddingSides!.toJson(),
         if (logoAlign != null) "logoAlign": logoAlign!.name,
         if (subMenuStyle != null) "subMenuStyle": subMenuStyle!.name,
         if (sidebarCornerRadius != 12)
@@ -847,6 +904,19 @@ class AreaStyle {
       logoSize: number("logoSize"),
       headerPosition: _enumOrNull(HeaderPosition.values, j["headerPosition"]),
       showLogo: flag("showLogo"),
+      showDcrPrice: flag("showDcrPrice"),
+      showBtcPrice: flag("showBtcPrice"),
+      priceIconSize: number("priceIconSize"),
+      // The padding was one setting for both coins before it was split in
+      // two; a preset saved then seeds both rows with it.
+      dcrPricePadding:
+          number("dcrPricePadding") ?? number("pricePadding") ?? 0,
+      dcrPricePaddingSides: SideValues.fromJson(
+          j["dcrPricePaddingSides"] ?? j["pricePaddingSides"]),
+      btcPricePadding:
+          number("btcPricePadding") ?? number("pricePadding") ?? 0,
+      btcPricePaddingSides: SideValues.fromJson(
+          j["btcPricePaddingSides"] ?? j["pricePaddingSides"]),
       logoAlign: _enumOrNull(ContentAlign.values, j["logoAlign"]),
       subMenuStyle: _enumOrNull(SubMenuStyle.values, j["subMenuStyle"]),
       sidebarCornerRadius: number("sidebarCornerRadius") ?? 12,
@@ -955,6 +1025,10 @@ class AreaStyle {
       bubbleRadiusReceivedSides ?? SideValues.all(bubbleRadiusReceived);
   SideValues get expandMessagePaddings =>
       expandMessagePaddingSides ?? SideValues.all(expandMessagePadding ?? 0);
+  SideValues get dcrPricePaddings =>
+      dcrPricePaddingSides ?? SideValues.all(dcrPricePadding);
+  SideValues get btcPricePaddings =>
+      btcPricePaddingSides ?? SideValues.all(btcPricePadding);
 
   // hasVisibleFrame is "this area has been given something to paint or some
   // space to take", which a render site checks before wrapping its content

@@ -3,6 +3,7 @@ import 'package:bruig/components/containers.dart';
 import 'package:bruig/components/empty_widget.dart';
 import 'package:bruig/components/indicator.dart';
 import 'package:bruig/models/client.dart';
+import 'package:bruig/models/exchange_rate.dart';
 import 'package:bruig/models/feed.dart';
 import 'package:bruig/models/menus.dart';
 import 'package:bruig/models/notifications.dart';
@@ -12,6 +13,7 @@ import 'package:bruig/screens/feed.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:sidebarx/sidebarx.dart';
 import 'package:window_manager/window_manager.dart';
@@ -296,25 +298,37 @@ class _SidebarState extends State<Sidebar> with WindowListener {
                       ),
                     )
                 : null,
-            footerDivider:
-                Divider(height: 2, color: theme.extraColors.sidebarDivider),
-            footerBuilder: (context, extended) => Container(
-                margin: const EdgeInsets.all(5),
-                child: Column(mainAxisSize: MainAxisSize.min, children: [
-                  if (client.countRelays)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 6),
-                      child: Text(
-                          extended == true
-                              ? "Relay Counter: ${client.msgsSent}"
-                              : "${client.msgsSent}",
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                              color: theme.colors.onSurfaceVariant,
-                              fontSize: 12)),
-                    ),
-                  NotificationsDrawerHeader(widget.ntfns),
-                ])),
+            // Rendered by footerBuilder below rather than here, so the
+            // prices can sit *above* the line that separates off the bottom
+            // section (relay counter, notifications, collapse arrow) --
+            // SidebarX always places this divider before the footer.
+            footerDivider: const SizedBox.shrink(),
+            footerBuilder: (context, extended) =>
+                Column(mainAxisSize: MainAxisSize.min, children: [
+              if (navStyle.showDcrPrice || navStyle.showBtcPrice)
+                _PriceRows(
+                    style: navStyle,
+                    extended: extended == true,
+                    textColor: navUnselectedIconColor),
+              Divider(height: 2, color: theme.extraColors.sidebarDivider),
+              Container(
+                  margin: const EdgeInsets.all(5),
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    if (client.countRelays)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: Text(
+                            extended == true
+                                ? "Relay Counter: ${client.msgsSent}"
+                                : "${client.msgsSent}",
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                                color: theme.colors.onSurfaceVariant,
+                                fontSize: 12)),
+                      ),
+                    NotificationsDrawerHeader(widget.ntfns),
+                  ])),
+            ]),
             controller: ctrl,
             items: mainMenu.menus
                 .where((m) => m.hiddenFromSideBar == false)
@@ -358,5 +372,110 @@ class _SidebarState extends State<Sidebar> with WindowListener {
                 .toList(),
           ));
     });
+  }
+}
+
+// _PriceRows is the DCR/BTC price footer of the nav bar (see
+// AreaStyle.showDcrPrice): a coin disc with a small arrow badge showing
+// which way the price last moved, and the price itself while the bar is
+// extended. Collapsed, the badge is the whole signal, so it stays.
+class _PriceRows extends StatelessWidget {
+  final AreaStyle style;
+  final bool extended;
+  final Color textColor;
+  const _PriceRows(
+      {required this.style, required this.extended, required this.textColor});
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer<ExchangeRateModel>(builder: (context, rates, _) {
+      // Nothing to show until the client's tracker has a price: a row
+      // reading "$0.00" would be worse than no row.
+      if (!rates.hasRates) return const Empty();
+      var size = style.priceIconSize ?? 26;
+      return Column(mainAxisSize: MainAxisSize.min, children: [
+        if (style.showDcrPrice)
+          _row("assets/images/coin-dcr.png", rates.dcrPrice, rates.dcrDirection,
+              size, style.dcrPricePaddings),
+        if (style.showBtcPrice)
+          _row("assets/images/coin-btc.png", rates.btcPrice, rates.btcDirection,
+              size, style.btcPricePaddings),
+      ]);
+    });
+  }
+
+  // The coin marks are the official logos, shipped as assets and left in
+  // their own brand colours -- recolouring a coin's disc per palette would
+  // make it a worse identifier, which is the only job it has here. Clipped
+  // to a circle so the two read as a matched pair regardless of how each
+  // source file is cropped.
+  Widget _row(String asset, double price, int direction, double size,
+      SideValues inset) {
+    var disc = SizedBox(
+      width: size,
+      height: size,
+      child: Stack(clipBehavior: Clip.none, children: [
+        ClipOval(
+            child: Image.asset(asset,
+                width: size, height: size, fit: BoxFit.cover)),
+        // The direction badge, overlapping the disc's lower-right. Absent
+        // rather than neutral when there's no previous price to compare
+        // against -- a flat arrow would claim the price held steady when
+        // the truth is we haven't seen it move yet.
+        if (direction != 0)
+          Positioned(
+            right: -2,
+            bottom: -2,
+            child: Container(
+              width: size * 0.5,
+              height: size * 0.5,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0xFF101010),
+              ),
+              child: Icon(direction > 0 ? Icons.north_east : Icons.south_east,
+                  size: size * 0.36,
+                  color: direction > 0
+                      ? const Color(0xFF2ECC71)
+                      : const Color(0xFFFF5C5C)),
+            ),
+          ),
+      ]),
+    );
+
+    // Grouped, and no cents once the price is into the thousands: at BTC's
+    // magnitude the pennies are noise and the two decimals are what pushes
+    // the label into an ellipsis on a narrow bar.
+    var label = Text(
+        price >= 1000
+            ? NumberFormat.currency(symbol: "\$", decimalDigits: 0)
+                .format(price)
+            : NumberFormat.currency(symbol: "\$", decimalDigits: 2)
+                .format(price),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+            fontSize: 13, fontWeight: FontWeight.w500, color: textColor));
+
+    // The themed inset is added to the base gap rather than replacing it,
+    // so the rows still have breathing room at the default of 0. Collapsed,
+    // only the bottom survives: it's the one side that still does something
+    // useful there (the gap below each row), whereas a left/right/top value
+    // would push the icon off the column's centre or clip it against the
+    // row above (see AreaStyle.dcrPricePadding).
+    var padding =
+        extended ? inset.insets : EdgeInsets.only(bottom: inset.insets.bottom);
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: 3) + padding,
+      child: extended
+          ? Row(children: [
+              const SizedBox(width: 4),
+              disc,
+              const SizedBox(width: 10),
+              Expanded(child: label),
+            ])
+          : Center(child: disc),
+    );
   }
 }

@@ -455,6 +455,13 @@ type writeInvite struct {
 	Prepaid     bool                `json:"prepaid"`
 }
 
+// exchangeRate is the USD price pair the client's rates tracker holds,
+// as handed to the UI by CTGetExchangeRate.
+type exchangeRate struct {
+	DCRPrice float64 `json:"dcr_price"`
+	BTCPrice float64 `json:"btc_price"`
+}
+
 type generatedKXInvite struct {
 	Blob  []byte                    `json:"blob"`
 	Funds *rpc.InviteFunds          `json:"funds"`
