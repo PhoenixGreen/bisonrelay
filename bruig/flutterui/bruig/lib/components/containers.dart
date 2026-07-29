@@ -333,6 +333,16 @@ Widget contentAreaFrame(ThemeNotifier theme, Widget content) =>
         ? ThemedArea(area: ThemeArea.contentArea, child: content)
         : content;
 
+// dualPanelFrame wraps a whole page -- its sidebar and its content, as one
+// region -- in the Dual Panel area's styling, so a border on it goes round
+// the outside of both. Same gate as contentAreaFrame: an untouched area
+// still resolves to an opaque token-colored box, which would paint over
+// every page in the app.
+Widget dualPanelFrame(ThemeNotifier theme, Widget page) =>
+    theme.areaStyle(ThemeArea.dualPanel).hasVisibleFrame
+        ? ThemedArea(area: ThemeArea.dualPanel, child: page)
+        : page;
+
 // sidebarBackgroundColor is the fill every sidebar in the app shares -- the
 // "Sidebar Background" palette slot, read live so it follows palette edits.
 Color sidebarBackgroundColor(ThemeNotifier theme) =>

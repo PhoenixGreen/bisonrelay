@@ -688,10 +688,14 @@ class _OverviewScreenState extends State<OverviewScreen> {
         });
 
         return PageRouteBuilder(
+          // Every page is framed by Dual Panel -- its sidebar and content
+          // as one region -- rather than each page carrying a background
+          // and border of its own. contentAreaFrame's gate applies here too:
+          // an untouched area still resolves to an opaque box, so it's only
+          // wrapped once it's been given something.
           pageBuilder: (context, animation, secondaryAnimation) => menu != null
-              ? (menu.area != null
-                  ? ThemedArea(area: menu.area!, child: menu.builder(context))
-                  : menu.builder(context))
+              ? dualPanelFrame(
+                  ThemeNotifier.of(context), menu.builder(context))
               : RouteErrorPage(settings.name ?? "", OverviewScreen.routeName),
           transitionDuration: Duration.zero,
           //reverseTransitionDuration: Duration.zero,

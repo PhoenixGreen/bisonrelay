@@ -12,14 +12,13 @@ import 'package:bruig/theming_system/theme_area.dart';
 import 'package:bruig/theming_system/theme_editor.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:bruig/theming_system/theme_preset_storage.dart';
-import 'package:bruig/theming_system/theming_area_account.dart';
 import 'package:bruig/theming_system/theming_area_chat.dart';
 import 'package:bruig/theming_system/theming_area_feed.dart';
 import 'package:bruig/theming_system/theming_area_header.dart';
 import 'package:bruig/theming_system/theming_area_navbar.dart';
 import 'package:bruig/theming_system/theming_area_realtimechat.dart';
+import 'package:bruig/theming_system/theming_area_settings_pages.dart';
 import 'package:bruig/theming_system/theming_area_sidebar.dart';
-import 'package:bruig/theming_system/theming_area_stats.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as path;
@@ -40,18 +39,33 @@ const List<ThemeArea> _editableAreas = [
   ThemeArea.header,
   ThemeArea.loginScreen,
   ThemeArea.navBar,
+  ThemeArea.dualPanel,
   ThemeArea.subMenuTabBar,
   ThemeArea.contentArea,
   ThemeArea.chat,
   ThemeArea.feed,
   ThemeArea.realtimeChat,
-  ThemeArea.account,
-  ThemeArea.lnManagement,
-  ThemeArea.pages,
-  ThemeArea.manageContent,
-  ThemeArea.stats,
-  ThemeArea.logs,
+  ThemeArea.settingsPages,
 ];
+
+// _framedAreas are the areas that carry a background, border and spacing of
+// their own -- the regions of the app's chrome. Everything below them in the
+// picker is a *page*, and pages are all framed by Dual Panel now: one entry
+// styling the sidebar and content of every page as a single region, instead
+// of nine pages each with an identical-looking copy of the same four
+// settings that only ever applied to one of them.
+//
+// That's also why LN Management, Pages and Manage Content are no longer
+// listed at all: the frame was the only thing they had.
+const Set<ThemeArea> _framedAreas = {
+  ThemeArea.masterBackground,
+  ThemeArea.header,
+  ThemeArea.loginScreen,
+  ThemeArea.navBar,
+  ThemeArea.dualPanel,
+  ThemeArea.subMenuTabBar,
+  ThemeArea.contentArea,
+};
 
 // _imageAreas is the subset of areas offering a background image at all --
 // the four big, mostly-empty surfaces where a full-bleed photo or a tiled
@@ -224,17 +238,15 @@ class AreaEditorContext {
 
 // _areaEditor returns the settings specific to one area, or nothing for the
 // areas whose only settings are the shared background/border/spacing ones
-// (Master, Login Screen, Content Area, LN Management, Pages, Manage
-// Content, Logs).
+// (Master, Login Screen, Dual Panel, Content Area).
 List<Widget> _areaEditor(AreaEditorContext ctx) => switch (ctx.area) {
       ThemeArea.header => headerAreaEditor(ctx),
       ThemeArea.navBar => navBarAreaEditor(ctx),
       ThemeArea.subMenuTabBar => sidebarAreaEditor(ctx),
-      ThemeArea.account => accountAreaEditor(ctx),
       ThemeArea.chat => chatAreaEditor(ctx),
       ThemeArea.feed => feedAreaEditor(ctx),
       ThemeArea.realtimeChat => realtimeChatAreaEditor(ctx),
-      ThemeArea.stats => statsAreaEditor(ctx),
+      ThemeArea.settingsPages => settingsPagesAreaEditor(ctx),
       _ => const [],
     };
 
@@ -732,190 +744,195 @@ class _AreasSectionState extends State<AreasSection> {
             }
           }),
         ),
-        const SizedBox(height: 12),
-        _fillEditor(
-          preset: preset,
-          sourceDir: preset.sourceDir,
-          label: "Background",
-          tokenLabel: "Default",
-          mode: style.mode,
-          onModeChanged: (m) => _setStyle(theme, (s) {
-            var next = s.copyWith(mode: m);
-            // Seed a real color immediately when switching into a mode
-            // that requires one, so the color dropdown(s) always have a
-            // valid palette-backed value to show.
-            if (m == AreaBackgroundMode.solid && next.solidColor == null) {
-              next = next.copyWith(
-                  solidColor: preset.primary,
-                  solidColorIndex: PaletteSlot.primary.index);
-            }
-            if (m == AreaBackgroundMode.gradient &&
-                next.gradientColors.length < 2) {
-              next = next.copyWith(
-                  gradientColors: [preset.primary, preset.secondary],
-                  gradientColorIndexes: [
-                    PaletteSlot.primary.index,
-                    PaletteSlot.secondary.index
-                  ]);
-            }
-            return next;
-          }),
-          solidColor: style.resolveSolidColor(theme),
-          solidColorIndex: style.solidColorIndex,
-          onSolidChanged: (c, i) => _setStyle(
-              theme,
-              (s) => s.copyWith(
-                  solidColor: c,
-                  solidColorIndex: i,
-                  clearSolidColorIndex: i == null)),
-          gradientColors: style.resolveGradientColors(theme),
-          gradientColorIndexes: style.gradientColorIndexes,
-          onGradientColorChanged: (i, c, ci) => _setStyle(theme, (s) {
-            var (colors, indexes) = _withGradientColor(
-                s.gradientColors, s.gradientColorIndexes, i, c, ci,
-                fallback: preset.primary,
-                fallbackIndex: PaletteSlot.primary.index);
-            return s.copyWith(
-                gradientColors: colors, gradientColorIndexes: indexes);
-          }),
-          gradientBegin: style.gradientBegin,
-          gradientEnd: style.gradientEnd,
-          onDirectionChanged: (d) => _setStyle(theme, (s) {
-            var (b, e) = gradientDirectionAlignments(d);
-            return s.copyWith(gradientBegin: b, gradientEnd: e);
-          }),
-          allowImage: _imageAreas.contains(selected),
-          imagePath: style.imagePath,
-          imagePreset: style.imagePreset,
-          imagePresetCell: _imagePresetCell(ctx),
-          onPickImage: () => _pickImage(theme),
-          onRemoveImage: () => _setStyle(
-              theme,
-              (s) => s.copyWith(
-                  mode: AreaBackgroundMode.token, clearImagePath: true)),
-          supportsNone: true,
-          tokenShownAs: _backgroundTokenShownAs(selected),
-        ),
-        ..._imagePresetEditor(ctx),
-        const Divider(height: 32),
-        _fillEditor(
-          preset: preset,
-          sourceDir: preset.sourceDir,
-          label: "Border",
-          tokenLabel: "None",
-          mode: style.borderMode,
-          onModeChanged: (m) => _setStyle(theme, (s) {
-            var next = s.copyWith(borderMode: m);
-            if (m == AreaBackgroundMode.solid && next.borderColor == null) {
-              next = next.copyWith(
-                  borderColor: preset.outline,
-                  borderColorIndex: PaletteSlot.outline.index);
-            }
-            if (m == AreaBackgroundMode.gradient &&
-                next.borderGradientColors.length < 2) {
-              next = next.copyWith(
-                  borderGradientColors: [preset.outline, preset.primary],
-                  borderGradientColorIndexes: [
-                    PaletteSlot.outline.index,
-                    PaletteSlot.primary.index
-                  ]);
-            }
-            if (m != AreaBackgroundMode.token && next.borderWidth <= 0) {
-              next = next.copyWith(borderWidth: 2);
-            }
-            return next;
-          }),
-          solidColor: style.resolveBorderColor(theme),
-          solidColorIndex: style.borderColorIndex,
-          onSolidChanged: (c, i) => _setStyle(
-              theme,
-              (s) => s.copyWith(
-                  borderColor: c,
-                  borderColorIndex: i,
-                  clearBorderColorIndex: i == null)),
-          gradientColors: style.resolveBorderGradientColors(theme),
-          gradientColorIndexes: style.borderGradientColorIndexes,
-          onGradientColorChanged: (i, c, ci) => _setStyle(theme, (s) {
-            var (colors, indexes) = _withGradientColor(
-                s.borderGradientColors, s.borderGradientColorIndexes, i, c, ci,
-                fallback: preset.outline,
-                fallbackIndex: PaletteSlot.outline.index);
-            return s.copyWith(
-                borderGradientColors: colors,
-                borderGradientColorIndexes: indexes);
-          }),
-          gradientBegin: style.borderGradientBegin,
-          gradientEnd: style.borderGradientEnd,
-          onDirectionChanged: (d) => _setStyle(theme, (s) {
-            var (b, e) = gradientDirectionAlignments(d);
-            return s.copyWith(borderGradientBegin: b, borderGradientEnd: e);
-          }),
-          // No allowImage/onPickImage: borders are never image-filled.
-          imagePath: style.borderImagePath,
-        ),
-        const SizedBox(height: 8),
-        ..._spacingSetting(ctx,
-            key: "borderWidth",
-            name: "Border width",
-            max: 10,
-            single: style.borderWidth,
-            sides: style.borderWidthSides,
-            slotLabels: sideLabels,
-            onSingle: (v) => ctx.setStyle((s) => s.copyWith(borderWidth: v)),
-            updateSides: (f) => ctx.setStyle((s) {
-              var next = f(s.borderWidthSides, s.borderWidth);
+        // The background/border/spacing block, for the areas that have a
+        // frame of their own. A page doesn't: Dual Panel frames every
+        // page's sidebar and content together (see _framedAreas).
+        if (_framedAreas.contains(selected)) ...[
+          const SizedBox(height: 12),
+          _fillEditor(
+            preset: preset,
+            sourceDir: preset.sourceDir,
+            label: "Background",
+            tokenLabel: "Default",
+            mode: style.mode,
+            onModeChanged: (m) => _setStyle(theme, (s) {
+              var next = s.copyWith(mode: m);
+              // Seed a real color immediately when switching into a mode
+              // that requires one, so the color dropdown(s) always have a
+              // valid palette-backed value to show.
+              if (m == AreaBackgroundMode.solid && next.solidColor == null) {
+                next = next.copyWith(
+                    solidColor: preset.primary,
+                    solidColorIndex: PaletteSlot.primary.index);
+              }
+              if (m == AreaBackgroundMode.gradient &&
+                  next.gradientColors.length < 2) {
+                next = next.copyWith(
+                    gradientColors: [preset.primary, preset.secondary],
+                    gradientColorIndexes: [
+                      PaletteSlot.primary.index,
+                      PaletteSlot.secondary.index
+                    ]);
+              }
+              return next;
+            }),
+            solidColor: style.resolveSolidColor(theme),
+            solidColorIndex: style.solidColorIndex,
+            onSolidChanged: (c, i) => _setStyle(
+                theme,
+                (s) => s.copyWith(
+                    solidColor: c,
+                    solidColorIndex: i,
+                    clearSolidColorIndex: i == null)),
+            gradientColors: style.resolveGradientColors(theme),
+            gradientColorIndexes: style.gradientColorIndexes,
+            onGradientColorChanged: (i, c, ci) => _setStyle(theme, (s) {
+              var (colors, indexes) = _withGradientColor(
+                  s.gradientColors, s.gradientColorIndexes, i, c, ci,
+                  fallback: preset.primary,
+                  fallbackIndex: PaletteSlot.primary.index);
               return s.copyWith(
-                  borderWidthSides: next, clearBorderWidthSides: next == null);
-            })),
-        ..._spacingSetting(ctx,
-            key: "borderRadius",
-            name: "Border radius",
-            max: 48,
-            single: style.borderRadius,
-            sides: style.borderRadiusSides,
-            // Radius is the one of the four measured at the corners rather
-            // than along the edges.
-            slotLabels: cornerLabels,
-            onSingle: (v) => ctx.setStyle((s) => s.copyWith(borderRadius: v)),
-            updateSides: (f) => ctx.setStyle((s) {
-              var next = f(s.borderRadiusSides, s.borderRadius);
+                  gradientColors: colors, gradientColorIndexes: indexes);
+            }),
+            gradientBegin: style.gradientBegin,
+            gradientEnd: style.gradientEnd,
+            onDirectionChanged: (d) => _setStyle(theme, (s) {
+              var (b, e) = gradientDirectionAlignments(d);
+              return s.copyWith(gradientBegin: b, gradientEnd: e);
+            }),
+            allowImage: _imageAreas.contains(selected),
+            imagePath: style.imagePath,
+            imagePreset: style.imagePreset,
+            imagePresetCell: _imagePresetCell(ctx),
+            onPickImage: () => _pickImage(theme),
+            onRemoveImage: () => _setStyle(
+                theme,
+                (s) => s.copyWith(
+                    mode: AreaBackgroundMode.token, clearImagePath: true)),
+            supportsNone: true,
+            tokenShownAs: _backgroundTokenShownAs(selected),
+          ),
+          ..._imagePresetEditor(ctx),
+          const Divider(height: 32),
+          _fillEditor(
+            preset: preset,
+            sourceDir: preset.sourceDir,
+            label: "Border",
+            tokenLabel: "None",
+            mode: style.borderMode,
+            onModeChanged: (m) => _setStyle(theme, (s) {
+              var next = s.copyWith(borderMode: m);
+              if (m == AreaBackgroundMode.solid && next.borderColor == null) {
+                next = next.copyWith(
+                    borderColor: preset.outline,
+                    borderColorIndex: PaletteSlot.outline.index);
+              }
+              if (m == AreaBackgroundMode.gradient &&
+                  next.borderGradientColors.length < 2) {
+                next = next.copyWith(
+                    borderGradientColors: [preset.outline, preset.primary],
+                    borderGradientColorIndexes: [
+                      PaletteSlot.outline.index,
+                      PaletteSlot.primary.index
+                    ]);
+              }
+              if (m != AreaBackgroundMode.token && next.borderWidth <= 0) {
+                next = next.copyWith(borderWidth: 2);
+              }
+              return next;
+            }),
+            solidColor: style.resolveBorderColor(theme),
+            solidColorIndex: style.borderColorIndex,
+            onSolidChanged: (c, i) => _setStyle(
+                theme,
+                (s) => s.copyWith(
+                    borderColor: c,
+                    borderColorIndex: i,
+                    clearBorderColorIndex: i == null)),
+            gradientColors: style.resolveBorderGradientColors(theme),
+            gradientColorIndexes: style.borderGradientColorIndexes,
+            onGradientColorChanged: (i, c, ci) => _setStyle(theme, (s) {
+              var (colors, indexes) = _withGradientColor(
+                  s.borderGradientColors, s.borderGradientColorIndexes, i, c, ci,
+                  fallback: preset.outline,
+                  fallbackIndex: PaletteSlot.outline.index);
               return s.copyWith(
-                  borderRadiusSides: next, clearBorderRadiusSides: next == null);
-            })),
-        // Header padding maps to titleSpacing (the gap either side of the
-        // title) rather than a container inset, so it gets a larger range
-        // appropriate for that.
-        //
-        // The nav bar has neither: the sidebarx package lays that bar out
-        // from its own metrics and ignores anything handed to it here, so
-        // both sliders are left out rather than left dead.
-        if (selected != ThemeArea.navBar) ...[
-        ..._spacingSetting(ctx,
-            key: "padding",
-            name: "Padding",
-            max: selected == ThemeArea.header ? 100 : 48,
-            single: style.padding,
-            sides: style.paddingSides,
-            slotLabels: sideLabels,
-            onSingle: (v) => ctx.setStyle((s) => s.copyWith(padding: v)),
-            updateSides: (f) => ctx.setStyle((s) {
-              var next = f(s.paddingSides, s.padding);
-              return s.copyWith(
-                  paddingSides: next, clearPaddingSides: next == null);
-            })),
-        ..._spacingSetting(ctx,
-            key: "margin",
-            name: "Margin",
-            max: 48,
-            single: style.margin,
-            sides: style.marginSides,
-            slotLabels: sideLabels,
-            onSingle: (v) => ctx.setStyle((s) => s.copyWith(margin: v)),
-            updateSides: (f) => ctx.setStyle((s) {
-              var next = f(s.marginSides, s.margin);
-              return s.copyWith(
-                  marginSides: next, clearMarginSides: next == null);
-            })),
+                  borderGradientColors: colors,
+                  borderGradientColorIndexes: indexes);
+            }),
+            gradientBegin: style.borderGradientBegin,
+            gradientEnd: style.borderGradientEnd,
+            onDirectionChanged: (d) => _setStyle(theme, (s) {
+              var (b, e) = gradientDirectionAlignments(d);
+              return s.copyWith(borderGradientBegin: b, borderGradientEnd: e);
+            }),
+            // No allowImage/onPickImage: borders are never image-filled.
+            imagePath: style.borderImagePath,
+          ),
+          const SizedBox(height: 8),
+          ..._spacingSetting(ctx,
+              key: "borderWidth",
+              name: "Border width",
+              max: 10,
+              single: style.borderWidth,
+              sides: style.borderWidthSides,
+              slotLabels: sideLabels,
+              onSingle: (v) => ctx.setStyle((s) => s.copyWith(borderWidth: v)),
+              updateSides: (f) => ctx.setStyle((s) {
+                var next = f(s.borderWidthSides, s.borderWidth);
+                return s.copyWith(
+                    borderWidthSides: next, clearBorderWidthSides: next == null);
+              })),
+          ..._spacingSetting(ctx,
+              key: "borderRadius",
+              name: "Border radius",
+              max: 48,
+              single: style.borderRadius,
+              sides: style.borderRadiusSides,
+              // Radius is the one of the four measured at the corners rather
+              // than along the edges.
+              slotLabels: cornerLabels,
+              onSingle: (v) => ctx.setStyle((s) => s.copyWith(borderRadius: v)),
+              updateSides: (f) => ctx.setStyle((s) {
+                var next = f(s.borderRadiusSides, s.borderRadius);
+                return s.copyWith(
+                    borderRadiusSides: next, clearBorderRadiusSides: next == null);
+              })),
+          // Header padding maps to titleSpacing (the gap either side of the
+          // title) rather than a container inset, so it gets a larger range
+          // appropriate for that.
+          //
+          // The nav bar has neither: the sidebarx package lays that bar out
+          // from its own metrics and ignores anything handed to it here, so
+          // both sliders are left out rather than left dead.
+          if (selected != ThemeArea.navBar) ...[
+          ..._spacingSetting(ctx,
+              key: "padding",
+              name: "Padding",
+              max: selected == ThemeArea.header ? 100 : 48,
+              single: style.padding,
+              sides: style.paddingSides,
+              slotLabels: sideLabels,
+              onSingle: (v) => ctx.setStyle((s) => s.copyWith(padding: v)),
+              updateSides: (f) => ctx.setStyle((s) {
+                var next = f(s.paddingSides, s.padding);
+                return s.copyWith(
+                    paddingSides: next, clearPaddingSides: next == null);
+              })),
+          ..._spacingSetting(ctx,
+              key: "margin",
+              name: "Margin",
+              max: 48,
+              single: style.margin,
+              sides: style.marginSides,
+              slotLabels: sideLabels,
+              onSingle: (v) => ctx.setStyle((s) => s.copyWith(margin: v)),
+              updateSides: (f) => ctx.setStyle((s) {
+                var next = f(s.marginSides, s.margin);
+                return s.copyWith(
+                    marginSides: next, clearMarginSides: next == null);
+              })),
+          ],
         ],
         ..._areaEditor(ctx),
       ]);

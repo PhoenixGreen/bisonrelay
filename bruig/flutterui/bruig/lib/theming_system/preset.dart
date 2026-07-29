@@ -538,6 +538,25 @@ class ThemePreset {
             chat.copyWith(avatarTheme: master.avatarTheme);
       }
     }
+
+    // Account, Stats and Logs became one "Settings Pages" area; the two
+    // settings they had move with them. Their frames don't -- every page is
+    // framed by Dual Panel now -- so a preset that styled a page's
+    // background or border keeps that on the old (now unrendered) area
+    // rather than having it silently reappear around a different region.
+    var settings = migrated[ThemeArea.settingsPages] ?? const AreaStyle();
+    var moved = false;
+    if (migrated[ThemeArea.account]?.accountCardLayout == true &&
+        !settings.accountCardLayout) {
+      settings = settings.copyWith(accountCardLayout: true);
+      moved = true;
+    }
+    if (migrated[ThemeArea.stats]?.payStatsCardStyle == true &&
+        !settings.payStatsCardStyle) {
+      settings = settings.copyWith(payStatsCardStyle: true);
+      moved = true;
+    }
+    if (moved) migrated[ThemeArea.settingsPages] = settings;
     return migrated;
   }
 

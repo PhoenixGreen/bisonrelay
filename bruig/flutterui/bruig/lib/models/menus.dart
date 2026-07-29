@@ -12,7 +12,6 @@ import 'package:bruig/models/emoji.dart';
 import 'package:bruig/models/notifications.dart';
 import 'package:bruig/models/realtimechat.dart';
 import 'package:bruig/models/resources.dart';
-import 'package:bruig/theming_system/theme_preset.dart';
 import 'package:bruig/models/uploads.dart';
 import 'package:bruig/screens/address_book_screen.dart';
 import 'package:bruig/screens/chat/new_gc_screen.dart';
@@ -46,11 +45,12 @@ class MainMenuItem {
   // area, if set, is the ThemeArea this menu item's content page is themed
   // as (see overview.dart's route dispatch, which wraps builder(context) in
   // a ThemedArea when this is non-null).
-  final ThemeArea? area;
+  // (MainMenuItem.area is gone: every page route is framed by the Dual
+  // Panel theme area now, so a page no longer names one of its own.)
 
   MainMenuItem(this.label, this.routeName, this.builder, this.titleBuilder,
       this.icon, this.subMenuInfo,
-      {this.hiddenFromSideBar = false, this.area});
+      {this.hiddenFromSideBar = false});
 
   factory MainMenuItem.hidden(routeName, builder,
           {WidgetBuilder? titleBuilder, String label = ""}) =>
@@ -101,8 +101,7 @@ final List<MainMenuItem> mainMenu = [
                   ChatsScreen(rtc.client, rtc, ntfns, typingEmoji)),
       (context) => const ChatsScreenTitle(),
       const SidebarSvgIcon("assets/icons/icons-menu-chat.svg"),
-      <SubMenuInfo>[],
-      area: ThemeArea.chat),
+      <SubMenuInfo>[],),
   MainMenuItem(
       "Address Book",
       AddressBookScreen.routeName,
@@ -118,8 +117,7 @@ final List<MainMenuItem> mainMenu = [
               FeedScreen(menu, typingEmoji)),
       (context) => const FeedScreenTitle(),
       const SidebarSvgIcon("assets/icons/icons-menu-news.svg"),
-      feedScreenSub,
-      area: ThemeArea.feed),
+      feedScreenSub,),
   MainMenuItem(
       "Realtime Chat",
       RealtimeChatScreen.routeName,
@@ -128,8 +126,7 @@ final List<MainMenuItem> mainMenu = [
               RealtimeChatScreen(typingEmoji)),
       (context) => const RealtimeChatTitle(),
       const SidebarIcon(Icons.phone_rounded, false),
-      feedScreenSub,
-      area: ThemeArea.realtimeChat),
+      feedScreenSub,),
   MainMenuItem(
       "LN Management",
       LNScreen.routeName,
@@ -137,8 +134,7 @@ final List<MainMenuItem> mainMenu = [
           builder: (context, menu, child) => LNScreen(menu)),
       (context) => const LNScreenTitle(),
       const SidebarSvgIcon("assets/icons/icons-menu-lnmng.svg"),
-      lnScreenSub,
-      area: ThemeArea.lnManagement),
+      lnScreenSub,),
   MainMenuItem(
       "Pages",
       ViewPageScreen.routeName,
@@ -147,8 +143,7 @@ final List<MainMenuItem> mainMenu = [
               ViewPageScreen(resources, client)),
       (context) => const ViewPagesScreenTitle(),
       const SidebarSvgIcon("assets/icons/icons-menu-pages.svg"),
-      <SubMenuInfo>[],
-      area: ThemeArea.pages),
+      <SubMenuInfo>[],),
   MainMenuItem(
       "Manage Content",
       ManageContentScreen.routeName,
@@ -156,8 +151,7 @@ final List<MainMenuItem> mainMenu = [
           builder: (context, menu, child) => ManageContentScreen(menu)),
       (context) => const ManageContentScreenTitle(),
       const SidebarSvgIcon("assets/icons/icons-menu-files.svg"),
-      manageContentScreenSub,
-      area: ThemeArea.manageContent),
+      manageContentScreenSub,),
   MainMenuItem(
       "Settings",
       SettingsScreen.routeName,
@@ -231,7 +225,7 @@ class MainMenuModel extends ChangeNotifier {
     var updated = MainMenuItem(
         newLabel, old.routeName, old.builder, old.titleBuilder, old.icon,
         old.subMenuInfo,
-        hiddenFromSideBar: old.hiddenFromSideBar, area: old.area);
+        hiddenFromSideBar: old.hiddenFromSideBar);
     menus[idx] = updated;
     if (_activeRoute == routeName) {
       _activeMenu = updated;
@@ -312,7 +306,6 @@ class MainMenuModel extends ChangeNotifier {
       // forever. Only touch state/notify when something render-relevant
       // actually differs.
       var unchanged = existing.hiddenFromSideBar == item.hiddenFromSideBar &&
-          existing.area == item.area &&
           _sameIcon(existing.icon, item.icon) &&
           existing.subMenuInfo.length == item.subMenuInfo.length;
       if (unchanged) {
@@ -322,19 +315,19 @@ class MainMenuModel extends ChangeNotifier {
         // navigated to, not eagerly.
         menus[idx] = MainMenuItem(existing.label, item.routeName,
             item.builder, item.titleBuilder, item.icon, item.subMenuInfo,
-            hiddenFromSideBar: item.hiddenFromSideBar, area: item.area);
+            hiddenFromSideBar: item.hiddenFromSideBar);
         return;
       }
       menus[idx] = MainMenuItem(existing.label, item.routeName, item.builder,
           item.titleBuilder, item.icon, item.subMenuInfo,
-          hiddenFromSideBar: item.hiddenFromSideBar, area: item.area);
+          hiddenFromSideBar: item.hiddenFromSideBar);
     } else {
       // First time this plugin's item is seen -- apply the active theme's
       // customization for it, if any.
       var label = _customLabels[item.routeName] ?? item.label;
       menus.add(MainMenuItem(label, item.routeName, item.builder,
           item.titleBuilder, item.icon, item.subMenuInfo,
-          hiddenFromSideBar: item.hiddenFromSideBar, area: item.area));
+          hiddenFromSideBar: item.hiddenFromSideBar));
       if (_customOrder != null) _sortByOrder(_customOrder!);
     }
     _notifyListenersAfterBuild();
