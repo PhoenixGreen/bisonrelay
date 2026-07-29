@@ -23,6 +23,12 @@ class ThemePreset {
   final Color primary; // Main app background (and ColorScheme.fromSeed's
   // seed color). Also the Theme Areas section's select-menu popup
   // background.
+  // The Dual Panel and Content Area areas' default backgrounds. Both are
+  // seeded to primary's own value, so an untouched preset looks exactly as
+  // it did when those regions simply let the master background show
+  // through -- see PaletteSlot.dualBackground.
+  final Color dualBackground;
+  final Color contentBackground;
   final Color secondary; // Nav bar's background fill.
   final Color tertiary; // Shares the compiled ColorScheme's tertiary/
   // tertiaryContainer roles -- the RTC instant-call banner, voice-recorder
@@ -103,6 +109,8 @@ class ThemePreset {
     this.name = "Default Theme",
     this.brightness = Brightness.dark,
     required this.primary,
+    required this.dualBackground,
+    required this.contentBackground,
     required this.secondary,
     required this.tertiary,
     required this.fourth,
@@ -128,6 +136,8 @@ class ThemePreset {
 
   Color forSlot(PaletteSlot slot) => switch (slot) {
         PaletteSlot.primary => primary,
+        PaletteSlot.dualBackground => dualBackground,
+        PaletteSlot.contentBackground => contentBackground,
         PaletteSlot.secondary => secondary,
         PaletteSlot.tertiary => tertiary,
         PaletteSlot.fourth => fourth,
@@ -148,6 +158,8 @@ class ThemePreset {
 
   ThemePreset withSlot(PaletteSlot slot, Color c) => switch (slot) {
         PaletteSlot.primary => copyWith(primary: c),
+        PaletteSlot.dualBackground => copyWith(dualBackground: c),
+        PaletteSlot.contentBackground => copyWith(contentBackground: c),
         PaletteSlot.secondary => copyWith(secondary: c),
         PaletteSlot.tertiary => copyWith(tertiary: c),
         PaletteSlot.fourth => copyWith(fourth: c),
@@ -178,6 +190,8 @@ class ThemePreset {
     String? name,
     Brightness? brightness,
     Color? primary,
+    Color? dualBackground,
+    Color? contentBackground,
     Color? secondary,
     Color? tertiary,
     Color? fourth,
@@ -205,6 +219,8 @@ class ThemePreset {
         name: name ?? this.name,
         brightness: brightness ?? this.brightness,
         primary: primary ?? this.primary,
+        dualBackground: dualBackground ?? this.dualBackground,
+        contentBackground: contentBackground ?? this.contentBackground,
         secondary: secondary ?? this.secondary,
         tertiary: tertiary ?? this.tertiary,
         fourth: fourth ?? this.fourth,
@@ -406,13 +422,14 @@ class ThemePreset {
         "id": id,
         "name": name,
         "brightness": brightness.name,
-        // paletteVersion 2 marks presets saved after PaletteSlot's reorder/
-        // buttonBorder removal -- see _legacyPaletteOrderV1 below. The
-        // palette map itself is keyed by slot *name*, so it's unaffected by
-        // reordering; only AreaStyle's solidColorIndex/borderColorIndex
-        // (raw positions into the flat `palette` list) need this to know
-        // whether they still need remapping on load.
-        "paletteVersion": 2,
+        // paletteVersion marks which PaletteSlot layout a preset's stored
+        // color *indexes* were written against -- 2 after the reorder and
+        // buttonBorder removal, 3 after Dual/Content Background were
+        // inserted below primary. The palette map itself is keyed by slot
+        // *name*, so it's unaffected by either; only AreaStyle's index
+        // fields (raw positions into the flat `palette` list) need this to
+        // know whether they still need remapping on load.
+        "paletteVersion": 3,
         "palette": {
           for (var slot in PaletteSlot.values)
             slot.name: colorToHex(forSlot(slot)),
@@ -452,14 +469,40 @@ class ThemePreset {
     PaletteSlot.success,
   ];
 
-  static int? _migrateLegacyColorIndex(int? oldIndex) {
+  // _legacyPaletteOrderV2 is PaletteSlot's order as it existed before
+  // paletteVersion 3 -- i.e. before dualBackground/contentBackground were
+  // inserted just after primary, which pushed every slot after it along by
+  // two.
+  static const List<PaletteSlot> _legacyPaletteOrderV2 = [
+    PaletteSlot.primary,
+    PaletteSlot.tertiary,
+    PaletteSlot.secondary,
+    PaletteSlot.sidebarBackground,
+    PaletteSlot.fourth,
+    PaletteSlot.speechBackground,
+    PaletteSlot.speechBackgroundSent,
+    PaletteSlot.outline,
+    PaletteSlot.onSurface,
+    PaletteSlot.onSurfaceVariant,
+    PaletteSlot.navText,
+    PaletteSlot.sidebarText,
+    PaletteSlot.accentContainer,
+    PaletteSlot.navAccent,
+    PaletteSlot.sidebarAccent,
+    PaletteSlot.error,
+    PaletteSlot.success,
+  ];
+
+  static int? _migrateLegacyColorIndex(int? oldIndex, int version) {
     if (oldIndex == null) return null;
-    if (oldIndex < _legacyPaletteOrderV1.length) {
-      return _legacyPaletteOrderV1[oldIndex].index;
-    }
-    // An extra (user-added) color, appended after the fixed roles -- shift
-    // down by one since the fixed-role count shrank by one.
-    return oldIndex - 1;
+    // Mapping through slot *values* means each lands wherever that slot
+    // sits today, so these tables don't need touching again when the order
+    // changes -- only a new one added for the new layout.
+    var order = version < 2 ? _legacyPaletteOrderV1 : _legacyPaletteOrderV2;
+    if (oldIndex < order.length) return order[oldIndex].index;
+    // An extra (user-added) color, appended after the fixed roles: rebase
+    // it onto however many roles there are now.
+    return oldIndex - order.length + PaletteSlot.values.length;
   }
 
   factory ThemePreset.fromJson(Map<String, dynamic> j) {
@@ -472,12 +515,32 @@ class ThemePreset {
       if (hex != null) preset = preset.withSlot(slot, colorFromHex(hex));
     }
     var rawAreas = j["areas"] as Map<String, dynamic>? ?? {};
-    if ((j["paletteVersion"] as num?)?.toInt() != 2) {
+    var paletteVersion = (j["paletteVersion"] as num?)?.toInt() ?? 1;
+    if (paletteVersion != 3) {
       rawAreas = rawAreas.map((k, v) {
         var area = Map<String, dynamic>.from(v as Map<String, dynamic>);
-        for (var key in ["solidColorIndex", "borderColorIndex"]) {
+        // Every field holding a raw position into the flat palette list.
+        for (var key in [
+          "solidColorIndex",
+          "borderColorIndex",
+          "sidebarDividerColorIndex",
+          "chatListAccentColorIndex",
+          "chatListBackgroundColorIndex",
+          "chatListSelectedColorIndex",
+        ]) {
           if (area[key] != null) {
-            area[key] = _migrateLegacyColorIndex((area[key] as num).toInt());
+            area[key] = _migrateLegacyColorIndex(
+                (area[key] as num).toInt(), paletteVersion);
+          }
+        }
+        for (var key in ["gradientColorIndexes", "borderGradientColorIndexes"]) {
+          if (area[key] is List) {
+            area[key] = (area[key] as List)
+                .map((e) => e == null
+                    ? null
+                    : _migrateLegacyColorIndex(
+                        (e as num).toInt(), paletteVersion))
+                .toList();
           }
         }
         return MapEntry(k, area);
@@ -593,6 +656,10 @@ class ThemePreset {
       name: "Default Theme",
       brightness: Brightness.dark,
       primary: const Color(0xFF19172C),
+      // Same as primary: a page shows the master background through until
+      // one of these is deliberately moved off it.
+      dualBackground: const Color(0xFF19172C),
+      contentBackground: const Color(0xFF19172C),
       secondary: scheme.surfaceContainerLow,
       tertiary: const Color(0xFF232030),
       fourth: const Color(0xFF1C1930),
@@ -625,6 +692,8 @@ class ThemePreset {
       name: "Default Theme",
       brightness: Brightness.light,
       primary: const Color(0xFFE8E7F3),
+      dualBackground: const Color(0xFFE8E7F3),
+      contentBackground: const Color(0xFFE8E7F3),
       secondary: scheme.surfaceContainerLow,
       tertiary: const Color(0xFFF5F4FA),
       fourth: const Color(0xFFEDEBF5),

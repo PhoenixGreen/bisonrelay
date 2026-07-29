@@ -16,6 +16,12 @@
 // already set it to an exact duplicate of navAccent's own value.
 enum PaletteSlot {
   primary,
+  // The Dual Panel and Content Area theme areas' own default backgrounds.
+  // Seeded to the same value as primary, so out of the box a page looks
+  // exactly as it did when it simply showed the master background through;
+  // they exist so those two regions can be moved off it independently.
+  dualBackground,
+  contentBackground,
   tertiary,
   secondary,
   sidebarBackground,
@@ -35,7 +41,9 @@ enum PaletteSlot {
 }
 
 const Map<PaletteSlot, String> _paletteSlotLabels = {
-  PaletteSlot.primary: "Primary Background",
+  PaletteSlot.primary: "Master Background",
+  PaletteSlot.dualBackground: "Dual Background",
+  PaletteSlot.contentBackground: "Content Background",
   PaletteSlot.tertiary: "Secondary Background",
   PaletteSlot.secondary: "Navigation Background",
   PaletteSlot.sidebarBackground: "Sidebar Background",
@@ -59,7 +67,7 @@ String paletteSlotLabel(PaletteSlot slot) => _paletteSlotLabels[slot]!;
 // kMaxPaletteColors caps the *total* palette (the fixed PaletteSlot roles +
 // ThemePreset.extraPaletteColors) a preset can carry; kMaxExtraPaletteColors
 // is the remaining room for extras once the fixed roles are accounted for.
-const int kMaxPaletteColors = 20;
+const int kMaxPaletteColors = 22;
 final int kMaxExtraPaletteColors = kMaxPaletteColors - PaletteSlot.values.length;
 
 // kVividPaletteSlots are the 12 roles a ColorPalette library entry (see

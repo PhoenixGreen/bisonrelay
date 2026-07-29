@@ -185,6 +185,11 @@ class AreaStyle {
   // Null = the built-in near-black.
   final Color? chatListBackgroundColor;
   final int? chatListBackgroundColorIndex;
+  // chatListSelectedColor is the selected row's own fill. Null keeps the
+  // built-in default, which is chatListBackgroundColor shaded a little
+  // darker (see _shade in chats_list.dart).
+  final Color? chatListSelectedColor;
+  final int? chatListSelectedColorIndex;
   // Same live-slot-tracking role as solidColorIndex, for the accent color.
   final int? chatListAccentColorIndex;
   final double?
@@ -344,6 +349,8 @@ class AreaStyle {
     this.chatListAccentColor,
     this.chatListBackgroundColor,
     this.chatListBackgroundColorIndex,
+    this.chatListSelectedColor,
+    this.chatListSelectedColorIndex,
     this.chatListAccentColorIndex,
     this.chatListGlowIntensity,
     this.chatListTopHighlight = true,
@@ -446,6 +453,10 @@ class AreaStyle {
     bool clearChatListBackgroundColor = false,
     int? chatListBackgroundColorIndex,
     bool clearChatListBackgroundColorIndex = false,
+    Color? chatListSelectedColor,
+    bool clearChatListSelectedColor = false,
+    int? chatListSelectedColorIndex,
+    bool clearChatListSelectedColorIndex = false,
     int? chatListAccentColorIndex,
     bool clearChatListAccentColorIndex = false,
     bool clearChatListAccentColor = false,
@@ -561,6 +572,12 @@ class AreaStyle {
         chatListBackgroundColor: clearChatListBackgroundColor
             ? null
             : (chatListBackgroundColor ?? this.chatListBackgroundColor),
+        chatListSelectedColor: clearChatListSelectedColor
+            ? null
+            : (chatListSelectedColor ?? this.chatListSelectedColor),
+        chatListSelectedColorIndex: clearChatListSelectedColorIndex
+            ? null
+            : (chatListSelectedColorIndex ?? this.chatListSelectedColorIndex),
         chatListBackgroundColorIndex: clearChatListBackgroundColorIndex
             ? null
             : (chatListBackgroundColorIndex ??
@@ -687,6 +704,10 @@ class AreaStyle {
           "chatListBackgroundColor": colorToHex(chatListBackgroundColor!),
         if (chatListBackgroundColorIndex != null)
           "chatListBackgroundColorIndex": chatListBackgroundColorIndex,
+        if (chatListSelectedColor != null)
+          "chatListSelectedColor": colorToHex(chatListSelectedColor!),
+        if (chatListSelectedColorIndex != null)
+          "chatListSelectedColorIndex": chatListSelectedColorIndex,
         if (chatListAccentColorIndex != null)
           "chatListAccentColorIndex": chatListAccentColorIndex,
         if (chatListGlowIntensity != null)
@@ -818,6 +839,9 @@ class AreaStyle {
       chatListBackgroundColor: color("chatListBackgroundColor"),
       chatListBackgroundColorIndex:
           (j["chatListBackgroundColorIndex"] as num?)?.toInt(),
+      chatListSelectedColor: color("chatListSelectedColor"),
+      chatListSelectedColorIndex:
+          (j["chatListSelectedColorIndex"] as num?)?.toInt(),
       chatListAccentColorIndex: (j["chatListAccentColorIndex"] as num?)?.toInt(),
       chatListGlowIntensity: number("chatListGlowIntensity"),
       chatListTopHighlight: flag("chatListTopHighlight", fallback: true),
@@ -969,6 +993,8 @@ class AreaStyle {
       _liveColor(theme, chatListAccentColorIndex, chatListAccentColor);
   Color? resolveChatListBackgroundColor(ThemeNotifier theme) =>
       _liveColor(theme, chatListBackgroundColorIndex, chatListBackgroundColor);
+  Color? resolveChatListSelectedColor(ThemeNotifier theme) =>
+      _liveColor(theme, chatListSelectedColorIndex, chatListSelectedColor);
 
   // _liveColors is _liveColor over a gradient's color list, pairing each
   // color with its own slot binding. `indexes` may be shorter than `raw`
@@ -1008,6 +1034,9 @@ class AreaStyle {
       chatListBackgroundColorIndex: remap(chatListBackgroundColorIndex),
       clearChatListBackgroundColorIndex:
           remap(chatListBackgroundColorIndex) == null,
+      chatListSelectedColorIndex: remap(chatListSelectedColorIndex),
+      clearChatListSelectedColorIndex:
+          remap(chatListSelectedColorIndex) == null,
     );
   }
 
@@ -1019,9 +1048,10 @@ class AreaStyle {
       _liveColors(theme, borderGradientColors, borderGradientColorIndexes);
 
   // _backgroundFill/_borderFill resolve this style's two paint layers.
-  AreaFill _backgroundFill(
-          ThemeNotifier theme, SurfaceColor fallback, String? presetDir) =>
+  AreaFill _backgroundFill(ThemeNotifier theme, SurfaceColor fallback,
+          String? presetDir, Color? tokenColor) =>
       _resolveFill(mode, theme, fallback,
+          tokenColor: tokenColor,
           solid: resolveSolidColor(theme),
           gradColors: _liveColors(theme, gradientColors, gradientColorIndexes),
           gradStops: gradientStops,
@@ -1058,6 +1088,10 @@ class AreaStyle {
     // preset is only passed for the background layer -- borders have no
     // built-in image presets (and no image picker of their own).
     AreaImagePreset? preset,
+    // tokenColor overrides what this fill's "Default" resolves to, for an
+    // area whose default background is a palette slot of its own (Dual
+    // Panel, Content Area) rather than a ColorScheme token.
+    Color? tokenColor,
     String? presetDir,
   }) {
     switch (m) {
@@ -1066,7 +1100,7 @@ class AreaStyle {
         // rather than replacing it: the tiled patterns are translucent, so
         // the theme's own surface color still shows through behind them.
         return AreaFill(
-            color: theme.surfaceColor(fallback),
+            color: tokenColor ?? theme.surfaceColor(fallback),
             image: (preset != null && preset != AreaImagePreset.standard)
                 ? areaImagePresetImage(preset)
                 : null);
@@ -1113,9 +1147,9 @@ class AreaStyle {
   // image border (see buildContainer for that), but reproduces the area's
   // original appearance exactly when mode is token and there's no border.
   BoxDecoration toBoxDecoration(ThemeNotifier theme, SurfaceColor fallback,
-      {String? presetDir}) {
+      {String? presetDir, Color? tokenColor}) {
     var liveBorderColor = resolveBorderColor(theme);
-    var bg = _backgroundFill(theme, fallback, presetDir);
+    var bg = _backgroundFill(theme, fallback, presetDir, tokenColor);
     var border = (borderMode != AreaBackgroundMode.token &&
             liveBorderColor != null &&
             hasBorderWidth)
@@ -1149,8 +1183,9 @@ class AreaStyle {
     SurfaceColor fallback, {
     required Widget child,
     String? presetDir,
+    Color? tokenColor,
   }) {
-    var bg = _backgroundFill(theme, fallback, presetDir);
+    var bg = _backgroundFill(theme, fallback, presetDir, tokenColor);
     var widths = borderWidths;
     var hasBorder = borderMode != AreaBackgroundMode.token && hasBorderWidth;
     var inlineBorder = hasBorder &&

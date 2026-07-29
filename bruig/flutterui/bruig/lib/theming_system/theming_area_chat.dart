@@ -46,6 +46,24 @@ List<Widget> chatAreaEditor(AreaEditorContext ctx) {
       onChanged: (v) =>
           ctx.setStyle((s) => s.copyWith(chatListDesignEnabled: v)),
     ),
+    // Outside the block below: this one colors the selected chat whether
+    // that design is on or off, so hiding it with the design's own settings
+    // would put it out of reach in half the cases it applies to.
+    ctx.colorPick(
+      "Chat selected background color",
+      value: style.resolveChatListSelectedColor(ctx.theme),
+      valueIndex: style.chatListSelectedColorIndex,
+      onChanged: (c, i) => ctx.setStyle((s) => c == null
+          ? s.copyWith(
+              clearChatListSelectedColor: true,
+              clearChatListSelectedColorIndex: true)
+          : s.copyWith(
+              chatListSelectedColor: c,
+              chatListSelectedColorIndex: i,
+              clearChatListSelectedColorIndex: i == null)),
+    ),
+    ctx.note("The selected chat's row, defaulting to Speech Background "
+        "(Send)."),
     if (style.chatListDesignEnabled) ...[
       ctx.slider("chatListCornerRadius", style.chatListCornerRadius ?? 14,
           label: (v) => "Row corner radius: ${v.toStringAsFixed(1)}",
@@ -53,7 +71,7 @@ List<Widget> chatAreaEditor(AreaEditorContext ctx) {
           onCommit: (v) =>
               ctx.setStyle((s) => s.copyWith(chatListCornerRadius: v))),
       ctx.colorPick(
-        "Background color",
+        "Chat items background color",
         value: style.resolveChatListBackgroundColor(ctx.theme),
         valueIndex: style.chatListBackgroundColorIndex,
         onChanged: (c, i) => ctx.setStyle((s) => c == null
@@ -65,8 +83,8 @@ List<Widget> chatAreaEditor(AreaEditorContext ctx) {
                 chatListBackgroundColorIndex: i,
                 clearChatListBackgroundColorIndex: i == null)),
       ),
-      ctx.note("The row background. The hover highlight, the top highlight "
-          "and the selected row's fill are all shaded from it."),
+      ctx.note("The row background, defaulting to Secondary Background. "
+          "The hover and top highlights are shaded from it."),
       ctx.colorPick(
         "Accent color",
         value: style.resolveChatListAccentColor(ctx.theme),
