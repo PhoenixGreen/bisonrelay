@@ -17,7 +17,6 @@ import 'package:bruig/models/client.dart';
 import 'package:bruig/models/emoji.dart';
 import 'package:bruig/models/realtimechat.dart';
 import 'package:bruig/models/snackbar.dart';
-import 'package:bruig/theming_system/theme_preset.dart';
 import 'package:bruig/screens/chats.dart';
 import 'package:bruig/screens/ln/components.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
@@ -180,42 +179,32 @@ class __RealtimeSessionPublisherWState
               await livePeer.modifyGain(delta);
             }),
       const SizedBox(width: 8),
-      if (theme.areaStyle(ThemeArea.realtimeChat).rtcLiveStage) ...[
-        Container(
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            border: Border.all(
-              color: (livePeer?.hasSound ?? false)
-                  ? const Color(0xFF1DFF8C)
-                  : Colors.transparent,
-              width: 2.5,
-            ),
-            boxShadow: (livePeer?.hasSound ?? false)
-                ? [
-                    BoxShadow(
-                        color: const Color(0xFF1DFF8C).withValues(alpha: 0.45),
-                        blurRadius: 12)
-                  ]
-                : null,
+      Container(
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          border: Border.all(
+            color: (livePeer?.hasSound ?? false)
+                ? const Color(0xFF1DFF8C)
+                : Colors.transparent,
+            width: 2.5,
           ),
-          padding: const EdgeInsets.all(2),
-          child: UserAvatarFromID(client, publisher.publisherID, radius: 22),
+          boxShadow: (livePeer?.hasSound ?? false)
+              ? [
+                  BoxShadow(
+                      color: const Color(0xFF1DFF8C).withValues(alpha: 0.45),
+                      blurRadius: 12)
+                ]
+              : null,
         ),
-        const SizedBox(width: 12, height: 48),
-        Text(pubNick,
-            style: const TextStyle(
-                fontSize: 15.5,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFFF2F4F3))),
-      ] else ...[
-        UserAvatarFromID(
-          client,
-          publisher.publisherID,
-          radius: 10,
-        ),
-        const SizedBox(width: 5, height: 30),
-        Txt.S(pubNick),
-      ],
+        padding: const EdgeInsets.all(2),
+        child: UserAvatarFromID(client, publisher.publisherID, radius: 22),
+      ),
+      const SizedBox(width: 12, height: 48),
+      Text(pubNick,
+          style: const TextStyle(
+              fontSize: 15.5,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFFF2F4F3))),
       if (session.inLiveSession &&
           peer != null &&
           (peer?.bufferCount ?? 0) > 0) ...[
@@ -267,7 +256,7 @@ class _ActiveRealtimeChatScreenState extends State<ActiveRealtimeChatScreen> {
   bool showInfo = false;
 
   // A muted label/value row for the tucked-away session metadata (only used
-  // when AreaStyle.rtcCollapsibleSessionInfo is on).
+  // (the expandable session-info row).
   Widget _infoRow(String k, String v) => Padding(
         padding: const EdgeInsets.only(bottom: 4),
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -353,7 +342,6 @@ class _ActiveRealtimeChatScreenState extends State<ActiveRealtimeChatScreen> {
   @override
   Widget build(BuildContext context) {
     var ownerNick = rtc.client.getNick(session.info.metadata.owner);
-    var style = ThemeNotifier.of(context).areaStyle(ThemeArea.realtimeChat);
     var live = session.inLiveSession;
     var desc = session.info.metadata.description;
     var lobbyTitle =
@@ -367,7 +355,7 @@ class _ActiveRealtimeChatScreenState extends State<ActiveRealtimeChatScreen> {
         padding: const EdgeInsets.all(10),
         margin: const EdgeInsets.only(left: 10, right: 12, bottom: 10),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          if (style.rtcLobbyHero && !live) ...[
+          if (!live) ...[
             Row(children: [
               Container(
                 width: 52,
@@ -408,62 +396,42 @@ class _ActiveRealtimeChatScreenState extends State<ActiveRealtimeChatScreen> {
                 margin: EdgeInsets.only(bottom: 5),
                 color: SurfaceColor.tertiary,
                 child: Txt.S("Instant Call - will be removed once left")),
-          if (style.rtcCollapsibleSessionInfo) ...[
-            InkWell(
-              borderRadius: BorderRadius.circular(8),
-              onTap: () => setState(() => showInfo = !showInfo),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                child: Row(children: [
-                  Icon(showInfo ? Icons.expand_less : Icons.info_outline,
-                      size: 16, color: const Color(0xFF9AA3A0)),
-                  const SizedBox(width: 6),
-                  const Text("Session info",
-                      style: TextStyle(fontSize: 13, color: Color(0xFF9AA3A0))),
-                ]),
-              ),
+          InkWell(
+            borderRadius: BorderRadius.circular(8),
+            onTap: () => setState(() => showInfo = !showInfo),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(children: [
+                Icon(showInfo ? Icons.expand_less : Icons.info_outline,
+                    size: 16, color: const Color(0xFF9AA3A0)),
+                const SizedBox(width: 6),
+                const Text("Session info",
+                    style: TextStyle(fontSize: 13, color: Color(0xFF9AA3A0))),
+              ]),
             ),
-            if (showInfo) ...[
-              const SizedBox(height: 8),
-              _infoRow("RV", session.info.metadata.rv),
-              _infoRow("Size", "${session.info.metadata.size}"),
-              _infoRow(
-                  "Local Peer ID", session.info.localPeerID.toRadixString(16)),
-              Padding(
-                padding: const EdgeInsets.only(top: 2),
-                child: Row(children: [
-                  const SizedBox(
-                      width: 92,
-                      child: Text("Owner",
-                          style: TextStyle(
-                              fontSize: 12.5, color: Color(0xFF5F6764)))),
-                  UserAvatarFromID(rtc.client, session.info.metadata.owner,
-                      radius: 14),
-                  const SizedBox(width: 6),
-                  Txt.S(ownerNick),
-                ]),
-              ),
-            ],
-          ] else ...[
-            Txt.S("RV: ${session.info.metadata.rv}"),
-            Txt.S("Size: ${session.info.metadata.size}"),
-            Txt.S("Description: ${session.info.metadata.description}"),
-            Txt.S(
-                "Local Peer ID: ${session.info.localPeerID.toRadixString(16)}"),
-            Row(
-              children: [
-                const Txt.S("Owner: "),
-                UserAvatarFromID(
-                  rtc.client,
-                  session.info.metadata.owner,
-                  radius: 10,
-                ),
-                const SizedBox(width: 5),
-                Txt.S(ownerNick)
-              ],
+          ),
+          if (showInfo) ...[
+            const SizedBox(height: 8),
+            _infoRow("RV", session.info.metadata.rv),
+            _infoRow("Size", "${session.info.metadata.size}"),
+            _infoRow(
+                "Local Peer ID", session.info.localPeerID.toRadixString(16)),
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Row(children: [
+                const SizedBox(
+                    width: 92,
+                    child: Text("Owner",
+                        style: TextStyle(
+                            fontSize: 12.5, color: Color(0xFF5F6764)))),
+                UserAvatarFromID(rtc.client, session.info.metadata.owner,
+                    radius: 14),
+                const SizedBox(width: 6),
+                Txt.S(ownerNick),
+              ]),
             ),
           ],
-          if (style.rtcAudioTestPanel && !live) ...[
+          if (!live) ...[
             const SizedBox(height: 14),
             _AudioTestPanel(audio: widget.audio),
           ],
@@ -478,7 +446,7 @@ class _ActiveRealtimeChatScreenState extends State<ActiveRealtimeChatScreen> {
           ],
         ]),
       ),
-      if (live && style.rtcLiveStage)
+      if (live)
         _LiveStage(
             session: session, rtc: rtc, client: client, audio: widget.audio),
       if (session.inLiveSession) ...[
@@ -505,7 +473,7 @@ class _ActiveRealtimeChatScreenState extends State<ActiveRealtimeChatScreen> {
 }
 
 // Pre-join mic + speaker test: pick devices, record a clip, play it back.
-// Gated by AreaStyle.rtcAudioTestPanel.
+// Shown in the lobby, before joining a live session.
 class _AudioTestPanel extends StatefulWidget {
   final AudioModel audio;
   const _AudioTestPanel({required this.audio});
@@ -692,7 +660,7 @@ class _AudioTestPanelState extends State<_AudioTestPanel> {
 // Rich "stage" shown while in a live session: session timer + connection
 // signal, big speaking avatars (green ring reacts to BR's real sound
 // detection), and an inline mic device picker + activity indicator. Gated
-// by AreaStyle.rtcLiveStage.
+// while in a live session.
 class _LiveStage extends StatefulWidget {
   final RTDTSessionModel session;
   final RealtimeChatModel rtc;

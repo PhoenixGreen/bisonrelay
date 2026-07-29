@@ -222,9 +222,6 @@ class _RTCSessionHeaderState extends State<RTCSessionHeader> {
       }
     }
 
-    var theme = ThemeNotifier.of(context, listen: false);
-    var enhancedCallIndicators =
-        theme.areaStyle(ThemeArea.realtimeChat).enhancedCallIndicators;
 
     return Row(children: [
       Expanded(
@@ -243,31 +240,18 @@ class _RTCSessionHeaderState extends State<RTCSessionHeader> {
                       !session.joiningLiveSession ? joinLiveSession : null),
             SizedBox(width: isSmallScreen ? 5 : 20),
             if (session.inLiveSession && !session.hasHotAudio)
-              enhancedCallIndicators
-                  ? ElevatedButton.icon(
-                      icon: const Icon(Icons.mic_off, size: 18),
-                      label: isSmallScreen
-                          ? const SizedBox.shrink()
-                          : const Txt("Unmute"),
-                      onPressed: makeAudioHot,
-                      style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF3A2326),
-                          foregroundColor: const Color(0xFFFF6B6B),
-                          side: const BorderSide(color: Color(0xFF5A2E33))))
-                  : button(Icons.mic_off_sharp, "Unmute", makeAudioHot,
-                      style: ElevatedButton.styleFrom(
-                          backgroundColor: theme.colors.errorContainer,
-                          textStyle: theme.textStyleFor(context,
-                              TextSize.medium, TextColor.onErrorContainer))),
+              ElevatedButton.icon(
+                  icon: const Icon(Icons.mic_off, size: 18),
+                  label: isSmallScreen
+                      ? const SizedBox.shrink()
+                      : const Txt("Unmute"),
+                  onPressed: makeAudioHot,
+                  style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF3A2326),
+                      foregroundColor: const Color(0xFFFF6B6B),
+                      side: const BorderSide(color: Color(0xFF5A2E33)))),
             if (session.hasHotAudio)
-              enhancedCallIndicators
-                  ? _MicLiveIndicator(
-                      onTap: disableHotAudio, small: isSmallScreen)
-                  : button(Icons.mic_sharp, "Mute", disableHotAudio,
-                      style: ElevatedButton.styleFrom(
-                          backgroundColor: theme.colors.surface,
-                          textStyle: theme.textStyleFor(
-                              context, TextSize.medium, TextColor.onSurface))),
+              _MicLiveIndicator(onTap: disableHotAudio, small: isSmallScreen),
             if (Platform.isAndroid &&
                 audio.androidFoundPlaybackDevices &&
                 session.inLiveSession) ...[
@@ -286,7 +270,7 @@ class _RTCSessionHeaderState extends State<RTCSessionHeader> {
                       ? Txt.S("RTT ${rtt.lastRTTNanoStr}")
                       : const Empty())
             ],
-            if (enhancedCallIndicators && session.inLiveSession) ...[
+            if (session.inLiveSession) ...[
               SizedBox(width: isSmallScreen ? 8 : 16),
               Tooltip(
                 message:
@@ -364,7 +348,7 @@ class _RTCSessionHeaderState extends State<RTCSessionHeader> {
 }
 
 // Prominent, pulsing indicator shown while the local mic is hot, when
-// AreaStyle.enhancedCallIndicators is on. Makes it obvious the user is
+// live. Makes it obvious the user is
 // live/transmitting. Tapping it mutes (disables hot audio).
 class _MicLiveIndicator extends StatefulWidget {
   final VoidCallback onTap;

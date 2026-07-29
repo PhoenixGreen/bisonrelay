@@ -221,7 +221,13 @@ class _ChatHeadingWState extends State<_ChatHeadingW> {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
-        color: accent.withValues(alpha: 0.55),
+        // Full opacity: this is the selected row's accent edge, and the
+        // user picked an exact color for it. It used to be painted at 55%,
+        // which blended it into whatever was behind -- a pure white accent
+        // came out light grey, and every other accent came out a muted
+        // version of the swatch shown in the palette. The glow below stays
+        // translucent, since a glow is meant to fall off.
+        color: accent,
         borderRadius: BorderRadius.circular(radius),
         boxShadow: glowIntensity <= 0
             ? const []
@@ -260,13 +266,13 @@ class _ChatHeadingWState extends State<_ChatHeadingW> {
     var accentColor = chatStyle.resolveChatListAccentColor(theme) ??
         theme.activePreset?.sidebarAccent ??
         _clpBlue;
-    // Defaults to the palette's "Secondary Background" so the chat list
-    // sits on a color the theme actually names, rather than the near-black
-    // the design was originally drawn against -- which is still the
-    // fallback for the built-in themes, which have no palette to read.
+    // Defaults to the palette's "Content Background" so the chat rows sit
+    // on the same color as the content area beside them, rather than the
+    // near-black the design was originally drawn against -- which is still
+    // the fallback for the built-in themes, which have no palette to read.
     // Every other shade in the design derives from this (see _shade).
     var backgroundColor = chatStyle.resolveChatListBackgroundColor(theme) ??
-        theme.activePreset?.tertiary ??
+        theme.activePreset?.contentBackground ??
         const Color(0xFF171717);
     // The selected row's fill: its own setting when one is picked, else the
     // palette's "Speech Background (Send)" -- the same color the selected
@@ -435,7 +441,10 @@ class _ChatHeadingWState extends State<_ChatHeadingW> {
                     // than washing it with Material's theme-wide hover
                     // color, which is derived from the app's primary and so
                     // wouldn't follow the background chosen here.
-                    hoverColor: chatListDesign
+                    // Not on the selected row: its fill is a color of its
+                    // own, and lifting that toward the unselected
+                    // background on hover just washes it out.
+                    hoverColor: chatListDesign && !chat.active
                         ? _shade(backgroundColor, 0.06)
                         : null,
                     horizontalTitleGap: 12,

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math';
 
+import 'package:bruig/components/containers.dart';
 import 'package:bruig/components/empty_widget.dart';
 import 'package:bruig/components/text.dart';
 import 'package:flutter/material.dart';
@@ -120,15 +121,19 @@ class AboutButton extends StatelessWidget {
   const AboutButton({super.key});
   @override
   Widget build(BuildContext context) {
-    return IconButton(
-        tooltip: "About Bison Relay",
-        onPressed: () {
-          Navigator.of(context).pushNamed("/about");
-        },
-        icon: Image.asset(
-          fit: BoxFit.contain,
-          "assets/images/icon.png",
-        ));
+    // Follows the app icon setting like every other place the icon is
+    // drawn (see customAppIcon). IconButton sizes its own icon, so the
+    // custom one is asked for at that same size rather than a fixed one.
+    return Consumer<ThemeNotifier>(builder: (context, theme, _) {
+      var iconSize = IconTheme.of(context).size ?? 24;
+      return IconButton(
+          tooltip: "About Bison Relay",
+          onPressed: () {
+            Navigator.of(context).pushNamed("/about");
+          },
+          icon: customAppIcon(theme, iconSize) ??
+              Image.asset(BisonRelayLogo.assetPath, fit: BoxFit.contain));
+    });
   }
 }
 

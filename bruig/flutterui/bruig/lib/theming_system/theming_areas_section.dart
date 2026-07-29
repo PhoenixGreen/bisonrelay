@@ -228,6 +228,34 @@ class AreaEditorContext {
           onSingle: onSingle,
           updateSides: updateSides);
 
+  // pickImage prompts for an image file, copies it into the preset's own
+  // directory and hands back the path to store, or null if cancelled. SVG
+  // is offered alongside the raster formats since some settings (the app
+  // icon) render vectors too.
+  Future<String?> pickImage(
+          {required String suffix,
+          required String dialogTitle,
+          bool allowSvg = false}) =>
+      _host._copyPickedImage(theme,
+          suffix: suffix,
+          dialogTitle: dialogTitle,
+          extensions: [
+            "bmp",
+            "gif",
+            "jpeg",
+            "jpg",
+            "png",
+            "webp",
+            if (allowSvg) "svg",
+          ]);
+
+  // imagePreview is the clickable thumbnail those settings are edited
+  // through -- the box itself opens the picker.
+  Widget imagePreview(String? relPath,
+          {String? assetFallback, VoidCallback? onPick}) =>
+      _host._imagePreview(relPath, preset.sourceDir,
+          assetFallback: assetFallback, onPick: onPick);
+
   // note is the small explanatory caption shown under some controls.
   Widget note(String text) => Padding(
         padding: const EdgeInsets.only(left: 4),
@@ -289,30 +317,52 @@ class _AreasSectionState extends State<AreasSection> {
         onCommit: onCommit,
       );
 
-  Future<void> _pickImage(ThemeNotifier theme) async {
+  // _copyPickedImage puts a chosen file in the preset's own directory and
+  // returns its path relative to that, or null if the user cancelled.
+  // Shared by every area setting that holds an image.
+  Future<String?> _copyPickedImage(ThemeNotifier theme,
+      {required String suffix,
+      required String dialogTitle,
+      List<String> extensions = const [
+        "bmp",
+        "gif",
+        "jpeg",
+        "jpg",
+        "png",
+        "webp"
+      ]}) async {
     var res = await FilePicker.platform.pickFiles(
       allowMultiple: false,
-      dialogTitle: "Pick background image",
+      dialogTitle: dialogTitle,
       type: FileType.custom,
-      allowedExtensions: ["bmp", "gif", "jpeg", "jpg", "png", "webp"],
+      allowedExtensions: extensions,
     );
     var srcPath = res?.files.first.path;
-    if (srcPath == null) return;
+    if (srcPath == null) return null;
 
     var draft = ensureDraftPreset(theme);
-    var relPath =
-        await ThemePresetStorage.saveAreaImage(draft.id, selected, srcPath,
-            suffix: "bg");
+    var relPath = await ThemePresetStorage.saveAreaImage(
+        draft.id, selected, srcPath,
+        suffix: suffix);
     // saveAreaImage copies the file to disk immediately (even for an
     // unsaved draft), so sourceDir must be set right away too -- otherwise
-    // the preview (and eventual rendering) can't resolve imagePath until
-    // the preset happens to get saved/reloaded.
+    // nothing can resolve the path until the preset happens to get saved.
     var presetDir = await ThemePresetStorage.presetDir(draft.id);
+    theme.previewPreset(draft.copyWith(sourceDir: presetDir));
+    return relPath;
+  }
+
+  Future<void> _pickImage(ThemeNotifier theme) async {
+    var relPath = await _copyPickedImage(theme,
+        suffix: "bg", dialogTitle: "Pick background image");
+    if (relPath == null) return;
+
+    var draft = ensureDraftPreset(theme);
     var current = draft.areas[selected] ?? const AreaStyle();
     var style =
         current.copyWith(mode: AreaBackgroundMode.image, imagePath: relPath);
-    theme.previewPreset(draft.copyWith(
-        sourceDir: presetDir, areas: {...draft.areas, selected: style}));
+    theme.previewPreset(
+        draft.copyWith(areas: {...draft.areas, selected: style}));
   }
 
   // _imagePreview shows the user's own picked image if one is set;
@@ -325,13 +375,17 @@ class _AreasSectionState extends State<AreasSection> {
   // The box itself is the control -- clicking it opens the file picker, so
   // there's no separate "Pick image..." button beside it.
   Widget _imagePreview(String? relPath, String? sourceDir,
-      {AreaImagePreset? defaultPreset, VoidCallback? onPick}) {
+      {AreaImagePreset? defaultPreset,
+      String? assetFallback,
+      VoidCallback? onPick}) {
     const size = 64.0;
     ImageProvider? image;
     if (relPath != null && sourceDir != null) {
       image = FileImage(File(path.join(sourceDir, relPath)));
     } else if (defaultPreset != null) {
       image = AssetImage(areaImagePresetAsset(defaultPreset));
+    } else if (assetFallback != null) {
+      image = AssetImage(assetFallback);
     }
 
     var radius = BorderRadius.circular(4);
