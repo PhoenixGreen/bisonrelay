@@ -345,7 +345,7 @@ class _PayStatsScreenState extends State<PayStatsScreen> {
   @override
   Widget build(BuildContext context) {
     var theme = ThemeNotifier.of(context);
-    if (theme.areaStyle(ThemeArea.stats).payStatsCardStyle) {
+    if (theme.areaStyle(ThemeArea.settingsPages).payStatsCardStyle) {
       return _redesignedStats(theme);
     }
 

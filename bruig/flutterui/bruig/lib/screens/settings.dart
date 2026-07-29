@@ -283,16 +283,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 AudioSettingsScreen(audio: audio));
         break;
       case "Stats":
-        settingsView = ThemedArea(
-            area: ThemeArea.stats,
-            child: Consumer<ClientModel>(
-                builder: (context, client, child) => PayStatsScreen(client)));
+        settingsView = Consumer<ClientModel>(
+            builder: (context, client, child) => PayStatsScreen(client));
         break;
       case "Logs":
-        settingsView = ThemedArea(
-            area: ThemeArea.logs,
-            child: Consumer<LogModel>(
-                builder: (context, log, child) => LogScreen(log)));
+        settingsView =
+            Consumer<LogModel>(builder: (context, log, child) => LogScreen(log));
         break;
       default:
         break;
@@ -708,16 +704,12 @@ class AccountSettingsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // No frame of its own: Dual Panel wraps every page's sidebar and
+    // content together, this one included.
     var theme = ThemeNotifier.of(context);
-    // ThemedArea is what gives the Account Page area's background/border/
-    // spacing settings something to apply to; unstyled it renders exactly
-    // as a plain container would. Both layouts sit inside it, so the two
-    // choices differ only in their content.
-    return ThemedArea(
-        area: ThemeArea.account,
-        child: theme.areaStyle(ThemeArea.account).accountCardLayout
-            ? _restyled(context)
-            : _plain(context));
+    return theme.areaStyle(ThemeArea.settingsPages).accountCardLayout
+        ? _restyled(context)
+        : _plain(context);
   }
 
   Widget _plain(BuildContext context) {

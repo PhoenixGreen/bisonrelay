@@ -7,6 +7,12 @@ enum ThemeArea {
   loginScreen,
   header,
   navBar,
+  // dualPanel is a page's sidebar and content taken together, as one
+  // region -- a border on it goes round the outside of both. Every page
+  // route is wrapped in it (see OverviewScreen's route builder), which is
+  // why the individual pages below no longer carry a background/border of
+  // their own.
+  dualPanel,
   subMenuTabBar,
   contentArea,
   chat,
@@ -18,6 +24,11 @@ enum ThemeArea {
   manageContent,
   stats,
   logs,
+  // settingsPages is the Settings screen's own pages -- Account, Stats and
+  // Logs -- edited as one entry rather than three. account/stats/logs above
+  // are kept only so a preset saved before that can still be read and
+  // migrated across (see ThemePreset.fromJson); nothing renders from them.
+  settingsPages,
 }
 
 const Map<ThemeArea, String> _themeAreaLabels = {
@@ -25,6 +36,7 @@ const Map<ThemeArea, String> _themeAreaLabels = {
   ThemeArea.loginScreen: "Login Screen",
   ThemeArea.header: "Header",
   ThemeArea.navBar: "Navigation Bar",
+  ThemeArea.dualPanel: "Dual Panel",
   ThemeArea.subMenuTabBar: "Sidebar",
   ThemeArea.contentArea: "Content Area",
   ThemeArea.chat: "Chat",
@@ -36,6 +48,7 @@ const Map<ThemeArea, String> _themeAreaLabels = {
   ThemeArea.manageContent: "Manage Content",
   ThemeArea.stats: "Stats",
   ThemeArea.logs: "Logs",
+  ThemeArea.settingsPages: "Settings Pages",
 };
 
 String themeAreaLabel(ThemeArea area) => _themeAreaLabels[area]!;
