@@ -1,7 +1,8 @@
 import 'package:bruig/components/usersearch/user_search_panel.dart';
 import 'package:bruig/models/client.dart';
 import 'package:bruig/screens/chats.dart';
-import 'package:flutter/widgets.dart';
+import 'package:bruig/components/text.dart';
+import 'package:flutter/material.dart';
 
 class NewMessageScreen extends StatefulWidget {
   static const routeName = "/chat/newMessage";
@@ -33,13 +34,23 @@ class _NewMessageScreenState extends State<NewMessageScreen> {
   @override
   Widget build(BuildContext context) {
     return Container(
-        padding: const EdgeInsets.all(10),
-        child: UserSearchPanel(
-          client,
-          confirmLabel: "",
-          targets: UserSearchPanelTargets.usersAndGCs,
-          onCancel: goBack,
-          onChatTapped: chatTapped,
-        ));
+        // Same title and gutters as every other Address Book tab -- this
+        // page had neither.
+        padding: const EdgeInsets.fromLTRB(16, 18, 16, 24),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const SizedBox(
+              width: double.infinity,
+              child: Txt.L("New Message", textAlign: TextAlign.center)),
+          const SizedBox(height: 10),
+          Expanded(
+            child: UserSearchPanel(
+              client,
+              confirmLabel: "",
+              targets: UserSearchPanelTargets.usersAndGCs,
+              onCancel: goBack,
+              onChatTapped: chatTapped,
+            ),
+          ),
+        ]));
   }
 }

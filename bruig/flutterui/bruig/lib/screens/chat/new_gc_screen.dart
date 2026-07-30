@@ -74,12 +74,13 @@ class _NewGcScreenState extends State<NewGcScreen> {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(10),
-      child: Column(children: [
-        if (selectingUsers)
-          const Txt.L("Select GC members")
-        else
-          const Txt.L("Type name of new GC"),
+      padding: const EdgeInsets.fromLTRB(16, 18, 16, 24),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        SizedBox(
+            width: double.infinity,
+            child: Txt.L(
+                selectingUsers ? "Select GC members" : "Type name of new GC",
+                textAlign: TextAlign.center)),
         const SizedBox(height: 10),
         Expanded(
             child: UserSearchPanel(
