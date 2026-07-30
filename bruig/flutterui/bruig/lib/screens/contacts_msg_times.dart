@@ -90,22 +90,35 @@ class _ContactsLastMsgTimesScreenState
     Navigator.of(context).maybePop();
   }
 
+  // Address Book tabs all use the same title: same size (Txt.L), centred
+  // across the full width of the page. Pushed as a standalone route these
+  // screens keep the larger startup-screen heading.
+  Widget _title(String text) => SizedBox(
+      width: double.infinity,
+      child: widget.embedded
+          ? Txt.L(text, textAlign: TextAlign.center)
+          : Txt.H(text, textAlign: TextAlign.center));
   @override
   Widget build(BuildContext context) {
     var children = [
-      const Txt.H("Last Message Time"),
-      Container(
-          padding: const EdgeInsets.only(right: 12),
-          child: ListView.builder(
-              shrinkWrap: true,
-              itemCount: users.length,
-              itemBuilder: (context, index) => _UserLastMsgTime(
-                  users[index], client.getExistingChat(users[index].uid)!))),
+      _title("Last Message Time"),
+      // No inset of its own: the page's gutters are the same on both
+      // sides, and a right-only padding here made it look lopsided.
+      ListView.builder(
+          shrinkWrap: true,
+          itemCount: users.length,
+          itemBuilder: (context, index) => _UserLastMsgTime(
+              users[index], client.getExistingChat(users[index].uid)!)),
     ];
 
     if (widget.embedded) {
       return SingleChildScrollView(
-          child: Container(padding: const EdgeInsets.all(20), child: Column(children: children)));
+          // The gutters every content-area page uses, so the Address Book
+          // tabs sit where the pages beside them do.
+          padding: const EdgeInsets.fromLTRB(16, 18, 16, 24),
+          child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: children));
     }
 
     return StartupScreen(

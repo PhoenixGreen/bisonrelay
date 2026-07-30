@@ -241,10 +241,18 @@ class _FetchInviteScreenState extends State<FetchInviteScreen> {
     }
   }
 
+  // Address Book tabs all use the same title: same size (Txt.L), centred
+  // across the full width of the page. Pushed as a standalone route these
+  // screens keep the larger startup-screen heading.
+  Widget _title(String text) => SizedBox(
+      width: double.infinity,
+      child: widget.embedded
+          ? Txt.L(text, textAlign: TextAlign.center)
+          : Txt.H(text, textAlign: TextAlign.center));
   @override
   Widget build(BuildContext context) {
     var children = [
-      const Txt.H("Fetch Invite"),
+      _title("Fetch Invite"),
       const SizedBox(height: 20),
       ...(!loading
           ? [
@@ -270,10 +278,12 @@ class _FetchInviteScreenState extends State<FetchInviteScreen> {
 
     if (widget.embedded) {
       return SingleChildScrollView(
-          child: Container(
-              padding: const EdgeInsets.all(20),
-              alignment: Alignment.topCenter,
-              child: Column(children: children)));
+          // The gutters every content-area page uses, so the Address Book
+          // tabs sit where the pages beside them do.
+          padding: const EdgeInsets.fromLTRB(16, 18, 16, 24),
+          child: Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: children));
     }
 
     return StartupScreen(children);

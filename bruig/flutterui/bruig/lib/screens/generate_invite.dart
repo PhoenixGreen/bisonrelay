@@ -296,7 +296,8 @@ class _GenerateInviteScreenState extends State<GenerateInviteScreen> {
               style: TextStyle(fontStyle: FontStyle.italic))),
       const SizedBox(height: 20),
       ElevatedButton(
-          onPressed: () => Navigator.of(context).maybePop(), child: const Text("Done"))
+          onPressed: () => Navigator.of(context).maybePop(),
+          child: const Text("Done"))
     ];
   }
 
@@ -368,12 +369,23 @@ class _GenerateInviteScreenState extends State<GenerateInviteScreen> {
     ];
   }
 
+  // Address Book tabs all use the same title: same size (Txt.L), centred
+  // across the full width of the page. Pushed as a standalone route these
+  // screens keep the larger startup-screen heading.
+  Widget _title(String text) => SizedBox(
+      width: double.infinity,
+      child: widget.embedded
+          ? Txt.L(text, textAlign: TextAlign.center)
+          : Txt.H(text, textAlign: TextAlign.center));
   @override
   Widget build(BuildContext context) {
     var children = [
       generated == null
-          ? const Txt.H("Generate Invite")
-          : const Txt.H("Generated Invite"),
+          // Embedded, the title matches every other Address Book tab;
+          // pushed as its own screen it stays the larger heading that
+          // startup-style screens use.
+          ? _title("Generate Invite")
+          : _title("Generated Invite"),
       const SizedBox(height: 20),
       ...(generated == null
           ? buildGeneratePanel(context)
@@ -382,10 +394,12 @@ class _GenerateInviteScreenState extends State<GenerateInviteScreen> {
 
     if (widget.embedded) {
       return SingleChildScrollView(
-          child: Container(
-              padding: const EdgeInsets.all(20),
-              alignment: Alignment.topCenter,
-              child: SizedBox(width: 600, child: Column(children: children))));
+          // The gutters every content-area page uses, so the Address Book
+          // tabs sit where the pages beside them do.
+          padding: const EdgeInsets.fromLTRB(16, 18, 16, 24),
+          child: Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: children));
     }
 
     return StartupScreen(childrenWidth: 600, children);

@@ -15,6 +15,8 @@ import 'package:bruig/theming_system/theme_preset_storage.dart';
 import 'package:bruig/theming_system/theming_area_chat.dart';
 import 'package:bruig/theming_system/theming_area_feed.dart';
 import 'package:bruig/theming_system/theming_area_header.dart';
+import 'package:bruig/theming_system/theming_area_filemanager.dart';
+import 'package:bruig/theming_system/theming_area_master.dart';
 import 'package:bruig/theming_system/theming_area_navbar.dart';
 import 'package:bruig/theming_system/theming_area_realtimechat.dart';
 import 'package:bruig/theming_system/theming_area_settings_pages.dart';
@@ -45,6 +47,7 @@ const List<ThemeArea> _editableAreas = [
   ThemeArea.chat,
   ThemeArea.feed,
   ThemeArea.realtimeChat,
+  ThemeArea.manageContent,
   ThemeArea.settingsPages,
 ];
 
@@ -55,8 +58,9 @@ const List<ThemeArea> _editableAreas = [
 // of nine pages each with an identical-looking copy of the same four
 // settings that only ever applied to one of them.
 //
-// That's also why LN Management, Pages and Manage Content are no longer
-// listed at all: the frame was the only thing they had.
+// That's also why LN Management and Pages are no longer listed at all: the
+// frame was the only thing they had. Manage Content is back as "File
+// Manager", but for settings of its own rather than a frame.
 const Set<ThemeArea> _framedAreas = {
   ThemeArea.masterBackground,
   ThemeArea.header,
@@ -189,15 +193,17 @@ class AreaEditorContext {
   // the live value, so an area can spell out what its own zero/default
   // position means ("Width: Default", "Selected glow: Off", ...).
   //
-  // Pass numberField: true to add a type-in box beside it, for a value
-  // worth setting exactly. Leave it off where `label` already spells the
-  // number out, or the same figure would just appear twice.
+  // Every slider carries a type-in box over the same value, so a setting
+  // can be dragged roughly or entered exactly -- dragging alone can't
+  // reliably land on a round number, and matching one area's value in
+  // another is otherwise guesswork. Pass numberField: false for the rare
+  // slider whose value isn't a number worth typing.
   Widget slider(String key, double value,
           {required String Function(double)? label,
           double min = 0,
           required double max,
           int? divisions,
-          bool numberField = false,
+          bool numberField = true,
           required ValueChanged<double> onCommit}) =>
       _host._slider(key, value, label, min, max, divisions, numberField,
           onCommit);
@@ -266,14 +272,16 @@ class AreaEditorContext {
 
 // _areaEditor returns the settings specific to one area, or nothing for the
 // areas whose only settings are the shared background/border/spacing ones
-// (Master, Login Screen, Dual Panel, Content Area).
+// (Login Screen, Dual Panel, Content Area).
 List<Widget> _areaEditor(AreaEditorContext ctx) => switch (ctx.area) {
+      ThemeArea.masterBackground => masterAreaEditor(ctx),
       ThemeArea.header => headerAreaEditor(ctx),
       ThemeArea.navBar => navBarAreaEditor(ctx),
       ThemeArea.subMenuTabBar => sidebarAreaEditor(ctx),
       ThemeArea.chat => chatAreaEditor(ctx),
       ThemeArea.feed => feedAreaEditor(ctx),
       ThemeArea.realtimeChat => realtimeChatAreaEditor(ctx),
+      ThemeArea.manageContent => fileManagerAreaEditor(ctx),
       ThemeArea.settingsPages => settingsPagesAreaEditor(ctx),
       _ => const [],
     };
@@ -798,11 +806,15 @@ class _AreasSectionState extends State<AreasSection> {
             }
           }),
         ),
+        // One gap under the area picker for every area, whether what
+        // follows is the frame block or the area's own first setting --
+        // some of those start with a control carrying no padding of its
+        // own, which used to leave them sitting flush against the picker.
+        const SizedBox(height: 20),
         // The background/border/spacing block, for the areas that have a
         // frame of their own. A page doesn't: Dual Panel frames every
         // page's sidebar and content together (see _framedAreas).
         if (_framedAreas.contains(selected)) ...[
-          const SizedBox(height: 12),
           _fillEditor(
             preset: preset,
             sourceDir: preset.sourceDir,

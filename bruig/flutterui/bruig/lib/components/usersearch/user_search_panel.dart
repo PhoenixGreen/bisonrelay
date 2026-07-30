@@ -269,17 +269,37 @@ class _UserSearchPanelState extends State<UserSearchPanel> {
         ]),
       LNInfoSectionHeader(resultsHeaderTxt),
       const SizedBox(height: 10),
+      // The results sit in the same card the Manage pages frame their file
+      // lists with: a rounded outlineVariant border over the page's own
+      // background. It used to be a bare Material, which painted the
+      // theme's default surface as a slab behind the list and read as a
+      // panel from some other app.
       Expanded(
-          child: Material(
-              clipBehavior: Clip.hardEdge,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(10),
+            border:
+                Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            // Transparent, but still a Material, so the rows' own ink and
+            // hover effects keep working.
+            child: Material(
+              type: MaterialType.transparency,
               child: ListView.builder(
+                  padding: EdgeInsets.zero,
                   itemCount: resultsChat.length,
                   itemBuilder: (context, index) => _SearchChatItemW(
                         client,
                         resultsChat[index],
                         userSelModel: widget.userSelModel,
                         onChatTapped: widget.onChatTapped,
-                      )))),
+                      )),
+            ),
+          ),
+        ),
+      ),
     ]);
   }
 }

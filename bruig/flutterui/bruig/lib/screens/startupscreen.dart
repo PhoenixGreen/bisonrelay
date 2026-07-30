@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:bruig/components/buttons.dart';
 import 'package:bruig/components/empty_widget.dart';
 import 'package:bruig/theming_system/theme_preset.dart';
@@ -122,10 +123,21 @@ class StartupScreen extends StatelessWidget {
                 ? Positioned(
                     top: 5,
                     left: 5,
-                    child: SizedBox(
-                        height: isScreenSmall ? 70 : 100,
-                        width: isScreenSmall ? 70 : 100,
-                        child: const Center(child: AboutButton())))
+                    // The corner box grows if the icon is set larger than
+                    // it (see AreaStyle.loginLogoSize) -- IconButton takes
+                    // 8px of padding on each side, and anything past that
+                    // would be clipped rather than simply overflowing.
+                    child: Builder(builder: (context) {
+                      var box = isScreenSmall ? 70.0 : 100.0;
+                      var logo =
+                          (theme.areaStyle(ThemeArea.header).loginLogoSize ??
+                                  0) +
+                              16;
+                      return SizedBox(
+                          height: math.max(box, logo),
+                          width: math.max(box, logo),
+                          child: const Center(child: AboutButton()));
+                    }))
                 : const Empty(),
             if (fab != null) Positioned(right: 10, bottom: 10, child: fab!),
           ]));

@@ -68,10 +68,18 @@ class _GCInvitationsScreenState extends State<GCInvitationsScreen> {
     updateList();
   }
 
+  // Address Book tabs all use the same title: same size (Txt.L), centred
+  // across the full width of the page. Pushed as a standalone route these
+  // screens keep the larger startup-screen heading.
+  Widget _title(String text) => SizedBox(
+      width: double.infinity,
+      child: widget.embedded
+          ? Txt.L(text, textAlign: TextAlign.center)
+          : Txt.H(text, textAlign: TextAlign.center));
   @override
   Widget build(BuildContext context) {
     var children = [
-      const Txt.H("Received GC Invitations"),
+      _title("Received GC Invitations"),
       const SizedBox(height: 20),
       ...(invites.map((i) => Container(
             //width: 200,
@@ -109,7 +117,12 @@ class _GCInvitationsScreenState extends State<GCInvitationsScreen> {
 
     if (widget.embedded) {
       return SingleChildScrollView(
-          child: Container(padding: const EdgeInsets.all(20), child: Column(children: children)));
+          // The gutters every content-area page uses, so the Address Book
+          // tabs sit where the pages beside them do.
+          padding: const EdgeInsets.fromLTRB(16, 18, 16, 24),
+          child: Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: children));
     }
 
     return Consumer<ThemeNotifier>(

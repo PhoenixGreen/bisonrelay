@@ -913,7 +913,19 @@ class SharedFileAndShares {
   final int size;
   final bool global;
   final List<String> shares;
-  SharedFileAndShares(this.sf, this.cost, this.size, this.global, this.shares);
+
+  // descr is the description given when the file was shared -- what the
+  // recipient sees offered alongside the name.
+  @JsonKey(defaultValue: "")
+  final String descr;
+
+  // diskPath is where this client read the file from when it was shared.
+  // Empty for files shared before the client recorded it, or on another
+  // machine -- it is local bookkeeping and never leaves this device.
+  @JsonKey(name: "disk_path", defaultValue: "")
+  final String diskPath;
+  SharedFileAndShares(this.sf, this.cost, this.size, this.global, this.shares,
+      this.descr, this.diskPath);
   factory SharedFileAndShares.fromJson(Map<String, dynamic> json) =>
       _$SharedFileAndSharesFromJson(json);
 }

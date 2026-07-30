@@ -788,6 +788,8 @@ SharedFileAndShares _$SharedFileAndSharesFromJson(Map<String, dynamic> json) =>
       (json['size'] as num).toInt(),
       json['global'] as bool,
       (json['shares'] as List<dynamic>).map((e) => e as String).toList(),
+      json['descr'] as String? ?? '',
+      json['disk_path'] as String? ?? '',
     );
 
 Map<String, dynamic> _$SharedFileAndSharesToJson(
@@ -798,6 +800,8 @@ Map<String, dynamic> _$SharedFileAndSharesToJson(
       'size': instance.size,
       'global': instance.global,
       'shares': instance.shares,
+      'descr': instance.descr,
+      'disk_path': instance.diskPath,
     };
 
 ReceivedFile _$ReceivedFileFromJson(Map<String, dynamic> json) => ReceivedFile(

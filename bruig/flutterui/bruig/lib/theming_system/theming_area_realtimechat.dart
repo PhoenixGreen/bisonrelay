@@ -8,12 +8,9 @@ import 'package:flutter/material.dart';
 // styled session list and its empty-state intro. Those described how the
 // page is built, not how it's themed, so they're simply part of the page
 // now; what's left here is what a theme actually decides.
-// The slider below opens with a plain label carrying no padding of its
-// own, unlike the toggles and dropdowns other areas start with, so it needs
-// explicit space off the area picker above it.
 List<Widget> realtimeChatAreaEditor(AreaEditorContext ctx) => [
-      const SizedBox(height: 20),
-      ctx.slider("rtcSessionCornerRadius", ctx.style.rtcSessionCornerRadius ?? 12,
+      ctx.slider(
+          "rtcSessionCornerRadius", ctx.style.rtcSessionCornerRadius ?? 12,
           label: (v) => v <= 0
               ? "Session row corners: Square"
               : "Session row corners: ${v.toStringAsFixed(1)}",
@@ -39,8 +36,7 @@ List<Widget> realtimeChatAreaEditor(AreaEditorContext ctx) => [
         value: ctx.style.resolveRtcLiveColor(ctx.theme),
         valueIndex: ctx.style.rtcLiveColorIndex,
         onChanged: (c, i) => ctx.setStyle((s) => c == null
-            ? s.copyWith(
-                clearRtcLiveColor: true, clearRtcLiveColorIndex: true)
+            ? s.copyWith(clearRtcLiveColor: true, clearRtcLiveColorIndex: true)
             : s.copyWith(
                 rtcLiveColor: c,
                 rtcLiveColorIndex: i,

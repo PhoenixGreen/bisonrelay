@@ -137,6 +137,29 @@ class AreaStyle {
   // for navBar).
   final double? logoSize;
 
+  // loginLogoSize is the same icon where it appears on the login/startup
+  // screens (the About button in their top-left corner). It lives on the
+  // header area beside the other icon settings even though it isn't the
+  // header, because the icon itself is one app-wide setting and splitting
+  // its sizes across two areas would hide half of them. Null = the 24 the
+  // icon theme gives that button.
+  final double? loginLogoSize;
+
+  // Hover text, in two halves (master area; see components/tooltips.dart).
+  // hideTooltips drops the labels on controls a user already recognises --
+  // the avatars, the post/attach icons, the app icon -- which read as
+  // clutter once the app is familiar. hideHelpTooltips is the separate
+  // decision about the few tooltips that explain something not written
+  // anywhere else, like the help icon beside a content cost.
+  final bool hideTooltips;
+  final bool hideHelpTooltips;
+
+  // File Manager: drops the on-disk path from each downloaded file, which
+  // is the longest line in the row and the same leading directories on
+  // every one of them. What's left is the file name over its size and
+  // sender.
+  final bool hideFilePaths;
+
   // -------------------------------------------------------------------------
   // Navigation bar -- see theming_area_navbar.dart.
   // -------------------------------------------------------------------------
@@ -364,6 +387,10 @@ class AreaStyle {
     this.contentAlign,
     this.logoPath,
     this.logoSize,
+    this.loginLogoSize,
+    this.hideTooltips = false,
+    this.hideHelpTooltips = false,
+    this.hideFilePaths = false,
     this.headerPosition,
     this.showLogo = false,
     this.showDcrPrice = false,
@@ -472,6 +499,10 @@ class AreaStyle {
     String? logoPath,
     bool clearLogoPath = false,
     double? logoSize,
+    double? loginLogoSize,
+    bool? hideTooltips,
+    bool? hideHelpTooltips,
+    bool? hideFilePaths,
     HeaderPosition? headerPosition,
     bool? showLogo,
     bool? showDcrPrice,
@@ -601,6 +632,10 @@ class AreaStyle {
         contentAlign: contentAlign ?? this.contentAlign,
         logoPath: clearLogoPath ? null : (logoPath ?? this.logoPath),
         logoSize: logoSize ?? this.logoSize,
+        loginLogoSize: loginLogoSize ?? this.loginLogoSize,
+        hideTooltips: hideTooltips ?? this.hideTooltips,
+        hideHelpTooltips: hideHelpTooltips ?? this.hideHelpTooltips,
+        hideFilePaths: hideFilePaths ?? this.hideFilePaths,
         headerPosition: headerPosition ?? this.headerPosition,
         showLogo: showLogo ?? this.showLogo,
         showDcrPrice: showDcrPrice ?? this.showDcrPrice,
@@ -752,6 +787,10 @@ class AreaStyle {
         if (contentAlign != null) "contentAlign": contentAlign!.name,
         if (logoPath != null) "logoPath": logoPath,
         if (logoSize != null) "logoSize": logoSize,
+        if (loginLogoSize != null) "loginLogoSize": loginLogoSize,
+        if (hideTooltips) "hideTooltips": hideTooltips,
+        if (hideHelpTooltips) "hideHelpTooltips": hideHelpTooltips,
+        if (hideFilePaths) "hideFilePaths": hideFilePaths,
         if (headerPosition != null) "headerPosition": headerPosition!.name,
         if (showLogo) "showLogo": showLogo,
         if (showDcrPrice) "showDcrPrice": showDcrPrice,
@@ -902,6 +941,10 @@ class AreaStyle {
       contentAlign: _enumOrNull(ContentAlign.values, j["contentAlign"]),
       logoPath: j["logoPath"],
       logoSize: number("logoSize"),
+      loginLogoSize: number("loginLogoSize"),
+      hideTooltips: flag("hideTooltips"),
+      hideHelpTooltips: flag("hideHelpTooltips"),
+      hideFilePaths: flag("hideFilePaths"),
       headerPosition: _enumOrNull(HeaderPosition.values, j["headerPosition"]),
       showLogo: flag("showLogo"),
       showDcrPrice: flag("showDcrPrice"),
