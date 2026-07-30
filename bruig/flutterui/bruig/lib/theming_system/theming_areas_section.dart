@@ -137,7 +137,10 @@ class AreaEditorContext {
       Padding(
         padding: const EdgeInsets.only(top: 8),
         child: Row(children: [
-          Txt("$label: "),
+          // The label gives way too, for the same reason the dropdown does
+          // -- some of these run long ("Message bubble corners") and the
+          // settings pane can be very narrow.
+          Flexible(child: Txt("$label: ", overflow: TextOverflow.ellipsis)),
           const SizedBox(width: 8),
           // Flexible + isExpanded, and ellipsis on the labels: several of
           // these options are long ("Default (Always visible)", "Auto-hide
@@ -151,8 +154,7 @@ class AreaEditorContext {
               items: options
                   .map((o) => DropdownMenuItem(
                       value: o,
-                      child: Text(labelOf(o),
-                          overflow: TextOverflow.ellipsis)))
+                      child: Text(labelOf(o), overflow: TextOverflow.ellipsis)))
                   .toList(),
               onChanged: (v) {
                 if (v != null) onChanged(v);
@@ -176,15 +178,23 @@ class AreaEditorContext {
           required void Function(Color? color, int? index) onChanged,
           String noneLabel = "Default"}) =>
       Row(children: [
-        Txt("$label: "),
+        // Both sides give way: a long label ellipsizes rather than pushing
+        // the dropdown off the edge, and the dropdown takes what's left
+        // rather than its intrinsic width, which the longer palette slot
+        // names ("Button Accent Background") overflow a narrow settings
+        // column with.
+        Flexible(child: Txt("$label: ", overflow: TextOverflow.ellipsis)),
         const SizedBox(width: 8),
-        PaletteColorDropdown(
-          preset: preset,
-          value: value,
-          valueIndex: valueIndex,
-          allowNone: true,
-          noneLabel: noneLabel,
-          onChanged: onChanged,
+        Expanded(
+          child: PaletteColorDropdown(
+            preset: preset,
+            value: value,
+            valueIndex: valueIndex,
+            allowNone: true,
+            noneLabel: noneLabel,
+            isExpanded: true,
+            onChanged: onChanged,
+          ),
         ),
       ]);
 
@@ -205,8 +215,8 @@ class AreaEditorContext {
           int? divisions,
           bool numberField = true,
           required ValueChanged<double> onCommit}) =>
-      _host._slider(key, value, label, min, max, divisions, numberField,
-          onCommit);
+      _host._slider(
+          key, value, label, min, max, divisions, numberField, onCommit);
 
   // spacing is a numeric setting that can be split into four -- per side,
   // or per corner for a radius. It's what the shared Border width/radius/
@@ -311,8 +321,14 @@ class _AreasSectionState extends State<AreasSection> {
   // _slider keys each _ValueSlider by area *and* setting, so switching areas
   // gives the new area's value a fresh widget state rather than one still
   // holding the previous area's half-typed text.
-  Widget _slider(String key, double value, String Function(double)? label,
-          double min, double max, int? divisions, bool numberField,
+  Widget _slider(
+          String key,
+          double value,
+          String Function(double)? label,
+          double min,
+          double max,
+          int? divisions,
+          bool numberField,
           ValueChanged<double> onCommit) =>
       _ValueSlider(
         key: ValueKey("$selected/$key"),
@@ -516,137 +532,139 @@ class _AreasSectionState extends State<AreasSection> {
 
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       _responsiveRow(
-        // A little narrower than the default: these are all dropdowns,
-        // which ellipsize their longest entries rather than becoming
-        // unusable, and fitting the widest case (four of them, for a
-        // gradient or an image) on one line matters more here.
-        minWidth: 140,
-        [
-          _labelled(
-            label,
-            DropdownButton<AreaBackgroundMode>(
-              value: shownMode,
-              isExpanded: true,
-              items: [
-                if (tokenShownAs == null)
-                  DropdownMenuItem(
-                      value: AreaBackgroundMode.token, child: Text(tokenLabel)),
-                if (supportsNone)
-                  const DropdownMenuItem(
-                      value: AreaBackgroundMode.none, child: Text("None")),
-                const DropdownMenuItem(
-                    value: AreaBackgroundMode.gradient, child: Text("Gradient")),
-                // Solid isn't usually picked from here directly (the Color
-                // control beside it is the way in), but it must still be a
-                // valid item -- it's what most areas' default background
-                // shows as, and DropdownButton asserts if `value` matches no
-                // item.
-                const DropdownMenuItem(
-                    value: AreaBackgroundMode.solid, child: Text("Solid")),
-                if (offerImageMode)
-                  const DropdownMenuItem(
-                      value: AreaBackgroundMode.image, child: Text("Image")),
-              ],
-              onChanged: (m) {
-                // Re-picking what's already shown is a no-op -- notably when
-                // that's the folded-in token mode, where acting on it would
-                // quietly convert an area's live palette-backed default into
-                // a frozen Solid/Image of its own.
-                if (m == null || m == shownMode) return;
-                onModeChanged(m);
-              },
-            ),
-          ),
-          if (showColor)
+          // A little narrower than the default: these are all dropdowns,
+          // which ellipsize their longest entries rather than becoming
+          // unusable, and fitting the widest case (four of them, for a
+          // gradient or an image) on one line matters more here.
+          minWidth: 140,
+          [
             _labelled(
-              "Color",
-              PaletteColorDropdown(
-                preset: preset,
-                value: mode == AreaBackgroundMode.solid ? solidColor : null,
-                valueIndex:
-                    mode == AreaBackgroundMode.solid ? solidColorIndex : null,
+              label,
+              DropdownButton<AreaBackgroundMode>(
+                value: shownMode,
                 isExpanded: true,
-                // Always offered, so a picked color is always undoable: this
-                // entry ("Default" for a background, "None" for a border) is
-                // the only way back to the area's untouched fill, since the
-                // mode dropdown beside it no longer lists it separately.
-                allowNone: true,
-                noneLabel: tokenLabel,
-                onChanged: (c, i) {
-                  if (c == null) {
-                    onModeChanged(AreaBackgroundMode.token);
-                    return;
-                  }
-                  onModeChanged(AreaBackgroundMode.solid);
-                  onSolidChanged(c, i);
+                items: [
+                  if (tokenShownAs == null)
+                    DropdownMenuItem(
+                        value: AreaBackgroundMode.token,
+                        child: Text(tokenLabel)),
+                  if (supportsNone)
+                    const DropdownMenuItem(
+                        value: AreaBackgroundMode.none, child: Text("None")),
+                  const DropdownMenuItem(
+                      value: AreaBackgroundMode.gradient,
+                      child: Text("Gradient")),
+                  // Solid isn't usually picked from here directly (the Color
+                  // control beside it is the way in), but it must still be a
+                  // valid item -- it's what most areas' default background
+                  // shows as, and DropdownButton asserts if `value` matches no
+                  // item.
+                  const DropdownMenuItem(
+                      value: AreaBackgroundMode.solid, child: Text("Solid")),
+                  if (offerImageMode)
+                    const DropdownMenuItem(
+                        value: AreaBackgroundMode.image, child: Text("Image")),
+                ],
+                onChanged: (m) {
+                  // Re-picking what's already shown is a no-op -- notably when
+                  // that's the folded-in token mode, where acting on it would
+                  // quietly convert an area's live palette-backed default into
+                  // a frozen Solid/Image of its own.
+                  if (m == null || m == shownMode) return;
+                  onModeChanged(m);
                 },
               ),
             ),
-          if (showImage)
-            _labelled(
-              "Image",
-              Row(children: [
-                _imagePreview(
-                  mode == AreaBackgroundMode.image ? imagePath : null,
-                  sourceDir,
-                  // With no file of the user's own picked, the thumbnail
-                  // shows whichever built-in preset is actually being
-                  // painted.
-                  defaultPreset: imagePreset,
-                  onPick: () {
-                    onModeChanged(AreaBackgroundMode.image);
-                    onPickImage?.call();
-                  },
-                ),
-                if (mode == AreaBackgroundMode.image &&
-                    imagePath != null &&
-                    onRemoveImage != null)
-                  IconButton(
-                    onPressed: onRemoveImage,
-                    icon: const Icon(Icons.close),
-                    tooltip: "Remove image",
-                  ),
-              ]),
-            ),
-          if (showImage && imagePresetCell != null) imagePresetCell,
-          // The gradient's own two colors and direction join the same row
-          // rather than stacking below it -- they're this mode's equivalent
-          // of the single Color dropdown the other modes show there.
-          if (mode == AreaBackgroundMode.gradient) ...[
-            for (var i = 0; i < 2; i++)
+            if (showColor)
               _labelled(
-                "Color ${i + 1}",
+                "Color",
                 PaletteColorDropdown(
                   preset: preset,
-                  value: gradientColors.length > i ? gradientColors[i] : null,
-                  valueIndex: gradientColorIndexes.length > i
-                      ? gradientColorIndexes[i]
-                      : null,
+                  value: mode == AreaBackgroundMode.solid ? solidColor : null,
+                  valueIndex:
+                      mode == AreaBackgroundMode.solid ? solidColorIndex : null,
                   isExpanded: true,
-                  onChanged: (c, ci) => onGradientColorChanged(i, c, ci),
+                  // Always offered, so a picked color is always undoable: this
+                  // entry ("Default" for a background, "None" for a border) is
+                  // the only way back to the area's untouched fill, since the
+                  // mode dropdown beside it no longer lists it separately.
+                  allowNone: true,
+                  noneLabel: tokenLabel,
+                  onChanged: (c, i) {
+                    if (c == null) {
+                      onModeChanged(AreaBackgroundMode.token);
+                      return;
+                    }
+                    onModeChanged(AreaBackgroundMode.solid);
+                    onSolidChanged(c, i);
+                  },
                 ),
               ),
-            _labelled(
-              "Direction",
-              DropdownButton<GradientDirection>(
-                value: gradientDirectionFor(gradientBegin, gradientEnd),
-                isExpanded: true,
-                items: GradientDirection.values
-                    .map((d) => DropdownMenuItem(
-                        value: d,
-                        child: Text(gradientDirectionLabel(d),
-                            // The longest labels in any of these dropdowns;
-                            // in a narrow column they ellipsize rather than
-                            // overflowing the button.
-                            overflow: TextOverflow.ellipsis)))
-                    .toList(),
-                onChanged: (d) {
-                  if (d != null) onDirectionChanged(d);
-                },
+            if (showImage)
+              _labelled(
+                "Image",
+                Row(children: [
+                  _imagePreview(
+                    mode == AreaBackgroundMode.image ? imagePath : null,
+                    sourceDir,
+                    // With no file of the user's own picked, the thumbnail
+                    // shows whichever built-in preset is actually being
+                    // painted.
+                    defaultPreset: imagePreset,
+                    onPick: () {
+                      onModeChanged(AreaBackgroundMode.image);
+                      onPickImage?.call();
+                    },
+                  ),
+                  if (mode == AreaBackgroundMode.image &&
+                      imagePath != null &&
+                      onRemoveImage != null)
+                    IconButton(
+                      onPressed: onRemoveImage,
+                      icon: const Icon(Icons.close),
+                      tooltip: "Remove image",
+                    ),
+                ]),
               ),
-            ),
-          ],
-        ]),
+            if (showImage && imagePresetCell != null) imagePresetCell,
+            // The gradient's own two colors and direction join the same row
+            // rather than stacking below it -- they're this mode's equivalent
+            // of the single Color dropdown the other modes show there.
+            if (mode == AreaBackgroundMode.gradient) ...[
+              for (var i = 0; i < 2; i++)
+                _labelled(
+                  "Color ${i + 1}",
+                  PaletteColorDropdown(
+                    preset: preset,
+                    value: gradientColors.length > i ? gradientColors[i] : null,
+                    valueIndex: gradientColorIndexes.length > i
+                        ? gradientColorIndexes[i]
+                        : null,
+                    isExpanded: true,
+                    onChanged: (c, ci) => onGradientColorChanged(i, c, ci),
+                  ),
+                ),
+              _labelled(
+                "Direction",
+                DropdownButton<GradientDirection>(
+                  value: gradientDirectionFor(gradientBegin, gradientEnd),
+                  isExpanded: true,
+                  items: GradientDirection.values
+                      .map((d) => DropdownMenuItem(
+                          value: d,
+                          child: Text(gradientDirectionLabel(d),
+                              // The longest labels in any of these dropdowns;
+                              // in a narrow column they ellipsize rather than
+                              // overflowing the button.
+                              overflow: TextOverflow.ellipsis)))
+                      .toList(),
+                  onChanged: (d) {
+                    if (d != null) onDirectionChanged(d);
+                  },
+                ),
+              ),
+            ],
+          ]),
     ]);
   }
 
@@ -701,8 +719,8 @@ class _AreasSectionState extends State<AreasSection> {
                   label: (_) => slotLabels[i],
                   max: max,
                   numberField: true,
-                  onCommit: (v) => updateSides(
-                      (cur, one) => (cur ?? SideValues.all(one)).withValue(i, v))),
+                  onCommit: (v) => updateSides((cur, one) =>
+                      (cur ?? SideValues.all(one)).withValue(i, v))),
           ],
           // Wide enough for a usable slider plus its number box; below
           // that the four stack instead of all becoming unusable.
@@ -833,12 +851,13 @@ class _AreasSectionState extends State<AreasSection> {
               }
               if (m == AreaBackgroundMode.gradient &&
                   next.gradientColors.length < 2) {
-                next = next.copyWith(
-                    gradientColors: [preset.primary, preset.secondary],
-                    gradientColorIndexes: [
-                      PaletteSlot.primary.index,
-                      PaletteSlot.secondary.index
-                    ]);
+                next = next.copyWith(gradientColors: [
+                  preset.primary,
+                  preset.secondary
+                ], gradientColorIndexes: [
+                  PaletteSlot.primary.index,
+                  PaletteSlot.secondary.index
+                ]);
               }
               return next;
             }),
@@ -895,12 +914,13 @@ class _AreasSectionState extends State<AreasSection> {
               }
               if (m == AreaBackgroundMode.gradient &&
                   next.borderGradientColors.length < 2) {
-                next = next.copyWith(
-                    borderGradientColors: [preset.outline, preset.primary],
-                    borderGradientColorIndexes: [
-                      PaletteSlot.outline.index,
-                      PaletteSlot.primary.index
-                    ]);
+                next = next.copyWith(borderGradientColors: [
+                  preset.outline,
+                  preset.primary
+                ], borderGradientColorIndexes: [
+                  PaletteSlot.outline.index,
+                  PaletteSlot.primary.index
+                ]);
               }
               if (m != AreaBackgroundMode.token && next.borderWidth <= 0) {
                 next = next.copyWith(borderWidth: 2);
@@ -918,8 +938,8 @@ class _AreasSectionState extends State<AreasSection> {
             gradientColors: style.resolveBorderGradientColors(theme),
             gradientColorIndexes: style.borderGradientColorIndexes,
             onGradientColorChanged: (i, c, ci) => _setStyle(theme, (s) {
-              var (colors, indexes) = _withGradientColor(
-                  s.borderGradientColors, s.borderGradientColorIndexes, i, c, ci,
+              var (colors, indexes) = _withGradientColor(s.borderGradientColors,
+                  s.borderGradientColorIndexes, i, c, ci,
                   fallback: preset.outline,
                   fallbackIndex: PaletteSlot.outline.index);
               return s.copyWith(
@@ -945,10 +965,11 @@ class _AreasSectionState extends State<AreasSection> {
               slotLabels: sideLabels,
               onSingle: (v) => ctx.setStyle((s) => s.copyWith(borderWidth: v)),
               updateSides: (f) => ctx.setStyle((s) {
-                var next = f(s.borderWidthSides, s.borderWidth);
-                return s.copyWith(
-                    borderWidthSides: next, clearBorderWidthSides: next == null);
-              })),
+                    var next = f(s.borderWidthSides, s.borderWidth);
+                    return s.copyWith(
+                        borderWidthSides: next,
+                        clearBorderWidthSides: next == null);
+                  })),
           ..._spacingSetting(ctx,
               key: "borderRadius",
               name: "Border radius",
@@ -960,10 +981,11 @@ class _AreasSectionState extends State<AreasSection> {
               slotLabels: cornerLabels,
               onSingle: (v) => ctx.setStyle((s) => s.copyWith(borderRadius: v)),
               updateSides: (f) => ctx.setStyle((s) {
-                var next = f(s.borderRadiusSides, s.borderRadius);
-                return s.copyWith(
-                    borderRadiusSides: next, clearBorderRadiusSides: next == null);
-              })),
+                    var next = f(s.borderRadiusSides, s.borderRadius);
+                    return s.copyWith(
+                        borderRadiusSides: next,
+                        clearBorderRadiusSides: next == null);
+                  })),
           // Header padding maps to titleSpacing (the gap either side of the
           // title) rather than a container inset, so it gets a larger range
           // appropriate for that.
@@ -972,32 +994,32 @@ class _AreasSectionState extends State<AreasSection> {
           // from its own metrics and ignores anything handed to it here, so
           // both sliders are left out rather than left dead.
           if (selected != ThemeArea.navBar) ...[
-          ..._spacingSetting(ctx,
-              key: "padding",
-              name: "Padding",
-              max: selected == ThemeArea.header ? 100 : 48,
-              single: style.padding,
-              sides: style.paddingSides,
-              slotLabels: sideLabels,
-              onSingle: (v) => ctx.setStyle((s) => s.copyWith(padding: v)),
-              updateSides: (f) => ctx.setStyle((s) {
-                var next = f(s.paddingSides, s.padding);
-                return s.copyWith(
-                    paddingSides: next, clearPaddingSides: next == null);
-              })),
-          ..._spacingSetting(ctx,
-              key: "margin",
-              name: "Margin",
-              max: 48,
-              single: style.margin,
-              sides: style.marginSides,
-              slotLabels: sideLabels,
-              onSingle: (v) => ctx.setStyle((s) => s.copyWith(margin: v)),
-              updateSides: (f) => ctx.setStyle((s) {
-                var next = f(s.marginSides, s.margin);
-                return s.copyWith(
-                    marginSides: next, clearMarginSides: next == null);
-              })),
+            ..._spacingSetting(ctx,
+                key: "padding",
+                name: "Padding",
+                max: selected == ThemeArea.header ? 100 : 48,
+                single: style.padding,
+                sides: style.paddingSides,
+                slotLabels: sideLabels,
+                onSingle: (v) => ctx.setStyle((s) => s.copyWith(padding: v)),
+                updateSides: (f) => ctx.setStyle((s) {
+                      var next = f(s.paddingSides, s.padding);
+                      return s.copyWith(
+                          paddingSides: next, clearPaddingSides: next == null);
+                    })),
+            ..._spacingSetting(ctx,
+                key: "margin",
+                name: "Margin",
+                max: 48,
+                single: style.margin,
+                sides: style.marginSides,
+                slotLabels: sideLabels,
+                onSingle: (v) => ctx.setStyle((s) => s.copyWith(margin: v)),
+                updateSides: (f) => ctx.setStyle((s) {
+                      var next = f(s.marginSides, s.margin);
+                      return s.copyWith(
+                          marginSides: next, clearMarginSides: next == null);
+                    })),
           ],
         ],
         ..._areaEditor(ctx),
