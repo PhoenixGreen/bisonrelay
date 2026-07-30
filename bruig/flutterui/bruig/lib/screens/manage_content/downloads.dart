@@ -1,15 +1,19 @@
+import 'package:bruig/screens/manage_content/file_preview.dart';
+import 'package:bruig/screens/manage_content/file_filter_bar.dart';
+import 'package:bruig/screens/manage_content/file_row.dart';
+import 'package:provider/provider.dart';
+import 'package:bruig/theming_system/theme_preset.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
 import 'dart:io';
 
 import 'package:bruig/components/confirmation_dialog.dart';
 import 'package:bruig/components/copyable.dart';
 import 'package:bruig/components/empty_widget.dart';
-import 'package:bruig/components/text.dart';
 import 'package:bruig/components/snackbars.dart';
 import 'package:bruig/models/client.dart';
 import 'package:bruig/models/downloads.dart';
 import 'package:bruig/screens/chats.dart';
 import 'package:bruig/util.dart';
-import 'package:file_icon/file_icon.dart';
 import 'package:flutter/material.dart';
 import 'package:golib_plugin/util.dart';
 import 'package:open_filex/open_filex.dart';
@@ -54,7 +58,11 @@ class _FileDownloadW extends StatefulWidget {
   final FileDownloadModel fd;
   final DownloadsModel downloads;
   final ClientModel client;
-  const _FileDownloadW(this.fd, this.downloads, this.client);
+  // onPreview opens this file in the page. Called with the path so the
+  // list above owns which file is being previewed -- the row itself is
+  // rebuilt (and replaced) whenever the download list changes.
+  final ValueChanged<String> onPreview;
+  const _FileDownloadW(this.fd, this.downloads, this.client, this.onPreview);
 
   @override
   State<_FileDownloadW> createState() => _FileDownloadWState();
@@ -137,60 +145,76 @@ class _FileDownloadWState extends State<_FileDownloadW> {
     var sender = client.getExistingChat(fd.uid);
     String fromTxt = "- from ${sender?.nick ?? fd.uid}";
 
+    // The path line is the File Manager area's to hide. Everything else --
+    // icon, name with its actions, summary line -- is the shape both
+    // Manage pages share (see ManageFileRow).
+    var hidePath = Provider.of<ThemeNotifier>(context)
+        .areaStyle(ThemeArea.manageContent)
+        .hideFilePaths;
+    var downloading = diskPath == "";
+
+    Widget? middle;
+    if (downloading) {
+      middle = Row(children: [
+        Expanded(
+          child: LinearProgressIndicator(
+              minHeight: 8, value: progress > 1 ? 1 : progress),
+        ),
+        const SizedBox(width: 10),
+        SizedBox(
+            width: 65,
+            child: Text("${(progress * 100).toStringAsFixed(2)}%",
+                textAlign: TextAlign.right)),
+      ]);
+    } else if (!hidePath) {
+      // The path is whatever length it is (the download dir plus a sender
+      // nick plus a filename), so it ellipsizes rather than widening the
+      // row, and carries the whole thing as a tooltip.
+      middle = Copyable(diskPath,
+          textOverflow: TextOverflow.ellipsis, tooltip: diskPath);
+    }
+
     return Container(
-        margin: const EdgeInsets.all(10),
-        child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
-          meta?.filename != ""
-              ? FileIcon(meta?.filename ?? "", size: 64)
-              : const SizedBox(width: 64),
-          const SizedBox(width: 10),
-          Expanded(
-              child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                Text(filenameTxt),
-                // const SizedBox(height: 5),
-                diskPath == ""
-                    ? Row(children: [
-                        Expanded(
-                          child: LinearProgressIndicator(
-                              minHeight: 8, value: progress > 1 ? 1 : progress),
-                        ),
-                        const SizedBox(width: 10),
-                        SizedBox(
-                            width: 65,
-                            child: Text(
-                              "${(progress * 100).toStringAsFixed(2)}%",
-                              textAlign: TextAlign.right,
-                            )),
-                        TextButton(
-                            onPressed: cancelDownload,
-                            child: const Icon(Icons.cancel))
-                      ])
-                    : Row(children: [
-                        Copyable(diskPath),
-                        const SizedBox(width: 10),
-                        TextButton.icon(
-                            onPressed: openFile, label: const Text("Open")),
-                        TextButton.icon(
-                            onPressed: removeDownload,
-                            label: const Text("Remove"))
-                      ]),
-                // const SizedBox(height: 5),
-                Row(children: [
-                  Text(
-                      "${humanReadableSize(meta?.size ?? 0)} - ${formatDCR(atomsToDCR(meta?.cost ?? 0))}"),
-                  const SizedBox(width: 5),
-                  InkWell(
-                      onTap: sender != null
-                          ? () => ChatsScreen.gotoChatScreenFor(context, sender)
-                          : null,
-                      child: Text(fromTxt)),
-                ]),
-                // const Divider(),
-                const SizedBox(height: 10),
-              ])),
-        ]));
+      margin: const EdgeInsets.only(bottom: 10),
+      child: ManageFileRow(
+        filename: meta?.filename ?? "",
+        title: filenameTxt,
+        subtitle:
+            "${humanReadableSize(meta?.size ?? 0)} - ${formatDCR(atomsToDCR(meta?.cost ?? 0))}",
+        subtitleTrailing: InkWell(
+            onTap: sender != null
+                ? () => ChatsScreen.gotoChatScreenFor(context, sender)
+                : null,
+            child: Text(fromTxt, overflow: TextOverflow.ellipsis)),
+        middle: middle,
+        // Same actions, in the same order and the same shapes, as a file on
+        // the Shared page: a text Open beside a bin.
+        actions: downloading
+            ? [
+                IconButton(
+                  iconSize: 18,
+                  icon: const Icon(Icons.cancel),
+                  tooltip: "Cancel download",
+                  onPressed: cancelDownload,
+                ),
+              ]
+            : [
+                // Only for the kinds the app can actually show; everything
+                // else has Open and nothing that would open blank.
+                if (fileKindOf(diskPath) != FileKind.other)
+                  TextButton(
+                      onPressed: () => widget.onPreview(diskPath),
+                      child: const Text("Preview")),
+                TextButton(onPressed: openFile, child: const Text("Open")),
+                IconButton(
+                  iconSize: 18,
+                  icon: const Icon(Icons.delete),
+                  tooltip: "Remove download",
+                  onPressed: removeDownload,
+                ),
+              ],
+      ),
+    );
   }
 }
 
@@ -204,8 +228,30 @@ class DownloadsScreen extends StatefulWidget {
   State<DownloadsScreen> createState() => _DownloadsScreenState();
 }
 
+// _DownloadSort orders the download list. Sender is here rather than the
+// Shared page's Cost because that's the question this list gets asked --
+// which of these came from whom.
+enum _DownloadSort { name, size, sender }
+
+const Map<_DownloadSort, String> _downloadSortLabels = {
+  _DownloadSort.name: "Name",
+  _DownloadSort.size: "Size",
+  _DownloadSort.sender: "Sender",
+};
+
 class _DownloadsScreenState extends State<DownloadsScreen> {
   List<FileDownloadModel> files = [];
+  String filter = "";
+  _DownloadSort sort = _DownloadSort.name;
+  // The file being previewed in place of the list, if any. Held here
+  // rather than on the row so the preview survives the list rebuilding
+  // (which it does on every download progress tick).
+  String? previewing;
+
+  String _name(FileDownloadModel fd) => fd.rf.metadata?.filename ?? "";
+  int _size(FileDownloadModel fd) => fd.rf.metadata?.size ?? 0;
+  String _sender(FileDownloadModel fd) =>
+      widget.client.getExistingChat(fd.uid)?.nick ?? fd.uid;
 
   void downloadsChanged() {
     setState(() {
@@ -235,16 +281,52 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    var preview = previewing;
+    if (preview != null) {
+      return FilePreview(
+          filePath: preview, onClose: () => setState(() => previewing = null));
+    }
+
+    var needle = filter.trim().toLowerCase();
+    // Matched against the sender as well as the name: "everything Phoenix
+    // sent me" is as natural a search here as a filename is.
+    var shown = files.where((fd) {
+      if (needle == "") return true;
+      return _name(fd).toLowerCase().contains(needle) ||
+          _sender(fd).toLowerCase().contains(needle);
+    }).toList();
+    shown.sort((a, b) => switch (sort) {
+          _DownloadSort.name => _name(a).compareTo(_name(b)),
+          // Largest first: with size, the interesting end of the list is
+          // the top of it.
+          _DownloadSort.size => _size(b).compareTo(_size(a)),
+          _DownloadSort.sender => _sender(a).compareTo(_sender(b)),
+        });
+    var totalSize = shown.fold<int>(0, (sum, fd) => sum + _size(fd));
+
+    // No heading: the tab bar to the left already says Downloads, and none
+    // of the other Manage pages repeat their own name.
     return Column(children: [
-      const Txt.L("Downloads"),
+      FileFilterBar<_DownloadSort>(
+        hintText: "Search downloads",
+        onSearch: (v) => setState(() => filter = v),
+        sort: sort,
+        sortLabels: _downloadSortLabels,
+        onSort: (s) => setState(() => sort = s),
+        summary: fileCountSummary(shown.length, humanReadableSize(totalSize)),
+      ),
       Expanded(
           child: ListView.builder(
         shrinkWrap: true,
-        itemCount: files.length,
-        itemBuilder: (context, index) => Container(
-            padding: const EdgeInsets.only(right: 10),
-            child:
-                _FileDownloadW(files[index], widget.downloads, widget.client)),
+        // The same gutters every content-area page uses; the top comes
+        // from the filter bar above.
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+        itemCount: shown.length,
+        itemBuilder: (context, index) => _FileDownloadW(
+            shown[index],
+            widget.downloads,
+            widget.client,
+            (p) => setState(() => previewing = p)),
       )),
     ]);
   }

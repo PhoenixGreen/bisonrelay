@@ -252,6 +252,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     bool isScreenSmall = checkIsScreenSmall(context);
+    // "main" is the list of settings destinations, which is a page in its
+    // own right on a small screen but has no content pane to fill on a wide
+    // one -- the list is already the side menu there, so it used to open on
+    // a blank pane. Account is what that pane starts on instead.
+    if (!isScreenSmall && settingsPage == "main") settingsPage = "Account";
     Widget settingsView = isScreenSmall
         ? MainSettingsScreen(client, pickAvatarFile, changePage, shutdown)
         : const Empty();

@@ -25,6 +25,11 @@ const (
 	uploadsDir            = "uploads"
 	contentHashSuffix     = ".filehash"
 	contentMetaHashSuffix = ".metahash"
+	// localPathFile records where a shared file was read from on this
+	// machine. Kept as a separate local file rather than a field of
+	// rpc.FileMetadata, because that metadata is sent to remote users and
+	// the sender's directory layout is none of their business.
+	localPathFile = "localpath.json"
 	downloadingDir        = "downloading"
 )
 
@@ -273,6 +278,16 @@ func (db *DB) ShareFile(tx ReadWriteTx, fname string, uid *UserID,
 		return f, md, err
 	}
 
+	// Remember where the file came from, so the UI can offer to open the
+	// local copy later. Purely informational: a failure here (a read-only
+	// dir, say) must not fail the share itself.
+	localPathFname := filepath.Join(chunksPath, localPathFile)
+	if absName, err := filepath.Abs(fname); err != nil {
+		db.log.Warnf("Unable to resolve %s: %v", fname, err)
+	} else if err := db.saveJsonFile(localPathFname, absName); err != nil {
+		db.log.Warnf("Unable to save local path of %s: %v", fname, err)
+	}
+
 	// Now deal with the actual sharing of the file. If it's a global share,
 	// put in the global share dir, otherwise put in the user's share dir.
 	shareDir := sharedContentDir
@@ -495,16 +510,27 @@ func (db *DB) ListAllSharedFiles(tx ReadTx) ([]SharedFileAndShares, error) {
 			uids = append(uids, uid)
 		}
 
+		// The local path is only known for files shared by this client
+		// (and only since it started recording it), so its absence is
+		// normal and not worth logging.
+		var localPath string
+		localPathFname := filepath.Join(filepath.Dir(fname), localPathFile)
+		if err := db.readJsonFile(localPathFname, &localPath); err != nil {
+			localPath = ""
+		}
+
 		res = append(res, SharedFileAndShares{
 			SF: SharedFile{
 				FileHash: filehash,
 				FID:      fid,
 				Filename: fm.Filename,
 			},
-			Cost:   fm.Cost,
-			Size:   fm.Size,
-			Global: global,
-			Shares: uids,
+			Cost:     fm.Cost,
+			Size:     fm.Size,
+			Global:   global,
+			Shares:   uids,
+			Descr:    fm.Description,
+			DiskPath: localPath,
 		})
 	}
 

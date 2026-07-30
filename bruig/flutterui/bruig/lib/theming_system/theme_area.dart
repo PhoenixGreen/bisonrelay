@@ -21,6 +21,10 @@ enum ThemeArea {
   account,
   lnManagement,
   pages,
+  // manageContent is the Manage screen -- listed as "File Manager", since
+  // that's what its pages are (shared files, downloads). It kept its
+  // original enum name so presets saved before it had settings of its own
+  // still read back into it.
   manageContent,
   stats,
   logs,
@@ -45,7 +49,7 @@ const Map<ThemeArea, String> _themeAreaLabels = {
   ThemeArea.account: "Account Page",
   ThemeArea.lnManagement: "LN Management",
   ThemeArea.pages: "Pages",
-  ThemeArea.manageContent: "Manage Content",
+  ThemeArea.manageContent: "File Manager",
   ThemeArea.stats: "Stats",
   ThemeArea.logs: "Logs",
   ThemeArea.settingsPages: "Settings Pages",

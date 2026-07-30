@@ -238,46 +238,44 @@ class _PayStatsScreenState extends State<PayStatsScreen> {
     const hdrStyle =
         TextStyle(color: Color(0xFF6B6B6B), fontSize: 11, letterSpacing: 0.5);
 
+    // Full width of the content area rather than a centred 760px column,
+    // matching the Account and Appearance pages.
     return Container(
-      padding: const EdgeInsets.all(16),
-      child: Center(
-          child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 760),
-        child: Column(children: [
-          Row(children: [
-            Expanded(child: _summaryCard("Total sent", grandSent)),
-            const SizedBox(width: 10),
-            Expanded(child: _summaryCard("Total received", grandRecv)),
-          ]),
-          const SizedBox(height: 14),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: Row(children: const [
-              SizedBox(width: 26, child: Text("#", style: hdrStyle)),
-              Expanded(child: Text("User", style: hdrStyle)),
-              SizedBox(
-                  width: 140,
-                  child: Text("Sent (DCR)",
-                      textAlign: TextAlign.right, style: hdrStyle)),
-              SizedBox(
-                  width: 140,
-                  child: Text("Received (DCR)",
-                      textAlign: TextAlign.right, style: hdrStyle)),
-              SizedBox(width: 34),
-            ]),
-          ),
-          const SizedBox(height: 6),
-          Expanded(
-            flex: 5,
-            child: ListView.builder(
-                itemCount: stats.length,
-                padding: EdgeInsets.zero,
-                itemBuilder: (context, index) => _statRow(index, maxSent)),
-          ),
-          const Divider(),
-          _userStatsPanel(theme),
+      padding: const EdgeInsets.fromLTRB(16, 18, 16, 24),
+      child: Column(children: [
+        Row(children: [
+          Expanded(child: _summaryCard("Total sent", grandSent)),
+          const SizedBox(width: 10),
+          Expanded(child: _summaryCard("Total received", grandRecv)),
         ]),
-      )),
+        const SizedBox(height: 14),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Row(children: const [
+            SizedBox(width: 26, child: Text("#", style: hdrStyle)),
+            Expanded(child: Text("User", style: hdrStyle)),
+            SizedBox(
+                width: 140,
+                child: Text("Sent (DCR)",
+                    textAlign: TextAlign.right, style: hdrStyle)),
+            SizedBox(
+                width: 140,
+                child: Text("Received (DCR)",
+                    textAlign: TextAlign.right, style: hdrStyle)),
+            SizedBox(width: 34),
+          ]),
+        ),
+        const SizedBox(height: 6),
+        Expanded(
+          flex: 5,
+          child: ListView.builder(
+              itemCount: stats.length,
+              padding: EdgeInsets.zero,
+              itemBuilder: (context, index) => _statRow(index, maxSent)),
+        ),
+        const Divider(),
+        _userStatsPanel(theme),
+      ]),
     );
   }
 

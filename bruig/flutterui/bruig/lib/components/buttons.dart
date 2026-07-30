@@ -6,6 +6,7 @@ import 'package:bruig/components/empty_widget.dart';
 import 'package:bruig/components/text.dart';
 import 'package:flutter/material.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
+import 'package:bruig/theming_system/theme_preset.dart';
 import 'package:provider/provider.dart';
 
 // CancelButton is a neutral dismiss/decline action (closing a dialog
@@ -122,12 +123,17 @@ class AboutButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // Follows the app icon setting like every other place the icon is
-    // drawn (see customAppIcon). IconButton sizes its own icon, so the
-    // custom one is asked for at that same size rather than a fixed one.
+    // drawn (see customAppIcon). This button is only ever shown on the
+    // startup/login screens, so the header area's loginLogoSize is what
+    // sizes it; without one it falls back to whatever the icon theme says,
+    // which is what it used before the setting existed.
     return Consumer<ThemeNotifier>(builder: (context, theme, _) {
-      var iconSize = IconTheme.of(context).size ?? 24;
+      var iconSize = theme.areaStyle(ThemeArea.header).loginLogoSize ??
+          IconTheme.of(context).size ??
+          24;
       return IconButton(
           tooltip: "About Bison Relay",
+          iconSize: iconSize,
           onPressed: () {
             Navigator.of(context).pushNamed("/about");
           },
