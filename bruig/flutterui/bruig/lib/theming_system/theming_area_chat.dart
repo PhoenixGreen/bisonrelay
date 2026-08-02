@@ -28,7 +28,8 @@ List<Widget> chatAreaEditor(AreaEditorContext ctx) {
       subtitle: "Adds Reply and Pin to the message context menu, with a "
           "reply chip and pinned-message bar in the conversation",
       value: style.enableMessageActions,
-      onChanged: (v) => ctx.setStyle((s) => s.copyWith(enableMessageActions: v)),
+      onChanged: (v) =>
+          ctx.setStyle((s) => s.copyWith(enableMessageActions: v)),
     ),
     ctx.toggle(
       "Show last message & timestamp",
@@ -142,6 +143,29 @@ List<Widget> chatAreaEditor(AreaEditorContext ctx) {
           "and a per-contact message hint",
       value: style.composerPolish,
       onChanged: (v) => ctx.setStyle((s) => s.copyWith(composerPolish: v)),
+    ),
+    ctx.colorPick(
+      "Message area background",
+      value: style.resolveMessageAreaColor(ctx.theme),
+      valueIndex: style.messageAreaColorIndex,
+      onChanged: (c, i) => ctx.setStyle((s) => c == null
+          ? s.copyWith(
+              clearMessageAreaColor: true, clearMessageAreaColorIndex: true)
+          : s.copyWith(
+              messageAreaColor: c,
+              messageAreaColorIndex: i,
+              clearMessageAreaColorIndex: i == null)),
+    ),
+    ctx.note("The area the messages sit on. Follows the Content Area's own "
+        "background unless set here."),
+    ctx.toggle(
+      "Collapse composer icons",
+      subtitle: "Puts the emoji, formatting, attach, tip and microphone "
+          "buttons behind one button that opens them to the right, leaving "
+          "the message field the rest of the row",
+      value: style.collapseComposerIcons,
+      onChanged: (v) =>
+          ctx.setStyle((s) => s.copyWith(collapseComposerIcons: v)),
     ),
     ctx.toggle(
       "Message bubble corners",

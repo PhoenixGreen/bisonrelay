@@ -136,26 +136,24 @@ class Box extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<ThemeNotifier>(
-        builder: (context, theme, _) {
-          var resolvedColor = overrideColor ?? theme.surfaceColor(color);
-          return Container(
-              margin: margin,
-              padding: padding,
-              constraints: constraints,
-              color: borderRadius == null ? resolvedColor : null,
-              decoration: borderRadius == null
-                  ? null
-                  : BoxDecoration(
-                      borderRadius: borderRadius, color: resolvedColor),
-              width: width,
-              height: height,
-              child: DefaultTextStyle.merge(
-                  style: theme.textStyleFor(context, null,
-                      textColorForSurfaceColor[color] ?? TextColor.onSurface),
-                  child: child ?? const Empty()),
-            );
-        });
+    return Consumer<ThemeNotifier>(builder: (context, theme, _) {
+      var resolvedColor = overrideColor ?? theme.surfaceColor(color);
+      return Container(
+        margin: margin,
+        padding: padding,
+        constraints: constraints,
+        color: borderRadius == null ? resolvedColor : null,
+        decoration: borderRadius == null
+            ? null
+            : BoxDecoration(borderRadius: borderRadius, color: resolvedColor),
+        width: width,
+        height: height,
+        child: DefaultTextStyle.merge(
+            style: theme.textStyleFor(context, null,
+                textColorForSurfaceColor[color] ?? TextColor.onSurface),
+            child: child ?? const Empty()),
+      );
+    });
   }
 }
 
@@ -228,8 +226,8 @@ class _SidebarNavRow extends StatelessWidget {
       // theme.textStyleFor(..., null) only carries a fontSize (color is left
       // null/inherited) -- copyWith below only overrides color when we pass
       // a non-null one, so the default (unmodified) look is untouched.
-      var baseStyle =
-          theme.textStyleFor(context, TextSize.small, null) ?? const TextStyle();
+      var baseStyle = theme.textStyleFor(context, TextSize.small, null) ??
+          const TextStyle();
 
       var preset = theme.activePreset;
       var color = item.selected
@@ -248,7 +246,9 @@ class _SidebarNavRow extends StatelessWidget {
           // visually prominent) highlight pill silently followed Primary
           // edits while the actual Sidebar Accent color field only ever
           // affected the much less noticeable icon/text tint inside it.
-          color: item.selected ? color.withValues(alpha: 0.18) : Colors.transparent,
+          color: item.selected
+              ? color.withValues(alpha: 0.18)
+              : Colors.transparent,
           borderRadius: radius,
           child: InkWell(
             borderRadius: radius,
@@ -390,6 +390,21 @@ Widget contentAreaFrame(ThemeNotifier theme, Widget content) {
       area: ThemeArea.contentArea, tokenColor: token, child: content);
 }
 
+// contentAreaBackgroundColor is the colour the Content Area actually paints
+// -- what a screen sitting inside that frame should match when it needs to
+// paint a background of its own. The area's own Background setting first,
+// since that's what the user last chose; the palette's Content Background
+// otherwise. A gradient or image background has no single colour to match,
+// so those fall back to the palette slot rather than guessing an end stop.
+Color? contentAreaBackgroundColor(ThemeNotifier theme) {
+  var style = theme.areaStyle(ThemeArea.contentArea);
+  if (style.mode == AreaBackgroundMode.solid) {
+    return style.resolveSolidColor(theme) ??
+        theme.activePreset?.contentBackground;
+  }
+  return theme.activePreset?.contentBackground;
+}
+
 // dualPanelFrame wraps a whole page -- its sidebar and its content, as one
 // region -- in the Dual Panel area's styling, so a border on it goes round
 // the outside of both. Same gate as contentAreaFrame: an untouched area
@@ -401,8 +416,7 @@ Widget dualPanelFrame(ThemeNotifier theme, Widget page) {
   if (token == null && !theme.areaStyle(ThemeArea.dualPanel).hasVisibleFrame) {
     return page;
   }
-  return ThemedArea(
-      area: ThemeArea.dualPanel, tokenColor: token, child: page);
+  return ThemedArea(area: ThemeArea.dualPanel, tokenColor: token, child: page);
 }
 
 // sidebarBackgroundColor is the fill every sidebar in the app shares -- the
@@ -467,8 +481,7 @@ class SecondarySideMenu extends StatelessWidget {
       // .toBoxDecoration, which drops the radius on the same grounds).
       var borderRadius = border.isUniform ? bg.borderRadius : null;
 
-      var spaced =
-          !areaStyle.paddings.isZero || !areaStyle.margins.isZero;
+      var spaced = !areaStyle.paddings.isZero || !areaStyle.margins.isZero;
       if (!hasOwnBorder && !spaced) {
         // Unmodified: reproduce the original plain divider exactly.
         return Container(
@@ -521,8 +534,9 @@ class SecondarySideMenuList extends StatelessWidget {
     if (items != null) {
       return ListView(
           shrinkWrap: true,
-          children:
-              items!.map((e) => SecondarySideMenuItem(_SidebarNavRow(e))).toList());
+          children: items!
+              .map((e) => SecondarySideMenuItem(_SidebarNavRow(e)))
+              .toList());
     }
 
     return const Empty();
@@ -706,9 +720,8 @@ class _SecondarySideMenuLayoutState extends State<SecondarySideMenuLayout> {
   // fixed sidebar leaves too little room for content, which is why the
   // feed's own panel already dropped itself there.
   Widget _compactLayout(ClientModel client, double panelWidth) {
-    client.ui.collapsedSidebar
-        .register((context) => _menuList(panelWidth, closeOnTap: true),
-            panelWidth);
+    client.ui.collapsedSidebar.register(
+        (context) => _menuList(panelWidth, closeOnTap: true), panelWidth);
     return contentAreaFrame(ThemeNotifier.of(context), widget.content);
   }
 
@@ -739,8 +752,8 @@ class _SecondarySideMenuLayoutState extends State<SecondarySideMenuLayout> {
 
         if (style == SubMenuStyle.resizable) {
           var defaultWidth = sidebarWidth(menuWidth);
-          var currentWidth =
-              (_resizableWidth ?? defaultWidth).clamp(_resizableMinWidth, _resizableMaxWidth);
+          var currentWidth = (_resizableWidth ?? defaultWidth)
+              .clamp(_resizableMinWidth, _resizableMaxWidth);
           return Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -782,7 +795,6 @@ class _SecondarySideMenuLayoutState extends State<SecondarySideMenuLayout> {
     });
   }
 }
-
 
 // kCollapsedSidebarWidth is how wide the narrow-window drawer is, for every
 // sidebar. Deliberately one figure rather than each screen's own width: as a
@@ -865,8 +877,8 @@ class _ResizableSidebarState extends State<ResizableSidebar> {
         cursor: SystemMouseCursors.resizeLeftRight,
         child: GestureDetector(
           behavior: HitTestBehavior.translucent,
-          onHorizontalDragUpdate: (d) => _set((width + d.delta.dx)
-              .clamp(kSidebarResizeMin, kSidebarResizeMax)),
+          onHorizontalDragUpdate: (d) => _set(
+              (width + d.delta.dx).clamp(kSidebarResizeMin, kSidebarResizeMax)),
           onHorizontalDragEnd: (_) => _save(),
           onDoubleTap: () {
             _set(widget.defaultWidth);

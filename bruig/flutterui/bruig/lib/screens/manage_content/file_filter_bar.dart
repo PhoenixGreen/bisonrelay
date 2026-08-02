@@ -1,3 +1,4 @@
+import 'package:bruig/components/inputs.dart';
 import 'package:bruig/components/text.dart';
 import 'package:flutter/material.dart';
 
@@ -33,11 +34,12 @@ class FileFilterBar<T> extends StatelessWidget {
         child: Row(children: [
           Expanded(
             child: TextField(
-              decoration: InputDecoration(
-                isDense: true,
+              style: kInputTextStyle,
+              decoration: themedInputDecoration(
+                context,
                 prefixIcon: const Icon(Icons.search, size: 18),
                 hintText: hintText,
-                border: const OutlineInputBorder(),
+                fallbackBorder: const OutlineInputBorder(),
               ),
               onChanged: onSearch,
             ),

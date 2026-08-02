@@ -1,3 +1,4 @@
+import 'package:bruig/components/inputs.dart';
 import 'package:bruig/components/interactive_avatar.dart';
 import 'package:bruig/components/text.dart';
 import 'package:bruig/components/usersearch/user_search_model.dart';
@@ -119,11 +120,12 @@ class _ChatSearchInputState extends State<ChatSearchInput> {
               controller: controller,
               onSubmitted: preventFocusLoss, // Keep control focused
               onChanged: widget.onChanged,
-              decoration: InputDecoration(
-                isDense: true,
+              style: kInputTextStyle,
+              decoration: themedInputDecoration(
+                context,
                 hintText: widget.hintText ??
                     'Search name of user ${widget.onlyUsers ? "" : "or group chat"}',
-                border: const OutlineInputBorder(
+                fallbackBorder: const OutlineInputBorder(
                     borderRadius: BorderRadius.all(Radius.circular(30)),
                     borderSide: BorderSide(width: 1)),
               ),

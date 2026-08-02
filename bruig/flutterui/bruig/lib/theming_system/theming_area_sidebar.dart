@@ -30,7 +30,8 @@ List<Widget> sidebarAreaEditor(AreaEditorContext ctx) {
     ctx.slider("sidebarCornerRadius", style.sidebarCornerRadius,
         label: (v) => "List Rounded Corners: ${v.toStringAsFixed(1)}",
         max: 24,
-        onCommit: (v) => ctx.setStyle((s) => s.copyWith(sidebarCornerRadius: v))),
+        onCommit: (v) =>
+            ctx.setStyle((s) => s.copyWith(sidebarCornerRadius: v))),
     ctx.toggle(
       "Show icons",
       subtitle: "Leading icon on each row -- applies to every sidebar in "

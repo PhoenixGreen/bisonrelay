@@ -1,3 +1,4 @@
+import 'package:bruig/components/inputs.dart';
 import 'dart:math';
 
 import 'package:bruig/components/attach_file.dart';
@@ -38,6 +39,11 @@ class ChatInput extends StatefulWidget {
 class _ChatInputState extends State<ChatInput> {
   final controller = TextEditingController();
   final MenuController _fmtMenuCtl = MenuController();
+
+  // Whether the collapsed tool menu is open (see
+  // AreaStyle.collapseComposerIcons). Closed on every rebuild would fight
+  // the user; it stays open until they close it or leave the chat.
+  bool _toolsOpen = false;
 
   late AudioModel audio;
   List<AttachmentEmbed> embeds = [];
@@ -365,8 +371,11 @@ class _ChatInputState extends State<ChatInput> {
       end = text.length;
     }
     final selected = text.substring(start, end);
-    final newText =
-        text.substring(0, start) + left + selected + right + text.substring(end);
+    final newText = text.substring(0, start) +
+        left +
+        selected +
+        right +
+        text.substring(end);
     final innerStart = start + left.length;
     final innerEnd = innerStart + selected.length;
     controller.value = TextEditingValue(
@@ -423,7 +432,8 @@ class _ChatInputState extends State<ChatInput> {
         if (preview.contains('--embed[')) preview = '[attachment]';
         if (preview.length > 80) preview = '${preview.substring(0, 80)}...';
         var theme = Provider.of<ThemeNotifier>(context);
-        var accent = theme.activePreset?.sidebarAccent ?? const Color(0xFF2C6BED);
+        var accent =
+            theme.activePreset?.sidebarAccent ?? const Color(0xFF2C6BED);
         return Container(
           margin: const EdgeInsets.only(bottom: 6),
           decoration: BoxDecoration(
@@ -495,6 +505,91 @@ class _ChatInputState extends State<ChatInput> {
     var formattingToolbar = chatStyle.formattingToolbar;
     var composerPolish = chatStyle.composerPolish;
 
+    // The composer's tools, built once and placed either along the input
+    // row (the original layout) or inside the collapsed menu.
+    var emojiBtn = IconButton(
+      focusNode: FocusNode(canRequestFocus: false, skipTraversal: true),
+      onPressed: _toggleEmojiPanel,
+      icon: const Icon(Icons.emoji_emotions_outlined),
+    );
+    var formatBtn = MenuAnchor(
+      controller: _fmtMenuCtl,
+      builder: (context, ctl, child) => IconButton(
+        padding: const EdgeInsets.all(0),
+        tooltip: "Formatting",
+        onPressed: () => ctl.isOpen ? ctl.close() : ctl.open(),
+        icon: const Icon(Icons.text_format),
+      ),
+      menuChildren: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            IconButton(
+                tooltip: "Bold",
+                icon: const Icon(Icons.format_bold),
+                onPressed: () => _fmt(() => wrapSelection("**", "**"))),
+            IconButton(
+                tooltip: "Italic",
+                icon: const Icon(Icons.format_italic),
+                onPressed: () => _fmt(() => wrapSelection("_", "_"))),
+            IconButton(
+                tooltip: "Code",
+                icon: const Icon(Icons.code),
+                onPressed: () => _fmt(() => wrapSelection("`", "`"))),
+            IconButton(
+                tooltip: "Strikethrough",
+                icon: const Icon(Icons.format_strikethrough),
+                onPressed: () => _fmt(() => wrapSelection("~~", "~~"))),
+            IconButton(
+                tooltip: "Link",
+                icon: const Icon(Icons.link),
+                onPressed: () => _fmt(insertLink)),
+          ]),
+        ),
+      ],
+    );
+    var attachBtn =
+        IconButton(onPressed: attachFile, icon: const Icon(Icons.attach_file));
+    var tipBtn = IconButton(
+        padding: const EdgeInsets.all(0),
+        tooltip: "Pay tip",
+        onPressed: () => showPayTipModalBottom(context, widget.chat),
+        icon: Icon(Icons.bolt, color: const Color(0xFF1DFF8C), shadows: [
+          Shadow(
+            color: const Color(0xFF1DFF8C).withValues(alpha: 0.55),
+            blurRadius: 8,
+          ),
+        ]));
+    const unkxdWarning = Tooltip(
+        message: "There are un-kx'd members in this GC.\n"
+            "These members won't receive messages from you until the KX "
+            "process completes.\nThis usually happens automatically, after "
+            "they come back online.",
+        child:
+            ColoredIcon(Icons.warning_amber_outlined, color: TextColor.error));
+    var sendBtn = IconButton(
+        padding: const EdgeInsets.all(0),
+        iconSize: 20,
+        onPressed: sendMsg,
+        icon: Icon(Icons.send,
+            color: composerPolish && controller.text.trim().isNotEmpty
+                ? const Color(0xFF1DFF8C)
+                : null));
+
+    // Collapsed, every tool lives behind one button that opens them to the
+    // right (see AreaStyle.collapseComposerIcons). The microphone comes
+    // inside with them, which is what lets the field have the whole row --
+    // it otherwise sits outside the box entirely. Send stays where it is:
+    // it's the one button that shouldn't take two taps.
+    var collapse = chatStyle.collapseComposerIcons;
+    var collapsedTools = <Widget>[
+      emojiBtn,
+      if (formattingToolbar) formatBtn,
+      attachBtn,
+      if (composerPolish && !widget.chat.isGC) tipBtn,
+      if (widget.allowAudio) const RecordAudioInputButton(),
+    ];
+
     var inputRow = Row(children: [
       Expanded(
         child: TextField(
@@ -528,110 +623,73 @@ class _ChatInputState extends State<ChatInput> {
           keyboardType: TextInputType.multiline,
           spellCheckConfiguration:
               Provider.of<SpellCheckModel>(context).configuration,
-          decoration: InputDecoration(
-            isDense: true,
-            border: const OutlineInputBorder(
+          decoration: themedInputDecoration(
+            context,
+            hintText: composerPolish
+                ? "Message ${widget.chat.nick}"
+                : "Start a message",
+            fallbackBorder: const OutlineInputBorder(
               borderRadius: BorderRadius.all(Radius.circular(30.0)),
               borderSide: BorderSide(width: 2.0),
             ),
-            hintText:
-                composerPolish ? "Message ${widget.chat.nick}" : "Start a message",
-            prefixIcon: IconButton(
-              focusNode: FocusNode(canRequestFocus: false, skipTraversal: true),
-              onPressed: _toggleEmojiPanel,
-              icon: const Icon(Icons.emoji_emotions_outlined),
-            ),
+            prefixIcon: collapse
+                ? ClipRect(
+                    child: AnimatedSize(
+                      duration: const Duration(milliseconds: 160),
+                      curve: Curves.easeOut,
+                      alignment: Alignment.centerLeft,
+                      // Capped at half the window and scrollable inside
+                      // that: five tool buttons are wider than a phone's
+                      // composer, and the point of collapsing them is to
+                      // leave the field room, not to take it all back the
+                      // moment the menu opens.
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(
+                            maxWidth: MediaQuery.sizeOf(context).width * 0.5),
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(mainAxisSize: MainAxisSize.min, children: [
+                            IconButton(
+                              focusNode: FocusNode(
+                                  canRequestFocus: false, skipTraversal: true),
+                              tooltip: _toolsOpen ? "Hide tools" : "More",
+                              onPressed: () =>
+                                  setState(() => _toolsOpen = !_toolsOpen),
+                              icon: Icon(_toolsOpen
+                                  ? Icons.chevron_left
+                                  : Icons.more_horiz),
+                            ),
+                            if (_toolsOpen) ...collapsedTools,
+                          ]),
+                        ),
+                      ),
+                    ),
+                  )
+                : emojiBtn,
             suffixIcon: Row(
                 mainAxisSize: MainAxisSize.min,
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  if (formattingToolbar)
-                    MenuAnchor(
-                      controller: _fmtMenuCtl,
-                      builder: (context, ctl, child) => IconButton(
-                        padding: const EdgeInsets.all(0),
-                        tooltip: "Formatting",
-                        onPressed: () => ctl.isOpen ? ctl.close() : ctl.open(),
-                        icon: const Icon(Icons.text_format),
-                      ),
-                      menuChildren: [
-                        Padding(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 6, vertical: 2),
-                          child:
-                              Row(mainAxisSize: MainAxisSize.min, children: [
-                            IconButton(
-                                tooltip: "Bold",
-                                icon: const Icon(Icons.format_bold),
-                                onPressed: () =>
-                                    _fmt(() => wrapSelection("**", "**"))),
-                            IconButton(
-                                tooltip: "Italic",
-                                icon: const Icon(Icons.format_italic),
-                                onPressed: () =>
-                                    _fmt(() => wrapSelection("_", "_"))),
-                            IconButton(
-                                tooltip: "Code",
-                                icon: const Icon(Icons.code),
-                                onPressed: () =>
-                                    _fmt(() => wrapSelection("`", "`"))),
-                            IconButton(
-                                tooltip: "Strikethrough",
-                                icon: const Icon(Icons.format_strikethrough),
-                                onPressed: () =>
-                                    _fmt(() => wrapSelection("~~", "~~"))),
-                            IconButton(
-                                tooltip: "Link",
-                                icon: const Icon(Icons.link),
-                                onPressed: () => _fmt(insertLink)),
-                          ]),
-                        ),
-                      ],
-                    ),
-                  if (!isScreenSmall || controller.text == "")
-                    IconButton(
-                        onPressed: attachFile,
-                        icon: const Icon(Icons.attach_file)),
-                  if (composerPolish &&
-                      !widget.chat.isGC &&
-                      (!isScreenSmall || controller.text == ""))
-                    IconButton(
-                        padding: const EdgeInsets.all(0),
-                        tooltip: "Pay tip",
-                        onPressed: () =>
-                            showPayTipModalBottom(context, widget.chat),
-                        icon: Icon(Icons.bolt,
-                            color: const Color(0xFF1DFF8C),
-                            shadows: [
-                              Shadow(
-                                color: const Color(0xFF1DFF8C)
-                                    .withValues(alpha: 0.55),
-                                blurRadius: 8,
-                              ),
-                            ])),
+                  if (!collapse) ...[
+                    if (formattingToolbar) formatBtn,
+                    if (!isScreenSmall || controller.text == "") attachBtn,
+                    if (composerPolish &&
+                        !widget.chat.isGC &&
+                        (!isScreenSmall || controller.text == ""))
+                      tipBtn,
+                  ],
                   if (containsUnkxdMembers &&
-                      (!isScreenSmall || controller.text == ""))
-                    const Tooltip(
-                        message: "There are un-kx'd members in this GC.\n"
-                            "These members won't receive messages from you until the KX "
-                            "process completes.\nThis usually happens automatically, after "
-                            "they come back online.",
-                        child: ColoredIcon(Icons.warning_amber_outlined,
-                            color: TextColor.error)),
-                  IconButton(
-                      padding: const EdgeInsets.all(0),
-                      iconSize: 20,
-                      onPressed: sendMsg,
-                      icon: Icon(Icons.send,
-                          color: composerPolish &&
-                                  controller.text.trim().isNotEmpty
-                              ? const Color(0xFF1DFF8C)
-                              : null))
+                      (!isScreenSmall || controller.text == "" || collapse))
+                    unkxdWarning,
+                  sendBtn,
                 ]),
           ),
         ),
       ),
-      if ((!isScreenSmall || controller.text == "") && widget.allowAudio) ...[
+      // Collapsed, the microphone is inside the menu instead (above).
+      if (!collapse &&
+          (!isScreenSmall || controller.text == "") &&
+          widget.allowAudio) ...[
         const SizedBox(width: 5),
         const RecordAudioInputButton(),
       ],

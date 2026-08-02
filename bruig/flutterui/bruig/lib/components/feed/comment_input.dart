@@ -1,3 +1,5 @@
+import 'package:bruig/theming_system/theme_preset.dart';
+import 'package:bruig/components/inputs.dart';
 import 'dart:math';
 
 import 'package:bruig/components/attach_file.dart';
@@ -33,6 +35,9 @@ class _CommentInputState extends State<CommentInput> {
 
   List<AttachmentEmbed> embeds = [];
   bool isAttaching = false;
+  // Whether the collapsed tool menu is open, when the Chat area's
+  // "Collapse composer icons" is on.
+  bool _toolsOpen = false;
   Uint8List? initialAttachData;
   String? initialAttachMime;
 
@@ -203,9 +208,32 @@ class _CommentInputState extends State<CommentInput> {
     }
   }
 
+  Widget _attachBtn() => IconButton(
+      padding: const EdgeInsets.all(0),
+      iconSize: 25,
+      onPressed: attachFile,
+      icon: const Icon(Icons.add_outlined));
+
+  Widget _emojiBtn(BuildContext context) => IconButton(
+      padding: const EdgeInsets.all(0),
+      iconSize: 25,
+      onPressed: () {
+        var emojiModel = TypingEmojiSelModel.of(context, listen: false);
+        emojiModel.showAddEmojiPanel.value =
+            !emojiModel.showAddEmojiPanel.value;
+      },
+      icon: const Icon(Icons.emoji_emotions_outlined));
+
   @override
   Widget build(BuildContext context) {
     bool isScreenSmall = checkIsScreenSmall(context);
+    // The comment box follows the chat composer's collapse setting (see
+    // AreaStyle.collapseComposerIcons): the same two tools, behind the
+    // same button, so a theme doesn't collapse one composer and leave the
+    // other spread out.
+    var collapse = ThemeNotifier.of(context)
+        .areaStyle(ThemeArea.chat)
+        .collapseComposerIcons;
     return Consumer<ThemeNotifier>(
         builder: (context, theme, _) => isAttaching
             ? Column(children: [
@@ -220,23 +248,14 @@ class _CommentInputState extends State<CommentInput> {
                     initialAttachMime, widget.chat, cancelAttach)
               ])
             : Row(children: [
-                IconButton(
-                    padding: const EdgeInsets.all(0),
-                    iconSize: 25,
-                    onPressed: attachFile,
-                    icon: const Icon(Icons.add_outlined)),
-                const SizedBox(width: 5),
-                IconButton(
-                    padding: const EdgeInsets.all(0),
-                    iconSize: 25,
-                    onPressed: () {
-                      var emojiModel =
-                          TypingEmojiSelModel.of(context, listen: false);
-                      emojiModel.showAddEmojiPanel.value =
-                          !emojiModel.showAddEmojiPanel.value;
-                    },
-                    icon: const Icon(Icons.emoji_emotions_outlined)),
-                const SizedBox(width: 5),
+                // Collapsed, these move inside the field as its prefix, so
+                // the box itself runs the full width.
+                if (!collapse) ...[
+                  _attachBtn(),
+                  const SizedBox(width: 5),
+                  _emojiBtn(context),
+                  const SizedBox(width: 5),
+                ],
                 Expanded(
                     child: TextField(
                   onChanged: (value) {
@@ -267,13 +286,42 @@ class _CommentInputState extends State<CommentInput> {
                   keyboardType: TextInputType.multiline,
                   spellCheckConfiguration:
                       Provider.of<SpellCheckModel>(context).configuration,
-                  decoration: InputDecoration(
-                    isDense: true,
-                    border: const OutlineInputBorder(
+                  decoration: themedInputDecoration(
+                    context,
+                    hintText: widget.hintText,
+                    prefixIcon: collapse
+                        ? ClipRect(
+                            child: AnimatedSize(
+                              duration: const Duration(milliseconds: 160),
+                              curve: Curves.easeOut,
+                              alignment: Alignment.centerLeft,
+                              child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    IconButton(
+                                      padding: const EdgeInsets.all(0),
+                                      iconSize: 25,
+                                      tooltip: _toolsOpen ? "Hide" : "More",
+                                      onPressed: () => setState(
+                                          () => _toolsOpen = !_toolsOpen),
+                                      icon: Icon(_toolsOpen
+                                          ? Icons.chevron_left
+                                          : Icons.more_horiz),
+                                    ),
+                                    if (_toolsOpen) ...[
+                                      const SizedBox(width: 5),
+                                      _attachBtn(),
+                                      const SizedBox(width: 5),
+                                      _emojiBtn(context),
+                                    ],
+                                  ]),
+                            ),
+                          )
+                        : null,
+                    fallbackBorder: const OutlineInputBorder(
                       borderRadius: BorderRadius.all(Radius.circular(30.0)),
                       borderSide: BorderSide(width: 2.0),
                     ),
-                    hintText: widget.hintText,
                     suffixIcon: Row(
                         mainAxisSize: MainAxisSize.min,
                         mainAxisAlignment: MainAxisAlignment.end,

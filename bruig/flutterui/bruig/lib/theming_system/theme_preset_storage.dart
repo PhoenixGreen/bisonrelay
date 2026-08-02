@@ -106,7 +106,8 @@ class ThemePresetStorage {
   static Future<ThemePreset> importPresetZip(Uint8List zipBytes) async {
     var archive = ZipDecoder().decodeBytes(zipBytes);
     var jsonEntry = archive.files
-        .where((f) => f.name == "preset.json" || f.name.endsWith("/preset.json"))
+        .where(
+            (f) => f.name == "preset.json" || f.name.endsWith("/preset.json"))
         .firstOrNull;
     if (jsonEntry == null) {
       throw Exception("preset.json not found in imported file");
@@ -124,8 +125,7 @@ class ThemePresetStorage {
     }
 
     var j = jsonDecode(utf8.decode(jsonEntry.content as List<int>));
-    var preset = ThemePreset.fromJson(j)
-        .copyWith(id: newId, sourceDir: dir);
+    var preset = ThemePreset.fromJson(j).copyWith(id: newId, sourceDir: dir);
     // Re-save preset.json under the new id (the imported preset.json still
     // has the old id from the exporting machine).
     return savePreset(preset);

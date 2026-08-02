@@ -36,8 +36,8 @@ class _MenuSectionState extends State<MenuSection> {
     super.dispose();
   }
 
-  void _move(MainMenuModel mainMenu, List<MainMenuItem> items, int index,
-      int delta) {
+  void _move(
+      MainMenuModel mainMenu, List<MainMenuItem> items, int index, int delta) {
     var newIndex = index + delta;
     if (newIndex < 0 || newIndex >= items.length) return;
     var reordered = List<MainMenuItem>.from(items);
@@ -64,8 +64,7 @@ class _MenuSectionState extends State<MenuSection> {
               trailing: Row(mainAxisSize: MainAxisSize.min, children: [
                 IconButton(
                   icon: const Icon(Icons.arrow_upward),
-                  onPressed:
-                      i > 0 ? () => _move(mainMenu, items, i, -1) : null,
+                  onPressed: i > 0 ? () => _move(mainMenu, items, i, -1) : null,
                 ),
                 IconButton(
                   icon: const Icon(Icons.arrow_downward),

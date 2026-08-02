@@ -163,7 +163,7 @@ class _SidebarState extends State<Sidebar> with WindowListener {
       var navUnselectedIconColor =
           theme.activePreset?.navText ?? theme.colors.onSurfaceVariant;
       var navSelectedIconColor =
-          theme.activePreset?.navAccent ?? theme.colors.primary;
+          theme.activePreset?.navSelected ?? theme.colors.primary;
       var navBackground =
           theme.activePreset?.secondary ?? theme.colors.surfaceContainerLow;
       // A border (any mode) makes Container reserve extra inset for it on
