@@ -34,10 +34,14 @@ String gradientDirectionLabel(GradientDirection d) =>
 
 const Map<GradientDirection, (Alignment, Alignment)>
     _gradientDirectionAlignments = {
-  GradientDirection.topLeftToBottomRight:
-      (Alignment.topLeft, Alignment.bottomRight),
-  GradientDirection.topRightToBottomLeft:
-      (Alignment.topRight, Alignment.bottomLeft),
+  GradientDirection.topLeftToBottomRight: (
+    Alignment.topLeft,
+    Alignment.bottomRight
+  ),
+  GradientDirection.topRightToBottomLeft: (
+    Alignment.topRight,
+    Alignment.bottomLeft
+  ),
   GradientDirection.leftToRight: (Alignment.centerLeft, Alignment.centerRight),
   GradientDirection.topToBottom: (Alignment.topCenter, Alignment.bottomCenter),
 };

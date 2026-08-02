@@ -10,8 +10,7 @@ import 'package:flutter/material.dart';
 // corner radii in SideValues' clockwise-from-top-left order; `isOwn` says
 // which side the message is on, which only the speech style consults (it
 // squares off the bottom corner nearest the speaker).
-ShapeBorder bubbleShape(
-    BubbleCornerStyle style, SideValues radii, bool isOwn) {
+ShapeBorder bubbleShape(BubbleCornerStyle style, SideValues radii, bool isOwn) {
   var r = BorderRadius.only(
     topLeft: Radius.circular(radii.topLeft),
     topRight: Radius.circular(radii.topRight),
@@ -94,7 +93,8 @@ class _InvertedCornerBorder extends OutlinedBorder {
   }
 
   @override
-  _InvertedCornerBorder copyWith({BorderSide? side, BorderRadius? borderRadius}) =>
+  _InvertedCornerBorder copyWith(
+          {BorderSide? side, BorderRadius? borderRadius}) =>
       _InvertedCornerBorder(
           borderRadius: borderRadius ?? this.borderRadius,
           side: side ?? this.side);

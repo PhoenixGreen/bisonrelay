@@ -236,15 +236,16 @@ class _ThemeModeDropdownState extends State<ThemeModeDropdown> {
           child: DropdownButton<String>(
             value: hasCurrent ? current : null,
             isExpanded: true,
-            hint: Text(theme.presetDisplayName,
-                overflow: TextOverflow.ellipsis),
+            hint:
+                Text(theme.presetDisplayName, overflow: TextOverflow.ellipsis),
             items: entries
                 .map((e) => DropdownMenuItem(
                       value: e.key,
                       child: Text(
                           e.key == "dark"
                               ? "Default Theme"
-                              : (theme.customPresets[
+                              : (theme
+                                      .customPresets[
                                           e.key.replaceFirst("custom:", "")]
                                       ?.name ??
                                   e.value.descr),

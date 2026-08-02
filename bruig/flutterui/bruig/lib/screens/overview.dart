@@ -299,6 +299,9 @@ class __MainAppBarState extends State<_MainAppBar>
     return Stack(children: [
       Positioned.fill(
           child: theme.areaContainer(ThemeArea.header, SurfaceColor.surface,
+              // The palette's Header Background is the header's default
+              // fill; the area's own Background setting still overrides it.
+              tokenColor: theme.activePreset?.headerBackground,
               child: const Empty())),
       appBar,
     ]);

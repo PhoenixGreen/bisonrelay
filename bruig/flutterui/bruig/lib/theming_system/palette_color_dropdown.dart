@@ -84,11 +84,10 @@ class PaletteColorDropdown extends StatelessWidget {
     var palette = preset.palette;
     // A stored slot binding is authoritative; only a caller that has none
     // falls back to finding the palette entry holding this exact color.
-    var bound = valueIndex != null &&
-            valueIndex! >= 0 &&
-            valueIndex! < palette.length
-        ? valueIndex
-        : null;
+    var bound =
+        valueIndex != null && valueIndex! >= 0 && valueIndex! < palette.length
+            ? valueIndex
+            : null;
     var matchIdx = bound ??
         (value == null
             ? -1
@@ -169,16 +168,55 @@ class PaletteColorDropdown extends StatelessWidget {
 
 // colorSwatchBox is the small rounded color chip used wherever the editor
 // shows "this is the color" -- dropdown entries and palette rows.
-Widget colorSwatchBox(Color color, {double size = 18, double radius = 3}) =>
-    Container(
+Widget colorSwatchBox(Color color, {double size = 18, double radius = 3}) {
+  var box = Container(
+    width: size,
+    height: size,
+    decoration: BoxDecoration(
+      color: color,
+      border: Border.all(color: Colors.grey),
+      borderRadius: BorderRadius.circular(radius),
+    ),
+  );
+  // Fully opaque colours are just themselves. Anything see-through is
+  // painted over a checkerboard, the convention every image editor uses --
+  // otherwise a transparent swatch is indistinguishable from one holding
+  // whatever colour happens to be behind it.
+  if (color.a >= 1.0) return box;
+  return ClipRRect(
+    borderRadius: BorderRadius.circular(radius),
+    child: SizedBox(
       width: size,
       height: size,
-      decoration: BoxDecoration(
-        color: color,
-        border: Border.all(color: Colors.grey),
-        borderRadius: BorderRadius.circular(radius),
-      ),
-    );
+      child: Stack(children: [
+        Positioned.fill(
+            child: CustomPaint(painter: _CheckerboardPainter(size / 4))),
+        box,
+      ]),
+    ),
+  );
+}
+
+class _CheckerboardPainter extends CustomPainter {
+  final double cell;
+  const _CheckerboardPainter(this.cell);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    var light = Paint()..color = const Color(0xFFBDBDBD);
+    var dark = Paint()..color = const Color(0xFF757575);
+    canvas.drawRect(Offset.zero & size, light);
+    for (var y = 0; y * cell < size.height; y++) {
+      for (var x = 0; x * cell < size.width; x++) {
+        if ((x + y).isEven) continue;
+        canvas.drawRect(Rect.fromLTWH(x * cell, y * cell, cell, cell), dark);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_CheckerboardPainter old) => old.cell != cell;
+}
 
 // _ColorPickResult is _CustomColorDialog's pop() value: either a committed
 // color (Select) or a request to hand off to the in-app eyedropper (which

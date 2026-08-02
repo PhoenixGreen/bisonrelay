@@ -227,7 +227,15 @@ String feedLinksModeLabel(FeedLinksMode m) => _feedLinksModeLabels[m]!;
 //   rather than stretched, they suit any area's size -- a full-screen
 //   Master background, a thin Header strip or the narrow Navigation Bar
 //   column all get the same-sized motif.
-enum AreaImagePreset { standard, exitus1, grid, dots, diagonal, crosshatch, waves }
+enum AreaImagePreset {
+  standard,
+  exitus1,
+  grid,
+  dots,
+  diagonal,
+  crosshatch,
+  waves
+}
 
 const Map<AreaImagePreset, String> _areaImagePresetLabels = {
   AreaImagePreset.standard: "Default",

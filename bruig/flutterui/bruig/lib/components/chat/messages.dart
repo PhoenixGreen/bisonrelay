@@ -193,6 +193,12 @@ class _MessagesState extends State<Messages> {
     var chatBackdropWash =
         ThemeNotifier.of(context).areaStyle(ThemeArea.chat).chatBackdropWash;
     return Scaffold(
+      // Transparent, so whatever is painted behind the message list shows
+      // through -- the Chat area's "Message area background", which
+      // follows the Content Area (see active_chat.dart). A Scaffold
+      // otherwise fills itself with the theme's scaffoldBackgroundColor,
+      // which is opaque and covered every one of those.
+      backgroundColor: Colors.transparent,
       resizeToAvoidBottomInset: true,
       floatingActionButton: _getFAB(),
       body: Stack(children: [

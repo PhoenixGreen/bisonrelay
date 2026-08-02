@@ -28,9 +28,7 @@ List<Widget> headerAreaEditor(AreaEditorContext ctx) => [
           assetFallback: "assets/images/icon.png",
           onPick: () async {
             var relPath = await ctx.pickImage(
-                suffix: "logo",
-                dialogTitle: "Pick app icon",
-                allowSvg: true);
+                suffix: "logo", dialogTitle: "Pick app icon", allowSvg: true);
             if (relPath != null) {
               ctx.setStyle((s) => s.copyWith(logoPath: relPath));
             }

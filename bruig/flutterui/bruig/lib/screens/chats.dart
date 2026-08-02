@@ -65,8 +65,7 @@ class ChatsScreenTitle extends StatelessWidget {
 
       // Has active chat.
       ChatModel chat = activeChat.chat!;
-      var enableChatSearch =
-          theme.areaStyle(ThemeArea.chat).enableChatSearch;
+      var enableChatSearch = theme.areaStyle(ThemeArea.chat).enableChatSearch;
 
       // On small screen, show only chat nick/title.
       bool isScreenSmall = checkIsScreenSmall(context);
@@ -77,7 +76,10 @@ class ChatsScreenTitle extends StatelessWidget {
               margin:
                   const EdgeInsets.only(top: 0, bottom: 0, left: 0, right: 20),
               child: UserMenuAvatar(client, chat, showChatSideMenuOnTap: true)),
-          Txt.L(chat.nick),
+          // The nick gives way rather than pushing the icons off the
+          // header -- it can be any length, and the header has the back
+          // button and avatar in front of it already.
+          Flexible(child: Txt.L(chat.nick, overflow: TextOverflow.ellipsis)),
           const Spacer(),
           if (enableChatSearch) buildSearchButton(context, chat),
           if (!chat.isGC && rtc.active.active == null)
@@ -95,7 +97,9 @@ class ChatsScreenTitle extends StatelessWidget {
           : "";
 
       return Row(children: [
-        Txt.L("Chat$suffix$profileSuffix"),
+        Flexible(
+            child: Txt.L("Chat$suffix$profileSuffix",
+                overflow: TextOverflow.ellipsis)),
         if (enableChatSearch) ...[
           const SizedBox(width: 10),
           buildSearchButton(context, chat),

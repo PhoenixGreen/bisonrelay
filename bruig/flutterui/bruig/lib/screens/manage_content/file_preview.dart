@@ -250,8 +250,8 @@ class _VideoPreviewState extends State<_VideoPreview> {
       Row(mainAxisAlignment: MainAxisAlignment.center, children: [
         IconButton(
           icon: Icon(ctrl.value.isPlaying ? Icons.pause : Icons.play_arrow),
-          onPressed: () => setState(
-              () => ctrl.value.isPlaying ? ctrl.pause() : ctrl.play()),
+          onPressed: () =>
+              setState(() => ctrl.value.isPlaying ? ctrl.pause() : ctrl.play()),
         ),
         IconButton(
           icon: const Icon(Icons.replay),

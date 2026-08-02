@@ -262,7 +262,8 @@ class _ActiveChatState extends State<ActiveChat> with RouteAware {
         if (preview.contains('--embed[')) preview = '[attachment]';
         final nick = chat.pinnedNick ?? '';
         var theme = Provider.of<ThemeNotifier>(context);
-        var accent = theme.activePreset?.sidebarAccent ?? const Color(0xFF2C6BED);
+        var accent =
+            theme.activePreset?.sidebarAccent ?? const Color(0xFF2C6BED);
         return Container(
           margin: const EdgeInsets.only(bottom: 5),
           decoration: BoxDecoration(
@@ -297,8 +298,8 @@ class _ActiveChatState extends State<ActiveChat> with RouteAware {
                     ]),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        color: Color(0xFFCED4D2), fontSize: 13),
+                    style:
+                        const TextStyle(color: Color(0xFFCED4D2), fontSize: 13),
                   ),
                 ],
               ),
@@ -336,20 +337,21 @@ class _ActiveChatState extends State<ActiveChat> with RouteAware {
       return InstantCallScreen(
           rtc, currentInstantSession!, widget.audio, client, chat);
     } else {
-      var chatStyle = ThemeNotifier.of(context).areaStyle(ThemeArea.chat);
+      var theme = ThemeNotifier.of(context);
+      var chatStyle = theme.areaStyle(ThemeArea.chat);
       var enableChatSearch = chatStyle.enableChatSearch;
       // expandPad reserves space around the conversation viewport (between
       // it and the pinned bar/RTC header above, and the input bar below)
       // when AreaStyle.expandMessageWidth is on -- separate from the
       // per-message maxWidth handled in chat/events.dart.
-      var expand = (chatStyle.messageLayoutMode ?? MessageLayoutMode.standard) !=
-              MessageLayoutMode.standard &&
-          chatStyle.expandMessageWidth;
+      var expand =
+          (chatStyle.messageLayoutMode ?? MessageLayoutMode.standard) !=
+                  MessageLayoutMode.standard &&
+              chatStyle.expandMessageWidth;
       // Per side, so the gap above the messages, beside them, and before
       // the input bar can each be set independently.
-      var expandPad = expand
-          ? chatStyle.expandMessagePaddings
-          : SideValues.all(0);
+      var expandPad =
+          expand ? chatStyle.expandMessagePaddings : SideValues.all(0);
       return ScreenWithChatSideMenu(
           client,
           Column(
@@ -374,31 +376,41 @@ class _ActiveChatState extends State<ActiveChat> with RouteAware {
               if (chatStyle.enableMessageActions) _pinnedBar(chat),
               if (expandPad.top > 0) SizedBox(height: expandPad.top),
               Expanded(
-                child: Padding(
-                  padding: EdgeInsets.only(
-                      left: expandPad.left, right: expandPad.right),
-                  child: Stack(children: [
-                    Messages(chat, client, _itemScrollController,
-                        _itemPositionsListener),
-                    Positioned(
-                        bottom: 10,
-                        left: 10,
-                        right: 10,
-                        child: Consumer<TypingEmojiSelModel>(
-                            builder: (context, typingEmoji, child) =>
-                                TypingEmojiPanel(
-                                  model: typingEmoji,
-                                  focusNode: inputFocusNode,
-                                ))),
-                    if (isScreenSmall)
+                // The conversation's own fill: the Chat area's setting, or
+                // the palette's Content Background, which is what showed
+                // through here before it could be set. Painted on the
+                // viewport rather than the whole pane so the composer and
+                // the pinned bar keep the page's own background.
+                child: ColoredBox(
+                  color: chatStyle.resolveMessageAreaColor(theme) ??
+                      contentAreaBackgroundColor(theme) ??
+                      Colors.transparent,
+                  child: Padding(
+                    padding: EdgeInsets.only(
+                        left: expandPad.left, right: expandPad.right),
+                    child: Stack(children: [
+                      Messages(chat, client, _itemScrollController,
+                          _itemPositionsListener),
                       Positioned(
-                          left: 10,
                           bottom: 10,
+                          left: 10,
                           right: 10,
-                          child: Consumer<AudioModel>(
-                              builder: (context, audio, child) =>
-                                  SmallScreenRecordInfoPanel(audio: audio))),
-                  ]),
+                          child: Consumer<TypingEmojiSelModel>(
+                              builder: (context, typingEmoji, child) =>
+                                  TypingEmojiPanel(
+                                    model: typingEmoji,
+                                    focusNode: inputFocusNode,
+                                  ))),
+                      if (isScreenSmall)
+                        Positioned(
+                            left: 10,
+                            bottom: 10,
+                            right: 10,
+                            child: Consumer<AudioModel>(
+                                builder: (context, audio, child) =>
+                                    SmallScreenRecordInfoPanel(audio: audio))),
+                    ]),
+                  ),
                 ),
               ),
               if (expandPad.bottom > 0) SizedBox(height: expandPad.bottom),
@@ -524,8 +536,8 @@ class _ChatSearchPanel extends StatelessWidget {
             ),
             if (query.isNotEmpty)
               Text("${hits.length} match${hits.length == 1 ? '' : 'es'}",
-                  style: const TextStyle(
-                      fontSize: 12, color: Color(0xFF5F6764))),
+                  style:
+                      const TextStyle(fontSize: 12, color: Color(0xFF5F6764))),
             IconButton(
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints(),
@@ -541,16 +553,19 @@ class _ChatSearchPanel extends StatelessWidget {
                 ? const Padding(
                     padding: EdgeInsets.symmetric(vertical: 12),
                     child: Text("No matches",
-                        style: TextStyle(
-                            fontSize: 13, color: Color(0xFF5F6764))),
+                        style:
+                            TextStyle(fontSize: 13, color: Color(0xFF5F6764))),
                   )
                 : ListView.builder(
                     shrinkWrap: true,
                     itemCount: hits.length,
                     itemBuilder: (context, i) {
                       final h = hits[i];
-                      var preview = h.text.replaceAll(RegExp(r'\s+'), ' ').trim();
-                      if (preview.contains('--embed[')) preview = '[attachment]';
+                      var preview =
+                          h.text.replaceAll(RegExp(r'\s+'), ' ').trim();
+                      if (preview.contains('--embed[')) {
+                        preview = '[attachment]';
+                      }
                       return ListTile(
                         dense: true,
                         onTap: () => onJump(h.index),

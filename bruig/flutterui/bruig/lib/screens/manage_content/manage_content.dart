@@ -1,3 +1,4 @@
+import 'package:bruig/components/inputs.dart';
 import 'package:bruig/screens/manage_content/file_filter_bar.dart';
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:flutter/services.dart';
@@ -557,11 +558,12 @@ class _AddContentPanelState extends State<AddContentPanel> {
               const SizedBox(height: 6),
               TextField(
                 controller: descrCtrl,
-                decoration: const InputDecoration(
-                  isDense: true,
-                  border: OutlineInputBorder(),
-                  hintText: "Optional -- shown with the file when offered",
-                ),
+                style: kInputTextStyle,
+                // No outline: it sits directly under the Cost field, which
+                // uses Flutter's plain underline (see dcrInput), and two
+                // different input designs in one card read as an accident.
+                decoration: themedInputDecoration(context,
+                    hintText: "Optional -- shown with the file when offered"),
               ),
             ]),
             const SizedBox(height: 18),
