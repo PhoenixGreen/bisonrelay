@@ -15,6 +15,16 @@ enum ThemeArea {
   dualPanel,
   subMenuTabBar,
   contentArea,
+  // inputAreas is every text input in the app taken together -- the chat
+  // composer, the feed's post/comment boxes, the search bars -- so they
+  // can be given one background, border and corner radius instead of each
+  // screen deciding for itself.
+  inputAreas,
+  // buttons is every button in the app taken together, split into the five
+  // roles it actually ships (see ButtonRole) rather than by which screen
+  // they sit on -- the same five appearances recur across the login screen,
+  // the feed and LN management.
+  buttons,
   chat,
   feed,
   realtimeChat,
@@ -43,6 +53,8 @@ const Map<ThemeArea, String> _themeAreaLabels = {
   ThemeArea.dualPanel: "Dual Panel",
   ThemeArea.subMenuTabBar: "Sidebar",
   ThemeArea.contentArea: "Content Area",
+  ThemeArea.inputAreas: "Input Areas",
+  ThemeArea.buttons: "Buttons",
   ThemeArea.chat: "Chat",
   ThemeArea.feed: "Feed",
   ThemeArea.realtimeChat: "Realtime Chat",

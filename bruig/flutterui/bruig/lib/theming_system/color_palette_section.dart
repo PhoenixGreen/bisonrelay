@@ -39,8 +39,15 @@ import 'package:provider/provider.dart';
 // clicked. Resetting them from palette.brightness's seed makes applying any
 // given palette produce the same, internally-consistent result regardless of
 // prior state.
-void applyColorPalette(ThemeNotifier theme, ColorPalette palette) {
-  var draft = ensureDraftPreset(theme);
+void applyColorPalette(ThemeNotifier theme, ColorPalette palette) =>
+    theme.previewPreset(paletteApplied(ensureDraftPreset(theme), palette));
+
+// paletteApplied is applyColorPalette's mapping on its own, with no
+// ThemeNotifier involved -- which is what makes the result of applying any
+// palette checkable in a test (see test/palette_contrast_test.dart, which
+// runs every built-in palette through it and asserts the contrast of every
+// text/background pair it produces).
+ThemePreset paletteApplied(ThemePreset draft, ColorPalette palette) {
   var base = ThemePreset.seedFor(palette.brightness);
   Color colorAt(int i, Color fallback) =>
       i < palette.colors.length ? palette.colors[i] : fallback;
@@ -55,7 +62,7 @@ void applyColorPalette(ThemeNotifier theme, ColorPalette palette) {
   // (buttonBorder, once between outline and fourth in this tail sequence,
   // was removed and merged into navAccent -- see color_palette.dart.)
   var legacySevenColor = palette.colors.length == 7;
-  theme.previewPreset(draft.copyWith(
+  return draft.copyWith(
     brightness: palette.brightness,
     primary: colorAt(0, base.primary),
     // Follow primary rather than being left at the previous theme's value:
@@ -63,6 +70,7 @@ void applyColorPalette(ThemeNotifier theme, ColorPalette palette) {
     // are positional, so appending would break every palette saved before
     // now), and leaving them behind would strand two regions on a
     // background from a palette that's no longer applied.
+    headerBackground: colorAt(0, base.primary),
     dualBackground: colorAt(0, base.primary),
     contentBackground: colorAt(0, base.primary),
     secondary: colorAt(1, base.secondary),
@@ -73,18 +81,49 @@ void applyColorPalette(ThemeNotifier theme, ColorPalette palette) {
         ? base.speechBackgroundSent
         : colorAt(5, base.speechBackgroundSent),
     navAccent: colorAt(legacySevenColor ? 5 : 6, base.navAccent),
+    // A library palette stores one accent (its brand colour), and its
+    // positional format can't be extended without breaking every palette
+    // saved before now -- so the nav takes that same accent on apply, and
+    // is a separate swatch to tune afterwards.
+    navSelected: colorAt(legacySevenColor ? 5 : 6, base.navAccent),
     sidebarAccent: colorAt(legacySevenColor ? 6 : 7, base.sidebarAccent),
+    // Inputs follow the palette's own accent, the same way the nav bar's
+    // selected item does. They were left out of this list entirely, and
+    // because a library palette carries no entry for them they simply kept
+    // whatever the draft already had -- which for a fresh draft is the
+    // seed's lavender, so every text box in the app stayed purple no
+    // matter which palette was applied.
+    inputSelected: colorAt(legacySevenColor ? 5 : 6, base.navAccent),
+    inputResting: ThemePreset.restingBorderFrom(
+        colorAt(legacySevenColor ? 5 : 6, base.navAccent),
+        colorAt(0, base.primary)),
+    // Inputs have never carried a fill; reset rather than left behind, so
+    // applying a palette always lands on the same result.
+    inputBackground: base.inputBackground,
     accentContainer: colorAt(8, base.accentContainer),
     error: colorAt(9, base.error),
     outline: colorAt(10, base.outline),
     fourth: colorAt(11, base.fourth),
+    // The button label, border and tonal fill are the palette's own (tail
+    // slots 12-14; a palette exported before they existed falls back to the
+    // seed). Hover follows the label, since it's that color at 12% over
+    // whatever fill is underneath. The danger fill and the filled-button
+    // label stay on the seed deliberately: a red that means "destructive"
+    // and a near-white that has to stay legible on every fill are both
+    // semantic, and should read the same whichever palette is applied.
+    buttonText1: colorAt(12, base.buttonText1),
+    buttonBorderColor: colorAt(13, base.buttonBorderColor),
+    buttonBackgroundThird: colorAt(14, base.buttonBackgroundThird),
+    buttonHover: colorAt(12, base.buttonText1).withValues(alpha: 0.12),
+    buttonBackgroundSecondary: base.buttonBackgroundSecondary,
+    buttonText2: base.buttonText2,
     // Neutral/functional roles always come from the brightness seed.
     onSurface: base.onSurface,
     onSurfaceVariant: base.onSurfaceVariant,
     navText: base.navText,
     sidebarText: base.sidebarText,
     success: base.success,
-  ));
+  );
 }
 
 // PaletteSwatchStrip renders a row of colors as a thin horizontal bar --
@@ -303,25 +342,125 @@ class _PaletteSectionState extends State<PaletteSection> {
     );
   }
 
-  // _slotRow is one palette entry: its label, its current swatch, and (when
-  // expanded) the inline picker that edits it.
+  // Some slots are two states of one colour rather than two colours, and
+  // read better as one row with a swatch each than as two rows whose names
+  // have to explain the relationship. The companion is drawn to the left
+  // (resting first, then selected -- the order the states happen in) and
+  // gets no row of its own.
+  // Keyed by the slot that keeps the row (drawn rightmost), valued by the
+  // ones that join it, in the order they're drawn -- leftmost first. The
+  // row appears wherever the key's slot already sat in the list, and the
+  // companions get no row of their own.
+  static const Map<PaletteSlot, List<PaletteSlot>> _pairedWith = {
+    PaletteSlot.primary: [
+      PaletteSlot.tertiary,
+      PaletteSlot.contentBackground,
+      PaletteSlot.dualBackground,
+      PaletteSlot.headerBackground,
+    ],
+    PaletteSlot.inputBackground: [
+      PaletteSlot.inputResting,
+      PaletteSlot.inputSelected,
+    ],
+    PaletteSlot.speechBackgroundSent: [PaletteSlot.speechBackground],
+    // The seven button colors, drawn right to left in the order they were
+    // specified: the fill Button 1 uses keeps the row (it's the slot that
+    // already existed), then the other two fills, the border, the hover
+    // tint and the two label colors run leftwards from it.
+    PaletteSlot.accentContainer: [
+      PaletteSlot.buttonText2,
+      PaletteSlot.buttonText1,
+      PaletteSlot.buttonHover,
+      PaletteSlot.buttonBorderColor,
+      PaletteSlot.buttonBackgroundThird,
+      PaletteSlot.buttonBackgroundSecondary,
+    ],
+    PaletteSlot.sidebarBackground: [
+      PaletteSlot.sidebarText,
+      PaletteSlot.sidebarAccent,
+    ],
+    PaletteSlot.secondary: [PaletteSlot.navText, PaletteSlot.navSelected],
+    PaletteSlot.onSurface: [PaletteSlot.onSurfaceVariant],
+    PaletteSlot.success: [PaletteSlot.error],
+  };
+
+  // A paired row keeps its owner's label unless the pair is really one
+  // idea with two halves, in which case it gets a name covering both.
+  static const Map<PaletteSlot, String> _pairedLabels = {
+    PaletteSlot.primary: "Primary Backgrounds",
+    PaletteSlot.onSurface: "Primary Text Colors",
+    PaletteSlot.secondary: "Navigation Colors",
+    PaletteSlot.sidebarBackground: "Sidebar Colors",
+    PaletteSlot.speechBackgroundSent: "Speech Backgrounds",
+    PaletteSlot.inputBackground: "Input Colors",
+    PaletteSlot.accentContainer: "Button Colors",
+    PaletteSlot.success: "Error and Success",
+  };
+
+  // _leadingRows are the rows shown first, in this order, regardless of
+  // where their slots sit in PaletteSlot. Row order is presentation only,
+  // so it lives here rather than in the enum -- area styles bind colours
+  // by their index into that enum, and reordering it to suit the editor
+  // would renumber every one of those bindings.
+  static const List<PaletteSlot> _leadingRows = [
+    PaletteSlot.primary,
+    PaletteSlot.onSurface,
+  ];
+
+  // _rowOrder is every palette entry that gets a row, in display order:
+  // the leading ones, then everything else as the enum has it, then the
+  // user's extra colours.
+  List<int> _rowOrder(int paletteLength) {
+    var companions = _pairedWith.values.expand((g) => g).toSet();
+    var slots = [
+      ..._leadingRows,
+      ...PaletteSlot.values
+          .where((s) => !_leadingRows.contains(s) && !companions.contains(s)),
+    ];
+    return [
+      ...slots.map((s) => s.index),
+      for (var i = PaletteSlot.values.length; i < paletteLength; i++) i,
+    ];
+  }
+
+  // _slotRow is one palette entry: its label, its swatch (or swatches --
+  // see _pairedWith), and, when expanded, the inline picker editing
+  // whichever swatch was tapped.
   Widget _slotRow(ThemeNotifier theme, List<Color> fullPalette, int i) {
     var isSlot = i < PaletteSlot.values.length;
+    var slot = isSlot ? PaletteSlot.values[i] : null;
+
+    // A companion is drawn inside its owner's row, so it has none here.
+    if (slot != null &&
+        _pairedWith.values.any((group) => group.contains(slot))) {
+      return const SizedBox.shrink();
+    }
+
+    var companions = (slot != null ? _pairedWith[slot] : null) ?? const [];
+
     var label = isSlot
-        ? paletteSlotLabel(PaletteSlot.values[i])
+        ? (slot != null ? _pairedLabels[slot] : null) ??
+            paletteSlotLabel(PaletteSlot.values[i])
         : "Extra color ${i - PaletteSlot.values.length + 1}";
-    var isExpanded = expandedIndex == i;
-    var color = isExpanded ? (draftColor ?? fullPalette[i]) : fullPalette[i];
+    // Either swatch of a paired row opens the picker under that same row,
+    // so what's being edited may be this slot or its companion.
+    var editing = expandedIndex == i
+        ? i
+        : (companions.any((c) => c.index == expandedIndex)
+            ? expandedIndex
+            : null);
+    var isExpanded = editing != null;
 
     void commit() {
+      var target = editing ?? i;
       var draft = ensureDraftPreset(theme);
-      var chosen = draftColor ?? fullPalette[i];
+      var chosen = draftColor ?? fullPalette[target];
       ThemePreset updated;
-      if (isSlot) {
-        updated = draft.withSlot(PaletteSlot.values[i], chosen);
+      if (target < PaletteSlot.values.length) {
+        updated = draft.withSlot(PaletteSlot.values[target], chosen);
       } else {
         var colors = List<Color>.from(draft.extraPaletteColors);
-        colors[i - PaletteSlot.values.length] = chosen;
+        colors[target - PaletteSlot.values.length] = chosen;
         updated = draft.copyWith(extraPaletteColors: colors);
       }
       _collapse();
@@ -348,11 +487,37 @@ class _PaletteSectionState extends State<PaletteSection> {
       ));
     }
 
+    Widget swatch(int index, {String? tooltip}) {
+      var live = expandedIndex == index && draftColor != null
+          ? draftColor!
+          : fullPalette[index];
+      Widget box = InkWell(
+        onTap: () => expandedIndex == index
+            ? _collapse()
+            : setState(() {
+                expandedIndex = index;
+                draftColor = fullPalette[index];
+              }),
+        child: colorSwatchBox(live, size: 28, radius: 4),
+      );
+      return tooltip == null ? box : Tooltip(message: tooltip, child: box);
+    }
+
     return Column(children: [
       ListTile(
         title: Txt(label),
         trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-          colorSwatchBox(color, size: 28, radius: 4),
+          // Each swatch names itself on hover: two bare squares on a row
+          // don't say which is which, and the row label can only name one
+          // of them.
+          for (var c in companions) ...[
+            swatch(c.index, tooltip: paletteSlotLabel(c)),
+            const SizedBox(width: 8),
+          ],
+          swatch(i,
+              tooltip: companions.isNotEmpty && slot != null
+                  ? paletteSlotLabel(slot)
+                  : null),
           if (!isSlot)
             IconButton(
               icon: const Icon(Icons.close, size: 18),
@@ -360,7 +525,9 @@ class _PaletteSectionState extends State<PaletteSection> {
               onPressed: removeExtra,
             ),
         ]),
-        onTap: () => isExpanded
+        // The row itself edits the row's own colour; the swatches are what
+        // reach a companion.
+        onTap: () => expandedIndex == i
             ? _collapse()
             : setState(() {
                 expandedIndex = i;
@@ -372,7 +539,7 @@ class _PaletteSectionState extends State<PaletteSection> {
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Column(children: [
             ColorPicker(
-              pickerColor: draftColor ?? fullPalette[i],
+              pickerColor: draftColor ?? fullPalette[editing],
               // Lets a palette color blend into whatever it's painted over
               // (e.g. a semi-transparent divider or overlay) instead of
               // always being fully opaque.
@@ -381,23 +548,20 @@ class _PaletteSectionState extends State<PaletteSection> {
               hexInputBar: true,
               onColorChanged: (c) => setState(() => draftColor = c),
             ),
-            Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.colorize),
-                    tooltip: "Pick color from app (eyedropper)",
-                    onPressed: () async {
-                      var picked = await pickColorFromApp(context);
-                      if (picked != null) setState(() => draftColor = picked);
-                    },
-                  ),
-                  Row(children: [
-                    TextButton(
-                        onPressed: _collapse, child: const Text("Cancel")),
-                    TextButton(onPressed: commit, child: const Text("Done")),
-                  ]),
-                ]),
+            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+              IconButton(
+                icon: const Icon(Icons.colorize),
+                tooltip: "Pick color from app (eyedropper)",
+                onPressed: () async {
+                  var picked = await pickColorFromApp(context);
+                  if (picked != null) setState(() => draftColor = picked);
+                },
+              ),
+              Row(children: [
+                TextButton(onPressed: _collapse, child: const Text("Cancel")),
+                TextButton(onPressed: commit, child: const Text("Done")),
+              ]),
+            ]),
           ]),
         ),
     ]);
@@ -454,8 +618,8 @@ class _PaletteSectionState extends State<PaletteSection> {
           ]),
         ),
         const Divider(),
-        ...List.generate(
-            fullPalette.length, (i) => _slotRow(theme, fullPalette, i)),
+        ..._rowOrder(fullPalette.length)
+            .map((i) => _slotRow(theme, fullPalette, i)),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: OutlinedButton.icon(

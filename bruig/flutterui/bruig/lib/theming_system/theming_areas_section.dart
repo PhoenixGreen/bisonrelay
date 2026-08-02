@@ -12,10 +12,12 @@ import 'package:bruig/theming_system/theme_area.dart';
 import 'package:bruig/theming_system/theme_editor.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:bruig/theming_system/theme_preset_storage.dart';
+import 'package:bruig/theming_system/theming_area_buttons.dart';
 import 'package:bruig/theming_system/theming_area_chat.dart';
 import 'package:bruig/theming_system/theming_area_feed.dart';
 import 'package:bruig/theming_system/theming_area_header.dart';
 import 'package:bruig/theming_system/theming_area_filemanager.dart';
+import 'package:bruig/theming_system/theming_area_inputs.dart';
 import 'package:bruig/theming_system/theming_area_master.dart';
 import 'package:bruig/theming_system/theming_area_navbar.dart';
 import 'package:bruig/theming_system/theming_area_realtimechat.dart';
@@ -44,6 +46,8 @@ const List<ThemeArea> _editableAreas = [
   ThemeArea.dualPanel,
   ThemeArea.subMenuTabBar,
   ThemeArea.contentArea,
+  ThemeArea.inputAreas,
+  ThemeArea.buttons,
   ThemeArea.chat,
   ThemeArea.feed,
   ThemeArea.realtimeChat,
@@ -198,6 +202,43 @@ class AreaEditorContext {
         ),
       ]);
 
+  // colorCell is colorPick laid out as a caption over its dropdown, with
+  // its explanation folded in underneath, for use inside `row`. The
+  // side-by-side form colorPick uses doesn't survive three of them sharing
+  // a line -- the label and the dropdown are each left too narrow to read.
+  Widget colorCell(String label,
+          {required Color? value,
+          required int? valueIndex,
+          required void Function(Color? color, int? index) onChanged,
+          String noneLabel = "Default",
+          String? note}) =>
+      _labelled(
+        label,
+        Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          PaletteColorDropdown(
+            preset: preset,
+            value: value,
+            valueIndex: valueIndex,
+            allowNone: true,
+            noneLabel: noneLabel,
+            isExpanded: true,
+            onChanged: onChanged,
+          ),
+          if (note != null) ...[
+            const SizedBox(height: 4),
+            _noteText(note),
+          ],
+        ]),
+      );
+
+  // row lays a set of cells out side by side in equal columns, wrapping --
+  // and in the narrowest case stacking one per row -- once the settings
+  // pane can't give each of them `minWidth`. It's the same layout the
+  // shared background/border fill editors use, offered to the area editors
+  // for settings that belong together on one line.
+  Widget row(List<Widget> cells, {double minWidth = 150}) =>
+      _responsiveRow(cells, minWidth: minWidth);
+
   // slider is a drag-buffered slider: it only commits (and so only writes
   // to the preset) when the drag ends, not once per frame. `label` renders
   // the live value, so an area can spell out what its own zero/default
@@ -275,10 +316,14 @@ class AreaEditorContext {
   // note is the small explanatory caption shown under some controls.
   Widget note(String text) => Padding(
         padding: const EdgeInsets.only(left: 4),
-        child: Text(text,
-            style: const TextStyle(fontSize: 12, color: Color(0xFF9AA3A0))),
+        child: _noteText(text),
       );
 }
+
+// _noteText is the caption itself, without the indent `note` adds -- a cell
+// inside a row is already indented by the column it sits in.
+Widget _noteText(String text) => Text(text,
+    style: const TextStyle(fontSize: 12, color: Color(0xFF9AA3A0)));
 
 // _areaEditor returns the settings specific to one area, or nothing for the
 // areas whose only settings are the shared background/border/spacing ones
@@ -291,6 +336,8 @@ List<Widget> _areaEditor(AreaEditorContext ctx) => switch (ctx.area) {
       ThemeArea.chat => chatAreaEditor(ctx),
       ThemeArea.feed => feedAreaEditor(ctx),
       ThemeArea.realtimeChat => realtimeChatAreaEditor(ctx),
+      ThemeArea.inputAreas => inputAreasAreaEditor(ctx),
+      ThemeArea.buttons => buttonsAreaEditor(ctx),
       ThemeArea.manageContent => fileManagerAreaEditor(ctx),
       ThemeArea.settingsPages => settingsPagesAreaEditor(ctx),
       _ => const [],
