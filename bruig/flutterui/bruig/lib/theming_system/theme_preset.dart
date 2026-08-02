@@ -9,6 +9,10 @@
 //                          individual areas, grouped by area.
 //   area_style.dart     -- AreaStyle, one area's complete set of overrides,
 //                          plus the code that renders it.
+//   button_style.dart   -- the Buttons area's own model: ButtonRole (which of
+//                          the app's five buttons) and the overrides one
+//                          carries, plus the code compiling them into a
+//                          ButtonStyle.
 //   color_palette.dart  -- PaletteSlot, the fixed color roles a theme carries.
 //   preset.dart         -- ThemePreset, one whole named/exportable theme.
 //   color_hex.dart      -- the shared #AARRGGBB codec.
@@ -20,6 +24,7 @@ export 'package:bruig/theming_system/area_options.dart';
 export 'package:bruig/theming_system/area_sides.dart';
 export 'package:bruig/theming_system/area_style.dart';
 export 'package:bruig/theming_system/bubble_shape.dart';
+export 'package:bruig/theming_system/button_style.dart';
 export 'package:bruig/theming_system/color_hex.dart';
 export 'package:bruig/theming_system/color_palette.dart';
 export 'package:bruig/theming_system/preset.dart';

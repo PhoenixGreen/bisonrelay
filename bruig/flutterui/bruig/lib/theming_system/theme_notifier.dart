@@ -1,7 +1,7 @@
-
 import 'package:bruig/storage_manager.dart';
 import 'package:bruig/theming_system/app_theme.dart';
 import 'package:bruig/theming_system/area_style.dart';
+import 'package:bruig/theming_system/button_style.dart';
 import 'package:bruig/theming_system/preset.dart';
 import 'package:bruig/theming_system/theme_area.dart';
 import 'package:bruig/theming_system/theme_preset_storage.dart';
@@ -198,6 +198,12 @@ class ThemeNotifier with ChangeNotifier {
   // theme doesn't customize that area.
   AreaStyle areaStyle(ThemeArea area) =>
       _fullTheme.areaStyles[area] ?? const AreaStyle();
+
+  // buttonStyle returns the compiled ButtonStyle for one of the app's five
+  // button roles (see button_style.dart) -- for the two roles Material has
+  // no theme slot for, which this app's own widgets render instead.
+  ButtonStyle buttonStyle(ButtonRole role) =>
+      _fullTheme.buttonStyles[role] ?? const ButtonStyle();
 
   // areaDecoration resolves the given area's style into a concrete
   // BoxDecoration, falling back to the given SurfaceColor token. Only

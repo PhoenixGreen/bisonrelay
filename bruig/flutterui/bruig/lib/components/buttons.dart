@@ -9,19 +9,26 @@ import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:bruig/theming_system/theme_preset.dart';
 import 'package:provider/provider.dart';
 
-// CancelButton is a neutral dismiss/decline action (closing a dialog
-// without saving, declining an invite, discarding an in-progress draft,
-// etc) -- reused across ~24 call sites throughout the app, the overwhelming
-// majority of which are not destructive/dangerous, just "step back". It
-// used to be styled with theme.colors.errorContainer (the "Error" palette
-// color), which routed every one of those call sites through a field meant
-// for genuine failure/danger states -- readers reasonably expect a "Cancel"
-// button to be neutral, not red, and reserving red for an actual confirmed
-// destructive action (which this app doesn't currently route through this
-// widget) matches how most apps distinguish the two. Now uses
-// secondaryContainer (driven by the "Accent (Buttons/Toggles)" palette
-// field, already tuned per-palette as a readable, muted button surface)
-// instead.
+// _sized layers the fixed geometry the login/startup screens' buttons have
+// always had (a wide, tall pill) over a role's compiled ButtonStyle, without
+// overwriting anything the Buttons theme area set: merge keeps the receiver's
+// own non-null properties and fills the rest in from the argument, so a
+// padding chosen in the editor still wins over the one below.
+ButtonStyle _sized(ButtonStyle style, {double minWidth = 150}) =>
+    style.merge(ButtonStyle(
+      padding: const WidgetStatePropertyAll(
+          EdgeInsets.only(left: 34, top: 10, right: 34, bottom: 10)),
+      minimumSize: WidgetStatePropertyAll(Size(minWidth, 55)),
+      shape: const WidgetStatePropertyAll(RoundedRectangleBorder(
+        borderRadius: BorderRadius.all(Radius.circular(30)),
+      )),
+    ));
+
+// CancelButton is the app's Danger button (ButtonRole.danger) -- the red one
+// in every screenshot of Bison Relay: Clear Post, Close Channel, and the
+// ~24 plain Cancel/dismiss actions that share the widget. It's styled from
+// the palette's "Button Background Secondary" via the compiled role style,
+// so the Buttons theme area can retune all of them at once.
 class CancelButton extends StatelessWidget {
   final VoidCallback? onPressed;
   final bool loading;
@@ -36,39 +43,21 @@ class CancelButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer<ThemeNotifier>(
         builder: (context, theme, child) => ElevatedButton(
-            style: ElevatedButton.styleFrom(
-                backgroundColor: theme.colors.secondaryContainer),
+            style: theme.buttonStyle(ButtonRole.danger),
             onPressed: !loading ? onPressed : null,
-            child: Text(label,
-                style: theme.textStyleFor(
-                    context, null, TextColor.onSecondaryContainer))));
+            child: Text(label)));
   }
 }
 
-ButtonStyle raisedButtonStyle(ThemeNotifier theme) {
-  return ElevatedButton.styleFrom(
-    padding: const EdgeInsets.only(left: 34, top: 10, right: 34, bottom: 10),
-    minimumSize: const Size(150, 55),
-    foregroundColor: theme.colors.onPrimaryContainer,
-    backgroundColor: theme.colors.primaryContainer,
-    //padding: EdgeInsets.symmetric(horizontal: 16),
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.all(Radius.circular(30)),
-    ),
-  );
-}
+// raisedButtonStyle is the Primary button (ButtonRole.primary) at the size
+// the login/startup screens draw it: Unlock Wallet, Create Wallet.
+ButtonStyle raisedButtonStyle(ThemeNotifier theme) =>
+    _sized(theme.buttonStyle(ButtonRole.primary));
 
-ButtonStyle emptyButtonStyle(ThemeNotifier theme) {
-  return ElevatedButton.styleFrom(
-    padding: const EdgeInsets.only(left: 34, top: 10, right: 34, bottom: 10),
-    minimumSize: const Size(150, 55),
-    shape: RoundedRectangleBorder(
-        borderRadius: const BorderRadius.all(Radius.circular(30)),
-        // outline (not outlineVariant) -- a button's border needs to
-        // contrast against the background, unlike a plain divider.
-        side: BorderSide(color: theme.colors.outline, width: 2)),
-  );
-}
+// emptyButtonStyle is the same geometry over the Outlined role
+// (ButtonRole.outlined) -- the bordered, unfilled button.
+ButtonStyle emptyButtonStyle(ThemeNotifier theme) =>
+    _sized(theme.buttonStyle(ButtonRole.outlined));
 
 ButtonStyle readMoreButton(ThemeNotifier theme) {
   return ElevatedButton.styleFrom(
@@ -100,15 +89,11 @@ class LoadingScreenButton extends StatelessWidget {
     return Consumer<ThemeNotifier>(
         builder: (context, theme, _) => TextButton(
             style: minSize != 0
-                ? ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.only(
-                        left: 34, top: 10, right: 34, bottom: 10),
-                    minimumSize: Size(minSize - 30, 55),
-                    //padding: EdgeInsets.symmetric(horizontal: 16),
-                    shape: const RoundedRectangleBorder(
-                      borderRadius: BorderRadius.all(Radius.circular(30)),
-                    ),
-                  )
+                // A caller-set width still draws the Primary role -- it's
+                // the same login-screen button, just measured to fit a
+                // specific column.
+                ? _sized(theme.buttonStyle(ButtonRole.primary),
+                    minWidth: minSize - 30)
                 : empty
                     ? emptyButtonStyle(theme)
                     : raisedButtonStyle(theme),

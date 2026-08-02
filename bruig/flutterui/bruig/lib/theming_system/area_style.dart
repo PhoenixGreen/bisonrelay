@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:bruig/theming_system/area_fill.dart';
 import 'package:bruig/theming_system/area_options.dart';
 import 'package:bruig/theming_system/area_sides.dart';
+import 'package:bruig/theming_system/button_style.dart';
 import 'package:bruig/theming_system/color_hex.dart';
 import 'package:bruig/theming_system/theme_area.dart';
 import 'package:bruig/theming_system/theme_notifier.dart';
@@ -17,9 +18,8 @@ T _enumOr<T extends Enum>(List<T> values, dynamic name, T fallback) =>
 
 // _enumOrNull is _enumOr for a nullable field, where absent means "use this
 // area's built-in default" rather than a specific value.
-T? _enumOrNull<T extends Enum>(List<T> values, dynamic name) => name == null
-    ? null
-    : values.where((e) => e.name == name).firstOrNull;
+T? _enumOrNull<T extends Enum>(List<T> values, dynamic name) =>
+    name == null ? null : values.where((e) => e.name == name).firstOrNull;
 
 Alignment _alignFromJson(dynamic j, Alignment fallback) => j != null
     ? Alignment((j[0] as num).toDouble(), (j[1] as num).toDouble())
@@ -153,6 +153,40 @@ class AreaStyle {
   // anywhere else, like the help icon beside a content cost.
   final bool hideTooltips;
   final bool hideHelpTooltips;
+
+  // Chat: the fill behind the conversation itself -- the region the
+  // message bubbles sit on, as distinct from the chat list beside it.
+  // Unset it follows the palette's Content Background, which is what
+  // showed through before it could be set at all.
+  final Color? messageAreaColor;
+  final int? messageAreaColorIndex;
+
+  // Chat: collapses the composer's tool icons behind a single button that
+  // opens them to the right. On a narrow screen those icons take so much
+  // of the row that the text field is left a few characters wide (the hint
+  // wraps one letter per line), and the microphone sitting outside the
+  // field costs it more still.
+  final bool collapseComposerIcons;
+
+  // Input Areas: one background, border and shape for every text input in
+  // the app. All null/zero means each input keeps Flutter's own default
+  // for that property, which is what they looked like before this area
+  // existed -- so an untouched theme is unchanged.
+  final Color? inputBackgroundColor;
+  final int? inputBackgroundColorIndex;
+  final Color? inputBorderColor;
+  final int? inputBorderColorIndex;
+  final double inputBorderWidth;
+  final double inputBorderRadius;
+
+  // Buttons: one entry per ButtonRole, holding that role's background,
+  // hover, border, padding and margin overrides. A map (rather than five
+  // sets of flat fields here) because the five roles are the same handful
+  // of settings five times over, and because it lets a role be absent
+  // entirely -- which is what "this button is untouched" means, and what
+  // keeps an untouched preset's JSON as small as it was before the area
+  // existed. See button_style.dart.
+  final Map<ButtonRole, ButtonAreaStyle> buttonStyles;
 
   // File Manager: drops the on-disk path from each downloaded file, which
   // is the longest line in the row and the same leading directories on
@@ -391,6 +425,16 @@ class AreaStyle {
     this.hideTooltips = false,
     this.hideHelpTooltips = false,
     this.hideFilePaths = false,
+    this.messageAreaColor,
+    this.messageAreaColorIndex,
+    this.collapseComposerIcons = false,
+    this.inputBackgroundColor,
+    this.inputBackgroundColorIndex,
+    this.inputBorderColor,
+    this.inputBorderColorIndex,
+    this.inputBorderWidth = 0,
+    this.inputBorderRadius = 0,
+    this.buttonStyles = const {},
     this.headerPosition,
     this.showLogo = false,
     this.showDcrPrice = false,
@@ -503,6 +547,22 @@ class AreaStyle {
     bool? hideTooltips,
     bool? hideHelpTooltips,
     bool? hideFilePaths,
+    Color? messageAreaColor,
+    int? messageAreaColorIndex,
+    bool clearMessageAreaColor = false,
+    bool clearMessageAreaColorIndex = false,
+    bool? collapseComposerIcons,
+    Color? inputBackgroundColor,
+    int? inputBackgroundColorIndex,
+    bool clearInputBackgroundColor = false,
+    bool clearInputBackgroundColorIndex = false,
+    Color? inputBorderColor,
+    int? inputBorderColorIndex,
+    bool clearInputBorderColor = false,
+    bool clearInputBorderColorIndex = false,
+    double? inputBorderWidth,
+    double? inputBorderRadius,
+    Map<ButtonRole, ButtonAreaStyle>? buttonStyles,
     HeaderPosition? headerPosition,
     bool? showLogo,
     bool? showDcrPrice,
@@ -591,8 +651,7 @@ class AreaStyle {
             ? null
             : (solidColorIndex ?? this.solidColorIndex),
         gradientColors: gradientColors ?? this.gradientColors,
-        gradientColorIndexes:
-            gradientColorIndexes ?? this.gradientColorIndexes,
+        gradientColorIndexes: gradientColorIndexes ?? this.gradientColorIndexes,
         gradientStops: gradientStops ?? this.gradientStops,
         gradientBegin: gradientBegin ?? this.gradientBegin,
         gradientEnd: gradientEnd ?? this.gradientEnd,
@@ -636,6 +695,29 @@ class AreaStyle {
         hideTooltips: hideTooltips ?? this.hideTooltips,
         hideHelpTooltips: hideHelpTooltips ?? this.hideHelpTooltips,
         hideFilePaths: hideFilePaths ?? this.hideFilePaths,
+        messageAreaColor: clearMessageAreaColor
+            ? null
+            : (messageAreaColor ?? this.messageAreaColor),
+        messageAreaColorIndex: clearMessageAreaColorIndex
+            ? null
+            : (messageAreaColorIndex ?? this.messageAreaColorIndex),
+        collapseComposerIcons:
+            collapseComposerIcons ?? this.collapseComposerIcons,
+        inputBackgroundColor: clearInputBackgroundColor
+            ? null
+            : (inputBackgroundColor ?? this.inputBackgroundColor),
+        inputBackgroundColorIndex: clearInputBackgroundColorIndex
+            ? null
+            : (inputBackgroundColorIndex ?? this.inputBackgroundColorIndex),
+        inputBorderColor: clearInputBorderColor
+            ? null
+            : (inputBorderColor ?? this.inputBorderColor),
+        inputBorderColorIndex: clearInputBorderColorIndex
+            ? null
+            : (inputBorderColorIndex ?? this.inputBorderColorIndex),
+        inputBorderWidth: inputBorderWidth ?? this.inputBorderWidth,
+        inputBorderRadius: inputBorderRadius ?? this.inputBorderRadius,
+        buttonStyles: buttonStyles ?? this.buttonStyles,
         headerPosition: headerPosition ?? this.headerPosition,
         showLogo: showLogo ?? this.showLogo,
         showDcrPrice: showDcrPrice ?? this.showDcrPrice,
@@ -648,9 +730,8 @@ class AreaStyle {
         btcPricePaddingSides: clearBtcPricePaddingSides
             ? null
             : (btcPricePaddingSides ?? this.btcPricePaddingSides),
-        priceIconSize: clearPriceIconSize
-            ? null
-            : (priceIconSize ?? this.priceIconSize),
+        priceIconSize:
+            clearPriceIconSize ? null : (priceIconSize ?? this.priceIconSize),
         logoAlign: logoAlign ?? this.logoAlign,
         subMenuStyle: subMenuStyle ?? this.subMenuStyle,
         sidebarCornerRadius: sidebarCornerRadius ?? this.sidebarCornerRadius,
@@ -695,8 +776,7 @@ class AreaStyle {
         bubbleRadiusSentSides: clearBubbleRadiusSentSides
             ? null
             : (bubbleRadiusSentSides ?? this.bubbleRadiusSentSides),
-        bubbleRadiusReceived:
-            bubbleRadiusReceived ?? this.bubbleRadiusReceived,
+        bubbleRadiusReceived: bubbleRadiusReceived ?? this.bubbleRadiusReceived,
         bubbleRadiusReceivedSides: clearBubbleRadiusReceivedSides
             ? null
             : (bubbleRadiusReceivedSides ?? this.bubbleRadiusReceivedSides),
@@ -791,6 +871,29 @@ class AreaStyle {
         if (hideTooltips) "hideTooltips": hideTooltips,
         if (hideHelpTooltips) "hideHelpTooltips": hideHelpTooltips,
         if (hideFilePaths) "hideFilePaths": hideFilePaths,
+        if (messageAreaColor != null)
+          "messageAreaColor": colorToHex(messageAreaColor!),
+        if (messageAreaColorIndex != null)
+          "messageAreaColorIndex": messageAreaColorIndex,
+        if (collapseComposerIcons)
+          "collapseComposerIcons": collapseComposerIcons,
+        if (inputBackgroundColor != null)
+          "inputBackgroundColor": colorToHex(inputBackgroundColor!),
+        if (inputBackgroundColorIndex != null)
+          "inputBackgroundColorIndex": inputBackgroundColorIndex,
+        if (inputBorderColor != null)
+          "inputBorderColor": colorToHex(inputBorderColor!),
+        if (inputBorderColorIndex != null)
+          "inputBorderColorIndex": inputBorderColorIndex,
+        if (inputBorderWidth != 0) "inputBorderWidth": inputBorderWidth,
+        if (inputBorderRadius != 0) "inputBorderRadius": inputBorderRadius,
+        // Only the roles the user has actually touched are written, keyed
+        // by role name so reordering ButtonRole can't renumber them.
+        if (buttonStyles.values.any((s) => !s.isEmpty))
+          "buttonStyles": {
+            for (var e in buttonStyles.entries)
+              if (!e.value.isEmpty) e.key.name: e.value.toJson(),
+          },
         if (headerPosition != null) "headerPosition": headerPosition!.name,
         if (showLogo) "showLogo": showLogo,
         if (showDcrPrice) "showDcrPrice": showDcrPrice,
@@ -945,6 +1048,24 @@ class AreaStyle {
       hideTooltips: flag("hideTooltips"),
       hideHelpTooltips: flag("hideHelpTooltips"),
       hideFilePaths: flag("hideFilePaths"),
+      messageAreaColor: color("messageAreaColor"),
+      messageAreaColorIndex: (j["messageAreaColorIndex"] as num?)?.toInt(),
+      collapseComposerIcons: flag("collapseComposerIcons"),
+      inputBackgroundColor: color("inputBackgroundColor"),
+      inputBackgroundColorIndex:
+          (j["inputBackgroundColorIndex"] as num?)?.toInt(),
+      inputBorderColor: color("inputBorderColor"),
+      inputBorderColorIndex: (j["inputBorderColorIndex"] as num?)?.toInt(),
+      inputBorderWidth: number("inputBorderWidth") ?? 0,
+      inputBorderRadius: number("inputBorderRadius") ?? 0,
+      // Any role name this build doesn't know (written by a newer one) is
+      // skipped rather than throwing, same as the areas map itself.
+      buttonStyles: {
+        for (var e in (j["buttonStyles"] as Map<String, dynamic>? ?? {}).entries)
+          if (ButtonRole.values.where((r) => r.name == e.key).firstOrNull
+              case var role?)
+            role: ButtonAreaStyle.fromJson(e.value as Map<String, dynamic>),
+      },
       headerPosition: _enumOrNull(HeaderPosition.values, j["headerPosition"]),
       showLogo: flag("showLogo"),
       showDcrPrice: flag("showDcrPrice"),
@@ -952,12 +1073,10 @@ class AreaStyle {
       priceIconSize: number("priceIconSize"),
       // The padding was one setting for both coins before it was split in
       // two; a preset saved then seeds both rows with it.
-      dcrPricePadding:
-          number("dcrPricePadding") ?? number("pricePadding") ?? 0,
+      dcrPricePadding: number("dcrPricePadding") ?? number("pricePadding") ?? 0,
       dcrPricePaddingSides: SideValues.fromJson(
           j["dcrPricePaddingSides"] ?? j["pricePaddingSides"]),
-      btcPricePadding:
-          number("btcPricePadding") ?? number("pricePadding") ?? 0,
+      btcPricePadding: number("btcPricePadding") ?? number("pricePadding") ?? 0,
       btcPricePaddingSides: SideValues.fromJson(
           j["btcPricePaddingSides"] ?? j["pricePaddingSides"]),
       logoAlign: _enumOrNull(ContentAlign.values, j["logoAlign"]),
@@ -975,7 +1094,8 @@ class AreaStyle {
       chatListSelectedColor: color("chatListSelectedColor"),
       chatListSelectedColorIndex:
           (j["chatListSelectedColorIndex"] as num?)?.toInt(),
-      chatListAccentColorIndex: (j["chatListAccentColorIndex"] as num?)?.toInt(),
+      chatListAccentColorIndex:
+          (j["chatListAccentColorIndex"] as num?)?.toInt(),
       chatListGlowIntensity: number("chatListGlowIntensity"),
       chatListTopHighlight: flag("chatListTopHighlight", fallback: true),
       chatBackdropWash: flag("chatBackdropWash"),
@@ -1035,8 +1155,8 @@ class AreaStyle {
           flag("feedComposerAttach") ||
           flag("feedDrafts"),
       feedHideSidebarOnPost: flag("feedHideSidebarOnPost"),
-      feedImageLayout: _enumOr(
-          FeedImageLayout.values, j["feedImageLayout"], FeedImageLayout.standard),
+      feedImageLayout: _enumOr(FeedImageLayout.values, j["feedImageLayout"],
+          FeedImageLayout.standard),
       feedImageCropHeight: number("feedImageCropHeight") ?? 300,
       feedTextOrder: _enumOr(
           FeedTextOrder.values, j["feedTextOrder"], FeedTextOrder.standard),
@@ -1054,8 +1174,10 @@ class AreaStyle {
   // borderWidths/borderRadii/paddings/margins are the four spacing settings
   // resolved to a value per side: the per-side split if the user made one,
   // otherwise that setting's single value on all four sides.
-  SideValues get borderWidths => borderWidthSides ?? SideValues.all(borderWidth);
-  SideValues get borderRadii => borderRadiusSides ?? SideValues.all(borderRadius);
+  SideValues get borderWidths =>
+      borderWidthSides ?? SideValues.all(borderWidth);
+  SideValues get borderRadii =>
+      borderRadiusSides ?? SideValues.all(borderRadius);
   SideValues get paddings => paddingSides ?? SideValues.all(padding);
   SideValues get margins => marginSides ?? SideValues.all(margin);
 
@@ -1094,9 +1216,8 @@ class AreaStyle {
   // splitting a border and zeroing one side really does drop that edge.
   Border borderSides(Color color) {
     var w = borderWidths;
-    BorderSide side(double width) => width > 0
-        ? BorderSide(color: color, width: width)
-        : BorderSide.none;
+    BorderSide side(double width) =>
+        width > 0 ? BorderSide(color: color, width: width) : BorderSide.none;
     return Border(
       left: side(w.left),
       top: side(w.top),
@@ -1135,6 +1256,12 @@ class AreaStyle {
       _liveColor(theme, chatListBackgroundColorIndex, chatListBackgroundColor);
   Color? resolveChatListSelectedColor(ThemeNotifier theme) =>
       _liveColor(theme, chatListSelectedColorIndex, chatListSelectedColor);
+  Color? resolveMessageAreaColor(ThemeNotifier theme) =>
+      _liveColor(theme, messageAreaColorIndex, messageAreaColor);
+  Color? resolveInputBackgroundColor(ThemeNotifier theme) =>
+      _liveColor(theme, inputBackgroundColorIndex, inputBackgroundColor);
+  Color? resolveInputBorderColor(ThemeNotifier theme) =>
+      _liveColor(theme, inputBorderColorIndex, inputBorderColor);
 
   // _liveColors is _liveColor over a gradient's color list, pairing each
   // color with its own slot binding. `indexes` may be shorter than `raw`
@@ -1182,6 +1309,16 @@ class AreaStyle {
       chatListSelectedColorIndex: remap(chatListSelectedColorIndex),
       clearChatListSelectedColorIndex:
           remap(chatListSelectedColorIndex) == null,
+      messageAreaColorIndex: remap(messageAreaColorIndex),
+      clearMessageAreaColorIndex: remap(messageAreaColorIndex) == null,
+      inputBackgroundColorIndex: remap(inputBackgroundColorIndex),
+      clearInputBackgroundColorIndex: remap(inputBackgroundColorIndex) == null,
+      inputBorderColorIndex: remap(inputBorderColorIndex),
+      clearInputBorderColorIndex: remap(inputBorderColorIndex) == null,
+      buttonStyles: {
+        for (var e in buttonStyles.entries)
+          e.key: e.value.remapPaletteIndexes(removed),
+      },
     );
   }
 
@@ -1333,9 +1470,8 @@ class AreaStyle {
     var bg = _backgroundFill(theme, fallback, presetDir, tokenColor);
     var widths = borderWidths;
     var hasBorder = borderMode != AreaBackgroundMode.token && hasBorderWidth;
-    var inlineBorder = hasBorder &&
-        borderMode == AreaBackgroundMode.solid &&
-        widths.isUniform;
+    var inlineBorder =
+        hasBorder && borderMode == AreaBackgroundMode.solid && widths.isUniform;
 
     // Any descendant ListTile needs a Material ancestor to paint its
     // background/ink splashes into. When this style paints a real
@@ -1357,8 +1493,8 @@ class AreaStyle {
         // toBoxDecoration's cheaper path), no extra nesting needed.
         border: inlineBorder
             ? Border.all(
-                color: resolveBorderColor(theme) ??
-                    theme.surfaceColor(fallback),
+                color:
+                    resolveBorderColor(theme) ?? theme.surfaceColor(fallback),
                 width: widths.left)
             : null,
       ),
@@ -1371,8 +1507,7 @@ class AreaStyle {
       // as the outer box's own background.
       var borderFill = borderMode == AreaBackgroundMode.solid
           ? AreaFill(
-              color:
-                  resolveBorderColor(theme) ?? theme.surfaceColor(fallback))
+              color: resolveBorderColor(theme) ?? theme.surfaceColor(fallback))
           : _borderFill(theme, fallback, presetDir);
       content = Container(
         padding: widths.insets,

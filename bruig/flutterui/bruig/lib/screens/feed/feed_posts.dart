@@ -296,8 +296,7 @@ class _FeedPostWState extends State<FeedPostW>
         tip: firstImage.tip,
         layout: resolvedImageLayout,
         cropHeight: feedStyle.feedImageCropHeight,
-        applyCropCapToFull:
-            feedStyle.feedImageLayout == FeedImageLayout.random,
+        applyCropCapToFull: feedStyle.feedImageLayout == FeedImageLayout.random,
         onTap: () => showContent(context),
       );
       switch (resolvedImageLayout) {
@@ -750,30 +749,30 @@ class _FeedPostsState extends State<FeedPosts> {
     final feedColumn = contentAreaFrame(
         ThemeNotifier.of(context),
         Container(
-      decoration: const BoxDecoration(
-        border: Border(
-          left: BorderSide(color: Color(0xFF1C1F1D)),
-          right: BorderSide(color: Color(0xFF1C1F1D)),
-        ),
-      ),
-      child: Column(children: [
-        if (inlineComposer)
-          _FeedComposer(
-            client: widget.client,
-            feed: widget.feed,
-            controller: _composerCtrl,
-            showFormatting: composerFormatting,
-            showAttach: composerAttach,
-            showDrafts: drafts,
+          decoration: const BoxDecoration(
+            border: Border(
+              left: BorderSide(color: Color(0xFF1C1F1D)),
+              right: BorderSide(color: Color(0xFF1C1F1D)),
+            ),
           ),
-        // SelectionArea is scoped to just the post list (as it was before
-        // the side panel existed) rather than the whole row -- wrapping the
-        // sidebar/search/sort controls in it too made its drag-to-select
-        // gesture recognizers compete with the list's own scroll gesture
-        // across a much bigger surface, which is what broke scrolling.
-        Expanded(child: SelectionArea(child: body)),
-      ]),
-    ));
+          child: Column(children: [
+            if (inlineComposer)
+              _FeedComposer(
+                client: widget.client,
+                feed: widget.feed,
+                controller: _composerCtrl,
+                showFormatting: composerFormatting,
+                showAttach: composerAttach,
+                showDrafts: drafts,
+              ),
+            // SelectionArea is scoped to just the post list (as it was before
+            // the side panel existed) rather than the whole row -- wrapping the
+            // sidebar/search/sort controls in it too made its drag-to-select
+            // gesture recognizers compete with the list's own scroll gesture
+            // across a much bigger surface, which is what broke scrolling.
+            Expanded(child: SelectionArea(child: body)),
+          ]),
+        ));
 
     final panel = FeedSidePanel(
       view: _view,
@@ -951,8 +950,7 @@ class FeedSidePanel extends StatelessWidget {
         ),
         child: Row(children: [
           Icon(ic,
-              size: 19,
-              color: selected ? accent : const Color(0xFF9AA3A0)),
+              size: 19, color: selected ? accent : const Color(0xFF9AA3A0)),
           const SizedBox(width: 12),
           // Expanded + ellipsis: this panel is drag-resizable, and the
           // longer labels ("Subscriptions", "Most comments") overflow it
@@ -976,8 +974,8 @@ class FeedSidePanel extends StatelessWidget {
     );
   }
 
-  Widget _actionItem(BuildContext context, IconData ic, String label,
-      VoidCallback onTap,
+  Widget _actionItem(
+      BuildContext context, IconData ic, String label, VoidCallback onTap,
       {bool selected = false}) {
     final accent = _accent(context);
     return GestureDetector(
@@ -992,8 +990,7 @@ class FeedSidePanel extends StatelessWidget {
         ),
         child: Row(children: [
           Icon(ic,
-              size: 19,
-              color: selected ? accent : const Color(0xFF9AA3A0)),
+              size: 19, color: selected ? accent : const Color(0xFF9AA3A0)),
           const SizedBox(width: 12),
           Expanded(
             child: Text(label,
@@ -1065,107 +1062,120 @@ class FeedSidePanel extends StatelessWidget {
         // this panel painting an approximation of its own. fillWidth
         // because the feed lays out (and drag-resizes) its width itself.
         return SecondarySideMenu(
-          fillWidth: true,
-          child: SingleChildScrollView(
-          // Matches _SidebarNavRow's own 8px inset, so this panel's rows sit
-          // where every other sidebar's do rather than floating in from
-          // both edges.
-          padding: const EdgeInsets.fromLTRB(8, 16, 8, 16),
-          child:
-              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Container(
-              margin: const EdgeInsets.symmetric(horizontal: 4),
-              decoration: BoxDecoration(
-                  color: const Color(0xFF0E100E),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: const Color(0xFF1F231F))),
-              child: TextField(
-                controller: searchController,
-                onChanged: onSearch,
-                style: const TextStyle(fontSize: 14, color: Color(0xFFF2F4F3)),
-                decoration: InputDecoration(
-                  isDense: true,
-                  prefixIcon: const Icon(Icons.search,
-                      size: 18, color: Color(0xFF5F6764)),
-                  prefixIconConstraints: const BoxConstraints(minWidth: 36),
-                  hintText: "Search posts",
-                  hintStyle:
-                      const TextStyle(fontSize: 14, color: Color(0xFF5F6764)),
-                  border: InputBorder.none,
-                  contentPadding: const EdgeInsets.symmetric(vertical: 11),
-                  suffixIcon: searchController.text.isNotEmpty
-                      ? GestureDetector(
-                          onTap: () {
-                            searchController.clear();
-                            onSearch("");
-                          },
-                          child: const Icon(Icons.close,
-                              size: 16, color: Color(0xFF5F6764)))
-                      : null,
-                ),
-              ),
-            ),
-            _sectionLabel("FEED"),
-            _navItem(context, Icons.dynamic_feed_outlined, "All posts", FeedView.all),
-            if (showBookmarks)
-              _navItem(context, Icons.bookmark_outline, "Bookmarks", FeedView.bookmarks,
-                  trailing: "${FeedBookmarks.instance.count}"),
-            if (showHidden)
-              _navItem(context, Icons.visibility_off_outlined, "Hidden", FeedView.hidden,
-                  trailing: "${FeedHidden.instance.count}"),
-            if (showDrafts)
-              _navItem(context, Icons.edit_note_outlined, "Drafts", FeedView.drafts,
-                  trailing: "${FeedDrafts.instance.count}"),
-            _sectionLabel("POSTS"),
-            _actionItem(context, Icons.article_outlined, "Your Posts", onYourPosts,
-                selected: currentTabIndex == 1),
-            _actionItem(context, Icons.rss_feed, "Subscriptions", onSubscriptions,
-                selected: currentTabIndex == 2),
-            _actionItem(context, Icons.add_box_outlined, "New Post", onNewPost,
-                selected: currentTabIndex == 3),
-            _sectionLabel("SORT"),
-            _sortItem(context, "Newest", FeedSort.newest),
-            _sortItem(context, "Oldest", FeedSort.oldest),
-            _sortItem(context, "Most comments", FeedSort.mostComments),
-            _sectionLabel("FILTER"),
-            GestureDetector(
-              onTap: () => onUnreadOnly(!unreadOnly),
-              behavior: HitTestBehavior.opaque,
-              child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                child: Row(children: [
-                  const Icon(Icons.mark_chat_unread_outlined,
-                      size: 18, color: Color(0xFF9AA3A0)),
-                  const SizedBox(width: 12),
-                  const Expanded(
-                      child: Text("Unread only",
-                          style: TextStyle(
-                              fontSize: 14.5, color: Color(0xFFF2F4F3)))),
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 150),
-                    width: 38,
-                    height: 22,
-                    decoration: BoxDecoration(
-                        color: unreadOnly
-                            ? const Color(0xFF1DFF8C)
-                            : const Color(0xFF23262B),
-                        borderRadius: BorderRadius.circular(11)),
-                    alignment: unreadOnly
-                        ? Alignment.centerRight
-                        : Alignment.centerLeft,
-                    padding: const EdgeInsets.all(2),
-                    child: Container(
-                        width: 18,
-                        height: 18,
-                        decoration: const BoxDecoration(
-                            shape: BoxShape.circle, color: Colors.white)),
-                  ),
-                ]),
-              ),
-            ),
-          ]),
-        ));
+            fillWidth: true,
+            child: SingleChildScrollView(
+              // Matches _SidebarNavRow's own 8px inset, so this panel's rows sit
+              // where every other sidebar's do rather than floating in from
+              // both edges.
+              padding: const EdgeInsets.fromLTRB(8, 16, 8, 16),
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 4),
+                      decoration: BoxDecoration(
+                          color: const Color(0xFF0E100E),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: const Color(0xFF1F231F))),
+                      child: TextField(
+                        controller: searchController,
+                        onChanged: onSearch,
+                        style: const TextStyle(
+                            fontSize: 14, color: Color(0xFFF2F4F3)),
+                        decoration: InputDecoration(
+                          isDense: true,
+                          prefixIcon: const Icon(Icons.search,
+                              size: 18, color: Color(0xFF5F6764)),
+                          prefixIconConstraints:
+                              const BoxConstraints(minWidth: 36),
+                          hintText: "Search posts",
+                          hintStyle: const TextStyle(
+                              fontSize: 14, color: Color(0xFF5F6764)),
+                          border: InputBorder.none,
+                          contentPadding:
+                              const EdgeInsets.symmetric(vertical: 11),
+                          suffixIcon: searchController.text.isNotEmpty
+                              ? GestureDetector(
+                                  onTap: () {
+                                    searchController.clear();
+                                    onSearch("");
+                                  },
+                                  child: const Icon(Icons.close,
+                                      size: 16, color: Color(0xFF5F6764)))
+                              : null,
+                        ),
+                      ),
+                    ),
+                    _sectionLabel("FEED"),
+                    _navItem(context, Icons.dynamic_feed_outlined, "All posts",
+                        FeedView.all),
+                    if (showBookmarks)
+                      _navItem(context, Icons.bookmark_outline, "Bookmarks",
+                          FeedView.bookmarks,
+                          trailing: "${FeedBookmarks.instance.count}"),
+                    if (showHidden)
+                      _navItem(context, Icons.visibility_off_outlined, "Hidden",
+                          FeedView.hidden,
+                          trailing: "${FeedHidden.instance.count}"),
+                    if (showDrafts)
+                      _navItem(context, Icons.edit_note_outlined, "Drafts",
+                          FeedView.drafts,
+                          trailing: "${FeedDrafts.instance.count}"),
+                    _sectionLabel("POSTS"),
+                    _actionItem(context, Icons.article_outlined, "Your Posts",
+                        onYourPosts,
+                        selected: currentTabIndex == 1),
+                    _actionItem(context, Icons.rss_feed, "Subscriptions",
+                        onSubscriptions,
+                        selected: currentTabIndex == 2),
+                    _actionItem(
+                        context, Icons.add_box_outlined, "New Post", onNewPost,
+                        selected: currentTabIndex == 3),
+                    _sectionLabel("SORT"),
+                    _sortItem(context, "Newest", FeedSort.newest),
+                    _sortItem(context, "Oldest", FeedSort.oldest),
+                    _sortItem(context, "Most comments", FeedSort.mostComments),
+                    _sectionLabel("FILTER"),
+                    GestureDetector(
+                      onTap: () => onUnreadOnly(!unreadOnly),
+                      behavior: HitTestBehavior.opaque,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 8),
+                        child: Row(children: [
+                          const Icon(Icons.mark_chat_unread_outlined,
+                              size: 18, color: Color(0xFF9AA3A0)),
+                          const SizedBox(width: 12),
+                          const Expanded(
+                              child: Text("Unread only",
+                                  style: TextStyle(
+                                      fontSize: 14.5,
+                                      color: Color(0xFFF2F4F3)))),
+                          AnimatedContainer(
+                            duration: const Duration(milliseconds: 150),
+                            width: 38,
+                            height: 22,
+                            decoration: BoxDecoration(
+                                color: unreadOnly
+                                    ? const Color(0xFF1DFF8C)
+                                    : const Color(0xFF23262B),
+                                borderRadius: BorderRadius.circular(11)),
+                            alignment: unreadOnly
+                                ? Alignment.centerRight
+                                : Alignment.centerLeft,
+                            padding: const EdgeInsets.all(2),
+                            child: Container(
+                                width: 18,
+                                height: 18,
+                                decoration: const BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: Colors.white)),
+                          ),
+                        ]),
+                      ),
+                    ),
+                  ]),
+            ));
       },
     );
   }
@@ -1555,8 +1565,8 @@ class _CappedHeightImageState extends State<_CappedHeightImage> {
             fit: BoxFit.cover,
             alignment: Alignment.topCenter,
             errorBuilder: (context, error, stackTrace) =>
-                _FeedFirstImage._errorPlaceholder(
-                    error, height: widget.maxHeight)),
+                _FeedFirstImage._errorPlaceholder(error,
+                    height: widget.maxHeight)),
       );
     });
   }
@@ -1973,10 +1983,20 @@ class _FeedComposerState extends State<_FeedComposer> {
   @override
   Widget build(BuildContext context) {
     var theme = ThemeNotifier.of(context);
-    var relayAccent =
-        theme.activePreset?.accentContainer ?? const Color(0xFF1DFF8C);
+    // Relay is the composer's one filled call-to-action, so it draws as the
+    // app's Primary button (ButtonRole.primary) -- the same role as the
+    // login screen's Unlock Wallet -- rather than as a pill of its own. It
+    // already read accentContainer, which is that role's fill, so this
+    // mainly buys it the Buttons theme area's settings and the standard
+    // hover/disabled states. The composer's own wider padding is merged in
+    // *under* the role style, so a padding set in the editor still wins.
+    var relayStyle = theme.buttonStyle(ButtonRole.primary).merge(
+        const ButtonStyle(
+            padding: WidgetStatePropertyAll(
+                EdgeInsets.symmetric(horizontal: 26, vertical: 10))));
     var relayOnAccent =
-        theme.activePreset?.onSurface ?? const Color(0xFF04130B);
+        relayStyle.foregroundColor?.resolve({}) ?? theme.colors.onSurface;
+    var inputStyle = theme.areaStyle(ThemeArea.inputAreas);
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
       decoration: const BoxDecoration(
@@ -1995,13 +2015,28 @@ class _FeedComposerState extends State<_FeedComposer> {
             AnimatedContainer(
               duration: const Duration(milliseconds: 140),
               curve: Curves.easeOut,
-              constraints:
-                  BoxConstraints(minHeight: _open ? 96 : 0),
+              constraints: BoxConstraints(minHeight: _open ? 96 : 0),
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              // The composer draws its own box rather than an
+              // InputDecoration (it holds the tool row as well as the
+              // field), so it reads the Input Areas area directly. Unset,
+              // it keeps the colours it always had.
               decoration: BoxDecoration(
-                color: const Color(0xFF0E100E),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: const Color(0xFF1F231F)),
+                color: inputStyle.resolveInputBackgroundColor(theme) ??
+                    ((theme.activePreset?.inputBackground.a ?? 0) > 0
+                        ? theme.activePreset!.inputBackground
+                        : const Color(0xFF0E100E)),
+                borderRadius: BorderRadius.circular(
+                    inputStyle.inputBorderRadius > 0
+                        ? inputStyle.inputBorderRadius
+                        : 14),
+                border: Border.all(
+                    color: inputStyle.resolveInputBorderColor(theme) ??
+                        theme.activePreset?.inputResting ??
+                        const Color(0xFF1F231F),
+                    width: inputStyle.inputBorderWidth > 0
+                        ? inputStyle.inputBorderWidth
+                        : 1),
               ),
               child: TextField(
                 controller: _ctrl,
@@ -2066,41 +2101,28 @@ class _FeedComposerState extends State<_FeedComposer> {
                         const SnackBar(content: Text("Draft saved")));
                   }),
                 const Spacer(),
-                GestureDetector(
-                  onTap: _posting ? null : _relay,
-                  child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 26, vertical: 10),
-                    decoration: BoxDecoration(
-                      // Was a hardcoded bright-green gradient with no palette
-                      // field behind it -- now uses the same "Accent
-                      // (Buttons/Toggles)" slot the rest of the app's
-                      // unthemed buttons/toggles were pinned to, so it
-                      // actually follows the active preset instead of always
-                      // being neon green.
-                      color: relayAccent,
-                      borderRadius: BorderRadius.circular(22),
-                      boxShadow: [
-                        BoxShadow(
-                          color: relayAccent.withValues(alpha: 0.30),
-                          blurRadius: 14,
-                          offset: const Offset(0, 3),
-                        ),
-                      ],
-                    ),
-                    child: _posting
-                        ? SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(
-                                strokeWidth: 2, color: relayOnAccent))
-                        : Text("Relay",
-                            style: TextStyle(
-                                fontSize: 14.5,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: 0.2,
-                                color: relayOnAccent)),
-                  ),
+                // A real button rather than a tappable Container: that's
+                // what makes it follow the Buttons theme area, fade while
+                // posting, and show the same hover as every other button.
+                // It also drops the pill's own drop-shadow glow, which no
+                // other button in the app has.
+                ElevatedButton(
+                  onPressed: _posting ? null : _relay,
+                  style: relayStyle,
+                  child: _posting
+                      ? SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: relayOnAccent))
+                      : const Text("Relay",
+                          // No color: the role's own foreground applies, so
+                          // the label follows Text Color 2 like every other
+                          // filled button.
+                          style: TextStyle(
+                              fontSize: 14.5,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.2)),
                 ),
               ]),
             ],
