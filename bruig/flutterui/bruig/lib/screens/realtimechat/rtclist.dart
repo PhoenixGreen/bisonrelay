@@ -23,14 +23,21 @@ class RealtimeChatTitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(children: [
+    var headerStyle = ThemeNotifier.of(context).areaStyle(ThemeArea.header);
+    // MainAxisSize.min so the header's Text align setting can actually
+    // move this: a max-size Row fills the whole title area whatever the
+    // AppBar is told to do with it, which pinned the text to the left even
+    // with the setting on Center or Right.
+    return Row(mainAxisSize: MainAxisSize.min, children: [
       const Txt.L("Realtime Chat"),
-      IconButton(
-          onPressed: () {
-            Navigator.of(context).pushNamed(CreateRealtimeChatScreen.routeName);
-          },
-          icon: const Icon(Icons.add_box),
-          tooltip: "Create new session"),
+      if (!headerStyle.hideHeaderNewSession)
+        IconButton(
+            onPressed: () {
+              Navigator.of(context)
+                  .pushNamed(CreateRealtimeChatScreen.routeName);
+            },
+            icon: const Icon(Icons.add_box),
+            tooltip: "Create new session"),
     ]);
   }
 }

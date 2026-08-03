@@ -308,25 +308,30 @@ class _FeedScreenState extends State<FeedScreen> {
 
     return ScreenWithChatSideMenu(
         client,
-        !isScreenSmall
-            ? SecondarySideMenuLayout(
-                // Matches ln_management.dart/manage_content_screen.dart's
-                // width -- left unset here it fell back to
-                // SecondarySideMenu's 120 default, too narrow for
-                // "Subscriptions" to fit on one line.
-                storageKey: "feed",
-                items: feedBarItems(onItemChanged, tabIndex),
-                // Detail views that don't need the tab list: reading a
-                // single post/user-post (showPost set) or composing a new
-                // one (tabIndex 3). hasArgs alone only reflects the route's
-                // *initial* navigation arguments, so it misses these once
-                // the user navigates within the already-mounted screen.
-                isDetail: hasArgs || showPost != null || tabIndex == 3,
-                // Distinguishes one detail view from the next (e.g. post A
-                // vs. post B) so a manual reopen of the submenu doesn't
-                // leak across into an unrelated detail view.
-                detailKey: showPost ?? tabIndex,
-                content: activeTab())
-            : activeTab());
+        // Deliberately not short-circuited to a bare activeTab() on a small
+        // screen: below SecondarySideMenuLayout's collapse width it already
+        // renders content-only, but it also hands its item list to
+        // CollapsedSidebarModel on the way -- which is what gives the mobile
+        // navigation's re-tap gesture (see the Mobile theme area) something to
+        // slide in, and what the mobile header's three-dot menu used to be the
+        // only route to.
+        SecondarySideMenuLayout(
+            // Matches ln_management.dart/manage_content_screen.dart's
+            // width -- left unset here it fell back to
+            // SecondarySideMenu's 120 default, too narrow for
+            // "Subscriptions" to fit on one line.
+            storageKey: "feed",
+            items: feedBarItems(onItemChanged, tabIndex),
+            // Detail views that don't need the tab list: reading a
+            // single post/user-post (showPost set) or composing a new
+            // one (tabIndex 3). hasArgs alone only reflects the route's
+            // *initial* navigation arguments, so it misses these once
+            // the user navigates within the already-mounted screen.
+            isDetail: hasArgs || showPost != null || tabIndex == 3,
+            // Distinguishes one detail view from the next (e.g. post A
+            // vs. post B) so a manual reopen of the submenu doesn't
+            // leak across into an unrelated detail view.
+            detailKey: showPost ?? tabIndex,
+            content: activeTab()));
   }
 }

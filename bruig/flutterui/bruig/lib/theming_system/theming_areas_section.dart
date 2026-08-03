@@ -19,6 +19,7 @@ import 'package:bruig/theming_system/theming_area_header.dart';
 import 'package:bruig/theming_system/theming_area_filemanager.dart';
 import 'package:bruig/theming_system/theming_area_inputs.dart';
 import 'package:bruig/theming_system/theming_area_master.dart';
+import 'package:bruig/theming_system/theming_area_mobile.dart';
 import 'package:bruig/theming_system/theming_area_navbar.dart';
 import 'package:bruig/theming_system/theming_area_realtimechat.dart';
 import 'package:bruig/theming_system/theming_area_settings_pages.dart';
@@ -53,6 +54,7 @@ const List<ThemeArea> _editableAreas = [
   ThemeArea.realtimeChat,
   ThemeArea.manageContent,
   ThemeArea.settingsPages,
+  ThemeArea.mobile,
 ];
 
 // _framedAreas are the areas that carry a background, border and spacing of
@@ -340,6 +342,7 @@ List<Widget> _areaEditor(AreaEditorContext ctx) => switch (ctx.area) {
       ThemeArea.buttons => buttonsAreaEditor(ctx),
       ThemeArea.manageContent => fileManagerAreaEditor(ctx),
       ThemeArea.settingsPages => settingsPagesAreaEditor(ctx),
+      ThemeArea.mobile => mobileAreaEditor(ctx),
       _ => const [],
     };
 

@@ -2,7 +2,6 @@ import 'package:bruig/components/address_book_bar.dart';
 import 'package:bruig/components/containers.dart';
 import 'package:bruig/components/text.dart';
 import 'package:bruig/models/client.dart';
-import 'package:bruig/models/uistate.dart';
 import 'package:bruig/screens/chat/new_gc_screen.dart';
 import 'package:bruig/screens/chat/new_message_screen.dart';
 import 'package:bruig/screens/contacts_msg_times.dart';
@@ -54,9 +53,13 @@ class _AddressBookScreenState extends State<AddressBookScreen> {
 
   @override
   Widget build(BuildContext context) {
-    bool isScreenSmall = checkIsScreenSmall(context);
-    if (isScreenSmall) return activeTab();
-
+    // Deliberately not short-circuited to a bare activeTab() on a small
+    // screen: below SecondarySideMenuLayout's collapse width it already
+    // renders content-only, but it also hands its item list to
+    // CollapsedSidebarModel on the way -- which is what gives the mobile
+    // navigation's re-tap gesture (see the Mobile theme area) something to
+    // slide in, and what the mobile header's three-dot menu used to be the
+    // only route to.
     return Consumer<ConnStateModel>(
       builder: (context, connState, _) => SecondarySideMenuLayout(
         storageKey: "addressBook",

@@ -178,6 +178,19 @@ final List<MainMenuItem> mainMenu = [
   ),
 ];
 
+// defaultMobileNavRoutes is what the narrow-screen bottom navigation
+// carries until a theme says otherwise (see AreaStyle.mobileNavRoutes) --
+// the four destinations that earn a permanent slot on a phone. The bar was
+// a hardcoded three (Chat, Feed, Pages) before it was configurable;
+// Settings joins them because it's the only way to reach the rest without
+// the sidebar a phone doesn't have.
+final List<String> defaultMobileNavRoutes = [
+  ChatsScreen.routeName,
+  FeedScreen.routeName,
+  ViewPageScreen.routeName,
+  SettingsScreen.routeName,
+];
+
 class MainMenuModel extends ChangeNotifier {
   // A mutable copy of the static mainMenu list: dynamic-wasm plugins (see
   // DynPluginsModel) register/unregister their own nav item here at

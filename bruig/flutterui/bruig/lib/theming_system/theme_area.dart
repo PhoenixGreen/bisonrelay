@@ -43,6 +43,13 @@ enum ThemeArea {
   // are kept only so a preset saved before that can still be read and
   // migrated across (see ThemePreset.fromJson); nothing renders from them.
   settingsPages,
+  // mobile is the narrow-screen layout -- chiefly its bottom navigation
+  // bar, which is the nav bar's counterpart there. It carries no
+  // background/border of its own (the bar's own colors come from the
+  // palette, like the nav bar's); it's an area so that what the mobile
+  // navigation contains and how it behaves travels with a theme like every
+  // other layout decision.
+  mobile,
 }
 
 const Map<ThemeArea, String> _themeAreaLabels = {
@@ -65,6 +72,7 @@ const Map<ThemeArea, String> _themeAreaLabels = {
   ThemeArea.stats: "Stats",
   ThemeArea.logs: "Logs",
   ThemeArea.settingsPages: "Settings Pages",
+  ThemeArea.mobile: "Mobile",
 };
 
 String themeAreaLabel(ThemeArea area) => _themeAreaLabels[area]!;

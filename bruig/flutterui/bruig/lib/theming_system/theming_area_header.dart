@@ -14,6 +14,36 @@ List<Widget> headerAreaEditor(AreaEditorContext ctx) => [
         labelOf: headerPositionLabel,
         onChanged: (p) => ctx.setStyle((s) => s.copyWith(headerPosition: p)),
       ),
+      ctx.note("Default (Top) spans the whole window; Content spans only "
+          "the content area, beside the nav bar. Both carry the same "
+          "elements -- switch the ones you don't want off below."),
+      const SizedBox(height: 12),
+      const Txt("Elements"),
+      ctx.toggle("App icon",
+          subtitle: "The Bison Relay icon, which opens About",
+          value: !ctx.style.hideHeaderLogo,
+          onChanged: (v) =>
+              ctx.setStyle((s) => s.copyWith(hideHeaderLogo: !v))),
+      ctx.toggle("Title text",
+          subtitle: "The current page's name",
+          value: !ctx.style.hideHeaderTitle,
+          onChanged: (v) =>
+              ctx.setStyle((s) => s.copyWith(hideHeaderTitle: !v))),
+      ctx.toggle("New post button",
+          value: !ctx.style.hideHeaderNewPost,
+          onChanged: (v) =>
+              ctx.setStyle((s) => s.copyWith(hideHeaderNewPost: !v))),
+      ctx.toggle("Call button",
+          subtitle: "Beside a one-on-one chat's name",
+          value: !ctx.style.hideHeaderCallIcon,
+          onChanged: (v) =>
+              ctx.setStyle((s) => s.copyWith(hideHeaderCallIcon: !v))),
+      ctx.toggle("New session button",
+          subtitle: "On the Realtime Chat page",
+          value: !ctx.style.hideHeaderNewSession,
+          onChanged: (v) =>
+              ctx.setStyle((s) => s.copyWith(hideHeaderNewSession: !v))),
+      ctx.note("The chat search button is the Chat area's Search setting."),
       const SizedBox(height: 12),
       // Edited here, but it replaces the Bison Relay icon everywhere the
       // app draws it -- the header, the nav bar and the About button --

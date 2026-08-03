@@ -171,6 +171,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.initState();
     loadSettings();
     client.connState.addListener(connStateChanged);
+    client.ui.settingsNav.addListener(settingsNavChanged);
+  }
+
+  // settingsPage seeds itself from settingsNav once, so anything that
+  // changes the page from *outside* this screen -- the header's self-avatar
+  // sending you to Account (see OverviewScreen.goToSelf) -- would otherwise
+  // set the model and leave the screen showing the page it was already on.
+  void settingsNavChanged() {
+    var page = client.ui.settingsNav.page;
+    if (page == settingsPage) return;
+    setState(() => settingsPage = page);
   }
 
   @override
@@ -179,6 +190,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (oldWidget.client != widget.client) {
       oldWidget.client.connState.removeListener(connStateChanged);
       client.connState.addListener(connStateChanged);
+      oldWidget.client.ui.settingsNav.removeListener(settingsNavChanged);
+      client.ui.settingsNav.addListener(settingsNavChanged);
     }
   }
 
@@ -187,6 +200,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     WidgetsBinding.instance.addPostFrameCallback(
         (_) => client.ui.settingsTitle.title = "Settings");
     client.connState.removeListener(connStateChanged);
+    client.ui.settingsNav.removeListener(settingsNavChanged);
     super.dispose();
   }
 
@@ -292,28 +306,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
             builder: (context, client, child) => PayStatsScreen(client));
         break;
       case "Logs":
-        settingsView =
-            Consumer<LogModel>(builder: (context, log, child) => LogScreen(log));
+        settingsView = Consumer<LogModel>(
+            builder: (context, log, child) => LogScreen(log));
         break;
       default:
         break;
     }
-    if (isScreenSmall) {
-      return Scaffold(
-          body: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 3),
-              child: settingsView));
-    }
-
-    // Desktop-sized version. The left nav is a plain SecondarySideMenuLayout
-    // like every other screen's, so it picks up the Sidebar theme area's own
-    // settings (icons, rounded rows, visibility) and sizes itself to its own
-    // labels -- it used to have a second, near-duplicate implementation of
-    // its own behind a "Settings page restyle" toggle, which those settings
+    // The left nav is a plain SecondarySideMenuLayout like every other
+    // screen's, so it picks up the Sidebar theme area's own settings
+    // (icons, rounded rows, visibility) and sizes itself to its own labels
+    // -- it used to have a second, near-duplicate implementation of its own
+    // behind a "Settings page restyle" toggle, which those settings
     // supersede.
+    //
+    // A small screen used to return the content bare, which meant Settings
+    // never handed a sidebar to CollapsedSidebarModel: re-tapping it in the
+    // mobile navigation opened whichever page had registered one last, not
+    // its own. Below the collapse width this still renders content-only --
+    // the "main" list of destinations is the page there -- but the list
+    // below is now also what the re-tap slides in.
     return SecondarySideMenuLayout(
       storageKey: "settings",
-      content: settingsView,
+      content: isScreenSmall
+          ? Container(
+              padding: const EdgeInsets.symmetric(horizontal: 3),
+              child: settingsView)
+          : settingsView,
       items: [
         SidebarNavItem(
           icon: Icons.person_outline,
@@ -416,8 +434,7 @@ class MainSettingsScreen extends StatelessWidget {
                     builder: (context, connState, child) => Material(
                         type: MaterialType.transparency,
                         child: ListTile(
-                            tileColor: connState.state.state ==
-                                    connStateOffline
+                            tileColor: connState.state.state == connStateOffline
                                 ? Colors.red
                                 : (connState.checkWalletErr ?? "") != ""
                                     ? Colors.amber[800]
