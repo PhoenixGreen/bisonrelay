@@ -78,8 +78,7 @@ class _ChatHeadingWState extends State<_ChatHeadingW> {
   String _cleanEmbeds(String src) {
     return src.replaceAllMapped(RegExp(r'--embed\[(.*?)\]--'), (m) {
       final attrs = m.group(1) ?? '';
-      final type =
-          RegExp(r'type=([^,\]]+)').firstMatch(attrs)?.group(1) ?? '';
+      final type = RegExp(r'type=([^,\]]+)').firstMatch(attrs)?.group(1) ?? '';
       if (type.startsWith('image/')) return 'Image';
       if (type.startsWith('audio/')) return 'Audio note';
       if (type.startsWith('video/')) return 'Video';
@@ -171,9 +170,15 @@ class _ChatHeadingWState extends State<_ChatHeadingW> {
   // its background (0xFF171717): the hover/ambient glow sits about 5% of
   // lightness above it, its far edge ~3.5% below, the top hairline ~9%
   // above, and a selected row's fill ~3% below.
-  Widget _wrapSelected(bool isActive, double radius, Color accent,
-      double glowIntensity, bool topHighlight, Color background,
-      Color selectedBackground, Widget tile) {
+  Widget _wrapSelected(
+      bool isActive,
+      double radius,
+      Color accent,
+      double glowIntensity,
+      bool topHighlight,
+      Color background,
+      Color selectedBackground,
+      Widget tile) {
     // ListTile.tileColor/selectedTileColor need a nearby Material ancestor
     // to paint into and to render ink splashes -- the ClipRRect below
     // otherwise leaves them without one. MaterialType.transparency paints
@@ -209,8 +214,8 @@ class _ChatHeadingWState extends State<_ChatHeadingW> {
                   left: 0,
                   right: 0,
                   child: IgnorePointer(
-                    child: Container(
-                        height: 1, color: _shade(background, 0.09)),
+                    child:
+                        Container(height: 1, color: _shade(background, 0.09)),
                   ),
                 ),
             ],
@@ -283,8 +288,9 @@ class _ChatHeadingWState extends State<_ChatHeadingW> {
     // read: they keep Material's own selectedTileColor from the app theme
     // (a distinctly lighter grey), which is what the app has always shown
     // when no preset is active.
-    var selectedBackgroundColor = chatStyle.resolveChatListSelectedColor(theme) ??
-        theme.activePreset?.speechBackgroundSent;
+    var selectedBackgroundColor =
+        chatStyle.resolveChatListSelectedColor(theme) ??
+            theme.activePreset?.speechBackgroundSent;
     var glowIntensity = chatStyle.chatListGlowIntensity ?? 1.0;
     var topHighlight = chatStyle.chatListTopHighlight;
     var isActive = chat.active;
@@ -613,7 +619,16 @@ class _ActiveChatsListMenuState extends State<ActiveChatsListMenu>
   }
 
   // Returns a callback to make chat c active.
-  void makeActive(ChatModel? c) => {client.active = c};
+  void makeActive(ChatModel? c) {
+    client.active = c;
+    // Picking a chat out of the collapsed drawer puts it away -- otherwise
+    // it stays covering the very conversation it was just asked for. The
+    // fixed-item sidebars get this from SecondarySideMenuLayout's
+    // closeOnTap wrapper, which can't reach into a dynamic `list:` like
+    // this one; this is that same behaviour, applied where the taps
+    // actually are.
+    client.ui.collapsedSidebar.close();
+  }
 
   void showSubMenu() => client.ui.chatSideMenuActive.chat = client.active;
 
@@ -709,8 +724,13 @@ class _ActiveChatsListMenuState extends State<ActiveChatsListMenu>
   Widget build(BuildContext context) {
     bool isScreenSmall = checkIsScreenSmall(context);
 
-    // Mobile version, display list of chats in entire screen.
+    // Mobile version: the list of chats is the whole page, so there's no
+    // sidebar to hand to the drawer -- and saying so matters, because the
+    // drawer holds whatever was registered last until someone takes it
+    // back. Without this, re-tapping Chat in the mobile navigation (see the
+    // Mobile theme area) slid in the previous page's sidebar.
     if (isScreenSmall) {
+      client.ui.collapsedSidebar.unregister();
       return Container(
         padding: const EdgeInsets.all(0),
         child: Stack(
@@ -786,8 +806,8 @@ class _ActiveChatsListMenuState extends State<ActiveChatsListMenu>
                   onTap: gotoNewMessage,
                   child: Container(
                     margin: const EdgeInsets.fromLTRB(10, 12, 10, 6),
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 11),
                     decoration: BoxDecoration(
                       color: const Color(0xFF0D0E0D),
                       borderRadius: BorderRadius.circular(12),

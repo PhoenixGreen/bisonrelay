@@ -6,7 +6,6 @@ import 'package:bruig/components/text.dart';
 import 'package:bruig/components/collapsable.dart';
 import 'package:bruig/components/copyable.dart';
 import 'package:bruig/models/client.dart';
-import 'package:bruig/models/uistate.dart';
 import 'package:bruig/models/wallet.dart';
 import 'package:bruig/screens/ln/accounts.dart';
 import 'package:bruig/screens/ln/backups.dart';
@@ -99,16 +98,18 @@ class _LNScreenState extends State<LNScreen> {
 
   @override
   Widget build(BuildContext context) {
-    bool isScreenSmall = checkIsScreenSmall(context);
     if (ModalRoute.of(context)!.settings.arguments != null) {
       final args = ModalRoute.of(context)!.settings.arguments as PageTabs;
       tabIndex = args.tabIndex;
     }
 
-    if (isScreenSmall) {
-      return activeTab();
-    }
-
+    // Deliberately not short-circuited to a bare activeTab() on a small
+    // screen: below SecondarySideMenuLayout's collapse width it already
+    // renders content-only, but it also hands its item list to
+    // CollapsedSidebarModel on the way -- which is what gives the mobile
+    // navigation's re-tap gesture (see the Mobile theme area) something to
+    // slide in, and what the mobile header's three-dot menu used to be the
+    // only route to.
     return SecondarySideMenuLayout(
       storageKey: "lnManagement",
       items: lnManagementBarItems(onItemChanged, tabIndex),

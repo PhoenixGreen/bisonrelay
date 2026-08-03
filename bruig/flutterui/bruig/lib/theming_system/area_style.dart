@@ -145,6 +145,24 @@ class AreaStyle {
   // icon theme gives that button.
   final double? loginLogoSize;
 
+  // The header's individual elements, each switchable off on its own. They
+  // apply wherever the header renders -- HeaderPosition.top and .content
+  // draw the same set of elements, so which of them appear is this
+  // decision rather than a side effect of where the bar sits. Stored as
+  // "hide" flags so that false (everything visible, which is what the
+  // header always looked like before these existed) stays out of the saved
+  // JSON entirely.
+  //
+  // hideHeaderTitle is the same outcome as ContentAlign.hidden, which
+  // predates it and still works; it's here too so the title switches off
+  // beside the other elements rather than only from the alignment
+  // dropdown.
+  final bool hideHeaderLogo; // The app icon / "About Bison Relay" button.
+  final bool hideHeaderTitle; // The page title text.
+  final bool hideHeaderNewPost; // The "Create a new post" icon.
+  final bool hideHeaderCallIcon; // The chat "call" icon.
+  final bool hideHeaderNewSession; // Realtime Chat's "Create new session".
+
   // Hover text, in two halves (master area; see components/tooltips.dart).
   // hideTooltips drops the labels on controls a user already recognises --
   // the avatars, the post/attach icons, the app icon -- which read as
@@ -387,6 +405,80 @@ class AreaStyle {
   final bool feedStripMarkdown; // Renders post bodies as plain text --
   // headers/bold/italic/strikethrough all render as normal body text.
 
+  // -------------------------------------------------------------------------
+  // Mobile -- see theming_area_mobile.dart.
+  // -------------------------------------------------------------------------
+
+  // mobileNavRoutes is which main-menu destinations the narrow-screen
+  // bottom navigation carries, by route name. Null -- the default -- means
+  // defaultMobileNavRoutes (Chat, Feed, Pages, Settings), which is also
+  // what an unknown route name in a saved list resolves to nothing for: a
+  // list from a build (or a plugin) that had a destination this one
+  // doesn't just carries one item fewer.
+  //
+  // Only *which* items, never their order or their labels -- both of those
+  // come from the menu itself (Settings > Appearance > Menu), so the
+  // mobile bar and the desktop nav bar can't drift into disagreeing about
+  // what a destination is called or where it sits.
+  final List<String>? mobileNavRoutes;
+
+  // mobileTapOpensSidebar makes re-tapping the destination you're already
+  // on open that page's own sidebar, sliding in from the left -- the same
+  // drawer, and the same gesture, the desktop nav bar already uses when
+  // the window is too narrow for a sidebar column (see
+  // CollapsedSidebarModel and Sidebar.switchScreen). It also takes the
+  // three-dot page menu out of the mobile header: with the sidebar a
+  // re-tap away, that button is a second route to the same place.
+  final bool mobileTapOpensSidebar;
+
+  // mobileNavHideLabels drops the destination names from the bottom bar,
+  // leaving the icons alone -- which also lets more of them fit before it
+  // has to start scrolling. The bar shortens to suit rather than leaving
+  // the space the labels used to take.
+  final bool mobileNavHideLabels;
+
+  // mobileSidebarAvatarCloses turns the right sidebar's avatar -- the
+  // profile / manage-group-chat panel's big one at the top -- into a button
+  // that closes the panel, in place of the context menu it opens by
+  // default. That menu's entries are the same ones already listed down the
+  // panel below it, and on a phone the panel is the whole screen with no
+  // close button in its corner (the desktop layout's one is hidden there),
+  // so a tap that dismisses it is worth more than a second route to the
+  // same commands.
+  final bool mobileSidebarAvatarCloses;
+
+  // mobileAvatarOpensProfile sends the header's self-avatar to the Account
+  // page -- your own profile: avatar, nick and identity -- rather than to
+  // the top of Settings. Only where that avatar already goes somewhere;
+  // it's the last step of the header's back chain, so it still unwinds an
+  // open chat or panel first (see OverviewScreen's leading widget).
+  final bool mobileAvatarOpensProfile;
+
+  // mobileHideBackButton drops the header's back arrow, leaving the
+  // self-avatar in its place at all times. The arrow retraces exactly what
+  // the navigation bar's re-tap gesture does (see mobileTapOpensSidebar),
+  // so with that on it's a second control for the same job in the corner
+  // the avatar wants.
+  final bool mobileHideBackButton;
+
+  // mobileHideSelfAvatar takes your own avatar out of the header corner
+  // altogether. Independent of mobileHideBackButton: with both off the
+  // corner alternates between the two as it always has, and with both on
+  // it's empty and the title starts at the screen edge.
+  //
+  // The header also drops it on its own, toggle or not, wherever the title
+  // already carries an avatar -- a conversation on a phone puts the other
+  // party's there (see ChatsScreenTitle), and two avatars side by side in
+  // one header is one too many.
+  final bool mobileHideSelfAvatar;
+
+  // mobileAvatarSecondTapCloses makes the header avatar undo its own last
+  // tap: it closes the right sidebar if that's open, and otherwise leaves
+  // the Account page it opened, returning to whichever screen you were on
+  // when you tapped it. Without this the avatar only ever goes one way,
+  // and getting back out is the navigation bar's job.
+  final bool mobileAvatarSecondTapCloses;
+
   const AreaStyle({
     this.mode = AreaBackgroundMode.token,
     this.solidColor,
@@ -422,6 +514,11 @@ class AreaStyle {
     this.logoPath,
     this.logoSize,
     this.loginLogoSize,
+    this.hideHeaderLogo = false,
+    this.hideHeaderTitle = false,
+    this.hideHeaderNewPost = false,
+    this.hideHeaderCallIcon = false,
+    this.hideHeaderNewSession = false,
     this.hideTooltips = false,
     this.hideHelpTooltips = false,
     this.hideFilePaths = false,
@@ -494,6 +591,14 @@ class AreaStyle {
     this.feedLinksMode = FeedLinksMode.standard,
     this.feedTextLimit = 0,
     this.feedStripMarkdown = false,
+    this.mobileNavRoutes,
+    this.mobileTapOpensSidebar = false,
+    this.mobileNavHideLabels = false,
+    this.mobileSidebarAvatarCloses = false,
+    this.mobileAvatarOpensProfile = false,
+    this.mobileHideBackButton = false,
+    this.mobileHideSelfAvatar = false,
+    this.mobileAvatarSecondTapCloses = false,
   });
 
   AreaStyle copyWith({
@@ -544,6 +649,11 @@ class AreaStyle {
     bool clearLogoPath = false,
     double? logoSize,
     double? loginLogoSize,
+    bool? hideHeaderLogo,
+    bool? hideHeaderTitle,
+    bool? hideHeaderNewPost,
+    bool? hideHeaderCallIcon,
+    bool? hideHeaderNewSession,
     bool? hideTooltips,
     bool? hideHelpTooltips,
     bool? hideFilePaths,
@@ -643,6 +753,15 @@ class AreaStyle {
     FeedLinksMode? feedLinksMode,
     double? feedTextLimit,
     bool? feedStripMarkdown,
+    List<String>? mobileNavRoutes,
+    bool clearMobileNavRoutes = false,
+    bool? mobileTapOpensSidebar,
+    bool? mobileNavHideLabels,
+    bool? mobileSidebarAvatarCloses,
+    bool? mobileAvatarOpensProfile,
+    bool? mobileHideBackButton,
+    bool? mobileHideSelfAvatar,
+    bool? mobileAvatarSecondTapCloses,
   }) =>
       AreaStyle(
         mode: mode ?? this.mode,
@@ -692,6 +811,11 @@ class AreaStyle {
         logoPath: clearLogoPath ? null : (logoPath ?? this.logoPath),
         logoSize: logoSize ?? this.logoSize,
         loginLogoSize: loginLogoSize ?? this.loginLogoSize,
+        hideHeaderLogo: hideHeaderLogo ?? this.hideHeaderLogo,
+        hideHeaderTitle: hideHeaderTitle ?? this.hideHeaderTitle,
+        hideHeaderNewPost: hideHeaderNewPost ?? this.hideHeaderNewPost,
+        hideHeaderCallIcon: hideHeaderCallIcon ?? this.hideHeaderCallIcon,
+        hideHeaderNewSession: hideHeaderNewSession ?? this.hideHeaderNewSession,
         hideTooltips: hideTooltips ?? this.hideTooltips,
         hideHelpTooltips: hideHelpTooltips ?? this.hideHelpTooltips,
         hideFilePaths: hideFilePaths ?? this.hideFilePaths,
@@ -821,6 +945,20 @@ class AreaStyle {
         feedLinksMode: feedLinksMode ?? this.feedLinksMode,
         feedTextLimit: feedTextLimit ?? this.feedTextLimit,
         feedStripMarkdown: feedStripMarkdown ?? this.feedStripMarkdown,
+        mobileNavRoutes: clearMobileNavRoutes
+            ? null
+            : (mobileNavRoutes ?? this.mobileNavRoutes),
+        mobileTapOpensSidebar:
+            mobileTapOpensSidebar ?? this.mobileTapOpensSidebar,
+        mobileNavHideLabels: mobileNavHideLabels ?? this.mobileNavHideLabels,
+        mobileSidebarAvatarCloses:
+            mobileSidebarAvatarCloses ?? this.mobileSidebarAvatarCloses,
+        mobileAvatarOpensProfile:
+            mobileAvatarOpensProfile ?? this.mobileAvatarOpensProfile,
+        mobileHideBackButton: mobileHideBackButton ?? this.mobileHideBackButton,
+        mobileHideSelfAvatar: mobileHideSelfAvatar ?? this.mobileHideSelfAvatar,
+        mobileAvatarSecondTapCloses:
+            mobileAvatarSecondTapCloses ?? this.mobileAvatarSecondTapCloses,
       );
 
   // toJson omits every field still at its default, so a preset's saved
@@ -868,6 +1006,11 @@ class AreaStyle {
         if (logoPath != null) "logoPath": logoPath,
         if (logoSize != null) "logoSize": logoSize,
         if (loginLogoSize != null) "loginLogoSize": loginLogoSize,
+        if (hideHeaderLogo) "hideHeaderLogo": hideHeaderLogo,
+        if (hideHeaderTitle) "hideHeaderTitle": hideHeaderTitle,
+        if (hideHeaderNewPost) "hideHeaderNewPost": hideHeaderNewPost,
+        if (hideHeaderCallIcon) "hideHeaderCallIcon": hideHeaderCallIcon,
+        if (hideHeaderNewSession) "hideHeaderNewSession": hideHeaderNewSession,
         if (hideTooltips) "hideTooltips": hideTooltips,
         if (hideHelpTooltips) "hideHelpTooltips": hideHelpTooltips,
         if (hideFilePaths) "hideFilePaths": hideFilePaths,
@@ -982,6 +1125,21 @@ class AreaStyle {
           "feedLinksMode": feedLinksMode.name,
         if (feedTextLimit != 0) "feedTextLimit": feedTextLimit,
         if (feedStripMarkdown) "feedStripMarkdown": feedStripMarkdown,
+        // An empty list is a real setting -- "no mobile navigation at all"
+        // -- and has to survive a save, so this writes whenever the list
+        // isn't null rather than whenever it isn't empty.
+        if (mobileNavRoutes != null) "mobileNavRoutes": mobileNavRoutes,
+        if (mobileTapOpensSidebar)
+          "mobileTapOpensSidebar": mobileTapOpensSidebar,
+        if (mobileNavHideLabels) "mobileNavHideLabels": mobileNavHideLabels,
+        if (mobileSidebarAvatarCloses)
+          "mobileSidebarAvatarCloses": mobileSidebarAvatarCloses,
+        if (mobileAvatarOpensProfile)
+          "mobileAvatarOpensProfile": mobileAvatarOpensProfile,
+        if (mobileHideBackButton) "mobileHideBackButton": mobileHideBackButton,
+        if (mobileHideSelfAvatar) "mobileHideSelfAvatar": mobileHideSelfAvatar,
+        if (mobileAvatarSecondTapCloses)
+          "mobileAvatarSecondTapCloses": mobileAvatarSecondTapCloses,
       };
 
   factory AreaStyle.fromJson(Map<String, dynamic> j) {
@@ -1045,6 +1203,11 @@ class AreaStyle {
       logoPath: j["logoPath"],
       logoSize: number("logoSize"),
       loginLogoSize: number("loginLogoSize"),
+      hideHeaderLogo: flag("hideHeaderLogo"),
+      hideHeaderTitle: flag("hideHeaderTitle"),
+      hideHeaderNewPost: flag("hideHeaderNewPost"),
+      hideHeaderCallIcon: flag("hideHeaderCallIcon"),
+      hideHeaderNewSession: flag("hideHeaderNewSession"),
       hideTooltips: flag("hideTooltips"),
       hideHelpTooltips: flag("hideHelpTooltips"),
       hideFilePaths: flag("hideFilePaths"),
@@ -1061,7 +1224,8 @@ class AreaStyle {
       // Any role name this build doesn't know (written by a newer one) is
       // skipped rather than throwing, same as the areas map itself.
       buttonStyles: {
-        for (var e in (j["buttonStyles"] as Map<String, dynamic>? ?? {}).entries)
+        for (var e
+            in (j["buttonStyles"] as Map<String, dynamic>? ?? {}).entries)
           if (ButtonRole.values.where((r) => r.name == e.key).firstOrNull
               case var role?)
             role: ButtonAreaStyle.fromJson(e.value as Map<String, dynamic>),
@@ -1164,6 +1328,16 @@ class AreaStyle {
           FeedLinksMode.values, j["feedLinksMode"], FeedLinksMode.standard),
       feedTextLimit: number("feedTextLimit") ?? 0,
       feedStripMarkdown: flag("feedStripMarkdown"),
+      mobileNavRoutes: (j["mobileNavRoutes"] as List<dynamic>?)
+          ?.map((e) => e.toString())
+          .toList(),
+      mobileTapOpensSidebar: flag("mobileTapOpensSidebar"),
+      mobileNavHideLabels: flag("mobileNavHideLabels"),
+      mobileSidebarAvatarCloses: flag("mobileSidebarAvatarCloses"),
+      mobileAvatarOpensProfile: flag("mobileAvatarOpensProfile"),
+      mobileHideBackButton: flag("mobileHideBackButton"),
+      mobileHideSelfAvatar: flag("mobileHideSelfAvatar"),
+      mobileAvatarSecondTapCloses: flag("mobileAvatarSecondTapCloses"),
     );
   }
 

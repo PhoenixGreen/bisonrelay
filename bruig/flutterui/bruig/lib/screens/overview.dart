@@ -3,7 +3,7 @@ import 'dart:math' as math;
 
 import 'package:bruig/components/clipper.dart';
 import 'package:bruig/components/containers.dart';
-import 'package:bruig/components/indicator.dart';
+import 'package:bruig/components/mobile_nav_bar.dart';
 import 'package:bruig/components/interactive_avatar.dart';
 import 'package:bruig/components/page_context_menu.dart';
 import 'package:bruig/components/route_error.dart';
@@ -24,7 +24,6 @@ import 'package:bruig/screens/feed.dart';
 import 'package:bruig/screens/feed/post_content.dart';
 import 'package:bruig/notification_service.dart';
 import 'package:bruig/screens/settings.dart';
-import 'package:bruig/screens/viewpage_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:golib_plugin/definitions.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
@@ -169,14 +168,8 @@ class _MainAppBar extends StatefulWidget {
   final RealtimeChatModel rtc;
   final MainMenuModel mainMenu;
   final GlobalKey<NavigatorState> navKey;
-  // contentMode is true when HeaderPosition.content is selected: the header
-  // sits above just the content area (not the sidebar), so the app-wide
-  // logo/about-button and "new post" button (which belong to the global
-  // chrome) are omitted -- only the title remains.
-  final bool contentMode;
   const _MainAppBar(
-      this.client, this.feed, this.rtc, this.mainMenu, this.navKey,
-      {this.contentMode = false});
+      this.client, this.feed, this.rtc, this.mainMenu, this.navKey);
 
   @override
   State<_MainAppBar> createState() => __MainAppBarState();
@@ -204,6 +197,92 @@ class __MainAppBarState extends State<_MainAppBar>
 
   void goToAbout(BuildContext context) {
     Navigator.of(context, rootNavigator: true).pushNamed("/about");
+  }
+
+  // Where the header's self-avatar was tapped from, so a second tap can go
+  // back to it (see AreaStyle.mobileAvatarSecondTapCloses). Both the route
+  // and, when that route was Settings, the page within it -- tapping the
+  // avatar while already in Settings moves between pages rather than
+  // between screens, and "back" has to mean the same thing either way.
+  // Null until the avatar has actually taken you somewhere.
+  String? _returnRoute;
+  String? _returnSettingsPage;
+
+  // _seenRoute/_selfNavPending invalidate that memory when the page changes
+  // under it. Navigating by any other means -- the bottom bar, the back
+  // arrow -- has to clear it: without that, arriving at Settings from the
+  // navigation bar would look exactly like the avatar having brought you
+  // there, and the next tap would jump to wherever it was last tapped from.
+  //
+  // The flag is needed because the avatar's own navigation lands the same
+  // way: overviewActivePath.route is updated a tick after the route is
+  // pushed (see OverviewScreen's route generator), so the change is only
+  // observed here on a later build, by which time nothing else says who
+  // caused it.
+  String _seenRoute = "";
+  bool _selfNavPending = false;
+
+  void _noteRoute(String route) {
+    if (route == _seenRoute) return;
+    _seenRoute = route;
+    if (_selfNavPending) {
+      _selfNavPending = false;
+      return;
+    }
+    _returnRoute = null;
+    _returnSettingsPage = null;
+  }
+
+  // goToSelf is where the header's self-avatar leads: your own account --
+  // avatar, name and identity. Settings otherwise opens on whichever page
+  // you left it on (SettingsScreen follows settingsNav), so this is a
+  // matter of naming the page as well as the screen. Already being *in*
+  // Settings is the case that needs it most: there the screen doesn't
+  // change at all, only the page.
+  void goToSelf(bool account) {
+    var route = client.ui.overviewActivePath.route;
+    var page = client.ui.settingsNav.page;
+    var target = account ? "Account" : page;
+    // Already on exactly what the avatar leads to; nothing to remember and
+    // nothing to do.
+    if (route == SettingsScreen.routeName && page == target) return;
+
+    _returnRoute = route;
+    _returnSettingsPage = page;
+    // Only a real route change needs claiming; moving between Settings
+    // pages leaves the route where it is.
+    if (route != SettingsScreen.routeName) _selfNavPending = true;
+    if (account) {
+      client.ui.settingsNav.page = "Account";
+      client.ui.settingsTitle.title = "Account";
+    }
+    switchScreen(SettingsScreen.routeName);
+  }
+
+  // canLeaveSelf is "the avatar put you here, so it can take you back".
+  bool get canLeaveSelf =>
+      _returnRoute != null &&
+      client.ui.overviewActivePath.route == SettingsScreen.routeName;
+
+  // leaveSelf is goToSelf in reverse. Coming back from Account to another
+  // Settings page is a page change, not a navigation -- switchScreen would
+  // see the route it's already on and do nothing at all.
+  void leaveSelf() {
+    var route = _returnRoute;
+    var page = _returnSettingsPage;
+    _returnRoute = null;
+    _returnSettingsPage = null;
+    if (route == null) return;
+
+    if (route == SettingsScreen.routeName) {
+      if (page != null) {
+        client.ui.settingsNav.page = page;
+        client.ui.settingsTitle.title = page;
+      }
+      return;
+    }
+    _selfNavPending = true;
+    switchScreen(route);
   }
 
   void switchScreen(String route, {Object? args}) {
@@ -284,7 +363,8 @@ class __MainAppBarState extends State<_MainAppBar>
         headerStyle.imagePreset != AreaImagePreset.standard ||
         !headerStyle.margins.isZero;
 
-    var appBar = _buildInnerAppBar(context, isScreenSmall, theme, headerOverridden);
+    var appBar =
+        _buildInnerAppBar(context, isScreenSmall, theme, headerOverridden);
 
     if (!headerOverridden) return appBar;
     // Deliberately not using AppBar.flexibleSpace for this -- flexibleSpace
@@ -310,7 +390,8 @@ class __MainAppBarState extends State<_MainAppBar>
   AppBar _buildInnerAppBar(BuildContext context, bool isScreenSmall,
       ThemeNotifier theme, bool headerOverridden) {
     var headerStyle = theme.areaStyle(ThemeArea.header);
-    Widget titleWidget = headerStyle.contentAlign == ContentAlign.hidden
+    Widget titleWidget = headerStyle.hideHeaderTitle ||
+            headerStyle.contentAlign == ContentAlign.hidden
         ? const Empty()
         : ChangeNotifierProvider.value(
             value: OverviewNavigatorModel(navKey),
@@ -337,13 +418,16 @@ class __MainAppBarState extends State<_MainAppBar>
 
     if (!isScreenSmall) {
       var logoSize = headerStyle.logoSize ?? 40;
-      // HeaderPosition.content strips the app-wide logo/about-button and
-      // "new post" button entirely -- they belong to the global chrome,
-      // not a bar scoped to just the content area -- leaving only the
-      // title.
+      // The leading icons are drawn the same way wherever the header sits
+      // -- HeaderPosition.content used to strip them, but which elements
+      // the header carries is now the per-element switches' decision, not
+      // the position's. With every one of them off there's no leading
+      // content at all, and the title starts at the very edge.
+      var showLogo = !headerStyle.hideHeaderLogo;
+      var showNewPost = !headerStyle.hideHeaderNewPost;
       Widget? leadingWidget;
       double leadingWidthValue = 0;
-      if (!widget.contentMode) {
+      if (showLogo || showNewPost) {
         // AppBar always starts the title at exactly
         // leadingWidth + titleSpacing, regardless of how much of
         // leadingWidth the leading content actually uses -- so this must
@@ -357,46 +441,52 @@ class __MainAppBarState extends State<_MainAppBar>
         // heights (a Material3 AppBar internal quirk, empirically ~1.5px
         // past toolbarHeight~99) -- OverflowBox below absorbs that safely
         // without stealing space from the title position, unlike just
-        // inflating this value.
-        leadingWidthValue = 10 + math.max(48, logoSize) + 48 + 20;
+        // inflating this value. Each switched-off icon drops out of the
+        // sum too, so the title closes up the gap it leaves behind.
+        leadingWidthValue = 10 +
+            (showLogo ? math.max(48, logoSize) : 0) +
+            (showNewPost ? 48 : 0) +
+            20;
         leadingWidget = OverflowBox(
           maxWidth: leadingWidthValue + 24,
           alignment: Alignment.centerLeft,
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             const SizedBox(width: 10),
-            Consumer<ConnStateModel>(builder: (context, connState, child) {
-              var connStateTagKey = connState.state.state;
-              if (connStateTagKey == connStateOnline &&
-                  connState.suggestedVersion != "") {
-                connStateTagKey = connStateUpdate;
-              }
-              return Stack(children: [
-                IconButton(
-                    tooltip: "About Bison Relay",
-                    splashRadius: 20,
-                    // IconButton's iconSize reliably constrains an
-                    // Icon/ImageIcon, but a plain Image (like this logo)
-                    // doesn't consult IconTheme at all -- left
-                    // unconstrained, it was sizing itself based on
-                    // whatever space happened to be available, which
-                    // grows as the header's height setting increases.
-                    // BisonRelayLogo forces it to a fixed size (now
-                    // user-configurable via logoSize), preserving the
-                    // asset's true (non-square) aspect ratio, regardless
-                    // of the surrounding toolbar height.
-                    iconSize: logoSize,
-                    onPressed: () => goToAbout(context),
-                    icon: BisonRelayLogo(size: logoSize)),
-                _connStateStyles[connStateTagKey]?.tag ??
-                    const SizedBox(width: 100),
-              ]);
-            }),
-            IconButton(
-                splashRadius: 20,
-                tooltip: "Create a new post",
-                onPressed: () => goToNewPost(context),
-                iconSize: 20,
-                icon: const Icon(size: 20, Icons.mode)),
+            if (showLogo)
+              Consumer<ConnStateModel>(builder: (context, connState, child) {
+                var connStateTagKey = connState.state.state;
+                if (connStateTagKey == connStateOnline &&
+                    connState.suggestedVersion != "") {
+                  connStateTagKey = connStateUpdate;
+                }
+                return Stack(children: [
+                  IconButton(
+                      tooltip: "About Bison Relay",
+                      splashRadius: 20,
+                      // IconButton's iconSize reliably constrains an
+                      // Icon/ImageIcon, but a plain Image (like this logo)
+                      // doesn't consult IconTheme at all -- left
+                      // unconstrained, it was sizing itself based on
+                      // whatever space happened to be available, which
+                      // grows as the header's height setting increases.
+                      // BisonRelayLogo forces it to a fixed size (now
+                      // user-configurable via logoSize), preserving the
+                      // asset's true (non-square) aspect ratio, regardless
+                      // of the surrounding toolbar height.
+                      iconSize: logoSize,
+                      onPressed: () => goToAbout(context),
+                      icon: BisonRelayLogo(size: logoSize)),
+                  _connStateStyles[connStateTagKey]?.tag ??
+                      const SizedBox(width: 100),
+                ]);
+              }),
+            if (showNewPost)
+              IconButton(
+                  splashRadius: 20,
+                  tooltip: "Create a new post",
+                  onPressed: () => goToNewPost(context),
+                  iconSize: 20,
+                  icon: const Icon(size: 20, Icons.mode)),
             const SizedBox(width: 20),
           ]),
         );
@@ -408,7 +498,10 @@ class __MainAppBarState extends State<_MainAppBar>
           centerTitle: centerTitle,
           toolbarHeight: headerStyle.height,
           leadingWidth: leadingWidthValue,
-          automaticallyImplyLeading: !widget.contentMode,
+          // Moot while there's leading content of our own; what it stops
+          // is AppBar quietly substituting a back/drawer button once every
+          // leading element has been switched off.
+          automaticallyImplyLeading: leadingWidget != null,
           backgroundColor: headerOverridden
               ? Colors.transparent
               : (hasHotAudio || hasLiveRTCSess ? bgColorAnim.value : null),
@@ -420,77 +513,150 @@ class __MainAppBarState extends State<_MainAppBar>
       contextMenu = buildChatContextMenu(navKey);
     }
 
+    var mobileStyle = theme.areaStyle(ThemeArea.mobile);
+    // Which destinations the bottom bar is currently carrying -- a
+    // theme setting now, so this can't be the hardcoded three it used to
+    // be. It's what the leading widget keys off: on a top-level tab that
+    // corner is the self-avatar, and anywhere else it's a back arrow.
+    var bottomTabRoutes =
+        mobileNavItems(mainMenu, mobileStyle).map((e) => e.routeName).toSet();
+    bool onBottomTab(String route) => bottomTabRoutes.contains(route);
+
+    // Read here rather than through a Consumer down inside the leading
+    // widget: whether that corner has anything in it at all now decides
+    // leadingWidth too, which is the AppBar's own property. These are the
+    // same five models the leading used to consume.
+    var activePath = Provider.of<OverviewActivePath>(context);
+    var activeChat = Provider.of<ActiveChatModel>(context);
+    var feedModel = Provider.of<FeedModel>(context);
+    var chatSideMenuActive = Provider.of<ChatSideMenuActiveModel>(context);
+    var connState = Provider.of<ConnStateModel>(context);
+    _noteRoute(activePath.route);
+
+    // Switched off, there's no state left for the arrow to appear in.
+    var showBack = !mobileStyle.mobileHideBackButton &&
+        (!onBottomTab(activePath.route) ||
+            !activeChat.empty ||
+            feedModel.active != null ||
+            !chatSideMenuActive.empty);
+    // A conversation puts the other party's avatar at the head of the title
+    // on a phone (see ChatsScreenTitle); yours gives way to it rather than
+    // the header carrying two.
+    var titleHasAvatar =
+        activePath.route == ChatsScreen.routeName && !activeChat.empty;
+    var showSelfAvatar =
+        !mobileStyle.mobileHideSelfAvatar && !titleHasAvatar && !showBack;
+
     return AppBar(
-        leadingWidth: 60,
-        titleSpacing: 0.0,
+        // Nothing in the corner means no corner: left at 60 the title
+        // would start after an empty inset the width of the avatar that
+        // isn't there. This also takes the connection-state tag with it,
+        // since that badge is drawn over the leading content -- it's still
+        // shown on every screen whose corner does have something in it.
+        leadingWidth: showBack || showSelfAvatar ? 60 : 0,
+        // Matches the inset the self-avatar sits at in the leading slot (its
+        // Container's 10 margin, below), so whatever starts the title with
+        // no leading in front of it -- the other party's avatar in a
+        // conversation, most visibly -- lines up where yours would have been
+        // instead of hard against the screen edge.
+        titleSpacing: showBack || showSelfAvatar ? 0.0 : 10.0,
         title: titleWidget,
         centerTitle: centerTitle,
         toolbarHeight: headerStyle.height,
         backgroundColor: headerOverridden
             ? Colors.transparent
             : (hasHotAudio || hasLiveRTCSess ? bgColorAnim.value : null),
-        leading: Builder(builder: (BuildContext context) {
-          return InkWell(onTap: () {
-            // if (client.ui.showAddressBook.val) { // FIXME: How is this triggered?
-            //   client.ui.showAddressBook.val = false;
-            // } else
-            if (!client.ui.chatSideMenuActive.empty) {
-              client.ui.chatSideMenuActive.chat = null;
-            } else if (client.ui.showProfile.val) {
-              client.ui.showProfile.val = false;
-            } else if (!client.ui.overviewActivePath.onActiveBottomTab ||
-                client.active != null) {
-              !client.ui.chatSideMenuActive.empty
-                  ? client.ui.chatSideMenuActive.clear()
-                  : client.active = null;
-              if (!client.ui.overviewActivePath.onActiveBottomTab) {
-                switchScreen(ChatsScreen.routeName);
-              }
-            } else if (feed.active != null) {
-              feed.active = null;
-              switchScreen(FeedScreen.routeName, args: PageTabs(0, null, null));
-            } else {
-              switchScreen(SettingsScreen.routeName);
-            }
-          }, child: Consumer5<OverviewActivePath, ActiveChatModel, FeedModel,
-                  ChatSideMenuActiveModel, ConnStateModel>(
-              builder: (context, overviewActivePath, activeChat, feed,
-                  chatSideMenuActive, connState, child) {
-            var connStateTagKey = connState.state.state;
-            if (connStateTagKey == connStateOnline &&
-                connState.suggestedVersion != "") {
-              connStateTagKey = connStateUpdate;
-            }
-
-            return Stack(children: [
-              !overviewActivePath.onActiveBottomTab ||
-                      !activeChat.empty ||
-                      feed.active != null ||
-                      !chatSideMenuActive.empty
-                  ? const Positioned(
-                      left: 25,
-                      top: 17,
-                      child: Icon(Icons.keyboard_arrow_left_rounded))
-                  : Container(
-                      margin: const EdgeInsets.all(10),
-                      child: SelfAvatar(client)),
-              _connStateStyles[connStateTagKey]?.tag ?? const Empty(),
-            ]);
-          }));
-        }),
+        leading: !showBack && !showSelfAvatar
+            ? null
+            : Builder(builder: (BuildContext context) {
+                var connStateTagKey = connState.state.state;
+                if (connStateTagKey == connStateOnline &&
+                    connState.suggestedVersion != "") {
+                  connStateTagKey = connStateUpdate;
+                }
+                return InkWell(
+                    onTap: () {
+                      // Tap-again-to-close: the avatar undoes its own last
+                      // tap before it does anything else. The right sidebar
+                      // first, since that's what it opened most recently,
+                      // then the Account page it opened before that.
+                      if (mobileStyle.mobileAvatarSecondTapCloses) {
+                        if (!client.ui.chatSideMenuActive.empty) {
+                          client.ui.chatSideMenuActive.clear();
+                          return;
+                        }
+                        if (client.ui.showProfile.val) {
+                          client.ui.showProfile.val = false;
+                          return;
+                        }
+                        if (canLeaveSelf) {
+                          leaveSelf();
+                          return;
+                        }
+                      }
+                      // With the back arrow switched off the corner is only
+                      // ever the avatar, so it does the one thing an avatar
+                      // should rather than silently retracing the back chain
+                      // below it.
+                      if (mobileStyle.mobileHideBackButton) {
+                        goToSelf(mobileStyle.mobileAvatarOpensProfile);
+                        return;
+                      }
+                      // if (client.ui.showAddressBook.val) { // FIXME: How is this triggered?
+                      //   client.ui.showAddressBook.val = false;
+                      // } else
+                      if (!client.ui.chatSideMenuActive.empty) {
+                        client.ui.chatSideMenuActive.chat = null;
+                      } else if (client.ui.showProfile.val) {
+                        client.ui.showProfile.val = false;
+                      } else if (!onBottomTab(
+                              client.ui.overviewActivePath.route) ||
+                          client.active != null) {
+                        !client.ui.chatSideMenuActive.empty
+                            ? client.ui.chatSideMenuActive.clear()
+                            : client.active = null;
+                        if (!onBottomTab(client.ui.overviewActivePath.route)) {
+                          switchScreen(ChatsScreen.routeName);
+                        }
+                      } else if (feed.active != null) {
+                        feed.active = null;
+                        switchScreen(FeedScreen.routeName,
+                            args: PageTabs(0, null, null));
+                      } else {
+                        goToSelf(mobileStyle.mobileAvatarOpensProfile);
+                      }
+                    },
+                    child: Stack(children: [
+                      showBack
+                          ? const Positioned(
+                              left: 25,
+                              top: 17,
+                              child: Icon(Icons.keyboard_arrow_left_rounded))
+                          : Container(
+                              margin: const EdgeInsets.all(10),
+                              child: SelfAvatar(client)),
+                      _connStateStyles[connStateTagKey]?.tag ?? const Empty(),
+                    ]));
+              }),
+        // Without a leading of our own, AppBar would substitute a back
+        // button -- exactly the control the corner was just cleared of.
+        automaticallyImplyLeading: showBack || showSelfAvatar,
         actions: [
           // Only render page context menu if the mainMenu ONLY has
-          // a context menu OR a sub page menu.
-          (mainMenu.activeMenu.subMenuInfo.isNotEmpty && contextMenu.isEmpty) ||
+          // a context menu OR a sub page menu -- and not at all when the
+          // Mobile area's re-tap gesture is on, which reaches the same
+          // page menu through the sidebar it opens.
+          if (!mobileStyle.mobileTapOpensSidebar &&
+              ((mainMenu.activeMenu.subMenuInfo.isNotEmpty &&
+                      contextMenu.isEmpty) ||
                   (contextMenu.isNotEmpty &&
-                      mainMenu.activeMenu.subMenuInfo.isEmpty)
-              ? PageContextMenu(
-                  menuItem: mainMenu.activeMenu,
-                  subMenu: mainMenu.activeMenu.subMenuInfo,
-                  contextMenu: contextMenu,
-                  navKey: navKey,
-                )
-              : const Empty()
+                      mainMenu.activeMenu.subMenuInfo.isEmpty)))
+            PageContextMenu(
+              menuItem: mainMenu.activeMenu,
+              subMenu: mainMenu.activeMenu.subMenuInfo,
+              contextMenu: contextMenu,
+              navKey: navKey,
+            )
         ]);
   }
 
@@ -517,8 +683,14 @@ class _OverviewScreenState extends State<OverviewScreen> {
       overviewNavKey; // GlobalKey(debugLabel: "overview nav key");
 
   bool removeBottomBar = false;
-  var selectedIndex = 0;
   bool hasInstantCall = false;
+
+  // The conversation a re-tap of Chat in the mobile navigation covered with
+  // the chat list, so the next one can put it back (see _onNavTapped).
+  // Stored by ID, not as a ChatModel, so a chat removed while the list is
+  // open can't be reopened. Null until a conversation has been opened at
+  // all, which is why a freshly launched app's second tap does nothing.
+  String? _lastMobileChatID;
 
   void connStateChanged() {
     var newConnState = client.connState.state;
@@ -638,34 +810,101 @@ class _OverviewScreenState extends State<OverviewScreen> {
     navKey.currentState!.pushReplacementNamed(route);
   }
 
-  void _onItemTapped(int index) {
-    setState(() {
-      switch (index) {
-        case 0:
-          switchScreen(ChatsScreen.routeName);
-          client.ui.smallScreenActiveTab.active = SmallScreenActiveTab.chat;
-          //Navigator.pop(context);
-          break;
-        case 1:
-          switchScreen(FeedScreen.routeName);
-          client.ui.smallScreenActiveTab.active = SmallScreenActiveTab.feed;
-          //Navigator.pop(context);
-          break;
-        case 2:
-          switchScreen(ViewPageScreen.routeName);
-          client.ui.smallScreenActiveTab.active = SmallScreenActiveTab.pages;
-          // Navigator.pop(context);
-          break;
-      }
-      selectedIndex = index;
+  // _onNavTapped is the bottom bar's tap handler, and the mobile
+  // counterpart of Sidebar.switchScreen -- same three outcomes, and for the
+  // same reasons: go there; or, if you're already there, go back to that
+  // page's own list of things (only when the Mobile area's setting asks for
+  // it, since on a phone this is the only tap that destination has); and
+  // never leave the drawer open over a page you've just navigated away
+  // from.
+  //
+  // Which item reads as selected isn't tracked here at all -- the bar
+  // resolves it from MainMenuModel's active route, so it stays right when
+  // something other than a tap changes the page.
+  void _onNavTapped(String route) {
+    String currentPath = "";
+    navKey.currentState?.popUntil((route) {
+      currentPath = route.settings.name ?? "";
+      return true;
     });
+
+    var collapsed = client.ui.collapsedSidebar;
+    if (currentPath == route) {
+      var tapOpens = ThemeNotifier.of(context, listen: false)
+          .areaStyle(ThemeArea.mobile)
+          .mobileTapOpensSidebar;
+      if (!tapOpens) return;
+
+      // The right sidebar -- the profile / manage-group-chat panel, which
+      // opens over Chat and Feed alike -- is the innermost thing a re-tap
+      // can put away, so it goes first and on its own: closing it leaves
+      // you on the conversation or the post it was covering, rather than
+      // walking all the way back to the list in one tap.
+      if (!client.ui.chatSideMenuActive.empty) {
+        client.ui.chatSideMenuActive.clear();
+        return;
+      }
+      if (client.ui.showProfile.val) {
+        client.ui.showProfile.val = false;
+        return;
+      }
+
+      // Reading a post is Feed's equivalent of being in a conversation, so
+      // a re-tap goes back to the feed itself. Unlike Chat this doesn't
+      // toggle back into the post: the feed is a list you scroll, and the
+      // post you were reading is sitting in it.
+      if (route == FeedScreen.routeName && feed.active != null) {
+        feed.active = null;
+        navKey.currentState!
+            .pushReplacementNamed(route, arguments: PageTabs(0, null, null));
+        return;
+      }
+
+      // Chat is the one destination whose "list" half is a whole page on a
+      // phone rather than a sidebar (see ChatsScreen.build), and a better
+      // one than a drawer would be -- it carries the New Message and New
+      // Group Chat buttons. So a re-tap there shows that list instead of
+      // sliding anything in, and re-tapping again puts it away.
+      //
+      // "Away" means back to the conversation it covered, which is what
+      // makes this the same toggle every other destination's re-tap is
+      // rather than a one-way trip: without remembering it, closing the
+      // list would have to leave you on the list. Only a fresh launch,
+      // where no conversation has been opened yet, has nothing to go back
+      // to -- there the second tap simply does nothing.
+      if (route == ChatsScreen.routeName) {
+        if (client.active != null) {
+          _lastMobileChatID = client.active!.id;
+          client.active = null;
+        } else if (_lastMobileChatID != null) {
+          // Resolved fresh rather than held as a ChatModel: the chat may
+          // have been removed while the list was open, and reopening one
+          // that no longer exists is worse than the tap doing nothing.
+          var chat = client.getExistingChat(_lastMobileChatID!);
+          if (chat != null) {
+            client.active = chat;
+          } else {
+            _lastMobileChatID = null;
+          }
+        }
+        return;
+      }
+      // available is false on a page with no sidebar of its own, where
+      // there's simply nothing to open.
+      if (collapsed.available) collapsed.toggle();
+      return;
+    }
+
+    collapsed.close();
+    navKey.currentState!.pushReplacementNamed(route);
   }
 
   @override
   Widget build(BuildContext context) {
     bool isScreenSmall = checkIsScreenSmall(context);
     var theme = ThemeNotifier.of(context);
-    var headerHeight = theme.areaStyle(ThemeArea.header).height ?? kToolbarHeight;
+    var headerHeight =
+        theme.areaStyle(ThemeArea.header).height ?? kToolbarHeight;
     // HeaderPosition only applies to the desktop layout -- mobile's leading
     // content is already a totally different (avatar/back-button based)
     // widget with no sidebar to scope a "content" bar against.
@@ -677,8 +916,9 @@ class _OverviewScreenState extends State<OverviewScreen> {
     Widget navigator = Navigator(
       key: navKey,
       observers: [client.ui.overviewRouteObserver],
-      initialRoute:
-          widget.initialRoute == "" ? ChatsScreen.routeName : widget.initialRoute,
+      initialRoute: widget.initialRoute == ""
+          ? ChatsScreen.routeName
+          : widget.initialRoute,
       onGenerateRoute: (settings) {
         String routeName = settings.name!;
         MainMenuItem? menu = widget.mainMenu.menuForRoute(routeName);
@@ -697,8 +937,7 @@ class _OverviewScreenState extends State<OverviewScreen> {
           // an untouched area still resolves to an opaque box, so it's only
           // wrapped once it's been given something.
           pageBuilder: (context, animation, secondaryAnimation) => menu != null
-              ? dualPanelFrame(
-                  ThemeNotifier.of(context), menu.builder(context))
+              ? dualPanelFrame(ThemeNotifier.of(context), menu.builder(context))
               : RouteErrorPage(settings.name ?? "", OverviewScreen.routeName),
           transitionDuration: Duration.zero,
           //reverseTransitionDuration: Duration.zero,
@@ -712,8 +951,7 @@ class _OverviewScreenState extends State<OverviewScreen> {
             SizedBox(
                 height: headerHeight,
                 child: _MainAppBar(
-                    client, feed, widget.rtc, widget.mainMenu, navKey,
-                    contentMode: true)),
+                    client, feed, widget.rtc, widget.mainMenu, navKey)),
             Expanded(child: navigator),
           ])
         : navigator;
@@ -723,8 +961,8 @@ class _OverviewScreenState extends State<OverviewScreen> {
       appBar: headerPosition == HeaderPosition.top
           ? PreferredSize(
               preferredSize: Size.fromHeight(headerHeight),
-              child:
-                  _MainAppBar(client, feed, widget.rtc, widget.mainMenu, navKey),
+              child: _MainAppBar(
+                  client, feed, widget.rtc, widget.mainMenu, navKey),
             )
           : null,
       body: SnackbarDisplayer(
@@ -747,58 +985,7 @@ class _OverviewScreenState extends State<OverviewScreen> {
                 Positioned.fill(child: _CollapsedSidebarDrawer(widget.client)),
               ]))),
       bottomNavigationBar: isScreenSmall && !removeBottomBar
-          ? Consumer<ThemeNotifier>(
-              builder: (context, theme, _) => BottomNavigationBar(
-                    selectedFontSize: fontSize(TextSize.large)!,
-                    iconSize: 40,
-                    items: <BottomNavigationBarItem>[
-                      BottomNavigationBarItem(
-                        // Always the same Stack/SidebarSvgIcon element,
-                        // regardless of unread state -- only the dot's
-                        // visibility toggles. Branching between a Stack and
-                        // a bare Container here (as this used to) swaps the
-                        // SidebarSvgIcon's element out and back in on every
-                        // unread-state change, forcing flutter_svg to
-                        // re-mount its underlying VectorGraphic State; that
-                        // widget's didChangeDependencies() calls setState()
-                        // synchronously on a cache hit, which then fires
-                        // mid-build ("setState() or markNeedsBuild() called
-                        // during build").
-                        icon: Stack(children: [
-                          Container(
-                              padding: const EdgeInsets.all(3),
-                              child: const SidebarSvgIcon(
-                                  "assets/icons/icons-menu-chat.svg")),
-                          if (client.activeChats.hasUnreadMsgs)
-                            const Positioned(
-                                top: 1, right: 1, child: RedDotIndicator()),
-                        ]),
-                        label: 'Chat',
-                      ),
-                      BottomNavigationBarItem(
-                        icon: Stack(children: [
-                          Container(
-                              padding: const EdgeInsets.all(3),
-                              child: const SidebarSvgIcon(
-                                  "assets/icons/icons-menu-news.svg")),
-                          if (widget.feed.hasUnreadPostsComments)
-                            const Positioned(
-                                top: 1, right: 1, child: RedDotIndicator()),
-                        ]),
-                        label: 'Feed',
-                      ),
-                      BottomNavigationBarItem(
-                        icon: Container(
-                            padding: const EdgeInsets.all(3),
-                            child: const SidebarSvgIcon(
-                                "assets/icons/icons-menu-pages.svg")),
-                        label: 'Pages',
-                      ),
-                    ],
-
-                    currentIndex: selectedIndex, //New
-                    onTap: _onItemTapped, //New
-                  ))
+          ? MobileNavBar(client: client, feed: widget.feed, onTap: _onNavTapped)
           : null,
     );
   }
