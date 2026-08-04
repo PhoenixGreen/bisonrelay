@@ -11,7 +11,6 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -25,6 +24,7 @@ import (
 	"github.com/companyzero/bisonrelay/client/clientdb"
 	"github.com/companyzero/bisonrelay/client/clientintf"
 	"github.com/companyzero/bisonrelay/client/pluginmgr"
+	"github.com/companyzero/bisonrelay/client/pluginmgr/capabilities"
 	"github.com/companyzero/bisonrelay/client/pluginmgr/wasmhost"
 	"github.com/companyzero/bisonrelay/client/resources"
 	"github.com/companyzero/bisonrelay/client/resources/simplestore"
@@ -99,78 +99,8 @@ type clientCtx struct {
 	// dynRuntime executes the guest code of any installed
 	// RendererKindDynamicWasm plugin (e.g. the RSS plugin). Its lifecycle
 	// (Load/Unload) is kept in sync with pluginMgr's Import/SetEnabled/
-	// Remove calls -- see syncDynPlugin.
+	// Remove calls -- see plugins.go.
 	dynRuntime *wasmhost.Runtime
-}
-
-// syncDynPlugin loads or unloads p in cc.dynRuntime to match its current
-// enabled state and RendererKind, following any pluginMgr mutation
-// (Import/SetEnabled/Remove) that may have changed either. It's a no-op for
-// non-dynamic-wasm plugins. Load errors (e.g. a corrupt wasm file) are
-// logged rather than propagated: pluginMgr's own state is already
-// authoritative and shouldn't be rolled back over a runtime that failed to
-// start.
-func (cc *clientCtx) syncDynPlugin(p pluginmgr.Plugin) {
-	if p.Manifest.RendererKind != pluginmgr.RendererKindDynamicWasm {
-		return
-	}
-	if !p.Enabled {
-		cc.dynRuntime.Unload(p.Manifest.ID)
-		return
-	}
-
-	wasmPath := filepath.Join(cc.pluginMgr.InstallDir(p.Manifest.ID), p.Manifest.WasmFile)
-	pollInterval := time.Duration(p.Manifest.PollIntervalSeconds) * time.Second
-	if err := cc.dynRuntime.Load(cc.ctx, p.Manifest.ID, wasmPath, pollInterval); err != nil {
-		cc.log.Warnf("dynplugin: unable to load %s: %v", p.Manifest.ID, err)
-	}
-}
-
-// mergedSpellcheckData gathers get_spellcheck_data from every enabled
-// CapabilitySpellcheckData plugin and merges them: words deduplicated,
-// grammar rules concatenated as-is. A single plugin's failure (e.g. it
-// hasn't finished loading) is logged and skipped rather than failing the
-// whole result -- a partial word list is still useful.
-func (cc *clientCtx) mergedSpellcheckData() wasmhost.SpellcheckData {
-	var data wasmhost.SpellcheckData
-	seenWords := make(map[string]bool)
-	for _, manifest := range cc.pluginMgr.PluginsWithCapability(pluginmgr.CapabilitySpellcheckData) {
-		pluginData, err := cc.dynRuntime.GetSpellcheckData(cc.ctx, manifest.ID)
-		if err != nil {
-			cc.log.Warnf("dynplugin: unable to get spellcheck data from %s: %v", manifest.ID, err)
-			continue
-		}
-		for _, w := range pluginData.Words {
-			if !seenWords[w] {
-				seenWords[w] = true
-				data.Words = append(data.Words, w)
-			}
-		}
-		data.GrammarRules = append(data.GrammarRules, pluginData.GrammarRules...)
-	}
-	return data
-}
-
-// fetchLinkCard resolves linkURL against the Domains of every enabled
-// CapabilityLinkCard plugin and, on the first match, calls that plugin's
-// fetch_link_card. Returns an error (which Dart's link_card.dart already
-// treats identically to "no match", falling back to a plain link) if no
-// plugin claims the URL's host.
-func (cc *clientCtx) fetchLinkCard(linkURL string) (wasmhost.LinkMetadata, error) {
-	parsed, err := url.Parse(linkURL)
-	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
-		return wasmhost.LinkMetadata{}, fmt.Errorf("invalid url")
-	}
-	host := pluginmgr.NormalizeHost(parsed.Hostname())
-
-	for _, manifest := range cc.pluginMgr.PluginsWithCapability(pluginmgr.CapabilityLinkCard) {
-		for _, domain := range manifest.Domains {
-			if pluginmgr.NormalizeHost(domain) == host {
-				return cc.dynRuntime.FetchLinkCard(cc.ctx, manifest.ID, linkURL)
-			}
-		}
-	}
-	return wasmhost.LinkMetadata{}, fmt.Errorf("no enabled plugin handles this url")
 }
 
 var (
@@ -919,13 +849,7 @@ func handleInitClient(handle uint32, args initClient) error {
 		return fmt.Errorf("unable to initialize dynamic plugin runtime: %v", err)
 	}
 	for _, p := range pluginMgr.List() {
-		if p.Enabled && p.Manifest.RendererKind == pluginmgr.RendererKindDynamicWasm {
-			wasmPath := filepath.Join(pluginMgr.InstallDir(p.Manifest.ID), p.Manifest.WasmFile)
-			pollInterval := time.Duration(p.Manifest.PollIntervalSeconds) * time.Second
-			if err := dynRuntime.Load(ctx, p.Manifest.ID, wasmPath, pollInterval); err != nil {
-				logBknd.logger("PLGN").Warnf("unable to load dynamic plugin %s: %v", p.Manifest.ID, err)
-			}
-		}
+		syncDynPlugin(ctx, pluginMgr, dynRuntime, logBknd.logger("PLGN"), p)
 	}
 
 	// Bind the selected upstream resource provider.
@@ -1416,7 +1340,7 @@ func handleClientCmd(cc *clientCtx, cmd *cmd) (interface{}, error) {
 		}
 		p, err := cc.pluginMgr.Import(args.Path)
 		if err == nil {
-			cc.syncDynPlugin(p)
+			cc.syncPlugin(p)
 		}
 		return p, err
 
@@ -1430,7 +1354,7 @@ func handleClientCmd(cc *clientCtx, cmd *cmd) (interface{}, error) {
 		}
 		for _, p := range cc.pluginMgr.List() {
 			if p.Manifest.ID == args.ID {
-				cc.syncDynPlugin(p)
+				cc.syncPlugin(p)
 				break
 			}
 		}
@@ -1456,10 +1380,11 @@ func handleClientCmd(cc *clientCtx, cmd *cmd) (interface{}, error) {
 		if err := cmd.decode(&linkURL); err != nil {
 			return nil, err
 		}
-		return cc.fetchLinkCard(linkURL)
+		return capabilities.FetchLinkCard(cc.ctx, cc.pluginMgr, cc.dynRuntime, linkURL)
 
 	case CTGetSpellcheckData:
-		return cc.mergedSpellcheckData(), nil
+		return capabilities.MergedSpellcheckData(cc.ctx, cc.pluginMgr,
+			cc.dynRuntime, cc.log), nil
 
 	case CTDynPluginRenderScreen:
 		var args dynPluginRenderScreenArgs

@@ -39,15 +39,14 @@ const (
 	// Capabilities, or both.
 	RendererKindDynamicWasm = "dynamic-wasm"
 
-	// CapabilitySpellcheckData means this plugin exports
-	// get_spellcheck_data (see wasmhost.Runtime.GetSpellcheckData),
-	// supplying a wordlist/grammar-rule set merged into every enabled
-	// spellcheck-data plugin's combined output.
+	// CapabilitySpellcheckData means this plugin supplies a wordlist and
+	// grammar-rule set, merged with every other enabled spellcheck-data
+	// plugin's. See client/pluginmgr/capabilities for the contract.
 	CapabilitySpellcheckData = "spellcheck-data"
 
-	// CapabilityLinkCard means this plugin exports fetch_link_card (see
-	// wasmhost.Runtime.FetchLinkCard) and uses Manifest.Domains to claim
-	// which hostnames it wants tried for a chat/post link preview.
+	// CapabilityLinkCard means this plugin turns a URL into a preview card,
+	// using Manifest.Domains to claim which hostnames it handles. See
+	// client/pluginmgr/capabilities for the contract.
 	CapabilityLinkCard = "link-card"
 
 	maxManifestSize  = 64 * 1024
@@ -58,6 +57,10 @@ var knownRendererKinds = map[string]bool{
 	RendererKindDynamicWasm: true,
 }
 
+// knownCapabilities gates what a manifest may declare. Capability names are
+// part of the manifest schema, so they live here; the calls behind them live
+// in client/pluginmgr/capabilities, which is the only other place adding a
+// capability touches.
 var knownCapabilities = map[string]bool{
 	CapabilitySpellcheckData: true,
 	CapabilityLinkCard:       true,
@@ -388,9 +391,9 @@ func (m *Manager) List() []Plugin {
 }
 
 // PluginsWithCapability returns the manifests of all currently ENABLED
-// plugins that declare capability, sorted by ID. Used by golib to route
-// headless capability calls (e.g. spellcheck data, link-card fetches) to
-// the plugins that opted into them.
+// plugins that declare capability, sorted by ID. It is how
+// client/pluginmgr/capabilities finds which plugins to ask; this package
+// itself never calls one.
 func (m *Manager) PluginsWithCapability(capability string) []Manifest {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()

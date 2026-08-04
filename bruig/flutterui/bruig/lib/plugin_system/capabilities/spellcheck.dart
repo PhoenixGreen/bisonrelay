@@ -1,6 +1,16 @@
+import 'package:bruig/plugin_system/plugin_capability.dart';
+import 'package:bruig/plugin_system/plugin_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:golib_plugin/definitions.dart';
+import 'package:golib_plugin/golib_plugin.dart';
+
+// spellcheck.dart is the app's side of the spellcheck-data capability: it
+// takes whatever words and grammar rules the enabled providers supply and
+// drives Flutter's own SpellCheckService with them. It contains no
+// dictionary and no writing rules of its own -- with no provider enabled,
+// there is nothing to check text against and the composers get no
+// configuration at all.
 
 /// Matches a single "word" for dictionary lookup purposes: runs of letters
 /// and apostrophes (so contractions like "don't" are one token).
@@ -50,11 +60,8 @@ class _CompiledRule {
   _CompiledRule(this.pattern, this.message, this.suggest);
 }
 
-/// A [SpellCheckService] driven entirely by whatever a spellcheck-capability
-/// plugin supplies (see [PluginsModel.spellcheckActive]/[SpellcheckData]).
-/// Contains no hardcoded words or writing rules of its own: delete the
-/// plugin, and this service has nothing left to check text against.
-class PluginSpellCheckService extends SpellCheckService {
+/// A [SpellCheckService] driven entirely by capability-supplied data.
+class _CapabilitySpellCheckService extends SpellCheckService {
   Set<String> _words = {};
   List<_CompiledRule> _rules = [];
 
@@ -122,12 +129,13 @@ class PluginSpellCheckService extends SpellCheckService {
   }
 }
 
-/// Reactively wires [PluginSpellCheckService] to whichever spellcheck
-/// plugin is currently enabled (see main.dart's ChangeNotifierProxyProvider
-/// on PluginsModel), so composer widgets can just watch [configuration]
-/// without knowing anything about plugins themselves.
-class SpellCheckModel extends ChangeNotifier {
-  final PluginSpellCheckService _service = PluginSpellCheckService();
+/// SpellcheckCapability tracks whether any plugin currently provides
+/// spellcheck data and, when one does, keeps the service fed with it. A
+/// composer widget watches [configuration] and hands it straight to its
+/// TextField; null means "no provider", which is exactly Flutter's own
+/// "spell check off".
+class SpellcheckCapability extends ChangeNotifier {
+  final _CapabilitySpellCheckService _service = _CapabilitySpellCheckService();
   bool _active = false;
   bool get active => _active;
 
@@ -142,8 +150,21 @@ class SpellCheckModel extends ChangeNotifier {
         )
       : null;
 
-  void update(bool active, SpellcheckData data) {
-    if (active) _service.updateData(data);
+  /// update re-reads the merged data whenever the set of enabled plugins
+  /// changes. The fetch lives here rather than in PluginManagerModel so the
+  /// manager never has to know this capability exists -- it only reports
+  /// which capabilities are present.
+  Future<void> update(PluginManagerModel plugins) async {
+    var active = plugins.hasCapability(PluginCapability.spellcheckData);
+    if (active) {
+      try {
+        _service.updateData(await Golib.getSpellcheckData());
+      } catch (exception) {
+        // A provider still loading; keep whatever data we already had
+        // rather than dropping spell check entirely mid-session.
+        debugPrint("Unable to load spellcheck data: $exception");
+      }
+    }
     if (active == _active) return;
     _active = active;
     notifyListeners();

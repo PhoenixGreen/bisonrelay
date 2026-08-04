@@ -198,7 +198,7 @@ final List<String> defaultMobileNavRoutes = [
 
 class MainMenuModel extends ChangeNotifier {
   // A mutable copy of the static mainMenu list: dynamic-wasm plugins (see
-  // DynPluginsModel) register/unregister their own nav item here at
+  // PluginNavModel) register/unregister their own nav item here at
   // runtime. Both the sidebar (components/sidebar.dart) and the route
   // dispatch (screens/overview.dart) already build off this list rather
   // than a hardcoded per-item switch, so appending/removing here is all
@@ -302,7 +302,7 @@ class MainMenuModel extends ChangeNotifier {
 
   // registerDynamicItem adds a nav item contributed by a dynamic-wasm
   // plugin. This is called every time the plugin list re-evaluates (not
-  // just on enable/disable -- see DynPluginsModel.update, wired through a
+  // just on enable/disable -- see PluginNavModel.update, wired through a
   // ChangeNotifierProxyProvider2 that also depends on this very model), so
   // it must be non-destructive: if the item is already registered, update
   // it in place (new builder/icon from the manifest, but keep whatever
@@ -313,7 +313,7 @@ class MainMenuModel extends ChangeNotifier {
     var idx = menus.indexWhere((e) => e.routeName == item.routeName);
     if (idx >= 0) {
       var existing = menus[idx];
-      // DynPluginsModel.update calls this on every rebuild of the provider
+      // PluginNavModel.update calls this on every rebuild of the provider
       // tree it's wired into (see the class comment above), passing a
       // freshly-built MainMenuItem each time even when nothing about the
       // plugin actually changed. Notifying unconditionally here would
@@ -374,7 +374,7 @@ class MainMenuModel extends ChangeNotifier {
   }
 
   // registerDynamicItem/unregisterDynamicItem are called from
-  // DynPluginsModel.update, itself invoked by a ChangeNotifierProxyProvider2
+  // PluginNavModel.update, itself invoked by a ChangeNotifierProxyProvider2
   // while it (and, transitively, MainMenuModel's own already-built
   // InheritedProviderScope) are mid-build -- calling notifyListeners()
   // directly there trips Flutter's "setState() or markNeedsBuild() called

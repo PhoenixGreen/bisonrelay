@@ -5,7 +5,7 @@ import 'package:bruig/components/buttons.dart';
 import 'package:bruig/components/text.dart';
 import 'package:bruig/models/feed.dart';
 import 'package:bruig/models/snackbar.dart';
-import 'package:bruig/models/spellcheck.dart';
+import 'package:bruig/plugin_system/plugin_system.dart';
 import 'package:bruig/screens/feed.dart';
 import 'package:bruig/util.dart';
 import 'package:flutter/material.dart';
@@ -292,7 +292,7 @@ class _NewPostScreenState extends State<NewPostScreen> {
                 keyboardType: TextInputType.multiline,
                 maxLines: null,
                 spellCheckConfiguration:
-                    Provider.of<SpellCheckModel>(context).configuration,
+                    Provider.of<SpellcheckCapability>(context).configuration,
               ),
             ),
           ),

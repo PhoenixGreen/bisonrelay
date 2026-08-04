@@ -11,11 +11,9 @@ import 'package:bruig/models/emoji.dart';
 import 'package:bruig/models/audio.dart';
 import 'package:bruig/models/menus.dart';
 import 'package:bruig/models/payments.dart';
-import 'package:bruig/models/dynplugins.dart';
-import 'package:bruig/models/plugins.dart';
+import 'package:bruig/plugin_system/plugin_system.dart';
 import 'package:bruig/models/realtimechat.dart';
 import 'package:bruig/models/resources.dart';
-import 'package:bruig/models/spellcheck.dart';
 import 'package:bruig/models/uploads.dart';
 import 'package:bruig/models/wallet.dart';
 import 'package:bruig/models/shutdown.dart';
@@ -191,7 +189,7 @@ Future<void> runMainApp(Config cfg) async {
       ChangeNotifierProvider(create: (c) => ResourcesModel()),
       ChangeNotifierProvider.value(value: snackbar),
       ChangeNotifierProvider(create: (c) => PaymentsModel()),
-      ChangeNotifierProvider(create: (c) => PluginsModel()..reload()),
+      ChangeNotifierProvider(create: (c) => PluginManagerModel()..reload()),
       ChangeNotifierProvider(create: (c) => WalletModel()),
       // Started here rather than lazily inside the nav bar: the direction
       // arrows need a previous price to compare against, so the poll has to
@@ -199,25 +197,27 @@ Future<void> runMainApp(Config cfg) async {
       ChangeNotifierProvider(create: (c) => ExchangeRateModel()),
       ChangeNotifierProvider(create: (c) => TypingEmojiSelModel()),
       ChangeNotifierProvider(create: (c) => AudioModel(), lazy: false),
-      ChangeNotifierProxyProvider<PluginsModel, MarkdownAreaModel>(
+      // The three ways a plugin reaches the app, each driven off the one
+      // PluginManagerModel above and each written against a capability
+      // rather than any particular plugin -- see lib/plugin_system.
+      ChangeNotifierProxyProvider<PluginManagerModel, MarkdownAreaModel>(
         create: (c) => MarkdownAreaModel(cfg.dbRoot),
         update: (c, plugins, mk) =>
-            mk!..setPrettyLinksActive(plugins.prettyLinksActive),
+            mk!..setPluginExtensions(markdownExtensionsFor(plugins)),
       ),
-      ChangeNotifierProxyProvider<PluginsModel, SpellCheckModel>(
-        create: (c) => SpellCheckModel(),
-        update: (c, plugins, model) =>
-            model!..update(plugins.spellcheckActive, plugins.spellcheckData),
+      ChangeNotifierProxyProvider<PluginManagerModel, SpellcheckCapability>(
+        create: (c) => SpellcheckCapability(),
+        update: (c, plugins, capability) => capability!..update(plugins),
       ),
-      // lazy: false is required here: unlike MarkdownAreaModel/
-      // SpellCheckModel above, nothing ever reads DynPluginsModel's value
-      // -- it exists purely for the side effect of registering nav items
-      // into MainMenuModel -- so without this, provider's default laziness
-      // means create/update would never run at all.
-      ChangeNotifierProxyProvider2<PluginsModel, MainMenuModel,
-          DynPluginsModel>(
+      // lazy: false is required here: unlike the two above, nothing ever
+      // reads PluginNavModel's value -- it exists purely for the side
+      // effect of registering nav items into MainMenuModel -- so without
+      // this, provider's default laziness means create/update would never
+      // run at all.
+      ChangeNotifierProxyProvider2<PluginManagerModel, MainMenuModel,
+          PluginNavModel>(
         lazy: false,
-        create: (c) => DynPluginsModel(),
+        create: (c) => PluginNavModel(),
         update: (c, plugins, mainMenu, dyn) =>
             dyn!..update(plugins.plugins, mainMenu),
       ),

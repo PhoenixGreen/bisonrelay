@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:bruig/components/text.dart';
-import 'package:bruig/components/youtube_video_player.dart';
+import 'package:bruig/plugin_system/capabilities/youtube_player.dart';
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
@@ -12,8 +12,8 @@ import 'package:golib_plugin/golib_plugin.dart';
 import 'package:markdown/markdown.dart' as md;
 import 'package:url_launcher/url_launcher.dart';
 
-/// Builds the native "Pretty Links" preview card for bare URLs matched by
-/// BareLinkSyntax (see md_elements.dart).
+/// Builds the preview card for a bare URL, for the markdown extension the
+/// link-card capability registers (see markdown_extension.dart).
 class LinkCardElementBuilder extends MarkdownElementBuilder {
   @override
   Widget visitElementAfter(md.Element element, TextStyle? preferredStyle) {
@@ -27,26 +27,23 @@ class LinkCardElementBuilder extends MarkdownElementBuilder {
   }
 }
 
-const _youtubeHosts = {
-  "youtube.com",
-  "www.youtube.com",
-  "youtu.be",
-  "m.youtube.com",
+// _players maps a player name a plugin may ask for (LinkMetadata.player) to
+// the widget that provides it. This is the whole of the app's knowledge
+// about playable links: which *hosts* are playable is the claiming plugin's
+// decision, declared per-URL in the metadata it returns, so adding a new
+// video site is a plugin change rather than a change here.
+//
+// A name with no entry falls back to the ordinary still-thumbnail card, so
+// a plugin asking for a player this build doesn't ship degrades instead of
+// breaking.
+final Map<String, Widget Function(String url)> _players = {
+  "youtube": YoutubeInlineVideo.new,
 };
 
-bool _isYoutubeUrl(String url) {
-  try {
-    var host = Uri.parse(url).host.toLowerCase();
-    return _youtubeHosts.contains(host);
-  } catch (_) {
-    return false;
-  }
-}
-
-/// Shows a native "unfurl" card (thumbnail, title, author) for URLs an
-/// enabled plugin recognizes, fetched via the proxied Go-side
-/// Golib.fetchLinkMetadata call. Falls back to a plain, clickable link (the
-/// same look bare autolinks would otherwise get) while loading, on error,
+/// Shows an "unfurl" card (thumbnail, title, author) for URLs a link-card
+/// provider claims, fetched via the proxied Go-side Golib.fetchLinkMetadata
+/// call. Falls back to a plain, clickable link (the same look bare autolinks
+/// would otherwise get) while loading, on error,
 /// or when no plugin claims the URL.
 ///
 /// The card always claims the full width of its content area (a
@@ -78,7 +75,9 @@ class _LinkCardState extends State<LinkCard> {
   bool _loading = true;
   bool _playing = false;
 
-  bool get _isYoutube => _isYoutubeUrl(widget.url);
+  // _player is the player this link's provider asked for, or null for an
+  // ordinary card -- including when it named one this build doesn't have.
+  Widget Function(String)? get _player => _players[_metadata?.player ?? ""];
 
   @override
   void initState() {
@@ -128,11 +127,12 @@ class _LinkCardState extends State<LinkCard> {
   }
 
   Widget _buildThumbnailArea(Uint8List? thumbBytes) {
-    if (_playing) {
-      return YoutubeInlineVideo(widget.url);
+    var player = _player;
+    if (_playing && player != null) {
+      return player(widget.url);
     }
 
-    if (thumbBytes == null && !_isYoutube) {
+    if (thumbBytes == null && player == null) {
       // No image available and nothing to play in its place -- collapse
       // the area entirely instead of showing an empty placeholder box.
       return const SizedBox.shrink();
@@ -157,7 +157,7 @@ class _LinkCardState extends State<LinkCard> {
               fit: BoxFit.cover, width: width, height: height)
           : Container(width: width, height: height, color: Colors.black26);
 
-      if (!_isYoutube) {
+      if (player == null) {
         return thumbnail;
       }
 

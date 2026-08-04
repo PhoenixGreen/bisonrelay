@@ -730,6 +730,7 @@ LinkMetadata _$LinkMetadataFromJson(Map<String, dynamic> json) => LinkMetadata(
       json['description'] as String,
       json['author'] as String,
       json['thumbnailB64'] as String,
+      json['player'] as String? ?? '',
     );
 
 Map<String, dynamic> _$LinkMetadataToJson(LinkMetadata instance) =>
@@ -738,6 +739,7 @@ Map<String, dynamic> _$LinkMetadataToJson(LinkMetadata instance) =>
       'description': instance.description,
       'author': instance.author,
       'thumbnailB64': instance.thumbnailB64,
+      'player': instance.player,
     };
 
 GrammarRule _$GrammarRuleFromJson(Map<String, dynamic> json) => GrammarRule(

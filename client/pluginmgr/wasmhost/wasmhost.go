@@ -1,10 +1,11 @@
 // Package wasmhost loads and executes dynamic-wasm plugins: WebAssembly
 // modules (compiled from ordinary Go via `GOOS=wasip1 GOARCH=wasm go build
 // -buildmode=c-shared`) that implement a small, fixed set of optional
-// exported functions (render_screen, handle_event, poll, plus a handful of
-// headless-capability exports -- see Manifest.Capabilities in
-// client/pluginmgr) describing UI declaratively as JSON, rather than
-// drawing anything themselves. Guest code is sandboxed by wazero: no
+// exported functions describing UI declaratively as JSON, rather than
+// drawing anything themselves: render_screen, handle_event and poll, plus
+// whatever further exports a capability contract names (see
+// client/pluginmgr/capabilities, which this package deliberately knows
+// nothing about -- every such call goes through the generic Call below). Guest code is sandboxed by wazero: no
 // filesystem access, no raw network/syscalls beyond the small set of host
 // functions this package grants (fetch_url/fetch_url_ex, kv_get/kv_set,
 // log_msg).
@@ -72,17 +73,6 @@ const (
 	// must stay short: render_screen/handle_event block a UI action.
 	callTimeout = 10 * time.Second
 
-	// linkCardCallTimeout bounds fetch_link_card specifically. Unlike
-	// render_screen/handle_event, this call never blocks a UI action (the
-	// card fetch runs in the background behind a plain-link placeholder --
-	// see LinkCard's _loading state in the Dart UI) and a
-	// CapabilityLinkCard plugin may need up to three sequential fetches
-	// (oEmbed, an og:image scrape fallback, the thumbnail image itself),
-	// each individually bounded by fetchTimeout -- callTimeout's 10s is too
-	// tight a ceiling for that chain under real-world network jitter and
-	// was observed truncating the thumbnail fetch specifically.
-	linkCardCallTimeout = 30 * time.Second
-
 	// MinPollInterval is the floor for a plugin-declared poll interval, so
 	// a misbehaving/malicious manifest can't hammer feeds (or the host)
 	// every few seconds.
@@ -143,37 +133,6 @@ type Widget struct {
 	Items []Widget `json:"items,omitempty"`
 }
 
-// GrammarRule is a single regex-based writing-style check, supplied verbatim
-// (never compiled/executed by Go) by a CapabilitySpellcheckData plugin.
-// Pattern/Suggest are executed client-side in Dart, whose regex engine
-// (unlike Go's RE2) supports the backreferences needed to express checks
-// like "repeated word" (`\b(\w+)\s+\1\b`).
-type GrammarRule struct {
-	Pattern string `json:"pattern"`
-	Message string `json:"message"`
-	// Suggest is a replacement template that may reference Pattern's
-	// capture groups as $1, $2, etc. An empty Suggest means the rule is
-	// informational only (flagged, but with no proposed replacement).
-	Suggest string `json:"suggest"`
-}
-
-// SpellcheckData is the wordlist + grammar rules a CapabilitySpellcheckData
-// plugin's get_spellcheck_data export returns (and, once merged across all
-// enabled such plugins, what golib hands to the Dart spellcheck UI).
-type SpellcheckData struct {
-	Words        []string      `json:"words"`
-	GrammarRules []GrammarRule `json:"grammarRules"`
-}
-
-// LinkMetadata is what a CapabilityLinkCard plugin's fetch_link_card export
-// returns for a URL it claims (via Manifest.Domains) to handle.
-type LinkMetadata struct {
-	Title        string `json:"title"`
-	Description  string `json:"description"`
-	Author       string `json:"author"`
-	ThumbnailB64 string `json:"thumbnailB64"`
-}
-
 // Config configures a Runtime.
 type Config struct {
 	// Root is the plugin install root (the same directory
@@ -230,10 +189,10 @@ type pluginInst struct {
 	// this instance. A single compiled wasm module instance has one
 	// linear memory and one execution stack; wazero does not itself
 	// serialize concurrent calls into the same instance, so two
-	// goroutines calling into it at once (e.g. several LinkCard widgets
-	// each fetching a preview when a chat scrolls into view) corrupts
-	// shared module state -- observed in practice as a wasm trap
-	// ("invalid table access") from fetch_link_card under concurrent load.
+	// goroutines calling into it at once (e.g. several widgets each
+	// requesting a preview as a chat scrolls into view) corrupts shared
+	// module state -- observed in practice as a wasm trap ("invalid table
+	// access") under concurrent capability calls.
 	callMtx sync.Mutex
 
 	kvMtx sync.Mutex
@@ -242,9 +201,8 @@ type pluginInst struct {
 	// fetchMtx guards lastStatus/lastContentType: the status code and
 	// Content-Type header of this plugin's most recent fetch_url/
 	// fetch_url_ex call, retrievable via the fetch_last_status/
-	// fetch_last_content_type imports -- see CapabilityLinkCard plugins,
-	// which need Content-Type to replicate pluginmgr's old thumbnail
-	// content-type allowlist.
+	// fetch_last_content_type imports, for guests that need to check what
+	// a fetch actually returned before trusting its body.
 	fetchMtx        sync.Mutex
 	lastStatus      int
 	lastContentType string
@@ -389,9 +347,8 @@ func (r *Runtime) hostFetchURL(ctx context.Context, mod api.Module, urlPtr, urlL
 // hostFetchURLEx backs the guest import `fetch_url_ex(url string,
 // headersJSON string) uint64`: identical to fetch_url, but headersJSON (a
 // JSON object of string->string, e.g. `{"User-Agent":"..."}`) is applied as
-// request headers -- needed by CapabilityLinkCard plugins replicating
-// site-specific fetch quirks (e.g. a crawler User-Agent) that a plain GET
-// can't express. The status/Content-Type of this call are retrievable
+// request headers -- needed by guests replicating site-specific fetch
+// quirks (e.g. a crawler User-Agent) that a plain GET can't express. The status/Content-Type of this call are retrievable
 // afterward via fetch_last_status/fetch_last_content_type.
 func (r *Runtime) hostFetchURLEx(ctx context.Context, mod api.Module, urlPtr, urlLen, headersPtr, headersLen uint32) uint64 {
 	inst := r.instFor(mod)
@@ -869,79 +826,51 @@ func (r *Runtime) Poll(ctx context.Context, id string) error {
 	return nil
 }
 
-// GetSpellcheckData calls the plugin's optional get_spellcheck_data()
-// export (no arguments) and decodes its packed-pointer JSON result. Returns
-// an error if the plugin doesn't implement it -- callers should only call
-// this for plugins whose manifest declares CapabilitySpellcheckData.
-func (r *Runtime) GetSpellcheckData(ctx context.Context, id string) (SpellcheckData, error) {
+// Call invokes an optional exported function on a loaded plugin and returns
+// its packed-pointer JSON result. It is the single generic path for every
+// capability call (see client/pluginmgr/capabilities): the runtime knows how
+// to reach an export and marshal bytes across the guest boundary, and
+// deliberately knows nothing about what any particular capability means.
+//
+// arg is passed to the export as a (ptr, len) pair, or omitted entirely when
+// nil -- matching an export declared with no parameters. timeout bounds this
+// one invocation; pass 0 for the default callTimeout.
+func (r *Runtime) Call(ctx context.Context, id, export string, arg []byte, timeout time.Duration) ([]byte, error) {
 	inst, err := r.inst(id)
 	if err != nil {
-		return SpellcheckData{}, err
+		return nil, err
 	}
-	fn := inst.mod.ExportedFunction("get_spellcheck_data")
+	fn := inst.mod.ExportedFunction(export)
 	if fn == nil {
-		return SpellcheckData{}, fmt.Errorf("wasmhost: %s: plugin does not export get_spellcheck_data", id)
+		return nil, fmt.Errorf("wasmhost: %s: plugin does not export %s", id, export)
 	}
 
 	inst.callMtx.Lock()
 	defer inst.callMtx.Unlock()
 
-	ctx, cancel := callWithTimeout(ctx)
+	if timeout <= 0 {
+		timeout = callTimeout
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	res, err := fn.Call(ctx)
-	if err != nil {
-		return SpellcheckData{}, fmt.Errorf("wasmhost: %s: get_spellcheck_data(): %w", id, err)
-	}
-	b, err := readPacked(inst.mod, res[0])
-	if err != nil {
-		return SpellcheckData{}, err
-	}
-	var data SpellcheckData
-	if err := json.Unmarshal(b, &data); err != nil {
-		return SpellcheckData{}, fmt.Errorf("wasmhost: %s: decoding SpellcheckData: %w", id, err)
-	}
-	return data, nil
-}
-
-// FetchLinkCard calls the plugin's optional fetch_link_card(url string)
-// export and decodes its packed-pointer JSON result. Returns an error if
-// the plugin doesn't implement it -- callers should only call this for
-// plugins whose manifest declares CapabilityLinkCard.
-func (r *Runtime) FetchLinkCard(ctx context.Context, id, url string) (LinkMetadata, error) {
-	inst, err := r.inst(id)
-	if err != nil {
-		return LinkMetadata{}, err
-	}
-	fn := inst.mod.ExportedFunction("fetch_link_card")
-	if fn == nil {
-		return LinkMetadata{}, fmt.Errorf("wasmhost: %s: plugin does not export fetch_link_card", id)
+	var params []uint64
+	if arg != nil {
+		ptr, length, err := allocInGuest(ctx, inst, arg)
+		if err != nil {
+			return nil, fmt.Errorf("wasmhost: %s: %s arg: %w", id, export, err)
+		}
+		params = []uint64{uint64(ptr), uint64(length)}
 	}
 
-	inst.callMtx.Lock()
-	defer inst.callMtx.Unlock()
-
-	ctx, cancel := context.WithTimeout(ctx, linkCardCallTimeout)
-	defer cancel()
-
-	ptr, length, err := allocInGuest(ctx, inst, []byte(url))
+	res, err := fn.Call(ctx, params...)
 	if err != nil {
-		return LinkMetadata{}, fmt.Errorf("wasmhost: %s: fetch_link_card arg: %w", id, err)
+		return nil, fmt.Errorf("wasmhost: %s: %s(): %w", id, export, err)
 	}
-
-	res, err := fn.Call(ctx, uint64(ptr), uint64(length))
-	if err != nil {
-		return LinkMetadata{}, fmt.Errorf("wasmhost: %s: fetch_link_card(%q): %w", id, url, err)
+	if len(res) == 0 {
+		return nil, nil
 	}
-	b, err := readPacked(inst.mod, res[0])
-	if err != nil {
-		return LinkMetadata{}, err
-	}
-	var metadata LinkMetadata
-	if err := json.Unmarshal(b, &metadata); err != nil {
-		return LinkMetadata{}, fmt.Errorf("wasmhost: %s: decoding LinkMetadata: %w", id, err)
-	}
-	return metadata, nil
+	return readPacked(inst.mod, res[0])
 }
 
 func decodeScreenUI(mod api.Module, packed uint64) (ScreenUI, error) {

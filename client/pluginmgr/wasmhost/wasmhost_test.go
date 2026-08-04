@@ -327,11 +327,10 @@ func readJSONFile(t *testing.T, path string, out any) {
 // TestHeadlessPluginLoadsAndServesCapabilities confirms a plugin exporting
 // only alloc + get_spellcheck_data + fetch_link_card (no
 // render_screen/handle_event/poll -- i.e. a Capabilities-only, no-nav-item
-// plugin) loads successfully and its capability exports work. fetch_link_card in the
-// fixture is implemented via fetch_url_ex plus fetch_last_status/
-// fetch_last_content_type (not plain fetch_url), so this also exercises
-// those three host functions end-to-end through the real
-// Runtime.FetchLinkCard path.
+// plugin) loads successfully and its optional exports are reachable through
+// the generic Call path. fetch_link_card in the fixture is implemented via
+// fetch_url_ex plus fetch_last_status/fetch_last_content_type (not plain
+// fetch_url), so this also exercises those three host functions end-to-end.
 func TestHeadlessPluginLoadsAndServesCapabilities(t *testing.T) {
 	ctx := context.Background()
 
@@ -358,24 +357,33 @@ func TestHeadlessPluginLoadsAndServesCapabilities(t *testing.T) {
 		t.Fatalf("Load: %v", err)
 	}
 
-	data, err := r.GetSpellcheckData(ctx, "headless1")
-	if err != nil {
-		t.Fatalf("GetSpellcheckData: %v", err)
+	// Decoded loosely rather than into the capabilities package's own
+	// structs: the runtime's job is to return the guest's bytes intact,
+	// and depending on a capability's typed shape here is exactly the
+	// coupling Call exists to remove.
+	var data struct {
+		Words        []string `json:"words"`
+		GrammarRules []struct {
+			Pattern string `json:"pattern"`
+		} `json:"grammarRules"`
+	}
+	if err := callJSON(ctx, r, "headless1", "get_spellcheck_data", nil, &data); err != nil {
+		t.Fatalf("get_spellcheck_data: %v", err)
 	}
 	if len(data.Words) != 2 || data.Words[0] != "hello" || data.Words[1] != "world" {
-		t.Errorf("GetSpellcheckData words = %v, want [hello world]", data.Words)
+		t.Errorf("get_spellcheck_data words = %v, want [hello world]", data.Words)
 	}
 	if len(data.GrammarRules) != 1 || data.GrammarRules[0].Pattern != "foo" {
-		t.Errorf("GetSpellcheckData grammarRules = %+v", data.GrammarRules)
+		t.Errorf("get_spellcheck_data grammarRules = %+v", data.GrammarRules)
 	}
 
-	metadata, err := r.FetchLinkCard(ctx, "headless1", "https://example.invalid/thing")
+	title, err := fixtureCardTitle(ctx, r, "headless1", "https://example.invalid/thing")
 	if err != nil {
-		t.Fatalf("FetchLinkCard: %v", err)
+		t.Fatalf("fetch_link_card: %v", err)
 	}
 	want := "body=fetched body status=200 contentType=text/plain; charset=utf-8"
-	if metadata.Title != want {
-		t.Errorf("FetchLinkCard title = %q, want %q", metadata.Title, want)
+	if title != want {
+		t.Errorf("fetch_link_card title = %q, want %q", title, want)
 	}
 	if gotHeader != "custom-value" {
 		t.Errorf("server saw X-Test-Header = %q, want %q", gotHeader, "custom-value")
@@ -417,23 +425,24 @@ func TestScreenedPluginRejectsCapabilityCalls(t *testing.T) {
 		t.Fatalf("Load: %v", err)
 	}
 
-	if _, err := r.GetSpellcheckData(ctx, "screened1"); err == nil {
-		t.Error("GetSpellcheckData against a screened-only plugin succeeded, want error")
+	if _, err := r.Call(ctx, "screened1", "get_spellcheck_data", nil, 0); err == nil {
+		t.Error("get_spellcheck_data against a screened-only plugin succeeded, want error")
 	}
-	if _, err := r.FetchLinkCard(ctx, "screened1", "https://example.com"); err == nil {
-		t.Error("FetchLinkCard against a screened-only plugin succeeded, want error")
+	if _, err := r.Call(ctx, "screened1", "fetch_link_card",
+		[]byte("https://example.com"), 0); err == nil {
+		t.Error("fetch_link_card against a screened-only plugin succeeded, want error")
 	}
 }
 
 // TestConcurrentCallsDoNotCorruptInstance guards against a real bug found in
 // production: a single wasm module instance has one linear memory and one
 // execution stack, and wazero does not itself serialize concurrent calls
-// into the same instance. Several LinkCard widgets fetching previews
+// into the same instance. Several widgets fetching link previews
 // concurrently (e.g. a chat scrolling into view with multiple links at
 // once) drove this to a wasm trap ("invalid table access") before
 // pluginInst grew a callMtx serializing every guest call. This fires many
-// concurrent FetchLinkCard calls against one instance and requires all of
-// them to succeed with the expected result, not merely "not panic".
+// concurrent calls against one instance and requires all of them to succeed
+// with the expected result, not merely "not panic".
 func TestConcurrentCallsDoNotCorruptInstance(t *testing.T) {
 	ctx := context.Background()
 
@@ -461,14 +470,15 @@ func TestConcurrentCallsDoNotCorruptInstance(t *testing.T) {
 	errs := make(chan error, n)
 	for i := 0; i < n; i++ {
 		go func() {
-			metadata, err := r.FetchLinkCard(ctx, "concurrent1", "https://example.invalid/thing")
+			title, err := fixtureCardTitle(ctx, r, "concurrent1",
+				"https://example.invalid/thing")
 			if err != nil {
 				errs <- err
 				return
 			}
 			want := "body=fetched body status=200 contentType="
-			if len(metadata.Title) < len(want) || metadata.Title[:len(want)] != want {
-				errs <- fmt.Errorf("unexpected title %q", metadata.Title)
+			if len(title) < len(want) || title[:len(want)] != want {
+				errs <- fmt.Errorf("unexpected title %q", title)
 				return
 			}
 			errs <- nil
@@ -479,4 +489,24 @@ func TestConcurrentCallsDoNotCorruptInstance(t *testing.T) {
 			t.Errorf("concurrent FetchLinkCard call %d failed: %v", i, err)
 		}
 	}
+}
+
+// callJSON is Call plus a JSON decode, the shape every capability contract
+// above this package uses (see client/pluginmgr/capabilities).
+func callJSON(ctx context.Context, r *Runtime, id, export string, arg []byte, out any) error {
+	b, err := r.Call(ctx, id, export, arg, 0)
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(b, out)
+}
+
+// fixtureCardTitle calls the test fixture's fetch_link_card and returns just
+// the title field it echoes the fetch result into.
+func fixtureCardTitle(ctx context.Context, r *Runtime, id, url string) (string, error) {
+	var card struct {
+		Title string `json:"title"`
+	}
+	err := callJSON(ctx, r, id, "fetch_link_card", []byte(url), &card)
+	return card.Title, err
 }

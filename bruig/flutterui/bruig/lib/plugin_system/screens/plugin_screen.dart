@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:bruig/components/containers.dart';
 import 'package:bruig/components/snackbars.dart';
 import 'package:bruig/components/text.dart';
-import 'package:bruig/models/dynplugins.dart';
+import 'package:bruig/plugin_system/plugin_nav.dart';
 import 'package:bruig/models/uistate.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
@@ -12,24 +12,24 @@ import 'package:golib_plugin/golib_plugin.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-/// DynPluginScreen is the one generic screen every dynamic-wasm plugin's
-/// nav item points at (see DynPluginsModel): it renders whichever of the
+/// PluginScreen is the one generic screen every dynamic-wasm plugin's
+/// nav item points at (see PluginNavModel): it renders whichever of the
 /// plugin's declared [screens] is active by interpreting the DynScreenUI
 /// JSON the plugin's WebAssembly module returns, and forwards
 /// button/switch/list-item activations back to the plugin as events. No
 /// plugin-specific Dart code exists anywhere in this widget -- the RSS
 /// plugin's "My Feeds"/"Add Feed"/"RSS Settings" pages are just data this
 /// widget happens to be showing.
-class DynPluginScreen extends StatefulWidget {
+class PluginScreen extends StatefulWidget {
   final String pluginId;
   final List<ScreenDef> screens;
-  const DynPluginScreen(this.pluginId, this.screens, {super.key});
+  const PluginScreen(this.pluginId, this.screens, {super.key});
 
   @override
-  State<DynPluginScreen> createState() => _DynPluginScreenState();
+  State<PluginScreen> createState() => _PluginScreenState();
 }
 
-class _DynPluginScreenState extends State<DynPluginScreen> {
+class _PluginScreenState extends State<PluginScreen> {
   String? activeScreen;
   DynScreenUI? ui;
   bool loading = false;
@@ -47,12 +47,12 @@ class _DynPluginScreenState extends State<DynPluginScreen> {
 
     // Fired after a background poll (e.g. the RSS plugin fetching new feed
     // items) completes, so this screen picks up new data live rather than
-    // only on next manual navigation. Goes through DynPluginsModel's
+    // only on next manual navigation. Goes through PluginNavModel's
     // re-broadcast stream, not Golib.dynPluginScreenUpdated() directly --
     // that one is single-subscription and this widget gets recreated each
     // time its nav item is visited, so a second raw .listen() here would
     // throw "Stream has already been listened to."
-    var dynPlugins = Provider.of<DynPluginsModel>(context, listen: false);
+    var dynPlugins = Provider.of<PluginNavModel>(context, listen: false);
     _updateSub = dynPlugins.pluginScreenUpdated.listen((pluginId) {
       if (pluginId == widget.pluginId && mounted) {
         _load();

@@ -868,7 +868,13 @@ class LinkMetadata {
   final String author;
   @JsonKey(name: "thumbnailB64")
   final String thumbnailB64;
-  LinkMetadata(this.title, this.description, this.author, this.thumbnailB64);
+  // player names a client-side player the plugin asks be offered for this
+  // link instead of a still thumbnail, or "" for an ordinary card. It is a
+  // request, not a guarantee: an unrecognized name falls back to the card.
+  @JsonKey(defaultValue: "")
+  final String player;
+  LinkMetadata(this.title, this.description, this.author, this.thumbnailB64,
+      this.player);
   factory LinkMetadata.fromJson(Map<String, dynamic> json) =>
       _$LinkMetadataFromJson(json);
 }
