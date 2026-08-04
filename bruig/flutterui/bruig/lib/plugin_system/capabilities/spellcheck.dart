@@ -136,6 +136,14 @@ class _CapabilitySpellCheckService extends SpellCheckService {
 /// "spell check off".
 class SpellcheckCapability extends ChangeNotifier {
   final _CapabilitySpellCheckService _service = _CapabilitySpellCheckService();
+
+  // _fetch is injectable so this class can be tested without a running
+  // client; it is Golib.getSpellcheckData everywhere but in tests.
+  final Future<SpellcheckData> Function() _fetch;
+
+  SpellcheckCapability({Future<SpellcheckData> Function()? fetch})
+      : _fetch = fetch ?? Golib.getSpellcheckData;
+
   bool _active = false;
   bool get active => _active;
 
@@ -156,17 +164,30 @@ class SpellcheckCapability extends ChangeNotifier {
   /// which capabilities are present.
   Future<void> update(PluginManagerModel plugins) async {
     var active = plugins.hasCapability(PluginCapability.spellcheckData);
-    if (active) {
-      try {
-        _service.updateData(await Golib.getSpellcheckData());
-      } catch (exception) {
-        // A provider still loading; keep whatever data we already had
-        // rather than dropping spell check entirely mid-session.
-        debugPrint("Unable to load spellcheck data: $exception");
-      }
+
+    // Flip `active` BEFORE awaiting the data, never after. This runs from a
+    // ChangeNotifierProxyProvider's update, i.e. part-way through the build
+    // of the composer that is about to read `configuration` -- so anything
+    // set after an await lands too late for that build, and the composer
+    // hands its TextField a null configuration (Flutter's "spell check
+    // off") for the rest of its life. Only the word list can arrive late;
+    // whether the feature exists at all cannot.
+    if (active != _active) {
+      _active = active;
+      notifyListeners();
     }
-    if (active == _active) return;
-    _active = active;
-    notifyListeners();
+    if (!active) return;
+
+    try {
+      _service.updateData(await _fetch());
+      // The words landing is a second, later change: a composer built in
+      // the meantime is showing an active-but-empty checker and needs to
+      // re-run it now there is something to check against.
+      notifyListeners();
+    } catch (exception) {
+      // A provider still loading; keep whatever data we already had rather
+      // than dropping spell check entirely mid-session.
+      debugPrint("Unable to load spellcheck data: $exception");
+    }
   }
 }
