@@ -87,6 +87,40 @@ int _bitCount(int x) {
   return n;
 }
 
+/// WritingIssueKind separates the two things a provider flags, because they
+/// warrant different confidence: an unknown word is a fact about the
+/// dictionary, whereas a style rule is a judgement that may be wrong.
+enum WritingIssueKind { spelling, style }
+
+/// WritingIssue is one flagged span, with enough context to list it away
+/// from the text it came from.
+///
+/// Flutter's own SuggestionSpan carries a range and replacements and nothing
+/// else, which is all an inline underline needs. A panel listing every
+/// problem in a message has to say what each one *is*, so this exists
+/// alongside it, built from the same data.
+class WritingIssue {
+  final TextRange range;
+
+  /// The offending text itself, so a list can show it without re-slicing.
+  final String text;
+
+  /// What is wrong: a provider's rule message, or a plain note for a word
+  /// the dictionary doesn't have.
+  final String message;
+
+  final List<String> suggestions;
+  final WritingIssueKind kind;
+
+  const WritingIssue({
+    required this.range,
+    required this.text,
+    required this.message,
+    required this.suggestions,
+    required this.kind,
+  });
+}
+
 class _CompiledRule {
   final RegExp pattern;
   final String message;
@@ -171,6 +205,48 @@ class _CapabilitySpellCheckService extends SpellCheckService {
     return spans;
   }
 
+  /// review returns every problem in [text], for a caller listing them
+  /// rather than underlining them in place. Ordered by position, so the list
+  /// reads in the same order as the message.
+  List<WritingIssue> review(String text) {
+    if (!hasData) return const [];
+    var issues = <WritingIssue>[];
+
+    for (var rule in _rules) {
+      try {
+        for (var m in rule.pattern.allMatches(text)) {
+          issues.add(WritingIssue(
+            range: TextRange(start: m.start, end: m.end),
+            text: m.group(0) ?? "",
+            message: rule.message,
+            suggestions: rule.suggest.isEmpty
+                ? const []
+                : [_expandTemplate(rule.suggest, m)],
+            kind: WritingIssueKind.style,
+          ));
+        }
+      } catch (_) {
+        // A provider-supplied pattern that throws at match time; skip just
+        // that rule, as the inline path does.
+      }
+    }
+
+    for (var m in _wordRegExp.allMatches(text)) {
+      var word = m.group(0)!;
+      if (_words.contains(word.toLowerCase())) continue;
+      issues.add(WritingIssue(
+        range: TextRange(start: m.start, end: m.end),
+        text: word,
+        message: "Not in dictionary",
+        suggestions: _suggest(word.toLowerCase()),
+        kind: WritingIssueKind.spelling,
+      ));
+    }
+
+    issues.sort((a, b) => a.range.start.compareTo(b.range.start));
+    return issues;
+  }
+
   /// _suggest ranks the dictionary words within [maxDistance] edits of
   /// [word], nearest first.
   ///
@@ -231,6 +307,12 @@ class SpellcheckCapability extends ChangeNotifier {
           ),
         )
       : null;
+
+  /// review lists every problem a provider finds in [text] -- see
+  /// WritingIssue. Empty when no provider is enabled, which is also what a
+  /// clean message returns, so a caller need not distinguish them.
+  List<WritingIssue> review(String text) =>
+      _active ? _service.review(text) : const [];
 
   /// update re-reads the merged data whenever the set of enabled plugins
   /// changes. The fetch lives here rather than in PluginManagerModel so the

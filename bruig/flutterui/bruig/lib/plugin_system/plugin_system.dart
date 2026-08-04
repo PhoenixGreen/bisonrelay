@@ -29,6 +29,9 @@
 //   capabilities/youtube_player.dart    a player a link-card provider may ask for
 //   capabilities/markdown_extensions.dart  capabilities meeting the markdown pipeline
 //   capabilities/spellcheck.dart        the spellcheck-data capability
+//   capabilities/thesaurus.dart         the thesaurus capability
+//   capabilities/thesaurus_menu.dart    its composer UI
+//   capabilities/writing_panel.dart     the post editor's review panel
 //   screens/plugin_screen.dart          renders a plugin-described screen
 //   screens/plugin_settings_screen.dart Settings > Plugins
 //
@@ -38,6 +41,9 @@
 export 'package:bruig/plugin_system/capabilities/link_card.dart';
 export 'package:bruig/plugin_system/capabilities/markdown_extensions.dart';
 export 'package:bruig/plugin_system/capabilities/spellcheck.dart';
+export 'package:bruig/plugin_system/capabilities/thesaurus.dart';
+export 'package:bruig/plugin_system/capabilities/thesaurus_menu.dart';
+export 'package:bruig/plugin_system/capabilities/writing_panel.dart';
 export 'package:bruig/plugin_system/plugin_capability.dart';
 export 'package:bruig/plugin_system/plugin_manager.dart';
 export 'package:bruig/plugin_system/plugin_nav.dart';

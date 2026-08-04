@@ -607,17 +607,17 @@ class _ChatInputState extends State<ChatInput> {
           maxLines: null,
           contextMenuBuilder:
               (BuildContext context, EditableTextState editableTextState) =>
-                  AdaptiveTextSelectionToolbar.editable(
+                  AdaptiveTextSelectionToolbar.buttonItems(
             anchors: editableTextState.contextMenuAnchors,
-            clipboardStatus: ClipboardStatus.pasteable,
-            onCopy: null,
-            onCut: null,
-            onLiveTextInput: null,
-            onLookUp: null,
-            onSearchWeb: null,
-            onSelectAll: null,
-            onShare: null,
-            onPaste: pasteEvent,
+            buttonItems: [
+              // Paste alone, as before -- the other standard entries were
+              // deliberately left out of this composer.
+              ContextMenuButtonItem(
+                  onPressed: pasteEvent, type: ContextMenuButtonType.paste),
+              // Whatever an enabled plugin capability adds; empty when none
+              // does, which is why nothing here names one.
+              ...thesaurusContextMenuItems(context, editableTextState),
+            ],
           ),
           style: theme.textStyleFor(context, TextSize.medium, null),
           keyboardType: TextInputType.multiline,

@@ -15,7 +15,13 @@ enum PluginCapability {
 
   // spellcheckData supplies a wordlist and grammar rules for the text
   // composers. See capabilities/spellcheck.dart.
-  spellcheckData("spellcheck-data");
+  spellcheckData("spellcheck-data"),
+
+  // thesaurus answers "what else could I have said here" for one word.
+  // Unlike the two above it is asked on demand rather than supplying data up
+  // front, because a thesaurus is far too large to hand over wholesale. See
+  // capabilities/thesaurus.dart.
+  thesaurus("thesaurus");
 
   // wireName is the string a manifest declares and the Go side validates
   // against. Kept explicit rather than derived from the enum name so that

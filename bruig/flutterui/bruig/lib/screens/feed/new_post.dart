@@ -293,9 +293,20 @@ class _NewPostScreenState extends State<NewPostScreen> {
                 maxLines: null,
                 spellCheckConfiguration:
                     Provider.of<SpellcheckCapability>(context).configuration,
+                contextMenuBuilder: (context, editableTextState) =>
+                    AdaptiveTextSelectionToolbar.buttonItems(
+                  anchors: editableTextState.contextMenuAnchors,
+                  buttonItems: [
+                    ...editableTextState.contextMenuButtonItems,
+                    ...thesaurusContextMenuItems(context, editableTextState),
+                  ],
+                ),
               ),
             ),
           ),
+          // Renders nothing unless a plugin provides one of the writing
+          // capabilities, so the editor is unchanged without them.
+          WritingPanel(controller: contentCtrl),
           const Divider(),
           const SizedBox(height: 10),
           Align(

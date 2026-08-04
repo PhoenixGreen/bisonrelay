@@ -770,6 +770,37 @@ Map<String, dynamic> _$SpellcheckDataToJson(SpellcheckData instance) =>
       'grammarRules': instance.grammarRules,
     };
 
+ThesaurusSense _$ThesaurusSenseFromJson(Map<String, dynamic> json) =>
+    ThesaurusSense(
+      json['pos'] as String? ?? '',
+      (json['synonyms'] as List<dynamic>?)?.map((e) => e as String).toList() ??
+          [],
+      (json['antonyms'] as List<dynamic>?)?.map((e) => e as String).toList() ??
+          [],
+    );
+
+Map<String, dynamic> _$ThesaurusSenseToJson(ThesaurusSense instance) =>
+    <String, dynamic>{
+      'pos': instance.partOfSpeech,
+      'synonyms': instance.synonyms,
+      'antonyms': instance.antonyms,
+    };
+
+ThesaurusEntry _$ThesaurusEntryFromJson(Map<String, dynamic> json) =>
+    ThesaurusEntry(
+      json['word'] as String? ?? '',
+      (json['senses'] as List<dynamic>?)
+              ?.map((e) => ThesaurusSense.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          [],
+    );
+
+Map<String, dynamic> _$ThesaurusEntryToJson(ThesaurusEntry instance) =>
+    <String, dynamic>{
+      'word': instance.word,
+      'senses': instance.senses,
+    };
+
 SharedFile _$SharedFileFromJson(Map<String, dynamic> json) => SharedFile(
       json['file_hash'] as String,
       json['fid'] as String,

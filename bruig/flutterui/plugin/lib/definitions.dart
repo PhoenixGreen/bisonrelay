@@ -900,6 +900,41 @@ class SpellcheckData {
       _$SpellcheckDataFromJson(json);
 }
 
+/// ThesaurusSense is one meaning of a word. A word usually has several, and
+/// their synonyms are not interchangeable -- the synonyms for "bank" as a
+/// place to keep money are wrong for its river sense -- so they stay apart
+/// here and in the UI.
+@JsonSerializable()
+class ThesaurusSense {
+  /// A short label ("noun", "verb", "adj", "adv") captioning the sense.
+  @JsonKey(name: "pos", defaultValue: "")
+  final String partOfSpeech;
+  @JsonKey(defaultValue: [])
+  final List<String> synonyms;
+  @JsonKey(defaultValue: [])
+  final List<String> antonyms;
+  ThesaurusSense(this.partOfSpeech, this.synonyms, this.antonyms);
+  factory ThesaurusSense.fromJson(Map<String, dynamic> json) =>
+      _$ThesaurusSenseFromJson(json);
+}
+
+/// ThesaurusEntry is everything a thesaurus provider knows about one word.
+@JsonSerializable()
+class ThesaurusEntry {
+  @JsonKey(defaultValue: "")
+  final String word;
+  @JsonKey(defaultValue: [])
+  final List<ThesaurusSense> senses;
+  ThesaurusEntry(this.word, this.senses);
+  factory ThesaurusEntry.fromJson(Map<String, dynamic> json) =>
+      _$ThesaurusEntryFromJson(json);
+
+  /// isEmpty is the ordinary outcome for a name, a typo, or a word the
+  /// provider's data doesn't cover.
+  bool get isEmpty =>
+      senses.every((s) => s.synonyms.isEmpty && s.antonyms.isEmpty);
+}
+
 @JsonSerializable()
 class SharedFile {
   @JsonKey(name: "file_hash")
@@ -3902,6 +3937,20 @@ abstract class PluginPlatform {
     return SpellcheckData.fromJson(res);
   }
 
+  /// Returns what an enabled thesaurus plugin knows about [word], or null
+  /// when no plugin is enabled, none covers the word, or the lookup fails --
+  /// all of which the caller treats the same way, by offering nothing.
+  Future<ThesaurusEntry?> lookupSynonyms(String word) async {
+    try {
+      var res = await asyncCall(CTLookupSynonyms, word);
+      if (res == null) return null;
+      var entry = ThesaurusEntry.fromJson(res);
+      return entry.isEmpty ? null : entry;
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Renders one screen of an enabled dynamic-wasm plugin (e.g. "feeds" on
   /// the RSS plugin) by calling into its WebAssembly module.
   Future<DynScreenUI> renderDynPluginScreen(
@@ -4838,6 +4887,7 @@ const int CTSetPluginEnabled = 0xb7;
 const int CTRemovePlugin = 0xb8;
 const int CTFetchLinkMetadata = 0xb9;
 const int CTGetSpellcheckData = 0xba;
+const int CTLookupSynonyms = 0xbe;
 const int CTDynPluginRenderScreen = 0xbb;
 const int CTDynPluginHandleEvent = 0xbc;
 const int CTGetExchangeRate = 0xbd;

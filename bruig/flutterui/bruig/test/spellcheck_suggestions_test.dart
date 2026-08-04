@@ -137,6 +137,8 @@ void main() {
     expect(spans, isEmpty);
   });
 
+  _reviewTests();
+
   group("grammar rules", () {
     // These run in Dart's regex engine, which is the only place the
     // backreference rules can be exercised at all -- Go's RE2 cannot compile
@@ -181,5 +183,59 @@ void main() {
       expect(spans, isNotEmpty);
       expect(spans.first.suggestions, contains(" "));
     });
+  });
+}
+
+// The review() API backs the post editor's panel, which needs to say what
+// each problem *is* -- something Flutter's own SuggestionSpan cannot carry.
+void _reviewTests() {
+  var rules = [
+    GrammarRule(r"[ ]{2,}", "Multiple spaces", " "),
+    GrammarRule(r"[!?]{3,}", "Excessive punctuation", ""),
+  ];
+
+  test("review separates spelling from style, in reading order", () async {
+    var capability = SpellcheckCapability(
+        fetch: () async => SpellcheckData(_dictionary, rules));
+    await capability.update(FakePlugins({PluginCapability.spellcheckData}));
+
+    var issues = capability.review("the  payment recieve");
+    expect(issues, hasLength(2));
+
+    // Ordered by position: the doubled space precedes the misspelling.
+    expect(issues[0].kind, WritingIssueKind.style);
+    expect(issues[0].message, "Multiple spaces");
+    expect(issues[1].kind, WritingIssueKind.spelling);
+    expect(issues[1].text, "recieve");
+    expect(issues[1].suggestions, contains("receive"));
+  });
+
+  test("a style rule with no fix still carries its message", () async {
+    var capability = SpellcheckCapability(
+        fetch: () async => SpellcheckData(_dictionary, rules));
+    await capability.update(FakePlugins({PluginCapability.spellcheckData}));
+
+    var issues = capability.review("payment!!!");
+    expect(issues.single.message, "Excessive punctuation");
+    expect(issues.single.suggestions, isEmpty);
+  });
+
+  test("no provider means nothing to review", () async {
+    var capability = SpellcheckCapability(fetch: () async => throw "unused");
+    await capability.update(FakePlugins({}));
+    expect(capability.review("recieve  this"), isEmpty);
+  });
+
+  // The ranges drive in-place replacement in the panel, so they have to
+  // address exactly the text they claim to.
+  test("an issue's range addresses its own text", () async {
+    var capability = SpellcheckCapability(
+        fetch: () async => SpellcheckData(_dictionary, rules));
+    await capability.update(FakePlugins({PluginCapability.spellcheckData}));
+
+    const text = "the  payment recieve";
+    for (var issue in capability.review(text)) {
+      expect(text.substring(issue.range.start, issue.range.end), issue.text);
+    }
   });
 }

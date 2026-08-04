@@ -195,6 +195,7 @@ const (
 	CTGetSpellcheckData            CmdType = 0xba
 	CTDynPluginRenderScreen        CmdType = 0xbb
 	CTDynPluginHandleEvent         CmdType = 0xbc
+	CTLookupSynonyms               CmdType = 0xbe
 	CTGetExchangeRate              CmdType = 0xbd
 
 	NTInviteReceived            = 0x1001

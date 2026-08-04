@@ -49,6 +49,12 @@ const (
 	// client/pluginmgr/capabilities for the contract.
 	CapabilityLinkCard = "link-card"
 
+	// CapabilityThesaurus means this plugin can answer "what else could I
+	// have said here" for a single word. Unlike the two above it is asked on
+	// demand, one word at a time, rather than supplying data up front. See
+	// client/pluginmgr/capabilities for the contract.
+	CapabilityThesaurus = "thesaurus"
+
 	maxManifestSize  = 64 * 1024
 	maxImportZipSize = 5 * 1024 * 1024
 )
@@ -64,6 +70,7 @@ var knownRendererKinds = map[string]bool{
 var knownCapabilities = map[string]bool{
 	CapabilitySpellcheckData: true,
 	CapabilityLinkCard:       true,
+	CapabilityThesaurus:      true,
 }
 
 // wasmFilenameRegexp restricts Manifest.WasmFile to a bare filename (no

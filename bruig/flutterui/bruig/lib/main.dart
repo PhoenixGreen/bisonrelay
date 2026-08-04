@@ -209,6 +209,12 @@ Future<void> runMainApp(Config cfg) async {
         create: (c) => SpellcheckCapability(),
         update: (c, plugins, capability) => capability!..update(plugins),
       ),
+      // The thesaurus holds no state of its own -- it asks the plugin a
+      // word at a time -- so it is a plain ProxyProvider rather than a
+      // notifier, rebuilt only if the plugin list itself changes.
+      ProxyProvider<PluginManagerModel, ThesaurusCapability>(
+        update: (c, plugins, _) => ThesaurusCapability(plugins),
+      ),
       // lazy: false is required here: unlike the two above, nothing ever
       // reads PluginNavModel's value -- it exists purely for the side
       // effect of registering nav items into MainMenuModel -- so without

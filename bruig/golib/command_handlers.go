@@ -1382,6 +1382,13 @@ func handleClientCmd(cc *clientCtx, cmd *cmd) (interface{}, error) {
 		}
 		return capabilities.FetchLinkCard(cc.ctx, cc.pluginMgr, cc.dynRuntime, linkURL)
 
+	case CTLookupSynonyms:
+		var word string
+		if err := cmd.decode(&word); err != nil {
+			return nil, err
+		}
+		return capabilities.LookupSynonyms(cc.ctx, cc.pluginMgr, cc.dynRuntime, word)
+
 	case CTGetSpellcheckData:
 		return capabilities.MergedSpellcheckData(cc.ctx, cc.pluginMgr,
 			cc.dynRuntime, cc.log), nil
