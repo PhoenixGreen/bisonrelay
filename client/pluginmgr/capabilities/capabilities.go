@@ -46,6 +46,12 @@ type Manager interface {
 // A plugin that doesn't export the function, fails, or returns something
 // undecodable is reported to the caller, which decides whether that's fatal
 // (a single-plugin call) or merely skippable (an aggregate over several).
+//
+// An empty result is an error, not an empty value. Returning nothing is how
+// a guest signals "I could not answer for this input" -- the ABI has no
+// separate error channel -- so treating it as a successful zero value would
+// hand the caller a blank result it cannot tell apart from a real one, and
+// suppress the fallback the caller would otherwise take.
 func call(ctx context.Context, rt Runtime, id, export string, arg []byte,
 	timeout time.Duration, out any) error {
 	b, err := rt.Call(ctx, id, export, arg, timeout)
@@ -53,7 +59,7 @@ func call(ctx context.Context, rt Runtime, id, export string, arg []byte,
 		return err
 	}
 	if len(b) == 0 {
-		return nil
+		return fmt.Errorf("capabilities: %s: %s returned no result", id, export)
 	}
 	if err := json.Unmarshal(b, out); err != nil {
 		return fmt.Errorf("capabilities: %s: decoding %s result: %w", id, export, err)

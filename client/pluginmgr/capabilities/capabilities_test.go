@@ -25,6 +25,7 @@ func (m stubManager) PluginsWithCapability(capability string) []pluginmgr.Manife
 type stubRuntime struct {
 	results map[string]any    // plugin id -> value to marshal back
 	errs    map[string]error  // plugin id -> error instead of a result
+	empty   map[string]bool   // plugin id -> return zero bytes (the ABI's "can't answer")
 	calls   []string          // plugin id + export, in call order
 	lastArg map[string]string // plugin id -> arg it was called with
 }
@@ -39,6 +40,9 @@ func (r *stubRuntime) Call(ctx context.Context, id, export string, arg []byte,
 	r.lastArg[id] = string(arg)
 	if err := r.errs[id]; err != nil {
 		return nil, err
+	}
+	if r.empty[id] {
+		return nil, nil
 	}
 	v, ok := r.results[id]
 	if !ok {
@@ -189,5 +193,45 @@ func TestFetchLinkCardRejectsNonHTTP(t *testing.T) {
 	}
 	if len(rt.calls) != 0 {
 		t.Errorf("plugin was called for a non-http url: %v", rt.calls)
+	}
+}
+
+// TestFetchLinkCardEmptyResultIsError pins the failure signal the wasm ABI
+// actually uses. A guest that can't answer returns a packed zero, which the
+// runtime surfaces as zero bytes -- not as an error. Treating that as a
+// successful empty LinkMetadata gave the UI a blank card it could not
+// distinguish from a real one, in place of the plain-link fallback.
+func TestFetchLinkCardEmptyResultIsError(t *testing.T) {
+	mgr := stubManager{byCapability: map[string][]pluginmgr.Manifest{
+		pluginmgr.CapabilityLinkCard: {
+			manifest("cards", pluginmgr.CapabilityLinkCard, "example.com"),
+		},
+	}}
+	rt := &stubRuntime{empty: map[string]bool{"cards": true}}
+
+	if _, err := FetchLinkCard(context.Background(), mgr, rt,
+		"https://example.com/thing"); err == nil {
+		t.Error("FetchLinkCard on an empty guest result succeeded, want error")
+	}
+}
+
+// TestMergedSpellcheckDataSkipsEmptyResult is the same signal on the
+// aggregate side: a provider that answers with nothing is skipped, and must
+// not abort the merge for the providers that did answer.
+func TestMergedSpellcheckDataSkipsEmptyResult(t *testing.T) {
+	mgr := stubManager{byCapability: map[string][]pluginmgr.Manifest{
+		pluginmgr.CapabilitySpellcheckData: {
+			manifest("silent", pluginmgr.CapabilitySpellcheckData),
+			manifest("ok", pluginmgr.CapabilitySpellcheckData),
+		},
+	}}
+	rt := &stubRuntime{
+		empty:   map[string]bool{"silent": true},
+		results: map[string]any{"ok": SpellcheckData{Words: []string{"fine"}}},
+	}
+
+	got := MergedSpellcheckData(context.Background(), mgr, rt, nil)
+	if len(got.Words) != 1 || got.Words[0] != "fine" {
+		t.Errorf("words = %v, want [fine]", got.Words)
 	}
 }
