@@ -610,6 +610,9 @@ class _ChatInputState extends State<ChatInput> {
                   AdaptiveTextSelectionToolbar.buttonItems(
             anchors: editableTextState.contextMenuAnchors,
             buttonItems: [
+              // Corrections lead: on a word flagged as misspelled they are
+              // the reason the menu was opened.
+              ...spellingContextMenuItems(context, editableTextState),
               // Paste alone, as before -- the other standard entries were
               // deliberately left out of this composer.
               ContextMenuButtonItem(

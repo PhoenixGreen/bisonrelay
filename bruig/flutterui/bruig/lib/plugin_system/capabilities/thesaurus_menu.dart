@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/capabilities/spellcheck_menu.dart';
 import 'package:bruig/plugin_system/capabilities/thesaurus.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
@@ -33,6 +34,11 @@ List<ContextMenuButtonItem> thesaurusContextMenuItems(
   var selected = selection.textInside(controller.text);
   var word = ThesaurusCapability.normalizeWord(selected);
   if (word == null) return const [];
+
+  // A word the dictionary doesn't have is not a word a thesaurus can answer
+  // for, so offering the lookup would promise a list that is always empty.
+  // The corrections shown in its place are what was actually wanted.
+  if (misspellingAt(editableTextState) != null) return const [];
 
   return [
     ContextMenuButtonItem(

@@ -297,6 +297,7 @@ class _NewPostScreenState extends State<NewPostScreen> {
                     AdaptiveTextSelectionToolbar.buttonItems(
                   anchors: editableTextState.contextMenuAnchors,
                   buttonItems: [
+                    ...spellingContextMenuItems(context, editableTextState),
                     ...editableTextState.contextMenuButtonItems,
                     ...thesaurusContextMenuItems(context, editableTextState),
                   ],
