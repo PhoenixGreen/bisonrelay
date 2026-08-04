@@ -1,40 +1,25 @@
 import 'package:bruig/components/containers.dart';
-import 'package:bruig/components/text.dart';
 import 'package:flutter/material.dart';
-import 'package:bruig/theme_manager.dart';
-import 'package:provider/provider.dart';
 
-class ManageContentBar extends StatefulWidget {
-  final int selectedIndex;
-  final Function tabChange;
-  const ManageContentBar(this.tabChange, this.selectedIndex, {super.key});
-
-  @override
-  State<ManageContentBar> createState() => _ManageContentBarState();
-}
-
-class _ManageContentBarState extends State<ManageContentBar> {
-  int get selectedIndex => widget.selectedIndex;
-  Function get tabChange => widget.tabChange;
-
-  @override
-  Widget build(BuildContext context) {
-    return Consumer<ThemeNotifier>(
-        builder: (context, theme, _) => SecondarySideMenuList(
-                width: 130 * (theme.fontScale > 0 ? theme.fontScale : 1),
-                items: [
-                  ListTile(
-                    title: const Txt.S("Add"),
-                    onTap: () => tabChange(0),
-                  ),
-                  ListTile(
-                    title: const Txt.S("Shared"),
-                    onTap: () => tabChange(1),
-                  ),
-                  ListTile(
-                    title: const Txt.S("Downloads"),
-                    onTap: () => tabChange(2),
-                  ),
-                ]));
-  }
+// manageContentBarItems returns the Manage Content submenu's tabs, for use
+// with SecondarySideMenuLayout (see containers.dart).
+List<SidebarNavItem> manageContentBarItems(
+    Function tabChange, int selectedIndex) {
+  return [
+    SidebarNavItem(
+        icon: Icons.add_circle_outline,
+        selected: selectedIndex == 0,
+        label: "Add",
+        onTap: () => tabChange(0)),
+    SidebarNavItem(
+        icon: Icons.folder_shared_outlined,
+        selected: selectedIndex == 1,
+        label: "Shared",
+        onTap: () => tabChange(1)),
+    SidebarNavItem(
+        icon: Icons.download_outlined,
+        selected: selectedIndex == 2,
+        label: "Downloads",
+        onTap: () => tabChange(2)),
+  ];
 }

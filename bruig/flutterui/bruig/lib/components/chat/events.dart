@@ -29,7 +29,8 @@ import 'package:open_filex/open_filex.dart';
 import 'package:file_icon/file_icon.dart';
 import 'package:bruig/components/interactive_avatar.dart';
 import 'package:bruig/components/user_context_menu.dart';
-import 'package:bruig/theme_manager.dart';
+import 'package:bruig/theming_system/theme_preset.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:path/path.dart' as path;
 
 class ServerEvent extends StatelessWidget {
@@ -42,11 +43,21 @@ class ServerEvent extends StatelessWidget {
   Widget build(BuildContext context) {
     assert(child != null || msg != null);
 
-    return Box(
-        padding: const EdgeInsets.only(left: 41, top: 5, bottom: 5),
-        margin: const EdgeInsets.all(5),
-        color: bgColor ?? SurfaceColor.surfaceContainer,
-        child: child ?? Txt.S(msg!));
+    return Consumer<ThemeNotifier>(
+        builder: (context, theme, _) => Box(
+            padding: const EdgeInsets.only(left: 41, top: 5, bottom: 5),
+            margin: const EdgeInsets.all(5),
+            color: bgColor ?? SurfaceColor.surfaceContainer,
+            // Matches received chat bubbles' own background -- previously
+            // these system/event alerts (GC membership changes, invite
+            // responses, file transfers, etc.) always fell back to
+            // SurfaceColor.surfaceContainer, a Primary-derived tone, with
+            // no way to follow the "Speech background (received)" palette
+            // slot. bgColor (e.g. errorContainer for a failed upload) still
+            // takes priority when explicitly passed.
+            overrideColor:
+                bgColor == null ? theme.activePreset?.speechBackground : null,
+            child: child ?? Txt.S(msg!)));
   }
 }
 
@@ -166,9 +177,43 @@ class _ReceivedSentPMState extends State<ReceivedSentPM> {
     showSuccessSnackbar(context, "Copied \"$textMsg\" to clipboard");
   }
 
+  // _showMsgMenu is the enhanced Copy/Reply/Pin popup shown when
+  // AreaStyle.enableMessageActions is on for ThemeArea.chat.
+  void _showMsgMenu(Offset pos, String msg, String fullDate, String nick,
+      String toCopy) async {
+    final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+    final local = overlay.globalToLocal(pos);
+    final selected = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromRect(
+        Rect.fromLTWH(local.dx, local.dy, 0, 0),
+        Offset.zero & overlay.size,
+      ),
+      items: const [
+        PopupMenuItem<String>(value: 'reply', child: Text('Reply')),
+        PopupMenuItem<String>(value: 'pin', child: Text('Pin')),
+        PopupMenuItem<String>(value: 'copy', child: Text('Copy')),
+      ],
+    );
+    if (!mounted) return;
+    if (selected == 'reply') {
+      widget.chat.setReplyTo(nick, msg);
+    } else if (selected == 'pin') {
+      widget.chat.setPin(nick, msg);
+    } else if (selected == 'copy') {
+      copy(context, toCopy);
+    }
+  }
+
   void messageSecondaryTapContext(
       TapDownDetails details, String msg, String fullDate, String nick) {
     var toCopy = "$fullDate $nick - $msg";
+    if (ThemeNotifier.of(context, listen: false)
+        .areaStyle(ThemeArea.chat)
+        .enableMessageActions) {
+      _showMsgMenu(details.globalPosition, msg, fullDate, nick, toCopy);
+      return;
+    }
     _contextMenuController.show(
       context: context,
       contextMenuBuilder: (context) {
@@ -195,6 +240,12 @@ class _ReceivedSentPMState extends State<ReceivedSentPM> {
   void messageLongDownContext(
       LongPressDownDetails details, String msg, String fullDate, String nick) {
     var toCopy = "$fullDate $nick - $msg";
+    if (ThemeNotifier.of(context, listen: false)
+        .areaStyle(ThemeArea.chat)
+        .enableMessageActions) {
+      _showMsgMenu(details.globalPosition, msg, fullDate, nick, toCopy);
+      return;
+    }
     _contextMenuController.show(
       context: context,
       contextMenuBuilder: (context) {
@@ -260,94 +311,153 @@ class _ReceivedSentPMState extends State<ReceivedSentPM> {
     var showAvatar = !widget.evnt.showAvatar && !isOwnMessage && !isScreenSmall;
     var showNick = !(widget.evnt.sameUser || isOwnMessage) && !isScreenSmall;
 
-    return Consumer<ThemeNotifier>(
-        builder: (context, theme, _) => Container(
-            margin: EdgeInsets.only(
-                top: widget.evnt.sameUser ? 2 : 10,
-                right: isOwnMessage ? 20 : 0),
-            child: Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                mainAxisAlignment: isOwnMessage
-                    ? MainAxisAlignment.end
-                    : MainAxisAlignment.start,
-                children: <Widget>[
-                  if (showAvatar)
-                    Container(
-                      height: 28,
-                      width: 28,
-                      margin: const EdgeInsets.only(
-                          top: 0, bottom: 10, left: 10, right: 10),
-                      child: UserContextMenu(
-                        client: widget.client,
-                        targetUserChat: widget.evnt.source,
-                        child: UserMenuAvatar(
-                          widget.client,
-                          widget.evnt.source ?? widget.chat,
-                          showChatSideMenuOnTap: true,
-                        ),
-                      ),
-                    )
-                  else
-                    isScreenSmall
-                        ? const SizedBox(width: 20)
-                        : const SizedBox(width: 48),
-                  Flexible(
-                      child: GestureDetector(
-                          onSecondaryTapDown: (details) {
-                            if (!isScreenSmall) {
-                              messageSecondaryTapContext(
-                                  details, msg, fullDate, widget.nick);
-                            }
-                          },
-                          onLongPressDown: (details) {
-                            if (isScreenSmall) {
-                              messageLongDownContext(
-                                  details, msg, fullDate, widget.nick);
-                            }
-                          },
-                          child: ConstrainedBox(
-                              constraints: BoxConstraints(
-                                maxWidth: isScreenSmall
-                                    ? MediaQuery.sizeOf(context).width * 0.75
-                                    : MediaQuery.sizeOf(context).width * 0.4,
+    return LayoutBuilder(
+        builder: (context, constraints) =>
+            Consumer<ThemeNotifier>(builder: (context, theme, _) {
+              var chatStyle = theme.areaStyle(ThemeArea.chat);
+              var layoutMode =
+                  chatStyle.messageLayoutMode ?? MessageLayoutMode.standard;
+              var leftAlign = layoutMode == MessageLayoutMode.leftAlign;
+              var narrow = layoutMode == MessageLayoutMode.narrow;
+              // expandMessageWidth's panel padding is applied once around the whole
+              // conversation viewport (see active_chat.dart), not per-message here.
+              var expand = layoutMode != MessageLayoutMode.standard &&
+                  chatStyle.expandMessageWidth;
+              return Container(
+                  margin: EdgeInsets.fromLTRB(
+                      0,
+                      widget.evnt.sameUser ? 2 : 10,
+                      expand
+                          ? 0
+                          : (narrow
+                              ? (constraints.maxWidth > 700
+                                  ? constraints.maxWidth * 0.32
+                                  : 20)
+                              : ((isOwnMessage && !leftAlign) ? 20 : 0)),
+                      0),
+                  child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      mainAxisAlignment: (isOwnMessage && !leftAlign)
+                          ? MainAxisAlignment.end
+                          : MainAxisAlignment.start,
+                      children: <Widget>[
+                        if (showAvatar)
+                          Container(
+                            height: 28,
+                            width: 28,
+                            margin: const EdgeInsets.only(
+                                top: 0, bottom: 10, left: 10, right: 10),
+                            child: UserContextMenu(
+                              client: widget.client,
+                              targetUserChat: widget.evnt.source,
+                              child: UserMenuAvatar(
+                                widget.client,
+                                widget.evnt.source ?? widget.chat,
+                                showChatSideMenuOnTap: true,
                               ),
-                              child: Container(
-                                  padding: const EdgeInsets.only(
-                                      top: 5, left: 10, right: 10, bottom: 5),
-                                  decoration: BoxDecoration(
-                                    color: isOwnMessage
-                                        ? theme.colors.surfaceContainer
-                                        : theme.colors.surfaceContainerHighest,
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                  child: Column(
-                                      crossAxisAlignment: isOwnMessage
-                                          ? CrossAxisAlignment.end
-                                          : CrossAxisAlignment.start,
-                                      children: <Widget>[
-                                        if (showNick)
-                                          Text(widget.nick,
-                                              style: theme.textStyleForNick(
-                                                  widget.nick)),
-                                        Provider<DownloadSource>(
-                                            create: (context) =>
-                                                DownloadSource(sourceID),
-                                            child: MarkdownArea(
-                                                msg,
-                                                widget.userNick !=
-                                                        widget.nick &&
-                                                    msg.contains(
-                                                        widget.userNick))),
-                                        Padding(
-                                            padding:
-                                                const EdgeInsets.only(top: 5),
-                                            child: Tooltip(
-                                                message: fullDate,
-                                                child: Txt.S(hour,
-                                                    color: TextColor
-                                                        .onSurfaceVariant)))
-                                      ])))))
-                ])));
+                            ),
+                          )
+                        else
+                          isScreenSmall
+                              ? const SizedBox(width: 20)
+                              : const SizedBox(width: 48),
+                        Flexible(
+                            child: GestureDetector(
+                                onSecondaryTapDown: (details) {
+                                  if (!isScreenSmall) {
+                                    messageSecondaryTapContext(
+                                        details, msg, fullDate, widget.nick);
+                                  }
+                                },
+                                onLongPressDown: (details) {
+                                  if (isScreenSmall) {
+                                    messageLongDownContext(
+                                        details, msg, fullDate, widget.nick);
+                                  }
+                                },
+                                child: ConstrainedBox(
+                                    constraints: BoxConstraints(
+                                      maxWidth: expand
+                                          ? constraints.maxWidth
+                                          : (isScreenSmall
+                                              ? MediaQuery.sizeOf(context)
+                                                      .width *
+                                                  0.75
+                                              : MediaQuery.sizeOf(context)
+                                                      .width *
+                                                  0.4),
+                                    ),
+                                    child: Container(
+                                        padding: const EdgeInsets.only(
+                                            top: 5,
+                                            left: 10,
+                                            right: 10,
+                                            bottom: 5),
+                                        // ShapeDecoration (not BoxDecoration): the
+                                        // corner styles include shapes a
+                                        // borderRadius can't describe -- cut and
+                                        // inverted corners -- so the bubble is
+                                        // painted from a ShapeBorder instead. See
+                                        // bubbleShape.
+                                        decoration: ShapeDecoration(
+                                          color: isOwnMessage
+                                              ? (theme.activePreset
+                                                      ?.speechBackgroundSent ??
+                                                  theme.colors.surfaceContainer)
+                                              : (theme.activePreset
+                                                      ?.speechBackground ??
+                                                  theme.colors
+                                                      .surfaceContainerHighest),
+                                          // With the corner settings off, the
+                                          // bubble is the plain 10px rounded box
+                                          // it has always been -- whatever radii
+                                          // the settings happen to still hold
+                                          // from last time they were on.
+                                          shape: !chatStyle.bubbleCorners
+                                              ? bubbleShape(
+                                                  BubbleCornerStyle.rounded,
+                                                  SideValues.all(10),
+                                                  isOwnMessage)
+                                              : bubbleShape(
+                                                  chatStyle.bubbleCornerStyle,
+                                                  isOwnMessage
+                                                      ? chatStyle
+                                                          .bubbleRadiiSent
+                                                      : chatStyle
+                                                          .bubbleRadiiReceived,
+                                                  isOwnMessage),
+                                        ),
+                                        child: Column(
+                                            crossAxisAlignment: isOwnMessage
+                                                ? CrossAxisAlignment.end
+                                                : CrossAxisAlignment.start,
+                                            children: <Widget>[
+                                              if (showNick)
+                                                Text(widget.nick,
+                                                    style:
+                                                        theme.textStyleForNick(
+                                                            widget.nick)),
+                                              Provider<DownloadSource>(
+                                                  create: (context) =>
+                                                      DownloadSource(sourceID),
+                                                  child: MarkdownArea(
+                                                      msg,
+                                                      widget.userNick !=
+                                                              widget.nick &&
+                                                          msg.contains(widget
+                                                              .userNick))),
+                                              Padding(
+                                                  padding:
+                                                      const EdgeInsets.only(
+                                                          top: 5),
+                                                  child: Tooltip(
+                                                      message: fullDate,
+                                                      child: Txt.S(hour,
+                                                          color: TextColor
+                                                              .onSurfaceVariant)))
+                                            ])))))
+                      ]));
+            }));
   }
 
   @override

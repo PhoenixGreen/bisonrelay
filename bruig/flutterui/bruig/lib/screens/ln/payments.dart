@@ -12,7 +12,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' as services;
 import 'package:golib_plugin/definitions.dart';
 import 'package:golib_plugin/golib_plugin.dart';
-import 'package:bruig/theme_manager.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
 
 class LNPaymentsPage extends StatefulWidget {
   const LNPaymentsPage({super.key});

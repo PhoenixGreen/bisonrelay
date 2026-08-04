@@ -1,6 +1,8 @@
+import 'package:bruig/components/inputs.dart';
 import 'dart:math';
 
 import 'package:bruig/components/attach_file.dart';
+import 'package:bruig/components/pay_tip.dart';
 import 'package:bruig/components/snackbars.dart';
 import 'package:bruig/models/emoji.dart';
 import 'package:bruig/components/icons.dart';
@@ -12,7 +14,8 @@ import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:bruig/components/chat/types.dart';
 import 'package:bruig/models/client.dart';
-import 'package:bruig/theme_manager.dart';
+import 'package:bruig/theming_system/theme_preset.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/services.dart';
 import 'package:golib_plugin/golib_plugin.dart';
 import 'package:provider/provider.dart';
@@ -34,6 +37,12 @@ class ChatInput extends StatefulWidget {
 
 class _ChatInputState extends State<ChatInput> {
   final controller = TextEditingController();
+  final MenuController _fmtMenuCtl = MenuController();
+
+  // Whether the collapsed tool menu is open (see
+  // AreaStyle.collapseComposerIcons). Closed on every rebuild would fight
+  // the user; it stays open until they close it or leave the chat.
+  bool _toolsOpen = false;
 
   late AudioModel audio;
   List<AttachmentEmbed> embeds = [];
@@ -120,6 +129,19 @@ class _ChatInputState extends State<ChatInput> {
     });
   }
 
+  bool _wasReplying = false;
+
+  // Focus the input the moment a reply gets set, so typing can start at
+  // once. Only meaningful when AreaStyle.enableMessageActions is on --
+  // replyToMsg is otherwise never set.
+  void _onChatReplyChanged() {
+    final replying = widget.chat.replyToMsg != null;
+    if (replying && !_wasReplying) {
+      widget.inputFocusNode.inputFocusNode.requestFocus();
+    }
+    _wasReplying = replying;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -135,6 +157,7 @@ class _ChatInputState extends State<ChatInput> {
     widget.chat.unkxdMembers.addListener(containsUnxkdChanged);
     containsUnkxdMembers = widget.chat.unkxdMembers.value?.isNotEmpty ?? false;
     controller.addListener(controllerUpdated);
+    widget.chat.addListener(_onChatReplyChanged);
   }
 
   @override
@@ -161,6 +184,8 @@ class _ChatInputState extends State<ChatInput> {
     if (oldWidget.chat != widget.chat) {
       oldWidget.chat.unkxdMembers.removeListener(containsUnxkdChanged);
       widget.chat.unkxdMembers.addListener(containsUnxkdChanged);
+      oldWidget.chat.removeListener(_onChatReplyChanged);
+      widget.chat.addListener(_onChatReplyChanged);
       containsUnkxdMembers =
           widget.chat.unkxdMembers.value?.isNotEmpty ?? false;
       cancelAttach(callSetState: false);
@@ -174,6 +199,7 @@ class _ChatInputState extends State<ChatInput> {
     widget.inputFocusNode.pasteEventHandler = null;
     widget.inputFocusNode.addEmojiHandler = null;
     widget.chat.unkxdMembers.removeListener(containsUnxkdChanged);
+    widget.chat.removeListener(_onChatReplyChanged);
     super.dispose();
   }
 
@@ -194,7 +220,17 @@ class _ChatInputState extends State<ChatInput> {
       return;
     }
     if (withEmbeds != "") {
-      widget._send(withEmbeds);
+      var toSend = withEmbeds;
+      final rNick = widget.chat.replyToNick;
+      final rMsg = widget.chat.replyToMsg;
+      if (rNick != null && rMsg != null) {
+        var quoted = rMsg.replaceAll(RegExp(r'\s+'), ' ').trim();
+        if (quoted.contains('--embed[')) quoted = '[attachment]';
+        if (quoted.length > 120) quoted = '${quoted.substring(0, 120)}...';
+        toSend = '> **$rNick:** $quoted\n\n$withEmbeds';
+        widget.chat.clearReplyTo();
+      }
+      widget._send(toSend);
       widget.chat.workingMsg = "";
       setState(() {
         embeds = [];
@@ -321,6 +357,121 @@ class _ChatInputState extends State<ChatInput> {
     });
   }
 
+  // Wrap the current selection (or insert at the cursor) with markdown
+  // markers, then place the cursor sensibly and keep focus in the input.
+  // Only reachable when AreaStyle.formattingToolbar is on.
+  void wrapSelection(String left, String right) {
+    final text = controller.text;
+    final sel = controller.selection;
+    var start = sel.start;
+    var end = sel.end;
+    if (start < 0 || end < 0) {
+      start = text.length;
+      end = text.length;
+    }
+    final selected = text.substring(start, end);
+    final newText = text.substring(0, start) +
+        left +
+        selected +
+        right +
+        text.substring(end);
+    final innerStart = start + left.length;
+    final innerEnd = innerStart + selected.length;
+    controller.value = TextEditingValue(
+      text: newText,
+      selection: TextSelection(baseOffset: innerStart, extentOffset: innerEnd),
+    );
+    widget.chat.workingMsg = newText;
+    setState(() {});
+    widget.inputFocusNode.inputFocusNode.requestFocus();
+  }
+
+  // Insert a markdown link [label](url), selecting the url placeholder.
+  void insertLink() {
+    final text = controller.text;
+    final sel = controller.selection;
+    var start = sel.start;
+    var end = sel.end;
+    if (start < 0 || end < 0) {
+      start = text.length;
+      end = text.length;
+    }
+    final selected = text.substring(start, end);
+    final label = selected.isEmpty ? "text" : selected;
+    const url = "url";
+    final newText =
+        "${text.substring(0, start)}[$label]($url)${text.substring(end)}";
+    final urlStart = start + 1 + label.length + 2;
+    final urlEnd = urlStart + url.length;
+    controller.value = TextEditingValue(
+      text: newText,
+      selection: TextSelection(baseOffset: urlStart, extentOffset: urlEnd),
+    );
+    widget.chat.workingMsg = newText;
+    setState(() {});
+    widget.inputFocusNode.inputFocusNode.requestFocus();
+  }
+
+  void _fmt(void Function() apply) {
+    apply();
+    _fmtMenuCtl.close();
+  }
+
+  // _buildReplyChip renders the dismissible "Replying to <nick>" chip above
+  // the composer, when AreaStyle.enableMessageActions is on and a reply
+  // target is set.
+  Widget _buildReplyChip() {
+    return AnimatedBuilder(
+      animation: widget.chat,
+      builder: (context, _) {
+        final rNick = widget.chat.replyToNick;
+        final rMsg = widget.chat.replyToMsg;
+        if (rNick == null || rMsg == null) return const SizedBox.shrink();
+        var preview = rMsg.replaceAll(RegExp(r'\s+'), ' ').trim();
+        if (preview.contains('--embed[')) preview = '[attachment]';
+        if (preview.length > 80) preview = '${preview.substring(0, 80)}...';
+        var theme = Provider.of<ThemeNotifier>(context);
+        var accent =
+            theme.activePreset?.sidebarAccent ?? const Color(0xFF2C6BED);
+        return Container(
+          margin: const EdgeInsets.only(bottom: 6),
+          decoration: BoxDecoration(
+            color: theme.activePreset?.fourth ?? const Color(0xFF171A1F),
+            border: Border(left: BorderSide(color: accent, width: 3)),
+          ),
+          padding: const EdgeInsets.fromLTRB(9, 6, 6, 6),
+          child: Row(children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text("Replying to $rNick",
+                      style: TextStyle(
+                          color: accent,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500)),
+                  Text(preview,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          color: Color(0xFF9A9A9A), fontSize: 12)),
+                ],
+              ),
+            ),
+            IconButton(
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+              iconSize: 18,
+              onPressed: widget.chat.clearReplyTo,
+              icon: const Icon(Icons.close, color: Color(0xFF6B6B6B)),
+            ),
+          ]),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     bool isScreenSmall = checkIsScreenSmall(context);
@@ -348,7 +499,97 @@ class _ChatInputState extends State<ChatInput> {
       ]);
     }
 
-    return Row(children: [
+    var chatStyle = theme.areaStyle(ThemeArea.chat);
+    var enableMessageActions = chatStyle.enableMessageActions;
+    var formattingToolbar = chatStyle.formattingToolbar;
+    var composerPolish = chatStyle.composerPolish;
+
+    // The composer's tools, built once and placed either along the input
+    // row (the original layout) or inside the collapsed menu.
+    var emojiBtn = IconButton(
+      focusNode: FocusNode(canRequestFocus: false, skipTraversal: true),
+      onPressed: _toggleEmojiPanel,
+      icon: const Icon(Icons.emoji_emotions_outlined),
+    );
+    var formatBtn = MenuAnchor(
+      controller: _fmtMenuCtl,
+      builder: (context, ctl, child) => IconButton(
+        padding: const EdgeInsets.all(0),
+        tooltip: "Formatting",
+        onPressed: () => ctl.isOpen ? ctl.close() : ctl.open(),
+        icon: const Icon(Icons.text_format),
+      ),
+      menuChildren: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            IconButton(
+                tooltip: "Bold",
+                icon: const Icon(Icons.format_bold),
+                onPressed: () => _fmt(() => wrapSelection("**", "**"))),
+            IconButton(
+                tooltip: "Italic",
+                icon: const Icon(Icons.format_italic),
+                onPressed: () => _fmt(() => wrapSelection("_", "_"))),
+            IconButton(
+                tooltip: "Code",
+                icon: const Icon(Icons.code),
+                onPressed: () => _fmt(() => wrapSelection("`", "`"))),
+            IconButton(
+                tooltip: "Strikethrough",
+                icon: const Icon(Icons.format_strikethrough),
+                onPressed: () => _fmt(() => wrapSelection("~~", "~~"))),
+            IconButton(
+                tooltip: "Link",
+                icon: const Icon(Icons.link),
+                onPressed: () => _fmt(insertLink)),
+          ]),
+        ),
+      ],
+    );
+    var attachBtn =
+        IconButton(onPressed: attachFile, icon: const Icon(Icons.attach_file));
+    var tipBtn = IconButton(
+        padding: const EdgeInsets.all(0),
+        tooltip: "Pay tip",
+        onPressed: () => showPayTipModalBottom(context, widget.chat),
+        icon: Icon(Icons.bolt, color: const Color(0xFF1DFF8C), shadows: [
+          Shadow(
+            color: const Color(0xFF1DFF8C).withValues(alpha: 0.55),
+            blurRadius: 8,
+          ),
+        ]));
+    const unkxdWarning = Tooltip(
+        message: "There are un-kx'd members in this GC.\n"
+            "These members won't receive messages from you until the KX "
+            "process completes.\nThis usually happens automatically, after "
+            "they come back online.",
+        child:
+            ColoredIcon(Icons.warning_amber_outlined, color: TextColor.error));
+    var sendBtn = IconButton(
+        padding: const EdgeInsets.all(0),
+        iconSize: 20,
+        onPressed: sendMsg,
+        icon: Icon(Icons.send,
+            color: composerPolish && controller.text.trim().isNotEmpty
+                ? const Color(0xFF1DFF8C)
+                : null));
+
+    // Collapsed, every tool lives behind one button that opens them to the
+    // right (see AreaStyle.collapseComposerIcons). The microphone comes
+    // inside with them, which is what lets the field have the whole row --
+    // it otherwise sits outside the box entirely. Send stays where it is:
+    // it's the one button that shouldn't take two taps.
+    var collapse = chatStyle.collapseComposerIcons;
+    var collapsedTools = <Widget>[
+      emojiBtn,
+      if (formattingToolbar) formatBtn,
+      attachBtn,
+      if (composerPolish && !widget.chat.isGC) tipBtn,
+      if (widget.allowAudio) const RecordAudioInputButton(),
+    ];
+
+    var inputRow = Row(children: [
       Expanded(
         child: TextField(
           onChanged: (value) {
@@ -379,48 +620,83 @@ class _ChatInputState extends State<ChatInput> {
           ),
           style: theme.textStyleFor(context, TextSize.medium, null),
           keyboardType: TextInputType.multiline,
-          decoration: InputDecoration(
-            isDense: true,
-            border: const OutlineInputBorder(
+          decoration: themedInputDecoration(
+            context,
+            hintText: composerPolish
+                ? "Message ${widget.chat.nick}"
+                : "Start a message",
+            fallbackBorder: const OutlineInputBorder(
               borderRadius: BorderRadius.all(Radius.circular(30.0)),
               borderSide: BorderSide(width: 2.0),
             ),
-            hintText: "Start a message",
-            prefixIcon: IconButton(
-              focusNode: FocusNode(canRequestFocus: false, skipTraversal: true),
-              onPressed: _toggleEmojiPanel,
-              icon: const Icon(Icons.emoji_emotions_outlined),
-            ),
+            prefixIcon: collapse
+                ? ClipRect(
+                    child: AnimatedSize(
+                      duration: const Duration(milliseconds: 160),
+                      curve: Curves.easeOut,
+                      alignment: Alignment.centerLeft,
+                      // Capped at half the window and scrollable inside
+                      // that: five tool buttons are wider than a phone's
+                      // composer, and the point of collapsing them is to
+                      // leave the field room, not to take it all back the
+                      // moment the menu opens.
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(
+                            maxWidth: MediaQuery.sizeOf(context).width * 0.5),
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(mainAxisSize: MainAxisSize.min, children: [
+                            IconButton(
+                              focusNode: FocusNode(
+                                  canRequestFocus: false, skipTraversal: true),
+                              tooltip: _toolsOpen ? "Hide tools" : "More",
+                              onPressed: () =>
+                                  setState(() => _toolsOpen = !_toolsOpen),
+                              icon: Icon(_toolsOpen
+                                  ? Icons.chevron_left
+                                  : Icons.more_horiz),
+                            ),
+                            if (_toolsOpen) ...collapsedTools,
+                          ]),
+                        ),
+                      ),
+                    ),
+                  )
+                : emojiBtn,
             suffixIcon: Row(
                 mainAxisSize: MainAxisSize.min,
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  if (!isScreenSmall || controller.text == "")
-                    IconButton(
-                        onPressed: attachFile,
-                        icon: const Icon(Icons.attach_file)),
+                  if (!collapse) ...[
+                    if (formattingToolbar) formatBtn,
+                    if (!isScreenSmall || controller.text == "") attachBtn,
+                    if (composerPolish &&
+                        !widget.chat.isGC &&
+                        (!isScreenSmall || controller.text == ""))
+                      tipBtn,
+                  ],
                   if (containsUnkxdMembers &&
-                      (!isScreenSmall || controller.text == ""))
-                    const Tooltip(
-                        message: "There are un-kx'd members in this GC.\n"
-                            "These members won't receive messages from you until the KX "
-                            "process completes.\nThis usually happens automatically, after "
-                            "they come back online.",
-                        child: ColoredIcon(Icons.warning_amber_outlined,
-                            color: TextColor.error)),
-                  IconButton(
-                      padding: const EdgeInsets.all(0),
-                      iconSize: 20,
-                      onPressed: sendMsg,
-                      icon: const Icon(Icons.send))
+                      (!isScreenSmall || controller.text == "" || collapse))
+                    unkxdWarning,
+                  sendBtn,
                 ]),
           ),
         ),
       ),
-      if ((!isScreenSmall || controller.text == "") && widget.allowAudio) ...[
+      // Collapsed, the microphone is inside the menu instead (above).
+      if (!collapse &&
+          (!isScreenSmall || controller.text == "") &&
+          widget.allowAudio) ...[
         const SizedBox(width: 5),
         const RecordAudioInputButton(),
       ],
     ]);
+
+    if (!enableMessageActions) return inputRow;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [_buildReplyChip(), inputRow],
+    );
   }
 }

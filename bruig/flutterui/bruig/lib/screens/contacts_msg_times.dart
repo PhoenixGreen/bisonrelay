@@ -11,7 +11,13 @@ import 'package:golib_plugin/golib_plugin.dart';
 class ContactsLastMsgTimesScreen extends StatefulWidget {
   static const routeName = "contactsLastMsgTimes";
   final ClientModel client;
-  const ContactsLastMsgTimesScreen(this.client, {super.key});
+  // embedded is true when shown inline as Address Book tab content instead
+  // of pushed as a full-screen route -- skips StartupScreen's Scaffold/
+  // background/About-button/fab chrome, since the embedding page already
+  // provides its own frame and there's nothing to "pop" back to.
+  final bool embedded;
+  const ContactsLastMsgTimesScreen(this.client,
+      {this.embedded = false, super.key});
 
   @override
   State<ContactsLastMsgTimesScreen> createState() =>
@@ -81,22 +87,42 @@ class _ContactsLastMsgTimesScreenState
   }
 
   void onDone() {
-    Navigator.pop(context);
+    Navigator.of(context).maybePop();
   }
 
+  // Address Book tabs all use the same title: same size (Txt.L), centred
+  // across the full width of the page. Pushed as a standalone route these
+  // screens keep the larger startup-screen heading.
+  Widget _title(String text) => SizedBox(
+      width: double.infinity,
+      child: widget.embedded
+          ? Txt.L(text, textAlign: TextAlign.center)
+          : Txt.H(text, textAlign: TextAlign.center));
   @override
   Widget build(BuildContext context) {
+    var children = [
+      _title("Last Message Time"),
+      // No inset of its own: the page's gutters are the same on both
+      // sides, and a right-only padding here made it look lopsided.
+      ListView.builder(
+          shrinkWrap: true,
+          itemCount: users.length,
+          itemBuilder: (context, index) => _UserLastMsgTime(
+              users[index], client.getExistingChat(users[index].uid)!)),
+    ];
+
+    if (widget.embedded) {
+      return SingleChildScrollView(
+          // The gutters every content-area page uses, so the Address Book
+          // tabs sit where the pages beside them do.
+          padding: const EdgeInsets.fromLTRB(16, 18, 16, 24),
+          child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: children));
+    }
+
     return StartupScreen(
-      [
-        const Txt.H("Last Message Time"),
-        Container(
-            padding: const EdgeInsets.only(right: 12),
-            child: ListView.builder(
-                shrinkWrap: true,
-                itemCount: users.length,
-                itemBuilder: (context, index) => _UserLastMsgTime(
-                    users[index], client.getExistingChat(users[index].uid)!))),
-      ],
+      children,
       fab: FloatingActionButton.small(
           onPressed: onDone, child: const Icon(Icons.done)),
     );

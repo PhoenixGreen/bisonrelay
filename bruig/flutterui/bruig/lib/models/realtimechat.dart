@@ -138,6 +138,17 @@ class RTDTSessionModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  // Whether BR has detected sound from the local mic (used by
+  // AreaStyle.rtcLiveStage's speaking-aware local avatar ring). Kept
+  // separate from _livePeers, which only tracks *other* participants.
+  bool _localHasSound = false;
+  bool get localHasSound => _localHasSound;
+  void _setLocalHasSound(bool v) {
+    if (_localHasSound == v) return;
+    _localHasSound = v;
+    notifyListeners();
+  }
+
   void _removedFromSession() {
     _hasHotAudio = false;
     _inLiveSession = false;
@@ -566,6 +577,15 @@ class RealtimeChatModel extends ChangeNotifier {
     await for (var updt in stream) {
       var sess = _sessions[updt.update.sessionRV];
       if (sess == null) {
+        continue;
+      }
+
+      // Sound events for the local peer describe our own mic, not another
+      // participant -- route those into localHasSound instead of creating a
+      // (bogus) live-peer entry for ourselves.
+      if (updt.ntfType == NTRTDTPeerSoundChanged &&
+          updt.update.peerId == sess.info.localPeerID) {
+        sess._setLocalHasSound(updt.update.hasSound);
         continue;
       }
 

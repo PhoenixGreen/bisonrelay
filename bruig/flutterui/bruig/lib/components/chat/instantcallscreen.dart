@@ -11,7 +11,7 @@ import 'package:bruig/models/realtimechat.dart';
 import 'package:bruig/models/uistate.dart';
 import 'package:golib_plugin/definitions.dart';
 import 'package:bruig/components/empty_widget.dart';
-import 'package:bruig/theme_manager.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:bruig/util.dart';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';

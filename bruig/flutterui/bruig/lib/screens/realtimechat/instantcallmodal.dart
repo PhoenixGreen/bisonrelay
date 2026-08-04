@@ -1,10 +1,11 @@
+import 'package:bruig/components/buttons.dart';
 import 'package:bruig/components/snackbars.dart';
 import 'package:bruig/components/text.dart';
 import 'package:bruig/models/client.dart';
 import 'package:bruig/models/realtimechat.dart';
 import 'package:bruig/screens/overview.dart';
 import 'package:bruig/screens/realtimechat/creatertc.dart';
-import 'package:bruig/theme_manager.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -88,21 +89,7 @@ class _InstantCallModalState extends State<InstantCallModal> {
                       Txt.S("Make group call")
                     ],
                   )),
-              Consumer<ThemeNotifier>(
-                  builder: (context, theme, child) => ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                          backgroundColor: theme.colors.errorContainer),
-                      onPressed: () {
-                        Navigator.of(context).pop();
-                      },
-                      child: Row(children: [
-                        Icon(Icons.cancel_outlined,
-                            color: theme.colors.onErrorContainer),
-                        const SizedBox(width: 10),
-                        Txt.S("Cancel",
-                            style: theme.textStyleFor(
-                                context, null, TextColor.onErrorContainer))
-                      ]))),
+              CancelButton(onPressed: () => Navigator.of(context).pop()),
             ]));
   }
 }

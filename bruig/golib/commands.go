@@ -187,6 +187,9 @@ const (
 	CTDeclineKXSuggestion          CmdType = 0xb2
 	CTUpdateLastMsgReadTime        CmdType = 0xb3
 	CTDeclineGCInvite              CmdType = 0xb4
+	// 0xb5-0xbc are taken by the plugin manager work on dev-combined; this
+	// keeps the same value there so the two branches agree.
+	CTGetExchangeRate CmdType = 0xbd
 
 	NTInviteReceived            = 0x1001
 	NTInviteAccepted            = 0x1002

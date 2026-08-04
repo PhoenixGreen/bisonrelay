@@ -7,7 +7,8 @@ import 'package:bruig/components/text.dart';
 import 'package:bruig/models/client.dart';
 import 'package:bruig/models/menus.dart';
 import 'package:bruig/models/uistate.dart';
-import 'package:bruig/theme_manager.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
+import 'package:bruig/theming_system/theme_preset.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -74,12 +75,26 @@ class _ChatSideMenuState extends State<ChatSideMenu> {
     ChatModel chat = this.chat!;
 
     bool isScreenSmall = checkIsScreenSmall(context);
+    // Only on a phone: that's where this panel is the whole screen and the
+    // close button below is hidden, so the avatar is the one thing big
+    // enough to reach for. See AreaStyle.mobileSidebarAvatarCloses.
+    bool avatarCloses = isScreenSmall &&
+        ThemeNotifier.of(context)
+            .areaStyle(ThemeArea.mobile)
+            .mobileSidebarAvatarCloses;
 
     return Stack(alignment: Alignment.topRight, children: [
       Column(children: [
         Container(
           margin: const EdgeInsets.only(top: 20, bottom: 20),
-          child: UserMenuAvatar(client, chat, radius: 75),
+          // AvatarModelAvatar rather than UserMenuAvatar with an onTap:
+          // UserMenuAvatar is the context-menu wrapper itself, so the menu
+          // would still open on a long press / right click with only the
+          // tap rebound.
+          child: avatarCloses
+              ? AvatarModelAvatar(chat.avatar, chat.nick,
+                  radius: 75, onTap: client.ui.chatSideMenuActive.clear)
+              : UserMenuAvatar(client, chat, radius: 75),
         ),
         Visibility(
           visible: chat.isGC,
@@ -142,7 +157,16 @@ class ScreenWithChatSideMenu extends StatelessWidget {
     // Alternate chat menu layout: stack on top of main view (avoids reflows
     // and overflow errors).
     return Stack(children: [
-      child,
+      // Positioned.fill forces tight constraints matching the Stack's own
+      // bounds -- left as a bare (non-Positioned) child, child only got
+      // StackFit.loose's *up-to* constraints, so a Row inside it (e.g.
+      // SecondarySideMenuLayout's sidebar+content Row, which relies on
+      // crossAxisAlignment.stretch to make the sidebar's background fill
+      // the full height) sized itself to its shortest content instead of
+      // the actual available screen height, leaving the sidebar's painted
+      // background visibly cut short with the page's own background
+      // showing through below it.
+      Positioned.fill(child: child),
       Consumer2<ChatSideMenuActiveModel, ClientModel>(
           builder: (context, chatSideMenuActive, client, child) => Visibility(
                 visible: !chatSideMenuActive.empty,

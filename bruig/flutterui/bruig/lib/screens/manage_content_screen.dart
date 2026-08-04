@@ -1,8 +1,8 @@
 import 'dart:async';
 
+import 'package:bruig/components/containers.dart';
 import 'package:bruig/components/text.dart';
 import 'package:bruig/models/client.dart';
-import 'package:bruig/models/uistate.dart';
 import 'package:bruig/screens/manage_content/manage_content.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -10,9 +10,8 @@ import 'package:bruig/models/downloads.dart';
 import 'package:bruig/screens/manage_content/downloads.dart';
 import 'package:bruig/components/manage_bar.dart';
 import 'package:bruig/screens/overview.dart';
-import 'package:bruig/components/empty_widget.dart';
 import 'package:bruig/models/menus.dart';
-import 'package:bruig/theme_manager.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
 
 class ManageContentScreenTitle extends StatelessWidget {
   const ManageContentScreenTitle({super.key});
@@ -63,19 +62,23 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
 
   @override
   Widget build(BuildContext context) {
-    bool isScreenSmall = checkIsScreenSmall(context);
     if (ModalRoute.of(context)!.settings.arguments != null) {
       final args = ModalRoute.of(context)!.settings.arguments as PageTabs;
       tabIndex = args.tabIndex;
     }
 
-    return Row(children: [
-      ModalRoute.of(context)!.settings.arguments == null
-          ? isScreenSmall
-              ? const Empty()
-              : ManageContentBar(onItemChanged, tabIndex)
-          : const Empty(),
-      Expanded(child: activeTab())
-    ]);
+    // Deliberately not short-circuited to a bare activeTab() on a small
+    // screen: below SecondarySideMenuLayout's collapse width it already
+    // renders content-only, but it also hands its item list to
+    // CollapsedSidebarModel on the way -- which is what gives the mobile
+    // navigation's re-tap gesture (see the Mobile theme area) something to
+    // slide in, and what the mobile header's three-dot menu used to be the
+    // only route to.
+    return SecondarySideMenuLayout(
+      storageKey: "manageContent",
+      items: manageContentBarItems(onItemChanged, tabIndex),
+      isDetail: ModalRoute.of(context)!.settings.arguments != null,
+      content: activeTab(),
+    );
   }
 }

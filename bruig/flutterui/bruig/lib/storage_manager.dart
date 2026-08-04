@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 class StorageManager {
   static const String themeModeKey = "themeMode";
   static const String fontScaleKey = "fontScale";
+  static const String chatImageSizeKey = "chatImageSize";
   static const String goProfilerEnabledKey = "goProfilerEnabled";
   static const String goTimedProfilingKey = "goTimedProfiling";
   static const String ntfnFgSvcKey = "foregroundService";
@@ -17,6 +18,9 @@ class StorageManager {
   static const String audioCaptureDeviceIdKey = "audioCaptureDeviceId";
   static const String audioPlaybackDeviceIdKey = "audioPlaybackDeviceId";
   static const String showRPCWarningKey = "showRPCWarning";
+  static const String notesToSelfKey = "notesToSelf";
+  static const String msgsSentCountKey = "msgsSentCount";
+  static const String countRelaysEnabledKey = "countRelaysEnabled";
 
   static Future<void> saveData(String key, dynamic value) async {
     final prefs = await SharedPreferences.getInstance();

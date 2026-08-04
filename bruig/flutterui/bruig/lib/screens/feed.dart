@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:bruig/components/chat/chat_side_menu.dart';
+import 'package:bruig/components/containers.dart';
 import 'package:bruig/components/text.dart';
 import 'package:bruig/models/client.dart';
 import 'package:bruig/models/uistate.dart';
@@ -14,9 +15,9 @@ import 'package:bruig/components/feed_bar.dart';
 import 'package:bruig/screens/feed/post_content.dart';
 import 'package:bruig/screens/feed/new_post.dart';
 import 'package:bruig/screens/feed/post_lists.dart';
-import 'package:bruig/components/empty_widget.dart';
 import 'package:bruig/models/menus.dart';
-import 'package:bruig/theme_manager.dart';
+import 'package:bruig/theming_system/theme_preset.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:bruig/models/emoji.dart';
 
 class FeedScreenTitle extends StatelessWidget {
@@ -67,11 +68,29 @@ class _FeedScreenState extends State<FeedScreen> {
 
   GlobalKey<NavigatorState> navKey = GlobalKey(debugLabel: "overview nav key");
 
+  // Dummy search controller for the minimal side panel shown on tabs that
+  // don't own a post list (Subscriptions, New Post, and any post/user-post
+  // detail view) -- search/sort/filter don't apply there, only the nav
+  // shortcuts do, but AreaStyle.feedSidePanel still needs to render
+  // *something* consistent instead of the old sub-menu.
+  final TextEditingController _dummySearchCtrl = TextEditingController();
+
+  // Bumped every time "Your Posts" is navigated to, forcing a fresh
+  // FeedPosts instance (and so a fresh FeedView.all default) via its key.
+  // Without this, Your Posts would keep whatever Bookmarks/Hidden/Drafts
+  // sub-view was last selected *while on that tab*, making the Your Posts
+  // link look like it "stopped working" until you bounced through All
+  // Posts first. All posts doesn't need this -- browsing its own
+  // Bookmarks/Hidden/Drafts sub-views and having them persist there is
+  // expected, since those are part of that tab's own experience.
+  int _yourPostsResetToken = 0;
+
   Widget activeTab() {
     switch (tabIndex) {
       case 0:
         if (showPost == null) {
           return Consumer2<FeedModel, ClientModel>(
+              key: const ValueKey('feed-tab-all'),
               builder: (context, feed, client, child) =>
                   FeedPosts(feed, client, onItemChanged, false));
         } else {
@@ -81,6 +100,7 @@ class _FeedScreenState extends State<FeedScreen> {
       case 1:
         if (showPost == null) {
           return Consumer2<FeedModel, ClientModel>(
+            key: ValueKey('feed-tab-own-$_yourPostsResetToken'),
             builder: (context, feed, client, child) =>
                 FeedPosts(feed, client, onItemChanged, true),
           );
@@ -113,6 +133,7 @@ class _FeedScreenState extends State<FeedScreen> {
     setState(() {
       showPost = args;
       tabIndex = index;
+      if (index == 1) _yourPostsResetToken++;
     });
     Timer(const Duration(milliseconds: 1),
         () async => widget.mainMenu.activePageTab = index);
@@ -149,7 +170,100 @@ class _FeedScreenState extends State<FeedScreen> {
 
   @override
   void dispose() {
+    _dummySearchCtrl.dispose();
     super.dispose();
+  }
+
+  // Jump to the main "All posts" tab, matching what tapping a FEED-section
+  // nav item means when there's no post-list-owning FeedPosts around to
+  // interpret it (Subscriptions/New Post/detail views).
+  void _gotoFeedView(FeedView v) => onItemChanged(0, null);
+
+  Widget _minimalSidePanelLayout(BuildContext context, AreaStyle feedStyle) {
+    final panel = FeedSidePanel(
+      view: FeedView.all,
+      sort: FeedSort.newest,
+      unreadOnly: false,
+      searchController: _dummySearchCtrl,
+      showBookmarks: feedStyle.feedCardActions,
+      showHidden: feedStyle.feedCardActions,
+      showDrafts: feedStyle.feedInlineComposer,
+      currentTabIndex: tabIndex,
+      onView: _gotoFeedView,
+      onSort: (_) {},
+      onUnreadOnly: (_) {},
+      onSearch: (_) {},
+      onYourPosts: () => onItemChanged(1, null),
+      onSubscriptions: () => onItemChanged(2, null),
+      onNewPost: () => onItemChanged(3, null),
+    );
+    // Resizes with -- and to the same width as -- the full panel on the
+    // All Posts/Your Posts tabs: same storageKey, so dragging either one
+    // moves both and the panel doesn't jump width when switching tabs.
+    var sidebarStyle = ThemeNotifier.of(context)
+            .areaStyle(ThemeArea.subMenuTabBar)
+            .subMenuStyle ??
+        SubMenuStyle.alwaysVisible;
+    var resizable = sidebarStyle == SubMenuStyle.resizable;
+
+    // Same Content Area treatment SecondarySideMenuLayout gives every other
+    // screen's content -- this layout doesn't go through it, so it applies
+    // it itself.
+    var content = contentAreaFrame(ThemeNotifier.of(context), activeTab());
+
+    Widget layout(double panelWidth, Widget? handle) {
+      return LayoutBuilder(builder: (context, c) {
+        if (sidebarStyle == SubMenuStyle.collapsed) {
+          ClientModel.of(context, listen: false)
+              .ui
+              .collapsedSidebar
+              .register((context) => panel, kCollapsedSidebarWidth);
+          return content;
+        }
+        const gap = 0.0;
+        List<Widget> rowChildren;
+        if (c.maxWidth >= 1400) {
+          rowChildren = [
+            const Spacer(),
+            SizedBox(width: panelWidth, child: panel),
+            if (handle != null) handle,
+            SizedBox(width: gap),
+            SizedBox(width: 780, child: content),
+            const SizedBox(width: 308),
+            const Spacer(),
+          ];
+        } else if (c.maxWidth >= 900) {
+          rowChildren = [
+            SizedBox(width: panelWidth, child: panel),
+            if (handle != null) handle,
+            SizedBox(width: gap),
+            Expanded(child: content),
+          ];
+        } else {
+          // Too narrow for a column of its own: hand the panel over as a
+          // drawer, opened by re-tapping this page in the main navigation
+          // (see CollapsedSidebarModel). Registering here rather
+          // than dropping it is what gives this panel the same way back as
+          // every other sidebar -- it used to just disappear.
+          ClientModel.of(context, listen: false)
+              .ui
+              .collapsedSidebar
+              .register((context) => panel, kCollapsedSidebarWidth);
+          return content;
+        }
+        ClientModel.of(context, listen: false).ui.collapsedSidebar.unregister();
+        return Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: rowChildren);
+      });
+    }
+
+    if (!resizable) return layout(260, null);
+    return ResizableSidebar(
+      storageKey: "feedPanel",
+      defaultWidth: 260,
+      builder: (context, width, handle) => layout(width, handle),
+    );
   }
 
   @override
@@ -163,13 +277,61 @@ class _FeedScreenState extends State<FeedScreen> {
 
     var client = Provider.of<ClientModel>(context);
 
+    // AreaStyle.feedSidePanel replaces this screen's own sub-menu
+    // everywhere: tabs 0/1 (All posts/Your Posts) render their own full
+    // panel inline (FeedPosts owns that state), while Subscriptions/New
+    // Post/detail views get a minimal nav-only panel instead, so the
+    // sidebar experience stays consistent across the whole Feed screen
+    // rather than falling back to the old plain tab list.
+    var feedStyle = ThemeNotifier.of(context).areaStyle(ThemeArea.feed);
+    bool feedSidePanel = feedStyle.feedSidePanel;
+    bool viewingPost = showPost != null;
+    bool onOwnPanelTab =
+        (tabIndex == 0 || tabIndex == 1) && !viewingPost && !hasArgs;
+
+    if (feedSidePanel && !isScreenSmall) {
+      // Reading a single post: drop the sidebar entirely for a more focused
+      // read, instead of falling back to the minimal nav-only panel.
+      if (viewingPost && feedStyle.feedHideSidebarOnPost) {
+        // Still the Content Area, even with no sidebar beside it -- a
+        // border around the reading area shouldn't vanish just because the
+        // panel did.
+        return ScreenWithChatSideMenu(
+            client, contentAreaFrame(ThemeNotifier.of(context), activeTab()));
+      }
+      return ScreenWithChatSideMenu(
+          client,
+          onOwnPanelTab
+              ? activeTab()
+              : _minimalSidePanelLayout(context, feedStyle));
+    }
+
     return ScreenWithChatSideMenu(
         client,
-        Row(children: [
-          !isScreenSmall && !hasArgs
-              ? FeedBar(onItemChanged, tabIndex)
-              : const Empty(),
-          Expanded(child: activeTab())
-        ]));
+        // Deliberately not short-circuited to a bare activeTab() on a small
+        // screen: below SecondarySideMenuLayout's collapse width it already
+        // renders content-only, but it also hands its item list to
+        // CollapsedSidebarModel on the way -- which is what gives the mobile
+        // navigation's re-tap gesture (see the Mobile theme area) something to
+        // slide in, and what the mobile header's three-dot menu used to be the
+        // only route to.
+        SecondarySideMenuLayout(
+            // Matches ln_management.dart/manage_content_screen.dart's
+            // width -- left unset here it fell back to
+            // SecondarySideMenu's 120 default, too narrow for
+            // "Subscriptions" to fit on one line.
+            storageKey: "feed",
+            items: feedBarItems(onItemChanged, tabIndex),
+            // Detail views that don't need the tab list: reading a
+            // single post/user-post (showPost set) or composing a new
+            // one (tabIndex 3). hasArgs alone only reflects the route's
+            // *initial* navigation arguments, so it misses these once
+            // the user navigates within the already-mounted screen.
+            isDetail: hasArgs || showPost != null || tabIndex == 3,
+            // Distinguishes one detail view from the next (e.g. post A
+            // vs. post B) so a manual reopen of the submenu doesn't
+            // leak across into an unrelated detail view.
+            detailKey: showPost ?? tabIndex,
+            content: activeTab()));
   }
 }

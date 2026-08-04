@@ -9,25 +9,24 @@ import 'package:bruig/components/text.dart';
 import 'package:bruig/components/trans_reset.dart';
 import 'package:bruig/models/client.dart';
 import 'package:bruig/models/emoji.dart';
-import 'package:bruig/models/log.dart';
 import 'package:bruig/models/notifications.dart';
 import 'package:bruig/models/realtimechat.dart';
 import 'package:bruig/models/resources.dart';
 import 'package:bruig/models/uploads.dart';
+import 'package:bruig/screens/address_book_screen.dart';
 import 'package:bruig/screens/chat/new_gc_screen.dart';
 import 'package:bruig/screens/chat/new_message_screen.dart';
 import 'package:bruig/screens/chats.dart';
 import 'package:bruig/screens/feed.dart';
 import 'package:bruig/screens/gc_invitations.dart';
 import 'package:bruig/screens/ln_management.dart';
-import 'package:bruig/screens/log.dart';
 import 'package:bruig/screens/manage_content_screen.dart';
-import 'package:bruig/screens/paystats.dart';
 import 'package:bruig/screens/send_file.dart';
 import 'package:bruig/screens/realtimechat/rtclist.dart';
 import 'package:bruig/screens/settings.dart';
 import 'package:bruig/screens/viewpage_screen.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:golib_plugin/golib_plugin.dart';
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
@@ -42,6 +41,12 @@ class MainMenuItem {
   final Widget? icon;
   final List<SubMenuInfo> subMenuInfo;
   final bool hiddenFromSideBar;
+
+  // area, if set, is the ThemeArea this menu item's content page is themed
+  // as (see overview.dart's route dispatch, which wraps builder(context) in
+  // a ThemedArea when this is non-null).
+  // (MainMenuItem.area is gone: every page route is framed by the Dual
+  // Panel theme area now, so a page no longer names one of its own.)
 
   MainMenuItem(this.label, this.routeName, this.builder, this.titleBuilder,
       this.icon, this.subMenuInfo,
@@ -88,66 +93,70 @@ final List<SubMenuInfo> lnScreenSub = [
 
 final List<MainMenuItem> mainMenu = [
   MainMenuItem(
-      "Chat",
-      ChatsScreen.routeName,
-      (context) =>
-          Consumer3<RealtimeChatModel, AppNotifications, TypingEmojiSelModel>(
-              builder: (context, rtc, ntfns, typingEmoji, child) =>
-                  ChatsScreen(rtc.client, rtc, ntfns, typingEmoji)),
-      (context) => const ChatsScreenTitle(),
-      const SidebarSvgIcon("assets/icons/icons-menu-chat.svg"),
-      <SubMenuInfo>[]),
+    "Chat",
+    ChatsScreen.routeName,
+    (context) =>
+        Consumer3<RealtimeChatModel, AppNotifications, TypingEmojiSelModel>(
+            builder: (context, rtc, ntfns, typingEmoji, child) =>
+                ChatsScreen(rtc.client, rtc, ntfns, typingEmoji)),
+    (context) => const ChatsScreenTitle(),
+    const SidebarSvgIcon("assets/icons/icons-menu-chat.svg"),
+    <SubMenuInfo>[],
+  ),
   MainMenuItem(
-      "Feed",
-      FeedScreen.routeName,
-      (context) => Consumer2<MainMenuModel, TypingEmojiSelModel>(
-          builder: (context, menu, typingEmoji, child) =>
-              FeedScreen(menu, typingEmoji)),
-      (context) => const FeedScreenTitle(),
-      const SidebarSvgIcon("assets/icons/icons-menu-news.svg"),
-      feedScreenSub),
+      "Address Book",
+      AddressBookScreen.routeName,
+      (context) => const AddressBookScreen(),
+      (context) => const AddressBookScreenTitle(),
+      const SidebarIcon(Icons.contacts_outlined, false), <SubMenuInfo>[]),
   MainMenuItem(
-      "Realtime Chat",
-      RealtimeChatScreen.routeName,
-      (context) => Consumer<TypingEmojiSelModel>(
-          builder: (context, typingEmoji, child) =>
-              RealtimeChatScreen(typingEmoji)),
-      (context) => const RealtimeChatTitle(),
-      const SidebarIcon(Icons.phone_rounded, false),
-      feedScreenSub),
+    "Feed",
+    FeedScreen.routeName,
+    (context) => Consumer2<MainMenuModel, TypingEmojiSelModel>(
+        builder: (context, menu, typingEmoji, child) =>
+            FeedScreen(menu, typingEmoji)),
+    (context) => const FeedScreenTitle(),
+    const SidebarSvgIcon("assets/icons/icons-menu-news.svg"),
+    feedScreenSub,
+  ),
   MainMenuItem(
-      "LN Management",
-      LNScreen.routeName,
-      (context) => Consumer<MainMenuModel>(
-          builder: (context, menu, child) => LNScreen(menu)),
-      (context) => const LNScreenTitle(),
-      const SidebarSvgIcon("assets/icons/icons-menu-lnmng.svg"),
-      lnScreenSub),
+    "Realtime Chat",
+    RealtimeChatScreen.routeName,
+    (context) => Consumer<TypingEmojiSelModel>(
+        builder: (context, typingEmoji, child) =>
+            RealtimeChatScreen(typingEmoji)),
+    (context) => const RealtimeChatTitle(),
+    const SidebarIcon(Icons.phone_rounded, false),
+    feedScreenSub,
+  ),
   MainMenuItem(
-      "Pages",
-      ViewPageScreen.routeName,
-      (context) => Consumer2<ClientModel, ResourcesModel>(
-          builder: (context, client, resources, child) =>
-              ViewPageScreen(resources, client)),
-      (context) => const ViewPagesScreenTitle(),
-      const SidebarSvgIcon("assets/icons/icons-menu-pages.svg"),
-      <SubMenuInfo>[]),
+    "LN Management",
+    LNScreen.routeName,
+    (context) => Consumer<MainMenuModel>(
+        builder: (context, menu, child) => LNScreen(menu)),
+    (context) => const LNScreenTitle(),
+    const SidebarSvgIcon("assets/icons/icons-menu-lnmng.svg"),
+    lnScreenSub,
+  ),
   MainMenuItem(
-      "Manage Content",
-      ManageContentScreen.routeName,
-      (context) => Consumer<MainMenuModel>(
-          builder: (context, menu, child) => ManageContentScreen(menu)),
-      (context) => const ManageContentScreenTitle(),
-      const SidebarSvgIcon("assets/icons/icons-menu-files.svg"),
-      manageContentScreenSub),
+    "Pages",
+    ViewPageScreen.routeName,
+    (context) => Consumer2<ClientModel, ResourcesModel>(
+        builder: (context, client, resources, child) =>
+            ViewPageScreen(resources, client)),
+    (context) => const ViewPagesScreenTitle(),
+    const SidebarSvgIcon("assets/icons/icons-menu-pages.svg"),
+    <SubMenuInfo>[],
+  ),
   MainMenuItem(
-      "Stats",
-      PayStatsScreen.routeName,
-      (context) => Consumer<ClientModel>(
-          builder: (context, client, child) => PayStatsScreen(client)),
-      (context) => const PayStatsScreenTitle(),
-      const SidebarSvgIcon("assets/icons/icons-menu-stats.svg"),
-      <SubMenuInfo>[]),
+    "Manage Content",
+    ManageContentScreen.routeName,
+    (context) => Consumer<MainMenuModel>(
+        builder: (context, menu, child) => ManageContentScreen(menu)),
+    (context) => const ManageContentScreenTitle(),
+    const SidebarSvgIcon("assets/icons/icons-menu-files.svg"),
+    manageContentScreenSub,
+  ),
   MainMenuItem(
       "Settings",
       SettingsScreen.routeName,
@@ -155,14 +164,6 @@ final List<MainMenuItem> mainMenu = [
           builder: (context, client, child) => SettingsScreen(client)),
       (context) => const SettingsScreenTitle(),
       const SidebarSvgIcon("assets/icons/icons-menu-settings.svg"),
-      <SubMenuInfo>[]),
-  MainMenuItem(
-      "Logs",
-      LogScreen.routeName,
-      (context) =>
-          Consumer<LogModel>(builder: (context, log, child) => LogScreen(log)),
-      (context) => const LogScreenTitle(),
-      const SidebarIcon(Icons.list_rounded, false),
       <SubMenuInfo>[]),
 
   // Menus that are hidden from sidebar but accessible by direct route calls.
@@ -182,8 +183,207 @@ final List<MainMenuItem> mainMenu = [
   ),
 ];
 
+// defaultMobileNavRoutes is what the narrow-screen bottom navigation
+// carries until a theme says otherwise (see AreaStyle.mobileNavRoutes) --
+// the four destinations that earn a permanent slot on a phone. The bar was
+// a hardcoded three (Chat, Feed, Pages) before it was configurable;
+// Settings joins them because it's the only way to reach the rest without
+// the sidebar a phone doesn't have.
+final List<String> defaultMobileNavRoutes = [
+  ChatsScreen.routeName,
+  FeedScreen.routeName,
+  ViewPageScreen.routeName,
+  SettingsScreen.routeName,
+];
+
 class MainMenuModel extends ChangeNotifier {
-  final List<MainMenuItem> menus = mainMenu;
+  // A mutable copy of the static mainMenu list: dynamic-wasm plugins (see
+  // DynPluginsModel) register/unregister their own nav item here at
+  // runtime. Both the sidebar (components/sidebar.dart) and the route
+  // dispatch (screens/overview.dart) already build off this list rather
+  // than a hardcoded per-item switch, so appending/removing here is all
+  // that's needed for a plugin's nav item to appear/disappear.
+  final List<MainMenuItem> menus = List<MainMenuItem>.from(mainMenu);
+
+  // MainMenuModel takes the initially-active theme preset's menu
+  // customization (if any) so the very first frame already reflects it --
+  // ThemeNotifier resolves the persisted active theme before this model is
+  // constructed (see main.dart), so its result is available synchronously
+  // here, unlike a from-scratch async load.
+  MainMenuModel(
+      {Map<String, String>? initialLabels, List<String>? initialOrder}) {
+    if (initialLabels != null || initialOrder != null) {
+      applyThemeMenu(initialLabels, initialOrder);
+    }
+  }
+
+  // _customLabels/_customOrder cache the active theme's menu customization
+  // independently of the live `menus` list, so it can still be applied to
+  // an item that's registered *later* -- e.g. a dynamic-wasm plugin's nav
+  // item, which can show up via registerDynamicItem after applyThemeMenu
+  // has already run for the currently-active theme.
+  Map<String, String> _customLabels = {};
+  List<String>? _customOrder;
+
+  // currentLabels/currentOrder snapshot the visible menu's current
+  // labels/order, for a ThemePreset save to embed (see
+  // ThemeNotifier.saveActivePreset).
+  Map<String, String> currentLabels() => {
+        for (var e in menus.where((e) => !e.hiddenFromSideBar))
+          e.routeName: e.label,
+      };
+  List<String> currentOrder() =>
+      menus.where((e) => !e.hiddenFromSideBar).map((e) => e.routeName).toList();
+
+  void _setLabel(String routeName, String newLabel) {
+    var idx = menus.indexWhere((e) => e.routeName == routeName);
+    if (idx < 0) return;
+    var old = menus[idx];
+    var updated = MainMenuItem(newLabel, old.routeName, old.builder,
+        old.titleBuilder, old.icon, old.subMenuInfo,
+        hiddenFromSideBar: old.hiddenFromSideBar);
+    menus[idx] = updated;
+    if (_activeRoute == routeName) {
+      _activeMenu = updated;
+    }
+  }
+
+  void _sortByOrder(List<String> order) {
+    menus.sort((a, b) {
+      var ia = order.indexOf(a.routeName);
+      var ib = order.indexOf(b.routeName);
+      return (ia < 0 ? 1 << 30 : ia).compareTo(ib < 0 ? 1 << 30 : ib);
+    });
+  }
+
+  // renameItem changes a menu item's displayed label (its routeName, and
+  // everything else about it, stays the same -- routing/unread-indicator
+  // logic elsewhere keys off routeName specifically so it keeps working
+  // after a rename). This is a live, in-memory-only edit -- it isn't
+  // persisted anywhere on its own; saving a theme preset (see
+  // ThemeNotifier.saveActivePreset) is what snapshots the current
+  // labels/order (currentLabels/currentOrder) into that preset.
+  void renameItem(String routeName, String newLabel) {
+    _setLabel(routeName, newLabel);
+    notifyListeners();
+  }
+
+  // reorderItems re-sorts menus to match newRouteNameOrder. Items whose
+  // routeName isn't present in newRouteNameOrder (e.g. hidden routes, or a
+  // dynamic-wasm plugin item not covered by this order) keep their relative
+  // order at the end. Like renameItem, this is a live, in-memory-only edit.
+  void reorderItems(List<String> newRouteNameOrder) {
+    _sortByOrder(newRouteNameOrder);
+    notifyListeners();
+  }
+
+  // applyThemeMenu switches the visible menu's labels/order to match a
+  // theme's saved customization (null labels/order for "no customization",
+  // i.e. a built-in theme or a preset that's never had its menu saved) --
+  // called whenever the active color theme changes (switching/loading a
+  // preset, creating one, importing one, or resetting to default), so that
+  // each theme's own menu layout travels with it.
+  void applyThemeMenu(Map<String, String>? labels, List<String>? order) {
+    menus
+      ..clear()
+      ..addAll(mainMenu);
+    _customLabels = labels ?? {};
+    _customOrder = order;
+    for (var entry in _customLabels.entries) {
+      _setLabel(entry.key, entry.value);
+    }
+    if (order != null) _sortByOrder(order);
+    notifyListeners();
+  }
+
+  // resetToDefault is applyThemeMenu(null, null) under another name, for
+  // call-site clarity where "reset to default" is what's meant.
+  void resetToDefault() => applyThemeMenu(null, null);
+
+  // registerDynamicItem adds a nav item contributed by a dynamic-wasm
+  // plugin. This is called every time the plugin list re-evaluates (not
+  // just on enable/disable -- see DynPluginsModel.update, wired through a
+  // ChangeNotifierProxyProvider2 that also depends on this very model), so
+  // it must be non-destructive: if the item is already registered, update
+  // it in place (new builder/icon from the manifest, but keep whatever
+  // label/position the user has since applied) rather than removing and
+  // re-appending it, which would silently undo a rename or reorder on
+  // every unrelated menu change.
+  void registerDynamicItem(MainMenuItem item) {
+    var idx = menus.indexWhere((e) => e.routeName == item.routeName);
+    if (idx >= 0) {
+      var existing = menus[idx];
+      // DynPluginsModel.update calls this on every rebuild of the provider
+      // tree it's wired into (see the class comment above), passing a
+      // freshly-built MainMenuItem each time even when nothing about the
+      // plugin actually changed. Notifying unconditionally here would
+      // notify MainMenuModel's own listeners -- including that same
+      // provider tree -- which re-runs update() and calls back in here,
+      // forever. Only touch state/notify when something render-relevant
+      // actually differs.
+      var unchanged = existing.hiddenFromSideBar == item.hiddenFromSideBar &&
+          _sameIcon(existing.icon, item.icon) &&
+          existing.subMenuInfo.length == item.subMenuInfo.length;
+      if (unchanged) {
+        // Still refresh the builder/titleBuilder closures (e.g. manifest
+        // screens may have changed) since that's cheap and doesn't need a
+        // rebuild -- they're only invoked on demand when the route is
+        // navigated to, not eagerly.
+        menus[idx] = MainMenuItem(existing.label, item.routeName, item.builder,
+            item.titleBuilder, item.icon, item.subMenuInfo,
+            hiddenFromSideBar: item.hiddenFromSideBar);
+        return;
+      }
+      menus[idx] = MainMenuItem(existing.label, item.routeName, item.builder,
+          item.titleBuilder, item.icon, item.subMenuInfo,
+          hiddenFromSideBar: item.hiddenFromSideBar);
+    } else {
+      // First time this plugin's item is seen -- apply the active theme's
+      // customization for it, if any.
+      var label = _customLabels[item.routeName] ?? item.label;
+      menus.add(MainMenuItem(label, item.routeName, item.builder,
+          item.titleBuilder, item.icon, item.subMenuInfo,
+          hiddenFromSideBar: item.hiddenFromSideBar));
+      if (_customOrder != null) _sortByOrder(_customOrder!);
+    }
+    _notifyListenersAfterBuild();
+  }
+
+  static bool _sameIcon(Widget? a, Widget? b) {
+    if (a is SidebarIcon && b is SidebarIcon) {
+      return a.icon == b.icon && a.alert == b.alert;
+    }
+    return a == b;
+  }
+
+  // unregisterDynamicItem removes a previously-registered dynamic nav item
+  // (plugin disabled/removed), clearing the active route/menu if it was
+  // the one currently selected so the UI doesn't keep pointing at a
+  // MainMenuItem no longer in menus.
+  void unregisterDynamicItem(String routeName) {
+    var removed = menus.any((e) => e.routeName == routeName);
+    if (!removed) return;
+    menus.removeWhere((e) => e.routeName == routeName);
+    if (_activeRoute == routeName) {
+      _activeRoute = "";
+      _activeMenu = _emptyMenu;
+      _activeIndex = 0;
+      _activePageTab = 0;
+    }
+    _notifyListenersAfterBuild();
+  }
+
+  // registerDynamicItem/unregisterDynamicItem are called from
+  // DynPluginsModel.update, itself invoked by a ChangeNotifierProxyProvider2
+  // while it (and, transitively, MainMenuModel's own already-built
+  // InheritedProviderScope) are mid-build -- calling notifyListeners()
+  // directly there trips Flutter's "setState() or markNeedsBuild() called
+  // during build" assertion. Deferring to a post-frame callback lets the
+  // mutation apply immediately (so synchronous reads see it) while the
+  // widget-rebuild notification fires safely once the frame is done.
+  void _notifyListenersAfterBuild() {
+    SchedulerBinding.instance.addPostFrameCallback((_) => notifyListeners());
+  }
 
   String _activeRoute = "";
   MainMenuItem _activeMenu = _emptyMenu;

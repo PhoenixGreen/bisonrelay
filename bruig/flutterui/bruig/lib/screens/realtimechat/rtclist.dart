@@ -1,6 +1,5 @@
 import 'package:bruig/components/confirmation_dialog.dart';
 import 'package:bruig/components/containers.dart';
-import 'package:bruig/components/empty_widget.dart';
 import 'package:bruig/components/equalizer_icon.dart';
 import 'package:bruig/components/inputs.dart';
 import 'package:bruig/components/interactive_avatar.dart';
@@ -13,7 +12,8 @@ import 'package:bruig/models/realtimechat.dart';
 import 'package:bruig/screens/chats.dart';
 import 'package:bruig/screens/realtimechat/activertc.dart';
 import 'package:bruig/screens/realtimechat/creatertc.dart';
-import 'package:bruig/theme_manager.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
+import 'package:bruig/theming_system/theme_preset.dart';
 import 'package:flutter/material.dart';
 import 'package:golib_plugin/definitions.dart';
 import 'package:provider/provider.dart';
@@ -23,14 +23,21 @@ class RealtimeChatTitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(children: [
+    var headerStyle = ThemeNotifier.of(context).areaStyle(ThemeArea.header);
+    // MainAxisSize.min so the header's Text align setting can actually
+    // move this: a max-size Row fills the whole title area whatever the
+    // AppBar is told to do with it, which pinned the text to the left even
+    // with the setting on Center or Right.
+    return Row(mainAxisSize: MainAxisSize.min, children: [
       const Txt.L("Realtime Chat"),
-      IconButton(
-          onPressed: () {
-            Navigator.of(context).pushNamed(CreateRealtimeChatScreen.routeName);
-          },
-          icon: const Icon(Icons.add_box),
-          tooltip: "Create new session"),
+      if (!headerStyle.hideHeaderNewSession)
+        IconButton(
+            onPressed: () {
+              Navigator.of(context)
+                  .pushNamed(CreateRealtimeChatScreen.routeName);
+            },
+            icon: const Icon(Icons.add_box),
+            tooltip: "Create new session"),
     ]);
   }
 }
@@ -272,18 +279,77 @@ class __RTDTSessionWState extends State<_RTDTSessionW> {
 
   @override
   Widget build(BuildContext context) {
-    return ListTile(
-        onTap: () => !isActive ? rtc.active.active = session : null,
-        selected: isActive,
-        trailing: session.hasHotAudio
-            ? const Icon(Icons.mic)
-            : session.inLiveSession
-                ? const Icon(Icons.headphones)
-                : null,
-        title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Txt.L(session.info.metadata.description),
-          Txt.S(session.info.metadata.rv.substring(0, 10)),
-        ]));
+    final live = session.hasHotAudio || session.inLiveSession;
+    // The three things a theme decides about this row (see the Realtime
+    // Chat theme area); each keeps its built-in value until set.
+    var rtcStyle = ThemeNotifier.of(context).areaStyle(ThemeArea.realtimeChat);
+    var radius = BorderRadius.circular(rtcStyle.rtcSessionCornerRadius ?? 12);
+    var activeColor =
+        rtcStyle.resolveRtcActiveSessionColor(ThemeNotifier.of(context)) ??
+            const Color(0xFF0B0F16);
+    var liveColor = rtcStyle.resolveRtcLiveColor(ThemeNotifier.of(context)) ??
+        const Color(0xFF1DFF8C);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      child: Material(
+        color: isActive ? activeColor : Colors.transparent,
+        borderRadius: radius,
+        child: InkWell(
+          borderRadius: radius,
+          onTap: () => !isActive ? rtc.active.active = session : null,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+            child: Row(children: [
+              // Live status dot (green + glow when audio is live).
+              Container(
+                width: 8,
+                height: 8,
+                margin: const EdgeInsets.only(right: 10),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: live ? liveColor : const Color(0xFF3A403D),
+                  boxShadow: live
+                      ? [
+                          BoxShadow(
+                            color: liveColor.withValues(alpha: 0.6),
+                            blurRadius: 7,
+                          )
+                        ]
+                      : null,
+                ),
+              ),
+              Expanded(
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(session.info.metadata.description,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight:
+                                isActive ? FontWeight.w600 : FontWeight.w500,
+                            color: isActive
+                                ? const Color(0xFF4D9FFF)
+                                : const Color(0xFFF2F4F3),
+                          )),
+                      const SizedBox(height: 2),
+                      Text(session.info.metadata.rv.substring(0, 10),
+                          style: const TextStyle(
+                              fontSize: 12, color: Color(0xFF5F6764))),
+                    ]),
+              ),
+              if (session.hasHotAudio)
+                Icon(Icons.mic, size: 18, color: liveColor)
+              else if (session.inLiveSession)
+                const Icon(Icons.headphones,
+                    size: 18, color: Color(0xFF4D9FFF)),
+            ]),
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -331,8 +397,10 @@ class __RTDTSessionsListState extends State<_RTDTSessionsList> {
     var sessions = rtc.sessions;
     return ListView(
         shrinkWrap: true,
-        children:
-            sessions.map((sess) => _RTDTSessionW(rtc, client, sess)).toList());
+        children: sessions
+            .map((sess) =>
+                SecondarySideMenuItem(_RTDTSessionW(rtc, client, sess)))
+            .toList());
   }
 }
 
@@ -359,15 +427,160 @@ class _RealtimeChatScreenState extends State<RealtimeChatScreen> {
     var rtc = RealtimeChatModel.of(context, listen: false);
     var client = ClientModel.of(context, listen: false);
     var audio = AudioModel.of(context, listen: false);
-    return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      SecondarySideMenu(width: 200, child: _RTDTSessionsList(rtc, client)),
-      Expanded(
-          child: Consumer<ActiveRealTimeSessionChatModel>(
-              builder: (context, activeModel, child) =>
-                  activeModel.active != null
-                      ? ActiveRealtimeChatScreen(
-                          rtc, activeModel.active!, audio, inputFocusNode)
-                      : const Empty())),
-    ]);
+    return SecondarySideMenuLayout(
+      width: 200,
+      storageKey: "realtimeChat",
+      list: _RTDTSessionsList(rtc, client),
+      content: Consumer<ActiveRealTimeSessionChatModel>(
+          builder: (context, activeModel, child) => activeModel.active != null
+              ? ActiveRealtimeChatScreen(
+                  rtc, activeModel.active!, audio, inputFocusNode)
+              : _RTDTIntro(hasSessions: rtc.sessions.isNotEmpty)),
+    );
+  }
+}
+
+// Empty-state / intro shown when no realtime session is active. Explains
+// what Realtime Chat (RTDT) actually is and urges the user to create one.
+class _RTDTIntro extends StatelessWidget {
+  final bool hasSessions;
+  const _RTDTIntro({required this.hasSessions});
+
+  Widget _feature(IconData ic, String title, String body) => Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              color: const Color(0xFF101826),
+              borderRadius: BorderRadius.circular(9),
+            ),
+            child: Icon(ic, size: 16, color: const Color(0xFF4D9FFF)),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(title,
+                  style: const TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFFF2F4F3))),
+              const SizedBox(height: 1),
+              Text(body,
+                  style: const TextStyle(
+                      fontSize: 11.5, height: 1.35, color: Color(0xFF9AA3A0))),
+            ]),
+          ),
+        ]),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    var theme = ThemeNotifier.of(context);
+    // Was a hardcoded bright-green gradient with no palette field behind
+    // it -- now uses the same "Accent (Buttons/Toggles)" slot the rest of
+    // the app's unthemed buttons/toggles were pinned to.
+    var accent = theme.activePreset?.accentContainer ?? const Color(0xFF1DFF8C);
+    var onAccent = theme.activePreset?.onSurface ?? const Color(0xFF04130B);
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 400),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Container(
+              width: 60,
+              height: 60,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: accent,
+                boxShadow: [
+                  BoxShadow(
+                      color: accent.withValues(alpha: 0.30),
+                      blurRadius: 20,
+                      spreadRadius: 1),
+                ],
+              ),
+              child: Icon(Icons.graphic_eq, size: 29, color: onAccent),
+            ),
+            const SizedBox(height: 16),
+            const Text("Realtime Chat",
+                style: TextStyle(
+                    fontSize: 19,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFFF2F4F3))),
+            const SizedBox(height: 6),
+            const Text(
+                "Encrypted realtime voice over Bison Relay, with live group "
+                "messaging in the same session. Audio is relayed through an "
+                "RTDT server but stays end-to-end encrypted along the way.",
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                    fontSize: 12.5, height: 1.45, color: Color(0xFF9AA3A0))),
+            const SizedBox(height: 20),
+            Container(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+              decoration: BoxDecoration(
+                color: const Color(0xFF0C0D0C),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFF1C1F1D)),
+              ),
+              child: Column(children: [
+                _feature(
+                    Icons.lock_outline,
+                    "End-to-end encrypted",
+                    "Audio and messages use a key only session participants "
+                        "share — the relay can't read them."),
+                _feature(
+                    Icons.groups_outlined,
+                    "Group voice + chat",
+                    "Talk live with multiple peers and send messages in the "
+                        "same session."),
+                _feature(
+                    Icons.bolt_outlined,
+                    "Realtime UDP transport",
+                    "RTDT (Real Time Datagram Tunneling) is built on UDP for "
+                        "live audio; round-trip time is shown during calls."),
+                _feature(
+                    Icons.bolt,
+                    "Pay-as-you-go",
+                    "Senders pre-pay a small Lightning allowance for the "
+                        "realtime data they send."),
+              ]),
+            ),
+            const SizedBox(height: 18),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () => Navigator.of(context, rootNavigator: true)
+                    .pushNamed(CreateRealtimeChatScreen.routeName),
+                icon: Icon(Icons.add, size: 18, color: onAccent),
+                label: Text(
+                    hasSessions
+                        ? "Create a new Realtime Chat"
+                        : "Create your first Realtime Chat",
+                    style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w700,
+                        color: onAccent)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: accent,
+                  padding: const EdgeInsets.symmetric(vertical: 13),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(11)),
+                ),
+              ),
+            ),
+            if (hasSessions) ...[
+              const SizedBox(height: 10),
+              const Text("…or pick an existing session on the left",
+                  style: TextStyle(fontSize: 11.5, color: Color(0xFF5F6764))),
+            ],
+          ]),
+        ),
+      ),
+    );
   }
 }

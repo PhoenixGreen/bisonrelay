@@ -6,11 +6,15 @@ import 'package:bruig/components/pages/forms.dart';
 import 'package:bruig/components/snackbars.dart';
 import 'package:bruig/components/text_dialog.dart';
 import 'package:bruig/components/audio_element.dart';
+import 'package:bruig/components/interactive_avatar.dart';
 import 'package:bruig/models/audio.dart';
+import 'package:bruig/models/client.dart';
 import 'package:bruig/models/downloads.dart';
+import 'package:bruig/models/feed.dart';
 import 'package:bruig/models/payments.dart';
 import 'package:bruig/models/resources.dart';
 import 'package:bruig/models/snackbar.dart';
+import 'package:bruig/screens/feed.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -21,7 +25,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:bruig/theme_manager.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:bruig/components/image_dialog.dart';
 import 'package:pdfrx/pdfrx.dart';
 import 'package:path/path.dart' as path;
@@ -110,6 +114,17 @@ class EmbedInlineSyntax extends md.InlineSyntax {
       parms[element.substring(0, p)] = element.substring(p + 1);
     });
 
+    // Quote embed: a reference to another post (rendered as a nested
+    // card). Only ever produced by the feed's Quote Post action, which is
+    // gated behind AreaStyle.feedCardActions.
+    if (parms["type"] == "quote") {
+      var el = md.Element.text("quote", "");
+      el.attributes["from"] = parms["from"] ?? "";
+      el.attributes["post"] = parms["post"] ?? "";
+      parser.addNode(el);
+      return true;
+    }
+
     // Only accept valid download FIDs.
     var download = parms["download"] ?? "";
     if (!RegExp(r"^[0-9a-fA-F]{64}$").hasMatch(download)) {
@@ -170,6 +185,7 @@ class EmbedInlineSyntax extends md.InlineSyntax {
           break;
         case "image/avif":
           tag = "avif";
+          break;
         case "text/plain":
           // Decode plain text directly.
           tag = "pre";
@@ -358,6 +374,7 @@ class MarkdownAreaModel extends ChangeNotifier {
     "form": FormElementBuilder(),
     "lnpay": _LNPayURLElementBuilder(),
     "avif": AVIFElementBuilder(),
+    "quote": QuoteMarkdownElementBuilder(),
   };
 
   final List<md.InlineSyntax> inlineSyntaxes = [
@@ -383,7 +400,20 @@ class MarkdownArea extends StatelessWidget {
 
   final String text;
   final bool hasNick;
-  MarkdownArea(srcText, this.hasNick, {super.key})
+  // When true, links render with their normal styling but don't navigate on
+  // tap. Used by the Feed page's AreaStyle.feedHideLinks toggle -- only
+  // affects this MarkdownArea instance, not markdown rendering elsewhere
+  // (chat, pages, etc).
+  final bool disableLinks;
+  // When true, headers/bold/italic/strikethrough all render with normal
+  // body text styling instead of their usual formatting -- the markdown is
+  // still parsed (embeds/links/etc still work), only the *visual*
+  // formatting is flattened. Used by the Feed page's
+  // AreaStyle.feedStripMarkdown toggle -- only affects this MarkdownArea
+  // instance, not markdown rendering elsewhere (chat, pages, etc).
+  final bool plainText;
+  MarkdownArea(srcText, this.hasNick,
+      {this.disableLinks = false, this.plainText = false, super.key})
       : text = MarkdownArea._cleanupSrcText(srcText);
 
   Future<void> launchUrlAwait(context, url) async {
@@ -420,16 +450,37 @@ class MarkdownArea extends StatelessWidget {
     }
   }
 
+  // Flattens header/bold/italic/strikethrough styles down to plain body
+  // text, leaving everything else (code, blockquote, links, etc) alone.
+  MarkdownStyleSheet _plainStyleSheet(
+      MarkdownStyleSheet base, BuildContext context) {
+    final plain = DefaultTextStyle.of(context).style;
+    return base.copyWith(
+      h1: plain,
+      h2: plain,
+      h3: plain,
+      h4: plain,
+      h5: plain,
+      h6: plain,
+      strong: plain,
+      em: plain,
+      del: plain,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Consumer3<ThemeNotifier, PaymentsModel, MarkdownAreaModel>(
         builder: (context, theme, payments, mk, _) => MarkdownBody(
               codeBlockMaxHeight: 200,
-              styleSheet: theme.mdStyleSheet,
+              styleSheet: plainText
+                  ? _plainStyleSheet(theme.mdStyleSheet, context)
+                  : theme.mdStyleSheet,
               data: text.trim(),
               extensionSet: mk.extensionSet,
               builders: mk.builders,
               onTapLink: (text, url, _) {
+                if (disableLinks) return;
                 launchUrlAwait(context, url);
               },
               inlineSyntaxes: mk.inlineSyntaxes,
@@ -474,6 +525,22 @@ class Downloadable extends StatelessWidget {
       );
 }
 
+// chatImageConstraints resolves the configured chat image size setting into
+// concrete BoxConstraints, given the width available to the image within its
+// chat bubble (as reported by an enclosing LayoutBuilder).
+BoxConstraints chatImageConstraints(String size, double availableWidth) {
+  switch (size) {
+    case "half":
+      return BoxConstraints(
+          maxWidth: availableWidth.isFinite ? availableWidth * 0.5 : 250);
+    case "full":
+      return BoxConstraints(
+          maxWidth: availableWidth.isFinite ? availableWidth : 250);
+    default:
+      return const BoxConstraints(maxHeight: 250, maxWidth: 250);
+  }
+}
+
 class ImageMd extends StatelessWidget {
   final String tip;
   final Uint8List imgContent;
@@ -482,30 +549,40 @@ class ImageMd extends StatelessWidget {
   const ImageMd(this.tip, this.imgContent, this.type, {this.name, super.key});
 
   @override
-  Widget build(BuildContext context) => Tooltip(
-        message: tip,
-        child: InkWell(
-          borderRadius: const BorderRadius.all(Radius.circular(30)),
-          onTap: () {
-            showDialog(
-                context: context,
-                builder: (_) => ImageDialog(imgContent, type, name: name));
-          },
-          child: Container(
-            constraints: const BoxConstraints(maxHeight: 250, maxWidth: 250),
-            margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
-            decoration: BoxDecoration(
-              borderRadius: const BorderRadius.all(Radius.circular(8.0)),
-              image: DecorationImage(
-                image: MemoryImage(imgContent),
-                onError: (exception, stackTrace) {
-                  debugPrint("ImageMd unable to decode image: $exception");
-                },
+  Widget build(BuildContext context) {
+    var chatImageSize = ThemeNotifier.of(context).chatImageSize;
+    return Tooltip(
+      message: tip,
+      child: InkWell(
+        borderRadius: const BorderRadius.all(Radius.circular(30)),
+        onTap: () {
+          showDialog(
+              context: context,
+              builder: (_) => ImageDialog(imgContent, type, name: name));
+        },
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+          child: ClipRRect(
+            borderRadius: const BorderRadius.all(Radius.circular(8.0)),
+            child: LayoutBuilder(
+              builder: (context, constraints) => ConstrainedBox(
+                constraints:
+                    chatImageConstraints(chatImageSize, constraints.maxWidth),
+                child: Image.memory(
+                  imgContent,
+                  fit: BoxFit.contain,
+                  errorBuilder: (context, error, stackTrace) {
+                    debugPrint("ImageMd unable to decode image: $error");
+                    return const SizedBox.shrink();
+                  },
+                ),
               ),
             ),
           ),
         ),
-      );
+      ),
+    );
+  }
 }
 
 class AvifMd extends StatelessWidget {
@@ -514,29 +591,38 @@ class AvifMd extends StatelessWidget {
   const AvifMd(this.tip, this.imgContent, {super.key});
 
   @override
-  Widget build(BuildContext context) => Tooltip(
-        message: tip,
-        child: InkWell(
-          borderRadius: const BorderRadius.all(Radius.circular(30)),
-          onTap: () {
-            showDialog(
-                context: context, builder: (_) => AvifDialog(imgContent));
-          },
-          child: Container(
-            constraints: const BoxConstraints(maxHeight: 250, maxWidth: 250),
-            margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
-            decoration: BoxDecoration(
-              borderRadius: const BorderRadius.all(Radius.circular(8.0)),
-              image: DecorationImage(
-                image: AvifImage.memory(imgContent).image,
-                onError: (exception, stackTrace) {
-                  debugPrint("AvifMd unable to decode image: $exception");
-                },
+  Widget build(BuildContext context) {
+    var chatImageSize = ThemeNotifier.of(context).chatImageSize;
+    return Tooltip(
+      message: tip,
+      child: InkWell(
+        borderRadius: const BorderRadius.all(Radius.circular(30)),
+        onTap: () {
+          showDialog(context: context, builder: (_) => AvifDialog(imgContent));
+        },
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+          child: ClipRRect(
+            borderRadius: const BorderRadius.all(Radius.circular(8.0)),
+            child: LayoutBuilder(
+              builder: (context, constraints) => ConstrainedBox(
+                constraints:
+                    chatImageConstraints(chatImageSize, constraints.maxWidth),
+                child: Image(
+                  image: AvifImage.memory(imgContent).image,
+                  fit: BoxFit.contain,
+                  errorBuilder: (context, error, stackTrace) {
+                    debugPrint("AvifMd unable to decode image: $error");
+                    return const SizedBox.shrink();
+                  },
+                ),
               ),
             ),
           ),
         ),
-      );
+      ),
+    );
+  }
 }
 
 class PreformattedElementBuilder extends MarkdownElementBuilder {
@@ -688,6 +774,112 @@ class DownloadLinkElementBuilder extends MarkdownElementBuilder {
     var download = element.attributes["fid"] ?? "";
     var tip = "Click to download file $download";
     return Downloadable(tip, download, Text(element.textContent));
+  }
+}
+
+class QuoteMarkdownElementBuilder extends MarkdownElementBuilder {
+  @override
+  Widget visitElementAfter(md.Element element, TextStyle? preferredStyle) {
+    return _QuotedPostCard(
+      from: element.attributes["from"] ?? "",
+      postId: element.attributes["post"] ?? "",
+    );
+  }
+}
+
+class _QuotedPostCard extends StatefulWidget {
+  final String from;
+  final String postId;
+  const _QuotedPostCard({required this.from, required this.postId});
+  @override
+  State<_QuotedPostCard> createState() => _QuotedPostCardState();
+}
+
+class _QuotedPostCardState extends State<_QuotedPostCard> {
+  bool _requested = false;
+
+  Widget _shell(BuildContext context, Widget child, VoidCallback? onTap) {
+    final theme = ThemeNotifier.of(context);
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 8),
+        decoration: BoxDecoration(
+          color: theme.surfaceColor(SurfaceColor.surfaceContainer),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+              color: theme.surfaceColor(SurfaceColor.surfaceContainerHigh)),
+        ),
+        child: child,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final feed = Provider.of<FeedModel>(context);
+    final client = Provider.of<ClientModel>(context, listen: false);
+    final post = feed.getPost(widget.from, widget.postId);
+    final theme = ThemeNotifier.of(context);
+
+    if (post == null) {
+      if (!_requested && widget.from.isNotEmpty && widget.postId.isNotEmpty) {
+        _requested = true;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          feed.getUserPost(widget.from, widget.postId);
+        });
+      }
+      return _shell(
+        context,
+        Padding(
+          padding: const EdgeInsets.all(12),
+          child: Text("Loading quoted post...",
+              style: TextStyle(
+                  fontSize: 13,
+                  color: theme.textColor(TextColor.onSurfaceVariant))),
+        ),
+        null,
+      );
+    }
+
+    var nick = client.getNick(widget.from);
+    if (nick == "") nick = post.summ.authorNick;
+    if (nick == "") nick = widget.from;
+
+    return _shell(
+      context,
+      Padding(
+        padding: const EdgeInsets.all(11),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: UserAvatarFromID(client, widget.from, nick: nick)),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(nick,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: theme.textColor(TextColor.onSurface))),
+              ),
+            ]),
+            const SizedBox(height: 6),
+            Provider<DownloadSource>(
+              create: (_) => DownloadSource(widget.from),
+              child: MarkdownArea(post.content, false),
+            ),
+          ],
+        ),
+      ),
+      () => FeedScreen.showPost(context, post),
+    );
   }
 }
 

@@ -10,7 +10,7 @@ import 'package:golib_plugin/definitions.dart';
 import 'package:golib_plugin/golib_plugin.dart';
 import 'package:golib_plugin/util.dart';
 import 'package:bruig/components/copyable.dart';
-import 'package:bruig/theme_manager.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:tuple/tuple.dart';
 
 class LNNetworkPage extends StatefulWidget {

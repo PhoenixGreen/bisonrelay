@@ -274,6 +274,7 @@ class FeedModel extends ChangeNotifier {
   bool _hasUnreadPostsComments = false;
   bool get hasUnreadPostsComments => _hasUnreadPostsComments;
   set hasUnreadPostsComments(bool b) {
+    if (_hasUnreadPostsComments == b) return;
     _hasUnreadPostsComments = b;
     notifyListeners();
   }

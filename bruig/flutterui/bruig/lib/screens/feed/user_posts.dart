@@ -241,6 +241,7 @@ class _UserPostsState extends State<UserPosts> {
                 widget.client.getExistingChat(e.summ.from),
                 widget.client,
                 widget.tabChange,
+                key: ValueKey("${e.summ.from}:${e.summ.id}"),
               ))
         ])));
   }

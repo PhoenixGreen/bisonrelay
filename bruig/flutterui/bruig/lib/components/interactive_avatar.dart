@@ -3,10 +3,78 @@ import 'package:bruig/components/gc_context_menu.dart';
 import 'package:bruig/components/text.dart';
 import 'package:bruig/components/user_context_menu.dart';
 import 'package:bruig/models/client.dart';
+import 'package:bruig/theming_system/theme_preset.dart';
 import 'package:bruig/util.dart';
 import 'package:flutter/material.dart';
-import 'package:bruig/theme_manager.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:provider/provider.dart';
+
+// graphiteFromNick deterministically maps a nick to one of a small set of
+// neutral gray shades -- the fallback avatar color for
+// AvatarTheme.monochrome.
+const List<Color> _graphitePalette = [
+  Color(0xFF363B3A),
+  Color(0xFF3A4048),
+  Color(0xFF40433F),
+  Color(0xFF383F44),
+  Color(0xFF44423F),
+  Color(0xFF3C4441),
+];
+
+// _hashNick is the stable per-nick number the theme variants below pick
+// from, so a given user always gets the same avatar color.
+int _hashNick(String nick) {
+  var h = 0;
+  for (final c in nick.codeUnits) {
+    h = (h * 31 + c) & 0x7fffffff;
+  }
+  return h;
+}
+
+Color graphiteFromNick(String nick) =>
+    _graphitePalette[_hashNick(nick) % _graphitePalette.length];
+
+// avatarColorFromNick is the fallback avatar's background color under the
+// chosen AvatarTheme -- the circle behind a user's initial, used only when
+// they have no avatar image of their own.
+//
+// muted/vivid deliberately reuse colorFromNick's own hue (rather than
+// hashing independently) so switching between them re-tints each user
+// rather than reshuffling who is what color.
+Color avatarColorFromNick(String nick, AvatarTheme theme, Brightness brightness,
+    ThemePreset? preset) {
+  Color reshade(double saturation, double value) =>
+      HSVColor.fromColor(colorFromNick(nick, brightness))
+          .withSaturation(saturation)
+          .withValue(value)
+          .toColor();
+
+  switch (theme) {
+    case AvatarTheme.standard:
+      return colorFromNick(nick, brightness);
+    case AvatarTheme.monochrome:
+      return graphiteFromNick(nick);
+    case AvatarTheme.muted:
+      return reshade(0.22, brightness == Brightness.dark ? 0.72 : 0.86);
+    case AvatarTheme.vivid:
+      return reshade(0.85, brightness == Brightness.dark ? 1.0 : 0.85);
+    case AvatarTheme.palette:
+      // The accent-tier slots specifically: the background slots are what
+      // the avatar would be sitting on, so drawing from those would make
+      // the circle vanish into whatever is behind it.
+      var accents = preset == null
+          ? const <Color>[]
+          : [
+              preset.navAccent,
+              preset.sidebarAccent,
+              preset.accentContainer,
+              preset.error,
+              preset.success,
+            ];
+      if (accents.isEmpty) return colorFromNick(nick, brightness);
+      return accents[_hashNick(nick) % accents.length];
+  }
+}
 
 class InteractiveAvatar extends StatelessWidget {
   const InteractiveAvatar(
@@ -29,7 +97,11 @@ class InteractiveAvatar extends StatelessWidget {
   Widget build(BuildContext context) {
     var nickInitial = chatNick.isNotEmpty ? chatNick[0].toUpperCase() : "?";
     return Consumer<ThemeNotifier>(builder: (context, theme, _) {
-      var avatarColor = colorFromNick(chatNick, theme.brightness);
+      var avatarColor = avatarColorFromNick(
+          chatNick,
+          theme.areaStyle(ThemeArea.chat).avatarTheme,
+          theme.brightness,
+          theme.activePreset);
       var avatarTextTs =
           ThemeData.estimateBrightnessForColor(avatarColor) == Brightness.dark
               ? (radius != null && radius! >= 100)

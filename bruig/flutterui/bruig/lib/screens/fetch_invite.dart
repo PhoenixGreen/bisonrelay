@@ -184,7 +184,12 @@ Future<String> _tempInviteDownloadPath() async {
 }
 
 class FetchInviteScreen extends StatefulWidget {
-  const FetchInviteScreen({super.key});
+  // embedded is true when shown inline as Address Book tab content instead
+  // of pushed as a full-screen route -- skips StartupScreen's Scaffold/
+  // background/About-button chrome, since the embedding page already
+  // provides its own frame.
+  final bool embedded;
+  const FetchInviteScreen({this.embedded = false, super.key});
 
   @override
   State<FetchInviteScreen> createState() => _FetchInviteScreenState();
@@ -236,10 +241,18 @@ class _FetchInviteScreenState extends State<FetchInviteScreen> {
     }
   }
 
+  // Address Book tabs all use the same title: same size (Txt.L), centred
+  // across the full width of the page. Pushed as a standalone route these
+  // screens keep the larger startup-screen heading.
+  Widget _title(String text) => SizedBox(
+      width: double.infinity,
+      child: widget.embedded
+          ? Txt.L(text, textAlign: TextAlign.center)
+          : Txt.H(text, textAlign: TextAlign.center));
   @override
   Widget build(BuildContext context) {
-    return StartupScreen([
-      const Txt.H("Fetch Invite"),
+    var children = [
+      _title("Fetch Invite"),
       const SizedBox(height: 20),
       ...(!loading
           ? [
@@ -260,7 +273,19 @@ class _FetchInviteScreenState extends State<FetchInviteScreen> {
               ),
               const SizedBox(height: 20),
             ]),
-      CancelButton(onPressed: () => Navigator.pop(context)),
-    ]);
+      CancelButton(onPressed: () => Navigator.of(context).maybePop()),
+    ];
+
+    if (widget.embedded) {
+      return SingleChildScrollView(
+          // The gutters every content-area page uses, so the Address Book
+          // tabs sit where the pages beside them do.
+          padding: const EdgeInsets.fromLTRB(16, 18, 16, 24),
+          child: Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: children));
+    }
+
+    return StartupScreen(children);
   }
 }
