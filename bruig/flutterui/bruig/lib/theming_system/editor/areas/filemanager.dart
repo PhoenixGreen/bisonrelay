@@ -1,7 +1,7 @@
-import 'package:bruig/theming_system/theming_areas_section.dart';
+import 'package:bruig/theming_system/theme_editor.dart';
 import 'package:flutter/material.dart';
 
-// theming_area_filemanager.dart is the "File Manager" area: the Manage
+// filemanager.dart is the "File Manager" area: the Manage
 // screen's own pages (Add, Shared, Downloads).
 List<Widget> fileManagerAreaEditor(AreaEditorContext ctx) => [
       ctx.toggle(

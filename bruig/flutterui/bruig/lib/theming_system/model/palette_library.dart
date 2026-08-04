@@ -1,4 +1,4 @@
-import 'package:bruig/theming_system/color_hex.dart';
+import 'package:bruig/theming_system/model/color_hex.dart';
 import 'package:flutter/material.dart';
 
 // ColorPalette is a small, named, standalone set of colors -- distinct from

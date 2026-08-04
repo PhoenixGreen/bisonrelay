@@ -1,8 +1,8 @@
-import 'package:bruig/theming_system/area_options.dart';
-import 'package:bruig/theming_system/theming_areas_section.dart';
+import 'package:bruig/theming_system/theme_editor.dart';
+import 'package:bruig/theming_system/theme_preset.dart';
 import 'package:flutter/material.dart';
 
-// theming_area_sidebar.dart is the "Sidebar" area's own settings. They apply
+// sidebar.dart is the "Sidebar" area's own settings. They apply
 // to every sidebar in the app (Settings, LN Management, Feed, Manage
 // Content, Address Book, page-view sessions, the chat list, and the Realtime
 // Chat session list), not just one screen.

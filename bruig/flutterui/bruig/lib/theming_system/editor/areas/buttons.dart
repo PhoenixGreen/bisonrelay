@@ -1,12 +1,11 @@
 import 'package:bruig/components/buttons.dart';
 import 'package:bruig/components/text.dart';
-import 'package:bruig/theming_system/area_sides.dart';
-import 'package:bruig/theming_system/button_style.dart';
+import 'package:bruig/theming_system/theme_editor.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
-import 'package:bruig/theming_system/theming_areas_section.dart';
+import 'package:bruig/theming_system/theme_preset.dart';
 import 'package:flutter/material.dart';
 
-// theming_area_buttons.dart is the "Buttons" area: the app's five button
+// buttons.dart is the "Buttons" area: the app's five button
 // appearances (see ButtonRole), each with its own background, hover, border,
 // padding and margin.
 //
@@ -195,8 +194,8 @@ class _Preview extends StatelessWidget {
         ElevatedButton(onPressed: tap, child: const Text("Export Logs")),
       ButtonRole.outlined =>
         OutlinedButton(onPressed: tap, child: const Txt.S("Read More")),
-      ButtonRole.tonal => FilledButton.tonal(
-          onPressed: tap, child: const Text("Create Post")),
+      ButtonRole.tonal =>
+        FilledButton.tonal(onPressed: tap, child: const Text("Create Post")),
       ButtonRole.danger => CancelButton(onPressed: tap, label: "Clear Post"),
     };
   }
@@ -244,7 +243,8 @@ class _Preview extends StatelessWidget {
 
 String _backgroundNote(ButtonRole role) => switch (role) {
       ButtonRole.primary => "Default: Button Background Primary.",
-      ButtonRole.plain || ButtonRole.outlined =>
+      ButtonRole.plain ||
+      ButtonRole.outlined =>
         "No fill by default -- the page shows through.",
       ButtonRole.tonal => "Default: Third Background Color.",
       ButtonRole.danger => "Default: Button Background Secondary.",

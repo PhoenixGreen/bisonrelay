@@ -1,9 +1,9 @@
 import 'package:bruig/models/menus.dart';
-import 'package:bruig/theming_system/theming_areas_section.dart';
+import 'package:bruig/theming_system/theme_editor.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-// theming_area_mobile.dart is the "Mobile" area's own settings: what the
+// mobile.dart is the "Mobile" area's own settings: what the
 // narrow-screen bottom navigation carries, and how tapping it behaves.
 //
 // The destination list is built from MainMenuModel rather than a hardcoded

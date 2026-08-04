@@ -1,11 +1,11 @@
-import 'package:bruig/theming_system/theme_area.dart';
-import 'package:bruig/theming_system/theming_areas_section.dart';
+import 'package:bruig/theming_system/theme_editor.dart';
+import 'package:bruig/theming_system/theme_preset.dart';
 import 'package:flutter/material.dart';
 
-// theming_area_navbar.dart is the "Navigation Bar" area's own settings. Its
+// navbar.dart is the "Navigation Bar" area's own settings. Its
 // width/padding/margin aren't editable -- the third-party sidebarx package
 // composes its own fixed layout and animates off specific width values (see
-// theming_areas_section.dart).
+// editor/areas_section.dart).
 List<Widget> navBarAreaEditor(AreaEditorContext ctx) => [
       ctx.toggle(
         "Show logo",

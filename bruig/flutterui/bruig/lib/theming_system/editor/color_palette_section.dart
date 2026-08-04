@@ -1,16 +1,12 @@
 import 'dart:io';
-
 import 'package:bruig/components/eyedropper.dart';
 import 'package:bruig/components/snackbars.dart';
 import 'package:bruig/components/text.dart';
 import 'package:bruig/models/client.dart';
-import 'package:bruig/theming_system/color_palette.dart';
-import 'package:bruig/theming_system/palette_color_dropdown.dart';
-import 'package:bruig/theming_system/palette_library.dart';
-import 'package:bruig/theming_system/palette_library_storage.dart';
-import 'package:bruig/theming_system/preset.dart';
+import 'package:bruig/theming_system/storage/palette_library_storage.dart';
 import 'package:bruig/theming_system/theme_editor.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
+import 'package:bruig/theming_system/theme_preset.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
@@ -94,7 +90,7 @@ ThemePreset paletteApplied(ThemePreset draft, ColorPalette palette) {
     // seed's lavender, so every text box in the app stayed purple no
     // matter which palette was applied.
     inputSelected: colorAt(legacySevenColor ? 5 : 6, base.navAccent),
-    inputResting: ThemePreset.restingBorderFrom(
+    inputResting: restingBorderFrom(
         colorAt(legacySevenColor ? 5 : 6, base.navAccent),
         colorAt(0, base.primary)),
     // Inputs have never carried a fill; reset rather than left behind, so

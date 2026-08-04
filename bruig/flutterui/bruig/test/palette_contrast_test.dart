@@ -1,7 +1,4 @@
-import 'dart:math' as math;
-
-import 'package:bruig/theming_system/color_palette_section.dart';
-import 'package:bruig/theming_system/palette_library.dart';
+import 'package:bruig/theming_system/theme_editor.dart';
 import 'package:bruig/theming_system/theme_preset.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -17,16 +14,10 @@ import 'package:flutter_test/flutter_test.dart';
 // seed) can quietly drag all of them under the readable floor at once --
 // which is exactly what happened to navText/sidebarText.
 
-double _lin(double c) =>
-    c <= 0.04045 ? c / 12.92 : math.pow((c + 0.055) / 1.055, 2.4).toDouble();
-
-double _luminance(Color c) =>
-    0.2126 * _lin(c.r) + 0.7152 * _lin(c.g) + 0.0722 * _lin(c.b);
-
-double contrast(Color a, Color b) {
-  var la = _luminance(a), lb = _luminance(b);
-  return (math.max(la, lb) + 0.05) / (math.min(la, lb) + 0.05);
-}
+// The measurement itself is the shipping code's own (model/color_contrast
+// .dart), so the test can't drift from the formula the palettes are tuned
+// against.
+const contrast = contrastRatio;
 
 // 4.5:1 is WCAG AA for body text; 3:1 is the floor for a UI element's own
 // boundary (a button border), which doesn't have to be read as text.
@@ -45,19 +36,43 @@ List<(String, Color, Color, double)> _pairs(ThemePreset p) => [
       ("nav text on nav background", p.navText, p.secondary, _text),
       ("nav selected on nav background", p.navSelected, p.secondary, _text),
       ("sidebar text on sidebar", p.sidebarText, p.sidebarBackground, _text),
-      ("sidebar accent on sidebar", p.sidebarAccent, p.sidebarBackground, _text),
+      (
+        "sidebar accent on sidebar",
+        p.sidebarAccent,
+        p.sidebarBackground,
+        _text
+      ),
       ("error text on master background", p.error, p.primary, _text),
       ("success text on master background", p.success, p.primary, _text),
       // Buttons 2 and 3: an unfilled label, sitting on whichever surface
       // the button happens to be placed on.
       ("button label on master background", p.buttonText1, p.primary, _text),
-      ("button label on secondary background", p.buttonText1, p.tertiary, _text),
-      ("button border on master background", p.buttonBorderColor, p.primary, _ui),
+      (
+        "button label on secondary background",
+        p.buttonText1,
+        p.tertiary,
+        _text
+      ),
+      (
+        "button border on master background",
+        p.buttonBorderColor,
+        p.primary,
+        _ui
+      ),
       // Buttons 1, 4 and 5: a filled label on its own fill.
       ("button 1 label on its fill", p.buttonText2, p.accentContainer, _text),
-      ("button 4 label on its fill", p.buttonText2, p.buttonBackgroundThird, _text),
-      ("button 5 label on its fill", p.buttonText2, p.buttonBackgroundSecondary,
-          _text),
+      (
+        "button 4 label on its fill",
+        p.buttonText2,
+        p.buttonBackgroundThird,
+        _text
+      ),
+      (
+        "button 5 label on its fill",
+        p.buttonText2,
+        p.buttonBackgroundSecondary,
+        _text
+      ),
     ];
 
 // _separations are the pairs that must be *distinguishable* rather than
@@ -66,11 +81,24 @@ List<(String, Color, Color, double)> _pairs(ThemePreset p) => [
 // catch had several of them at 1.03:1, i.e. invisible.
 List<(String, Color, Color, double)> _separations(ThemePreset p) => [
       ("notification surface vs master background", p.fourth, p.primary, 1.4),
-      ("sent bubble vs master background", p.speechBackgroundSent, p.primary,
-          1.15),
-      ("received bubble vs master background", p.speechBackground, p.primary,
-          1.08),
-      ("secondary background vs master background", p.tertiary, p.primary, 1.08),
+      (
+        "sent bubble vs master background",
+        p.speechBackgroundSent,
+        p.primary,
+        1.15
+      ),
+      (
+        "received bubble vs master background",
+        p.speechBackground,
+        p.primary,
+        1.08
+      ),
+      (
+        "secondary background vs master background",
+        p.tertiary,
+        p.primary,
+        1.08
+      ),
     ];
 
 void _check(String palette, List<(String, Color, Color, double)> pairs,
@@ -169,7 +197,9 @@ void main() {
   // end of the list.
   test('a short (pre-button) palette still applies', () {
     var short = ColorPalette(
-        id: "old", name: "old", colors: builtinPalettes.first.colors.sublist(0, 12));
+        id: "old",
+        name: "old",
+        colors: builtinPalettes.first.colors.sublist(0, 12));
     var seed = ThemePreset.seedFromDark();
     var applied = paletteApplied(seed, short);
     expect(applied.buttonText1, seed.buttonText1);

@@ -1,5 +1,5 @@
-import 'package:bruig/theming_system/area_options.dart';
-import 'package:bruig/theming_system/area_sides.dart';
+import 'package:bruig/theming_system/model/area_options.dart';
+import 'package:bruig/theming_system/model/area_sides.dart';
 import 'package:flutter/material.dart';
 
 // bubble_shape.dart turns a chat bubble's corner settings -- a radius per

@@ -1,11 +1,13 @@
 import 'package:bruig/storage_manager.dart';
-import 'package:bruig/theming_system/app_theme.dart';
-import 'package:bruig/theming_system/area_style.dart';
-import 'package:bruig/theming_system/button_style.dart';
-import 'package:bruig/theming_system/preset.dart';
-import 'package:bruig/theming_system/theme_area.dart';
-import 'package:bruig/theming_system/theme_preset_storage.dart';
-import 'package:bruig/theming_system/theme_tokens.dart';
+import 'package:bruig/theming_system/model/area_style.dart';
+import 'package:bruig/theming_system/model/area_style_render.dart';
+import 'package:bruig/theming_system/model/button_style.dart';
+import 'package:bruig/theming_system/model/preset.dart';
+import 'package:bruig/theming_system/model/preset_theme.dart';
+import 'package:bruig/theming_system/model/theme_area.dart';
+import 'package:bruig/theming_system/runtime/app_theme.dart';
+import 'package:bruig/theming_system/runtime/theme_tokens.dart';
+import 'package:bruig/theming_system/storage/theme_preset_storage.dart';
 import 'package:bruig/util.dart';
 import 'package:emoji_picker_flutter/emoji_picker_flutter.dart' as emoji_picker;
 import 'package:flutter/material.dart';
@@ -116,6 +118,19 @@ class ThemeNotifier with ChangeNotifier {
       ? customPresets[_themeMode.substring("custom:".length)]
       : null;
 
+  List<Color> _activePalette = const [];
+
+  // activePalette is the active preset's full palette (fixed slots then
+  // extras), empty for a built-in theme. Cached rather than rebuilt per
+  // read: every palette-bound color an area renders resolves through it
+  // (see AreaStyleRender), so on a themed frame it is read dozens of times,
+  // and ThemePreset.palette allocates a new 30-entry list each time.
+  List<Color> get activePalette => _activePalette;
+
+  void _refreshActivePalette() {
+    _activePalette = activePreset?.palette ?? const [];
+  }
+
   // presetDisplayName returns the name to show the user for the active
   // theme, defaulting to "Default Theme" for the unmodified built-in, and
   // flagging an active draft that hasn't been saved yet.
@@ -137,6 +152,9 @@ class ThemeNotifier with ChangeNotifier {
     customPresets[preset.id] = preset;
     appThemes["custom:${preset.id}"] = preset.toAppTheme();
     if (markSaved) savedPresetIds.add(preset.id);
+    // Re-registering the preset that's already active (saving it, say)
+    // replaces its colors without going through switchTheme.
+    if (_themeMode == "custom:${preset.id}") _refreshActivePalette();
     if (notify) notifyListeners();
   }
 
@@ -233,6 +251,7 @@ class ThemeNotifier with ChangeNotifier {
     _extraColors = theme.extraColors;
     _extraTextStyles = theme.extraTextStyles;
     _fullTheme = theme;
+    _refreshActivePalette();
     await StorageManager.saveData(StorageManager.themeModeKey, value);
     _clearTxtStyleCache();
     _rebuildMarkdownStyleSheet();

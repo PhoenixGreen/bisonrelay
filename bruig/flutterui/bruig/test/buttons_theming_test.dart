@@ -118,8 +118,10 @@ void main() {
         RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)));
 
     // Split per corner.
-    var corners = styleFor(ButtonAreaStyle(
-        borderRadiusSides: SideValues([1, 2, 3, 4]))).shape!.resolve({});
+    var corners =
+        styleFor(ButtonAreaStyle(borderRadiusSides: SideValues([1, 2, 3, 4])))
+            .shape!
+            .resolve({});
     expect(
         corners,
         const RoundedRectangleBorder(
@@ -153,8 +155,8 @@ void main() {
     var preset = ThemePreset.seedFromDark().copyWith(areas: {
       ThemeArea.buttons: const AreaStyle(buttonStyles: {
         // Stale snapshot, live binding to Master Background.
-        ButtonRole.tonal: ButtonAreaStyle(
-            background: Color(0xFF000001), backgroundIndex: 0),
+        ButtonRole.tonal:
+            ButtonAreaStyle(background: Color(0xFF000001), backgroundIndex: 0),
       }),
     });
     var style = preset.toAppTheme().buttonStyles[ButtonRole.tonal]!;

@@ -1,15 +1,10 @@
-import 'dart:io';
-
-import 'package:bruig/theming_system/area_fill.dart';
-import 'package:bruig/theming_system/area_options.dart';
-import 'package:bruig/theming_system/area_sides.dart';
-import 'package:bruig/theming_system/button_style.dart';
-import 'package:bruig/theming_system/color_hex.dart';
-import 'package:bruig/theming_system/theme_area.dart';
-import 'package:bruig/theming_system/theme_notifier.dart';
-import 'package:bruig/theming_system/theme_tokens.dart';
+import 'package:bruig/theming_system/model/area_fill.dart';
+import 'package:bruig/theming_system/model/area_options.dart';
+import 'package:bruig/theming_system/model/area_sides.dart';
+import 'package:bruig/theming_system/model/button_style.dart';
+import 'package:bruig/theming_system/model/color_hex.dart';
+import 'package:bruig/theming_system/model/theme_area.dart';
 import 'package:flutter/material.dart';
-import 'package:path/path.dart' as path;
 
 // _enumOr resolves a stored enum *name* back to its value, falling back to
 // `fallback` for anything unrecognized (data written by a newer/older build).
@@ -33,7 +28,7 @@ List<double> _alignToJson(Alignment a) => [a.x, a.y];
 //
 // Fields are grouped below in the same order the theme editor presents them:
 // first the ones shared by every area (background fill, border fill, spacing
-// and size), then one block per area, each matching a theming_area_<name>.
+// and size), then one block per area, each matching an editor/areas/<name>.
 // dart editor file. Everything an area contributes lives on this one class
 // -- the whole style is persisted, copied and diffed as a single value.
 class AreaStyle {
@@ -65,7 +60,7 @@ class AreaStyle {
   final String? imagePath; // Relative path within the preset's directory.
   final BoxFit imageFit;
   // imagePreset picks one of the built-in background images, for the four
-  // areas that offer them (see imageAreas in theming_areas_section.dart).
+  // areas that offer them (see imageAreas in editor/areas_section.dart).
   // It applies when mode is token (painted over the area's normal color) or
   // image-with-no-imagePath; a user-picked imagePath always wins over it.
   final AreaImagePreset imagePreset;
@@ -112,7 +107,7 @@ class AreaStyle {
   final double? height;
 
   // -------------------------------------------------------------------------
-  // Header -- see theming_area_header.dart.
+  // Header -- see editor/areas/header.dart.
   // -------------------------------------------------------------------------
 
   // contentAlign controls where the area's primary content (the header's
@@ -213,7 +208,7 @@ class AreaStyle {
   final bool hideFilePaths;
 
   // -------------------------------------------------------------------------
-  // Navigation bar -- see theming_area_navbar.dart.
+  // Navigation bar -- see editor/areas/navbar.dart.
   // -------------------------------------------------------------------------
 
   // showLogo displays the Bison Relay logo at the top of the nav bar.
@@ -247,7 +242,7 @@ class AreaStyle {
   final ContentAlign? logoAlign;
 
   // -------------------------------------------------------------------------
-  // Sidebar -- see theming_area_sidebar.dart. These apply uniformly to every
+  // Sidebar -- see editor/areas/sidebar.dart. These apply uniformly to every
   // sidebar built from SecondarySideMenuList/SecondarySideMenuItem
   // (Settings, LN Management, Feed, Manage Content, Address Book, page-view
   // sessions, the chat list, and the Realtime Chat session list) -- not just
@@ -265,14 +260,13 @@ class AreaStyle {
   // 0 reads as a plain square-cornered row.
   final double sidebarCornerRadius;
   final bool sidebarShowIcons; // Leading icon on each row.
-  // The sidebar's right edge used to have its own show/color/width
-  // settings here. It's the area's ordinary Border now -- Border color plus
-  // the right side of a per-side Border width -- which expresses the same
-  // thing without a second, sidebar-only way to say it. Left alone, the
-  // sidebar still draws its built-in divider (see SecondarySideMenu).
+  // The sidebar's right edge is the area's ordinary Border -- Border color
+  // plus the right side of a per-side Border width -- rather than a second,
+  // sidebar-only way to say the same thing. Left alone, the sidebar still
+  // draws its built-in divider (see SecondarySideMenu).
 
   // -------------------------------------------------------------------------
-  // Chat -- see theming_area_chat.dart. Each toggle gates a distinct chat
+  // Chat -- see editor/areas/chat.dart. Each toggle gates a distinct chat
   // feature ported from the exitus1 fork; all default to false (off) so
   // existing chat behavior is unchanged until a user opts in.
   // -------------------------------------------------------------------------
@@ -304,9 +298,7 @@ class AreaStyle {
   // bubbleCorners hands the message bubbles' corners to the user: a radius
   // per direction (each splittable per corner via the *Sides fields) and a
   // shape for how those corners are cut. Off -- the default -- leaves both
-  // directions on the built-in radius. It replaces a "Square bubbles"
-  // toggle, whose one alternative (a 4px radius) is now just one of the
-  // values these express.
+  // directions on the built-in radius.
   final bool bubbleCorners;
   final double bubbleRadiusSent;
   final SideValues? bubbleRadiusSentSides;
@@ -326,14 +318,12 @@ class AreaStyle {
   final SideValues? expandMessagePaddingSides; // Per-side split of it.
 
   // -------------------------------------------------------------------------
-  // Realtime chat -- see theming_area_realtimechat.dart.
+  // Realtime chat -- see editor/areas/realtimechat.dart.
   // -------------------------------------------------------------------------
-  // The screen's own layout -- the lobby header, the live stage, the
-  // session-info row, the pre-join audio test, the styled session list and
-  // its empty-state intro -- used to be seven toggles here. They're just
-  // how the page is built now: they described the page's structure, not a
-  // theme, and a theme area is the wrong place to decide whether a screen
-  // has a header.
+  // The screen's own layout -- its lobby header, live stage, session-info
+  // row and pre-join audio test -- is simply how the page is built, not a
+  // theme setting: a theme area is the wrong place to decide whether a
+  // screen has a header. Only the two below are genuinely per-theme.
   final bool autoUnmuteOnJoin; // Auto-unmute + snackbar on joining a call.
   // The session-list row's own corner radius, matching the chat list's --
   // 0 reads as a plain square-cornered row. Null = the built-in 12.
@@ -347,26 +337,24 @@ class AreaStyle {
   final int? rtcLiveColorIndex;
 
   // -------------------------------------------------------------------------
-  // Stats -- see theming_area_stats.dart.
+  // Stats -- see editor/areas/settings_pages.dart.
   // -------------------------------------------------------------------------
   final bool payStatsCardStyle; // Summary cards (total sent/received) +
   // redesigned per-user rows (avatar, inline sent-amount bar chart,
   // DCR-formatted amounts) on the Payment Stats page.
 
   // -------------------------------------------------------------------------
-  // Account page -- see theming_area_account.dart.
+  // Account page -- see editor/areas/settings_pages.dart.
   // -------------------------------------------------------------------------
   // accountCardLayout is a card-based restyle of the Account page: avatar
   // camera badge, and Identity/Relay Counter/Account cards in place of the
-  // plain ListTile column. It used to be half of a "Settings page restyle"
-  // toggle on the Master area, whose other half -- icon + pill-highlight
-  // rows in the Settings left nav -- is gone: every sidebar in the app,
-  // Settings' included, already gets that from the Sidebar area's own
-  // "Show icons" and "List Rounded Corners" settings.
+  // plain ListTile column. Settings' left nav isn't part of it -- every
+  // sidebar in the app, that one included, already takes its icons and
+  // rounded rows from the Sidebar area.
   final bool accountCardLayout;
 
   // -------------------------------------------------------------------------
-  // Feed -- see theming_area_feed.dart. Each toggle gates a distinct feed
+  // Feed -- see editor/areas/feed.dart. Each toggle gates a distinct feed
   // feature ported from the exitus1 fork; all default to false (off).
   // Several only have a visible effect when feedCardRedesign is also on
   // (they render into the new card's action bar, which the old card layout
@@ -376,18 +364,16 @@ class AreaStyle {
   // clamped body + "Show more", and the post-detail screen's centered width.
   final bool feedCardActions; // Relay/tip/quote-post action-bar icons +
   // nested quote-post rendering. Needs feedCardRedesign.
-  // Bookmarks (per-post bookmark + "Bookmarks" nav section) and hiding
-  // (per-post hide/unhide + "Hidden" section) used to be their own
-  // toggles; they're part of feedCardActions now. They live on the same
-  // action bar and are the same kind of thing -- something you do to a
-  // post -- so splitting them three ways only made the settings longer.
+  // feedCardActions also covers bookmarking (per-post bookmark +
+  // "Bookmarks" nav section) and hiding (per-post hide/unhide + "Hidden"
+  // section): all three live on the same action bar and are the same kind
+  // of thing -- something you do to a post.
   final bool feedSidePanel; // Search/sort/filter nav rail, replacing FeedBar
   // on the main feed tab.
   final bool feedInlineComposer; // Pinned "What's happening?" composer.
-  // The composer's formatting toolbar, image/file attach and drafts were
-  // once three more toggles. They're all part of feedInlineComposer now:
-  // each was useless without it, and anyone who wants a composer wants it
-  // to work.
+  // feedInlineComposer covers the composer's formatting toolbar, image/
+  // file attach and drafts too -- each is useless without the composer, and
+  // anyone who wants a composer wants it to work.
   final bool feedHideSidebarOnPost; // Drops the feed sidebar entirely while
   // reading a single post, for a more focused reading experience. Needs
   // feedSidePanel.
@@ -406,7 +392,7 @@ class AreaStyle {
   // headers/bold/italic/strikethrough all render as normal body text.
 
   // -------------------------------------------------------------------------
-  // Mobile -- see theming_area_mobile.dart.
+  // Mobile -- see editor/areas/mobile.dart.
   // -------------------------------------------------------------------------
 
   // mobileNavRoutes is which main-menu destinations the narrow-screen
@@ -962,9 +948,11 @@ class AreaStyle {
       );
 
   // toJson omits every field still at its default, so a preset's saved
-  // "areas" map only records what the user actually changed.
+  // "areas" map only records what the user actually changed -- and an area
+  // the user never touched writes as an empty object. Every omission below
+  // has a matching default in fromJson.
   Map<String, dynamic> toJson() => {
-        "mode": mode.name,
+        if (mode != AreaBackgroundMode.token) "mode": mode.name,
         if (solidColor != null) "solidColor": colorToHex(solidColor!),
         if (solidColorIndex != null) "solidColorIndex": solidColorIndex,
         if (gradientColors.isNotEmpty)
@@ -972,13 +960,16 @@ class AreaStyle {
         if (gradientColorIndexes.isNotEmpty)
           "gradientColorIndexes": gradientColorIndexes,
         if (gradientStops != null) "gradientStops": gradientStops,
-        "gradientBegin": _alignToJson(gradientBegin),
-        "gradientEnd": _alignToJson(gradientEnd),
+        if (gradientBegin != Alignment.topLeft)
+          "gradientBegin": _alignToJson(gradientBegin),
+        if (gradientEnd != Alignment.bottomRight)
+          "gradientEnd": _alignToJson(gradientEnd),
         if (imagePath != null) "imagePath": imagePath,
-        "imageFit": imageFit.name,
+        if (imageFit != BoxFit.cover) "imageFit": imageFit.name,
         if (imagePreset != AreaImagePreset.standard)
           "imagePreset": imagePreset.name,
-        "borderMode": borderMode.name,
+        if (borderMode != AreaBackgroundMode.token)
+          "borderMode": borderMode.name,
         if (borderColor != null) "borderColor": colorToHex(borderColor!),
         if (borderColorIndex != null) "borderColorIndex": borderColorIndex,
         if (borderGradientColors.isNotEmpty)
@@ -987,14 +978,17 @@ class AreaStyle {
           "borderGradientColorIndexes": borderGradientColorIndexes,
         if (borderGradientStops != null)
           "borderGradientStops": borderGradientStops,
-        "borderGradientBegin": _alignToJson(borderGradientBegin),
-        "borderGradientEnd": _alignToJson(borderGradientEnd),
+        if (borderGradientBegin != Alignment.topLeft)
+          "borderGradientBegin": _alignToJson(borderGradientBegin),
+        if (borderGradientEnd != Alignment.bottomRight)
+          "borderGradientEnd": _alignToJson(borderGradientEnd),
         if (borderImagePath != null) "borderImagePath": borderImagePath,
-        "borderImageFit": borderImageFit.name,
-        "borderWidth": borderWidth,
-        "borderRadius": borderRadius,
-        "padding": padding,
-        "margin": margin,
+        if (borderImageFit != BoxFit.cover)
+          "borderImageFit": borderImageFit.name,
+        if (borderWidth != 0) "borderWidth": borderWidth,
+        if (borderRadius != 0) "borderRadius": borderRadius,
+        if (padding != 0) "padding": padding,
+        if (margin != 0) "margin": margin,
         if (borderWidthSides != null)
           "borderWidthSides": borderWidthSides!.toJson(),
         if (borderRadiusSides != null)
@@ -1342,7 +1336,7 @@ class AreaStyle {
   }
 
   // ---------------------------------------------------------------------------
-  // Rendering
+  // Resolved values
   // ---------------------------------------------------------------------------
 
   // borderWidths/borderRadii/paddings/margins are the four spacing settings
@@ -1368,87 +1362,6 @@ class AreaStyle {
       dcrPricePaddingSides ?? SideValues.all(dcrPricePadding);
   SideValues get btcPricePaddings =>
       btcPricePaddingSides ?? SideValues.all(btcPricePadding);
-
-  // hasVisibleFrame is "this area has been given something to paint or some
-  // space to take", which a render site checks before wrapping its content
-  // at all: an area left alone still resolves to an opaque token-colored
-  // box, so wrapping unconditionally would paint a background over regions
-  // that never had one.
-  bool get hasVisibleFrame =>
-      mode != AreaBackgroundMode.token ||
-      borderMode != AreaBackgroundMode.token ||
-      !paddings.isZero ||
-      !margins.isZero ||
-      !borderRadii.isZero;
-
-  // hasBorderWidth is "this style asks for a border on at least one side",
-  // the per-side-aware replacement for the old `borderWidth > 0` checks.
-  bool get hasBorderWidth => borderWidths.largest > 0;
-
-  // borderSides builds a flat-color Border honoring each side's own width.
-  // Note a zero-width side is BorderSide.none rather than a hairline, so
-  // splitting a border and zeroing one side really does drop that edge.
-  Border borderSides(Color color) {
-    var w = borderWidths;
-    BorderSide side(double width) =>
-        width > 0 ? BorderSide(color: color, width: width) : BorderSide.none;
-    return Border(
-      left: side(w.left),
-      top: side(w.top),
-      right: side(w.right),
-      bottom: side(w.bottom),
-    );
-  }
-
-  // _liveColor prefers re-reading preset.palette[index] over the frozen
-  // `raw` snapshot whenever index is set -- see solidColorIndex's doc.
-  Color? _liveColor(ThemeNotifier theme, int? index, Color? raw) {
-    if (index != null) {
-      var palette = theme.activePreset?.palette;
-      if (palette != null && index < palette.length) return palette[index];
-    }
-    return raw;
-  }
-
-  // resolveBorderColor/resolveSolidColor are _liveColor's public form --
-  // for the handful of render sites (navBar, the Sidebar's own
-  // SecondarySideMenu) that build their decoration by hand instead of
-  // going through toBoxDecoration/buildContainer, and for the theme
-  // editor's own Color dropdown, which needs the live-resolved value (not
-  // the frozen snapshot) to display the right slot selected.
-  Color? resolveBorderColor(ThemeNotifier theme) =>
-      _liveColor(theme, borderColorIndex, borderColor);
-  Color? resolveSolidColor(ThemeNotifier theme) =>
-      _liveColor(theme, solidColorIndex, solidColor);
-  Color? resolveChatListAccentColor(ThemeNotifier theme) =>
-      _liveColor(theme, chatListAccentColorIndex, chatListAccentColor);
-  Color? resolveRtcActiveSessionColor(ThemeNotifier theme) =>
-      _liveColor(theme, rtcActiveSessionColorIndex, rtcActiveSessionColor);
-  Color? resolveRtcLiveColor(ThemeNotifier theme) =>
-      _liveColor(theme, rtcLiveColorIndex, rtcLiveColor);
-  Color? resolveChatListBackgroundColor(ThemeNotifier theme) =>
-      _liveColor(theme, chatListBackgroundColorIndex, chatListBackgroundColor);
-  Color? resolveChatListSelectedColor(ThemeNotifier theme) =>
-      _liveColor(theme, chatListSelectedColorIndex, chatListSelectedColor);
-  Color? resolveMessageAreaColor(ThemeNotifier theme) =>
-      _liveColor(theme, messageAreaColorIndex, messageAreaColor);
-  Color? resolveInputBackgroundColor(ThemeNotifier theme) =>
-      _liveColor(theme, inputBackgroundColorIndex, inputBackgroundColor);
-  Color? resolveInputBorderColor(ThemeNotifier theme) =>
-      _liveColor(theme, inputBorderColorIndex, inputBorderColor);
-
-  // _liveColors is _liveColor over a gradient's color list, pairing each
-  // color with its own slot binding. `indexes` may be shorter than `raw`
-  // (a gradient saved before those bindings existed, or one whose trailing
-  // colors were custom-picked), in which case those fall back to the
-  // stored color.
-  List<Color> _liveColors(
-          ThemeNotifier theme, List<Color> raw, List<int?> indexes) =>
-      [
-        for (var i = 0; i < raw.length; i++)
-          _liveColor(theme, i < indexes.length ? indexes[i] : null, raw[i]) ??
-              raw[i],
-      ];
 
   // remapPaletteIndexes rewrites every stored palette-slot binding for the
   // removal of palette entry `removed` (see ThemePreset.palette): anything
@@ -1493,242 +1406,6 @@ class AreaStyle {
         for (var e in buttonStyles.entries)
           e.key: e.value.remapPaletteIndexes(removed),
       },
-    );
-  }
-
-  // resolveGradientColors/resolveBorderGradientColors are the public form,
-  // for the theme editor's own dropdowns.
-  List<Color> resolveGradientColors(ThemeNotifier theme) =>
-      _liveColors(theme, gradientColors, gradientColorIndexes);
-  List<Color> resolveBorderGradientColors(ThemeNotifier theme) =>
-      _liveColors(theme, borderGradientColors, borderGradientColorIndexes);
-
-  // _backgroundFill/_borderFill resolve this style's two paint layers.
-  AreaFill _backgroundFill(ThemeNotifier theme, SurfaceColor fallback,
-          String? presetDir, Color? tokenColor) =>
-      _resolveFill(mode, theme, fallback,
-          tokenColor: tokenColor,
-          solid: resolveSolidColor(theme),
-          gradColors: _liveColors(theme, gradientColors, gradientColorIndexes),
-          gradStops: gradientStops,
-          gradBegin: gradientBegin,
-          gradEnd: gradientEnd,
-          imgPath: imagePath,
-          imgFit: imageFit,
-          preset: imagePreset,
-          presetDir: presetDir);
-
-  AreaFill _borderFill(
-          ThemeNotifier theme, SurfaceColor fallback, String? presetDir) =>
-      _resolveFill(borderMode, theme, fallback,
-          gradColors: _liveColors(
-              theme, borderGradientColors, borderGradientColorIndexes),
-          gradStops: borderGradientStops,
-          gradBegin: borderGradientBegin,
-          gradEnd: borderGradientEnd,
-          imgPath: borderImagePath,
-          imgFit: borderImageFit,
-          presetDir: presetDir);
-
-  AreaFill _resolveFill(
-    AreaBackgroundMode m,
-    ThemeNotifier theme,
-    SurfaceColor fallback, {
-    Color? solid,
-    List<Color> gradColors = const [],
-    List<double>? gradStops,
-    Alignment gradBegin = Alignment.topLeft,
-    Alignment gradEnd = Alignment.bottomRight,
-    String? imgPath,
-    BoxFit imgFit = BoxFit.cover,
-    // preset is only passed for the background layer -- borders have no
-    // built-in image presets (and no image picker of their own).
-    AreaImagePreset? preset,
-    // tokenColor overrides what this fill's "Default" resolves to, for an
-    // area whose default background is a palette slot of its own (Dual
-    // Panel, Content Area) rather than a ColorScheme token.
-    Color? tokenColor,
-    String? presetDir,
-  }) {
-    switch (m) {
-      case AreaBackgroundMode.token:
-        // A non-default image preset paints *over* the area's normal color
-        // rather than replacing it: the tiled patterns are translucent, so
-        // the theme's own surface color still shows through behind them.
-        return AreaFill(
-            color: tokenColor ?? theme.surfaceColor(fallback),
-            image: (preset != null && preset != AreaImagePreset.standard)
-                ? areaImagePresetImage(preset)
-                : null);
-      case AreaBackgroundMode.none:
-        return const AreaFill(color: Colors.transparent);
-      case AreaBackgroundMode.solid:
-        return AreaFill(color: solid ?? theme.surfaceColor(fallback));
-      case AreaBackgroundMode.gradient:
-        if (gradColors.length >= 2) {
-          return AreaFill(
-              gradient: LinearGradient(
-                  begin: gradBegin,
-                  end: gradEnd,
-                  colors: gradColors,
-                  stops: gradStops));
-        }
-        return AreaFill(color: theme.surfaceColor(fallback));
-      case AreaBackgroundMode.image:
-        // A user-picked image file wins over the built-in presets; with no
-        // file picked, the chosen preset is the image (including "Default",
-        // unlike token mode above where Default means "no image at all").
-        if (imgPath != null && presetDir != null) {
-          return AreaFill(
-              image: DecorationImage(
-                  image: FileImage(File(path.join(presetDir, imgPath))),
-                  fit: imgFit));
-        }
-        return AreaFill(
-            color: theme.surfaceColor(fallback),
-            image: preset != null ? areaImagePresetImage(preset) : null);
-    }
-  }
-
-  BorderRadius? get _radius {
-    var r = borderRadii;
-    return r.isZero ? null : r.radius;
-  }
-
-  // toBoxDecoration resolves this style's *background* (and, if the border
-  // is a flat color, a matching BorderSide) into a single BoxDecoration.
-  // This is the cheap path used by areas that are composed into an existing
-  // widget's own decoration (app bar, side nav, sub-menu divider) rather
-  // than wrapped in their own container -- it can't express a gradient or
-  // image border (see buildContainer for that), but reproduces the area's
-  // original appearance exactly when mode is token and there's no border.
-  BoxDecoration toBoxDecoration(ThemeNotifier theme, SurfaceColor fallback,
-      {String? presetDir, Color? tokenColor}) {
-    var liveBorderColor = resolveBorderColor(theme);
-    var bg = _backgroundFill(theme, fallback, presetDir, tokenColor);
-    var border = (borderMode != AreaBackgroundMode.token &&
-            liveBorderColor != null &&
-            hasBorderWidth)
-        ? borderSides(liveBorderColor)
-        : null;
-    return BoxDecoration(
-      color: bg.color,
-      gradient: bg.gradient,
-      image: bg.image,
-      border: border,
-      // Flutter can't paint a border whose sides differ together with a
-      // borderRadius (Border.paint throws outright), so a per-side border
-      // loses the rounding on this flat path. buildContainer, which owns
-      // its own widgets, keeps both by nesting instead -- see there.
-      borderRadius: border == null || border.isUniform ? _radius : null,
-    );
-  }
-
-  // buildContainer wraps `child` in this style's full background + border
-  // (solid/gradient/image, matching modes independently) + padding/margin.
-  // Two kinds of border can't be expressed as a single BoxDecoration -- a
-  // gradient/image one (Border only supports flat per-side colors) and a
-  // per-side one that also wants rounded corners (Border.paint refuses to
-  // combine a non-uniform border with a borderRadius) -- so for both, this
-  // nests two containers: an outer one painted with the border's fill,
-  // inset by each side's own width, framing an inner one painted with the
-  // background fill. That's the standard technique for non-solid borders in
-  // Flutter, and it happens to express per-side widths exactly.
-  Widget buildContainer(
-    ThemeNotifier theme,
-    SurfaceColor fallback, {
-    required Widget child,
-    String? presetDir,
-    Color? tokenColor,
-  }) {
-    var bg = _backgroundFill(theme, fallback, presetDir, tokenColor);
-    var widths = borderWidths;
-    var hasBorder = borderMode != AreaBackgroundMode.token && hasBorderWidth;
-    var inlineBorder =
-        hasBorder && borderMode == AreaBackgroundMode.solid && widths.isUniform;
-
-    // Any descendant ListTile needs a Material ancestor to paint its
-    // background/ink splashes into. When this style paints a real
-    // background/border below, the Containers built below would otherwise
-    // be the nearest DecoratedBox sitting between the ListTile and whatever
-    // Material happens to be further up the tree (e.g. Scaffold's), which
-    // trips Flutter's "ListTile background may be invisible" assertion.
-    // MaterialType.transparency paints nothing itself, so it just supplies
-    // that ancestor without changing this area's appearance.
-    var pad = paddings;
-    Widget content = Container(
-      padding: pad.isZero ? null : pad.insets,
-      decoration: BoxDecoration(
-        color: bg.color,
-        gradient: bg.gradient,
-        image: bg.image,
-        borderRadius: _radius,
-        // A uniform flat color border goes on this same box (matching
-        // toBoxDecoration's cheaper path), no extra nesting needed.
-        border: inlineBorder
-            ? Border.all(
-                color:
-                    resolveBorderColor(theme) ?? theme.surfaceColor(fallback),
-                width: widths.left)
-            : null,
-      ),
-      child: Material(type: MaterialType.transparency, child: child),
-    );
-
-    if (hasBorder && !inlineBorder) {
-      // A solid border only lands here when its sides differ, in which case
-      // there's no border *fill* to resolve -- just the flat color, painted
-      // as the outer box's own background.
-      var borderFill = borderMode == AreaBackgroundMode.solid
-          ? AreaFill(
-              color: resolveBorderColor(theme) ?? theme.surfaceColor(fallback))
-          : _borderFill(theme, fallback, presetDir);
-      content = Container(
-        padding: widths.insets,
-        decoration: BoxDecoration(
-            color: borderFill.color,
-            gradient: borderFill.gradient,
-            image: borderFill.image,
-            borderRadius: _radius),
-        child: content,
-      );
-    }
-
-    var mar = margins;
-    if (!mar.isZero) {
-      content = Container(margin: mar.insets, child: content);
-    }
-    return content;
-  }
-
-  // wrapBorderOnly wraps `child` in just this style's *border* -- for a
-  // caller that paints its own background through some other fixed API
-  // that only accepts a flat BoxDecoration (e.g. the third-party sidebarx
-  // package's SidebarXTheme.decoration) and so can't itself embed a
-  // gradient/image border, but can still wrap its whole widget with one via
-  // this. A solid border is a no-op here (the caller's own decoration
-  // already embeds it as a plain BorderSide, same as toBoxDecoration).
-  Widget wrapBorderOnly(
-    ThemeNotifier theme,
-    SurfaceColor fallback, {
-    required Widget child,
-    String? presetDir,
-  }) {
-    if (borderMode == AreaBackgroundMode.token ||
-        borderMode == AreaBackgroundMode.solid ||
-        !hasBorderWidth) {
-      return child;
-    }
-    var borderFill = _borderFill(theme, fallback, presetDir);
-    return Container(
-      padding: borderWidths.insets,
-      decoration: BoxDecoration(
-        color: borderFill.color,
-        gradient: borderFill.gradient,
-        image: borderFill.image,
-        borderRadius: _radius,
-      ),
-      child: child,
     );
   }
 }

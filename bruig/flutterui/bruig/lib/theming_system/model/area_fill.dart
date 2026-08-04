@@ -1,4 +1,4 @@
-import 'package:bruig/theming_system/area_options.dart';
+import 'package:bruig/theming_system/model/area_options.dart';
 import 'package:flutter/material.dart';
 
 // area_fill.dart describes *how* an area's background or border is painted.

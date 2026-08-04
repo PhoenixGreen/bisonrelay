@@ -3,27 +3,33 @@ import 'dart:typed_data';
 
 import 'package:bruig/components/snackbars.dart';
 import 'package:bruig/models/menus.dart';
-import 'package:bruig/theming_system/preset.dart';
+import 'package:bruig/theming_system/model/preset.dart';
+import 'package:bruig/theming_system/storage/theme_preset_storage.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
-import 'package:bruig/theming_system/theme_preset_storage.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 // theme_editor.dart is the entry point to the theming system's *editor* --
 // the Settings > Appearance UI. It holds the whole-preset actions (new/save/
-// delete/import/export/reset) and the top-level dropdowns, and re-exports the
-// sections the settings page embeds:
+// delete/import/export/reset) and the top-level dropdowns, and is a barrel
+// over editor/:
 //
-//   color_palette_section.dart  -- the "Color Palette" section.
-//   theming_areas_section.dart  -- the "Theme Areas" section, which dispatches
-//                                  to one theming_area_<name>.dart per area.
-//   menus.dart                  -- the "Menu" section.
+//   color_palette_section.dart   the "Color Palette" section.
+//   areas_section.dart           the "Theme Areas" section, which dispatches
+//                                to one editor/areas/<name>.dart per area.
+//   area_editor_context.dart     the API those per-area files are handed.
+//   editor_controls.dart         the shared slider/row/caption widgets.
+//   palette_color_dropdown.dart  the palette-slot colour picker.
+//   menus_section.dart           the "Menu" section.
 //
-// See theme_preset.dart for the model being edited and theme_manager.dart for
-// the runtime that renders it.
-export 'package:bruig/theming_system/color_palette_section.dart';
-export 'package:bruig/theming_system/menus.dart';
-export 'package:bruig/theming_system/theming_areas_section.dart';
+// See theme_preset.dart for the model being edited and theme_manager.dart
+// for the runtime that renders it.
+export 'package:bruig/theming_system/editor/area_editor_context.dart';
+export 'package:bruig/theming_system/editor/areas_section.dart';
+export 'package:bruig/theming_system/editor/color_palette_section.dart';
+export 'package:bruig/theming_system/editor/editor_controls.dart';
+export 'package:bruig/theming_system/editor/menus_section.dart';
+export 'package:bruig/theming_system/editor/palette_color_dropdown.dart';
 
 // newDraftPreset builds a fresh, unsaved custom preset seeded from the
 // current base brightness.

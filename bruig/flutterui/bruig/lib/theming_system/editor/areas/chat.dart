@@ -1,10 +1,9 @@
 import 'package:bruig/components/text.dart';
-import 'package:bruig/theming_system/area_options.dart';
-import 'package:bruig/theming_system/area_sides.dart';
 import 'package:bruig/theming_system/theme_editor.dart';
+import 'package:bruig/theming_system/theme_preset.dart';
 import 'package:flutter/material.dart';
 
-// theming_area_chat.dart is the "Chat" area's own settings: the chat list's
+// chat.dart is the "Chat" area's own settings: the chat list's
 // styling, the conversation's message layout, the composer's extras, and
 // the app-wide avatar theme (which lives here because chat is where avatars
 // are most visible -- see AreaStyle.avatarTheme).

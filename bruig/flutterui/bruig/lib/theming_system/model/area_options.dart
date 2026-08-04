@@ -1,6 +1,6 @@
 // area_options.dart holds the multiple-choice settings (and their dropdown
 // labels) belonging to individual theme areas, grouped by area. They live
-// here rather than in each area's theming_area_<name>.dart file so the model
+// here rather than in each area's editor/areas/<name>.dart file so the model
 // layer (AreaStyle, which stores them) never has to depend on the editor UI
 // that presents them.
 //
@@ -50,12 +50,8 @@ String headerPositionLabel(HeaderPosition p) => _headerPositionLabels[p]!;
 //   navigation. This is what a window too narrow for a sidebar column
 //   falls back to on its own; picking it here asks for it at any width.
 //
-// Three more used to sit here and were removed as not good enough to keep:
-// hoverReveal (collapse to an edge strip, expand while hovered),
-// manualToggle (a persistent collapse handle) and autoHideOnDetail (hidden
-// while viewing content that needs no sub-navigation). A preset saved with
-// any of them falls back to alwaysVisible, since the stored name no longer
-// matches a value (see AreaStyle.fromJson's _enumOrNull).
+// A preset naming a value this build doesn't have falls back to
+// alwaysVisible -- see _enumOrNull in area_style.dart.
 enum SubMenuStyle { alwaysVisible, resizable, collapsed }
 
 const Map<SubMenuStyle, String> _subMenuStyleLabels = {
@@ -209,7 +205,7 @@ String feedLinksModeLabel(FeedLinksMode m) => _feedLinksModeLabels[m]!;
 
 // ---------------------------------------------------------------------------
 // Image preset -- the four areas with a background image (Master, Header,
-// Login Screen, Navigation Bar; see imageAreas in theming_areas_section.dart)
+// Login Screen, Navigation Bar; see imageAreas in editor/areas_section.dart)
 // ---------------------------------------------------------------------------
 
 // AreaImagePreset picks one of the built-in background images, for an area

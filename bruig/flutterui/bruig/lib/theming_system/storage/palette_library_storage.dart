@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:bruig/config.dart';
-import 'package:bruig/theming_system/palette_library.dart';
+import 'package:bruig/theming_system/model/palette_library.dart';
 import 'package:path/path.dart' as path;
 
 // PaletteLibraryStorage persists user-saved ColorPalettes (see

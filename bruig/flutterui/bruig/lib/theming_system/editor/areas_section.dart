@@ -1,38 +1,29 @@
 import 'dart:io';
-
-import 'package:bruig/components/text.dart';
-import 'package:bruig/theming_system/area_fill.dart';
-import 'package:bruig/theming_system/area_options.dart';
-import 'package:bruig/theming_system/area_sides.dart';
-import 'package:bruig/theming_system/area_style.dart';
-import 'package:bruig/theming_system/color_palette.dart';
-import 'package:bruig/theming_system/palette_color_dropdown.dart';
-import 'package:bruig/theming_system/preset.dart';
-import 'package:bruig/theming_system/theme_area.dart';
+import 'package:bruig/theming_system/editor/areas/buttons.dart';
+import 'package:bruig/theming_system/editor/areas/chat.dart';
+import 'package:bruig/theming_system/editor/areas/feed.dart';
+import 'package:bruig/theming_system/editor/areas/filemanager.dart';
+import 'package:bruig/theming_system/editor/areas/header.dart';
+import 'package:bruig/theming_system/editor/areas/inputs.dart';
+import 'package:bruig/theming_system/editor/areas/master.dart';
+import 'package:bruig/theming_system/editor/areas/mobile.dart';
+import 'package:bruig/theming_system/editor/areas/navbar.dart';
+import 'package:bruig/theming_system/editor/areas/realtimechat.dart';
+import 'package:bruig/theming_system/editor/areas/settings_pages.dart';
+import 'package:bruig/theming_system/editor/areas/sidebar.dart';
+import 'package:bruig/theming_system/storage/theme_preset_storage.dart';
 import 'package:bruig/theming_system/theme_editor.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
-import 'package:bruig/theming_system/theme_preset_storage.dart';
-import 'package:bruig/theming_system/theming_area_buttons.dart';
-import 'package:bruig/theming_system/theming_area_chat.dart';
-import 'package:bruig/theming_system/theming_area_feed.dart';
-import 'package:bruig/theming_system/theming_area_header.dart';
-import 'package:bruig/theming_system/theming_area_filemanager.dart';
-import 'package:bruig/theming_system/theming_area_inputs.dart';
-import 'package:bruig/theming_system/theming_area_master.dart';
-import 'package:bruig/theming_system/theming_area_mobile.dart';
-import 'package:bruig/theming_system/theming_area_navbar.dart';
-import 'package:bruig/theming_system/theming_area_realtimechat.dart';
-import 'package:bruig/theming_system/theming_area_settings_pages.dart';
-import 'package:bruig/theming_system/theming_area_sidebar.dart';
+import 'package:bruig/theming_system/theme_preset.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as path;
 import 'package:provider/provider.dart';
 
-// theming_areas_section.dart is the "Theme Areas" section of Settings >
+// editor/areas_section.dart is the "Theme Areas" section of Settings >
 // Appearance. It owns the parts every area shares -- the area picker, the
 // background/border fill editors, and the spacing sliders -- then hands off
-// to that area's own theming_area_<name>.dart file for its specific
+// to that area's own editor/areas/<name>.dart file for its specific
 // settings, via the AreaEditorContext handed to it.
 
 // _editableAreas is every ThemeArea whose rendering has been wired to
@@ -91,242 +82,6 @@ const Set<ThemeArea> _imageAreas = {
   ThemeArea.navBar,
 };
 
-// AreaEditorContext is what a theming_area_<name>.dart file is handed to
-// build its own settings: the current preset/style plus the small set of
-// controls the area editors are built from. Going through these helpers
-// (rather than raw SwitchListTile/DropdownButton/Slider) is what keeps
-// every area's settings looking and behaving the same.
-class AreaEditorContext {
-  final _AreasSectionState _host;
-
-  final ThemeNotifier theme;
-  final ThemePreset preset;
-  final ThemeArea area;
-  final AreaStyle style;
-
-  const AreaEditorContext._(this._host,
-      {required this.theme,
-      required this.preset,
-      required this.area,
-      required this.style});
-
-  // setStyle applies an edit to this area's style. It always re-reads the
-  // current style fresh (not a build()-scoped snapshot) before applying
-  // `update` -- needed because a single user action can trigger two calls
-  // in a row (e.g. picking a color both switches mode to Solid *and* sets
-  // the color); if each call started from the same stale snapshot instead
-  // of the just-updated one, the second call would silently discard the
-  // first.
-  void setStyle(AreaStyle Function(AreaStyle) update) =>
-      _host._setStyle(theme, update);
-
-  // toggle is a labelled on/off switch.
-  Widget toggle(String title,
-          {String? subtitle,
-          required bool value,
-          required ValueChanged<bool> onChanged,
-          bool compact = false}) =>
-      SwitchListTile(
-        contentPadding: compact ? EdgeInsets.zero : null,
-        title: Text(title),
-        subtitle: subtitle != null ? Text(subtitle) : null,
-        value: value,
-        onChanged: onChanged,
-      );
-
-  // choice is a labelled dropdown over a fixed set of options.
-  Widget choice<T>(String label,
-          {required T value,
-          required List<T> options,
-          required String Function(T) labelOf,
-          required ValueChanged<T> onChanged}) =>
-      Padding(
-        padding: const EdgeInsets.only(top: 8),
-        child: Row(children: [
-          // The label gives way too, for the same reason the dropdown does
-          // -- some of these run long ("Message bubble corners") and the
-          // settings pane can be very narrow.
-          Flexible(child: Txt("$label: ", overflow: TextOverflow.ellipsis)),
-          const SizedBox(width: 8),
-          // Flexible + isExpanded, and ellipsis on the labels: several of
-          // these options are long ("Default (Always visible)", "Auto-hide
-          // when not needed"), and a bare DropdownButton in a Row is handed
-          // unbounded width, so it overflows rather than shrinking once the
-          // settings pane is narrow.
-          Flexible(
-            child: DropdownButton<T>(
-              value: value,
-              isExpanded: true,
-              items: options
-                  .map((o) => DropdownMenuItem(
-                      value: o,
-                      child: Text(labelOf(o), overflow: TextOverflow.ellipsis)))
-                  .toList(),
-              onChanged: (v) {
-                if (v != null) onChanged(v);
-              },
-            ),
-          ),
-        ]),
-      );
-
-  // colorPick is a labelled palette-color dropdown for an optional color,
-  // where null means "use the built-in default".
-  //
-  // Callers pass the field's stored palette slot as `valueIndex` and record
-  // the one handed back, so the color keeps following that slot when the
-  // palette is edited later, and the dropdown shows the slot it's really
-  // bound to rather than the first one that happens to hold the same color
-  // -- see PaletteColorDropdown.valueIndex for why that distinction bites.
-  Widget colorPick(String label,
-          {required Color? value,
-          required int? valueIndex,
-          required void Function(Color? color, int? index) onChanged,
-          String noneLabel = "Default"}) =>
-      Row(children: [
-        // Both sides give way: a long label ellipsizes rather than pushing
-        // the dropdown off the edge, and the dropdown takes what's left
-        // rather than its intrinsic width, which the longer palette slot
-        // names ("Button Accent Background") overflow a narrow settings
-        // column with.
-        Flexible(child: Txt("$label: ", overflow: TextOverflow.ellipsis)),
-        const SizedBox(width: 8),
-        Expanded(
-          child: PaletteColorDropdown(
-            preset: preset,
-            value: value,
-            valueIndex: valueIndex,
-            allowNone: true,
-            noneLabel: noneLabel,
-            isExpanded: true,
-            onChanged: onChanged,
-          ),
-        ),
-      ]);
-
-  // colorCell is colorPick laid out as a caption over its dropdown, with
-  // its explanation folded in underneath, for use inside `row`. The
-  // side-by-side form colorPick uses doesn't survive three of them sharing
-  // a line -- the label and the dropdown are each left too narrow to read.
-  Widget colorCell(String label,
-          {required Color? value,
-          required int? valueIndex,
-          required void Function(Color? color, int? index) onChanged,
-          String noneLabel = "Default",
-          String? note}) =>
-      _labelled(
-        label,
-        Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          PaletteColorDropdown(
-            preset: preset,
-            value: value,
-            valueIndex: valueIndex,
-            allowNone: true,
-            noneLabel: noneLabel,
-            isExpanded: true,
-            onChanged: onChanged,
-          ),
-          if (note != null) ...[
-            const SizedBox(height: 4),
-            _noteText(note),
-          ],
-        ]),
-      );
-
-  // row lays a set of cells out side by side in equal columns, wrapping --
-  // and in the narrowest case stacking one per row -- once the settings
-  // pane can't give each of them `minWidth`. It's the same layout the
-  // shared background/border fill editors use, offered to the area editors
-  // for settings that belong together on one line.
-  Widget row(List<Widget> cells, {double minWidth = 150}) =>
-      _responsiveRow(cells, minWidth: minWidth);
-
-  // slider is a drag-buffered slider: it only commits (and so only writes
-  // to the preset) when the drag ends, not once per frame. `label` renders
-  // the live value, so an area can spell out what its own zero/default
-  // position means ("Width: Default", "Selected glow: Off", ...).
-  //
-  // Every slider carries a type-in box over the same value, so a setting
-  // can be dragged roughly or entered exactly -- dragging alone can't
-  // reliably land on a round number, and matching one area's value in
-  // another is otherwise guesswork. Pass numberField: false for the rare
-  // slider whose value isn't a number worth typing.
-  Widget slider(String key, double value,
-          {required String Function(double)? label,
-          double min = 0,
-          required double max,
-          int? divisions,
-          bool numberField = true,
-          required ValueChanged<double> onCommit}) =>
-      _host._slider(
-          key, value, label, min, max, divisions, numberField, onCommit);
-
-  // spacing is a numeric setting that can be split into four -- per side,
-  // or per corner for a radius. It's what the shared Border width/radius/
-  // Padding/Margin controls are built from; an area's own settings use it
-  // for anything with the same shape (a bubble's corners, a panel's inset).
-  // See _spacingSetting for how the two states behave.
-  List<Widget> spacing({
-    required String key,
-    required String name,
-    required double max,
-    required double single,
-    required SideValues? sides,
-    List<String> slotLabels = sideLabels,
-    required ValueChanged<double> onSingle,
-    required void Function(SideValues? Function(SideValues?, double))
-        updateSides,
-  }) =>
-      _host._spacingSetting(this,
-          key: key,
-          name: name,
-          max: max,
-          single: single,
-          sides: sides,
-          slotLabels: slotLabels,
-          onSingle: onSingle,
-          updateSides: updateSides);
-
-  // pickImage prompts for an image file, copies it into the preset's own
-  // directory and hands back the path to store, or null if cancelled. SVG
-  // is offered alongside the raster formats since some settings (the app
-  // icon) render vectors too.
-  Future<String?> pickImage(
-          {required String suffix,
-          required String dialogTitle,
-          bool allowSvg = false}) =>
-      _host._copyPickedImage(theme,
-          suffix: suffix,
-          dialogTitle: dialogTitle,
-          extensions: [
-            "bmp",
-            "gif",
-            "jpeg",
-            "jpg",
-            "png",
-            "webp",
-            if (allowSvg) "svg",
-          ]);
-
-  // imagePreview is the clickable thumbnail those settings are edited
-  // through -- the box itself opens the picker.
-  Widget imagePreview(String? relPath,
-          {String? assetFallback, VoidCallback? onPick}) =>
-      _host._imagePreview(relPath, preset.sourceDir,
-          assetFallback: assetFallback, onPick: onPick);
-
-  // note is the small explanatory caption shown under some controls.
-  Widget note(String text) => Padding(
-        padding: const EdgeInsets.only(left: 4),
-        child: _noteText(text),
-      );
-}
-
-// _noteText is the caption itself, without the indent `note` adds -- a cell
-// inside a row is already indented by the column it sits in.
-Widget _noteText(String text) => Text(text,
-    style: const TextStyle(fontSize: 12, color: Color(0xFF9AA3A0)));
-
 // _areaEditor returns the settings specific to one area, or nothing for the
 // areas whose only settings are the shared background/border/spacing ones
 // (Login Screen, Dual Panel, Content Area).
@@ -358,10 +113,11 @@ class AreasSection extends StatefulWidget {
   State<AreasSection> createState() => _AreasSectionState();
 }
 
-class _AreasSectionState extends State<AreasSection> {
+class _AreasSectionState extends State<AreasSection> implements AreaEditorHost {
   late ThemeArea selected = widget.initialArea ?? _editableAreas.first;
 
-  void _setStyle(ThemeNotifier theme, AreaStyle Function(AreaStyle) update) {
+  @override
+  void setAreaStyle(ThemeNotifier theme, AreaStyle Function(AreaStyle) update) {
     var draft = ensureDraftPreset(theme);
     var current = draft.areas[selected] ?? const AreaStyle();
     theme.previewPreset(
@@ -371,7 +127,8 @@ class _AreasSectionState extends State<AreasSection> {
   // _slider keys each _ValueSlider by area *and* setting, so switching areas
   // gives the new area's value a fresh widget state rather than one still
   // holding the previous area's half-typed text.
-  Widget _slider(
+  @override
+  Widget areaSlider(
           String key,
           double value,
           String Function(double)? label,
@@ -380,7 +137,7 @@ class _AreasSectionState extends State<AreasSection> {
           int? divisions,
           bool numberField,
           ValueChanged<double> onCommit) =>
-      _ValueSlider(
+      ValueSlider(
         key: ValueKey("$selected/$key"),
         label: label,
         value: value,
@@ -394,7 +151,8 @@ class _AreasSectionState extends State<AreasSection> {
   // _copyPickedImage puts a chosen file in the preset's own directory and
   // returns its path relative to that, or null if the user cancelled.
   // Shared by every area setting that holds an image.
-  Future<String?> _copyPickedImage(ThemeNotifier theme,
+  @override
+  Future<String?> copyPickedImage(ThemeNotifier theme,
       {required String suffix,
       required String dialogTitle,
       List<String> extensions = const [
@@ -427,7 +185,7 @@ class _AreasSectionState extends State<AreasSection> {
   }
 
   Future<void> _pickImage(ThemeNotifier theme) async {
-    var relPath = await _copyPickedImage(theme,
+    var relPath = await copyPickedImage(theme,
         suffix: "bg", dialogTitle: "Pick background image");
     if (relPath == null) return;
 
@@ -448,7 +206,8 @@ class _AreasSectionState extends State<AreasSection> {
   // showing the whole thing shrunk down.
   // The box itself is the control -- clicking it opens the file picker, so
   // there's no separate "Pick image..." button beside it.
-  Widget _imagePreview(String? relPath, String? sourceDir,
+  @override
+  Widget areaImagePreview(String? relPath, String? sourceDir,
       {AreaImagePreset? defaultPreset,
       String? assetFallback,
       VoidCallback? onPick}) {
@@ -581,14 +340,14 @@ class _AreasSectionState extends State<AreasSection> {
         mode == AreaBackgroundMode.image;
 
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      _responsiveRow(
+      responsiveRow(
           // A little narrower than the default: these are all dropdowns,
           // which ellipsize their longest entries rather than becoming
           // unusable, and fitting the widest case (four of them, for a
           // gradient or an image) on one line matters more here.
           minWidth: 140,
           [
-            _labelled(
+            labelled(
               label,
               DropdownButton<AreaBackgroundMode>(
                 value: shownMode,
@@ -626,7 +385,7 @@ class _AreasSectionState extends State<AreasSection> {
               ),
             ),
             if (showColor)
-              _labelled(
+              labelled(
                 "Color",
                 PaletteColorDropdown(
                   preset: preset,
@@ -651,10 +410,10 @@ class _AreasSectionState extends State<AreasSection> {
                 ),
               ),
             if (showImage)
-              _labelled(
+              labelled(
                 "Image",
                 Row(children: [
-                  _imagePreview(
+                  areaImagePreview(
                     mode == AreaBackgroundMode.image ? imagePath : null,
                     sourceDir,
                     // With no file of the user's own picked, the thumbnail
@@ -682,7 +441,7 @@ class _AreasSectionState extends State<AreasSection> {
             // of the single Color dropdown the other modes show there.
             if (mode == AreaBackgroundMode.gradient) ...[
               for (var i = 0; i < 2; i++)
-                _labelled(
+                labelled(
                   "Color ${i + 1}",
                   PaletteColorDropdown(
                     preset: preset,
@@ -694,7 +453,7 @@ class _AreasSectionState extends State<AreasSection> {
                     onChanged: (c, ci) => onGradientColorChanged(i, c, ci),
                   ),
                 ),
-              _labelled(
+              labelled(
                 "Direction",
                 DropdownButton<GradientDirection>(
                   value: gradientDirectionFor(gradientBegin, gradientEnd),
@@ -728,7 +487,8 @@ class _AreasSectionState extends State<AreasSection> {
   // while split. Zero means "use this area's built-in default" throughout,
   // split or not, which is why the name reads "...: Default" there rather
   // than the setting genuinely being zero.
-  List<Widget> _spacingSetting(
+  @override
+  List<Widget> areaSpacing(
     AreaEditorContext ctx, {
     required String key,
     required String name,
@@ -762,7 +522,7 @@ class _AreasSectionState extends State<AreasSection> {
         ctx.slider(key, single,
             label: null, max: max, numberField: true, onCommit: onSingle)
       else
-        _responsiveRow(
+        responsiveRow(
           [
             for (var i = 0; i < 4; i++)
               ctx.slider("$key.$i", sides[i],
@@ -804,7 +564,7 @@ class _AreasSectionState extends State<AreasSection> {
         shownMode != AreaBackgroundMode.image) {
       return null;
     }
-    return _labelled("Image preset", _imagePresetDropdown(ctx));
+    return labelled("Image preset", _imagePresetDropdown(ctx));
   }
 
   Widget _imagePresetDropdown(AreaEditorContext ctx) =>
@@ -856,7 +616,7 @@ class _AreasSectionState extends State<AreasSection> {
     return Consumer<ThemeNotifier>(builder: (context, theme, _) {
       var preset = displayPreset(theme);
       var style = preset.areas[selected] ?? const AreaStyle();
-      var ctx = AreaEditorContext._(this,
+      var ctx = AreaEditorContext(this,
           theme: theme, preset: preset, area: selected, style: style);
 
       return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -889,7 +649,7 @@ class _AreasSectionState extends State<AreasSection> {
             label: "Background",
             tokenLabel: "Default",
             mode: style.mode,
-            onModeChanged: (m) => _setStyle(theme, (s) {
+            onModeChanged: (m) => setAreaStyle(theme, (s) {
               var next = s.copyWith(mode: m);
               // Seed a real color immediately when switching into a mode
               // that requires one, so the color dropdown(s) always have a
@@ -913,7 +673,7 @@ class _AreasSectionState extends State<AreasSection> {
             }),
             solidColor: style.resolveSolidColor(theme),
             solidColorIndex: style.solidColorIndex,
-            onSolidChanged: (c, i) => _setStyle(
+            onSolidChanged: (c, i) => setAreaStyle(
                 theme,
                 (s) => s.copyWith(
                     solidColor: c,
@@ -921,7 +681,7 @@ class _AreasSectionState extends State<AreasSection> {
                     clearSolidColorIndex: i == null)),
             gradientColors: style.resolveGradientColors(theme),
             gradientColorIndexes: style.gradientColorIndexes,
-            onGradientColorChanged: (i, c, ci) => _setStyle(theme, (s) {
+            onGradientColorChanged: (i, c, ci) => setAreaStyle(theme, (s) {
               var (colors, indexes) = _withGradientColor(
                   s.gradientColors, s.gradientColorIndexes, i, c, ci,
                   fallback: preset.primary,
@@ -931,7 +691,7 @@ class _AreasSectionState extends State<AreasSection> {
             }),
             gradientBegin: style.gradientBegin,
             gradientEnd: style.gradientEnd,
-            onDirectionChanged: (d) => _setStyle(theme, (s) {
+            onDirectionChanged: (d) => setAreaStyle(theme, (s) {
               var (b, e) = gradientDirectionAlignments(d);
               return s.copyWith(gradientBegin: b, gradientEnd: e);
             }),
@@ -940,7 +700,7 @@ class _AreasSectionState extends State<AreasSection> {
             imagePreset: style.imagePreset,
             imagePresetCell: _imagePresetCell(ctx),
             onPickImage: () => _pickImage(theme),
-            onRemoveImage: () => _setStyle(
+            onRemoveImage: () => setAreaStyle(
                 theme,
                 (s) => s.copyWith(
                     mode: AreaBackgroundMode.token, clearImagePath: true)),
@@ -955,7 +715,7 @@ class _AreasSectionState extends State<AreasSection> {
             label: "Border",
             tokenLabel: "None",
             mode: style.borderMode,
-            onModeChanged: (m) => _setStyle(theme, (s) {
+            onModeChanged: (m) => setAreaStyle(theme, (s) {
               var next = s.copyWith(borderMode: m);
               if (m == AreaBackgroundMode.solid && next.borderColor == null) {
                 next = next.copyWith(
@@ -979,7 +739,7 @@ class _AreasSectionState extends State<AreasSection> {
             }),
             solidColor: style.resolveBorderColor(theme),
             solidColorIndex: style.borderColorIndex,
-            onSolidChanged: (c, i) => _setStyle(
+            onSolidChanged: (c, i) => setAreaStyle(
                 theme,
                 (s) => s.copyWith(
                     borderColor: c,
@@ -987,7 +747,7 @@ class _AreasSectionState extends State<AreasSection> {
                     clearBorderColorIndex: i == null)),
             gradientColors: style.resolveBorderGradientColors(theme),
             gradientColorIndexes: style.borderGradientColorIndexes,
-            onGradientColorChanged: (i, c, ci) => _setStyle(theme, (s) {
+            onGradientColorChanged: (i, c, ci) => setAreaStyle(theme, (s) {
               var (colors, indexes) = _withGradientColor(s.borderGradientColors,
                   s.borderGradientColorIndexes, i, c, ci,
                   fallback: preset.outline,
@@ -998,7 +758,7 @@ class _AreasSectionState extends State<AreasSection> {
             }),
             gradientBegin: style.borderGradientBegin,
             gradientEnd: style.borderGradientEnd,
-            onDirectionChanged: (d) => _setStyle(theme, (s) {
+            onDirectionChanged: (d) => setAreaStyle(theme, (s) {
               var (b, e) = gradientDirectionAlignments(d);
               return s.copyWith(borderGradientBegin: b, borderGradientEnd: e);
             }),
@@ -1006,7 +766,7 @@ class _AreasSectionState extends State<AreasSection> {
             imagePath: style.borderImagePath,
           ),
           const SizedBox(height: 8),
-          ..._spacingSetting(ctx,
+          ...areaSpacing(ctx,
               key: "borderWidth",
               name: "Border width",
               max: 10,
@@ -1020,7 +780,7 @@ class _AreasSectionState extends State<AreasSection> {
                         borderWidthSides: next,
                         clearBorderWidthSides: next == null);
                   })),
-          ..._spacingSetting(ctx,
+          ...areaSpacing(ctx,
               key: "borderRadius",
               name: "Border radius",
               max: 48,
@@ -1044,7 +804,7 @@ class _AreasSectionState extends State<AreasSection> {
           // from its own metrics and ignores anything handed to it here, so
           // both sliders are left out rather than left dead.
           if (selected != ThemeArea.navBar) ...[
-            ..._spacingSetting(ctx,
+            ...areaSpacing(ctx,
                 key: "padding",
                 name: "Padding",
                 max: selected == ThemeArea.header ? 100 : 48,
@@ -1057,7 +817,7 @@ class _AreasSectionState extends State<AreasSection> {
                       return s.copyWith(
                           paddingSides: next, clearPaddingSides: next == null);
                     })),
-            ..._spacingSetting(ctx,
+            ...areaSpacing(ctx,
                 key: "margin",
                 name: "Margin",
                 max: 48,
@@ -1076,158 +836,6 @@ class _AreasSectionState extends State<AreasSection> {
       ]);
     });
   }
-}
-
-// _ValueSlider is one numeric setting: a slider, and optionally a type-in
-// box over the same value, so it can be dragged roughly or set exactly.
-//
-// Neither control writes on every change. The slider commits when the drag
-// ends, not once per frame, and the box when it's submitted or loses focus,
-// not per keystroke -- each commit rewrites the draft preset and rebuilds
-// the whole app's theme through it, which is far too much work to do per
-// frame or per character.
-class _ValueSlider extends StatefulWidget {
-  // label renders the live value above the slider; null leaves it off, for
-  // a caller that has already labelled this value itself.
-  final String Function(double)? label;
-  final double value;
-  final double min;
-  final double max;
-  final int? divisions;
-  final bool numberField;
-  final ValueChanged<double> onCommit;
-
-  const _ValueSlider({
-    required this.label,
-    required this.value,
-    required this.min,
-    required this.max,
-    required this.divisions,
-    required this.numberField,
-    required this.onCommit,
-    super.key,
-  });
-
-  @override
-  State<_ValueSlider> createState() => _ValueSliderState();
-}
-
-class _ValueSliderState extends State<_ValueSlider> {
-  // _dragging holds the in-flight value while the slider's thumb is down,
-  // so the label and box track the drag before it's committed.
-  double? _dragging;
-  late final TextEditingController _ctrl =
-      TextEditingController(text: _format(widget.value));
-  late final FocusNode _focus = FocusNode()..addListener(_focusChanged);
-
-  double get _shown => _dragging ?? widget.value;
-
-  static String _format(double v) => v.toStringAsFixed(1);
-
-  @override
-  void didUpdateWidget(covariant _ValueSlider old) {
-    super.didUpdateWidget(old);
-    // Mirror an outside change (the slider, or a reset elsewhere) into the
-    // box -- but never while it's focused, which would rewrite what the
-    // user is in the middle of typing.
-    if (!_focus.hasFocus && widget.value != old.value) {
-      _ctrl.text = _format(widget.value);
-    }
-  }
-
-  @override
-  void dispose() {
-    _focus.dispose();
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  void _focusChanged() {
-    if (!_focus.hasFocus) _commitText();
-  }
-
-  void _commitText() {
-    // Anything unparseable, negative or past this setting's range snaps
-    // back to what's actually set, rather than quietly applying something
-    // else or leaving the box disagreeing with the slider beside it.
-    var parsed = double.tryParse(_ctrl.text.trim());
-    var v = parsed == null
-        ? widget.value
-        : parsed.clamp(widget.min, widget.max).toDouble();
-    if (_ctrl.text != _format(v)) _ctrl.text = _format(v);
-    if (v != widget.value) widget.onCommit(v);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    var slider = Slider(
-      value: _shown.clamp(widget.min, widget.max),
-      min: widget.min,
-      max: widget.max,
-      divisions: widget.divisions,
-      onChanged: (v) => setState(() {
-        _dragging = v;
-        if (!_focus.hasFocus) _ctrl.text = _format(v);
-      }),
-      onChangeEnd: (v) {
-        setState(() => _dragging = null);
-        // Commit exactly what the box shows. A continuous slider otherwise
-        // lands on values with more precision than the box displays, and
-        // the box would then "change" the setting to its own rounded
-        // reading the next time it merely lost focus.
-        widget.onCommit(double.parse(_format(v)));
-      },
-    );
-
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      if (widget.label != null) Text(widget.label!(_shown)),
-      Row(children: [
-        Expanded(child: slider),
-        if (widget.numberField)
-          SizedBox(
-            width: 58,
-            child: TextField(
-              controller: _ctrl,
-              focusNode: _focus,
-              textAlign: TextAlign.center,
-              keyboardType:
-                  const TextInputType.numberWithOptions(decimal: true),
-              style: const TextStyle(fontSize: 13),
-              decoration: const InputDecoration(
-                isDense: true,
-                contentPadding:
-                    EdgeInsets.symmetric(horizontal: 6, vertical: 8),
-                border: OutlineInputBorder(),
-              ),
-              onSubmitted: (_) => _commitText(),
-            ),
-          ),
-      ]),
-    ]);
-  }
-}
-
-// _responsiveRow lays `cells` out side by side in equal columns, wrapping
-// onto further rows -- and in the narrowest case one per row -- as soon as
-// the available width can't give every cell at least `minWidth`. Equal
-// widths (rather than each cell taking what it needs) are what keeps the
-// controls lined up in columns across a wrap.
-Widget _responsiveRow(List<Widget> cells, {double minWidth = 150}) {
-  if (cells.isEmpty) return const SizedBox.shrink();
-  const gap = 16.0;
-  return LayoutBuilder(builder: (context, constraints) {
-    var perRow = ((constraints.maxWidth + gap) / (minWidth + gap))
-        .floor()
-        .clamp(1, cells.length);
-    var width = (constraints.maxWidth - gap * (perRow - 1)) / perRow;
-    return Wrap(
-      spacing: gap,
-      runSpacing: 12,
-      children: [
-        for (var cell in cells) SizedBox(width: width, child: cell),
-      ],
-    );
-  });
 }
 
 // _withGradientColor sets one of a gradient's two colors, returning the
@@ -1259,11 +867,3 @@ Widget _responsiveRow(List<Widget> cells, {double minWidth = 150}) {
   nextIndexes[at] = color == null ? fallbackIndex : colorIndex;
   return (nextColors, nextIndexes);
 }
-
-// _labelled is one cell of a _responsiveRow: a caption over its control.
-Widget _labelled(String label, Widget control) =>
-    Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Txt(label),
-      const SizedBox(height: 4),
-      control,
-    ]);

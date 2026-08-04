@@ -1,10 +1,9 @@
 import 'package:bruig/components/text.dart';
-import 'package:bruig/theming_system/area_options.dart';
-import 'package:bruig/theming_system/theme_area.dart';
-import 'package:bruig/theming_system/theming_areas_section.dart';
+import 'package:bruig/theming_system/theme_editor.dart';
+import 'package:bruig/theming_system/theme_preset.dart';
 import 'package:flutter/material.dart';
 
-// theming_area_header.dart is the "Header" area's own settings: where the
+// header.dart is the "Header" area's own settings: where the
 // header sits, how tall it is, and how its logo/title are laid out.
 List<Widget> headerAreaEditor(AreaEditorContext ctx) => [
       ctx.choice<HeaderPosition>(

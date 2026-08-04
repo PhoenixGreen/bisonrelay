@@ -1,13 +1,16 @@
-import 'dart:math' as math;
+import 'package:bruig/theming_system/model/area_style.dart';
+import 'package:bruig/theming_system/model/button_style.dart';
+import 'package:bruig/theming_system/model/color_contrast.dart';
+import 'package:bruig/theming_system/model/color_hex.dart';
+import 'package:bruig/theming_system/model/color_palette.dart';
+import 'package:bruig/theming_system/model/preset_migrations.dart';
+import 'package:bruig/theming_system/model/theme_area.dart';
 
-import 'package:bruig/theming_system/app_theme.dart';
-import 'package:bruig/theming_system/area_options.dart';
-import 'package:bruig/theming_system/area_style.dart';
-import 'package:bruig/theming_system/button_style.dart';
-import 'package:bruig/theming_system/color_hex.dart';
-import 'package:bruig/theming_system/color_palette.dart';
-import 'package:bruig/theming_system/theme_area.dart';
-import 'package:bruig/theming_system/theme_tokens.dart';
+// The one runtime dependency the model has, and only for the two seeds at
+// the foot of this file: they read the built-in dark/light themes' real
+// ColorScheme rather than re-guessing those values, so "Default Theme"
+// can't drift from what the untouched app actually looks like.
+import 'package:bruig/theming_system/runtime/app_theme.dart';
 import 'package:flutter/material.dart';
 
 // ThemePreset is one full, nameable, exportable custom theme: a palette (one
@@ -350,244 +353,6 @@ class ThemePreset {
         sourceDir: sourceDir ?? this.sourceDir,
       );
 
-  static double _lin(double c) =>
-      c <= 0.04045 ? c / 12.92 : math.pow((c + 0.055) / 1.055, 2.4).toDouble();
-
-  static double _luminance(Color c) =>
-      0.2126 * _lin(c.r) + 0.7152 * _lin(c.g) + 0.0722 * _lin(c.b);
-
-  static double _contrast(Color a, Color b) {
-    var la = _luminance(a), lb = _luminance(b);
-    return (math.max(la, lb) + 0.05) / (math.min(la, lb) + 0.05);
-  }
-
-  // restingBorderFrom derives an input's unfocused border from its focused one
-  // by fading it *toward the background it sits on*, which is what "more
-  // muted" actually means. It used to darken instead -- only equivalent to
-  // muting on a dark theme; on a light one darkening moves away from the
-  // page, so the light seed ended up with a 9.6:1 resting border against a
-  // 5.3:1 focused one, i.e. the resting state was the louder of the two.
-  //
-  // The target is 40% of the focused border's own contrast, rather than a
-  // fixed blend, so the pair keeps the same relationship whatever colours
-  // a theme uses -- and so the dark seed lands where it already was.
-  static Color restingBorderFrom(Color selected, Color background) {
-    var target = _contrast(selected, background) * 0.4;
-    for (var i = 0; i <= 100; i++) {
-      var c = Color.lerp(background, selected, i / 100)!;
-      if (_contrast(c, background) >= target) return c;
-    }
-    return selected;
-  }
-
-  static Color _darken(Color c, double amount) {
-    var hsl = HSLColor.fromColor(c);
-    return hsl
-        .withLightness((hsl.lightness - amount).clamp(0.0, 1.0))
-        .toColor();
-  }
-
-  // toAppTheme compiles this preset into an AppTheme using exactly the same
-  // ColorScheme.fromSeed()+copyWith() formula the built-in "dark"/"light"
-  // themes are hand-written with (see appThemes), so custom presets render
-  // through the same pipeline the rest of the app already trusts.
-  //
-  // It deliberately does NOT force secondary (or most Material-derived
-  // roles) into ColorScheme.fromSeed -- those roles drive the foreground of
-  // many standard Material widgets, and forcing them to the user's raw
-  // palette swatch can produce illegible text-on-background. `primary` (the
-  // seed), `tertiary`, `error`, and `onSurface` are safe to pass through
-  // directly since ColorScheme.fromSeed independently derives a full,
-  // properly-contrasting tonal ramp (onTertiary/tertiaryContainer/onError/
-  // errorContainer/etc.) from each -- the same way `surface` already was.
-  // `onSurface` in particular is what "On surface text" actually needs to
-  // drive general app text/icon color (most Text/Icon widgets read
-  // colorScheme.onSurface when given no explicit color) -- without passing
-  // it here, editing that palette slot had no visible effect anywhere.
-  AppTheme toAppTheme() {
-    // interTextTheme/interBlackTextTheme hardcode Colors.white70/black54 on
-    // every style -- reused as-is, a plain Text widget with no explicit
-    // color (i.e. most of them; only this app's own Txt component with an
-    // explicit TextColor reads colorScheme.onSurface directly) would never
-    // reflect a custom preset's "On surface text" pick at all, regardless
-    // of the colorScheme.onSurface override below. .apply() recolors every
-    // style to the preset's own onSurface instead.
-    var textTheme =
-        (brightness == Brightness.dark ? interTextTheme : interBlackTextTheme)
-            .apply(displayColor: onSurface, bodyColor: onSurface);
-    // The five button roles, compiled once here so the ThemeData button
-    // themes below and this app's own button widgets (raisedButtonStyle,
-    // CancelButton -- see components/buttons.dart) all render from the same
-    // resolved values instead of each re-deriving them.
-    var buttons = buildButtonStyles(
-      overrides: (areas[ThemeArea.buttons] ?? const AreaStyle()).buttonStyles,
-      palette: palette,
-      colors: buttonPaletteColors,
-    );
-
-    var data = ThemeData.from(
-      useMaterial3: true,
-      textTheme: textTheme,
-      colorScheme: ColorScheme.fromSeed(
-        seedColor: primary,
-        brightness: brightness,
-        onSurface: onSurface,
-        onSurfaceVariant: onSurfaceVariant,
-        // colorScheme.outline is what OutlinedButton's own default M3
-        // border reads (plus a few of this app's own custom button
-        // styles) -- pinned to `buttonBorderColor`, since a clickable
-        // button's edge needs to stand out against the background, unlike
-        // a plain divider. It used to be pinned to navAccent, which meant
-        // the nav bar's accent and every button's border were one color
-        // that couldn't be tuned apart; buttonBorderColor seeds from
-        // navAccent so nothing moves until it's deliberately changed.
-        outline: buttonBorderColor,
-        // colorScheme.outlineVariant is the separate, subtler Material
-        // role that this app's own panel/card/divider borders read
-        // (Settings' left-nav panel border, Manage Content's card border,
-        // the emoji picker's category icons, the About page border, the
-        // feed post-detail divider) -- pinned to `outline`, the
-        // blend-with-background field. Previously neither role was pinned
-        // at all, so every one of these borders (buttons included) showed
-        // Material's auto-derived tonal color regardless of what the user
-        // picked; now the two palette fields cleanly map to the two roles
-        // instead of colliding on one.
-        outlineVariant: outline,
-        surface: primary,
-        surfaceContainerLow: _darken(primary, 0.012),
-        surfaceContainerLowest: _darken(primary, 0.022),
-        // Continues the same explicit elevation ladder as
-        // surfaceContainerLow/Lowest above, rather than leaving these 3
-        // tiers to Material's own tonal derivation -- otherwise any
-        // unthemed Card/Container that reads one of these (several plain
-        // settings panels do) shows the same unpredictable seed-derived
-        // tint described above instead of a shade of the actual chosen
-        // Primary color.
-        surfaceContainer: _darken(primary, 0.006),
-        surfaceContainerHigh: _darken(primary, 0.0),
-        surfaceContainerHighest: _darken(primary, -0.01),
-        tertiary: tertiary,
-        // Only `error` (not errorContainer/onErrorContainer) is pinned --
-        // same reasoning as tertiary/surface above: ColorScheme.fromSeed
-        // independently derives a properly-contrasting errorContainer/
-        // onErrorContainer pair from this seed. Previously errorContainer
-        // was force-pinned to the exact same flat value as `error` (with
-        // onErrorContainer force-pinned to onSurface) because CancelButton
-        // read errorContainer for its background -- collapsing Material's
-        // normal two-tier tonal system (a brighter `error` for text/icons
-        // directly on the background vs. a darker `errorContainer` for
-        // surfaces with light text on top) into one flat color that
-        // couldn't satisfy both contrast needs at once. Now that
-        // CancelButton no longer uses errorContainer (see accentContainer's
-        // doc), only genuine error-surface call sites (snackbar error
-        // background, failed-upload/unsupported-GC-version event cards)
-        // read it, so letting Material derive it properly is strictly
-        // better than a hand-pinned flat value.
-        error: error,
-        // Without this, ColorScheme.fromSeed computes its own tonal
-        // derivation of "primary" from the seed rather than using the
-        // literal color -- every other unthemed Material widget that falls
-        // back to colorScheme.primary (default OutlinedButton/TextButton
-        // foreground, container backgrounds, etc.) then shows that
-        // computed tone instead of anything the user actually picked. That
-        // tone is also unpredictable at the extremes: a fully desaturated
-        // seed (e.g. pure black "Primary") has no well-defined hue, and
-        // Material's algorithm can resolve it to an unrelated, oddly-tinted
-        // color (seen here as a washed-out pink). navAccent is what this
-        // app treats as its actual "accent" role, so pinning
-        // colorScheme.primary to it keeps every unthemed widget visually
-        // consistent with the app's own accent instead of a hidden,
-        // seed-derived one.
-        primary: navAccent,
-        // onPrimary had the exact same never-pinned problem -- Material's
-        // default Switch uses it for the ON-state thumb color (track is
-        // colorScheme.primary, already pinned above), so it showed the
-        // same kind of stray, unpredictable tint (a dark maroon) with no
-        // palette field to control it from.
-        onPrimary: onSurface,
-        // primaryContainer/secondary/secondaryContainer had the exact same
-        // problem as primary above, just never pinned at all -- Material's
-        // default Switch (track+thumb) and FilledButton.tonal both read
-        // one of these, and showed the same stray, unpredictable
-        // seed-derived tint (see accentContainer's doc) with no palette
-        // field to control it from.
-        primaryContainer: accentContainer,
-        secondary: accentContainer,
-        secondaryContainer: accentContainer,
-        onPrimaryContainer: onSurface,
-        onSecondary: onSurface,
-        onSecondaryContainer: onSurface,
-      ),
-    ).copyWith(
-      // DropdownButton's popup menu (e.g. the Theme Areas section's select)
-      // falls back to canvasColor when no explicit dropdownColor is set
-      // (true everywhere in this app) -- this connects it to "Primary"
-      // without needing to touch every DropdownButton call site.
-      canvasColor: primary,
-      // The three roles Material's own widgets render: Plain covers both
-      // the plain ElevatedButton and TextButton (they look identical --
-      // no fill, no border, just a hover), Outlined every OutlinedButton,
-      // and Tonal both FilledButton variants. The other two roles belong
-      // to this app's own widgets and are read off AppTheme.buttonStyles
-      // instead, since there's no ThemeData slot for them.
-      elevatedButtonTheme:
-          ElevatedButtonThemeData(style: buttons[ButtonRole.plain]),
-      textButtonTheme: TextButtonThemeData(style: buttons[ButtonRole.plain]),
-      outlinedButtonTheme:
-          OutlinedButtonThemeData(style: buttons[ButtonRole.outlined]),
-      filledButtonTheme:
-          FilledButtonThemeData(style: buttons[ButtonRole.tonal]),
-      // Inputs read colorScheme.primary for their focused border, which is
-      // pinned to navAccent above -- so every text field in the app took
-      // the nav bar's selected-item colour whether that suited it or not.
-      // inputSelected is its own slot precisely so it doesn't have to.
-      inputDecorationTheme: InputDecorationTheme(
-        focusColor: inputSelected,
-        // The plain underline inputs (Cost, Description, the settings
-        // fields) get the same two states as the outlined ones: resting
-        // colour at rest, Input Color on focus.
-        enabledBorder: UnderlineInputBorder(
-          borderSide: BorderSide(color: inputResting),
-        ),
-        focusedBorder: UnderlineInputBorder(
-          borderSide: BorderSide(color: inputSelected, width: 2),
-        ),
-      ),
-      listTileTheme: ListTileThemeData(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(3)),
-        selectedTileColor:
-            brightness == Brightness.dark ? Colors.grey[850] : Colors.grey[100],
-        iconColor: onSurface,
-      ),
-      hintColor: onSurface.withValues(alpha: 0.6),
-      appBarTheme: AppBarTheme(
-        backgroundColor: headerBackground,
-        scrolledUnderElevation: 0,
-      ),
-      disabledColor: Colors.grey[850],
-    );
-
-    return AppTheme(
-      key: "custom:$id",
-      descr: name,
-      data: data,
-      extraColors: CustomColors(
-        successOnSurface: success,
-        sidebarDivider: outline,
-        selectedItemOnSurfaceListView: sidebarAccent,
-      ),
-      extraTextStyles: CustomTextStyles(
-        chatListGcIndicator: TextStyle(
-          fontStyle: FontStyle.italic,
-          color: onSurface.withValues(alpha: 0.6),
-        ),
-      ),
-      buttonStyles: buttons,
-      areaStyles: areas,
-      presetDir: sourceDir,
-    );
-  }
-
   // ---------------------------------------------------------------------------
   // Persistence
   // ---------------------------------------------------------------------------
@@ -619,246 +384,6 @@ class ThemePreset {
         if (menuLabels != null) "menuLabels": menuLabels,
         if (menuOrder != null) "menuOrder": menuOrder,
       };
-
-  // _legacyPaletteOrderV1 is PaletteSlot's order as it existed before
-  // paletteVersion 2 (i.e. before Button Border was removed and merged into
-  // navAccent, and the remaining slots were regrouped by
-  // background/text/accent tier). Used only to remap solidColorIndex/
-  // borderColorIndex values -- raw positions into the flat `palette` list
-  // -- saved by presets written before this change; the old buttonBorder
-  // slot maps to navAccent, its merge target.
-  static const List<PaletteSlot> _legacyPaletteOrderV1 = [
-    PaletteSlot.primary,
-    PaletteSlot.secondary,
-    PaletteSlot.tertiary,
-    PaletteSlot.fourth,
-    PaletteSlot.sidebarBackground,
-    PaletteSlot.speechBackground,
-    PaletteSlot.speechBackgroundSent,
-    PaletteSlot.accentContainer,
-    PaletteSlot.onSurface,
-    PaletteSlot.onSurfaceVariant,
-    PaletteSlot.navText,
-    PaletteSlot.navAccent,
-    PaletteSlot.sidebarText,
-    PaletteSlot.sidebarAccent,
-    PaletteSlot.outline,
-    PaletteSlot.navAccent, // was buttonBorder; merged into navAccent
-    PaletteSlot.error,
-    PaletteSlot.success,
-  ];
-
-  // _legacyPaletteOrderV2 is PaletteSlot's order as it existed before
-  // paletteVersion 3 -- i.e. before dualBackground/contentBackground were
-  // inserted just after primary, which pushed every slot after it along by
-  // two.
-  static const List<PaletteSlot> _legacyPaletteOrderV2 = [
-    PaletteSlot.primary,
-    PaletteSlot.tertiary,
-    PaletteSlot.secondary,
-    PaletteSlot.sidebarBackground,
-    PaletteSlot.fourth,
-    PaletteSlot.speechBackground,
-    PaletteSlot.speechBackgroundSent,
-    PaletteSlot.outline,
-    PaletteSlot.onSurface,
-    PaletteSlot.onSurfaceVariant,
-    PaletteSlot.navText,
-    PaletteSlot.sidebarText,
-    PaletteSlot.accentContainer,
-    PaletteSlot.navAccent,
-    PaletteSlot.sidebarAccent,
-    PaletteSlot.error,
-    PaletteSlot.success,
-  ];
-
-  // _legacyPaletteOrderV3 is PaletteSlot's order as it existed before
-  // paletteVersion 4 -- i.e. before inputSelected was inserted just after
-  // navAccent, pushing the three slots below it along by one.
-  static const List<PaletteSlot> _legacyPaletteOrderV3 = [
-    PaletteSlot.primary,
-    PaletteSlot.dualBackground,
-    PaletteSlot.contentBackground,
-    PaletteSlot.tertiary,
-    PaletteSlot.secondary,
-    PaletteSlot.sidebarBackground,
-    PaletteSlot.fourth,
-    PaletteSlot.speechBackground,
-    PaletteSlot.speechBackgroundSent,
-    PaletteSlot.outline,
-    PaletteSlot.onSurface,
-    PaletteSlot.onSurfaceVariant,
-    PaletteSlot.navText,
-    PaletteSlot.sidebarText,
-    PaletteSlot.accentContainer,
-    PaletteSlot.navAccent,
-    PaletteSlot.sidebarAccent,
-    PaletteSlot.error,
-    PaletteSlot.success,
-  ];
-
-  // _legacyPaletteOrderV4 is PaletteSlot's order as it existed before
-  // paletteVersion 5 -- i.e. before inputResting was inserted just before
-  // inputSelected.
-  static const List<PaletteSlot> _legacyPaletteOrderV4 = [
-    PaletteSlot.primary,
-    PaletteSlot.dualBackground,
-    PaletteSlot.contentBackground,
-    PaletteSlot.tertiary,
-    PaletteSlot.secondary,
-    PaletteSlot.sidebarBackground,
-    PaletteSlot.fourth,
-    PaletteSlot.speechBackground,
-    PaletteSlot.speechBackgroundSent,
-    PaletteSlot.outline,
-    PaletteSlot.onSurface,
-    PaletteSlot.onSurfaceVariant,
-    PaletteSlot.navText,
-    PaletteSlot.sidebarText,
-    PaletteSlot.accentContainer,
-    PaletteSlot.navAccent,
-    PaletteSlot.inputSelected,
-    PaletteSlot.sidebarAccent,
-    PaletteSlot.error,
-    PaletteSlot.success,
-  ];
-
-  // _legacyPaletteOrderV5 is PaletteSlot's order as it existed before
-  // paletteVersion 6 -- i.e. before navSelected was inserted just after
-  // secondary.
-  static const List<PaletteSlot> _legacyPaletteOrderV5 = [
-    PaletteSlot.primary,
-    PaletteSlot.dualBackground,
-    PaletteSlot.contentBackground,
-    PaletteSlot.tertiary,
-    PaletteSlot.secondary,
-    PaletteSlot.sidebarBackground,
-    PaletteSlot.fourth,
-    PaletteSlot.speechBackground,
-    PaletteSlot.speechBackgroundSent,
-    PaletteSlot.outline,
-    PaletteSlot.onSurface,
-    PaletteSlot.onSurfaceVariant,
-    PaletteSlot.navText,
-    PaletteSlot.sidebarText,
-    PaletteSlot.accentContainer,
-    PaletteSlot.navAccent,
-    PaletteSlot.inputResting,
-    PaletteSlot.inputSelected,
-    PaletteSlot.sidebarAccent,
-    PaletteSlot.error,
-    PaletteSlot.success,
-  ];
-
-  // _legacyPaletteOrderV6 is PaletteSlot's order as it existed before
-  // paletteVersion 7 -- i.e. before headerBackground was inserted just
-  // after primary.
-  static const List<PaletteSlot> _legacyPaletteOrderV6 = [
-    PaletteSlot.primary,
-    PaletteSlot.dualBackground,
-    PaletteSlot.contentBackground,
-    PaletteSlot.tertiary,
-    PaletteSlot.secondary,
-    PaletteSlot.navSelected,
-    PaletteSlot.sidebarBackground,
-    PaletteSlot.fourth,
-    PaletteSlot.speechBackground,
-    PaletteSlot.speechBackgroundSent,
-    PaletteSlot.outline,
-    PaletteSlot.onSurface,
-    PaletteSlot.onSurfaceVariant,
-    PaletteSlot.navText,
-    PaletteSlot.sidebarText,
-    PaletteSlot.accentContainer,
-    PaletteSlot.navAccent,
-    PaletteSlot.inputResting,
-    PaletteSlot.inputSelected,
-    PaletteSlot.sidebarAccent,
-    PaletteSlot.error,
-    PaletteSlot.success,
-  ];
-
-  // _legacyPaletteOrderV7 is PaletteSlot's order as it existed before
-  // paletteVersion 8 -- i.e. before inputBackground was appended after
-  // inputSelected.
-  static const List<PaletteSlot> _legacyPaletteOrderV7 = [
-    PaletteSlot.primary,
-    PaletteSlot.headerBackground,
-    PaletteSlot.dualBackground,
-    PaletteSlot.contentBackground,
-    PaletteSlot.tertiary,
-    PaletteSlot.secondary,
-    PaletteSlot.navSelected,
-    PaletteSlot.sidebarBackground,
-    PaletteSlot.fourth,
-    PaletteSlot.speechBackground,
-    PaletteSlot.speechBackgroundSent,
-    PaletteSlot.outline,
-    PaletteSlot.onSurface,
-    PaletteSlot.onSurfaceVariant,
-    PaletteSlot.navText,
-    PaletteSlot.sidebarText,
-    PaletteSlot.accentContainer,
-    PaletteSlot.navAccent,
-    PaletteSlot.inputResting,
-    PaletteSlot.inputSelected,
-    PaletteSlot.sidebarAccent,
-    PaletteSlot.error,
-    PaletteSlot.success,
-  ];
-
-  // _legacyPaletteOrderV8 is PaletteSlot's order as it existed before
-  // paletteVersion 9 -- i.e. before the six remaining Button Colors
-  // (Secondary/Third background, Border, Hover, Text 1, Text 2) were
-  // inserted after accentContainer, pushing everything below them along by
-  // six.
-  static const List<PaletteSlot> _legacyPaletteOrderV8 = [
-    PaletteSlot.primary,
-    PaletteSlot.headerBackground,
-    PaletteSlot.dualBackground,
-    PaletteSlot.contentBackground,
-    PaletteSlot.tertiary,
-    PaletteSlot.secondary,
-    PaletteSlot.navSelected,
-    PaletteSlot.sidebarBackground,
-    PaletteSlot.fourth,
-    PaletteSlot.speechBackground,
-    PaletteSlot.speechBackgroundSent,
-    PaletteSlot.outline,
-    PaletteSlot.onSurface,
-    PaletteSlot.onSurfaceVariant,
-    PaletteSlot.navText,
-    PaletteSlot.sidebarText,
-    PaletteSlot.accentContainer,
-    PaletteSlot.navAccent,
-    PaletteSlot.inputResting,
-    PaletteSlot.inputSelected,
-    PaletteSlot.inputBackground,
-    PaletteSlot.sidebarAccent,
-    PaletteSlot.error,
-    PaletteSlot.success,
-  ];
-
-  static int? _migrateLegacyColorIndex(int? oldIndex, int version) {
-    if (oldIndex == null) return null;
-    // Mapping through slot *values* means each lands wherever that slot
-    // sits today, so these tables don't need touching again when the order
-    // changes -- only a new one added for the new layout.
-    var order = switch (version) {
-      < 2 => _legacyPaletteOrderV1,
-      2 => _legacyPaletteOrderV2,
-      3 => _legacyPaletteOrderV3,
-      4 => _legacyPaletteOrderV4,
-      5 => _legacyPaletteOrderV5,
-      6 => _legacyPaletteOrderV6,
-      7 => _legacyPaletteOrderV7,
-      _ => _legacyPaletteOrderV8,
-    };
-    if (oldIndex < order.length) return order[oldIndex].index;
-    // An extra (user-added) color, appended after the fixed roles: rebase
-    // it onto however many roles there are now.
-    return oldIndex - order.length + PaletteSlot.values.length;
-  }
 
   factory ThemePreset.fromJson(Map<String, dynamic> j) {
     var p = j["palette"] as Map<String, dynamic>;
@@ -927,7 +452,7 @@ class ThemePreset {
           "inputBorderColorIndex",
         ]) {
           if (area[key] != null) {
-            area[key] = _migrateLegacyColorIndex(
+            area[key] = migrateLegacyColorIndex(
                 (area[key] as num).toInt(), paletteVersion);
           }
         }
@@ -939,7 +464,7 @@ class ThemePreset {
             area[key] = (area[key] as List)
                 .map((e) => e == null
                     ? null
-                    : _migrateLegacyColorIndex(
+                    : migrateLegacyColorIndex(
                         (e as num).toInt(), paletteVersion))
                 .toList();
           }
@@ -955,7 +480,7 @@ class ThemePreset {
           : const [],
       // Skip any area key that no longer matches a known ThemeArea (e.g.
       // saved by a future/older version of the app) instead of throwing.
-      areas: _migrateAreas({
+      areas: migrateAreas({
         for (var e in rawAreas.entries)
           if (ThemeArea.values.where((a) => a.name == e.key).firstOrNull
               case var area?)
@@ -969,58 +494,6 @@ class ThemePreset {
           ? (j["menuOrder"] as List).cast<String>()
           : null,
     );
-  }
-
-  // _migrateAreas moves settings that have since changed areas out of the
-  // area they were saved under. Two lived on Master and were read from
-  // there app-wide; each now belongs to the area it actually describes, so
-  // a preset saved before the move still has them on Master, where nothing
-  // reads them any more. AreaStyle.fromJson parses both legacy keys into
-  // their new fields (see there), leaving only the hop across areas here.
-  //
-  // The destination wins if it already has a value of its own, so this
-  // can't undo a later edit; and Master keeps its own (now inert) copy
-  // rather than being rewritten, so an older build reading the same file
-  // still finds what it expects.
-  static Map<ThemeArea, AreaStyle> _migrateAreas(
-      Map<ThemeArea, AreaStyle> areas) {
-    var master = areas[ThemeArea.masterBackground];
-    if (master == null) return areas;
-
-    var migrated = Map<ThemeArea, AreaStyle>.from(areas);
-    if (master.accountCardLayout) {
-      var account = migrated[ThemeArea.account] ?? const AreaStyle();
-      if (!account.accountCardLayout) {
-        migrated[ThemeArea.account] = account.copyWith(accountCardLayout: true);
-      }
-    }
-    if (master.avatarTheme != AvatarTheme.standard) {
-      var chat = migrated[ThemeArea.chat] ?? const AreaStyle();
-      if (chat.avatarTheme == AvatarTheme.standard) {
-        migrated[ThemeArea.chat] =
-            chat.copyWith(avatarTheme: master.avatarTheme);
-      }
-    }
-
-    // Account, Stats and Logs became one "Settings Pages" area; the two
-    // settings they had move with them. Their frames don't -- every page is
-    // framed by Dual Panel now -- so a preset that styled a page's
-    // background or border keeps that on the old (now unrendered) area
-    // rather than having it silently reappear around a different region.
-    var settings = migrated[ThemeArea.settingsPages] ?? const AreaStyle();
-    var moved = false;
-    if (migrated[ThemeArea.account]?.accountCardLayout == true &&
-        !settings.accountCardLayout) {
-      settings = settings.copyWith(accountCardLayout: true);
-      moved = true;
-    }
-    if (migrated[ThemeArea.stats]?.payStatsCardStyle == true &&
-        !settings.payStatsCardStyle) {
-      settings = settings.copyWith(payStatsCardStyle: true);
-      moved = true;
-    }
-    if (moved) migrated[ThemeArea.settingsPages] = settings;
-    return migrated;
   }
 
   // ---------------------------------------------------------------------------

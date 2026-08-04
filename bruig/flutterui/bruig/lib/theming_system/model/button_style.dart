@@ -1,5 +1,5 @@
-import 'package:bruig/theming_system/area_sides.dart';
-import 'package:bruig/theming_system/color_hex.dart';
+import 'package:bruig/theming_system/model/area_sides.dart';
+import 'package:bruig/theming_system/model/color_hex.dart';
 import 'package:flutter/material.dart';
 
 // button_style.dart is the "Buttons" theme area's own model: which kinds of
@@ -122,14 +122,15 @@ class ButtonAreaStyle {
   // paddings/margins are the split-into-four form when the user has split
   // the setting, and the single value applied all round otherwise. Null
   // means the setting is untouched, so the button keeps its built-in inset.
-  EdgeInsets? get paddings => paddingSides?.insets ??
-      (padding > 0 ? EdgeInsets.all(padding) : null);
+  EdgeInsets? get paddings =>
+      paddingSides?.insets ?? (padding > 0 ? EdgeInsets.all(padding) : null);
   EdgeInsets? get margins =>
       marginSides?.insets ?? (margin > 0 ? EdgeInsets.all(margin) : null);
 
   // radii is the same for the corner-measured setting: null leaves the
   // button on its own stadium shape rather than squaring it off.
-  BorderRadius? get radii => borderRadiusSides?.radius ??
+  BorderRadius? get radii =>
+      borderRadiusSides?.radius ??
       (borderRadius > 0 ? BorderRadius.circular(borderRadius) : null);
 
   ButtonAreaStyle copyWith({
@@ -216,7 +217,8 @@ class ButtonAreaStyle {
       };
 
   factory ButtonAreaStyle.fromJson(Map<String, dynamic> j) {
-    Color? color(String k) => j[k] != null ? colorFromHex(j[k] as String) : null;
+    Color? color(String k) =>
+        j[k] != null ? colorFromHex(j[k] as String) : null;
     double number(String k) => (j[k] as num?)?.toDouble() ?? 0;
     return ButtonAreaStyle(
       background: color("background"),
@@ -239,8 +241,7 @@ class ButtonAreaStyle {
   // snapshot, so editing that color later moves the button with it.
   Color? resolveBackground(List<Color> palette) =>
       _live(palette, backgroundIndex, background);
-  Color? resolveHover(List<Color> palette) =>
-      _live(palette, hoverIndex, hover);
+  Color? resolveHover(List<Color> palette) => _live(palette, hoverIndex, hover);
   Color? resolveBorder(List<Color> palette) =>
       _live(palette, borderIndex, border);
 
@@ -292,16 +293,31 @@ class ButtonPaletteColors {
 ({Color fill, Color label, bool bordered}) _roleDefaults(
         ButtonRole role, ButtonPaletteColors c) =>
     switch (role) {
-      ButtonRole.primary =>
-        (fill: c.primaryBackground, label: c.text2, bordered: false),
-      ButtonRole.plain =>
-        (fill: Colors.transparent, label: c.text1, bordered: false),
-      ButtonRole.outlined =>
-        (fill: Colors.transparent, label: c.text1, bordered: true),
-      ButtonRole.tonal =>
-        (fill: c.thirdBackground, label: c.text2, bordered: false),
-      ButtonRole.danger =>
-        (fill: c.secondaryBackground, label: c.text2, bordered: false),
+      ButtonRole.primary => (
+          fill: c.primaryBackground,
+          label: c.text2,
+          bordered: false
+        ),
+      ButtonRole.plain => (
+          fill: Colors.transparent,
+          label: c.text1,
+          bordered: false
+        ),
+      ButtonRole.outlined => (
+          fill: Colors.transparent,
+          label: c.text1,
+          bordered: true
+        ),
+      ButtonRole.tonal => (
+          fill: c.thirdBackground,
+          label: c.text2,
+          bordered: false
+        ),
+      ButtonRole.danger => (
+          fill: c.secondaryBackground,
+          label: c.text2,
+          bordered: false
+        ),
     };
 
 // buildButtonStyles compiles every role into the ButtonStyle its widgets

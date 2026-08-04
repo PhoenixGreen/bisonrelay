@@ -1,6 +1,5 @@
 import 'package:bruig/components/eyedropper.dart';
-import 'package:bruig/theming_system/color_palette.dart';
-import 'package:bruig/theming_system/preset.dart';
+import 'package:bruig/theming_system/theme_preset.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 

@@ -1,7 +1,7 @@
-import 'package:bruig/theming_system/area_style.dart';
-import 'package:bruig/theming_system/button_style.dart';
-import 'package:bruig/theming_system/theme_area.dart';
-import 'package:bruig/theming_system/theme_tokens.dart';
+import 'package:bruig/theming_system/model/area_style.dart';
+import 'package:bruig/theming_system/model/button_style.dart';
+import 'package:bruig/theming_system/model/theme_area.dart';
+import 'package:bruig/theming_system/runtime/theme_tokens.dart';
 import 'package:flutter/material.dart';
 
 // AppTheme is one fully-compiled, ready-to-render theme: Material's own

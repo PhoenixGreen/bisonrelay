@@ -1,7 +1,8 @@
-import 'package:bruig/theming_system/theming_areas_section.dart';
+import 'package:bruig/theming_system/theme_editor.dart';
+import 'package:bruig/theming_system/theme_preset.dart';
 import 'package:flutter/material.dart';
 
-// theming_area_inputs.dart is the "Input Areas" area: one background,
+// inputs.dart is the "Input Areas" area: one background,
 // border and shape for every text input in the app, so the chat composer,
 // the feed's post and comment boxes and the search bars stop each looking
 // slightly different from the others.

@@ -1,7 +1,7 @@
-import 'package:bruig/theming_system/theming_areas_section.dart';
+import 'package:bruig/theming_system/theme_editor.dart';
 import 'package:flutter/material.dart';
 
-// theming_area_master.dart is the "Master" area's own settings: the ones
+// master.dart is the "Master" area's own settings: the ones
 // that apply to the whole app rather than to any one region of it. Its
 // background/border/spacing come from the shared block, like every other
 // framed area.

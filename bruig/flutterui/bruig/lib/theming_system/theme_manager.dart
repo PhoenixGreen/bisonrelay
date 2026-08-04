@@ -1,6 +1,6 @@
 // theme_manager.dart is the entry point to the theming system's *runtime*
 // (as opposed to its models and its editor UI): everything a widget needs to
-// read the active theme. It's a barrel over three files:
+// read the active theme. It's a barrel over runtime/:
 //
 //   theme_tokens.dart   -- the named tokens widgets ask for (TextSize,
 //                          TextColor, SurfaceColor) plus CustomColors/
@@ -15,6 +15,6 @@
 //
 // See theme_preset.dart for the editable model behind a custom theme, and
 // theme_editor.dart for the Settings > Appearance UI that edits it.
-export 'package:bruig/theming_system/app_theme.dart';
-export 'package:bruig/theming_system/theme_notifier.dart';
-export 'package:bruig/theming_system/theme_tokens.dart';
+export 'package:bruig/theming_system/runtime/app_theme.dart';
+export 'package:bruig/theming_system/runtime/theme_notifier.dart';
+export 'package:bruig/theming_system/runtime/theme_tokens.dart';

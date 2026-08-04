@@ -1,8 +1,8 @@
 import 'package:bruig/components/text.dart';
-import 'package:bruig/theming_system/theming_areas_section.dart';
+import 'package:bruig/theming_system/theme_editor.dart';
 import 'package:flutter/material.dart';
 
-// theming_area_settings_pages.dart is the "Settings Pages" area: the three
+// settings_pages.dart is the "Settings Pages" area: the three
 // Settings pages that have a look of their own -- Account, Stats and Logs --
 // edited together rather than as three near-empty entries in the area
 // picker. Each is labelled and divided below so it's still clear which page

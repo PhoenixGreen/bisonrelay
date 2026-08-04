@@ -1,8 +1,8 @@
-import 'package:bruig/theming_system/area_options.dart';
-import 'package:bruig/theming_system/theming_areas_section.dart';
+import 'package:bruig/theming_system/theme_editor.dart';
+import 'package:bruig/theming_system/theme_preset.dart';
 import 'package:flutter/material.dart';
 
-// theming_area_feed.dart is the "Feed" area's own settings: the post card
+// feed.dart is the "Feed" area's own settings: the post card
 // redesign and its dependent features, the inline composer, and how each
 // post's text/images/links are presented.
 List<Widget> feedAreaEditor(AreaEditorContext ctx) {

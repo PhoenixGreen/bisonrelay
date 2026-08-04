@@ -1,7 +1,8 @@
-import 'package:bruig/theming_system/theming_areas_section.dart';
+import 'package:bruig/theming_system/theme_editor.dart';
+import 'package:bruig/theming_system/theme_preset.dart';
 import 'package:flutter/material.dart';
 
-// theming_area_realtimechat.dart is the "Realtime Chat" area's own settings.
+// realtimechat.dart is the "Realtime Chat" area's own settings.
 //
 // It used to hold seven toggles for the screen's own layout -- the lobby
 // header, the live stage, the session-info row, the pre-join audio test, the

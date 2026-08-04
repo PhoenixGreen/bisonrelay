@@ -1,6 +1,6 @@
 // ThemeArea identifies a distinct visual region of the app that can carry its
 // own background/border override, independent of the global color scheme.
-// Each area's own settings live in a theming_area_<name>.dart editor file;
+// Each area's own settings live in a editor/areas/<name>.dart editor file;
 // the fields they drive all live on AreaStyle (see area_style.dart).
 enum ThemeArea {
   masterBackground,
