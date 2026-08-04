@@ -26,9 +26,15 @@ String _expandTemplate(String template, RegExpMatch match) {
   });
 }
 
-/// Levenshtein (edit) distance between two strings, abandoned as soon as the
-/// whole working row exceeds [max] -- a generic string algorithm with no
-/// language-specific knowledge, used to rank dictionary suggestions.
+/// Damerau-Levenshtein (edit) distance between two strings, abandoned as soon
+/// as the whole working row exceeds [max] -- a generic string algorithm with
+/// no language-specific knowledge, used to rank dictionary suggestions.
+///
+/// Damerau rather than plain Levenshtein because it counts a transposition
+/// of adjacent characters as one typo rather than two, and transposition is
+/// the commonest typing error there is -- "recieve", "teh", "thier". Scored
+/// as two edits, the intended word sinks below every word that is merely one
+/// substitution away, and never reaches the handful of corrections shown.
 ///
 /// The bound matters: this runs over thousands of candidates per misspelled
 /// word, and almost all of them are nowhere near. Returning `max + 1` for
@@ -39,6 +45,8 @@ int _editDistance(String a, String b, int max) {
   if (a.isEmpty) return b.length;
   if (b.isEmpty) return a.length;
 
+  // Three rows, not two: a transposition looks back two rows and two columns.
+  var prevPrev = List<int>.filled(b.length + 1, 0);
   var prev = List<int>.generate(b.length + 1, (i) => i);
   var curr = List<int>.filled(b.length + 1, 0);
   for (var i = 1; i <= a.length; i++) {
@@ -49,13 +57,21 @@ int _editDistance(String a, String b, int max) {
       var v = prev[j] + 1;
       if (curr[j - 1] + 1 < v) v = curr[j - 1] + 1;
       if (prev[j - 1] + cost < v) v = prev[j - 1] + cost;
+      if (i > 1 &&
+          j > 1 &&
+          a.codeUnitAt(i - 1) == b.codeUnitAt(j - 2) &&
+          a.codeUnitAt(i - 2) == b.codeUnitAt(j - 1)) {
+        var transposed = prevPrev[j - 2] + 1;
+        if (transposed < v) v = transposed;
+      }
       curr[j] = v;
       if (v < rowBest) rowBest = v;
     }
     // Every later row is at least this row's minimum, so once that exceeds
     // the budget the final distance cannot come back under it.
     if (rowBest > max) return max + 1;
-    var tmp = prev;
+    var tmp = prevPrev;
+    prevPrev = prev;
     prev = curr;
     curr = tmp;
   }
@@ -121,6 +137,15 @@ class WritingIssue {
   });
 }
 
+/// _Candidate is one possible correction, with the two numbers it is ordered
+/// by: how far it is from what was typed, and how common a word it is.
+class _Candidate {
+  final String word;
+  final int distance;
+  final int commonRank;
+  const _Candidate(this.word, this.distance, this.commonRank);
+}
+
 class _CompiledRule {
   final RegExp pattern;
   final String message;
@@ -141,6 +166,11 @@ class _CapabilitySpellCheckService extends SpellCheckService {
   final Map<int, List<String>> _byLength = {};
   final Map<String, int> _masks = {};
 
+  // _commonRank maps a word to its position in the provider's most-common
+  // list; absent means "not common". It is what breaks the ties edit distance
+  // leaves behind -- see _suggest.
+  final Map<String, int> _commonRank = {};
+
   // _suggestionCache memoizes by word. Every keystroke re-checks the whole
   // composer, so without it the same handful of misspellings is rescored on
   // each one; with it, only a newly typed word costs anything.
@@ -153,7 +183,13 @@ class _CapabilitySpellCheckService extends SpellCheckService {
 
     _byLength.clear();
     _masks.clear();
+    _commonRank.clear();
     _suggestionCache.clear();
+    for (var i = 0; i < data.commonWords.length; i++) {
+      // First occurrence wins: merged lists from several providers are
+      // concatenated, so an earlier provider's ranking takes precedence.
+      _commonRank.putIfAbsent(data.commonWords[i].toLowerCase(), () => i);
+    }
     for (var w in _words) {
       (_byLength[w.length] ??= []).add(w);
       _masks[w] = _letterMask(w);
@@ -264,19 +300,29 @@ class _CapabilitySpellCheckService extends SpellCheckService {
   }
 
   /// _suggest ranks the dictionary words within [maxDistance] edits of
-  /// [word], nearest first.
+  /// [word]: nearest first, and among equally near ones, commonest first.
+  ///
+  /// The second half matters as much as the first. A short typo is one edit
+  /// from a dozen words -- "teh" reaches "the", "tech", "meh", "th" and "te"
+  /// alike -- and with distance alone deciding, which of them surfaces is
+  /// arbitrary, so the intended word is as likely to be missing as not.
+  /// Ordering ties by how common a word is puts the one somebody plausibly
+  /// meant at the top. Words the provider ranked at all come before words it
+  /// didn't.
   ///
   /// Only the candidate *set* is narrowed, never the scoring: every word the
   /// index offers is still measured exactly, so this returns what comparing
   /// against the entire dictionary would, just without doing it.
   List<String> _suggest(String word,
-      {int maxSuggestions = 3, int maxDistance = 2}) {
+      {int maxSuggestions = 5, int maxDistance = 2}) {
     var cached = _suggestionCache[word];
     if (cached != null) return cached;
 
     var wordMask = _letterMask(word);
     var maskLimit = 2 * maxDistance;
-    var scored = <MapEntry<String, int>>[];
+    // Rank beyond any real one, for words the provider left unranked.
+    var unranked = _commonRank.length + 1;
+    var scored = <_Candidate>[];
 
     for (var len = word.length - maxDistance;
         len <= word.length + maxDistance;
@@ -284,12 +330,19 @@ class _CapabilitySpellCheckService extends SpellCheckService {
       for (var candidate in _byLength[len] ?? const <String>[]) {
         if (_bitCount(wordMask ^ _masks[candidate]!) > maskLimit) continue;
         var d = _editDistance(word, candidate, maxDistance);
-        if (d <= maxDistance) scored.add(MapEntry(candidate, d));
+        if (d <= maxDistance) {
+          scored.add(
+              _Candidate(candidate, d, _commonRank[candidate] ?? unranked));
+        }
       }
     }
 
-    scored.sort((a, b) => a.value.compareTo(b.value));
-    var out = scored.take(maxSuggestions).map((e) => e.key).toList();
+    scored.sort((a, b) {
+      var byDistance = a.distance.compareTo(b.distance);
+      if (byDistance != 0) return byDistance;
+      return a.commonRank.compareTo(b.commonRank);
+    });
+    var out = scored.take(maxSuggestions).map((c) => c.word).toList();
     _suggestionCache[word] = out;
     return out;
   }

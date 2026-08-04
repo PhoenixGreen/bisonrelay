@@ -893,9 +893,13 @@ class GrammarRule {
 class SpellcheckData {
   @JsonKey(defaultValue: [])
   final List<String> words;
+  // commonWords is a subset of words, most common first, used to rank
+  // corrections. Empty from a provider that doesn't supply one.
+  @JsonKey(name: "commonWords", defaultValue: [])
+  final List<String> commonWords;
   @JsonKey(name: "grammarRules", defaultValue: [])
   final List<GrammarRule> grammarRules;
-  SpellcheckData(this.words, this.grammarRules);
+  SpellcheckData(this.words, this.commonWords, this.grammarRules);
   factory SpellcheckData.fromJson(Map<String, dynamic> json) =>
       _$SpellcheckDataFromJson(json);
 }
@@ -3933,7 +3937,7 @@ abstract class PluginPlatform {
   /// enabled spellcheck-capability plugins (empty if none are enabled).
   Future<SpellcheckData> getSpellcheckData() async {
     var res = await asyncCall(CTGetSpellcheckData, null);
-    if (res == null) return SpellcheckData([], []);
+    if (res == null) return SpellcheckData([], [], []);
     return SpellcheckData.fromJson(res);
   }
 

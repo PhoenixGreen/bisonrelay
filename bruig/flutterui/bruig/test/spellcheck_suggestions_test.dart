@@ -62,7 +62,7 @@ Future<List<SuggestionSpan>> _check(
 }
 
 void main() {
-  var plain = SpellcheckData(_dictionary, []);
+  var plain = SpellcheckData(_dictionary, const [], []);
 
   test("a known word is not flagged", () async {
     var spans = await _check(await _configFor(plain), "the payment");
@@ -82,18 +82,30 @@ void main() {
   // "recieve" -- a two-edit correction it should always offer.
   test("narrowing the candidates loses no correction", () async {
     var config = await _configFor(plain);
-    // Every dictionary word within two edits, found by brute force.
+    // Every dictionary word within two edits, found by brute force. This is
+    // the oracle the indexed lookup is checked against, so it has to score
+    // the same way -- Damerau, counting an adjacent transposition as one
+    // typo. Left as plain Levenshtein it disagrees about exactly the words
+    // this is meant to protect: "recieve" is one transposition from
+    // "receive" and two substitutions from it.
     int distance(String a, String b) {
+      var prevPrev = List<int>.filled(b.length + 1, 0);
       var prev = List<int>.generate(b.length + 1, (i) => i);
       var curr = List<int>.filled(b.length + 1, 0);
       for (var i = 1; i <= a.length; i++) {
         curr[0] = i;
         for (var j = 1; j <= b.length; j++) {
           var cost = a[i - 1] == b[j - 1] ? 0 : 1;
-          curr[j] = [prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost]
+          var v = [prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost]
               .reduce((x, y) => x < y ? x : y);
+          if (i > 1 && j > 1 && a[i - 1] == b[j - 2] && a[i - 2] == b[j - 1]) {
+            var t = prevPrev[j - 2] + 1;
+            if (t < v) v = t;
+          }
+          curr[j] = v;
         }
-        var t = prev;
+        var t = prevPrev;
+        prevPrev = prev;
         prev = curr;
         curr = t;
       }
@@ -107,7 +119,7 @@ void main() {
           .where((e) => e.value <= 2)
           .toList()
         ..sort((a, b) => a.value.compareTo(b.value));
-      var wantDistances = scored.take(3).map((e) => e.value).toList();
+      var wantDistances = scored.take(5).map((e) => e.value).toList();
 
       var spans = await _check(config, typo);
       var got = spans.single.suggestions;
@@ -121,7 +133,7 @@ void main() {
       expect(gotDistances, wantDistances,
           reason: "$typo: offered $got at distances $gotDistances, but the "
               "nearest in the dictionary are "
-              "${scored.take(3).map((e) => e.key).toList()} at "
+              "${scored.take(5).map((e) => e.key).toList()} at "
               "$wantDistances");
     }
   });
@@ -139,13 +151,14 @@ void main() {
 
   _reviewTests();
   _spanOrderTests();
+  _rankingTests();
 
   group("grammar rules", () {
     // These run in Dart's regex engine, which is the only place the
     // backreference rules can be exercised at all -- Go's RE2 cannot compile
     // them, so the plugin's own tests skip them.
     Future<SpellCheckConfiguration> withRules(List<GrammarRule> rules) =>
-        _configFor(SpellcheckData(_dictionary, rules));
+        _configFor(SpellcheckData(_dictionary, const [], rules));
 
     test("a repeated word is caught and the duplicate dropped", () async {
       var config = await withRules([
@@ -207,7 +220,7 @@ void _reviewTests() {
 
   test("review separates spelling from style, in reading order", () async {
     var capability = SpellcheckCapability(
-        fetch: () async => SpellcheckData(_dictionary, rules));
+        fetch: () async => SpellcheckData(_dictionary, const [], rules));
     await capability.update(FakePlugins({PluginCapability.spellcheckData}));
 
     var issues = capability.review("the  payment recieve");
@@ -223,7 +236,7 @@ void _reviewTests() {
 
   test("a style rule with no fix still carries its message", () async {
     var capability = SpellcheckCapability(
-        fetch: () async => SpellcheckData(_dictionary, rules));
+        fetch: () async => SpellcheckData(_dictionary, const [], rules));
     await capability.update(FakePlugins({PluginCapability.spellcheckData}));
 
     var issues = capability.review("payment!!!");
@@ -241,7 +254,7 @@ void _reviewTests() {
   // address exactly the text they claim to.
   test("an issue's range addresses its own text", () async {
     var capability = SpellcheckCapability(
-        fetch: () async => SpellcheckData(_dictionary, rules));
+        fetch: () async => SpellcheckData(_dictionary, const [], rules));
     await capability.update(FakePlugins({PluginCapability.spellcheckData}));
 
     const text = "the  payment recieve";
@@ -270,7 +283,7 @@ void _spanOrderTests() {
 
   Future<List<SuggestionSpan>> spansFor(String text) async {
     var capability = SpellcheckCapability(
-        fetch: () async => SpellcheckData(_dictionary, rules));
+        fetch: () async => SpellcheckData(_dictionary, const [], rules));
     await capability.update(FakePlugins({PluginCapability.spellcheckData}));
     var spans = await capability.configuration!.spellCheckService!
         .fetchSpellCheckSuggestions(const Locale("en", "US"), text);
@@ -319,5 +332,85 @@ void _spanOrderTests() {
     // And the first one really is the misspelling at offset 0.
     expect(text.substring(spans.first.range.start, spans.first.range.end),
         "recieve");
+  });
+}
+
+// These are the cases that were reported as broken, kept as cases rather
+// than as an abstract property because each failed for its own reason.
+void _rankingTests() {
+  // A dictionary with the real competitors in it: every word here is within
+  // two edits of one of the typos below, so ranking is the only thing that
+  // can put the right one first.
+  const words = [
+    "the",
+    "there",
+    "they",
+    "them",
+    "then",
+    "thy",
+    "tech",
+    "meh",
+    "teach",
+    "received",
+    "receive",
+    "relieved",
+    "relieve",
+    "believed",
+    "reviewed",
+    "deceived",
+    "receiver",
+    "weird",
+    "wield",
+  ];
+  // Ordered as the provider ranks them: commonest first.
+  const common = [
+    "the",
+    "there",
+    "they",
+    "them",
+    "then",
+    "received",
+    "receive",
+    "believed",
+    "weird"
+  ];
+
+  Future<List<String>> suggestionsFor(String typo) async {
+    var capability = SpellcheckCapability(
+        fetch: () async => SpellcheckData(words, common, const []));
+    await capability.update(FakePlugins({PluginCapability.spellcheckData}));
+    var spans = await capability.configuration!.spellCheckService!
+        .fetchSpellCheckSuggestions(const Locale("en", "US"), typo);
+    return spans!.single.suggestions;
+  }
+
+  // Reported: "recieved" did not offer "received". It was found, at distance
+  // 2 under plain Levenshtein, and buried under the crowd of other words
+  // two edits away. As a transposition it is one edit, and it is the more
+  // common word, so it now leads.
+  test("a transposed word is corrected first", () async {
+    expect((await suggestionsFor("recieved")).first, "received");
+    expect((await suggestionsFor("recieve")).first, "receive");
+  });
+
+  // Reported: "teh" did not offer "the". Six words sit one edit away, and
+  // with distance alone deciding, which surfaced was arbitrary.
+  test("the commonest of the equally near words wins", () async {
+    expect((await suggestionsFor("teh")).first, "the");
+  });
+
+  test("a wrong letter is still corrected", () async {
+    expect((await suggestionsFor("wierd")).first, "weird");
+  });
+
+  // Without a ranked list -- an older provider, or one for another language
+  // -- ranking degrades to distance alone rather than breaking.
+  test("an unranked provider still returns the nearest words", () async {
+    var capability = SpellcheckCapability(
+        fetch: () async => SpellcheckData(words, const [], const []));
+    await capability.update(FakePlugins({PluginCapability.spellcheckData}));
+    var spans = await capability.configuration!.spellCheckService!
+        .fetchSpellCheckSuggestions(const Locale("en", "US"), "recieved");
+    expect(spans!.single.suggestions, contains("received"));
   });
 }

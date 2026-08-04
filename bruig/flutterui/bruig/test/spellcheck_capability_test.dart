@@ -29,7 +29,7 @@ void main() {
     expect(capability.configuration, isNotNull,
         reason: "a composer building now would get spell check turned off");
 
-    fetched.complete(SpellcheckData(["hello"], []));
+    fetched.complete(SpellcheckData(["hello"], const [], []));
     await Future.delayed(Duration.zero);
     expect(capability.configuration, isNotNull);
   });
@@ -78,7 +78,7 @@ void main() {
     expect(seen, isNotNull,
         reason: "the composer's first build must already have spell check");
 
-    fetched.complete(SpellcheckData(["hello"], []));
+    fetched.complete(SpellcheckData(["hello"], const [], []));
     await tester.pumpAndSettle();
     expect(seen, isNotNull);
   });

@@ -24,7 +24,7 @@ Future<List<String>> _menuFor(
   bool thesaurus = false,
 }) async {
   var capability = SpellcheckCapability(
-      fetch: () async => SpellcheckData(_dictionary, const []));
+      fetch: () async => SpellcheckData(_dictionary, const [], const []));
   await capability.update(FakePlugins({PluginCapability.spellcheckData}));
 
   var labels = <String>[];

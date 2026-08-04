@@ -29,7 +29,19 @@ type GrammarRule struct {
 // plugin supplies, and -- once merged across every enabled such plugin --
 // what the client hands to the composer UI.
 type SpellcheckData struct {
-	Words        []string      `json:"words"`
+	Words []string `json:"words"`
+
+	// CommonWords is a subset of Words ordered most-common-first, used to
+	// rank corrections. It may be empty, and older providers will not send
+	// it at all.
+	//
+	// It exists because edit distance cannot rank on its own: "teh" is one
+	// typo away from "the", "tech", "meh", "th" and "te" alike, and with only
+	// a handful of corrections shown, the word anyone actually meant ends up
+	// buried among words nobody writes. Knowing which are common is what
+	// separates them.
+	CommonWords []string `json:"commonWords,omitempty"`
+
 	GrammarRules []GrammarRule `json:"grammarRules"`
 }
 
@@ -58,6 +70,10 @@ func MergedSpellcheckData(ctx context.Context, mgr Manager, rt Runtime,
 			seen[w] = true
 			merged.Words = append(merged.Words, w)
 		}
+		// Ranked lists are concatenated in plugin-id order rather than
+		// interleaved: two providers' rankings are not comparable, so the
+		// first one's ordering is kept intact and the next appends behind it.
+		merged.CommonWords = append(merged.CommonWords, data.CommonWords...)
 		merged.GrammarRules = append(merged.GrammarRules, data.GrammarRules...)
 	}
 	return merged

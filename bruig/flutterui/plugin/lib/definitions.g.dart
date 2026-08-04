@@ -758,6 +758,10 @@ Map<String, dynamic> _$GrammarRuleToJson(GrammarRule instance) =>
 SpellcheckData _$SpellcheckDataFromJson(Map<String, dynamic> json) =>
     SpellcheckData(
       (json['words'] as List<dynamic>?)?.map((e) => e as String).toList() ?? [],
+      (json['commonWords'] as List<dynamic>?)
+              ?.map((e) => e as String)
+              .toList() ??
+          [],
       (json['grammarRules'] as List<dynamic>?)
               ?.map((e) => GrammarRule.fromJson(e as Map<String, dynamic>))
               .toList() ??
@@ -767,6 +771,7 @@ SpellcheckData _$SpellcheckDataFromJson(Map<String, dynamic> json) =>
 Map<String, dynamic> _$SpellcheckDataToJson(SpellcheckData instance) =>
     <String, dynamic>{
       'words': instance.words,
+      'commonWords': instance.commonWords,
       'grammarRules': instance.grammarRules,
     };
 
