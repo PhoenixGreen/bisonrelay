@@ -795,106 +795,105 @@ class _PostContentScreenForArgsState extends State<_PostContentScreenForArgs> {
     bool feedCardRedesign =
         ThemeNotifier.of(context).areaStyle(ThemeArea.feed).feedCardRedesign;
 
-    Widget postAreaColumn = Column(mainAxisAlignment: MainAxisAlignment.start, children: [
-                const SizedBox(height: 10),
+    Widget postAreaColumn =
+        Column(mainAxisAlignment: MainAxisAlignment.start, children: [
+      const SizedBox(height: 10),
 
-                // Post Area
-                Box(
-                    margin: isScreenSmall
-                        ? const EdgeInsets.only(
-                            left: 19, right: 10, top: 0, bottom: 0)
-                        : EdgeInsets.only(
-                            left: feedCardRedesign ? 0 : 50,
-                            right: feedCardRedesign ? 0 : 50,
-                            top: 0,
-                            bottom: 0),
-                    borderRadius: BorderRadius.circular(3),
-                    color: SurfaceColor.tertiary,
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      children: [
-                        // Header row.
-                        Row(
-                          children: [
-                            Container(
-                              width: 28,
-                              margin: const EdgeInsets.only(left: 5),
-                              child: UserAvatarFromID(widget.client, authorID,
-                                  postFrom: widget.args.post.summ.from,
-                                  showChatSideMenuOnTap: true,
-                                  nick: authorNick),
-                            ),
-                            const SizedBox(width: 6),
-                            Txt.S(authorNick, color: TextColor.onSurface),
-                            const SizedBox(width: 8),
-                            !myPost && !hasChat
-                                ? SizedBox(
-                                    width: 20,
-                                    child: IconButton(
-                                        padding: const EdgeInsets.all(0),
-                                        iconSize: 15,
-                                        tooltip:
-                                            "Attempt to KX with the author of this comment",
-                                        onPressed: kxSearchAuthor,
-                                        icon: const ColoredIcon(
-                                            Icons.connect_without_contact,
-                                            color: TextColor
-                                                .onSecondaryContainer)))
-                                : const Text(""),
-                            SizedBox(
-                              width: 20,
-                              child: IconButton(
-                                padding: const EdgeInsets.all(0),
-                                iconSize: 15,
-                                tooltip: "Relay this post to your subscribers",
-                                onPressed: relayPostToAll,
-                                icon: const ColoredIcon(Icons.send,
-                                    color: TextColor.onSecondaryContainer),
-                              ),
-                            ),
-                            Expanded(
-                                child: Align(
-                                    alignment: Alignment.centerRight,
-                                    child: Txt.S(
-                                        widget.args.post.summ.date
-                                            .toLocal()
-                                            .toIso8601String(),
-                                        style: TextStyle(
-                                            color: ThemeNotifier.of(context)
-                                                .textColor(TextColor.onSurface)
-                                                .withValues(alpha: 0.6))))),
-                          ],
-                        ),
+      // Post Area
+      Box(
+          margin: isScreenSmall
+              ? const EdgeInsets.only(left: 19, right: 10, top: 0, bottom: 0)
+              : EdgeInsets.only(
+                  left: feedCardRedesign ? 0 : 50,
+                  right: feedCardRedesign ? 0 : 50,
+                  top: 0,
+                  bottom: 0),
+          borderRadius: BorderRadius.circular(3),
+          color: SurfaceColor.tertiary,
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            children: [
+              // Header row.
+              Row(
+                children: [
+                  Container(
+                    width: 28,
+                    margin: const EdgeInsets.only(left: 5),
+                    child: UserAvatarFromID(widget.client, authorID,
+                        postFrom: widget.args.post.summ.from,
+                        showChatSideMenuOnTap: true,
+                        nick: authorNick),
+                  ),
+                  const SizedBox(width: 6),
+                  Txt.S(authorNick, color: TextColor.onSurface),
+                  const SizedBox(width: 8),
+                  !myPost && !hasChat
+                      ? SizedBox(
+                          width: 20,
+                          child: IconButton(
+                              padding: const EdgeInsets.all(0),
+                              iconSize: 15,
+                              tooltip:
+                                  "Attempt to KX with the author of this comment",
+                              onPressed: kxSearchAuthor,
+                              icon: const ColoredIcon(
+                                  Icons.connect_without_contact,
+                                  color: TextColor.onSecondaryContainer)))
+                      : const Text(""),
+                  SizedBox(
+                    width: 20,
+                    child: IconButton(
+                      padding: const EdgeInsets.all(0),
+                      iconSize: 15,
+                      tooltip: "Relay this post to your subscribers",
+                      onPressed: relayPostToAll,
+                      icon: const ColoredIcon(Icons.send,
+                          color: TextColor.onSecondaryContainer),
+                    ),
+                  ),
+                  Expanded(
+                      child: Align(
+                          alignment: Alignment.centerRight,
+                          child: Txt.S(
+                              widget.args.post.summ.date
+                                  .toLocal()
+                                  .toIso8601String(),
+                              style: TextStyle(
+                                  color: ThemeNotifier.of(context)
+                                      .textColor(TextColor.onSurface)
+                                      .withValues(alpha: 0.6))))),
+                ],
+              ),
 
-                        // Relayer line
-                        const SizedBox(height: 10),
-                        relayer == ""
-                            ? const Empty()
-                            : Row(children: [
-                                Expanded(
-                                    child: Txt.S("Relayed by $relayer",
-                                        color: TextColor.onSurfaceVariant,
-                                        style: const TextStyle(
-                                            fontStyle: FontStyle.italic)))
-                              ]),
+              // Relayer line
+              const SizedBox(height: 10),
+              relayer == ""
+                  ? const Empty()
+                  : Row(children: [
+                      Expanded(
+                          child: Txt.S("Relayed by $relayer",
+                              color: TextColor.onSurfaceVariant,
+                              style:
+                                  const TextStyle(fontStyle: FontStyle.italic)))
+                    ]),
 
-                        // Post content
-                        const SizedBox(height: 10),
-                        SelectionArea(
-                            child: Container(
-                                alignment: Alignment.topLeft,
-                                padding: const EdgeInsets.all(15),
-                                child: Provider<DownloadSource>(
-                                    create: (context) => DownloadSource(
-                                        widget.args.post.summ.authorID),
-                                    child: MarkdownArea(markdownData, false)))),
-                      ],
-                    )),
+              // Post content
+              const SizedBox(height: 10),
+              SelectionArea(
+                  child: Container(
+                      alignment: Alignment.topLeft,
+                      padding: const EdgeInsets.all(15),
+                      child: Provider<DownloadSource>(
+                          create: (context) =>
+                              DownloadSource(widget.args.post.summ.authorID),
+                          child: MarkdownArea(markdownData, false)))),
+            ],
+          )),
 
-                // Comments section
-                ...commentsWidgets,
-                ...receiveReceiptsWidgets,
-              ]);
+      // Comments section
+      ...commentsWidgets,
+      ...receiveReceiptsWidgets,
+    ]);
 
     return Align(
         alignment: Alignment.topLeft,

@@ -33,7 +33,8 @@ int _editDistance(String a, String b) {
       var deletion = prev[j] + 1;
       var insertion = curr[j - 1] + 1;
       var substitution = prev[j - 1] + cost;
-      curr[j] = [deletion, insertion, substitution].reduce((x, y) => x < y ? x : y);
+      curr[j] =
+          [deletion, insertion, substitution].reduce((x, y) => x < y ? x : y);
     }
     var tmp = prev;
     prev = curr;
@@ -85,9 +86,11 @@ class PluginSpellCheckService extends SpellCheckService {
     for (var rule in _rules) {
       try {
         for (var m in rule.pattern.allMatches(text)) {
-          var suggestions =
-              rule.suggest.isEmpty ? <String>[] : [_expandTemplate(rule.suggest, m)];
-          spans.add(SuggestionSpan(TextRange(start: m.start, end: m.end), suggestions));
+          var suggestions = rule.suggest.isEmpty
+              ? <String>[]
+              : [_expandTemplate(rule.suggest, m)];
+          spans.add(SuggestionSpan(
+              TextRange(start: m.start, end: m.end), suggestions));
         }
       } catch (_) {
         // A plugin-supplied pattern that throws at match time (e.g. an

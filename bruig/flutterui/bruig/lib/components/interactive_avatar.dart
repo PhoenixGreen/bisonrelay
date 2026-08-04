@@ -41,8 +41,8 @@ Color graphiteFromNick(String nick) =>
 // muted/vivid deliberately reuse colorFromNick's own hue (rather than
 // hashing independently) so switching between them re-tints each user
 // rather than reshuffling who is what color.
-Color avatarColorFromNick(
-    String nick, AvatarTheme theme, Brightness brightness, ThemePreset? preset) {
+Color avatarColorFromNick(String nick, AvatarTheme theme, Brightness brightness,
+    ThemePreset? preset) {
   Color reshade(double saturation, double value) =>
       HSVColor.fromColor(colorFromNick(nick, brightness))
           .withSaturation(saturation)

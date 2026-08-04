@@ -55,9 +55,8 @@ class ServerEvent extends StatelessWidget {
             // no way to follow the "Speech background (received)" palette
             // slot. bgColor (e.g. errorContainer for a failed upload) still
             // takes priority when explicitly passed.
-            overrideColor: bgColor == null
-                ? theme.activePreset?.speechBackground
-                : null,
+            overrideColor:
+                bgColor == null ? theme.activePreset?.speechBackground : null,
             child: child ?? Txt.S(msg!)));
   }
 }
@@ -182,8 +181,7 @@ class _ReceivedSentPMState extends State<ReceivedSentPM> {
   // AreaStyle.enableMessageActions is on for ThemeArea.chat.
   void _showMsgMenu(Offset pos, String msg, String fullDate, String nick,
       String toCopy) async {
-    final overlay =
-        Overlay.of(context).context.findRenderObject() as RenderBox;
+    final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
     final local = overlay.globalToLocal(pos);
     final selected = await showMenu<String>(
       context: context,
@@ -314,141 +312,152 @@ class _ReceivedSentPMState extends State<ReceivedSentPM> {
     var showNick = !(widget.evnt.sameUser || isOwnMessage) && !isScreenSmall;
 
     return LayoutBuilder(
-        builder: (context, constraints) => Consumer<ThemeNotifier>(
-        builder: (context, theme, _) {
-      var chatStyle = theme.areaStyle(ThemeArea.chat);
-      var layoutMode = chatStyle.messageLayoutMode ?? MessageLayoutMode.standard;
-      var leftAlign = layoutMode == MessageLayoutMode.leftAlign;
-      var narrow = layoutMode == MessageLayoutMode.narrow;
-      // expandMessageWidth's panel padding is applied once around the whole
-      // conversation viewport (see active_chat.dart), not per-message here.
-      var expand = layoutMode != MessageLayoutMode.standard &&
-          chatStyle.expandMessageWidth;
-      return Container(
-            margin: EdgeInsets.fromLTRB(
-                0,
-                widget.evnt.sameUser ? 2 : 10,
-                expand
-                    ? 0
-                    : (narrow
-                        ? (constraints.maxWidth > 700
-                            ? constraints.maxWidth * 0.32
-                            : 20)
-                        : ((isOwnMessage && !leftAlign) ? 20 : 0)),
-                0),
-            child: Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                mainAxisAlignment: (isOwnMessage && !leftAlign)
-                    ? MainAxisAlignment.end
-                    : MainAxisAlignment.start,
-                children: <Widget>[
-                  if (showAvatar)
-                    Container(
-                      height: 28,
-                      width: 28,
-                      margin: const EdgeInsets.only(
-                          top: 0, bottom: 10, left: 10, right: 10),
-                      child: UserContextMenu(
-                        client: widget.client,
-                        targetUserChat: widget.evnt.source,
-                        child: UserMenuAvatar(
-                          widget.client,
-                          widget.evnt.source ?? widget.chat,
-                          showChatSideMenuOnTap: true,
-                        ),
-                      ),
-                    )
-                  else
-                    isScreenSmall
-                        ? const SizedBox(width: 20)
-                        : const SizedBox(width: 48),
-                  Flexible(
-                      child: GestureDetector(
-                          onSecondaryTapDown: (details) {
-                            if (!isScreenSmall) {
-                              messageSecondaryTapContext(
-                                  details, msg, fullDate, widget.nick);
-                            }
-                          },
-                          onLongPressDown: (details) {
-                            if (isScreenSmall) {
-                              messageLongDownContext(
-                                  details, msg, fullDate, widget.nick);
-                            }
-                          },
-                          child: ConstrainedBox(
-                              constraints: BoxConstraints(
-                                maxWidth: expand
-                                    ? constraints.maxWidth
-                                    : (isScreenSmall
-                                        ? MediaQuery.sizeOf(context).width *
-                                            0.75
-                                        : MediaQuery.sizeOf(context).width *
-                                            0.4),
+        builder: (context, constraints) =>
+            Consumer<ThemeNotifier>(builder: (context, theme, _) {
+              var chatStyle = theme.areaStyle(ThemeArea.chat);
+              var layoutMode =
+                  chatStyle.messageLayoutMode ?? MessageLayoutMode.standard;
+              var leftAlign = layoutMode == MessageLayoutMode.leftAlign;
+              var narrow = layoutMode == MessageLayoutMode.narrow;
+              // expandMessageWidth's panel padding is applied once around the whole
+              // conversation viewport (see active_chat.dart), not per-message here.
+              var expand = layoutMode != MessageLayoutMode.standard &&
+                  chatStyle.expandMessageWidth;
+              return Container(
+                  margin: EdgeInsets.fromLTRB(
+                      0,
+                      widget.evnt.sameUser ? 2 : 10,
+                      expand
+                          ? 0
+                          : (narrow
+                              ? (constraints.maxWidth > 700
+                                  ? constraints.maxWidth * 0.32
+                                  : 20)
+                              : ((isOwnMessage && !leftAlign) ? 20 : 0)),
+                      0),
+                  child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      mainAxisAlignment: (isOwnMessage && !leftAlign)
+                          ? MainAxisAlignment.end
+                          : MainAxisAlignment.start,
+                      children: <Widget>[
+                        if (showAvatar)
+                          Container(
+                            height: 28,
+                            width: 28,
+                            margin: const EdgeInsets.only(
+                                top: 0, bottom: 10, left: 10, right: 10),
+                            child: UserContextMenu(
+                              client: widget.client,
+                              targetUserChat: widget.evnt.source,
+                              child: UserMenuAvatar(
+                                widget.client,
+                                widget.evnt.source ?? widget.chat,
+                                showChatSideMenuOnTap: true,
                               ),
-                              child: Container(
-                                  padding: const EdgeInsets.only(
-                                      top: 5, left: 10, right: 10, bottom: 5),
-                                  // ShapeDecoration (not BoxDecoration): the
-                                  // corner styles include shapes a
-                                  // borderRadius can't describe -- cut and
-                                  // inverted corners -- so the bubble is
-                                  // painted from a ShapeBorder instead. See
-                                  // bubbleShape.
-                                  decoration: ShapeDecoration(
-                                    color: isOwnMessage
-                                        ? (theme.activePreset
-                                                ?.speechBackgroundSent ??
-                                            theme.colors.surfaceContainer)
-                                        : (theme.activePreset?.speechBackground ??
-                                            theme.colors.surfaceContainerHighest),
-                                    // With the corner settings off, the
-                                    // bubble is the plain 10px rounded box
-                                    // it has always been -- whatever radii
-                                    // the settings happen to still hold
-                                    // from last time they were on.
-                                    shape: !chatStyle.bubbleCorners
-                                        ? bubbleShape(
-                                            BubbleCornerStyle.rounded,
-                                            SideValues.all(10),
-                                            isOwnMessage)
-                                        : bubbleShape(
-                                            chatStyle.bubbleCornerStyle,
-                                            isOwnMessage
-                                                ? chatStyle.bubbleRadiiSent
-                                                : chatStyle
-                                                    .bubbleRadiiReceived,
-                                            isOwnMessage),
-                                  ),
-                                  child: Column(
-                                      crossAxisAlignment: isOwnMessage
-                                          ? CrossAxisAlignment.end
-                                          : CrossAxisAlignment.start,
-                                      children: <Widget>[
-                                        if (showNick)
-                                          Text(widget.nick,
-                                              style: theme.textStyleForNick(
-                                                  widget.nick)),
-                                        Provider<DownloadSource>(
-                                            create: (context) =>
-                                                DownloadSource(sourceID),
-                                            child: MarkdownArea(
-                                                msg,
-                                                widget.userNick !=
-                                                        widget.nick &&
-                                                    msg.contains(
-                                                        widget.userNick))),
-                                        Padding(
-                                            padding:
-                                                const EdgeInsets.only(top: 5),
-                                            child: Tooltip(
-                                                message: fullDate,
-                                                child: Txt.S(hour,
-                                                    color: TextColor
-                                                        .onSurfaceVariant)))
-                                      ])))))
-                ]));
-    }));
+                            ),
+                          )
+                        else
+                          isScreenSmall
+                              ? const SizedBox(width: 20)
+                              : const SizedBox(width: 48),
+                        Flexible(
+                            child: GestureDetector(
+                                onSecondaryTapDown: (details) {
+                                  if (!isScreenSmall) {
+                                    messageSecondaryTapContext(
+                                        details, msg, fullDate, widget.nick);
+                                  }
+                                },
+                                onLongPressDown: (details) {
+                                  if (isScreenSmall) {
+                                    messageLongDownContext(
+                                        details, msg, fullDate, widget.nick);
+                                  }
+                                },
+                                child: ConstrainedBox(
+                                    constraints: BoxConstraints(
+                                      maxWidth: expand
+                                          ? constraints.maxWidth
+                                          : (isScreenSmall
+                                              ? MediaQuery.sizeOf(context)
+                                                      .width *
+                                                  0.75
+                                              : MediaQuery.sizeOf(context)
+                                                      .width *
+                                                  0.4),
+                                    ),
+                                    child: Container(
+                                        padding: const EdgeInsets.only(
+                                            top: 5,
+                                            left: 10,
+                                            right: 10,
+                                            bottom: 5),
+                                        // ShapeDecoration (not BoxDecoration): the
+                                        // corner styles include shapes a
+                                        // borderRadius can't describe -- cut and
+                                        // inverted corners -- so the bubble is
+                                        // painted from a ShapeBorder instead. See
+                                        // bubbleShape.
+                                        decoration: ShapeDecoration(
+                                          color: isOwnMessage
+                                              ? (theme.activePreset
+                                                      ?.speechBackgroundSent ??
+                                                  theme.colors.surfaceContainer)
+                                              : (theme.activePreset
+                                                      ?.speechBackground ??
+                                                  theme.colors
+                                                      .surfaceContainerHighest),
+                                          // With the corner settings off, the
+                                          // bubble is the plain 10px rounded box
+                                          // it has always been -- whatever radii
+                                          // the settings happen to still hold
+                                          // from last time they were on.
+                                          shape: !chatStyle.bubbleCorners
+                                              ? bubbleShape(
+                                                  BubbleCornerStyle.rounded,
+                                                  SideValues.all(10),
+                                                  isOwnMessage)
+                                              : bubbleShape(
+                                                  chatStyle.bubbleCornerStyle,
+                                                  isOwnMessage
+                                                      ? chatStyle
+                                                          .bubbleRadiiSent
+                                                      : chatStyle
+                                                          .bubbleRadiiReceived,
+                                                  isOwnMessage),
+                                        ),
+                                        child: Column(
+                                            crossAxisAlignment: isOwnMessage
+                                                ? CrossAxisAlignment.end
+                                                : CrossAxisAlignment.start,
+                                            children: <Widget>[
+                                              if (showNick)
+                                                Text(widget.nick,
+                                                    style:
+                                                        theme.textStyleForNick(
+                                                            widget.nick)),
+                                              Provider<DownloadSource>(
+                                                  create: (context) =>
+                                                      DownloadSource(sourceID),
+                                                  child: MarkdownArea(
+                                                      msg,
+                                                      widget.userNick !=
+                                                              widget.nick &&
+                                                          msg.contains(widget
+                                                              .userNick))),
+                                              Padding(
+                                                  padding:
+                                                      const EdgeInsets.only(
+                                                          top: 5),
+                                                  child: Tooltip(
+                                                      message: fullDate,
+                                                      child: Txt.S(hour,
+                                                          color: TextColor
+                                                              .onSurfaceVariant)))
+                                            ])))))
+                      ]));
+            }));
   }
 
   @override

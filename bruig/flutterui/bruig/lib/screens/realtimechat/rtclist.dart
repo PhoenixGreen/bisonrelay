@@ -279,19 +279,16 @@ class __RTDTSessionWState extends State<_RTDTSessionW> {
 
   @override
   Widget build(BuildContext context) {
-
     final live = session.hasHotAudio || session.inLiveSession;
     // The three things a theme decides about this row (see the Realtime
     // Chat theme area); each keeps its built-in value until set.
     var rtcStyle = ThemeNotifier.of(context).areaStyle(ThemeArea.realtimeChat);
-    var radius =
-        BorderRadius.circular(rtcStyle.rtcSessionCornerRadius ?? 12);
-    var activeColor = rtcStyle.resolveRtcActiveSessionColor(
-            ThemeNotifier.of(context)) ??
-        const Color(0xFF0B0F16);
-    var liveColor =
-        rtcStyle.resolveRtcLiveColor(ThemeNotifier.of(context)) ??
-            const Color(0xFF1DFF8C);
+    var radius = BorderRadius.circular(rtcStyle.rtcSessionCornerRadius ?? 12);
+    var activeColor =
+        rtcStyle.resolveRtcActiveSessionColor(ThemeNotifier.of(context)) ??
+            const Color(0xFF0B0F16);
+    var liveColor = rtcStyle.resolveRtcLiveColor(ThemeNotifier.of(context)) ??
+        const Color(0xFF1DFF8C);
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -315,8 +312,7 @@ class __RTDTSessionWState extends State<_RTDTSessionW> {
                   boxShadow: live
                       ? [
                           BoxShadow(
-                            color:
-                                liveColor.withValues(alpha: 0.6),
+                            color: liveColor.withValues(alpha: 0.6),
                             blurRadius: 7,
                           )
                         ]
@@ -486,8 +482,7 @@ class _RTDTIntro extends StatelessWidget {
     // Was a hardcoded bright-green gradient with no palette field behind
     // it -- now uses the same "Accent (Buttons/Toggles)" slot the rest of
     // the app's unthemed buttons/toggles were pinned to.
-    var accent =
-        theme.activePreset?.accentContainer ?? const Color(0xFF1DFF8C);
+    var accent = theme.activePreset?.accentContainer ?? const Color(0xFF1DFF8C);
     var onAccent = theme.activePreset?.onSurface ?? const Color(0xFF04130B);
     return Center(
       child: SingleChildScrollView(

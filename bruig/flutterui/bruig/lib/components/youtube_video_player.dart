@@ -129,9 +129,7 @@ class _YoutubeInlineVideoState extends State<YoutubeInlineVideo> {
           child: Row(children: [
             IconButton(
               icon: Icon(
-                  controller.value.isPlaying
-                      ? Icons.pause
-                      : Icons.play_arrow,
+                  controller.value.isPlaying ? Icons.pause : Icons.play_arrow,
                   color: Colors.white),
               onPressed: () => setState(() {
                 controller.value.isPlaying

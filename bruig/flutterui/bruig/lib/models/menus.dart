@@ -93,65 +93,70 @@ final List<SubMenuInfo> lnScreenSub = [
 
 final List<MainMenuItem> mainMenu = [
   MainMenuItem(
-      "Chat",
-      ChatsScreen.routeName,
-      (context) =>
-          Consumer3<RealtimeChatModel, AppNotifications, TypingEmojiSelModel>(
-              builder: (context, rtc, ntfns, typingEmoji, child) =>
-                  ChatsScreen(rtc.client, rtc, ntfns, typingEmoji)),
-      (context) => const ChatsScreenTitle(),
-      const SidebarSvgIcon("assets/icons/icons-menu-chat.svg"),
-      <SubMenuInfo>[],),
+    "Chat",
+    ChatsScreen.routeName,
+    (context) =>
+        Consumer3<RealtimeChatModel, AppNotifications, TypingEmojiSelModel>(
+            builder: (context, rtc, ntfns, typingEmoji, child) =>
+                ChatsScreen(rtc.client, rtc, ntfns, typingEmoji)),
+    (context) => const ChatsScreenTitle(),
+    const SidebarSvgIcon("assets/icons/icons-menu-chat.svg"),
+    <SubMenuInfo>[],
+  ),
   MainMenuItem(
       "Address Book",
       AddressBookScreen.routeName,
       (context) => const AddressBookScreen(),
       (context) => const AddressBookScreenTitle(),
-      const SidebarIcon(Icons.contacts_outlined, false),
-      <SubMenuInfo>[]),
+      const SidebarIcon(Icons.contacts_outlined, false), <SubMenuInfo>[]),
   MainMenuItem(
-      "Feed",
-      FeedScreen.routeName,
-      (context) => Consumer2<MainMenuModel, TypingEmojiSelModel>(
-          builder: (context, menu, typingEmoji, child) =>
-              FeedScreen(menu, typingEmoji)),
-      (context) => const FeedScreenTitle(),
-      const SidebarSvgIcon("assets/icons/icons-menu-news.svg"),
-      feedScreenSub,),
+    "Feed",
+    FeedScreen.routeName,
+    (context) => Consumer2<MainMenuModel, TypingEmojiSelModel>(
+        builder: (context, menu, typingEmoji, child) =>
+            FeedScreen(menu, typingEmoji)),
+    (context) => const FeedScreenTitle(),
+    const SidebarSvgIcon("assets/icons/icons-menu-news.svg"),
+    feedScreenSub,
+  ),
   MainMenuItem(
-      "Realtime Chat",
-      RealtimeChatScreen.routeName,
-      (context) => Consumer<TypingEmojiSelModel>(
-          builder: (context, typingEmoji, child) =>
-              RealtimeChatScreen(typingEmoji)),
-      (context) => const RealtimeChatTitle(),
-      const SidebarIcon(Icons.phone_rounded, false),
-      feedScreenSub,),
+    "Realtime Chat",
+    RealtimeChatScreen.routeName,
+    (context) => Consumer<TypingEmojiSelModel>(
+        builder: (context, typingEmoji, child) =>
+            RealtimeChatScreen(typingEmoji)),
+    (context) => const RealtimeChatTitle(),
+    const SidebarIcon(Icons.phone_rounded, false),
+    feedScreenSub,
+  ),
   MainMenuItem(
-      "LN Management",
-      LNScreen.routeName,
-      (context) => Consumer<MainMenuModel>(
-          builder: (context, menu, child) => LNScreen(menu)),
-      (context) => const LNScreenTitle(),
-      const SidebarSvgIcon("assets/icons/icons-menu-lnmng.svg"),
-      lnScreenSub,),
+    "LN Management",
+    LNScreen.routeName,
+    (context) => Consumer<MainMenuModel>(
+        builder: (context, menu, child) => LNScreen(menu)),
+    (context) => const LNScreenTitle(),
+    const SidebarSvgIcon("assets/icons/icons-menu-lnmng.svg"),
+    lnScreenSub,
+  ),
   MainMenuItem(
-      "Pages",
-      ViewPageScreen.routeName,
-      (context) => Consumer2<ClientModel, ResourcesModel>(
-          builder: (context, client, resources, child) =>
-              ViewPageScreen(resources, client)),
-      (context) => const ViewPagesScreenTitle(),
-      const SidebarSvgIcon("assets/icons/icons-menu-pages.svg"),
-      <SubMenuInfo>[],),
+    "Pages",
+    ViewPageScreen.routeName,
+    (context) => Consumer2<ClientModel, ResourcesModel>(
+        builder: (context, client, resources, child) =>
+            ViewPageScreen(resources, client)),
+    (context) => const ViewPagesScreenTitle(),
+    const SidebarSvgIcon("assets/icons/icons-menu-pages.svg"),
+    <SubMenuInfo>[],
+  ),
   MainMenuItem(
-      "Manage Content",
-      ManageContentScreen.routeName,
-      (context) => Consumer<MainMenuModel>(
-          builder: (context, menu, child) => ManageContentScreen(menu)),
-      (context) => const ManageContentScreenTitle(),
-      const SidebarSvgIcon("assets/icons/icons-menu-files.svg"),
-      manageContentScreenSub,),
+    "Manage Content",
+    ManageContentScreen.routeName,
+    (context) => Consumer<MainMenuModel>(
+        builder: (context, menu, child) => ManageContentScreen(menu)),
+    (context) => const ManageContentScreenTitle(),
+    const SidebarSvgIcon("assets/icons/icons-menu-files.svg"),
+    manageContentScreenSub,
+  ),
   MainMenuItem(
       "Settings",
       SettingsScreen.routeName,
@@ -205,7 +210,8 @@ class MainMenuModel extends ChangeNotifier {
   // ThemeNotifier resolves the persisted active theme before this model is
   // constructed (see main.dart), so its result is available synchronously
   // here, unlike a from-scratch async load.
-  MainMenuModel({Map<String, String>? initialLabels, List<String>? initialOrder}) {
+  MainMenuModel(
+      {Map<String, String>? initialLabels, List<String>? initialOrder}) {
     if (initialLabels != null || initialOrder != null) {
       applyThemeMenu(initialLabels, initialOrder);
     }
@@ -226,18 +232,15 @@ class MainMenuModel extends ChangeNotifier {
         for (var e in menus.where((e) => !e.hiddenFromSideBar))
           e.routeName: e.label,
       };
-  List<String> currentOrder() => menus
-      .where((e) => !e.hiddenFromSideBar)
-      .map((e) => e.routeName)
-      .toList();
+  List<String> currentOrder() =>
+      menus.where((e) => !e.hiddenFromSideBar).map((e) => e.routeName).toList();
 
   void _setLabel(String routeName, String newLabel) {
     var idx = menus.indexWhere((e) => e.routeName == routeName);
     if (idx < 0) return;
     var old = menus[idx];
-    var updated = MainMenuItem(
-        newLabel, old.routeName, old.builder, old.titleBuilder, old.icon,
-        old.subMenuInfo,
+    var updated = MainMenuItem(newLabel, old.routeName, old.builder,
+        old.titleBuilder, old.icon, old.subMenuInfo,
         hiddenFromSideBar: old.hiddenFromSideBar);
     menus[idx] = updated;
     if (_activeRoute == routeName) {
@@ -326,8 +329,8 @@ class MainMenuModel extends ChangeNotifier {
         // screens may have changed) since that's cheap and doesn't need a
         // rebuild -- they're only invoked on demand when the route is
         // navigated to, not eagerly.
-        menus[idx] = MainMenuItem(existing.label, item.routeName,
-            item.builder, item.titleBuilder, item.icon, item.subMenuInfo,
+        menus[idx] = MainMenuItem(existing.label, item.routeName, item.builder,
+            item.titleBuilder, item.icon, item.subMenuInfo,
             hiddenFromSideBar: item.hiddenFromSideBar);
         return;
       }

@@ -6,8 +6,8 @@ class PluginsModel extends ChangeNotifier {
   List<PluginInfo> _plugins = [];
   List<PluginInfo> get plugins => _plugins;
 
-  bool get prettyLinksActive => _plugins.any(
-      (p) => p.enabled && p.manifest.capabilities.contains("link-card"));
+  bool get prettyLinksActive => _plugins
+      .any((p) => p.enabled && p.manifest.capabilities.contains("link-card"));
 
   bool get spellcheckActive => _plugins.any(
       (p) => p.enabled && p.manifest.capabilities.contains("spellcheck-data"));

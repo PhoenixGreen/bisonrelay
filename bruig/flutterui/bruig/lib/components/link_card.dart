@@ -252,8 +252,8 @@ class _LinkCardState extends State<LinkCard> {
                         ),
                         child: Txt.S(metadata.description,
                             color: TextColor.onSurfaceVariant,
-                            style: const TextStyle(
-                                fontStyle: FontStyle.italic)),
+                            style:
+                                const TextStyle(fontStyle: FontStyle.italic)),
                       ),
                     ),
                   const SizedBox(height: 4),

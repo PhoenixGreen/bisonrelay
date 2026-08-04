@@ -222,7 +222,6 @@ class _RTCSessionHeaderState extends State<RTCSessionHeader> {
       }
     }
 
-
     return Row(children: [
       Expanded(
           child: Wrap(
@@ -273,8 +272,7 @@ class _RTCSessionHeaderState extends State<RTCSessionHeader> {
             if (session.inLiveSession) ...[
               SizedBox(width: isSmallScreen ? 8 : 16),
               Tooltip(
-                message:
-                    "Leave the live session before closing Bison Relay. "
+                message: "Leave the live session before closing Bison Relay. "
                     "Shutting down mid-session can disrupt your Lightning "
                     "Network channels.",
                 child: Container(

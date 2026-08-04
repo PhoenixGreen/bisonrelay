@@ -138,8 +138,8 @@ class CollapsedSidebarModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  void _notifyLater() => WidgetsBinding.instance
-      .addPostFrameCallback((_) => notifyListeners());
+  void _notifyLater() =>
+      WidgetsBinding.instance.addPostFrameCallback((_) => notifyListeners());
 }
 
 // UIStateModel holds state related to the app's UI.

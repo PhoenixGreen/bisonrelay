@@ -265,8 +265,7 @@ class _DynPluginScreenState extends State<DynPluginScreen> {
       trailingIcons.add(IconButton(
         icon: Icon(item.bookmarked ? Icons.star : Icons.star_border,
             color: item.bookmarked ? Colors.amber : null),
-        onPressed: () =>
-            _handleEvent("toggleBookmark", {"value": item.value}),
+        onPressed: () => _handleEvent("toggleBookmark", {"value": item.value}),
       ));
     }
     if (item.danger && item.event.isNotEmpty) {
@@ -277,8 +276,8 @@ class _DynPluginScreenState extends State<DynPluginScreen> {
     }
 
     return ListTile(
-      title:
-          Txt.S(item.text, color: item.muted ? TextColor.onSurfaceVariant : null),
+      title: Txt.S(item.text,
+          color: item.muted ? TextColor.onSurfaceVariant : null),
       subtitle: item.hint.isNotEmpty ? Txt.S(item.hint) : null,
       trailing: trailingIcons.isEmpty
           ? null

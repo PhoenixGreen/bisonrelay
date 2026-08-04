@@ -296,8 +296,8 @@ class _FeedScreenState extends State<FeedScreen> {
         // Still the Content Area, even with no sidebar beside it -- a
         // border around the reading area shouldn't vanish just because the
         // panel did.
-        return ScreenWithChatSideMenu(client,
-            contentAreaFrame(ThemeNotifier.of(context), activeTab()));
+        return ScreenWithChatSideMenu(
+            client, contentAreaFrame(ThemeNotifier.of(context), activeTab()));
       }
       return ScreenWithChatSideMenu(
           client,
