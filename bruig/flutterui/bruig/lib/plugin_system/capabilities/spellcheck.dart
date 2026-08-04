@@ -26,10 +26,15 @@ String _expandTemplate(String template, RegExpMatch match) {
   });
 }
 
-/// Levenshtein (edit) distance between two strings -- a generic string
-/// algorithm with no language-specific knowledge, used to rank dictionary
-/// suggestions for a misspelled word.
-int _editDistance(String a, String b) {
+/// Levenshtein (edit) distance between two strings, abandoned as soon as the
+/// whole working row exceeds [max] -- a generic string algorithm with no
+/// language-specific knowledge, used to rank dictionary suggestions.
+///
+/// The bound matters: this runs over thousands of candidates per misspelled
+/// word, and almost all of them are nowhere near. Returning `max + 1` for
+/// those instead of finishing the matrix is most of why a full dictionary is
+/// affordable at all.
+int _editDistance(String a, String b, int max) {
   if (a == b) return 0;
   if (a.isEmpty) return b.length;
   if (b.isEmpty) return a.length;
@@ -38,19 +43,48 @@ int _editDistance(String a, String b) {
   var curr = List<int>.filled(b.length + 1, 0);
   for (var i = 1; i <= a.length; i++) {
     curr[0] = i;
+    var rowBest = i;
     for (var j = 1; j <= b.length; j++) {
-      var cost = a[i - 1] == b[j - 1] ? 0 : 1;
-      var deletion = prev[j] + 1;
-      var insertion = curr[j - 1] + 1;
-      var substitution = prev[j - 1] + cost;
-      curr[j] =
-          [deletion, insertion, substitution].reduce((x, y) => x < y ? x : y);
+      var cost = a.codeUnitAt(i - 1) == b.codeUnitAt(j - 1) ? 0 : 1;
+      var v = prev[j] + 1;
+      if (curr[j - 1] + 1 < v) v = curr[j - 1] + 1;
+      if (prev[j - 1] + cost < v) v = prev[j - 1] + cost;
+      curr[j] = v;
+      if (v < rowBest) rowBest = v;
     }
+    // Every later row is at least this row's minimum, so once that exceeds
+    // the budget the final distance cannot come back under it.
+    if (rowBest > max) return max + 1;
     var tmp = prev;
     prev = curr;
     curr = tmp;
   }
   return prev[b.length];
+}
+
+/// _letterMask is a 26-bit set of which letters appear in [w], used to reject
+/// candidates before paying for the distance matrix. A single edit changes
+/// the letter *set* by at most two elements (a substitution removes one and
+/// adds another), so more than `2 * maxDistance` differing letters proves the
+/// words are too far apart. It is a necessary condition only -- a candidate
+/// that passes still has to be measured -- so the filter can never lose a
+/// suggestion, only save work.
+int _letterMask(String w) {
+  var mask = 0;
+  for (var i = 0; i < w.length; i++) {
+    var c = w.codeUnitAt(i) - 97; // 'a'
+    if (c >= 0 && c < 26) mask |= 1 << c;
+  }
+  return mask;
+}
+
+int _bitCount(int x) {
+  var n = 0;
+  while (x != 0) {
+    x &= x - 1;
+    n++;
+  }
+  return n;
 }
 
 class _CompiledRule {
@@ -65,10 +99,31 @@ class _CapabilitySpellCheckService extends SpellCheckService {
   Set<String> _words = {};
   List<_CompiledRule> _rules = [];
 
+  // _byLength indexes the dictionary by word length, and _masks caches each
+  // word's letter set. Together they cut the candidates a misspelling is
+  // measured against from the whole dictionary to a few hundred. Built once
+  // per data load, which is rare; a real dictionary is ~120k words and takes
+  // roughly 20ms.
+  final Map<int, List<String>> _byLength = {};
+  final Map<String, int> _masks = {};
+
+  // _suggestionCache memoizes by word. Every keystroke re-checks the whole
+  // composer, so without it the same handful of misspellings is rescored on
+  // each one; with it, only a newly typed word costs anything.
+  final Map<String, List<String>> _suggestionCache = {};
+
   bool get hasData => _words.isNotEmpty || _rules.isNotEmpty;
 
   void updateData(SpellcheckData data) {
     _words = data.words.map((w) => w.toLowerCase()).toSet();
+
+    _byLength.clear();
+    _masks.clear();
+    _suggestionCache.clear();
+    for (var w in _words) {
+      (_byLength[w.length] ??= []).add(w);
+      _masks[w] = _letterMask(w);
+    }
     _rules = data.grammarRules
         .map((r) {
           try {
@@ -116,16 +171,35 @@ class _CapabilitySpellCheckService extends SpellCheckService {
     return spans;
   }
 
+  /// _suggest ranks the dictionary words within [maxDistance] edits of
+  /// [word], nearest first.
+  ///
+  /// Only the candidate *set* is narrowed, never the scoring: every word the
+  /// index offers is still measured exactly, so this returns what comparing
+  /// against the entire dictionary would, just without doing it.
   List<String> _suggest(String word,
       {int maxSuggestions = 3, int maxDistance = 2}) {
+    var cached = _suggestionCache[word];
+    if (cached != null) return cached;
+
+    var wordMask = _letterMask(word);
+    var maskLimit = 2 * maxDistance;
     var scored = <MapEntry<String, int>>[];
-    for (var candidate in _words) {
-      if ((candidate.length - word.length).abs() > maxDistance) continue;
-      var d = _editDistance(word, candidate);
-      if (d <= maxDistance) scored.add(MapEntry(candidate, d));
+
+    for (var len = word.length - maxDistance;
+        len <= word.length + maxDistance;
+        len++) {
+      for (var candidate in _byLength[len] ?? const <String>[]) {
+        if (_bitCount(wordMask ^ _masks[candidate]!) > maskLimit) continue;
+        var d = _editDistance(word, candidate, maxDistance);
+        if (d <= maxDistance) scored.add(MapEntry(candidate, d));
+      }
     }
+
     scored.sort((a, b) => a.value.compareTo(b.value));
-    return scored.take(maxSuggestions).map((e) => e.key).toList();
+    var out = scored.take(maxSuggestions).map((e) => e.key).toList();
+    _suggestionCache[word] = out;
+    return out;
   }
 }
 

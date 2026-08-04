@@ -6,24 +6,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:golib_plugin/definitions.dart';
 import 'package:provider/provider.dart';
 
+import 'plugin_test_support.dart';
+
 // spellcheck_capability_test.dart covers the ordering the spellcheck
 // capability depends on, which no amount of reading the class reveals: it is
 // driven from a ChangeNotifierProxyProvider, i.e. part-way through the build
 // of the very widget that is about to read `configuration`.
-
-// _FakePlugins stands in for PluginManagerModel's capability reporting. The
-// real one needs a running client to populate itself.
-class _FakePlugins extends ChangeNotifier implements PluginManagerModel {
-  Set<PluginCapability> present;
-  _FakePlugins(this.present);
-
-  @override
-  bool hasCapability(PluginCapability capability) =>
-      present.contains(capability);
-
-  @override
-  noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
-}
 
 void main() {
   // The regression this pins: `active` was flipped after `await`ing the word
@@ -36,7 +24,7 @@ void main() {
     var capability = SpellcheckCapability(fetch: () => fetched.future);
 
     // Not awaited: a composer's build does not await this either.
-    capability.update(_FakePlugins({PluginCapability.spellcheckData}));
+    capability.update(FakePlugins({PluginCapability.spellcheckData}));
 
     expect(capability.configuration, isNotNull,
         reason: "a composer building now would get spell check turned off");
@@ -48,7 +36,7 @@ void main() {
 
   test("no provider means no configuration at all", () async {
     var capability = SpellcheckCapability(fetch: () async => throw "unused");
-    await capability.update(_FakePlugins({}));
+    await capability.update(FakePlugins({}));
     expect(capability.configuration, isNull);
   });
 
@@ -57,7 +45,7 @@ void main() {
   test("a failed fetch leaves the capability active", () async {
     var capability =
         SpellcheckCapability(fetch: () async => throw "not loaded");
-    await capability.update(_FakePlugins({PluginCapability.spellcheckData}));
+    await capability.update(FakePlugins({PluginCapability.spellcheckData}));
     expect(capability.configuration, isNotNull);
   });
 
@@ -66,7 +54,7 @@ void main() {
   testWidgets("a composer receives the configuration through the provider",
       (tester) async {
     var fetched = Completer<SpellcheckData>();
-    var plugins = _FakePlugins({PluginCapability.spellcheckData});
+    var plugins = FakePlugins({PluginCapability.spellcheckData});
     SpellCheckConfiguration? seen;
 
     await tester.pumpWidget(MultiProvider(
