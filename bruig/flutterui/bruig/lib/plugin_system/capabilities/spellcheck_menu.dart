@@ -48,11 +48,19 @@ List<ContextMenuButtonItem> spellingContextMenuItems(
 /// Exposed because it answers a question the thesaurus also needs: there is
 /// no point offering synonyms for a word that isn't a word.
 SuggestionSpan? misspellingAt(EditableTextState editableTextState) {
-  var selection = editableTextState.textEditingValue.selection;
-  if (!selection.isValid) return null;
+  var value = editableTextState.textEditingValue;
+  if (!value.selection.isValid) return null;
 
-  var span =
-      editableTextState.findSuggestionSpanAtCursorIndex(selection.extentOffset);
+  // Spell check runs asynchronously, so the results can describe text that
+  // has since been edited -- and their ranges are byte offsets into the text
+  // they were computed for. Acting on a stale one rewrites whatever now
+  // occupies those offsets. Flutter records which text produced them
+  // precisely so this can be checked.
+  var results = editableTextState.spellCheckResults;
+  if (results == null || results.spellCheckedText != value.text) return null;
+
+  var span = editableTextState
+      .findSuggestionSpanAtCursorIndex(value.selection.extentOffset);
   if (span == null || span.suggestions.isEmpty) return null;
   return span;
 }
@@ -69,6 +77,15 @@ void _applyCorrection(
   // adds them, and a read-only or obscured one must not be rewritten.
   if (editableTextState.widget.readOnly ||
       editableTextState.widget.obscureText) {
+    return;
+  }
+  // Re-checked at the moment of the edit, not just when the menu was built:
+  // the text can change in between, and misspellingAt's guard only covered
+  // the first of those.
+  var results = editableTextState.spellCheckResults;
+  if (results == null ||
+      results.spellCheckedText != editableTextState.textEditingValue.text) {
+    editableTextState.hideToolbar();
     return;
   }
 

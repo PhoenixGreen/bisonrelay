@@ -173,36 +173,14 @@ class _CapabilitySpellCheckService extends SpellCheckService {
   }
 
   @override
+  @override
   Future<List<SuggestionSpan>?> fetchSpellCheckSuggestions(
       Locale locale, String text) async {
     if (!hasData) return [];
-
-    var spans = <SuggestionSpan>[];
-
-    for (var rule in _rules) {
-      try {
-        for (var m in rule.pattern.allMatches(text)) {
-          var suggestions = rule.suggest.isEmpty
-              ? <String>[]
-              : [_expandTemplate(rule.suggest, m)];
-          spans.add(SuggestionSpan(
-              TextRange(start: m.start, end: m.end), suggestions));
-        }
-      } catch (_) {
-        // A plugin-supplied pattern that throws at match time (e.g. an
-        // engine-specific construct); skip just that rule.
-      }
-    }
-
-    for (var m in _wordRegExp.allMatches(text)) {
-      var word = m.group(0)!;
-      var lower = word.toLowerCase();
-      if (_words.contains(lower)) continue;
-      spans.add(SuggestionSpan(
-          TextRange(start: m.start, end: m.end), _suggest(lower)));
-    }
-
-    return spans;
+    return [
+      for (var issue in review(text))
+        SuggestionSpan(issue.range, issue.suggestions),
+    ];
   }
 
   /// review returns every problem in [text], for a caller listing them
@@ -243,8 +221,46 @@ class _CapabilitySpellCheckService extends SpellCheckService {
       ));
     }
 
-    issues.sort((a, b) => a.range.start.compareTo(b.range.start));
-    return issues;
+    return _ordered(issues);
+  }
+
+  /// _ordered sorts issues by position and drops any that overlaps one
+  /// already kept.
+  ///
+  /// Both properties are load-bearing rather than tidiness. Flutter takes the
+  /// spans built from these as sorted and disjoint: it binary-searches them
+  /// to find the word under the cursor, and walks them in order to build the
+  /// styled text the underline is drawn into. Handing it an unordered or
+  /// overlapping list makes it find the wrong span -- so a correction splices
+  /// at some other word's offsets -- and corrupts the span tree, which shows
+  /// up as text jumping around while merely editing.
+  ///
+  /// Rules are matched one at a time and words separately, so the natural
+  /// order of production is by rule and then by word, never by position.
+  ///
+  /// Where a spelling issue and a style issue cover the same text -- a
+  /// repeated word that is itself misspelled, say -- the spelling one wins:
+  /// its correction is the concrete one, and a "repeated word" fix that
+  /// duplicates a typo is not worth offering.
+  static List<WritingIssue> _ordered(List<WritingIssue> issues) {
+    issues.sort((a, b) {
+      var byStart = a.range.start.compareTo(b.range.start);
+      if (byStart != 0) return byStart;
+      if (a.kind != b.kind) {
+        return a.kind == WritingIssueKind.spelling ? -1 : 1;
+      }
+      // Shorter first, so a narrow fix is preferred to one swallowing it.
+      return a.range.end.compareTo(b.range.end);
+    });
+
+    var kept = <WritingIssue>[];
+    var lastEnd = -1;
+    for (var issue in issues) {
+      if (issue.range.start < lastEnd) continue;
+      kept.add(issue);
+      lastEnd = issue.range.end;
+    }
+    return kept;
   }
 
   /// _suggest ranks the dictionary words within [maxDistance] edits of

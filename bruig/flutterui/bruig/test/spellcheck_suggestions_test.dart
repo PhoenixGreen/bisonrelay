@@ -138,6 +138,7 @@ void main() {
   });
 
   _reviewTests();
+  _spanOrderTests();
 
   group("grammar rules", () {
     // These run in Dart's regex engine, which is the only place the
@@ -150,18 +151,25 @@ void main() {
       var config = await withRules([
         GrammarRule(r"\b(\w+)([ \t]+)\1\b", "Repeated word", r"$1"),
       ]);
-      var spans = await _check(config, "the the payment");
-      expect(spans, isNotEmpty);
-      expect(spans.first.suggestions, contains("the"));
+      const text = "the the payment";
+      var spans = await _check(config, text);
+      var span = spans.firstWhere(
+          (s) => text.substring(s.range.start, s.range.end) == "the the");
+      expect(span.suggestions, contains("the"));
     });
 
     test("repeated punctuation is caught", () async {
       var config = await withRules([
         GrammarRule(r"([,;:])\1+", "Repeated punctuation", r"$1"),
       ]);
-      var spans = await _check(config, "wait,, then go");
-      expect(spans, isNotEmpty);
-      expect(spans.first.suggestions, contains(","));
+      const text = "wait,, then go";
+      var spans = await _check(config, text);
+      // Located by what it covers rather than by position: spans are ordered
+      // by where they sit in the text, so the words around this one -- which
+      // the test dictionary does not contain -- come first.
+      var span = spans.firstWhere(
+          (s) => text.substring(s.range.start, s.range.end) == ",,");
+      expect(span.suggestions, contains(","));
     });
 
     test("a rule with no suggestion still flags the text", () async {
@@ -179,9 +187,12 @@ void main() {
         GrammarRule("([unclosed", "Broken", ""),
         GrammarRule(r"[ ]{2,}", "Multiple spaces", " "),
       ]);
-      var spans = await _check(config, "hello  world");
-      expect(spans, isNotEmpty);
-      expect(spans.first.suggestions, contains(" "));
+      const text = "hello  world";
+      var spans = await _check(config, text);
+      var span = spans.firstWhere(
+          (s) => text.substring(s.range.start, s.range.end) == "  ");
+      expect(span.suggestions, contains(" "),
+          reason: "the good rule must still fire alongside the broken one");
     });
   });
 }
@@ -237,5 +248,76 @@ void _reviewTests() {
     for (var issue in capability.review(text)) {
       expect(text.substring(issue.range.start, issue.range.end), issue.text);
     }
+  });
+}
+
+// Flutter treats the spans returned by fetchSpellCheckSuggestions as sorted
+// and disjoint: it binary-searches them for the word under the cursor, and
+// walks them in order to build the styled text the underline draws into.
+// Handing it an unordered or overlapping list makes it find the wrong span --
+// so applying a correction rewrites some other word -- and corrupts the span
+// tree, which showed up as text jumping around while merely editing.
+//
+// Rules are matched one at a time and words separately, so the natural order
+// of production is by rule and then by word, and never by position. These
+// pin the ordering that has to be imposed on top.
+void _spanOrderTests() {
+  var rules = [
+    GrammarRule(r"[ ]{2,}", "Multiple spaces", " "),
+    GrammarRule(r"[ \t]+([,.!?;:])", "Space before punctuation", r"$1"),
+    GrammarRule(r"\b(\w+)([ \t]+)\1\b", "Repeated word", r"$1"),
+  ];
+
+  Future<List<SuggestionSpan>> spansFor(String text) async {
+    var capability = SpellcheckCapability(
+        fetch: () async => SpellcheckData(_dictionary, rules));
+    await capability.update(FakePlugins({PluginCapability.spellcheckData}));
+    var spans = await capability.configuration!.spellCheckService!
+        .fetchSpellCheckSuggestions(const Locale("en", "US"), text);
+    return spans ?? [];
+  }
+
+  test("spans are sorted by position", () async {
+    // A style issue late in the text and a misspelling early in it: emitted
+    // rules-first, that is exactly backwards.
+    var spans = await spansFor("recieve the payment  now ,");
+    var starts = spans.map((s) => s.range.start).toList();
+    var sorted = [...starts]..sort();
+    expect(starts, sorted, reason: "spans came back out of order: $starts");
+  });
+
+  test("spans never overlap", () async {
+    // "teh teh" is both a repeated word and two misspellings, so the naive
+    // result covers the same characters three times over.
+    var spans = await spansFor("teh teh payment");
+    for (var i = 1; i < spans.length; i++) {
+      expect(spans[i].range.start, greaterThanOrEqualTo(spans[i - 1].range.end),
+          reason: "span $i overlaps its predecessor: "
+              "${spans.map((s) => '${s.range.start}-${s.range.end}').toList()}");
+    }
+  });
+
+  test("a misspelling wins over a style rule covering it", () async {
+    var spans = await spansFor("teh teh payment");
+    // The first span should be the misspelled word alone, offering a real
+    // correction -- not the repeated-word rule, whose fix would just
+    // duplicate the typo.
+    expect(spans.first.range.end, 3);
+    expect(spans.first.suggestions, contains("the"));
+  });
+
+  // The symptom as reported: correcting one issue rewrote different text.
+  // With ordered, disjoint spans every range addresses exactly its own word.
+  test("every span addresses the text it describes", () async {
+    const text = "recieve the payment  now , teh teh";
+    var spans = await spansFor(text);
+    expect(spans, isNotEmpty);
+    for (var span in spans) {
+      expect(span.range.start, lessThan(span.range.end));
+      expect(span.range.end, lessThanOrEqualTo(text.length));
+    }
+    // And the first one really is the misspelling at offset 0.
+    expect(text.substring(spans.first.range.start, spans.first.range.end),
+        "recieve");
   });
 }
