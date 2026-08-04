@@ -345,3 +345,106 @@ func TestNormalizeHost(t *testing.T) {
 		}
 	}
 }
+
+// TestImportRejectsZipBomb covers the guard that replaced a blanket size
+// cap. A bomb is defined by how far it expands, not by how big it is: this
+// archive is a few KB on disk and would write 40MB of zeros, which no
+// absolute limit small enough to be useful would catch without also
+// rejecting legitimate plugins that merely ship data.
+func TestImportRejectsZipBomb(t *testing.T) {
+	root := t.TempDir()
+	m := newTestManager(t, root)
+
+	zipPath := filepath.Join(t.TempDir(), "bomb.zip")
+	f, err := os.Create(zipPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	zw := zip.NewWriter(f)
+	manifestBytes, _ := json.Marshal(testManifest("bomb"))
+	w, err := zw.Create("bomb/manifest.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.Write(manifestBytes); err != nil {
+		t.Fatal(err)
+	}
+	// Zeros compress to almost nothing, which is the whole trick.
+	w, err = zw.Create("bomb/payload.bin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	zeros := make([]byte, 1024*1024)
+	for i := 0; i < 40; i++ {
+		if _, err := w.Write(zeros); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	fi, err := os.Stat(zipPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("bomb is %d bytes on disk, expands to ~40MB", fi.Size())
+
+	if _, err := m.Import(zipPath); err == nil {
+		t.Error("expected a zip bomb to be rejected")
+	} else {
+		t.Logf("rejected: %v", err)
+	}
+}
+
+// TestImportAllowsADataBearingPlugin is the other half of the same change:
+// the limit must not reject a plugin that is simply large. This one carries
+// 8MB of incompressible content -- roughly what a dictionary costs -- at a
+// ratio no bomb detector should object to.
+func TestImportAllowsADataBearingPlugin(t *testing.T) {
+	root := t.TempDir()
+	m := newTestManager(t, root)
+
+	zipPath := filepath.Join(t.TempDir(), "big.zip")
+	f, err := os.Create(zipPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	zw := zip.NewWriter(f)
+	manifestBytes, _ := json.Marshal(testManifest("big"))
+	w, err := zw.Create("big/manifest.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.Write(manifestBytes); err != nil {
+		t.Fatal(err)
+	}
+	w, err = zw.Create("big/plugin.wasm")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Pseudo-random bytes so the archive cannot compress meaningfully,
+	// which is what a real wasm module looks like to a zip.
+	payload := make([]byte, 8*1024*1024)
+	seed := uint32(1)
+	for i := range payload {
+		seed = seed*1664525 + 1013904223
+		payload[i] = byte(seed >> 24)
+	}
+	if _, err := w.Write(payload); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := m.Import(zipPath); err != nil {
+		t.Errorf("a large but honest plugin was rejected: %v", err)
+	}
+}

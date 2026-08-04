@@ -55,8 +55,29 @@ const (
 	// client/pluginmgr/capabilities for the contract.
 	CapabilityThesaurus = "thesaurus"
 
-	maxManifestSize  = 64 * 1024
-	maxImportZipSize = 5 * 1024 * 1024
+	maxManifestSize = 64 * 1024
+
+	// maxImportZipSize caps the archive file itself.
+	//
+	// It has to leave real room: Go's WebAssembly runtime costs about 1.8MB
+	// before a plugin does anything at all, so a limit sized for "a bit of
+	// code" rules out every plugin that ships data -- a dictionary, an icon
+	// set, a model. This was 5MB, which the bundled RSS and link-card
+	// plugins already sat at 80-86% of.
+	maxImportZipSize = 32 * 1024 * 1024
+
+	// maxImportUnpackedSize caps what the archive expands to. Separate from
+	// the figure above, which it used to share: an archive is allowed to be
+	// meaningfully larger unpacked than packed -- that is what compression
+	// is -- and conflating the two capped every plugin at its compressed
+	// size for no stated reason.
+	maxImportUnpackedSize = 128 * 1024 * 1024
+
+	// maxImportCompressionRatio is the real defence against a zip bomb,
+	// which an absolute cap only ever approximates: a bomb is defined by
+	// expanding wildly, not by being large. Legitimate plugin archives are
+	// mostly an already-compact wasm module and come in far under 10:1.
+	maxImportCompressionRatio = 100
 )
 
 var knownRendererKinds = map[string]bool{
@@ -508,7 +529,8 @@ func (m *Manager) extractZipForImport(zipPath string) (Manifest, string, func(),
 		return Manifest{}, "", nil, fmt.Errorf("unable to stat zip: %w", err)
 	}
 	if fi.Size() > maxImportZipSize {
-		return Manifest{}, "", nil, fmt.Errorf("plugin zip too large (%d bytes)", fi.Size())
+		return Manifest{}, "", nil, fmt.Errorf("plugin zip is %s, over the %s limit",
+			humanSize(fi.Size()), humanSize(maxImportZipSize))
 	}
 
 	r, err := zip.OpenReader(zipPath)
@@ -541,9 +563,18 @@ func (m *Manager) extractZipForImport(zipPath string) (Manifest, string, func(),
 		}
 
 		totalSize += int64(f.UncompressedSize64)
-		if totalSize > maxImportZipSize {
+		if totalSize > maxImportUnpackedSize {
 			cleanup()
-			return Manifest{}, "", nil, fmt.Errorf("plugin zip contents exceed size limit")
+			return Manifest{}, "", nil, fmt.Errorf(
+				"plugin contents unpack to over %s", humanSize(maxImportUnpackedSize))
+		}
+		// Checked as we go rather than at the end, so a bomb is refused
+		// before the rest of it is written to disk.
+		if fi.Size() > 0 && totalSize/fi.Size() > maxImportCompressionRatio {
+			cleanup()
+			return Manifest{}, "", nil, fmt.Errorf(
+				"plugin contents expand more than %dx, which is not a plugin",
+				maxImportCompressionRatio)
 		}
 
 		if err := os.MkdirAll(filepath.Dir(destPath), 0o700); err != nil {
@@ -587,8 +618,20 @@ func extractZipFile(f *zip.File, destPath string) error {
 	}
 	defer out.Close()
 
-	_, err = io.Copy(out, io.LimitReader(rc, maxImportZipSize))
+	_, err = io.Copy(out, io.LimitReader(rc, maxImportUnpackedSize))
 	return err
+}
+
+// humanSize renders a byte count for an error a user will read.
+func humanSize(n int64) string {
+	switch {
+	case n >= 1024*1024:
+		return fmt.Sprintf("%.1fMB", float64(n)/(1024*1024))
+	case n >= 1024:
+		return fmt.Sprintf("%.1fKB", float64(n)/1024)
+	default:
+		return fmt.Sprintf("%d bytes", n)
+	}
 }
 
 // findManifestRoot locates the directory within stageDir that directly
