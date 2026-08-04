@@ -16,13 +16,23 @@ import 'package:golib_plugin/golib_plugin.dart';
 /// and apostrophes (so contractions like "don't" are one token).
 final _wordRegExp = RegExp(r"[A-Za-z']+");
 
-/// Expands `$1`, `$2`, etc. in [template] with [match]'s capture groups, for
-/// a grammar rule's suggested replacement.
+/// Expands a grammar rule's replacement template against [match]:
+///
+///   `$1`, `$2`   the capture group, as matched.
+///   `$U1`, `$U2` the capture group with its first letter upper-cased.
+///
+/// The `$U` form exists for the rules whose whole point is a change of case
+/// -- capitalising the start of a sentence -- which a literal template
+/// cannot express, since the letter to capitalise is whatever was typed.
+/// Spelled `$U1` rather than a backslash escape because these templates
+/// arrive as JSON, where a backslash is already the string escape.
 String _expandTemplate(String template, RegExpMatch match) {
-  return template.replaceAllMapped(RegExp(r'\$(\d+)'), (m) {
-    var idx = int.tryParse(m.group(1)!);
+  return template.replaceAllMapped(RegExp(r'\$(U?)(\d+)'), (m) {
+    var idx = int.tryParse(m.group(2)!);
     if (idx == null || idx > match.groupCount) return m.group(0)!;
-    return match.group(idx) ?? '';
+    var value = match.group(idx) ?? '';
+    if (m.group(1) != 'U' || value.isEmpty) return value;
+    return value[0].toUpperCase() + value.substring(1);
   });
 }
 
@@ -274,18 +284,40 @@ class _CapabilitySpellCheckService extends SpellCheckService {
   /// Rules are matched one at a time and words separately, so the natural
   /// order of production is by rule and then by word, never by position.
   ///
-  /// Where a spelling issue and a style issue cover the same text -- a
-  /// repeated word that is itself misspelled, say -- the spelling one wins:
-  /// its correction is the concrete one, and a "repeated word" fix that
-  /// duplicates a typo is not worth offering.
+  /// Overlaps are resolved by preferring the spelling issue, except where a
+  /// style rule covers exactly the same characters, in which case the style
+  /// rule wins.
+  ///
+  /// The exception is the important half, and an earlier version had only
+  /// the rule and not the exception. For "alot" and "i" a style rule matched
+  /// the identical span, and preferring spelling threw its answer away: the
+  /// rule knows the fix is "a lot" or "I", where a spelling suggestion is
+  /// only ever the nearest dictionary words -- for "alot", "allot" and
+  /// "aloft".
+  ///
+  /// Everywhere else spelling wins, and it has to win in both directions.
+  /// A repeated-word rule *contains* the misspellings inside it, and its fix
+  /// would merely duplicate the typo. A sentence-capital rule is *contained*
+  /// by the first word, one character wide, and would otherwise hide a
+  /// misspelling of that word behind a note about its capital.
   static List<WritingIssue> _ordered(List<WritingIssue> issues) {
+    // A style rule is preferred only when it lines up exactly with something
+    // the dictionary also flagged.
+    var spellingRanges = {
+      for (var i in issues)
+        if (i.kind == WritingIssueKind.spelling)
+          "${i.range.start}:${i.range.end}",
+    };
+    int rank(WritingIssue i) {
+      if (i.kind == WritingIssueKind.spelling) return 1;
+      return spellingRanges.contains("${i.range.start}:${i.range.end}") ? 0 : 2;
+    }
+
     issues.sort((a, b) {
       var byStart = a.range.start.compareTo(b.range.start);
       if (byStart != 0) return byStart;
-      if (a.kind != b.kind) {
-        return a.kind == WritingIssueKind.spelling ? -1 : 1;
-      }
-      // Shorter first, so a narrow fix is preferred to one swallowing it.
+      var byRank = rank(a).compareTo(rank(b));
+      if (byRank != 0) return byRank;
       return a.range.end.compareTo(b.range.end);
     });
 

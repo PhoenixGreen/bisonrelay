@@ -152,6 +152,7 @@ void main() {
   _reviewTests();
   _spanOrderTests();
   _rankingTests();
+  _fixPreferenceTests();
 
   group("grammar rules", () {
     // These run in Dart's regex engine, which is the only place the
@@ -412,5 +413,88 @@ void _rankingTests() {
     var spans = await capability.configuration!.spellCheckService!
         .fetchSpellCheckSuggestions(const Locale("en", "US"), "recieved");
     expect(spans!.single.suggestions, contains("received"));
+  });
+}
+
+// Four reported failures, all about which fix reaches the user rather than
+// whether one was found. Kept as named cases because each had its own cause.
+void _fixPreferenceTests() {
+  // "alot" and "i" are not dictionary words, so each produces a spelling
+  // issue covering exactly the same characters as the style rule for it.
+  const words = ["a", "lot", "allot", "aloft", "the", "payment"];
+  var rules = [
+    GrammarRule(r"\balot\b", '"a lot" is two words', "a lot"),
+    GrammarRule(r"\bi\b", '"I" is capitalised', "I"),
+    GrammarRule(r"([!?])\1{2,}", "Excessive punctuation", r"$1"),
+    GrammarRule(r"(^|[.!?]\s+)([a-z])", "Sentence should start with a capital",
+        r"$1$U2"),
+    GrammarRule(r"\b(\w+)([ \t]+)\1\b", "Repeated word", r"$1"),
+  ];
+
+  Future<List<WritingIssue>> reviewOf(String text) async {
+    var capability = SpellcheckCapability(
+        fetch: () async => SpellcheckData(words, const [], rules));
+    await capability.update(FakePlugins({PluginCapability.spellcheckData}));
+    return capability.review(text);
+  }
+
+  // Reported: the "a lot" fix disappeared. A spelling issue covered the same
+  // span and was being preferred, so the offer became "allot"/"aloft" --
+  // the nearest dictionary words, and not what anyone meant.
+  test("a style rule beats a spelling issue on the same span", () async {
+    var issues = await reviewOf("thanks alot");
+    var issue = issues.firstWhere((i) => i.text == "alot");
+    expect(issue.kind, WritingIssueKind.style);
+    expect(issue.suggestions, contains("a lot"));
+  });
+
+  test('"i" is offered "I"', () async {
+    var issues = await reviewOf("payment i sent");
+    var issue = issues.firstWhere((i) => i.text == "i");
+    expect(issue.suggestions, contains("I"));
+  });
+
+  // The other half of the preference, which must not regress: a wide style
+  // span still loses to the narrower spelling issues inside it, since the
+  // repeated-word fix would only duplicate the typo.
+  test("a wide style rule loses to the misspellings inside it", () async {
+    var issues = await reviewOf("teh teh");
+    expect(issues.map((i) => i.text), everyElement(isNot("teh teh")));
+    expect(issues.where((i) => i.text == "teh"), hasLength(2));
+  });
+
+  // Reported: no way to correct "!!!". The rule flagged it and offered
+  // nothing, on the grounds that there was no single right fix -- but there
+  // is: whichever mark was actually used.
+  test("excessive punctuation can be corrected", () async {
+    var issues = await reviewOf("really!!!");
+    var issue = issues.firstWhere((i) => i.message == "Excessive punctuation");
+    expect(issue.suggestions, contains("!"));
+    expect(
+        (await reviewOf("really???"))
+            .firstWhere((i) => i.message == "Excessive punctuation")
+            .suggestions,
+        contains("?"));
+  });
+
+  // Reported: no capitalisation check. The fix needs the letter that was
+  // typed upper-cased, which a literal template cannot express -- hence $U.
+  test("a sentence start is offered its capital", () async {
+    var issues = await reviewOf("the payment. it cleared");
+    var issue = issues.firstWhere((i) =>
+        i.message == "Sentence should start with a capital" &&
+        i.text.contains("i"));
+    expect(issue.suggestions.single, ". I");
+  });
+
+  test(r"$U leaves the rest of a group alone", () async {
+    var issues = await reviewOf("payment. the rest");
+    var issue = issues.firstWhere((i) =>
+        i.message == "Sentence should start with a capital" &&
+        // The rule fires at the very start too, so take the one
+        // after the full stop.
+        i.range.start > 0);
+    // Only the captured letter is raised, not the whole match.
+    expect(issue.suggestions.single, ". T");
   });
 }
