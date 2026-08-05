@@ -13,7 +13,16 @@ import 'plugin_test_support.dart';
 // a toolbar builder that was never set -- so the underline pointed at a
 // problem the menu could not fix.
 
-const _dictionary = ["the", "three", "there", "they", "payment", "happy"];
+const _dictionary = [
+  "the",
+  "three",
+  "there",
+  "they",
+  "payment",
+  "happy",
+  "it",
+  "cleared"
+];
 
 /// _menuFor builds a composer wired the way the real ones are, puts the
 /// caret inside [word], and returns the labels its context menu offers.
@@ -22,9 +31,15 @@ Future<List<String>> _menuFor(
   String text,
   int caretOffset, {
   bool thesaurus = false,
+  List<GrammarRule> rules = const [],
+  // selectWord mimics a desktop right-click, which selects the word under
+  // the pointer rather than merely placing a caret. That difference is what
+  // made a flagged letter unclickable while the punctuation beside it
+  // worked, so it has to be expressible here.
+  int? selectTo,
 }) async {
   var capability = SpellcheckCapability(
-      fetch: () async => SpellcheckData(_dictionary, const [], const []));
+      fetch: () async => SpellcheckData(_dictionary, const [], rules));
   await capability.update(FakePlugins({PluginCapability.spellcheckData}));
 
   var labels = <String>[];
@@ -72,7 +87,9 @@ Future<List<String>> _menuFor(
   var spans = await capability.configuration!.spellCheckService!
       .fetchSpellCheckSuggestions(const Locale("en", "US"), text);
   state.spellCheckResults = SpellCheckResults(text, spans ?? []);
-  controller.selection = TextSelection.collapsed(offset: caretOffset);
+  controller.selection = selectTo == null
+      ? TextSelection.collapsed(offset: caretOffset)
+      : TextSelection(baseOffset: caretOffset, extentOffset: selectTo);
   await tester.pump();
 
   state.showToolbar();
@@ -103,6 +120,44 @@ void main() {
   testWidgets("a misspelled word is not offered synonyms", (tester) async {
     var labels = await _menuFor(tester, "thh", 1, thesaurus: true);
     expect(labels, isNot(contains("Synonyms")));
+  });
+
+  // Reported: right-clicking the uncapitalised letter offered nothing, while
+  // right-clicking the full stop at the end of the previous sentence worked.
+  // Two causes, both fixed here: the rule's span used to begin at that full
+  // stop, and the lookup tested a single cursor offset when a right-click
+  // hands it a whole selected word.
+  group("a flagged letter mid-text", () {
+    var capitalRule = [
+      GrammarRule(r"(?<=^|[.!?]\s)([a-z])",
+          "Sentence should start with a capital", r"$U1"),
+    ];
+
+    testWidgets("is clickable on the letter itself", (tester) async {
+      // "the payment. it cleared" -- right-click on "it" selects [13,15].
+      var labels = await _menuFor(tester, "the payment. it cleared", 13,
+          rules: capitalRule, selectTo: 15);
+      expect(labels, contains("I"),
+          reason: "clicking the flagged letter offered nothing");
+    });
+
+    testWidgets("is clickable with a plain caret too", (tester) async {
+      var labels = await _menuFor(tester, "the payment. it cleared", 13,
+          rules: capitalRule);
+      expect(labels, contains("I"));
+    });
+
+    testWidgets("flags only the letter, not the punctuation before it",
+        (tester) async {
+      var capability = SpellcheckCapability(
+          fetch: () async =>
+              SpellcheckData(_dictionary, const [], capitalRule));
+      await capability.update(FakePlugins({PluginCapability.spellcheckData}));
+      const text = "the payment. it cleared";
+      var issue = capability.review(text).firstWhere((i) => i.range.start > 0);
+      expect(text.substring(issue.range.start, issue.range.end), "i",
+          reason: "the underline should sit on the letter alone");
+    });
   });
 
   testWidgets("a correctly spelled word offers no corrections", (tester) async {

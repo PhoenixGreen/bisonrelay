@@ -49,7 +49,8 @@ List<ContextMenuButtonItem> spellingContextMenuItems(
 /// no point offering synonyms for a word that isn't a word.
 SuggestionSpan? misspellingAt(EditableTextState editableTextState) {
   var value = editableTextState.textEditingValue;
-  if (!value.selection.isValid) return null;
+  var selection = value.selection;
+  if (!selection.isValid) return null;
 
   // Spell check runs asynchronously, so the results can describe text that
   // has since been edited -- and their ranges are byte offsets into the text
@@ -59,10 +60,29 @@ SuggestionSpan? misspellingAt(EditableTextState editableTextState) {
   var results = editableTextState.spellCheckResults;
   if (results == null || results.spellCheckedText != value.text) return null;
 
-  var span = editableTextState
-      .findSuggestionSpanAtCursorIndex(value.selection.extentOffset);
-  if (span == null || span.suggestions.isEmpty) return null;
-  return span;
+  // Any span the selection touches, rather than one containing a single
+  // cursor offset.
+  //
+  // Flutter's own findSuggestionSpanAtCursorIndex takes one offset, which is
+  // enough for a caret but not for a right-click: on desktop that selects
+  // the word under the pointer first, so the offset to test with is a whole
+  // range, and using either end of it alone misses spans that overlap the
+  // word without containing that end. A flagged word whose span does not
+  // line up with word boundaries -- a missing capital, a space before
+  // punctuation -- then offered nothing when clicked directly, while
+  // clicking the punctuation beside it worked.
+  var start = selection.start;
+  var end = selection.end;
+  for (var span in results.suggestionSpans) {
+    if (span.suggestions.isEmpty) continue;
+    // Half-open overlap, except for a collapsed caret, which is allowed to
+    // sit on either boundary of the span it belongs to.
+    var touches = selection.isCollapsed
+        ? span.range.start <= start && start <= span.range.end
+        : span.range.start < end && span.range.end > start;
+    if (touches) return span;
+  }
+  return null;
 }
 
 /// _applyCorrection replaces the flagged span, mirroring what Material's own
