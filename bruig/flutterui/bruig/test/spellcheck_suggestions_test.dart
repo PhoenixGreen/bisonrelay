@@ -154,6 +154,7 @@ void main() {
   _rankingTests();
   _fixPreferenceTests();
   _lookaroundRuleTests();
+  _confusionRuleTests();
 
   group("grammar rules", () {
     // These run in Dart's regex engine, which is the only place the
@@ -596,5 +597,91 @@ void _lookaroundRuleTests() {
     expect(
         await reviewWith([pronounI], "i think so", words: words), isNotEmpty);
     expect(await reviewWith([pronounI], "i'm going", words: words), isNotEmpty);
+  });
+}
+
+// The plugin's its/it's and capitalisation rules use lookarounds, so RE2
+// cannot compile them and only the app ever runs them.
+void _confusionRuleTests() {
+  var capital = GrammarRule(r"(?<=^|[.!?]\s|\n)([a-z])([a-z0-9']*)",
+      "Sentence should start with a capital", r"$U1$2");
+  var itsVerb = GrammarRule(
+      r"\bits\s+(a|an|the|not|been|going|getting|coming|becoming|always|never|just|only|still|already)\b",
+      r"""Should be "it's $1""",
+      r"it's $1");
+  var itsOwn = GrammarRule(
+      r"\bit's\s+(own|owner)\b", r"""Should be "its $1""", r"its $1");
+
+  // The dictionary has to carry the words these sentences use. Without
+  // them each word is also a spelling issue, and a spelling issue correctly
+  // outranks a style rule covering the same text -- so the rule under test
+  // would be filtered out for a reason that is not a bug.
+  const words = [
+    "its",
+    "it's",
+    "going",
+    "to",
+    "rain",
+    "a",
+    "shame",
+    "the",
+    "channel",
+    "lost",
+    "funding",
+    "balance",
+    "is",
+    "low",
+    "owner",
+    "has",
+    "more",
+    "meaning",
+    "clear",
+    "own",
+    "fault",
+    "that's",
+    "plan",
+  ];
+
+  Future<List<WritingIssue>> styleOf(
+      List<GrammarRule> rules, String text) async {
+    var capability = SpellcheckCapability(
+        fetch: () async => SpellcheckData(words, const [], rules));
+    await capability.update(FakePlugins({PluginCapability.spellcheckData}));
+    return capability
+        .review(text)
+        .where((i) => i.kind == WritingIssueKind.style)
+        .toList();
+  }
+
+  // Reported: the fix for "that's" was offered as "That", which reads as a
+  // proposal to drop the "'s" rather than to capitalise the word.
+  test("a capital fix keeps the rest of the word", () async {
+    var issues = await styleOf([capital], "that's the plan");
+    expect(issues.first.text, "that's");
+    expect(issues.first.suggestions.single, "That's");
+  });
+
+  test("its is corrected only where a possessive cannot stand", () async {
+    expect(await styleOf([itsVerb], "its going to rain"), isNotEmpty);
+    expect(await styleOf([itsVerb], "its a shame"), isNotEmpty);
+    expect((await styleOf([itsVerb], "its going to rain")).single.suggestions,
+        contains("it's going"));
+
+    // A possessive before an ordinary noun is right, and -ing nouns are the
+    // trap: "its funding" is correct and an earlier rule flagged it.
+    for (var ok in [
+      "the channel lost its funding",
+      "its balance is low",
+      "its owner has more",
+      "its meaning is clear",
+    ]) {
+      expect(await styleOf([itsVerb], ok), isEmpty, reason: 'flagged "$ok"');
+    }
+  });
+
+  test("it's is corrected before a noun it cannot own", () async {
+    expect((await styleOf([itsOwn], "it's own fault")).single.suggestions,
+        contains("its own"));
+    expect(await styleOf([itsOwn], "it's going to rain"), isEmpty);
   });
 }

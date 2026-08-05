@@ -1,5 +1,6 @@
 import 'package:bruig/plugin_system/plugin_system.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:golib_plugin/definitions.dart';
 import 'package:provider/provider.dart';
@@ -53,6 +54,7 @@ Future<EditableTextState> _pumpField(
 }
 
 void main() {
+  _recoveryTests();
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
   // A draft reopened, or a reply being edited: the text was there before the
@@ -117,5 +119,42 @@ void main() {
     var controller = TextEditingController(text: "the paymnt cleared");
     var state = await _pumpField(tester, capability, prefs, controller);
     expect(state.spellCheckResults?.suggestionSpans ?? const [], isEmpty);
+  });
+}
+
+// Reported: clicking a flagged word made its underline vanish. A field can
+// lose its results without this scope doing anything -- clicking into one is
+// enough for its EditableText to be rebuilt -- and a scope that trusted its
+// own memory of the last hand-off concluded there was nothing to do.
+void _recoveryTests() {
+  testWidgets("results lost by the field are put back", (tester) async {
+    var (capability, prefs) = await _capability();
+    var controller = TextEditingController(text: "the paymnt cleared");
+    var state = await _pumpField(tester, capability, prefs, controller);
+    expect(state.spellCheckResults!.suggestionSpans, isNotEmpty);
+
+    // What a rebuilt EditableText looks like from outside, followed by the
+    // kind of interaction that caused it -- a click, which moves the caret.
+    state.spellCheckResults = null;
+    controller.selection = const TextSelection.collapsed(offset: 5);
+    await tester.pumpAndSettle();
+
+    expect(state.spellCheckResults?.suggestionSpans ?? const [], isNotEmpty,
+        reason: "the underline did not come back");
+  });
+
+  testWidgets("results for stale text are replaced", (tester) async {
+    var (capability, prefs) = await _capability();
+    var controller = TextEditingController(text: "the paymnt cleared");
+    var state = await _pumpField(tester, capability, prefs, controller);
+
+    // Results describing text the field no longer holds address the wrong
+    // offsets, so they must not be left in place.
+    state.spellCheckResults = const SpellCheckResults("something else", []);
+    controller.selection = const TextSelection.collapsed(offset: 5);
+    await tester.pumpAndSettle();
+
+    expect(state.spellCheckResults!.spellCheckedText, controller.text);
+    expect(state.spellCheckResults!.suggestionSpans, isNotEmpty);
   });
 }

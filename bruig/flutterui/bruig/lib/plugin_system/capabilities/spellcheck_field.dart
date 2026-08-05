@@ -33,11 +33,40 @@ class SpellcheckedFieldScope extends StatefulWidget {
 }
 
 class _SpellcheckedFieldScopeState extends State<SpellcheckedFieldScope> {
-  // _lastApplied is a cheap description of what the field was last given.
-  // Recomputing is close to free, but assigning and rebuilding on every
-  // notification would fight the user's typing, so the work only happens
-  // when the answer has actually moved.
-  String? _lastApplied;
+  // The field's own controller, once found. Listened to so this scope does
+  // not depend on something else in the tree happening to rebuild it: a
+  // field can lose its results at moments -- being clicked into -- that
+  // nothing else here would notice.
+  TextEditingController? _watched;
+
+  @override
+  void dispose() {
+    _watched?.removeListener(_onFieldChanged);
+    super.dispose();
+  }
+
+  void _onFieldChanged() {
+    if (!mounted) return;
+    var capability = context.read<SpellcheckCapability?>();
+    if (capability == null) return;
+    // After the frame: a change arriving mid-build cannot be acted on until
+    // the build finishes.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _refresh(capability);
+    });
+  }
+
+  /// _signature describes a set of results, for deciding whether the field
+  /// already has what it should.
+  ///
+  /// Compared against what the field *holds*, never against what this scope
+  /// last handed it. Remembering the last hand-off looks equivalent and is
+  /// not: a field can lose its results without this scope doing anything --
+  /// clicking into one is enough to have its EditableText rebuilt -- and a
+  /// scope trusting its own memory then decides there is nothing to do and
+  /// leaves the text unmarked.
+  static String _signature(String text, Iterable<TextRange> ranges) =>
+      "$text|${ranges.map((r) => "${r.start}-${r.end}").join(",")}";
 
   @override
   Widget build(BuildContext context) {
@@ -56,12 +85,22 @@ class _SpellcheckedFieldScopeState extends State<SpellcheckedFieldScope> {
     var editable = _editableBelow(context);
     if (editable == null) return;
 
+    var controller = editable.widget.controller;
+    if (!identical(controller, _watched)) {
+      _watched?.removeListener(_onFieldChanged);
+      _watched = controller..addListener(_onFieldChanged);
+    }
+
     var text = editable.textEditingValue.text;
     var issues = capability.review(text);
-    var signature = "${capability.configuration != null}|$text|"
-        "${issues.map((i) => "${i.range.start}-${i.range.end}").join(",")}";
-    if (signature == _lastApplied) return;
-    _lastApplied = signature;
+
+    var current = editable.spellCheckResults;
+    var have = current == null
+        ? null
+        : _signature(current.spellCheckedText,
+            current.suggestionSpans.map((s) => s.range));
+    var want = _signature(text, issues.map((i) => i.range));
+    if (have == want) return;
 
     editable.spellCheckResults = SpellCheckResults(text, [
       for (var issue in issues) SuggestionSpan(issue.range, issue.suggestions),
