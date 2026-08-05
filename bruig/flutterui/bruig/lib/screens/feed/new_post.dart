@@ -160,7 +160,22 @@ class _NewPostScreenState extends State<NewPostScreen> {
     });
   }
 
+  // _lastContent is what contentChanged last acted on, so a notification
+  // that did not actually change the text can be ignored.
+  String _lastContent = "";
+
   void contentChanged() async {
+    // A TextEditingController notifies on selection changes as well as
+    // edits, and merely placing the caret cannot change the post's size.
+    //
+    // Skipping those is not only an optimisation. Right-clicking selects the
+    // word under the pointer, so every context menu opened here used to
+    // schedule a size estimate whose setState, arriving half a second later,
+    // rebuilt the editor and tore the open menu down again -- visible as the
+    // menu blinking as the pointer moved onto it.
+    if (contentCtrl.text == _lastContent) return;
+    _lastContent = contentCtrl.text;
+
     post.content = contentCtrl.text;
     recalcEstimatedSize();
   }

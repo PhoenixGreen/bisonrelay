@@ -568,6 +568,21 @@ void _lookaroundRuleTests() {
     }
   });
 
+  // Reported from a two-paragraph post: the first word of the second
+  // paragraph was not flagged. The lookbehind sees exactly the characters
+  // immediately before the letter, which between paragraphs is the second of
+  // two newlines -- not a full stop and a space.
+  test("a paragraph start is treated as a sentence start", () async {
+    var capital = GrammarRule(r"(?<=^|[.!?]\s|\n)([a-z])",
+        "Sentence should start with a capital", r"$U1");
+    const text = "the deadline entirely.\n\nthat's the plan";
+    var issues = await reviewWith([capital], text,
+        words: const ["the", "deadline", "entirely", "that's", "plan"]);
+    expect(issues.where((i) => i.range.start > 0), isNotEmpty,
+        reason: "the second paragraph's first letter was not flagged");
+    expect(issues.last.suggestions.single, "T");
+  });
+
   test('the "I" rule skips initialisms', () async {
     // A dictionary carrying the words used, so a spelling issue does not
     // legitimately outrank the rule under test -- as it would for "i'm"
