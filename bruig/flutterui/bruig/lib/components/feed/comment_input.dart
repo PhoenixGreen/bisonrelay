@@ -257,83 +257,86 @@ class _CommentInputState extends State<CommentInput> {
                   const SizedBox(width: 5),
                 ],
                 Expanded(
-                    child: TextField(
-                  onChanged: (value) {
-                    // Check if user is typing an emoji code (:foo:).
-                    TypingEmojiSelModel.of(context, listen: false)
-                        .maybeSelectEmojis(controller);
-                  },
-                  autofocus: isScreenSmall ? false : true,
-                  focusNode: widget.inputFocusNode.inputFocusNode,
-                  controller: controller,
-                  minLines: 1,
-                  maxLines: null,
-                  contextMenuBuilder: (BuildContext context,
-                          EditableTextState editableTextState) =>
-                      AdaptiveTextSelectionToolbar.editable(
-                    anchors: editableTextState.contextMenuAnchors,
-                    clipboardStatus: ClipboardStatus.pasteable,
-                    onCopy: null,
-                    onCut: null,
-                    onLiveTextInput: null,
-                    onLookUp: null,
-                    onSearchWeb: null,
-                    onSelectAll: null,
-                    onShare: null,
-                    onPaste: pasteEvent,
-                  ),
-                  style: theme.textStyleFor(context, TextSize.medium, null),
-                  keyboardType: TextInputType.multiline,
-                  key: Provider.of<SpellcheckCapability>(context).fieldKey,
-                  spellCheckConfiguration:
-                      Provider.of<SpellcheckCapability>(context).configuration,
-                  decoration: themedInputDecoration(
-                    context,
-                    hintText: widget.hintText,
-                    prefixIcon: collapse
-                        ? ClipRect(
-                            child: AnimatedSize(
-                              duration: const Duration(milliseconds: 160),
-                              curve: Curves.easeOut,
-                              alignment: Alignment.centerLeft,
-                              child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    IconButton(
-                                      padding: const EdgeInsets.all(0),
-                                      iconSize: 25,
-                                      tooltip: _toolsOpen ? "Hide" : "More",
-                                      onPressed: () => setState(
-                                          () => _toolsOpen = !_toolsOpen),
-                                      icon: Icon(_toolsOpen
-                                          ? Icons.chevron_left
-                                          : Icons.more_horiz),
-                                    ),
-                                    if (_toolsOpen) ...[
-                                      const SizedBox(width: 5),
-                                      _attachBtn(),
-                                      const SizedBox(width: 5),
-                                      _emojiBtn(context),
-                                    ],
-                                  ]),
-                            ),
-                          )
-                        : null,
-                    fallbackBorder: const OutlineInputBorder(
-                      borderRadius: BorderRadius.all(Radius.circular(30.0)),
-                      borderSide: BorderSide(width: 2.0),
+                    child: SpellcheckedFieldScope(
+                  child: TextField(
+                    onChanged: (value) {
+                      // Check if user is typing an emoji code (:foo:).
+                      TypingEmojiSelModel.of(context, listen: false)
+                          .maybeSelectEmojis(controller);
+                    },
+                    autofocus: isScreenSmall ? false : true,
+                    focusNode: widget.inputFocusNode.inputFocusNode,
+                    controller: controller,
+                    minLines: 1,
+                    maxLines: null,
+                    contextMenuBuilder: (BuildContext context,
+                            EditableTextState editableTextState) =>
+                        AdaptiveTextSelectionToolbar.editable(
+                      anchors: editableTextState.contextMenuAnchors,
+                      clipboardStatus: ClipboardStatus.pasteable,
+                      onCopy: null,
+                      onCut: null,
+                      onLiveTextInput: null,
+                      onLookUp: null,
+                      onSearchWeb: null,
+                      onSelectAll: null,
+                      onShare: null,
+                      onPaste: pasteEvent,
                     ),
-                    suffixIcon: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          IconButton(
-                              tooltip: widget.label,
-                              padding: const EdgeInsets.all(0),
-                              iconSize: 20,
-                              onPressed: sendMsg,
-                              icon: const Icon(Icons.send))
-                        ]),
+                    style: theme.textStyleFor(context, TextSize.medium, null),
+                    keyboardType: TextInputType.multiline,
+                    key: Provider.of<SpellcheckCapability>(context).fieldKey,
+                    spellCheckConfiguration:
+                        Provider.of<SpellcheckCapability>(context)
+                            .configuration,
+                    decoration: themedInputDecoration(
+                      context,
+                      hintText: widget.hintText,
+                      prefixIcon: collapse
+                          ? ClipRect(
+                              child: AnimatedSize(
+                                duration: const Duration(milliseconds: 160),
+                                curve: Curves.easeOut,
+                                alignment: Alignment.centerLeft,
+                                child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      IconButton(
+                                        padding: const EdgeInsets.all(0),
+                                        iconSize: 25,
+                                        tooltip: _toolsOpen ? "Hide" : "More",
+                                        onPressed: () => setState(
+                                            () => _toolsOpen = !_toolsOpen),
+                                        icon: Icon(_toolsOpen
+                                            ? Icons.chevron_left
+                                            : Icons.more_horiz),
+                                      ),
+                                      if (_toolsOpen) ...[
+                                        const SizedBox(width: 5),
+                                        _attachBtn(),
+                                        const SizedBox(width: 5),
+                                        _emojiBtn(context),
+                                      ],
+                                    ]),
+                              ),
+                            )
+                          : null,
+                      fallbackBorder: const OutlineInputBorder(
+                        borderRadius: BorderRadius.all(Radius.circular(30.0)),
+                        borderSide: BorderSide(width: 2.0),
+                      ),
+                      suffixIcon: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            IconButton(
+                                tooltip: widget.label,
+                                padding: const EdgeInsets.all(0),
+                                iconSize: 20,
+                                onPressed: sendMsg,
+                                icon: const Icon(Icons.send))
+                          ]),
+                    ),
                   ),
                 )),
               ]));

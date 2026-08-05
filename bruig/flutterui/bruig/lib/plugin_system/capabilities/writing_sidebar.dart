@@ -120,8 +120,16 @@ class WritingSidebar extends StatefulWidget {
   State<WritingSidebar> createState() => _WritingSidebarState();
 }
 
+/// _alternativesHeight is what the pinned area always occupies. Fixed on
+/// purpose -- see the note where it is used.
+const double _alternativesHeight = 150;
+
 class _WritingSidebarState extends State<WritingSidebar> {
   TextEditingController? get _editor => widget.controller;
+
+  // Owned rather than left implicit, so the Scrollbar and the view it tracks
+  // are certainly the same one.
+  final ScrollController _alternativesScroll = ScrollController();
 
   // _lastText is what the list was last built from. The controller notifies
   // on selection changes too, and rebuilding the whole list every time the
@@ -153,6 +161,7 @@ class _WritingSidebarState extends State<WritingSidebar> {
   @override
   void dispose() {
     _editor?.removeListener(_onChanged);
+    _alternativesScroll.dispose();
     super.dispose();
   }
 
@@ -215,9 +224,16 @@ class _WritingSidebarState extends State<WritingSidebar> {
       // whatever is selected right now, so it has to be visible at the
       // moment of selecting -- and a post with a dozen issues had pushed it
       // below the fold, where nobody would think to scroll for it.
+      //
+      // The border is what makes it read as a separate area rather than the
+      // tail of the issue list, now that it no longer scrolls with it.
       if (prefs.enabled)
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+        Container(
+          width: double.infinity,
+          decoration: BoxDecoration(
+            border: Border(top: BorderSide(color: theme.colors.outlineVariant)),
+          ),
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
           child: _thesaurusRow(context, theme),
         ),
     ]);
@@ -349,26 +365,34 @@ class _WritingSidebarState extends State<WritingSidebar> {
     }
 
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      const Divider(height: 16),
       if (word == null)
         Text("Select a word for alternatives.",
             style:
                 TextStyle(fontSize: 11, color: theme.colors.onSurfaceVariant))
       else
-        // Capped and scrollable in its own right: a common word can have
-        // thirty alternatives, and the issue list above must not lose its
-        // room to them.
-        ConstrainedBox(
-          constraints: const BoxConstraints(maxHeight: 180),
-          child: SingleChildScrollView(
-            child: FutureBuilder<ThesaurusEntry?>(
-              // Keyed by the word so a new selection starts a new lookup
-              // rather than showing the previous word's answer while it
-              // loads.
-              key: ValueKey(word),
-              future: thesaurus.lookUp(word),
-              builder: (context, snapshot) =>
-                  _alternatives(theme, word!, selection, snapshot),
+        // A fixed height rather than one that grows to fit: the area is
+        // scrollable, and a box that resized itself for every word made its
+        // scrollbar appear, move and vanish as the selection changed, which
+        // is far more distracting than a little empty space.
+        SizedBox(
+          height: _alternativesHeight,
+          child: Scrollbar(
+            controller: _alternativesScroll,
+            thumbVisibility: true,
+            child: SingleChildScrollView(
+              controller: _alternativesScroll,
+              // Room for the scrollbar at the sidebar's edge, so the chips
+              // are not printed underneath it.
+              padding: const EdgeInsets.only(right: 10),
+              child: FutureBuilder<ThesaurusEntry?>(
+                // Keyed by the word so a new selection starts a new lookup
+                // rather than showing the previous word's answer while it
+                // loads.
+                key: ValueKey(word),
+                future: thesaurus.lookUp(word),
+                builder: (context, snapshot) =>
+                    _alternatives(theme, word!, selection, snapshot),
+              ),
             ),
           ),
         ),

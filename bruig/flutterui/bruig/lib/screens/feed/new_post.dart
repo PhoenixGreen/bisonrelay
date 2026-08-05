@@ -318,22 +318,24 @@ class _NewPostScreenState extends State<NewPostScreen> {
           Expanded(
             child: Container(
               margin: const EdgeInsets.only(bottom: 15),
-              child: TextField(
-                decoration: const InputDecoration(hintText: "Post Content"),
-                controller: contentCtrl,
-                keyboardType: TextInputType.multiline,
-                maxLines: null,
-                key: Provider.of<SpellcheckCapability>(context).fieldKey,
-                spellCheckConfiguration:
-                    Provider.of<SpellcheckCapability>(context).configuration,
-                contextMenuBuilder: (context, editableTextState) =>
-                    AdaptiveTextSelectionToolbar.buttonItems(
-                  anchors: editableTextState.contextMenuAnchors,
-                  buttonItems: [
-                    ...spellingContextMenuItems(context, editableTextState),
-                    ...editableTextState.contextMenuButtonItems,
-                    ...thesaurusContextMenuItems(context, editableTextState),
-                  ],
+              child: SpellcheckedFieldScope(
+                child: TextField(
+                  decoration: const InputDecoration(hintText: "Post Content"),
+                  controller: contentCtrl,
+                  keyboardType: TextInputType.multiline,
+                  maxLines: null,
+                  key: Provider.of<SpellcheckCapability>(context).fieldKey,
+                  spellCheckConfiguration:
+                      Provider.of<SpellcheckCapability>(context).configuration,
+                  contextMenuBuilder: (context, editableTextState) =>
+                      AdaptiveTextSelectionToolbar.buttonItems(
+                    anchors: editableTextState.contextMenuAnchors,
+                    buttonItems: [
+                      ...spellingContextMenuItems(context, editableTextState),
+                      ...editableTextState.contextMenuButtonItems,
+                      ...thesaurusContextMenuItems(context, editableTextState),
+                    ],
+                  ),
                 ),
               ),
             ),

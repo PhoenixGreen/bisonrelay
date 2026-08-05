@@ -29,6 +29,7 @@
 //   capabilities/youtube_player.dart    a player a link-card provider may ask for
 //   capabilities/markdown_extensions.dart  capabilities meeting the markdown pipeline
 //   capabilities/spellcheck.dart        the spellcheck-data capability
+//   capabilities/spellcheck_field.dart  keeps a field's underlines current
 //   capabilities/spellcheck_menu.dart   its corrections, in the composer menu
 //   capabilities/writing_prefs.dart     what the user asked not to be told
 //   capabilities/thesaurus.dart         the thesaurus capability
@@ -43,6 +44,7 @@
 export 'package:bruig/plugin_system/capabilities/link_card.dart';
 export 'package:bruig/plugin_system/capabilities/markdown_extensions.dart';
 export 'package:bruig/plugin_system/capabilities/spellcheck.dart';
+export 'package:bruig/plugin_system/capabilities/spellcheck_field.dart';
 export 'package:bruig/plugin_system/capabilities/spellcheck_menu.dart';
 export 'package:bruig/plugin_system/capabilities/writing_prefs.dart';
 export 'package:bruig/plugin_system/capabilities/thesaurus.dart';
