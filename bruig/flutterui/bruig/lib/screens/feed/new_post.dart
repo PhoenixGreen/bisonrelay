@@ -280,14 +280,31 @@ class _NewPostScreenState extends State<NewPostScreen> {
   dispose() {
     _debounce?.cancel();
     _debounceSizeCalc?.cancel();
+    // Withdraw this composer, so the sidebar slot goes back to whatever the
+    // screen normally shows there. Read without listening: dispose must not
+    // register a dependency.
+    _writingSidebar?.detach(contentCtrl);
     super.dispose();
   }
+
+  // _writingSidebar is captured while the widget is still mounted, since
+  // dispose cannot reach the provider tree.
+  WritingSidebarController? _writingSidebar;
 
   @override
   void initState() {
     super.initState();
     contentCtrl.text = post.content;
     contentCtrl.addListener(contentChanged);
+    // Offer this composer's text to whatever screen owns the sidebar slot.
+    // Offering is not opening: arriving at the editor should not rearrange
+    // the screen, only make the tools reachable.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _writingSidebar =
+          Provider.of<WritingSidebarController>(context, listen: false)
+            ..attach(contentCtrl);
+    });
   }
 
   @override
@@ -320,17 +337,28 @@ class _NewPostScreenState extends State<NewPostScreen> {
               ),
             ),
           ),
-          // Renders nothing unless a plugin provides one of the writing
-          // capabilities, so the editor is unchanged without them.
-          WritingPanel(controller: contentCtrl),
           const Divider(),
           const SizedBox(height: 10),
           Align(
-              alignment: Alignment.centerLeft,
-              child: OutlinedButton(
+            alignment: Alignment.centerLeft,
+            child: Wrap(spacing: 10, runSpacing: 10, children: [
+              OutlinedButton(
                 onPressed: () => pickFile(context),
                 child: const Txt.S("Add Embbed"),
-              )),
+              ),
+              // Absent entirely unless a plugin provides the writing
+              // capabilities, so the editor is unchanged without them.
+              if (context.watch<SpellcheckCapability>().configuration != null)
+                OutlinedButton.icon(
+                  onPressed: () => Provider.of<WritingSidebarController>(
+                          context,
+                          listen: false)
+                      .show(),
+                  icon: const Icon(Icons.spellcheck, size: 16),
+                  label: const Txt.S("Writing Tools"),
+                ),
+            ]),
+          ),
           /*  XXX Need to figure out Link to Content button
             const SizedBox(width: 10),
             OutlinedButton(

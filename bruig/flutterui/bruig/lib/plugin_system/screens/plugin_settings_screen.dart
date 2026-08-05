@@ -2,6 +2,7 @@ import 'package:bruig/components/confirmation_dialog.dart';
 import 'package:bruig/components/text.dart';
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/plugin_system.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:golib_plugin/definitions.dart';
@@ -126,6 +127,79 @@ class _PluginsSettingsScreenState extends State<PluginsSettingsScreen> {
             icon: const Icon(Icons.file_upload_outlined),
             label: const Text("Import Plugin"),
           ),
+          const WritingOverridesSection(),
         ]));
+  }
+}
+
+/// WritingOverridesSection lists what the user has told the writing tools to
+/// stop reporting, and takes it back.
+///
+/// It belongs on this page because the overrides outlive any one plugin --
+/// they are decisions about the user's own app, and a word added to the
+/// dictionary must stay ignored across a provider being updated or swapped.
+/// Somewhere to undo them matters more than usual: an accidental "Add to
+/// dictionary" on a genuine typo is otherwise invisible and permanent.
+///
+/// Absent entirely until something has been overridden, so the page is
+/// unchanged for anyone who has never used it.
+class WritingOverridesSection extends StatelessWidget {
+  const WritingOverridesSection({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    var prefs = context.watch<WritingPreferences>();
+    if (prefs.personalDictionary.isEmpty && prefs.disabledChecks.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    var words = prefs.personalDictionary.toList()..sort();
+    var checks = prefs.disabledChecks.toList()..sort();
+
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      const SizedBox(height: 24),
+      const Divider(),
+      const SizedBox(height: 8),
+      const Txt.L("Writing tools"),
+      const SizedBox(height: 12),
+      if (words.isNotEmpty) ...[
+        const Txt.S("Words added to your dictionary",
+            color: TextColor.onSurfaceVariant),
+        const SizedBox(height: 6),
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: [
+            for (var word in words)
+              InputChip(
+                label: Text(word),
+                onDeleted: () => prefs.removeFromDictionary(word),
+                tooltip: "Check this word again",
+              ),
+          ],
+        ),
+        const SizedBox(height: 16),
+      ],
+      if (checks.isNotEmpty) ...[
+        const Txt.S("Checks you turned off", color: TextColor.onSurfaceVariant),
+        const SizedBox(height: 6),
+        // A check is identified by its pattern, which is what makes a rule
+        // unique -- but a regular expression is not something to show
+        // anyone, so they are numbered, with the pattern behind a tooltip
+        // for whoever does want to know which is which.
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: [
+            for (var i = 0; i < checks.length; i++)
+              InputChip(
+                label: Text("Check ${i + 1}"),
+                onDeleted: () => prefs.enableCheck(checks[i]),
+                tooltip: "Turn back on\n${checks[i]}",
+              ),
+          ],
+        ),
+      ],
+    ]);
   }
 }

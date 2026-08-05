@@ -166,6 +166,11 @@ Future<void> runMainApp(Config cfg) async {
   final SnackBarModel snackbar = SnackBarModel();
   final theme = await ThemeNotifier.newNotifierWhenLoaded();
   final RealtimeChatModel rtc = RealtimeChatModel(client, snackbar);
+  // Awaited rather than loaded lazily: these decide what is *not* flagged,
+  // and arriving late would underline a word the user has already told the
+  // app to leave alone.
+  final writingPrefs = WritingPreferences();
+  await writingPrefs.load();
 
   runApp(MultiProvider(
     providers: [
@@ -206,9 +211,18 @@ Future<void> runMainApp(Config cfg) async {
             mk!..setPluginExtensions(markdownExtensionsFor(plugins)),
       ),
       ChangeNotifierProxyProvider<PluginManagerModel, SpellcheckCapability>(
-        create: (c) => SpellcheckCapability(),
+        // The user's own overrides -- ignored words, disabled checks -- are
+        // read from disk once here, and belong to the app rather than to any
+        // provider: they must outlive a plugin being disabled or replaced.
+        create: (c) => SpellcheckCapability(prefs: writingPrefs),
         update: (c, plugins, capability) => capability!..update(plugins),
       ),
+      // Exposed separately so the settings page and the writing sidebar can
+      // read and change them without going through the capability.
+      ChangeNotifierProvider<WritingPreferences>.value(value: writingPrefs),
+      // Connects a composer to the screen that owns the sidebar slot beside
+      // it; the two cannot reach each other directly.
+      ChangeNotifierProvider(create: (c) => WritingSidebarController()),
       // The thesaurus holds no state of its own -- it asks the plugin a
       // word at a time -- so it is a plain ProxyProvider rather than a
       // notifier, rebuilt only if the plugin list itself changes.

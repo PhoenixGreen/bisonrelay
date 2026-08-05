@@ -1,6 +1,8 @@
+import 'package:bruig/plugin_system/capabilities/spellcheck.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 
 // spellcheck_menu.dart puts a misspelled word's corrections into the
 // composer's own context menu, beside Paste and Synonyms.
@@ -32,6 +34,19 @@ List<ContextMenuButtonItem> spellingContextMenuItems(
   var span = misspellingAt(editableTextState);
   if (span == null) return const [];
 
+  var capability = context.read<SpellcheckCapability?>();
+  var value = editableTextState.textEditingValue;
+  var flagged = value.text.substring(span.range.start, span.range.end);
+
+  // A style rule's own findings carry the rule that produced them, so the
+  // rule itself can be switched off. A spelling issue has no rule behind it,
+  // only the dictionary, and is silenced per word instead.
+  var issue = capability
+      ?.review(value.text)
+      .where((i) =>
+          i.range.start == span.range.start && i.range.end == span.range.end)
+      .firstOrNull;
+
   return [
     for (var suggestion in span.suggestions.take(maxCorrections))
       ContextMenuButtonItem(
@@ -39,6 +54,36 @@ List<ContextMenuButtonItem> spellingContextMenuItems(
         onPressed: () =>
             _applyCorrection(editableTextState, span.range, suggestion),
       ),
+    if (capability != null) ...[
+      if (issue?.checkId != null)
+        // Disagreeing with one instance of a style rule almost always means
+        // disagreeing with the rule, so this offers the rule rather than the
+        // instance -- and is how the noisier checks get switched off without
+        // touching the plugin.
+        ContextMenuButtonItem(
+          label: "Turn off this check",
+          onPressed: () {
+            editableTextState.hideToolbar();
+            capability.preferences.disableCheck(issue!.checkId!);
+          },
+        )
+      else ...[
+        ContextMenuButtonItem(
+          label: "Ignore once",
+          onPressed: () {
+            editableTextState.hideToolbar();
+            capability.preferences.ignoreOnce(flagged);
+          },
+        ),
+        ContextMenuButtonItem(
+          label: "Add to dictionary",
+          onPressed: () {
+            editableTextState.hideToolbar();
+            capability.preferences.addToDictionary(flagged);
+          },
+        ),
+      ],
+    ],
   ];
 }
 

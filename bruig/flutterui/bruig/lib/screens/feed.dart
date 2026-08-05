@@ -4,6 +4,7 @@ import 'package:bruig/components/chat/chat_side_menu.dart';
 import 'package:bruig/components/containers.dart';
 import 'package:bruig/components/text.dart';
 import 'package:bruig/models/client.dart';
+import 'package:bruig/plugin_system/plugin_system.dart';
 import 'package:bruig/models/uistate.dart';
 import 'package:bruig/screens/feed/user_posts.dart';
 import 'package:bruig/screens/overview.dart';
@@ -276,6 +277,21 @@ class _FeedScreenState extends State<FeedScreen> {
     }
 
     var client = Provider.of<ClientModel>(context);
+
+    // A composer on this screen can take the sidebar slot over for its
+    // writing tools. Nothing here knows what those are: the slot is handed
+    // to whatever the controller is offering, and taken back when it stops.
+    var writing = Provider.of<WritingSidebarController>(context);
+    if (writing.visible) {
+      return ScreenWithChatSideMenu(
+          client,
+          SecondarySideMenuLayout(
+            storageKey: "feed",
+            list: WritingSidebar(
+                controller: writing.editor!, onClose: writing.close),
+            content: activeTab(),
+          ));
+    }
 
     // AreaStyle.feedSidePanel replaces this screen's own sub-menu
     // everywhere: tabs 0/1 (All posts/Your Posts) render their own full

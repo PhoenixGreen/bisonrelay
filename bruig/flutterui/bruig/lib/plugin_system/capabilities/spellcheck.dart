@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/capabilities/writing_prefs.dart';
 import 'package:bruig/plugin_system/plugin_capability.dart';
 import 'package:bruig/plugin_system/plugin_manager.dart';
 import 'package:flutter/material.dart';
@@ -138,12 +139,18 @@ class WritingIssue {
   final List<String> suggestions;
   final WritingIssueKind kind;
 
+  /// checkId identifies the rule that produced a style issue, so it can be
+  /// turned off. Null for a spelling issue, which comes from the dictionary
+  /// and has no rule behind it.
+  final String? checkId;
+
   const WritingIssue({
     required this.range,
     required this.text,
     required this.message,
     required this.suggestions,
     required this.kind,
+    this.checkId,
   });
 }
 
@@ -160,7 +167,10 @@ class _CompiledRule {
   final RegExp pattern;
   final String message;
   final String suggest;
-  _CompiledRule(this.pattern, this.message, this.suggest);
+  // source is the pattern as the provider wrote it, which is how a rule is
+  // identified when the user turns it off -- see WritingPreferences.
+  final String source;
+  _CompiledRule(this.pattern, this.message, this.suggest, this.source);
 }
 
 /// A [SpellCheckService] driven entirely by capability-supplied data.
@@ -186,6 +196,10 @@ class _CapabilitySpellCheckService extends SpellCheckService {
   // each one; with it, only a newly typed word costs anything.
   final Map<String, List<String>> _suggestionCache = {};
 
+  /// prefs is what the user has chosen not to be told about. Null until the
+  /// capability supplies it, which it does before any text is checked.
+  WritingPreferences? prefs;
+
   bool get hasData => _words.isNotEmpty || _rules.isNotEmpty;
 
   void updateData(SpellcheckData data) {
@@ -207,7 +221,8 @@ class _CapabilitySpellCheckService extends SpellCheckService {
     _rules = data.grammarRules
         .map((r) {
           try {
-            return _CompiledRule(RegExp(r.pattern), r.message, r.suggest);
+            return _CompiledRule(
+                RegExp(r.pattern), r.message, r.suggest, r.pattern);
           } catch (_) {
             // A plugin-supplied pattern Dart's regex engine can't compile;
             // skip just that rule rather than failing the whole plugin.
@@ -237,6 +252,7 @@ class _CapabilitySpellCheckService extends SpellCheckService {
     var issues = <WritingIssue>[];
 
     for (var rule in _rules) {
+      if (prefs?.isCheckDisabled(rule.source) ?? false) continue;
       try {
         for (var m in rule.pattern.allMatches(text)) {
           issues.add(WritingIssue(
@@ -247,6 +263,7 @@ class _CapabilitySpellCheckService extends SpellCheckService {
                 ? const []
                 : [_expandTemplate(rule.suggest, m)],
             kind: WritingIssueKind.style,
+            checkId: rule.source,
           ));
         }
       } catch (_) {
@@ -258,6 +275,7 @@ class _CapabilitySpellCheckService extends SpellCheckService {
     for (var m in _wordRegExp.allMatches(text)) {
       var word = m.group(0)!;
       if (_words.contains(word.toLowerCase())) continue;
+      if (prefs?.isIgnoredWord(word) ?? false) continue;
       issues.add(WritingIssue(
         range: TextRange(start: m.start, end: m.end),
         text: word,
@@ -392,13 +410,31 @@ class SpellcheckCapability extends ChangeNotifier {
   // client; it is Golib.getSpellcheckData everywhere but in tests.
   final Future<SpellcheckData> Function() _fetch;
 
-  SpellcheckCapability({Future<SpellcheckData> Function()? fetch})
-      : _fetch = fetch ?? Golib.getSpellcheckData;
+  /// preferences is the user's own overrides -- ignored words, disabled
+  /// checks, and the session on/off switch. Owned here so every consumer of
+  /// the capability sees the same set.
+  final WritingPreferences preferences;
+
+  SpellcheckCapability(
+      {Future<SpellcheckData> Function()? fetch, WritingPreferences? prefs})
+      : _fetch = fetch ?? Golib.getSpellcheckData,
+        preferences = prefs ?? WritingPreferences() {
+    _service.prefs = preferences;
+    // Re-checking is what makes an ignored word disappear from the text
+    // immediately rather than at the next keystroke.
+    preferences.addListener(notifyListeners);
+  }
+
+  @override
+  void dispose() {
+    preferences.removeListener(notifyListeners);
+    super.dispose();
+  }
 
   bool _active = false;
   bool get active => _active;
 
-  SpellCheckConfiguration? get configuration => _active
+  SpellCheckConfiguration? get configuration => _active && preferences.enabled
       ? SpellCheckConfiguration(
           spellCheckService: _service,
           misspelledTextStyle: const TextStyle(
@@ -413,7 +449,7 @@ class SpellcheckCapability extends ChangeNotifier {
   /// WritingIssue. Empty when no provider is enabled, which is also what a
   /// clean message returns, so a caller need not distinguish them.
   List<WritingIssue> review(String text) =>
-      _active ? _service.review(text) : const [];
+      _active && preferences.enabled ? _service.review(text) : const [];
 
   /// update re-reads the merged data whenever the set of enabled plugins
   /// changes. The fetch lives here rather than in PluginManagerModel so the
