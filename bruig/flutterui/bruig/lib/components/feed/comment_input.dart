@@ -284,6 +284,7 @@ class _CommentInputState extends State<CommentInput> {
                   ),
                   style: theme.textStyleFor(context, TextSize.medium, null),
                   keyboardType: TextInputType.multiline,
+                  key: Provider.of<SpellcheckCapability>(context).fieldKey,
                   spellCheckConfiguration:
                       Provider.of<SpellcheckCapability>(context).configuration,
                   decoration: themedInputDecoration(

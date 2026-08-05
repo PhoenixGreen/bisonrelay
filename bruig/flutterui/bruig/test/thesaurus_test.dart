@@ -13,6 +13,7 @@ ThesaurusEntry _happy() => ThesaurusEntry("happy", [
     ]);
 
 void main() {
+  _baseFormTests();
   test("no provider means no lookup at all", () async {
     var asked = <String>[];
     var capability = ThesaurusCapability(
@@ -105,5 +106,70 @@ void main() {
             reason: "for input '$raw'");
       }
     });
+  });
+}
+
+// Reported: selecting an ordinary word gave no alternatives. A thesaurus is
+// keyed by the forms its source recorded, and those are not the forms people
+// type -- "happy" is in it, "happier" is not.
+void _baseFormTests() {
+  ThesaurusEntry entryFor(String w) => ThesaurusEntry(w, [
+        ThesaurusSense("adj", const ["glad"], const [])
+      ]);
+
+  test("an inflected word falls back to its stem", () async {
+    var asked = <String>[];
+    var capability = ThesaurusCapability(
+      FakePlugins({PluginCapability.thesaurus}),
+      fetch: (w) async {
+        asked.add(w);
+        return w == "happy" ? entryFor(w) : null;
+      },
+    );
+
+    var entry = await capability.lookUp("happier");
+    expect(entry, isNotNull, reason: '"happier" should reach "happy"');
+    expect(asked, ["happier", "happy"],
+        reason: "the word itself is always tried first");
+  });
+
+  test("plurals and participles reduce too", () async {
+    Future<bool> found(String typed, String stem) async {
+      var capability = ThesaurusCapability(
+        FakePlugins({PluginCapability.thesaurus}),
+        fetch: (w) async => w == stem ? entryFor(w) : null,
+      );
+      return await capability.lookUp(typed) != null;
+    }
+
+    expect(await found("worries", "worry"), isTrue);
+    expect(await found("walking", "walk"), isTrue);
+    expect(await found("wouldn't", "would"), isTrue);
+    expect(await found("payment's", "payment"), isTrue);
+  });
+
+  // A reduction is only ever accepted if the provider actually has it, so a
+  // wrong guess costs a lookup and nothing else.
+  test("a wrong guess yields nothing rather than the wrong word", () async {
+    var capability = ThesaurusCapability(
+      FakePlugins({PluginCapability.thesaurus}),
+      fetch: (w) async => null,
+    );
+    expect(await capability.lookUp("bus"), isNull);
+  });
+
+  test("the whole chain is cached, misses included", () async {
+    var calls = 0;
+    var capability = ThesaurusCapability(
+      FakePlugins({PluginCapability.thesaurus}),
+      fetch: (w) async {
+        calls++;
+        return null;
+      },
+    );
+    await capability.lookUp("happier");
+    var afterFirst = calls;
+    await capability.lookUp("happier");
+    expect(calls, afterFirst, reason: "the second lookup asked again");
   });
 }

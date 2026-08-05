@@ -154,7 +154,8 @@ class WritingOverridesSection extends StatelessWidget {
     }
 
     var words = prefs.personalDictionary.toList()..sort();
-    var checks = prefs.disabledChecks.toList()..sort();
+    var checks = prefs.disabledChecks.entries.toList()
+      ..sort((a, b) => a.value.compareTo(b.value));
 
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       const SizedBox(height: 24),
@@ -183,19 +184,20 @@ class WritingOverridesSection extends StatelessWidget {
       if (checks.isNotEmpty) ...[
         const Txt.S("Checks you turned off", color: TextColor.onSurfaceVariant),
         const SizedBox(height: 6),
-        // A check is identified by its pattern, which is what makes a rule
-        // unique -- but a regular expression is not something to show
-        // anyone, so they are numbered, with the pattern behind a tooltip
-        // for whoever does want to know which is which.
+        // Shown by the rule's own description. A check is identified by its
+        // pattern, which is what makes a rule unique, but a regular
+        // expression is not something to put in front of anyone -- it only
+        // appears as a fallback for an entry saved before descriptions were
+        // recorded.
         Wrap(
           spacing: 6,
           runSpacing: 6,
           children: [
-            for (var i = 0; i < checks.length; i++)
+            for (var check in checks)
               InputChip(
-                label: Text("Check ${i + 1}"),
-                onDeleted: () => prefs.enableCheck(checks[i]),
-                tooltip: "Turn back on\n${checks[i]}",
+                label: Text(check.value.isEmpty ? check.key : check.value),
+                onDeleted: () => prefs.enableCheck(check.key),
+                tooltip: "Turn this check back on",
               ),
           ],
         ),

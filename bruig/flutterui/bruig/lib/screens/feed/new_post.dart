@@ -323,6 +323,7 @@ class _NewPostScreenState extends State<NewPostScreen> {
                 controller: contentCtrl,
                 keyboardType: TextInputType.multiline,
                 maxLines: null,
+                key: Provider.of<SpellcheckCapability>(context).fieldKey,
                 spellCheckConfiguration:
                     Provider.of<SpellcheckCapability>(context).configuration,
                 contextMenuBuilder: (context, editableTextState) =>

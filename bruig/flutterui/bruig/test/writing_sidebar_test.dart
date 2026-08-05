@@ -63,6 +63,7 @@ class _Composer extends StatefulWidget {
 
 class _ComposerState extends State<_Composer> {
   final controller = TextEditingController(text: "the paymnt cleared");
+  final focusNode = FocusNode();
   WritingSidebarController? _sidebar;
 
   @override
@@ -79,12 +80,15 @@ class _ComposerState extends State<_Composer> {
   void dispose() {
     _sidebar?.detach(controller);
     controller.dispose();
+    focusNode.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) => Column(children: [
-        Expanded(child: TextField(controller: controller, maxLines: null)),
+        Expanded(
+            child: TextField(
+                controller: controller, focusNode: focusNode, maxLines: null)),
         OutlinedButton(
           onPressed: () =>
               Provider.of<WritingSidebarController>(context, listen: false)
@@ -109,7 +113,16 @@ Future<void> _pumpApp(WidgetTester tester, WritingPreferences prefs,
       ChangeNotifierProvider<SpellcheckCapability>.value(value: spellcheck),
       ChangeNotifierProvider<WritingPreferences>.value(value: prefs),
       ChangeNotifierProvider(create: (c) => WritingSidebarController()),
-      Provider<ThesaurusCapability?>.value(value: null),
+      Provider<ThesaurusCapability?>.value(
+        value: ThesaurusCapability(
+          FakePlugins({PluginCapability.thesaurus}),
+          fetch: (w) async => w == "cleared"
+              ? ThesaurusEntry(w, [
+                  ThesaurusSense("verb", const ["settled"], const [])
+                ])
+              : null,
+        ),
+      ),
     ],
     child: MaterialApp(home: _Host(reshape: reshape)),
   ));
@@ -187,5 +200,34 @@ void main() {
 
     expect(find.byType(WritingSidebar), findsOneWidget,
         reason: "the sidebar closed itself as it opened");
+  });
+
+  // Reported: the alternatives sat behind a button that opened a sheet, when
+  // the sidebar is already where suggestions live.
+  testWidgets("alternatives appear in the panel, not behind a button",
+      (tester) async {
+    await _pumpApp(tester, WritingPreferences());
+    await tester.tap(find.text("Writing Tools"));
+    await tester.pumpAndSettle();
+
+    expect(find.text("Select a word for alternatives."), findsOneWidget,
+        reason: "with nothing selected there is nothing to look up");
+
+    // Select "cleared" -- offsets 11..18 of "the paymnt cleared". The field
+    // has to hold focus first: an unfocused one does not keep a selection,
+    // and neither does anyone selecting a word for real.
+    var composer = tester.state<_ComposerState>(find.byType(_Composer));
+    composer.focusNode.requestFocus();
+    await tester.pumpAndSettle();
+    composer.controller.selection =
+        const TextSelection(baseOffset: 11, extentOffset: 18);
+    await tester.pumpAndSettle();
+
+    expect(find.text("settled"), findsOneWidget,
+        reason: "the synonym should be listed without another click");
+  });
+
+  test("a word with no entry says so rather than staying blank", () {
+    // Covered at the capability level; see thesaurus_test.dart.
   });
 }

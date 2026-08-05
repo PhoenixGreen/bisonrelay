@@ -1,6 +1,6 @@
 import 'package:bruig/plugin_system/capabilities/spellcheck.dart';
 import 'package:bruig/plugin_system/capabilities/thesaurus.dart';
-import 'package:bruig/plugin_system/capabilities/thesaurus_menu.dart';
+import 'package:golib_plugin/definitions.dart';
 import 'package:bruig/plugin_system/capabilities/writing_prefs.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
@@ -320,6 +320,14 @@ class _WritingSidebarState extends State<WritingSidebar> {
         onPressed: onTap,
       );
 
+  /// _thesaurusRow shows the alternatives for whatever word is selected,
+  /// laid out in the panel itself.
+  ///
+  /// Inline rather than behind a button: the sidebar is already the place
+  /// where suggestions live, and making the user click through to a sheet
+  /// for the one kind of suggestion that isn't listed there was a step for
+  /// nothing. The lookup only runs while a word is actually selected, so an
+  /// idle panel asks the provider nothing.
   Widget _thesaurusRow(BuildContext context, ThemeNotifier theme) {
     var thesaurus = context.read<ThesaurusCapability?>();
     if (thesaurus == null || !thesaurus.available) return const SizedBox();
@@ -332,38 +340,82 @@ class _WritingSidebarState extends State<WritingSidebar> {
       word = ThesaurusCapability.normalizeWord(selection.textInside(text));
     }
 
-    return Padding(
-      padding: const EdgeInsets.only(top: 8),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Divider(),
-        if (word == null)
-          Text("Select a word for alternatives.",
-              style:
-                  TextStyle(fontSize: 11, color: theme.colors.onSurfaceVariant))
-        else
-          ActionChip(
-            visualDensity: VisualDensity.compact,
-            avatar: const Icon(Icons.menu_book_outlined, size: 14),
-            label: Text('Alternatives for "$word"',
-                style: const TextStyle(fontSize: 12)),
-            onPressed: () => showThesaurusSheet(
-              context,
-              capability: thesaurus,
-              word: word!,
-              onReplace: (replacement) {
-                var editor = _editor;
-                if (editor == null) return;
-                if (selection.end > editor.text.length) return;
-                editor.value = TextEditingValue(
-                  text: editor.text.replaceRange(
-                      selection.start, selection.end, replacement),
-                  selection: TextSelection.collapsed(
-                      offset: selection.start + replacement.length),
-                );
-              },
-            ),
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      const Divider(height: 24),
+      if (word == null)
+        Text("Select a word for alternatives.",
+            style:
+                TextStyle(fontSize: 11, color: theme.colors.onSurfaceVariant))
+      else
+        FutureBuilder<ThesaurusEntry?>(
+          // Keyed by the word so a new selection starts a new lookup rather
+          // than showing the previous word's answer while it loads.
+          key: ValueKey(word),
+          future: thesaurus.lookUp(word),
+          builder: (context, snapshot) =>
+              _alternatives(theme, word!, selection, snapshot),
+        ),
+    ]);
+  }
+
+  Widget _alternatives(ThemeNotifier theme, String word,
+      TextSelection selection, AsyncSnapshot<ThesaurusEntry?> snapshot) {
+    var muted = TextStyle(fontSize: 11, color: theme.colors.onSurfaceVariant);
+
+    if (snapshot.connectionState != ConnectionState.done) {
+      return Text('Looking up "$word"...', style: muted);
+    }
+    var entry = snapshot.data;
+    if (entry == null || entry.isEmpty) {
+      return Text('No alternatives for "$word".', style: muted);
+    }
+
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text('Alternatives for "$word"',
+          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
+      for (var sense in entry.senses) ...[
+        if (sense.partOfSpeech.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 8, bottom: 4),
+            child: Text(sense.partOfSpeech,
+                style: muted.copyWith(fontStyle: FontStyle.italic)),
           ),
-      ]),
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: [
+            for (var synonym in sense.synonyms)
+              ActionChip(
+                visualDensity: VisualDensity.compact,
+                label: Text(synonym, style: const TextStyle(fontSize: 12)),
+                onPressed: () => _replaceSelection(selection, synonym),
+              ),
+            // Marked, because an opposite is never a like-for-like swap and
+            // must not sit unlabelled among words that are.
+            for (var antonym in sense.antonyms)
+              ActionChip(
+                visualDensity: VisualDensity.compact,
+                avatar: Icon(Icons.swap_horiz,
+                    size: 14, color: theme.colors.onSurfaceVariant),
+                label: Text(antonym, style: const TextStyle(fontSize: 12)),
+                tooltip: "Opposite meaning",
+                onPressed: () => _replaceSelection(selection, antonym),
+              ),
+          ],
+        ),
+      ],
+    ]);
+  }
+
+  void _replaceSelection(TextSelection selection, String replacement) {
+    var editor = _editor;
+    if (editor == null) return;
+    if (!selection.isValid || selection.end > editor.text.length) return;
+    editor.value = TextEditingValue(
+      text:
+          editor.text.replaceRange(selection.start, selection.end, replacement),
+      selection:
+          TextSelection.collapsed(offset: selection.start + replacement.length),
     );
   }
 }

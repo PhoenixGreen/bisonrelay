@@ -64,7 +64,8 @@ List<ContextMenuButtonItem> spellingContextMenuItems(
           label: "Turn off this check",
           onPressed: () {
             editableTextState.hideToolbar();
-            capability.preferences.disableCheck(issue!.checkId!);
+            capability.preferences
+                .disableCheck(issue!.checkId!, description: issue.message);
             _refreshUnderlines(editableTextState, capability);
           },
         )

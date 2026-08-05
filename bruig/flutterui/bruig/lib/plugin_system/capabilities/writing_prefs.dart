@@ -42,7 +42,13 @@ class WritingPreferences extends ChangeNotifier {
   // identifies a rule to the engine, and two rules can legitimately share a
   // message ("Missing apostrophe" covers a dozen contractions), where
   // disabling one must not silently disable the rest.
-  final Set<String> _disabledChecks = {};
+  //
+  // The message is kept as the value purely so the settings page can say
+  // which check was turned off. Deriving it from the live rules instead
+  // would leave the list unreadable exactly when it matters most -- with the
+  // provider disabled, which is when someone is most likely to be wondering
+  // what they switched off.
+  final Map<String, String> _disabledChecks = {};
 
   /// enabled is the whole feature's on/off switch for the current session --
   /// underlines and suggestions alike. Not persisted: it is a "let me write
@@ -59,16 +65,37 @@ class WritingPreferences extends ChangeNotifier {
   /// personalDictionary and disabledChecks are exposed so the plugin
   /// settings page can show what has been hidden and take it back.
   Set<String> get personalDictionary => Set.unmodifiable(_dictionary);
-  Set<String> get disabledChecks => Set.unmodifiable(_disabledChecks);
+
+  /// disabledChecks maps each turned-off rule's pattern to its description.
+  Map<String, String> get disabledChecks => Map.unmodifiable(_disabledChecks);
 
   /// load reads the persisted sets. Failures are non-fatal: a corrupt or
   /// missing entry means no overrides, which is the same as a fresh install
   /// and strictly safer than refusing to check anything.
   Future<void> load() async {
     _dictionary.addAll(await _readSet(_dictionaryKey));
-    _disabledChecks.addAll(await _readSet(_disabledChecksKey));
+    _disabledChecks.addAll(await _readChecks());
     if (_dictionary.isNotEmpty || _disabledChecks.isNotEmpty) {
       notifyListeners();
+    }
+  }
+
+  /// _readChecks accepts both the current map form and the plain list an
+  /// earlier build wrote, so upgrading does not silently switch every
+  /// disabled check back on. A list entry has no description to recover.
+  Future<Map<String, String>> _readChecks() async {
+    try {
+      var raw = await StorageManager.readData(_disabledChecksKey);
+      if (raw is! String || raw.isEmpty) return {};
+      var decoded = jsonDecode(raw);
+      if (decoded is List) {
+        return {for (var e in decoded) e.toString(): ""};
+      }
+      return (decoded as Map<String, dynamic>)
+          .map((k, v) => MapEntry(k, v.toString()));
+    } catch (exception) {
+      debugPrint("Unable to read $_disabledChecksKey: $exception");
+      return {};
     }
   }
 
@@ -98,7 +125,7 @@ class WritingPreferences extends ChangeNotifier {
     return _ignoredThisSession.contains(key) || _dictionary.contains(key);
   }
 
-  bool isCheckDisabled(String pattern) => _disabledChecks.contains(pattern);
+  bool isCheckDisabled(String pattern) => _disabledChecks.containsKey(pattern);
 
   void ignoreOnce(String word) {
     if (!_ignoredThisSession.add(word.toLowerCase())) return;
@@ -117,15 +144,27 @@ class WritingPreferences extends ChangeNotifier {
     await _writeSet(_dictionaryKey, _dictionary);
   }
 
-  Future<void> disableCheck(String pattern) async {
-    if (!_disabledChecks.add(pattern)) return;
+  /// disableCheck turns a rule off. [description] is the rule's message, so
+  /// the settings page can name it later.
+  Future<void> disableCheck(String pattern, {String description = ""}) async {
+    if (_disabledChecks.containsKey(pattern)) return;
+    _disabledChecks[pattern] = description;
     notifyListeners();
-    await _writeSet(_disabledChecksKey, _disabledChecks);
+    await _writeChecks();
   }
 
   Future<void> enableCheck(String pattern) async {
-    if (!_disabledChecks.remove(pattern)) return;
+    if (_disabledChecks.remove(pattern) == null) return;
     notifyListeners();
-    await _writeSet(_disabledChecksKey, _disabledChecks);
+    await _writeChecks();
+  }
+
+  Future<void> _writeChecks() async {
+    try {
+      await StorageManager.saveData(
+          _disabledChecksKey, jsonEncode(_disabledChecks));
+    } catch (exception) {
+      debugPrint("Unable to save $_disabledChecksKey: $exception");
+    }
   }
 }

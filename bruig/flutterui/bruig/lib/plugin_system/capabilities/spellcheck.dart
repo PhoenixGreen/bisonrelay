@@ -445,6 +445,23 @@ class SpellcheckCapability extends ChangeNotifier {
         )
       : null;
 
+  /// fieldKey is what a text field should use as its [Key] alongside
+  /// [configuration].
+  ///
+  /// EditableText reads spellCheckConfiguration once, in initState, and
+  /// never again -- didUpdateWidget does not look at it. So handing a live
+  /// field a new configuration has no effect whatsoever, and switching spell
+  /// check off could not take: the field went on checking with the
+  /// configuration it was born with.
+  ///
+  /// Keying on whether checking is on at all rebuilds the field across that
+  /// one transition, and only that one. Deliberately not keyed on the
+  /// preferences generally: rebuilding drops focus and selection, which is
+  /// tolerable when someone has just thrown a switch and jarring when they
+  /// have added a word to the dictionary mid-sentence. That case is handled
+  /// by refreshing the results in place instead -- see spellcheck_menu.dart.
+  Key get fieldKey => ValueKey("spellcheck:${configuration != null}");
+
   /// review lists every problem a provider finds in [text] -- see
   /// WritingIssue. Empty when no provider is enabled, which is also what a
   /// clean message returns, so a caller need not distinguish them.
