@@ -282,10 +282,16 @@ class _FeedScreenState extends State<FeedScreen> {
     // writing tools. Nothing here knows what those are: the slot is handed
     // to whatever the controller is offering, and taken back when it stops.
     var writing = Provider.of<WritingSidebarController>(context);
-    // Only while composing. The sidebar reviews a composer's text, and there
-    // is no composer on the browsing tabs -- left ungated it stayed open
-    // across the whole Feed screen with nothing to say.
-    var showWriting = writing.visible && tabIndex == 3;
+    // Only while composing, and only ever built once. The sidebar reviews a
+    // composer's text, and there is no composer on the browsing tabs.
+    //
+    // Built once because three separate decisions below depend on it, and
+    // when they were three separate conditions two of them were updated and
+    // one was not -- which put the writing tools in the slot on every Feed
+    // tab. Derived from one value, they cannot disagree.
+    var writingSidebar = writing.visible && tabIndex == 3
+        ? WritingSidebar(controller: writing.editor, onClose: writing.close)
+        : null;
 
     // AreaStyle.feedSidePanel replaces this screen's own sub-menu
     // everywhere: tabs 0/1 (All posts/Your Posts) render their own full
@@ -302,7 +308,7 @@ class _FeedScreenState extends State<FeedScreen> {
     // The writing sidebar takes precedence over the feed's own panel: it was
     // asked for explicitly, and the panel is a place to browse from rather
     // than something needed while composing.
-    if (feedSidePanel && !isScreenSmall && !showWriting) {
+    if (feedSidePanel && !isScreenSmall && writingSidebar == null) {
       // Reading a single post: drop the sidebar entirely for a more focused
       // read, instead of falling back to the minimal nav-only panel.
       if (viewingPost && feedStyle.feedHideSidebarOnPost) {
@@ -337,12 +343,10 @@ class _FeedScreenState extends State<FeedScreen> {
             // Swapped in place rather than returned from a branch of their
             // own: the same widget in the same position keeps the composer's
             // State, and with it the draft being written, across the switch.
-            list: writing.visible
-                ? WritingSidebar(
-                    controller: writing.editor, onClose: writing.close)
-                : null,
-            items:
-                writing.visible ? null : feedBarItems(onItemChanged, tabIndex),
+            list: writingSidebar,
+            items: writingSidebar != null
+                ? null
+                : feedBarItems(onItemChanged, tabIndex),
             // Detail views that don't need the tab list: reading a
             // single post/user-post (showPost set) or composing a new
             // one (tabIndex 3). hasArgs alone only reflects the route's
@@ -350,8 +354,8 @@ class _FeedScreenState extends State<FeedScreen> {
             // the user navigates within the already-mounted screen.
             // A detail view hides the sidebar; the writing tools are the one
             // thing that should still show while composing.
-            isDetail:
-                !showWriting && (hasArgs || showPost != null || tabIndex == 3),
+            isDetail: writingSidebar == null &&
+                (hasArgs || showPost != null || tabIndex == 3),
             // Distinguishes one detail view from the next (e.g. post A
             // vs. post B) so a manual reopen of the submenu doesn't
             // leak across into an unrelated detail view.

@@ -23,13 +23,18 @@ import 'plugin_test_support.dart';
 /// frame it opened.
 class _Host extends StatelessWidget {
   final bool reshape;
-  const _Host({this.reshape = false});
+
+  /// composing mirrors the Feed screen's tab check: the tools belong to the
+  /// composer, so a screen showing something else must not hand the slot
+  /// over even when the controller is still open.
+  final bool composing;
+  const _Host({this.reshape = false, this.composing = true});
 
   @override
   Widget build(BuildContext context) {
     var writing = Provider.of<WritingSidebarController>(context);
     var composer = const _Composer();
-    if (!writing.visible) {
+    if (!writing.visible || !composing) {
       return Scaffold(
         body: reshape
             ? composer
@@ -99,7 +104,7 @@ class _ComposerState extends State<_Composer> {
 }
 
 Future<void> _pumpApp(WidgetTester tester, WritingPreferences prefs,
-    {bool reshape = false}) async {
+    {bool reshape = false, bool composing = true}) async {
   var spellcheck = SpellcheckCapability(
       fetch: () async => SpellcheckData(
           const ["the", "cleared", "payment"], const [], const []),
@@ -124,7 +129,7 @@ Future<void> _pumpApp(WidgetTester tester, WritingPreferences prefs,
         ),
       ),
     ],
-    child: MaterialApp(home: _Host(reshape: reshape)),
+    child: MaterialApp(home: _Host(reshape: reshape, composing: composing)),
   ));
   await tester.pumpAndSettle();
 }
@@ -271,5 +276,33 @@ void main() {
 
     expect(find.text("Select a word for alternatives."), findsOneWidget,
         reason: "the alternatives were pushed out of the panel");
+  });
+
+  // Reported: the tools appeared in the sidebar slot on every Feed tab, not
+  // just while composing. The controller stays open across tabs on purpose
+  // -- coming back to the editor should find the tools as they were left --
+  // so it is the host that has to decide, from the screen it is showing.
+  //
+  // This covers the contract between the two. It cannot catch the screen
+  // asking the wrong question, which is what went wrong: the Feed screen had
+  // three separate conditions and one was left ungated. That is now one
+  // value the three derive from, so they cannot disagree.
+  testWidgets("a screen that is not composing keeps its own sidebar",
+      (tester) async {
+    await _pumpApp(tester, WritingPreferences(), composing: false);
+
+    // Opened while the editor was on screen, then navigated away from.
+    var controller = tester
+        .state<_ComposerState>(find.byType(_Composer))
+        .context
+        .read<WritingSidebarController>();
+    controller.show();
+    await tester.pumpAndSettle();
+
+    expect(find.byType(WritingSidebar), findsNothing,
+        reason: "the tools took a slot on a screen with nothing to review");
+    expect(find.text("NORMAL SIDEBAR"), findsOneWidget);
+    expect(controller.visible, isTrue,
+        reason: "returning to the editor should find them as they were left");
   });
 }
