@@ -153,6 +153,7 @@ void main() {
   _spanOrderTests();
   _rankingTests();
   _fixPreferenceTests();
+  _lookaroundRuleTests();
 
   group("grammar rules", () {
     // These run in Dart's regex engine, which is the only place the
@@ -496,5 +497,89 @@ void _fixPreferenceTests() {
         i.range.start > 0);
     // Only the captured letter is raised, not the whole match.
     expect(issue.suggestions.single, ". T");
+  });
+}
+
+// Six of the plugin's rules use backreferences or lookarounds, which Go's
+// RE2 cannot compile -- so the plugin's own tests skip them and this is the
+// only place they are ever executed. The patterns below mirror the plugin's
+// verbatim; they are duplicated rather than imported because the plugin is a
+// separate Go module with no Dart to import.
+void _lookaroundRuleTests() {
+  const tlds = "com|org|net|edu|gov|mil|int|io|dev|app|xyz|info|biz|tv|"
+      "ai|gg|rs|sh|ly|cc|onion|uk|de|fr|ru|au|ca|us|jp|cn|nz|za|eu|ch|nl|se|"
+      "tech|site|online|store|blog|news|wiki|link|page|pro|me|co|gl|fm";
+  var missingSpace = GrammarRule(
+      "(?<=\\w\\w|[)\\]\"'])([.!?])"
+          "(?!(?:$tlds)\\b|[\\w-]*\\.(?:$tlds)\\b)([A-Za-z])",
+      "Missing space after punctuation",
+      r"$1 $U2");
+  var pronounI = GrammarRule(r"(?<!\.)\bi\b(?!\.)", '"I" is capitalised', "I");
+
+  // Only the rule's own findings: the corpus below is full of words no test
+  // dictionary contains, and their spelling issues say nothing about whether
+  // the rule under test fired.
+  Future<List<WritingIssue>> reviewWith(List<GrammarRule> rules, String text,
+      {List<String> words = const ["the"]}) async {
+    var capability = SpellcheckCapability(
+        fetch: () async => SpellcheckData(words, const [], rules));
+    await capability.update(FakePlugins({PluginCapability.spellcheckData}));
+    return capability
+        .review(text)
+        .where((i) => i.kind == WritingIssueKind.style)
+        .toList();
+  }
+
+  // Reported: a run-together sentence whose next word was also lower case
+  // was flagged by nothing. It fell between two rules, each assuming the
+  // other's condition -- one wanted a capital after the stop, the other a
+  // space before the letter.
+  test("a run-together sentence is flagged and fixed in one go", () async {
+    var issues = await reviewWith([missingSpace], "(if you are free).what's");
+    var issue = issues
+        .firstWhere((i) => i.message == "Missing space after punctuation");
+    expect(issue.suggestions.single, ". W",
+        reason: "the fix should insert the space and capitalise together");
+  });
+
+  test("it fires whatever the case of the next letter", () async {
+    for (var text in ["Stop.Now", "done.next thing", "Dr.Smith"]) {
+      expect(await reviewWith([missingSpace], text), isNotEmpty,
+          reason: 'nothing flagged in "$text"');
+    }
+  });
+
+  // The guards. A dot inside a web address or an initialism is not a
+  // sentence boundary, and flagging one is worse than missing a real error.
+  test("it leaves addresses and initialisms alone", () async {
+    for (var text in [
+      "Have a look at example.com when you get a chance.",
+      "see docs.rs for details",
+      "check news.ycombinator.com",
+      "at my.shop.co.uk today",
+      "e.g. this one",
+      "i.e. that one",
+      "U.S.A. today",
+      "It cost 3.5 DCR.",
+      "Fine. Next question, then.",
+    ]) {
+      expect(await reviewWith([missingSpace], text), isEmpty,
+          reason: 'wrongly flagged "$text"');
+    }
+  });
+
+  test('the "I" rule skips initialisms', () async {
+    // A dictionary carrying the words used, so a spelling issue does not
+    // legitimately outrank the rule under test -- as it would for "i'm"
+    // against a dictionary that has never heard of it.
+    const words = ["i", "i'm", "think", "so", "going", "this", "one", "that"];
+    expect(
+        await reviewWith([pronounI], "e.g. this one, i.e. that one",
+            words: words),
+        isEmpty,
+        reason: 'the "i" of "i.e." is not the pronoun');
+    expect(
+        await reviewWith([pronounI], "i think so", words: words), isNotEmpty);
+    expect(await reviewWith([pronounI], "i'm going", words: words), isNotEmpty);
   });
 }
