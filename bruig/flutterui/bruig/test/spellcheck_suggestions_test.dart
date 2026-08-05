@@ -606,11 +606,12 @@ void _confusionRuleTests() {
   var capital = GrammarRule(r"(?<=^|[.!?]\s|\n)([a-z])([a-z0-9']*)",
       "Sentence should start with a capital", r"$U1$2");
   var itsVerb = GrammarRule(
-      r"\bits\s+(a|an|the|not|been|going|getting|coming|becoming|always|never|just|only|still|already)\b",
-      r"""Should be "it's $1""",
-      r"it's $1");
+      r"\b([Ii])ts\s+(a|an|the|not|been|my|your|our|his|her|their|"
+          r"raining|snowing|too|going\s+to)\b",
+      r"""Should be "$1t's $2""",
+      r"$1t's $2");
   var itsOwn = GrammarRule(
-      r"\bit's\s+(own|owner)\b", r"""Should be "its $1""", r"its $1");
+      r"\b([Ii])t's\s+(own|owner)\b", r"""Should be "$1ts $2""", r"$1ts $2");
 
   // The dictionary has to carry the words these sentences use. Without
   // them each word is also a spelling issue, and a spelling issue correctly
@@ -661,19 +662,30 @@ void _confusionRuleTests() {
     expect(issues.first.suggestions.single, "That's");
   });
 
-  test("its is corrected only where a possessive cannot stand", () async {
-    expect(await styleOf([itsVerb], "its going to rain"), isNotEmpty);
-    expect(await styleOf([itsVerb], "its a shame"), isNotEmpty);
+  // Reported: "Its raining outside" was not flagged. The rule was written
+  // with a literal "its" and Dart's regexes are case-sensitive, so the one
+  // position it goes wrong most -- the start of a sentence -- was the one
+  // position it could never match.
+  test("its is corrected whatever its case", () async {
+    expect((await styleOf([itsVerb], "Its raining outside")).single.suggestions,
+        contains("It's raining"),
+        reason: "a capitalised Its must be caught, and stay capitalised");
     expect((await styleOf([itsVerb], "its going to rain")).single.suggestions,
-        contains("it's going"));
+        contains("it's going to"));
+  });
 
-    // A possessive before an ordinary noun is right, and -ing nouns are the
-    // trap: "its funding" is correct and an earlier rule flagged it.
+  test("its is left alone wherever a possessive can stand", () async {
+    // Adjectives and verb-nouns are the trap. Every one of these reads
+    // correctly, and a list that included adjectives flagged them all.
     for (var ok in [
       "the channel lost its funding",
-      "its balance is low",
+      "its true value is hard to judge",
+      "its cold storage keeps the keys offline",
+      "its best feature is the relay",
+      "its going rate is higher",
+      "its freezing point",
+      "its only purpose",
       "its owner has more",
-      "its meaning is clear",
     ]) {
       expect(await styleOf([itsVerb], ok), isEmpty, reason: 'flagged "$ok"');
     }
@@ -682,6 +694,8 @@ void _confusionRuleTests() {
   test("it's is corrected before a noun it cannot own", () async {
     expect((await styleOf([itsOwn], "it's own fault")).single.suggestions,
         contains("its own"));
+    expect((await styleOf([itsOwn], "It's own fault")).single.suggestions,
+        contains("Its own"));
     expect(await styleOf([itsOwn], "it's going to rain"), isEmpty);
   });
 }

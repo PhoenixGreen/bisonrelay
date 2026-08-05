@@ -458,6 +458,12 @@ class SpellcheckCapability extends ChangeNotifier {
             decoration: TextDecoration.underline,
             decorationColor: Colors.red,
             decorationStyle: TextDecorationStyle.wavy,
+            // Thick enough to survive being selected. The underline is not
+            // removed by a selection -- the results and the styling are both
+            // still there -- but the selection highlight is painted across
+            // the same pixels, and a hairline wave washes out under it to
+            // the point of looking as though the flag had gone.
+            decorationThickness: 2,
           ),
         )
       : null;
