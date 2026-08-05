@@ -1,0 +1,191 @@
+import 'package:bruig/plugin_system/plugin_system.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:golib_plugin/definitions.dart';
+import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import 'plugin_test_support.dart';
+
+// writing_sidebar_test.dart mounts the arrangement the post editor and the
+// feed screen really use -- a composer that offers its text, a host that
+// owns the sidebar slot -- because the two are wired through a controller
+// rather than a parent/child relationship, and nothing about reading either
+// file on its own shows whether they meet.
+
+/// _Host stands in for the feed screen: it decides what goes in the slot.
+///
+/// [reshape] mimics what the real screen does, and what made this fail:
+/// opening the sidebar changes the layout enough that the composer beneath
+/// it lands at a different depth, so its State is torn down and rebuilt --
+/// which used to withdraw the composer and close the sidebar in the same
+/// frame it opened.
+class _Host extends StatelessWidget {
+  final bool reshape;
+  const _Host({this.reshape = false});
+
+  @override
+  Widget build(BuildContext context) {
+    var writing = Provider.of<WritingSidebarController>(context);
+    var composer = const _Composer();
+    if (!writing.visible) {
+      return Scaffold(
+        body: reshape
+            ? composer
+            : Row(children: [
+                const SizedBox(width: 220, child: Text("NORMAL SIDEBAR")),
+                Expanded(child: composer),
+              ]),
+      );
+    }
+    return Scaffold(
+      body: Row(children: [
+        SizedBox(
+          width: 220,
+          child: WritingSidebar(
+              controller: writing.editor, onClose: writing.close),
+        ),
+        Expanded(child: composer),
+      ]),
+    );
+  }
+}
+
+/// _Composer stands in for the post editor: it offers its controller and has
+/// the button that opens the tools.
+class _Composer extends StatefulWidget {
+  const _Composer();
+
+  @override
+  State<_Composer> createState() => _ComposerState();
+}
+
+class _ComposerState extends State<_Composer> {
+  final controller = TextEditingController(text: "the paymnt cleared");
+  WritingSidebarController? _sidebar;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _sidebar = Provider.of<WritingSidebarController>(context, listen: false)
+        ..attach(controller);
+    });
+  }
+
+  @override
+  void dispose() {
+    _sidebar?.detach(controller);
+    controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Column(children: [
+        Expanded(child: TextField(controller: controller, maxLines: null)),
+        OutlinedButton(
+          onPressed: () =>
+              Provider.of<WritingSidebarController>(context, listen: false)
+                  .show(),
+          child: const Text("Writing Tools"),
+        ),
+      ]);
+}
+
+Future<void> _pumpApp(WidgetTester tester, WritingPreferences prefs,
+    {bool reshape = false}) async {
+  var spellcheck = SpellcheckCapability(
+      fetch: () async => SpellcheckData(
+          const ["the", "cleared", "payment"], const [], const []),
+      prefs: prefs);
+  await spellcheck.update(FakePlugins({PluginCapability.spellcheckData}));
+
+  await tester.pumpWidget(MultiProvider(
+    providers: [
+      ChangeNotifierProvider<ThemeNotifier>(
+          create: (c) => ThemeNotifier(doLoad: false)),
+      ChangeNotifierProvider<SpellcheckCapability>.value(value: spellcheck),
+      ChangeNotifierProvider<WritingPreferences>.value(value: prefs),
+      ChangeNotifierProvider(create: (c) => WritingSidebarController()),
+      Provider<ThesaurusCapability?>.value(value: null),
+    ],
+    child: MaterialApp(home: _Host(reshape: reshape)),
+  ));
+  await tester.pumpAndSettle();
+}
+
+void main() {
+  setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  testWidgets("the button opens the sidebar", (tester) async {
+    await _pumpApp(tester, WritingPreferences());
+
+    expect(find.text("NORMAL SIDEBAR"), findsOneWidget,
+        reason: "the slot starts as whatever the screen normally shows");
+
+    await tester.tap(find.text("Writing Tools"));
+    await tester.pumpAndSettle();
+
+    expect(find.text("NORMAL SIDEBAR"), findsNothing,
+        reason: "the button did not hand the slot over");
+    expect(find.textContaining("Writing"), findsWidgets);
+    // The composer's one misspelling should be listed.
+    expect(find.text("paymnt"), findsOneWidget);
+  });
+
+  testWidgets("closing returns the slot", (tester) async {
+    await _pumpApp(tester, WritingPreferences());
+    await tester.tap(find.text("Writing Tools"));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip("Close"));
+    await tester.pumpAndSettle();
+    expect(find.text("NORMAL SIDEBAR"), findsOneWidget);
+  });
+
+  testWidgets("ignoring a word from the sidebar drops it", (tester) async {
+    var prefs = WritingPreferences();
+    await _pumpApp(tester, prefs);
+    await tester.tap(find.text("Writing Tools"));
+    await tester.pumpAndSettle();
+
+    expect(find.text("paymnt"), findsOneWidget);
+    await tester.tap(find.text("Ignore"));
+    await tester.pumpAndSettle();
+
+    expect(find.text("paymnt"), findsNothing,
+        reason: "an ignored word should leave the list at once");
+    expect(prefs.isIgnoredWord("paymnt"), isTrue);
+  });
+
+  testWidgets("the switch silences the list", (tester) async {
+    var prefs = WritingPreferences();
+    await _pumpApp(tester, prefs);
+    await tester.tap(find.text("Writing Tools"));
+    await tester.pumpAndSettle();
+
+    expect(find.text("paymnt"), findsOneWidget);
+    await tester.tap(find.byType(Switch));
+    await tester.pumpAndSettle();
+
+    expect(find.text("paymnt"), findsNothing);
+    expect(prefs.enabled, isFalse);
+  });
+
+  // The reported failure: the button appeared to do nothing. Opening the
+  // sidebar reshapes the layout, which rebuilds the composer's State, which
+  // withdrew the composer -- and detach used to close the sidebar, undoing
+  // the open in the same frame.
+  testWidgets("the sidebar survives the composer being rebuilt",
+      (tester) async {
+    await _pumpApp(tester, WritingPreferences(), reshape: true);
+
+    await tester.tap(find.text("Writing Tools"));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(WritingSidebar), findsOneWidget,
+        reason: "the sidebar closed itself as it opened");
+  });
+}

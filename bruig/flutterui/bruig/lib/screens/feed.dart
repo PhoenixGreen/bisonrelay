@@ -282,16 +282,6 @@ class _FeedScreenState extends State<FeedScreen> {
     // writing tools. Nothing here knows what those are: the slot is handed
     // to whatever the controller is offering, and taken back when it stops.
     var writing = Provider.of<WritingSidebarController>(context);
-    if (writing.visible) {
-      return ScreenWithChatSideMenu(
-          client,
-          SecondarySideMenuLayout(
-            storageKey: "feed",
-            list: WritingSidebar(
-                controller: writing.editor!, onClose: writing.close),
-            content: activeTab(),
-          ));
-    }
 
     // AreaStyle.feedSidePanel replaces this screen's own sub-menu
     // everywhere: tabs 0/1 (All posts/Your Posts) render their own full
@@ -305,7 +295,10 @@ class _FeedScreenState extends State<FeedScreen> {
     bool onOwnPanelTab =
         (tabIndex == 0 || tabIndex == 1) && !viewingPost && !hasArgs;
 
-    if (feedSidePanel && !isScreenSmall) {
+    // The writing sidebar takes precedence over the feed's own panel: it was
+    // asked for explicitly, and the panel is a place to browse from rather
+    // than something needed while composing.
+    if (feedSidePanel && !isScreenSmall && !writing.visible) {
       // Reading a single post: drop the sidebar entirely for a more focused
       // read, instead of falling back to the minimal nav-only panel.
       if (viewingPost && feedStyle.feedHideSidebarOnPost) {
@@ -337,13 +330,24 @@ class _FeedScreenState extends State<FeedScreen> {
             // SecondarySideMenu's 120 default, too narrow for
             // "Subscriptions" to fit on one line.
             storageKey: "feed",
-            items: feedBarItems(onItemChanged, tabIndex),
+            // Swapped in place rather than returned from a branch of their
+            // own: the same widget in the same position keeps the composer's
+            // State, and with it the draft being written, across the switch.
+            list: writing.visible
+                ? WritingSidebar(
+                    controller: writing.editor, onClose: writing.close)
+                : null,
+            items:
+                writing.visible ? null : feedBarItems(onItemChanged, tabIndex),
             // Detail views that don't need the tab list: reading a
             // single post/user-post (showPost set) or composing a new
             // one (tabIndex 3). hasArgs alone only reflects the route's
             // *initial* navigation arguments, so it misses these once
             // the user navigates within the already-mounted screen.
-            isDetail: hasArgs || showPost != null || tabIndex == 3,
+            // A detail view hides the sidebar; the writing tools are the one
+            // thing that should still show while composing.
+            isDetail: !writing.visible &&
+                (hasArgs || showPost != null || tabIndex == 3),
             // Distinguishes one detail view from the next (e.g. post A
             // vs. post B) so a manual reopen of the submenu doesn't
             // leak across into an unrelated detail view.

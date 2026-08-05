@@ -98,6 +98,73 @@ Future<List<String>> _menuFor(
 }
 
 void main() {
+  // Reported from the chat composer: choosing Ignore or Add to dictionary
+  // left the red underline exactly where it was. Flutter re-runs spell check
+  // only when the text changes, so an override -- which changes the answer
+  // without touching a character -- left the old result on screen until the
+  // next keystroke.
+  testWidgets("an override clears the underline at once", (tester) async {
+    var prefs = WritingPreferences();
+    var capability = SpellcheckCapability(
+        fetch: () async => SpellcheckData(_dictionary, const [], const []),
+        prefs: prefs);
+    await capability.update(FakePlugins({PluginCapability.spellcheckData}));
+
+    late EditableTextState editableState;
+    var menuItems = <ContextMenuButtonItem>[];
+    var controller = TextEditingController(text: "paymnt");
+    var focusNode = FocusNode();
+
+    await tester.pumpWidget(MultiProvider(
+      providers: [
+        ChangeNotifierProvider<SpellcheckCapability>.value(value: capability),
+        ChangeNotifierProvider<WritingPreferences>.value(value: prefs),
+        Provider<ThesaurusCapability?>.value(value: null),
+      ],
+      child: MaterialApp(
+        home: Scaffold(
+          body: TextField(
+            controller: controller,
+            focusNode: focusNode,
+            spellCheckConfiguration: capability.configuration,
+            contextMenuBuilder: (context, state) {
+              editableState = state;
+              menuItems = spellingContextMenuItems(context, state);
+              return const SizedBox.shrink();
+            },
+          ),
+        ),
+      ),
+    ));
+
+    focusNode.requestFocus();
+    await tester.pump();
+
+    var state = tester.state<EditableTextState>(find.byType(EditableText));
+    var spans = await capability.configuration!.spellCheckService!
+        .fetchSpellCheckSuggestions(const Locale("en", "US"), "paymnt");
+    state.spellCheckResults = SpellCheckResults("paymnt", spans ?? []);
+    controller.selection = const TextSelection.collapsed(offset: 3);
+    await tester.pump();
+    expect(state.spellCheckResults!.suggestionSpans, isNotEmpty,
+        reason: "the word should start out flagged");
+
+    state.showToolbar();
+    await tester.pump();
+    editableState = state;
+
+    // Press the real menu entry rather than calling the model directly: the
+    // refresh is part of what choosing it does.
+    var ignore = menuItems.firstWhere((i) => i.label == "Ignore once");
+    ignore.onPressed!();
+    await tester.pump();
+
+    expect(capability.review("paymnt"), isEmpty,
+        reason: "the checker itself should no longer flag it");
+    expect(editableState.spellCheckResults!.suggestionSpans, isEmpty,
+        reason: "the underline outlived the word being ignored");
+  });
+
   // The regression. "thh" is flagged, and the corrections the service
   // already computed for the underline must reach the menu.
   testWidgets("a misspelled word offers its corrections", (tester) async {

@@ -4,6 +4,7 @@ import 'package:bruig/plugin_system/capabilities/thesaurus_menu.dart';
 import 'package:bruig/plugin_system/capabilities/writing_prefs.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:provider/provider.dart';
 
 // writing_sidebar.dart is the post editor's writing tools, laid out as a
@@ -28,13 +29,31 @@ class WritingSidebarController extends ChangeNotifier {
   bool _open = false;
   TextEditingController? _editor;
 
+  // _disposed guards the deferred notification in detach: by the time the
+  // frame ends, this controller may itself be gone.
+  bool _disposed = false;
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
+  }
+
   /// editor is the composer currently offering itself for review, or null
   /// when none is on screen.
   TextEditingController? get editor => _editor;
 
   /// visible is the single question a host screen asks: should the sidebar
   /// slot show writing tools right now.
-  bool get visible => _open && _editor != null;
+  ///
+  /// It turns on whether a composer is currently attached, deliberately.
+  /// Making it wait for one is a feedback loop: showing the sidebar changes
+  /// the layout, which rebuilds the composer beneath it, which withdraws
+  /// while it does so -- so the answer flips back to false, the layout
+  /// reverts, the composer rebuilds again, and the two never settle. The
+  /// sidebar copes with a moment of having nothing to show; the loop cannot
+  /// be coped with at all.
+  bool get visible => _open;
 
   /// attach offers a composer's text for review. Called as the composer
   /// mounts; it does not open the sidebar by itself, since arriving at a
@@ -47,11 +66,24 @@ class WritingSidebarController extends ChangeNotifier {
 
   /// detach withdraws a composer. Ignored if some other composer has since
   /// attached, so a screen being torn down cannot cancel its replacement.
+  ///
+  /// Deliberately leaves the sidebar open. Whether it is open is the user's
+  /// decision, not the composer's, and a composer is torn down and rebuilt
+  /// for reasons that have nothing to do with that -- including, awkwardly,
+  /// opening the sidebar itself, which changes the layout enough to rebuild
+  /// the editor underneath it. Clearing the flag here made the sidebar close
+  /// in the same frame it opened.
   void detach(TextEditingController editor) {
     if (!identical(_editor, editor)) return;
     _editor = null;
-    _open = false;
-    notifyListeners();
+    // Deferred past the current frame. A composer detaches from its
+    // dispose(), which runs while Flutter is unmounting elements, and
+    // notifying there rebuilds widgets mid-teardown -- which the framework
+    // refuses outright.
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      if (_disposed) return;
+      notifyListeners();
+    });
   }
 
   void show() {
@@ -71,7 +103,9 @@ class WritingSidebarController extends ChangeNotifier {
 /// text, each fixable in place, with the thesaurus for the current
 /// selection underneath.
 class WritingSidebar extends StatefulWidget {
-  final TextEditingController controller;
+  /// The composer under review, or null for the frame or two while one is
+  /// being rebuilt -- see WritingSidebarController.visible.
+  final TextEditingController? controller;
 
   /// onClose returns the slot to whatever the screen normally shows there.
   final VoidCallback onClose;
@@ -87,30 +121,46 @@ class WritingSidebar extends StatefulWidget {
 }
 
 class _WritingSidebarState extends State<WritingSidebar> {
+  TextEditingController? get _editor => widget.controller;
+
   // _lastText is what the list was last built from. The controller notifies
   // on selection changes too, and rebuilding the whole list every time the
   // caret moves is both wasted work and -- while a context menu is open --
   // enough to tear it down. Selection changes still matter for the thesaurus
   // row, so they rebuild that alone.
-  late String _lastText = widget.controller.text;
-  late TextSelection _lastSelection = widget.controller.selection;
+  late String _lastText = _editor?.text ?? "";
+  late TextSelection _lastSelection =
+      _editor?.selection ?? const TextSelection.collapsed(offset: -1);
 
   @override
   void initState() {
     super.initState();
-    widget.controller.addListener(_onChanged);
+    _editor?.addListener(_onChanged);
+  }
+
+  @override
+  void didUpdateWidget(covariant WritingSidebar old) {
+    super.didUpdateWidget(old);
+    // The composer can be swapped underneath this -- a rebuild of the editor
+    // hands over a new controller -- and the listener has to move with it.
+    if (!identical(old.controller, widget.controller)) {
+      old.controller?.removeListener(_onChanged);
+      _editor?.addListener(_onChanged);
+      _lastText = _editor?.text ?? "";
+    }
   }
 
   @override
   void dispose() {
-    widget.controller.removeListener(_onChanged);
+    _editor?.removeListener(_onChanged);
     super.dispose();
   }
 
   void _onChanged() {
     if (!mounted) return;
-    var text = widget.controller.text;
-    var selection = widget.controller.selection;
+    var text = _editor?.text ?? "";
+    var selection =
+        _editor?.selection ?? const TextSelection.collapsed(offset: -1);
     if (text == _lastText && selection == _lastSelection) return;
     setState(() {
       _lastText = text;
@@ -125,12 +175,14 @@ class _WritingSidebarState extends State<WritingSidebar> {
   /// list the user is looking at may already be one edit stale. A span whose
   /// text no longer matches is left alone rather than spliced blindly.
   void _apply(WritingIssue issue, String replacement) {
-    var text = widget.controller.text;
+    var editor = _editor;
+    if (editor == null) return;
+    var text = editor.text;
     if (issue.range.end > text.length) return;
     if (text.substring(issue.range.start, issue.range.end) != issue.text) {
       return;
     }
-    widget.controller.value = TextEditingValue(
+    editor.value = TextEditingValue(
       text: text.replaceRange(issue.range.start, issue.range.end, replacement),
       selection: TextSelection.collapsed(
           offset: issue.range.start + replacement.length),
@@ -142,7 +194,7 @@ class _WritingSidebarState extends State<WritingSidebar> {
     var spellcheck = context.watch<SpellcheckCapability>();
     var prefs = context.watch<WritingPreferences>();
     var theme = ThemeNotifier.of(context);
-    var issues = spellcheck.review(widget.controller.text);
+    var issues = spellcheck.review(_editor?.text ?? "");
 
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       _header(theme, prefs, issues.length),
@@ -272,8 +324,9 @@ class _WritingSidebarState extends State<WritingSidebar> {
     var thesaurus = context.read<ThesaurusCapability?>();
     if (thesaurus == null || !thesaurus.available) return const SizedBox();
 
-    var selection = widget.controller.selection;
-    var text = widget.controller.text;
+    var selection =
+        _editor?.selection ?? const TextSelection.collapsed(offset: -1);
+    var text = _editor?.text ?? "";
     String? word;
     if (selection.isValid && !selection.isCollapsed) {
       word = ThesaurusCapability.normalizeWord(selection.textInside(text));
@@ -298,9 +351,11 @@ class _WritingSidebarState extends State<WritingSidebar> {
               capability: thesaurus,
               word: word!,
               onReplace: (replacement) {
-                if (selection.end > widget.controller.text.length) return;
-                widget.controller.value = TextEditingValue(
-                  text: widget.controller.text.replaceRange(
+                var editor = _editor;
+                if (editor == null) return;
+                if (selection.end > editor.text.length) return;
+                editor.value = TextEditingValue(
+                  text: editor.text.replaceRange(
                       selection.start, selection.end, replacement),
                   selection: TextSelection.collapsed(
                       offset: selection.start + replacement.length),

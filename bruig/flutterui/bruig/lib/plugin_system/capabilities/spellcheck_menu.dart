@@ -65,6 +65,7 @@ List<ContextMenuButtonItem> spellingContextMenuItems(
           onPressed: () {
             editableTextState.hideToolbar();
             capability.preferences.disableCheck(issue!.checkId!);
+            _refreshUnderlines(editableTextState, capability);
           },
         )
       else ...[
@@ -73,6 +74,7 @@ List<ContextMenuButtonItem> spellingContextMenuItems(
           onPressed: () {
             editableTextState.hideToolbar();
             capability.preferences.ignoreOnce(flagged);
+            _refreshUnderlines(editableTextState, capability);
           },
         ),
         ContextMenuButtonItem(
@@ -80,11 +82,32 @@ List<ContextMenuButtonItem> spellingContextMenuItems(
           onPressed: () {
             editableTextState.hideToolbar();
             capability.preferences.addToDictionary(flagged);
+            _refreshUnderlines(editableTextState, capability);
           },
         ),
       ],
     ],
   ];
+}
+
+/// _refreshUnderlines recomputes what is flagged and hands it back to the
+/// field, so an ignored word loses its underline immediately.
+///
+/// Flutter re-runs spell check only when the *text* changes, which is the
+/// right trigger for typing and the wrong one here: telling the app to stop
+/// flagging a word changes the answer without touching a character, so the
+/// underline would otherwise sit there until the next keystroke, looking as
+/// though nothing had happened.
+///
+/// review() already honours the new preferences and is synchronous, so the
+/// results can simply be replaced.
+void _refreshUnderlines(
+    EditableTextState editableTextState, SpellcheckCapability capability) {
+  var text = editableTextState.textEditingValue.text;
+  editableTextState.spellCheckResults = SpellCheckResults(text, [
+    for (var issue in capability.review(text))
+      SuggestionSpan(issue.range, issue.suggestions),
+  ]);
 }
 
 /// misspellingAt returns the flagged span under the cursor, or null if the
