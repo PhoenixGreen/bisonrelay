@@ -247,7 +247,10 @@ class _CapabilitySpellCheckService extends SpellCheckService {
   /// review returns every problem in [text], for a caller listing them
   /// rather than underlining them in place. Ordered by position, so the list
   /// reads in the same order as the message.
-  List<WritingIssue> review(String text) {
+  List<WritingIssue> review(String text) => _ordered(_reviewRaw(text));
+
+  /// _reviewRaw finds everything, in no particular order.
+  List<WritingIssue> _reviewRaw(String text) {
     if (!hasData) return const [];
     var issues = <WritingIssue>[];
 
@@ -285,8 +288,22 @@ class _CapabilitySpellCheckService extends SpellCheckService {
       ));
     }
 
-    return _ordered(issues);
+    issues.sort((a, b) => a.range.start.compareTo(b.range.start));
+    return issues;
   }
+
+  /// issuesAt is everything wrong with the text between [start] and [end],
+  /// overlaps included.
+  ///
+  /// review() deliberately drops overlapping issues, because the inline
+  /// underlines have to be disjoint. A menu opened on one word wants the
+  /// opposite: if a word is both misspelled and caught by a style rule, or
+  /// by two style rules, all of them should be on offer at once rather than
+  /// appearing one at a time as each is fixed.
+  List<WritingIssue> issuesAt(String text, int start, int end) => [
+        for (var issue in _reviewRaw(text))
+          if (issue.range.start < end && issue.range.end > start) issue,
+      ];
 
   /// _ordered sorts issues by position and drops any that overlaps one
   /// already kept.
@@ -467,6 +484,13 @@ class SpellcheckCapability extends ChangeNotifier {
   /// clean message returns, so a caller need not distinguish them.
   List<WritingIssue> review(String text) =>
       _active && preferences.enabled ? _service.review(text) : const [];
+
+  /// issuesAt is everything wrong with one stretch of text -- see the
+  /// service's own note on why this differs from review().
+  List<WritingIssue> issuesAt(String text, int start, int end) =>
+      _active && preferences.enabled
+          ? _service.issuesAt(text, start, end)
+          : const [];
 
   /// update re-reads the merged data whenever the set of enabled plugins
   /// changes. The fetch lives here rather than in PluginManagerModel so the

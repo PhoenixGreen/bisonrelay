@@ -230,4 +230,46 @@ void main() {
   test("a word with no entry says so rather than staying blank", () {
     // Covered at the capability level; see thesaurus_test.dart.
   });
+
+  // Reported: switching checking off hid the button that opens the sidebar,
+  // and the switch that turns it back on lives inside that sidebar -- so
+  // there was no way back.
+  testWidgets("the way back in survives checking being switched off",
+      (tester) async {
+    var prefs = WritingPreferences();
+    await _pumpApp(tester, prefs);
+
+    prefs.enabled = false;
+    await tester.pumpAndSettle();
+
+    expect(find.text("Writing Tools"), findsOneWidget,
+        reason: "the only route back to the switch cannot depend on it");
+
+    await tester.tap(find.text("Writing Tools"));
+    await tester.pumpAndSettle();
+    expect(find.byType(Switch), findsOneWidget,
+        reason: "and the switch has to be reachable once inside");
+
+    await tester.tap(find.byType(Switch));
+    await tester.pumpAndSettle();
+    expect(prefs.enabled, isTrue);
+  });
+
+  // Reported: with a long list of issues the alternatives were pushed below
+  // the fold, where nobody would think to scroll for them -- and they answer
+  // a question about what is selected right now.
+  testWidgets("the alternatives stay in view below a long issue list",
+      (tester) async {
+    await _pumpApp(tester, WritingPreferences());
+    await tester.tap(find.text("Writing Tools"));
+    await tester.pumpAndSettle();
+
+    var composer = tester.state<_ComposerState>(find.byType(_Composer));
+    composer.controller.text = List.filled(30, "paymnt").join(" ");
+    composer.focusNode.requestFocus();
+    await tester.pumpAndSettle();
+
+    expect(find.text("Select a word for alternatives."), findsOneWidget,
+        reason: "the alternatives were pushed out of the panel");
+  });
 }

@@ -208,10 +208,18 @@ class _WritingSidebarState extends State<WritingSidebar> {
                   if (issues.isEmpty)
                     _note(theme, "Nothing to flag in this post."),
                   for (var issue in issues) _issueRow(theme, prefs, issue),
-                  _thesaurusRow(context, theme),
                 ],
               ),
       ),
+      // Pinned rather than last in the list. It answers a question about
+      // whatever is selected right now, so it has to be visible at the
+      // moment of selecting -- and a post with a dozen issues had pushed it
+      // below the fold, where nobody would think to scroll for it.
+      if (prefs.enabled)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+          child: _thesaurusRow(context, theme),
+        ),
     ]);
   }
 
@@ -341,19 +349,28 @@ class _WritingSidebarState extends State<WritingSidebar> {
     }
 
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      const Divider(height: 24),
+      const Divider(height: 16),
       if (word == null)
         Text("Select a word for alternatives.",
             style:
                 TextStyle(fontSize: 11, color: theme.colors.onSurfaceVariant))
       else
-        FutureBuilder<ThesaurusEntry?>(
-          // Keyed by the word so a new selection starts a new lookup rather
-          // than showing the previous word's answer while it loads.
-          key: ValueKey(word),
-          future: thesaurus.lookUp(word),
-          builder: (context, snapshot) =>
-              _alternatives(theme, word!, selection, snapshot),
+        // Capped and scrollable in its own right: a common word can have
+        // thirty alternatives, and the issue list above must not lose its
+        // room to them.
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxHeight: 180),
+          child: SingleChildScrollView(
+            child: FutureBuilder<ThesaurusEntry?>(
+              // Keyed by the word so a new selection starts a new lookup
+              // rather than showing the previous word's answer while it
+              // loads.
+              key: ValueKey(word),
+              future: thesaurus.lookUp(word),
+              builder: (context, snapshot) =>
+                  _alternatives(theme, word!, selection, snapshot),
+            ),
+          ),
         ),
     ]);
   }

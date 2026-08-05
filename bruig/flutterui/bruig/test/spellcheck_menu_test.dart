@@ -98,6 +98,7 @@ Future<List<String>> _menuFor(
 }
 
 void main() {
+  _multipleIssueTests();
   // Reported from the chat composer: choosing Ignore or Add to dictionary
   // left the red underline exactly where it was. Flutter re-runs spell check
   // only when the text changes, so an override -- which changes the answer
@@ -231,5 +232,53 @@ void main() {
     var labels = await _menuFor(tester, "payment", 3);
     expect(labels.where((l) => _dictionary.contains(l)), isEmpty,
         reason: "a word that is spelled fine has nothing to correct");
+  });
+}
+
+// Reported: a word with two problems surfaced them one at a time, each
+// appearing only once the last was fixed, so the menu looked as though it
+// had missed something. The inline underlines have to be disjoint, which is
+// why review() drops overlaps -- but a menu opened on one word wants all of
+// them.
+void _multipleIssueTests() {
+  test("every issue on a word reaches the menu", () async {
+    var prefs = WritingPreferences();
+    var capability = SpellcheckCapability(
+      fetch: () async => SpellcheckData(const [
+        "cant"
+      ], const [], [
+        GrammarRule(r"\bcant\b", "Missing apostrophe", "can't"),
+        GrammarRule(r"\bcant\b", "Informal", "cannot"),
+      ]),
+      prefs: prefs,
+    );
+    await capability.update(FakePlugins({PluginCapability.spellcheckData}));
+
+    // The underline shows one, because it must.
+    expect(capability.review("cant"), hasLength(1));
+
+    // The menu sees both.
+    var both = capability.issuesAt("cant", 0, 4);
+    expect(both, hasLength(2));
+    expect(both.map((i) => i.suggestions.single),
+        containsAll(["can't", "cannot"]));
+  });
+
+  test("issuesAt only returns what the range touches", () async {
+    var capability = SpellcheckCapability(
+      fetch: () async => SpellcheckData(const [
+        "the"
+      ], const [], [
+        GrammarRule(r"[ ]{2,}", "Multiple spaces", " "),
+      ]),
+      prefs: WritingPreferences(),
+    );
+    await capability.update(FakePlugins({PluginCapability.spellcheckData}));
+
+    const text = "the  the";
+    expect(capability.issuesAt(text, 3, 5), isNotEmpty,
+        reason: "the doubled space sits at 3..5");
+    expect(capability.issuesAt(text, 0, 3), isEmpty,
+        reason: "the first word is fine");
   });
 }

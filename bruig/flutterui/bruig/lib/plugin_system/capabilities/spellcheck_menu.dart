@@ -35,60 +35,85 @@ List<ContextMenuButtonItem> spellingContextMenuItems(
   if (span == null) return const [];
 
   var capability = context.read<SpellcheckCapability?>();
-  var value = editableTextState.textEditingValue;
-  var flagged = value.text.substring(span.range.start, span.range.end);
+  if (capability == null) {
+    // No capability to consult: offer what the underline already knows.
+    return [
+      for (var suggestion in span.suggestions.take(maxCorrections))
+        ContextMenuButtonItem(
+          label: suggestion,
+          onPressed: () =>
+              _applyCorrection(editableTextState, span.range, suggestion),
+        ),
+    ];
+  }
 
-  // A style rule's own findings carry the rule that produced them, so the
-  // rule itself can be switched off. A spelling issue has no rule behind it,
-  // only the dictionary, and is silenced per word instead.
-  var issue = capability
-      ?.review(value.text)
-      .where((i) =>
-          i.range.start == span.range.start && i.range.end == span.range.end)
-      .firstOrNull;
+  // Everything wrong with this word, not just whichever issue won the right
+  // to underline it. A word can be misspelled *and* caught by a style rule,
+  // or by two style rules; offering them one at a time -- each appearing
+  // only once the last was fixed -- makes the menu look as though it had
+  // missed something.
+  var text = editableTextState.textEditingValue.text;
+  var issues = capability.issuesAt(text, span.range.start, span.range.end);
+  if (issues.isEmpty) return const [];
 
-  return [
-    for (var suggestion in span.suggestions.take(maxCorrections))
-      ContextMenuButtonItem(
+  var items = <ContextMenuButtonItem>[];
+  var offered = <String>{};
+  for (var issue in issues) {
+    for (var suggestion in issue.suggestions) {
+      // Two rules can propose the same replacement; listing it twice only
+      // makes the menu longer.
+      if (!offered.add(suggestion)) continue;
+      if (items.length >= maxCorrections) break;
+      items.add(ContextMenuButtonItem(
         label: suggestion,
         onPressed: () =>
-            _applyCorrection(editableTextState, span.range, suggestion),
+            _applyCorrection(editableTextState, issue.range, suggestion),
+      ));
+    }
+  }
+
+  var styleIssues = issues.where((i) => i.checkId != null).toList();
+  var hasSpelling = issues.any((i) => i.kind == WritingIssueKind.spelling);
+
+  for (var issue in styleIssues) {
+    items.add(ContextMenuButtonItem(
+      // Named when there is more than one, so it is clear which is being
+      // switched off; the bare label reads better in the common single case.
+      label: styleIssues.length == 1
+          ? "Turn off this check"
+          : "Turn off: ${issue.message}",
+      onPressed: () {
+        editableTextState.hideToolbar();
+        capability.preferences
+            .disableCheck(issue.checkId!, description: issue.message);
+        _refreshUnderlines(editableTextState, capability);
+      },
+    ));
+  }
+
+  if (hasSpelling) {
+    var word = text.substring(span.range.start, span.range.end);
+    items.addAll([
+      ContextMenuButtonItem(
+        label: "Ignore once",
+        onPressed: () {
+          editableTextState.hideToolbar();
+          capability.preferences.ignoreOnce(word);
+          _refreshUnderlines(editableTextState, capability);
+        },
       ),
-    if (capability != null) ...[
-      if (issue?.checkId != null)
-        // Disagreeing with one instance of a style rule almost always means
-        // disagreeing with the rule, so this offers the rule rather than the
-        // instance -- and is how the noisier checks get switched off without
-        // touching the plugin.
-        ContextMenuButtonItem(
-          label: "Turn off this check",
-          onPressed: () {
-            editableTextState.hideToolbar();
-            capability.preferences
-                .disableCheck(issue!.checkId!, description: issue.message);
-            _refreshUnderlines(editableTextState, capability);
-          },
-        )
-      else ...[
-        ContextMenuButtonItem(
-          label: "Ignore once",
-          onPressed: () {
-            editableTextState.hideToolbar();
-            capability.preferences.ignoreOnce(flagged);
-            _refreshUnderlines(editableTextState, capability);
-          },
-        ),
-        ContextMenuButtonItem(
-          label: "Add to dictionary",
-          onPressed: () {
-            editableTextState.hideToolbar();
-            capability.preferences.addToDictionary(flagged);
-            _refreshUnderlines(editableTextState, capability);
-          },
-        ),
-      ],
-    ],
-  ];
+      ContextMenuButtonItem(
+        label: "Add to dictionary",
+        onPressed: () {
+          editableTextState.hideToolbar();
+          capability.preferences.addToDictionary(word);
+          _refreshUnderlines(editableTextState, capability);
+        },
+      ),
+    ]);
+  }
+
+  return items;
 }
 
 /// _refreshUnderlines recomputes what is flagged and hands it back to the

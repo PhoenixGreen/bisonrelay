@@ -347,9 +347,11 @@ class _NewPostScreenState extends State<NewPostScreen> {
                 onPressed: () => pickFile(context),
                 child: const Txt.S("Add Embbed"),
               ),
-              // Absent entirely unless a plugin provides the writing
-              // capabilities, so the editor is unchanged without them.
-              if (context.watch<SpellcheckCapability>().configuration != null)
+              // Keyed on whether a provider is enabled, not on whether
+              // checking is currently switched on. Hiding it when checking
+              // is off strands the user: the switch that turns it back on
+              // lives inside the sidebar this button opens.
+              if (context.watch<SpellcheckCapability>().active)
                 OutlinedButton.icon(
                   onPressed: () => Provider.of<WritingSidebarController>(
                           context,
