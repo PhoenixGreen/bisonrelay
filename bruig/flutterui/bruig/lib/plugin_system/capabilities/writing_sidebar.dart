@@ -6,7 +6,6 @@ import 'package:bruig/plugin_system/capabilities/writing_prefs.dart';
 import 'package:bruig/plugin_system/capabilities/writing_stats.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/scheduler.dart';
 import 'package:provider/provider.dart';
 
 // writing_sidebar.dart is the post editor's writing tools, laid out as a
@@ -27,95 +26,12 @@ import 'package:provider/provider.dart';
 // the two that live below the fold are the two anyone would have to go
 // looking for.
 
-/// WritingSidebarController connects a composer to the screen that owns the
-/// sidebar slot beside it.
-///
-/// The two are far apart: the text being checked belongs to the composer,
-/// while the slot the results go in belongs to the screen hosting it, and
-/// neither can reach the other. A composer [attach]es while it is on screen,
-/// the screen watches this to know whether it has anything to show, and the
-/// slot goes back to its normal contents the moment either the composer
-/// leaves or the sidebar is closed.
-class WritingSidebarController extends ChangeNotifier {
-  bool _open = false;
-  TextEditingController? _editor;
-
-  // _disposed guards the deferred notification in detach: by the time the
-  // frame ends, this controller may itself be gone.
-  bool _disposed = false;
-
-  @override
-  void dispose() {
-    _disposed = true;
-    super.dispose();
-  }
-
-  /// editor is the composer currently offering itself for review, or null
-  /// when none is on screen.
-  TextEditingController? get editor => _editor;
-
-  /// visible is the single question a host screen asks: should the sidebar
-  /// slot show writing tools right now.
-  ///
-  /// It turns on whether a composer is currently attached, deliberately.
-  /// Making it wait for one is a feedback loop: showing the sidebar changes
-  /// the layout, which rebuilds the composer beneath it, which withdraws
-  /// while it does so -- so the answer flips back to false, the layout
-  /// reverts, the composer rebuilds again, and the two never settle. The
-  /// sidebar copes with a moment of having nothing to show; the loop cannot
-  /// be coped with at all.
-  bool get visible => _open;
-
-  /// attach offers a composer's text for review. Called as the composer
-  /// mounts; it does not open the sidebar by itself, since arriving at a
-  /// post editor should not rearrange the screen.
-  void attach(TextEditingController editor) {
-    if (identical(_editor, editor)) return;
-    _editor = editor;
-    notifyListeners();
-  }
-
-  /// detach withdraws a composer. Ignored if some other composer has since
-  /// attached, so a screen being torn down cannot cancel its replacement.
-  ///
-  /// Deliberately leaves the sidebar open. Whether it is open is the user's
-  /// decision, not the composer's, and a composer is torn down and rebuilt
-  /// for reasons that have nothing to do with that -- including, awkwardly,
-  /// opening the sidebar itself, which changes the layout enough to rebuild
-  /// the editor underneath it. Clearing the flag here made the sidebar close
-  /// in the same frame it opened.
-  void detach(TextEditingController editor) {
-    if (!identical(_editor, editor)) return;
-    _editor = null;
-    // Deferred past the current frame. A composer detaches from its
-    // dispose(), which runs while Flutter is unmounting elements, and
-    // notifying there rebuilds widgets mid-teardown -- which the framework
-    // refuses outright.
-    SchedulerBinding.instance.addPostFrameCallback((_) {
-      if (_disposed) return;
-      notifyListeners();
-    });
-  }
-
-  void show() {
-    if (_open) return;
-    _open = true;
-    notifyListeners();
-  }
-
-  void close() {
-    if (!_open) return;
-    _open = false;
-    notifyListeners();
-  }
-}
-
 /// WritingSidebar lists every spelling and style issue in [controller]'s
 /// text, each fixable in place, with the thesaurus for the current
 /// selection underneath.
 class WritingSidebar extends StatefulWidget {
   /// The composer under review, or null for the frame or two while one is
-  /// being rebuilt -- see WritingSidebarController.visible.
+  /// being rebuilt -- see ComposerSidebarController.visible.
   final TextEditingController? controller;
 
   /// onClose returns the slot to whatever the screen normally shows there.

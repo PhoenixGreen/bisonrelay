@@ -11,7 +11,9 @@ import 'package:bruig/models/emoji.dart';
 import 'package:bruig/models/audio.dart';
 import 'package:bruig/models/menus.dart';
 import 'package:bruig/models/payments.dart';
+import 'package:bruig/models/composer_sidebar.dart';
 import 'package:bruig/plugin_system/plugin_system.dart';
+import 'package:bruig/post_library/post_library.dart';
 import 'package:bruig/models/realtimechat.dart';
 import 'package:bruig/models/resources.dart';
 import 'package:bruig/models/uploads.dart';
@@ -222,7 +224,8 @@ Future<void> runMainApp(Config cfg) async {
       ChangeNotifierProvider<WritingPreferences>.value(value: writingPrefs),
       // Connects a composer to the screen that owns the sidebar slot beside
       // it; the two cannot reach each other directly.
-      ChangeNotifierProvider(create: (c) => WritingSidebarController()),
+      ChangeNotifierProvider(create: (c) => ComposerSidebarController()),
+      ChangeNotifierProvider(create: (c) => PostLibraryModel()),
       // The thesaurus holds no state of its own -- it asks the plugin a
       // word at a time -- so it is a plain ProxyProvider rather than a
       // notifier, rebuilt only if the plugin list itself changes.

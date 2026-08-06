@@ -4,7 +4,9 @@ import 'package:bruig/components/chat/chat_side_menu.dart';
 import 'package:bruig/components/containers.dart';
 import 'package:bruig/components/text.dart';
 import 'package:bruig/models/client.dart';
+import 'package:bruig/models/composer_sidebar.dart';
 import 'package:bruig/plugin_system/plugin_system.dart';
+import 'package:bruig/post_library/post_library.dart';
 import 'package:bruig/models/uistate.dart';
 import 'package:bruig/screens/feed/user_posts.dart';
 import 'package:bruig/screens/overview.dart';
@@ -302,19 +304,26 @@ class _FeedScreenState extends State<FeedScreen> {
 
     var client = Provider.of<ClientModel>(context);
 
-    // A composer on this screen can take the sidebar slot over for its
-    // writing tools. Nothing here knows what those are: the slot is handed
-    // to whatever the controller is offering, and taken back when it stops.
-    var writing = Provider.of<WritingSidebarController>(context);
-    // Only while composing, and only ever built once. The sidebar reviews a
+    // A composer on this screen can take the sidebar slot over -- for its
+    // writing tools, or for the saved-post library. Nothing here knows what
+    // either of those are: the slot is handed to whichever panel the
+    // controller says has it, and taken back when neither does.
+    var composer = Provider.of<ComposerSidebarController>(context);
+    // Only while composing, and only ever built once. Both panels act on a
     // composer's text, and there is no composer on the browsing tabs.
     //
     // Built once because three separate decisions below depend on it, and
     // when they were three separate conditions two of them were updated and
     // one was not -- which put the writing tools in the slot on every Feed
     // tab. Derived from one value, they cannot disagree.
-    var writingSidebar = writing.visible && tabIndex == 3
-        ? WritingSidebar(controller: writing.editor, onClose: writing.close)
+    var composerSidebar = composer.visible && tabIndex == 3
+        ? switch (composer.panel) {
+            ComposerPanel.writing => WritingSidebar(
+                controller: composer.editor, onClose: composer.close),
+            ComposerPanel.posts =>
+              PostSidebar(controller: composer.editor, onClose: composer.close),
+            ComposerPanel.none => null,
+          }
         : null;
 
     // AreaStyle.feedSidePanel replaces this screen's own sub-menu
@@ -329,10 +338,10 @@ class _FeedScreenState extends State<FeedScreen> {
     bool onOwnPanelTab =
         (tabIndex == 0 || tabIndex == 1) && !viewingPost && !hasArgs;
 
-    // The writing sidebar takes precedence over the feed's own panel: it was
-    // asked for explicitly, and the panel is a place to browse from rather
-    // than something needed while composing.
-    if (feedSidePanel && !isScreenSmall && writingSidebar == null) {
+    // The composer's panel takes precedence over the feed's own: it was
+    // asked for explicitly, and the feed panel is a place to browse from
+    // rather than something needed while composing.
+    if (feedSidePanel && !isScreenSmall && composerSidebar == null) {
       // Reading a single post: drop the sidebar entirely for a more focused
       // read, instead of falling back to the minimal nav-only panel.
       if (viewingPost && feedStyle.feedHideSidebarOnPost) {
@@ -367,8 +376,8 @@ class _FeedScreenState extends State<FeedScreen> {
             // Swapped in place rather than returned from a branch of their
             // own: the same widget in the same position keeps the composer's
             // State, and with it the draft being written, across the switch.
-            list: writingSidebar,
-            items: writingSidebar != null
+            list: composerSidebar,
+            items: composerSidebar != null
                 ? null
                 : feedBarItems(onItemChanged, tabIndex),
             // Detail views that don't need the tab list: reading a
@@ -376,9 +385,9 @@ class _FeedScreenState extends State<FeedScreen> {
             // one (tabIndex 3). hasArgs alone only reflects the route's
             // *initial* navigation arguments, so it misses these once
             // the user navigates within the already-mounted screen.
-            // A detail view hides the sidebar; the writing tools are the one
+            // A detail view hides the sidebar; a composer panel is the one
             // thing that should still show while composing.
-            isDetail: writingSidebar == null &&
+            isDetail: composerSidebar == null &&
                 (hasArgs || showPost != null || tabIndex == 3),
             // Distinguishes one detail view from the next (e.g. post A
             // vs. post B) so a manual reopen of the submenu doesn't

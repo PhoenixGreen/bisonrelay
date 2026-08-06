@@ -1,3 +1,4 @@
+import 'package:bruig/models/composer_sidebar.dart';
 import 'package:bruig/plugin_system/plugin_system.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
@@ -32,7 +33,7 @@ class _Host extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    var writing = Provider.of<WritingSidebarController>(context);
+    var writing = Provider.of<ComposerSidebarController>(context);
     var composer = const _Composer();
     if (!writing.visible || !composing) {
       return Scaffold(
@@ -69,14 +70,14 @@ class _Composer extends StatefulWidget {
 class _ComposerState extends State<_Composer> {
   final controller = TextEditingController(text: "the paymnt cleared");
   final focusNode = FocusNode();
-  WritingSidebarController? _sidebar;
+  ComposerSidebarController? _sidebar;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      _sidebar = Provider.of<WritingSidebarController>(context, listen: false)
+      _sidebar = Provider.of<ComposerSidebarController>(context, listen: false)
         ..attach(controller);
     });
   }
@@ -96,8 +97,8 @@ class _ComposerState extends State<_Composer> {
                 controller: controller, focusNode: focusNode, maxLines: null)),
         OutlinedButton(
           onPressed: () =>
-              Provider.of<WritingSidebarController>(context, listen: false)
-                  .show(),
+              Provider.of<ComposerSidebarController>(context, listen: false)
+                  .show(ComposerPanel.writing),
           child: const Text("Writing Tools"),
         ),
       ]);
@@ -124,7 +125,7 @@ Future<void> _pumpApp(WidgetTester tester, WritingPreferences prefs,
           create: (c) => ThemeNotifier(doLoad: false)),
       ChangeNotifierProvider<SpellcheckCapability>.value(value: spellcheck),
       ChangeNotifierProvider<WritingPreferences>.value(value: prefs),
-      ChangeNotifierProvider(create: (c) => WritingSidebarController()),
+      ChangeNotifierProvider(create: (c) => ComposerSidebarController()),
       Provider<ThesaurusCapability?>.value(
         value: ThesaurusCapability(
           FakePlugins({PluginCapability.thesaurus}),
@@ -387,8 +388,8 @@ void main() {
     var controller = tester
         .state<_ComposerState>(find.byType(_Composer))
         .context
-        .read<WritingSidebarController>();
-    controller.show();
+        .read<ComposerSidebarController>();
+    controller.show(ComposerPanel.writing);
     await tester.pumpAndSettle();
 
     expect(find.byType(WritingSidebar), findsNothing,

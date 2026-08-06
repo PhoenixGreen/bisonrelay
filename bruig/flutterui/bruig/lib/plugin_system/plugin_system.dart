@@ -44,6 +44,10 @@
 //   capabilities/thesaurus.dart         the thesaurus capability
 //   capabilities/thesaurus_menu.dart    its composer UI
 //   capabilities/writing_sidebar.dart   the post editor's four review pages
+//
+// The sidebar slot it occupies is not owned here: it is shared with the
+// saved-post library, which is not a plugin at all. See
+// models/composer_sidebar.dart.
 //   screens/plugin_screen.dart          renders a plugin-described screen
 //   screens/plugin_settings_screen.dart Settings > Plugins
 //

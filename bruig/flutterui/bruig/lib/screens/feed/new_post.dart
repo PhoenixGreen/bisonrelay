@@ -5,7 +5,9 @@ import 'package:bruig/components/buttons.dart';
 import 'package:bruig/components/text.dart';
 import 'package:bruig/models/feed.dart';
 import 'package:bruig/models/snackbar.dart';
+import 'package:bruig/models/composer_sidebar.dart';
 import 'package:bruig/plugin_system/plugin_system.dart';
+import 'package:bruig/post_library/post_library.dart';
 import 'package:bruig/screens/feed.dart';
 import 'package:bruig/util.dart';
 import 'package:flutter/material.dart';
@@ -286,13 +288,19 @@ class _NewPostScreenState extends State<NewPostScreen> {
     // Withdraw this composer, so the sidebar slot goes back to whatever the
     // screen normally shows there. Read without listening: dispose must not
     // register a dependency.
-    _writingSidebar?.detach(contentCtrl);
+    _composerSidebar?.detach(contentCtrl);
+    // Flush before the controller goes: the pending write reads its text.
+    _postLibrary?.flush();
     super.dispose();
   }
 
-  // _writingSidebar is captured while the widget is still mounted, since
+  // _composerSidebar is captured while the widget is still mounted, since
   // dispose cannot reach the provider tree.
-  WritingSidebarController? _writingSidebar;
+  ComposerSidebarController? _composerSidebar;
+
+  // Captured for the same reason: an edit still inside the autosave debounce
+  // when the editor goes away would otherwise be lost.
+  PostLibraryModel? _postLibrary;
 
   @override
   void initState() {
@@ -304,9 +312,11 @@ class _NewPostScreenState extends State<NewPostScreen> {
     // the screen, only make the tools reachable.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      _writingSidebar =
-          Provider.of<WritingSidebarController>(context, listen: false)
+      _composerSidebar =
+          Provider.of<ComposerSidebarController>(context, listen: false)
             ..attach(contentCtrl);
+      _postLibrary = Provider.of<PostLibraryModel>(context, listen: false)
+        ..watch(contentCtrl);
     });
   }
 
@@ -352,13 +362,22 @@ class _NewPostScreenState extends State<NewPostScreen> {
               // lives inside the sidebar this button opens.
               if (context.watch<SpellcheckCapability>().active)
                 OutlinedButton.icon(
-                  onPressed: () => Provider.of<WritingSidebarController>(
+                  onPressed: () => Provider.of<ComposerSidebarController>(
                           context,
                           listen: false)
-                      .show(),
+                      .show(ComposerPanel.writing),
                   icon: const Icon(Icons.spellcheck, size: 16),
                   label: const Txt.S("Writing Tools"),
                 ),
+              // Always offered, unlike the writing tools: the library needs
+              // no plugin, only a folder on disk.
+              OutlinedButton.icon(
+                onPressed: () => Provider.of<ComposerSidebarController>(context,
+                        listen: false)
+                    .show(ComposerPanel.posts),
+                icon: const Icon(Icons.folder_outlined, size: 16),
+                label: const Txt.S("My Posts"),
+              ),
             ]),
           ),
           /*  XXX Need to figure out Link to Content button
