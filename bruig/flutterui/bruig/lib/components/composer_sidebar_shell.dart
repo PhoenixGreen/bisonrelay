@@ -12,6 +12,12 @@ import 'package:flutter/material.dart';
 // Add Embed -- were three things competing with the text for the reader's
 // attention, all of them about the tools rather than about the post.
 
+/// _navButtonHeight is what every control in the nav row stands at. Below
+/// about this, a pointer that moves a few pixels between press and release
+/// -- which is most trackpad clicks -- starts landing outside the thing it
+/// was aimed at.
+const double _navButtonHeight = 36;
+
 /// ComposerSidebarShell wraps [child] with the panel nav.
 class ComposerSidebarShell extends StatelessWidget {
   final ComposerSidebarController controller;
@@ -57,12 +63,13 @@ class ComposerSidebarShell extends StatelessWidget {
   Widget _nav(ThemeNotifier theme, bool inDrawer) => Padding(
         padding: EdgeInsets.fromLTRB(4, 4, inDrawer ? 4 : 0, 4),
         child: Row(children: [
-          Expanded(
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [for (var panel in panels) _icon(theme, panel)],
-            ),
-          ),
+          // Each icon takes an equal share of the row, rather than being
+          // sized to itself and spaced apart. Spaced apart, most of the row
+          // was gap: four 35px icons across 280px left roughly 140px that
+          // looked like part of the control and did nothing when clicked, so
+          // aiming slightly wide missed entirely and clicking "took a few
+          // tries".
+          for (var panel in panels) Expanded(child: _icon(theme, panel)),
           if (!inDrawer) ...[
             Container(
               width: 1,
@@ -85,8 +92,10 @@ class ComposerSidebarShell extends StatelessWidget {
             topLeft: Radius.circular(6),
             bottomLeft: Radius.circular(6),
           ),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(8, 7, 10, 7),
+          child: Container(
+            height: _navButtonHeight,
+            alignment: Alignment.center,
+            padding: const EdgeInsets.fromLTRB(8, 0, 10, 0),
             child: Icon(
               Icons.chevron_left,
               size: 20,
@@ -117,7 +126,11 @@ class ComposerSidebarShell extends StatelessWidget {
           onTap: onTap,
           borderRadius: BorderRadius.circular(6),
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+            // A height rather than padding: the row is what is being aimed
+            // at, and a target the size of the glyph inside it is a target
+            // you can miss while pointing straight at the button.
+            height: _navButtonHeight,
+            alignment: Alignment.center,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(6),
               color: selected ? theme.colors.secondaryContainer : null,

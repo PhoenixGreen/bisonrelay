@@ -50,6 +50,7 @@ Future<void> _pump(WidgetTester tester, ComposerSidebarController controller,
 }
 
 void main() {
+  _navTargetTests();
   _resizeTests();
   _drawerOwnershipTests();
   _collapsedDrawerTests();
@@ -609,5 +610,47 @@ void _resizeTests() {
     expect(woken, greaterThan(afterFirst),
         reason: "the drawer kept rendering the tree that was replaced, and "
             "every tap in it went nowhere");
+  });
+}
+
+// Reported: the nav icons "sometimes click properly and other times it takes
+// a few tries".
+//
+// They were sized to the glyph inside them and spaced apart, so most of the
+// row they appeared to occupy was gap -- it looked like part of the control
+// and did nothing when clicked. Aiming slightly wide missed entirely.
+void _navTargetTests() {
+  Rect targetOf(WidgetTester tester, IconData icon) => tester.getRect(
+        find.ancestor(of: find.byIcon(icon), matching: find.byType(InkWell)),
+      );
+
+  testWidgets("the panel icons tile the row, leaving no dead gaps",
+      (tester) async {
+    var controller = ComposerSidebarController();
+    await _pump(tester, controller);
+
+    var targets = [
+      for (var panel in ComposerPanel.values) targetOf(tester, panel.icon),
+    ]..sort((a, b) => a.left.compareTo(b.left));
+
+    for (var i = 1; i < targets.length; i++) {
+      expect(targets[i].left - targets[i - 1].right, lessThan(1),
+          reason: "a gap between two icons that looks like part of the row "
+              "and does nothing when clicked");
+    }
+  });
+
+  // A pointer that moves a few pixels between press and release -- which is
+  // most trackpad clicks -- has to stay inside the thing it was aimed at.
+  testWidgets("every control in the row is comfortably tall", (tester) async {
+    var controller = ComposerSidebarController();
+    await _pump(tester, controller);
+
+    for (var panel in ComposerPanel.values) {
+      expect(targetOf(tester, panel.icon).height, greaterThanOrEqualTo(32),
+          reason: "${panel.label} is a small thing to hit");
+    }
+    expect(
+        targetOf(tester, Icons.chevron_left).height, greaterThanOrEqualTo(32));
   });
 }
