@@ -1,3 +1,4 @@
+import 'package:bruig/components/containers.dart';
 import 'package:bruig/models/composer_sidebar.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
@@ -33,8 +34,13 @@ class ComposerSidebarShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     var theme = ThemeNotifier.of(context);
+    // In the collapsed drawer the sidebar is already an overlay you put away
+    // by tapping off it, so a control of its own for hiding it is a second
+    // route to the same place -- and its chevron points at an edge that is
+    // not there.
+    var inDrawer = CollapsedSidebarScope.of(context);
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      _nav(theme),
+      _nav(theme, inDrawer),
       const Divider(height: 1),
       Expanded(child: child),
     ]);
@@ -48,8 +54,8 @@ class ComposerSidebarShell extends StatelessWidget {
   /// is set apart: pushed hard against the sidebar's outer edge, past a
   /// rule, larger than the icons, and squared off on the side it touches so
   /// it reads as part of the frame rather than as something in the list.
-  Widget _nav(ThemeNotifier theme) => Padding(
-        padding: const EdgeInsets.fromLTRB(4, 4, 0, 4),
+  Widget _nav(ThemeNotifier theme, bool inDrawer) => Padding(
+        padding: EdgeInsets.fromLTRB(4, 4, inDrawer ? 4 : 0, 4),
         child: Row(children: [
           Expanded(
             child: Row(
@@ -57,13 +63,15 @@ class ComposerSidebarShell extends StatelessWidget {
               children: [for (var panel in panels) _icon(theme, panel)],
             ),
           ),
-          Container(
-            width: 1,
-            height: 20,
-            margin: const EdgeInsets.symmetric(horizontal: 4),
-            color: theme.colors.outlineVariant,
-          ),
-          _hideButton(theme),
+          if (!inDrawer) ...[
+            Container(
+              width: 1,
+              height: 20,
+              margin: const EdgeInsets.symmetric(horizontal: 4),
+              color: theme.colors.outlineVariant,
+            ),
+            _hideButton(theme),
+          ],
         ]),
       );
 

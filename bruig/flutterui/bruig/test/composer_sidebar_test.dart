@@ -3,6 +3,7 @@ import 'package:bruig/components/feed/formatting_sidebar.dart';
 import 'package:bruig/components/containers.dart';
 import 'package:bruig/models/composer_sidebar.dart';
 import 'package:bruig/models/feed.dart';
+import 'package:bruig/models/uistate.dart';
 import 'package:bruig/screens/feed/feed_posts.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
@@ -49,6 +50,7 @@ Future<void> _pump(WidgetTester tester, ComposerSidebarController controller,
 }
 
 void main() {
+  _collapsedDrawerTests();
   _feedPanelFlagTests();
   _hideButtonTests();
   _titleDecorationTests();
@@ -415,5 +417,103 @@ void _feedPanelFlagTests() {
     expect(find.text("All posts"), findsOneWidget);
     expect(find.text("Your Posts"), findsOneWidget);
     expect(find.text("New Post"), findsOneWidget);
+  });
+}
+
+// Reported: in the collapsed drawer -- on mobile, or with the sidebar style
+// set to collapsed -- the panel icons did nothing, and the hide control was
+// offered where it makes no sense.
+void _collapsedDrawerTests() {
+  Future<void> pumpInDrawer(
+      WidgetTester tester, ComposerSidebarController controller) async {
+    await tester.pumpWidget(MultiProvider(
+      providers: [
+        ChangeNotifierProvider<ThemeNotifier>(
+            create: (c) => ThemeNotifier(doLoad: false)),
+      ],
+      child: MaterialApp(
+        home: Scaffold(
+          body: CollapsedSidebarScope(
+            child: ListenableBuilder(
+              listenable: controller,
+              builder: (context, _) => SizedBox(
+                width: 260,
+                child: ComposerSidebarShell(
+                  controller: controller,
+                  panels: ComposerPanel.values,
+                  child: Text("PANEL: ${controller.panel.name}"),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets("the drawer offers no hide control", (tester) async {
+    var controller = ComposerSidebarController();
+    await pumpInDrawer(tester, controller);
+
+    expect(find.byTooltip("Hide the sidebar"), findsNothing,
+        reason: "the drawer is put away by tapping off it, and its chevron "
+            "would point at an edge that is not there");
+    // Everything else is still there.
+    for (var panel in ComposerPanel.values) {
+      expect(find.byIcon(panel.icon), findsOneWidget);
+    }
+  });
+
+  testWidgets("the panel icons still switch panels there", (tester) async {
+    var controller = ComposerSidebarController();
+    await pumpInDrawer(tester, controller);
+
+    await tester.tap(find.byIcon(ComposerPanel.posts.icon));
+    await tester.pumpAndSettle();
+    expect(find.text("PANEL: posts"), findsOneWidget);
+  });
+
+  // The drawer redraws only when the model tells it to, and the model
+  // ignores a new builder on its own -- a fresh closure every build could
+  // never compare equal, so notifying on it would wake the drawer once per
+  // frame. A revision is how a sidebar that does change says so.
+  // testWidgets rather than test: the model defers its notification past
+  // the frame, since it is called from a screen's build and waking
+  // listeners there would throw. Nothing fires without a frame to end.
+  testWidgets("the drawer is told when the sidebar's contents change",
+      (tester) async {
+    await tester.pumpWidget(const SizedBox());
+
+    // The model defers its notification to the end of a frame, and the test
+    // binding produces one only when a frame has actually been asked for --
+    // pumping a settled tree does not schedule one, so the callback would
+    // sit there unfired and every assertion below would pass vacuously.
+    Future<void> endFrame() async {
+      tester.binding.scheduleFrame();
+      await tester.pump();
+    }
+
+    var model = CollapsedSidebarModel();
+    var woken = 0;
+    model.addListener(() => woken++);
+
+    model.register((_) => const SizedBox(), 200, revision: "none");
+    await endFrame();
+    expect(model.available, isTrue);
+    expect(woken, 1, reason: "the first registration is a real change");
+    var afterFirst = woken;
+
+    // Same revision, new closure: not worth waking anyone for. A closure is
+    // fresh on every build and can never compare equal, so notifying on it
+    // would wake the drawer once a frame for no visible change.
+    model.register((_) => const SizedBox(), 200, revision: "none");
+    await endFrame();
+    expect(woken, afterFirst);
+
+    model.register((_) => const SizedBox(), 200, revision: "posts");
+    await endFrame();
+    expect(woken, greaterThan(afterFirst),
+        reason: "the drawer kept rendering the panel that was replaced");
   });
 }

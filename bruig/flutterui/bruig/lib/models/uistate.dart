@@ -94,6 +94,7 @@ class OverviewActivePath extends ChangeNotifier {
 // anything it draws is clipped to the right of the main nav.
 class CollapsedSidebarModel extends ChangeNotifier {
   WidgetBuilder? _builder;
+  Object? _revision;
   double _width = 200;
   bool _open = false;
 
@@ -113,16 +114,30 @@ class CollapsedSidebarModel extends ChangeNotifier {
   // there *is* one, or in how wide it is, is worth telling anyone about --
   // notifying on every build would wake the drawer once per frame for no
   // visible change.
-  void register(WidgetBuilder builder, double width) {
-    var changed = _builder == null || _width != width;
+  /// revision is whatever the caller's sidebar would look different for.
+  ///
+  /// The builder alone cannot answer that -- it is a fresh closure every
+  /// build and can never compare equal, so notifying on it would wake the
+  /// drawer once per frame for no visible change. But a sidebar whose
+  /// *contents* change while the drawer is open needs the drawer told, and
+  /// without this it silently kept rendering whatever it had: the composer's
+  /// panel icons registered their taps, changed the panel, and redrew
+  /// nothing.
+  ///
+  /// A caller whose sidebar cannot change while it is open passes nothing
+  /// and behaves exactly as before.
+  void register(WidgetBuilder builder, double width, {Object? revision}) {
+    var changed = _builder == null || _width != width || _revision != revision;
     _builder = builder;
     _width = width;
+    _revision = revision;
     if (changed) _notifyLater();
   }
 
   void unregister() {
     if (_builder == null) return;
     _builder = null;
+    _revision = null;
     _open = false;
     _notifyLater();
   }

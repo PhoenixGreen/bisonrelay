@@ -449,6 +449,10 @@ class _FeedScreenState extends State<FeedScreen> {
             // vs. post B) so a manual reopen of the submenu doesn't
             // leak across into an unrelated detail view.
             detailKey: showPost ?? tabIndex,
+            // The composer's sidebar changes while it is open, and the
+            // collapsed drawer has no other way to know: its icons
+            // registered their taps and redrew nothing.
+            sidebarRevision: composerSidebar == null ? null : composer.panel,
             content: activeTab()));
   }
 }
