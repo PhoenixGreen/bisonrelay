@@ -271,6 +271,33 @@ class PostStorage {
     return sanitizeName(newName);
   }
 
+  /// move puts a document in another folder, "" being the top level.
+  ///
+  /// Only documents. The library is one level deep, so a folder has nowhere
+  /// to move to.
+  static Future<bool> move(PostEntry entry, String toFolder) async {
+    if (entry.isFolder || entry.folder == toFolder) return false;
+    var from = await _resolve(entry.folder, entry.name, asDocument: true);
+    var to = await _resolve(toFolder, entry.name, asDocument: true);
+    if (from == null || to == null) return false;
+
+    var source = File(from);
+    if (!await source.exists()) return false;
+    // Refused rather than overwritten: a document of the same name in the
+    // destination is somebody else's work.
+    if (await File(to).exists()) return false;
+
+    await Directory(path.dirname(to)).create(recursive: true);
+    await source.rename(to);
+    return true;
+  }
+
+  /// folderNames lists the folders a document could be moved into.
+  static Future<List<String>> folderNames() async => [
+        for (var entry in await list())
+          if (entry.isFolder) entry.name,
+      ];
+
   /// delete removes a document, or a folder and everything in it.
   static Future<void> delete(PostEntry entry) async {
     var target =

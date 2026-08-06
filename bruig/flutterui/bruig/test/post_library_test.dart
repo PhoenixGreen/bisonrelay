@@ -172,14 +172,14 @@ void main() {
 
     test("saving the current post opens it for further edits", () async {
       editor.text = "# A draft\n\nSome text.";
-      expect(await model.saveCurrentAs("A draft"), isTrue);
+      expect(await model.newDocument("A draft"), isTrue);
 
       expect(model.openName, "A draft");
       expect(await PostStorage.read("", "A draft"), "# A draft\n\nSome text.");
     });
 
     test("edits to the open document are written", () async {
-      await model.saveCurrentAs("Note");
+      await model.newDocument("Note");
       editor.text = "changed";
       await model.flush();
 
@@ -205,27 +205,100 @@ void main() {
       expect(model.openName, "Saved");
     });
 
-    // Inserting leaves the editor holding a mixture that belongs to no file,
-    // so autosaving it back would destroy the document it came from.
-    test("inserting does not adopt the document", () async {
-      await PostStorage.write("", "Snippet", "INSERTED");
-      await model.refresh();
-      editor.value = const TextEditingValue(
-        text: "before after",
-        selection: TextSelection.collapsed(offset: 7),
-      );
+    // With nothing open the editor's text belongs nowhere, so a new document
+    // takes it. With one open that text is already saved, so a new document
+    // starts blank -- neither loses anything.
+    test("a new document takes the editor's text only when nothing is open",
+        () async {
+      editor.text = "an unfiled post";
+      expect(model.adoptsEditorText, isTrue);
+      await model.newDocument("Filed");
+      expect(await PostStorage.read("", "Filed"), "an unfiled post");
+      expect(editor.text, "an unfiled post");
 
-      await model.open(model.entries.single, replace: false);
-      expect(editor.text, "before INSERTEDafter");
-      expect(model.openName, isNull,
-          reason: "autosaving a mixture over the source would destroy it");
+      expect(model.adoptsEditorText, isFalse);
+      await model.newDocument("Blank");
+      expect(await PostStorage.read("", "Blank"), "");
+      expect(editor.text, "");
+      expect(await PostStorage.read("", "Filed"), "an unfiled post",
+          reason: "the document being left must keep its contents");
+    });
 
+    test("a document can be moved into a folder", () async {
+      await PostStorage.createFolder("Drafts");
+      await model.newDocument("Note");
+      editor.text = "body";
       await model.flush();
-      expect(await PostStorage.read("", "Snippet"), "INSERTED");
+      await model.refresh();
+
+      var note = model.entries.firstWhere((e) => !e.isFolder);
+      expect(await model.move(note, "Drafts"), isTrue);
+
+      expect(await PostStorage.read("Drafts", "Note"), "body");
+      expect(await PostStorage.read("", "Note"), isNull);
+      // The open document follows, so autosave keeps writing where it went.
+      expect(model.openFolder, "Drafts");
+      editor.text = "edited after the move";
+      await model.flush();
+      expect(await PostStorage.read("Drafts", "Note"), "edited after the move");
+    });
+
+    test("a move onto an existing name is refused", () async {
+      await PostStorage.createFolder("Drafts");
+      await PostStorage.write("Drafts", "Note", "theirs");
+      await PostStorage.write("", "Note", "mine");
+      await model.refresh();
+
+      var mine = model.entries.firstWhere((e) => !e.isFolder);
+      expect(await model.move(mine, "Drafts"), isFalse);
+      expect(await PostStorage.read("Drafts", "Note"), "theirs");
+      expect(await PostStorage.read("", "Note"), "mine");
+    });
+
+    // Reported: moving between documents "effectively creates a new document
+    // each time". Opening used to ask whether to insert at the cursor, which
+    // left the editor holding a mixture belonging to no file -- and the next
+    // save then wrote it out under a new name. Switching now saves the one
+    // being left and loads the one being opened, and creates nothing.
+    test("switching documents saves the old and creates nothing", () async {
+      await model.newDocument("First");
+      editor.text = "first body";
+      await model.newDocument("Second");
+      editor.text = "second body";
+      await model.refresh();
+
+      var first = model.entries.firstWhere((e) => e.name == "First");
+      await model.open(first);
+
+      expect(editor.text, "first body",
+          reason: "the editor should show the document that was opened");
+      expect(model.openName, "First");
+
+      // Exactly the two documents that were asked for.
+      await model.refresh();
+      expect(model.entries.map((e) => e.name), ["First", "Second"]);
+      expect(await PostStorage.read("", "Second"), "second body",
+          reason: "the document being left should have been written");
+    });
+
+    // A steady typist never pauses long enough for a debounce, so the longer
+    // they write the more they would stand to lose.
+    test("continuous typing is still written", () async {
+      await model.newDocument("Long");
+      var started = DateTime.now();
+      // Edits with no gap between them, past the ceiling.
+      while (DateTime.now().difference(started) < maxAutosaveInterval * 1.5) {
+        editor.text = "${editor.text}x";
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+      var onDisk = await PostStorage.read("", "Long");
+      expect(onDisk, isNotNull);
+      expect(onDisk!.length, greaterThan(1),
+          reason: "nothing was written while the keys never stopped");
     });
 
     test("deleting the open document stops it being written back", () async {
-      await model.saveCurrentAs("Doomed");
+      await model.newDocument("Doomed");
       await model.refresh();
 
       await model.delete(model.entries.single);
@@ -238,7 +311,7 @@ void main() {
     });
 
     test("renaming the open document keeps writing to it", () async {
-      await model.saveCurrentAs("Before");
+      await model.newDocument("Before");
       await model.refresh();
 
       await model.rename(model.entries.single, "After");
@@ -252,7 +325,7 @@ void main() {
 
     test("browsing a folder does not move the open document", () async {
       await PostStorage.createFolder("Drafts");
-      await model.saveCurrentAs("At the top");
+      await model.newDocument("At the top");
       await model.openFolderNamed("Drafts");
 
       expect(model.openFolder, "");

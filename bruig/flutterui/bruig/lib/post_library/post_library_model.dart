@@ -18,6 +18,15 @@ import 'package:flutter/material.dart';
 /// whole file, which at the size of a post is nothing.
 const autosaveDelay = Duration(milliseconds: 800);
 
+/// maxAutosaveInterval is the longest the open document can go unwritten
+/// while it is being edited.
+///
+/// A debounce alone is not autosave: somebody typing steadily never stops
+/// for long enough to trigger one, so the longer they write the more they
+/// stand to lose. This puts a ceiling on it regardless of how continuously
+/// the keys are moving.
+const maxAutosaveInterval = Duration(seconds: 3);
+
 /// PostLibraryModel is the saved-post library as the sidebar sees it.
 class PostLibraryModel extends ChangeNotifier {
   /// folder is the folder being browsed, or "" for the top level.
@@ -54,6 +63,7 @@ class PostLibraryModel extends ChangeNotifier {
 
   TextEditingController? _editor;
   Timer? _debounce;
+  DateTime? _dirtySince;
   bool _disposed = false;
 
   @override
@@ -96,88 +106,122 @@ class PostLibraryModel extends ChangeNotifier {
 
   // --- the open document ---
 
-  /// startDocument creates a new document and makes it the open one, so
+  /// newDocument creates a document and makes it the open one, so
   /// everything typed from now on lands in it.
   ///
-  /// Written immediately, empty, rather than on the first keystroke: a
-  /// document that exists only in memory until you type is one that a
-  /// crash loses and that the list cannot show.
-  Future<bool> startDocument(String name, {String content = ""}) async {
+  /// It takes the editor's text when nothing is open and starts blank when
+  /// something is, and neither of those loses anything: with a document open
+  /// the text is already in it, and with none open the text belongs to
+  /// nowhere else and would be discarded by the next thing loaded.
+  ///
+  /// Written immediately rather than on the first keystroke: a document that
+  /// exists only in memory until you type is one that a crash loses and that
+  /// the list cannot show.
+  Future<bool> newDocument(String name) async {
+    await flush();
+    var adopting = _openName == null;
+    var content = adopting ? (_editor?.text ?? "") : "";
+
     var written = await _guard(() => PostStorage.write(_folder, name, content));
     if (written == null) return false;
+
     _openName = written;
     _openFolder = _folder;
+    if (!adopting) _setEditorText("");
     await refresh();
     return true;
   }
 
-  /// saveCurrentAs files whatever the editor holds under a new name, and
-  /// leaves it open so further edits keep going there.
-  Future<bool> saveCurrentAs(String name) =>
-      startDocument(name, content: _editor?.text ?? "");
+  /// adoptsEditorText reports what [newDocument] would do with what is on
+  /// screen, so the dialog can say which before it is agreed to.
+  bool get adoptsEditorText => _openName == null;
 
-  /// open loads a document into the editor.
+  /// open loads a document into the editor, saving whatever was open first.
   ///
-  /// [replace] false inserts it at the cursor instead, which is the whole
-  /// reason the caller is asked: opening a saved note while halfway through
-  /// a post should be able to mean either thing, and guessing wrong throws
-  /// away work.
-  ///
-  /// Inserting deliberately does *not* make the document the open one --
-  /// the editor now holds a mixture, and autosaving that back over the file
-  /// it came from would destroy it.
-  Future<bool> open(PostEntry entry, {bool replace = true}) async {
+  /// Switching is the whole interaction: the editor shows one document at a
+  /// time, moving between them writes the one being left, and nothing new is
+  /// created by the move. An earlier version asked whether to replace the
+  /// editor or insert at the cursor, which meant a document could end up
+  /// holding a mixture that belonged to no file -- and the next save then
+  /// wrote it out under a new name, quietly multiplying documents every time
+  /// somebody moved between them.
+  Future<bool> open(PostEntry entry) async {
+    await flush();
+
     var content = await PostStorage.read(entry.folder, entry.name);
     if (content == null) {
       _error = "Could not read \"${entry.name}\".";
       _notify();
       return false;
     }
-    var editor = _editor;
-    if (editor == null) return false;
+    if (_editor == null) return false;
 
-    if (replace) {
-      editor.value = TextEditingValue(
-        text: content,
-        selection: TextSelection.collapsed(offset: content.length),
-      );
-      _openName = entry.name;
-      _openFolder = entry.folder;
-    } else {
-      var at = editor.selection.isValid
-          ? editor.selection.start
-          : editor.text.length;
-      var text = editor.text.replaceRange(at, editor.selection.end, content);
-      editor.value = TextEditingValue(
-        text: text,
-        selection: TextSelection.collapsed(offset: at + content.length),
-      );
-      // The editor is now a mixture of this document and what was already
-      // there, and belongs to neither file.
-      _openName = null;
-    }
+    _setEditorText(content);
+    _openName = entry.name;
+    _openFolder = entry.folder;
+    _dirtySince = null;
     _error = null;
     _notify();
     return true;
+  }
+
+  /// move puts a document in another folder, following it if it is the one
+  /// open so autosave keeps writing where the user can see it.
+  Future<bool> move(PostEntry entry, String toFolder) async {
+    await flush();
+    var moved = await _guard(() => PostStorage.move(entry, toFolder));
+    if (moved != true) {
+      _error = "Could not move \"${entry.name}\" -- is that name taken there?";
+      _notify();
+      return false;
+    }
+    if (entry.name == _openName && entry.folder == _openFolder) {
+      _openFolder = toFolder;
+    }
+    await refresh();
+    return true;
+  }
+
+  /// _setEditorText replaces what is on screen, leaving the caret at the end
+  /// where somebody continuing to write expects it.
+  void _setEditorText(String text) {
+    _editor?.value = TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: text.length),
+    );
   }
 
   /// closeDocument stops autosaving without touching what is on disk or in
   /// the editor.
   void closeDocument() {
     _debounce?.cancel();
+    _dirtySince = null;
     _openName = null;
     _notify();
   }
 
   void _onEdited() {
     if (_openName == null) return;
+
+    // The ceiling, checked before the debounce is renewed: renewing it is
+    // exactly what a steady typist does forever.
+    var since = _dirtySince;
+    if (since == null) {
+      _dirtySince = DateTime.now();
+    } else if (DateTime.now().difference(since) >= maxAutosaveInterval) {
+      _debounce?.cancel();
+      _save();
+      return;
+    }
+
     _debounce?.cancel();
     _debounce = Timer(autosaveDelay, _save);
   }
 
-  /// flush writes any pending edit now, for a caller about to go away.
+  /// flush writes any pending edit now, for a caller about to go away or
+  /// about to load something else over the top.
   Future<void> flush() async {
-    if (_debounce?.isActive != true) return;
+    if (_debounce?.isActive != true && _dirtySince == null) return;
     _debounce?.cancel();
     await _save();
   }
@@ -188,6 +232,7 @@ class PostLibraryModel extends ChangeNotifier {
     if (name == null || editor == null) return;
 
     _saving = true;
+    _dirtySince = null;
     _notify();
     await _guard(() => PostStorage.write(_openFolder, name, editor.text));
     _saving = false;

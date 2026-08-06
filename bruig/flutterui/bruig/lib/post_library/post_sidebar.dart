@@ -144,7 +144,7 @@ class _PostSidebarState extends State<PostSidebar> {
     return InkWell(
       onTap: () => entry.isFolder
           ? library.openFolderNamed(entry.name)
-          : _openDocument(library, entry),
+          : library.open(entry),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(12, 7, 4, 7),
         child: Row(children: [
@@ -221,13 +221,18 @@ class _PostSidebarState extends State<PostSidebar> {
                   title: "Rename ${entry.isFolder ? "folder" : "document"}",
                   initial: entry.name);
               if (name != null) await library.rename(entry, name);
+            case "move":
+              await _moveDocument(library, entry);
             case "delete":
               if (await _confirmDelete(entry)) await library.delete(entry);
           }
         },
-        itemBuilder: (context) => const [
-          PopupMenuItem(value: "rename", child: Text("Rename")),
-          PopupMenuItem(value: "delete", child: Text("Delete")),
+        itemBuilder: (context) => [
+          const PopupMenuItem(value: "rename", child: Text("Rename")),
+          // A folder has nowhere to go: the library is one level deep.
+          if (!entry.isFolder)
+            const PopupMenuItem(value: "move", child: Text("Move to...")),
+          const PopupMenuItem(value: "delete", child: Text("Delete")),
         ],
       );
 
@@ -238,8 +243,8 @@ class _PostSidebarState extends State<PostSidebar> {
         ),
         padding: const EdgeInsets.fromLTRB(8, 8, 8, 10),
         child: Wrap(spacing: 6, runSpacing: 6, children: [
-          _action(theme, Icons.note_add_outlined, "Save this post",
-              () => _saveCurrent(library)),
+          _action(theme, Icons.note_add_outlined, "New document",
+              () => _newDocument(library)),
           if (library.folder.isEmpty)
             _action(theme, Icons.create_new_folder_outlined, "New folder",
                 () => _newFolder(library)),
@@ -273,59 +278,70 @@ class _PostSidebarState extends State<PostSidebar> {
 
   // --- the dialogs ---
 
-  Future<void> _saveCurrent(PostLibraryModel library) async {
+  /// _newDocument names a document and starts it.
+  ///
+  /// The dialog says which of the two things it is about to do, because
+  /// which one depends on state the user cannot see: with nothing open it
+  /// takes what is in the editor, and with a document open it starts blank
+  /// because that text is already saved in the document it belongs to.
+  Future<void> _newDocument(PostLibraryModel library) async {
+    var adopting = library.adoptsEditorText;
+    var text = widget.controller?.text ?? "";
     var name = await _askName(
       title: library.folder.isEmpty
-          ? "Save post"
-          : "Save post in ${library.folder}",
-      initial: PostStorage.suggestName(widget.controller?.text ?? ""),
+          ? "New document"
+          : "New document in ${library.folder}",
+      initial: adopting ? PostStorage.suggestName(text) : "Untitled",
+      note: adopting && text.trim().isNotEmpty
+          ? "Starts from what is in the editor."
+          : "Starts blank. The editor is saved to the open document first.",
     );
     if (name == null) return;
     if (await PostStorage.exists(library.folder, name) &&
         !await _confirmOverwrite(name)) {
       return;
     }
-    await library.saveCurrentAs(name);
+    await library.newDocument(name);
+  }
+
+  /// _moveDocument asks which folder to move a document into.
+  Future<void> _moveDocument(PostLibraryModel library, PostEntry entry) async {
+    var folders = await PostStorage.folderNames();
+    if (!mounted) return;
+
+    var destinations = ["", ...folders]..removeWhere((f) => f == entry.folder);
+    if (destinations.isEmpty) {
+      // Nowhere to go: one folder exists and the document is already in it.
+      return;
+    }
+
+    var choice = await showDialog<String>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: Text("Move \"${entry.name}\" to"),
+        children: [
+          for (var folder in destinations)
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(context, folder),
+              child: Row(children: [
+                Icon(
+                    folder.isEmpty
+                        ? Icons.inbox_outlined
+                        : Icons.folder_outlined,
+                    size: 16),
+                const SizedBox(width: 8),
+                Text(folder.isEmpty ? "My Posts" : folder),
+              ]),
+            ),
+        ],
+      ),
+    );
+    if (choice != null) await library.move(entry, choice);
   }
 
   Future<void> _newFolder(PostLibraryModel library) async {
     var name = await _askName(title: "New folder", initial: "");
     if (name != null) await library.createFolder(name);
-  }
-
-  /// _openDocument asks what to do with the text already in the editor, and
-  /// only asks when there is some -- a prompt whose answer is always the
-  /// same is a prompt that teaches people to dismiss prompts.
-  Future<void> _openDocument(PostLibraryModel library, PostEntry entry) async {
-    var current = widget.controller?.text ?? "";
-    if (current.trim().isEmpty) {
-      await library.open(entry);
-      return;
-    }
-    if (!mounted) return;
-
-    var replace = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text("Open \"${entry.name}\""),
-        content: const Text(
-            "There is already something in the editor. Replacing it will "
-            "discard what is there."),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text("Cancel")),
-          TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text("Insert at cursor")),
-          FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text("Replace")),
-        ],
-      ),
-    );
-    if (replace == null) return;
-    await library.open(entry, replace: replace);
   }
 
   Future<bool> _confirmOverwrite(String name) async =>
@@ -374,7 +390,7 @@ class _PostSidebarState extends State<PostSidebar> {
   /// or a colon in it comes back changed, and finding that out only after
   /// the file appears under a different name is worse than being told.
   Future<String?> _askName(
-      {required String title, required String initial}) async {
+      {required String title, required String initial, String? note}) async {
     var controller = TextEditingController(text: initial);
     var result = await showDialog<String>(
       context: context,
@@ -384,6 +400,14 @@ class _PostSidebarState extends State<PostSidebar> {
           builder: (context, setInner) {
             var safe = PostStorage.sanitizeName(controller.text);
             return Column(mainAxisSize: MainAxisSize.min, children: [
+              if (note != null)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Text(note, style: const TextStyle(fontSize: 11)),
+                  ),
+                ),
               TextField(
                 controller: controller,
                 autofocus: true,
