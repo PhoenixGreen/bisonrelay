@@ -1,6 +1,9 @@
 import 'package:bruig/components/composer_sidebar_shell.dart';
 import 'package:bruig/components/feed/formatting_sidebar.dart';
+import 'package:bruig/components/containers.dart';
 import 'package:bruig/models/composer_sidebar.dart';
+import 'package:bruig/models/feed.dart';
+import 'package:bruig/screens/feed/feed_posts.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -46,6 +49,7 @@ Future<void> _pump(WidgetTester tester, ComposerSidebarController controller,
 }
 
 void main() {
+  _feedPanelFlagTests();
   _hideButtonTests();
   _titleDecorationTests();
   group("the panel nav", () {
@@ -339,5 +343,77 @@ void _hideButtonTests() {
     var shell = tester.getRect(find.byType(ComposerSidebarShell));
     expect(shell.right - hide.right, lessThan(12),
         reason: "the hide control drifted away from the sidebar's edge");
+  });
+}
+
+// Reported: turning "Feed side panel" on left the composer's Feed tab
+// showing the plain tab list, so the composer was the one place in the Feed
+// the setting did not reach.
+//
+// The panel is placed inside a sidebar that has already drawn the chrome and
+// beside somebody writing rather than browsing, so it needs to render bare
+// and without its search field. These cover those two flags, which is what
+// the fix rests on.
+void _feedPanelFlagTests() {
+  Future<void> pumpPanel(WidgetTester tester,
+      {required bool framed, required bool showSearch}) async {
+    var search = TextEditingController();
+    addTearDown(search.dispose);
+    await tester.pumpWidget(MultiProvider(
+      providers: [
+        ChangeNotifierProvider<ThemeNotifier>(
+            create: (c) => ThemeNotifier(doLoad: false)),
+      ],
+      child: MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 260,
+            child: FeedSidePanel(
+              view: FeedView.all,
+              sort: FeedSort.newest,
+              unreadOnly: false,
+              searchController: search,
+              showSearch: showSearch,
+              framed: framed,
+              showBookmarks: false,
+              showHidden: false,
+              showDrafts: false,
+              currentTabIndex: 3,
+              onView: (_) {},
+              onSort: (_) {},
+              onUnreadOnly: (_) {},
+              onSearch: (_) {},
+              onYourPosts: () {},
+              onSubscriptions: () {},
+              onNewPost: () {},
+            ),
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets("the panel keeps its search and frame by default",
+      (tester) async {
+    await pumpPanel(tester, framed: true, showSearch: true);
+    expect(find.byIcon(Icons.search), findsOneWidget);
+    expect(find.byType(SecondarySideMenu), findsOneWidget);
+    expect(find.text("All posts"), findsOneWidget);
+  });
+
+  testWidgets("beside a composer it drops both, keeping the navigation",
+      (tester) async {
+    await pumpPanel(tester, framed: false, showSearch: false);
+
+    expect(find.byIcon(Icons.search), findsNothing,
+        reason: "searching posts is not what a writer came here for");
+    expect(find.byType(SecondarySideMenu), findsNothing,
+        reason: "nesting the frame inside a sidebar draws every border "
+            "twice");
+    // The point of using this panel at all.
+    expect(find.text("All posts"), findsOneWidget);
+    expect(find.text("Your Posts"), findsOneWidget);
+    expect(find.text("New Post"), findsOneWidget);
   });
 }

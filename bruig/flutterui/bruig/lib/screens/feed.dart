@@ -208,24 +208,35 @@ class _FeedScreenState extends State<FeedScreen> {
   // interpret it (Subscriptions/New Post/detail views).
   void _gotoFeedView(FeedView v) => onItemChanged(0, null);
 
+  /// _feedSidePanel is this screen's own navigation panel.
+  ///
+  /// One builder for both the places it appears -- the minimal layout below
+  /// and the composer's sidebar -- so the two cannot drift into showing
+  /// different sections of the same menu.
+  FeedSidePanel _feedSidePanel(AreaStyle feedStyle,
+          {bool framed = true, bool showSearch = true}) =>
+      FeedSidePanel(
+        view: FeedView.all,
+        sort: FeedSort.newest,
+        unreadOnly: false,
+        searchController: _dummySearchCtrl,
+        showSearch: showSearch,
+        framed: framed,
+        showBookmarks: feedStyle.feedCardActions,
+        showHidden: feedStyle.feedCardActions,
+        showDrafts: feedStyle.feedInlineComposer,
+        currentTabIndex: tabIndex,
+        onView: _gotoFeedView,
+        onSort: (_) {},
+        onUnreadOnly: (_) {},
+        onSearch: (_) {},
+        onYourPosts: () => onItemChanged(1, null),
+        onSubscriptions: () => onItemChanged(2, null),
+        onNewPost: () => onItemChanged(3, null),
+      );
+
   Widget _minimalSidePanelLayout(BuildContext context, AreaStyle feedStyle) {
-    final panel = FeedSidePanel(
-      view: FeedView.all,
-      sort: FeedSort.newest,
-      unreadOnly: false,
-      searchController: _dummySearchCtrl,
-      showBookmarks: feedStyle.feedCardActions,
-      showHidden: feedStyle.feedCardActions,
-      showDrafts: feedStyle.feedInlineComposer,
-      currentTabIndex: tabIndex,
-      onView: _gotoFeedView,
-      onSort: (_) {},
-      onUnreadOnly: (_) {},
-      onSearch: (_) {},
-      onYourPosts: () => onItemChanged(1, null),
-      onSubscriptions: () => onItemChanged(2, null),
-      onNewPost: () => onItemChanged(3, null),
-    );
+    final panel = _feedSidePanel(feedStyle);
     // Resizes with -- and to the same width as -- the full panel on the
     // All Posts/Your Posts tabs: same storageKey, so dragging either one
     // moves both and the panel doesn't jump width when switching tabs.
@@ -318,6 +329,8 @@ class _FeedScreenState extends State<FeedScreen> {
     // when they were three separate conditions two of them were updated and
     // one was not -- which put the writing tools in the slot on every Feed
     // tab. Derived from one value, they cannot disagree.
+    var feedStyle = ThemeNotifier.of(context).areaStyle(ThemeArea.feed);
+    bool feedSidePanel = feedStyle.feedSidePanel;
     var composing = tabIndex == 3;
     var writingAvailable = context.watch<SpellcheckCapability>().active;
     // On the compose tab the slot is always the composer's, because the nav
@@ -338,8 +351,18 @@ class _FeedScreenState extends State<FeedScreen> {
               ComposerPanel.formatting,
             ],
             child: switch (composer.panel) {
-              ComposerPanel.none => SecondarySideMenuList(
-                  items: feedBarItems(onItemChanged, tabIndex)),
+              // The screen's own menu, in whichever form this screen is
+              // showing it elsewhere. Turning the side panel on and still
+              // getting the plain tab list here made the composer the one
+              // place the setting did not reach.
+              //
+              // Without its search field: beside a composer this panel is
+              // navigation, and searching posts is not what somebody
+              // writing one came to the sidebar for.
+              ComposerPanel.none => feedSidePanel
+                  ? _feedSidePanel(feedStyle, framed: false, showSearch: false)
+                  : SecondarySideMenuList(
+                      items: feedBarItems(onItemChanged, tabIndex)),
               ComposerPanel.writing =>
                 WritingSidebar(controller: composer.editor),
               ComposerPanel.posts => PostSidebar(controller: composer.editor),
@@ -355,8 +378,6 @@ class _FeedScreenState extends State<FeedScreen> {
     // Post/detail views get a minimal nav-only panel instead, so the
     // sidebar experience stays consistent across the whole Feed screen
     // rather than falling back to the old plain tab list.
-    var feedStyle = ThemeNotifier.of(context).areaStyle(ThemeArea.feed);
-    bool feedSidePanel = feedStyle.feedSidePanel;
     bool viewingPost = showPost != null;
     bool onOwnPanelTab =
         (tabIndex == 0 || tabIndex == 1) && !viewingPost && !hasArgs;
