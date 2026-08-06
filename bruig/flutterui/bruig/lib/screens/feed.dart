@@ -340,10 +340,9 @@ class _FeedScreenState extends State<FeedScreen> {
             child: switch (composer.panel) {
               ComposerPanel.none => SecondarySideMenuList(
                   items: feedBarItems(onItemChanged, tabIndex)),
-              ComposerPanel.writing => WritingSidebar(
-                  controller: composer.editor, onClose: composer.close),
-              ComposerPanel.posts => PostSidebar(
-                  controller: composer.editor, onClose: composer.close),
+              ComposerPanel.writing =>
+                WritingSidebar(controller: composer.editor),
+              ComposerPanel.posts => PostSidebar(controller: composer.editor),
               ComposerPanel.formatting =>
                 FormattingSidebar(controller: composer),
             },
@@ -361,6 +360,18 @@ class _FeedScreenState extends State<FeedScreen> {
     bool viewingPost = showPost != null;
     bool onOwnPanelTab =
         (tabIndex == 0 || tabIndex == 1) && !viewingPost && !hasArgs;
+
+    // Hiding the composer's sidebar means nothing beside the editor, not
+    // the Feed's own sidebar back again. Without this the fall-through
+    // below put the tab list where the panel had been, so the icon looked
+    // like it had merely closed the panel it was on.
+    //
+    // Not gated on feedSidePanel, unlike the reading case below: this one
+    // was asked for by pressing a button, whatever the sidebar is styled as.
+    if (composing && composer.minimized) {
+      return ScreenWithChatSideMenu(
+          client, contentAreaFrame(ThemeNotifier.of(context), activeTab()));
+    }
 
     // The composer's panel takes precedence over the feed's own: it was
     // asked for explicitly, and the feed panel is a place to browse from

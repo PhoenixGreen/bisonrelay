@@ -16,12 +16,8 @@ class PostSidebar extends StatefulWidget {
   /// while one is being rebuilt -- see ComposerSidebarController.visible.
   final TextEditingController? controller;
 
-  /// onClose returns the slot to whatever the screen normally shows there.
-  final VoidCallback onClose;
-
   const PostSidebar({
     required this.controller,
-    required this.onClose,
     super.key,
   });
 
@@ -60,53 +56,53 @@ class _PostSidebarState extends State<PostSidebar> {
     var library = context.watch<PostLibraryModel>();
     var theme = ThemeNotifier.of(context);
 
+    var header = _header(theme, library);
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      _header(theme, library),
-      const Divider(height: 1),
+      if (header != null) header,
       Expanded(child: _list(theme, library)),
       if (library.error case var message?) _error(theme, message),
       _actions(theme, library),
     ]);
   }
 
-  Widget _header(ThemeNotifier theme, PostLibraryModel library) {
-    var inFolder = library.folder.isNotEmpty;
+  /// _header is the folder you are in, and nothing when you are not in one.
+  ///
+  /// At the top level there is no title: the nav icon above already says
+  /// which panel this is, and a line reading "My Posts" under an icon
+  /// meaning "My Posts" is a line of a narrow column spent twice on the same
+  /// word. Inside a folder the name is the only thing saying where you are,
+  /// so it stays, with the way back beside it.
+  Widget? _header(ThemeNotifier theme, PostLibraryModel library) {
+    if (library.folder.isEmpty && !library.saving) return null;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(4, 6, 4, 6),
+      padding: const EdgeInsets.fromLTRB(4, 4, 8, 4),
       child: Row(children: [
-        if (inFolder)
+        if (library.folder.isNotEmpty) ...[
           IconButton(
             icon: const Icon(Icons.arrow_back, size: 18),
             tooltip: "Back to My Posts",
+            visualDensity: VisualDensity.compact,
             onPressed: () => library.openFolderNamed(""),
-          )
-        else
-          const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            inFolder ? library.folder : "My Posts",
-            style: const TextStyle(fontWeight: FontWeight.w600),
-            overflow: TextOverflow.ellipsis,
           ),
-        ),
+          Expanded(
+            child: Text(
+              library.folder,
+              style: const TextStyle(fontWeight: FontWeight.w600),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ] else
+          const Spacer(),
         // Shown while a write is in flight rather than after it: the point
         // is to answer "did that save", and an indicator that only appears
         // once the answer is yes never gets seen.
         if (library.saving)
-          Padding(
-            padding: const EdgeInsets.only(right: 6),
-            child: SizedBox(
-              width: 12,
-              height: 12,
-              child: CircularProgressIndicator(
-                  strokeWidth: 2, color: theme.colors.onSurfaceVariant),
-            ),
+          SizedBox(
+            width: 12,
+            height: 12,
+            child: CircularProgressIndicator(
+                strokeWidth: 2, color: theme.colors.onSurfaceVariant),
           ),
-        IconButton(
-          icon: const Icon(Icons.close, size: 18),
-          tooltip: "Close",
-          onPressed: widget.onClose,
-        ),
       ]),
     );
   }
@@ -124,8 +120,8 @@ class _PostSidebarState extends State<PostSidebar> {
       return _note(
           theme,
           library.folder.isEmpty
-              ? "Nothing saved yet. Save this post, or make a folder to file "
-                  "it in."
+              ? "Nothing saved yet. Name this post above, or start a new "
+                  "document below."
               : "This folder is empty.");
     }
     return ListView(

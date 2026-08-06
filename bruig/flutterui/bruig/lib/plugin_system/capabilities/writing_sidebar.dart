@@ -34,12 +34,8 @@ class WritingSidebar extends StatefulWidget {
   /// being rebuilt -- see ComposerSidebarController.visible.
   final TextEditingController? controller;
 
-  /// onClose returns the slot to whatever the screen normally shows there.
-  final VoidCallback onClose;
-
   const WritingSidebar({
     required this.controller,
-    required this.onClose,
     super.key,
   });
 
@@ -159,8 +155,7 @@ class _WritingSidebarState extends State<WritingSidebar> {
     var phrasing = issues?.where((i) => !i.kind.isMistake).toList() ?? const [];
 
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      _header(theme, prefs),
-      _nav(theme, {
+      _nav(theme, prefs, {
         WritingSidebarPage.mistakes: mistakes.length,
         WritingSidebarPage.phrasing: phrasing.length,
       }),
@@ -212,50 +207,42 @@ class _WritingSidebarState extends State<WritingSidebar> {
         ],
       );
 
-  Widget _header(ThemeNotifier theme, WritingPreferences prefs) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 10, 4, 6),
-      child: Row(children: [
-        Expanded(
-          child: Text(
-            _current.title,
-            style: const TextStyle(fontWeight: FontWeight.w600),
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-        // The whole feature's switch, where the results of it are: turning
-        // it off from here is the obvious move when the marks are in the
-        // way, and it takes the inline ones with it.
-        Tooltip(
-          message: prefs.enabled ? "Turn writing tools off" : "Turn on",
-          child: Switch(
-            value: prefs.enabled,
-            onChanged: (v) => prefs.enabled = v,
-          ),
-        ),
-        IconButton(
-          icon: const Icon(Icons.close, size: 18),
-          tooltip: "Close",
-          onPressed: widget.onClose,
-        ),
-      ]),
-    );
-  }
-
-  /// _nav is the row of icons that switches pages.
+  /// _nav is the row of icons that switches pages, with the feature's own
+  /// switch on the end of it.
+  ///
+  /// The page's name is not repeated above this row. The icons say which
+  /// page is showing, and a title that only ever restates the selected icon
+  /// is a line of the sidebar's height spent on nothing -- in a column where
+  /// the height is what the content needs.
   ///
   /// The counts sit on the two pages that have them, because the reason to
   /// look at this row is usually to find out whether there is anything to
   /// look at -- and a page with nothing on it should say so before it is
   /// opened, not after.
-  Widget _nav(ThemeNotifier theme, Map<WritingSidebarPage, int> counts) {
+  Widget _nav(ThemeNotifier theme, WritingPreferences prefs,
+      Map<WritingSidebarPage, int> counts) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+      padding: const EdgeInsets.fromLTRB(8, 4, 4, 4),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
           for (var page in WritingSidebarPage.values)
             _navButton(theme, page, counts[page] ?? 0),
+          // The whole feature's switch, beside the results of it: turning
+          // it off from here is the obvious move when the marks are in the
+          // way, and it takes the inline ones with it.
+          Tooltip(
+            message: prefs.enabled ? "Turn writing tools off" : "Turn on",
+            child: Transform.scale(
+              // Material's switch is built for a settings row and is half
+              // again the height of the icons it now sits beside.
+              scale: 0.75,
+              child: Switch(
+                value: prefs.enabled,
+                onChanged: (v) => prefs.enabled = v,
+              ),
+            ),
+          ),
         ],
       ),
     );

@@ -40,6 +40,15 @@ class _Host extends StatelessWidget {
     // is the screen's own menu rather than an empty slot.
     var showsPanel =
         composing && writing.visible && writing.panel == ComposerPanel.writing;
+
+    // Hiding the sidebar while composing means nothing beside the editor.
+    // Falling through to the branch below would put the screen's own sidebar
+    // back, which is what the Feed used to do -- so the icon looked like it
+    // had merely closed the panel it was on.
+    if (composing && writing.minimized) {
+      return Scaffold(body: composer);
+    }
+
     if (!showsPanel) {
       return Scaffold(
         body: reshape
@@ -54,8 +63,7 @@ class _Host extends StatelessWidget {
       body: Row(children: [
         SizedBox(
           width: 220,
-          child: WritingSidebar(
-              controller: writing.editor, onClose: writing.close),
+          child: WritingSidebar(controller: writing.editor),
         ),
         Expanded(child: composer),
       ]),
@@ -176,15 +184,37 @@ void main() {
     expect(find.text("paymnt"), findsOneWidget);
   });
 
-  testWidgets("closing returns the slot", (tester) async {
+  // Reported: hiding the sidebar made the writing tools disappear and left
+  // the default sidebar in their place.
+  //
+  // Like the "not composing" test below, this covers the contract rather
+  // than the Feed's own copy of the decision -- it cannot catch that screen
+  // asking the wrong question, only that there is a right one to ask.
+  testWidgets("hiding the sidebar leaves nothing beside the editor",
+      (tester) async {
     await _pumpApp(tester, WritingPreferences());
-    await tester.tap(find.text("Writing Tools"));
+    var controller = tester
+        .state<_ComposerState>(find.byType(_Composer))
+        .context
+        .read<ComposerSidebarController>();
+
+    controller.show(ComposerPanel.writing);
+    await tester.pumpAndSettle();
+    expect(find.byType(WritingSidebar), findsOneWidget);
+
+    controller.toggleMinimized();
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip("Close"));
-    await tester.pumpAndSettle();
-    expect(find.text("NORMAL SIDEBAR"), findsOneWidget);
+    expect(find.byType(WritingSidebar), findsNothing);
+    expect(find.text("NORMAL SIDEBAR"), findsNothing,
+        reason: "hiding the sidebar put the screen's own one back");
+    expect(find.byType(_Composer), findsOneWidget);
   });
+
+  // The close button is gone: the nav above the panel is what moves between
+  // them now, and a panel that could close itself left the slot showing the
+  // Feed menu with no way to tell why. Switching is covered in
+  // composer_sidebar_test.dart.
 
   testWidgets("ignoring a word from the sidebar drops it", (tester) async {
     var prefs = WritingPreferences();
