@@ -40,22 +40,51 @@ class ComposerSidebarShell extends StatelessWidget {
     ]);
   }
 
+  /// _nav is the panel icons, and the control that puts the sidebar away.
+  ///
+  /// The second is not one of the first. It does not choose a panel, and a
+  /// control that read as a fifth panel invited the reading that it closed
+  /// the panel it sat beside -- which is what it looked like it did. So it
+  /// is set apart: pushed hard against the sidebar's outer edge, past a
+  /// rule, larger than the icons, and squared off on the side it touches so
+  /// it reads as part of the frame rather than as something in the list.
   Widget _nav(ThemeNotifier theme) => Padding(
-        padding: const EdgeInsets.fromLTRB(4, 4, 4, 4),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-          children: [
-            for (var panel in panels) _icon(theme, panel),
-            // Last and set apart: it does not choose a panel, it puts the
-            // whole sidebar away.
-            _button(
-              theme,
-              icon: Icons.chevron_left,
-              tooltip: "Hide the sidebar",
-              selected: false,
-              onTap: controller.toggleMinimized,
+        padding: const EdgeInsets.fromLTRB(4, 4, 0, 4),
+        child: Row(children: [
+          Expanded(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [for (var panel in panels) _icon(theme, panel)],
             ),
-          ],
+          ),
+          Container(
+            width: 1,
+            height: 20,
+            margin: const EdgeInsets.symmetric(horizontal: 4),
+            color: theme.colors.outlineVariant,
+          ),
+          _hideButton(theme),
+        ]),
+      );
+
+  Widget _hideButton(ThemeNotifier theme) => Tooltip(
+        message: "Hide the sidebar",
+        child: InkWell(
+          onTap: controller.toggleMinimized,
+          // Rounded away from the edge and square against it, so the shape
+          // finishes where the sidebar does.
+          borderRadius: const BorderRadius.only(
+            topLeft: Radius.circular(6),
+            bottomLeft: Radius.circular(6),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(8, 7, 10, 7),
+            child: Icon(
+              Icons.chevron_left,
+              size: 20,
+              color: theme.colors.onSurfaceVariant,
+            ),
+          ),
         ),
       );
 
@@ -109,7 +138,9 @@ class ComposerSidebarRestoreButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => IconButton(
-        icon: const Icon(Icons.chevron_right, size: 18),
+        // The same weight as the control that hid it, so the pair reads as
+        // one thing in two states rather than two unrelated buttons.
+        icon: const Icon(Icons.chevron_right, size: 20),
         tooltip: "Show the sidebar",
         onPressed: controller.toggleMinimized,
       );

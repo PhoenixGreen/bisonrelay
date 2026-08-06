@@ -46,6 +46,7 @@ Future<void> _pump(WidgetTester tester, ComposerSidebarController controller,
 }
 
 void main() {
+  _hideButtonTests();
   _titleDecorationTests();
   group("the panel nav", () {
     testWidgets("starts on the screen's own menu", (tester) async {
@@ -312,5 +313,31 @@ void _titleDecorationTests() {
 
     controller.dispose();
     focus.dispose();
+  });
+}
+
+// The hide control is not a fifth panel. It sits past the panel icons,
+// against the sidebar's outer edge and larger than they are, because a
+// control that read as one of them invited the reading that it closed the
+// panel beside it -- which is what it looked like it did.
+void _hideButtonTests() {
+  testWidgets("the hide control sits apart from the panel icons",
+      (tester) async {
+    var controller = ComposerSidebarController();
+    await _pump(tester, controller);
+
+    var hide = tester.getRect(find.byIcon(Icons.chevron_left));
+    for (var panel in ComposerPanel.values) {
+      var icon = tester.getRect(find.byIcon(panel.icon));
+      expect(hide.left, greaterThan(icon.right),
+          reason: "the hide control should be past every panel icon");
+      expect(hide.width, greaterThan(icon.width),
+          reason: "and read as heavier than one of them");
+    }
+
+    // Against the sidebar's outer edge rather than floating in the row.
+    var shell = tester.getRect(find.byType(ComposerSidebarShell));
+    expect(shell.right - hide.right, lessThan(12),
+        reason: "the hide control drifted away from the sidebar's edge");
   });
 }
