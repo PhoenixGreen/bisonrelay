@@ -537,7 +537,7 @@ class SpellcheckCapability extends ChangeNotifier {
 
   // _fetch is injectable so this class can be tested without a running
   // client; it is Golib.getSpellcheckData everywhere but in tests.
-  final Future<SpellcheckData> Function() _fetch;
+  final Future<SpellcheckData> Function(String language) _fetch;
 
   /// preferences is the user's own overrides -- ignored words, disabled
   /// checks, and the session on/off switch. Owned here so every consumer of
@@ -545,23 +545,37 @@ class SpellcheckCapability extends ChangeNotifier {
   final WritingPreferences preferences;
 
   SpellcheckCapability(
-      {Future<SpellcheckData> Function()? fetch, WritingPreferences? prefs})
+      {Future<SpellcheckData> Function(String language)? fetch,
+      WritingPreferences? prefs})
       : _fetch = fetch ?? Golib.getSpellcheckData,
         preferences = prefs ?? WritingPreferences() {
     _checker.prefs = preferences;
     // Re-checking is what makes an ignored word disappear from the text
     // immediately rather than at the next keystroke.
-    preferences.addListener(_invalidate);
+    preferences.addListener(_onPreferencesChanged);
   }
 
   @override
   void dispose() {
-    preferences.removeListener(_invalidate);
+    preferences.removeListener(_onPreferencesChanged);
     super.dispose();
   }
 
   bool _active = false;
   bool get active => _active;
+
+  /// _onPreferencesChanged re-reads the dictionary when the language
+  /// changes, and otherwise just re-checks the text.
+  ///
+  /// The whole word list changes with the language -- "colour" is in one and
+  /// "color" in the other -- so this is a fetch and not a filter.
+  void _onPreferencesChanged() {
+    _invalidate();
+    var plugins = _plugins;
+    if (plugins != null && preferences.language != _loadedFor) {
+      update(plugins);
+    }
+  }
 
   // The last review, kept because the field asks for it on every repaint --
   // every keystroke, and every movement of the caret. Recomputing a long post
@@ -577,6 +591,22 @@ class SpellcheckCapability extends ChangeNotifier {
     _reviewed = null;
     notifyListeners();
   }
+
+  /// languages is every language the enabled providers can check against,
+  /// for a UI offering the choice. Empty until data has been loaded, and
+  /// empty from a provider that serves only one.
+  List<SpellcheckLanguage> get languages => _languages;
+  List<SpellcheckLanguage> _languages = const [];
+
+  /// activeLanguage is the language actually loaded, which is not always the
+  /// one asked for: a provider without it answers in what it has.
+  String get activeLanguage => _activeLanguage;
+  String _activeLanguage = "";
+
+  // The language the loaded data was fetched for, so a preference change is
+  // noticed even though nothing else about the plugin set has moved.
+  String? _loadedFor;
+  PluginManagerModel? _plugins;
 
   /// styleFor is how a flagged span is marked in the text.
   ///
@@ -620,6 +650,9 @@ class SpellcheckCapability extends ChangeNotifier {
   /// manager never has to know this capability exists -- it only reports
   /// which capabilities are present.
   Future<void> update(PluginManagerModel plugins) async {
+    // Kept so a language change can re-fetch without the plugin set having
+    // moved; update() is otherwise only called when it has.
+    _plugins = plugins;
     var active = plugins.hasCapability(PluginCapability.spellcheckData);
 
     // Flip `active` BEFORE awaiting the data, never after. This runs from a
@@ -635,8 +668,13 @@ class SpellcheckCapability extends ChangeNotifier {
     }
     if (!active) return;
 
+    var language = preferences.language;
     try {
-      _checker.updateData(await _fetch());
+      var data = await _fetch(language);
+      _loadedFor = language;
+      _activeLanguage = data.language;
+      if (data.languages.isNotEmpty) _languages = data.languages;
+      _checker.updateData(data);
       _reviewedText = null;
       _reviewed = null;
       // The words landing is a second, later change: a composer built in

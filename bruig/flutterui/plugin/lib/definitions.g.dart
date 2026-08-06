@@ -784,6 +784,18 @@ Map<String, dynamic> _$AnalysisCheckToJson(AnalysisCheck instance) =>
       'values': instance.values,
     };
 
+SpellcheckLanguage _$SpellcheckLanguageFromJson(Map<String, dynamic> json) =>
+    SpellcheckLanguage(
+      json['code'] as String? ?? '',
+      json['name'] as String? ?? '',
+    );
+
+Map<String, dynamic> _$SpellcheckLanguageToJson(SpellcheckLanguage instance) =>
+    <String, dynamic>{
+      'code': instance.code,
+      'name': instance.name,
+    };
+
 SpellcheckData _$SpellcheckDataFromJson(Map<String, dynamic> json) =>
     SpellcheckData(
       (json['words'] as List<dynamic>?)?.map((e) => e as String).toList() ?? [],
@@ -799,6 +811,12 @@ SpellcheckData _$SpellcheckDataFromJson(Map<String, dynamic> json) =>
               ?.map((e) => AnalysisCheck.fromJson(e as Map<String, dynamic>))
               .toList() ??
           [],
+      json['language'] as String? ?? '',
+      (json['languages'] as List<dynamic>?)
+              ?.map(
+                  (e) => SpellcheckLanguage.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          [],
     );
 
 Map<String, dynamic> _$SpellcheckDataToJson(SpellcheckData instance) =>
@@ -807,6 +825,8 @@ Map<String, dynamic> _$SpellcheckDataToJson(SpellcheckData instance) =>
       'commonWords': instance.commonWords,
       'grammarRules': instance.grammarRules,
       'analysisChecks': instance.analysisChecks,
+      'language': instance.language,
+      'languages': instance.languages,
     };
 
 ThesaurusSense _$ThesaurusSenseFromJson(Map<String, dynamic> json) =>

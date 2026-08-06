@@ -956,6 +956,19 @@ class AnalysisCheck {
       _$AnalysisCheckFromJson(json);
 }
 
+/// SpellcheckLanguage is one language a spellcheck-data provider can check
+/// against.
+@JsonSerializable()
+class SpellcheckLanguage {
+  @JsonKey(defaultValue: "")
+  final String code;
+  @JsonKey(defaultValue: "")
+  final String name;
+  SpellcheckLanguage(this.code, this.name);
+  factory SpellcheckLanguage.fromJson(Map<String, dynamic> json) =>
+      _$SpellcheckLanguageFromJson(json);
+}
+
 @JsonSerializable()
 class SpellcheckData {
   @JsonKey(defaultValue: [])
@@ -971,8 +984,20 @@ class SpellcheckData {
   @JsonKey(name: "analysisChecks", defaultValue: [])
   final List<AnalysisCheck> analysisChecks;
 
+  /// The language [words] is for, which need not be the one asked for: a
+  /// provider that does not have it answers in what it has and says so.
+  @JsonKey(defaultValue: "")
+  final String language;
+
+  /// Every language the enabled providers between them can serve, so the UI
+  /// can offer the choice without knowing in advance what is on offer.
+  @JsonKey(defaultValue: [])
+  final List<SpellcheckLanguage> languages;
+
   SpellcheckData(this.words, this.commonWords, this.grammarRules,
-      [this.analysisChecks = const []]);
+      [this.analysisChecks = const [],
+      this.language = "",
+      this.languages = const []]);
   factory SpellcheckData.fromJson(Map<String, dynamic> json) =>
       _$SpellcheckDataFromJson(json);
 }
@@ -4030,10 +4055,11 @@ abstract class PluginPlatform {
     }
   }
 
-  /// Returns the merged dictionary and grammar rules from all currently
-  /// enabled spellcheck-capability plugins (empty if none are enabled).
-  Future<SpellcheckData> getSpellcheckData() async {
-    var res = await asyncCall(CTGetSpellcheckData, null);
+  /// Returns the merged dictionary and grammar rules for [language] from all
+  /// currently enabled spellcheck-capability plugins (empty if none are
+  /// enabled). An empty language asks each provider for its default.
+  Future<SpellcheckData> getSpellcheckData([String language = ""]) async {
+    var res = await asyncCall(CTGetSpellcheckData, language);
     if (res == null) return SpellcheckData([], [], []);
     return SpellcheckData.fromJson(res);
   }

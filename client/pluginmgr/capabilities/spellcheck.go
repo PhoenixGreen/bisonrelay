@@ -46,6 +46,12 @@ type GrammarRule struct {
 	Severity string `json:"severity,omitempty"`
 }
 
+// Language is one language a spellcheck-data provider can check against.
+type Language struct {
+	Code string `json:"code"`
+	Name string `json:"name"`
+}
+
 // AnalysisCheck is a check a regex cannot express because it has to count or
 // compare across a whole message: how often a word is used, how long a
 // sentence runs, whether two spellings of one word are mixed.
@@ -105,6 +111,16 @@ type SpellcheckData struct {
 	// separates them.
 	CommonWords []string `json:"commonWords,omitempty"`
 
+	// Language is the language Words is for, which need not be the one that
+	// was asked for: a provider without it answers in whatever it has and
+	// says so, rather than returning nothing.
+	Language string `json:"language,omitempty"`
+
+	// Languages is every language the providers between them can serve, so
+	// the UI can offer the choice without knowing in advance what is on
+	// offer. Deduplicated by code across providers.
+	Languages []Language `json:"languages,omitempty"`
+
 	GrammarRules []GrammarRule `json:"grammarRules"`
 
 	// AnalysisChecks are the checks that count rather than match. Older
@@ -112,20 +128,22 @@ type SpellcheckData struct {
 	AnalysisChecks []AnalysisCheck `json:"analysisChecks,omitempty"`
 }
 
-// MergedSpellcheckData gathers get_spellcheck_data from every enabled
-// spellcheck-data plugin and merges them: words deduplicated (first plugin
+// MergedSpellcheckData gathers get_spellcheck_data for [language] from every
+// enabled spellcheck-data plugin and merges them: words deduplicated (first plugin
 // to supply a word wins its casing), grammar rules concatenated in plugin-id
 // order. A single plugin's failure -- typically one that hasn't finished
 // loading -- is logged and skipped rather than failing the whole result,
 // since a partial word list is still useful.
 func MergedSpellcheckData(ctx context.Context, mgr Manager, rt Runtime,
-	log slog.Logger) SpellcheckData {
+	log slog.Logger, language string) SpellcheckData {
 
 	var merged SpellcheckData
 	seen := make(map[string]bool)
+	seenLanguage := make(map[string]bool)
 	for _, manifest := range mgr.PluginsWithCapability(pluginmgr.CapabilitySpellcheckData) {
 		var data SpellcheckData
-		if err := call(ctx, rt, manifest.ID, spellcheckExport, nil, 0, &data); err != nil {
+		arg := []byte(language)
+		if err := call(ctx, rt, manifest.ID, spellcheckExport, arg, 0, &data); err != nil {
 			logf(log, "capabilities: unable to get spellcheck data from %s: %v",
 				manifest.ID, err)
 			continue
@@ -143,6 +161,19 @@ func MergedSpellcheckData(ctx context.Context, mgr Manager, rt Runtime,
 		merged.CommonWords = append(merged.CommonWords, data.CommonWords...)
 		merged.GrammarRules = append(merged.GrammarRules, data.GrammarRules...)
 		merged.AnalysisChecks = append(merged.AnalysisChecks, data.AnalysisChecks...)
+
+		// The first provider to answer names the language, since its words
+		// are the ones that landed first and set the tone for the merge.
+		if merged.Language == "" {
+			merged.Language = data.Language
+		}
+		for _, l := range data.Languages {
+			if l.Code == "" || seenLanguage[l.Code] {
+				continue
+			}
+			seenLanguage[l.Code] = true
+			merged.Languages = append(merged.Languages, l)
+		}
 	}
 	return merged
 }

@@ -69,7 +69,7 @@ Future<EditableTextState> _open(
 }) async {
   var preferences = prefs ?? WritingPreferences();
   var capability = SpellcheckCapability(
-      fetch: () async => SpellcheckData(_dictionary, const [], rules),
+      fetch: (_) async => SpellcheckData(_dictionary, const [], rules),
       prefs: preferences);
   await capability.update(FakePlugins({PluginCapability.spellcheckData}));
 
@@ -252,7 +252,7 @@ void main() {
     testWidgets("flags only the letter, not the punctuation before it",
         (tester) async {
       var capability = SpellcheckCapability(
-          fetch: () async =>
+          fetch: (_) async =>
               SpellcheckData(_dictionary, const [], capitalRule));
       await capability.update(FakePlugins({PluginCapability.spellcheckData}));
       const text = "the payment. it cleared";
@@ -271,7 +271,7 @@ void _multipleIssueTests() {
   test("every issue on a word reaches the popup", () async {
     var prefs = WritingPreferences();
     var capability = SpellcheckCapability(
-      fetch: () async => SpellcheckData(const [
+      fetch: (_) async => SpellcheckData(const [
         "cant"
       ], const [], [
         GrammarRule(r"\bcant\b", "Missing apostrophe", "can't"),
@@ -293,7 +293,7 @@ void _multipleIssueTests() {
 
   test("issuesAt only returns what the range touches", () async {
     var capability = SpellcheckCapability(
-      fetch: () async => SpellcheckData(const [
+      fetch: (_) async => SpellcheckData(const [
         "the"
       ], const [], [
         GrammarRule(r"[ ]{2,}", "Multiple spaces", " "),
@@ -314,7 +314,7 @@ void _multipleIssueTests() {
   // plugin keep working.
   test("a rule's category and explanation reach the issue", () async {
     var capability = SpellcheckCapability(
-      fetch: () async => SpellcheckData(const [
+      fetch: (_) async => SpellcheckData(const [
         "cant"
       ], const [], [
         GrammarRule(
@@ -347,7 +347,7 @@ void _multipleIssueTests() {
   // the checker's own -- and must still be there.
   test("a misspelling explains itself too", () async {
     var capability = SpellcheckCapability(
-      fetch: () async => SpellcheckData(const ["the"], const [], const []),
+      fetch: (_) async => SpellcheckData(const ["the"], const [], const []),
       prefs: WritingPreferences(),
     );
     await capability.update(FakePlugins({PluginCapability.spellcheckData}));

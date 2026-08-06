@@ -396,7 +396,8 @@ class MockPlugin with NtfStreams /*implements PluginPlatform*/ {
   Future<LinkMetadata?> fetchLinkMetadata(String url) =>
       throw "unimplemented";
 
-  Future<SpellcheckData> getSpellcheckData() => throw "unimplemented";
+  Future<SpellcheckData> getSpellcheckData([String language = ""]) =>
+      throw "unimplemented";
 
   Future<DynScreenUI> renderDynPluginScreen(
           String pluginId, String screenId) =>

@@ -50,7 +50,7 @@ const _dictionary = [
 ];
 
 Future<SpellcheckCapability> _configFor(SpellcheckData data) async {
-  var capability = SpellcheckCapability(fetch: () async => data);
+  var capability = SpellcheckCapability(fetch: (_) async => data);
   await capability.update(FakePlugins({PluginCapability.spellcheckData}));
   return capability;
 }
@@ -231,7 +231,7 @@ void _reviewTests() {
 
   test("review separates spelling from style, in reading order", () async {
     var capability = SpellcheckCapability(
-        fetch: () async => SpellcheckData(_dictionary, const [], rules));
+        fetch: (_) async => SpellcheckData(_dictionary, const [], rules));
     await capability.update(FakePlugins({PluginCapability.spellcheckData}));
 
     var issues = capability.review("the  payment recieve");
@@ -247,7 +247,7 @@ void _reviewTests() {
 
   test("a style rule with no fix still carries its message", () async {
     var capability = SpellcheckCapability(
-        fetch: () async => SpellcheckData(_dictionary, const [], rules));
+        fetch: (_) async => SpellcheckData(_dictionary, const [], rules));
     await capability.update(FakePlugins({PluginCapability.spellcheckData}));
 
     var issues = capability.review("payment!!!");
@@ -256,7 +256,7 @@ void _reviewTests() {
   });
 
   test("no provider means nothing to review", () async {
-    var capability = SpellcheckCapability(fetch: () async => throw "unused");
+    var capability = SpellcheckCapability(fetch: (_) async => throw "unused");
     await capability.update(FakePlugins({}));
     expect(capability.review("recieve  this"), isEmpty);
   });
@@ -265,7 +265,7 @@ void _reviewTests() {
   // address exactly the text they claim to.
   test("an issue's range addresses its own text", () async {
     var capability = SpellcheckCapability(
-        fetch: () async => SpellcheckData(_dictionary, const [], rules));
+        fetch: (_) async => SpellcheckData(_dictionary, const [], rules));
     await capability.update(FakePlugins({PluginCapability.spellcheckData}));
 
     const text = "the  payment recieve";
@@ -294,7 +294,7 @@ void _spanOrderTests() {
 
   Future<List<SuggestionSpan>> spansFor(String text) async {
     var capability = SpellcheckCapability(
-        fetch: () async => SpellcheckData(_dictionary, const [], rules));
+        fetch: (_) async => SpellcheckData(_dictionary, const [], rules));
     await capability.update(FakePlugins({PluginCapability.spellcheckData}));
     return [
       for (var issue in capability.review(text))
@@ -389,7 +389,7 @@ void _rankingTests() {
 
   Future<List<String>> suggestionsFor(String typo) async {
     var capability = SpellcheckCapability(
-        fetch: () async => SpellcheckData(words, common, const []));
+        fetch: (_) async => SpellcheckData(words, common, const []));
     await capability.update(FakePlugins({PluginCapability.spellcheckData}));
     return capability.review(typo).single.suggestions;
   }
@@ -417,7 +417,7 @@ void _rankingTests() {
   // -- ranking degrades to distance alone rather than breaking.
   test("an unranked provider still returns the nearest words", () async {
     var capability = SpellcheckCapability(
-        fetch: () async => SpellcheckData(words, const [], const []));
+        fetch: (_) async => SpellcheckData(words, const [], const []));
     await capability.update(FakePlugins({PluginCapability.spellcheckData}));
     expect(
         capability.review("recieved").single.suggestions, contains("received"));
@@ -441,7 +441,7 @@ void _fixPreferenceTests() {
 
   Future<List<WritingIssue>> reviewOf(String text) async {
     var capability = SpellcheckCapability(
-        fetch: () async => SpellcheckData(words, const [], rules));
+        fetch: (_) async => SpellcheckData(words, const [], rules));
     await capability.update(FakePlugins({PluginCapability.spellcheckData}));
     return capability.review(text);
   }
@@ -529,7 +529,7 @@ void _lookaroundRuleTests() {
   Future<List<WritingIssue>> reviewWith(List<GrammarRule> rules, String text,
       {List<String> words = const ["the"]}) async {
     var capability = SpellcheckCapability(
-        fetch: () async => SpellcheckData(words, const [], rules));
+        fetch: (_) async => SpellcheckData(words, const [], rules));
     await capability.update(FakePlugins({PluginCapability.spellcheckData}));
     return capability
         .review(text)
@@ -652,7 +652,7 @@ void _confusionRuleTests() {
   Future<List<WritingIssue>> styleOf(
       List<GrammarRule> rules, String text) async {
     var capability = SpellcheckCapability(
-        fetch: () async => SpellcheckData(words, const [], rules));
+        fetch: (_) async => SpellcheckData(words, const [], rules));
     await capability.update(FakePlugins({PluginCapability.spellcheckData}));
     return capability
         .review(text)
@@ -819,7 +819,7 @@ void _newLookaheadRuleTests() {
   Future<List<WritingIssue>> review(
       String text, List<GrammarRule> rules) async {
     var capability = SpellcheckCapability(
-        fetch: () async => SpellcheckData(words, const [], rules));
+        fetch: (_) async => SpellcheckData(words, const [], rules));
     await capability.update(FakePlugins({PluginCapability.spellcheckData}));
     return capability.review(text);
   }

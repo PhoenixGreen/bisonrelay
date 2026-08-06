@@ -80,7 +80,7 @@ func TestMergedSpellcheckDataDeduplicates(t *testing.T) {
 		},
 	}}
 
-	got := MergedSpellcheckData(context.Background(), mgr, rt, nil)
+	got := MergedSpellcheckData(context.Background(), mgr, rt, nil, "en-US")
 
 	want := []string{"hello", "world", "again"}
 	if len(got.Words) != len(want) {
@@ -112,7 +112,7 @@ func TestMergedSpellcheckDataSkipsFailures(t *testing.T) {
 		results: map[string]any{"ok": SpellcheckData{Words: []string{"fine"}}},
 	}
 
-	got := MergedSpellcheckData(context.Background(), mgr, rt, nil)
+	got := MergedSpellcheckData(context.Background(), mgr, rt, nil, "en-US")
 
 	if len(got.Words) != 1 || got.Words[0] != "fine" {
 		t.Errorf("words = %v, want [fine]", got.Words)
@@ -230,8 +230,78 @@ func TestMergedSpellcheckDataSkipsEmptyResult(t *testing.T) {
 		results: map[string]any{"ok": SpellcheckData{Words: []string{"fine"}}},
 	}
 
-	got := MergedSpellcheckData(context.Background(), mgr, rt, nil)
+	got := MergedSpellcheckData(context.Background(), mgr, rt, nil, "en-US")
 	if len(got.Words) != 1 || got.Words[0] != "fine" {
 		t.Errorf("words = %v, want [fine]", got.Words)
+	}
+}
+
+// TestMergedSpellcheckDataCollectsLanguages: the UI offers whichever
+// languages the enabled providers between them can serve, so it has to know
+// what those are without being told in advance.
+func TestMergedSpellcheckDataCollectsLanguages(t *testing.T) {
+	mgr := stubManager{byCapability: map[string][]pluginmgr.Manifest{
+		pluginmgr.CapabilitySpellcheckData: {
+			manifest("a", pluginmgr.CapabilitySpellcheckData),
+			manifest("b", pluginmgr.CapabilitySpellcheckData),
+		},
+	}}
+	rt := &stubRuntime{results: map[string]any{
+		"a": SpellcheckData{
+			Words:    []string{"colour"},
+			Language: "en-GB",
+			Languages: []Language{
+				{Code: "en-US", Name: "English (US)"},
+				{Code: "en-GB", Name: "English (UK)"},
+			},
+		},
+		"b": SpellcheckData{
+			Words:    []string{"jargon"},
+			Language: "en-GB",
+			// Overlaps with the first provider's list, and adds one.
+			Languages: []Language{
+				{Code: "en-GB", Name: "English (UK)"},
+				{Code: "fr-FR", Name: "French"},
+			},
+		},
+	}}
+
+	got := MergedSpellcheckData(context.Background(), mgr, rt, nil, "en-GB")
+
+	if got.Language != "en-GB" {
+		t.Errorf("language = %q, want en-GB", got.Language)
+	}
+	var codes []string
+	for _, l := range got.Languages {
+		codes = append(codes, l.Code)
+	}
+	want := []string{"en-US", "en-GB", "fr-FR"}
+	if len(codes) != len(want) {
+		t.Fatalf("languages = %v, want %v (deduplicated by code)", codes, want)
+	}
+	for i := range want {
+		if codes[i] != want[i] {
+			t.Errorf("languages = %v, want %v", codes, want)
+			break
+		}
+	}
+}
+
+// The language reaches the plugin: without it a provider serving several
+// would always answer with its default, and the setting would do nothing.
+func TestMergedSpellcheckDataPassesTheLanguage(t *testing.T) {
+	mgr := stubManager{byCapability: map[string][]pluginmgr.Manifest{
+		pluginmgr.CapabilitySpellcheckData: {
+			manifest("a", pluginmgr.CapabilitySpellcheckData),
+		},
+	}}
+	rt := &stubRuntime{results: map[string]any{
+		"a": SpellcheckData{Words: []string{"colour"}},
+	}}
+
+	MergedSpellcheckData(context.Background(), mgr, rt, nil, "en-GB")
+
+	if got := rt.lastArg["a"]; got != "en-GB" {
+		t.Errorf("plugin was asked for %q, want en-GB", got)
 	}
 }

@@ -106,7 +106,7 @@ class _ComposerState extends State<_Composer> {
 Future<void> _pumpApp(WidgetTester tester, WritingPreferences prefs,
     {bool reshape = false, bool composing = true}) async {
   var spellcheck = SpellcheckCapability(
-      fetch: () async => SpellcheckData(const [
+      fetch: (_) async => SpellcheckData(const [
             "the",
             "cleared",
             "payment",

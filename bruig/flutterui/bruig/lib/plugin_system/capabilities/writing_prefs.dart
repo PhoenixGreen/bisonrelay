@@ -18,6 +18,7 @@ import 'package:flutter/foundation.dart';
 /// own settings.
 const _dictionaryKey = "writing.personalDictionary";
 const _disabledChecksKey = "writing.disabledChecks";
+const _languageKey = "writing.language";
 
 /// WritingPreferences is the user's own overrides on top of whatever the
 /// enabled providers report.
@@ -63,6 +64,24 @@ class WritingPreferences extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// language is which English (or other language) to check against, as a
+  /// provider's own code -- "en-GB", "en-US".
+  ///
+  /// Persisted, unlike [enabled]: which English somebody writes is a fact
+  /// about them, not a mood, and having it reset on restart would put every
+  /// British spelling back under a red line.
+  ///
+  /// Empty means "whatever the provider defaults to", which is what a fresh
+  /// install and a provider offering only one language both look like.
+  String _language = "";
+  String get language => _language;
+  Future<void> setLanguage(String code) async {
+    if (code == _language) return;
+    _language = code;
+    notifyListeners();
+    await StorageManager.saveData(_languageKey, code);
+  }
+
   /// personalDictionary and disabledChecks are exposed so the plugin
   /// settings page can show what has been hidden and take it back.
   Set<String> get personalDictionary => Set.unmodifiable(_dictionary);
@@ -76,7 +95,13 @@ class WritingPreferences extends ChangeNotifier {
   Future<void> load() async {
     _dictionary.addAll(await _readSet(_dictionaryKey));
     _disabledChecks.addAll(await _readChecks());
-    if (_dictionary.isNotEmpty || _disabledChecks.isNotEmpty) {
+    var stored = await StorageManager.readData(_languageKey);
+    if (stored is String && stored.isNotEmpty) {
+      _language = stored;
+    }
+    if (_dictionary.isNotEmpty ||
+        _disabledChecks.isNotEmpty ||
+        _language.isNotEmpty) {
       notifyListeners();
     }
   }

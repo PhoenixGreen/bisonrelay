@@ -1390,8 +1390,16 @@ func handleClientCmd(cc *clientCtx, cmd *cmd) (interface{}, error) {
 		return capabilities.LookupSynonyms(cc.ctx, cc.pluginMgr, cc.dynRuntime, word)
 
 	case CTGetSpellcheckData:
+		// The payload is the language code, empty meaning "whatever the
+		// provider defaults to".
+		var language string
+		if len(cmd.Payload) > 0 {
+			if err := cmd.decode(&language); err != nil {
+				return nil, err
+			}
+		}
 		return capabilities.MergedSpellcheckData(cc.ctx, cc.pluginMgr,
-			cc.dynRuntime, cc.log), nil
+			cc.dynRuntime, cc.log, language), nil
 
 	case CTDynPluginRenderScreen:
 		var args dynPluginRenderScreenArgs

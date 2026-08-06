@@ -17,7 +17,7 @@ final _rules = [
 
 Future<SpellcheckCapability> _capability(WritingPreferences prefs) async {
   var capability = SpellcheckCapability(
-      fetch: () async => SpellcheckData(_dictionary, const [], _rules),
+      fetch: (_) async => SpellcheckData(_dictionary, const [], _rules),
       prefs: prefs);
   await capability.update(FakePlugins({PluginCapability.spellcheckData}));
   return capability;
@@ -101,7 +101,7 @@ void main() {
     // words -- so the only thing that can flag them is the style rule under
     // test, and a leftover spelling issue cannot be mistaken for one.
     var capability = SpellcheckCapability(
-        fetch: () async => SpellcheckData(const [
+        fetch: (_) async => SpellcheckData(const [
               "cant",
               "wont"
             ], const [], [

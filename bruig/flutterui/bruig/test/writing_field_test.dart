@@ -30,7 +30,7 @@ Future<(SpellcheckCapability, WritingPreferences)> _capability({
   var prefs = WritingPreferences();
   prefs.enabled = enabled;
   var capability = SpellcheckCapability(
-      fetch: () async => SpellcheckData(_dictionary, const [], rules, checks),
+      fetch: (_) async => SpellcheckData(_dictionary, const [], rules, checks),
       prefs: prefs);
   await capability.update(FakePlugins({PluginCapability.spellcheckData}));
   return (capability, prefs);

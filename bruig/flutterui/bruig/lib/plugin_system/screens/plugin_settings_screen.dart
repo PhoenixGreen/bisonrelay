@@ -149,7 +149,15 @@ class WritingOverridesSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     var prefs = context.watch<WritingPreferences>();
-    if (prefs.personalDictionary.isEmpty && prefs.disabledChecks.isEmpty) {
+    var spellcheck = context.watch<SpellcheckCapability?>();
+    var languages = spellcheck?.languages ?? const <SpellcheckLanguage>[];
+
+    // Nothing to show at all when no provider offers a choice and nothing
+    // has been overridden. A section that is always there but usually empty
+    // is a section people learn to skip.
+    if (languages.length < 2 &&
+        prefs.personalDictionary.isEmpty &&
+        prefs.disabledChecks.isEmpty) {
       return const SizedBox.shrink();
     }
 
@@ -163,6 +171,35 @@ class WritingOverridesSection extends StatelessWidget {
       const SizedBox(height: 8),
       const Txt.L("Writing tools"),
       const SizedBox(height: 12),
+      // Offered only when a provider has more than one to offer, and built
+      // from what it says it has rather than from a list held here: the
+      // languages are the provider's, and an app-side list would go stale
+      // the moment one shipped another.
+      if (languages.length > 1) ...[
+        const Txt.S("Language", color: TextColor.onSurfaceVariant),
+        const SizedBox(height: 6),
+        DropdownButton<String>(
+          value: languages.any((l) => l.code == spellcheck!.activeLanguage)
+              ? spellcheck!.activeLanguage
+              : null,
+          hint: const Txt.S("Choose a language"),
+          items: [
+            for (var language in languages)
+              DropdownMenuItem(
+                  value: language.code, child: Txt.S(language.name)),
+          ],
+          onChanged: (code) {
+            if (code != null) prefs.setLanguage(code);
+          },
+        ),
+        const SizedBox(height: 6),
+        const Txt.S(
+            "Changes which dictionary your writing is checked against. "
+            "\"Colour\" and \"color\" are each correct in one and wrong in "
+            "the other.",
+            color: TextColor.onSurfaceVariant),
+        const SizedBox(height: 16),
+      ],
       if (words.isNotEmpty) ...[
         const Txt.S("Words added to your dictionary",
             color: TextColor.onSurfaceVariant),
