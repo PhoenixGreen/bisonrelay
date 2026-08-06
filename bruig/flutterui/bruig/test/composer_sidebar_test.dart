@@ -50,6 +50,7 @@ Future<void> _pump(WidgetTester tester, ComposerSidebarController controller,
 }
 
 void main() {
+  _drawerOwnershipTests();
   _collapsedDrawerTests();
   _feedPanelFlagTests();
   _hideButtonTests();
@@ -515,5 +516,53 @@ void _collapsedDrawerTests() {
     await endFrame();
     expect(woken, greaterThan(afterFirst),
         reason: "the drawer kept rendering the panel that was replaced");
+  });
+}
+
+// Reported: on mobile and with the sidebar collapsed, the composer's panel
+// turned up in the drawer over Realtime Chat, the LN screens and Pages.
+//
+// A screen registers its sidebar from its build. Screens that never register
+// one have nothing to clear it, so a registration nobody takes back follows
+// the user to whatever they open next.
+void _drawerOwnershipTests() {
+  test("a screen's sidebar goes when the screen does", () {
+    var model = CollapsedSidebarModel();
+    var feed = Object();
+
+    model.register((_) => const SizedBox(), 200, owner: feed);
+    expect(model.available, isTrue);
+
+    model.unregister(owner: feed);
+    expect(model.available, isFalse,
+        reason: "the sidebar followed the user off the screen that owned it");
+  });
+
+  // On a navigation the arriving screen registers before the departing one
+  // is disposed, so an unscoped clear in dispose would wipe the sidebar that
+  // had just arrived and leave the new screen with none at all.
+  test("a departing screen cannot take the arriving one's sidebar", () {
+    var model = CollapsedSidebarModel();
+    var leaving = Object();
+    var arriving = Object();
+
+    model.register((_) => const SizedBox(), 200, owner: leaving);
+    model.register((_) => const SizedBox(), 200, owner: arriving);
+
+    model.unregister(owner: leaving);
+    expect(model.available, isTrue,
+        reason: "the screen being torn down cleared its replacement");
+
+    model.unregister(owner: arriving);
+    expect(model.available, isFalse);
+  });
+
+  // Callers that clear it on their own account -- the wide layout handing
+  // the drawer back -- pass no owner and clear whatever is there.
+  test("an unowned unregister still clears", () {
+    var model = CollapsedSidebarModel();
+    model.register((_) => const SizedBox(), 200, owner: Object());
+    model.unregister();
+    expect(model.available, isFalse);
   });
 }

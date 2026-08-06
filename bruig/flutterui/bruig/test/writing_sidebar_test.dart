@@ -22,7 +22,7 @@ import 'plugin_test_support.dart';
 /// it lands at a different depth, so its State is torn down and rebuilt --
 /// which used to withdraw the composer and close the sidebar in the same
 /// frame it opened.
-class _Host extends StatelessWidget {
+class _Host extends StatefulWidget {
   final bool reshape;
 
   /// composing mirrors the Feed screen's tab check: the tools belong to the
@@ -30,6 +30,18 @@ class _Host extends StatelessWidget {
   /// over even when the controller is still open.
   final bool composing;
   const _Host({this.reshape = false, this.composing = true});
+
+  @override
+  State<_Host> createState() => _HostState();
+}
+
+class _HostState extends State<_Host> {
+  // The page lives with the host, as it does on the real screen -- see
+  // WritingSidebar.page.
+  WritingSidebarPage _page = WritingSidebarPage.mistakes;
+
+  bool get reshape => widget.reshape;
+  bool get composing => widget.composing;
 
   @override
   Widget build(BuildContext context) {
@@ -63,7 +75,11 @@ class _Host extends StatelessWidget {
       body: Row(children: [
         SizedBox(
           width: 220,
-          child: WritingSidebar(controller: writing.editor),
+          child: WritingSidebar(
+            controller: writing.editor,
+            page: _page,
+            onPageChanged: (page) => setState(() => _page = page),
+          ),
         ),
         Expanded(child: composer),
       ]),

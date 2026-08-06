@@ -90,6 +90,13 @@ class _FeedScreenState extends State<FeedScreen> {
   // expected, since those are part of that tab's own experience.
   int _yourPostsResetToken = 0;
 
+  // Which writing-tools page is showing. Held here rather than inside the
+  // sidebar, because in the collapsed drawer that widget is rebuilt from a
+  // stored builder and would forget it -- and because the drawer only
+  // redraws for things this screen tells it changed, which it can only do
+  // for state it holds.
+  WritingSidebarPage _writingPage = WritingSidebarPage.mistakes;
+
   Widget activeTab() {
     switch (tabIndex) {
       case 0:
@@ -363,8 +370,10 @@ class _FeedScreenState extends State<FeedScreen> {
                   ? _feedSidePanel(feedStyle, framed: false, showSearch: false)
                   : SecondarySideMenuList(
                       items: feedBarItems(onItemChanged, tabIndex)),
-              ComposerPanel.writing =>
-                WritingSidebar(controller: composer.editor),
+              ComposerPanel.writing => WritingSidebar(
+                  controller: composer.editor,
+                  page: _writingPage,
+                  onPageChanged: (page) => setState(() => _writingPage = page)),
               ComposerPanel.posts => PostSidebar(controller: composer.editor),
               ComposerPanel.formatting =>
                 FormattingSidebar(controller: composer),
@@ -452,7 +461,12 @@ class _FeedScreenState extends State<FeedScreen> {
             // The composer's sidebar changes while it is open, and the
             // collapsed drawer has no other way to know: its icons
             // registered their taps and redrew nothing.
-            sidebarRevision: composerSidebar == null ? null : composer.panel,
+            // Everything the composer's sidebar would look different for.
+            // The panel alone was not enough: switching pages within the
+            // writing tools changes it just as much, and the drawer has no
+            // other way to find out.
+            sidebarRevision:
+                composerSidebar == null ? null : (composer.panel, _writingPage),
             content: activeTab()));
   }
 }

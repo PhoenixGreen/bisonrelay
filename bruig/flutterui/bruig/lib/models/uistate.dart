@@ -95,6 +95,7 @@ class OverviewActivePath extends ChangeNotifier {
 class CollapsedSidebarModel extends ChangeNotifier {
   WidgetBuilder? _builder;
   Object? _revision;
+  Object? _owner;
   double _width = 200;
   bool _open = false;
 
@@ -126,18 +127,34 @@ class CollapsedSidebarModel extends ChangeNotifier {
   ///
   /// A caller whose sidebar cannot change while it is open passes nothing
   /// and behaves exactly as before.
-  void register(WidgetBuilder builder, double width, {Object? revision}) {
+  /// owner identifies who registered, so it can take its own registration
+  /// back without taking somebody else's.
+  ///
+  /// A screen registers from its build and has to unregister when it goes
+  /// away, or its sidebar follows the user to whatever they open next --
+  /// which is how the post composer's panel turned up in the drawer over
+  /// Realtime Chat, the LN screens and Pages. Screens that never register
+  /// have nothing to clear it, so clearing it is the registrant's job.
+  void register(WidgetBuilder builder, double width,
+      {Object? revision, Object? owner}) {
     var changed = _builder == null || _width != width || _revision != revision;
     _builder = builder;
     _width = width;
     _revision = revision;
+    _owner = owner;
     if (changed) _notifyLater();
   }
 
-  void unregister() {
+  /// unregister clears the drawer. With an [owner] it does so only if that
+  /// owner is the one still registered -- a screen being torn down must not
+  /// wipe the registration of the screen that replaced it, which on any
+  /// navigation happens in that order.
+  void unregister({Object? owner}) {
     if (_builder == null) return;
+    if (owner != null && !identical(_owner, owner)) return;
     _builder = null;
     _revision = null;
+    _owner = null;
     _open = false;
     _notifyLater();
   }

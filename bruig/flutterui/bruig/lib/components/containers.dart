@@ -658,6 +658,22 @@ class _SecondarySideMenuLayoutState extends State<SecondarySideMenuLayout> {
   String get _widthStorageKey => "sidebarWidth_${widget.storageKey}";
 
   @override
+  void dispose() {
+    // This screen's sidebar goes with this screen. Screens that never
+    // register one have nothing to clear it, so leaving it would put this
+    // sidebar in the drawer over whatever the user opened next.
+    //
+    // Scoped to this registration: on a navigation the new screen registers
+    // before the old one is disposed, and an unscoped clear here would wipe
+    // the sidebar that had just arrived.
+    _client?.ui.collapsedSidebar.unregister(owner: this);
+    super.dispose();
+  }
+
+  // Captured while mounted, since dispose cannot reach the provider tree.
+  ClientModel? _client;
+
+  @override
   void initState() {
     super.initState();
     final cached = _sidebarWidthCache[widget.storageKey];
@@ -729,7 +745,7 @@ class _SecondarySideMenuLayoutState extends State<SecondarySideMenuLayout> {
   Widget _compactLayout(ClientModel client, double panelWidth) {
     client.ui.collapsedSidebar.register(
         (context) => _menuList(panelWidth, closeOnTap: true), panelWidth,
-        revision: widget.sidebarRevision);
+        revision: widget.sidebarRevision, owner: this);
     return contentAreaFrame(ThemeNotifier.of(context), widget.content);
   }
 
@@ -750,6 +766,7 @@ class _SecondarySideMenuLayoutState extends State<SecondarySideMenuLayout> {
         // this narrow has no usable room for a sidebar column whichever
         // visibility is set.
         var client = ClientModel.of(context, listen: false);
+        _client = client;
         if (style == SubMenuStyle.collapsed ||
             constraints.maxWidth < _collapseBelowWidth) {
           return _compactLayout(client, kCollapsedSidebarWidth);

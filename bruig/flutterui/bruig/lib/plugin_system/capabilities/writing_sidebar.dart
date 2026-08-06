@@ -34,10 +34,28 @@ class WritingSidebar extends StatefulWidget {
   /// being rebuilt -- see ComposerSidebarController.visible.
   final TextEditingController? controller;
 
+  /// page is which of the four is showing, and onPageChanged asks for
+  /// another.
+  ///
+  /// Held by the screen rather than in this widget's own State. In the
+  /// collapsed drawer the sidebar is built from a stored builder and rebuilt
+  /// from scratch whenever the drawer is told to redraw, so a selection kept
+  /// here would be a selection the drawer could forget -- and the drawer is
+  /// only ever told about things the screen knows it changed. Both problems
+  /// go away when the screen owns it.
+  final WritingSidebarPage page;
+  final ValueChanged<WritingSidebarPage> onPageChanged;
+
   const WritingSidebar({
     required this.controller,
+    this.page = WritingSidebarPage.mistakes,
+    this.onPageChanged = _ignorePage,
     super.key,
   });
+
+  /// A sidebar with nowhere to send the change simply does not move, which
+  /// is the right behaviour for a caller that only wants one page.
+  static void _ignorePage(WritingSidebarPage _) {}
 
   @override
   State<WritingSidebar> createState() => _WritingSidebarState();
@@ -67,11 +85,6 @@ enum WritingSidebarPage {
 
 class _WritingSidebarState extends State<WritingSidebar> {
   TextEditingController? get _editor => widget.controller;
-
-  /// The page on show. Kept in the widget's state rather than the controller,
-  /// so it resets when the sidebar is closed and reopened: coming back to it
-  /// should start at the mistakes, which is what it is mostly for.
-  WritingSidebarPage _current = WritingSidebarPage.mistakes;
 
   // Owned rather than left implicit, so the Scrollbar and the view it tracks
   // are certainly the same one.
@@ -173,13 +186,13 @@ class _WritingSidebarState extends State<WritingSidebar> {
   ) {
     // The document page is the exception: counting words needs no provider
     // and no rules, so it keeps working when everything else is switched off.
-    if (_current == WritingSidebarPage.document) {
+    if (widget.page == WritingSidebarPage.document) {
       return _documentPage(theme);
     }
     if (!prefs.enabled) {
       return _note(theme, "Writing tools are off for this session.");
     }
-    switch (_current) {
+    switch (widget.page) {
       case WritingSidebarPage.mistakes:
         return _issueList(theme, prefs, mistakes,
             empty: "Nothing to fix in this post.");
@@ -249,12 +262,12 @@ class _WritingSidebarState extends State<WritingSidebar> {
   }
 
   Widget _navButton(ThemeNotifier theme, WritingSidebarPage page, int count) {
-    var selected = page == _current;
+    var selected = page == widget.page;
     return Expanded(
       child: Tooltip(
         message: count > 0 ? "${page.title} ($count)" : page.title,
         child: InkWell(
-          onTap: () => setState(() => _current = page),
+          onTap: () => widget.onPageChanged(page),
           borderRadius: BorderRadius.circular(6),
           child: Container(
             padding: const EdgeInsets.symmetric(vertical: 7),
