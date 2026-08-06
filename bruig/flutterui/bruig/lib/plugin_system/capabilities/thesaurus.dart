@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/capabilities/spellcheck.dart';
 import 'package:bruig/plugin_system/plugin_capability.dart';
 import 'package:bruig/plugin_system/plugin_manager.dart';
 import 'package:flutter/foundation.dart';
@@ -81,7 +82,9 @@ class ThesaurusCapability {
   /// punctuation and whitespace are trimmed, since a double-click selection
   /// often carries them.
   static String? normalizeWord(String raw) {
-    var trimmed = raw.trim().toLowerCase();
+    // Folded first, so a contraction typed with the apostrophe a text field
+    // substituted reaches the provider in the form its data is keyed by.
+    var trimmed = normalizeForMatching(raw).trim().toLowerCase();
     // Strip anything that isn't a letter from both ends, leaving internal
     // apostrophes and hyphens ("don't", "well-chosen") alone.
     var start = 0, end = trimmed.length;

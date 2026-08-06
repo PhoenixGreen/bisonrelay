@@ -31,8 +31,10 @@ import 'package:golib_plugin/definitions.dart';
 final _sentenceEnd = RegExp(r"(?<=[.!?])\s+|\n+");
 
 /// _word matches a word for counting: letters and apostrophes, so "don't" is
-/// one word rather than two.
-final _word = RegExp(r"[A-Za-z][A-Za-z']*");
+/// one word rather than two. The typographic apostrophes are included
+/// because a field that substitutes them would otherwise split every
+/// contraction in the message.
+final _word = RegExp("[A-Za-z][A-Za-z'\u2019\u02BC\u2018]*");
 
 /// _paragraphBreak is a blank line, which is what separates paragraphs in the
 /// plain text these composers hold.

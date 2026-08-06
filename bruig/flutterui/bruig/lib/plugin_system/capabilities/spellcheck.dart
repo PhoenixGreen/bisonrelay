@@ -22,6 +22,35 @@ import 'package:golib_plugin/golib_plugin.dart';
 /// and apostrophes (so contractions like "don't" are one token).
 final _wordRegExp = RegExp(r"[A-Za-z']+");
 
+/// _typographicApostrophes are the characters a text field may put in place
+/// of a typed apostrophe. macOS substitutes U+2019 as you type unless smart
+/// quotes are switched off, so this is the common case rather than the
+/// exotic one.
+const _typographicApostrophes = ["\u2019", "\u02BC", "\u2018"];
+
+/// normalizeForMatching replaces typographic apostrophes with the plain one,
+/// so a contraction is matched however the field spelled it.
+///
+/// Reported: "I've" was flagged as a misspelling. Written with U+2019 the
+/// word regex above splits it into "I" and "ve", and "ve" is in no
+/// dictionary. Every contraction rule a provider ships was affected the same
+/// way and more quietly -- `\bdon't\b` simply never fired on real typing.
+///
+/// Length is preserved exactly, and that is the point: all of these are
+/// single UTF-16 code units, as is the apostrophe, so every offset into the
+/// normalized text is an offset into the original. The ranges this produces
+/// can be handed straight back to the field, and the text the user sees is
+/// never rewritten.
+String normalizeForMatching(String text) {
+  var out = text;
+  for (var mark in _typographicApostrophes) {
+    if (out.contains(mark)) out = out.replaceAll(mark, "'");
+  }
+  assert(out.length == text.length,
+      "normalizing must not move any offset in the text");
+  return out;
+}
+
 /// Expands a grammar rule's replacement template against [match]:
 ///
 ///   `$1`, `$2`   the capture group, as matched.
@@ -312,8 +341,12 @@ class _Checker {
   }
 
   /// _reviewRaw finds everything, in no particular order.
-  List<WritingIssue> _reviewRaw(String text) {
+  List<WritingIssue> _reviewRaw(String original) {
     if (!hasData) return const [];
+    // Matched against the normalized text and reported against the original.
+    // The two are the same length, so the ranges are interchangeable -- see
+    // normalizeForMatching.
+    var text = normalizeForMatching(original);
     var issues = <WritingIssue>[];
 
     for (var rule in _rules) {
@@ -322,7 +355,10 @@ class _Checker {
         for (var m in rule.pattern.allMatches(text)) {
           issues.add(WritingIssue(
             range: TextRange(start: m.start, end: m.end),
-            text: m.group(0) ?? "",
+            // Sliced from the original, not from what was matched: this is
+            // what gets spliced back into the field and what a correction is
+            // checked against, so it has to be the characters actually there.
+            text: original.substring(m.start, m.end),
             message: rule.message,
             suggestions: rule.suggest.isEmpty
                 ? const []
@@ -339,7 +375,9 @@ class _Checker {
       }
     }
 
-    issues.addAll(runAnalysisChecks(text, _analysis,
+    // Given the original: these checks count and compare rather than match
+    // contractions, and their results are spliced back into the field.
+    issues.addAll(runAnalysisChecks(original, _analysis,
         isIgnoredCheck: (id) => prefs?.isCheckDisabled(id) ?? false));
 
     for (var m in _wordRegExp.allMatches(text)) {
@@ -348,7 +386,7 @@ class _Checker {
       if (prefs?.isIgnoredWord(word) ?? false) continue;
       issues.add(WritingIssue(
         range: TextRange(start: m.start, end: m.end),
-        text: word,
+        text: original.substring(m.start, m.end),
         message: "Not in dictionary",
         suggestions: _suggest(word.toLowerCase()),
         kind: WritingIssueKind.spelling,

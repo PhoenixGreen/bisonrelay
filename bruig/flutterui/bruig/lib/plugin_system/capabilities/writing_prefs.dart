@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:bruig/storage_manager.dart';
+import 'package:bruig/plugin_system/capabilities/spellcheck.dart';
 import 'package:flutter/foundation.dart';
 
 // writing_prefs.dart holds what the user has told the writing capabilities
@@ -118,28 +119,37 @@ class WritingPreferences extends ChangeNotifier {
     }
   }
 
+  /// _key is how a word is stored and looked up: lower case, and with any
+  /// typographic apostrophe folded to a plain one.
+  ///
+  /// The fold matters because the two forms are the same word. A field that
+  /// substitutes U+2019 as you type would otherwise let "don't" be added to
+  /// the dictionary and still be flagged, since the checker looks the word up
+  /// in its plain form.
+  static String _key(String word) => normalizeForMatching(word).toLowerCase();
+
   /// isIgnoredWord reports whether [word] should not be flagged, whether
   /// that was decided for this session or for good.
   bool isIgnoredWord(String word) {
-    var key = word.toLowerCase();
+    var key = _key(word);
     return _ignoredThisSession.contains(key) || _dictionary.contains(key);
   }
 
   bool isCheckDisabled(String pattern) => _disabledChecks.containsKey(pattern);
 
   void ignoreOnce(String word) {
-    if (!_ignoredThisSession.add(word.toLowerCase())) return;
+    if (!_ignoredThisSession.add(_key(word))) return;
     notifyListeners();
   }
 
   Future<void> addToDictionary(String word) async {
-    if (!_dictionary.add(word.toLowerCase())) return;
+    if (!_dictionary.add(_key(word))) return;
     notifyListeners();
     await _writeSet(_dictionaryKey, _dictionary);
   }
 
   Future<void> removeFromDictionary(String word) async {
-    if (!_dictionary.remove(word.toLowerCase())) return;
+    if (!_dictionary.remove(_key(word))) return;
     notifyListeners();
     await _writeSet(_dictionaryKey, _dictionary);
   }

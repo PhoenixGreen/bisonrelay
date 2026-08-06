@@ -2,6 +2,7 @@ import 'package:bruig/plugin_system/plugin_system.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:golib_plugin/definitions.dart';
 
 import 'plugin_test_support.dart';
@@ -66,6 +67,7 @@ Future<List<SuggestionSpan>> _check(
 }
 
 void main() {
+  setUp(() => SharedPreferences.setMockInitialValues({}));
   var plain = SpellcheckData(_dictionary, const [], []);
 
   test("a known word is not flagged", () async {
@@ -159,6 +161,8 @@ void main() {
   _fixPreferenceTests();
   _lookaroundRuleTests();
   _confusionRuleTests();
+  _newLookaheadRuleTests();
+  _apostropheTests();
 
   group("grammar rules", () {
     // These run in Dart's regex engine, which is the only place the
@@ -699,5 +703,163 @@ void _confusionRuleTests() {
     expect((await styleOf([itsOwn], "It's own fault")).single.suggestions,
         contains("Its own"));
     expect(await styleOf([itsOwn], "it's going to rain"), isEmpty);
+  });
+}
+
+// Reported: "I've" was flagged as a misspelling, and no contraction rule ever
+// fired on real typing. macOS substitutes U+2019 for a typed apostrophe
+// unless smart quotes are off, and the word regex splits "I’ve" into "I"
+// and "ve" -- so the dictionary never saw the word, and a provider's
+// `\bdon't\b` never saw its own text.
+void _apostropheTests() {
+  const words = [
+    "i've",
+    "don't",
+    "the",
+    "payment",
+    "cleared",
+    "i",
+    "it's",
+    "here",
+    "fault",
+    "own"
+  ];
+
+  Future<SpellcheckCapability> checker({List<GrammarRule> rules = const []}) =>
+      _configFor(SpellcheckData(words, const [], rules));
+
+  group("typographic apostrophes", () {
+    test("a contraction is not flagged", () async {
+      var capability = await checker();
+      expect(capability.review("I’ve cleared the payment"), isEmpty,
+          reason: "the curly apostrophe split the word in two");
+      // The modifier letter and the left quote get used the same way.
+      expect(capability.review("Iʼve cleared the payment"), isEmpty);
+      expect(capability.review("don‘t"), isEmpty);
+    });
+
+    test("a provider's contraction rule still fires", () async {
+      var capability = await checker(rules: [
+        GrammarRule(r"\bit's\s+own\b", "Should be \"its own\"", "its own"),
+      ]);
+      var issues = capability.review("it’s own fault");
+      expect(issues, isNotEmpty,
+          reason: "every rule with an apostrophe in it was dead");
+      expect(issues.first.suggestions, ["its own"]);
+    });
+
+    // The offsets are into the text the field actually holds, and the flagged
+    // text is what is there -- not the folded form. A correction is checked
+    // against it before being spliced in, so a folded copy would silently
+    // stop every correction from applying.
+    test("the flagged text comes from the original", () async {
+      var capability = await checker();
+      const text = "the paymnt’s here";
+      var issue = capability.review(text).single;
+      expect(text.substring(issue.range.start, issue.range.end), issue.text);
+      expect(issue.text, contains("’"));
+    });
+
+    test("folding cannot move an offset", () {
+      const text = "I’ve donʼt it‘s";
+      expect(normalizeForMatching(text).length, text.length);
+      expect(normalizeForMatching(text), "I've don't it's");
+    });
+  });
+
+  // A word added to the dictionary with one apostrophe has to stay added when
+  // the checker looks it up with the other.
+  test("an added contraction stays added whichever apostrophe was typed",
+      () async {
+    var prefs = WritingPreferences();
+    await prefs.addToDictionary("O’Brien");
+    expect(prefs.isIgnoredWord("o'brien"), isTrue);
+    expect(prefs.isIgnoredWord("O’Brien"), isTrue);
+  });
+}
+
+// The two rules Go's RE2 cannot compile, so the plugin's own corpus never
+// sees them run. Both use lookahead.
+void _newLookaheadRuleTests() {
+  // A dictionary carrying every word used below: an unknown word is also a
+  // spelling issue, and a spelling issue correctly outranks a style rule
+  // covering the same span, so the rule under test would vanish for a reason
+  // that is not a bug.
+  const words = [
+    "send",
+    "it",
+    "to",
+    "me",
+    "him",
+    "her",
+    "us",
+    "them",
+    "too",
+    "review",
+    "the",
+    "bank",
+    "operates",
+    "in",
+    "on",
+    "principal",
+    "principle",
+    "cities",
+    "only",
+    "i",
+    "agree",
+    "with",
+    "this",
+    "amounts",
+    "interest",
+    "charged",
+    "over",
+    "is",
+  ];
+
+  Future<List<WritingIssue>> review(
+      String text, List<GrammarRule> rules) async {
+    var capability = SpellcheckCapability(
+        fetch: () async => SpellcheckData(words, const [], rules));
+    await capability.update(FakePlugins({PluginCapability.spellcheckData}));
+    return capability.review(text);
+  }
+
+  group("\"me to\" at the end of a sentence", () {
+    var rule = GrammarRule(r"\b(me|him|her|us|them)\s+to(?=[.!?]|$)",
+        r'Should be "$1 too"', r"$1 too");
+
+    test("is caught before a full stop", () async {
+      var issues = await review("send it to me to.", [rule]);
+      expect(issues.expand((i) => i.suggestions), contains("me too"));
+    });
+
+    test("is caught at the very end of the text", () async {
+      expect(await review("send it to me to", [rule]), isNotEmpty);
+    });
+
+    // The lookahead is the whole rule: "to" followed by a word is the
+    // preposition and always correct.
+    test("leaves a real preposition alone", () async {
+      expect(await review("send it to me to review", [rule]), isEmpty);
+    });
+  });
+
+  group("\"in principal\" at the end of a clause", () {
+    var rule = GrammarRule(r"\b(in|on)\s+principal(?=[.,;:!?]|$)",
+        r'Should be "$1 principle"', r"$1 principle");
+
+    test("is caught before punctuation", () async {
+      var issues = await review("i agree in principal.", [rule]);
+      expect(issues.expand((i) => i.suggestions), contains("in principle"));
+    });
+
+    // "Principal" is also an adjective, which is why the rule cannot simply
+    // match the two words wherever they appear.
+    test("leaves the adjective alone", () async {
+      expect(await review("the bank operates in principal cities only", [rule]),
+          isEmpty);
+      expect(await review("interest is charged on principal amounts", [rule]),
+          isEmpty);
+    });
   });
 }

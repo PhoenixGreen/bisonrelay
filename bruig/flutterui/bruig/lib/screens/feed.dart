@@ -145,23 +145,47 @@ class _FeedScreenState extends State<FeedScreen> {
     super.initState();
   }
 
+  // _appliedRouteArgs is the PageTabs this screen has already navigated to,
+  // so the route's arguments are applied once rather than on every rebuild.
+  //
+  // Reported: after commenting on a post, clicking "New Post" did nothing --
+  // it opened and was replaced by the post again within the frame -- and
+  // going to another screen and back fixed it.
+  //
+  // didChangeDependencies runs whenever *any* inherited widget this State
+  // depends on changes, not only when the route does. The arguments describe
+  // where the screen was told to open, so re-applying them silently undoes
+  // every navigation made within the screen since: tapping "New Post" set
+  // tabIndex to 3, the writing sidebar's controller notified a frame later
+  // when the composer offered itself for review, and this put the reader
+  // straight back on the post the route had named.
+  //
+  // The bug needed a route carrying a post to be visible at all, which is
+  // why it only appeared after reading or commenting on one -- and why
+  // navigating away and back, to a route with no post in its arguments,
+  // cleared it.
+  Object? _appliedRouteArgs;
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
 
-    // Determine if showing a specific user's posts.
-    if (ModalRoute.of(context)?.settings.arguments != null) {
-      final args = ModalRoute.of(context)!.settings.arguments as PageTabs;
+    var args = ModalRoute.of(context)?.settings.arguments;
+    // Compared by identity: each navigation builds a fresh PageTabs, and
+    // arriving at the same destination twice is a new instance.
+    if (args is! PageTabs || identical(args, _appliedRouteArgs)) return;
+    _appliedRouteArgs = args;
+
+    setState(() {
       tabIndex = args.tabIndex;
-      setState(() {
-        if (args.userPostList != null) {
-          userPostList = args.userPostList;
-        }
-        if (args.postScreenArgs != null) {
-          showPost = args.postScreenArgs;
-        }
-      });
-    }
+      // Determine if showing a specific user's posts.
+      if (args.userPostList != null) {
+        userPostList = args.userPostList;
+      }
+      if (args.postScreenArgs != null) {
+        showPost = args.postScreenArgs;
+      }
+    });
   }
 
   @override
