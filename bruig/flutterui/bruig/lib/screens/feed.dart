@@ -4,6 +4,8 @@ import 'package:bruig/components/chat/chat_side_menu.dart';
 import 'package:bruig/components/containers.dart';
 import 'package:bruig/components/text.dart';
 import 'package:bruig/models/client.dart';
+import 'package:bruig/components/composer_sidebar_shell.dart';
+import 'package:bruig/components/feed/formatting_sidebar.dart';
 import 'package:bruig/models/composer_sidebar.dart';
 import 'package:bruig/plugin_system/plugin_system.dart';
 import 'package:bruig/post_library/post_library.dart';
@@ -309,21 +311,43 @@ class _FeedScreenState extends State<FeedScreen> {
     // either of those are: the slot is handed to whichever panel the
     // controller says has it, and taken back when neither does.
     var composer = Provider.of<ComposerSidebarController>(context);
-    // Only while composing, and only ever built once. Both panels act on a
+    // Only while composing, and only ever built once. Every panel acts on a
     // composer's text, and there is no composer on the browsing tabs.
     //
     // Built once because three separate decisions below depend on it, and
     // when they were three separate conditions two of them were updated and
     // one was not -- which put the writing tools in the slot on every Feed
     // tab. Derived from one value, they cannot disagree.
-    var composerSidebar = composer.visible && tabIndex == 3
-        ? switch (composer.panel) {
-            ComposerPanel.writing => WritingSidebar(
-                controller: composer.editor, onClose: composer.close),
-            ComposerPanel.posts =>
-              PostSidebar(controller: composer.editor, onClose: composer.close),
-            ComposerPanel.none => null,
-          }
+    var composing = tabIndex == 3;
+    var writingAvailable = context.watch<SpellcheckCapability>().active;
+    // On the compose tab the slot is always the composer's, because the nav
+    // that switches panels lives in it -- including on the panel that shows
+    // this screen's own menu. Minimizing is the only thing that gives the
+    // slot back, and then the whole sidebar goes rather than reverting to
+    // the tab list.
+    var composerSidebar = composing && composer.visible
+        ? ComposerSidebarShell(
+            controller: composer,
+            panels: [
+              ComposerPanel.none,
+              // Left out rather than shown disabled when no plugin provides
+              // the writing tools: there is nothing the user could do about
+              // it from here.
+              if (writingAvailable) ComposerPanel.writing,
+              ComposerPanel.posts,
+              ComposerPanel.formatting,
+            ],
+            child: switch (composer.panel) {
+              ComposerPanel.none => SecondarySideMenuList(
+                  items: feedBarItems(onItemChanged, tabIndex)),
+              ComposerPanel.writing => WritingSidebar(
+                  controller: composer.editor, onClose: composer.close),
+              ComposerPanel.posts => PostSidebar(
+                  controller: composer.editor, onClose: composer.close),
+              ComposerPanel.formatting =>
+                FormattingSidebar(controller: composer),
+            },
+          )
         : null;
 
     // AreaStyle.feedSidePanel replaces this screen's own sub-menu
@@ -388,7 +412,7 @@ class _FeedScreenState extends State<FeedScreen> {
             // A detail view hides the sidebar; a composer panel is the one
             // thing that should still show while composing.
             isDetail: composerSidebar == null &&
-                (hasArgs || showPost != null || tabIndex == 3),
+                (hasArgs || showPost != null || composing),
             // Distinguishes one detail view from the next (e.g. post A
             // vs. post B) so a manual reopen of the submenu doesn't
             // leak across into an unrelated detail view.

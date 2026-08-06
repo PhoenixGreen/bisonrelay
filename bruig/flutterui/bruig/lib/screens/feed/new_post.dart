@@ -5,6 +5,7 @@ import 'package:bruig/components/buttons.dart';
 import 'package:bruig/components/text.dart';
 import 'package:bruig/models/feed.dart';
 import 'package:bruig/models/snackbar.dart';
+import 'package:bruig/components/composer_sidebar_shell.dart';
 import 'package:bruig/models/composer_sidebar.dart';
 import 'package:bruig/plugin_system/plugin_system.dart';
 import 'package:bruig/post_library/post_library.dart';
@@ -16,6 +17,7 @@ import 'package:golib_plugin/definitions.dart';
 import 'package:golib_plugin/golib_plugin.dart';
 import 'package:bruig/components/snackbars.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
+import 'package:bruig/theming_system/theme_preset.dart';
 import 'package:provider/provider.dart';
 
 void showAltTextModal(BuildContext context, String mime, String data,
@@ -115,6 +117,14 @@ class _NewPostScreenState extends State<NewPostScreen> {
   // spelling, grammar and phrasing marks. Behaves exactly like the plain
   // one when no plugin provides them.
   TextEditingController contentCtrl = WritingTextEditingController();
+
+  // The page's heading is the post's title, and the title is the name of the
+  // document it is filed under -- so there is one name for a post rather
+  // than a heading that says "New Post" forever and a filename chosen in a
+  // dialog nobody remembers opening.
+  final TextEditingController titleCtrl = TextEditingController();
+  final FocusNode titleFocus = FocusNode();
+
   bool loading = false;
 
   // Add embed fields.
@@ -288,7 +298,12 @@ class _NewPostScreenState extends State<NewPostScreen> {
     // Withdraw this composer, so the sidebar slot goes back to whatever the
     // screen normally shows there. Read without listening: dispose must not
     // register a dependency.
-    _composerSidebar?.detach(contentCtrl);
+    _composerSidebar
+      ?..detach(contentCtrl)
+      ..onAddEmbed = null;
+    _postLibrary?.removeListener(syncTitle);
+    titleFocus.dispose();
+    titleCtrl.dispose();
     // Flush before the controller goes: the pending write reads its text.
     _postLibrary?.flush();
     super.dispose();
@@ -307,6 +322,12 @@ class _NewPostScreenState extends State<NewPostScreen> {
     super.initState();
     contentCtrl.text = post.content;
     contentCtrl.addListener(contentChanged);
+    // Committed on leaving the field or pressing enter rather than on every
+    // keystroke: renaming a file once per letter would leave a trail of
+    // documents named after every prefix of the title.
+    titleFocus.addListener(() {
+      if (!titleFocus.hasFocus) commitTitle();
+    });
     // Offer this composer's text to whatever screen owns the sidebar slot.
     // Offering is not opening: arriving at the editor should not rearrange
     // the screen, only make the tools reachable.
@@ -316,18 +337,53 @@ class _NewPostScreenState extends State<NewPostScreen> {
           Provider.of<ComposerSidebarController>(context, listen: false)
             ..attach(contentCtrl);
       _postLibrary = Provider.of<PostLibraryModel>(context, listen: false)
-        ..watch(contentCtrl);
+        ..watch(contentCtrl)
+        ..addListener(syncTitle);
+      syncTitle();
+      // The formatting panel's embed button is this screen's file picker:
+      // tracking an embed and re-estimating the post's size is the
+      // composer's business, and the panel only needs somewhere to send a
+      // press.
+      _composerSidebar?.onAddEmbed = () => pickFile(context);
     });
+  }
+
+  /// syncTitle follows the library: opening a document puts its name in the
+  /// title, and closing one leaves the box empty.
+  ///
+  /// Skipped while the field has focus, so the name does not change under
+  /// somebody in the middle of typing a new one.
+  void syncTitle() {
+    if (!mounted || titleFocus.hasFocus) return;
+    var name = _postLibrary?.openName ?? "";
+    if (titleCtrl.text != name) titleCtrl.text = name;
+  }
+
+  /// commitTitle names the post, which is also how an unfiled one becomes a
+  /// document.
+  void commitTitle() async {
+    var library = _postLibrary;
+    if (library == null) return;
+    var name = titleCtrl.text.trim();
+    if (name.isEmpty || name == library.openName) {
+      syncTitle();
+      return;
+    }
+    await library.renameOpen(name);
+    syncTitle();
   }
 
   @override
   Widget build(BuildContext context) {
     var validSize = estimatedSize <= Golib.maxPayloadSize;
+    var sidebar = context.watch<ComposerSidebarController>();
+    var publishMenu =
+        ThemeNotifier.of(context).areaStyle(ThemeArea.feed).feedPublishMenu;
 
     return Container(
         padding: const EdgeInsets.all(16),
         child: Column(children: [
-          const Txt.L("New Post"),
+          _topBar(context, sidebar, publishMenu, validSize),
           Expanded(
             child: Container(
               margin: const EdgeInsets.only(bottom: 15),
@@ -347,39 +403,6 @@ class _NewPostScreenState extends State<NewPostScreen> {
               ),
             ),
           ),
-          const Divider(),
-          const SizedBox(height: 10),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Wrap(spacing: 10, runSpacing: 10, children: [
-              OutlinedButton(
-                onPressed: () => pickFile(context),
-                child: const Txt.S("Add Embbed"),
-              ),
-              // Keyed on whether a provider is enabled, not on whether
-              // checking is currently switched on. Hiding it when checking
-              // is off strands the user: the switch that turns it back on
-              // lives inside the sidebar this button opens.
-              if (context.watch<SpellcheckCapability>().active)
-                OutlinedButton.icon(
-                  onPressed: () => Provider.of<ComposerSidebarController>(
-                          context,
-                          listen: false)
-                      .show(ComposerPanel.writing),
-                  icon: const Icon(Icons.spellcheck, size: 16),
-                  label: const Txt.S("Writing Tools"),
-                ),
-              // Always offered, unlike the writing tools: the library needs
-              // no plugin, only a folder on disk.
-              OutlinedButton.icon(
-                onPressed: () => Provider.of<ComposerSidebarController>(context,
-                        listen: false)
-                    .show(ComposerPanel.posts),
-                icon: const Icon(Icons.folder_outlined, size: 16),
-                label: const Txt.S("My Posts"),
-              ),
-            ]),
-          ),
           /*  XXX Need to figure out Link to Content button
             const SizedBox(width: 10),
             OutlinedButton(
@@ -398,22 +421,107 @@ class _NewPostScreenState extends State<NewPostScreen> {
             color: validSize ? TextColor.onSurfaceVariant : TextColor.error,
           ),
           const SizedBox(height: 10),
-          SizedBox(
-              width: double.infinity,
-              child: Wrap(
-                  alignment: WrapAlignment.spaceBetween,
-                  runSpacing: 10,
-                  children: [
-                    Tooltip(
-                        message: validSize
-                            ? ""
-                            : "Post is larger than max allowable size",
-                        child: FilledButton.tonal(
-                            onPressed:
-                                !loading && validSize ? createPost : null,
-                            child: const Text("Create Post"))),
-                    CancelButton(onPressed: clearPost, label: "Clear Post"),
-                  ]))
+          // Unless they have moved to the top-right menu -- see the Feed
+          // area's "Publish menu".
+          if (!publishMenu)
+            SizedBox(
+                width: double.infinity,
+                child: Wrap(
+                    alignment: WrapAlignment.spaceBetween,
+                    runSpacing: 10,
+                    children: [
+                      Tooltip(
+                          message: validSize
+                              ? ""
+                              : "Post is larger than max allowable size",
+                          child: FilledButton.tonal(
+                              onPressed:
+                                  !loading && validSize ? createPost : null,
+                              child: const Text("Create Post"))),
+                      CancelButton(onPressed: clearPost, label: "Clear Post"),
+                    ]))
         ]));
   }
+
+  /// _topBar is the post's title, with the sidebar's way back on one side
+  /// and the publish menu on the other.
+  ///
+  /// The title is a text field dressed as the heading it replaces. That
+  /// heading read "New Post" whatever you were writing, which names the
+  /// screen rather than the post -- and the post's own name lived only in
+  /// the library sidebar, where you had to go looking for it. Naming it here
+  /// is also how an unfiled post becomes a document.
+  Widget _topBar(BuildContext context, ComposerSidebarController sidebar,
+      bool publishMenu, bool validSize) {
+    var theme = ThemeNotifier.of(context);
+    return Row(children: [
+      // Only while the sidebar is hidden, and always in the same corner: a
+      // hidden sidebar with no way back is a trap.
+      if (sidebar.minimized)
+        ComposerSidebarRestoreButton(controller: sidebar)
+      else
+        const SizedBox(width: 40),
+      Expanded(
+        child: TextField(
+          controller: titleCtrl,
+          focusNode: titleFocus,
+          textAlign: TextAlign.center,
+          style: theme.textStyleFor(context, TextSize.large, null),
+          textInputAction: TextInputAction.done,
+          onSubmitted: (_) => commitTitle(),
+          decoration: const InputDecoration(
+            hintText: "Untitled post",
+            border: InputBorder.none,
+            isDense: true,
+          ),
+        ),
+      ),
+      SizedBox(width: 40, child: publishMenu ? _publishMenu(validSize) : null),
+    ]);
+  }
+
+  /// _publishMenu is Create Post and Clear Post behind one icon.
+  ///
+  /// A menu rather than two buttons because it is where the rest of the
+  /// publish options are going, and because the footer they came from cost
+  /// the editor that height on every screen for two things pressed once per
+  /// post.
+  Widget _publishMenu(bool validSize) => PopupMenuButton<String>(
+        icon: const Icon(Icons.ios_share, size: 20),
+        tooltip: "Publish options",
+        onSelected: (choice) {
+          switch (choice) {
+            case "create":
+              createPost();
+            case "clear":
+              clearPost();
+          }
+        },
+        itemBuilder: (context) => [
+          PopupMenuItem(
+            value: "create",
+            // Disabled rather than absent when the post is too large: that
+            // is something the writer needs to be told, and a missing entry
+            // says nothing at all.
+            enabled: !loading && validSize,
+            child: ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.send, size: 18),
+              title: const Text("Create Post"),
+              subtitle:
+                  validSize ? null : const Text("Larger than the maximum size"),
+            ),
+          ),
+          const PopupMenuItem(
+            value: "clear",
+            child: ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.delete_outline, size: 18),
+              title: Text("Clear Post"),
+            ),
+          ),
+        ],
+      );
 }

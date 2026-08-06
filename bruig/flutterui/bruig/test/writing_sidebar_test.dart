@@ -35,7 +35,12 @@ class _Host extends StatelessWidget {
   Widget build(BuildContext context) {
     var writing = Provider.of<ComposerSidebarController>(context);
     var composer = const _Composer();
-    if (!writing.visible || !composing) {
+    // Mirrors the Feed: the slot is the composer's while composing, and
+    // which panel is in it is the controller's business. ComposerPanel.none
+    // is the screen's own menu rather than an empty slot.
+    var showsPanel =
+        composing && writing.visible && writing.panel == ComposerPanel.writing;
+    if (!showsPanel) {
       return Scaffold(
         body: reshape
             ? composer

@@ -323,6 +323,90 @@ void main() {
       expect(await PostStorage.read("", "Before"), isNull);
     });
 
+    // Requested after the previous change discarded a draft: opening a
+    // document replaces the editor, and text that belongs to no document
+    // went with it.
+    group("loose text", () {
+      test("is filed before another document is opened", () async {
+        await PostStorage.write("", "Saved", "saved body");
+        await model.refresh();
+        editor.text = "# Half a post\n\nnot filed anywhere";
+
+        await model.open(model.entries.single);
+
+        expect(editor.text, "saved body");
+        expect(await PostStorage.read("", "Half a post"),
+            "# Half a post\n\nnot filed anywhere",
+            reason: "the draft was discarded instead of being filed");
+      });
+
+      test("does not take a name already in use", () async {
+        await PostStorage.write("", "Notes", "theirs");
+        await PostStorage.write("", "Other", "other");
+        await model.refresh();
+        editor.text = "# Notes\n\nmine";
+
+        await model.open(model.entries.firstWhere((e) => e.name == "Other"));
+
+        expect(await PostStorage.read("", "Notes"), "theirs",
+            reason: "filing loose text overwrote somebody's document");
+        expect(await PostStorage.read("", "Notes 2"), "# Notes\n\nmine");
+      });
+
+      test("an empty editor files nothing", () async {
+        await PostStorage.write("", "Saved", "body");
+        await model.refresh();
+        editor.text = "   \n  ";
+
+        await model.open(model.entries.single);
+        expect((await PostStorage.list()).map((e) => e.name), ["Saved"]);
+      });
+
+      // With a document open there is no loose text: it is already in that
+      // document, and filing a second copy is what the last change removed.
+      test("an open document is not copied", () async {
+        await model.newDocument("First");
+        editor.text = "first body";
+        await PostStorage.write("", "Second", "second body");
+        await model.refresh();
+
+        await model.open(model.entries.firstWhere((e) => e.name == "Second"));
+        expect(
+            (await PostStorage.list()).map((e) => e.name), ["First", "Second"]);
+      });
+    });
+
+    // The composer's title box renames through this, which is also how an
+    // unfiled post becomes a document.
+    group("renameOpen", () {
+      test("names an unfiled post, filing what is in the editor", () async {
+        editor.text = "some writing";
+        expect(await model.renameOpen("A name"), isTrue);
+
+        expect(model.openName, "A name");
+        expect(await PostStorage.read("", "A name"), "some writing");
+      });
+
+      test("renames the open document and keeps writing to it", () async {
+        await model.newDocument("Before");
+        editor.text = "body";
+
+        expect(await model.renameOpen("After"), isTrue);
+        expect(model.openName, "After");
+        editor.text = "more";
+        await model.flush();
+        expect(await PostStorage.read("", "After"), "more");
+        expect(await PostStorage.read("", "Before"), isNull);
+      });
+
+      test("an unusable name changes nothing", () async {
+        await model.newDocument("Kept");
+        expect(await model.renameOpen("   "), isFalse);
+        expect(await model.renameOpen("..."), isFalse);
+        expect(model.openName, "Kept");
+      });
+    });
+
     test("browsing a folder does not move the open document", () async {
       await PostStorage.createFolder("Drafts");
       await model.newDocument("At the top");

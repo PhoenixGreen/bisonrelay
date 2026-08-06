@@ -147,6 +147,7 @@ class PostLibraryModel extends ChangeNotifier {
   /// somebody moved between them.
   Future<bool> open(PostEntry entry) async {
     await flush();
+    await fileLooseText();
 
     var content = await PostStorage.read(entry.folder, entry.name);
     if (content == null) {
@@ -163,6 +164,56 @@ class PostLibraryModel extends ChangeNotifier {
     _error = null;
     _notify();
     return true;
+  }
+
+  /// fileLooseText saves editor text that belongs to no document.
+  ///
+  /// Opening a document replaces the editor, and without this the post
+  /// somebody had started writing -- which is not in the library and not in
+  /// any file -- would go with it. It is filed under a name taken from its
+  /// own first line, beside everything else, rather than being lost or
+  /// silently held somewhere the user cannot see.
+  ///
+  /// The result deliberately does not become the open document: the caller
+  /// is on its way to opening something else.
+  Future<String?> fileLooseText() async {
+    if (_openName != null) return null;
+    var text = _editor?.text ?? "";
+    if (text.trim().isEmpty) return null;
+
+    var name = await _availableName(PostStorage.suggestName(text));
+    var written = await _guard(() => PostStorage.write(_folder, name, text));
+    if (written != null) await refresh();
+    return written;
+  }
+
+  /// _availableName finds a name near [wanted] that is not taken, so filing
+  /// loose text cannot land on top of a document somebody wrote.
+  Future<String> _availableName(String wanted) async {
+    if (!await PostStorage.exists(_folder, wanted)) return wanted;
+    for (var n = 2; n < 1000; n++) {
+      var candidate = "$wanted $n";
+      if (!await PostStorage.exists(_folder, candidate)) return candidate;
+    }
+    return "$wanted ${DateTime.now().millisecondsSinceEpoch}";
+  }
+
+  /// renameOpen renames the document currently being edited, or files the
+  /// editor's text under [name] when nothing is open yet.
+  ///
+  /// This is what the title on the composer does. Naming an unfiled post is
+  /// how it becomes a document, which means the title box is also the way
+  /// into the library for somebody who never opens the sidebar.
+  Future<bool> renameOpen(String name) async {
+    var safe = PostStorage.sanitizeName(name);
+    if (safe == null || safe == _openName) return false;
+
+    if (_openName == null) return newDocument(safe);
+
+    await flush();
+    var entry =
+        PostEntry(name: _openName!, folder: _openFolder, isFolder: false);
+    return rename(entry, safe);
   }
 
   /// move puts a document in another folder, following it if it is the one
