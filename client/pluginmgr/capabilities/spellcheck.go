@@ -19,15 +19,78 @@ const spellcheckExport = "get_spellcheck_data"
 type GrammarRule struct {
 	Pattern string `json:"pattern"`
 	Message string `json:"message"`
+
+	// Category groups a rule for display -- "Capitalization", "Punctuation",
+	// "Spelling". Optional; a provider that sends none leaves the UI to fall
+	// back to Message alone.
+	Category string `json:"category,omitempty"`
+
+	// Explanation is a sentence saying what is wrong and why, for a reader
+	// who does not already know. Message names the problem in a few words
+	// and has to fit a menu row; this does not, and can afford to teach.
+	Explanation string `json:"explanation,omitempty"`
+
 	// Suggest is a replacement template that may reference Pattern's
 	// capture groups as $1, $2, etc. An empty Suggest means the rule is
 	// informational only (flagged, but with no proposed replacement).
 	Suggest string `json:"suggest"`
+
+	// Severity separates a mistake from an opinion: "error" (the default when
+	// empty) for text that is wrong whatever the writer meant, "suggestion"
+	// for a rewrite that is usually an improvement and sometimes not.
+	//
+	// The UI underlines the two in different colours and lists them apart,
+	// which is what makes an opinionated ruleset bearable: wordiness and
+	// cliche rules would otherwise put the same alarming mark under correct
+	// writing as a misspelling, and teach people to ignore both.
+	Severity string `json:"severity,omitempty"`
+}
+
+// AnalysisCheck is a check a regex cannot express because it has to count or
+// compare across a whole message: how often a word is used, how long a
+// sentence runs, whether two spellings of one word are mixed.
+//
+// Unlike GrammarRule, the provider does not supply the logic -- there is no
+// pattern to send. It names one of the checks the client knows how to run and
+// supplies everything else about it: the threshold, what to call it, and how
+// to explain it. That keeps the ruleset the provider's to decide while the
+// mechanics stay client-side, exactly as they already are for the regexes,
+// which the provider also writes but never executes.
+type AnalysisCheck struct {
+	// ID names the check. The client ignores an ID it does not implement,
+	// which is what lets a provider ship a check ahead of the client that
+	// runs it.
+	ID string `json:"id"`
+
+	// Threshold is the number the check fires at, in whatever unit that check
+	// counts -- occurrences, words, consecutive sentences.
+	Threshold int `json:"threshold,omitempty"`
+
+	// Message names the problem. It may reference $1 (what the check is
+	// about, such as the repeated word) and $2 (the count that tripped it).
+	Message string `json:"message"`
+
+	Category    string `json:"category,omitempty"`
+	Explanation string `json:"explanation,omitempty"`
+
+	// Severity is read as on GrammarRule; these checks are usually
+	// suggestions.
+	Severity string `json:"severity,omitempty"`
+
+	// Values is data the named check needs, in a form only that check
+	// defines. The spelling-variant check reads pairs written "colour|color";
+	// the counting checks need none.
+	Values []string `json:"values,omitempty"`
 }
 
 // SpellcheckData is the wordlist and grammar rules one spellcheck-data
 // plugin supplies, and -- once merged across every enabled such plugin --
 // what the client hands to the composer UI.
+//
+// Nothing here is executed on this side. The client hands the whole payload
+// to the UI, which owns every mechanism: the regex engine, the edit-distance
+// ranking and the counting checks. A provider decides *what* is checked and
+// never *how*, which is why a plugin needs no code running in the app.
 type SpellcheckData struct {
 	Words []string `json:"words"`
 
@@ -43,6 +106,10 @@ type SpellcheckData struct {
 	CommonWords []string `json:"commonWords,omitempty"`
 
 	GrammarRules []GrammarRule `json:"grammarRules"`
+
+	// AnalysisChecks are the checks that count rather than match. Older
+	// providers send none.
+	AnalysisChecks []AnalysisCheck `json:"analysisChecks,omitempty"`
 }
 
 // MergedSpellcheckData gathers get_spellcheck_data from every enabled
@@ -75,6 +142,7 @@ func MergedSpellcheckData(ctx context.Context, mgr Manager, rt Runtime,
 		// first one's ordering is kept intact and the next appends behind it.
 		merged.CommonWords = append(merged.CommonWords, data.CommonWords...)
 		merged.GrammarRules = append(merged.GrammarRules, data.GrammarRules...)
+		merged.AnalysisChecks = append(merged.AnalysisChecks, data.AnalysisChecks...)
 	}
 	return merged
 }

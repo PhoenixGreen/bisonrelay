@@ -746,6 +746,9 @@ GrammarRule _$GrammarRuleFromJson(Map<String, dynamic> json) => GrammarRule(
       json['pattern'] as String,
       json['message'] as String,
       json['suggest'] as String,
+      json['category'] as String? ?? '',
+      json['explanation'] as String? ?? '',
+      json['severity'] as String? ?? '',
     );
 
 Map<String, dynamic> _$GrammarRuleToJson(GrammarRule instance) =>
@@ -753,6 +756,32 @@ Map<String, dynamic> _$GrammarRuleToJson(GrammarRule instance) =>
       'pattern': instance.pattern,
       'message': instance.message,
       'suggest': instance.suggest,
+      'category': instance.category,
+      'explanation': instance.explanation,
+      'severity': instance.severity,
+    };
+
+AnalysisCheck _$AnalysisCheckFromJson(Map<String, dynamic> json) =>
+    AnalysisCheck(
+      json['id'] as String? ?? '',
+      (json['threshold'] as num?)?.toInt() ?? 0,
+      json['message'] as String? ?? '',
+      json['category'] as String? ?? '',
+      json['explanation'] as String? ?? '',
+      json['severity'] as String? ?? '',
+      (json['values'] as List<dynamic>?)?.map((e) => e as String).toList() ??
+          [],
+    );
+
+Map<String, dynamic> _$AnalysisCheckToJson(AnalysisCheck instance) =>
+    <String, dynamic>{
+      'id': instance.id,
+      'threshold': instance.threshold,
+      'message': instance.message,
+      'category': instance.category,
+      'explanation': instance.explanation,
+      'severity': instance.severity,
+      'values': instance.values,
     };
 
 SpellcheckData _$SpellcheckDataFromJson(Map<String, dynamic> json) =>
@@ -766,6 +795,10 @@ SpellcheckData _$SpellcheckDataFromJson(Map<String, dynamic> json) =>
               ?.map((e) => GrammarRule.fromJson(e as Map<String, dynamic>))
               .toList() ??
           [],
+      (json['analysisChecks'] as List<dynamic>?)
+              ?.map((e) => AnalysisCheck.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          [],
     );
 
 Map<String, dynamic> _$SpellcheckDataToJson(SpellcheckData instance) =>
@@ -773,6 +806,7 @@ Map<String, dynamic> _$SpellcheckDataToJson(SpellcheckData instance) =>
       'words': instance.words,
       'commonWords': instance.commonWords,
       'grammarRules': instance.grammarRules,
+      'analysisChecks': instance.analysisChecks,
     };
 
 ThesaurusSense _$ThesaurusSenseFromJson(Map<String, dynamic> json) =>
@@ -791,11 +825,29 @@ Map<String, dynamic> _$ThesaurusSenseToJson(ThesaurusSense instance) =>
       'antonyms': instance.antonyms,
     };
 
+ThesaurusDefinition _$ThesaurusDefinitionFromJson(Map<String, dynamic> json) =>
+    ThesaurusDefinition(
+      json['pos'] as String? ?? '',
+      json['text'] as String? ?? '',
+    );
+
+Map<String, dynamic> _$ThesaurusDefinitionToJson(
+        ThesaurusDefinition instance) =>
+    <String, dynamic>{
+      'pos': instance.partOfSpeech,
+      'text': instance.text,
+    };
+
 ThesaurusEntry _$ThesaurusEntryFromJson(Map<String, dynamic> json) =>
     ThesaurusEntry(
       json['word'] as String? ?? '',
       (json['senses'] as List<dynamic>?)
               ?.map((e) => ThesaurusSense.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          [],
+      (json['definitions'] as List<dynamic>?)
+              ?.map((e) =>
+                  ThesaurusDefinition.fromJson(e as Map<String, dynamic>))
               .toList() ??
           [],
     );
@@ -804,6 +856,7 @@ Map<String, dynamic> _$ThesaurusEntryToJson(ThesaurusEntry instance) =>
     <String, dynamic>{
       'word': instance.word,
       'senses': instance.senses,
+      'definitions': instance.definitions,
     };
 
 SharedFile _$SharedFileFromJson(Map<String, dynamic> json) => SharedFile(
@@ -2536,6 +2589,17 @@ Map<String, dynamic> _$ProfileUpdatedToJson(ProfileUpdated instance) =>
       'sid': instance.uid,
       'addressbook_entry': instance.abEntry,
       'updated_fields': instance.updatedFields,
+    };
+
+ExchangeRate _$ExchangeRateFromJson(Map<String, dynamic> json) => ExchangeRate(
+      dcrPrice: (json['dcrPrice'] as num).toDouble(),
+      btcPrice: (json['btcPrice'] as num).toDouble(),
+    );
+
+Map<String, dynamic> _$ExchangeRateToJson(ExchangeRate instance) =>
+    <String, dynamic>{
+      'dcrPrice': instance.dcrPrice,
+      'btcPrice': instance.btcPrice,
     };
 
 RunState _$RunStateFromJson(Map<String, dynamic> json) => RunState(

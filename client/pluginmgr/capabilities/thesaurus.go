@@ -36,16 +36,35 @@ type ThesaurusSense struct {
 	Antonyms []string `json:"antonyms,omitempty"`
 }
 
+// ThesaurusDefinition is one of a word's meanings.
+type ThesaurusDefinition struct {
+	PartOfSpeech string `json:"pos"`
+	Text         string `json:"text"`
+}
+
 // ThesaurusEntry is everything a provider knows about one word.
 type ThesaurusEntry struct {
 	Word   string           `json:"word"`
 	Senses []ThesaurusSense `json:"senses"`
+
+	// Definitions are the word's meanings, listed separately from Senses
+	// rather than attached to them.
+	//
+	// Separate because a provider's synonyms and its definitions need not
+	// come from the same source, and two sources will not divide a word into
+	// the same senses. Pairing them would mean guessing which meaning went
+	// with which group of synonyms, and guessing wrong reads as confidently
+	// wrong rather than merely unhelpful.
+	Definitions []ThesaurusDefinition `json:"definitions,omitempty"`
 }
 
 // IsEmpty reports whether the entry offers nothing worth showing, which is
 // the ordinary outcome for a name, a typo, or a word the provider's data
 // simply doesn't cover.
 func (e ThesaurusEntry) IsEmpty() bool {
+	if len(e.Definitions) > 0 {
+		return false
+	}
 	for _, s := range e.Senses {
 		if len(s.Synonyms) > 0 || len(s.Antonyms) > 0 {
 			return false

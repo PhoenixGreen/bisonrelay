@@ -884,9 +884,76 @@ class GrammarRule {
   final String pattern;
   final String message;
   final String suggest;
-  GrammarRule(this.pattern, this.message, this.suggest);
+
+  /// A group heading for the rule -- "Capitalization", "Punctuation". Empty
+  /// from a provider that sends none, in which case the UI shows the message
+  /// alone.
+  @JsonKey(defaultValue: "")
+  final String category;
+
+  /// A sentence saying what is wrong and why, for a reader who does not
+  /// already know. [message] names the problem in the few words a menu row
+  /// allows; this does not have to fit anywhere and can afford to teach.
+  @JsonKey(defaultValue: "")
+  final String explanation;
+
+  /// Separates a mistake from an opinion: "error" (the default) for text
+  /// that is wrong whatever the writer meant, "suggestion" for a rewrite that
+  /// is usually an improvement and sometimes not. The two are underlined in
+  /// different colours and listed apart.
+  @JsonKey(defaultValue: "")
+  final String severity;
+
+  GrammarRule(this.pattern, this.message, this.suggest,
+      [this.category = "", this.explanation = "", this.severity = ""]);
   factory GrammarRule.fromJson(Map<String, dynamic> json) =>
       _$GrammarRuleFromJson(json);
+}
+
+/// AnalysisCheck is a check a regex cannot express because it has to count or
+/// compare across a whole message: how often a word is used, how long a
+/// sentence runs, whether two spellings of one word are mixed.
+///
+/// The provider names a check the app knows how to run and supplies
+/// everything else about it -- the threshold, what to call it, how to explain
+/// it. It never supplies the logic, exactly as it never executes the regexes
+/// it writes.
+@JsonSerializable()
+class AnalysisCheck {
+  /// Names the check. An id the app does not implement is ignored, which is
+  /// what lets a provider ship a check ahead of the app that runs it.
+  @JsonKey(defaultValue: "")
+  final String id;
+
+  /// The number the check fires at, in whatever unit it counts.
+  @JsonKey(defaultValue: 0)
+  final int threshold;
+
+  /// Names the problem. May reference `$1` (what the check is about, such as
+  /// the repeated word) and `$2` (the count that tripped it).
+  @JsonKey(defaultValue: "")
+  final String message;
+
+  @JsonKey(defaultValue: "")
+  final String category;
+  @JsonKey(defaultValue: "")
+  final String explanation;
+  @JsonKey(defaultValue: "")
+  final String severity;
+
+  /// Data the named check needs, in a form only that check defines. The
+  /// spelling-variant check reads pairs written "colour|color"; the counting
+  /// checks need none.
+  @JsonKey(defaultValue: [])
+  final List<String> values;
+
+  AnalysisCheck(this.id, this.threshold, this.message,
+      [this.category = "",
+      this.explanation = "",
+      this.severity = "",
+      this.values = const []]);
+  factory AnalysisCheck.fromJson(Map<String, dynamic> json) =>
+      _$AnalysisCheckFromJson(json);
 }
 
 @JsonSerializable()
@@ -899,7 +966,13 @@ class SpellcheckData {
   final List<String> commonWords;
   @JsonKey(name: "grammarRules", defaultValue: [])
   final List<GrammarRule> grammarRules;
-  SpellcheckData(this.words, this.commonWords, this.grammarRules);
+
+  /// The checks that count rather than match. Older providers send none.
+  @JsonKey(name: "analysisChecks", defaultValue: [])
+  final List<AnalysisCheck> analysisChecks;
+
+  SpellcheckData(this.words, this.commonWords, this.grammarRules,
+      [this.analysisChecks = const []]);
   factory SpellcheckData.fromJson(Map<String, dynamic> json) =>
       _$SpellcheckDataFromJson(json);
 }
@@ -922,6 +995,19 @@ class ThesaurusSense {
       _$ThesaurusSenseFromJson(json);
 }
 
+/// ThesaurusDefinition is one of a word's meanings.
+@JsonSerializable()
+class ThesaurusDefinition {
+  /// A short label ("noun", "verb", "adj", "adv") captioning the meaning.
+  @JsonKey(name: "pos", defaultValue: "")
+  final String partOfSpeech;
+  @JsonKey(defaultValue: "")
+  final String text;
+  ThesaurusDefinition(this.partOfSpeech, this.text);
+  factory ThesaurusDefinition.fromJson(Map<String, dynamic> json) =>
+      _$ThesaurusDefinitionFromJson(json);
+}
+
 /// ThesaurusEntry is everything a thesaurus provider knows about one word.
 @JsonSerializable()
 class ThesaurusEntry {
@@ -929,13 +1015,23 @@ class ThesaurusEntry {
   final String word;
   @JsonKey(defaultValue: [])
   final List<ThesaurusSense> senses;
-  ThesaurusEntry(this.word, this.senses);
+
+  /// What the word means, listed separately from [senses] rather than
+  /// attached to them: a provider's synonyms and its definitions need not
+  /// come from the same source, and two sources will not divide a word into
+  /// the same senses. Pairing them would mean guessing, and a wrong guess
+  /// reads as confidently wrong rather than merely unhelpful.
+  @JsonKey(defaultValue: [])
+  final List<ThesaurusDefinition> definitions;
+
+  ThesaurusEntry(this.word, this.senses, [this.definitions = const []]);
   factory ThesaurusEntry.fromJson(Map<String, dynamic> json) =>
       _$ThesaurusEntryFromJson(json);
 
   /// isEmpty is the ordinary outcome for a name, a typo, or a word the
   /// provider's data doesn't cover.
   bool get isEmpty =>
+      definitions.isEmpty &&
       senses.every((s) => s.synonyms.isEmpty && s.antonyms.isEmpty);
 }
 
@@ -2689,6 +2785,7 @@ class ExchangeRate {
       );
 }
 
+@JsonSerializable()
 class RunState {
   @JsonKey(name: "dcrlnd_running")
   final bool dcrlndRunning;
