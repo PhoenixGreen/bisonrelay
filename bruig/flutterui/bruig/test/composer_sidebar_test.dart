@@ -46,6 +46,7 @@ Future<void> _pump(WidgetTester tester, ComposerSidebarController controller,
 }
 
 void main() {
+  _titleDecorationTests();
   group("the panel nav", () {
     testWidgets("starts on the screen's own menu", (tester) async {
       var controller = ComposerSidebarController();
@@ -245,5 +246,71 @@ void main() {
               .onPressed,
           isNull);
     });
+  });
+}
+
+// Reported: the post title looked like an input, with a border at rest and
+// an underline on focus, on a page whose job is to get out of the way of the
+// writing.
+//
+// Worth a test rather than an eyeball, because the cause was not in the
+// widget: the app's InputDecorationTheme sets enabledBorder and
+// focusedBorder, and those win over the `border` the field cleared. Anything
+// added to that theme later would come back the same way.
+void _titleDecorationTests() {
+  testWidgets("a heading-styled field shows no border, focused or not",
+      (tester) async {
+    var controller = TextEditingController();
+    var focus = FocusNode();
+
+    await tester.pumpWidget(MaterialApp(
+      // The same shape as the app's theme: borders declared per state
+      // rather than on `border`.
+      theme: ThemeData(
+        inputDecorationTheme: const InputDecorationTheme(
+          enabledBorder: UnderlineInputBorder(
+              borderSide: BorderSide(color: Color(0xFFFFFF00))),
+          focusedBorder: UnderlineInputBorder(
+              borderSide: BorderSide(color: Color(0xFFFFFF00), width: 2)),
+        ),
+      ),
+      home: Scaffold(
+        body: TextField(
+          controller: controller,
+          focusNode: focus,
+          decoration: const InputDecoration(
+            hintText: "Untitled post",
+            border: InputBorder.none,
+            enabledBorder: InputBorder.none,
+            focusedBorder: InputBorder.none,
+            disabledBorder: InputBorder.none,
+            errorBorder: InputBorder.none,
+            focusedErrorBorder: InputBorder.none,
+            filled: false,
+            isDense: true,
+            contentPadding: EdgeInsets.zero,
+          ),
+        ),
+      ),
+    ));
+
+    InputDecorator decorator() =>
+        tester.widget<InputDecorator>(find.byType(InputDecorator));
+
+    var resting = decorator().decoration;
+    expect(resting.border, InputBorder.none);
+    expect(resting.enabledBorder, InputBorder.none);
+    expect(resting.focusedBorder, InputBorder.none);
+
+    focus.requestFocus();
+    await tester.pumpAndSettle();
+    expect(decorator().isFocused, isTrue,
+        reason: "the field has to actually be focused for this to mean "
+            "anything");
+    expect(decorator().decoration.focusedBorder, InputBorder.none,
+        reason: "the underline came back on focus");
+
+    controller.dispose();
+    focus.dispose();
   });
 }

@@ -469,10 +469,26 @@ class _NewPostScreenState extends State<NewPostScreen> {
           style: theme.textStyleFor(context, TextSize.large, null),
           textInputAction: TextInputAction.done,
           onSubmitted: (_) => commitTitle(),
+          // Dressed as the heading it replaced, not as a field. A box and
+          // an underline around the title are a permanent reminder that it
+          // is a control, on a page whose whole job is to get out of the way
+          // of the writing.
+          //
+          // Every border variant, not just `border`: the app's
+          // InputDecorationTheme sets enabledBorder and focusedBorder of its
+          // own, and those win over the base one -- which is why clearing
+          // only `border` still left an underline that appeared on focus.
           decoration: const InputDecoration(
             hintText: "Untitled post",
             border: InputBorder.none,
+            enabledBorder: InputBorder.none,
+            focusedBorder: InputBorder.none,
+            disabledBorder: InputBorder.none,
+            errorBorder: InputBorder.none,
+            focusedErrorBorder: InputBorder.none,
+            filled: false,
             isDense: true,
+            contentPadding: EdgeInsets.zero,
           ),
         ),
       ),
