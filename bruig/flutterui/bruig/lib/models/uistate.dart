@@ -137,7 +137,20 @@ class CollapsedSidebarModel extends ChangeNotifier {
   /// have nothing to clear it, so clearing it is the registrant's job.
   void register(WidgetBuilder builder, double width,
       {Object? revision, Object? owner}) {
-    var changed = _builder == null || _width != width || _revision != revision;
+    // A different owner means a different screen, or the same screen
+    // rebuilt into a new State -- which a resize does, whenever it crosses a
+    // width where the layout above switches branches. Its predecessor's
+    // output is then defunct: it still paints, because the drawer keeps
+    // whatever it last built, but nothing in it is wired to anything live,
+    // so every tap lands on a widget that is no longer there.
+    //
+    // That is why the fault survived a resize and not a restart, and why
+    // width and revision alone could not catch it: both are identical
+    // across the swap.
+    var changed = _builder == null ||
+        _width != width ||
+        _revision != revision ||
+        !identical(_owner, owner);
     _builder = builder;
     _width = width;
     _revision = revision;

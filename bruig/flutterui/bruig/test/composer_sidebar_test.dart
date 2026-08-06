@@ -50,6 +50,7 @@ Future<void> _pump(WidgetTester tester, ComposerSidebarController controller,
 }
 
 void main() {
+  _resizeTests();
   _drawerOwnershipTests();
   _collapsedDrawerTests();
   _feedPanelFlagTests();
@@ -564,5 +565,49 @@ void _drawerOwnershipTests() {
     model.register((_) => const SizedBox(), 200, owner: Object());
     model.unregister();
     expect(model.available, isFalse);
+  });
+}
+
+// Reported: at one particular window size the writing tools' nav stopped
+// responding, and a hot restart at the same size fixed it.
+//
+// That is the signature of stale state in the drawer rather than anything
+// about the size itself. Crossing a width where the layout above switches
+// branches rebuilds the registering screen into a new State, and its
+// predecessor's output is defunct -- it still paints, because the drawer
+// keeps whatever it last built, but nothing in it is wired to anything
+// live, so taps land on widgets that are no longer there.
+void _resizeTests() {
+  testWidgets("a new registrant always redraws the drawer", (tester) async {
+    await tester.pumpWidget(const SizedBox());
+    Future<void> endFrame() async {
+      tester.binding.scheduleFrame();
+      await tester.pump();
+    }
+
+    var model = CollapsedSidebarModel();
+    var woken = 0;
+    model.addListener(() => woken++);
+
+    var before = Object();
+    model.register((_) => const SizedBox(), 325,
+        revision: "same", owner: before);
+    await endFrame();
+    var afterFirst = woken;
+
+    // The same screen re-registering: nothing to redraw for.
+    model.register((_) => const SizedBox(), 325,
+        revision: "same", owner: before);
+    await endFrame();
+    expect(woken, afterFirst);
+
+    // A new State at the same size showing the same thing. Width and
+    // revision are identical, which is exactly why neither could catch it.
+    model.register((_) => const SizedBox(), 325,
+        revision: "same", owner: Object());
+    await endFrame();
+    expect(woken, greaterThan(afterFirst),
+        reason: "the drawer kept rendering the tree that was replaced, and "
+            "every tap in it went nowhere");
   });
 }
