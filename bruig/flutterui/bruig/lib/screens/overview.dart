@@ -124,7 +124,7 @@ class _CollapsedSidebarDrawer extends StatelessWidget {
             bottom: 0,
             left: collapsed.open ? 0 : -collapsed.width,
             width: collapsed.width,
-            child: Builder(builder: builder),
+            child: CollapsedSidebarScope(child: Builder(builder: builder)),
           ),
         ]);
       },

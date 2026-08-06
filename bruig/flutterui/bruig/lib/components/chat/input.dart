@@ -14,6 +14,7 @@ import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:bruig/components/chat/types.dart';
 import 'package:bruig/models/client.dart';
+import 'package:bruig/plugin_system/plugin_system.dart';
 import 'package:bruig/theming_system/theme_preset.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/services.dart';
@@ -36,7 +37,8 @@ class ChatInput extends StatefulWidget {
 }
 
 class _ChatInputState extends State<ChatInput> {
-  final controller = TextEditingController();
+  // Paints the writing marks; a plain controller otherwise.
+  final controller = WritingTextEditingController();
   final MenuController _fmtMenuCtl = MenuController();
 
   // Whether the collapsed tool menu is open (see
@@ -604,20 +606,16 @@ class _ChatInputState extends State<ChatInput> {
           controller: controller,
           minLines: 1,
           maxLines: null,
-          contextMenuBuilder:
-              (BuildContext context, EditableTextState editableTextState) =>
-                  AdaptiveTextSelectionToolbar.editable(
-            anchors: editableTextState.contextMenuAnchors,
-            clipboardStatus: ClipboardStatus.pasteable,
-            onCopy: null,
-            onCut: null,
-            onLiveTextInput: null,
-            onLookUp: null,
-            onSearchWeb: null,
-            onSelectAll: null,
-            onShare: null,
-            onPaste: pasteEvent,
-          ),
+          // Whatever an enabled plugin capability offers for the text
+          // under the pointer, falling back to this composer's own menu.
+          // Paste alone, as before -- the other standard entries were
+          // deliberately left out of this composer.
+          contextMenuBuilder: (BuildContext context,
+                  EditableTextState editableTextState) =>
+              writingContextMenu(context, editableTextState, fallbackItems: [
+            ContextMenuButtonItem(
+                onPressed: pasteEvent, type: ContextMenuButtonType.paste),
+          ]),
           style: theme.textStyleFor(context, TextSize.medium, null),
           keyboardType: TextInputType.multiline,
           decoration: themedInputDecoration(

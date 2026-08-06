@@ -9,6 +9,7 @@ import 'package:bruig/screens/chats.dart';
 import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:bruig/components/chat/types.dart';
+import 'package:bruig/plugin_system/plugin_system.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -30,7 +31,8 @@ class CommentInput extends StatefulWidget {
 }
 
 class _CommentInputState extends State<CommentInput> {
-  final controller = TextEditingController();
+  // Paints the writing marks; a plain controller otherwise.
+  final controller = WritingTextEditingController();
 
   List<AttachmentEmbed> embeds = [];
   bool isAttaching = false;
@@ -256,82 +258,80 @@ class _CommentInputState extends State<CommentInput> {
                   const SizedBox(width: 5),
                 ],
                 Expanded(
-                    child: TextField(
-                  onChanged: (value) {
-                    // Check if user is typing an emoji code (:foo:).
-                    TypingEmojiSelModel.of(context, listen: false)
-                        .maybeSelectEmojis(controller);
-                  },
-                  autofocus: isScreenSmall ? false : true,
-                  focusNode: widget.inputFocusNode.inputFocusNode,
-                  controller: controller,
-                  minLines: 1,
-                  maxLines: null,
-                  contextMenuBuilder: (BuildContext context,
-                          EditableTextState editableTextState) =>
-                      AdaptiveTextSelectionToolbar.editable(
-                    anchors: editableTextState.contextMenuAnchors,
-                    clipboardStatus: ClipboardStatus.pasteable,
-                    onCopy: null,
-                    onCut: null,
-                    onLiveTextInput: null,
-                    onLookUp: null,
-                    onSearchWeb: null,
-                    onSelectAll: null,
-                    onShare: null,
-                    onPaste: pasteEvent,
-                  ),
-                  style: theme.textStyleFor(context, TextSize.medium, null),
-                  keyboardType: TextInputType.multiline,
-                  decoration: themedInputDecoration(
-                    context,
-                    hintText: widget.hintText,
-                    prefixIcon: collapse
-                        ? ClipRect(
-                            child: AnimatedSize(
-                              duration: const Duration(milliseconds: 160),
-                              curve: Curves.easeOut,
-                              alignment: Alignment.centerLeft,
-                              child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    IconButton(
-                                      padding: const EdgeInsets.all(0),
-                                      iconSize: 25,
-                                      tooltip: _toolsOpen ? "Hide" : "More",
-                                      onPressed: () => setState(
-                                          () => _toolsOpen = !_toolsOpen),
-                                      icon: Icon(_toolsOpen
-                                          ? Icons.chevron_left
-                                          : Icons.more_horiz),
-                                    ),
-                                    if (_toolsOpen) ...[
-                                      const SizedBox(width: 5),
-                                      _attachBtn(),
-                                      const SizedBox(width: 5),
-                                      _emojiBtn(context),
-                                    ],
-                                  ]),
-                            ),
-                          )
-                        : null,
-                    fallbackBorder: const OutlineInputBorder(
-                      borderRadius: BorderRadius.all(Radius.circular(30.0)),
-                      borderSide: BorderSide(width: 2.0),
-                    ),
-                    suffixIcon: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          IconButton(
-                              tooltip: widget.label,
-                              padding: const EdgeInsets.all(0),
-                              iconSize: 20,
-                              onPressed: sendMsg,
-                              icon: const Icon(Icons.send))
+                  child: TextField(
+                    onChanged: (value) {
+                      // Check if user is typing an emoji code (:foo:).
+                      TypingEmojiSelModel.of(context, listen: false)
+                          .maybeSelectEmojis(controller);
+                    },
+                    autofocus: isScreenSmall ? false : true,
+                    focusNode: widget.inputFocusNode.inputFocusNode,
+                    controller: controller,
+                    minLines: 1,
+                    maxLines: null,
+                    // Whatever an enabled plugin capability offers for the
+                    // text under the pointer, falling back to this composer's
+                    // own menu: paste alone, as before.
+                    contextMenuBuilder: (BuildContext context,
+                            EditableTextState editableTextState) =>
+                        writingContextMenu(context, editableTextState,
+                            fallbackItems: [
+                          ContextMenuButtonItem(
+                              onPressed: pasteEvent,
+                              type: ContextMenuButtonType.paste),
                         ]),
+                    style: theme.textStyleFor(context, TextSize.medium, null),
+                    keyboardType: TextInputType.multiline,
+                    decoration: themedInputDecoration(
+                      context,
+                      hintText: widget.hintText,
+                      prefixIcon: collapse
+                          ? ClipRect(
+                              child: AnimatedSize(
+                                duration: const Duration(milliseconds: 160),
+                                curve: Curves.easeOut,
+                                alignment: Alignment.centerLeft,
+                                child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      IconButton(
+                                        padding: const EdgeInsets.all(0),
+                                        iconSize: 25,
+                                        tooltip: _toolsOpen ? "Hide" : "More",
+                                        onPressed: () => setState(
+                                            () => _toolsOpen = !_toolsOpen),
+                                        icon: Icon(_toolsOpen
+                                            ? Icons.chevron_left
+                                            : Icons.more_horiz),
+                                      ),
+                                      if (_toolsOpen) ...[
+                                        const SizedBox(width: 5),
+                                        _attachBtn(),
+                                        const SizedBox(width: 5),
+                                        _emojiBtn(context),
+                                      ],
+                                    ]),
+                              ),
+                            )
+                          : null,
+                      fallbackBorder: const OutlineInputBorder(
+                        borderRadius: BorderRadius.all(Radius.circular(30.0)),
+                        borderSide: BorderSide(width: 2.0),
+                      ),
+                      suffixIcon: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            IconButton(
+                                tooltip: widget.label,
+                                padding: const EdgeInsets.all(0),
+                                iconSize: 20,
+                                onPressed: sendMsg,
+                                icon: const Icon(Icons.send))
+                          ]),
+                    ),
                   ),
-                )),
+                ),
               ]));
   }
 }

@@ -94,6 +94,8 @@ class OverviewActivePath extends ChangeNotifier {
 // anything it draws is clipped to the right of the main nav.
 class CollapsedSidebarModel extends ChangeNotifier {
   WidgetBuilder? _builder;
+  Object? _revision;
+  Object? _owner;
   double _width = 200;
   bool _open = false;
 
@@ -113,16 +115,59 @@ class CollapsedSidebarModel extends ChangeNotifier {
   // there *is* one, or in how wide it is, is worth telling anyone about --
   // notifying on every build would wake the drawer once per frame for no
   // visible change.
-  void register(WidgetBuilder builder, double width) {
-    var changed = _builder == null || _width != width;
+  /// revision is whatever the caller's sidebar would look different for.
+  ///
+  /// The builder alone cannot answer that -- it is a fresh closure every
+  /// build and can never compare equal, so notifying on it would wake the
+  /// drawer once per frame for no visible change. But a sidebar whose
+  /// *contents* change while the drawer is open needs the drawer told, and
+  /// without this it silently kept rendering whatever it had: the composer's
+  /// panel icons registered their taps, changed the panel, and redrew
+  /// nothing.
+  ///
+  /// A caller whose sidebar cannot change while it is open passes nothing
+  /// and behaves exactly as before.
+  /// owner identifies who registered, so it can take its own registration
+  /// back without taking somebody else's.
+  ///
+  /// A screen registers from its build and has to unregister when it goes
+  /// away, or its sidebar follows the user to whatever they open next --
+  /// which is how the post composer's panel turned up in the drawer over
+  /// Realtime Chat, the LN screens and Pages. Screens that never register
+  /// have nothing to clear it, so clearing it is the registrant's job.
+  void register(WidgetBuilder builder, double width,
+      {Object? revision, Object? owner}) {
+    // A different owner means a different screen, or the same screen
+    // rebuilt into a new State -- which a resize does, whenever it crosses a
+    // width where the layout above switches branches. Its predecessor's
+    // output is then defunct: it still paints, because the drawer keeps
+    // whatever it last built, but nothing in it is wired to anything live,
+    // so every tap lands on a widget that is no longer there.
+    //
+    // That is why the fault survived a resize and not a restart, and why
+    // width and revision alone could not catch it: both are identical
+    // across the swap.
+    var changed = _builder == null ||
+        _width != width ||
+        _revision != revision ||
+        !identical(_owner, owner);
     _builder = builder;
     _width = width;
+    _revision = revision;
+    _owner = owner;
     if (changed) _notifyLater();
   }
 
-  void unregister() {
+  /// unregister clears the drawer. With an [owner] it does so only if that
+  /// owner is the one still registered -- a screen being torn down must not
+  /// wipe the registration of the screen that replaced it, which on any
+  /// navigation happens in that order.
+  void unregister({Object? owner}) {
     if (_builder == null) return;
+    if (owner != null && !identical(_owner, owner)) return;
     _builder = null;
+    _revision = null;
+    _owner = null;
     _open = false;
     _notifyLater();
   }

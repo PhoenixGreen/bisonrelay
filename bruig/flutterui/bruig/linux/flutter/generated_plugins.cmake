@@ -11,6 +11,7 @@ list(APPEND FLUTTER_PLUGIN_LIST
   image_compression_flutter
   irondash_engine_context
   media_kit_libs_linux
+  restart_app
   screen_retriever_linux
   super_native_extensions
   url_launcher_linux
@@ -18,6 +19,7 @@ list(APPEND FLUTTER_PLUGIN_LIST
 )
 
 list(APPEND FLUTTER_FFI_PLUGIN_LIST
+  jni
   pdfrx
 )
 

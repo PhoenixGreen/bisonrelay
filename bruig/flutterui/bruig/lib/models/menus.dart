@@ -198,7 +198,7 @@ final List<String> defaultMobileNavRoutes = [
 
 class MainMenuModel extends ChangeNotifier {
   // A mutable copy of the static mainMenu list: dynamic-wasm plugins (see
-  // DynPluginsModel) register/unregister their own nav item here at
+  // PluginNavModel) register/unregister their own nav item here at
   // runtime. Both the sidebar (components/sidebar.dart) and the route
   // dispatch (screens/overview.dart) already build off this list rather
   // than a hardcoded per-item switch, so appending/removing here is all
@@ -302,7 +302,7 @@ class MainMenuModel extends ChangeNotifier {
 
   // registerDynamicItem adds a nav item contributed by a dynamic-wasm
   // plugin. This is called every time the plugin list re-evaluates (not
-  // just on enable/disable -- see DynPluginsModel.update, wired through a
+  // just on enable/disable -- see PluginNavModel.update, wired through a
   // ChangeNotifierProxyProvider2 that also depends on this very model), so
   // it must be non-destructive: if the item is already registered, update
   // it in place (new builder/icon from the manifest, but keep whatever
@@ -313,7 +313,7 @@ class MainMenuModel extends ChangeNotifier {
     var idx = menus.indexWhere((e) => e.routeName == item.routeName);
     if (idx >= 0) {
       var existing = menus[idx];
-      // DynPluginsModel.update calls this on every rebuild of the provider
+      // PluginNavModel.update calls this on every rebuild of the provider
       // tree it's wired into (see the class comment above), passing a
       // freshly-built MainMenuItem each time even when nothing about the
       // plugin actually changed. Notifying unconditionally here would
@@ -374,7 +374,7 @@ class MainMenuModel extends ChangeNotifier {
   }
 
   // registerDynamicItem/unregisterDynamicItem are called from
-  // DynPluginsModel.update, itself invoked by a ChangeNotifierProxyProvider2
+  // PluginNavModel.update, itself invoked by a ChangeNotifierProxyProvider2
   // while it (and, transitively, MainMenuModel's own already-built
   // InheritedProviderScope) are mid-build -- calling notifyListeners()
   // directly there trips Flutter's "setState() or markNeedsBuild() called
@@ -696,13 +696,16 @@ class SidebarIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    var theme = Theme.of(context);
-    var unselectedTextColor = theme.colorScheme.onSurfaceVariant;
     if (alert) {
       return Icon(icon, color: Colors.amber);
-    } else {
-      return Icon(icon, color: unselectedTextColor);
     }
+    // No explicit color here (unlike the alert case above, which is
+    // deliberately always amber regardless of selection) -- letting Icon
+    // fall back to the ambient IconTheme (e.g. one a caller wraps around
+    // this with IconTheme.merge to reflect selected/unselected state) is
+    // what actually makes the selected-item accent color apply; hardcoding
+    // onSurfaceVariant here, like this used to, ignored selection entirely.
+    return Icon(icon);
   }
 }
 
@@ -712,11 +715,16 @@ class SidebarSvgIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    var theme = Theme.of(context);
-    var unselectedTextColor = theme.colorScheme.onSurfaceVariant;
+    // Reads the ambient IconTheme (e.g. one a caller wraps around this with
+    // IconTheme.merge to reflect selected/unselected state) rather than
+    // always hardcoding onSurfaceVariant -- this used to ignore selection
+    // entirely, since SvgPicture's own explicit colorFilter doesn't consult
+    // IconTheme on its own the way a plain Icon widget does.
+    var color = IconTheme.of(context).color ??
+        Theme.of(context).colorScheme.onSurfaceVariant;
     return SvgPicture.asset(
       assetName,
-      colorFilter: ColorFilter.mode(unselectedTextColor, BlendMode.srcIn),
+      colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
     );
   }
 }

@@ -95,6 +95,30 @@ class LnpayURLSyntax extends md.InlineSyntax {
   }
 }
 
+/// Matches bare (not already markdown-linked) http(s) URLs so the "Pretty
+/// Links" plugin can offer a native preview card for known domains. Because
+/// user-supplied inline syntaxes are tried before flutter_markdown's
+/// built-in link/autolink syntaxes, this only ever fires on genuinely bare
+/// URLs in the source text -- an explicit `[text](url)` markdown link is
+/// fully consumed by the built-in LinkSyntax before the parser's cursor
+/// ever reaches the URL text on its own.
+class BareLinkSyntax extends md.InlineSyntax {
+  /// The element tag matched URLs are emitted as, for whichever
+  /// MarkdownExtension registered this syntax to render.
+  final String tag;
+
+  BareLinkSyntax({
+    required this.tag,
+    String pattern = r'https?:\/\/\S+',
+  }) : super(pattern);
+
+  @override
+  bool onMatch(md.InlineParser parser, Match match) {
+    parser.addNode(md.Element.text(tag, match.group(0) ?? ""));
+    return true;
+  }
+}
+
 class EmbedInlineSyntax extends md.InlineSyntax {
   final String dbRoot;
 
@@ -384,9 +408,59 @@ class MarkdownAreaModel extends ChangeNotifier {
     FormBlockSyntax(),
   ];
 
+  // _pluginExtensions is whatever the last setPluginExtensions call added,
+  // kept so the next one can remove exactly those again.
+  List<MarkdownExtension> _pluginExtensions = const [];
+
   MarkdownAreaModel(String dbroot) {
     inlineSyntaxes.add(EmbedInlineSyntax(dbroot));
   }
+
+  /// setPluginExtensions replaces the markdown renderers contributed from
+  /// outside this file -- see lib/plugin_system, which is the only caller.
+  /// The built-in builders and syntaxes declared above are never touched by
+  /// it, so a plugin can add a rendering but never remove or replace one of
+  /// Bison Relay's own.
+  ///
+  /// Called whenever the set of enabled plugins changes. Markdown already
+  /// rendered on screen keeps its old rendering until it rebuilds.
+  void setPluginExtensions(List<MarkdownExtension> extensions) {
+    var sameTags = _pluginExtensions.length == extensions.length &&
+        _pluginExtensions.every((e) => extensions.any((n) => n.tag == e.tag));
+    if (sameTags) return;
+
+    for (var e in _pluginExtensions) {
+      builders.remove(e.tag);
+      if (e.inlineSyntax != null) inlineSyntaxes.remove(e.inlineSyntax);
+    }
+    _pluginExtensions = extensions;
+    for (var e in extensions) {
+      builders[e.tag] = e.builder;
+      if (e.inlineSyntax != null) inlineSyntaxes.add(e.inlineSyntax!);
+    }
+    notifyListeners();
+  }
+}
+
+/// MarkdownExtension is one markdown rendering contributed from outside this
+/// file. It is the whole of the app's markdown extension point: a tag to
+/// render, the builder that renders it, and optionally an inline syntax that
+/// produces that tag in the first place.
+class MarkdownExtension {
+  /// The markdown element tag [builder] renders.
+  final String tag;
+  final MarkdownElementBuilder builder;
+
+  /// An optional syntax that emits [tag]. Needed when the extension renders
+  /// something the markdown source doesn't already mark up -- a bare URL,
+  /// say, which is otherwise just text.
+  final md.InlineSyntax? inlineSyntax;
+
+  const MarkdownExtension({
+    required this.tag,
+    required this.builder,
+    this.inlineSyntax,
+  });
 }
 
 class MarkdownArea extends StatelessWidget {

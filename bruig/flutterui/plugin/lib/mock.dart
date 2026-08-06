@@ -384,6 +384,29 @@ class MockPlugin with NtfStreams /*implements PluginPlatform*/ {
 
   Future<List<SharedFileAndShares>> listSharedFiles() => throw "unimplemented";
 
+  Future<List<PluginInfo>> listPlugins() => throw "unimplemented";
+
+  Future<PluginInfo> importPlugin(String path) => throw "unimplemented";
+
+  Future<void> setPluginEnabled(String id, bool enabled) =>
+      throw "unimplemented";
+
+  Future<void> removePlugin(String id) => throw "unimplemented";
+
+  Future<LinkMetadata?> fetchLinkMetadata(String url) =>
+      throw "unimplemented";
+
+  Future<SpellcheckData> getSpellcheckData([String language = ""]) =>
+      throw "unimplemented";
+
+  Future<DynScreenUI> renderDynPluginScreen(
+          String pluginId, String screenId) =>
+      throw "unimplemented";
+
+  Future<DynScreenUI> handleDynPluginEvent(String pluginId, String screenId,
+          String event, Map<String, dynamic> payload) =>
+      throw "unimplemented";
+
   Future<List<ReceivedFile>> listUserContent(String uid) =>
       throw "unimplemented";
 

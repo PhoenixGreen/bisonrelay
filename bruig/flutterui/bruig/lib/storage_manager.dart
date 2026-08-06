@@ -26,6 +26,8 @@ class StorageManager {
     final prefs = await SharedPreferences.getInstance();
     if (value is int) {
       prefs.setInt(key, value);
+    } else if (value is double) {
+      prefs.setDouble(key, value);
     } else if (value is String) {
       prefs.setString(key, value);
     } else if (value is bool) {

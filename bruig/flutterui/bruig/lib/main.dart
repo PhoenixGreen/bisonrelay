@@ -11,6 +11,9 @@ import 'package:bruig/models/emoji.dart';
 import 'package:bruig/models/audio.dart';
 import 'package:bruig/models/menus.dart';
 import 'package:bruig/models/payments.dart';
+import 'package:bruig/models/composer_sidebar.dart';
+import 'package:bruig/plugin_system/plugin_system.dart';
+import 'package:bruig/post_library/post_library.dart';
 import 'package:bruig/models/realtimechat.dart';
 import 'package:bruig/models/resources.dart';
 import 'package:bruig/models/uploads.dart';
@@ -165,6 +168,11 @@ Future<void> runMainApp(Config cfg) async {
   final SnackBarModel snackbar = SnackBarModel();
   final theme = await ThemeNotifier.newNotifierWhenLoaded();
   final RealtimeChatModel rtc = RealtimeChatModel(client, snackbar);
+  // Awaited rather than loaded lazily: these decide what is *not* flagged,
+  // and arriving late would underline a word the user has already told the
+  // app to leave alone.
+  final writingPrefs = WritingPreferences();
+  await writingPrefs.load();
 
   runApp(MultiProvider(
     providers: [
@@ -188,6 +196,7 @@ Future<void> runMainApp(Config cfg) async {
       ChangeNotifierProvider(create: (c) => ResourcesModel()),
       ChangeNotifierProvider.value(value: snackbar),
       ChangeNotifierProvider(create: (c) => PaymentsModel()),
+      ChangeNotifierProvider(create: (c) => PluginManagerModel()..reload()),
       ChangeNotifierProvider(create: (c) => WalletModel()),
       // Started here rather than lazily inside the nav bar: the direction
       // arrows need a previous price to compare against, so the poll has to
@@ -195,7 +204,46 @@ Future<void> runMainApp(Config cfg) async {
       ChangeNotifierProvider(create: (c) => ExchangeRateModel()),
       ChangeNotifierProvider(create: (c) => TypingEmojiSelModel()),
       ChangeNotifierProvider(create: (c) => AudioModel(), lazy: false),
-      ChangeNotifierProvider(create: (c) => MarkdownAreaModel(cfg.dbRoot)),
+      // The three ways a plugin reaches the app, each driven off the one
+      // PluginManagerModel above and each written against a capability
+      // rather than any particular plugin -- see lib/plugin_system.
+      ChangeNotifierProxyProvider<PluginManagerModel, MarkdownAreaModel>(
+        create: (c) => MarkdownAreaModel(cfg.dbRoot),
+        update: (c, plugins, mk) =>
+            mk!..setPluginExtensions(markdownExtensionsFor(plugins)),
+      ),
+      ChangeNotifierProxyProvider<PluginManagerModel, SpellcheckCapability>(
+        // The user's own overrides -- ignored words, disabled checks -- are
+        // read from disk once here, and belong to the app rather than to any
+        // provider: they must outlive a plugin being disabled or replaced.
+        create: (c) => SpellcheckCapability(prefs: writingPrefs),
+        update: (c, plugins, capability) => capability!..update(plugins),
+      ),
+      // Exposed separately so the settings page and the writing sidebar can
+      // read and change them without going through the capability.
+      ChangeNotifierProvider<WritingPreferences>.value(value: writingPrefs),
+      // Connects a composer to the screen that owns the sidebar slot beside
+      // it; the two cannot reach each other directly.
+      ChangeNotifierProvider(create: (c) => ComposerSidebarController()),
+      ChangeNotifierProvider(create: (c) => PostLibraryModel()),
+      // The thesaurus holds no state of its own -- it asks the plugin a
+      // word at a time -- so it is a plain ProxyProvider rather than a
+      // notifier, rebuilt only if the plugin list itself changes.
+      ProxyProvider<PluginManagerModel, ThesaurusCapability>(
+        update: (c, plugins, _) => ThesaurusCapability(plugins),
+      ),
+      // lazy: false is required here: unlike the two above, nothing ever
+      // reads PluginNavModel's value -- it exists purely for the side
+      // effect of registering nav items into MainMenuModel -- so without
+      // this, provider's default laziness means create/update would never
+      // run at all.
+      ChangeNotifierProxyProvider2<PluginManagerModel, MainMenuModel,
+          PluginNavModel>(
+        lazy: false,
+        create: (c) => PluginNavModel(),
+        update: (c, plugins, mainMenu, dyn) =>
+            dyn!..update(plugins.plugins, mainMenu),
+      ),
       ChangeNotifierProvider.value(value: rtc),
       ChangeNotifierProvider.value(value: rtc.active),
       ChangeNotifierProvider.value(value: rtc.liveSessions),
@@ -305,6 +353,15 @@ class _AppState extends State<App> with WindowListener {
     var isPreventClose = await windowManager.isPreventClose();
     if (!isPreventClose) return;
     if (!pushedToShutdown) {
+      // Dispose the (libmpv-backed on desktop) audio player while the
+      // engine is still fully alive, before starting the rest of the
+      // shutdown flow -- see AudioModel.shutdown() for why this ordering
+      // matters (avoids a native-thread-vs-isolate-teardown crash).
+      try {
+        await AudioModel.of(context, listen: false).shutdown();
+      } catch (exception) {
+        debugPrint("Error shutting down audio player: $exception");
+      }
       ShutdownScreen.startShutdownFromNavKey(navkey);
       pushedToShutdown = true;
     }

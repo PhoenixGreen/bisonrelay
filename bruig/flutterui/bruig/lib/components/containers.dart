@@ -601,6 +601,12 @@ class SecondarySideMenuLayout extends StatefulWidget {
   final Widget content;
   final bool isDetail;
   final Object? detailKey;
+
+  /// sidebarRevision is whatever this screen's sidebar would look different
+  /// for, so the collapsed drawer knows to redraw it. Only needed by a
+  /// sidebar whose contents change while it is open -- see
+  /// CollapsedSidebarModel.register.
+  final Object? sidebarRevision;
   // storageKey identifies this screen's sidebar for width persistence when
   // AreaStyle.subMenuStyle is SubMenuStyle.resizable -- since subMenuTabBar
   // is one shared style for every sidebar in the app, each screen must
@@ -617,6 +623,7 @@ class SecondarySideMenuLayout extends StatefulWidget {
       this.footer,
       this.isDetail = false,
       this.detailKey,
+      this.sidebarRevision,
       super.key});
 
   @override
@@ -649,6 +656,22 @@ class _SecondarySideMenuLayoutState extends State<SecondarySideMenuLayout> {
   static const _resizableMaxWidth = 560.0;
 
   String get _widthStorageKey => "sidebarWidth_${widget.storageKey}";
+
+  @override
+  void dispose() {
+    // This screen's sidebar goes with this screen. Screens that never
+    // register one have nothing to clear it, so leaving it would put this
+    // sidebar in the drawer over whatever the user opened next.
+    //
+    // Scoped to this registration: on a navigation the new screen registers
+    // before the old one is disposed, and an unscoped clear here would wipe
+    // the sidebar that had just arrived.
+    _client?.ui.collapsedSidebar.unregister(owner: this);
+    super.dispose();
+  }
+
+  // Captured while mounted, since dispose cannot reach the provider tree.
+  ClientModel? _client;
 
   @override
   void initState() {
@@ -721,7 +744,8 @@ class _SecondarySideMenuLayoutState extends State<SecondarySideMenuLayout> {
   // feed's own panel already dropped itself there.
   Widget _compactLayout(ClientModel client, double panelWidth) {
     client.ui.collapsedSidebar.register(
-        (context) => _menuList(panelWidth, closeOnTap: true), panelWidth);
+        (context) => _menuList(panelWidth, closeOnTap: true), panelWidth,
+        revision: widget.sidebarRevision, owner: this);
     return contentAreaFrame(ThemeNotifier.of(context), widget.content);
   }
 
@@ -742,6 +766,7 @@ class _SecondarySideMenuLayoutState extends State<SecondarySideMenuLayout> {
         // this narrow has no usable room for a sidebar column whichever
         // visibility is set.
         var client = ClientModel.of(context, listen: false);
+        _client = client;
         if (style == SubMenuStyle.collapsed ||
             constraints.maxWidth < _collapseBelowWidth) {
           return _compactLayout(client, kCollapsedSidebarWidth);
@@ -898,4 +923,22 @@ class _ResizableSidebarState extends State<ResizableSidebar> {
       return widget.builder(context, width, handle);
     });
   }
+}
+
+/// CollapsedSidebarScope marks the subtree that is the collapsed drawer.
+///
+/// A sidebar looks the same in both places but is not in the same situation:
+/// in the drawer it is an overlay with a scrim, put away by tapping off it,
+/// so a control of its own for hiding it is one route too many to the same
+/// place -- and points the wrong way besides.
+class CollapsedSidebarScope extends InheritedWidget {
+  const CollapsedSidebarScope({required super.child, super.key});
+
+  /// of reports whether [context] is inside the drawer.
+  static bool of(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<CollapsedSidebarScope>() !=
+      null;
+
+  @override
+  bool updateShouldNotify(CollapsedSidebarScope oldWidget) => false;
 }

@@ -314,6 +314,30 @@ class AudioModel extends ChangeNotifier {
   }
 
   final AudioPlayer player = AudioPlayer();
+
+  // shutdownDisposed tracks whether the player has already been disposed as
+  // part of app shutdown, so it isn't disposed twice.
+  bool _shutdownDisposed = false;
+
+  // shutdown disposes the underlying (just_audio_media_kit/libmpv-backed on
+  // desktop) player. This MUST be called and awaited before the app's
+  // process actually exits (e.g. before windowManager.destroy()): libmpv
+  // runs its own native shutdown thread that calls back into Dart via FFI,
+  // and if that happens after the Dart isolate/Flutter engine has already
+  // started tearing down, it crashes the whole process (SIGABRT in
+  // dart::Assert::Fail / DLRT_GetFfiCallbackMetadata). Disposing here while
+  // the engine is still fully alive gives that native thread a chance to
+  // finish cleanly first.
+  Future<void> shutdown() async {
+    if (_shutdownDisposed) return;
+    _shutdownDisposed = true;
+    try {
+      await player.dispose();
+    } catch (exception) {
+      debugPrint("Error while disposing audio player on shutdown: $exception");
+    }
+  }
+
   dynamic _playingSource;
   dynamic get playingSource => _playingSource;
   final AudioPlayerEventsModel playerEvents = AudioPlayerEventsModel();

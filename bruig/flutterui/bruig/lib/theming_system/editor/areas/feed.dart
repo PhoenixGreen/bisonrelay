@@ -50,6 +50,14 @@ List<Widget> feedAreaEditor(AreaEditorContext ctx) {
       onChanged: (v) =>
           ctx.setStyle((s) => s.copyWith(feedHideSidebarOnPost: v)),
     ),
+    ctx.toggle(
+      "Publish menu",
+      subtitle: "Moves Create Post and Clear Post into a single menu button "
+          "in the top-right corner of the New Post page, giving the editor "
+          "the height they took",
+      value: style.feedPublishMenu,
+      onChanged: (v) => ctx.setStyle((s) => s.copyWith(feedPublishMenu: v)),
+    ),
     ctx.choice<FeedImageLayout>(
       "First image display",
       value: style.feedImageLayout,

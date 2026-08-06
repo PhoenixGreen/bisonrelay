@@ -377,6 +377,10 @@ class AreaStyle {
   final bool feedHideSidebarOnPost; // Drops the feed sidebar entirely while
   // reading a single post, for a more focused reading experience. Needs
   // feedSidePanel.
+  final bool feedPublishMenu; // Moves Create Post and Clear Post out of the
+  // composer's footer and into a single menu button in its top-right
+  // corner, giving the editor the height they took and leaving somewhere
+  // for further publish options to go.
   final FeedImageLayout feedImageLayout; // How each post's first embedded
   // image is displayed (see FeedImageLayout).
   final double feedImageCropHeight; // Max height (px) for
@@ -571,6 +575,7 @@ class AreaStyle {
     this.feedSidePanel = false,
     this.feedInlineComposer = false,
     this.feedHideSidebarOnPost = false,
+    this.feedPublishMenu = false,
     this.feedImageLayout = FeedImageLayout.standard,
     this.feedImageCropHeight = 300,
     this.feedTextOrder = FeedTextOrder.standard,
@@ -733,6 +738,7 @@ class AreaStyle {
     bool? feedSidePanel,
     bool? feedInlineComposer,
     bool? feedHideSidebarOnPost,
+    bool? feedPublishMenu,
     FeedImageLayout? feedImageLayout,
     double? feedImageCropHeight,
     FeedTextOrder? feedTextOrder,
@@ -925,6 +931,7 @@ class AreaStyle {
         feedInlineComposer: feedInlineComposer ?? this.feedInlineComposer,
         feedHideSidebarOnPost:
             feedHideSidebarOnPost ?? this.feedHideSidebarOnPost,
+        feedPublishMenu: feedPublishMenu ?? this.feedPublishMenu,
         feedImageLayout: feedImageLayout ?? this.feedImageLayout,
         feedImageCropHeight: feedImageCropHeight ?? this.feedImageCropHeight,
         feedTextOrder: feedTextOrder ?? this.feedTextOrder,
@@ -1107,6 +1114,7 @@ class AreaStyle {
         if (feedCardActions) "feedCardActions": feedCardActions,
         if (feedSidePanel) "feedSidePanel": feedSidePanel,
         if (feedInlineComposer) "feedInlineComposer": feedInlineComposer,
+        if (feedPublishMenu) "feedPublishMenu": feedPublishMenu,
         if (feedHideSidebarOnPost)
           "feedHideSidebarOnPost": feedHideSidebarOnPost,
         if (feedImageLayout != FeedImageLayout.standard)
@@ -1313,6 +1321,7 @@ class AreaStyle {
           flag("feedComposerAttach") ||
           flag("feedDrafts"),
       feedHideSidebarOnPost: flag("feedHideSidebarOnPost"),
+      feedPublishMenu: flag("feedPublishMenu"),
       feedImageLayout: _enumOr(FeedImageLayout.values, j["feedImageLayout"],
           FeedImageLayout.standard),
       feedImageCropHeight: number("feedImageCropHeight") ?? 300,

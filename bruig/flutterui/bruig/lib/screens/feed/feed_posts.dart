@@ -892,6 +892,18 @@ class FeedSidePanel extends StatelessWidget {
   final FeedSort sort;
   final bool unreadOnly;
   final TextEditingController searchController;
+
+  /// showSearch draws the search field at the top. Off where the panel is
+  /// shown as navigation rather than as a way through the feed -- beside the
+  /// composer, searching posts is not what the sidebar is for.
+  final bool showSearch;
+
+  /// framed wraps the panel in its own SecondarySideMenu, which paints the
+  /// sidebar's background and border. Off when it is placed inside
+  /// somebody else's sidebar, which has already painted them -- nesting the
+  /// two draws every border twice.
+  final bool framed;
+
   final bool showBookmarks;
   final bool showHidden;
   final bool showDrafts;
@@ -913,6 +925,8 @@ class FeedSidePanel extends StatelessWidget {
     required this.sort,
     required this.unreadOnly,
     required this.searchController,
+    this.showSearch = true,
+    this.framed = true,
     required this.showBookmarks,
     required this.showHidden,
     required this.showDrafts,
@@ -1061,121 +1075,123 @@ class FeedSidePanel extends StatelessWidget {
         // on all four sides, and its padding/margin/radius -- rather than
         // this panel painting an approximation of its own. fillWidth
         // because the feed lays out (and drag-resizes) its width itself.
-        return SecondarySideMenu(
-            fillWidth: true,
-            child: SingleChildScrollView(
-              // Matches _SidebarNavRow's own 8px inset, so this panel's rows sit
-              // where every other sidebar's do rather than floating in from
-              // both edges.
-              padding: const EdgeInsets.fromLTRB(8, 16, 8, 16),
-              child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      margin: const EdgeInsets.symmetric(horizontal: 4),
-                      decoration: BoxDecoration(
-                          color: const Color(0xFF0E100E),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: const Color(0xFF1F231F))),
-                      child: TextField(
-                        controller: searchController,
-                        onChanged: onSearch,
-                        style: const TextStyle(
-                            fontSize: 14, color: Color(0xFFF2F4F3)),
-                        decoration: InputDecoration(
-                          isDense: true,
-                          prefixIcon: const Icon(Icons.search,
-                              size: 18, color: Color(0xFF5F6764)),
-                          prefixIconConstraints:
-                              const BoxConstraints(minWidth: 36),
-                          hintText: "Search posts",
-                          hintStyle: const TextStyle(
-                              fontSize: 14, color: Color(0xFF5F6764)),
-                          border: InputBorder.none,
-                          contentPadding:
-                              const EdgeInsets.symmetric(vertical: 11),
-                          suffixIcon: searchController.text.isNotEmpty
-                              ? GestureDetector(
-                                  onTap: () {
-                                    searchController.clear();
-                                    onSearch("");
-                                  },
-                                  child: const Icon(Icons.close,
-                                      size: 16, color: Color(0xFF5F6764)))
-                              : null,
-                        ),
-                      ),
-                    ),
-                    _sectionLabel("FEED"),
-                    _navItem(context, Icons.dynamic_feed_outlined, "All posts",
-                        FeedView.all),
-                    if (showBookmarks)
-                      _navItem(context, Icons.bookmark_outline, "Bookmarks",
-                          FeedView.bookmarks,
-                          trailing: "${FeedBookmarks.instance.count}"),
-                    if (showHidden)
-                      _navItem(context, Icons.visibility_off_outlined, "Hidden",
-                          FeedView.hidden,
-                          trailing: "${FeedHidden.instance.count}"),
-                    if (showDrafts)
-                      _navItem(context, Icons.edit_note_outlined, "Drafts",
-                          FeedView.drafts,
-                          trailing: "${FeedDrafts.instance.count}"),
-                    _sectionLabel("POSTS"),
-                    _actionItem(context, Icons.article_outlined, "Your Posts",
-                        onYourPosts,
-                        selected: currentTabIndex == 1),
-                    _actionItem(context, Icons.rss_feed, "Subscriptions",
-                        onSubscriptions,
-                        selected: currentTabIndex == 2),
-                    _actionItem(
-                        context, Icons.add_box_outlined, "New Post", onNewPost,
-                        selected: currentTabIndex == 3),
-                    _sectionLabel("SORT"),
-                    _sortItem(context, "Newest", FeedSort.newest),
-                    _sortItem(context, "Oldest", FeedSort.oldest),
-                    _sortItem(context, "Most comments", FeedSort.mostComments),
-                    _sectionLabel("FILTER"),
-                    GestureDetector(
-                      onTap: () => onUnreadOnly(!unreadOnly),
-                      behavior: HitTestBehavior.opaque,
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 8),
-                        child: Row(children: [
-                          const Icon(Icons.mark_chat_unread_outlined,
-                              size: 18, color: Color(0xFF9AA3A0)),
-                          const SizedBox(width: 12),
-                          const Expanded(
-                              child: Text("Unread only",
-                                  style: TextStyle(
-                                      fontSize: 14.5,
-                                      color: Color(0xFFF2F4F3)))),
-                          AnimatedContainer(
-                            duration: const Duration(milliseconds: 150),
-                            width: 38,
-                            height: 22,
-                            decoration: BoxDecoration(
-                                color: unreadOnly
-                                    ? const Color(0xFF1DFF8C)
-                                    : const Color(0xFF23262B),
-                                borderRadius: BorderRadius.circular(11)),
-                            alignment: unreadOnly
-                                ? Alignment.centerRight
-                                : Alignment.centerLeft,
-                            padding: const EdgeInsets.all(2),
-                            child: Container(
-                                width: 18,
-                                height: 18,
-                                decoration: const BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    color: Colors.white)),
-                          ),
-                        ]),
-                      ),
-                    ),
-                  ]),
-            ));
+        var body = SingleChildScrollView(
+          // Matches _SidebarNavRow's own 8px inset, so this panel's rows sit
+          // where every other sidebar's do rather than floating in from
+          // both edges.
+          padding: const EdgeInsets.fromLTRB(8, 16, 8, 16),
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            if (showSearch)
+              Container(
+                margin: const EdgeInsets.symmetric(horizontal: 4),
+                decoration: BoxDecoration(
+                    color: const Color(0xFF0E100E),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xFF1F231F))),
+                child: TextField(
+                  controller: searchController,
+                  onChanged: onSearch,
+                  style:
+                      const TextStyle(fontSize: 14, color: Color(0xFFF2F4F3)),
+                  decoration: InputDecoration(
+                    isDense: true,
+                    prefixIcon: const Icon(Icons.search,
+                        size: 18, color: Color(0xFF5F6764)),
+                    prefixIconConstraints: const BoxConstraints(minWidth: 36),
+                    hintText: "Search posts",
+                    hintStyle:
+                        const TextStyle(fontSize: 14, color: Color(0xFF5F6764)),
+                    border: InputBorder.none,
+                    contentPadding: const EdgeInsets.symmetric(vertical: 11),
+                    suffixIcon: searchController.text.isNotEmpty
+                        ? GestureDetector(
+                            onTap: () {
+                              searchController.clear();
+                              onSearch("");
+                            },
+                            child: const Icon(Icons.close,
+                                size: 16, color: Color(0xFF5F6764)))
+                        : null,
+                  ),
+                ),
+              ),
+            _sectionLabel("FEED"),
+            _navItem(context, Icons.dynamic_feed_outlined, "All posts",
+                FeedView.all),
+            if (showBookmarks)
+              _navItem(context, Icons.bookmark_outline, "Bookmarks",
+                  FeedView.bookmarks,
+                  trailing: "${FeedBookmarks.instance.count}"),
+            if (showHidden)
+              _navItem(context, Icons.visibility_off_outlined, "Hidden",
+                  FeedView.hidden,
+                  trailing: "${FeedHidden.instance.count}"),
+            if (showDrafts)
+              _navItem(
+                  context, Icons.edit_note_outlined, "Drafts", FeedView.drafts,
+                  trailing: "${FeedDrafts.instance.count}"),
+            _sectionLabel("POSTS"),
+            _actionItem(
+                context, Icons.article_outlined, "Your Posts", onYourPosts,
+                selected: currentTabIndex == 1),
+            _actionItem(
+                context, Icons.rss_feed, "Subscriptions", onSubscriptions,
+                selected: currentTabIndex == 2),
+            _actionItem(context, Icons.add_box_outlined, "New Post", onNewPost,
+                selected: currentTabIndex == 3),
+            _sectionLabel("SORT"),
+            _sortItem(context, "Newest", FeedSort.newest),
+            _sortItem(context, "Oldest", FeedSort.oldest),
+            _sortItem(context, "Most comments", FeedSort.mostComments),
+            _sectionLabel("FILTER"),
+            GestureDetector(
+              onTap: () => onUnreadOnly(!unreadOnly),
+              behavior: HitTestBehavior.opaque,
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                child: Row(children: [
+                  const Icon(Icons.mark_chat_unread_outlined,
+                      size: 18, color: Color(0xFF9AA3A0)),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                      child: Text("Unread only",
+                          style: TextStyle(
+                              fontSize: 14.5, color: Color(0xFFF2F4F3)))),
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 150),
+                    width: 38,
+                    height: 22,
+                    decoration: BoxDecoration(
+                        color: unreadOnly
+                            ? const Color(0xFF1DFF8C)
+                            : const Color(0xFF23262B),
+                        borderRadius: BorderRadius.circular(11)),
+                    alignment: unreadOnly
+                        ? Alignment.centerRight
+                        : Alignment.centerLeft,
+                    padding: const EdgeInsets.all(2),
+                    child: Container(
+                        width: 18,
+                        height: 18,
+                        decoration: const BoxDecoration(
+                            shape: BoxShape.circle, color: Colors.white)),
+                  ),
+                ]),
+              ),
+            ),
+          ]),
+        );
+        // Wrapped in the same SecondarySideMenu every other sidebar is
+        // built from, so it gets the Sidebar area's background, its border
+        // on all four sides, and its padding/margin/radius -- rather than
+        // this panel painting an approximation of its own. fillWidth
+        // because the feed lays out (and drag-resizes) its width itself.
+        //
+        // Skipped where the panel is placed inside a sidebar that has
+        // already drawn all of that.
+        return framed ? SecondarySideMenu(fillWidth: true, child: body) : body;
       },
     );
   }
