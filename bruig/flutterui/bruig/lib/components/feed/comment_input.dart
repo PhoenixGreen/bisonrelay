@@ -31,7 +31,8 @@ class CommentInput extends StatefulWidget {
 }
 
 class _CommentInputState extends State<CommentInput> {
-  final controller = TextEditingController();
+  // Paints the writing marks; a plain controller otherwise.
+  final controller = WritingTextEditingController();
 
   List<AttachmentEmbed> embeds = [];
   bool isAttaching = false;
@@ -257,7 +258,6 @@ class _CommentInputState extends State<CommentInput> {
                   const SizedBox(width: 5),
                 ],
                 Expanded(
-                    child: SpellcheckedFieldScope(
                   child: TextField(
                     onChanged: (value) {
                       // Check if user is typing an emoji code (:foo:).
@@ -269,26 +269,19 @@ class _CommentInputState extends State<CommentInput> {
                     controller: controller,
                     minLines: 1,
                     maxLines: null,
+                    // Whatever an enabled plugin capability offers for the
+                    // text under the pointer, falling back to this composer's
+                    // own menu: paste alone, as before.
                     contextMenuBuilder: (BuildContext context,
                             EditableTextState editableTextState) =>
-                        AdaptiveTextSelectionToolbar.editable(
-                      anchors: editableTextState.contextMenuAnchors,
-                      clipboardStatus: ClipboardStatus.pasteable,
-                      onCopy: null,
-                      onCut: null,
-                      onLiveTextInput: null,
-                      onLookUp: null,
-                      onSearchWeb: null,
-                      onSelectAll: null,
-                      onShare: null,
-                      onPaste: pasteEvent,
-                    ),
+                        writingContextMenu(context, editableTextState,
+                            fallbackItems: [
+                          ContextMenuButtonItem(
+                              onPressed: pasteEvent,
+                              type: ContextMenuButtonType.paste),
+                        ]),
                     style: theme.textStyleFor(context, TextSize.medium, null),
                     keyboardType: TextInputType.multiline,
-                    key: Provider.of<SpellcheckCapability>(context).fieldKey,
-                    spellCheckConfiguration:
-                        Provider.of<SpellcheckCapability>(context)
-                            .configuration,
                     decoration: themedInputDecoration(
                       context,
                       hintText: widget.hintText,
@@ -338,7 +331,7 @@ class _CommentInputState extends State<CommentInput> {
                           ]),
                     ),
                   ),
-                )),
+                ),
               ]));
   }
 }

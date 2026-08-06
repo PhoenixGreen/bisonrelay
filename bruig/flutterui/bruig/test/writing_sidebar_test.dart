@@ -106,8 +106,15 @@ class _ComposerState extends State<_Composer> {
 Future<void> _pumpApp(WidgetTester tester, WritingPreferences prefs,
     {bool reshape = false, bool composing = true}) async {
   var spellcheck = SpellcheckCapability(
-      fetch: () async => SpellcheckData(
-          const ["the", "cleared", "payment"], const [], const []),
+      fetch: () async => SpellcheckData(const [
+            "the",
+            "cleared",
+            "payment",
+            "utilise"
+          ], const [], [
+            GrammarRule(r"\butilise\b", "Wordy -- try \"use\"", "use", "Style",
+                "\"Utilise\" is usually just \"use\".", "suggestion"),
+          ]),
       prefs: prefs);
   await spellcheck.update(FakePlugins({PluginCapability.spellcheckData}));
 
@@ -122,15 +129,25 @@ Future<void> _pumpApp(WidgetTester tester, WritingPreferences prefs,
         value: ThesaurusCapability(
           FakePlugins({PluginCapability.thesaurus}),
           fetch: (w) async => w == "cleared"
-              ? ThesaurusEntry(w, [
-                  ThesaurusSense("verb", const ["settled"], const [])
-                ])
+              ? ThesaurusEntry(
+                  w,
+                  [
+                    ThesaurusSense("verb", const ["settled"], const [])
+                  ],
+                  [ThesaurusDefinition("verb", "freed from any question")],
+                )
               : null,
         ),
       ),
     ],
     child: MaterialApp(home: _Host(reshape: reshape, composing: composing)),
   ));
+  await tester.pumpAndSettle();
+}
+
+/// _open switches the sidebar to [page] the way a reader would.
+Future<void> _open(WidgetTester tester, WritingSidebarPage page) async {
+  await tester.tap(find.byIcon(page.icon));
   await tester.pumpAndSettle();
 }
 
@@ -208,14 +225,19 @@ void main() {
   });
 
   // Reported: the alternatives sat behind a button that opened a sheet, when
-  // the sidebar is already where suggestions live.
-  testWidgets("alternatives appear in the panel, not behind a button",
+  // the sidebar is already where suggestions live. They are now a page of it,
+  // driven by the selection rather than by a search box.
+  testWidgets("the thesaurus page answers for the selected word",
       (tester) async {
     await _pumpApp(tester, WritingPreferences());
     await tester.tap(find.text("Writing Tools"));
     await tester.pumpAndSettle();
+    await _open(tester, WritingSidebarPage.thesaurus);
 
-    expect(find.text("Select a word for alternatives."), findsOneWidget,
+    expect(
+        find.text(
+            "Select a word to see what it means and what else could be said."),
+        findsOneWidget,
         reason: "with nothing selected there is nothing to look up");
 
     // Select "cleared" -- offsets 11..18 of "the paymnt cleared". The field
@@ -230,6 +252,10 @@ void main() {
 
     expect(find.text("settled"), findsOneWidget,
         reason: "the synonym should be listed without another click");
+    // A word's meaning belongs beside its alternatives: choosing between
+    // replacements is guesswork without knowing which sense was meant.
+    expect(find.textContaining("freed from any question"), findsOneWidget,
+        reason: "the definition should be shown alongside the alternatives");
   });
 
   test("a word with no entry says so rather than staying blank", () {
@@ -260,11 +286,11 @@ void main() {
     expect(prefs.enabled, isTrue);
   });
 
-  // Reported: with a long list of issues the alternatives were pushed below
-  // the fold, where nobody would think to scroll for them -- and they answer
-  // a question about what is selected right now.
-  testWidgets("the alternatives stay in view below a long issue list",
-      (tester) async {
+  // Reported, back when everything shared one column: with a long list of
+  // issues the alternatives were pushed below the fold, where nobody would
+  // think to scroll for them. Its own page is the durable answer -- no amount
+  // of anything on another page can push it anywhere.
+  testWidgets("a long issue list cannot bury another page", (tester) async {
     await _pumpApp(tester, WritingPreferences());
     await tester.tap(find.text("Writing Tools"));
     await tester.pumpAndSettle();
@@ -274,8 +300,74 @@ void main() {
     composer.focusNode.requestFocus();
     await tester.pumpAndSettle();
 
-    expect(find.text("Select a word for alternatives."), findsOneWidget,
-        reason: "the alternatives were pushed out of the panel");
+    await _open(tester, WritingSidebarPage.thesaurus);
+    expect(
+        find.text(
+            "Select a word to see what it means and what else could be said."),
+        findsOneWidget);
+  });
+
+  group("the pages", () {
+    // Mistakes and suggestions are separated so the list of things actually
+    // wrong stays short enough to work through.
+    testWidgets("mistakes and phrasing are listed apart", (tester) async {
+      await _pumpApp(tester, WritingPreferences());
+      await tester.tap(find.text("Writing Tools"));
+      await tester.pumpAndSettle();
+
+      var composer = tester.state<_ComposerState>(find.byType(_Composer));
+      composer.controller.text = "the paymnt utilise";
+      await tester.pumpAndSettle();
+
+      expect(find.text("paymnt"), findsOneWidget,
+          reason: "the misspelling belongs on the mistakes page");
+      expect(find.text("utilise"), findsNothing,
+          reason: "a suggestion must not pad the list of real errors");
+
+      await _open(tester, WritingSidebarPage.phrasing);
+      expect(find.text("utilise"), findsOneWidget);
+      expect(find.text("paymnt"), findsNothing);
+    });
+
+    testWidgets("the document page counts the text", (tester) async {
+      await _pumpApp(tester, WritingPreferences());
+      await tester.tap(find.text("Writing Tools"));
+      await tester.pumpAndSettle();
+      await _open(tester, WritingSidebarPage.document);
+
+      // "the paymnt cleared"
+      expect(find.text("Words"), findsOneWidget);
+      expect(find.text("3"), findsWidgets);
+      expect(find.text("18"), findsWidgets, reason: "18 characters");
+    });
+
+    // Counting words needs no dictionary and no rules, so this page is the
+    // one thing here that still works with the feature switched off.
+    testWidgets("the document page survives the switch", (tester) async {
+      var prefs = WritingPreferences();
+      await _pumpApp(tester, prefs);
+      await tester.tap(find.text("Writing Tools"));
+      await tester.pumpAndSettle();
+
+      prefs.enabled = false;
+      await tester.pumpAndSettle();
+      await _open(tester, WritingSidebarPage.document);
+
+      expect(find.text("Words"), findsOneWidget,
+          reason: "the counts do not depend on the checker being on");
+    });
+
+    testWidgets("the nav shows how much is on each page", (tester) async {
+      await _pumpApp(tester, WritingPreferences());
+      await tester.tap(find.text("Writing Tools"));
+      await tester.pumpAndSettle();
+
+      expect(find.byTooltip("Spelling & grammar (1)"), findsOneWidget,
+          reason: "a page with nothing on it should say so before it is "
+              "opened, not after");
+      expect(find.byTooltip("Phrasing"), findsOneWidget,
+          reason: "an empty page carries no count");
+    });
   });
 
   // Reported: the tools appeared in the sidebar slot on every Feed tab, not

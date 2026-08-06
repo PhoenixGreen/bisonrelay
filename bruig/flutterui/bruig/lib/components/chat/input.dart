@@ -37,7 +37,8 @@ class ChatInput extends StatefulWidget {
 }
 
 class _ChatInputState extends State<ChatInput> {
-  final controller = TextEditingController();
+  // Paints the writing marks; a plain controller otherwise.
+  final controller = WritingTextEditingController();
   final MenuController _fmtMenuCtl = MenuController();
 
   // Whether the collapsed tool menu is open (see
@@ -592,105 +593,91 @@ class _ChatInputState extends State<ChatInput> {
 
     var inputRow = Row(children: [
       Expanded(
-        child: SpellcheckedFieldScope(
-          child: TextField(
-            onChanged: (value) {
-              widget.chat.workingMsg = value;
+        child: TextField(
+          onChanged: (value) {
+            widget.chat.workingMsg = value;
 
-              // Check if user is typing an emoji code (:foo:).
-              TypingEmojiSelModel.of(context, listen: false)
-                  .maybeSelectEmojis(controller);
-            },
-            autofocus: isScreenSmall ? false : true,
-            focusNode: widget.inputFocusNode.inputFocusNode,
-            controller: controller,
-            minLines: 1,
-            maxLines: null,
-            contextMenuBuilder:
-                (BuildContext context, EditableTextState editableTextState) =>
-                    AdaptiveTextSelectionToolbar.buttonItems(
-              anchors: editableTextState.contextMenuAnchors,
-              buttonItems: [
-                // Corrections lead: on a word flagged as misspelled they are
-                // the reason the menu was opened.
-                ...spellingContextMenuItems(context, editableTextState),
-                // Paste alone, as before -- the other standard entries were
-                // deliberately left out of this composer.
-                ContextMenuButtonItem(
-                    onPressed: pasteEvent, type: ContextMenuButtonType.paste),
-                // Whatever an enabled plugin capability adds; empty when none
-                // does, which is why nothing here names one.
-                ...thesaurusContextMenuItems(context, editableTextState),
-              ],
+            // Check if user is typing an emoji code (:foo:).
+            TypingEmojiSelModel.of(context, listen: false)
+                .maybeSelectEmojis(controller);
+          },
+          autofocus: isScreenSmall ? false : true,
+          focusNode: widget.inputFocusNode.inputFocusNode,
+          controller: controller,
+          minLines: 1,
+          maxLines: null,
+          // Whatever an enabled plugin capability offers for the text
+          // under the pointer, falling back to this composer's own menu.
+          // Paste alone, as before -- the other standard entries were
+          // deliberately left out of this composer.
+          contextMenuBuilder: (BuildContext context,
+                  EditableTextState editableTextState) =>
+              writingContextMenu(context, editableTextState, fallbackItems: [
+            ContextMenuButtonItem(
+                onPressed: pasteEvent, type: ContextMenuButtonType.paste),
+          ]),
+          style: theme.textStyleFor(context, TextSize.medium, null),
+          keyboardType: TextInputType.multiline,
+          decoration: themedInputDecoration(
+            context,
+            hintText: composerPolish
+                ? "Message ${widget.chat.nick}"
+                : "Start a message",
+            fallbackBorder: const OutlineInputBorder(
+              borderRadius: BorderRadius.all(Radius.circular(30.0)),
+              borderSide: BorderSide(width: 2.0),
             ),
-            style: theme.textStyleFor(context, TextSize.medium, null),
-            keyboardType: TextInputType.multiline,
-            key: Provider.of<SpellcheckCapability>(context).fieldKey,
-            spellCheckConfiguration:
-                Provider.of<SpellcheckCapability>(context).configuration,
-            decoration: themedInputDecoration(
-              context,
-              hintText: composerPolish
-                  ? "Message ${widget.chat.nick}"
-                  : "Start a message",
-              fallbackBorder: const OutlineInputBorder(
-                borderRadius: BorderRadius.all(Radius.circular(30.0)),
-                borderSide: BorderSide(width: 2.0),
-              ),
-              prefixIcon: collapse
-                  ? ClipRect(
-                      child: AnimatedSize(
-                        duration: const Duration(milliseconds: 160),
-                        curve: Curves.easeOut,
-                        alignment: Alignment.centerLeft,
-                        // Capped at half the window and scrollable inside
-                        // that: five tool buttons are wider than a phone's
-                        // composer, and the point of collapsing them is to
-                        // leave the field room, not to take it all back the
-                        // moment the menu opens.
-                        child: ConstrainedBox(
-                          constraints: BoxConstraints(
-                              maxWidth: MediaQuery.sizeOf(context).width * 0.5),
-                          child: SingleChildScrollView(
-                            scrollDirection: Axis.horizontal,
-                            child:
-                                Row(mainAxisSize: MainAxisSize.min, children: [
-                              IconButton(
-                                focusNode: FocusNode(
-                                    canRequestFocus: false,
-                                    skipTraversal: true),
-                                tooltip: _toolsOpen ? "Hide tools" : "More",
-                                onPressed: () =>
-                                    setState(() => _toolsOpen = !_toolsOpen),
-                                icon: Icon(_toolsOpen
-                                    ? Icons.chevron_left
-                                    : Icons.more_horiz),
-                              ),
-                              if (_toolsOpen) ...collapsedTools,
-                            ]),
-                          ),
+            prefixIcon: collapse
+                ? ClipRect(
+                    child: AnimatedSize(
+                      duration: const Duration(milliseconds: 160),
+                      curve: Curves.easeOut,
+                      alignment: Alignment.centerLeft,
+                      // Capped at half the window and scrollable inside
+                      // that: five tool buttons are wider than a phone's
+                      // composer, and the point of collapsing them is to
+                      // leave the field room, not to take it all back the
+                      // moment the menu opens.
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(
+                            maxWidth: MediaQuery.sizeOf(context).width * 0.5),
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(mainAxisSize: MainAxisSize.min, children: [
+                            IconButton(
+                              focusNode: FocusNode(
+                                  canRequestFocus: false, skipTraversal: true),
+                              tooltip: _toolsOpen ? "Hide tools" : "More",
+                              onPressed: () =>
+                                  setState(() => _toolsOpen = !_toolsOpen),
+                              icon: Icon(_toolsOpen
+                                  ? Icons.chevron_left
+                                  : Icons.more_horiz),
+                            ),
+                            if (_toolsOpen) ...collapsedTools,
+                          ]),
                         ),
                       ),
-                    )
-                  : emojiBtn,
-              suffixIcon: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    if (!collapse) ...[
-                      if (formattingToolbar) formatBtn,
-                      if (!isScreenSmall || controller.text == "") attachBtn,
-                      if (composerPolish &&
-                          !widget.chat.isGC &&
-                          (!isScreenSmall || controller.text == ""))
-                        tipBtn,
-                    ],
-                    if (containsUnkxdMembers &&
-                        (!isScreenSmall || controller.text == "" || collapse))
-                      unkxdWarning,
-                    sendBtn,
-                  ]),
-            ),
+                    ),
+                  )
+                : emojiBtn,
+            suffixIcon: Row(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  if (!collapse) ...[
+                    if (formattingToolbar) formatBtn,
+                    if (!isScreenSmall || controller.text == "") attachBtn,
+                    if (composerPolish &&
+                        !widget.chat.isGC &&
+                        (!isScreenSmall || controller.text == ""))
+                      tipBtn,
+                  ],
+                  if (containsUnkxdMembers &&
+                      (!isScreenSmall || controller.text == "" || collapse))
+                    unkxdWarning,
+                  sendBtn,
+                ]),
           ),
         ),
       ),

@@ -109,7 +109,10 @@ class NewPostScreen extends StatefulWidget {
 
 class _NewPostScreenState extends State<NewPostScreen> {
   NewPostModel get post => widget.feed.newPost;
-  TextEditingController contentCtrl = TextEditingController();
+  // A writing controller rather than a plain one: it is what paints the
+  // spelling, grammar and phrasing marks. Behaves exactly like the plain
+  // one when no plugin provides them.
+  TextEditingController contentCtrl = WritingTextEditingController();
   bool loading = false;
 
   // Add embed fields.
@@ -318,25 +321,19 @@ class _NewPostScreenState extends State<NewPostScreen> {
           Expanded(
             child: Container(
               margin: const EdgeInsets.only(bottom: 15),
-              child: SpellcheckedFieldScope(
-                child: TextField(
-                  decoration: const InputDecoration(hintText: "Post Content"),
-                  controller: contentCtrl,
-                  keyboardType: TextInputType.multiline,
-                  maxLines: null,
-                  key: Provider.of<SpellcheckCapability>(context).fieldKey,
-                  spellCheckConfiguration:
-                      Provider.of<SpellcheckCapability>(context).configuration,
-                  contextMenuBuilder: (context, editableTextState) =>
-                      AdaptiveTextSelectionToolbar.buttonItems(
-                    anchors: editableTextState.contextMenuAnchors,
-                    buttonItems: [
-                      ...spellingContextMenuItems(context, editableTextState),
-                      ...editableTextState.contextMenuButtonItems,
-                      ...thesaurusContextMenuItems(context, editableTextState),
-                    ],
-                  ),
-                ),
+              child: TextField(
+                decoration: const InputDecoration(hintText: "Post Content"),
+                controller: contentCtrl,
+                keyboardType: TextInputType.multiline,
+                maxLines: null,
+                // Whatever an enabled plugin capability offers for the text
+                // under the pointer, falling back to the standard menu. The
+                // marks on the text come from contentCtrl, which is a
+                // WritingTextEditingController.
+                contextMenuBuilder: (context, editableTextState) =>
+                    writingContextMenu(context, editableTextState,
+                        fallbackItems:
+                            editableTextState.contextMenuButtonItems),
               ),
             ),
           ),

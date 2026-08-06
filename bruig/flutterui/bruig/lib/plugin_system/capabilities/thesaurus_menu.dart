@@ -1,20 +1,26 @@
-import 'package:bruig/plugin_system/capabilities/spellcheck_menu.dart';
+import 'package:bruig/plugin_system/capabilities/spellcheck_actions.dart';
 import 'package:bruig/plugin_system/capabilities/thesaurus.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:golib_plugin/definitions.dart';
 import 'package:provider/provider.dart';
 
-// thesaurus_menu.dart is how the thesaurus capability reaches a composer:
-// as an extra entry in the text-selection toolbar, which is the menu a
-// right-click opens on desktop and a long-press on mobile.
+// thesaurus_menu.dart is how the thesaurus capability reaches a composer for
+// a word that is *not* flagged: as an extra entry in the text-selection
+// toolbar, which is the menu a right-click opens on desktop and a long-press
+// on mobile.
+//
+// A flagged word takes the explanatory popup in writing_popup.dart instead.
+// The two are different questions -- "what did I get wrong" against "what
+// does this mean, and what else could I have said" -- and answering the
+// second in a sheet keeps the first uncluttered.
 //
 // Living here rather than in each composer is what keeps the app's own text
 // fields free of it: a composer adds `...thesaurusContextMenuItems(...)` to
 // its menu and is done, and the entry disappears on its own when no plugin
 // provides synonyms.
 
-/// thesaurusContextMenuItems returns the "Synonyms" entry for a composer's
+/// thesaurusContextMenuItems returns the lookup entry for a composer's
 /// selection toolbar, or nothing at all.
 ///
 /// Nothing is the common case, and deliberately silent: no thesaurus plugin
@@ -38,11 +44,21 @@ List<ContextMenuButtonItem> thesaurusContextMenuItems(
   // A word the dictionary doesn't have is not a word a thesaurus can answer
   // for, so offering the lookup would promise a list that is always empty.
   // The corrections shown in its place are what was actually wanted.
-  if (misspellingAt(editableTextState) != null) return const [];
+  //
+  // Only a mistake suppresses it. A phrasing suggestion is an opinion about a
+  // word that is spelled perfectly well, and looking it up is a reasonable
+  // thing to want to do next.
+  if (issuesAtSelection(context, editableTextState)
+      .any((issue) => issue.kind.isMistake)) {
+    return const [];
+  }
 
   return [
     ContextMenuButtonItem(
-      label: "Synonyms",
+      // "Look up" rather than "Synonyms", because the sheet now answers what
+      // the word means as well as what could replace it, and a label naming
+      // only half of that hides the other half from anyone reading the menu.
+      label: "Look up",
       onPressed: () {
         // Close the toolbar before the sheet opens: leaving it up puts two
         // overlapping popups on screen, both anchored to the same selection.
@@ -102,6 +118,63 @@ Future<void> showThesaurusSheet(
   );
 }
 
+/// lookedUpAs names the form a provider answered for when it is not the form
+/// that was asked about, or null when the two agree.
+///
+/// A provider reduces a word to the base form its data is keyed by, so
+/// selecting "children" returns the entry for "child". Saying so matters:
+/// without it the reader is left to work out for themselves whether a
+/// definition headed by a different word is really about the one they picked,
+/// and the answer looks like a mistake.
+String? lookedUpAs(String asked, ThesaurusEntry entry) {
+  var answered = entry.word.trim().toLowerCase();
+  if (answered.isEmpty || answered == asked.trim().toLowerCase()) return null;
+  return answered;
+}
+
+/// definitionList renders a word's meanings, or nothing when a provider
+/// supplied none.
+///
+/// Shared with the writing sidebar, which shows the same thing in a narrower
+/// space: two renderings of one list would drift apart, and the numbering and
+/// the part-of-speech labels are exactly the details that would drift.
+List<Widget> definitionList(
+    ThemeNotifier theme, List<ThesaurusDefinition> definitions) {
+  if (definitions.isEmpty) return const [];
+  return [
+    for (var i = 0; i < definitions.length; i++)
+      Padding(
+        padding: const EdgeInsets.only(bottom: 6),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          // Numbered, because a word's meanings are a list of alternatives
+          // rather than one description in several parts, and unnumbered
+          // lines read as the latter.
+          SizedBox(
+            width: 16,
+            child: Text("${i + 1}.",
+                style: TextStyle(
+                    fontSize: 12, color: theme.colors.onSurfaceVariant)),
+          ),
+          Expanded(
+            child: Text.rich(
+                TextSpan(children: [
+                  if (definitions[i].partOfSpeech.isNotEmpty)
+                    TextSpan(
+                      text: "${definitions[i].partOfSpeech}  ",
+                      style: TextStyle(
+                        fontStyle: FontStyle.italic,
+                        color: theme.colors.onSurfaceVariant,
+                      ),
+                    ),
+                  TextSpan(text: definitions[i].text),
+                ]),
+                style: const TextStyle(fontSize: 12, height: 1.35)),
+          ),
+        ]),
+      ),
+  ];
+}
+
 class _ThesaurusSheet extends StatefulWidget {
   final ThesaurusCapability capability;
   final String word;
@@ -147,7 +220,7 @@ class _ThesaurusSheetState extends State<_ThesaurusSheet> {
             if (entry == null || entry.isEmpty) {
               return Padding(
                 padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),
-                child: Text('No synonyms for "${widget.word}".',
+                child: Text('Nothing found for "${widget.word}".',
                     style: TextStyle(color: theme.colors.onSurfaceVariant)),
               );
             }
@@ -166,10 +239,28 @@ class _ThesaurusSheetState extends State<_ThesaurusSheet> {
       children: [
         Padding(
           padding: const EdgeInsets.only(bottom: 8),
-          child: Text(widget.word,
-              style:
-                  const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+          child: Text.rich(TextSpan(children: [
+            TextSpan(
+                text: widget.word,
+                style:
+                    const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+            if (lookedUpAs(widget.word, entry) case var base?)
+              TextSpan(
+                text: "  \u2192  $base",
+                style: TextStyle(
+                    fontSize: 14, color: theme.colors.onSurfaceVariant),
+              ),
+          ])),
         ),
+        // Meanings first. Someone who does not know the word cannot judge a
+        // list of replacements for it, and someone who does will read past
+        // this in a glance.
+        ...definitionList(theme, entry.definitions),
+        if (entry.definitions.isNotEmpty && entry.senses.isNotEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 12),
+            child: Divider(height: 1),
+          ),
         for (var sense in entry.senses) ...[
           if (sense.partOfSpeech.isNotEmpty)
             Padding(

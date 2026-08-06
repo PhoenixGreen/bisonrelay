@@ -24,7 +24,7 @@ Future<SpellcheckCapability> _capability(WritingPreferences prefs) async {
 }
 
 void main() {
-  _fieldKeyTests();
+  _descriptionTests();
   // StorageManager is backed by shared_preferences, which needs a fake store
   // in a test binding.
   setUp(() => SharedPreferences.setMockInitialValues({}));
@@ -124,12 +124,11 @@ void main() {
     const text = "the  paymnt";
 
     expect(capability.review(text), isNotEmpty);
-    expect(capability.configuration, isNotNull);
 
     prefs.enabled = false;
+    // review() is what the field paints from, so this is the inline marks
+    // going as well as the panel emptying.
     expect(capability.review(text), isEmpty);
-    expect(capability.configuration, isNull,
-        reason: "the inline underlines must go too, not just the panel");
 
     prefs.enabled = true;
     expect(capability.review(text), isNotEmpty);
@@ -148,43 +147,15 @@ void main() {
   });
 }
 
-// Reported: the on/off switch did nothing. EditableText reads
-// spellCheckConfiguration once, in initState, and didUpdateWidget never
-// looks at it again -- so a live field goes on checking with the
-// configuration it was born with, whatever it is handed later. The only way
-// the change lands is for the field to be rebuilt, which is what fieldKey is
-// for.
-void _fieldKeyTests() {
-  test("the field key changes when checking is switched off", () async {
+// Reported: the disabled-checks list in Settings read "check 1, check 2".
+// A rule is identified by its pattern, which is no use to a reader, so the
+// message is stored alongside it -- and every place that turns a rule off has
+// to pass it, not just the one that was fixed at the time.
+void _descriptionTests() {
+  test("turning a check off records what it was", () async {
     var prefs = WritingPreferences();
-    var capability = SpellcheckCapability(
-        fetch: () async => SpellcheckData(const ["the"], const [], const []),
-        prefs: prefs);
-    await capability.update(FakePlugins({PluginCapability.spellcheckData}));
-
-    var whileOn = capability.fieldKey;
-    prefs.enabled = false;
-    expect(capability.fieldKey, isNot(whileOn),
-        reason: "the field would otherwise keep checking after the switch");
-
-    prefs.enabled = true;
-    expect(capability.fieldKey, whileOn,
-        reason: "switching back should restore the original field");
-  });
-
-  // The other half: an override must NOT rebuild the field, since that drops
-  // focus and selection mid-sentence. Those clear their underline by
-  // refreshing the results in place instead.
-  test("adding a word to the dictionary leaves the field alone", () async {
-    var prefs = WritingPreferences();
-    var capability = SpellcheckCapability(
-        fetch: () async => SpellcheckData(const ["the"], const [], const []),
-        prefs: prefs);
-    await capability.update(FakePlugins({PluginCapability.spellcheckData}));
-
-    var before = capability.fieldKey;
-    await prefs.addToDictionary("dcrdex");
-    prefs.ignoreOnce("bisonrelay");
-    expect(capability.fieldKey, before);
+    await prefs.disableCheck(r"\balot\b",
+        description: "\"a lot\" is two words");
+    expect(prefs.disabledChecks[r"\balot\b"], "\"a lot\" is two words");
   });
 }

@@ -1,7 +1,9 @@
 import 'package:bruig/plugin_system/capabilities/spellcheck.dart';
 import 'package:bruig/plugin_system/capabilities/thesaurus.dart';
+import 'package:bruig/plugin_system/capabilities/thesaurus_menu.dart';
 import 'package:golib_plugin/definitions.dart';
 import 'package:bruig/plugin_system/capabilities/writing_prefs.dart';
+import 'package:bruig/plugin_system/capabilities/writing_stats.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
@@ -15,6 +17,15 @@ import 'package:provider/provider.dart';
 // editor it competed with the text for vertical room and had to be capped;
 // beside it, it can simply be as long as it needs to be, and the post keeps
 // its full height.
+//
+// It is four pages behind an icon bar rather than one long column, because
+// the four answer different questions and are wanted at different moments.
+// Mistakes are read while finishing a draft; phrasing is read when the draft
+// is already correct and could be better; the thesaurus is consulted a word
+// at a time while writing; and the counts are checked once, at the end. Put
+// end to end they made a column nobody would scroll to the bottom of, and
+// the two that live below the fold are the two anyone would have to go
+// looking for.
 
 /// WritingSidebarController connects a composer to the screen that owns the
 /// sidebar slot beside it.
@@ -120,12 +131,35 @@ class WritingSidebar extends StatefulWidget {
   State<WritingSidebar> createState() => _WritingSidebarState();
 }
 
-/// _alternativesHeight is what the pinned area always occupies. Fixed on
-/// purpose -- see the note where it is used.
-const double _alternativesHeight = 150;
+/// WritingSidebarPage is one of the sidebar's four views.
+enum WritingSidebarPage {
+  /// What is wrong: misspellings and the grammar rules, which are the two
+  /// things worth fixing before sending.
+  mistakes(Icons.spellcheck, "Spelling & grammar"),
+
+  /// What could be better: wordiness, cliches, the passive voice, a word used
+  /// four times in a paragraph. Opinions, kept away from the mistakes so the
+  /// list of things that are actually wrong stays short.
+  phrasing(Icons.auto_fix_high, "Phrasing"),
+
+  /// What else could have been said, and what the selected word means.
+  thesaurus(Icons.menu_book_outlined, "Thesaurus"),
+
+  /// How much there is of it.
+  document(Icons.bar_chart, "Document");
+
+  final IconData icon;
+  final String title;
+  const WritingSidebarPage(this.icon, this.title);
+}
 
 class _WritingSidebarState extends State<WritingSidebar> {
   TextEditingController? get _editor => widget.controller;
+
+  /// The page on show. Kept in the widget's state rather than the controller,
+  /// so it resets when the sidebar is closed and reopened: coming back to it
+  /// should start at the mistakes, which is what it is mostly for.
+  WritingSidebarPage _current = WritingSidebarPage.mistakes;
 
   // Owned rather than left implicit, so the Scrollbar and the view it tracks
   // are certainly the same one.
@@ -203,56 +237,79 @@ class _WritingSidebarState extends State<WritingSidebar> {
     var spellcheck = context.watch<SpellcheckCapability>();
     var prefs = context.watch<WritingPreferences>();
     var theme = ThemeNotifier.of(context);
-    var issues = spellcheck.review(_editor?.text ?? "");
+    var issues = prefs.enabled ? spellcheck.review(_editor?.text ?? "") : null;
+
+    var mistakes = issues?.where((i) => i.kind.isMistake).toList() ?? const [];
+    var phrasing = issues?.where((i) => !i.kind.isMistake).toList() ?? const [];
 
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      _header(theme, prefs, issues.length),
+      _header(theme, prefs),
+      _nav(theme, {
+        WritingSidebarPage.mistakes: mistakes.length,
+        WritingSidebarPage.phrasing: phrasing.length,
+      }),
       const Divider(height: 1),
-      Expanded(
-        child: !prefs.enabled
-            ? _note(theme, "Writing tools are off for this session.")
-            : ListView(
-                padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
-                children: [
-                  if (issues.isEmpty)
-                    _note(theme, "Nothing to flag in this post."),
-                  for (var issue in issues) _issueRow(theme, prefs, issue),
-                ],
-              ),
-      ),
-      // Pinned rather than last in the list. It answers a question about
-      // whatever is selected right now, so it has to be visible at the
-      // moment of selecting -- and a post with a dozen issues had pushed it
-      // below the fold, where nobody would think to scroll for it.
-      //
-      // The border is what makes it read as a separate area rather than the
-      // tail of the issue list, now that it no longer scrolls with it.
-      if (prefs.enabled)
-        Container(
-          width: double.infinity,
-          decoration: BoxDecoration(
-            border: Border(top: BorderSide(color: theme.colors.outlineVariant)),
-          ),
-          padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
-          child: _thesaurusRow(context, theme),
-        ),
+      Expanded(child: _page(context, theme, prefs, mistakes, phrasing)),
     ]);
   }
 
-  Widget _header(ThemeNotifier theme, WritingPreferences prefs, int count) {
+  Widget _page(
+    BuildContext context,
+    ThemeNotifier theme,
+    WritingPreferences prefs,
+    List<WritingIssue> mistakes,
+    List<WritingIssue> phrasing,
+  ) {
+    // The document page is the exception: counting words needs no provider
+    // and no rules, so it keeps working when everything else is switched off.
+    if (_current == WritingSidebarPage.document) {
+      return _documentPage(theme);
+    }
+    if (!prefs.enabled) {
+      return _note(theme, "Writing tools are off for this session.");
+    }
+    switch (_current) {
+      case WritingSidebarPage.mistakes:
+        return _issueList(theme, prefs, mistakes,
+            empty: "Nothing to fix in this post.");
+      case WritingSidebarPage.phrasing:
+        return _issueList(theme, prefs, phrasing,
+            empty: "Nothing to suggest for this post.");
+      case WritingSidebarPage.thesaurus:
+        return _thesaurusPage(context, theme);
+      case WritingSidebarPage.document:
+        return _documentPage(theme);
+    }
+  }
+
+  Widget _issueList(
+    ThemeNotifier theme,
+    WritingPreferences prefs,
+    List<WritingIssue> issues, {
+    required String empty,
+  }) =>
+      ListView(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
+        children: [
+          if (issues.isEmpty) _note(theme, empty),
+          for (var issue in issues) _issueRow(theme, prefs, issue),
+        ],
+      );
+
+  Widget _header(ThemeNotifier theme, WritingPreferences prefs) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 10, 4, 10),
+      padding: const EdgeInsets.fromLTRB(12, 10, 4, 6),
       child: Row(children: [
         Expanded(
           child: Text(
-            prefs.enabled && count > 0 ? "Writing ($count)" : "Writing",
+            _current.title,
             style: const TextStyle(fontWeight: FontWeight.w600),
             overflow: TextOverflow.ellipsis,
           ),
         ),
         // The whole feature's switch, where the results of it are: turning
-        // it off from here is the obvious move when the underlines are in
-        // the way, and it takes the inline ones with it.
+        // it off from here is the obvious move when the marks are in the
+        // way, and it takes the inline ones with it.
         Tooltip(
           message: prefs.enabled ? "Turn writing tools off" : "Turn on",
           child: Switch(
@@ -268,6 +325,137 @@ class _WritingSidebarState extends State<WritingSidebar> {
       ]),
     );
   }
+
+  /// _nav is the row of icons that switches pages.
+  ///
+  /// The counts sit on the two pages that have them, because the reason to
+  /// look at this row is usually to find out whether there is anything to
+  /// look at -- and a page with nothing on it should say so before it is
+  /// opened, not after.
+  Widget _nav(ThemeNotifier theme, Map<WritingSidebarPage, int> counts) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: [
+          for (var page in WritingSidebarPage.values)
+            _navButton(theme, page, counts[page] ?? 0),
+        ],
+      ),
+    );
+  }
+
+  Widget _navButton(ThemeNotifier theme, WritingSidebarPage page, int count) {
+    var selected = page == _current;
+    return Expanded(
+      child: Tooltip(
+        message: count > 0 ? "${page.title} ($count)" : page.title,
+        child: InkWell(
+          onTap: () => setState(() => _current = page),
+          borderRadius: BorderRadius.circular(6),
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 7),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(6),
+              color: selected ? theme.colors.secondaryContainer : null,
+            ),
+            child: Column(children: [
+              Icon(
+                page.icon,
+                size: 17,
+                color: selected
+                    ? theme.colors.onSecondaryContainer
+                    : theme.colors.onSurfaceVariant,
+              ),
+              // A count under the icon rather than a badge over it: a badge
+              // on a 17px icon in a narrow column is unreadable, and these
+              // numbers reach two digits often enough to matter.
+              SizedBox(
+                height: 12,
+                child: count == 0
+                    ? null
+                    : Text("$count",
+                        style: TextStyle(
+                          fontSize: 10,
+                          height: 1.2,
+                          color: selected
+                              ? theme.colors.onSecondaryContainer
+                              : theme.colors.onSurfaceVariant,
+                        )),
+              ),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// _documentPage is the counts.
+  ///
+  /// Rebuilt from the text on every change rather than cached: everything on
+  /// it is a single pass over a message, which is nothing beside the spell
+  /// check already running on the same keystroke.
+  Widget _documentPage(ThemeNotifier theme) {
+    var stats = WritingStats.of(_editor?.text ?? "");
+    var ease = stats.readingEaseLabel;
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 16),
+      children: [
+        _stat(theme, "Words", "${stats.words}"),
+        _stat(theme, "Characters", "${stats.characters}"),
+        _stat(theme, "Characters (no spaces)", "${stats.charactersNoSpaces}"),
+        _stat(theme, "Sentences", "${stats.sentences}"),
+        _stat(theme, "Paragraphs", "${stats.paragraphs}"),
+        _stat(theme, "Lines", "${stats.lines}"),
+        _stat(theme, "Pages", stats.pages.toStringAsFixed(1)),
+        const SizedBox(height: 8),
+        const Divider(height: 1),
+        const SizedBox(height: 8),
+        _stat(theme, "Reading time", _readingTime(stats)),
+        // Absent rather than shown as a dash on text too short to score: a
+        // reading-ease figure for one sentence is arithmetic, not
+        // information, and printing it invites it to be believed.
+        if (ease != null)
+          _stat(theme, "Reading ease", "$ease (${stats.readingEase!.round()})"),
+        Padding(
+          padding: const EdgeInsets.only(top: 10),
+          child: Text(
+            ease == null
+                ? "Reading ease appears once there is enough text to score."
+                : "Reading ease runs 0 to 100; plain English scores 60-70. "
+                    "Pages assume $wordsPerPage words; reading time assumes "
+                    "$wordsPerMinute words a minute.",
+            style: TextStyle(
+                fontSize: 10,
+                height: 1.4,
+                color: theme.colors.onSurfaceVariant),
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _readingTime(WritingStats stats) {
+    var seconds = stats.readingTime.inSeconds;
+    if (seconds < 60) return "$seconds sec";
+    var minutes = stats.readingTime.inMinutes;
+    return "$minutes min";
+  }
+
+  Widget _stat(ThemeNotifier theme, String label, String value) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 3),
+        child: Row(children: [
+          Expanded(
+            child: Text(label,
+                style: TextStyle(
+                    fontSize: 12, color: theme.colors.onSurfaceVariant)),
+          ),
+          Text(value,
+              style:
+                  const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+        ]),
+      );
 
   Widget _note(ThemeNotifier theme, String text) => Padding(
         padding: const EdgeInsets.all(12),
@@ -319,7 +507,12 @@ class _WritingSidebarState extends State<WritingSidebar> {
               // exactly where "stop telling me about this" belongs.
               if (issue.checkId != null)
                 _dismissChip(
-                    theme, "Turn off", () => prefs.disableCheck(issue.checkId!))
+                    theme,
+                    "Turn off",
+                    // The description is what names the rule in Settings.
+                    // Without it the list there reads "check 1, check 2".
+                    () => prefs.disableCheck(issue.checkId!,
+                        description: issue.message))
               else ...[
                 _dismissChip(
                     theme, "Ignore", () => prefs.ignoreOnce(issue.text)),
@@ -344,17 +537,18 @@ class _WritingSidebarState extends State<WritingSidebar> {
         onPressed: onTap,
       );
 
-  /// _thesaurusRow shows the alternatives for whatever word is selected,
-  /// laid out in the panel itself.
+  /// _thesaurusPage shows what the selected word means and what else could
+  /// have been said.
   ///
-  /// Inline rather than behind a button: the sidebar is already the place
-  /// where suggestions live, and making the user click through to a sheet
-  /// for the one kind of suggestion that isn't listed there was a step for
-  /// nothing. The lookup only runs while a word is actually selected, so an
-  /// idle panel asks the provider nothing.
-  Widget _thesaurusRow(BuildContext context, ThemeNotifier theme) {
+  /// Selection-driven rather than search-driven: the word wanted is almost
+  /// always the one under the cursor, and typing it again into a box to ask
+  /// about it is a step for nothing. The lookup only runs while a word is
+  /// actually selected, so an idle page asks the provider nothing.
+  Widget _thesaurusPage(BuildContext context, ThemeNotifier theme) {
     var thesaurus = context.read<ThesaurusCapability?>();
-    if (thesaurus == null || !thesaurus.available) return const SizedBox();
+    if (thesaurus == null || !thesaurus.available) {
+      return _note(theme, "No plugin provides a thesaurus.");
+    }
 
     var selection =
         _editor?.selection ?? const TextSelection.collapsed(offset: -1);
@@ -364,39 +558,28 @@ class _WritingSidebarState extends State<WritingSidebar> {
       word = ThesaurusCapability.normalizeWord(selection.textInside(text));
     }
 
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      if (word == null)
-        Text("Select a word for alternatives.",
-            style:
-                TextStyle(fontSize: 11, color: theme.colors.onSurfaceVariant))
-      else
-        // A fixed height rather than one that grows to fit: the area is
-        // scrollable, and a box that resized itself for every word made its
-        // scrollbar appear, move and vanish as the selection changed, which
-        // is far more distracting than a little empty space.
-        SizedBox(
-          height: _alternativesHeight,
-          child: Scrollbar(
-            controller: _alternativesScroll,
-            thumbVisibility: true,
-            child: SingleChildScrollView(
-              controller: _alternativesScroll,
-              // Room for the scrollbar at the sidebar's edge, so the chips
-              // are not printed underneath it.
-              padding: const EdgeInsets.only(right: 10),
-              child: FutureBuilder<ThesaurusEntry?>(
-                // Keyed by the word so a new selection starts a new lookup
-                // rather than showing the previous word's answer while it
-                // loads.
-                key: ValueKey(word),
-                future: thesaurus.lookUp(word),
-                builder: (context, snapshot) =>
-                    _alternatives(theme, word!, selection, snapshot),
-              ),
-            ),
-          ),
+    if (word == null) {
+      return _note(theme,
+          "Select a word to see what it means and what else could be said.");
+    }
+    return Scrollbar(
+      controller: _alternativesScroll,
+      thumbVisibility: true,
+      child: SingleChildScrollView(
+        controller: _alternativesScroll,
+        // Room for the scrollbar at the sidebar's edge, so the chips are not
+        // printed underneath it.
+        padding: const EdgeInsets.fromLTRB(12, 10, 18, 16),
+        child: FutureBuilder<ThesaurusEntry?>(
+          // Keyed by the word so a new selection starts a new lookup rather
+          // than showing the previous word's answer while it loads.
+          key: ValueKey(word),
+          future: thesaurus.lookUp(word),
+          builder: (context, snapshot) =>
+              _alternatives(theme, word!, selection, snapshot),
         ),
-    ]);
+      ),
+    );
   }
 
   Widget _alternatives(ThemeNotifier theme, String word,
@@ -408,12 +591,37 @@ class _WritingSidebarState extends State<WritingSidebar> {
     }
     var entry = snapshot.data;
     if (entry == null || entry.isEmpty) {
-      return Text('No alternatives for "$word".', style: muted);
+      return Text('Nothing found for "$word".', style: muted);
     }
 
+    var base = lookedUpAs(word, entry);
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text('Alternatives for "$word"',
-          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
+      Text.rich(TextSpan(children: [
+        TextSpan(
+            text: '"$word"',
+            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
+        // The provider reduced the word to the form its data is keyed by, so
+        // "children" is answered as "child". Left unsaid, an entry headed by
+        // a different word reads as a mistake.
+        if (base != null) TextSpan(text: "  \u2192  $base", style: muted),
+      ])),
+      // What the word means, before what could replace it. Choosing between
+      // alternatives is guesswork without knowing which sense of the word was
+      // meant, and this is the only place the panel says.
+      if (entry.definitions.isNotEmpty)
+        Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: definitionList(theme, entry.definitions),
+          ),
+        ),
+      if (entry.senses.isNotEmpty)
+        Padding(
+          padding: const EdgeInsets.only(top: 4, bottom: 2),
+          child: Text("Alternatives",
+              style: muted.copyWith(fontWeight: FontWeight.w600)),
+        ),
       for (var sense in entry.senses) ...[
         if (sense.partOfSpeech.isNotEmpty)
           Padding(

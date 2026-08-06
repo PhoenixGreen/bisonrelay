@@ -48,17 +48,21 @@ const _dictionary = [
   "bisonrelay",
 ];
 
-Future<SpellCheckConfiguration> _configFor(SpellcheckData data) async {
+Future<SpellcheckCapability> _configFor(SpellcheckData data) async {
   var capability = SpellcheckCapability(fetch: () async => data);
   await capability.update(FakePlugins({PluginCapability.spellcheckData}));
-  return capability.configuration!;
+  return capability;
 }
 
+/// _check is what the field paints from, expressed as the spans these tests
+/// were written against. review() is now the single source: the old
+/// SpellCheckService wrapper around it is gone.
 Future<List<SuggestionSpan>> _check(
-    SpellCheckConfiguration config, String text) async {
-  var spans = await config.spellCheckService!
-      .fetchSpellCheckSuggestions(const Locale("en", "US"), text);
-  return spans ?? [];
+    SpellcheckCapability config, String text) async {
+  return [
+    for (var issue in config.review(text))
+      SuggestionSpan(issue.range, issue.suggestions),
+  ];
 }
 
 void main() {
@@ -160,7 +164,7 @@ void main() {
     // These run in Dart's regex engine, which is the only place the
     // backreference rules can be exercised at all -- Go's RE2 cannot compile
     // them, so the plugin's own tests skip them.
-    Future<SpellCheckConfiguration> withRules(List<GrammarRule> rules) =>
+    Future<SpellcheckCapability> withRules(List<GrammarRule> rules) =>
         _configFor(SpellcheckData(_dictionary, const [], rules));
 
     test("a repeated word is caught and the duplicate dropped", () async {
@@ -230,7 +234,7 @@ void _reviewTests() {
     expect(issues, hasLength(2));
 
     // Ordered by position: the doubled space precedes the misspelling.
-    expect(issues[0].kind, WritingIssueKind.style);
+    expect(issues[0].kind, WritingIssueKind.grammar);
     expect(issues[0].message, "Multiple spaces");
     expect(issues[1].kind, WritingIssueKind.spelling);
     expect(issues[1].text, "recieve");
@@ -288,9 +292,10 @@ void _spanOrderTests() {
     var capability = SpellcheckCapability(
         fetch: () async => SpellcheckData(_dictionary, const [], rules));
     await capability.update(FakePlugins({PluginCapability.spellcheckData}));
-    var spans = await capability.configuration!.spellCheckService!
-        .fetchSpellCheckSuggestions(const Locale("en", "US"), text);
-    return spans ?? [];
+    return [
+      for (var issue in capability.review(text))
+        SuggestionSpan(issue.range, issue.suggestions),
+    ];
   }
 
   test("spans are sorted by position", () async {
@@ -382,9 +387,7 @@ void _rankingTests() {
     var capability = SpellcheckCapability(
         fetch: () async => SpellcheckData(words, common, const []));
     await capability.update(FakePlugins({PluginCapability.spellcheckData}));
-    var spans = await capability.configuration!.spellCheckService!
-        .fetchSpellCheckSuggestions(const Locale("en", "US"), typo);
-    return spans!.single.suggestions;
+    return capability.review(typo).single.suggestions;
   }
 
   // Reported: "recieved" did not offer "received". It was found, at distance
@@ -412,9 +415,8 @@ void _rankingTests() {
     var capability = SpellcheckCapability(
         fetch: () async => SpellcheckData(words, const [], const []));
     await capability.update(FakePlugins({PluginCapability.spellcheckData}));
-    var spans = await capability.configuration!.spellCheckService!
-        .fetchSpellCheckSuggestions(const Locale("en", "US"), "recieved");
-    expect(spans!.single.suggestions, contains("received"));
+    expect(
+        capability.review("recieved").single.suggestions, contains("received"));
   });
 }
 
@@ -446,7 +448,7 @@ void _fixPreferenceTests() {
   test("a style rule beats a spelling issue on the same span", () async {
     var issues = await reviewOf("thanks alot");
     var issue = issues.firstWhere((i) => i.text == "alot");
-    expect(issue.kind, WritingIssueKind.style);
+    expect(issue.kind, WritingIssueKind.grammar);
     expect(issue.suggestions, contains("a lot"));
   });
 
@@ -527,7 +529,7 @@ void _lookaroundRuleTests() {
     await capability.update(FakePlugins({PluginCapability.spellcheckData}));
     return capability
         .review(text)
-        .where((i) => i.kind == WritingIssueKind.style)
+        .where((i) => i.kind == WritingIssueKind.grammar)
         .toList();
   }
 
@@ -650,7 +652,7 @@ void _confusionRuleTests() {
     await capability.update(FakePlugins({PluginCapability.spellcheckData}));
     return capability
         .review(text)
-        .where((i) => i.kind == WritingIssueKind.style)
+        .where((i) => i.kind == WritingIssueKind.grammar)
         .toList();
   }
 

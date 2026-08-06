@@ -112,64 +112,59 @@ void main() {
 // Reported: selecting an ordinary word gave no alternatives. A thesaurus is
 // keyed by the forms its source recorded, and those are not the forms people
 // type -- "happy" is in it, "happier" is not.
+//
+// This used to be answered here, by trying a series of guessed stems. It is
+// now answered by the provider, which has its source's own irregular-word
+// lists and reaches "go" from "went" where no suffix rule could. What is left
+// to check on this side is that the app no longer second-guesses it.
 void _baseFormTests() {
-  ThesaurusEntry entryFor(String w) => ThesaurusEntry(w, [
-        ThesaurusSense("adj", const ["glad"], const [])
-      ]);
+  ThesaurusEntry entryFor(String w, {String? answeredAs}) => ThesaurusEntry(
+        answeredAs ?? w,
+        [
+          ThesaurusSense("adj", const ["glad"], const [])
+        ],
+      );
 
-  test("an inflected word falls back to its stem", () async {
+  test("the word is sent as typed, once", () async {
     var asked = <String>[];
     var capability = ThesaurusCapability(
       FakePlugins({PluginCapability.thesaurus}),
       fetch: (w) async {
         asked.add(w);
-        return w == "happy" ? entryFor(w) : null;
+        return w == "happier" ? entryFor(w, answeredAs: "happy") : null;
       },
     );
 
-    var entry = await capability.lookUp("happier");
-    expect(entry, isNotNull, reason: '"happier" should reach "happy"');
-    expect(asked, ["happier", "happy"],
-        reason: "the word itself is always tried first");
+    expect(await capability.lookUp("happier"), isNotNull);
+    expect(asked, ["happier"],
+        reason: "reducing the word is the provider's job, not the app's");
   });
 
-  test("plurals and participles reduce too", () async {
-    Future<bool> found(String typed, String stem) async {
-      var capability = ThesaurusCapability(
-        FakePlugins({PluginCapability.thesaurus}),
-        fetch: (w) async => w == stem ? entryFor(w) : null,
-      );
-      return await capability.lookUp(typed) != null;
-    }
-
-    expect(await found("worries", "worry"), isTrue);
-    expect(await found("walking", "walk"), isTrue);
-    expect(await found("wouldn't", "would"), isTrue);
-    expect(await found("payment's", "payment"), isTrue);
-  });
-
-  // A reduction is only ever accepted if the provider actually has it, so a
-  // wrong guess costs a lookup and nothing else.
-  test("a wrong guess yields nothing rather than the wrong word", () async {
-    var capability = ThesaurusCapability(
-      FakePlugins({PluginCapability.thesaurus}),
-      fetch: (w) async => null,
-    );
-    expect(await capability.lookUp("bus"), isNull);
-  });
-
-  test("the whole chain is cached, misses included", () async {
-    var calls = 0;
+  // A miss used to cost six round trips into the wasm sandbox, one per
+  // guessed stem. Names and typos are the common case for a miss.
+  test("a miss costs one lookup", () async {
+    var asked = <String>[];
     var capability = ThesaurusCapability(
       FakePlugins({PluginCapability.thesaurus}),
       fetch: (w) async {
-        calls++;
+        asked.add(w);
         return null;
       },
     );
-    await capability.lookUp("happier");
-    var afterFirst = calls;
-    await capability.lookUp("happier");
-    expect(calls, afterFirst, reason: "the second lookup asked again");
+
+    expect(await capability.lookUp("kencameron"), isNull);
+    expect(asked, hasLength(1));
+  });
+
+  // The provider answers for a form the reader did not select, so the reader
+  // has to be told which -- otherwise an entry headed by a different word
+  // reads as a mistake.
+  test("the form answered for is reported when it differs", () {
+    expect(lookedUpAs("children", entryFor("x", answeredAs: "child")), "child");
+    expect(lookedUpAs("child", entryFor("child")), isNull);
+    expect(lookedUpAs("Child", entryFor("child")), isNull,
+        reason: "case alone is not a different word");
+    expect(lookedUpAs("child", entryFor("", answeredAs: "")), isNull,
+        reason: "a provider that names no form says nothing");
   });
 }

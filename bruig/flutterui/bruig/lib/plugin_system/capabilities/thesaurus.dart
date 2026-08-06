@@ -46,56 +46,34 @@ class ThesaurusCapability {
   /// a number, punctuation) is rejected here rather than sent onward: no
   /// thesaurus keyed on words can answer it, and asking wakes the plugin for
   /// nothing.
+  ///
+  /// The word is sent as typed. This used to try a series of guessed base
+  /// forms as well -- stripping "-ing", "-ies", "-ed" and so on -- because a
+  /// thesaurus is keyed by the forms its source recorded, and "happier" is
+  /// not one of them. That belongs on the provider's side of the line and is
+  /// now done there, with the source's own irregular-word lists rather than
+  /// suffix guesses: "went" reaches "go" and "children" reaches "child",
+  /// which no amount of guessing here would have managed.
+  ///
+  /// Removing it also stopped a miss costing six round trips into the wasm
+  /// sandbox. A name or a typo now costs one.
+  ///
+  /// The answer reports which form it is for, in [ThesaurusEntry.word], and
+  /// that need not be the word asked about.
   Future<ThesaurusEntry?> lookUp(String word) async {
     var key = normalizeWord(word);
     if (key == null || !available) return null;
     if (_cache.containsKey(key)) return _cache[key];
 
     ThesaurusEntry? entry;
-    for (var candidate in [key, ..._baseForms(key)]) {
-      try {
-        entry = await _fetch(candidate);
-      } catch (exception) {
-        debugPrint("Thesaurus lookup failed for \"$candidate\": $exception");
-        entry = null;
-      }
-      if (entry != null) break;
+    try {
+      entry = await _fetch(key);
+    } catch (exception) {
+      debugPrint("Thesaurus lookup failed for \"$key\": $exception");
+      entry = null;
     }
     _cache[key] = entry;
     return entry;
-  }
-
-  /// _baseForms are reductions to try when a word itself is not in the
-  /// thesaurus, in decreasing order of confidence.
-  ///
-  /// A thesaurus is keyed by the forms its source happened to record, and
-  /// those are not the forms people type: "happy" is there and "happier" is
-  /// not. Without this, asking about a perfectly ordinary word returns
-  /// nothing and looks broken.
-  ///
-  /// Each is only accepted if the provider actually has it, so a wrong guess
-  /// costs a lookup and nothing else. They are tried in order and the first
-  /// hit wins, which is why the more specific endings come first.
-  static Iterable<String> _baseForms(String word) sync* {
-    // Contractions: "wouldn't" -> "would". Rarely helps, since auxiliaries
-    // have few synonyms, but it costs one cached miss to find out.
-    if (word.endsWith("n't") && word.length > 4) {
-      yield word.substring(0, word.length - 3);
-    }
-    if (word.endsWith("'s") && word.length > 3) {
-      yield word.substring(0, word.length - 2);
-    }
-    // -ier/-iest/-ies all come from a -y stem: happier, happiest, worries.
-    for (var suffix in ["iest", "ier", "ies"]) {
-      if (word.endsWith(suffix) && word.length > suffix.length + 1) {
-        yield "${word.substring(0, word.length - suffix.length)}y";
-      }
-    }
-    for (var suffix in ["ing", "est", "ed", "es", "er", "s"]) {
-      if (word.endsWith(suffix) && word.length > suffix.length + 2) {
-        yield word.substring(0, word.length - suffix.length);
-      }
-    }
   }
 
   /// normalizeWord reduces a selection to the single lowercase word a

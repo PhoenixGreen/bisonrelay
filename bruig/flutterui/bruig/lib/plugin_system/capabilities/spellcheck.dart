@@ -1,17 +1,22 @@
+import 'package:bruig/plugin_system/capabilities/writing_analysis.dart';
 import 'package:bruig/plugin_system/capabilities/writing_prefs.dart';
 import 'package:bruig/plugin_system/plugin_capability.dart';
 import 'package:bruig/plugin_system/plugin_manager.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:golib_plugin/definitions.dart';
 import 'package:golib_plugin/golib_plugin.dart';
 
 // spellcheck.dart is the app's side of the spellcheck-data capability: it
-// takes whatever words and grammar rules the enabled providers supply and
-// drives Flutter's own SpellCheckService with them. It contains no
-// dictionary and no writing rules of its own -- with no provider enabled,
-// there is nothing to check text against and the composers get no
-// configuration at all.
+// takes whatever words, grammar rules and analysis checks the enabled
+// providers supply, and answers "what is wrong with this text". It contains
+// no dictionary and no writing rules of its own -- with no provider enabled,
+// review() returns nothing and the composers show no marks at all.
+//
+// Flutter's own SpellCheckService is deliberately not used. It carries one
+// style for every flagged span, which cannot express the difference between a
+// mistake and a suggestion, and it re-runs only when the text changes, which
+// is the wrong trigger for a word being added to the dictionary. The painting
+// is done instead by WritingTextEditingController -- see writing_field.dart.
 
 /// Matches a single "word" for dictionary lookup purposes: runs of letters
 /// and apostrophes (so contractions like "don't" are one token).
@@ -114,10 +119,28 @@ int _bitCount(int x) {
   return n;
 }
 
-/// WritingIssueKind separates the two things a provider flags, because they
-/// warrant different confidence: an unknown word is a fact about the
-/// dictionary, whereas a style rule is a judgement that may be wrong.
-enum WritingIssueKind { spelling, style }
+/// WritingIssueKind separates what a provider flags by how sure it is, which
+/// decides how the text is marked and which page the issue is listed on.
+///
+/// [spelling] and [grammar] are mistakes: text that is wrong whatever the
+/// writer meant. An unknown word is a fact about the dictionary, and the
+/// grammar rules are held to a standard of never firing on correct writing.
+/// Both get the red underline.
+///
+/// [phrasing] is an opinion -- wordiness, a cliche, the passive voice, a word
+/// used four times in a paragraph. These are often right and sometimes wrong,
+/// and marking them like a misspelling would put the same alarming red under
+/// prose that is perfectly good, which is how people learn to ignore every
+/// underline including the ones that matter. They get their own colour.
+enum WritingIssueKind {
+  spelling,
+  grammar,
+  phrasing;
+
+  /// isMistake groups the two kinds a writer should fix from the one they
+  /// should merely consider.
+  bool get isMistake => this != WritingIssueKind.phrasing;
+}
 
 /// WritingIssue is one flagged span, with enough context to list it away
 /// from the text it came from.
@@ -144,6 +167,16 @@ class WritingIssue {
   /// and has no rule behind it.
   final String? checkId;
 
+  /// A heading grouping the issue -- "Capitalization", "Spelling". Empty when
+  /// the provider sent none, in which case the UI shows [message] alone.
+  final String category;
+
+  /// A sentence saying what is wrong and why, for a reader who does not
+  /// already know the rule. [message] names the problem in the few words a
+  /// menu row allows; this is what the popup can afford to spell out. Empty
+  /// when the provider sent none.
+  final String explanation;
+
   const WritingIssue({
     required this.range,
     required this.text,
@@ -151,7 +184,14 @@ class WritingIssue {
     required this.suggestions,
     required this.kind,
     this.checkId,
+    this.category = "",
+    this.explanation = "",
   });
+
+  /// title is what to head the issue with: the category if the provider gave
+  /// one, and the message otherwise, so a rule with no category still gets a
+  /// heading rather than an empty line.
+  String get title => category.isNotEmpty ? category : message;
 }
 
 /// _Candidate is one possible correction, with the two numbers it is ordered
@@ -170,13 +210,19 @@ class _CompiledRule {
   // source is the pattern as the provider wrote it, which is how a rule is
   // identified when the user turns it off -- see WritingPreferences.
   final String source;
-  _CompiledRule(this.pattern, this.message, this.suggest, this.source);
+  final String category;
+  final String explanation;
+  final WritingIssueKind kind;
+  _CompiledRule(this.pattern, this.message, this.suggest, this.source,
+      this.category, this.explanation, this.kind);
 }
 
-/// A [SpellCheckService] driven entirely by capability-supplied data.
-class _CapabilitySpellCheckService extends SpellCheckService {
+/// _Checker is the whole checking engine, driven entirely by
+/// capability-supplied data.
+class _Checker {
   Set<String> _words = {};
   List<_CompiledRule> _rules = [];
+  List<AnalysisCheck> _analysis = [];
 
   // _byLength indexes the dictionary by word length, and _masks caches each
   // word's letter set. Together they cut the candidates a misspelling is
@@ -222,7 +268,18 @@ class _CapabilitySpellCheckService extends SpellCheckService {
         .map((r) {
           try {
             return _CompiledRule(
-                RegExp(r.pattern), r.message, r.suggest, r.pattern);
+                RegExp(r.pattern),
+                r.message,
+                r.suggest,
+                r.pattern,
+                r.category,
+                r.explanation,
+                // Anything a provider does not explicitly call a suggestion
+                // is a mistake, so a provider that never heard of severity
+                // keeps the behaviour it had.
+                r.severity == "suggestion"
+                    ? WritingIssueKind.phrasing
+                    : WritingIssueKind.grammar);
           } catch (_) {
             // A plugin-supplied pattern Dart's regex engine can't compile;
             // skip just that rule rather than failing the whole plugin.
@@ -231,23 +288,28 @@ class _CapabilitySpellCheckService extends SpellCheckService {
         })
         .whereType<_CompiledRule>()
         .toList();
+    _analysis = data.analysisChecks;
   }
 
-  @override
-  @override
-  Future<List<SuggestionSpan>?> fetchSpellCheckSuggestions(
-      Locale locale, String text) async {
-    if (!hasData) return [];
-    return [
-      for (var issue in review(text))
-        SuggestionSpan(issue.range, issue.suggestions),
-    ];
-  }
-
-  /// review returns every problem in [text], for a caller listing them
-  /// rather than underlining them in place. Ordered by position, so the list
+  /// review returns every problem in [text], ordered by position so a list
   /// reads in the same order as the message.
-  List<WritingIssue> review(String text) => _ordered(_reviewRaw(text));
+  ///
+  /// Mistakes and suggestions are de-overlapped separately and then merged,
+  /// rather than competing with each other. They have to be disjoint within
+  /// each group, because each group is painted as one run of decorations --
+  /// but a suggestion and a mistake are painted differently and may overlap
+  /// freely. Making them compete would have been actively wrong: a
+  /// long-sentence suggestion covers a whole sentence and would have
+  /// swallowed every misspelling inside it.
+  List<WritingIssue> review(String text) {
+    var raw = _reviewRaw(text);
+    var merged = [
+      ..._ordered(raw.where((i) => i.kind.isMistake).toList()),
+      ..._ordered(raw.where((i) => !i.kind.isMistake).toList()),
+    ];
+    merged.sort((a, b) => a.range.start.compareTo(b.range.start));
+    return merged;
+  }
 
   /// _reviewRaw finds everything, in no particular order.
   List<WritingIssue> _reviewRaw(String text) {
@@ -265,8 +327,10 @@ class _CapabilitySpellCheckService extends SpellCheckService {
             suggestions: rule.suggest.isEmpty
                 ? const []
                 : [_expandTemplate(rule.suggest, m)],
-            kind: WritingIssueKind.style,
+            kind: rule.kind,
             checkId: rule.source,
+            category: rule.category,
+            explanation: rule.explanation,
           ));
         }
       } catch (_) {
@@ -274,6 +338,9 @@ class _CapabilitySpellCheckService extends SpellCheckService {
         // that rule, as the inline path does.
       }
     }
+
+    issues.addAll(runAnalysisChecks(text, _analysis,
+        isIgnoredCheck: (id) => prefs?.isCheckDisabled(id) ?? false));
 
     for (var m in _wordRegExp.allMatches(text)) {
       var word = m.group(0)!;
@@ -285,6 +352,10 @@ class _CapabilitySpellCheckService extends SpellCheckService {
         message: "Not in dictionary",
         suggestions: _suggest(word.toLowerCase()),
         kind: WritingIssueKind.spelling,
+        category: "Spelling",
+        explanation: "This word is not in the dictionary. It may be a typo, "
+            "or a name or term the dictionary does not cover -- in which "
+            "case you can add it.",
       ));
     }
 
@@ -416,12 +487,15 @@ class _CapabilitySpellCheckService extends SpellCheckService {
 }
 
 /// SpellcheckCapability tracks whether any plugin currently provides
-/// spellcheck data and, when one does, keeps the service fed with it. A
-/// composer widget watches [configuration] and hands it straight to its
-/// TextField; null means "no provider", which is exactly Flutter's own
-/// "spell check off".
+/// spellcheck data and, when one does, keeps the checker fed with it.
+///
+/// A composer does not read this directly. It gives its TextField a
+/// [WritingTextEditingController], which asks this what is wrong with the
+/// text as it paints -- see writing_field.dart. With no provider enabled the
+/// answer is always nothing, and the field looks exactly as it would without
+/// the feature.
 class SpellcheckCapability extends ChangeNotifier {
-  final _CapabilitySpellCheckService _service = _CapabilitySpellCheckService();
+  final _Checker _checker = _Checker();
 
   // _fetch is injectable so this class can be tested without a running
   // client; it is Golib.getSpellcheckData everywhere but in tests.
@@ -436,66 +510,71 @@ class SpellcheckCapability extends ChangeNotifier {
       {Future<SpellcheckData> Function()? fetch, WritingPreferences? prefs})
       : _fetch = fetch ?? Golib.getSpellcheckData,
         preferences = prefs ?? WritingPreferences() {
-    _service.prefs = preferences;
+    _checker.prefs = preferences;
     // Re-checking is what makes an ignored word disappear from the text
     // immediately rather than at the next keystroke.
-    preferences.addListener(notifyListeners);
+    preferences.addListener(_invalidate);
   }
 
   @override
   void dispose() {
-    preferences.removeListener(notifyListeners);
+    preferences.removeListener(_invalidate);
     super.dispose();
   }
 
   bool _active = false;
   bool get active => _active;
 
-  SpellCheckConfiguration? get configuration => _active && preferences.enabled
-      ? SpellCheckConfiguration(
-          spellCheckService: _service,
-          misspelledTextStyle: const TextStyle(
-            decoration: TextDecoration.underline,
-            decorationColor: Colors.red,
-            decorationStyle: TextDecorationStyle.wavy,
-            // Thick enough to survive being selected. The underline is not
-            // removed by a selection -- the results and the styling are both
-            // still there -- but the selection highlight is painted across
-            // the same pixels, and a hairline wave washes out under it to
-            // the point of looking as though the flag had gone.
-            decorationThickness: 2,
-          ),
-        )
-      : null;
+  // The last review, kept because the field asks for it on every repaint --
+  // every keystroke, and every movement of the caret. Recomputing a long post
+  // each time a cursor moves is work for nothing.
+  //
+  // Keyed on the text alone, and thrown away whenever anything else that
+  // could change the answer does: new data, or a change to the preferences.
+  String? _reviewedText;
+  List<WritingIssue>? _reviewed;
 
-  /// fieldKey is what a text field should use as its [Key] alongside
-  /// [configuration].
+  void _invalidate() {
+    _reviewedText = null;
+    _reviewed = null;
+    notifyListeners();
+  }
+
+  /// styleFor is how a flagged span is marked in the text.
   ///
-  /// EditableText reads spellCheckConfiguration once, in initState, and
-  /// never again -- didUpdateWidget does not look at it. So handing a live
-  /// field a new configuration has no effect whatsoever, and switching spell
-  /// check off could not take: the field went on checking with the
-  /// configuration it was born with.
-  ///
-  /// Keying on whether checking is on at all rebuilds the field across that
-  /// one transition, and only that one. Deliberately not keyed on the
-  /// preferences generally: rebuilding drops focus and selection, which is
-  /// tolerable when someone has just thrown a switch and jarring when they
-  /// have added a word to the dictionary mid-sentence. That case is handled
-  /// by refreshing the results in place instead -- see spellcheck_menu.dart.
-  Key get fieldKey => ValueKey("spellcheck:${configuration != null}");
+  /// Red for a mistake and blue for a suggestion, which is the distinction
+  /// the whole severity contract exists to draw. A wordiness rule marked like
+  /// a misspelling would put an alarming red wave under prose that is
+  /// perfectly good, and the reader who learns to ignore that mark ignores it
+  /// over the misspellings too.
+  static TextStyle styleFor(WritingIssueKind kind) => TextStyle(
+        decoration: TextDecoration.underline,
+        decorationColor: kind.isMistake ? Colors.red : const Color(0xFF3B82F6),
+        decorationStyle: TextDecorationStyle.wavy,
+        // Thick enough to survive being selected. The underline is not
+        // removed by a selection, but the selection highlight is painted
+        // across the same pixels, and a hairline wave washes out under it to
+        // the point of looking as though the flag had gone.
+        decorationThickness: 2,
+      );
 
   /// review lists every problem a provider finds in [text] -- see
   /// WritingIssue. Empty when no provider is enabled, which is also what a
   /// clean message returns, so a caller need not distinguish them.
-  List<WritingIssue> review(String text) =>
-      _active && preferences.enabled ? _service.review(text) : const [];
+  List<WritingIssue> review(String text) {
+    if (!_active || !preferences.enabled) return const [];
+    if (_reviewedText == text) return _reviewed!;
+    var issues = _checker.review(text);
+    _reviewedText = text;
+    _reviewed = issues;
+    return issues;
+  }
 
   /// issuesAt is everything wrong with one stretch of text -- see the
-  /// service's own note on why this differs from review().
+  /// checker's own note on why this differs from review().
   List<WritingIssue> issuesAt(String text, int start, int end) =>
       _active && preferences.enabled
-          ? _service.issuesAt(text, start, end)
+          ? _checker.issuesAt(text, start, end)
           : const [];
 
   /// update re-reads the merged data whenever the set of enabled plugins
@@ -519,7 +598,9 @@ class SpellcheckCapability extends ChangeNotifier {
     if (!active) return;
 
     try {
-      _service.updateData(await _fetch());
+      _checker.updateData(await _fetch());
+      _reviewedText = null;
+      _reviewed = null;
       // The words landing is a second, later change: a composer built in
       // the meantime is showing an active-but-empty checker and needs to
       // re-run it now there is something to check against.
