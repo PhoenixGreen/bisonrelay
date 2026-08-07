@@ -496,12 +496,18 @@ class _NewPostScreenState extends State<NewPostScreen> {
     ]);
   }
 
-  /// _publishMenu is Create Post and Clear Post behind one icon.
+  /// _publishMenu is the publish actions behind one icon.
   ///
-  /// A menu rather than two buttons because it is where the rest of the
-  /// publish options are going, and because the footer they came from cost
-  /// the editor that height on every screen for two things pressed once per
-  /// post.
+  /// A menu rather than a button because it is where the rest of the publish
+  /// options are going, and because the footer it came from cost the editor
+  /// that height on every screen for something pressed once per post.
+  ///
+  /// Clear Post is deliberately not here. It was, and it does not belong: a
+  /// menu of ways to publish is the wrong place to keep the one action that
+  /// destroys the draft, and the mismatch only gets worse as more publish
+  /// options arrive beside it and push it under the reader's thumb. It stays
+  /// in the footer for anyone with the menu switched off, and a draft is
+  /// autosaved to the post library regardless.
   Widget _publishMenu(bool validSize) => PopupMenuButton<String>(
         icon: const Icon(Icons.ios_share, size: 20),
         tooltip: "Publish options",
@@ -509,8 +515,6 @@ class _NewPostScreenState extends State<NewPostScreen> {
           switch (choice) {
             case "create":
               createPost();
-            case "clear":
-              clearPost();
           }
         },
         itemBuilder: (context) => [
@@ -527,15 +531,6 @@ class _NewPostScreenState extends State<NewPostScreen> {
               title: const Text("Create Post"),
               subtitle:
                   validSize ? null : const Text("Larger than the maximum size"),
-            ),
-          ),
-          const PopupMenuItem(
-            value: "clear",
-            child: ListTile(
-              dense: true,
-              contentPadding: EdgeInsets.zero,
-              leading: Icon(Icons.delete_outline, size: 18),
-              title: Text("Clear Post"),
             ),
           ),
         ],

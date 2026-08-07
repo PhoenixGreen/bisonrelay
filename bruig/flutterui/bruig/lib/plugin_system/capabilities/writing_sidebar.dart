@@ -257,7 +257,17 @@ class _WritingSidebarState extends State<WritingSidebar> {
   // flush on the divider that closes the row -- which is what makes four
   // labels read as tabs belonging to the panel below rather than as four more
   // buttons.
-  static const double _tabRowHeight = 34;
+  // Taller than the content needs, and the extra is all above it. The shell
+  // closes its icon row with a divider, and with no padding here the tab
+  // icons sat directly on that rule with nothing between the two rows at all.
+  //
+  // The gap cannot be repeated underneath: the underline has to reach the
+  // divider that closes this row, and any padding below it would leave the
+  // indicator floating clear of the baseline it is meant to sit on. That
+  // asymmetry is what a tab row is -- space above, attached below, because
+  // the tab belongs to the panel beneath it rather than to the row above.
+  static const double _tabRowHeight = 42;
+  static const double _tabTopSpace = 8;
   static const double _tabIconSize = 15;
   static const double _tabLabelGap = 5;
   static const double _tabPadding = 6;
@@ -278,7 +288,7 @@ class _WritingSidebarState extends State<WritingSidebar> {
           // No bottom padding: the tab underline has to land on the divider
           // beneath this row, and a gap between them reads as two unrelated
           // lines rather than one selected tab.
-          padding: const EdgeInsets.fromLTRB(8, 0, 4, 0),
+          padding: const EdgeInsets.fromLTRB(8, _tabTopSpace, 4, 0),
           child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             for (var page in WritingSidebarPage.values)
               Expanded(

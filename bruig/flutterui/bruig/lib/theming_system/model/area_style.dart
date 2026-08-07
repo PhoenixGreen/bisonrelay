@@ -377,10 +377,10 @@ class AreaStyle {
   final bool feedHideSidebarOnPost; // Drops the feed sidebar entirely while
   // reading a single post, for a more focused reading experience. Needs
   // feedSidePanel.
-  final bool feedPublishMenu; // Moves Create Post and Clear Post out of the
-  // composer's footer and into a single menu button in its top-right
-  // corner, giving the editor the height they took and leaving somewhere
-  // for further publish options to go.
+  final bool feedPublishMenu; // Moves Create Post out of the composer's
+  // footer and into a menu button in its top-right corner, giving the editor
+  // the height the footer took and leaving somewhere for further publish
+  // options to go. Clear Post is not moved with it -- see _publishMenu.
   final FeedImageLayout feedImageLayout; // How each post's first embedded
   // image is displayed (see FeedImageLayout).
   final double feedImageCropHeight; // Max height (px) for

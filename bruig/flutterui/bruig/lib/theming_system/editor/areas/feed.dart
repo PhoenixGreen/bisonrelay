@@ -52,9 +52,9 @@ List<Widget> feedAreaEditor(AreaEditorContext ctx) {
     ),
     ctx.toggle(
       "Publish menu",
-      subtitle: "Moves Create Post and Clear Post into a single menu button "
-          "in the top-right corner of the New Post page, giving the editor "
-          "the height they took",
+      subtitle: "Moves Create Post into a menu button in the top-right "
+          "corner of the New Post page, giving the editor the height the "
+          "footer took",
       value: style.feedPublishMenu,
       onChanged: (v) => ctx.setStyle((s) => s.copyWith(feedPublishMenu: v)),
     ),
