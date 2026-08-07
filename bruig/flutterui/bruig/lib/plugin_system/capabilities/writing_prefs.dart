@@ -29,14 +29,29 @@ const _languageKey = "writing.language";
 ///     a name in one message, not a word to remember forever.
 ///   - [addToDictionary] is permanent, and is how a name or a piece of
 ///     jargon stops being flagged for good.
-///   - [disableCheck] is permanent and applies to a whole rule, because
-///     disagreeing with one instance of a style rule almost always means
-///     disagreeing with the rule.
+///   - [ignoreMatch] is for this session and applies to one phrase under one
+///     rule. It exists because the assumption below turned out to be wrong.
+///   - [disableCheck] is permanent and applies to a whole rule.
+///
+/// [disableCheck] was for a long time the only thing offered on a style
+/// suggestion, on the reasoning that disagreeing with one instance of a rule
+/// almost always means disagreeing with the rule. That is not true of the
+/// style rules. "In order to" is padding in most sentences and exactly right
+/// in a few, and someone who wants it here still wants to be told about it
+/// in the next post -- which left them turning the rule off for good or
+/// rewriting a sentence they were happy with.
 class WritingPreferences extends ChangeNotifier {
   // Session only, deliberately not persisted: an "ignore once" that outlived
   // the app would be indistinguishable from the personal dictionary, and
   // there would be no way to tell which of the two had hidden a word.
   final Set<String> _ignoredThisSession = {};
+
+  // Session only, for the same reason as the set above. Keyed by the rule
+  // *and* the text it matched, not by either alone: keyed by rule it would
+  // be disableCheck with a shorter memory, and keyed by text it would collide
+  // with the spelling ignores -- "release" dismissed as a repetition would
+  // also stop being spell-checked.
+  final Set<String> _ignoredMatches = {};
 
   final Set<String> _dictionary = {};
 
@@ -161,6 +176,31 @@ class WritingPreferences extends ChangeNotifier {
   }
 
   bool isCheckDisabled(String pattern) => _disabledChecks.containsKey(pattern);
+
+  /// _matchKey pairs a rule with the text it matched. The separator is a
+  /// character neither part can contain, so no two pairs can collide by
+  /// running into each other.
+  static String _matchKey(String checkId, String text) =>
+      "$checkId\u0000${_key(text)}";
+
+  /// isIgnoredMatch reports whether this rule has been told to leave this
+  /// particular phrase alone for the rest of the session.
+  bool isIgnoredMatch(String? checkId, String text) =>
+      checkId != null && _ignoredMatches.contains(_matchKey(checkId, text));
+
+  /// ignoreMatch dismisses one phrase under one rule until the app restarts.
+  ///
+  /// The phrase rather than the one occurrence of it, and that is a real
+  /// limitation rather than a shortcut. An occurrence is a pair of offsets
+  /// into text that is still being typed, and every keystroke before it moves
+  /// them -- so a dismissal pinned to a position would drift onto whatever
+  /// happened to be there later. The phrase survives editing, and where a
+  /// finding covers several occurrences at once (a word repeated four times
+  /// in a paragraph) dismissing the phrase is what the reader means anyway.
+  void ignoreMatch(String checkId, String text) {
+    if (!_ignoredMatches.add(_matchKey(checkId, text))) return;
+    notifyListeners();
+  }
 
   void ignoreOnce(String word) {
     if (!_ignoredThisSession.add(_key(word))) return;

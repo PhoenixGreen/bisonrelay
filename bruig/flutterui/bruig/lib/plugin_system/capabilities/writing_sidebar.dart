@@ -430,15 +430,19 @@ class _WritingSidebarState extends State<WritingSidebar> {
               // The same two ways out the context menu offers, since the
               // panel is where someone works through a whole post and is
               // exactly where "stop telling me about this" belongs.
-              if (issue.checkId != null)
+              if (issue.checkId != null) ...[
+                // Dismissing this phrase, against turning the rule off
+                // everywhere -- see the note in writing_popup.dart.
+                _dismissChip(theme, "Ignore once",
+                    () => prefs.ignoreMatch(issue.checkId!, issue.text)),
                 _dismissChip(
                     theme,
                     "Turn off",
                     // The description is what names the rule in Settings.
                     // Without it the list there reads "check 1, check 2".
                     () => prefs.disableCheck(issue.checkId!,
-                        description: issue.ruleMessage))
-              else ...[
+                        description: issue.ruleMessage)),
+              ] else ...[
                 _dismissChip(
                     theme, "Ignore", () => prefs.ignoreOnce(issue.text)),
                 _dismissChip(theme, "Add to dictionary",

@@ -503,6 +503,16 @@ class _Checker {
       ));
     }
 
+    // Dismissed phrases are dropped here rather than inside each producer
+    // above, because the grammar rules and the counting checks arrive by
+    // completely different routes and this is the one point they have both
+    // already passed. Spelling issues carry no checkId and are unaffected --
+    // those have their own two ways out.
+    var dismissed = prefs;
+    if (dismissed != null) {
+      issues.removeWhere((i) => dismissed.isIgnoredMatch(i.checkId, i.text));
+    }
+
     issues.sort((a, b) => a.range.start.compareTo(b.range.start));
     return issues;
   }

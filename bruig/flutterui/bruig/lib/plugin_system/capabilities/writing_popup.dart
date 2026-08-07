@@ -207,6 +207,13 @@ class _WritingPopup extends StatelessWidget {
 
     if (issue.checkId != null) {
       return [
+        // Two ways out rather than one, and in this order. Disagreeing with
+        // a style suggestion here usually does not mean disagreeing with the
+        // rule -- "in order to" is padding in most sentences and right in a
+        // few -- and until this existed the only alternatives were turning
+        // the rule off for good or rewriting a sentence you were happy with.
+        _action(theme, "Ignore once",
+            () => act(() => prefs.ignoreMatch(issue.checkId!, issue.text))),
         _action(theme, "Turn off this check", () {
           act(() => prefs.disableCheck(issue.checkId!,
               description: issue.ruleMessage));
