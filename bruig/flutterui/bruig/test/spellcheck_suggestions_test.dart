@@ -163,6 +163,7 @@ void main() {
   _confusionRuleTests();
   _newLookaheadRuleTests();
   _apostropheTests();
+  _compoundAndPunctuationTests();
 
   group("grammar rules", () {
     // These run in Dart's regex engine, which is the only place the
@@ -860,6 +861,130 @@ void _newLookaheadRuleTests() {
           isEmpty);
       expect(await review("interest is charged on principal amounts", [rule]),
           isEmpty);
+    });
+  });
+}
+
+// The compound and punctuation rules that need lookaround, which Go's RE2
+// cannot compile -- so the plugin's own corpus never sees them run and this
+// is the only place they are exercised at all.
+//
+// Each pair below is the mistake and the reading that keeps the two words
+// apart. The second is what the lookahead is for, and without it every one
+// of these rules would be flagging correct writing.
+void _compoundAndPunctuationTests() {
+  /// review returns only what the rules under test found.
+  ///
+  /// Spelling is filtered out rather than suppressed with a bigger word
+  /// list. A test dictionary can never carry every word a sentence uses, and
+  /// an unknown word does not merely add noise: review() drops a style issue
+  /// that overlaps a spelling one, so the rule being tested disappears for a
+  /// reason that has nothing to do with the rule.
+  ///
+  /// issuesAt over the whole text for the same reason -- it reports
+  /// everything that overlaps rather than choosing one per span.
+  Future<List<WritingIssue>> review(
+      String text, List<GrammarRule> rules) async {
+    var capability = SpellcheckCapability(
+        fetch: (_) async => SpellcheckData(const [], const [], rules));
+    await capability.update(FakePlugins({PluginCapability.spellcheckData}));
+    return capability
+        .issuesAt(text, 0, text.length)
+        .where((issue) => issue.kind != WritingIssueKind.spelling)
+        .toList();
+  }
+
+  group("words written as two", () {
+    var selfRule = GrammarRule(
+        r"\b([Mm])y\s+self\b(?!-)", r'Should be "$1yself"', r"$1yself");
+
+    test("is caught", () async {
+      var issues = await review("i did it my self", [selfRule]);
+      expect(issues.expand((i) => i.suggestions), contains("myself"));
+    });
+
+    // The lookahead is the whole rule: "self" starting a hyphenated word is
+    // not a split compound.
+    test("leaves a hyphenated word alone", () async {
+      expect(await review("my self-esteem took a knock", [selfRule]), isEmpty);
+    });
+
+    // An adjective between the two is a different construction, and the
+    // pattern never sees it because the words are no longer adjacent.
+    test("leaves an adjective between them alone", () async {
+      expect(await review("i like my true self better", [selfRule]), isEmpty);
+    });
+
+    var withoutRule = GrammarRule(r"\b([Ww])ith\s+out\b(?!\s+of\b)",
+        r'Should be "$1ithout"', r"$1ithout");
+
+    test("with out is caught, with out of is not", () async {
+      expect(await review("we did it with out", [withoutRule]), isNotEmpty);
+      expect(await review("it came with out of date firmware", [withoutRule]),
+          isEmpty);
+    });
+
+    var becauseRule = GrammarRule(r"\b([Bb])e\s+cause\b(?!\s+(for|of)\b)",
+        r'Should be "$1ecause"', r"$1ecause");
+
+    test("be cause is caught, be cause for is not", () async {
+      expect(
+          await review("i did it be cause we can", [becauseRule]), isNotEmpty);
+      expect(await review("that would be cause for concern", [becauseRule]),
+          isEmpty);
+    });
+  });
+
+  group("punctuation", () {
+    var doubledStop =
+        GrammarRule(r"(?<![.\d])\.\.(?!\.)", "Doubled full stop", ".");
+
+    test("two full stops are caught", () async {
+      expect(await review("that is all.. we go", [doubledStop]), isNotEmpty);
+    });
+
+    // Three is an ellipsis and belongs to the writer.
+    test("an ellipsis is left alone", () async {
+      expect(
+          await review("wait for it... there it is", [doubledStop]), isEmpty);
+    });
+
+    test("a version number is left alone", () async {
+      expect(
+          await review("the file is at v1.2.3 here", [doubledStop]), isEmpty);
+    });
+
+    var adverbComma = GrammarRule(
+        r"(?<=^|[.!?]\s|\n)(Therefore|Meanwhile|Finally)\s+(?=[A-Za-z])",
+        r'Missing comma after "$1"',
+        r"$1, ");
+
+    test("a conjunctive adverb opening a sentence wants a comma", () async {
+      var issues = await review("Therefore we go", [adverbComma]);
+      expect(issues.expand((i) => i.suggestions), contains("Therefore, "));
+    });
+
+    // Only at the start of a sentence: mid-sentence it is doing a different
+    // job and takes no comma.
+    test("mid-sentence it is left alone", () async {
+      expect(await review("we can therefore go", [adverbComma]), isEmpty);
+    });
+
+    var yesNoComma = GrammarRule(
+        r"(?<=^|[.!?]\s|\n)(Yes|No)\s+([Ii]|[Ww]e|[Yy]ou|[Hh]e|[Ss]he|[Ii]t|[Tt]hey)\b",
+        r'Missing comma after "$1"',
+        r"$1, $2");
+
+    test("an answering yes or no wants a comma", () async {
+      expect(await review("No i do not", [yesNoComma]), isNotEmpty);
+    });
+
+    // The reason the rule names what may follow: cutting "No one" in half
+    // would be worse than the comma it was trying to add.
+    test("\"No one\" is not an answering no", () async {
+      expect(
+          await review("No one knows the answer yet", [yesNoComma]), isEmpty);
+      expect(await review("No longer a problem", [yesNoComma]), isEmpty);
     });
   });
 }
