@@ -175,6 +175,36 @@ void main() {
     Future<SpellcheckCapability> withRules(List<GrammarRule> rules) =>
         _configFor(SpellcheckData(_dictionary, const [], rules));
 
+    // Reported: "Youre are the one." was corrected to "you're are the one."
+    // The wordlist is lowercased when it is built, so every dictionary
+    // suggestion arrives lowercase -- and the rule corrections had been
+    // taught to carry the case across while the spelling ones had not.
+    test("a capitalised misspelling gets a capitalised correction", () async {
+      var config = await _configFor(SpellcheckData(
+          const ["you're", "your", "youth"], const [], const []));
+      const text = "Youre the one";
+      var spans = await _check(config, text);
+      var span = spans.firstWhere(
+          (s) => text.substring(s.range.start, s.range.end) == "Youre");
+      expect(span.suggestions, isNotEmpty);
+      for (var suggestion in span.suggestions) {
+        expect(suggestion[0], suggestion[0].toUpperCase(),
+            reason: "correcting a word that opens a sentence must not "
+                "quietly remove its capital");
+      }
+      expect(span.suggestions, contains("You're"));
+    });
+
+    test("a lowercase misspelling is corrected in lowercase", () async {
+      var config = await _configFor(SpellcheckData(
+          const ["you're", "your", "youth"], const [], const []));
+      const text = "i think youre right";
+      var spans = await _check(config, text);
+      var span = spans.firstWhere(
+          (s) => text.substring(s.range.start, s.range.end) == "youre");
+      expect(span.suggestions, contains("you're"));
+    });
+
     // The literal-word rules -- "dont", "alot", "your welcome" -- accept
     // either case in their first letter, because the start of a sentence is
     // exactly where these are typed. That made the fix wrong in a new way:

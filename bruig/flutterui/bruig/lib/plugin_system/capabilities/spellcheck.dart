@@ -494,7 +494,14 @@ class _Checker {
         range: TextRange(start: m.start, end: m.end),
         text: original.substring(m.start, m.end),
         message: "Not in dictionary",
-        suggestions: _suggest(word.toLowerCase()),
+        // Case carried across, as it is for the rule corrections. The
+        // wordlist is lowercased when it is built, so every suggestion comes
+        // back lowercase whatever was typed -- which meant correcting a
+        // misspelling that opened a sentence quietly removed its capital.
+        suggestions: [
+          for (var word in _suggest(word.toLowerCase()))
+            matchCase(original.substring(m.start, m.end), word)
+        ],
         kind: WritingIssueKind.spelling,
         category: "Spelling",
         explanation: "This word is not in the dictionary. It may be a typo, "
