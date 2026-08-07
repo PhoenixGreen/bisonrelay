@@ -49,7 +49,9 @@ List<WritingIssue> runAnalysisChecks(
   String text,
   List<AnalysisCheck> checks, {
   required bool Function(String) isIgnoredCheck,
+  DateTime? now,
 }) {
+  now ??= DateTime.now();
   if (text.trim().isEmpty) return const [];
   var issues = <WritingIssue>[];
   for (var check in checks) {
@@ -65,6 +67,14 @@ List<WritingIssue> runAnalysisChecks(
         _spellingVariants(text, check, issues);
       case "unpaired-brackets":
         _unpairedBrackets(text, check, issues);
+      case "date-weekday-mismatch":
+        _weekdayAgreement(text, check, issues, now, wantYear: true);
+      case "date-weekday-mismatch-this-year":
+        _weekdayAgreement(text, check, issues, now, wantYear: false);
+      case "impossible-date":
+        _impossibleDates(text, check, issues, now);
+      case "apostrophe-inconsistency":
+        _apostropheConsistency(text, check, issues);
       default:
         // A check this app does not implement. Deliberately silent: it is how
         // a provider ships a check before the app that runs it.
@@ -451,4 +461,250 @@ List<_Segment> _split(String text, RegExp separator) {
   var last = text.substring(at);
   if (last.trim().isNotEmpty) out.add(_Segment(last, at));
   return out;
+}
+
+// --- Dates -------------------------------------------------------------
+//
+// The only checks here that do arithmetic rather than counting, and the only
+// ones certain about something a careful reader would still miss: nobody
+// proofreads a date against a calendar. "We ship Monday, 10 August" is a
+// sentence you can read twenty times without noticing the 10th is a Tuesday.
+//
+// The month and weekday names are the trap. "May", "March" and "August" are
+// ordinary words, so a pattern looking for a month alone would fire on "we
+// march on" constantly. Every pattern below therefore requires a month
+// beside a day number, and the two weekday checks require a weekday beside
+// both -- which is a shape that ordinary prose does not accidentally form.
+
+const _monthNumbers = {
+  "january": 1,
+  "jan": 1,
+  "february": 2,
+  "feb": 2,
+  "march": 3,
+  "mar": 3,
+  "april": 4,
+  "apr": 4,
+  "may": 5,
+  "june": 6,
+  "jun": 6,
+  "july": 7,
+  "jul": 7,
+  "august": 8,
+  "aug": 8,
+  "september": 9,
+  "sept": 9,
+  "sep": 9,
+  "october": 10,
+  "oct": 10,
+  "november": 11,
+  "nov": 11,
+  "december": 12,
+  "dec": 12,
+};
+
+const _weekdayNumbers = {
+  "monday": 1,
+  "mon": 1,
+  "tuesday": 2,
+  "tues": 2,
+  "tue": 2,
+  "wednesday": 3,
+  "weds": 3,
+  "wed": 3,
+  "thursday": 4,
+  "thurs": 4,
+  "thur": 4,
+  "thu": 4,
+  "friday": 5,
+  "fri": 5,
+  "saturday": 6,
+  "sat": 6,
+  "sunday": 7,
+  "sun": 7,
+};
+
+/// _weekdayNames is indexed by DateTime.weekday, which counts Monday as 1.
+const _weekdayNames = [
+  "",
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+  "Sunday",
+];
+
+/// _alternation joins names longest-first, so "september" is preferred to
+/// "sep" and "tuesday" to "tue". A regex alternation takes the first branch
+/// that matches rather than the longest, so the order is the whole of what
+/// makes the abbreviations safe to include.
+String _alternation(Iterable<String> names) {
+  var sorted = names.toList()..sort((a, b) => b.length.compareTo(a.length));
+  return sorted.join("|");
+}
+
+final _months = _alternation(_monthNumbers.keys);
+final _weekdays = _alternation(_weekdayNumbers.keys);
+
+/// _dayNumber is a day with an optional ordinal ending, refusing to match
+/// part of a longer number: without the lookahead, "August 100" reads as the
+/// 10th.
+const _dayNumber = r"(\d{1,2})(?:st|nd|rd|th)?(?!\d)";
+
+/// _optionalYear is four digits after a comma or a space.
+const _optionalYear = r"(?:[,\s]+(\d{4})(?!\d))?";
+
+/// The weekday separator allows a full stop so "Mon. 10 Aug." is read.
+const _sep = r"[.,\s]+";
+
+/// Weekday given: "Monday, 10 August 2026" and "Monday the 10th of August".
+/// Groups: 1 weekday, 2 day, 3 month, 4 year.
+final _weekdayDayFirst = RegExp(
+    "\\b($_weekdays)\\b$_sep(?:the\\s+)?$_dayNumber\\s+(?:of\\s+)?($_months)\\b$_optionalYear",
+    caseSensitive: false);
+
+/// "Monday, August 10, 2026". Groups: 1 weekday, 2 month, 3 day, 4 year.
+final _weekdayMonthFirst = RegExp(
+    "\\b($_weekdays)\\b$_sep($_months)\\s+$_dayNumber$_optionalYear",
+    caseSensitive: false);
+
+/// The same two without a weekday, for the impossible-date check, which has
+/// no use for one. Keeping them separate means the flagged range is the date
+/// itself rather than the weekday in front of it.
+/// Groups: 1 day, 2 month, 3 year.
+final _bareDayFirst = RegExp(
+    "\\b$_dayNumber\\s+(?:of\\s+)?($_months)\\b$_optionalYear",
+    caseSensitive: false);
+
+/// Groups: 1 month, 2 day, 3 year.
+final _bareMonthFirst =
+    RegExp("\\b($_months)\\s+$_dayNumber$_optionalYear", caseSensitive: false);
+
+bool _isLeapYear(int y) => y % 4 == 0 && (y % 100 != 0 || y % 400 == 0);
+
+int _daysInMonth(int month, int year) {
+  const lengths = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  if (month == 2 && _isLeapYear(year)) return 29;
+  return lengths[month - 1];
+}
+
+/// _weekdayAgreement flags a weekday that is not the one that date fell on.
+///
+/// [wantYear] splits the two declared checks. With the year written out the
+/// answer is certain and the check is an error; without it the current year
+/// is assumed, "Monday 10 August" may be a date in some other year, and the
+/// check is a suggestion. Each match belongs to exactly one of the two, so
+/// running both produces one finding rather than two.
+void _weekdayAgreement(
+  String text,
+  AnalysisCheck check,
+  List<WritingIssue> out,
+  DateTime now, {
+  required bool wantYear,
+}) {
+  void consider(
+      RegExpMatch m, String? weekday, int? day, int? month, String? yearText) {
+    if (weekday == null || day == null || month == null) return;
+    if ((yearText != null) != wantYear) return;
+    var year = yearText == null ? now.year : int.parse(yearText);
+    // A date that does not exist has no weekday to disagree with, and
+    // saying so is the impossible-date check's job rather than this one's.
+    if (day < 1 || day > _daysInMonth(month, year)) return;
+
+    var actual = DateTime(year, month, day).weekday;
+    var written = _weekdayNumbers[weekday.toLowerCase()];
+    if (written == null || written == actual) return;
+
+    // The weekday sits at the start of the match, which is what lets its
+    // range be taken without per-group offsets -- something Dart's Match
+    // does not expose.
+    out.add(_issue(check, m.start, m.start + weekday.length, text,
+        subject: weekday,
+        detail: _weekdayNames[actual],
+        // The date is assumed to be the part that was looked up and the
+        // weekday the part typed from memory, so the weekday is what gets
+        // corrected. Stated in the explanation, because the other way round
+        // is just as possible and only the writer knows.
+        //
+        // Capitalised whatever case was typed, unlike every other
+        // correction in this file: a weekday is a proper noun, so "tuesday"
+        // wants "Monday" and not "monday". Running it through matchCase
+        // would be a no-op -- it only ever adds a capital -- and would read
+        // as though the case were being carried over.
+        suggestions: [_weekdayNames[actual]]));
+  }
+
+  for (var m in _weekdayDayFirst.allMatches(text)) {
+    consider(m, m.group(1), int.tryParse(m.group(2) ?? ""),
+        _monthNumbers[m.group(3)?.toLowerCase()], m.group(4));
+  }
+  for (var m in _weekdayMonthFirst.allMatches(text)) {
+    consider(m, m.group(1), int.tryParse(m.group(3) ?? ""),
+        _monthNumbers[m.group(2)?.toLowerCase()], m.group(4));
+  }
+}
+
+/// _impossibleDates flags a day number the month never has.
+void _impossibleDates(
+    String text, AnalysisCheck check, List<WritingIssue> out, DateTime now) {
+  var seen = <int>{};
+  void consider(RegExpMatch m, int? day, int? month, String? yearText) {
+    if (day == null || month == null) return;
+    // 29 February is a real date every fourth year, so without a year
+    // written out there is nothing to object to. 30 and 31 February are
+    // wrong whatever the year, and still caught.
+    if (yearText == null && month == 2 && day == 29) return;
+    var year = yearText == null ? now.year : int.parse(yearText);
+    var days = _daysInMonth(month, year);
+    if (day >= 1 && day <= days) return;
+    // The two patterns overlap on some text; the same slip is one finding.
+    if (!seen.add(m.start)) return;
+    out.add(_issue(check, m.start, m.end, text,
+        subject: text.substring(m.start, m.end), detail: "$days"));
+  }
+
+  for (var m in _bareDayFirst.allMatches(text)) {
+    consider(m, int.tryParse(m.group(1) ?? ""),
+        _monthNumbers[m.group(2)?.toLowerCase()], m.group(3));
+  }
+  for (var m in _bareMonthFirst.allMatches(text)) {
+    consider(m, int.tryParse(m.group(2) ?? ""),
+        _monthNumbers[m.group(1)?.toLowerCase()], m.group(3));
+  }
+}
+
+// --- Apostrophes -------------------------------------------------------
+
+/// _wordApostrophe matches an apostrophe with a letter on both sides.
+///
+/// Word-internal only, and that restriction is the whole rule. A straight
+/// quote around a quotation is not an apostrophe, and counting those would
+/// report every message that quotes something as inconsistent.
+final _wordApostrophe = RegExp("(?<=[A-Za-z])(['’])(?=[A-Za-z])");
+
+/// _apostropheConsistency flags the minority apostrophe when a message uses
+/// both the straight one and the curly one inside words.
+///
+/// Neither is wrong, which is why this is a suggestion. Both together is
+/// what text pasted from two places looks like.
+void _apostropheConsistency(
+    String text, AnalysisCheck check, List<WritingIssue> out) {
+  var straight = <int>[], curly = <int>[];
+  for (var m in _wordApostrophe.allMatches(text)) {
+    (m.group(1) == "'" ? straight : curly).add(m.start);
+  }
+  if (straight.isEmpty || curly.isEmpty) return;
+
+  // On a tie the curly one is the odd one out: a field that substitutes
+  // apostrophes produces those, so it is the one that arrived from
+  // somewhere else.
+  var curlyLoses = curly.length <= straight.length;
+  var odd = curlyLoses ? curly : straight;
+  var wanted = curlyLoses ? "'" : "’";
+  for (var at in odd) {
+    out.add(_issue(check, at, at + 1, text,
+        subject: text[at], detail: wanted, suggestions: [wanted]));
+  }
 }
