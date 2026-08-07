@@ -66,7 +66,7 @@ class WritingSidebar extends StatefulWidget {
 enum WritingSidebarPage {
   /// What is wrong: misspellings and the grammar rules, which are the two
   /// things worth fixing before sending.
-  mistakes(Icons.spellcheck, "Spelling & grammar"),
+  mistakes(Icons.spellcheck, "Spelling & grammar", "Spelling"),
 
   /// What could be better: wordiness, cliches, the passive voice, a word used
   /// four times in a paragraph. Opinions, kept away from the mistakes so the
@@ -77,11 +77,23 @@ enum WritingSidebarPage {
   thesaurus(Icons.menu_book_outlined, "Thesaurus"),
 
   /// How much there is of it.
-  document(Icons.bar_chart, "Document");
+  document(Icons.bar_chart, "Document", "Stats");
 
   final IconData icon;
+
+  /// title names the page in full, for the tooltip and anywhere with room.
   final String title;
-  const WritingSidebarPage(this.icon, this.title);
+
+  /// short is what the tab itself says.
+  ///
+  /// A separate string rather than the title because "Spelling & grammar" is
+  /// a description and not a tab: at the width this panel actually opens at,
+  /// four of those cannot be shown at all, so the row fell back to icons
+  /// almost always and the labels might as well not have existed.
+  final String short;
+
+  const WritingSidebarPage(this.icon, this.title, [String? short])
+      : short = short ?? title;
 }
 
 class _WritingSidebarState extends State<WritingSidebar> {
@@ -233,75 +245,171 @@ class _WritingSidebarState extends State<WritingSidebar> {
   /// look at this row is usually to find out whether there is anything to
   /// look at -- and a page with nothing on it should say so before it is
   /// opened, not after.
+  // The secondary nav is deliberately built from a different set of parts to
+  // the icon row above it, because for a long time it was built from the same
+  // ones: both drew the selected item as a filled secondaryContainer
+  // rectangle, so two navigations one on top of the other were saying "this
+  // is the current thing" in identical language, and neither read as
+  // subordinate to the other.
+  //
+  // Here the selection is a line rather than a block. Nothing is filled, the
+  // active tab is the accent colour with a rule under it, and the rule sits
+  // flush on the divider that closes the row -- which is what makes four
+  // labels read as tabs belonging to the panel below rather than as four more
+  // buttons.
+  static const double _tabRowHeight = 34;
+  static const double _tabIconSize = 15;
+  static const double _tabLabelGap = 5;
+  static const double _tabPadding = 6;
+
+  /// _switchSpace is what the on/off control and its divider take out of the
+  /// row, reserved before the tabs are measured against what is left.
+  static const double _switchSpace = 58;
+
   Widget _nav(ThemeNotifier theme, WritingPreferences prefs,
       Map<WritingSidebarPage, int> counts) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 4, 4, 4),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: [
-          for (var page in WritingSidebarPage.values)
-            _navButton(theme, page, counts[page] ?? 0),
-          // The whole feature's switch, beside the results of it: turning
-          // it off from here is the obvious move when the marks are in the
-          // way, and it takes the inline ones with it.
-          Tooltip(
-            message: prefs.enabled ? "Turn writing tools off" : "Turn on",
-            child: Transform.scale(
-              // Material's switch is built for a settings row and is half
-              // again the height of the icons it now sits beside.
-              scale: 0.75,
-              child: Switch(
-                value: prefs.enabled,
-                onChanged: (v) => prefs.enabled = v,
+    var labelStyle = TextStyle(fontSize: 11.5, color: theme.colors.onSurface);
+    return SizedBox(
+      height: _tabRowHeight,
+      child: LayoutBuilder(builder: (context, box) {
+        var forTabs = box.maxWidth - _switchSpace - 12;
+        var showLabels = _labelsFit(context, forTabs, labelStyle);
+        return Padding(
+          // No bottom padding: the tab underline has to land on the divider
+          // beneath this row, and a gap between them reads as two unrelated
+          // lines rather than one selected tab.
+          padding: const EdgeInsets.fromLTRB(8, 0, 4, 0),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            for (var page in WritingSidebarPage.values)
+              Expanded(
+                child: _navButton(
+                    theme, page, counts[page] ?? 0, showLabels, labelStyle),
+              ),
+            // The switch keeps its place beside the results it governs --
+            // turning the tools off from here is the obvious move when the
+            // marks are in the way -- but it is not one of the tabs, and
+            // until this divider existed it sat in the row looking like one.
+            Center(
+              child: Container(
+                width: 1,
+                height: 18,
+                margin: const EdgeInsets.symmetric(horizontal: 6),
+                color: theme.colors.outlineVariant,
               ),
             ),
-          ),
-        ],
-      ),
+            // Centred rather than stretched: the row sets a height for the
+            // tabs, and a switch told to fill it overflows -- Transform.scale
+            // changes what is drawn and not what is laid out, so the size has
+            // to come off the switch itself.
+            Center(
+              child: Tooltip(
+                message: prefs.enabled ? "Turn writing tools off" : "Turn on",
+                child: Transform.scale(
+                  // Material's switch is built for a settings row and is half
+                  // again the height of the row it now sits in.
+                  scale: 0.7,
+                  child: Switch(
+                    value: prefs.enabled,
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    onChanged: (v) => prefs.enabled = v,
+                  ),
+                ),
+              ),
+            ),
+          ]),
+        );
+      }),
     );
   }
 
-  Widget _navButton(ThemeNotifier theme, WritingSidebarPage page, int count) {
+  /// _labelsFit reports whether every tab can show its name across [width].
+  ///
+  /// Measured rather than assumed from a breakpoint. The panel is 260 wide by
+  /// default and resizable well past that, the labels are words of very
+  /// different lengths, and the text scale is the reader's to set -- so the
+  /// question is genuinely "does this text fit in this space", and the only
+  /// honest way to answer it is to lay the text out and look.
+  bool _labelsFit(BuildContext context, double width, TextStyle style) {
+    if (width <= 0) return false;
+    var scaler = MediaQuery.textScalerOf(context);
+    var widest = 0.0;
+    for (var page in WritingSidebarPage.values) {
+      var painter = TextPainter(
+        text: TextSpan(text: page.short, style: style),
+        textDirection: TextDirection.ltr,
+        textScaler: scaler,
+      )..layout();
+      if (painter.width > widest) widest = painter.width;
+    }
+    var needed =
+        widest + _tabIconSize + _tabLabelGap + _tabPadding * 2 + _countSpace;
+    return width >= needed * WritingSidebarPage.values.length;
+  }
+
+  /// _countSpace is room for a two-digit count beside a label. Reserved
+  /// whether or not there is one, so the tabs do not shuffle sideways as the
+  /// numbers come and go while typing.
+  static const double _countSpace = 18;
+
+  Widget _navButton(ThemeNotifier theme, WritingSidebarPage page, int count,
+      bool showLabel, TextStyle labelStyle) {
     var selected = page == widget.page;
-    return Expanded(
-      child: Tooltip(
-        message: count > 0 ? "${page.title} ($count)" : page.title,
-        child: InkWell(
-          onTap: () => widget.onPageChanged(page),
-          borderRadius: BorderRadius.circular(6),
-          child: Container(
-            padding: const EdgeInsets.symmetric(vertical: 7),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(6),
-              color: selected ? theme.colors.secondaryContainer : null,
+    var accent = theme.colors.primary;
+    var colour = selected ? accent : theme.colors.onSurfaceVariant;
+
+    Widget content;
+    if (showLabel) {
+      content = Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+        Icon(page.icon, size: _tabIconSize, color: colour),
+        const SizedBox(width: _tabLabelGap),
+        Flexible(
+          child: Text(
+            page.short,
+            overflow: TextOverflow.ellipsis,
+            style: labelStyle.copyWith(
+              color: colour,
+              fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
             ),
-            child: Column(children: [
-              Icon(
-                page.icon,
-                size: 17,
-                color: selected
-                    ? theme.colors.onSecondaryContainer
-                    : theme.colors.onSurfaceVariant,
-              ),
-              // A count under the icon rather than a badge over it: a badge
-              // on a 17px icon in a narrow column is unreadable, and these
-              // numbers reach two digits often enough to matter.
-              SizedBox(
-                height: 12,
-                child: count == 0
-                    ? null
-                    : Text("$count",
-                        style: TextStyle(
-                          fontSize: 10,
-                          height: 1.2,
-                          color: selected
-                              ? theme.colors.onSecondaryContainer
-                              : theme.colors.onSurfaceVariant,
-                        )),
-              ),
-            ]),
           ),
+        ),
+        SizedBox(
+          width: _countSpace,
+          child: count == 0
+              ? null
+              : Text("  $count", style: TextStyle(fontSize: 10, color: colour)),
+        ),
+      ]);
+    } else {
+      // Too narrow for names. The underline still does the work the fill used
+      // to, so the two navigations stay distinguishable at every width.
+      content = Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+        Icon(page.icon, size: 17, color: colour),
+        SizedBox(
+          height: 12,
+          child: count == 0
+              ? null
+              : Text("$count",
+                  style: TextStyle(fontSize: 10, height: 1.2, color: colour)),
+        ),
+      ]);
+    }
+
+    return Tooltip(
+      message: count > 0 ? "${page.title} ($count)" : page.title,
+      child: InkWell(
+        onTap: () => widget.onPageChanged(page),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: _tabPadding),
+          decoration: BoxDecoration(
+            border: Border(
+              // Always present, transparent when unselected: a border that
+              // appears only on the active tab changes the height of the
+              // others, and the row twitches as the selection moves.
+              bottom: BorderSide(
+                  color: selected ? accent : Colors.transparent, width: 2),
+            ),
+          ),
+          child: content,
         ),
       ),
     );
