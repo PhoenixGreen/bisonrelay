@@ -175,6 +175,48 @@ void main() {
     Future<SpellcheckCapability> withRules(List<GrammarRule> rules) =>
         _configFor(SpellcheckData(_dictionary, const [], rules));
 
+    // The literal-word rules -- "dont", "alot", "your welcome" -- accept
+    // either case in their first letter, because the start of a sentence is
+    // exactly where these are typed. That made the fix wrong in a new way:
+    // "Dont" was corrected to "don't", mid-capital-letter.
+    group("a correction keeps the capital it replaced", () {
+      test("a capitalised mistake gets a capitalised fix", () async {
+        var config = await withRules([
+          GrammarRule(r"\b[Dd]ont\b", "Should be \"don't\"", "don't"),
+        ]);
+        const text = "Dont worry";
+        var spans = await _check(config, text);
+        var span = spans.firstWhere(
+            (s) => text.substring(s.range.start, s.range.end) == "Dont");
+        expect(span.suggestions, ["Don't"]);
+      });
+
+      test("a lowercase mistake is left lowercase", () async {
+        var config = await withRules([
+          GrammarRule(r"\b[Dd]ont\b", "Should be \"don't\"", "don't"),
+        ]);
+        const text = "we dont know";
+        var spans = await _check(config, text);
+        var span = spans.firstWhere(
+            (s) => text.substring(s.range.start, s.range.end) == "dont");
+        expect(span.suggestions, ["don't"]);
+      });
+
+      // The rules that exist to *add* a capital match lowercase text and
+      // suggest the capitalised form. Carrying case across must not undo
+      // them, which is why it only ever adds a capital.
+      test("a capitalisation fix is not undone", () async {
+        var config = await withRules([
+          GrammarRule(r"\b(monday|tuesday)\b", "Should be \"\$U1\"", r"$U1"),
+        ]);
+        const text = "see you on monday";
+        var spans = await _check(config, text);
+        var span = spans.firstWhere(
+            (s) => text.substring(s.range.start, s.range.end) == "monday");
+        expect(span.suggestions, ["Monday"]);
+      });
+    });
+
     test("a repeated word is caught and the duplicate dropped", () async {
       var config = await withRules([
         GrammarRule(r"\b(\w+)([ \t]+)\1\b", "Repeated word", r"$1"),

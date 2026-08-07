@@ -2,6 +2,7 @@ import 'package:bruig/plugin_system/capabilities/spellcheck.dart';
 import 'package:bruig/plugin_system/capabilities/thesaurus.dart';
 import 'package:bruig/plugin_system/capabilities/thesaurus_menu.dart';
 import 'package:golib_plugin/definitions.dart';
+import 'package:bruig/plugin_system/capabilities/writing_analysis.dart';
 import 'package:bruig/plugin_system/capabilities/writing_prefs.dart';
 import 'package:bruig/plugin_system/capabilities/writing_stats.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
@@ -418,6 +419,14 @@ class _WritingSidebarState extends State<WritingSidebar> {
                   label: Text(suggestion, style: const TextStyle(fontSize: 12)),
                   onPressed: () => _apply(issue, suggestion),
                 ),
+              // A repeated word is the one counting check that can be
+              // answered with a replacement, and it is the only one that has
+              // to be asked for rather than computed. The count comes from
+              // the paragraph; the alternatives come from the thesaurus, one
+              // wasm call away, so they are fetched when the issue is on
+              // screen rather than while the text is being checked.
+              if (issue.checkId == repeatedWordCheckId)
+                _synonymChips(context, theme, issue),
               // The same two ways out the context menu offers, since the
               // panel is where someone works through a whole post and is
               // exactly where "stop telling me about this" belongs.
@@ -439,6 +448,61 @@ class _WritingSidebarState extends State<WritingSidebar> {
           ),
         ),
       ]),
+    );
+  }
+
+  /// _synonymChips offers other words for a repeated one.
+  ///
+  /// Nothing is shown while the lookup runs and nothing is shown when it
+  /// comes back empty: this sits inside a row that already says what the
+  /// problem is, and a "Looking up..." line that resolves to nothing would
+  /// make every repeated word in a long post flicker.
+  ///
+  /// Capped at four. The thesaurus returns everything it has, and a paragraph
+  /// with six repetitions in it would otherwise fill the panel with chips.
+  Widget _synonymChips(
+      BuildContext context, ThemeNotifier theme, WritingIssue issue) {
+    var thesaurus = context.read<ThesaurusCapability?>();
+    var word = ThesaurusCapability.normalizeWord(issue.text);
+    if (thesaurus == null || !thesaurus.available || word == null) {
+      return const SizedBox.shrink();
+    }
+    return FutureBuilder<ThesaurusEntry?>(
+      key: ValueKey(word),
+      future: thesaurus.lookUp(word),
+      builder: (context, snapshot) {
+        var entry = snapshot.data;
+        if (entry == null) return const SizedBox.shrink();
+        var words = <String>[];
+        for (var sense in entry.senses) {
+          for (var synonym in sense.synonyms) {
+            // The word itself comes back among its own synonyms, and
+            // replacing it with itself would leave the count where it was.
+            if (synonym.toLowerCase() == word ||
+                words.contains(synonym) ||
+                synonym.contains(" ")) {
+              continue;
+            }
+            words.add(synonym);
+            if (words.length == 4) break;
+          }
+          if (words.length == 4) break;
+        }
+        return Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: [
+            for (var synonym in words)
+              ActionChip(
+                visualDensity: VisualDensity.compact,
+                label: Text(synonym, style: const TextStyle(fontSize: 12)),
+                // Case carried over, so replacing a word that opens a
+                // sentence does not lower-case it.
+                onPressed: () => _apply(issue, matchCase(issue.text, synonym)),
+              ),
+          ],
+        );
+      },
     );
   }
 

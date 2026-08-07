@@ -79,6 +79,11 @@ List<WritingIssue> runAnalysisChecks(
 /// what that same preference set otherwise holds.
 String analysisCheckId(AnalysisCheck check) => "analysis:${check.id}";
 
+/// repeatedWordCheckId names the one counting check whose finding can be
+/// answered with a replacement, so the sidebar can offer alternatives beside
+/// it. The word comes from here; the alternatives come from the thesaurus.
+const repeatedWordCheckId = "analysis:repeated-word-in-paragraph";
+
 /// _issue builds one result, expanding the check's message.
 ///
 /// `$1` is what the check is about -- the repeated word, the spelling that
@@ -332,7 +337,7 @@ void _spellingVariants(
         // Offered as a correction even though nothing here is wrong: taking
         // it is how you settle on one spelling, and it is the only action
         // there is to take.
-        suggestions: [_matchCase(found, other)],
+        suggestions: [matchCase(found, other)],
       ));
     }
   }
@@ -412,17 +417,6 @@ String _maskSkipped(String text) {
     }
   }
   return masked.join();
-}
-
-/// _matchCase gives [replacement] the capitalisation of [original], so
-/// replacing "Colour" at the start of a sentence does not produce "color".
-String _matchCase(String original, String replacement) {
-  if (original.isEmpty || replacement.isEmpty) return replacement;
-  if (original[0] == original[0].toUpperCase() &&
-      original[0] != original[0].toLowerCase()) {
-    return replacement[0].toUpperCase() + replacement.substring(1);
-  }
-  return replacement;
 }
 
 /// _occurrences finds whole-word appearances of [word], case-insensitively.

@@ -71,6 +71,23 @@ String _expandTemplate(String template, RegExpMatch match) {
   });
 }
 
+/// matchCase gives [replacement] the capitalisation of [original], so
+/// replacing "Colour" at the start of a sentence does not produce "color",
+/// and correcting "Dont" does not produce "don't".
+///
+/// One-way on purpose: it can add a capital and never take one away. The
+/// rules whose whole point is to add one -- a weekday, a language, the first
+/// word of a sentence -- match lowercase text and suggest the capitalised
+/// form, and a two-way version would undo exactly the fix they exist for.
+String matchCase(String original, String replacement) {
+  if (original.isEmpty || replacement.isEmpty) return replacement;
+  if (original[0] == original[0].toUpperCase() &&
+      original[0] != original[0].toLowerCase()) {
+    return replacement[0].toUpperCase() + replacement.substring(1);
+  }
+  return replacement;
+}
+
 /// Damerau-Levenshtein (edit) distance between two strings, abandoned as soon
 /// as the whole working row exceeds [max] -- a generic string algorithm with
 /// no language-specific knowledge, used to rank dictionary suggestions.
@@ -426,9 +443,17 @@ class _Checker {
             // `Should be "$1 effect"` is a template that was never filled
             // in, and it was shown to the reader exactly like that.
             message: _expandTemplate(rule.message, m),
+            // Case carried across from what was matched. The rules key on a
+            // literal word -- "dont", "alot", "your welcome" -- and each
+            // accepts either case in its first letter, because the mistake
+            // is commonest at the start of a sentence, which is precisely
+            // where the fix must not hand back a lowercase word.
             suggestions: rule.suggest.isEmpty
                 ? const []
-                : [_expandTemplate(rule.suggest, m)],
+                : [
+                    matchCase(original.substring(m.start, m.end),
+                        _expandTemplate(rule.suggest, m))
+                  ],
             kind: rule.kind,
             checkId: rule.source,
             // The message as the provider wrote it. Turning a rule off
