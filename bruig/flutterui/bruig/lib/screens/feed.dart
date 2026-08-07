@@ -348,14 +348,14 @@ class _FeedScreenState extends State<FeedScreen> {
     var composerSidebar = composing && composer.visible
         ? ComposerSidebarShell(
             controller: composer,
+            // In ComposerPanel's own order, so the row cannot drift from
+            // the enum it is built out of.
             panels: [
-              ComposerPanel.none,
-              // Left out rather than shown disabled when no plugin provides
-              // the writing tools: there is nothing the user could do about
-              // it from here.
-              if (writingAvailable) ComposerPanel.writing,
-              ComposerPanel.posts,
-              ComposerPanel.formatting,
+              for (var panel in ComposerPanel.values)
+                // Writing Tools is left out rather than shown disabled when
+                // no plugin provides it: there is nothing the user could do
+                // about that from here.
+                if (panel != ComposerPanel.writing || writingAvailable) panel,
             ],
             child: switch (composer.panel) {
               // The screen's own menu, in whichever form this screen is

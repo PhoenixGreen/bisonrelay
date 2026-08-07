@@ -20,17 +20,22 @@ import 'package:flutter/scheduler.dart';
 ///
 /// Declaration order is the order the icons appear in, so the nav is read
 /// straight off this rather than repeated beside it.
+/// The declaration order is the order the icons appear in, and it is the
+/// only place that order is set -- the Feed builds its row by walking this.
+/// It runs outwards from the post: where you are (the feed menu), what you
+/// have written before (My Posts), the words in front of you (Writing
+/// Tools), and what you can put around them (Formatting & Content).
 enum ComposerPanel {
   /// The screen's own navigation -- for the Feed, its tab list. Not an
   /// absence of a panel: it is the one the composer starts on, and the one
   /// the first icon returns to.
   none(Icons.list, "Feed menu"),
 
-  /// The writing tools: spelling, grammar, phrasing, reference.
-  writing(Icons.spellcheck, "Writing Tools"),
-
   /// The saved-post library: folders and documents on disk.
   posts(Icons.folder_outlined, "My Posts"),
+
+  /// The writing tools: spelling, grammar, phrasing, reference.
+  writing(Icons.spellcheck, "Writing Tools"),
 
   /// Formatting and content: embeds, headings, tables, callouts.
   formatting(Icons.text_fields, "Formatting & Content");

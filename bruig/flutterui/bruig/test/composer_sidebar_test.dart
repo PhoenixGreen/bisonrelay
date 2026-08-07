@@ -50,6 +50,34 @@ Future<void> _pump(WidgetTester tester, ComposerSidebarController controller,
 }
 
 void main() {
+  // The order the icons sit in, pinned because nothing else would notice it
+  // changing: every other test here walks ComposerPanel.values, so it agrees
+  // with whatever the enum currently says rather than with what was wanted.
+  //
+  // It runs outwards from the post: where you are, what you have written
+  // before, the words in front of you, and what you can put around them.
+  testWidgets("the panel icons run left to right in a fixed order",
+      (tester) async {
+    var controller = ComposerSidebarController();
+    await _pump(tester, controller);
+
+    var order = [
+      ComposerPanel.none,
+      ComposerPanel.posts,
+      ComposerPanel.writing,
+      ComposerPanel.formatting,
+    ];
+    expect(ComposerPanel.values, order,
+        reason: "the Feed builds its row by walking this enum, so the "
+            "declaration order is the on-screen order");
+
+    var xs = [
+      for (var panel in order) tester.getCenter(find.byIcon(panel.icon)).dx
+    ];
+    expect(xs, orderedEquals(([...xs]..sort())),
+        reason: "left to right: ${order.map((p) => p.label).join(", ")}");
+  });
+
   _navTargetTests();
   _resizeTests();
   _drawerOwnershipTests();
