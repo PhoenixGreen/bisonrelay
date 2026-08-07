@@ -208,8 +208,8 @@ class _WritingPopup extends StatelessWidget {
     if (issue.checkId != null) {
       return [
         _action(theme, "Turn off this check", () {
-          act(() =>
-              prefs.disableCheck(issue.checkId!, description: issue.message));
+          act(() => prefs.disableCheck(issue.checkId!,
+              description: issue.ruleMessage));
         }),
       ];
     }

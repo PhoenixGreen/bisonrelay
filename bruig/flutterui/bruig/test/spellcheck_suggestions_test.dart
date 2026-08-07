@@ -165,6 +165,8 @@ void main() {
   _apostropheTests();
   _compoundAndPunctuationTests();
   _antipatternTests();
+  _digitAdjacentTests();
+  _messageTemplateTests();
 
   group("grammar rules", () {
     // These run in Dart's regex engine, which is the only place the
@@ -1046,5 +1048,93 @@ void _antipatternTests() {
     expect(await review("we did it with out", [rule]), isNotEmpty);
     expect(await review("with out of date info", [rule]), isEmpty);
     expect(await review("with out-of-date info", [rule]), isEmpty);
+  });
+}
+
+// Reported: "12th" was flagged. The word pattern pulls letter runs out of
+// the text, so "12th" hands the dictionary "th" -- which is deliberately not
+// in it, because that is what lets a bare "th" be offered "the".
+void _digitAdjacentTests() {
+  Future<List<WritingIssue>> review(String text) async {
+    var capability = SpellcheckCapability(
+        fetch: (_) async => SpellcheckData(
+            const ["the", "on", "at", "meet"], const [], const []));
+    await capability.update(FakePlugins({PluginCapability.spellcheckData}));
+    return capability.review(text);
+  }
+
+  test("an ordinal suffix is not a word", () async {
+    for (var text in [
+      "the 12th",
+      "the 1st",
+      "the 2nd",
+      "the 3rd",
+      "the 21st"
+    ]) {
+      expect(await review(text), isEmpty, reason: text);
+    }
+  });
+
+  test("letters welded to a number are left alone", () async {
+    for (var text in ["v1.2.3", "MP3", "3D", "COVID19", "H2O"]) {
+      expect(await review(text), isEmpty, reason: text);
+    }
+  });
+
+  // The exclusion is about being adjacent to a digit, not about being short.
+  // A bare "th" is still a typo, and still gets "the".
+  test("a bare short word is still flagged", () async {
+    var issues = await review("th");
+    expect(issues, hasLength(1));
+    expect(issues.single.suggestions, contains("the"));
+  });
+}
+
+// Reported: a rule's message showed as `Should be "$1 effect"` -- the
+// template, with nothing filled in. Only the replacement was ever expanded,
+// so 61 of the plugin's rules were showing their own source to the reader.
+void _messageTemplateTests() {
+  Future<WritingIssue> only(String text, GrammarRule rule) async {
+    var capability = SpellcheckCapability(
+        fetch: (_) async => SpellcheckData(const [], const [], [rule]));
+    await capability.update(FakePlugins({PluginCapability.spellcheckData}));
+    return capability
+        .issuesAt(text, 0, text.length)
+        .firstWhere((i) => i.kind != WritingIssueKind.spelling);
+  }
+
+  test("the matched text is put into the message", () async {
+    var rule = GrammarRule(
+        r"\b(a|an|the)\s+affect\b", r'Should be "$1 effect"', r"$1 effect");
+    var issue = await only("it had the affect of", rule);
+    expect(issue.message, 'Should be "the effect"');
+    expect(issue.suggestions.single, "the effect");
+  });
+
+  test("and into the explanation", () async {
+    var rule = GrammarRule(r"\b(\w+)\s+affect\b", "Wrong word", r"$1 effect",
+        "Confused words", r'"$1 affect" is not a phrase.');
+    var issue = await only("it had the affect of", rule);
+    expect(issue.explanation, '"the affect" is not a phrase.');
+  });
+
+  // Turning a rule off names it in Settings, and the rule is the whole
+  // pattern rather than the phrase that happened to trip it.
+  test("the rule keeps its own wording for being switched off", () async {
+    var rule = GrammarRule(
+        r"\b(a|an|the)\s+affect\b", r'Should be "$1 effect"', r"$1 effect");
+    var issue = await only("it had the affect of", rule);
+    expect(issue.ruleMessage, r'Should be "$1 effect"',
+        reason: "a disabled-checks list saying \"the effect\" would describe "
+            "a rule narrower than the one switched off");
+  });
+
+  // A misspelling has no rule behind it, so the two are the same thing.
+  test("an issue with no rule reports the same either way", () async {
+    var capability = SpellcheckCapability(
+        fetch: (_) async => SpellcheckData(const ["the"], const [], const []));
+    await capability.update(FakePlugins({PluginCapability.spellcheckData}));
+    var issue = capability.review("paymnt").single;
+    expect(issue.ruleMessage, issue.message);
   });
 }

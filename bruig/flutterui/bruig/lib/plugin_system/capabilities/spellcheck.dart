@@ -123,6 +123,17 @@ int _editDistance(String a, String b, int max) {
   return prev[b.length];
 }
 
+/// _touchesDigit reports whether [match] has a digit against either end.
+bool _touchesDigit(String text, RegExpMatch match) {
+  bool isDigit(int at) {
+    if (at < 0 || at >= text.length) return false;
+    var c = text.codeUnitAt(at);
+    return c >= 0x30 && c <= 0x39;
+  }
+
+  return isDigit(match.start - 1) || isDigit(match.end);
+}
+
 /// _letterMask is a 26-bit set of which letters appear in [w], used to reject
 /// candidates before paying for the distance matrix. A single edit changes
 /// the letter *set* by at most two elements (a substitution removes one and
@@ -206,6 +217,18 @@ class WritingIssue {
   /// when the provider sent none.
   final String explanation;
 
+  /// The rule's message as its provider wrote it, before the matched text
+  /// was substituted into it.
+  ///
+  /// [message] describes this occurrence and is what the reader sees.
+  /// This describes the rule, and is what names it where a rule is being
+  /// switched off -- a list of disabled checks wants "Should be \"$1
+  /// effect\"", which covers every determiner, not "Should be \"an
+  /// effect\"", which is the one that happened to be on screen.
+  ///
+  /// Falls back to [message] for an issue with no rule behind it.
+  final String ruleMessage;
+
   const WritingIssue({
     required this.range,
     required this.text,
@@ -215,7 +238,8 @@ class WritingIssue {
     this.checkId,
     this.category = "",
     this.explanation = "",
-  });
+    String? ruleMessage,
+  }) : ruleMessage = ruleMessage ?? message;
 
   /// title is what to head the issue with: the category if the provider gave
   /// one, and the message otherwise, so a rule with no category still gets a
@@ -398,14 +422,24 @@ class _Checker {
             // what gets spliced back into the field and what a correction is
             // checked against, so it has to be the characters actually there.
             text: original.substring(m.start, m.end),
-            message: rule.message,
+            // Expanded, like the replacement beside it. A message reading
+            // `Should be "$1 effect"` is a template that was never filled
+            // in, and it was shown to the reader exactly like that.
+            message: _expandTemplate(rule.message, m),
             suggestions: rule.suggest.isEmpty
                 ? const []
                 : [_expandTemplate(rule.suggest, m)],
             kind: rule.kind,
             checkId: rule.source,
+            // The message as the provider wrote it. Turning a rule off
+            // names it in Settings, and the rule is the whole pattern
+            // rather than the one phrase that happened to trip it --
+            // "Should be \"$1 effect\"" covers a, an, the, this and five
+            // more, and listing it as "Should be \"an effect\"" would
+            // describe a rule narrower than the one being switched off.
+            ruleMessage: rule.message,
             category: rule.category,
-            explanation: rule.explanation,
+            explanation: _expandTemplate(rule.explanation, m),
           ));
         }
       } catch (_) {
@@ -420,6 +454,14 @@ class _Checker {
         isIgnoredCheck: (id) => prefs?.isCheckDisabled(id) ?? false));
 
     for (var m in _wordRegExp.allMatches(text)) {
+      // A run of letters welded to a digit is not a word the dictionary can
+      // rule on: the "th" in "12th", the "st" in "1st", the "v" in "v1.2.3",
+      // the "MP" in "MP3". Each of those was flagged, and the ordinal
+      // suffixes especially, because the wordlist drops two-letter entries
+      // that are not common words -- which is what lets "th" be offered
+      // "the" when it stands alone.
+      if (_touchesDigit(text, m)) continue;
+
       var word = m.group(0)!;
       if (_words.contains(word.toLowerCase())) continue;
       if (prefs?.isIgnoredWord(word) ?? false) continue;

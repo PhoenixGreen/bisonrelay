@@ -428,7 +428,7 @@ class _WritingSidebarState extends State<WritingSidebar> {
                     // The description is what names the rule in Settings.
                     // Without it the list there reads "check 1, check 2".
                     () => prefs.disableCheck(issue.checkId!,
-                        description: issue.message))
+                        description: issue.ruleMessage))
               else ...[
                 _dismissChip(
                     theme, "Ignore", () => prefs.ignoreOnce(issue.text)),
