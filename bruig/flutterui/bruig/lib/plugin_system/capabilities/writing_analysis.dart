@@ -582,6 +582,31 @@ final _bareDayFirst = RegExp(
 final _bareMonthFirst =
     RegExp("\\b($_months)\\s+$_dayNumber$_optionalYear", caseSensitive: false);
 
+/// _nearestYear picks the year a date with no year written most likely means:
+/// the one that puts it closest to today.
+///
+/// The current year is the obvious guess and it is wrong twice a year. Someone
+/// writing "Monday, 4 January" in late December means the January a week away,
+/// not the one eleven months behind them, and checking the weekday against the
+/// wrong year produces a confident correction that is itself wrong. The same
+/// happens in reverse in early January for a date in December.
+///
+/// Returns null when the day does not exist in any candidate year, which is
+/// the impossible-date check's business rather than this one's.
+int? _nearestYear(int month, int day, DateTime now) {
+  int? best;
+  Duration? closest;
+  for (var year in [now.year - 1, now.year, now.year + 1]) {
+    if (day < 1 || day > _daysInMonth(month, year)) continue;
+    var gap = DateTime(year, month, day).difference(now).abs();
+    if (closest == null || gap < closest) {
+      closest = gap;
+      best = year;
+    }
+  }
+  return best;
+}
+
 bool _isLeapYear(int y) => y % 4 == 0 && (y % 100 != 0 || y % 400 == 0);
 
 int _daysInMonth(int month, int year) {
@@ -608,9 +633,13 @@ void _weekdayAgreement(
       RegExpMatch m, String? weekday, int? day, int? month, String? yearText) {
     if (weekday == null || day == null || month == null) return;
     if ((yearText != null) != wantYear) return;
-    var year = yearText == null ? now.year : int.parse(yearText);
+    var year =
+        yearText == null ? _nearestYear(month, day, now) : int.parse(yearText);
+    if (year == null) return;
     // A date that does not exist has no weekday to disagree with, and
     // saying so is the impossible-date check's job rather than this one's.
+    // Only reachable with a year written out; _nearestYear has already
+    // rejected the rest.
     if (day < 1 || day > _daysInMonth(month, year)) return;
 
     var actual = DateTime(year, month, day).weekday;

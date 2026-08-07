@@ -81,6 +81,27 @@ void main() {
           reason: "an assumed year cannot support a red underline");
     });
 
+    // The current year is the obvious guess and it is wrong twice a year.
+    // 4 January 2027 is a Monday; 4 January 2026 was a Sunday.
+    test("a date just over the new year is read as the nearer one", () {
+      var lateDecember = DateTime(2026, 12, 28);
+      var issues = runAnalysisChecks("let's meet Monday, 4 January", [check],
+          isIgnoredCheck: (_) => false, now: lateDecember);
+      expect(issues, isEmpty,
+          reason: "in late December, 4 January means the one a week away, "
+              "which is a Monday -- not the one eleven months behind");
+    });
+
+    // The same in reverse: a December date read in early January belongs to
+    // the year just ended. 28 December 2026 is a Monday; 28 December 2027 is
+    // a Tuesday.
+    test("a date just before the new year is read as the nearer one", () {
+      var earlyJanuary = DateTime(2027, 1, 4);
+      var issues = runAnalysisChecks("we shipped Monday, 28 December", [check],
+          isIgnoredCheck: (_) => false, now: earlyJanuary);
+      expect(issues, isEmpty);
+    });
+
     test("a written year belongs to the other check", () {
       expect(_run("Tuesday, 10 August 2026", check), isEmpty);
     });
