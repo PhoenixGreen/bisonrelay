@@ -904,8 +904,20 @@ class GrammarRule {
   @JsonKey(defaultValue: "")
   final String severity;
 
+  /// Patterns that suppress this rule wherever they match over it: the rule
+  /// fires, and then does not, because the text turned out to be one of the
+  /// readings it is not about.
+  ///
+  /// Suppression only -- an antipattern can take a match away and cannot
+  /// create one.
+  @JsonKey(defaultValue: [])
+  final List<String> antipatterns;
+
   GrammarRule(this.pattern, this.message, this.suggest,
-      [this.category = "", this.explanation = "", this.severity = ""]);
+      [this.category = "",
+      this.explanation = "",
+      this.severity = "",
+      this.antipatterns = const []]);
   factory GrammarRule.fromJson(Map<String, dynamic> json) =>
       _$GrammarRuleFromJson(json);
 }

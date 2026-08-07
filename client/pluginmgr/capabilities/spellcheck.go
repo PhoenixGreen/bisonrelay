@@ -35,6 +35,23 @@ type GrammarRule struct {
 	// informational only (flagged, but with no proposed replacement).
 	Suggest string `json:"suggest"`
 
+	// Antipatterns are patterns that suppress this rule wherever they
+	// match over it: the rule fires, and then does not, because the text
+	// turned out to be one of the readings it is not about.
+	//
+	// The alternative is a negative lookahead glued onto Pattern, which
+	// works and is worse in two ways. It is unreadable -- the exception
+	// becomes punctuation at the end of an already dense expression -- and
+	// it cannot be tested on its own, so nothing notices when an exception
+	// stops matching what it was written for. It also puts the rule beyond
+	// any regex engine without lookaround, which is how a provider's own
+	// tests lose sight of exactly the rules that most need watching.
+	//
+	// Suppression only: an antipattern can take a match away and cannot
+	// create one. A rule that needs *context* to fire still has to say so in
+	// Pattern.
+	Antipatterns []string `json:"antipatterns,omitempty"`
+
 	// Severity separates a mistake from an opinion: "error" (the default when
 	// empty) for text that is wrong whatever the writer meant, "suggestion"
 	// for a rewrite that is usually an improvement and sometimes not.

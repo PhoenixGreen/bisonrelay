@@ -24,6 +24,7 @@ List<WritingIssue> _run(String text, AnalysisCheck check) =>
     runAnalysisChecks(text, [check], isIgnoredCheck: (_) => false);
 
 void main() {
+  _unpairedBracketTests();
   group("repeated words", () {
     var check = _check("repeated-word-in-paragraph",
         threshold: 4, message: r'"$1" used $2 times');
@@ -185,5 +186,89 @@ void main() {
 
   test("empty text is not analysed", () {
     expect(_run("   \n  ", _check("long-sentence", threshold: 1)), isEmpty);
+  });
+}
+
+// Unpaired brackets: a counting check rather than a matching one, and the
+// only one of them that is an error -- a bracket that is never closed is not
+// a matter of taste, and the reader of the post sees it too.
+void _unpairedBracketTests() {
+  var check = AnalysisCheck("unpaired-brackets", 0, r'Unclosed "$1"',
+      "Punctuation", "why", "", const []);
+
+  List<WritingIssue> run(String text) =>
+      runAnalysisChecks(text, [check], isIgnoredCheck: (_) => false);
+
+  test("balanced text is left alone", () {
+    for (var text in [
+      "This (is fine) and so is [this].",
+      "Nested (brackets [work] too).",
+      'She said "hello" and left.',
+      'Two "quoted" "things" here.',
+      "No brackets at all.",
+    ]) {
+      expect(run(text), isEmpty, reason: text);
+    }
+  });
+
+  test("an opener that is never closed is flagged where it opens", () {
+    var text = "This (is not closed and neither is this.";
+    var issue = run(text).single;
+    expect(text.substring(issue.range.start, issue.range.end), "(");
+    expect(issue.message, 'Unclosed "("');
+  });
+
+  test("a closer with nothing open is flagged", () {
+    var issue = run("This is not opened).").single;
+    expect(issue.text, ")");
+  });
+
+  // A count can say a message is unbalanced but not where, and in a long
+  // post finding it is most of the work.
+  test("the wrong closer is caught, not just an imbalance", () {
+    var issues = run("Mismatched (like this].");
+    expect(issues, isNotEmpty);
+  });
+
+  test("an odd number of quotes is flagged at the last one", () {
+    var text = 'She said "hello and left.';
+    var issue = run(text).single;
+    expect(text.substring(issue.range.start, issue.range.end), '"');
+  });
+
+  // The apostrophe is the same character as a single quote, so counting it
+  // would leave every message with a contraction in it unbalanced.
+  test("apostrophes are not quotes", () {
+    expect(run("I don't think it's a problem."), isEmpty);
+  });
+
+  // Code is full of brackets that balance in a language this knows nothing
+  // about, and half of one pasted in on purpose is not a typo.
+  group("things that are not mistakes", () {
+    test("a fenced code block is skipped", () {
+      expect(run("Here:\n```\nif (x {\n```\nand done."), isEmpty);
+    });
+
+    test("an inline code span is skipped", () {
+      expect(run("Call `foo(` to see the error."), isEmpty);
+    });
+
+    // The single most annoying thing this could possibly do.
+    test("emoticons are skipped", () {
+      for (var text in [
+        "Sounds good :)",
+        "Oh no :(",
+        "Really :-)",
+        "Ha :D and =)",
+        "Backwards (: too",
+      ]) {
+        expect(run(text), isEmpty, reason: text);
+      }
+    });
+
+    // A real bracket beside an emoticon is still a real bracket.
+    test("a genuine fault next to an emoticon is still caught", () {
+      expect(run("This (is unclosed :) really"), isNotEmpty);
+    });
   });
 }

@@ -749,6 +749,10 @@ GrammarRule _$GrammarRuleFromJson(Map<String, dynamic> json) => GrammarRule(
       json['category'] as String? ?? '',
       json['explanation'] as String? ?? '',
       json['severity'] as String? ?? '',
+      (json['antipatterns'] as List<dynamic>?)
+              ?.map((e) => e as String)
+              .toList() ??
+          [],
     );
 
 Map<String, dynamic> _$GrammarRuleToJson(GrammarRule instance) =>
@@ -759,6 +763,7 @@ Map<String, dynamic> _$GrammarRuleToJson(GrammarRule instance) =>
       'category': instance.category,
       'explanation': instance.explanation,
       'severity': instance.severity,
+      'antipatterns': instance.antipatterns,
     };
 
 AnalysisCheck _$AnalysisCheckFromJson(Map<String, dynamic> json) =>

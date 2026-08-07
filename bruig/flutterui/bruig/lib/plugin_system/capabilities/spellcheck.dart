@@ -223,6 +223,21 @@ class WritingIssue {
   String get title => category.isNotEmpty ? category : message;
 }
 
+/// _compileAll turns a provider's antipattern sources into matchers, keeping
+/// whichever compile.
+List<RegExp> _compileAll(List<String> sources) {
+  var out = <RegExp>[];
+  for (var source in sources) {
+    try {
+      out.add(RegExp(source));
+    } catch (_) {
+      // An exception this engine cannot read. The rule still runs, which is
+      // the safer of the two failures.
+    }
+  }
+  return out;
+}
+
 /// _Candidate is one possible correction, with the two numbers it is ordered
 /// by: how far it is from what was typed, and how common a word it is.
 class _Candidate {
@@ -242,8 +257,16 @@ class _CompiledRule {
   final String category;
   final String explanation;
   final WritingIssueKind kind;
+
+  /// antipatterns suppress this rule where they match over it. Compiled
+  /// alongside the pattern, and an uncompilable one is dropped rather than
+  /// taking the rule with it -- losing an exception makes a rule noisier,
+  /// which is recoverable; losing the rule makes it silent, which is not
+  /// obvious to anybody.
+  final List<RegExp> antipatterns;
+
   _CompiledRule(this.pattern, this.message, this.suggest, this.source,
-      this.category, this.explanation, this.kind);
+      this.category, this.explanation, this.kind, this.antipatterns);
 }
 
 /// _Checker is the whole checking engine, driven entirely by
@@ -308,7 +331,8 @@ class _Checker {
                 // keeps the behaviour it had.
                 r.severity == "suggestion"
                     ? WritingIssueKind.phrasing
-                    : WritingIssueKind.grammar);
+                    : WritingIssueKind.grammar,
+                _compileAll(r.antipatterns));
           } catch (_) {
             // A plugin-supplied pattern Dart's regex engine can't compile;
             // skip just that rule rather than failing the whole plugin.
@@ -352,7 +376,22 @@ class _Checker {
     for (var rule in _rules) {
       if (prefs?.isCheckDisabled(rule.source) ?? false) continue;
       try {
+        // Where this rule is not to fire, computed once for the whole text
+        // rather than per match.
+        var exceptions = <TextRange>[
+          for (var antipattern in rule.antipatterns)
+            for (var m in antipattern.allMatches(text))
+              TextRange(start: m.start, end: m.end),
+        ];
+
         for (var m in rule.pattern.allMatches(text)) {
+          // Contained, not merely overlapping. An exception describes a
+          // longer reading that the match is part of -- "my self" inside
+          // "my self-esteem" -- so a pattern that happens to clip the edge
+          // of one is not that reading and should still be flagged.
+          if (exceptions.any((e) => e.start <= m.start && e.end >= m.end)) {
+            continue;
+          }
           issues.add(WritingIssue(
             range: TextRange(start: m.start, end: m.end),
             // Sliced from the original, not from what was matched: this is

@@ -164,6 +164,7 @@ void main() {
   _newLookaheadRuleTests();
   _apostropheTests();
   _compoundAndPunctuationTests();
+  _antipatternTests();
 
   group("grammar rules", () {
     // These run in Dart's regex engine, which is the only place the
@@ -986,5 +987,64 @@ void _compoundAndPunctuationTests() {
           await review("No one knows the answer yet", [yesNoComma]), isEmpty);
       expect(await review("No longer a problem", [yesNoComma]), isEmpty);
     });
+  });
+}
+
+// Antipatterns: a provider says where a rule is *not* to fire, instead of
+// gluing a negative lookahead onto the end of the pattern.
+void _antipatternTests() {
+  Future<List<WritingIssue>> review(
+      String text, List<GrammarRule> rules) async {
+    var capability = SpellcheckCapability(
+        fetch: (_) async => SpellcheckData(const [], const [], rules));
+    await capability.update(FakePlugins({PluginCapability.spellcheckData}));
+    return capability
+        .issuesAt(text, 0, text.length)
+        .where((issue) => issue.kind != WritingIssueKind.spelling)
+        .toList();
+  }
+
+  var guarded = GrammarRule(r"\b([Mm])y\s+self\b", r'Should be "$1yself"',
+      r"$1yself", "Grammar", "why", "", [r"[Mm]y\s+self-"]);
+
+  test("the rule still fires where the exception does not apply", () async {
+    expect(await review("i did it my self", [guarded]), isNotEmpty);
+  });
+
+  test("an exception takes the match away", () async {
+    expect(await review("my self-esteem took a knock", [guarded]), isEmpty);
+  });
+
+  // Contained, not merely overlapping. An exception describes a longer
+  // reading the match is part of, so a pattern that happens to clip the edge
+  // of one is not that reading and is still a mistake.
+  test("an exception has to cover the match, not touch it", () async {
+    var rule = GrammarRule(
+        r"\bfoo\b", "Foo", "bar", "Grammar", "why", "", [r"baz\s+foo"]);
+    expect(await review("baz foo", [rule]), isEmpty);
+    expect(await review("qux foo", [rule]), isNotEmpty);
+  });
+
+  // Losing an exception makes a rule noisier, which somebody notices and
+  // reports. Losing the rule makes it silent, which nobody notices at all.
+  test("an exception that will not compile does not disable the rule",
+      () async {
+    var rule = GrammarRule(
+        r"\bfoo\b", "Foo", "bar", "Grammar", "why", "", [r"(unclosed"]);
+    expect(await review("a foo here", [rule]), isNotEmpty);
+  });
+
+  test("several exceptions all apply", () async {
+    var rule = GrammarRule(
+        r"\b([Ww])ith\s+out\b",
+        r'Should be "$1ithout"',
+        r"$1ithout",
+        "Grammar",
+        "why",
+        "",
+        [r"[Ww]ith\s+out\s+of\b", r"[Ww]ith\s+out-"]);
+    expect(await review("we did it with out", [rule]), isNotEmpty);
+    expect(await review("with out of date info", [rule]), isEmpty);
+    expect(await review("with out-of-date info", [rule]), isEmpty);
   });
 }
