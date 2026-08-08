@@ -95,7 +95,29 @@ class _PluginsSettingsScreenState extends State<PluginsSettingsScreen> {
     return Container(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Txt.L("Plugins"),
+          Row(children: [
+            const Txt.L("Plugins"),
+            const Spacer(),
+            // Icon only, and up here rather than under the list: importing
+            // is what you come to this page to do when the list is empty,
+            // and a control below the plugins is a control you have to
+            // scroll past all of them to reach once it is not.
+            //
+            // The spinner replaces the icon rather than sitting beside it,
+            // so the button keeps its size while an import runs and nothing
+            // on the row moves.
+            IconButton(
+              onPressed: importing ? null : importPlugin,
+              tooltip: "Import a plugin",
+              icon: importing
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.file_upload_outlined),
+            ),
+          ]),
           const SizedBox(height: 10),
           Consumer<PluginManagerModel>(
               builder: (context, model, child) => model.plugins.isEmpty
@@ -108,12 +130,6 @@ class _PluginsSettingsScreenState extends State<PluginsSettingsScreen> {
                         for (var plugin in model.plugins) _pluginTile(plugin),
                       ],
                     )),
-          const SizedBox(height: 20),
-          ElevatedButton.icon(
-            onPressed: importing ? null : importPlugin,
-            icon: const Icon(Icons.file_upload_outlined),
-            label: const Text("Import Plugin"),
-          ),
           // The writing overrides live inside the panel of whichever plugin
           // provides them, but they outlive it: a word added to the personal
           // dictionary is a decision about this app, and removing the plugin

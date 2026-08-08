@@ -112,6 +112,20 @@ void main() {
         find.text("The long account of what this plugin does."), findsNothing);
   });
 
+  // Importing is what you come to this page to do when the list is empty,
+  // and a control below the list is one you scroll past every plugin to
+  // reach once it is not.
+  testWidgets("import is an icon at the top, above the list", (tester) async {
+    await _pump(tester, plugins: [PluginInfo(_manifest(), true)]);
+
+    var importer = find.widgetWithIcon(IconButton, Icons.file_upload_outlined);
+    expect(importer, findsOneWidget);
+    expect(find.text("Import Plugin"), findsNothing);
+    expect(tester.getCenter(importer).dy,
+        lessThan(tester.getCenter(find.text("Writing Tools")).dy),
+        reason: "the import control belongs above the plugins, not below");
+  });
+
   group("settings follow the capability, not the plugin", () {
     testWidgets("the writing overrides open under the provider",
         (tester) async {

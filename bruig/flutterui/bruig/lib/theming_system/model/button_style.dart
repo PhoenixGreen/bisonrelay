@@ -287,8 +287,8 @@ class ButtonPaletteColors {
 // Leaving the fill null lets each widget keep its own Material default,
 // which is transparent for TextButton and OutlinedButton but a solid
 // surfaceContainerLow for ElevatedButton -- and every plain ElevatedButton
-// in the app (Export Logs, Settings, Open Outbound Channel, Create, Done,
-// Import Plugin) then drew a dark pill that this role is specified not to
+// in the app (Export Logs, Settings, Open Outbound Channel, Create, Done)
+// then drew a dark pill that this role is specified not to
 // have. They're all the same button; they now all render as one.
 ({Color fill, Color label, bool bordered}) _roleDefaults(
         ButtonRole role, ButtonPaletteColors c) =>
