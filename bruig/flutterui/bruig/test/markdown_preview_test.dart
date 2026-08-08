@@ -40,6 +40,12 @@ TextStyle _styleAt(List<InlineDecoration> decorations, int offset) {
 bool _hidden(List<InlineDecoration> decorations, int offset) =>
     (_styleAt(decorations, offset).fontSize ?? 14) < 1;
 
+/// A 300x200 red PNG. Large on purpose: every geometry fault reported here
+/// only appears when the picture is taller than a line of text, and a small
+/// one fits inside the line and hides all of them.
+const _bigPng =
+    "iVBORw0KGgoAAAANSUhEUgAAASwAAADICAIAAADdvUsCAAACpElEQVR4nO3OQQ0AMBAEofNvupUxjyVBAPfugFA/gHH9AMb1AxjXD2BcP4Bx/QDG9QMY1w9gXD+Acf0AxvUDGNcPYFw/gHH9AMb1AxjXD2BcP4Bx/QDG9QMY1w9gXD+Acf0AxvUDGNcPYFw/gHH9AMb1AxjXD2BcP4Bx/QDG9QMY1w9gXD+Acf0AxvUDGNcPYFw/gHH9AMb1AxjXD2BcP4Bx/QDG9QMY1w9gXD+Acf0AxvUDGNcPYFw/gHH9AMb1AxjXD2BcP4Bx/QDG9QMY1w9gXD+Acf0AxvUDGNcPYFw/gHH9AMb1AxjXD2BcP4Bx/QDG9QMY1w9gXD+Acf0AxvUDGNcPYFw/gHH9AMb1AxjXD2BcP4Bx/QDG9QMY1w9gXD+Acf0AxvUDGNcPYFw/gHH9AMb1AxjXD2BcP4Bx/QDG9QMY1w9gXD+Acf0AxvUDGNcPYFw/gHH9AMb1AxjXD2BcP4Bx/QDG9QMY1w9gXD+Acf0AxvUDGNcPYFw/gHH9AMb1AxjXD2BcP4Bx/QDG9QMY1w9gXD+Acf0AxvUDGNcPYFw/gHH9AMb1AxjXD2BcP4Bx/QDG9QMY1w9gXD+Acf0AxvUDGNcPYFw/gHH9AMb1AxjXD2BcP4Bx/QDG9QMY1w9gXD+Acf0AxvUDGNcPYFw/gHH9AMb1AxjXD2BcP4Bx/QDG9QMY1w9gXD+Acf0AxvUDGNcPYFw/gHH9AMb1AxjXD2BcP4Bx/QDG9QMY1w9gXD+Acf0AxvUDGNcPYFw/gHH9AMb1AxjXD2BcP4Bx/QDG9QMY1w9gXD+Acf0AxvUDGNcPYFw/gHH9AMb1AxjXD2BcP4Bx/QDG9QMY1w9gXD+Acf0AxvUDGNcPYFw/gHH9AMb1AxjXD2BcP4Bx/QDG9QMY9wFP4oNIvm7wCQAAAABJRU5ErkJggg==";
+
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
@@ -256,14 +262,23 @@ void main() {
       expect(controller.text, text);
     });
 
-    // Reported: the picture sat at the top of the page over the text.
+    // Reported twice, and the second report found the cause.
     //
-    // It had no size when the line was measured -- an Image is decoded after
-    // layout, so it answered zero -- and the line reserved no room for it.
-    // The size now comes from the PNG header, before anything is laid out.
-    // Measured rather than asserted, because "reserves room" is a statement
-    // about geometry and nothing else here would notice it stopping.
-    Future<Size> fieldSize(WidgetTester tester, String text) async {
+    // First: the picture had no size when the line was measured, because an
+    // Image is decoded after layout and answered zero. Fixed by reading the
+    // size out of the header.
+    //
+    // Then: a *tall* picture still sat over the text above it, or off the
+    // top of the page entirely. The line had not grown to hold it -- 72
+    // pixels of line for 200 pixels of image -- because a TextField's strut
+    // forces every line to one height, which is what it is for and exactly
+    // wrong here. The composer disables it while previewing.
+    //
+    // The three arrangements below are the ones that were wrong, measured
+    // rather than asserted: "does not overlap what is above it" is a
+    // statement about geometry, and nothing else would notice it failing.
+    Future<({double field, double top, double bottom})> place(
+        WidgetTester tester, String text) async {
       var controller = WritingTextEditingController(
           text: text, decorations: (t) => markdownDecorations(t));
       await tester.pumpWidget(MultiProvider(
@@ -275,39 +290,51 @@ void main() {
             home: Scaffold(
                 body: SizedBox(
                     width: 500,
-                    child: TextField(controller: controller, maxLines: null)))),
+                    child: TextField(
+                        controller: controller,
+                        maxLines: null,
+                        // As the composer builds it while previewing.
+                        strutStyle: StrutStyle.disabled)))),
       ));
       await tester.pumpAndSettle();
-      return tester.renderObject<RenderBox>(find.byType(TextField)).size;
+      var field = tester.renderObject<RenderBox>(find.byType(TextField));
+      var image = tester.renderObject<RenderBox>(find.byType(Image));
+      expect(image.size, const Size(300, 200),
+          reason: "sized from the header before anything is laid out");
+      var top = image.localToGlobal(Offset.zero).dy -
+          field.localToGlobal(Offset.zero).dy;
+      return (field: field.size.height, top: top, bottom: top + 200);
     }
 
-    testWidgets("the field makes room for an image", (tester) async {
-      var plain = await fieldSize(tester, "line one\nline three");
-      var withImage = await fieldSize(
-          tester, "line one\n--embed[type=image/png,data=$_png]--\nline three");
+    const embed = "--embed[type=image/png,data=$_bigPng]--";
 
-      expect(withImage.height, greaterThan(plain.height),
-          reason: "the picture has to be given a line of its own, not drawn "
-              "over the words above it");
-
-      var image = tester.renderObject<RenderBox>(find.byType(Image));
-      expect(image.size, const Size(40, 20),
-          reason: "sized from the header, at its natural size");
-      var at = image.localToGlobal(Offset.zero);
-      expect(at.dx.isNaN || at.dy.isNaN, isFalse,
-          reason: "a placeholder the line never positioned reports NaN");
-      expect(at.dy, greaterThan(0), reason: "below the first line of text");
+    testWidgets("an image at the very top stays on the page", (tester) async {
+      var at = await place(tester, "$embed\nafter the picture");
+      expect(at.top, greaterThanOrEqualTo(0),
+          reason: "a negative top is the picture hanging off the page");
+      expect(at.bottom, lessThanOrEqualTo(at.field));
     });
 
-    // The hidden run inherits the field's letter spacing, and an embed runs
-    // to over a hundred characters -- enough to push its picture most of a
-    // line to the right on gaps nobody can see. Measured at 78 pixels.
-    testWidgets("an image starts at the margin", (tester) async {
-      await fieldSize(tester, "one\n--embed[type=image/png,data=$_png]--\ntwo");
-      var at = tester
-          .renderObject<RenderBox>(find.byType(Image))
-          .localToGlobal(Offset.zero);
-      expect(at.dx, lessThan(12));
+    testWidgets("an image after text does not cover it", (tester) async {
+      var at = await place(tester, "before the picture $embed");
+      expect(at.top, greaterThanOrEqualTo(0));
+      expect(at.bottom, lessThanOrEqualTo(at.field));
+    });
+
+    testWidgets("an image on its own line sits below the line above",
+        (tester) async {
+      var at = await place(tester, "before\n$embed\nafter");
+      expect(at.top, greaterThan(0));
+      expect(at.bottom, lessThanOrEqualTo(at.field));
+    });
+
+    // Without this the three above pass on a field that merely gained a line
+    // of text, which is how the first attempt at them passed while the bug
+    // was still there.
+    testWidgets("the field grows by the height of the image", (tester) async {
+      var withImage = await place(tester, "before\n$embed\nafter");
+      expect(withImage.field, greaterThan(200),
+          reason: "three lines of text alone come to under 100 pixels");
     });
 
     // The marks and the preview paint the same characters, and the marks

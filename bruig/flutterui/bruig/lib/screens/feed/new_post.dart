@@ -418,6 +418,16 @@ class _NewPostScreenState extends State<NewPostScreen> {
                 controller: contentCtrl,
                 keyboardType: TextInputType.multiline,
                 maxLines: null,
+                // The strut forces every line to one height, which is what
+                // is wanted for text and disastrous for a picture: a tall
+                // image was drawn at its full size inside a line that had
+                // stayed 19 pixels, so it spilled over the words above it
+                // and off the top of the page. Measured at 72 pixels of line
+                // for 200 pixels of image.
+                //
+                // Only while previewing. With no pictures in it, raw text
+                // wants the even spacing the strut is there to give.
+                strutStyle: previewing ? StrutStyle.disabled : null,
                 // Whatever an enabled plugin capability offers for the text
                 // under the pointer, falling back to the standard menu. The
                 // marks on the text come from contentCtrl, which is a
