@@ -22,9 +22,11 @@ import 'plugin_test_support.dart';
 // below check the styling happens and check the text is untouched, and the
 // second half is the one that matters.
 
-// A 1x1 red PNG, small enough to write out.
+// A real 40x20 red PNG. Real rather than contrived: the geometry tests below
+// measure what the field does with it, and a header with no body decodes to
+// nothing.
 const _png =
-    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+    "iVBORw0KGgoAAAANSUhEUgAAACgAAAAUCAIAAABwJOjsAAAAJElEQVR4nO3NMQ0AAAwEofdvupVxCwk7uy3RrGKxWCwWi8WJB336HQ594lo5AAAAAElFTkSuQmCC";
 
 /// _styleAt is the style the decorations give one character.
 TextStyle _styleAt(List<InlineDecoration> decorations, int offset) {
@@ -252,6 +254,60 @@ void main() {
       await tester.pumpAndSettle();
       expect(biggest() ?? 0, lessThan(20));
       expect(controller.text, text);
+    });
+
+    // Reported: the picture sat at the top of the page over the text.
+    //
+    // It had no size when the line was measured -- an Image is decoded after
+    // layout, so it answered zero -- and the line reserved no room for it.
+    // The size now comes from the PNG header, before anything is laid out.
+    // Measured rather than asserted, because "reserves room" is a statement
+    // about geometry and nothing else here would notice it stopping.
+    Future<Size> fieldSize(WidgetTester tester, String text) async {
+      var controller = WritingTextEditingController(
+          text: text, decorations: (t) => markdownDecorations(t));
+      await tester.pumpWidget(MultiProvider(
+        providers: [
+          ChangeNotifierProvider<WritingPreferences>(
+              create: (c) => WritingPreferences()),
+        ],
+        child: MaterialApp(
+            home: Scaffold(
+                body: SizedBox(
+                    width: 500,
+                    child: TextField(controller: controller, maxLines: null)))),
+      ));
+      await tester.pumpAndSettle();
+      return tester.renderObject<RenderBox>(find.byType(TextField)).size;
+    }
+
+    testWidgets("the field makes room for an image", (tester) async {
+      var plain = await fieldSize(tester, "line one\nline three");
+      var withImage = await fieldSize(
+          tester, "line one\n--embed[type=image/png,data=$_png]--\nline three");
+
+      expect(withImage.height, greaterThan(plain.height),
+          reason: "the picture has to be given a line of its own, not drawn "
+              "over the words above it");
+
+      var image = tester.renderObject<RenderBox>(find.byType(Image));
+      expect(image.size, const Size(40, 20),
+          reason: "sized from the header, at its natural size");
+      var at = image.localToGlobal(Offset.zero);
+      expect(at.dx.isNaN || at.dy.isNaN, isFalse,
+          reason: "a placeholder the line never positioned reports NaN");
+      expect(at.dy, greaterThan(0), reason: "below the first line of text");
+    });
+
+    // The hidden run inherits the field's letter spacing, and an embed runs
+    // to over a hundred characters -- enough to push its picture most of a
+    // line to the right on gaps nobody can see. Measured at 78 pixels.
+    testWidgets("an image starts at the margin", (tester) async {
+      await fieldSize(tester, "one\n--embed[type=image/png,data=$_png]--\ntwo");
+      var at = tester
+          .renderObject<RenderBox>(find.byType(Image))
+          .localToGlobal(Offset.zero);
+      expect(at.dx, lessThan(12));
     });
 
     // The marks and the preview paint the same characters, and the marks

@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:bruig/components/feed/image_header.dart';
 import 'package:bruig/models/feed.dart';
 import 'package:bruig/plugin_system/plugin_system.dart';
 import 'package:flutter/material.dart';
@@ -23,7 +24,16 @@ import 'package:flutter/material.dart';
 /// A transparent colour alone still reserves the marker's full width, which
 /// leaves a gap where the "##" was; a tiny size closes the gap. Not zero,
 /// which some text shapers refuse.
-const _invisible = TextStyle(fontSize: 0.01, color: Colors.transparent);
+/// Spacing is zeroed as well as the size. A hidden run inherits the field's
+/// letter and word spacing, and an embed is over a hundred characters long --
+/// enough to push its picture most of a line to the right on nothing but the
+/// gaps between letters nobody can see. Measured at 78 pixels before this.
+const _invisible = TextStyle(
+  fontSize: 0.01,
+  color: Colors.transparent,
+  letterSpacing: 0,
+  wordSpacing: 0,
+);
 
 const _headingSizes = [26.0, 22.0, 19.0, 17.0, 16.0, 15.0];
 
@@ -178,10 +188,21 @@ Widget? _embedWidget(String params, Map<String, String> embeds) {
 
   try {
     var bytes = base64Decode(data);
+
+    // The size has to be settled before the line is laid out, so it is read
+    // out of the header rather than left to the Image widget. An Image
+    // measures zero until its bytes have been decoded, which happens after
+    // layout -- so the line reserved no room at all and the picture landed
+    // on top of the text above it.
+    var natural = imageDimensions(bytes);
+    if (natural == null) return null;
+    var size = fitWithin(natural, 420, 260);
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxHeight: 260, maxWidth: 420),
+      child: SizedBox(
+        width: size.width,
+        height: size.height,
         child: Image.memory(bytes, fit: BoxFit.contain),
       ),
     );
