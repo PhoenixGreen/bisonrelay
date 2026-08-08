@@ -112,10 +112,16 @@ var hostnameRegexp = regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?
 
 // Manifest is the on-disk, user-facing description of a plugin.
 type Manifest struct {
-	ID               string `json:"id"`
-	Name             string `json:"name"`
-	Version          string `json:"version"`
-	Description      string `json:"description"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Version     string `json:"version"`
+	Description string `json:"description"`
+
+	// Summary is one line for a list, where Description is the full account
+	// shown once a plugin has been opened. Optional: a plugin that gives
+	// only a Description still lists, on the opening of it.
+	Summary string `json:"summary,omitempty"`
+
 	EnabledByDefault bool   `json:"enabledByDefault"`
 	RendererKind     string `json:"rendererKind"`
 

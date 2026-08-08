@@ -80,6 +80,16 @@ class _PluginsSettingsScreenState extends State<PluginsSettingsScreen> {
     }
   }
 
+  /// _opened is the plugin whose panel is showing, or null for none.
+  ///
+  /// One at a time: the panels are long -- a full description and a page of
+  /// settings -- and several open at once turns the list into something that
+  /// has to be scrolled past rather than read.
+  String? _opened;
+
+  void toggleOpen(PluginInfo plugin) => setState(() =>
+      _opened = _opened == plugin.manifest.id ? null : plugin.manifest.id);
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -94,32 +104,9 @@ class _PluginsSettingsScreenState extends State<PluginsSettingsScreen> {
                       child: Txt.S("No plugins installed."),
                     )
                   : Column(
-                      children: model.plugins
-                          .map((plugin) => Material(
-                                type: MaterialType.transparency,
-                                child: ListTile(
-                                  title: Txt.S(plugin.manifest.name),
-                                  subtitle: Txt.S(
-                                      "${plugin.manifest.description} (v${plugin.manifest.version})"),
-                                  trailing: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Switch(
-                                        value: plugin.enabled,
-                                        onChanged: (v) => setEnabled(plugin, v),
-                                      ),
-                                      IconButton(
-                                        icon: const Icon(Icons.delete_outline,
-                                            color: Colors.red),
-                                        tooltip: "Remove plugin",
-                                        onPressed: () =>
-                                            confirmRemovePlugin(plugin),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ))
-                          .toList(),
+                      children: [
+                        for (var plugin in model.plugins) _pluginTile(plugin),
+                      ],
                     )),
           const SizedBox(height: 20),
           ElevatedButton.icon(
@@ -127,8 +114,91 @@ class _PluginsSettingsScreenState extends State<PluginsSettingsScreen> {
             icon: const Icon(Icons.file_upload_outlined),
             label: const Text("Import Plugin"),
           ),
-          const WritingOverridesSection(),
+          // The writing overrides live inside the panel of whichever plugin
+          // provides them, but they outlive it: a word added to the personal
+          // dictionary is a decision about this app, and removing the plugin
+          // that prompted it must not put that decision out of reach. So
+          // when nothing installed provides the capability, they appear here
+          // instead of vanishing.
+          Consumer<PluginManagerModel>(
+            builder: (context, model, child) => model.plugins.any((p) => p
+                    .manifest.capabilities
+                    .contains(PluginCapability.spellcheckData.wireName))
+                ? const SizedBox.shrink()
+                : const WritingOverridesSection(),
+          ),
         ]));
+  }
+
+  Widget _pluginTile(PluginInfo plugin) {
+    var theme = ThemeNotifier.of(context);
+    var open = _opened == plugin.manifest.id;
+    return Material(
+      type: MaterialType.transparency,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        ListTile(
+          onTap: () => toggleOpen(plugin),
+          title: Row(children: [
+            Flexible(child: Txt.S(plugin.manifest.name)),
+            const SizedBox(width: 8),
+            // The version beside the name rather than trailing the
+            // description, where it read as part of the prose.
+            Txt.S("v${plugin.manifest.version}",
+                color: TextColor.onSurfaceVariant),
+          ]),
+          subtitle: Txt.S(plugin.manifest.summaryLine,
+              color: TextColor.onSurfaceVariant),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Chevron first, so the two controls that change something sit
+              // together at the edge rather than either side of it.
+              Icon(open ? Icons.expand_less : Icons.expand_more,
+                  color: theme.colors.onSurfaceVariant),
+              Switch(
+                value: plugin.enabled,
+                onChanged: (v) => setEnabled(plugin, v),
+              ),
+              IconButton(
+                icon: const Icon(Icons.delete_outline, color: Colors.red),
+                tooltip: "Remove plugin",
+                onPressed: () => confirmRemovePlugin(plugin),
+              ),
+            ],
+          ),
+        ),
+        if (open) _pluginPanel(plugin, theme),
+      ]),
+    );
+  }
+
+  /// _pluginPanel is what a plugin has to say for itself, and what can be
+  /// changed about it.
+  ///
+  /// Indented to the width of the title above it and closed with a divider,
+  /// so a long panel still reads as belonging to the row it opened from
+  /// rather than as the start of the next one.
+  Widget _pluginPanel(PluginInfo plugin, ThemeNotifier theme) {
+    // Which settings belong to a plugin is decided by the capabilities it
+    // declares, not by its name or id. That is the same rule the rest of the
+    // app follows -- nothing here asks "is the writing tools plugin
+    // installed", only "does this plugin provide the writing data".
+    var settings = <Widget>[
+      if (plugin.manifest.capabilities
+          .contains(PluginCapability.spellcheckData.wireName))
+        const WritingOverridesSection(inPluginPanel: true),
+    ];
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Txt.S(plugin.manifest.description, color: TextColor.onSurfaceVariant),
+        ...settings,
+        const SizedBox(height: 12),
+        Divider(height: 1, color: theme.colors.outlineVariant),
+      ]),
+    );
   }
 }
 
@@ -144,7 +214,13 @@ class _PluginsSettingsScreenState extends State<PluginsSettingsScreen> {
 /// Absent entirely until something has been overridden, so the page is
 /// unchanged for anyone who has never used it.
 class WritingOverridesSection extends StatelessWidget {
-  const WritingOverridesSection({super.key});
+  /// inPluginPanel drops the heading and the rule above it. Inside a panel
+  /// the plugin's name is already at the top and the panel has its own
+  /// divider, so both would be saying a second time what the surroundings
+  /// already say.
+  final bool inPluginPanel;
+
+  const WritingOverridesSection({this.inPluginPanel = false, super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -166,11 +242,13 @@ class WritingOverridesSection extends StatelessWidget {
       ..sort((a, b) => a.value.compareTo(b.value));
 
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      const SizedBox(height: 24),
-      const Divider(),
-      const SizedBox(height: 8),
-      const Txt.L("Writing tools"),
-      const SizedBox(height: 12),
+      if (!inPluginPanel) ...[
+        const SizedBox(height: 24),
+        const Divider(),
+        const SizedBox(height: 8),
+        const Txt.L("Writing tools"),
+      ],
+      const SizedBox(height: 16),
       // Offered only when a provider has more than one to offer, and built
       // from what it says it has rather than from a list held here: the
       // languages are the provider's, and an app-side list would go stale

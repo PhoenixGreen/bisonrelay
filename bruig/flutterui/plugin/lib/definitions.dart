@@ -740,6 +740,15 @@ class PluginManifest {
   final String name;
   final String version;
   final String description;
+
+  /// summary is one line for the plugins list, where [description] is the
+  /// full account shown once a plugin has been opened.
+  ///
+  /// Optional, and empty for every plugin written before it existed, so the
+  /// list falls back to the opening of the description -- see
+  /// PluginInfo.summaryLine.
+  @JsonKey(name: "summary", defaultValue: "")
+  final String summary;
   @JsonKey(name: "rendererKind")
   final String rendererKind;
 
@@ -761,10 +770,31 @@ class PluginManifest {
   final List<String> capabilities;
 
   PluginManifest(this.id, this.name, this.version, this.description,
-      this.rendererKind, this.navLabel, this.navIcon, this.screens,
-      this.capabilities);
+      this.summary, this.rendererKind, this.navLabel, this.navIcon,
+      this.screens, this.capabilities);
   factory PluginManifest.fromJson(Map<String, dynamic> json) =>
       _$PluginManifestFromJson(json);
+
+  /// summaryLine is the one line to show in a list: [summary] when the
+  /// plugin gives one, and otherwise the opening of [description].
+  ///
+  /// The fallback cuts at the first colon or full stop, which is where a
+  /// description written as one long sentence tends to stop introducing
+  /// itself and start listing what it contains. Failing that it takes whole
+  /// words up to a limit, because a line cut mid-word reads as damage
+  /// rather than as an abbreviation.
+  String get summaryLine {
+    if (summary.isNotEmpty) return summary;
+    var text = description.trim();
+    var stop = text.length;
+    for (var mark in [": ", ". "]) {
+      var at = text.indexOf(mark);
+      if (at > 0 && at < stop) stop = at;
+    }
+    if (stop <= 110) return text.substring(0, stop);
+    var cut = text.lastIndexOf(" ", 110);
+    return "${text.substring(0, cut < 40 ? 110 : cut)}\u2026";
+  }
 }
 
 @JsonSerializable()
