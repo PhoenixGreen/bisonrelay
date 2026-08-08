@@ -1,0 +1,197 @@
+import 'dart:convert';
+
+import 'package:bruig/models/feed.dart';
+import 'package:bruig/plugin_system/plugin_system.dart';
+import 'package:flutter/material.dart';
+
+// markdown_preview.dart turns the composer's markdown source into styling for
+// the field it is being typed into, so a post can be written while it looks
+// roughly like what it will become.
+//
+// It styles the source rather than replacing it. Flutter's editable text maps
+// the caret onto the characters the field holds, so a preview that removed
+// the "**" around a bold word would put every click and every arrow key after
+// it out of step. The markers stay where they are and are shrunk out of
+// sight, which costs a keypress to step over one and keeps every offset
+// honest -- the same bargain a live-preview editor always makes.
+//
+// The one thing that genuinely is replaced is an embedded image, and it is
+// allowed exactly one character to stand on. See InlineDecoration.widget.
+
+/// _invisible hides a marker without removing it.
+///
+/// A transparent colour alone still reserves the marker's full width, which
+/// leaves a gap where the "##" was; a tiny size closes the gap. Not zero,
+/// which some text shapers refuse.
+const _invisible = TextStyle(fontSize: 0.01, color: Colors.transparent);
+
+const _headingSizes = [26.0, 22.0, 19.0, 17.0, 16.0, 15.0];
+
+final _heading = RegExp(r"^(#{1,6})([ \t]+)(.*)$", multiLine: true);
+final _bold = RegExp(r"(\*\*|__)(?=\S)(.+?)(?<=\S)\1", dotAll: false);
+final _italic = RegExp(r"(?<![*\w])(\*|_)(?=\S)([^*_\n]+?)(?<=\S)\1(?![*\w])");
+final _strike = RegExp(r"(~~)(?=\S)(.+?)(?<=\S)\1");
+final _code = RegExp(r"(`)([^`\n]+?)(`)");
+final _fence = RegExp(r"^```.*$", multiLine: true);
+final _quote = RegExp(r"^([ \t]*>[ \t]?)(.*)$", multiLine: true);
+final _bullet = RegExp(r"^([ \t]*)([-*+]|\d+\.)([ \t]+)", multiLine: true);
+final _link = RegExp(r"(\[)([^\]\n]+)(\]\()([^)\n]+)(\))");
+final _rule = RegExp(r"^([-*_])\1{2,}$", multiLine: true);
+final _embed = RegExp(r"--embed\[(.*?)\]--");
+
+/// markdownDecorations is what the composer's field paints itself with while
+/// the preview is on.
+///
+/// [embeds] maps a tracked embed id to its base64 data, which the composer
+/// holds in memory from the moment a file is picked -- so the picture can be
+/// built during the field's own build, with nothing to wait for.
+List<InlineDecoration> markdownDecorations(
+  String text, {
+  Map<String, String> embeds = const {},
+  Color? muted,
+  Color? link,
+  double baseSize = 14,
+}) {
+  // Two lists, because order decides the outcome: a decoration later in the
+  // list wins where they overlap, and the hidden markers have to beat the
+  // style of the thing they mark. Written the other way round the heading's
+  // font size was applied over the top of its own hidden "##", which is how
+  // this was found.
+  var out = <InlineDecoration>[];
+  var hides = <InlineDecoration>[];
+  void hide(int start, int end) {
+    if (end > start) hides.add(InlineDecoration(start, end, _invisible));
+  }
+
+  void style(int start, int end, TextStyle style) {
+    if (end > start) out.add(InlineDecoration(start, end, style));
+  }
+
+  // Blocks first, so an inline run inside a heading is styled on top of the
+  // heading's size rather than instead of it.
+  for (var m in _heading.allMatches(text)) {
+    var level = m.group(1)!.length;
+    hide(m.start, m.start + m.group(1)!.length + m.group(2)!.length);
+    style(
+        m.start,
+        m.end,
+        TextStyle(
+            fontSize: _headingSizes[level - 1], fontWeight: FontWeight.w700));
+  }
+  for (var m in _quote.allMatches(text)) {
+    hide(m.start, m.start + m.group(1)!.length);
+    style(m.start, m.end, TextStyle(fontStyle: FontStyle.italic, color: muted));
+  }
+  for (var m in _bullet.allMatches(text)) {
+    // The marker is kept and dimmed rather than hidden: a list with no
+    // bullets at all reads as loose lines, and "-" cannot be turned into a
+    // round bullet without replacing the character.
+    style(
+        m.start + m.group(1)!.length,
+        m.start + m.group(1)!.length + m.group(2)!.length,
+        TextStyle(color: muted, fontWeight: FontWeight.w700));
+  }
+  for (var m in _rule.allMatches(text)) {
+    style(m.start, m.end, TextStyle(color: muted, letterSpacing: -1));
+  }
+  for (var m in _fence.allMatches(text)) {
+    style(m.start, m.end, TextStyle(color: muted, fontSize: baseSize - 2));
+  }
+
+  for (var m in _bold.allMatches(text)) {
+    hide(m.start, m.start + m.group(1)!.length);
+    hide(m.end - m.group(1)!.length, m.end);
+    style(m.start, m.end, const TextStyle(fontWeight: FontWeight.w700));
+  }
+  for (var m in _italic.allMatches(text)) {
+    hide(m.start, m.start + 1);
+    hide(m.end - 1, m.end);
+    style(m.start, m.end, const TextStyle(fontStyle: FontStyle.italic));
+  }
+  for (var m in _strike.allMatches(text)) {
+    hide(m.start, m.start + 2);
+    hide(m.end - 2, m.end);
+    style(m.start, m.end,
+        const TextStyle(decoration: TextDecoration.lineThrough));
+  }
+  for (var m in _code.allMatches(text)) {
+    hide(m.start, m.start + 1);
+    hide(m.end - 1, m.end);
+    style(m.start, m.end,
+        const TextStyle(fontFamily: "monospace", letterSpacing: -0.3));
+  }
+  for (var m in _link.allMatches(text)) {
+    // The label is left readable and everything that makes it a link -- the
+    // brackets and the target -- goes away.
+    hide(m.start, m.start + 1);
+    hide(m.start + 1 + m.group(2)!.length, m.end);
+    style(m.start, m.end,
+        TextStyle(color: link, decoration: TextDecoration.underline));
+  }
+
+  for (var m in _embed.allMatches(text)) {
+    var picture = _embedWidget(m.group(1) ?? "", embeds);
+    if (picture == null) {
+      // Nothing to show it with, so it stays legible rather than becoming an
+      // invisible run of characters the caret walks through for no reason.
+      style(m.start, m.end, TextStyle(color: muted, fontSize: baseSize - 2));
+      continue;
+    }
+    // Everything but the last character disappears, and the picture stands
+    // on the one that is left -- the most a widget may cover without moving
+    // every offset after it.
+    hide(m.start, m.end - 1);
+    out.add(
+        InlineDecoration(m.end - 1, m.end, const TextStyle(), widget: picture));
+  }
+
+  return [...out, ...hides];
+}
+
+/// _embedWidget builds the picture for one embed, or null when there is not
+/// one to build -- a quote, a file download, a type this cannot draw, or data
+/// that is not there.
+Widget? _embedWidget(String params, Map<String, String> embeds) {
+  var parsed = <String, String>{};
+  for (var part in params.split(",")) {
+    var at = part.indexOf("=");
+    if (at > 0) parsed[part.substring(0, at)] = part.substring(at + 1);
+  }
+
+  const drawable = {
+    "image/png",
+    "image/jpeg",
+    "image/gif",
+    "image/bmp",
+    "image/webp",
+  };
+  if (!drawable.contains(parsed["type"])) return null;
+
+  var data = parsed["data"] ?? "";
+  // While a post is being written the data is a reference to something the
+  // composer is holding for it; the base64 itself only goes into the text on
+  // the way out. Both forms are accepted so a draft reopened from the post
+  // library shows its pictures too.
+  var reference = RegExp(r"^\[content ([a-zA-Z0-9]{12})\]$").firstMatch(data);
+  if (reference != null) data = embeds[reference.group(1)] ?? "";
+  if (data.isEmpty) return null;
+
+  try {
+    var bytes = base64Decode(data);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxHeight: 260, maxWidth: 420),
+        child: Image.memory(bytes, fit: BoxFit.contain),
+      ),
+    );
+  } catch (_) {
+    // Malformed base64 in a field somebody is still typing into is ordinary,
+    // not exceptional.
+    return null;
+  }
+}
+
+/// composerEmbeds is the post model's embed table, or an empty one.
+Map<String, String> composerEmbeds(NewPostModel? post) =>
+    post?.embedContents ?? const {};

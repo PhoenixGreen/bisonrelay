@@ -50,6 +50,21 @@ enum ComposerPanel {
 class ComposerSidebarController extends ChangeNotifier {
   ComposerPanel _panel = ComposerPanel.none;
   bool _minimized = false;
+
+  /// preview renders the markdown in the composer as it is typed instead of
+  /// showing its source.
+  ///
+  /// Off by default, and deliberately so: the raw view is the one that shows
+  /// exactly what will be published, and somebody who has not asked for a
+  /// preview has not agreed to be shown an approximation of their own post.
+  bool _preview = false;
+  bool get preview => _preview;
+  set preview(bool value) {
+    if (_preview == value) return;
+    _preview = value;
+    notifyListeners();
+  }
+
   TextEditingController? _editor;
 
   /// onAddEmbed is the composer's own file picker, offered by the

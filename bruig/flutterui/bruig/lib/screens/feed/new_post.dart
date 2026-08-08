@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:async';
 
 import 'package:bruig/components/buttons.dart';
+import 'package:bruig/components/feed/markdown_preview.dart';
 import 'package:bruig/components/text.dart';
 import 'package:bruig/models/feed.dart';
 import 'package:bruig/models/snackbar.dart';
@@ -116,7 +117,32 @@ class _NewPostScreenState extends State<NewPostScreen> {
   // A writing controller rather than a plain one: it is what paints the
   // spelling, grammar and phrasing marks. Behaves exactly like the plain
   // one when no plugin provides them.
-  TextEditingController contentCtrl = WritingTextEditingController();
+  //
+  // The decorations are how the preview is drawn: when it is off the field
+  // gets nothing extra and paints exactly what was typed, and when it is on
+  // the same characters are restyled in place. Asked for on every build
+  // rather than stored, so toggling the preview is a repaint and never an
+  // edit -- the text the post is made of is untouched either way.
+  late final TextEditingController contentCtrl = WritingTextEditingController(
+    decorations: (text) {
+      if (!previewing) return const [];
+      var theme = ThemeNotifier.of(context, listen: false);
+      return markdownDecorations(
+        text,
+        embeds: composerEmbeds(post),
+        muted: theme.colors.onSurfaceVariant,
+        link: theme.colors.primary,
+      );
+    },
+  );
+
+  /// previewing is read from the sidebar the composer is sitting beside.
+  ///
+  /// Held there rather than here because the control that changes it is in
+  /// the Formatting & Content panel, and the panel and the composer already
+  /// meet through that controller and nowhere else.
+  bool get previewing =>
+      Provider.of<ComposerSidebarController>(context, listen: false).preview;
 
   // The page's heading is the post's title, and the title is the name of the
   // document it is filed under -- so there is one name for a post rather

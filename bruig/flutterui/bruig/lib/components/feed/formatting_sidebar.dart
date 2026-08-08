@@ -93,6 +93,37 @@ class FormattingSidebar extends StatelessWidget {
   final ComposerSidebarController controller;
   const FormattingSidebar({required this.controller, super.key});
 
+  /// _viewToggle chooses between the source and the rendering of it.
+  ///
+  /// Two buttons rather than a switch, because neither state is the
+  /// "on" one -- raw and preview are both ways of looking at the post, and a
+  /// switch would have to be labelled with only one of them.
+  Widget _viewToggle(ThemeNotifier theme) => ListenableBuilder(
+        listenable: controller,
+        builder: (context, _) => Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+          child: SegmentedButton<bool>(
+            segments: const [
+              ButtonSegment(
+                  value: false,
+                  label: Text("Raw"),
+                  icon: Icon(Icons.code, size: 16)),
+              ButtonSegment(
+                  value: true,
+                  label: Text("Preview"),
+                  icon: Icon(Icons.visibility_outlined, size: 16)),
+            ],
+            selected: {controller.preview},
+            showSelectedIcon: false,
+            style: const ButtonStyle(
+              visualDensity: VisualDensity.compact,
+              textStyle: WidgetStatePropertyAll(TextStyle(fontSize: 11)),
+            ),
+            onSelectionChanged: (chosen) => controller.preview = chosen.first,
+          ),
+        ),
+      );
+
   @override
   Widget build(BuildContext context) {
     var theme = ThemeNotifier.of(context);
@@ -101,6 +132,8 @@ class FormattingSidebar extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(10, 10, 10, 16),
       children: [
+        _section(theme, "View"),
+        _viewToggle(theme),
         _section(theme, "Content"),
         // Delegated to the composer: picking a file means tracking an embed
         // and re-estimating the post's size, which is its business.
