@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:bruig/components/feed/image_header.dart';
 import 'package:bruig/models/feed.dart';
@@ -158,6 +159,37 @@ List<InlineDecoration> markdownDecorations(
   return [...out, ...hides];
 }
 
+/// _decoded holds the bytes of each embed that has been drawn, keyed by the
+/// base64 it came from.
+///
+/// It is here to stop the pictures flickering on every keystroke, and the
+/// reason is exact: MemoryImage compares equal to another only when it holds
+/// the same bytes *object*, because Uint8List does not define equality and
+/// falls back to identity. The field rebuilds on every edit, so decoding
+/// afresh each time handed Flutter an image provider it had never seen,
+/// which threw away the decoded frame and started again.
+///
+/// Bounded, because this outlives any one post. Sixteen is far more than a
+/// post has pictures in it, and the whole map is dropped rather than tracking
+/// which entry was used least recently -- the cost of being wrong is one
+/// decode.
+final Map<String, Uint8List> _decoded = {};
+const _decodedLimit = 16;
+
+Uint8List? _bytesFor(String data) {
+  var known = _decoded[data];
+  if (known != null) return known;
+  try {
+    var bytes = base64Decode(data);
+    if (_decoded.length >= _decodedLimit) _decoded.clear();
+    _decoded[data] = bytes;
+    return bytes;
+  } catch (_) {
+    // Half-typed base64 in a field somebody is still editing is ordinary.
+    return null;
+  }
+}
+
 /// _embedWidget builds the picture for one embed, or null when there is not
 /// one to build -- a quote, a file download, a type this cannot draw, or data
 /// that is not there.
@@ -186,9 +218,10 @@ Widget? _embedWidget(String params, Map<String, String> embeds) {
   if (reference != null) data = embeds[reference.group(1)] ?? "";
   if (data.isEmpty) return null;
 
-  try {
-    var bytes = base64Decode(data);
+  var bytes = _bytesFor(data);
+  if (bytes == null) return null;
 
+  {
     // The size has to be settled before the line is laid out, so it is read
     // out of the header rather than left to the Image widget. An Image
     // measures zero until its bytes have been decoded, which happens after
@@ -203,13 +236,15 @@ Widget? _embedWidget(String params, Map<String, String> embeds) {
       child: SizedBox(
         width: size.width,
         height: size.height,
-        child: Image.memory(bytes, fit: BoxFit.contain),
+        child: Image.memory(
+          bytes,
+          fit: BoxFit.contain,
+          // Keep showing the frame already decoded while any new one is
+          // being prepared, rather than blanking in between.
+          gaplessPlayback: true,
+        ),
       ),
     );
-  } catch (_) {
-    // Malformed base64 in a field somebody is still typing into is ordinary,
-    // not exceptional.
-    return null;
   }
 }
 

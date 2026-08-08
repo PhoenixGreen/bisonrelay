@@ -337,6 +337,57 @@ void main() {
           reason: "three lines of text alone come to under 100 pixels");
     });
 
+    // Reported: the pictures flickered on every keystroke.
+    //
+    // The field rebuilds on every edit, and each rebuild decoded the base64
+    // again. MemoryImage compares equal only when it holds the same bytes
+    // *object* -- Uint8List defines no equality, so it falls back to
+    // identity -- which meant every keystroke handed Flutter a provider it
+    // had never seen, and it threw the decoded frame away and started over.
+    testWidgets("editing does not re-decode the images", (tester) async {
+      var text = "before\n--embed[type=image/png,data=$_bigPng]--\nafter";
+      var controller = WritingTextEditingController(
+          text: text, decorations: (t) => markdownDecorations(t));
+      await tester.pumpWidget(MultiProvider(
+        providers: [
+          ChangeNotifierProvider<WritingPreferences>(
+              create: (c) => WritingPreferences()),
+        ],
+        child: MaterialApp(
+            home: Scaffold(
+                body: SizedBox(
+                    width: 500,
+                    child: TextField(
+                        controller: controller,
+                        maxLines: null,
+                        strutStyle: StrutStyle.disabled)))),
+      ));
+      await tester.pumpAndSettle();
+      var before = tester.widget<Image>(find.byType(Image)).image;
+
+      // An edit somewhere else in the post: the picture is untouched, so
+      // nothing about it should change.
+      controller.text = "$text and more";
+      await tester.pumpAndSettle();
+      var after = tester.widget<Image>(find.byType(Image)).image;
+
+      expect(after, equals(before),
+          reason: "an unequal provider is a fresh decode, which is the "
+              "flicker");
+    });
+
+    // Two embeds of the same picture are one decode, and two of different
+    // pictures stay different.
+    test("the byte cache is keyed by the data", () {
+      var one = markdownDecorations("--embed[type=image/png,data=$_bigPng]--")
+          .firstWhere((d) => d.widget != null);
+      var two = markdownDecorations("--embed[type=image/png,data=$_bigPng]--")
+          .firstWhere((d) => d.widget != null);
+      var a = ((one.widget as Padding).child as SizedBox).child as Image;
+      var b = ((two.widget as Padding).child as SizedBox).child as Image;
+      expect(a.image, equals(b.image));
+    });
+
     // The marks and the preview paint the same characters, and the marks
     // have to win where they overlap.
     testWidgets("a misspelling keeps its mark inside a heading",
