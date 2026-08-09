@@ -39,34 +39,17 @@ a block of code
 ---
 """;
 
-/// _describeImages is the guide's picture rules in words.
-///
-/// The preview cannot show them: it renders a sample with no embed in it,
-/// and an embed is a piece of a real post rather than something that can be
-/// written into a sample string. So the settings are stated instead, and the
-/// composer's own preview is where they are actually seen.
-String _describeImages(ImageRule image) {
-  var parts = <String>["${image.boundedWidth.round()}% width"];
-  if (image.boundedRadius > 0) {
-    parts.add("${image.boundedRadius.round()}px corners");
-  }
-  if (image.boundedBorder > 0) {
-    parts.add("${image.boundedBorder.round()}px border");
-  }
-  if (image.align != MarkdownAlign.left &&
-      image.align != MarkdownAlign.inherit) {
-    parts.add(image.align.name);
-  }
-  parts.add("${image.gap.round()}px above and below");
-  return parts.join(", ");
-}
-
 List<Widget> markdownAreaEditor(AreaEditorContext ctx) {
   var style = ctx.style;
   var guides = builtInGuides;
   var chosen = guides.any((g) => g.id == style.markdownGuideId)
       ? style.markdownGuideId
       : defaultGuideId;
+
+  // What the pictures will actually look like: the guide's rules with this
+  // theme's own overrides folded over them, which is what the sliders below
+  // have to show rather than the guide's untouched figures.
+  var image = style.markdownImage(builtInGuideFor(chosen)!.image);
 
   return [
     ctx.choice<String>(
@@ -87,8 +70,73 @@ List<Widget> markdownAreaEditor(AreaEditorContext ctx) {
       onChanged: (v) =>
           ctx.setStyle((s) => s.copyWith(markdownHonourPostGuide: v)),
     ),
-    ctx.note("Images: "
-        "${_describeImages(builtInGuideFor(chosen)!.image)}"),
+    const SizedBox(height: 16),
+    const Txt.M("Images"),
+    ctx.note("How a picture in a post is drawn. Each starts at whatever the "
+        "guide above says and stays there until you move it."),
+    ctx.slider(
+      "markdownImageWidth",
+      image.boundedWidth,
+      label: (v) => "Width: ${v.round()}% of the column",
+      min: 10,
+      max: 100,
+      divisions: 18,
+      onCommit: (v) =>
+          ctx.setStyle((s) => s.copyWith(markdownImageWidthPercent: v)),
+    ),
+    ctx.slider(
+      "markdownImageRadius",
+      image.boundedRadius,
+      label: (v) => v == 0 ? "Corners: Square" : "Corners: ${v.round()}px",
+      max: 48,
+      divisions: 24,
+      onCommit: (v) => ctx.setStyle((s) => s.copyWith(markdownImageRadius: v)),
+    ),
+    ctx.slider(
+      "markdownImageBorderWidth",
+      image.boundedBorder,
+      label: (v) => v == 0 ? "Border: None" : "Border: ${v.round()}px",
+      max: 8,
+      divisions: 8,
+      onCommit: (v) =>
+          ctx.setStyle((s) => s.copyWith(markdownImageBorderWidth: v)),
+    ),
+    ctx.colorPick(
+      "Border colour",
+      value: style.markdownImageBorderColor,
+      valueIndex: style.markdownImageBorderColorIndex,
+      noneLabel: "From the guide",
+      onChanged: (color, index) => ctx.setStyle((s) => color == null
+          ? s.copyWith(clearMarkdownImageBorderColor: true)
+          : s.copyWith(
+              markdownImageBorderColor: color,
+              markdownImageBorderColorIndex: index)),
+    ),
+    ctx.slider(
+      "markdownImageGap",
+      image.gap,
+      label: (v) => "Space above and below: ${v.round()}px",
+      max: 48,
+      divisions: 24,
+      onCommit: (v) => ctx.setStyle((s) => s.copyWith(markdownImageGap: v)),
+    ),
+    ctx.choice<MarkdownAlign>(
+      "Alignment",
+      value: image.align == MarkdownAlign.inherit
+          ? MarkdownAlign.left
+          : image.align,
+      options: const [
+        MarkdownAlign.left,
+        MarkdownAlign.center,
+        MarkdownAlign.right
+      ],
+      labelOf: (a) => switch (a) {
+        MarkdownAlign.center => "Center",
+        MarkdownAlign.right => "Right",
+        _ => "Left",
+      },
+      onChanged: (v) => ctx.setStyle((s) => s.copyWith(markdownImageAlign: v)),
+    ),
     const SizedBox(height: 12),
     _MarkdownPreview(guideId: chosen),
   ];

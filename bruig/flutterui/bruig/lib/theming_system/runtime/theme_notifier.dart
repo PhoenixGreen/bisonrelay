@@ -440,6 +440,11 @@ class ThemeNotifier with ChangeNotifier {
   bool get markdownHonourPostGuide =>
       areaStyle(ThemeArea.markdown).markdownHonourPostGuide;
 
+  /// markdownImageRule is [guide]'s picture rules with the Markdown area's
+  /// own overrides folded over them.
+  ImageRule markdownImageRule(MarkdownStyleGuide guide) =>
+      areaStyle(ThemeArea.markdown).markdownImage(guide.image);
+
   /// markdownRoleColor resolves the short list of colours a style guide can
   /// name against the live theme.
   ///

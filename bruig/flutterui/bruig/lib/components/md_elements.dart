@@ -643,8 +643,12 @@ class MarkdownArea extends StatelessWidget {
   /// them, and nothing at all around text that has no guide.
   Widget _withGuide(ThemeNotifier theme, Widget child) {
     var guide = builtInGuideFor(guideId ?? theme.markdownGuideId);
-    if (guide == null || guide.id == defaultGuideId) return child;
-    return MarkdownGuideScope(image: guide.image, child: child);
+    if (guide == null) return child;
+    var image = theme.markdownImageRule(guide);
+    // Default with nothing overridden is the app as it was, so it gets no
+    // scope at all rather than one that happens to match.
+    if (guide.id == defaultGuideId && image == const ImageRule()) return child;
+    return MarkdownGuideScope(image: image, child: child);
   }
 }
 

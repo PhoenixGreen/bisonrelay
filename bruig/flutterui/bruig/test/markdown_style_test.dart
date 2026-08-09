@@ -262,6 +262,72 @@ void main() {
     });
   });
 
+  // Reported: the image options were described on the page but could not be
+  // changed. They are settings of the theme now, layered over whichever
+  // guide is chosen.
+  group("the theme's own picture settings", () {
+    test("an untouched theme follows the guide exactly", () {
+      var article = builtInGuideFor("article")!;
+      var image = const AreaStyle().markdownImage(article.image);
+      expect(image.widthPercent, article.image.widthPercent);
+      expect(image.cornerRadius, article.image.cornerRadius);
+      expect(image.gap, article.image.gap);
+    });
+
+    // Changing one thing must not drag the rest off the guide with it.
+    test("only what was touched is overridden", () {
+      var article = builtInGuideFor("article")!;
+      var style = const AreaStyle().copyWith(markdownImageRadius: 24);
+      var image = style.markdownImage(article.image);
+      expect(image.cornerRadius, 24);
+      expect(image.widthPercent, article.image.widthPercent,
+          reason: "the guide's width was never touched");
+      expect(image.gap, article.image.gap);
+    });
+
+    test("switching guide changes what an untouched setting follows", () {
+      var style = const AreaStyle().copyWith(markdownImageRadius: 24);
+      var underArticle = style.markdownImage(builtInGuideFor("article")!.image);
+      var underCompact = style.markdownImage(builtInGuideFor("compact")!.image);
+      expect(underArticle.cornerRadius, 24);
+      expect(underCompact.cornerRadius, 24);
+      expect(underCompact.widthPercent, isNot(underArticle.widthPercent));
+    });
+
+    test("the settings survive being saved and read back", () {
+      var style = const AreaStyle().copyWith(
+        markdownImageWidthPercent: 60,
+        markdownImageRadius: 12,
+        markdownImageBorderWidth: 2,
+        markdownImageBorderColor: const Color(0xFF445566),
+        markdownImageBorderColorIndex: 3,
+        markdownImageGap: 20,
+        markdownImageAlign: MarkdownAlign.center,
+      );
+      var back = AreaStyle.fromJson(style.toJson());
+      expect(back.markdownImageWidthPercent, 60);
+      expect(back.markdownImageRadius, 12);
+      expect(back.markdownImageBorderWidth, 2);
+      expect(back.markdownImageBorderColor, const Color(0xFF445566));
+      expect(back.markdownImageBorderColorIndex, 3);
+      expect(back.markdownImageGap, 20);
+      expect(back.markdownImageAlign, MarkdownAlign.center);
+    });
+
+    test("an untouched theme writes none of them out", () {
+      var json = const AreaStyle().toJson();
+      expect(json.keys.where((k) => k.startsWith("markdownImage")), isEmpty);
+    });
+
+    test("a border colour can be taken back off", () {
+      var style = const AreaStyle()
+          .copyWith(markdownImageBorderColor: const Color(0xFF445566))
+          .copyWith(clearMarkdownImageBorderColor: true);
+      expect(style.markdownImageBorderColor, isNull);
+      expect(style.markdownImageBorderColorIndex, isNull);
+    });
+  });
+
   group("the built-ins", () {
     // These are the ones a post can rely on, because every device has them.
     test("each has a distinct id and a name", () {

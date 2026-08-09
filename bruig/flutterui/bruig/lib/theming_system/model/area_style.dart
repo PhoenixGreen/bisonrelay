@@ -3,6 +3,7 @@ import 'package:bruig/theming_system/model/area_options.dart';
 import 'package:bruig/theming_system/model/area_sides.dart';
 import 'package:bruig/theming_system/model/button_style.dart';
 import 'package:bruig/theming_system/model/color_hex.dart';
+import 'package:bruig/theming_system/model/markdown_style.dart';
 import 'package:bruig/theming_system/model/theme_area.dart';
 import 'package:flutter/material.dart';
 
@@ -388,6 +389,42 @@ class AreaStyle {
   // says, which is the "local only, do not overwrite" position.
   final bool markdownHonourPostGuide;
 
+  // The Markdown area's picture settings. Null means "whatever the chosen
+  // guide says", which is how every area here expresses inheriting: a theme
+  // that has never touched these follows Article or Compact exactly, and one
+  // that has overrides only the parts it named.
+  //
+  // Held here rather than as a guide of the user's own because a theme
+  // already is the thing that travels with somebody's taste. Building and
+  // naming whole guides is a larger feature; adjusting the pictures in the
+  // one you picked is the part that was actually asked for.
+  final double? markdownImageWidthPercent;
+  final double? markdownImageRadius;
+  final double? markdownImageBorderWidth;
+  final Color? markdownImageBorderColor;
+  // The palette slot the colour above was chosen from, so it follows the
+  // palette when that is edited rather than staying at whatever value the
+  // slot happened to hold.
+  final int? markdownImageBorderColorIndex;
+  final double? markdownImageGap;
+  final MarkdownAlign? markdownImageAlign;
+
+  /// markdownImage is [guide]'s picture rules with this theme's overrides
+  /// folded over them.
+  ///
+  /// Anything the theme has not touched comes from the guide, so picking
+  /// Article and changing only the corners keeps Article's width and gap.
+  ImageRule markdownImage(ImageRule guide) => guide.copyWith(
+        widthPercent: markdownImageWidthPercent,
+        cornerRadius: markdownImageRadius,
+        borderWidth: markdownImageBorderWidth,
+        borderInk: markdownImageBorderColor == null
+            ? null
+            : MarkdownInk.literal(markdownImageBorderColor!),
+        gap: markdownImageGap,
+        align: markdownImageAlign,
+      );
+
   final bool feedPublishMenu; // Moves Create Post out of the composer's
   // footer and into a menu button in its top-right corner, giving the editor
   // the height the footer took and leaving somewhere for further publish
@@ -586,6 +623,13 @@ class AreaStyle {
     this.feedSidePanel = false,
     this.feedInlineComposer = false,
     this.feedHideSidebarOnPost = false,
+    this.markdownImageWidthPercent,
+    this.markdownImageRadius,
+    this.markdownImageBorderWidth,
+    this.markdownImageBorderColor,
+    this.markdownImageBorderColorIndex,
+    this.markdownImageGap,
+    this.markdownImageAlign,
     this.markdownGuideId = "default",
     this.markdownHonourPostGuide = true,
     this.feedPublishMenu = false,
@@ -751,6 +795,15 @@ class AreaStyle {
     bool? feedSidePanel,
     bool? feedInlineComposer,
     bool? feedHideSidebarOnPost,
+    double? markdownImageWidthPercent,
+    double? markdownImageRadius,
+    double? markdownImageBorderWidth,
+    Color? markdownImageBorderColor,
+    int? markdownImageBorderColorIndex,
+    bool clearMarkdownImageBorderColor = false,
+    double? markdownImageGap,
+    MarkdownAlign? markdownImageAlign,
+    bool clearMarkdownImages = false,
     String? markdownGuideId,
     bool? markdownHonourPostGuide,
     bool? feedPublishMenu,
@@ -946,6 +999,30 @@ class AreaStyle {
         feedInlineComposer: feedInlineComposer ?? this.feedInlineComposer,
         feedHideSidebarOnPost:
             feedHideSidebarOnPost ?? this.feedHideSidebarOnPost,
+        markdownImageWidthPercent: clearMarkdownImages
+            ? null
+            : (markdownImageWidthPercent ?? this.markdownImageWidthPercent),
+        markdownImageRadius: clearMarkdownImages
+            ? null
+            : (markdownImageRadius ?? this.markdownImageRadius),
+        markdownImageBorderWidth: clearMarkdownImages
+            ? null
+            : (markdownImageBorderWidth ?? this.markdownImageBorderWidth),
+        markdownImageBorderColor:
+            clearMarkdownImages || clearMarkdownImageBorderColor
+                ? null
+                : (markdownImageBorderColor ?? this.markdownImageBorderColor),
+        markdownImageBorderColorIndex:
+            clearMarkdownImages || clearMarkdownImageBorderColor
+                ? null
+                : (markdownImageBorderColorIndex ??
+                    this.markdownImageBorderColorIndex),
+        markdownImageGap: clearMarkdownImages
+            ? null
+            : (markdownImageGap ?? this.markdownImageGap),
+        markdownImageAlign: clearMarkdownImages
+            ? null
+            : (markdownImageAlign ?? this.markdownImageAlign),
         markdownGuideId: markdownGuideId ?? this.markdownGuideId,
         markdownHonourPostGuide:
             markdownHonourPostGuide ?? this.markdownHonourPostGuide,
@@ -1132,6 +1209,19 @@ class AreaStyle {
         if (feedCardActions) "feedCardActions": feedCardActions,
         if (feedSidePanel) "feedSidePanel": feedSidePanel,
         if (feedInlineComposer) "feedInlineComposer": feedInlineComposer,
+        if (markdownImageWidthPercent != null)
+          "markdownImageWidthPercent": markdownImageWidthPercent,
+        if (markdownImageRadius != null)
+          "markdownImageRadius": markdownImageRadius,
+        if (markdownImageBorderWidth != null)
+          "markdownImageBorderWidth": markdownImageBorderWidth,
+        if (markdownImageBorderColor != null)
+          "markdownImageBorderColor": colorToHex(markdownImageBorderColor!),
+        if (markdownImageBorderColorIndex != null)
+          "markdownImageBorderColorIndex": markdownImageBorderColorIndex,
+        if (markdownImageGap != null) "markdownImageGap": markdownImageGap,
+        if (markdownImageAlign != null)
+          "markdownImageAlign": markdownImageAlign!.name,
         if (markdownGuideId != "default") "markdownGuideId": markdownGuideId,
         if (!markdownHonourPostGuide)
           "markdownHonourPostGuide": markdownHonourPostGuide,
@@ -1342,6 +1432,17 @@ class AreaStyle {
           flag("feedComposerAttach") ||
           flag("feedDrafts"),
       feedHideSidebarOnPost: flag("feedHideSidebarOnPost"),
+      markdownImageWidthPercent: number("markdownImageWidthPercent"),
+      markdownImageRadius: number("markdownImageRadius"),
+      markdownImageBorderWidth: number("markdownImageBorderWidth"),
+      markdownImageBorderColor: j["markdownImageBorderColor"] is String
+          ? colorFromHex(j["markdownImageBorderColor"] as String)
+          : null,
+      markdownImageBorderColorIndex:
+          (j["markdownImageBorderColorIndex"] as num?)?.toInt(),
+      markdownImageGap: number("markdownImageGap"),
+      markdownImageAlign:
+          _enumOrNull(MarkdownAlign.values, j["markdownImageAlign"]),
       markdownGuideId: j["markdownGuideId"] is String
           ? j["markdownGuideId"] as String
           : "default",
