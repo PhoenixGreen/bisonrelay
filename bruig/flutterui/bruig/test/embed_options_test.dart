@@ -1,0 +1,108 @@
+import 'package:bruig/components/feed/embed_options.dart';
+import 'package:bruig/components/feed/image_header.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+import 'png_fixture.dart';
+
+// embed_options_test.dart covers shrinking a picture before it goes into a
+// post: a maximum width, then compression of what is left.
+//
+// The order is most of the point. Scaling a 2000-wide photograph to 1000
+// throws away three quarters of the pixels, so compressing afterwards works
+// on a quarter as much data, and the quality figure describes the picture
+// that will actually be seen rather than one about to be discarded.
+
+void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  final wide = pngOf(2000, 1000);
+  final small = pngOf(400, 300);
+
+  test("the fixtures are the sizes these tests assume", () {
+    expect(imageDimensions(wide)?.width, 2000);
+    expect(imageDimensions(wide)?.height, 1000);
+    expect(imageDimensions(small)?.width, 400);
+  });
+
+  group("maximum width", () {
+    test("a wide picture is scaled, keeping its shape", () async {
+      var out = await prepareEmbed(
+          wide, "image/png", const EmbedOptions(maxWidth: 1000));
+      expect(out.width, 1000);
+      expect(out.height, 500, reason: "2000x1000 asked for 1000 is 1000x500");
+    });
+
+    // Scaling one up makes a larger file that looks worse than the original.
+    test("a picture already narrower is left alone", () async {
+      var out = await prepareEmbed(
+          small, "image/png", const EmbedOptions(maxWidth: 1000));
+      expect(out.width, 400);
+      expect(out.data, same(small));
+    });
+
+    test("no maximum leaves the size alone", () async {
+      var out = await prepareEmbed(wide, "image/png", EmbedOptions.none);
+      expect(out.width, 2000);
+      expect(out.data, same(wide));
+    });
+  });
+
+  group("compression", () {
+    test("it makes the file smaller", () async {
+      var out = await prepareEmbed(
+          wide, "image/png", const EmbedOptions(quality: 40));
+      expect(out.data.length, lessThan(wide.length));
+      expect(out.mime, "image/jpeg");
+    });
+
+    test("quality of 100 leaves the encoding alone", () async {
+      var out = await prepareEmbed(
+          wide, "image/png", const EmbedOptions(quality: 100));
+      expect(out.mime, "image/png");
+      expect(out.data, same(wide));
+    });
+  });
+
+  // Both together, in the arrangement that was asked for: the size comes
+  // down first and the quality setting then applies to that.
+  test("width first, then quality", () async {
+    var both = await prepareEmbed(
+        wide, "image/png", const EmbedOptions(maxWidth: 1000, quality: 40));
+
+    // The scaling happened -- the result is 1000 wide, not 2000 -- and the
+    // compression happened after it, on those dimensions.
+    expect(both.width, 1000);
+    expect(both.height, 500);
+    expect(both.mime, "image/jpeg");
+
+    // No comparison against the scaled-but-uncompressed bytes here, which is
+    // where the first version of this test went wrong: that compares a PNG
+    // against a JPEG, and which is smaller depends entirely on the picture.
+    // This fixture is high-frequency noise, which zlib packs well and JPEG
+    // packs badly, so the "compressed" one is legitimately the larger of the
+    // two. The test below compares like with like instead.
+  });
+
+  // The saving the whole feature is for, and a comparison of two JPEGs, so
+  // the only difference between them is the scaling.
+  test("both together beat compression alone", () async {
+    var compressedOnly =
+        await prepareEmbed(wide, "image/png", const EmbedOptions(quality: 40));
+    var both = await prepareEmbed(
+        wide, "image/png", const EmbedOptions(maxWidth: 1000, quality: 40));
+    expect(both.data.length, lessThan(compressedOnly.data.length));
+  });
+
+  test("something that is not an image is untouched", () async {
+    var out = await prepareEmbed(
+        small, "text/plain", const EmbedOptions(maxWidth: 10, quality: 1));
+    expect(out.data, same(small));
+    expect(out.mime, "text/plain");
+  });
+
+  test("options that change nothing say so", () {
+    expect(EmbedOptions.none.changesAnything, isFalse);
+    expect(const EmbedOptions(maxWidth: 800).changesAnything, isTrue);
+    expect(const EmbedOptions(quality: 99).changesAnything, isTrue);
+  });
+}
