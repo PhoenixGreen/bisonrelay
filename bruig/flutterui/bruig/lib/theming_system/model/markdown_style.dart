@@ -87,11 +87,15 @@ enum MarkdownRole {
 ///
 /// The first version of this list did precisely that. It offered
 /// "SourceCodePro" and "serif", neither of which is bundled, so choosing
-/// either changed nothing and the setting looked broken. Adding a serif face
-/// means adding a font file, not a line here.
+/// either changed nothing and the setting looked broken. Adding a face means
+/// adding a font file, which is what PT Serif is -- all four of Regular,
+/// Bold, Italic and Bold Italic, because a family missing a weight does not
+/// synthesise it: Flutter picks the nearest one it has, and bold headings in
+/// a family with no bold simply come out regular.
 enum MarkdownFont {
   inherit("Theme default", null),
   sans("Sans", "Inter"),
+  serif("Serif", "PTSerif"),
   mono("Monospace", "RobotoMono");
 
   final String label;

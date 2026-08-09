@@ -388,6 +388,55 @@ void main() {
     });
   });
 
+  // Reported as "bold, italic and underline do nothing for links", and it
+  // was true of every setting on the page.
+  //
+  // The renderer resolved a guide by looking its name up among the
+  // built-ins. A reader who has edited theirs has a guide that is not among
+  // them -- it is a fork, saved on the theme -- so every change was stored
+  // correctly and then drawn by the built-in it had been forked from.
+  group("a theme's own guide is what gets rendered", () {
+    test("an edited guide is not findable among the built-ins", () {
+      var forked = builtInGuideFor("default")!
+          .forked("custom")
+          .copyWith(link: const TextRule(bold: true, underline: true));
+      expect(builtInGuideFor(forked.id), isNull,
+          reason: "which is why looking it up by name lost every edit");
+    });
+
+    test("the theme hands back the fork, not the name beside it", () {
+      var forked = builtInGuideFor("default")!
+          .forked("custom")
+          .copyWith(link: const TextRule(bold: true, underline: true));
+      var style = const AreaStyle().copyWith(
+          markdownGuideId: defaultGuideId,
+          markdownCustomGuide: forked.toJson());
+
+      var rendered = style.markdownGuide(builtInGuideFor(defaultGuideId));
+      expect(rendered.link.bold, isTrue);
+      expect(rendered.link.underline, isTrue);
+    });
+
+    test("the edits reach the stylesheet", () {
+      var forked = builtInGuideFor("default")!.forked("custom").copyWith(
+          link: const TextRule(bold: true, italic: true, underline: true));
+      var sheet = applyGuide(_base(), forked, _role);
+      expect(sheet.a?.fontWeight, FontWeight.w700);
+      expect(sheet.a?.fontStyle, FontStyle.italic);
+      expect(sheet.a?.decoration, TextDecoration.underline);
+    });
+
+    // Default is skipped as an optimisation, and that skip must not throw
+    // away the work of somebody who edited Default itself.
+    test("an edited Default still carries its edits", () {
+      var edited = const MarkdownStyleGuide(id: defaultGuideId, name: "Default")
+          .copyWith(blockGap: 30);
+      var style =
+          const AreaStyle().copyWith(markdownCustomGuide: edited.toJson());
+      expect(style.markdownGuide(null).blockGap, 30);
+    });
+  });
+
   group("the built-ins", () {
     // These are the ones a post can rely on, because every device has them.
     test("each has a distinct id and a name", () {
@@ -427,7 +476,7 @@ void main() {
           .map((f) => f.family)
           .where((f) => f != null)
           .toSet();
-      expect(families, {"Inter", "RobotoMono"},
+      expect(families, {"Inter", "PTSerif", "RobotoMono"},
           reason: "anything else falls back to a different face on every "
               "device, which is the thing a style guide is for avoiding");
     });

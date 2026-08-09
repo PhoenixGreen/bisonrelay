@@ -511,19 +511,23 @@ class MarkdownArea extends StatelessWidget {
   // instance, not markdown rendering elsewhere (chat, pages, etc).
   final bool plainText;
 
-  /// guideId names the style guide to set this text in, or null to use
-  /// whichever the reader has chosen for posts.
+  /// guide is the style guide to set this text in, or null for whichever
+  /// the reader's theme is using.
   ///
-  /// Passed in only where a caller has a reason to override the reader's
-  /// choice -- the Settings preview, which has to show a guide that is not
-  /// the one in force, and the composer, which shows the writer what the
-  /// guide they picked will look like.
-  final String? guideId;
+  /// A guide rather than the name of one, which is what this used to take.
+  /// Naming it meant looking it up among the built-ins, and a reader who had
+  /// edited theirs has a guide that is not among them -- so every change
+  /// made in Settings was saved correctly and then rendered by the built-in
+  /// it had been forked from. Nothing the editor did appeared to work.
+  ///
+  /// Passed in only by the composer, which shows the writer the guide the
+  /// post will carry rather than the one the reader happens to use.
+  final MarkdownStyleGuide? guide;
 
   MarkdownArea(srcText, this.hasNick,
       {this.disableLinks = false,
       this.plainText = false,
-      this.guideId,
+      this.guide,
       super.key})
       : text = MarkdownArea._cleanupSrcText(srcText);
 
@@ -587,8 +591,10 @@ class MarkdownArea extends StatelessWidget {
   /// nothing, so folding it on is a no-op with extra steps.
   MarkdownStyleSheet _guidedStyleSheet(
       ThemeNotifier theme, BuildContext context) {
-    var guide = builtInGuideFor(guideId ?? theme.markdownGuideId);
-    if (guide == null || guide.id == defaultGuideId) return theme.mdStyleSheet;
+    var guide = this.guide ?? theme.markdownGuide;
+    if (guide.id == defaultGuideId && !_saysAnything(guide)) {
+      return theme.mdStyleSheet;
+    }
 
     // Folded onto the *effective* sheet, not the app's sparse one.
     //
@@ -611,6 +617,18 @@ class MarkdownArea extends StatelessWidget {
       (role) => theme.markdownRoleColor(role),
     );
   }
+
+  /// _saysAnything reports whether a guide differs from the plain one.
+  ///
+  /// Default is the guide that changes nothing, so it can be skipped -- but
+  /// only while it really is unchanged. A reader who edited Default has a
+  /// guide still carrying its id, and skipping that would throw their work
+  /// away every time a post was drawn.
+  static bool _saysAnything(MarkdownStyleGuide guide) =>
+      guide.toJson().toString() !=
+      const MarkdownStyleGuide(id: defaultGuideId, name: "Default")
+          .toJson()
+          .toString();
 
   @override
   Widget build(BuildContext context) {
@@ -642,13 +660,13 @@ class MarkdownArea extends StatelessWidget {
   /// _withGuide puts the guide's picture rules where the embeds can see
   /// them, and nothing at all around text that has no guide.
   Widget _withGuide(ThemeNotifier theme, Widget child) {
-    var guide = builtInGuideFor(guideId ?? theme.markdownGuideId);
-    if (guide == null) return child;
-    var image = theme.markdownImageRule(guide);
-    // Default with nothing overridden is the app as it was, so it gets no
-    // scope at all rather than one that happens to match.
-    if (guide.id == defaultGuideId && image == const ImageRule()) return child;
-    return MarkdownGuideScope(image: image, child: child);
+    var guide = this.guide ?? theme.markdownGuide;
+    // Default with nothing changed is the app as it was, so it gets no scope
+    // at all rather than one that happens to match.
+    if (guide.id == defaultGuideId && guide.image == const ImageRule()) {
+      return child;
+    }
+    return MarkdownGuideScope(image: guide.image, child: child);
   }
 }
 

@@ -225,6 +225,20 @@ flutter:
     - family: notoemoji_unix
       fonts:
         - asset: assets/fonts/NotoColorEmoji-Regular.ttf
+    # PT Serif, SIL Open Font License 1.1 -- see assets/fonts/PTSerif-OFL.txt.
+    # Bundled rather than named, because a guide asking for a font the device
+    # does not have falls back silently and renders differently everywhere it
+    # goes, which is the thing a style guide exists to prevent.
+    - family: PTSerif
+      fonts:
+        - asset: assets/fonts/PTSerif-Regular.ttf
+        - asset: assets/fonts/PTSerif-Italic.ttf
+          style: italic
+        - asset: assets/fonts/PTSerif-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/PTSerif-BoldItalic.ttf
+          weight: 700
+          style: italic
     - family: RobotoMono
       fonts:
         - asset: "assets/fonts/RobotoMono-VariableFont_wght.ttf"

@@ -20,16 +20,12 @@ import 'package:flutter/material.dart';
 /// setting is expressed relative to the body -- a heading at 190% means
 /// nothing without the 100% beside it.
 String _sampleFor(_Element element) => switch (element) {
-      _Element.body => """
+      _Element.text => """
+# Heading one
 Ordinary body text, which is what every other size is measured against. This
 paragraph runs long enough to wrap, so the line height has somewhere to show.
 
-A second paragraph, so the space between them is visible rather than
-described.
-""",
-      _Element.headings => """
-# Heading one
-Body text, for scale.
+A second paragraph, so the space between them is visible.
 ## Heading two
 ### Heading three
 #### Heading four
@@ -90,8 +86,7 @@ spacing are drawn around it.
 /// undifferentiated wall, and only one of them is being adjusted anyway.
 /// Which one is showing is local to the editor and is not stored on a theme.
 enum _Element {
-  body("Body text"),
-  headings("Headings"),
+  text("Text and headings"),
   links("Links"),
   quotes("Quotes"),
   code("Code"),
@@ -115,7 +110,7 @@ class _MarkdownEditor extends StatefulWidget {
 }
 
 class _MarkdownEditorState extends State<_MarkdownEditor> {
-  _Element element = _Element.body;
+  _Element element = _Element.text;
 
   @override
   Widget build(BuildContext context) {
@@ -173,7 +168,7 @@ class _MarkdownEditorState extends State<_MarkdownEditor> {
       const SizedBox(height: 12),
       // The preview sits between the picker and the settings, so a change
       // and its effect are next to each other rather than a scroll apart.
-      _MarkdownPreview(guideId: chosen, element: element),
+      _MarkdownPreview(element: element),
       const SizedBox(height: 16),
       ..._settingsFor(ctx, guide, edit),
     ]);
@@ -239,8 +234,9 @@ class _MarkdownEditorState extends State<_MarkdownEditor> {
         ];
 
     switch (element) {
-      case _Element.body:
+      case _Element.text:
         return [
+          ctx.note("Body text. Everything else is a share of this size."),
           ..._textControls(
               ctx, "body", guide.body, edit, (g, r) => g.copyWith(body: r),
               maxScale: 2.0),
@@ -256,11 +252,9 @@ class _MarkdownEditorState extends State<_MarkdownEditor> {
               max: 48,
               divisions: 24,
               onCommit: (v) => edit((g) => g.copyWith(blockGap: v))),
-        ];
-
-      case _Element.headings:
-        return [
-          ctx.note("Each level, as a share of the body text size."),
+          const SizedBox(height: 16),
+          const Txt.M("Headings"),
+          ctx.note("Each level, as a share of the body text size above."),
           for (var i = 0; i < 6; i++)
             ctx.slider("md-h${i + 1}", guide.headings[i].scale,
                 label: (v) => "H${i + 1}: ${(v * 100).round()}%",
@@ -273,7 +267,6 @@ class _MarkdownEditorState extends State<_MarkdownEditor> {
                             ? g.headings[j].copyWith(scale: v)
                             : g.headings[j]
                     ]))),
-          const SizedBox(height: 8),
           ctx.note("Colour, font and weight apply to every level."),
           ..._textControls(
                   ctx,
@@ -288,8 +281,7 @@ class _MarkdownEditorState extends State<_MarkdownEditor> {
                               bold: r.bold,
                               italic: r.italic)
                       ]))
-              // The size slider above is per level, so the shared one here
-              // would be a second control for the same thing.
+              // The per-level sliders above already cover size.
               .skip(1),
         ];
 
@@ -417,8 +409,6 @@ class _MarkdownEditorState extends State<_MarkdownEditor> {
 /// does: whether the vocabulary is the right one is a question you answer by
 /// looking at it, not by reading a list of properties.
 class _MarkdownPreview extends StatelessWidget {
-  final String guideId;
-
   /// element decides what the sample contains.
   ///
   /// A sample showing everything at once means the part being adjusted is
@@ -428,7 +418,7 @@ class _MarkdownPreview extends StatelessWidget {
   /// the change the obvious thing on screen.
   final _Element element;
 
-  const _MarkdownPreview({required this.guideId, required this.element});
+  const _MarkdownPreview({required this.element});
 
   @override
   Widget build(BuildContext context) {
@@ -446,8 +436,10 @@ class _MarkdownPreview extends StatelessWidget {
         const SizedBox(height: 8),
         // Keyed by the guide so switching rebuilds rather than reusing the
         // element tree with a stale stylesheet.
-        MarkdownArea(_sampleFor(element), false,
-            key: ValueKey("$guideId-${element.name}"), guideId: guideId),
+        // No guide passed: the preview shows what this theme renders,
+        // which is the reader's own guide once they have edited one. Naming
+        // a built-in here is what made every edit look like it did nothing.
+        MarkdownArea(_sampleFor(element), false, key: ValueKey(element)),
       ]),
     );
   }

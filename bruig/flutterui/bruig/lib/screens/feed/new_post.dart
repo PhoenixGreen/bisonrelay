@@ -253,6 +253,8 @@ class _NewPostScreenState extends State<NewPostScreen> {
       var theme = ThemeNotifier.of(context, listen: false);
       // The guide the writer picked, so the preview shows what a reader
       // with that guide will see rather than a house style of its own.
+      // The guide the post will carry, which is a built-in by definition --
+      // only those can be named in a published post.
       var guide = builtInGuideFor(post.styleGuideId);
       return markdownDecorations(
         text,
