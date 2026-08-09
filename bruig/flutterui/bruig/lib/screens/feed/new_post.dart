@@ -5,6 +5,8 @@ import 'package:bruig/components/buttons.dart';
 import 'package:bruig/components/feed/markdown_preview.dart';
 import 'package:bruig/components/text.dart';
 import 'package:bruig/models/feed.dart';
+import 'package:bruig/post_library/embed_store.dart';
+import 'package:bruig/post_library/post_library_model.dart';
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/components/composer_sidebar_shell.dart';
 import 'package:bruig/models/composer_sidebar.dart';
@@ -48,7 +50,7 @@ class _AddAltTextState extends State<AddAltText> {
   String get mime => widget.mime;
   TextEditingController get contentCtrl => widget.contentCtrl;
 
-  void _addEmbed() {
+  void _addEmbed() async {
     List<String> embed = [];
     if (mime != "") {
       embed.add("type=$mime");
@@ -60,6 +62,11 @@ class _AddAltTextState extends State<AddAltText> {
     var id = widget.post.trackEmbed(widget.data);
     if (id != "") {
       embed.add("data=[content $id]");
+      // Written now rather than when the draft is saved. The text carries
+      // only the reference, so a picture that is not on disk by the time the
+      // app closes is a picture the draft comes back without -- which is
+      // exactly what used to happen to every one of them.
+      await EmbedStore.save(id, widget.data);
     }
     var embedText = "--embed[${embed.join(",")}]--";
 
@@ -72,6 +79,9 @@ class _AddAltTextState extends State<AddAltText> {
       contentCtrl.text += "\n$embedText\n";
     }
 
+    // Checked because the save above is awaited: the dialog can be dismissed
+    // while a large picture is still being written.
+    if (!mounted) return;
     Navigator.pop(context);
   }
 
@@ -222,7 +232,31 @@ class _NewPostScreenState extends State<NewPostScreen> {
     _lastContent = contentCtrl.text;
 
     post.content = contentCtrl.text;
+    _loadMissingEmbeds();
     recalcEstimatedSize();
+  }
+
+  /// _fetchingEmbeds are the ids already being read, so a second keystroke
+  /// does not start the same read again.
+  final Set<String> _fetchingEmbeds = {};
+
+  /// _loadMissingEmbeds fills in any picture the text refers to and the
+  /// model does not have.
+  ///
+  /// Driven off the text rather than off opening a document, which means it
+  /// covers every way a reference can arrive: a draft opened from the
+  /// library, a post still in the composer after a restart, or text pasted
+  /// from one draft into another. The alternative was a callback from the
+  /// library model, which would have covered only the first.
+  void _loadMissingEmbeds() {
+    for (var id in EmbedStore.idsIn(contentCtrl.text)) {
+      if (post.embedContents.containsKey(id)) continue;
+      if (!_fetchingEmbeds.add(id)) continue;
+      EmbedStore.load(id).then((data) {
+        if (!mounted || data == null) return;
+        setState(() => post.embedContents[id] = data);
+      });
+    }
   }
 
   /// _rememberCaret keeps the cursor where it was, for the same reason the
@@ -365,6 +399,15 @@ class _NewPostScreenState extends State<NewPostScreen> {
     contentCtrl.selection = TextSelection.collapsed(
         offset: post.caret.clamp(0, contentCtrl.text.length));
     contentCtrl.addListener(contentChanged);
+    // The listener is added after the text, so the first pass has to be
+    // asked for: a post restored from the model already has its references
+    // in it and nothing has been typed yet.
+    _loadMissingEmbeds();
+    // Tell the library what the composer is holding, so its sweep of
+    // unreferenced pictures does not take one out from under a post that
+    // has not been saved anywhere yet.
+    Provider.of<PostLibraryModel>(context, listen: false).alsoLive =
+        () => post.embedContents.keys.toSet();
     // Committed on leaving the field or pressing enter rather than on every
     // keystroke: renaming a file once per letter would leave a trail of
     // documents named after every prefix of the title.

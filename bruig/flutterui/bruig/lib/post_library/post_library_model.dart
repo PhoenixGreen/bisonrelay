@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:bruig/post_library/embed_store.dart';
 import 'package:bruig/post_library/post_storage.dart';
 import 'package:flutter/material.dart';
 
@@ -96,7 +97,50 @@ class PostLibraryModel extends ChangeNotifier {
     _entries = await PostStorage.list(_folder);
     _loading = false;
     _notify();
+    unawaited(_sweepEmbedsOnce());
   }
+
+  /// _sweptEmbeds keeps the sweep to once per run of the app.
+  bool _sweptEmbeds = false;
+
+  /// _sweepEmbedsOnce deletes stored pictures that no draft refers to any
+  /// more -- the ones left behind when a draft holding a picture is deleted.
+  ///
+  /// Once per run, and after the listing rather than before it, because it
+  /// reads every document in the library to find out which pictures are
+  /// still spoken for. That is cheap for text files and not something to do
+  /// on every visit to the sidebar.
+  ///
+  /// Every document, not only the open folder: one picture can be referred
+  /// to from more than one draft -- a post duplicated, or text pasted
+  /// between two of them -- and deleting it while a second draft still
+  /// points at it would break that draft to tidy up after the first.
+  ///
+  /// [alsoLive] is anything referred to from outside the library, which
+  /// means the post currently in the composer. It has not necessarily been
+  /// saved anywhere yet.
+  Future<void> _sweepEmbedsOnce() async {
+    if (_sweptEmbeds) return;
+    _sweptEmbeds = true;
+    try {
+      var live = Set<String>.from(alsoLive?.call() ?? const <String>{});
+      for (var folder in ["", ...await PostStorage.folderNames()]) {
+        for (var entry in await PostStorage.list(folder)) {
+          if (entry.isFolder) continue;
+          var content = await PostStorage.read(entry.folder, entry.name);
+          if (content != null) live.addAll(EmbedStore.idsIn(content));
+        }
+      }
+      await EmbedStore.sweep(live);
+    } catch (_) {
+      // Tidying up is never worth failing over. The cost of not doing it is
+      // some disk space; the cost of getting it wrong would be a picture.
+    }
+  }
+
+  /// alsoLive reports embed ids in use outside the library, so the sweep
+  /// does not delete a picture the composer is still holding.
+  Set<String> Function()? alsoLive;
 
   /// openFolderNamed goes into a folder, or back to the top with "".
   Future<void> openFolderNamed(String folder) async {
