@@ -33,6 +33,9 @@ theming_system/
     area_style_render.dart      AreaStyle's rendering half
     bubble_shape.dart           chat bubble corners as a ShapeBorder
     button_style.dart           ButtonRole + compiling a ButtonStyle
+    markdown_style.dart         a post's style guide: the vocabulary
+    markdown_guides.dart        the guides that ship with the app
+    markdown_style_render.dart  a guide -> MarkdownStyleSheet
     color_palette.dart          PaletteSlot: the fixed colour roles
     palette_library.dart        ColorPalette + the built-in palettes
     color_contrast.dart         WCAG luminance/contrast maths
