@@ -71,6 +71,20 @@ class WritingPreferences extends ChangeNotifier {
   /// underlines and suggestions alike. Not persisted: it is a "let me write
   /// without being corrected for a minute" control, and one that stayed off
   /// across a restart would look like the feature had broken.
+  /// sidebarPage is which of the writing tools' four pages was last open,
+  /// held as an index rather than as the enum itself.
+  ///
+  /// Here rather than in the sidebar's own State because that State goes
+  /// with the screen: leaving the Feed and coming back reopened the panel on
+  /// Spelling however long you had been reading the Document counts.
+  ///
+  /// An index because the enum lives in writing_sidebar.dart, which imports
+  /// this file -- naming the type here would make the pair circular for the
+  /// sake of a number. The screen that reads it clamps, so a page removed
+  /// from the enum lands on the first one rather than out of range. Not
+  /// persisted: it is where you were, not a preference.
+  int sidebarPage = 0;
+
   bool _enabled = true;
   bool get enabled => _enabled;
   set enabled(bool value) {

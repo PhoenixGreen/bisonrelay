@@ -206,6 +206,10 @@ class _NewPostScreenState extends State<NewPostScreen> {
   String _lastContent = "";
 
   void contentChanged() async {
+    // Before the early return below: a selection change is exactly what this
+    // needs to hear about, and exactly what that return is there to skip.
+    _rememberCaret();
+
     // A TextEditingController notifies on selection changes as well as
     // edits, and merely placing the caret cannot change the post's size.
     //
@@ -219,6 +223,14 @@ class _NewPostScreenState extends State<NewPostScreen> {
 
     post.content = contentCtrl.text;
     recalcEstimatedSize();
+  }
+
+  /// _rememberCaret keeps the cursor where it was, for the same reason the
+  /// text is kept: coming back to a post and finding the caret at the top of
+  /// it is losing your place in your own writing.
+  void _rememberCaret() {
+    var at = contentCtrl.selection.baseOffset;
+    if (at >= 0) post.caret = at;
   }
 
   void pickFile(BuildContext context) async {
@@ -347,6 +359,11 @@ class _NewPostScreenState extends State<NewPostScreen> {
   void initState() {
     super.initState();
     contentCtrl.text = post.content;
+    // Setting the text puts the caret at the start, so the remembered
+    // position is restored after it and clamped -- the text can have been
+    // changed from elsewhere since.
+    contentCtrl.selection = TextSelection.collapsed(
+        offset: post.caret.clamp(0, contentCtrl.text.length));
     contentCtrl.addListener(contentChanged);
     // Committed on leaving the field or pressing enter rather than on every
     // keystroke: renaming a file once per letter would leave a trail of

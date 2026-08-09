@@ -95,6 +95,8 @@ class _FeedScreenState extends State<FeedScreen> {
   // stored builder and would forget it -- and because the drawer only
   // redraws for things this screen tells it changed, which it can only do
   // for state it holds.
+  /// _writingPage mirrors the one on WritingPreferences, which outlives this
+  /// screen. Kept as a field as well so the build path reads a plain value.
   WritingSidebarPage _writingPage = WritingSidebarPage.mistakes;
 
   Widget activeTab() {
@@ -145,6 +147,7 @@ class _FeedScreenState extends State<FeedScreen> {
     setState(() {
       showPost = args;
       tabIndex = index;
+      Provider.of<FeedModel>(context, listen: false).lastTab = index;
       if (index == 1) _yourPostsResetToken++;
     });
     Timer(const Duration(milliseconds: 1),
@@ -154,6 +157,14 @@ class _FeedScreenState extends State<FeedScreen> {
   @override
   void initState() {
     super.initState();
+    // Where the writer left off, none of which is this screen's to forget:
+    // the screen goes when the route does, and the composer with it.
+    tabIndex = Provider.of<FeedModel>(context, listen: false).lastTab;
+    var prefs = Provider.of<WritingPreferences>(context, listen: false);
+    var at = prefs.sidebarPage;
+    _writingPage = at >= 0 && at < WritingSidebarPage.values.length
+        ? WritingSidebarPage.values[at]
+        : WritingSidebarPage.mistakes;
   }
 
   // _appliedRouteArgs is the PageTabs this screen has already navigated to,
@@ -189,6 +200,7 @@ class _FeedScreenState extends State<FeedScreen> {
 
     setState(() {
       tabIndex = args.tabIndex;
+      Provider.of<FeedModel>(context, listen: false).lastTab = args.tabIndex;
       // Determine if showing a specific user's posts.
       if (args.userPostList != null) {
         userPostList = args.userPostList;
@@ -373,7 +385,11 @@ class _FeedScreenState extends State<FeedScreen> {
               ComposerPanel.writing => WritingSidebar(
                   controller: composer.editor,
                   page: _writingPage,
-                  onPageChanged: (page) => setState(() => _writingPage = page)),
+                  onPageChanged: (page) => setState(() {
+                        _writingPage = page;
+                        Provider.of<WritingPreferences>(context, listen: false)
+                            .sidebarPage = page.index;
+                      })),
               ComposerPanel.posts => PostSidebar(controller: composer.editor),
               ComposerPanel.formatting =>
                 FormattingSidebar(controller: composer),
