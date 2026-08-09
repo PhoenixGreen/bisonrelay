@@ -14,14 +14,17 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 ///
 /// [roleColor] resolves the small set of colour roles a guide can name
 /// against the live theme -- see MarkdownRole.
+/// [base] must be the sheet as it will actually render -- every field
+/// filled in -- and not one that still has nulls for MarkdownBody to
+/// resolve later. A guide adjusts what is there; it is not a place to
+/// invent values that had not been worked out yet.
 MarkdownStyleSheet applyGuide(
   MarkdownStyleSheet base,
   MarkdownStyleGuide guide,
-  Color Function(MarkdownRole) roleColor, {
-  required TextStyle bodyStyle,
-}) {
+  Color Function(MarkdownRole) roleColor,
+) {
   TextStyle on(TextStyle? from, TextRule rule) =>
-      rule.applyTo(from ?? bodyStyle, roleColor);
+      rule.applyTo(from ?? const TextStyle(fontSize: 14), roleColor);
 
   WrapAlignment wrap(MarkdownAlign align) => switch (align) {
         MarkdownAlign.left => WrapAlignment.start,
@@ -52,7 +55,18 @@ MarkdownStyleSheet applyGuide(
     listBullet: on(base.listBullet, guide.listBullet),
     tableHead: on(base.tableHead, guide.tableHead),
     tableBody: on(base.tableBody, guide.tableBody),
-    blockSpacing: guide.blockGap.clamp(0, 48),
+    // flutter_markdown has one spacing figure and puts it between every
+    // pair of block children -- paragraphs and list items alike (see
+    // _addBlockChild in its builder). The two want different numbers: prose
+    // reads better with a clear gap, and a list with that same gap between
+    // every bullet falls apart into unrelated lines.
+    //
+    // So the shared figure is set to the smaller of the two, and paragraphs
+    // make up the difference with padding of their own, which nothing else
+    // uses.
+    blockSpacing: guide.listItemGap.clamp(0, 48),
+    pPadding: EdgeInsets.only(
+        bottom: (guide.blockGap - guide.listItemGap).clamp(0, 48)),
     listIndent: guide.listIndent.clamp(8, 64),
     textAlign: wrap(guide.bodyAlign),
     // The quote's bar and background are one decoration, so a guide that

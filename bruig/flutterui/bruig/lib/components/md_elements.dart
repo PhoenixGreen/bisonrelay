@@ -464,6 +464,29 @@ class MarkdownExtension {
   });
 }
 
+/// MarkdownGuideScope carries a style guide's picture rules down to the
+/// embeds inside one piece of markdown.
+///
+/// An InheritedWidget rather than a parameter because the widget that draws
+/// an embed is built by flutter_markdown from a builder, several layers
+/// below whoever chose the guide, and there is no argument to thread down.
+///
+/// Absent means "as it was". Chat installs no scope, so a picture in a
+/// message is drawn exactly as it was before guides existed -- which is what
+/// keeps this a posts-only feature.
+class MarkdownGuideScope extends InheritedWidget {
+  final ImageRule image;
+
+  const MarkdownGuideScope(
+      {required this.image, required super.child, super.key});
+
+  static ImageRule? of(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<MarkdownGuideScope>()?.image;
+
+  @override
+  bool updateShouldNotify(MarkdownGuideScope old) => old.image != image;
+}
+
 class MarkdownArea extends StatelessWidget {
   static final _startTagBugRe = RegExp(r'^\s*(<[^>\s]+\s*>)$');
 
@@ -566,36 +589,62 @@ class MarkdownArea extends StatelessWidget {
       ThemeNotifier theme, BuildContext context) {
     var guide = builtInGuideFor(guideId ?? theme.markdownGuideId);
     if (guide == null || guide.id == defaultGuideId) return theme.mdStyleSheet;
+
+    // Folded onto the *effective* sheet, not the app's sparse one.
+    //
+    // The app's sheet names only the few things it overrides and leaves the
+    // rest null, and MarkdownBody fills those in from the Material theme --
+    // "fallbackStyleSheet.merge(widget.styleSheet)". A guide that writes
+    // into a null field therefore replaces a value that had not been worked
+    // out yet, and whatever it worked from becomes the answer.
+    //
+    // The first version worked from DefaultTextStyle, which is near-black
+    // with a purple cast while the theme's own text is near-white -- so
+    // every guide but Default rendered its paragraphs in dark purple, and
+    // links lost the theme's styling the same way. Merging first means the
+    // guide adjusts colours and sizes that are already right.
+    var effective = MarkdownStyleSheet.fromTheme(Theme.of(context))
+        .merge(theme.mdStyleSheet);
     return applyGuide(
-      theme.mdStyleSheet,
+      effective,
       guide,
       (role) => theme.markdownRoleColor(role),
-      bodyStyle: DefaultTextStyle.of(context).style,
     );
   }
 
   @override
   Widget build(BuildContext context) {
     return Consumer3<ThemeNotifier, PaymentsModel, MarkdownAreaModel>(
-        builder: (context, theme, payments, mk, _) => MarkdownBody(
-              codeBlockMaxHeight: 200,
-              // Plain text wins over a guide: it is the Feed's "strip
-              // markdown" setting, which is a decision not to show
-              // formatting at all, and a guide is only ever about how
-              // formatting looks.
-              styleSheet: plainText
-                  ? _plainStyleSheet(theme.mdStyleSheet, context)
-                  : _guidedStyleSheet(theme, context),
-              data: text.trim(),
-              extensionSet: mk.extensionSet,
-              builders: mk.builders,
-              onTapLink: (text, url, _) {
-                if (disableLinks) return;
-                launchUrlAwait(context, url);
-              },
-              inlineSyntaxes: mk.inlineSyntaxes,
-              blockSyntaxes: mk.blockSyntaxes,
+        builder: (context, theme, payments, mk, _) => _withGuide(
+              theme,
+              MarkdownBody(
+                codeBlockMaxHeight: 200,
+                // Plain text wins over a guide: it is the Feed's "strip
+                // markdown" setting, which is a decision not to show
+                // formatting at all, and a guide is only ever about how
+                // formatting looks.
+                styleSheet: plainText
+                    ? _plainStyleSheet(theme.mdStyleSheet, context)
+                    : _guidedStyleSheet(theme, context),
+                data: text.trim(),
+                extensionSet: mk.extensionSet,
+                builders: mk.builders,
+                onTapLink: (text, url, _) {
+                  if (disableLinks) return;
+                  launchUrlAwait(context, url);
+                },
+                inlineSyntaxes: mk.inlineSyntaxes,
+                blockSyntaxes: mk.blockSyntaxes,
+              ),
             ));
+  }
+
+  /// _withGuide puts the guide's picture rules where the embeds can see
+  /// them, and nothing at all around text that has no guide.
+  Widget _withGuide(ThemeNotifier theme, Widget child) {
+    var guide = builtInGuideFor(guideId ?? theme.markdownGuideId);
+    if (guide == null || guide.id == defaultGuideId) return child;
+    return MarkdownGuideScope(image: guide.image, child: child);
   }
 }
 
@@ -660,7 +709,50 @@ class ImageMd extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    var chatImageSize = ThemeNotifier.of(context).chatImageSize;
+    var theme = ThemeNotifier.of(context);
+    var chatImageSize = theme.chatImageSize;
+    // The style guide's picture rules, when this markdown has one. Null is
+    // every other case -- chat, and posts read under Default -- and keeps
+    // the sizes and corners this drew before guides existed.
+    var rule = MarkdownGuideScope.of(context);
+
+    var image = Image.memory(
+      imgContent,
+      fit: BoxFit.contain,
+      errorBuilder: (context, error, stackTrace) {
+        debugPrint("ImageMd unable to decode image: $error");
+        return const SizedBox.shrink();
+      },
+    );
+
+    var corners = BorderRadius.all(
+        Radius.circular(rule == null ? 8.0 : rule.boundedRadius));
+    var border = rule == null || rule.boundedBorder == 0
+        ? null
+        : Border.all(
+            color: rule.borderInk.resolve(theme.markdownRoleColor) ??
+                theme.colors.outlineVariant,
+            width: rule.boundedBorder);
+
+    Widget sized = LayoutBuilder(
+      builder: (context, constraints) => ConstrainedBox(
+        // The guide's width is a share of the column it is in, so a picture
+        // keeps its proportion of the page at any window size.
+        constraints: rule == null
+            ? chatImageConstraints(chatImageSize, constraints.maxWidth)
+            : BoxConstraints(
+                maxWidth: constraints.maxWidth * rule.boundedWidth / 100),
+        child: ClipRRect(borderRadius: corners, child: image),
+      ),
+    );
+
+    if (border != null) {
+      sized = Container(
+        decoration: BoxDecoration(border: border, borderRadius: corners),
+        child: sized,
+      );
+    }
+
     return Tooltip(
       message: tip,
       child: InkWell(
@@ -671,28 +763,21 @@ class ImageMd extends StatelessWidget {
               builder: (_) => ImageDialog(imgContent, type, name: name));
         },
         child: Container(
-          margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
-          child: ClipRRect(
-            borderRadius: const BorderRadius.all(Radius.circular(8.0)),
-            child: LayoutBuilder(
-              builder: (context, constraints) => ConstrainedBox(
-                constraints:
-                    chatImageConstraints(chatImageSize, constraints.maxWidth),
-                child: Image.memory(
-                  imgContent,
-                  fit: BoxFit.contain,
-                  errorBuilder: (context, error, stackTrace) {
-                    debugPrint("ImageMd unable to decode image: $error");
-                    return const SizedBox.shrink();
-                  },
-                ),
-              ),
-            ),
-          ),
+          margin: rule == null
+              ? const EdgeInsets.symmetric(horizontal: 2, vertical: 2)
+              : EdgeInsets.symmetric(horizontal: 2, vertical: rule.gap),
+          alignment: rule == null ? null : _alignOf(rule.align),
+          child: sized,
         ),
       ),
     );
   }
+
+  static Alignment _alignOf(MarkdownAlign align) => switch (align) {
+        MarkdownAlign.center => Alignment.topCenter,
+        MarkdownAlign.right => Alignment.topRight,
+        MarkdownAlign.left || MarkdownAlign.inherit => Alignment.topLeft,
+      };
 }
 
 class AvifMd extends StatelessWidget {

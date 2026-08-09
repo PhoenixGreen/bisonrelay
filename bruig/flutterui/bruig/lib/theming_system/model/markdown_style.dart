@@ -306,6 +306,16 @@ class MarkdownStyleGuide {
   /// and lists. After the line height, the thing that most decides whether
   /// a post reads as an article or as a chat message.
   final double blockGap;
+
+  /// listItemGap is the space between items in a list.
+  ///
+  /// Separate from [blockGap] because flutter_markdown spaces list items
+  /// with the same figure it uses between paragraphs, and the two want
+  /// different numbers: prose reads better with a clear gap between
+  /// paragraphs, and a list with that same gap between every bullet falls
+  /// apart into unrelated lines. Reported on Article, where the paragraph
+  /// spacing that made the prose read well made the lists too airy.
+  final double listItemGap;
   final double listIndent;
   final MarkdownInk quoteBarInk;
   final double quoteBarWidth;
@@ -340,6 +350,7 @@ class MarkdownStyleGuide {
     this.tableHead = const TextRule(),
     this.tableBody = const TextRule(),
     this.blockGap = 8,
+    this.listItemGap = 8,
     this.listIndent = 24,
     this.quoteBarInk = MarkdownInk.inherit,
     this.quoteBarWidth = 2,

@@ -39,6 +39,28 @@ a block of code
 ---
 """;
 
+/// _describeImages is the guide's picture rules in words.
+///
+/// The preview cannot show them: it renders a sample with no embed in it,
+/// and an embed is a piece of a real post rather than something that can be
+/// written into a sample string. So the settings are stated instead, and the
+/// composer's own preview is where they are actually seen.
+String _describeImages(ImageRule image) {
+  var parts = <String>["${image.boundedWidth.round()}% width"];
+  if (image.boundedRadius > 0) {
+    parts.add("${image.boundedRadius.round()}px corners");
+  }
+  if (image.boundedBorder > 0) {
+    parts.add("${image.boundedBorder.round()}px border");
+  }
+  if (image.align != MarkdownAlign.left &&
+      image.align != MarkdownAlign.inherit) {
+    parts.add(image.align.name);
+  }
+  parts.add("${image.gap.round()}px above and below");
+  return parts.join(", ");
+}
+
 List<Widget> markdownAreaEditor(AreaEditorContext ctx) {
   var style = ctx.style;
   var guides = builtInGuides;
@@ -65,6 +87,8 @@ List<Widget> markdownAreaEditor(AreaEditorContext ctx) {
       onChanged: (v) =>
           ctx.setStyle((s) => s.copyWith(markdownHonourPostGuide: v)),
     ),
+    ctx.note("Images: "
+        "${_describeImages(builtInGuideFor(chosen)!.image)}"),
     const SizedBox(height: 12),
     _MarkdownPreview(guideId: chosen),
   ];

@@ -44,6 +44,7 @@ const _article = MarkdownStyleGuide(
   link: TextRule(ink: MarkdownInk.of(MarkdownRole.link), underline: true),
   quote: TextRule(italic: true, ink: MarkdownInk.of(MarkdownRole.muted)),
   blockGap: 16,
+  listItemGap: 4,
   quoteBarInk: MarkdownInk.of(MarkdownRole.accent),
   quoteBarWidth: 3,
   image: ImageRule(widthPercent: 100, cornerRadius: 8, gap: 16),
@@ -66,6 +67,7 @@ const _compact = MarkdownStyleGuide(
   ],
   link: TextRule(ink: MarkdownInk.of(MarkdownRole.link)),
   blockGap: 4,
+  listItemGap: 2,
   listIndent: 16,
   image: ImageRule(widthPercent: 60, gap: 4),
 );
@@ -92,6 +94,7 @@ const _terminal = MarkdownStyleGuide(
   quote: TextRule(font: MarkdownFont.mono),
   listBullet: TextRule(font: MarkdownFont.mono),
   blockGap: 10,
+  listItemGap: 4,
   quoteBarInk: MarkdownInk.of(MarkdownRole.outline),
   image: ImageRule(widthPercent: 100, borderWidth: 1),
 );

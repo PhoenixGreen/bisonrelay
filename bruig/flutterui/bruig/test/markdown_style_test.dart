@@ -37,7 +37,7 @@ MarkdownStyleSheet _base() => MarkdownStyleSheet(
     );
 
 MarkdownStyleSheet _sheetFor(MarkdownStyleGuide guide) =>
-    applyGuide(_base(), guide, _role, bodyStyle: _body);
+    applyGuide(_base(), guide, _role);
 
 void main() {
   // The Markdown theme area: which guide posts are read in, and whether a
@@ -170,11 +170,95 @@ void main() {
               id: "x",
               name: "X",
               quoteBarInk: MarkdownInk.of(MarkdownRole.accent)),
-          _role,
-          bodyStyle: _body);
+          _role);
       var decoration = sheet.blockquoteDecoration as BoxDecoration;
       expect(decoration.color, const Color(0xFF222222));
       expect(decoration.border?.bottom.color, isNot(const Color(0xFF222222)));
+    });
+  });
+
+  // Reported: paragraphs came out dark purple under every guide but
+  // Default, and links lost their styling the same way.
+  //
+  // The app's stylesheet names only the few things it overrides and leaves
+  // the rest null; MarkdownBody fills those from the Material theme. A guide
+  // writing into a null field therefore replaced a value that had not been
+  // worked out yet -- and it was working from DefaultTextStyle, which is
+  // near-black with a purple cast while the theme's own text is near-white.
+  group("a guide does not invent what it was not told", () {
+    test("an unset colour stays unset", () {
+      var sparse = MarkdownStyleSheet(p: const TextStyle(fontSize: 14));
+      var sheet = applyGuide(sparse, builtInGuideFor("article")!, _role);
+      expect(sheet.p?.color, isNull,
+          reason: "inventing one here is what painted every paragraph in "
+              "whatever colour the guide happened to be working from");
+    });
+
+    test("a colour that was set is kept", () {
+      var sheet = applyGuide(_base(), builtInGuideFor("article")!, _role);
+      expect(sheet.p?.color, const Color(0xFF111111));
+    });
+
+    // Article does change the line height, so the test above is not passing
+    // merely because nothing was applied.
+    test("the rest of the rule still applies", () {
+      var sheet = applyGuide(_base(), builtInGuideFor("article")!, _role);
+      expect(sheet.p?.height, 1.6);
+    });
+  });
+
+  group("underlining a link", () {
+    test("a guide can ask for one", () {
+      var sheet = applyGuide(_base(), builtInGuideFor("article")!, _role);
+      expect(sheet.a?.decoration, TextDecoration.underline);
+    });
+
+    // Saying nothing has to leave whatever the theme does, which is what
+    // Default is.
+    test("saying nothing leaves the theme's own", () {
+      var base = _base()
+          .copyWith(a: const TextStyle(decoration: TextDecoration.underline));
+      var sheet =
+          applyGuide(base, const MarkdownStyleGuide(id: "x", name: "X"), _role);
+      expect(sheet.a?.decoration, TextDecoration.underline);
+    });
+
+    test("a guide can ask for none", () {
+      var base = _base()
+          .copyWith(a: const TextStyle(decoration: TextDecoration.underline));
+      var sheet = applyGuide(
+          base,
+          const MarkdownStyleGuide(
+              id: "x", name: "X", link: TextRule(underline: false)),
+          _role);
+      expect(sheet.a?.decoration, TextDecoration.none);
+    });
+  });
+
+  // Reported: Article's lists were too airy. flutter_markdown puts one
+  // spacing figure between every pair of blocks -- paragraphs and list items
+  // alike -- so the gap that made the prose read well pulled the bullets
+  // apart.
+  group("paragraphs and list items are spaced separately", () {
+    test("the shared figure is the list's, and paragraphs add their own", () {
+      var guide = const MarkdownStyleGuide(
+          id: "x", name: "X", blockGap: 16, listItemGap: 4);
+      var sheet = applyGuide(_base(), guide, _role);
+      expect(sheet.blockSpacing, 4, reason: "what goes between list items");
+      expect(sheet.pPadding?.bottom, 12,
+          reason: "paragraphs make up the difference to 16 themselves");
+    });
+
+    test("a guide that wants them equal adds no padding", () {
+      var guide = const MarkdownStyleGuide(
+          id: "x", name: "X", blockGap: 8, listItemGap: 8);
+      var sheet = applyGuide(_base(), guide, _role);
+      expect(sheet.pPadding?.bottom, 0);
+    });
+
+    test("Article no longer spaces its bullets like paragraphs", () {
+      var article = builtInGuideFor("article")!;
+      expect(article.listItemGap, lessThan(article.blockGap));
     });
   });
 
