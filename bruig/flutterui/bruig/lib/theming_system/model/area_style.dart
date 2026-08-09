@@ -377,6 +377,17 @@ class AreaStyle {
   final bool feedHideSidebarOnPost; // Drops the feed sidebar entirely while
   // reading a single post, for a more focused reading experience. Needs
   // feedSidePanel.
+  // markdownGuideId is the style guide posts are read in on this device --
+  // see model/markdown_style.dart. It travels with a theme because how text
+  // is set is part of how the app looks, and because someone who has built a
+  // theme has usually decided this too.
+  final String markdownGuideId;
+
+  // markdownHonourPostGuide lets a post ask to be read in a particular
+  // guide. Off means the reader's own choice above wins whatever a post
+  // says, which is the "local only, do not overwrite" position.
+  final bool markdownHonourPostGuide;
+
   final bool feedPublishMenu; // Moves Create Post out of the composer's
   // footer and into a menu button in its top-right corner, giving the editor
   // the height the footer took and leaving somewhere for further publish
@@ -575,6 +586,8 @@ class AreaStyle {
     this.feedSidePanel = false,
     this.feedInlineComposer = false,
     this.feedHideSidebarOnPost = false,
+    this.markdownGuideId = "default",
+    this.markdownHonourPostGuide = true,
     this.feedPublishMenu = false,
     this.feedImageLayout = FeedImageLayout.standard,
     this.feedImageCropHeight = 300,
@@ -738,6 +751,8 @@ class AreaStyle {
     bool? feedSidePanel,
     bool? feedInlineComposer,
     bool? feedHideSidebarOnPost,
+    String? markdownGuideId,
+    bool? markdownHonourPostGuide,
     bool? feedPublishMenu,
     FeedImageLayout? feedImageLayout,
     double? feedImageCropHeight,
@@ -931,6 +946,9 @@ class AreaStyle {
         feedInlineComposer: feedInlineComposer ?? this.feedInlineComposer,
         feedHideSidebarOnPost:
             feedHideSidebarOnPost ?? this.feedHideSidebarOnPost,
+        markdownGuideId: markdownGuideId ?? this.markdownGuideId,
+        markdownHonourPostGuide:
+            markdownHonourPostGuide ?? this.markdownHonourPostGuide,
         feedPublishMenu: feedPublishMenu ?? this.feedPublishMenu,
         feedImageLayout: feedImageLayout ?? this.feedImageLayout,
         feedImageCropHeight: feedImageCropHeight ?? this.feedImageCropHeight,
@@ -1114,6 +1132,9 @@ class AreaStyle {
         if (feedCardActions) "feedCardActions": feedCardActions,
         if (feedSidePanel) "feedSidePanel": feedSidePanel,
         if (feedInlineComposer) "feedInlineComposer": feedInlineComposer,
+        if (markdownGuideId != "default") "markdownGuideId": markdownGuideId,
+        if (!markdownHonourPostGuide)
+          "markdownHonourPostGuide": markdownHonourPostGuide,
         if (feedPublishMenu) "feedPublishMenu": feedPublishMenu,
         if (feedHideSidebarOnPost)
           "feedHideSidebarOnPost": feedHideSidebarOnPost,
@@ -1321,6 +1342,12 @@ class AreaStyle {
           flag("feedComposerAttach") ||
           flag("feedDrafts"),
       feedHideSidebarOnPost: flag("feedHideSidebarOnPost"),
+      markdownGuideId: j["markdownGuideId"] is String
+          ? j["markdownGuideId"] as String
+          : "default",
+      markdownHonourPostGuide: j["markdownHonourPostGuide"] is bool
+          ? j["markdownHonourPostGuide"] as bool
+          : true,
       feedPublishMenu: flag("feedPublishMenu"),
       feedImageLayout: _enumOr(FeedImageLayout.values, j["feedImageLayout"],
           FeedImageLayout.standard),

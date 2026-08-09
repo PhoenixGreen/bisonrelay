@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:bruig/theming_system/editor/areas/buttons.dart';
 import 'package:bruig/theming_system/editor/areas/chat.dart';
 import 'package:bruig/theming_system/editor/areas/feed.dart';
+import 'package:bruig/theming_system/editor/areas/markdown.dart';
 import 'package:bruig/theming_system/editor/areas/filemanager.dart';
 import 'package:bruig/theming_system/editor/areas/header.dart';
 import 'package:bruig/theming_system/editor/areas/inputs.dart';
@@ -42,6 +43,7 @@ const List<ThemeArea> _editableAreas = [
   ThemeArea.buttons,
   ThemeArea.chat,
   ThemeArea.feed,
+  ThemeArea.markdown,
   ThemeArea.realtimeChat,
   ThemeArea.manageContent,
   ThemeArea.settingsPages,
@@ -92,6 +94,7 @@ List<Widget> _areaEditor(AreaEditorContext ctx) => switch (ctx.area) {
       ThemeArea.subMenuTabBar => sidebarAreaEditor(ctx),
       ThemeArea.chat => chatAreaEditor(ctx),
       ThemeArea.feed => feedAreaEditor(ctx),
+      ThemeArea.markdown => markdownAreaEditor(ctx),
       ThemeArea.realtimeChat => realtimeChatAreaEditor(ctx),
       ThemeArea.inputAreas => inputAreasAreaEditor(ctx),
       ThemeArea.buttons => buttonsAreaEditor(ctx),

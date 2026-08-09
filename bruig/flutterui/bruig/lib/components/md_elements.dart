@@ -26,6 +26,7 @@ import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
+import 'package:bruig/theming_system/theme_preset.dart';
 import 'package:bruig/components/image_dialog.dart';
 import 'package:pdfrx/pdfrx.dart';
 import 'package:path/path.dart' as path;
@@ -486,8 +487,21 @@ class MarkdownArea extends StatelessWidget {
   // AreaStyle.feedStripMarkdown toggle -- only affects this MarkdownArea
   // instance, not markdown rendering elsewhere (chat, pages, etc).
   final bool plainText;
+
+  /// guideId names the style guide to set this text in, or null to use
+  /// whichever the reader has chosen for posts.
+  ///
+  /// Passed in only where a caller has a reason to override the reader's
+  /// choice -- the Settings preview, which has to show a guide that is not
+  /// the one in force, and the composer, which shows the writer what the
+  /// guide they picked will look like.
+  final String? guideId;
+
   MarkdownArea(srcText, this.hasNick,
-      {this.disableLinks = false, this.plainText = false, super.key})
+      {this.disableLinks = false,
+      this.plainText = false,
+      this.guideId,
+      super.key})
       : text = MarkdownArea._cleanupSrcText(srcText);
 
   Future<void> launchUrlAwait(context, url) async {
@@ -542,14 +556,36 @@ class MarkdownArea extends StatelessWidget {
     );
   }
 
+  /// _guidedStyleSheet is the theme's own stylesheet with the style guide
+  /// folded onto it.
+  ///
+  /// The theme's is returned untouched for Default, which is not an
+  /// optimisation but the definition of it: Default is the guide that says
+  /// nothing, so folding it on is a no-op with extra steps.
+  MarkdownStyleSheet _guidedStyleSheet(
+      ThemeNotifier theme, BuildContext context) {
+    var guide = builtInGuideFor(guideId ?? theme.markdownGuideId);
+    if (guide == null || guide.id == defaultGuideId) return theme.mdStyleSheet;
+    return applyGuide(
+      theme.mdStyleSheet,
+      guide,
+      (role) => theme.markdownRoleColor(role),
+      bodyStyle: DefaultTextStyle.of(context).style,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Consumer3<ThemeNotifier, PaymentsModel, MarkdownAreaModel>(
         builder: (context, theme, payments, mk, _) => MarkdownBody(
               codeBlockMaxHeight: 200,
+              // Plain text wins over a guide: it is the Feed's "strip
+              // markdown" setting, which is a decision not to show
+              // formatting at all, and a guide is only ever about how
+              // formatting looks.
               styleSheet: plainText
                   ? _plainStyleSheet(theme.mdStyleSheet, context)
-                  : theme.mdStyleSheet,
+                  : _guidedStyleSheet(theme, context),
               data: text.trim(),
               extensionSet: mk.extensionSet,
               builders: mk.builders,

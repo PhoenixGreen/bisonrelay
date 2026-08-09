@@ -43,6 +43,11 @@ enum ThemeArea {
   // are kept only so a preset saved before that can still be read and
   // migrated across (see ThemePreset.fromJson); nothing renders from them.
   settingsPages,
+  // markdown is how a post's text is set: which style guide the reader sees
+  // posts in. It carries no background or border of its own -- it is not a
+  // region of the screen but the typography inside one -- which is why it is
+  // absent from the framed areas.
+  markdown,
   // mobile is the narrow-screen layout -- chiefly its bottom navigation
   // bar, which is the nav bar's counterpart there. It carries no
   // background/border of its own (the bar's own colors come from the
@@ -72,6 +77,7 @@ const Map<ThemeArea, String> _themeAreaLabels = {
   ThemeArea.stats: "Stats",
   ThemeArea.logs: "Logs",
   ThemeArea.settingsPages: "Settings Pages",
+  ThemeArea.markdown: "Markdown",
   ThemeArea.mobile: "Mobile",
 };
 

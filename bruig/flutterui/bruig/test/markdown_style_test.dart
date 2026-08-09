@@ -1,3 +1,4 @@
+import 'package:bruig/theming_system/model/area_style.dart';
 import 'package:bruig/theming_system/model/markdown_guides.dart';
 import 'package:bruig/theming_system/model/markdown_style.dart';
 import 'package:bruig/theming_system/model/markdown_style_render.dart';
@@ -39,6 +40,48 @@ MarkdownStyleSheet _sheetFor(MarkdownStyleGuide guide) =>
     applyGuide(_base(), guide, _role, bodyStyle: _body);
 
 void main() {
+  // The Markdown theme area: which guide posts are read in, and whether a
+  // post may ask for a different one. Both travel with a theme, because how
+  // text is set is part of how the app looks.
+  group("the theme area's settings", () {
+    test("out of the box nothing is changed and a post may ask", () {
+      var style = const AreaStyle();
+      expect(style.markdownGuideId, defaultGuideId);
+      expect(style.markdownHonourPostGuide, isTrue);
+    });
+
+    test("a chosen guide survives being saved and read back", () {
+      var style = const AreaStyle()
+          .copyWith(markdownGuideId: "article", markdownHonourPostGuide: false);
+      var back = AreaStyle.fromJson(style.toJson());
+      expect(back.markdownGuideId, "article");
+      expect(back.markdownHonourPostGuide, isFalse);
+    });
+
+    // A theme saved before this existed has neither field, and has to read
+    // back as the defaults rather than as an empty guide name.
+    test("a theme saved before the area existed reads as the default", () {
+      var back = AreaStyle.fromJson(const {});
+      expect(back.markdownGuideId, defaultGuideId);
+      expect(back.markdownHonourPostGuide, isTrue);
+    });
+
+    // The defaults write nothing, so an untouched theme file is unchanged
+    // by the feature existing.
+    test("the defaults are not written out", () {
+      var json = const AreaStyle().toJson();
+      expect(json.containsKey("markdownGuideId"), isFalse);
+      expect(json.containsKey("markdownHonourPostGuide"), isFalse);
+    });
+
+    test("a guide that no longer ships falls back rather than breaking", () {
+      var style = const AreaStyle().copyWith(markdownGuideId: "removed-guide");
+      expect(builtInGuideFor(style.markdownGuideId), isNull,
+          reason: "the editor and the renderer both fall back to Default "
+              "when the named guide is not one this app has");
+    });
+  });
+
   group("the guide that changes nothing", () {
     test("Default leaves the theme's own sizes alone", () {
       var sheet = _sheetFor(builtInGuideFor(defaultGuideId)!);
@@ -66,11 +109,15 @@ void main() {
 
     test("a scale is bounded at both ends", () {
       expect(
-          const TextRule(scale: 99).applyTo(const TextStyle(fontSize: 10), _role).fontSize,
+          const TextRule(scale: 99)
+              .applyTo(const TextStyle(fontSize: 10), _role)
+              .fontSize,
           30,
           reason: "text that fills the screen is a way of shouting");
       expect(
-          const TextRule(scale: 0.01).applyTo(const TextStyle(fontSize: 10), _role).fontSize,
+          const TextRule(scale: 0.01)
+              .applyTo(const TextStyle(fontSize: 10), _role)
+              .fontSize,
           6,
           reason: "text scaled to nothing is a way of hiding");
     });
@@ -96,7 +143,8 @@ void main() {
     });
 
     test("saying nothing leaves the theme's colour", () {
-      expect(const TextRule().applyTo(_body, _role).color, const Color(0xFF111111));
+      expect(const TextRule().applyTo(_body, _role).color,
+          const Color(0xFF111111));
     });
   });
 
@@ -190,7 +238,9 @@ void main() {
 
     test("an image rule survives the round trip", () {
       var rule = const ImageRule(
-          widthPercent: 60, cornerRadius: 12, borderWidth: 2,
+          widthPercent: 60,
+          cornerRadius: 12,
+          borderWidth: 2,
           align: MarkdownAlign.center);
       var back = ImageRule.fromJson(rule.toJson());
       expect(back.widthPercent, 60);

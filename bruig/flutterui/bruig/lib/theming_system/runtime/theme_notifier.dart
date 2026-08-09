@@ -2,6 +2,7 @@ import 'package:bruig/storage_manager.dart';
 import 'package:bruig/theming_system/model/area_style.dart';
 import 'package:bruig/theming_system/model/area_style_render.dart';
 import 'package:bruig/theming_system/model/button_style.dart';
+import 'package:bruig/theming_system/model/markdown_style.dart';
 import 'package:bruig/theming_system/model/preset.dart';
 import 'package:bruig/theming_system/model/preset_theme.dart';
 import 'package:bruig/theming_system/model/theme_area.dart';
@@ -429,6 +430,32 @@ class ThemeNotifier with ChangeNotifier {
     _nickTextStyles[nick] = res;
     return res;
   }
+
+  /// markdownGuideId is the style guide posts are read in, from the
+  /// Markdown theme area.
+  String get markdownGuideId => areaStyle(ThemeArea.markdown).markdownGuideId;
+
+  /// markdownHonourPostGuide is whether a post may ask to be read in a
+  /// particular guide, or whether the reader's own choice always wins.
+  bool get markdownHonourPostGuide =>
+      areaStyle(ThemeArea.markdown).markdownHonourPostGuide;
+
+  /// markdownRoleColor resolves the short list of colours a style guide can
+  /// name against the live theme.
+  ///
+  /// The mapping is here rather than in the model because it is the one
+  /// place that knows what the reader's theme currently is -- which is the
+  /// whole reason a guide names roles instead of colours.
+  Color markdownRoleColor(MarkdownRole role) => switch (role) {
+        MarkdownRole.text => textColor(TextColor.onSurface),
+        MarkdownRole.muted => textColor(TextColor.onSurfaceVariant),
+        MarkdownRole.accent => surfaceColor(SurfaceColor.primary),
+        MarkdownRole.link => surfaceColor(SurfaceColor.primary),
+        MarkdownRole.quote => textColor(TextColor.onTertiaryContainer),
+        MarkdownRole.quoteBar => surfaceColor(SurfaceColor.inverseSurface),
+        MarkdownRole.raised => surfaceColor(SurfaceColor.surfaceContainer),
+        MarkdownRole.outline => colors.outlineVariant,
+      };
 
   MarkdownStyleSheet _mdStyleSheet = MarkdownStyleSheet();
   MarkdownStyleSheet get mdStyleSheet => _mdStyleSheet;
