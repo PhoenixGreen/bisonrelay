@@ -1,5 +1,6 @@
 import 'package:bruig/components/md_elements.dart';
 import 'package:bruig/components/text.dart';
+import 'package:bruig/theming_system/editor/areas/sample_image.dart';
 import 'package:bruig/theming_system/theme_editor.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:bruig/theming_system/theme_preset.dart';
@@ -69,13 +70,15 @@ Body text above the rule.
 
 Body text below it.
 """,
-      // The preview renders from a string, and an embed is a piece of a real
-      // post rather than something that can be written into one. The
-      // composer's own preview is where these are seen.
+      // A real embed, drawn rather than described: the width is a share of
+      // the column and the corners, border and spacing are drawn around it,
+      // none of which can be judged from a sentence.
       _Element.images => """
-Image settings apply to embeds in a post. Add one in the composer to see
-them: the width is a share of the column, and the corners, border and
-spacing are drawn around it.
+Body text above the picture.
+
+${sampleImageMarkdown ?? ""}
+
+Body text below it, so the spacing has something to push against.
 """,
     };
 
@@ -111,6 +114,20 @@ class _MarkdownEditor extends StatefulWidget {
 
 class _MarkdownEditorState extends State<_MarkdownEditor> {
   _Element element = _Element.text;
+
+  @override
+  void initState() {
+    super.initState();
+    // Prepared once, not per frame: this page rebuilds on every drag of
+    // every slider.
+    if (sampleImageMarkdown == null) {
+      var seed = ThemeNotifier.of(context, listen: false)
+          .surfaceColor(SurfaceColor.primary);
+      prepareSampleImage(seed).then((_) {
+        if (mounted) setState(() {});
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
