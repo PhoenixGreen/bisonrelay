@@ -2,6 +2,7 @@ import 'package:bruig/storage_manager.dart';
 import 'package:bruig/theming_system/model/area_style.dart';
 import 'package:bruig/theming_system/model/area_style_render.dart';
 import 'package:bruig/theming_system/model/button_style.dart';
+import 'package:bruig/theming_system/model/markdown_guides.dart';
 import 'package:bruig/theming_system/model/markdown_style.dart';
 import 'package:bruig/theming_system/model/preset.dart';
 import 'package:bruig/theming_system/model/preset_theme.dart';
@@ -439,6 +440,12 @@ class ThemeNotifier with ChangeNotifier {
   /// particular guide, or whether the reader's own choice always wins.
   bool get markdownHonourPostGuide =>
       areaStyle(ThemeArea.markdown).markdownHonourPostGuide;
+
+  /// markdownGuide is the style guide this theme renders posts with: the
+  /// reader's own when they have edited one, otherwise the built-in named
+  /// in the Markdown area.
+  MarkdownStyleGuide get markdownGuide => areaStyle(ThemeArea.markdown)
+      .markdownGuide(builtInGuideFor(markdownGuideId));
 
   /// markdownImageRule is [guide]'s picture rules with the Markdown area's
   /// own overrides folded over them.

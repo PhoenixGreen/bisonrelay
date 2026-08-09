@@ -107,12 +107,42 @@ void main() {
 
     test("a link keeps its label and loses its target", () {
       const text = "see [the docs](https://example.com) for more";
-      var d = markdownDecorations(text);
+      var d = markdownDecorations(text, link: const Color(0xFF0077CC));
       expect(_hidden(d, text.indexOf("[")), isTrue);
       expect(_hidden(d, text.indexOf("https")), isTrue,
           reason: "the URL is not what the reader is meant to see");
-      expect(_styleAt(d, text.indexOf("the docs")).decoration,
-          TextDecoration.underline);
+      expect(
+          _styleAt(d, text.indexOf("the docs")).color, const Color(0xFF0077CC));
+    });
+
+    // Reported: the composer underlined links and the rendered post did not,
+    // so a post looked one way while it was being written and another
+    // afterwards. The preview is supposed to be the post.
+    test("a link is not underlined unless a guide asks", () {
+      const text = "see [the docs](https://example.com) for more";
+      expect(
+          _styleAt(markdownDecorations(text), text.indexOf("the docs"))
+              .decoration,
+          isNull);
+
+      var article = markdownDecorations(text,
+          guide: builtInGuideFor("article"),
+          roleColor: (_) => const Color(0xFF0077CC));
+      expect(_styleAt(article, text.indexOf("the docs")).decoration,
+          TextDecoration.underline,
+          reason: "Article asks for one explicitly");
+    });
+
+    // Reported as part of the same thing: a guide that says nothing about an
+    // element was stripping that element back to plain text, because its
+    // empty rule replaced the preview's own styling instead of adjusting it.
+    test("a guide that says nothing keeps the element's own styling", () {
+      const text = "the `relay` command";
+      var article = markdownDecorations(text,
+          guide: builtInGuideFor("article"),
+          roleColor: (_) => const Color(0xFF0077CC));
+      expect(_styleAt(article, text.indexOf("relay")).fontFamily, "monospace",
+          reason: "Article says nothing about code, so code stays code");
     });
 
     // A bullet cannot become a round dot without replacing the character, so

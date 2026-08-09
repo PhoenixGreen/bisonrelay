@@ -75,12 +75,26 @@ List<InlineDecoration> markdownDecorations(
   ImageRule? image,
 }) {
   var resolve = roleColor ?? (_) => const Color(0xFF000000);
-  var base = TextStyle(fontSize: baseSize);
 
-  /// from applies a guide's rule, or falls back to what the preview drew
-  /// before guides existed.
-  TextStyle from(TextRule? rule, TextStyle fallback) =>
-      rule == null ? fallback : rule.applyTo(base, resolve);
+  /// from applies a guide's rule *on top of* what the preview would
+  /// otherwise draw, rather than instead of it.
+  ///
+  /// The difference matters for everything a rule does not mention. Applied
+  /// to a bare style, Article's empty code rule threw away the monospaced
+  /// face that makes code look like code, and its empty link rule threw
+  /// away the link colour -- a guide that says nothing about an element was
+  /// silently stripping that element back to plain text.
+  ///
+  /// [sizeBase] is what a rule's scale multiplies. For a heading that is the
+  /// body size, not the heading's own fallback size: Article asks for 1.9
+  /// times the body, and multiplying the preview's 26-point h1 by it would
+  /// give 49.
+  TextStyle from(TextRule? rule, TextStyle fallback, {double? sizeBase}) {
+    if (rule == null) return fallback;
+    return rule.applyTo(
+        fallback.copyWith(fontSize: sizeBase ?? fallback.fontSize ?? baseSize),
+        resolve);
+  }
 
   // Two lists, because order decides the outcome: a decoration later in the
   // list wins where they overlap, and the hidden markers have to beat the
@@ -109,7 +123,8 @@ List<InlineDecoration> markdownDecorations(
             guide?.headings[level - 1],
             TextStyle(
                 fontSize: _headingSizes[level - 1],
-                fontWeight: FontWeight.w700)));
+                fontWeight: FontWeight.w700),
+            sizeBase: baseSize));
   }
   for (var m in _quote.allMatches(text)) {
     hide(m.start, m.start + m.group(1)!.length);
@@ -168,11 +183,7 @@ List<InlineDecoration> markdownDecorations(
     // brackets and the target -- goes away.
     hide(m.start, m.start + 1);
     hide(m.start + 1 + m.group(2)!.length, m.end);
-    style(
-        m.start,
-        m.end,
-        from(guide?.link,
-            TextStyle(color: link, decoration: TextDecoration.underline)));
+    style(m.start, m.end, from(guide?.link, TextStyle(color: link)));
   }
 
   for (var m in _embed.allMatches(text)) {

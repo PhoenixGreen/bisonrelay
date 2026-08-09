@@ -409,6 +409,28 @@ class AreaStyle {
   final double? markdownImageGap;
   final MarkdownAlign? markdownImageAlign;
 
+  /// markdownCustomGuide is the reader's own style guide, as JSON, or null
+  /// when they are using a built-in unchanged.
+  ///
+  /// One per theme. A theme already is the thing that carries somebody's
+  /// taste, and a library of named guides is a larger feature than what was
+  /// asked for -- which is to be able to change a built-in and keep the
+  /// result.
+  final Map<String, Object?>? markdownCustomGuide;
+
+  /// markdownGuide is the guide this theme actually renders with.
+  ///
+  /// The custom one when there is one, otherwise the named built-in,
+  /// otherwise Default. The picture overrides are folded on last, and exist
+  /// only to carry forward themes saved when they were the whole of this
+  /// feature.
+  MarkdownStyleGuide markdownGuide(MarkdownStyleGuide? named) {
+    var base = markdownCustomGuide != null
+        ? MarkdownStyleGuide.fromJson(markdownCustomGuide!)
+        : (named ?? const MarkdownStyleGuide(id: "default", name: "Default"));
+    return base.copyWith(image: markdownImage(base.image));
+  }
+
   /// markdownImage is [guide]'s picture rules with this theme's overrides
   /// folded over them.
   ///
@@ -623,6 +645,7 @@ class AreaStyle {
     this.feedSidePanel = false,
     this.feedInlineComposer = false,
     this.feedHideSidebarOnPost = false,
+    this.markdownCustomGuide,
     this.markdownImageWidthPercent,
     this.markdownImageRadius,
     this.markdownImageBorderWidth,
@@ -795,6 +818,8 @@ class AreaStyle {
     bool? feedSidePanel,
     bool? feedInlineComposer,
     bool? feedHideSidebarOnPost,
+    Map<String, Object?>? markdownCustomGuide,
+    bool clearMarkdownCustomGuide = false,
     double? markdownImageWidthPercent,
     double? markdownImageRadius,
     double? markdownImageBorderWidth,
@@ -999,6 +1024,9 @@ class AreaStyle {
         feedInlineComposer: feedInlineComposer ?? this.feedInlineComposer,
         feedHideSidebarOnPost:
             feedHideSidebarOnPost ?? this.feedHideSidebarOnPost,
+        markdownCustomGuide: clearMarkdownCustomGuide
+            ? null
+            : (markdownCustomGuide ?? this.markdownCustomGuide),
         markdownImageWidthPercent: clearMarkdownImages
             ? null
             : (markdownImageWidthPercent ?? this.markdownImageWidthPercent),
@@ -1209,6 +1237,8 @@ class AreaStyle {
         if (feedCardActions) "feedCardActions": feedCardActions,
         if (feedSidePanel) "feedSidePanel": feedSidePanel,
         if (feedInlineComposer) "feedInlineComposer": feedInlineComposer,
+        if (markdownCustomGuide != null)
+          "markdownCustomGuide": markdownCustomGuide,
         if (markdownImageWidthPercent != null)
           "markdownImageWidthPercent": markdownImageWidthPercent,
         if (markdownImageRadius != null)
@@ -1432,6 +1462,9 @@ class AreaStyle {
           flag("feedComposerAttach") ||
           flag("feedDrafts"),
       feedHideSidebarOnPost: flag("feedHideSidebarOnPost"),
+      markdownCustomGuide: j["markdownCustomGuide"] is Map
+          ? Map<String, Object?>.from(j["markdownCustomGuide"] as Map)
+          : null,
       markdownImageWidthPercent: number("markdownImageWidthPercent"),
       markdownImageRadius: number("markdownImageRadius"),
       markdownImageBorderWidth: number("markdownImageBorderWidth"),

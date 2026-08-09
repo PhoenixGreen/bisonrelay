@@ -328,6 +328,66 @@ void main() {
     });
   });
 
+  // A built-in is what a published post names, so it has to mean the same
+  // thing on every device. Editing one therefore cannot change it.
+  group("editing a built-in makes a guide of your own", () {
+    test("a fork is no longer built in and has its own id", () {
+      var forked = builtInGuideFor("article")!.forked("custom");
+      expect(forked.builtIn, isFalse);
+      expect(forked.id, "custom");
+      expect(forked.name, "Article (edited)");
+    });
+
+    test("the built-in it came from is untouched", () {
+      var article = builtInGuideFor("article")!;
+      article.forked("custom").copyWith(blockGap: 99);
+      expect(builtInGuideFor("article")!.blockGap, article.blockGap);
+      expect(builtInGuideFor("article")!.builtIn, isTrue);
+    });
+
+    test("a fork keeps everything it was forked from", () {
+      var article = builtInGuideFor("article")!;
+      var forked = article.forked("custom");
+      expect(forked.blockGap, article.blockGap);
+      expect(forked.body.lineHeight, article.body.lineHeight);
+      expect(forked.headings[0].scale, article.headings[0].scale);
+      expect(forked.image.cornerRadius, article.image.cornerRadius);
+    });
+
+    test("a whole guide survives being saved and read back", () {
+      var guide = builtInGuideFor("article")!
+          .forked("custom")
+          .copyWith(blockGap: 22, listItemGap: 3);
+      var back = MarkdownStyleGuide.fromJson(guide.toJson());
+      expect(back.id, "custom");
+      expect(back.name, "Article (edited)");
+      expect(back.blockGap, 22);
+      expect(back.listItemGap, 3);
+      expect(back.body.lineHeight, guide.body.lineHeight);
+      expect(back.headings[0].scale, guide.headings[0].scale);
+      expect(back.link.underline, guide.link.underline);
+      expect(back.image.cornerRadius, guide.image.cornerRadius);
+    });
+
+    test("the theme renders with the fork once there is one", () {
+      var custom =
+          builtInGuideFor("compact")!.forked("custom").copyWith(blockGap: 40);
+      var style = const AreaStyle().copyWith(
+          markdownGuideId: "article", markdownCustomGuide: custom.toJson());
+      expect(style.markdownGuide(builtInGuideFor("article")).blockGap, 40,
+          reason: "the reader's own guide wins over the name beside it");
+    });
+
+    test("choosing a guide again starts from that one", () {
+      var style = const AreaStyle().copyWith(markdownCustomGuide: {
+        "id": "custom",
+        "name": "Mine"
+      }).copyWith(markdownGuideId: "compact", clearMarkdownCustomGuide: true);
+      expect(style.markdownCustomGuide, isNull);
+      expect(style.markdownGuide(builtInGuideFor("compact")).id, "compact");
+    });
+  });
+
   group("the built-ins", () {
     // These are the ones a post can rely on, because every device has them.
     test("each has a distinct id and a name", () {

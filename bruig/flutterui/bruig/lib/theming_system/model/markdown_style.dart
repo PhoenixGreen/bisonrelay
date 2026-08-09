@@ -328,6 +328,151 @@ class MarkdownStyleGuide {
   final MarkdownAlign bodyAlign;
   final ImageRule image;
 
+  /// copyWith returns this guide with some rules changed.
+  ///
+  /// Editing a built-in is not possible, and this is where that is made
+  /// true: any change to one produces a guide of the reader's own, with a
+  /// fresh id and a name saying what it came from. The built-ins are what a
+  /// published post can rely on, so they have to be the same everywhere --
+  /// a "Article" that had been quietly edited on one machine would make a
+  /// post naming it mean something different there.
+  MarkdownStyleGuide copyWith({
+    String? id,
+    String? name,
+    TextRule? body,
+    List<TextRule>? headings,
+    TextRule? link,
+    TextRule? strong,
+    TextRule? emphasis,
+    TextRule? quote,
+    TextRule? code,
+    TextRule? listBullet,
+    double? blockGap,
+    double? listItemGap,
+    double? listIndent,
+    MarkdownInk? quoteBarInk,
+    double? quoteBarWidth,
+    MarkdownInk? quoteBackground,
+    MarkdownInk? codeBackground,
+    MarkdownInk? ruleInk,
+    double? ruleThickness,
+    MarkdownAlign? bodyAlign,
+    ImageRule? image,
+  }) =>
+      MarkdownStyleGuide(
+        id: id ?? this.id,
+        name: name ?? this.name,
+        builtIn: id == null && name == null ? builtIn : false,
+        body: body ?? this.body,
+        headings: headings ?? this.headings,
+        link: link ?? this.link,
+        strong: strong ?? this.strong,
+        emphasis: emphasis ?? this.emphasis,
+        quote: quote ?? this.quote,
+        code: code ?? this.code,
+        listBullet: listBullet ?? this.listBullet,
+        tableHead: tableHead,
+        tableBody: tableBody,
+        blockGap: blockGap ?? this.blockGap,
+        listItemGap: listItemGap ?? this.listItemGap,
+        listIndent: listIndent ?? this.listIndent,
+        quoteBarInk: quoteBarInk ?? this.quoteBarInk,
+        quoteBarWidth: quoteBarWidth ?? this.quoteBarWidth,
+        quoteBackground: quoteBackground ?? this.quoteBackground,
+        codeBackground: codeBackground ?? this.codeBackground,
+        ruleInk: ruleInk ?? this.ruleInk,
+        ruleThickness: ruleThickness ?? this.ruleThickness,
+        tableBorderInk: tableBorderInk,
+        tableBorderWidth: tableBorderWidth,
+        bodyAlign: bodyAlign ?? this.bodyAlign,
+        image: image ?? this.image,
+      );
+
+  /// forked is this guide as the beginning of one of the reader's own.
+  ///
+  /// Called the moment a built-in is edited, so the built-in itself is never
+  /// changed and the edit is not lost either.
+  MarkdownStyleGuide forked(String newId) =>
+      copyWith(id: newId, name: "$name (edited)");
+
+  Map<String, Object?> toJson() => {
+        "id": id,
+        "name": name,
+        "body": body.toJson(),
+        "headings": [for (var h in headings) h.toJson()],
+        "link": link.toJson(),
+        "strong": strong.toJson(),
+        "emphasis": emphasis.toJson(),
+        "quote": quote.toJson(),
+        "code": code.toJson(),
+        "listBullet": listBullet.toJson(),
+        "blockGap": blockGap,
+        "listItemGap": listItemGap,
+        "listIndent": listIndent,
+        if (!quoteBarInk.isInherit) "quoteBarInk": quoteBarInk.toJson(),
+        "quoteBarWidth": quoteBarWidth,
+        if (!quoteBackground.isInherit)
+          "quoteBackground": quoteBackground.toJson(),
+        if (!codeBackground.isInherit)
+          "codeBackground": codeBackground.toJson(),
+        if (!ruleInk.isInherit) "ruleInk": ruleInk.toJson(),
+        "ruleThickness": ruleThickness,
+        "bodyAlign": bodyAlign.name,
+        "image": image.toJson(),
+      };
+
+  static MarkdownStyleGuide fromJson(Map<String, Object?> json) {
+    TextRule rule(String key) {
+      var v = json[key];
+      return v is Map<String, Object?>
+          ? TextRule.fromJson(v)
+          : const TextRule();
+    }
+
+    var heads = json["headings"];
+    return MarkdownStyleGuide(
+      id: json["id"] as String? ?? "",
+      name: json["name"] as String? ?? "Untitled",
+      body: rule("body"),
+      headings: heads is List && heads.length == 6
+          ? [
+              for (var h in heads)
+                h is Map<String, Object?>
+                    ? TextRule.fromJson(h)
+                    : const TextRule()
+            ]
+          : const [
+              TextRule(),
+              TextRule(),
+              TextRule(),
+              TextRule(),
+              TextRule(),
+              TextRule(),
+            ],
+      link: rule("link"),
+      strong: rule("strong"),
+      emphasis: rule("emphasis"),
+      quote: rule("quote"),
+      code: rule("code"),
+      listBullet: rule("listBullet"),
+      blockGap: _asDouble(json["blockGap"]) ?? 8,
+      listItemGap: _asDouble(json["listItemGap"]) ?? 8,
+      listIndent: _asDouble(json["listIndent"]) ?? 24,
+      quoteBarInk: MarkdownInk.fromJson(json["quoteBarInk"]),
+      quoteBarWidth: _asDouble(json["quoteBarWidth"]) ?? 2,
+      quoteBackground: MarkdownInk.fromJson(json["quoteBackground"]),
+      codeBackground: MarkdownInk.fromJson(json["codeBackground"]),
+      ruleInk: MarkdownInk.fromJson(json["ruleInk"]),
+      ruleThickness: _asDouble(json["ruleThickness"]) ?? 1,
+      bodyAlign: MarkdownAlign.values.firstWhere(
+          (a) => a.name == json["bodyAlign"],
+          orElse: () => MarkdownAlign.inherit),
+      image: json["image"] is Map<String, Object?>
+          ? ImageRule.fromJson(json["image"] as Map<String, Object?>)
+          : const ImageRule(),
+    );
+  }
+
   const MarkdownStyleGuide({
     required this.id,
     required this.name,
