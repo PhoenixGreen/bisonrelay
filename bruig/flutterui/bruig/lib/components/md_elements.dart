@@ -615,6 +615,7 @@ class MarkdownArea extends StatelessWidget {
       effective,
       guide,
       (role) => theme.markdownRoleColor(role),
+      paletteColor: theme.markdownPaletteColor,
     );
   }
 
@@ -752,7 +753,8 @@ class ImageMd extends StatelessWidget {
     var border = rule == null || rule.boundedBorder == 0
         ? null
         : Border.all(
-            color: rule.borderInk.resolve(theme.markdownRoleColor) ??
+            color: rule.borderInk.resolve(theme.markdownRoleColor,
+                    paletteColor: theme.markdownPaletteColor) ??
                 theme.colors.outlineVariant,
             width: rule.boundedBorder);
 

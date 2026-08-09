@@ -436,11 +436,6 @@ class ThemeNotifier with ChangeNotifier {
   /// Markdown theme area.
   String get markdownGuideId => areaStyle(ThemeArea.markdown).markdownGuideId;
 
-  /// markdownHonourPostGuide is whether a post may ask to be read in a
-  /// particular guide, or whether the reader's own choice always wins.
-  bool get markdownHonourPostGuide =>
-      areaStyle(ThemeArea.markdown).markdownHonourPostGuide;
-
   /// markdownGuide is the style guide this theme renders posts with: the
   /// reader's own when they have edited one, otherwise the built-in named
   /// in the Markdown area.
@@ -451,6 +446,13 @@ class ThemeNotifier with ChangeNotifier {
   /// own overrides folded over them.
   ImageRule markdownImageRule(MarkdownStyleGuide guide) =>
       areaStyle(ThemeArea.markdown).markdownImage(guide.image);
+
+  /// markdownPaletteColor looks a palette slot up in the live palette, so a
+  /// colour picked in a guide follows the palette when that is edited.
+  Color? markdownPaletteColor(int index) {
+    var palette = activePalette;
+    return index >= 0 && index < palette.length ? palette[index] : null;
+  }
 
   /// markdownRoleColor resolves the short list of colours a style guide can
   /// name against the live theme.

@@ -26,21 +26,59 @@ class MarkdownInk {
   final MarkdownRole? role;
   final Color? literal;
 
-  const MarkdownInk.of(this.role) : literal = null;
-  const MarkdownInk.literal(Color this.literal) : role = null;
+  /// paletteIndex is the palette slot [literal] was picked from.
+  ///
+  /// Kept beside the colour, not instead of it, for the reason every other
+  /// colour in the editor keeps both: the index is what makes the choice
+  /// follow the palette when that is edited, and the colour is what it falls
+  /// back to when the palette has since grown shorter.
+  final int? paletteIndex;
+
+  const MarkdownInk.of(this.role)
+      : literal = null,
+        paletteIndex = null;
+  const MarkdownInk.literal(Color this.literal, {this.paletteIndex})
+      : role = null;
 
   static const inherit = MarkdownInk.of(null);
   bool get isInherit => role == null && literal == null;
 
-  Color? resolve(Color Function(MarkdownRole) roleColor) {
+  /// resolve turns this into a colour.
+  ///
+  /// [paletteColor] looks a slot up in the live palette; without it the
+  /// stored colour is used, which is what the model's own tests do.
+  Color? resolve(Color Function(MarkdownRole) roleColor,
+      {Color? Function(int)? paletteColor}) {
+    if (paletteIndex != null && paletteColor != null) {
+      var live = paletteColor(paletteIndex!);
+      if (live != null) return live;
+    }
     if (literal != null) return literal;
     if (role != null) return roleColor(role!);
     return null;
   }
 
-  String? toJson() => literal != null ? colorToHex(literal!) : role?.name;
+  Object? toJson() {
+    if (literal == null) return role?.name;
+    return paletteIndex == null
+        ? colorToHex(literal!)
+        : {"color": colorToHex(literal!), "slot": paletteIndex};
+  }
 
   static MarkdownInk fromJson(Object? json) {
+    if (json is Map) {
+      var hex = json["color"];
+      var slot = json["slot"];
+      if (hex is String) {
+        try {
+          return MarkdownInk.literal(colorFromHex(hex),
+              paletteIndex: slot is num ? slot.toInt() : null);
+        } catch (_) {
+          return inherit;
+        }
+      }
+      return inherit;
+    }
     if (json is! String || json.isEmpty) return inherit;
     if (json.startsWith("#")) {
       // The shared codec throws on anything that is not hex, and this is
@@ -160,10 +198,11 @@ class TextRule {
   ///
   /// Onto rather than instead of: anything the guide says nothing about is
   /// left as the reader's theme had it.
-  TextStyle applyTo(TextStyle base, Color Function(MarkdownRole) roleColor) {
+  TextStyle applyTo(TextStyle base, Color Function(MarkdownRole) roleColor,
+      {Color? Function(int)? paletteColor}) {
     return base.copyWith(
       fontSize: (base.fontSize ?? 14) * scale.clamp(_minScale, _maxScale),
-      color: ink.resolve(roleColor) ?? base.color,
+      color: ink.resolve(roleColor, paletteColor: paletteColor) ?? base.color,
       fontFamily: font.family ?? base.fontFamily,
       fontWeight: bold == null
           ? base.fontWeight

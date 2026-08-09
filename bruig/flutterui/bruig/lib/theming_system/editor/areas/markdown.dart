@@ -133,7 +133,6 @@ class _MarkdownEditorState extends State<_MarkdownEditor> {
   Widget build(BuildContext context) {
     var ctx = widget.ctx;
     var style = ctx.style;
-    var custom = style.markdownCustomGuide != null;
     var chosen = builtInGuideFor(style.markdownGuideId) == null
         ? defaultGuideId
         : style.markdownGuideId;
@@ -151,29 +150,48 @@ class _MarkdownEditorState extends State<_MarkdownEditor> {
       ctx.setStyle((s) => s.copyWith(markdownCustomGuide: next.toJson()));
     }
 
+    var choices = style.markdownGuideChoices(builtInGuides);
+    var unsaved = style.markdownCustomGuide != null;
+
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      ctx.choice<String>(
-        "Style guide",
-        value: chosen,
-        options: [for (var g in builtInGuides) g.id],
-        labelOf: (id) => builtInGuides.firstWhere((g) => g.id == id).name,
-        onChanged: (v) => ctx.setStyle((s) =>
-            s.copyWith(markdownGuideId: v, clearMarkdownCustomGuide: true)),
-      ),
-      ctx.note(custom
-          ? "You have changed this guide, so posts are set with your version "
-              "of it. Choosing a guide above starts again from that one."
+      Row(children: [
+        Expanded(
+          child: ctx.choice<String>(
+            "Style guide",
+            value: choices.any((g) => g.id == chosen) ? chosen : defaultGuideId,
+            options: [for (var g in choices) g.id],
+            labelOf: (id) => choices
+                .firstWhere((g) => g.id == id, orElse: () => choices.first)
+                .name,
+            onChanged: (v) => ctx.setStyle((s) =>
+                s.copyWith(markdownGuideId: v, clearMarkdownCustomGuide: true)),
+          ),
+        ),
+        // Save appears only when there is something unsaved to save, and
+        // Delete only on a guide that can be deleted -- a built-in cannot,
+        // because it is the same everywhere by definition.
+        if (unsaved)
+          IconButton(
+            tooltip: "Save as a style guide of your own",
+            icon: const Icon(Icons.save_outlined, size: 20),
+            onPressed: () => _askToSave(ctx, guide),
+          ),
+        if (!guide.builtIn &&
+            !unsaved &&
+            style.markdownSavedGuides.containsKey(chosen))
+          IconButton(
+            tooltip: "Delete this style guide",
+            icon: const Icon(Icons.delete_outline, size: 20),
+            onPressed: () => _delete(ctx, chosen),
+          ),
+      ]),
+      ctx.note(unsaved
+          ? "Unsaved changes. They are in use already -- save them to keep "
+              "them under a name of their own, or choose a guide above to "
+              "start again from that one."
           : "How posts are set on this device. Changing anything below "
-              "starts a guide of your own -- the built-in ones stay as they "
-              "are, because they are what a published post can name."),
-      ctx.toggle(
-        "Let a post choose its guide",
-        subtitle: "A published post can name the guide it was written in. "
-            "With this off, posts are always read in your own choice above",
-        value: style.markdownHonourPostGuide,
-        onChanged: (v) =>
-            ctx.setStyle((s) => s.copyWith(markdownHonourPostGuide: v)),
-      ),
+              "starts a guide of your own; the built-in ones are left as "
+              "they are."),
       const SizedBox(height: 16),
       ctx.choice<_Element>(
         "Element",
@@ -232,6 +250,76 @@ class _MarkdownEditorState extends State<_MarkdownEditor> {
             onChanged: (v) => edit((g) => put(g, rule.copyWith(italic: v)))),
       ];
 
+  /// _askToSave names the working copy and puts it in the library.
+  void _askToSave(AreaEditorContext ctx, MarkdownStyleGuide guide) async {
+    var controller =
+        TextEditingController(text: guide.name.replaceAll(" (edited)", ""));
+    var name = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Save style guide"),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(labelText: "Name"),
+          onSubmitted: (v) => Navigator.pop(context, v),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("Cancel")),
+          TextButton(
+              onPressed: () => Navigator.pop(context, controller.text),
+              child: const Text("Save")),
+        ],
+      ),
+    );
+    if (name == null || name.trim().isEmpty || !mounted) return;
+
+    // A fresh id each time, so saving twice under different names keeps both
+    // rather than the second quietly replacing the first.
+    var id = "guide-${DateTime.now().microsecondsSinceEpoch}";
+    var saved = guide.copyWith(id: id, name: name.trim());
+    ctx.setStyle((s) => s.copyWith(
+          markdownSavedGuides: {...s.markdownSavedGuides, id: saved.toJson()},
+          markdownGuideId: id,
+          clearMarkdownCustomGuide: true,
+        ));
+  }
+
+  void _delete(AreaEditorContext ctx, String id) {
+    ctx.setStyle((s) => s.copyWith(
+          markdownSavedGuides: {...s.markdownSavedGuides}..remove(id),
+          markdownGuideId: defaultGuideId,
+          clearMarkdownCustomGuide: true,
+        ));
+  }
+
+  /// _inkPick is the editor's own palette dropdown, bound to a guide colour.
+  ///
+  /// The same control every other area uses, which shows a swatch beside
+  /// each slot. The plain text dropdown this replaces named colours without
+  /// showing any of them, and offered a short list of roles rather than the
+  /// palette the rest of the theme is built from.
+  ///
+  /// The built-in guides still use roles, which adapt to whatever theme they
+  /// are read in. Picking here replaces that with a slot from this palette:
+  /// a specific colour, chosen deliberately, which is what reaching for the
+  /// picker means. It follows the palette when that is edited, because the
+  /// slot is stored beside the colour.
+  Widget _inkPick(AreaEditorContext ctx, String label, MarkdownInk current,
+          ValueChanged<MarkdownInk> onChanged) =>
+      ctx.colorPick(
+        label,
+        value: current.resolve(ctx.theme.markdownRoleColor,
+            paletteColor: ctx.theme.markdownPaletteColor),
+        valueIndex: current.paletteIndex,
+        noneLabel: "Theme default",
+        onChanged: (color, index) => onChanged(color == null
+            ? MarkdownInk.inherit
+            : MarkdownInk.literal(color, paletteIndex: index)),
+      );
+
   List<Widget> _settingsFor(
     AreaEditorContext ctx,
     MarkdownStyleGuide guide,
@@ -240,14 +328,7 @@ class _MarkdownEditorState extends State<_MarkdownEditor> {
     List<Widget> ink(String label, MarkdownInk current,
             MarkdownStyleGuide Function(MarkdownStyleGuide, MarkdownInk) put) =>
         [
-          ctx.choice<MarkdownRole?>(
-            label,
-            value: current.role,
-            options: [null, ...MarkdownRole.values],
-            labelOf: (r) => r?.label ?? "Theme default",
-            onChanged: (r) => edit((g) =>
-                put(g, r == null ? MarkdownInk.inherit : MarkdownInk.of(r))),
-          ),
+          _inkPick(ctx, label, current, (i) => edit((g) => put(g, i))),
         ];
 
     switch (element) {

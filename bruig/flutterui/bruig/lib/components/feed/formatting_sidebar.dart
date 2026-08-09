@@ -1,6 +1,5 @@
 import 'package:bruig/models/composer_sidebar.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
-import 'package:bruig/theming_system/theme_preset.dart';
 import 'package:flutter/material.dart';
 
 // formatting_sidebar.dart is the composer's formatting and content panel:
@@ -125,39 +124,6 @@ class FormattingSidebar extends StatelessWidget {
         ),
       );
 
-  /// _guidePicker chooses the style guide the post is written in.
-  ///
-  /// The choice goes with the post, not with this sidebar: it is what the
-  /// post will carry when it is published, and a reader who has that guide
-  /// sees the post as it was written. One who does not falls back to their
-  /// own, which is why only the built-ins are offered here -- they are the
-  /// ones every device has.
-  Widget _guidePicker(BuildContext context) {
-    var post = controller.post;
-    if (post == null) return const SizedBox.shrink();
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 4),
-      child: DropdownButton<String>(
-        value: builtInGuideFor(post.styleGuideId) == null
-            ? defaultGuideId
-            : post.styleGuideId,
-        isExpanded: true,
-        style: const TextStyle(fontSize: 12),
-        items: [
-          for (var guide in builtInGuides)
-            DropdownMenuItem(value: guide.id, child: Text(guide.name)),
-        ],
-        onChanged: (v) {
-          if (v == null) return;
-          post.styleGuideId = v;
-          // The field paints from the guide, so it has to be told to
-          // repaint -- nothing about the text itself has changed.
-          controller.notifyStyleChanged();
-        },
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     var theme = ThemeNotifier.of(context);
@@ -168,8 +134,6 @@ class FormattingSidebar extends StatelessWidget {
       children: [
         _section(theme, "View"),
         _viewToggle(theme),
-        _section(theme, "Style guide"),
-        _guidePicker(context),
         _section(theme, "Content"),
         // Delegated to the composer: picking a file means tracking an embed
         // and re-estimating the post's size, which is its business.

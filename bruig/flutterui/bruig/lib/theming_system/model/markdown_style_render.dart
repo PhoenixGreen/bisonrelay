@@ -21,10 +21,12 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 MarkdownStyleSheet applyGuide(
   MarkdownStyleSheet base,
   MarkdownStyleGuide guide,
-  Color Function(MarkdownRole) roleColor,
-) {
+  Color Function(MarkdownRole) roleColor, {
+  Color? Function(int)? paletteColor,
+}) {
   TextStyle on(TextStyle? from, TextRule rule) =>
-      rule.applyTo(from ?? const TextStyle(fontSize: 14), roleColor);
+      rule.applyTo(from ?? const TextStyle(fontSize: 14), roleColor,
+          paletteColor: paletteColor);
 
   WrapAlignment wrap(MarkdownAlign align) => switch (align) {
         MarkdownAlign.left => WrapAlignment.start,
@@ -33,11 +35,15 @@ MarkdownStyleSheet applyGuide(
         MarkdownAlign.inherit => base.textAlign,
       };
 
-  var quoteBar = guide.quoteBarInk.resolve(roleColor);
-  var quoteBack = guide.quoteBackground.resolve(roleColor);
-  var codeBack = guide.codeBackground.resolve(roleColor);
-  var rule = guide.ruleInk.resolve(roleColor);
-  var tableEdge = guide.tableBorderInk.resolve(roleColor);
+  var quoteBar =
+      guide.quoteBarInk.resolve(roleColor, paletteColor: paletteColor);
+  var quoteBack =
+      guide.quoteBackground.resolve(roleColor, paletteColor: paletteColor);
+  var codeBack =
+      guide.codeBackground.resolve(roleColor, paletteColor: paletteColor);
+  var rule = guide.ruleInk.resolve(roleColor, paletteColor: paletteColor);
+  var tableEdge =
+      guide.tableBorderInk.resolve(roleColor, paletteColor: paletteColor);
 
   return base.copyWith(
     p: on(base.p, guide.body),
@@ -72,20 +78,15 @@ MarkdownStyleSheet applyGuide(
     // The quote's bar and background are one decoration, so a guide that
     // sets only one of them has to keep whatever the theme put in the
     // other.
-    blockquoteDecoration: (quoteBar == null && quoteBack == null)
-        ? base.blockquoteDecoration
-        : BoxDecoration(
-            color: quoteBack ??
-                (base.blockquoteDecoration is BoxDecoration
-                    ? (base.blockquoteDecoration as BoxDecoration).color
-                    : null),
-            border: quoteBar == null
-                ? null
-                : Border(
-                    left: BorderSide(
-                        color: quoteBar,
-                        width: guide.quoteBarWidth.clamp(0, 12))),
-          ),
+    // Built from the theme's own quote decoration every time, overriding
+    // only the parts the guide names.
+    //
+    // It used to be rebuilt only when the guide named a colour, which broke
+    // it two ways at once: setting the bar's width while leaving its colour
+    // alone did nothing at all, and setting the background alone deleted the
+    // bar, because the branch that built the decoration wrote a null border
+    // whenever no bar colour had been given.
+    blockquoteDecoration: _quoteDecoration(base, guide, quoteBar, quoteBack),
     codeblockDecoration: codeBack == null
         ? base.codeblockDecoration
         : BoxDecoration(color: codeBack),
@@ -99,5 +100,31 @@ MarkdownStyleSheet applyGuide(
         ? base.tableBorder
         : TableBorder.all(
             color: tableEdge, width: guide.tableBorderWidth.clamp(0, 6)),
+  );
+}
+
+/// _quoteDecoration is the theme's quote styling with the guide's changes.
+Decoration _quoteDecoration(
+  MarkdownStyleSheet base,
+  MarkdownStyleGuide guide,
+  Color? barInk,
+  Color? background,
+) {
+  var existing = base.blockquoteDecoration is BoxDecoration
+      ? base.blockquoteDecoration as BoxDecoration
+      : null;
+  // The bar's colour falls back to whatever the theme was already drawing,
+  // so a guide can widen a bar without having to restate its colour.
+  // BoxBorder does not expose its sides; only Border does, and that is what
+  // a quote's bar is drawn with.
+  var existingBorder =
+      existing?.border is Border ? existing!.border as Border : null;
+  var barColor = barInk ?? existingBorder?.left.color;
+  var width = guide.quoteBarWidth.clamp(0.0, 12.0);
+  return BoxDecoration(
+    color: background ?? existing?.color,
+    border: barColor == null || width == 0
+        ? null
+        : Border(left: BorderSide(color: barColor, width: width)),
   );
 }

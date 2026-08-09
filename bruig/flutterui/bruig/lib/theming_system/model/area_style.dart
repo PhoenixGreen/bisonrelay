@@ -384,11 +384,6 @@ class AreaStyle {
   // theme has usually decided this too.
   final String markdownGuideId;
 
-  // markdownHonourPostGuide lets a post ask to be read in a particular
-  // guide. Off means the reader's own choice above wins whatever a post
-  // says, which is the "local only, do not overwrite" position.
-  final bool markdownHonourPostGuide;
-
   // The Markdown area's picture settings. Null means "whatever the chosen
   // guide says", which is how every area here expresses inheriting: a theme
   // that has never touched these follows Article or Compact exactly, and one
@@ -409,14 +404,21 @@ class AreaStyle {
   final double? markdownImageGap;
   final MarkdownAlign? markdownImageAlign;
 
-  /// markdownCustomGuide is the reader's own style guide, as JSON, or null
-  /// when they are using a built-in unchanged.
+  /// markdownCustomGuide is the guide being edited, as JSON, or null when a
+  /// built-in is in use unchanged.
   ///
-  /// One per theme. A theme already is the thing that carries somebody's
-  /// taste, and a library of named guides is a larger feature than what was
-  /// asked for -- which is to be able to change a built-in and keep the
-  /// result.
+  /// The working copy, not the library. Changing a built-in forks it into
+  /// here immediately so nothing is lost, and it stays unnamed until it is
+  /// saved -- which is what markdownSavedGuides is for.
   final Map<String, Object?>? markdownCustomGuide;
+
+  /// markdownSavedGuides are the guides the reader has named and kept, by
+  /// id.
+  ///
+  /// Beside the built-ins in the picker, and unlike them they can be deleted.
+  /// Kept on the theme so they travel with it, like every other decision the
+  /// theme editor makes.
+  final Map<String, Object?> markdownSavedGuides;
 
   /// markdownGuide is the guide this theme actually renders with.
   ///
@@ -425,11 +427,27 @@ class AreaStyle {
   /// only to carry forward themes saved when they were the whole of this
   /// feature.
   MarkdownStyleGuide markdownGuide(MarkdownStyleGuide? named) {
+    var saved = markdownSavedGuides[markdownGuideId];
     var base = markdownCustomGuide != null
         ? MarkdownStyleGuide.fromJson(markdownCustomGuide!)
-        : (named ?? const MarkdownStyleGuide(id: "default", name: "Default"));
+        : saved is Map
+            ? MarkdownStyleGuide.fromJson(Map<String, Object?>.from(saved))
+            : (named ??
+                const MarkdownStyleGuide(id: "default", name: "Default"));
     return base.copyWith(image: markdownImage(base.image));
   }
+
+  /// markdownGuideChoices is every guide the picker offers: the built-ins
+  /// first, then the reader's own.
+  List<MarkdownStyleGuide> markdownGuideChoices(
+          List<MarkdownStyleGuide> builtIns) =>
+      [
+        ...builtIns,
+        for (var entry in markdownSavedGuides.entries)
+          if (entry.value is Map)
+            MarkdownStyleGuide.fromJson(
+                Map<String, Object?>.from(entry.value as Map)),
+      ];
 
   /// markdownImage is [guide]'s picture rules with this theme's overrides
   /// folded over them.
@@ -646,6 +664,7 @@ class AreaStyle {
     this.feedInlineComposer = false,
     this.feedHideSidebarOnPost = false,
     this.markdownCustomGuide,
+    this.markdownSavedGuides = const {},
     this.markdownImageWidthPercent,
     this.markdownImageRadius,
     this.markdownImageBorderWidth,
@@ -654,7 +673,6 @@ class AreaStyle {
     this.markdownImageGap,
     this.markdownImageAlign,
     this.markdownGuideId = "default",
-    this.markdownHonourPostGuide = true,
     this.feedPublishMenu = false,
     this.feedImageLayout = FeedImageLayout.standard,
     this.feedImageCropHeight = 300,
@@ -820,6 +838,7 @@ class AreaStyle {
     bool? feedHideSidebarOnPost,
     Map<String, Object?>? markdownCustomGuide,
     bool clearMarkdownCustomGuide = false,
+    Map<String, Object?>? markdownSavedGuides,
     double? markdownImageWidthPercent,
     double? markdownImageRadius,
     double? markdownImageBorderWidth,
@@ -830,7 +849,6 @@ class AreaStyle {
     MarkdownAlign? markdownImageAlign,
     bool clearMarkdownImages = false,
     String? markdownGuideId,
-    bool? markdownHonourPostGuide,
     bool? feedPublishMenu,
     FeedImageLayout? feedImageLayout,
     double? feedImageCropHeight,
@@ -1027,6 +1045,7 @@ class AreaStyle {
         markdownCustomGuide: clearMarkdownCustomGuide
             ? null
             : (markdownCustomGuide ?? this.markdownCustomGuide),
+        markdownSavedGuides: markdownSavedGuides ?? this.markdownSavedGuides,
         markdownImageWidthPercent: clearMarkdownImages
             ? null
             : (markdownImageWidthPercent ?? this.markdownImageWidthPercent),
@@ -1052,8 +1071,6 @@ class AreaStyle {
             ? null
             : (markdownImageAlign ?? this.markdownImageAlign),
         markdownGuideId: markdownGuideId ?? this.markdownGuideId,
-        markdownHonourPostGuide:
-            markdownHonourPostGuide ?? this.markdownHonourPostGuide,
         feedPublishMenu: feedPublishMenu ?? this.feedPublishMenu,
         feedImageLayout: feedImageLayout ?? this.feedImageLayout,
         feedImageCropHeight: feedImageCropHeight ?? this.feedImageCropHeight,
@@ -1239,6 +1256,8 @@ class AreaStyle {
         if (feedInlineComposer) "feedInlineComposer": feedInlineComposer,
         if (markdownCustomGuide != null)
           "markdownCustomGuide": markdownCustomGuide,
+        if (markdownSavedGuides.isNotEmpty)
+          "markdownSavedGuides": markdownSavedGuides,
         if (markdownImageWidthPercent != null)
           "markdownImageWidthPercent": markdownImageWidthPercent,
         if (markdownImageRadius != null)
@@ -1253,8 +1272,6 @@ class AreaStyle {
         if (markdownImageAlign != null)
           "markdownImageAlign": markdownImageAlign!.name,
         if (markdownGuideId != "default") "markdownGuideId": markdownGuideId,
-        if (!markdownHonourPostGuide)
-          "markdownHonourPostGuide": markdownHonourPostGuide,
         if (feedPublishMenu) "feedPublishMenu": feedPublishMenu,
         if (feedHideSidebarOnPost)
           "feedHideSidebarOnPost": feedHideSidebarOnPost,
@@ -1465,6 +1482,9 @@ class AreaStyle {
       markdownCustomGuide: j["markdownCustomGuide"] is Map
           ? Map<String, Object?>.from(j["markdownCustomGuide"] as Map)
           : null,
+      markdownSavedGuides: j["markdownSavedGuides"] is Map
+          ? Map<String, Object?>.from(j["markdownSavedGuides"] as Map)
+          : const {},
       markdownImageWidthPercent: number("markdownImageWidthPercent"),
       markdownImageRadius: number("markdownImageRadius"),
       markdownImageBorderWidth: number("markdownImageBorderWidth"),
@@ -1479,9 +1499,6 @@ class AreaStyle {
       markdownGuideId: j["markdownGuideId"] is String
           ? j["markdownGuideId"] as String
           : "default",
-      markdownHonourPostGuide: j["markdownHonourPostGuide"] is bool
-          ? j["markdownHonourPostGuide"] as bool
-          : true,
       feedPublishMenu: flag("feedPublishMenu"),
       feedImageLayout: _enumOr(FeedImageLayout.values, j["feedImageLayout"],
           FeedImageLayout.standard),

@@ -47,15 +47,12 @@ void main() {
     test("out of the box nothing is changed and a post may ask", () {
       var style = const AreaStyle();
       expect(style.markdownGuideId, defaultGuideId);
-      expect(style.markdownHonourPostGuide, isTrue);
     });
 
     test("a chosen guide survives being saved and read back", () {
-      var style = const AreaStyle()
-          .copyWith(markdownGuideId: "article", markdownHonourPostGuide: false);
+      var style = const AreaStyle().copyWith(markdownGuideId: "article");
       var back = AreaStyle.fromJson(style.toJson());
       expect(back.markdownGuideId, "article");
-      expect(back.markdownHonourPostGuide, isFalse);
     });
 
     // A theme saved before this existed has neither field, and has to read
@@ -63,7 +60,6 @@ void main() {
     test("a theme saved before the area existed reads as the default", () {
       var back = AreaStyle.fromJson(const {});
       expect(back.markdownGuideId, defaultGuideId);
-      expect(back.markdownHonourPostGuide, isTrue);
     });
 
     // The defaults write nothing, so an untouched theme file is unchanged
@@ -71,7 +67,6 @@ void main() {
     test("the defaults are not written out", () {
       var json = const AreaStyle().toJson();
       expect(json.containsKey("markdownGuideId"), isFalse);
-      expect(json.containsKey("markdownHonourPostGuide"), isFalse);
     });
 
     test("a guide that no longer ships falls back rather than breaking", () {
@@ -434,6 +429,107 @@ void main() {
       var style =
           const AreaStyle().copyWith(markdownCustomGuide: edited.toJson());
       expect(style.markdownGuide(null).blockGap, 30);
+    });
+  });
+
+  group("saving and deleting a guide of your own", () {
+    var mine = const MarkdownStyleGuide(id: "guide-1", name: "Mine")
+        .copyWith(blockGap: 21);
+
+    test("a saved guide joins the built-ins in the picker", () {
+      var style = const AreaStyle()
+          .copyWith(markdownSavedGuides: {"guide-1": mine.toJson()});
+      var choices = style.markdownGuideChoices(builtInGuides);
+      expect(choices.length, builtInGuides.length + 1);
+      expect(choices.last.name, "Mine");
+    });
+
+    test("choosing a saved guide renders it", () {
+      var style = const AreaStyle().copyWith(
+          markdownSavedGuides: {"guide-1": mine.toJson()},
+          markdownGuideId: "guide-1");
+      expect(style.markdownGuide(null).blockGap, 21);
+    });
+
+    // The working copy is what is in use until it is saved, so it has to
+    // win over whatever name is selected beside it.
+    test("unsaved changes are what renders", () {
+      var style = const AreaStyle().copyWith(
+        markdownSavedGuides: {"guide-1": mine.toJson()},
+        markdownGuideId: "guide-1",
+        markdownCustomGuide: mine.copyWith(blockGap: 44).toJson(),
+      );
+      expect(style.markdownGuide(null).blockGap, 44);
+    });
+
+    test("deleting one takes it out of the picker", () {
+      var style = const AreaStyle()
+          .copyWith(markdownSavedGuides: {"guide-1": mine.toJson()});
+      var after = style.copyWith(
+          markdownSavedGuides: {...style.markdownSavedGuides}
+            ..remove("guide-1"),
+          markdownGuideId: defaultGuideId);
+      expect(after.markdownGuideChoices(builtInGuides).length,
+          builtInGuides.length);
+    });
+
+    test("the library survives being saved and read back", () {
+      var style = const AreaStyle()
+          .copyWith(markdownSavedGuides: {"guide-1": mine.toJson()});
+      var back = AreaStyle.fromJson(style.toJson());
+      expect(back.markdownSavedGuides.keys, ["guide-1"]);
+      expect(back.markdownGuideChoices(builtInGuides).last.blockGap, 21);
+    });
+
+    test("a theme with no guides of its own writes none", () {
+      expect(const AreaStyle().toJson().containsKey("markdownSavedGuides"),
+          isFalse);
+    });
+  });
+
+  // Reported: setting a quote's bar width did nothing, and setting its
+  // background removed the bar. The decoration was rebuilt only when the
+  // guide named a colour, and that branch wrote a null border whenever no
+  // bar colour had been given.
+  group("quote decoration", () {
+    MarkdownStyleSheet baseWithBar() => _base().copyWith(
+        blockquoteDecoration: const BoxDecoration(
+            color: Color(0xFF222222),
+            border:
+                Border(left: BorderSide(color: Color(0xFF888888), width: 2))));
+
+    test("a width on its own widens the theme's bar", () {
+      var sheet = applyGuide(
+          baseWithBar(),
+          const MarkdownStyleGuide(id: "x", name: "X", quoteBarWidth: 8),
+          _role);
+      var border =
+          (sheet.blockquoteDecoration as BoxDecoration).border as Border;
+      expect(border.left.width, 8);
+      expect(border.left.color, const Color(0xFF888888),
+          reason: "the colour was never mentioned, so it stays");
+    });
+
+    test("a background on its own keeps the bar", () {
+      var sheet = applyGuide(
+          baseWithBar(),
+          const MarkdownStyleGuide(
+              id: "x",
+              name: "X",
+              quoteBackground: MarkdownInk.of(MarkdownRole.raised)),
+          _role);
+      var decoration = sheet.blockquoteDecoration as BoxDecoration;
+      expect(decoration.color, _roles[MarkdownRole.raised]);
+      expect((decoration.border as Border).left.width, 2,
+          reason: "setting the background used to delete the bar entirely");
+    });
+
+    test("a width of zero removes the bar", () {
+      var sheet = applyGuide(
+          baseWithBar(),
+          const MarkdownStyleGuide(id: "x", name: "X", quoteBarWidth: 0),
+          _role);
+      expect((sheet.blockquoteDecoration as BoxDecoration).border, isNull);
     });
   });
 

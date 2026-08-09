@@ -253,20 +253,22 @@ class _NewPostScreenState extends State<NewPostScreen> {
       var theme = ThemeNotifier.of(context, listen: false);
       // The guide the writer picked, so the preview shows what a reader
       // with that guide will see rather than a house style of its own.
-      // The guide the post will carry, which is a built-in by definition --
-      // only those can be named in a published post.
-      var guide = builtInGuideFor(post.styleGuideId);
+      // This reader's own guide. A post does not carry one -- the styling is
+      // a decision about how you read, not something published alongside
+      // what you wrote -- so the composer previews in exactly what the app
+      // will draw the finished post with.
+      var guide = theme.markdownGuide;
       return markdownDecorations(
         text,
         embeds: composerEmbeds(post),
         muted: theme.colors.onSurfaceVariant,
         link: theme.colors.primary,
-        guide: guide == null || guide.id == defaultGuideId ? null : guide,
+        guide: guide,
         roleColor: theme.markdownRoleColor,
-        image: guide == null ? null : theme.markdownImageRule(guide),
+        image: guide.image,
         // So a continued line hangs under the first line's text by the same
         // amount the rendered post will indent it.
-        indent: (guide ?? theme.markdownGuide).listIndent,
+        indent: guide.listIndent,
       );
     },
   );
