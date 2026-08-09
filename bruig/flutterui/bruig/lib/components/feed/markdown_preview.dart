@@ -81,6 +81,7 @@ List<InlineDecoration> markdownDecorations(
   MarkdownStyleGuide? guide,
   Color Function(MarkdownRole)? roleColor,
   ImageRule? image,
+  double indent = 18,
 }) {
   var resolve = roleColor ?? (_) => const Color(0xFF000000);
 
@@ -152,6 +153,40 @@ List<InlineDecoration> markdownDecorations(
         from(guide?.listBullet,
             TextStyle(color: muted, fontWeight: FontWeight.w700)));
   }
+  // A list item continued on the next line, which markdown treats as part of
+  // the same item and a rendered post draws hanging under the first line's
+  // text. The composer cannot do that for a line the field wrapped by itself
+  // -- Flutter's editable text has no hanging indent, and where a line
+  // breaks is not known until it is laid out -- but a line the writer broke
+  // themselves has real whitespace at the front of it, and that can be made
+  // exactly as wide as the bullet it sits under.
+  //
+  // The last space carries a widget of the right width and the rest are
+  // hidden, which is the same trick the embeds use: a widget may stand in
+  // for exactly one character without moving every offset after it.
+  var inList = false;
+  var lineStart = 0;
+  for (var line in text.split("\n")) {
+    var bullet = _bullet.matchAsPrefix(line);
+    if (bullet != null) {
+      inList = true;
+    } else if (line.trim().isEmpty) {
+      inList = false;
+    } else if (inList) {
+      var lead = 0;
+      while (lead < line.length && (line[lead] == " " || line[lead] == "\t")) {
+        lead++;
+      }
+      if (lead > 0) {
+        hide(lineStart, lineStart + lead - 1);
+        out.add(InlineDecoration(
+            lineStart + lead - 1, lineStart + lead, const TextStyle(),
+            widget: SizedBox(width: indent, height: 1)));
+      }
+    }
+    lineStart += line.length + 1;
+  }
+
   for (var m in _rule.allMatches(text)) {
     style(m.start, m.end, TextStyle(color: muted, letterSpacing: -1));
   }

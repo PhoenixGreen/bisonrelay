@@ -476,6 +476,43 @@ void main() {
       });
     });
 
+    // Reported: a list item running to a second line went back to the
+    // margin instead of hanging under the first line's text.
+    //
+    // A rendered post already does this -- flutter_markdown builds a list
+    // item as a bullet beside a flexible column, so every line of that
+    // column is indented. The composer cannot, for a line the field wrapped
+    // by itself: Flutter's editable text has no hanging indent and where a
+    // line breaks is not known until it is laid out. A line the writer broke
+    // themselves has real whitespace at the front, and that is made exactly
+    // as wide as the bullet.
+    group("a list item continued on the next line", () {
+      const text = "- the first line\n  continued here\n\nnot a list";
+
+      test("the leading space carries the indent", () {
+        var d = markdownDecorations(text, indent: 20);
+        var at = text.indexOf("  continued") + 1;
+        var carrier = d.firstWhere((x) => x.start == at && x.widget != null);
+        expect((carrier.widget as SizedBox).width, 20);
+      });
+
+      test("the rest of the leading space is hidden", () {
+        var d = markdownDecorations(text, indent: 20);
+        expect(_hidden(d, text.indexOf("  continued")), isTrue);
+      });
+
+      test("a line after the list is left alone", () {
+        var d = markdownDecorations("- item\n\n  not a continuation");
+        expect(d.where((x) => x.widget != null), isEmpty,
+            reason: "the blank line ended the list");
+      });
+
+      test("a line with no leading space is left alone", () {
+        var d = markdownDecorations("- item\nplain text");
+        expect(d.where((x) => x.widget != null), isEmpty);
+      });
+    });
+
     // The marks and the preview paint the same characters, and the marks
     // have to win where they overlap.
     testWidgets("a misspelling keeps its mark inside a heading",

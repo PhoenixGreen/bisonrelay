@@ -264,6 +264,9 @@ class _NewPostScreenState extends State<NewPostScreen> {
         guide: guide == null || guide.id == defaultGuideId ? null : guide,
         roleColor: theme.markdownRoleColor,
         image: guide == null ? null : theme.markdownImageRule(guide),
+        // So a continued line hangs under the first line's text by the same
+        // amount the rendered post will indent it.
+        indent: (guide ?? theme.markdownGuide).listIndent,
       );
     },
   );
