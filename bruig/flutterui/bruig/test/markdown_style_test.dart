@@ -413,7 +413,39 @@ void main() {
 
     test("Terminal sets the body in the monospaced face", () {
       var sheet = _sheetFor(builtInGuideFor("terminal")!);
-      expect(sheet.p?.fontFamily, "SourceCodePro");
+      expect(sheet.p?.fontFamily, "RobotoMono");
+    });
+  });
+
+  // Reported: choosing a font changed nothing. The list named families the
+  // app does not bundle -- "SourceCodePro" and "serif" -- and a missing
+  // family falls back silently rather than failing, so the setting looked
+  // broken while behaving exactly as asked.
+  group("every font on offer is one the app ships", () {
+    test("only Inter and RobotoMono, plus inheriting", () {
+      var families = MarkdownFont.values
+          .map((f) => f.family)
+          .where((f) => f != null)
+          .toSet();
+      expect(families, {"Inter", "RobotoMono"},
+          reason: "anything else falls back to a different face on every "
+              "device, which is the thing a style guide is for avoiding");
+    });
+
+    test("the default is to leave the theme's font alone", () {
+      expect(MarkdownFont.inherit.family, isNull);
+      expect(
+          const TextRule()
+              .applyTo(const TextStyle(fontFamily: "Inter"),
+                  (_) => const Color(0xFF000000))
+              .fontFamily,
+          "Inter");
+    });
+
+    test("a chosen font is applied", () {
+      var style = const TextRule(font: MarkdownFont.mono).applyTo(
+          const TextStyle(fontFamily: "Inter"), (_) => const Color(0xFF000000));
+      expect(style.fontFamily, "RobotoMono");
     });
   });
 
@@ -422,13 +454,13 @@ void main() {
       var rule = const TextRule(
           scale: 1.5,
           ink: MarkdownInk.of(MarkdownRole.accent),
-          font: MarkdownFont.serif,
+          font: MarkdownFont.mono,
           bold: true,
           lineHeight: 1.6);
       var back = TextRule.fromJson(rule.toJson());
       expect(back.scale, 1.5);
       expect(back.ink.role, MarkdownRole.accent);
-      expect(back.font, MarkdownFont.serif);
+      expect(back.font, MarkdownFont.mono);
       expect(back.bold, isTrue);
       expect(back.lineHeight, 1.6);
     });

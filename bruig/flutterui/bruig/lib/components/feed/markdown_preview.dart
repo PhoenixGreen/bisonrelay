@@ -51,6 +51,14 @@ final _link = RegExp(r"(\[)([^\]\n]+)(\]\()([^)\n]+)(\))");
 final _rule = RegExp(r"^([-*_])\1{2,}$", multiLine: true);
 final _embed = RegExp(r"--embed\[(.*?)\]--");
 
+/// _mono is the monospaced family the app bundles.
+///
+/// Named rather than left as "monospace", which is a CSS keyword and not a
+/// family Flutter has: the rendered post sets code in RobotoMono and the
+/// composer was asking for something that does not exist, so code looked
+/// different in the two places.
+const _mono = "RobotoMono";
+
 /// markdownDecorations is what the composer's field paints itself with while
 /// the preview is on.
 ///
@@ -176,7 +184,7 @@ List<InlineDecoration> markdownDecorations(
         m.start,
         m.end,
         from(guide?.code,
-            const TextStyle(fontFamily: "monospace", letterSpacing: -0.3)));
+            const TextStyle(fontFamily: _mono, letterSpacing: -0.3)));
   }
   for (var m in _link.allMatches(text)) {
     // The label is left readable and everything that makes it a link -- the

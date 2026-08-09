@@ -14,69 +14,189 @@ import 'package:flutter/material.dart';
 // so a name this device has never heard of falls back to Default rather than
 // arriving with anything to apply.
 
-/// _sample is what the preview is rendered from.
+/// _sampleFor is the markdown the preview renders for one element.
 ///
-/// Chosen to exercise the things a guide actually changes -- two heading
-/// levels, a quote, a list, inline and block code, a link and a rule -- so
-/// the differences between the built-ins are visible rather than described.
-const _sample = """
-# A heading
+/// Each carries a line of ordinary body text as well, because nearly every
+/// setting is expressed relative to the body -- a heading at 190% means
+/// nothing without the 100% beside it.
+String _sampleFor(_Element element) => switch (element) {
+      _Element.body => """
+Ordinary body text, which is what every other size is measured against. This
+paragraph runs long enough to wrap, so the line height has somewhere to show.
 
-Ordinary text, with a [link](https://example.com), some **bold** and a little
-`inline code`.
+A second paragraph, so the space between them is visible rather than
+described.
+""",
+      _Element.headings => """
+# Heading one
+Body text, for scale.
+## Heading two
+### Heading three
+#### Heading four
+##### Heading five
+###### Heading six
+""",
+      _Element.links => """
+Body text with [a link](https://decred.org) in the middle of it, and
+[another](https://bisonrelay.org) further along.
+""",
+      _Element.quotes => """
+Body text before the quotation.
 
-## A smaller heading
+> A quotation, which shows the bar and the background.
+> It runs to a second line so the bar's full height can be seen.
 
-> A quotation, which is where a guide's bar and spacing show up most.
+Body text after it.
+""",
+      _Element.code => """
+Body text with `inline code` in it.
+
+```
+a fenced block
+a second line, for the padding
+```
+""",
+      _Element.lists => """
+Body text before the list.
 
 - The first item
-- The second item
+- The second item, long enough to wrap onto another line so the indent shows
+- The third item
 
-```
-a block of code
-```
+1. A numbered item
+2. Another
+""",
+      _Element.rule => """
+Body text above the rule.
 
 ---
-""";
 
-List<Widget> markdownAreaEditor(AreaEditorContext ctx) {
-  var style = ctx.style;
-  var custom = style.markdownCustomGuide != null;
-  var chosen = builtInGuideFor(style.markdownGuideId) == null
-      ? defaultGuideId
-      : style.markdownGuideId;
-  // What is actually rendered with: the reader's own guide if they have
-  // edited one, otherwise the built-in they picked.
-  var guide = style.markdownGuide(builtInGuideFor(chosen));
+Body text below it.
+""",
+      // The preview renders from a string, and an embed is a piece of a real
+      // post rather than something that can be written into one. The
+      // composer's own preview is where these are seen.
+      _Element.images => """
+Image settings apply to embeds in a post. Add one in the composer to see
+them: the width is a share of the column, and the corners, border and
+spacing are drawn around it.
+""",
+    };
 
-  /// edit changes one rule of the guide.
-  ///
-  /// A built-in is never changed: the first edit to one forks it into a
-  /// guide of the reader's own and every edit after that goes to the fork.
-  /// The built-ins have to be identical everywhere, because they are what a
-  /// published post names -- an "Article" quietly edited on one machine
-  /// would make a post naming it mean something different there.
-  void edit(MarkdownStyleGuide Function(MarkdownStyleGuide) change) {
-    var next = change(guide.builtIn ? guide.forked("custom") : guide);
-    ctx.setStyle((s) => s.copyWith(markdownCustomGuide: next.toJson()));
+/// _Element is which part of a post is being tuned.
+///
+/// One at a time, picked from a dropdown, for the same reason the Buttons
+/// area does it: ten elements' worth of sliders stacked up reads as one
+/// undifferentiated wall, and only one of them is being adjusted anyway.
+/// Which one is showing is local to the editor and is not stored on a theme.
+enum _Element {
+  body("Body text"),
+  headings("Headings"),
+  links("Links"),
+  quotes("Quotes"),
+  code("Code"),
+  lists("Lists"),
+  rule("Horizontal rule"),
+  images("Images");
+
+  final String label;
+  const _Element(this.label);
+}
+
+List<Widget> markdownAreaEditor(AreaEditorContext ctx) =>
+    [_MarkdownEditor(ctx)];
+
+class _MarkdownEditor extends StatefulWidget {
+  final AreaEditorContext ctx;
+  const _MarkdownEditor(this.ctx);
+
+  @override
+  State<_MarkdownEditor> createState() => _MarkdownEditorState();
+}
+
+class _MarkdownEditorState extends State<_MarkdownEditor> {
+  _Element element = _Element.body;
+
+  @override
+  Widget build(BuildContext context) {
+    var ctx = widget.ctx;
+    var style = ctx.style;
+    var custom = style.markdownCustomGuide != null;
+    var chosen = builtInGuideFor(style.markdownGuideId) == null
+        ? defaultGuideId
+        : style.markdownGuideId;
+    var guide = style.markdownGuide(builtInGuideFor(chosen));
+
+    /// edit changes one rule of the guide.
+    ///
+    /// A built-in is never changed: the first edit to one forks it into a
+    /// guide of the reader's own and every edit after goes to the fork. The
+    /// built-ins are what a published post names, so an "Article" quietly
+    /// edited here would make a post naming it mean something different on
+    /// this machine than on anyone else's.
+    void edit(MarkdownStyleGuide Function(MarkdownStyleGuide) change) {
+      var next = change(guide.builtIn ? guide.forked("custom") : guide);
+      ctx.setStyle((s) => s.copyWith(markdownCustomGuide: next.toJson()));
+    }
+
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      ctx.choice<String>(
+        "Style guide",
+        value: chosen,
+        options: [for (var g in builtInGuides) g.id],
+        labelOf: (id) => builtInGuides.firstWhere((g) => g.id == id).name,
+        onChanged: (v) => ctx.setStyle((s) =>
+            s.copyWith(markdownGuideId: v, clearMarkdownCustomGuide: true)),
+      ),
+      ctx.note(custom
+          ? "You have changed this guide, so posts are set with your version "
+              "of it. Choosing a guide above starts again from that one."
+          : "How posts are set on this device. Changing anything below "
+              "starts a guide of your own -- the built-in ones stay as they "
+              "are, because they are what a published post can name."),
+      ctx.toggle(
+        "Let a post choose its guide",
+        subtitle: "A published post can name the guide it was written in. "
+            "With this off, posts are always read in your own choice above",
+        value: style.markdownHonourPostGuide,
+        onChanged: (v) =>
+            ctx.setStyle((s) => s.copyWith(markdownHonourPostGuide: v)),
+      ),
+      const SizedBox(height: 16),
+      ctx.choice<_Element>(
+        "Element",
+        value: element,
+        options: _Element.values,
+        labelOf: (e) => e.label,
+        onChanged: (e) => setState(() => element = e),
+      ),
+      const SizedBox(height: 12),
+      // The preview sits between the picker and the settings, so a change
+      // and its effect are next to each other rather than a scroll apart.
+      _MarkdownPreview(guideId: chosen, element: element),
+      const SizedBox(height: 16),
+      ..._settingsFor(ctx, guide, edit),
+    ]);
   }
 
-  /// text is the six controls every text rule has.
-  List<Widget> text(String name, TextRule rule,
-          MarkdownStyleGuide Function(MarkdownStyleGuide, TextRule) put,
-          {double maxScale = 3.0}) =>
+  /// _textControls are the five every text rule has.
+  List<Widget> _textControls(
+    AreaEditorContext ctx,
+    String name,
+    TextRule rule,
+    void Function(MarkdownStyleGuide Function(MarkdownStyleGuide)) edit,
+    MarkdownStyleGuide Function(MarkdownStyleGuide, TextRule) put, {
+    double maxScale = 3.0,
+  }) =>
       [
-        ctx.slider(
-          "md-$name-scale",
-          rule.scale,
-          label: (v) => "$name size: ${(v * 100).round()}% of body text",
-          min: 0.6,
-          max: maxScale,
-          divisions: ((maxScale - 0.6) * 20).round(),
-          onCommit: (v) => edit((g) => put(g, rule.copyWith(scale: v))),
-        ),
+        ctx.slider("md-$name-scale", rule.scale,
+            label: (v) => "Size: ${(v * 100).round()}% of body text",
+            min: 0.6,
+            max: maxScale,
+            divisions: ((maxScale - 0.6) * 20).round(),
+            onCommit: (v) => edit((g) => put(g, rule.copyWith(scale: v)))),
         ctx.choice<MarkdownRole?>(
-          "$name colour",
+          "Colour",
           value: rule.ink.role,
           options: [null, ...MarkdownRole.values],
           labelOf: (r) => r?.label ?? "Theme default",
@@ -86,189 +206,209 @@ List<Widget> markdownAreaEditor(AreaEditorContext ctx) {
                   ink: r == null ? MarkdownInk.inherit : MarkdownInk.of(r)))),
         ),
         ctx.choice<MarkdownFont>(
-          "$name font",
+          "Font",
           value: rule.font,
           options: MarkdownFont.values,
           labelOf: (f) => f.label,
           onChanged: (f) => edit((g) => put(g, rule.copyWith(font: f))),
         ),
-        ctx.toggle("$name bold",
+        ctx.toggle("Bold",
             value: rule.bold ?? false,
             onChanged: (v) => edit((g) => put(g, rule.copyWith(bold: v)))),
-        ctx.toggle("$name italic",
+        ctx.toggle("Italic",
             value: rule.italic ?? false,
             onChanged: (v) => edit((g) => put(g, rule.copyWith(italic: v)))),
       ];
 
-  return [
-    ctx.choice<String>(
-      "Style guide",
-      value: chosen,
-      options: [for (var g in builtInGuides) g.id],
-      labelOf: (id) => builtInGuides.firstWhere((g) => g.id == id).name,
-      onChanged: (v) => ctx.setStyle((s) =>
-          s.copyWith(markdownGuideId: v, clearMarkdownCustomGuide: true)),
-    ),
-    ctx.note(custom
-        ? "You have changed this guide, so posts are set with your version "
-            "of it. Choosing a guide above starts again from that one."
-        : "How posts are set on this device. Changing anything below starts "
-            "a guide of your own -- the built-in ones stay as they are, "
-            "because they are what a published post can name."),
-    ctx.toggle(
-      "Let a post choose its guide",
-      subtitle: "A published post can name the guide it was written in. With "
-          "this off, posts are always read in your own choice above -- and "
-          "with it on, a guide you do not have still falls back to yours",
-      value: style.markdownHonourPostGuide,
-      onChanged: (v) =>
-          ctx.setStyle((s) => s.copyWith(markdownHonourPostGuide: v)),
-    ),
-    const SizedBox(height: 12),
-    _MarkdownPreview(guideId: chosen),
-    const SizedBox(height: 16),
-    const Txt.M("Body text"),
-    ...text("Body", guide.body, (g, r) => g.copyWith(body: r), maxScale: 2.0),
-    ctx.slider("md-body-line", guide.body.lineHeight ?? 1.4,
-        label: (v) => "Line height: ${v.toStringAsFixed(2)}",
-        min: 0.9,
-        max: 3.0,
-        divisions: 21,
-        onCommit: (v) =>
-            edit((g) => g.copyWith(body: guide.body.copyWith(lineHeight: v)))),
-    ctx.slider("md-blockgap", guide.blockGap,
-        label: (v) => "Space between paragraphs: ${v.round()}px",
-        max: 48,
-        divisions: 24,
-        onCommit: (v) => edit((g) => g.copyWith(blockGap: v))),
-    const SizedBox(height: 16),
-    const Txt.M("Headings"),
-    ctx.note("Each level, as a share of the body text size."),
-    for (var i = 0; i < 6; i++)
-      ctx.slider("md-h${i + 1}", guide.headings[i].scale,
-          label: (v) => "H${i + 1}: ${(v * 100).round()}%",
-          min: 0.6,
-          max: 3.0,
-          divisions: 48,
-          onCommit: (v) => edit((g) => g.copyWith(headings: [
-                for (var j = 0; j < 6; j++)
-                  j == i ? g.headings[j].copyWith(scale: v) : g.headings[j]
-              ]))),
-    ...text("Heading", guide.headings[0],
-        (g, r) => g.copyWith(headings: [r, ...g.headings.skip(1)])),
-    const SizedBox(height: 16),
-    const Txt.M("Links"),
-    ...text("Link", guide.link, (g, r) => g.copyWith(link: r), maxScale: 2.0),
-    ctx.toggle("Underline links",
-        value: guide.link.underline ?? false,
-        onChanged: (v) =>
-            edit((g) => g.copyWith(link: guide.link.copyWith(underline: v)))),
-    const SizedBox(height: 16),
-    const Txt.M("Quotes"),
-    ...text("Quote", guide.quote, (g, r) => g.copyWith(quote: r),
-        maxScale: 2.0),
-    ctx.choice<MarkdownRole?>(
-      "Quote bar colour",
-      value: guide.quoteBarInk.role,
-      options: [null, ...MarkdownRole.values],
-      labelOf: (r) => r?.label ?? "Theme default",
-      onChanged: (r) => edit((g) => g.copyWith(
-          quoteBarInk: r == null ? MarkdownInk.inherit : MarkdownInk.of(r))),
-    ),
-    ctx.slider("md-quotebar", guide.quoteBarWidth,
-        label: (v) => v == 0 ? "Quote bar: None" : "Quote bar: ${v.round()}px",
-        max: 12,
-        divisions: 12,
-        onCommit: (v) => edit((g) => g.copyWith(quoteBarWidth: v))),
-    const SizedBox(height: 16),
-    const Txt.M("Code"),
-    ...text("Code", guide.code, (g, r) => g.copyWith(code: r), maxScale: 2.0),
-    const SizedBox(height: 16),
-    const Txt.M("Lists"),
-    ...text("Bullet", guide.listBullet, (g, r) => g.copyWith(listBullet: r),
-        maxScale: 2.0),
-    ctx.slider("md-listgap", guide.listItemGap,
-        label: (v) => "Space between items: ${v.round()}px",
-        max: 32,
-        divisions: 16,
-        onCommit: (v) => edit((g) => g.copyWith(listItemGap: v))),
-    ctx.slider("md-listindent", guide.listIndent,
-        label: (v) => "Indent: ${v.round()}px",
-        min: 8,
-        max: 64,
-        divisions: 14,
-        onCommit: (v) => edit((g) => g.copyWith(listIndent: v))),
-    const SizedBox(height: 16),
-    const Txt.M("Horizontal rule"),
-    ctx.choice<MarkdownRole?>(
-      "Rule colour",
-      value: guide.ruleInk.role,
-      options: [null, ...MarkdownRole.values],
-      labelOf: (r) => r?.label ?? "Theme default",
-      onChanged: (r) => edit((g) => g.copyWith(
-          ruleInk: r == null ? MarkdownInk.inherit : MarkdownInk.of(r))),
-    ),
-    ctx.slider("md-rule", guide.ruleThickness,
-        label: (v) => "Thickness: ${v.toStringAsFixed(1)}px",
-        min: 0.5,
-        max: 8,
-        divisions: 15,
-        onCommit: (v) => edit((g) => g.copyWith(ruleThickness: v))),
-    const SizedBox(height: 16),
-    const Txt.M("Images"),
-    ctx.slider("md-img-width", guide.image.boundedWidth,
-        label: (v) => "Width: ${v.round()}% of the column",
-        min: 10,
-        max: 100,
-        divisions: 18,
-        onCommit: (v) => edit(
-            (g) => g.copyWith(image: guide.image.copyWith(widthPercent: v)))),
-    ctx.slider("md-img-radius", guide.image.boundedRadius,
-        label: (v) => v == 0 ? "Corners: Square" : "Corners: ${v.round()}px",
-        max: 48,
-        divisions: 24,
-        onCommit: (v) => edit(
-            (g) => g.copyWith(image: guide.image.copyWith(cornerRadius: v)))),
-    ctx.slider("md-img-border", guide.image.boundedBorder,
-        label: (v) => v == 0 ? "Border: None" : "Border: ${v.round()}px",
-        max: 8,
-        divisions: 8,
-        onCommit: (v) => edit(
-            (g) => g.copyWith(image: guide.image.copyWith(borderWidth: v)))),
-    ctx.choice<MarkdownRole?>(
-      "Image border colour",
-      value: guide.image.borderInk.role,
-      options: [null, ...MarkdownRole.values],
-      labelOf: (r) => r?.label ?? "Theme default",
-      onChanged: (r) => edit((g) => g.copyWith(
-          image: guide.image.copyWith(
-              borderInk: r == null ? MarkdownInk.inherit : MarkdownInk.of(r)))),
-    ),
-    ctx.slider("md-img-gap", guide.image.gap,
-        label: (v) => "Space above and below: ${v.round()}px",
-        max: 48,
-        divisions: 24,
-        onCommit: (v) =>
-            edit((g) => g.copyWith(image: guide.image.copyWith(gap: v)))),
-    ctx.choice<MarkdownAlign>(
-      "Image alignment",
-      value: guide.image.align == MarkdownAlign.inherit
-          ? MarkdownAlign.left
-          : guide.image.align,
-      options: const [
-        MarkdownAlign.left,
-        MarkdownAlign.center,
-        MarkdownAlign.right
-      ],
-      labelOf: (a) => switch (a) {
-        MarkdownAlign.center => "Center",
-        MarkdownAlign.right => "Right",
-        _ => "Left",
-      },
-      onChanged: (a) =>
-          edit((g) => g.copyWith(image: guide.image.copyWith(align: a))),
-    ),
-  ];
+  List<Widget> _settingsFor(
+    AreaEditorContext ctx,
+    MarkdownStyleGuide guide,
+    void Function(MarkdownStyleGuide Function(MarkdownStyleGuide)) edit,
+  ) {
+    List<Widget> ink(String label, MarkdownInk current,
+            MarkdownStyleGuide Function(MarkdownStyleGuide, MarkdownInk) put) =>
+        [
+          ctx.choice<MarkdownRole?>(
+            label,
+            value: current.role,
+            options: [null, ...MarkdownRole.values],
+            labelOf: (r) => r?.label ?? "Theme default",
+            onChanged: (r) => edit((g) =>
+                put(g, r == null ? MarkdownInk.inherit : MarkdownInk.of(r))),
+          ),
+        ];
+
+    switch (element) {
+      case _Element.body:
+        return [
+          ..._textControls(
+              ctx, "body", guide.body, edit, (g, r) => g.copyWith(body: r),
+              maxScale: 2.0),
+          ctx.slider("md-body-line", guide.body.lineHeight ?? 1.4,
+              label: (v) => "Line height: ${v.toStringAsFixed(2)}",
+              min: 0.9,
+              max: 3.0,
+              divisions: 21,
+              onCommit: (v) => edit(
+                  (g) => g.copyWith(body: g.body.copyWith(lineHeight: v)))),
+          ctx.slider("md-blockgap", guide.blockGap,
+              label: (v) => "Space between paragraphs: ${v.round()}px",
+              max: 48,
+              divisions: 24,
+              onCommit: (v) => edit((g) => g.copyWith(blockGap: v))),
+        ];
+
+      case _Element.headings:
+        return [
+          ctx.note("Each level, as a share of the body text size."),
+          for (var i = 0; i < 6; i++)
+            ctx.slider("md-h${i + 1}", guide.headings[i].scale,
+                label: (v) => "H${i + 1}: ${(v * 100).round()}%",
+                min: 0.6,
+                max: 3.0,
+                divisions: 48,
+                onCommit: (v) => edit((g) => g.copyWith(headings: [
+                      for (var j = 0; j < 6; j++)
+                        j == i
+                            ? g.headings[j].copyWith(scale: v)
+                            : g.headings[j]
+                    ]))),
+          const SizedBox(height: 8),
+          ctx.note("Colour, font and weight apply to every level."),
+          ..._textControls(
+                  ctx,
+                  "head",
+                  guide.headings[0],
+                  edit,
+                  (g, r) => g.copyWith(headings: [
+                        for (var h in g.headings)
+                          h.copyWith(
+                              ink: r.ink,
+                              font: r.font,
+                              bold: r.bold,
+                              italic: r.italic)
+                      ]))
+              // The size slider above is per level, so the shared one here
+              // would be a second control for the same thing.
+              .skip(1),
+        ];
+
+      case _Element.links:
+        return [
+          ..._textControls(
+              ctx, "link", guide.link, edit, (g, r) => g.copyWith(link: r),
+              maxScale: 2.0),
+          ctx.toggle("Underline",
+              value: guide.link.underline ?? false,
+              onChanged: (v) =>
+                  edit((g) => g.copyWith(link: g.link.copyWith(underline: v)))),
+        ];
+
+      case _Element.quotes:
+        return [
+          ..._textControls(
+              ctx, "quote", guide.quote, edit, (g, r) => g.copyWith(quote: r),
+              maxScale: 2.0),
+          ...ink("Bar colour", guide.quoteBarInk,
+              (g, i) => g.copyWith(quoteBarInk: i)),
+          ctx.slider("md-quotebar", guide.quoteBarWidth,
+              label: (v) => v == 0 ? "Bar: None" : "Bar width: ${v.round()}px",
+              max: 12,
+              divisions: 12,
+              onCommit: (v) => edit((g) => g.copyWith(quoteBarWidth: v))),
+          ...ink("Background", guide.quoteBackground,
+              (g, i) => g.copyWith(quoteBackground: i)),
+        ];
+
+      case _Element.code:
+        return [
+          ..._textControls(
+              ctx, "code", guide.code, edit, (g, r) => g.copyWith(code: r),
+              maxScale: 2.0),
+          ...ink("Block background", guide.codeBackground,
+              (g, i) => g.copyWith(codeBackground: i)),
+        ];
+
+      case _Element.lists:
+        return [
+          ..._textControls(ctx, "bullet", guide.listBullet, edit,
+              (g, r) => g.copyWith(listBullet: r),
+              maxScale: 2.0),
+          ctx.slider("md-listgap", guide.listItemGap,
+              label: (v) => "Space between items: ${v.round()}px",
+              max: 32,
+              divisions: 16,
+              onCommit: (v) => edit((g) => g.copyWith(listItemGap: v))),
+          ctx.slider("md-listindent", guide.listIndent,
+              label: (v) => "Indent: ${v.round()}px",
+              min: 8,
+              max: 64,
+              divisions: 14,
+              onCommit: (v) => edit((g) => g.copyWith(listIndent: v))),
+        ];
+
+      case _Element.rule:
+        return [
+          ...ink("Colour", guide.ruleInk, (g, i) => g.copyWith(ruleInk: i)),
+          ctx.slider("md-rule", guide.ruleThickness,
+              label: (v) => "Thickness: ${v.toStringAsFixed(1)}px",
+              min: 0.5,
+              max: 8,
+              divisions: 15,
+              onCommit: (v) => edit((g) => g.copyWith(ruleThickness: v))),
+        ];
+
+      case _Element.images:
+        return [
+          ctx.slider("md-img-width", guide.image.boundedWidth,
+              label: (v) => "Width: ${v.round()}% of the column",
+              min: 10,
+              max: 100,
+              divisions: 18,
+              onCommit: (v) => edit(
+                  (g) => g.copyWith(image: g.image.copyWith(widthPercent: v)))),
+          ctx.slider("md-img-radius", guide.image.boundedRadius,
+              label: (v) =>
+                  v == 0 ? "Corners: Square" : "Corners: ${v.round()}px",
+              max: 48,
+              divisions: 24,
+              onCommit: (v) => edit(
+                  (g) => g.copyWith(image: g.image.copyWith(cornerRadius: v)))),
+          ctx.slider("md-img-border", guide.image.boundedBorder,
+              label: (v) => v == 0 ? "Border: None" : "Border: ${v.round()}px",
+              max: 8,
+              divisions: 8,
+              onCommit: (v) => edit(
+                  (g) => g.copyWith(image: g.image.copyWith(borderWidth: v)))),
+          ...ink("Border colour", guide.image.borderInk,
+              (g, i) => g.copyWith(image: g.image.copyWith(borderInk: i))),
+          ctx.slider("md-img-gap", guide.image.gap,
+              label: (v) => "Space above and below: ${v.round()}px",
+              max: 48,
+              divisions: 24,
+              onCommit: (v) =>
+                  edit((g) => g.copyWith(image: g.image.copyWith(gap: v)))),
+          ctx.choice<MarkdownAlign>(
+            "Alignment",
+            value: guide.image.align == MarkdownAlign.inherit
+                ? MarkdownAlign.left
+                : guide.image.align,
+            options: const [
+              MarkdownAlign.left,
+              MarkdownAlign.center,
+              MarkdownAlign.right
+            ],
+            labelOf: (a) => switch (a) {
+              MarkdownAlign.center => "Center",
+              MarkdownAlign.right => "Right",
+              _ => "Left",
+            },
+            onChanged: (a) =>
+                edit((g) => g.copyWith(image: g.image.copyWith(align: a))),
+          ),
+        ];
+    }
+  }
 }
 
 /// _MarkdownPreview renders the sample in the chosen guide.
@@ -278,7 +418,17 @@ List<Widget> markdownAreaEditor(AreaEditorContext ctx) {
 /// looking at it, not by reading a list of properties.
 class _MarkdownPreview extends StatelessWidget {
   final String guideId;
-  const _MarkdownPreview({required this.guideId});
+
+  /// element decides what the sample contains.
+  ///
+  /// A sample showing everything at once means the part being adjusted is
+  /// somewhere in the middle of it, and a slider's effect has to be hunted
+  /// for. Showing the element being tuned -- with a line of body text around
+  /// it for scale, since almost every setting is relative to that -- makes
+  /// the change the obvious thing on screen.
+  final _Element element;
+
+  const _MarkdownPreview({required this.guideId, required this.element});
 
   @override
   Widget build(BuildContext context) {
@@ -296,7 +446,8 @@ class _MarkdownPreview extends StatelessWidget {
         const SizedBox(height: 8),
         // Keyed by the guide so switching rebuilds rather than reusing the
         // element tree with a stale stylesheet.
-        MarkdownArea(_sample, false, key: ValueKey(guideId), guideId: guideId),
+        MarkdownArea(_sampleFor(element), false,
+            key: ValueKey("$guideId-${element.name}"), guideId: guideId),
       ]),
     );
   }

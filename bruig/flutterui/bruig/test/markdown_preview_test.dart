@@ -102,7 +102,7 @@ void main() {
     test("inline code", () {
       const text = "run the `relay` build";
       var d = markdownDecorations(text);
-      expect(_styleAt(d, text.indexOf("relay")).fontFamily, "monospace");
+      expect(_styleAt(d, text.indexOf("relay")).fontFamily, "RobotoMono");
     });
 
     test("a link keeps its label and loses its target", () {
@@ -141,7 +141,7 @@ void main() {
       var article = markdownDecorations(text,
           guide: builtInGuideFor("article"),
           roleColor: (_) => const Color(0xFF0077CC));
-      expect(_styleAt(article, text.indexOf("relay")).fontFamily, "monospace",
+      expect(_styleAt(article, text.indexOf("relay")).fontFamily, "RobotoMono",
           reason: "Article says nothing about code, so code stays code");
     });
 

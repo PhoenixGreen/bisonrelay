@@ -80,14 +80,19 @@ enum MarkdownRole {
 
 /// MarkdownFont is which of the bundled families to set text in.
 ///
-/// Bundled only. A guide naming a font the device does not have would render
-/// differently everywhere it went, which is the whole thing this feature is
-/// for avoiding.
+/// Bundled only, and this list is exactly what pubspec.yaml ships: Inter and
+/// RobotoMono. A guide naming anything else renders differently on every
+/// device, which is the whole thing this feature is for avoiding -- and it
+/// does it silently, since a missing family falls back rather than failing.
+///
+/// The first version of this list did precisely that. It offered
+/// "SourceCodePro" and "serif", neither of which is bundled, so choosing
+/// either changed nothing and the setting looked broken. Adding a serif face
+/// means adding a font file, not a line here.
 enum MarkdownFont {
   inherit("Theme default", null),
   sans("Sans", "Inter"),
-  mono("Monospace", "SourceCodePro"),
-  serif("Serif", "serif");
+  mono("Monospace", "RobotoMono");
 
   final String label;
   final String? family;
