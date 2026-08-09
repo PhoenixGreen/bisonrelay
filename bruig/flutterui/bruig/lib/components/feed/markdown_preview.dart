@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:bruig/components/feed/image_header.dart';
+import 'package:bruig/theming_system/theme_preset.dart';
 import 'package:bruig/models/feed.dart';
 import 'package:bruig/plugin_system/plugin_system.dart';
 import 'package:flutter/material.dart';
@@ -56,13 +57,31 @@ final _embed = RegExp(r"--embed\[(.*?)\]--");
 /// [embeds] maps a tracked embed id to its base64 data, which the composer
 /// holds in memory from the moment a file is picked -- so the picture can be
 /// built during the field's own build, with nothing to wait for.
+/// [guide] is the style guide the post is being written in, or null for the
+/// app's own preview styling. When one is given, every rule below is taken
+/// from it -- so what the writer sees in the composer is what a reader with
+/// that guide will see.
+///
+/// [roleColor] resolves the guide's colour roles against the live theme, and
+/// is required whenever a guide is given.
 List<InlineDecoration> markdownDecorations(
   String text, {
   Map<String, String> embeds = const {},
   Color? muted,
   Color? link,
   double baseSize = 14,
+  MarkdownStyleGuide? guide,
+  Color Function(MarkdownRole)? roleColor,
+  ImageRule? image,
 }) {
+  var resolve = roleColor ?? (_) => const Color(0xFF000000);
+  var base = TextStyle(fontSize: baseSize);
+
+  /// from applies a guide's rule, or falls back to what the preview drew
+  /// before guides existed.
+  TextStyle from(TextRule? rule, TextStyle fallback) =>
+      rule == null ? fallback : rule.applyTo(base, resolve);
+
   // Two lists, because order decides the outcome: a decoration later in the
   // list wins where they overlap, and the hidden markers have to beat the
   // style of the thing they mark. Written the other way round the heading's
@@ -86,12 +105,19 @@ List<InlineDecoration> markdownDecorations(
     style(
         m.start,
         m.end,
-        TextStyle(
-            fontSize: _headingSizes[level - 1], fontWeight: FontWeight.w700));
+        from(
+            guide?.headings[level - 1],
+            TextStyle(
+                fontSize: _headingSizes[level - 1],
+                fontWeight: FontWeight.w700)));
   }
   for (var m in _quote.allMatches(text)) {
     hide(m.start, m.start + m.group(1)!.length);
-    style(m.start, m.end, TextStyle(fontStyle: FontStyle.italic, color: muted));
+    style(
+        m.start,
+        m.end,
+        from(guide?.quote,
+            TextStyle(fontStyle: FontStyle.italic, color: muted)));
   }
   for (var m in _bullet.allMatches(text)) {
     // The marker is kept and dimmed rather than hidden: a list with no
@@ -100,7 +126,8 @@ List<InlineDecoration> markdownDecorations(
     style(
         m.start + m.group(1)!.length,
         m.start + m.group(1)!.length + m.group(2)!.length,
-        TextStyle(color: muted, fontWeight: FontWeight.w700));
+        from(guide?.listBullet,
+            TextStyle(color: muted, fontWeight: FontWeight.w700)));
   }
   for (var m in _rule.allMatches(text)) {
     style(m.start, m.end, TextStyle(color: muted, letterSpacing: -1));
@@ -112,12 +139,14 @@ List<InlineDecoration> markdownDecorations(
   for (var m in _bold.allMatches(text)) {
     hide(m.start, m.start + m.group(1)!.length);
     hide(m.end - m.group(1)!.length, m.end);
-    style(m.start, m.end, const TextStyle(fontWeight: FontWeight.w700));
+    style(m.start, m.end,
+        from(guide?.strong, const TextStyle(fontWeight: FontWeight.w700)));
   }
   for (var m in _italic.allMatches(text)) {
     hide(m.start, m.start + 1);
     hide(m.end - 1, m.end);
-    style(m.start, m.end, const TextStyle(fontStyle: FontStyle.italic));
+    style(m.start, m.end,
+        from(guide?.emphasis, const TextStyle(fontStyle: FontStyle.italic)));
   }
   for (var m in _strike.allMatches(text)) {
     hide(m.start, m.start + 2);
@@ -128,20 +157,26 @@ List<InlineDecoration> markdownDecorations(
   for (var m in _code.allMatches(text)) {
     hide(m.start, m.start + 1);
     hide(m.end - 1, m.end);
-    style(m.start, m.end,
-        const TextStyle(fontFamily: "monospace", letterSpacing: -0.3));
+    style(
+        m.start,
+        m.end,
+        from(guide?.code,
+            const TextStyle(fontFamily: "monospace", letterSpacing: -0.3)));
   }
   for (var m in _link.allMatches(text)) {
     // The label is left readable and everything that makes it a link -- the
     // brackets and the target -- goes away.
     hide(m.start, m.start + 1);
     hide(m.start + 1 + m.group(2)!.length, m.end);
-    style(m.start, m.end,
-        TextStyle(color: link, decoration: TextDecoration.underline));
+    style(
+        m.start,
+        m.end,
+        from(guide?.link,
+            TextStyle(color: link, decoration: TextDecoration.underline)));
   }
 
   for (var m in _embed.allMatches(text)) {
-    var picture = _embedWidget(m.group(1) ?? "", embeds);
+    var picture = _embedWidget(m.group(1) ?? "", embeds, image, resolve);
     if (picture == null) {
       // Nothing to show it with, so it stays legible rather than becoming an
       // invisible run of characters the caret walks through for no reason.
@@ -193,7 +228,8 @@ Uint8List? _bytesFor(String data) {
 /// _embedWidget builds the picture for one embed, or null when there is not
 /// one to build -- a quote, a file download, a type this cannot draw, or data
 /// that is not there.
-Widget? _embedWidget(String params, Map<String, String> embeds) {
+Widget? _embedWidget(String params, Map<String, String> embeds,
+    ImageRule? image, Color Function(MarkdownRole) roleColor) {
   var parsed = <String, String>{};
   for (var part in params.split(",")) {
     var at = part.indexOf("=");
@@ -229,20 +265,38 @@ Widget? _embedWidget(String params, Map<String, String> embeds) {
     // on top of the text above it.
     var natural = imageDimensions(bytes);
     if (natural == null) return null;
-    var size = fitWithin(natural, 420, 260);
+
+    // The guide's share of the column, applied to the same bound the
+    // preview has always used. A field this wide is what the composer gives
+    // it, so 100% is that and 60% is six tenths of it.
+    var maxWidth = 420.0 * (image?.boundedWidth ?? 100) / 100;
+    var size = fitWithin(natural, maxWidth, 260);
+
+    var picture = Image.memory(
+      bytes,
+      fit: BoxFit.contain,
+      // Keep showing the frame already decoded while any new one is being
+      // prepared, rather than blanking in between.
+      gaplessPlayback: true,
+    );
+
+    var radius = BorderRadius.circular(image?.boundedRadius ?? 0);
+    var border = image == null || image.boundedBorder == 0
+        ? null
+        : Border.all(
+            color:
+                image.borderInk.resolve(roleColor) ?? const Color(0xFF808080),
+            width: image.boundedBorder);
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: SizedBox(
+      padding: EdgeInsets.symmetric(vertical: image?.gap ?? 4),
+      child: Container(
         width: size.width,
         height: size.height,
-        child: Image.memory(
-          bytes,
-          fit: BoxFit.contain,
-          // Keep showing the frame already decoded while any new one is
-          // being prepared, rather than blanking in between.
-          gaplessPlayback: true,
-        ),
+        decoration: border == null
+            ? null
+            : BoxDecoration(border: border, borderRadius: radius),
+        child: ClipRRect(borderRadius: radius, child: picture),
       ),
     );
   }

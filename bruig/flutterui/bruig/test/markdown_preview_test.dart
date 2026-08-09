@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:bruig/components/feed/markdown_preview.dart';
 import 'package:bruig/models/composer_sidebar.dart';
 import 'package:bruig/plugin_system/plugin_system.dart';
+import 'package:bruig/theming_system/theme_preset.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -45,6 +46,30 @@ bool _hidden(List<InlineDecoration> decorations, int offset) =>
 /// one fits inside the line and hides all of them.
 const _bigPng =
     "iVBORw0KGgoAAAANSUhEUgAAASwAAADICAIAAADdvUsCAAACpElEQVR4nO3OQQ0AMBAEofNvupUxjyVBAPfugFA/gHH9AMb1AxjXD2BcP4Bx/QDG9QMY1w9gXD+Acf0AxvUDGNcPYFw/gHH9AMb1AxjXD2BcP4Bx/QDG9QMY1w9gXD+Acf0AxvUDGNcPYFw/gHH9AMb1AxjXD2BcP4Bx/QDG9QMY1w9gXD+Acf0AxvUDGNcPYFw/gHH9AMb1AxjXD2BcP4Bx/QDG9QMY1w9gXD+Acf0AxvUDGNcPYFw/gHH9AMb1AxjXD2BcP4Bx/QDG9QMY1w9gXD+Acf0AxvUDGNcPYFw/gHH9AMb1AxjXD2BcP4Bx/QDG9QMY1w9gXD+Acf0AxvUDGNcPYFw/gHH9AMb1AxjXD2BcP4Bx/QDG9QMY1w9gXD+Acf0AxvUDGNcPYFw/gHH9AMb1AxjXD2BcP4Bx/QDG9QMY1w9gXD+Acf0AxvUDGNcPYFw/gHH9AMb1AxjXD2BcP4Bx/QDG9QMY1w9gXD+Acf0AxvUDGNcPYFw/gHH9AMb1AxjXD2BcP4Bx/QDG9QMY1w9gXD+Acf0AxvUDGNcPYFw/gHH9AMb1AxjXD2BcP4Bx/QDG9QMY1w9gXD+Acf0AxvUDGNcPYFw/gHH9AMb1AxjXD2BcP4Bx/QDG9QMY1w9gXD+Acf0AxvUDGNcPYFw/gHH9AMb1AxjXD2BcP4Bx/QDG9QMY1w9gXD+Acf0AxvUDGNcPYFw/gHH9AMb1AxjXD2BcP4Bx/QDG9QMY1w9gXD+Acf0AxvUDGNcPYFw/gHH9AMb1AxjXD2BcP4Bx/QDG9QMY1w9gXD+Acf0AxvUDGNcPYFw/gHH9AMb1AxjXD2BcP4Bx/QDG9QMY1w9gXD+Acf0AxvUDGNcPYFw/gHH9AMb1AxjXD2BcP4Bx/QDG9QMY9wFP4oNIvm7wCQAAAABJRU5ErkJggg==";
+
+/// _imageIn digs the picture out of whatever the embed was wrapped in.
+///
+/// By walking rather than by casting through each layer: the wrappers
+/// change as the style guide gains rules -- a border adds a Container, a
+/// radius adds a ClipRRect -- and a test that spells the chain out fails
+/// every time one is added without anything actually being wrong.
+Image _imageIn(Widget widget) {
+  Image? found;
+  void walk(Widget w) {
+    if (found != null) return;
+    if (w is Image) {
+      found = w;
+      return;
+    }
+    if (w is SingleChildRenderObjectWidget && w.child != null) walk(w.child!);
+    if (w is Padding && w.child != null) walk(w.child!);
+    if (w is Container) walk(w.child!);
+    if (w is ClipRRect && w.child != null) walk(w.child!);
+  }
+
+  walk(widget);
+  return found!;
+}
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
@@ -383,9 +408,42 @@ void main() {
           .firstWhere((d) => d.widget != null);
       var two = markdownDecorations("--embed[type=image/png,data=$_bigPng]--")
           .firstWhere((d) => d.widget != null);
-      var a = ((one.widget as Padding).child as SizedBox).child as Image;
-      var b = ((two.widget as Padding).child as SizedBox).child as Image;
-      expect(a.image, equals(b.image));
+      expect(_imageIn(one.widget!).image, equals(_imageIn(two.widget!).image));
+    });
+
+    // The composer paints from the guide the writer picked, so that what
+    // they see is what a reader with that guide will see.
+    group("the writer's chosen guide", () {
+      TextStyle headingStyle(MarkdownStyleGuide? guide) {
+        var decorations = markdownDecorations("# A heading",
+            guide: guide, roleColor: (_) => const Color(0xFF00FF00));
+        // The heading's own run, not the hidden "# " before it.
+        return decorations
+            .firstWhere((d) => d.style.fontSize != null && d.start == 0)
+            .style;
+      }
+
+      test("no guide keeps the preview's own styling", () {
+        expect(headingStyle(null).fontSize, 26);
+      });
+
+      test("a guide decides the heading size", () {
+        var article = builtInGuideFor("article")!;
+        // Article's h1 is 1.9x the body, which the preview bases on 14.
+        expect(headingStyle(article).fontSize, closeTo(14 * 1.9, 0.01));
+      });
+
+      test("a guide's colour role is resolved", () {
+        var guide = const MarkdownStyleGuide(id: "x", name: "X", headings: [
+          TextRule(ink: MarkdownInk.of(MarkdownRole.accent)),
+          TextRule(),
+          TextRule(),
+          TextRule(),
+          TextRule(),
+          TextRule(),
+        ]);
+        expect(headingStyle(guide).color, const Color(0xFF00FF00));
+      });
     });
 
     // The marks and the preview paint the same characters, and the marks

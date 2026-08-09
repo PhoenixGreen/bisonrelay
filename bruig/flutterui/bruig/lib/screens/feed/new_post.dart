@@ -251,11 +251,17 @@ class _NewPostScreenState extends State<NewPostScreen> {
     decorations: (text) {
       if (!previewing) return const [];
       var theme = ThemeNotifier.of(context, listen: false);
+      // The guide the writer picked, so the preview shows what a reader
+      // with that guide will see rather than a house style of its own.
+      var guide = builtInGuideFor(post.styleGuideId);
       return markdownDecorations(
         text,
         embeds: composerEmbeds(post),
         muted: theme.colors.onSurfaceVariant,
         link: theme.colors.primary,
+        guide: guide == null || guide.id == defaultGuideId ? null : guide,
+        roleColor: theme.markdownRoleColor,
+        image: guide == null ? null : theme.markdownImageRule(guide),
       );
     },
   );
@@ -517,6 +523,9 @@ class _NewPostScreenState extends State<NewPostScreen> {
     // asked for: a post restored from the model already has its references
     // in it and nothing has been typed yet.
     _loadMissingEmbeds();
+    // Offer the post to whatever panel wants it: the formatting sidebar
+    // reads and sets the style guide it will be published with.
+    Provider.of<ComposerSidebarController>(context, listen: false).post = post;
     // Tell the library what the composer is holding, so its sweep of
     // unreferenced pictures does not take one out from under a post that
     // has not been saved anywhere yet.

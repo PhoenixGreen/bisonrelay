@@ -1,5 +1,6 @@
 import 'dart:collection';
 
+import 'package:bruig/theming_system/theme_preset.dart';
 import 'package:bruig/util.dart';
 import 'package:collection/collection.dart';
 import 'package:flutter/cupertino.dart';
@@ -244,9 +245,20 @@ class NewPostModel {
   /// read a message and coming back put them at the top of an empty post.
   int caret = 0;
 
+  /// styleGuideId is the style guide this post is being written in.
+  ///
+  /// Held here rather than on the sidebar for the same reason the caret is:
+  /// the composer's State goes when the Feed's route does, and a guide the
+  /// writer picked is part of the post rather than part of the screen.
+  ///
+  /// It is what the post will carry when it is published -- a name a reader
+  /// may or may not have, never the guide itself.
+  String styleGuideId = defaultGuideId;
+
   void clear() {
     content = "";
     caret = 0;
+    styleGuideId = defaultGuideId;
     embedContents = {};
   }
 

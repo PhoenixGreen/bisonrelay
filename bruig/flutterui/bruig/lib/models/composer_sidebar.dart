@@ -1,3 +1,4 @@
+import 'package:bruig/models/feed.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
@@ -66,6 +67,20 @@ class ComposerSidebarController extends ChangeNotifier {
   }
 
   TextEditingController? _editor;
+
+  /// post is the model the composer is writing into, offered so the
+  /// formatting panel can read and set the style guide the post carries.
+  ///
+  /// Registered by the composer rather than reached for, like onAddEmbed
+  /// below and for the same reason: the panel is handed what it needs
+  /// instead of knowing which screen it is beside.
+  NewPostModel? post;
+
+  /// notifyStyleChanged tells the composer to repaint after something that
+  /// changes how the text looks but not what it says -- picking a different
+  /// style guide, where the text is untouched and every span of it is drawn
+  /// differently.
+  void notifyStyleChanged() => notifyListeners();
 
   /// onAddEmbed is the composer's own file picker, offered by the
   /// formatting panel.
