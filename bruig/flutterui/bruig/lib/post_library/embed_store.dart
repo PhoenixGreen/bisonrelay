@@ -38,15 +38,24 @@ final _reference = RegExp(r"data=\[content ([a-zA-Z0-9]{12})\]");
 
 /// EmbedStore reads and writes the pictures a draft refers to.
 class EmbedStore {
-  static Future<String> _dir() async {
+  /// _dir names the folder, creating it only when something is about to be
+  /// written there.
+  ///
+  /// Reading and sweeping must not create it. They run in the background --
+  /// the sweep is deliberately not awaited -- and a directory conjured up
+  /// after the thing above it has been taken away is a directory nobody
+  /// asked for. It showed up first as a test failing to delete its own
+  /// temporary folder, "Directory not empty", on whichever test the race
+  /// happened to land on.
+  static Future<String> _dir({bool create = false}) async {
     var dir = path.join(await PostStorage.libraryDir(), _dirName);
-    await Directory(dir).create(recursive: true);
+    if (create) await Directory(dir).create(recursive: true);
     return dir;
   }
 
-  static Future<String?> _pathFor(String id) async {
+  static Future<String?> _pathFor(String id, {bool create = false}) async {
     if (!_idPattern.hasMatch(id)) return null;
-    return path.join(await _dir(), id);
+    return path.join(await _dir(create: create), id);
   }
 
   /// idsIn returns every embed id [content] refers to.
@@ -57,7 +66,7 @@ class EmbedStore {
   /// still in memory and the post can still be published, so the cost is
   /// that it will not survive a restart.
   static Future<void> save(String id, String data) async {
-    var file = await _pathFor(id);
+    var file = await _pathFor(id, create: true);
     if (file == null) return;
     try {
       await File(file).writeAsString(data, flush: true);
