@@ -1,5 +1,4 @@
-import 'package:bruig/plugin_system/capabilities/thesaurus.dart';
-import 'package:bruig/plugin_system/capabilities/thesaurus_menu.dart';
+import 'package:bruig/writing_tools/writing_tools.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 

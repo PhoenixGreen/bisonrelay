@@ -14,7 +14,7 @@ import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:bruig/components/chat/types.dart';
 import 'package:bruig/models/client.dart';
-import 'package:bruig/plugin_system/plugin_system.dart';
+import 'package:bruig/writing_tools/writing_tools.dart';
 import 'package:bruig/theming_system/theme_preset.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/services.dart';

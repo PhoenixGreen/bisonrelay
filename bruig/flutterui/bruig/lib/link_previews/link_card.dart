@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:bruig/components/text.dart';
-import 'package:bruig/plugin_system/capabilities/youtube_player.dart';
+import 'package:bruig/link_previews/youtube_player.dart';
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';

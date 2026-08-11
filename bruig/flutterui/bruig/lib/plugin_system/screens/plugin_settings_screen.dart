@@ -9,11 +9,14 @@ import 'package:golib_plugin/definitions.dart';
 import 'package:provider/provider.dart';
 
 // plugin_settings_screen.dart is the Settings > Plugins page: the list of
-// installed plugins with their enable switches, plus import and remove.
-// It is the only UI in the app that knows plugins exist as a concept --
-// everything a plugin actually contributes reaches the user through a
-// capability (see plugin_system/capabilities/) or a nav item (plugin_nav
-// .dart) instead.
+// installed plugins with their enable switches, plus import and remove. It is
+// the only UI in the app that knows plugins exist as a concept -- everything a
+// plugin actually contributes reaches the user through a capability or a nav
+// item (plugin_nav.dart) instead.
+//
+// No capability's settings are written here. A plugin's panel carries whatever
+// sections its declared capabilities registered with PluginSettingsRegistry,
+// and this file never learns what any of them are.
 
 class PluginsSettingsScreen extends StatefulWidget {
   const PluginsSettingsScreen({super.key});
@@ -130,18 +133,21 @@ class _PluginsSettingsScreenState extends State<PluginsSettingsScreen> {
                         for (var plugin in model.plugins) _pluginTile(plugin),
                       ],
                     )),
-          // The writing overrides live inside the panel of whichever plugin
-          // provides them, but they outlive it: a word added to the personal
-          // dictionary is a decision about this app, and removing the plugin
-          // that prompted it must not put that decision out of reach. So
-          // when nothing installed provides the capability, they appear here
-          // instead of vanishing.
+          // A capability's settings live inside the panel of whichever plugin
+          // provides them, but some of them outlive it: a word added to a
+          // personal dictionary is a decision about this app, and removing the
+          // plugin that prompted it must not put that decision out of reach.
+          // So a section whose capability nothing installed provides appears
+          // here instead of vanishing.
           Consumer<PluginManagerModel>(
-            builder: (context, model, child) => model.plugins.any((p) => p
-                    .manifest.capabilities
-                    .contains(PluginCapability.spellcheckData.wireName))
-                ? const SizedBox.shrink()
-                : const WritingOverridesSection(),
+            builder: (context, model, child) => Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (var section in PluginSettingsRegistry.orphaned(
+                    {for (var p in model.plugins) ...p.manifest.capabilities}))
+                  section(context, false),
+              ],
+            ),
           ),
         ]));
   }
@@ -197,142 +203,20 @@ class _PluginsSettingsScreenState extends State<PluginsSettingsScreen> {
   Widget _pluginPanel(PluginInfo plugin, ThemeNotifier theme) {
     // Which settings belong to a plugin is decided by the capabilities it
     // declares, not by its name or id. That is the same rule the rest of the
-    // app follows -- nothing here asks "is the writing tools plugin
-    // installed", only "does this plugin provide the writing data".
-    var settings = <Widget>[
-      if (plugin.manifest.capabilities
-          .contains(PluginCapability.spellcheckData.wireName))
-        const WritingOverridesSection(inPluginPanel: true),
-    ];
+    // app follows -- nothing here asks "is this particular plugin installed",
+    // only "what has registered against what this one provides".
+    var settings = PluginSettingsRegistry.forCapabilities(
+        plugin.manifest.capabilities);
 
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Txt.S(plugin.manifest.description, color: TextColor.onSurfaceVariant),
-        ...settings,
+        for (var section in settings) section(context, true),
         const SizedBox(height: 12),
         Divider(height: 1, color: theme.colors.outlineVariant),
       ]),
     );
-  }
-}
-
-/// WritingOverridesSection lists what the user has told the writing tools to
-/// stop reporting, and takes it back.
-///
-/// It belongs on this page because the overrides outlive any one plugin --
-/// they are decisions about the user's own app, and a word added to the
-/// dictionary must stay ignored across a provider being updated or swapped.
-/// Somewhere to undo them matters more than usual: an accidental "Add to
-/// dictionary" on a genuine typo is otherwise invisible and permanent.
-///
-/// Absent entirely until something has been overridden, so the page is
-/// unchanged for anyone who has never used it.
-class WritingOverridesSection extends StatelessWidget {
-  /// inPluginPanel drops the heading and the rule above it. Inside a panel
-  /// the plugin's name is already at the top and the panel has its own
-  /// divider, so both would be saying a second time what the surroundings
-  /// already say.
-  final bool inPluginPanel;
-
-  const WritingOverridesSection({this.inPluginPanel = false, super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    var prefs = context.watch<WritingPreferences>();
-    var spellcheck = context.watch<SpellcheckCapability?>();
-    var languages = spellcheck?.languages ?? const <SpellcheckLanguage>[];
-
-    // Nothing to show at all when no provider offers a choice and nothing
-    // has been overridden. A section that is always there but usually empty
-    // is a section people learn to skip.
-    if (languages.length < 2 &&
-        prefs.personalDictionary.isEmpty &&
-        prefs.disabledChecks.isEmpty) {
-      return const SizedBox.shrink();
-    }
-
-    var words = prefs.personalDictionary.toList()..sort();
-    var checks = prefs.disabledChecks.entries.toList()
-      ..sort((a, b) => a.value.compareTo(b.value));
-
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      if (!inPluginPanel) ...[
-        const SizedBox(height: 24),
-        const Divider(),
-        const SizedBox(height: 8),
-        const Txt.L("Writing tools"),
-      ],
-      const SizedBox(height: 16),
-      // Offered only when a provider has more than one to offer, and built
-      // from what it says it has rather than from a list held here: the
-      // languages are the provider's, and an app-side list would go stale
-      // the moment one shipped another.
-      if (languages.length > 1) ...[
-        const Txt.S("Language", color: TextColor.onSurfaceVariant),
-        const SizedBox(height: 6),
-        DropdownButton<String>(
-          value: languages.any((l) => l.code == spellcheck!.activeLanguage)
-              ? spellcheck!.activeLanguage
-              : null,
-          hint: const Txt.S("Choose a language"),
-          items: [
-            for (var language in languages)
-              DropdownMenuItem(
-                  value: language.code, child: Txt.S(language.name)),
-          ],
-          onChanged: (code) {
-            if (code != null) prefs.setLanguage(code);
-          },
-        ),
-        const SizedBox(height: 6),
-        const Txt.S(
-            "Changes which dictionary your writing is checked against. "
-            "\"Colour\" and \"color\" are each correct in one and wrong in "
-            "the other.",
-            color: TextColor.onSurfaceVariant),
-        const SizedBox(height: 16),
-      ],
-      if (words.isNotEmpty) ...[
-        const Txt.S("Words added to your dictionary",
-            color: TextColor.onSurfaceVariant),
-        const SizedBox(height: 6),
-        Wrap(
-          spacing: 6,
-          runSpacing: 6,
-          children: [
-            for (var word in words)
-              InputChip(
-                label: Text(word),
-                onDeleted: () => prefs.removeFromDictionary(word),
-                tooltip: "Check this word again",
-              ),
-          ],
-        ),
-        const SizedBox(height: 16),
-      ],
-      if (checks.isNotEmpty) ...[
-        const Txt.S("Checks you turned off", color: TextColor.onSurfaceVariant),
-        const SizedBox(height: 6),
-        // Shown by the rule's own description. A check is identified by its
-        // pattern, which is what makes a rule unique, but a regular
-        // expression is not something to put in front of anyone -- it only
-        // appears as a fallback for an entry saved before descriptions were
-        // recorded.
-        Wrap(
-          spacing: 6,
-          runSpacing: 6,
-          children: [
-            for (var check in checks)
-              InputChip(
-                label: Text(check.value.isEmpty ? check.key : check.value),
-                onDeleted: () => prefs.enableCheck(check.key),
-                tooltip: "Turn this check back on",
-              ),
-          ],
-        ),
-      ],
-    ]);
   }
 }

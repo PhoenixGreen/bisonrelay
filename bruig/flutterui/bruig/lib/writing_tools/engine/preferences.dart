@@ -1,12 +1,11 @@
 import 'dart:convert';
 
 import 'package:bruig/storage_manager.dart';
-import 'package:bruig/plugin_system/capabilities/spellcheck.dart';
+import 'package:bruig/writing_tools/engine/writing_issue.dart';
 import 'package:flutter/foundation.dart';
 
-// writing_prefs.dart holds what the user has told the writing capabilities
-// to stop saying: words they do not want flagged, and checks they disagree
-// with.
+// preferences.dart holds what the user has told the writing tools to stop
+// saying: words they do not want flagged, and checks they disagree with.
 //
 // It belongs to the app rather than to any provider. A plugin supplies a
 // dictionary and a set of rules; which of those findings a particular person
@@ -14,8 +13,8 @@ import 'package:flutter/foundation.dart';
 // the plugin being disabled, updated or replaced. Storing it here also means
 // a provider never learns what anyone chose to ignore.
 
-/// _storagePrefix keeps these keys together and out of the way of the app's
-/// own settings.
+// The storage keys, all under one "writing." prefix so they stay together and
+// out of the way of the app's own settings.
 const _dictionaryKey = "writing.personalDictionary";
 const _disabledChecksKey = "writing.disabledChecks";
 const _languageKey = "writing.language";
@@ -67,10 +66,6 @@ class WritingPreferences extends ChangeNotifier {
   // what they switched off.
   final Map<String, String> _disabledChecks = {};
 
-  /// enabled is the whole feature's on/off switch for the current session --
-  /// underlines and suggestions alike. Not persisted: it is a "let me write
-  /// without being corrected for a minute" control, and one that stayed off
-  /// across a restart would look like the feature had broken.
   /// sidebarPage is which of the writing tools' four pages was last open,
   /// held as an index rather than as the enum itself.
   ///
@@ -78,13 +73,17 @@ class WritingPreferences extends ChangeNotifier {
   /// with the screen: leaving the Feed and coming back reopened the panel on
   /// Spelling however long you had been reading the Document counts.
   ///
-  /// An index because the enum lives in writing_sidebar.dart, which imports
-  /// this file -- naming the type here would make the pair circular for the
-  /// sake of a number. The screen that reads it clamps, so a page removed
-  /// from the enum lands on the first one rather than out of range. Not
-  /// persisted: it is where you were, not a preference.
+  /// An index because the enum lives in the sidebar, which imports this file
+  /// -- naming the type here would make the pair circular for the sake of a
+  /// number. The screen that reads it clamps, so a page removed from the enum
+  /// lands on the first one rather than out of range. Not persisted: it is
+  /// where you were, not a preference.
   int sidebarPage = 0;
 
+  /// enabled is the whole feature's on/off switch for the current session --
+  /// underlines and suggestions alike. Not persisted: it is a "let me write
+  /// without being corrected for a minute" control, and one that stayed off
+  /// across a restart would look like the feature had broken.
   bool _enabled = true;
   bool get enabled => _enabled;
   set enabled(bool value) {

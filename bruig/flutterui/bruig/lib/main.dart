@@ -12,7 +12,9 @@ import 'package:bruig/models/audio.dart';
 import 'package:bruig/models/menus.dart';
 import 'package:bruig/models/payments.dart';
 import 'package:bruig/models/composer_sidebar.dart';
+import 'package:bruig/link_previews/link_previews.dart';
 import 'package:bruig/plugin_system/plugin_system.dart';
+import 'package:bruig/writing_tools/writing_tools.dart';
 import 'package:bruig/post_library/post_library.dart';
 import 'package:bruig/models/realtimechat.dart';
 import 'package:bruig/models/resources.dart';
@@ -173,6 +175,10 @@ Future<void> runMainApp(Config cfg) async {
   // app to leave alone.
   final writingPrefs = WritingPreferences();
   await writingPrefs.load();
+  // Attaches the writing tools' settings section to the capability it belongs
+  // to. Done from the feature's side of the boundary, so the plugin system
+  // never learns what a dictionary is -- see plugin_system/plugin_settings.
+  registerWritingTools();
 
   runApp(MultiProvider(
     providers: [
@@ -210,7 +216,7 @@ Future<void> runMainApp(Config cfg) async {
       ChangeNotifierProxyProvider<PluginManagerModel, MarkdownAreaModel>(
         create: (c) => MarkdownAreaModel(cfg.dbRoot),
         update: (c, plugins, mk) =>
-            mk!..setPluginExtensions(markdownExtensionsFor(plugins)),
+            mk!..setPluginExtensions(linkPreviewExtensions(plugins)),
       ),
       ChangeNotifierProxyProvider<PluginManagerModel, SpellcheckCapability>(
         // The user's own overrides -- ignored words, disabled checks -- are

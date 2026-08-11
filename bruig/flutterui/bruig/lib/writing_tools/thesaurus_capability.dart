@@ -1,12 +1,11 @@
-import 'package:bruig/plugin_system/capabilities/spellcheck.dart';
-import 'package:bruig/plugin_system/plugin_capability.dart';
-import 'package:bruig/plugin_system/plugin_manager.dart';
+import 'package:bruig/plugin_system/plugin_system.dart';
+import 'package:bruig/writing_tools/engine/writing_issue.dart';
 import 'package:flutter/foundation.dart';
 import 'package:golib_plugin/definitions.dart';
 import 'package:golib_plugin/golib_plugin.dart';
 
-// thesaurus.dart is the app's side of the thesaurus capability. Unlike
-// spellcheck, which is handed its whole dataset once, this one asks a
+// thesaurus_capability.dart is the app's side of the thesaurus capability.
+// Unlike spellcheck, which is handed its whole dataset once, this one asks a
 // question at a time: a thesaurus is far too large to push across, so the
 // provider keeps it and answers lookups.
 

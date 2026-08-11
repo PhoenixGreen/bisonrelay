@@ -7,7 +7,7 @@ import 'package:bruig/models/client.dart';
 import 'package:bruig/components/composer_sidebar_shell.dart';
 import 'package:bruig/components/feed/formatting_sidebar.dart';
 import 'package:bruig/models/composer_sidebar.dart';
-import 'package:bruig/plugin_system/plugin_system.dart';
+import 'package:bruig/writing_tools/writing_tools.dart';
 import 'package:bruig/post_library/post_library.dart';
 import 'package:bruig/models/uistate.dart';
 import 'package:bruig/screens/feed/user_posts.dart';

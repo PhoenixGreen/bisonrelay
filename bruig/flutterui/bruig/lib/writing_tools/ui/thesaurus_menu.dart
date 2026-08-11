@@ -1,5 +1,5 @@
-import 'package:bruig/plugin_system/capabilities/spellcheck_actions.dart';
-import 'package:bruig/plugin_system/capabilities/thesaurus.dart';
+import 'package:bruig/writing_tools/ui/writing_actions.dart';
+import 'package:bruig/writing_tools/thesaurus_capability.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:golib_plugin/definitions.dart';

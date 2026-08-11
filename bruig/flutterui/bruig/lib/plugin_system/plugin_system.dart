@@ -1,6 +1,6 @@
 // plugin_system.dart is the single entry point to Bison Relay's plugin
-// support. Everything outside lib/plugin_system/ imports this file and
-// nothing beneath it.
+// support. Everything outside lib/plugin_system/ imports this file and nothing
+// beneath it.
 //
 // A plugin is an external artifact -- a manifest plus a sandboxed WebAssembly
 // module, built and shipped independently of this repository. It contributes
@@ -14,60 +14,48 @@
 //
 //      A provider supplies content, never logic. It writes the regexes but
 //      never runs them; it names the counting checks but never implements
-//      them; it ranks words but does not do the ranking. Everything under
-//      capabilities/ is a mechanism waiting for data, which is what lets a
-//      plugin be a sandboxed wasm module with no access to the app at all.
+//      them; it ranks words but does not do the ranking. Whatever consumes a
+//      capability is a mechanism waiting for data, which is what lets a plugin
+//      be a sandboxed wasm module with no access to the app at all.
 //
-//   2. A screen (see plugin_nav.dart, screens/plugin_screen.dart): a nav
-//      item whose UI the plugin describes declaratively as JSON, which
+//   2. A screen (see plugin_nav.dart, screens/plugin_screen.dart): a nav item
+//      whose UI the plugin describes declaratively as JSON, which
 //      screens/plugin_screen.dart renders. The plugin draws nothing itself.
 //
 // Consequently no plugin's name appears anywhere in the app outside the
 // Settings > Plugins list, which is the one place plugins are shown as
 // plugins. Uninstalling one leaves nothing dangling.
 //
+// What is NOT here is any capability's implementation. This directory owns
+// installation, the vocabulary of capabilities, the nav items and the settings
+// page -- the machinery that is the same whatever a plugin does. What a
+// capability's data is then *used for* is a feature of the app, and lives with
+// the rest of that feature:
+//
+//   lib/writing_tools/    the spellcheck-data and thesaurus capabilities
+//   lib/link_previews/    the link-card capability
+//
+// The split is not cosmetic. Those two modules depend on this one and never
+// the reverse, so this directory can be read start to finish without knowing
+// what a wavy underline or a preview card is -- and a third capability is
+// added without touching anything in it except the enum in
+// plugin_capability.dart.
+//
 // Contents:
 //
 //   plugin_capability.dart              the capabilities a plugin may offer
 //   plugin_manager.dart                 which plugins are installed/enabled
 //   plugin_nav.dart                     screen-bearing plugins as nav items
-//   capabilities/link_card.dart         the link-card capability's UI
-//   capabilities/youtube_player.dart    a player a link-card provider may ask for
-//   capabilities/markdown_extensions.dart  capabilities meeting the markdown pipeline
-//   capabilities/spellcheck.dart        the spellcheck-data capability
-//   capabilities/writing_analysis.dart  the checks that count rather than match
-//   capabilities/writing_stats.dart     word counts and reading time
-//   capabilities/writing_field.dart     the controller that paints the marks
-//   capabilities/spellcheck_actions.dart what a chosen correction does to a field
-//   capabilities/writing_popup.dart     the right-click popup explaining an issue
-//   capabilities/writing_prefs.dart     what the user asked not to be told
-//   capabilities/thesaurus.dart         the thesaurus capability
-//   capabilities/thesaurus_menu.dart    its composer UI
-//   capabilities/writing_sidebar.dart   the post editor's four review pages
-//
-// The sidebar slot it occupies is not owned here: it is shared with the
-// saved-post library, which is not a plugin at all. See
-// models/composer_sidebar.dart.
+//   plugin_settings.dart                where a capability's settings attach
 //   screens/plugin_screen.dart          renders a plugin-described screen
 //   screens/plugin_settings_screen.dart Settings > Plugins
 //
 // The Go counterpart is client/pluginmgr (install state and manifests),
 // client/pluginmgr/wasmhost (the sandboxed runtime) and
 // client/pluginmgr/capabilities (the host side of each capability).
-export 'package:bruig/plugin_system/capabilities/link_card.dart';
-export 'package:bruig/plugin_system/capabilities/markdown_extensions.dart';
-export 'package:bruig/plugin_system/capabilities/spellcheck.dart';
-export 'package:bruig/plugin_system/capabilities/writing_analysis.dart';
-export 'package:bruig/plugin_system/capabilities/writing_stats.dart';
-export 'package:bruig/plugin_system/capabilities/writing_field.dart';
-export 'package:bruig/plugin_system/capabilities/spellcheck_actions.dart';
-export 'package:bruig/plugin_system/capabilities/writing_popup.dart';
-export 'package:bruig/plugin_system/capabilities/writing_prefs.dart';
-export 'package:bruig/plugin_system/capabilities/thesaurus.dart';
-export 'package:bruig/plugin_system/capabilities/thesaurus_menu.dart';
-export 'package:bruig/plugin_system/capabilities/writing_sidebar.dart';
 export 'package:bruig/plugin_system/plugin_capability.dart';
 export 'package:bruig/plugin_system/plugin_manager.dart';
 export 'package:bruig/plugin_system/plugin_nav.dart';
+export 'package:bruig/plugin_system/plugin_settings.dart';
 export 'package:bruig/plugin_system/screens/plugin_screen.dart';
 export 'package:bruig/plugin_system/screens/plugin_settings_screen.dart';

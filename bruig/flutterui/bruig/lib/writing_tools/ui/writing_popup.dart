@@ -1,6 +1,7 @@
-import 'package:bruig/plugin_system/capabilities/spellcheck.dart';
-import 'package:bruig/plugin_system/capabilities/spellcheck_actions.dart';
-import 'package:bruig/plugin_system/capabilities/thesaurus_menu.dart';
+import 'package:bruig/writing_tools/engine/writing_issue.dart';
+import 'package:bruig/writing_tools/spellcheck_capability.dart';
+import 'package:bruig/writing_tools/ui/writing_actions.dart';
+import 'package:bruig/writing_tools/ui/thesaurus_menu.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';

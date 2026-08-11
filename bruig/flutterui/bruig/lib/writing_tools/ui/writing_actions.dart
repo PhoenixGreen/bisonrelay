@@ -1,9 +1,10 @@
-import 'package:bruig/plugin_system/capabilities/spellcheck.dart';
+import 'package:bruig/writing_tools/engine/writing_issue.dart';
+import 'package:bruig/writing_tools/spellcheck_capability.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:provider/provider.dart';
 
-// spellcheck_actions.dart answers two questions for anything that presents
+// writing_actions.dart answers two questions for anything that presents
 // writing issues: what was clicked, and how to apply what was chosen.
 //
 // Kept apart from the things that present them, because there are three --

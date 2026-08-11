@@ -1,4 +1,5 @@
-import 'package:bruig/plugin_system/capabilities/spellcheck.dart';
+import 'package:bruig/writing_tools/engine/writing_issue.dart';
+import 'package:bruig/writing_tools/spellcheck_capability.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 

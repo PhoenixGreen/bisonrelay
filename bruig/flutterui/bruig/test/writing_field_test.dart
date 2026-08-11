@@ -1,4 +1,5 @@
 import 'package:bruig/plugin_system/plugin_system.dart';
+import 'package:bruig/writing_tools/writing_tools.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';

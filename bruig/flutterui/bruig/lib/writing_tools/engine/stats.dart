@@ -1,21 +1,17 @@
-// writing_stats.dart counts what is there rather than what is wrong with it.
+import 'package:bruig/writing_tools/engine/text_segments.dart';
+
+// stats.dart counts what is there rather than what is wrong with it.
 //
 // Nothing here needs a plugin. Counting words is not a judgement about
 // English and takes no dictionary, no rules and no data -- so unlike every
 // other page of the writing sidebar, this one works with no provider enabled
-// at all. It lives among the capabilities because that is where the sidebar
+// at all. It lives in the writing tools because that is where the sidebar
 // showing it lives, not because it depends on one.
-
-/// _word matches a word for counting: letters, digits and apostrophes, so
-/// "don't" and "3pm" are each one word.
-final _word = RegExp(r"[A-Za-z0-9][A-Za-z0-9']*");
-
-/// _sentenceEnd is the same approximation writing_analysis.dart uses -- see
-/// the note there on why "Mr. Smith" is split in the wrong place and why that
-/// is acceptable for something that only counts.
-final _sentenceEnd = RegExp(r"(?<=[.!?])\s+|\n+");
-
-final _paragraphBreak = RegExp(r"\n\s*\n");
+//
+// The segmentation is the shared one, so "sentence" means here exactly what
+// it means to the check that flags a long one. It did not always: this file
+// carried its own copies of the same three regexes, with a comment pointing
+// at the other definition instead of using it.
 
 final _vowelGroup = RegExp(r"[aeiouy]+");
 
@@ -66,7 +62,7 @@ class WritingStats {
   factory WritingStats.of(String text) {
     if (text.isEmpty) return empty;
 
-    var wordMatches = _word.allMatches(text).toList();
+    var wordMatches = wordForCounting.allMatches(text).toList();
     var syllables = 0;
     for (var m in wordMatches) {
       syllables += estimateSyllables(m.group(0)!);
@@ -76,8 +72,8 @@ class WritingStats {
       characters: text.length,
       charactersNoSpaces: text.replaceAll(RegExp(r"\s"), "").length,
       words: wordMatches.length,
-      sentences: _count(text, _sentenceEnd),
-      paragraphs: _count(text, _paragraphBreak),
+      sentences: countSegments(text, sentenceEnd),
+      paragraphs: countSegments(text, paragraphBreak),
       // A line break count, not a count of the lines as wrapped on screen:
       // how text wraps depends on the width of the field it is in, which is
       // not a property of the text.
@@ -123,16 +119,6 @@ class WritingStats {
     return "Very difficult";
   }
 
-  static int _count(String text, RegExp separator) {
-    var n = 0;
-    var at = 0;
-    for (var m in separator.allMatches(text)) {
-      if (text.substring(at, m.start).trim().isNotEmpty) n++;
-      at = m.end;
-    }
-    if (text.substring(at).trim().isNotEmpty) n++;
-    return n;
-  }
 }
 
 /// estimateSyllables counts vowel groups in [word], with the adjustments that

@@ -1,5 +1,6 @@
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/plugin_system.dart';
+import 'package:bruig/writing_tools/writing_tools.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -54,7 +55,14 @@ Future<void> _pump(
 }
 
 void main() {
-  setUp(() => SharedPreferences.setMockInitialValues({}));
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+    // The page holds no knowledge of any capability's settings: a feature
+    // module attaches its own section to the capability it belongs to, and
+    // main() does this at startup. Without it the panels below are correctly
+    // empty, which is the whole point of the arrangement being tested.
+    registerWritingTools();
+  });
 
   testWidgets("a closed row shows the name, summary and version",
       (tester) async {
