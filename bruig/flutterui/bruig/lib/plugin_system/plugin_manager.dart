@@ -12,16 +12,26 @@ class PluginManagerModel extends ChangeNotifier {
   List<PluginInfo> _plugins = const [];
   List<PluginInfo> get plugins => _plugins;
 
-  // _capabilities is the flattened set of capabilities the currently enabled
+  // _services is the flattened set of service names the currently enabled
   // plugins provide, recomputed on each reload. Precomputed rather than
-  // scanned per query because hasCapability is read from build().
-  Set<String> _capabilities = const {};
+  // scanned per query because these are read from build().
+  Set<String> _services = const {};
 
   // hasCapability reports whether any enabled plugin provides it. This is
   // the whole query surface the rest of the app has: everything downstream
-  // is written against the capability, not against its provider.
+  // is written against the service, not against its provider.
   bool hasCapability(PluginCapability capability) =>
-      _capabilities.contains(capability.wireName);
+      hasService(capability.wireName);
+
+  /// hasService is the same question for a service the app has no enum value
+  /// for -- one plugin asking whether another is installed, or a feature
+  /// written against a name that arrived after this build did.
+  bool hasService(String service) => _services.contains(service);
+
+  /// servicesProvided is every service name the enabled plugins answer,
+  /// whether or not anything consumes them. For a settings page that wants
+  /// to show what is on offer.
+  Set<String> get servicesProvided => Set.unmodifiable(_services);
 
   // _reloadRetriesLeft guards against retrying forever on a genuine,
   // persistent error -- this is specifically a safety net for the transient
@@ -46,9 +56,10 @@ class PluginManagerModel extends ChangeNotifier {
     }
 
     _plugins = loaded;
-    _capabilities = {
+    _services = {
       for (var p in loaded)
-        if (p.enabled) ...p.manifest.capabilities,
+        if (p.enabled)
+          for (var provided in p.manifest.provides) provided.service,
     };
     notifyListeners();
   }

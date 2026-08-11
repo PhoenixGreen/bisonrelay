@@ -601,6 +601,40 @@ Map<String, dynamic> _$ScreenDefToJson(ScreenDef instance) => <String, dynamic>{
       'label': instance.label,
     };
 
+PluginContribution _$PluginContributionFromJson(Map<String, dynamic> json) =>
+    PluginContribution(
+      json['id'] as String? ?? '',
+      json['label'] as String? ?? '',
+      json['icon'] as String? ?? '',
+      (json['screens'] as List<dynamic>?)
+              ?.map((e) => ScreenDef.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          [],
+    );
+
+Map<String, dynamic> _$PluginContributionToJson(PluginContribution instance) =>
+    <String, dynamic>{
+      'id': instance.id,
+      'label': instance.label,
+      'icon': instance.icon,
+      'screens': instance.screens,
+    };
+
+PluginService _$PluginServiceFromJson(Map<String, dynamic> json) =>
+    PluginService(
+      json['service'] as String? ?? '',
+      json['export'] as String? ?? '',
+      (json['domains'] as List<dynamic>?)?.map((e) => e as String).toList() ??
+          [],
+    );
+
+Map<String, dynamic> _$PluginServiceToJson(PluginService instance) =>
+    <String, dynamic>{
+      'service': instance.service,
+      'export': instance.export,
+      'domains': instance.domains,
+    };
+
 PluginManifest _$PluginManifestFromJson(Map<String, dynamic> json) =>
     PluginManifest(
       json['id'] as String,
@@ -609,14 +643,18 @@ PluginManifest _$PluginManifestFromJson(Map<String, dynamic> json) =>
       json['description'] as String,
       json['summary'] as String? ?? '',
       json['rendererKind'] as String,
-      json['navLabel'] as String? ?? '',
-      json['navIcon'] as String? ?? '',
-      (json['screens'] as List<dynamic>?)
-              ?.map((e) => ScreenDef.fromJson(e as Map<String, dynamic>))
-              .toList() ??
-          [],
-      (json['capabilities'] as List<dynamic>?)
-              ?.map((e) => e as String)
+      (json['schema'] as num?)?.toInt() ?? 0,
+      (json['contributes'] as Map<String, dynamic>?)?.map(
+            (k, e) => MapEntry(
+                k,
+                (e as List<dynamic>)
+                    .map((e) =>
+                        PluginContribution.fromJson(e as Map<String, dynamic>))
+                    .toList()),
+          ) ??
+          {},
+      (json['provides'] as List<dynamic>?)
+              ?.map((e) => PluginService.fromJson(e as Map<String, dynamic>))
               .toList() ??
           [],
     );
@@ -629,10 +667,9 @@ Map<String, dynamic> _$PluginManifestToJson(PluginManifest instance) =>
       'description': instance.description,
       'summary': instance.summary,
       'rendererKind': instance.rendererKind,
-      'navLabel': instance.navLabel,
-      'navIcon': instance.navIcon,
-      'screens': instance.screens,
-      'capabilities': instance.capabilities,
+      'schema': instance.schema,
+      'contributes': instance.contributes,
+      'provides': instance.provides,
     };
 
 PluginInfo _$PluginInfoFromJson(Map<String, dynamic> json) => PluginInfo(
@@ -663,6 +700,7 @@ DynWidget _$DynWidgetFromJson(Map<String, dynamic> json) => DynWidget(
               ?.map((e) => DynWidget.fromJson(e as Map<String, dynamic>))
               .toList() ??
           [],
+      json['props'] as Map<String, dynamic>? ?? {},
     );
 
 Map<String, dynamic> _$DynWidgetToJson(DynWidget instance) => <String, dynamic>{
@@ -679,6 +717,7 @@ Map<String, dynamic> _$DynWidgetToJson(DynWidget instance) => <String, dynamic>{
       'bookmarkable': instance.bookmarkable,
       'bookmarked': instance.bookmarked,
       'items': instance.items,
+      'props': instance.props,
     };
 
 DynScreenUI _$DynScreenUIFromJson(Map<String, dynamic> json) => DynScreenUI(
@@ -693,6 +732,33 @@ Map<String, dynamic> _$DynScreenUIToJson(DynScreenUI instance) =>
     <String, dynamic>{
       'title': instance.title,
       'widgets': instance.widgets,
+    };
+
+CallPluginServiceArgs _$CallPluginServiceArgsFromJson(
+        Map<String, dynamic> json) =>
+    CallPluginServiceArgs(
+      json['service'] as String,
+      json['arg'] as String,
+    );
+
+Map<String, dynamic> _$CallPluginServiceArgsToJson(
+        CallPluginServiceArgs instance) =>
+    <String, dynamic>{
+      'service': instance.service,
+      'arg': instance.arg,
+    };
+
+PluginServiceResult _$PluginServiceResultFromJson(Map<String, dynamic> json) =>
+    PluginServiceResult(
+      json['pluginId'] as String? ?? '',
+      json['result'] as String? ?? '',
+    );
+
+Map<String, dynamic> _$PluginServiceResultToJson(
+        PluginServiceResult instance) =>
+    <String, dynamic>{
+      'pluginId': instance.pluginId,
+      'result': instance.result,
     };
 
 DynPluginRenderScreenArgs _$DynPluginRenderScreenArgsFromJson(

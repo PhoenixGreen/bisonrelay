@@ -198,6 +198,17 @@ const (
 	CTLookupSynonyms               CmdType = 0xbe
 	CTGetExchangeRate              CmdType = 0xbd
 
+	// CTCallPluginService is the generic route to any service a plugin
+	// provides, by name, without this package or pluginmgr knowing what the
+	// name means.
+	//
+	// It is what a NEW service costs: nothing. The three commands above it
+	// exist only because their answers have to be merged in a way that is
+	// specific to what they are -- combining two dictionaries is a fact
+	// about dictionaries -- and a service whose consumer can combine its own
+	// answers never needs a command of its own again.
+	CTCallPluginService CmdType = 0xbf
+
 	NTInviteReceived            = 0x1001
 	NTInviteAccepted            = 0x1002
 	NTInviteErrored             = 0x1003

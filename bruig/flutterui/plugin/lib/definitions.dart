@@ -735,6 +735,46 @@ class ScreenDef {
 }
 
 @JsonSerializable()
+class PluginContribution {
+  /// The screen id passed to render_screen when this contribution is drawn.
+  @JsonKey(defaultValue: "")
+  final String id;
+  @JsonKey(defaultValue: "")
+  final String label;
+
+  /// A name from the host's icon set (plugin_icons.dart). Unknown names fall
+  /// back rather than failing, so the set can grow.
+  @JsonKey(defaultValue: "")
+  final String icon;
+
+  /// Sub-pages under this contribution, for a slot that can show more than
+  /// one. Empty means the contribution is the single screen named by [id].
+  @JsonKey(defaultValue: [])
+  final List<ScreenDef> screens;
+
+  PluginContribution(this.id, this.label, this.icon, this.screens);
+  factory PluginContribution.fromJson(Map<String, dynamic> json) =>
+      _$PluginContributionFromJson(json);
+}
+
+/// PluginService is one headless service a plugin answers.
+@JsonSerializable()
+class PluginService {
+  @JsonKey(defaultValue: "")
+  final String service;
+  @JsonKey(defaultValue: "")
+  final String export;
+
+  /// Which hostnames this provider claims, for a service that is about URLs.
+  @JsonKey(defaultValue: [])
+  final List<String> domains;
+
+  PluginService(this.service, this.export, this.domains);
+  factory PluginService.fromJson(Map<String, dynamic> json) =>
+      _$PluginServiceFromJson(json);
+}
+
+@JsonSerializable()
 class PluginManifest {
   final String id;
   final String name;
@@ -752,26 +792,44 @@ class PluginManifest {
   @JsonKey(name: "rendererKind")
   final String rendererKind;
 
-  // navLabel/navIcon/screens are populated only for rendererKind
-  // "dynamic-wasm" plugins (see DynPluginsModel), which contribute their
-  // own top-level nav item and sub-pages rendered by DynPluginScreen.
-  @JsonKey(name: "navLabel", defaultValue: "")
-  final String navLabel;
-  @JsonKey(name: "navIcon", defaultValue: "")
-  final String navIcon;
-  @JsonKey(name: "screens", defaultValue: [])
-  final List<ScreenDef> screens;
+  /// The manifest/ABI generation this plugin was built against. Zero for
+  /// every plugin written before the field existed.
+  @JsonKey(name: "schema", defaultValue: 0)
+  final int schema;
 
-  // capabilities declares optional headless behaviors a dynamic-wasm
-  // plugin implements independent of (and possibly in addition to) having
-  // a nav item -- e.g. "spellcheck-data" or "link-card". See
-  // PluginsModel.spellcheckActive/prettyLinksActive.
-  @JsonKey(name: "capabilities", defaultValue: [])
-  final List<String> capabilities;
+  /// contributes is the UI this plugin adds, keyed by the slot it goes in.
+  /// See plugin_slots.dart -- a slot this build does not draw is carried and
+  /// ignored, which is how a plugin targets a newer host.
+  ///
+  /// Always populated: the Go side folds the superseded navLabel/navIcon/
+  /// screens keys into it before this ever reaches Dart.
+  @JsonKey(name: "contributes", defaultValue: {})
+  final Map<String, List<PluginContribution>> contributes;
 
-  PluginManifest(this.id, this.name, this.version, this.description,
-      this.summary, this.rendererKind, this.navLabel, this.navIcon,
-      this.screens, this.capabilities);
+  /// provides is the headless services this plugin answers. Also always
+  /// populated, from the superseded capabilities key where needed.
+  @JsonKey(name: "provides", defaultValue: [])
+  final List<PluginService> provides;
+
+  PluginManifest(
+      this.id,
+      this.name,
+      this.version,
+      this.description,
+      this.summary,
+      this.rendererKind,
+      this.schema,
+      this.contributes,
+      this.provides);
+
+  /// contributionsTo is what this plugin adds to slot, if anything.
+  List<PluginContribution> contributionsTo(String slot) =>
+      contributes[slot] ?? const [];
+
+  /// providesService reports whether this plugin answers service.
+  bool providesService(String service) =>
+      provides.any((p) => p.service == service);
+
   factory PluginManifest.fromJson(Map<String, dynamic> json) =>
       _$PluginManifestFromJson(json);
 
@@ -813,7 +871,10 @@ class PluginInfo {
 // own foundational Widget class.
 @JsonSerializable()
 class DynWidget {
-  final String type; // "text","list","textfield","button","switch"
+  /// The widget to draw. See widget_renderer.dart for the set implemented,
+  /// and wasmhost.Widget for the Props each one reads. An unknown type is
+  /// skipped, which is how a plugin built against a newer host degrades.
+  final String type;
 
   @JsonKey(defaultValue: "")
   final String text;
@@ -840,6 +901,12 @@ class DynWidget {
   @JsonKey(defaultValue: [])
   final List<DynWidget> items;
 
+  /// Whatever is specific to this widget's [type], so a new widget type needs
+  /// no new field here and no change to the wire format. Read only by the
+  /// type that defines each key; see wasmhost.Widget for the current list.
+  @JsonKey(defaultValue: {})
+  final Map<String, dynamic> props;
+
   DynWidget(
       this.type,
       this.text,
@@ -853,7 +920,8 @@ class DynWidget {
       this.muted,
       this.bookmarkable,
       this.bookmarked,
-      this.items);
+      this.items,
+      this.props);
   factory DynWidget.fromJson(Map<String, dynamic> json) =>
       _$DynWidgetFromJson(json);
 }
@@ -866,6 +934,28 @@ class DynScreenUI {
   DynScreenUI(this.title, this.widgets);
   factory DynScreenUI.fromJson(Map<String, dynamic> json) =>
       _$DynScreenUIFromJson(json);
+}
+
+@JsonSerializable()
+class CallPluginServiceArgs {
+  final String service;
+  final String arg;
+  CallPluginServiceArgs(this.service, this.arg);
+  Map<String, dynamic> toJson() => _$CallPluginServiceArgsToJson(this);
+}
+
+/// PluginServiceResult is one provider's answer to a service call, still
+/// encoded -- the consumer knows what shape it agreed on, and no layer
+/// between them does.
+@JsonSerializable()
+class PluginServiceResult {
+  @JsonKey(name: "pluginId", defaultValue: "")
+  final String pluginId;
+  @JsonKey(defaultValue: "")
+  final String result;
+  PluginServiceResult(this.pluginId, this.result);
+  factory PluginServiceResult.fromJson(Map<String, dynamic> json) =>
+      _$PluginServiceResultFromJson(json);
 }
 
 @JsonSerializable()
@@ -4061,6 +4151,27 @@ abstract class PluginPlatform {
         .toList();
   }
 
+  /// callPluginService asks every enabled provider of [service] and returns
+  /// their answers, still encoded, in plugin-id order.
+  ///
+  /// The generic route, and the reason a new kind of plugin costs no Go and
+  /// no golib. The three typed calls below it -- spellcheck data, link
+  /// metadata, synonyms -- exist only because their answers have to be merged
+  /// in a way specific to what they are. Anything whose consumer can merge
+  /// its own answers uses this and needs nothing added anywhere.
+  ///
+  /// [arg] is handed to the provider verbatim; what it means is between the
+  /// consumer and the provider, and no layer in between needs to know.
+  Future<List<PluginServiceResult>> callPluginService(String service,
+      [String arg = ""]) async {
+    var res = await asyncCall(
+        CTCallPluginService, CallPluginServiceArgs(service, arg));
+    if (res == null) return const [];
+    return (res as List)
+        .map<PluginServiceResult>((v) => PluginServiceResult.fromJson(v))
+        .toList();
+  }
+
   Future<List<PluginInfo>> listPlugins() async {
     var res = await asyncCall(CTListPlugins, "");
     if (res == null) {
@@ -5060,6 +5171,7 @@ const int CTLookupSynonyms = 0xbe;
 const int CTDynPluginRenderScreen = 0xbb;
 const int CTDynPluginHandleEvent = 0xbc;
 const int CTGetExchangeRate = 0xbd;
+const int CTCallPluginService = 0xbf;
 
 const int notificationsStartID = 0x1000;
 

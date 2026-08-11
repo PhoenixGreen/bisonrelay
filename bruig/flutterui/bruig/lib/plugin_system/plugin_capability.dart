@@ -1,11 +1,18 @@
-// PluginCapability is a headless service a plugin can offer the app: not a
-// screen of its own, but data or behaviour that flows into somewhere Bison
-// Relay already draws.
+// PluginCapability names a headless service THIS APP knows how to consume:
+// not a screen of its own, but data or behaviour that flows into somewhere
+// Bison Relay already draws.
 //
-// Each value is a contract, not a plugin. Any number of plugins may declare
-// the same capability (their results are combined by the Go side -- see
+// It is emphatically not the set of services a plugin may provide. A plugin
+// declares any service name it likes and the host routes to it without
+// knowing what it means -- there is no allowlist on either side of the
+// boundary any more. This enum is the much smaller list of names the app
+// itself asks for, and adding to it is a statement about what the app
+// consumes rather than permission for anyone to publish.
+//
+// Each value is a contract, not a plugin. Any number of plugins may provide
+// the same service (their results are combined by the Go side -- see
 // client/pluginmgr/capabilities), and the app's own code is written against
-// the capability, never against whichever plugin happens to be providing it.
+// the service, never against whichever plugin happens to be providing it.
 // That is what lets a plugin be uninstalled without leaving a dangling
 // reference anywhere in the app.
 enum PluginCapability {
@@ -23,9 +30,9 @@ enum PluginCapability {
   // capabilities/thesaurus.dart.
   thesaurus("thesaurus");
 
-  // wireName is the string a manifest declares and the Go side validates
-  // against. Kept explicit rather than derived from the enum name so that
-  // renaming a value here can never silently invalidate installed plugins.
+  // wireName is the string a manifest declares. Kept explicit rather than
+  // derived from the enum name so that renaming a value here can never
+  // silently stop matching the plugins already installed.
   final String wireName;
 
   const PluginCapability(this.wireName);

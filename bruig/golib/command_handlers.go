@@ -1401,6 +1401,30 @@ func handleClientCmd(cc *clientCtx, cmd *cmd) (interface{}, error) {
 		return capabilities.MergedSpellcheckData(cc.ctx, cc.pluginMgr,
 			cc.dynRuntime, cc.log, language), nil
 
+	case CTCallPluginService:
+		// The generic service route. Every enabled provider of the named
+		// service is asked and all of their answers come back, still
+		// encoded, for the caller to merge as it sees fit -- which is the
+		// only policy this layer can have without knowing what the service
+		// means.
+		var args callPluginServiceArgs
+		if err := cmd.decode(&args); err != nil {
+			return nil, err
+		}
+		if args.Service == "" {
+			return nil, fmt.Errorf("no service named")
+		}
+		results := capabilities.CallAll(cc.ctx, cc.pluginMgr, cc.dynRuntime,
+			args.Service, []byte(args.Arg), 0)
+		out := make([]pluginServiceResult, 0, len(results))
+		for _, r := range results {
+			out = append(out, pluginServiceResult{
+				PluginID: r.PluginID,
+				Result:   string(r.Data),
+			})
+		}
+		return out, nil
+
 	case CTDynPluginRenderScreen:
 		var args dynPluginRenderScreenArgs
 		if err := cmd.decode(&args); err != nil {

@@ -26,10 +26,23 @@ PluginManifest _manifest({
   String version = "2.18.0",
   String description = "The long account of what this plugin does.",
   String summary = "A short line about it.",
-  List<String> capabilities = const ["spellcheck-data"],
+  List<String> services = const ["spellcheck-data"],
+  Map<String, List<PluginContribution>> contributes = const {},
 }) =>
-    PluginManifest(id, name, version, description, summary, "dynamic-wasm", "",
-        "", const [], capabilities);
+    PluginManifest(
+      id,
+      name,
+      version,
+      description,
+      summary,
+      "dynamic-wasm",
+      1,
+      contributes,
+      // The Go side fills in each service's export before a manifest reaches
+      // Dart, so a fixture that leaves it empty is not what the app ever
+      // sees; these tests only ask which services are provided.
+      [for (var s in services) PluginService(s, "", const [])],
+    );
 
 Future<void> _pump(
   WidgetTester tester, {
@@ -156,7 +169,7 @@ void main() {
       await _pump(tester, prefs: prefs, plugins: [
         PluginInfo(
             _manifest(
-                id: "links", name: "Link Cards", capabilities: ["link-card"]),
+                id: "links", name: "Link Cards", services: ["link-card"]),
             true),
         // Installed so the page-level fallback stays quiet: this test is
         // about which panel the settings appear in, not about that.

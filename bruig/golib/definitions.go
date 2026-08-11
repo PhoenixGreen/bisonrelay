@@ -223,6 +223,24 @@ type dynPluginHandleEventArgs struct {
 	Payload  map[string]interface{} `json:"payload"`
 }
 
+// callPluginServiceArgs asks every enabled provider of a named service.
+type callPluginServiceArgs struct {
+	Service string `json:"service"`
+
+	// Arg is handed to the guest export verbatim. A string rather than a
+	// typed payload because this layer does not know what the service takes
+	// -- a language code, a URL, a word, a blob of JSON the consumer and the
+	// provider agreed on between themselves.
+	Arg string `json:"arg"`
+}
+
+// pluginServiceResult is one provider's answer, still encoded, with the
+// plugin it came from so a consumer merging several can tell them apart.
+type pluginServiceResult struct {
+	PluginID string `json:"pluginId"`
+	Result   string `json:"result"`
+}
+
 type payTipArgs struct {
 	UID    clientintf.UserID `json:"uid"`
 	Amount float64           `json:"amount"`

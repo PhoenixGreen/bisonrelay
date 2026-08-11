@@ -16,7 +16,7 @@ type stubManager struct {
 	byCapability map[string][]pluginmgr.Manifest
 }
 
-func (m stubManager) PluginsWithCapability(capability string) []pluginmgr.Manifest {
+func (m stubManager) PluginsProviding(capability string) []pluginmgr.Manifest {
 	return m.byCapability[capability]
 }
 
@@ -52,11 +52,17 @@ func (r *stubRuntime) Call(ctx context.Context, id, export string, arg []byte,
 }
 
 func manifest(id string, capability string, domains ...string) pluginmgr.Manifest {
-	return pluginmgr.Manifest{
+	m := pluginmgr.Manifest{
 		ID:           id,
 		Capabilities: []string{capability},
 		Domains:      domains,
 	}
+	// Built by hand rather than read from disk, so the fold from the
+	// superseded keys into Provides has to be asked for -- see
+	// Manifest.Normalize. Without it the manifest looks like it provides
+	// nothing, which is exactly what a caller forgetting this would see.
+	m.Normalize()
+	return m
 }
 
 // TestMergedSpellcheckDataDeduplicates is the whole point of merging rather
@@ -64,9 +70,9 @@ func manifest(id string, capability string, domains ...string) pluginmgr.Manifes
 // would otherwise pay for every duplicate on every keystroke.
 func TestMergedSpellcheckDataDeduplicates(t *testing.T) {
 	mgr := stubManager{byCapability: map[string][]pluginmgr.Manifest{
-		pluginmgr.CapabilitySpellcheckData: {
-			manifest("a", pluginmgr.CapabilitySpellcheckData),
-			manifest("b", pluginmgr.CapabilitySpellcheckData),
+		pluginmgr.ServiceSpellcheckData: {
+			manifest("a", pluginmgr.ServiceSpellcheckData),
+			manifest("b", pluginmgr.ServiceSpellcheckData),
 		},
 	}}
 	rt := &stubRuntime{results: map[string]any{
@@ -102,9 +108,9 @@ func TestMergedSpellcheckDataDeduplicates(t *testing.T) {
 // one plugin still loading must not cost the user the others' dictionaries.
 func TestMergedSpellcheckDataSkipsFailures(t *testing.T) {
 	mgr := stubManager{byCapability: map[string][]pluginmgr.Manifest{
-		pluginmgr.CapabilitySpellcheckData: {
-			manifest("broken", pluginmgr.CapabilitySpellcheckData),
-			manifest("ok", pluginmgr.CapabilitySpellcheckData),
+		pluginmgr.ServiceSpellcheckData: {
+			manifest("broken", pluginmgr.ServiceSpellcheckData),
+			manifest("ok", pluginmgr.ServiceSpellcheckData),
 		},
 	}}
 	rt := &stubRuntime{
@@ -124,8 +130,8 @@ func TestMergedSpellcheckDataSkipsFailures(t *testing.T) {
 // a message, or a plugin silently never fires.
 func TestFetchLinkCardMatchesDomain(t *testing.T) {
 	mgr := stubManager{byCapability: map[string][]pluginmgr.Manifest{
-		pluginmgr.CapabilityLinkCard: {
-			manifest("cards", pluginmgr.CapabilityLinkCard, "YouTube.com"),
+		pluginmgr.ServiceLinkCard: {
+			manifest("cards", pluginmgr.ServiceLinkCard, "YouTube.com"),
 		},
 	}}
 	rt := &stubRuntime{results: map[string]any{
@@ -155,8 +161,8 @@ func TestFetchLinkCardMatchesDomain(t *testing.T) {
 // chat belong to no plugin at all, and must not reach one.
 func TestFetchLinkCardUnclaimedHost(t *testing.T) {
 	mgr := stubManager{byCapability: map[string][]pluginmgr.Manifest{
-		pluginmgr.CapabilityLinkCard: {
-			manifest("cards", pluginmgr.CapabilityLinkCard, "youtube.com"),
+		pluginmgr.ServiceLinkCard: {
+			manifest("cards", pluginmgr.ServiceLinkCard, "youtube.com"),
 		},
 	}}
 	rt := &stubRuntime{}
@@ -175,8 +181,8 @@ func TestFetchLinkCardUnclaimedHost(t *testing.T) {
 // guest code as something to fetch.
 func TestFetchLinkCardRejectsNonHTTP(t *testing.T) {
 	mgr := stubManager{byCapability: map[string][]pluginmgr.Manifest{
-		pluginmgr.CapabilityLinkCard: {
-			manifest("cards", pluginmgr.CapabilityLinkCard, "example.com"),
+		pluginmgr.ServiceLinkCard: {
+			manifest("cards", pluginmgr.ServiceLinkCard, "example.com"),
 		},
 	}}
 	rt := &stubRuntime{}
@@ -203,8 +209,8 @@ func TestFetchLinkCardRejectsNonHTTP(t *testing.T) {
 // distinguish from a real one, in place of the plain-link fallback.
 func TestFetchLinkCardEmptyResultIsError(t *testing.T) {
 	mgr := stubManager{byCapability: map[string][]pluginmgr.Manifest{
-		pluginmgr.CapabilityLinkCard: {
-			manifest("cards", pluginmgr.CapabilityLinkCard, "example.com"),
+		pluginmgr.ServiceLinkCard: {
+			manifest("cards", pluginmgr.ServiceLinkCard, "example.com"),
 		},
 	}}
 	rt := &stubRuntime{empty: map[string]bool{"cards": true}}
@@ -220,9 +226,9 @@ func TestFetchLinkCardEmptyResultIsError(t *testing.T) {
 // not abort the merge for the providers that did answer.
 func TestMergedSpellcheckDataSkipsEmptyResult(t *testing.T) {
 	mgr := stubManager{byCapability: map[string][]pluginmgr.Manifest{
-		pluginmgr.CapabilitySpellcheckData: {
-			manifest("silent", pluginmgr.CapabilitySpellcheckData),
-			manifest("ok", pluginmgr.CapabilitySpellcheckData),
+		pluginmgr.ServiceSpellcheckData: {
+			manifest("silent", pluginmgr.ServiceSpellcheckData),
+			manifest("ok", pluginmgr.ServiceSpellcheckData),
 		},
 	}}
 	rt := &stubRuntime{
@@ -241,9 +247,9 @@ func TestMergedSpellcheckDataSkipsEmptyResult(t *testing.T) {
 // what those are without being told in advance.
 func TestMergedSpellcheckDataCollectsLanguages(t *testing.T) {
 	mgr := stubManager{byCapability: map[string][]pluginmgr.Manifest{
-		pluginmgr.CapabilitySpellcheckData: {
-			manifest("a", pluginmgr.CapabilitySpellcheckData),
-			manifest("b", pluginmgr.CapabilitySpellcheckData),
+		pluginmgr.ServiceSpellcheckData: {
+			manifest("a", pluginmgr.ServiceSpellcheckData),
+			manifest("b", pluginmgr.ServiceSpellcheckData),
 		},
 	}}
 	rt := &stubRuntime{results: map[string]any{
@@ -291,8 +297,8 @@ func TestMergedSpellcheckDataCollectsLanguages(t *testing.T) {
 // would always answer with its default, and the setting would do nothing.
 func TestMergedSpellcheckDataPassesTheLanguage(t *testing.T) {
 	mgr := stubManager{byCapability: map[string][]pluginmgr.Manifest{
-		pluginmgr.CapabilitySpellcheckData: {
-			manifest("a", pluginmgr.CapabilitySpellcheckData),
+		pluginmgr.ServiceSpellcheckData: {
+			manifest("a", pluginmgr.ServiceSpellcheckData),
 		},
 	}}
 	rt := &stubRuntime{results: map[string]any{
@@ -303,5 +309,33 @@ func TestMergedSpellcheckDataPassesTheLanguage(t *testing.T) {
 
 	if got := rt.lastArg["a"]; got != "en-GB" {
 		t.Errorf("plugin was asked for %q, want en-GB", got)
+	}
+}
+
+// TestFetchLinkCardIgnoresProvidersClaimingNothing is a privacy property, not
+// a tidiness one: a link-card provider is handed the URLs somebody is
+// reading, so one that never said which hosts it wants is never told about
+// any of them.
+//
+// This used to be enforced at import, where pluginmgr rejected a link-card
+// manifest with no domains. That put knowledge of what one particular service
+// means into the manager, which is built not to have any -- and it refused to
+// install a plugin that might do several other things perfectly well. Here,
+// such a plugin installs and is simply never asked.
+func TestFetchLinkCardIgnoresProvidersClaimingNothing(t *testing.T) {
+	mgr := stubManager{byCapability: map[string][]pluginmgr.Manifest{
+		pluginmgr.ServiceLinkCard: {manifest("greedy", pluginmgr.ServiceLinkCard)},
+	}}
+	rt := &stubRuntime{results: map[string]any{
+		"greedy": LinkMetadata{Title: "should never be asked"},
+	}}
+
+	if _, err := FetchLinkCard(context.Background(), mgr, rt,
+		"https://example.com/a"); err == nil {
+		t.Fatal("a provider declaring no domains must not be offered the URL")
+	}
+	if len(rt.calls) != 0 {
+		t.Errorf("plugin was called %v; it should not have been asked at all",
+			rt.calls)
 	}
 }

@@ -57,16 +57,15 @@ func FetchLinkCard(ctx context.Context, mgr Manager, rt Runtime,
 	}
 	host := pluginmgr.NormalizeHost(parsed.Hostname())
 
-	for _, manifest := range mgr.PluginsWithCapability(pluginmgr.CapabilityLinkCard) {
-		for _, domain := range manifest.Domains {
-			if pluginmgr.NormalizeHost(domain) != host {
-				continue
-			}
-			var metadata LinkMetadata
-			err := call(ctx, rt, manifest.ID, linkCardExport, []byte(linkURL),
-				linkCardTimeout, &metadata)
-			return metadata, err
+	for _, manifest := range mgr.PluginsProviding(pluginmgr.ServiceLinkCard) {
+		if !ClaimsHost(manifest, pluginmgr.ServiceLinkCard, host) {
+			continue
 		}
+		export, _ := manifest.ServiceExport(pluginmgr.ServiceLinkCard)
+		var metadata LinkMetadata
+		err := call(ctx, rt, manifest.ID, export, []byte(linkURL),
+			linkCardTimeout, &metadata)
+		return metadata, err
 	}
 	return LinkMetadata{}, fmt.Errorf("capabilities: no plugin handles %q", host)
 }

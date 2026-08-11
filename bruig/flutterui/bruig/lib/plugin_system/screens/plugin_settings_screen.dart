@@ -143,8 +143,10 @@ class _PluginsSettingsScreenState extends State<PluginsSettingsScreen> {
             builder: (context, model, child) => Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                for (var section in PluginSettingsRegistry.orphaned(
-                    {for (var p in model.plugins) ...p.manifest.capabilities}))
+                for (var section in PluginSettingsRegistry.orphaned({
+                  for (var p in model.plugins)
+                    for (var provided in p.manifest.provides) provided.service,
+                }))
                   section(context, false),
               ],
             ),
@@ -206,14 +208,22 @@ class _PluginsSettingsScreenState extends State<PluginsSettingsScreen> {
     // app follows -- nothing here asks "is this particular plugin installed",
     // only "what has registered against what this one provides".
     var settings = PluginSettingsRegistry.forCapabilities(
-        plugin.manifest.capabilities);
+        [for (var provided in plugin.manifest.provides) provided.service]);
 
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Txt.S(plugin.manifest.description, color: TextColor.onSurfaceVariant),
+        // Whatever the app itself contributes for the services this plugin
+        // provides -- the writing overrides, say.
         for (var section in settings) section(context, true),
+        // And whatever the plugin contributes for itself. This is the slot
+        // that makes a plugin's own settings possible at all: before it, a
+        // plugin's only way to offer configuration was a sub-page of a nav
+        // item it may not have wanted in the first place.
+        PluginSlotPanel(PluginSlots.settingsPage,
+            pluginId: plugin.manifest.id, headings: false),
         const SizedBox(height: 12),
         Divider(height: 1, color: theme.colors.outlineVariant),
       ]),

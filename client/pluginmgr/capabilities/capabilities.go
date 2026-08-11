@@ -12,8 +12,12 @@
 //     *names*, because they are part of the manifest schema it validates,
 //     but nothing about the calls behind them.
 //
-// Adding a capability is therefore one new file here, plus its name in
-// pluginmgr's manifest schema. Neither the runtime nor the manager changes.
+// A service whose answers need MERGING gets a file here, because how to
+// combine two dictionaries is a fact about dictionaries. A service whose
+// answers do not -- or whose consumer can combine them itself -- needs
+// nothing here at all: it is declared by the plugin, routed by name through
+// services.go, and decoded by whoever asked. There is no list of permitted
+// service names anywhere.
 //
 // Every function here takes the manager and the runtime rather than holding
 // them, so a capability is a plain function over "the plugins currently
@@ -39,7 +43,7 @@ type Runtime interface {
 
 // Manager is the part of *pluginmgr.Manager a capability call needs.
 type Manager interface {
-	PluginsWithCapability(capability string) []pluginmgr.Manifest
+	PluginsProviding(service string) []pluginmgr.Manifest
 }
 
 // call invokes export on plugin id and decodes its JSON result into out.

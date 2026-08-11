@@ -28,8 +28,12 @@ class FakePluginManager extends ChangeNotifier implements PluginManagerModel {
   List<PluginInfo> get plugins => _plugins;
 
   @override
-  bool hasCapability(PluginCapability capability) => _plugins.any((p) =>
-      p.enabled && p.manifest.capabilities.contains(capability.wireName));
+  bool hasCapability(PluginCapability capability) =>
+      hasService(capability.wireName);
+
+  @override
+  bool hasService(String service) =>
+      _plugins.any((p) => p.enabled && p.manifest.providesService(service));
 
   @override
   noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);

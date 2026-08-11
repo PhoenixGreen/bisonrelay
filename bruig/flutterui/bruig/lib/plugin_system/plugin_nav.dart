@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:bruig/plugin_system/plugin_icons.dart';
+import 'package:bruig/plugin_system/plugin_slots.dart';
 import 'package:bruig/plugin_system/screens/plugin_screen.dart';
 import 'package:bruig/components/text.dart';
 import 'package:bruig/models/menus.dart';
@@ -48,17 +50,32 @@ class PluginNavModel extends ChangeNotifier {
 
     for (var p in plugins) {
       if (p.manifest.rendererKind != "dynamic-wasm" || !p.enabled) continue;
-      if (p.manifest.screens.isEmpty) continue;
-      stillEnabled.add(p.manifest.id);
+      // The nav slot, like every other -- a plugin that contributes no nav
+      // item simply has none, whether because it is headless or because it
+      // appears only in a settings page or a composer toolbar.
+      for (var nav in p.manifest.contributionsTo(PluginSlots.nav)) {
+        stillEnabled.add(p.manifest.id);
 
-      mainMenu.registerDynamicItem(MainMenuItem(
-        p.manifest.navLabel,
-        routeNameFor(p.manifest.id),
-        (context) => PluginScreen(p.manifest.id, p.manifest.screens),
-        (context) => Txt.L(p.manifest.navLabel),
-        SidebarIcon(_iconFor(p.manifest.navIcon), false),
-        <SubMenuInfo>[],
-      ));
+        // A nav contribution with no sub-pages is a one-page plugin, and its
+        // own id is that page. Only the nav slot carries sub-pages at all,
+        // which is why the side menu lives with the screen rather than here.
+        var screens = nav.screens.isNotEmpty
+            ? nav.screens
+            : [ScreenDef(nav.id, nav.label)];
+
+        mainMenu.registerDynamicItem(MainMenuItem(
+          nav.label,
+          routeNameFor(p.manifest.id),
+          (context) => PluginScreen(p.manifest.id, screens),
+          (context) => Txt.L(nav.label),
+          SidebarIcon(pluginIcon(nav.icon), false),
+          <SubMenuInfo>[],
+        ));
+        // One nav item per plugin: the route name is keyed on the plugin id,
+        // so a second contribution would overwrite the first rather than
+        // appear beside it. A plugin wanting two tabs wants two plugins.
+        break;
+      }
     }
 
     for (var id in _registered.difference(stillEnabled)) {
@@ -68,34 +85,4 @@ class PluginNavModel extends ChangeNotifier {
       ..clear()
       ..addAll(stillEnabled);
   }
-
-  // _navIcons is the fixed palette a manifest's navIcon may name. A plugin
-  // ships no assets and no code the app draws with, so it picks from this
-  // list rather than supplying an image -- an unrecognized name (from a
-  // plugin built against a later version) falls back to a generic icon
-  // rather than failing to register the plugin at all.
-  static const Map<String, IconData> _navIcons = {
-    "rss_feed": Icons.rss_feed,
-    "article": Icons.article_outlined,
-    "bookmark": Icons.bookmark_outline,
-    "calendar": Icons.calendar_today_outlined,
-    "chat": Icons.forum_outlined,
-    "cloud": Icons.cloud_outlined,
-    "code": Icons.code,
-    "dashboard": Icons.dashboard_outlined,
-    "explore": Icons.explore_outlined,
-    "feed": Icons.dynamic_feed_outlined,
-    "folder": Icons.folder_outlined,
-    "music": Icons.music_note_outlined,
-    "note": Icons.sticky_note_2_outlined,
-    "photo": Icons.photo_outlined,
-    "search": Icons.search,
-    "star": Icons.star_outline,
-    "store": Icons.storefront_outlined,
-    "tag": Icons.local_offer_outlined,
-    "video": Icons.ondemand_video_outlined,
-    "wallet": Icons.account_balance_wallet_outlined,
-  };
-
-  IconData _iconFor(String name) => _navIcons[name] ?? Icons.extension_outlined;
 }

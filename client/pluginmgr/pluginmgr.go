@@ -34,26 +34,32 @@ const (
 
 	// RendererKindDynamicWasm is the only renderer kind: Manifest.WasmFile
 	// names a WebAssembly module (sandboxed by client/pluginmgr/wasmhost)
-	// that contributes its own top-level nav item (Manifest.NavLabel/
-	// NavIcon) and screens (Manifest.Screens), a set of headless
-	// Capabilities, or both.
+	// that Contributes UI to the host's slots, Provides headless services,
+	// or both.
 	RendererKindDynamicWasm = "dynamic-wasm"
 
-	// CapabilitySpellcheckData means this plugin supplies a wordlist and
-	// grammar-rule set, merged with every other enabled spellcheck-data
-	// plugin's. See client/pluginmgr/capabilities for the contract.
-	CapabilitySpellcheckData = "spellcheck-data"
+	// The slots the host publishes. A slot is a named surface a plugin may
+	// contribute UI to; the host draws whatever turns up, by rendering the
+	// same declarative widget tree it already renders for screens.
+	//
+	// These are named here so the host can document and test them, NOT as an
+	// allowlist. A contribution to a slot this build has never heard of is
+	// kept and simply never drawn -- which is what lets a plugin target a
+	// newer host and degrade on an older one, and what stops this list
+	// becoming the gate that knownCapabilities used to be.
+	SlotNav            = "nav"
+	SlotSettingsPage   = "settingsPage"
+	SlotComposerAction = "composerAction"
+	SlotMessageAction  = "messageAction"
+	SlotSidebarPanel   = "sidebarPanel"
 
-	// CapabilityLinkCard means this plugin turns a URL into a preview card,
-	// using Manifest.Domains to claim which hostnames it handles. See
-	// client/pluginmgr/capabilities for the contract.
-	CapabilityLinkCard = "link-card"
-
-	// CapabilityThesaurus means this plugin can answer "what else could I
-	// have said here" for a single word. Unlike the two above it is asked on
-	// demand, one word at a time, rather than supplying data up front. See
-	// client/pluginmgr/capabilities for the contract.
-	CapabilityThesaurus = "thesaurus"
+	// The service names the app itself consumes. Again: documentation, not
+	// an allowlist. A plugin may provide any service name it likes; one
+	// nothing consumes is inert rather than rejected, which is the whole
+	// difference between a namespace and a permission slip.
+	ServiceSpellcheckData = "spellcheck-data"
+	ServiceLinkCard       = "link-card"
+	ServiceThesaurus      = "thesaurus"
 
 	maxManifestSize = 64 * 1024
 
@@ -84,15 +90,16 @@ var knownRendererKinds = map[string]bool{
 	RendererKindDynamicWasm: true,
 }
 
-// knownCapabilities gates what a manifest may declare. Capability names are
-// part of the manifest schema, so they live here; the calls behind them live
-// in client/pluginmgr/capabilities, which is the only other place adding a
-// capability touches.
-var knownCapabilities = map[string]bool{
-	CapabilitySpellcheckData: true,
-	CapabilityLinkCard:       true,
-	CapabilityThesaurus:      true,
-}
+// CurrentSchema is the manifest/ABI generation this build implements. A
+// plugin declares the one it was built against in Manifest.Schema so both
+// sides can tell, rather than discovering the mismatch as a widget that
+// silently fails to draw.
+//
+// Bumped only for a change a plugin can observe: a new widget type, a new
+// slot, a new host import. A plugin declaring a HIGHER schema than this is
+// still loaded -- it may well degrade perfectly well, and refusing it would
+// make every host upgrade a flag day -- but the mismatch is logged.
+const CurrentSchema = 1
 
 // wasmFilenameRegexp restricts Manifest.WasmFile to a bare filename (no
 // path separators or traversal).
@@ -102,9 +109,21 @@ var wasmFilenameRegexp = regexp.MustCompile(`^[a-zA-Z0-9_-]+\.wasm$`)
 // plugin may declare, as a basic sanity limit.
 const maxScreens = 20
 
+// maxContributionsPerSlot caps how many entries one plugin may put in a
+// single slot, so a plugin cannot bury a menu under its own contributions.
+const maxContributionsPerSlot = 20
+
 // safeIDRegexp restricts plugin ids (and therefore their install directory
 // names) to a conservative charset, precluding path traversal.
 var safeIDRegexp = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
+
+// serviceNameRegexp restricts a provided service name. Loose on purpose --
+// it exists to reject garbage, not to decide which services may exist.
+var serviceNameRegexp = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]*$`)
+
+// exportNameRegexp restricts the wasm export a service is answered by, since
+// it is looked up by name in the guest module.
+var exportNameRegexp = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
 
 // hostnameRegexp is a loose sanity check for manifest-declared domains; it is
 // not a full RFC validator, just enough to reject obvious garbage.
@@ -122,6 +141,11 @@ type Manifest struct {
 	// only a Description still lists, on the opening of it.
 	Summary string `json:"summary,omitempty"`
 
+	// Schema is the manifest/ABI generation this plugin was built against --
+	// see CurrentSchema. Absent means 0, which is every plugin written before
+	// the field existed and is treated as "the original vocabulary".
+	Schema int `json:"schema,omitempty"`
+
 	EnabledByDefault bool   `json:"enabledByDefault"`
 	RendererKind     string `json:"rendererKind"`
 
@@ -130,27 +154,186 @@ type Manifest struct {
 	// directory.
 	WasmFile string `json:"wasmFile,omitempty"`
 
-	// NavLabel, NavIcon, and Screens describe the plugin's contributed
-	// top-level nav item (if any -- a headless, Capabilities-only plugin
-	// has none). Screens lists its sub-pages, rendered via
-	// wasmhost.Runtime's RenderScreen.
-	NavLabel string      `json:"navLabel,omitempty"`
-	NavIcon  string      `json:"navIcon,omitempty"`
-	Screens  []ScreenDef `json:"screens,omitempty"`
+	// Contributes is the UI this plugin adds, keyed by the slot it goes in
+	// (see the Slot* constants). Every contribution is rendered by asking the
+	// module for a widget tree, exactly as a screen is -- a slot is a screen
+	// with somewhere to be drawn.
+	//
+	// The host does not check the slot names. One it does not implement is
+	// carried and never drawn, so a plugin can target a newer host without
+	// failing to install on an older one.
+	Contributes map[string][]Contribution `json:"contributes,omitempty"`
+
+	// Provides is the headless services this plugin answers -- a dictionary,
+	// a link unfurler, a translator. A service is a name and the export that
+	// answers it; the host routes to it without knowing what it means, and a
+	// service nothing consumes costs nothing.
+	Provides []ServiceDef `json:"provides,omitempty"`
 
 	// PollIntervalSeconds, if positive, schedules a recurring background
 	// call into the plugin's poll() export (clamped to at least
 	// wasmhost.MinPollInterval); zero/absent disables polling.
 	PollIntervalSeconds int `json:"pollIntervalSeconds,omitempty"`
 
-	// Capabilities declares optional headless behaviors this plugin
-	// implements, independent of (and possibly in addition to) having a
-	// nav item -- see the Capability* constants.
+	// --- Superseded keys, still read ------------------------------------
+	//
+	// These are what a manifest said before Contributes and Provides
+	// existed. They are still accepted and normalized into the two above by
+	// normalize(), because plugins are installed artifacts built and shipped
+	// independently of this repository: an installed copy that stopped
+	// loading on upgrade would be this package breaking somebody else's
+	// software. Nothing downstream reads them -- consult Contributes and
+	// Provides, which are populated either way.
+
+	// NavLabel, NavIcon and Screens described the plugin's top-level nav
+	// item. Now one Contribution in the SlotNav slot.
+	NavLabel string      `json:"navLabel,omitempty"`
+	NavIcon  string      `json:"navIcon,omitempty"`
+	Screens  []ScreenDef `json:"screens,omitempty"`
+
+	// Capabilities was the fixed vocabulary of headless behaviours, gated by
+	// an allowlist in this package. Now Provides, gated by nothing.
 	Capabilities []string `json:"capabilities,omitempty"`
 
-	// Domains is used only when Capabilities includes CapabilityLinkCard:
-	// which hostnames this plugin wants FetchLinkCard tried for.
+	// Domains was used only by the link-card capability. Now a field of the
+	// ServiceDef that wants it, since which hostnames a provider claims is a
+	// property of that service and not of the plugin.
 	Domains []string `json:"domains,omitempty"`
+}
+
+// Contribution is one piece of UI a plugin adds to a slot.
+type Contribution struct {
+	// ID is the screen id passed back to the module's render_screen when
+	// this contribution is drawn, and to handle_event when it is used.
+	ID string `json:"id"`
+
+	// Label names it wherever the slot shows a name -- a nav item, a menu
+	// entry, a tab.
+	Label string `json:"label"`
+
+	// Icon is a name from the host's icon set. Optional, and an unknown one
+	// falls back rather than failing, so the set can grow.
+	Icon string `json:"icon,omitempty"`
+
+	// Screens are sub-pages under this contribution, for a slot that can
+	// show more than one (the nav item and its side menu). Empty means the
+	// contribution is the single screen named by ID.
+	Screens []ScreenDef `json:"screens,omitempty"`
+}
+
+// ServiceDef is one headless service a plugin answers.
+type ServiceDef struct {
+	// Service is the name consumers ask for. Any string; the host neither
+	// validates it against a list nor needs to know what it means.
+	Service string `json:"service"`
+
+	// Export is the module function that answers it. Defaults to Service
+	// with dashes turned to underscores, which is the convention every
+	// existing plugin already follows.
+	Export string `json:"export,omitempty"`
+
+	// Domains narrows which hostnames this provider claims, for a service
+	// that is about URLs. Empty means "any", which is correct for every
+	// service that is not.
+	Domains []string `json:"domains,omitempty"`
+}
+
+// legacyCapabilityExports maps the three capability names that predate
+// ServiceDef to the exports their plugins already implement, so a manifest
+// written before Provides existed routes to the same function it always did.
+var legacyCapabilityExports = map[string]string{
+	ServiceSpellcheckData: "get_spellcheck_data",
+	ServiceLinkCard:       "fetch_link_card",
+	ServiceThesaurus:      "lookup_synonyms",
+}
+
+// defaultExportFor is the export a service is answered by when a ServiceDef
+// does not name one: the service with dashes turned to underscores.
+func defaultExportFor(service string) string {
+	if export, ok := legacyCapabilityExports[service]; ok {
+		return export
+	}
+	return strings.ReplaceAll(service, "-", "_")
+}
+
+// Normalize folds the superseded manifest keys into Contributes and Provides,
+// so everything downstream reads one shape whatever the plugin wrote.
+//
+// Called once, on the way out of readManifest, rather than at each point of
+// use: a reader that has to remember to check two fields will eventually be
+// written by somebody who does not. Exported because anything building a
+// Manifest by hand rather than reading one -- a test, a fixture -- has to
+// call it too, and a manifest that skipped it looks empty rather than wrong.
+//
+// Idempotent: running it twice adds nothing, so a caller unsure whether a
+// manifest has been through it can simply call it.
+func (m *Manifest) Normalize() {
+	if len(m.Screens) > 0 || m.NavLabel != "" {
+		if _, already := m.Contributes[SlotNav]; !already {
+			if m.Contributes == nil {
+				m.Contributes = map[string][]Contribution{}
+			}
+			id := "main"
+			if len(m.Screens) > 0 {
+				id = m.Screens[0].ID
+			}
+			m.Contributes[SlotNav] = []Contribution{{
+				ID:      id,
+				Label:   m.NavLabel,
+				Icon:    m.NavIcon,
+				Screens: m.Screens,
+			}}
+		}
+	}
+
+	for _, capability := range m.Capabilities {
+		if m.providesService(capability) {
+			continue
+		}
+		def := ServiceDef{
+			Service: capability,
+			Export:  defaultExportFor(capability),
+		}
+		// Domains was only ever meaningful for link-card, and belongs to
+		// that service rather than to the plugin.
+		if capability == ServiceLinkCard {
+			def.Domains = m.Domains
+		}
+		m.Provides = append(m.Provides, def)
+	}
+
+	// Fill in the export for anything that declared a service without one.
+	for i := range m.Provides {
+		if m.Provides[i].Export == "" {
+			m.Provides[i].Export = defaultExportFor(m.Provides[i].Service)
+		}
+	}
+}
+
+// providesService reports whether Provides already names service.
+func (m *Manifest) providesService(service string) bool {
+	for _, p := range m.Provides {
+		if p.Service == service {
+			return true
+		}
+	}
+	return false
+}
+
+// ServiceExport returns the export answering service, and whether this plugin
+// provides it at all.
+func (m Manifest) ServiceExport(service string) (string, bool) {
+	for _, p := range m.Provides {
+		if p.Service == service {
+			return p.Export, true
+		}
+	}
+	return "", false
+}
+
+// ContributionsTo returns what this plugin adds to slot, if anything.
+func (m Manifest) ContributionsTo(slot string) []Contribution {
+	return m.Contributes[slot]
 }
 
 // ScreenDef is one sub-page a plugin contributes under its nav item.
@@ -317,6 +500,11 @@ func (m *Manager) readManifest(pluginDir string) (Manifest, error) {
 		return Manifest{}, fmt.Errorf("invalid manifest json: %w", err)
 	}
 
+	// Fold the superseded keys into Contributes/Provides before anything
+	// else looks at the manifest, so validation and every reader downstream
+	// see one shape regardless of which generation wrote it.
+	manifest.Normalize()
+
 	if err := validateManifest(manifest); err != nil {
 		return Manifest{}, err
 	}
@@ -348,49 +536,39 @@ func validateDynamicWasmManifest(manifest Manifest) error {
 		return fmt.Errorf("manifest declares invalid wasmFile filename %q", manifest.WasmFile)
 	}
 
-	hasScreens := len(manifest.Screens) > 0
-	hasCapabilities := len(manifest.Capabilities) > 0
-	if !hasScreens && !hasCapabilities {
-		return fmt.Errorf("manifest declares neither screens nor capabilities")
+	if len(manifest.Contributes) == 0 && len(manifest.Provides) == 0 {
+		return fmt.Errorf("manifest contributes no UI and provides no services")
 	}
 
-	if hasScreens {
-		if manifest.NavLabel == "" {
-			return fmt.Errorf("manifest declares screens but is missing navLabel")
+	for slot, contributions := range manifest.Contributes {
+		if !safeIDRegexp.MatchString(slot) {
+			return fmt.Errorf("slot name %q contains disallowed characters", slot)
 		}
-		if len(manifest.Screens) > maxScreens {
-			return fmt.Errorf("manifest declares too many screens (%d)", len(manifest.Screens))
-		}
-		seenIDs := make(map[string]bool, len(manifest.Screens))
-		for i, screen := range manifest.Screens {
-			if screen.ID == "" {
-				return fmt.Errorf("screen %d is missing an id", i)
-			}
-			if !safeIDRegexp.MatchString(screen.ID) {
-				return fmt.Errorf("screen %d id %q contains disallowed characters", i, screen.ID)
-			}
-			if screen.Label == "" {
-				return fmt.Errorf("screen %d is missing a label", i)
-			}
-			if seenIDs[screen.ID] {
-				return fmt.Errorf("screen %d id %q is a duplicate", i, screen.ID)
-			}
-			seenIDs[screen.ID] = true
+		// Deliberately no check that this build implements the slot: an
+		// unknown one is carried and never drawn, which is how a plugin
+		// targets a newer host without failing to install on this one.
+		if err := validateContributions(slot, contributions); err != nil {
+			return err
 		}
 	}
 
-	for i, capability := range manifest.Capabilities {
-		if !knownCapabilities[capability] {
-			return fmt.Errorf("capability %d is unknown: %q", i, capability)
+	for i, service := range manifest.Provides {
+		if service.Service == "" {
+			return fmt.Errorf("provides %d is missing a service name", i)
 		}
-	}
-	if hasCapability(manifest, CapabilityLinkCard) {
-		if len(manifest.Domains) == 0 {
-			return fmt.Errorf("%s capability requires at least one domain", CapabilityLinkCard)
+		// Structural only. There is no list of permitted service names, by
+		// design -- a service nothing consumes is inert, not invalid.
+		if !serviceNameRegexp.MatchString(service.Service) {
+			return fmt.Errorf("provides %d service %q contains disallowed characters",
+				i, service.Service)
 		}
-		for i, domain := range manifest.Domains {
+		if !exportNameRegexp.MatchString(service.Export) {
+			return fmt.Errorf("provides %d export %q is not a valid export name",
+				i, service.Export)
+		}
+		for j, domain := range service.Domains {
 			if !hostnameRegexp.MatchString(domain) {
-				return fmt.Errorf("domain %d is invalid: %q", i, domain)
+				return fmt.Errorf("provides %d domain %d is invalid: %q", i, j, domain)
 			}
 		}
 	}
@@ -401,13 +579,55 @@ func validateDynamicWasmManifest(manifest Manifest) error {
 	return nil
 }
 
-func hasCapability(manifest Manifest, capability string) bool {
-	for _, c := range manifest.Capabilities {
-		if c == capability {
-			return true
+// validateContributions checks one slot's worth of contributions.
+func validateContributions(slot string, contributions []Contribution) error {
+	if len(contributions) > maxContributionsPerSlot {
+		return fmt.Errorf("slot %q declares too many contributions (%d)",
+			slot, len(contributions))
+	}
+	seen := make(map[string]bool, len(contributions))
+	for i, c := range contributions {
+		if c.ID == "" {
+			return fmt.Errorf("slot %q contribution %d is missing an id", slot, i)
+		}
+		if !safeIDRegexp.MatchString(c.ID) {
+			return fmt.Errorf("slot %q contribution %d id %q contains disallowed characters",
+				slot, i, c.ID)
+		}
+		if c.Label == "" {
+			return fmt.Errorf("slot %q contribution %d is missing a label", slot, i)
+		}
+		if seen[c.ID] {
+			return fmt.Errorf("slot %q contribution %d id %q is a duplicate", slot, i, c.ID)
+		}
+		seen[c.ID] = true
+
+		if len(c.Screens) > maxScreens {
+			return fmt.Errorf("slot %q contribution %q declares too many screens (%d)",
+				slot, c.ID, len(c.Screens))
+		}
+		screenIDs := make(map[string]bool, len(c.Screens))
+		for j, screen := range c.Screens {
+			if screen.ID == "" {
+				return fmt.Errorf("slot %q contribution %q screen %d is missing an id",
+					slot, c.ID, j)
+			}
+			if !safeIDRegexp.MatchString(screen.ID) {
+				return fmt.Errorf("slot %q contribution %q screen %d id %q contains disallowed characters",
+					slot, c.ID, j, screen.ID)
+			}
+			if screen.Label == "" {
+				return fmt.Errorf("slot %q contribution %q screen %d is missing a label",
+					slot, c.ID, j)
+			}
+			if screenIDs[screen.ID] {
+				return fmt.Errorf("slot %q contribution %q screen %d id %q is a duplicate",
+					slot, c.ID, j, screen.ID)
+			}
+			screenIDs[screen.ID] = true
 		}
 	}
-	return false
+	return nil
 }
 
 // List returns all installed plugins with their current enabled state,
@@ -424,17 +644,20 @@ func (m *Manager) List() []Plugin {
 	return out
 }
 
-// PluginsWithCapability returns the manifests of all currently ENABLED
-// plugins that declare capability, sorted by ID. It is how
-// client/pluginmgr/capabilities finds which plugins to ask; this package
-// itself never calls one.
-func (m *Manager) PluginsWithCapability(capability string) []Manifest {
+// PluginsProviding returns the manifests of all currently ENABLED plugins
+// that provide service, sorted by ID. It is how a consumer finds which
+// plugins to ask; this package itself never calls one, and never needs to
+// know what any service name means.
+func (m *Manager) PluginsProviding(service string) []Manifest {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
 	var out []Manifest
 	for id, manifest := range m.byID {
-		if m.enabled[id] && hasCapability(manifest, capability) {
+		if !m.enabled[id] {
+			continue
+		}
+		if _, ok := manifest.ServiceExport(service); ok {
 			out = append(out, manifest)
 		}
 	}

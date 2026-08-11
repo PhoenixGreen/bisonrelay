@@ -47,6 +47,9 @@
 //   plugin_manager.dart                 which plugins are installed/enabled
 //   plugin_nav.dart                     screen-bearing plugins as nav items
 //   plugin_settings.dart                where a capability's settings attach
+//   plugin_slots.dart                   the surfaces a plugin may contribute to
+//   plugin_icons.dart                   the icon names a plugin may use
+//   screens/widget_renderer.dart        the declarative widget tree, drawn
 //   screens/plugin_screen.dart          renders a plugin-described screen
 //   screens/plugin_settings_screen.dart Settings > Plugins
 //
@@ -57,5 +60,6 @@ export 'package:bruig/plugin_system/plugin_capability.dart';
 export 'package:bruig/plugin_system/plugin_manager.dart';
 export 'package:bruig/plugin_system/plugin_nav.dart';
 export 'package:bruig/plugin_system/plugin_settings.dart';
+export 'package:bruig/plugin_system/plugin_slots.dart';
 export 'package:bruig/plugin_system/screens/plugin_screen.dart';
 export 'package:bruig/plugin_system/screens/plugin_settings_screen.dart';

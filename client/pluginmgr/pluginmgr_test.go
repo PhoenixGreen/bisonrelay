@@ -50,7 +50,7 @@ func testManifest(id string) Manifest {
 
 // testCapabilityManifest returns a minimal valid headless manifest (no nav
 // item) declaring capability, plus domains if capability is
-// CapabilityLinkCard.
+// ServiceLinkCard.
 func testCapabilityManifest(id, capability string, domains ...string) Manifest {
 	return Manifest{
 		ID:               id,
@@ -256,9 +256,10 @@ func TestManifestValidation(t *testing.T) {
 		{"missing wasmFile", func() Manifest { m := testManifest("t1"); m.WasmFile = ""; return m }()},
 		{"wasmFile without .wasm suffix", func() Manifest { m := testManifest("t2"); m.WasmFile = "plugin.exe"; return m }()},
 		{"screens without navLabel", func() Manifest { m := testManifest("t3"); m.NavLabel = ""; return m }()},
-		{"neither screens nor capabilities", func() Manifest {
+		{"contributes nothing and provides nothing", func() Manifest {
 			m := testManifest("t4")
 			m.Screens = nil
+			m.NavLabel = ""
 			return m
 		}()},
 		{"duplicate screen ids", func() Manifest {
@@ -266,9 +267,9 @@ func TestManifestValidation(t *testing.T) {
 			m.Screens = []ScreenDef{{ID: "a", Label: "A"}, {ID: "a", Label: "B"}}
 			return m
 		}()},
-		{"unknown capability", testCapabilityManifest("t6", "not-a-real-capability")},
-		{"link-card without domains", testCapabilityManifest("t7", CapabilityLinkCard)},
-		{"link-card with invalid domain", testCapabilityManifest("t8", CapabilityLinkCard, "not a domain")},
+		{"service name with disallowed characters",
+			testCapabilityManifest("t6", "not a real service")},
+		{"link-card with invalid domain", testCapabilityManifest("t8", ServiceLinkCard, "not a domain")},
 		{"negative pollIntervalSeconds", func() Manifest {
 			m := testManifest("t9")
 			m.PollIntervalSeconds = -1
@@ -290,7 +291,7 @@ func TestManifestValidation(t *testing.T) {
 func TestHeadlessCapabilityOnlyManifestIsValid(t *testing.T) {
 	root := t.TempDir()
 	writeManifest(t, filepath.Join(root, installedDirName, "headless"),
-		testCapabilityManifest("headless", CapabilitySpellcheckData))
+		testCapabilityManifest("headless", ServiceSpellcheckData))
 
 	m := newTestManager(t, root)
 	plugin, ok := findPlugin(m.List(), "headless")
@@ -302,33 +303,33 @@ func TestHeadlessCapabilityOnlyManifestIsValid(t *testing.T) {
 	}
 }
 
-func TestPluginsWithCapability(t *testing.T) {
+func TestPluginsProviding(t *testing.T) {
 	root := t.TempDir()
 	writeManifest(t, filepath.Join(root, installedDirName, "sc1"),
-		testCapabilityManifest("sc1", CapabilitySpellcheckData))
+		testCapabilityManifest("sc1", ServiceSpellcheckData))
 	writeManifest(t, filepath.Join(root, installedDirName, "sc2-disabled"), func() Manifest {
-		m := testCapabilityManifest("sc2-disabled", CapabilitySpellcheckData)
+		m := testCapabilityManifest("sc2-disabled", ServiceSpellcheckData)
 		m.EnabledByDefault = false
 		return m
 	}())
 	writeManifest(t, filepath.Join(root, installedDirName, "lc1"),
-		testCapabilityManifest("lc1", CapabilityLinkCard, "example.com"))
+		testCapabilityManifest("lc1", ServiceLinkCard, "example.com"))
 
 	m := newTestManager(t, root)
 
-	sc := m.PluginsWithCapability(CapabilitySpellcheckData)
+	sc := m.PluginsProviding(ServiceSpellcheckData)
 	if len(sc) != 1 || sc[0].ID != "sc1" {
-		t.Fatalf("PluginsWithCapability(spellcheck-data) = %+v, want just [sc1] (sc2 is disabled)", sc)
+		t.Fatalf("PluginsProviding(spellcheck-data) = %+v, want just [sc1] (sc2 is disabled)", sc)
 	}
 
-	lc := m.PluginsWithCapability(CapabilityLinkCard)
+	lc := m.PluginsProviding(ServiceLinkCard)
 	if len(lc) != 1 || lc[0].ID != "lc1" {
-		t.Fatalf("PluginsWithCapability(link-card) = %+v, want just [lc1]", lc)
+		t.Fatalf("PluginsProviding(link-card) = %+v, want just [lc1]", lc)
 	}
 
-	none := m.PluginsWithCapability("nonexistent-capability")
+	none := m.PluginsProviding("nonexistent-capability")
 	if len(none) != 0 {
-		t.Fatalf("PluginsWithCapability(nonexistent) = %+v, want empty", none)
+		t.Fatalf("PluginsProviding(nonexistent) = %+v, want empty", none)
 	}
 }
 
@@ -446,5 +447,118 @@ func TestImportAllowsADataBearingPlugin(t *testing.T) {
 
 	if _, err := m.Import(zipPath); err != nil {
 		t.Errorf("a large but honest plugin was rejected: %v", err)
+	}
+}
+
+// TestUnknownServiceIsAccepted is the point of Provides replacing the old
+// capability allowlist: a plugin may declare a service this build has never
+// heard of, and it installs.
+//
+// It was previously rejected at import, which meant a third party could not
+// ship a new kind of plugin at all without a change to this package. A
+// service nothing consumes is inert -- nobody ever calls it -- which is a
+// cost of nothing, against the cost of being the gatekeeper for every idea
+// anyone else has.
+func TestUnknownServiceIsAccepted(t *testing.T) {
+	root := t.TempDir()
+	writeManifest(t, filepath.Join(root, installedDirName, "novel"),
+		testCapabilityManifest("novel", "nobody-has-heard-of-this"))
+
+	m := newTestManager(t, root)
+	plugin, ok := findPlugin(m.List(), "novel")
+	if !ok {
+		t.Fatal("a plugin providing an unknown service should still install")
+	}
+	if got, _ := plugin.Manifest.ServiceExport("nobody-has-heard-of-this"); got !=
+		"nobody_has_heard_of_this" {
+		t.Errorf("export = %q, want the dashes-to-underscores default", got)
+	}
+	if len(m.PluginsProviding("nobody-has-heard-of-this")) != 1 {
+		t.Error("an unknown service should still be routable to its provider")
+	}
+}
+
+// TestLegacyManifestKeysStillLoad is the compatibility promise: a plugin
+// built and shipped before Contributes/Provides existed is an artifact
+// somebody else owns, and upgrading this package must not stop it loading.
+func TestLegacyManifestKeysStillLoad(t *testing.T) {
+	root := t.TempDir()
+	legacy := testManifest("legacy")
+	legacy.Capabilities = []string{ServiceThesaurus}
+	writeManifest(t, filepath.Join(root, installedDirName, "legacy"), legacy)
+
+	m := newTestManager(t, root)
+	plugin, ok := findPlugin(m.List(), "legacy")
+	if !ok {
+		t.Fatal("a legacy manifest should still load")
+	}
+
+	nav := plugin.Manifest.ContributionsTo(SlotNav)
+	if len(nav) != 1 {
+		t.Fatalf("navLabel/screens should become one %s contribution, got %d",
+			SlotNav, len(nav))
+	}
+	if nav[0].Label != legacy.NavLabel {
+		t.Errorf("nav label = %q, want %q", nav[0].Label, legacy.NavLabel)
+	}
+	if len(nav[0].Screens) != len(legacy.Screens) {
+		t.Errorf("nav screens = %d, want %d", len(nav[0].Screens), len(legacy.Screens))
+	}
+	if export, ok := plugin.Manifest.ServiceExport(ServiceThesaurus); !ok ||
+		export != "lookup_synonyms" {
+		t.Errorf("thesaurus export = %q (%v), want lookup_synonyms", export, ok)
+	}
+}
+
+// TestSlotManifestLoads is the other half of the compatibility promise: a
+// manifest written natively in the new style, with contributions to several
+// slots and no nav item at all.
+//
+// The last case is the one worth having. Before slots, a plugin's only way to
+// offer a settings page was to make it a sub-page of a top-level nav tab --
+// so a plugin that wanted to configure itself had to take a place in the main
+// navigation whether it wanted one or not.
+func TestSlotManifestLoads(t *testing.T) {
+	root := t.TempDir()
+	m := Manifest{
+		ID:               "slots",
+		Name:             "Slotted",
+		Version:          "1.0.0",
+		Description:      "a plugin that appears in two places and owns no tab",
+		Schema:           CurrentSchema,
+		EnabledByDefault: true,
+		RendererKind:     RendererKindDynamicWasm,
+		WasmFile:         "plugin.wasm",
+		Contributes: map[string][]Contribution{
+			SlotSettingsPage: {{ID: "prefs", Label: "Slotted Settings", Icon: "settings"}},
+			SlotComposerAction: {
+				{ID: "insert", Label: "Insert something", Icon: "link"},
+			},
+			// A slot this build has never drawn. It must survive import and
+			// simply never be asked for -- the property that lets a plugin
+			// target a later host without failing to install on this one.
+			"someSlotFromALaterVersion": {{ID: "x", Label: "X"}},
+		},
+	}
+	writeManifest(t, filepath.Join(root, installedDirName, "slots"), m)
+
+	mgr := newTestManager(t, root)
+	plugin, ok := findPlugin(mgr.List(), "slots")
+	if !ok {
+		t.Fatal("a manifest with no nav item but real contributions should load")
+	}
+
+	settings := plugin.Manifest.ContributionsTo(SlotSettingsPage)
+	if len(settings) != 1 || settings[0].Label != "Slotted Settings" {
+		t.Errorf("settingsPage contributions = %+v", settings)
+	}
+	if len(plugin.Manifest.ContributionsTo(SlotComposerAction)) != 1 {
+		t.Error("composerAction contribution did not survive")
+	}
+	if len(plugin.Manifest.ContributionsTo("someSlotFromALaterVersion")) != 1 {
+		t.Error("a contribution to an unimplemented slot should be kept, not dropped")
+	}
+	if len(plugin.Manifest.ContributionsTo(SlotNav)) != 0 {
+		t.Error("nothing should have invented a nav item")
 	}
 }

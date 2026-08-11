@@ -157,10 +157,11 @@ func MergedSpellcheckData(ctx context.Context, mgr Manager, rt Runtime,
 	var merged SpellcheckData
 	seen := make(map[string]bool)
 	seenLanguage := make(map[string]bool)
-	for _, manifest := range mgr.PluginsWithCapability(pluginmgr.CapabilitySpellcheckData) {
+	for _, manifest := range mgr.PluginsProviding(pluginmgr.ServiceSpellcheckData) {
+		export, _ := manifest.ServiceExport(pluginmgr.ServiceSpellcheckData)
 		var data SpellcheckData
 		arg := []byte(language)
-		if err := call(ctx, rt, manifest.ID, spellcheckExport, arg, 0, &data); err != nil {
+		if err := call(ctx, rt, manifest.ID, export, arg, 0, &data); err != nil {
 			logf(log, "capabilities: unable to get spellcheck data from %s: %v",
 				manifest.ID, err)
 			continue

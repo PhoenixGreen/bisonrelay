@@ -93,15 +93,16 @@ func LookupSynonyms(ctx context.Context, mgr Manager, rt Runtime,
 		return ThesaurusEntry{}, fmt.Errorf("capabilities: no word to look up")
 	}
 
-	providers := mgr.PluginsWithCapability(pluginmgr.CapabilityThesaurus)
+	providers := mgr.PluginsProviding(pluginmgr.ServiceThesaurus)
 	if len(providers) == 0 {
 		return ThesaurusEntry{}, fmt.Errorf("capabilities: no thesaurus plugin is enabled")
 	}
 
 	var firstErr error
 	for _, manifest := range providers {
+		export, _ := manifest.ServiceExport(pluginmgr.ServiceThesaurus)
 		var entry ThesaurusEntry
-		err := call(ctx, rt, manifest.ID, thesaurusExport, []byte(word),
+		err := call(ctx, rt, manifest.ID, export, []byte(word),
 			thesaurusTimeout, &entry)
 		if err != nil {
 			if firstErr == nil {

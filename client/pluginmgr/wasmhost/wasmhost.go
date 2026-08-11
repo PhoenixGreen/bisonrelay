@@ -91,8 +91,27 @@ type ScreenUI struct {
 
 // Widget is one node of a ScreenUI's declarative widget tree. Only Type plus
 // the fields relevant to it are expected to be populated.
+//
+// The fields below are the ones that mean the same thing for almost every
+// widget -- a label, a value, a name to report it under, an event to fire.
+// Anything specific to one widget type goes in Props instead, and that split
+// is deliberate: it is what lets the host grow a new widget type without
+// changing this struct, the generated Dart model, or the ABI. A plugin built
+// against an older host sends props a newer host understands and is simply
+// rendered by whichever half both sides know.
+//
+// A widget Type the renderer does not implement is skipped rather than
+// failing the screen, so a plugin may use a newer widget and degrade on an
+// older client. Declare Schema in the manifest so it can tell.
 type Widget struct {
-	Type string `json:"type"` // "text","list","textfield","button","switch"
+	// Type names the widget. The renderer currently implements:
+	//
+	//   text  textfield  button  switch  checkbox  dropdown  list
+	//   section  row  column  card  divider  spacer  image  icon  progress
+	//
+	// See the Dart renderer (plugin_system/screens/widget_renderer.dart) for
+	// which Props each one reads.
+	Type string `json:"type"`
 
 	// Text/Hint/Value are used by "text" (Text), "textfield" (Hint as
 	// placeholder, Value as initial/current content), and "list" item rows
@@ -128,9 +147,31 @@ type Widget struct {
 	Bookmarkable bool `json:"bookmarkable,omitempty"`
 	Bookmarked   bool `json:"bookmarked,omitempty"`
 
-	// Items holds nested widgets for "list" (each item its own small widget
-	// tree) and "section" (grouping) types.
+	// Items holds nested widgets: each row of a "list", and the children of
+	// the grouping types ("section", "row", "column", "card").
 	Items []Widget `json:"items,omitempty"`
+
+	// Props carries whatever is specific to this widget's Type, so a new
+	// type needs no new field here. The renderer reads only the keys its
+	// type defines and ignores the rest; a missing key takes that widget's
+	// documented default rather than failing.
+	//
+	// The keys in use today:
+	//
+	//   image     "dataB64" (the bytes; plugins ship their own images
+	//             rather than naming a URL, so rendering a screen cannot
+	//             become a network request the user did not expect)
+	//   icon      "icon" (a name from the shared icon set), "size"
+	//   spacer    "size" (logical pixels, default 8)
+	//   dropdown  "options" ([{"value","label"}]), and Value for the
+	//             current selection
+	//   progress  "value" (0..1; omit for an indeterminate spinner)
+	//   section   Text is its heading, if any
+	//   row       "align" ("start"|"center"|"end"|"between")
+	//
+	// Values are whatever JSON the plugin wrote. The renderer coerces
+	// defensively -- a number where a string was expected is not a crash.
+	Props map[string]any `json:"props,omitempty"`
 }
 
 // Config configures a Runtime.
