@@ -9,7 +9,7 @@ import 'package:bruig/screens/startupscreen.dart';
 import 'package:bruig/util.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:bruig/theme_manager.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
 
 class LNInternalWalletPage extends StatefulWidget {
   final NewConfigModel newconf;

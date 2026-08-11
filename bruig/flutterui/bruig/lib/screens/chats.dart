@@ -8,10 +8,11 @@ import 'package:bruig/models/client.dart';
 import 'package:bruig/models/emoji.dart';
 import 'package:bruig/models/notifications.dart';
 import 'package:bruig/models/realtimechat.dart';
+import 'package:bruig/theming_system/theme_preset.dart';
 import 'package:bruig/models/uistate.dart';
 import 'package:bruig/screens/needs_out_channel.dart';
 import 'package:bruig/screens/realtimechat/instantcallmodal.dart';
-import 'package:bruig/theme_manager.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -35,6 +36,20 @@ class ChatsScreenTitle extends StatelessWidget {
         icon: Icon(Icons.call_outlined));
   }
 
+  // buildSearchButton toggles the in-chat search panel, when
+  // AreaStyle.enableChatSearch is on.
+  Widget buildSearchButton(BuildContext context, ChatModel chat) {
+    var ui = Provider.of<ClientModel>(context, listen: false).ui;
+    return AnimatedBuilder(
+      animation: ui.chatSearch,
+      builder: (context, _) => IconButton(
+        tooltip: "Search",
+        onPressed: () => ui.chatSearch.val = !ui.chatSearch.val,
+        icon: Icon(ui.chatSearch.val ? Icons.search_off : Icons.search),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Consumer4<RealtimeChatModel, ActiveChatModel, ShowProfileModel,
@@ -50,20 +65,39 @@ class ChatsScreenTitle extends StatelessWidget {
 
       // Has active chat.
       ChatModel chat = activeChat.chat!;
+      var enableChatSearch = theme.areaStyle(ThemeArea.chat).enableChatSearch;
+      var showCallIcon =
+          !theme.areaStyle(ThemeArea.header).hideHeaderCallIcon &&
+              !chat.isGC &&
+              rtc.active.active == null;
 
       // On small screen, show only chat nick/title.
       bool isScreenSmall = checkIsScreenSmall(context);
       if (isScreenSmall) {
+        // With tap-again-to-close on, this avatar is a toggle for the panel
+        // it opens rather than a one-way trip into it -- the same gesture
+        // the header's own avatar has. Passing onTap replaces only the tap;
+        // the long-press context menu the wrapper provides is untouched.
+        var avatarToggles =
+            theme.areaStyle(ThemeArea.mobile).mobileAvatarSecondTapCloses;
         return Row(mainAxisAlignment: MainAxisAlignment.start, children: [
           Container(
               width: 40,
               margin:
                   const EdgeInsets.only(top: 0, bottom: 0, left: 0, right: 20),
-              child: UserMenuAvatar(client, chat, showChatSideMenuOnTap: true)),
-          Txt.L(chat.nick),
+              child: avatarToggles
+                  ? UserMenuAvatar(client, chat, onTap: () {
+                      var side = client.ui.chatSideMenuActive;
+                      side.chat = side.empty ? chat : null;
+                    })
+                  : UserMenuAvatar(client, chat, showChatSideMenuOnTap: true)),
+          // The nick gives way rather than pushing the icons off the
+          // header -- it can be any length, and the header has the back
+          // button and avatar in front of it already.
+          Flexible(child: Txt.L(chat.nick, overflow: TextOverflow.ellipsis)),
           const Spacer(),
-          if (!chat.isGC && rtc.active.active == null)
-            buildInstantCallIcon(context, rtc, chat),
+          if (enableChatSearch) buildSearchButton(context, chat),
+          if (showCallIcon) buildInstantCallIcon(context, rtc, chat),
         ]);
       }
 
@@ -76,9 +110,19 @@ class ChatsScreenTitle extends StatelessWidget {
               : " / Profile"
           : "";
 
-      return Row(children: [
-        Txt.L("Chat$suffix$profileSuffix"),
-        if (!chat.isGC && rtc.active.active == null) ...[
+      // MainAxisSize.min so the header's Text align setting can actually
+      // move this: a max-size Row fills the whole title area whatever the
+      // AppBar is told to do with it, which pinned the text to the left
+      // even with the setting on Center or Right.
+      return Row(mainAxisSize: MainAxisSize.min, children: [
+        Flexible(
+            child: Txt.L("Chat$suffix$profileSuffix",
+                overflow: TextOverflow.ellipsis)),
+        if (enableChatSearch) ...[
+          const SizedBox(width: 10),
+          buildSearchButton(context, chat),
+        ],
+        if (showCallIcon) ...[
           const SizedBox(width: 10),
           buildInstantCallIcon(context, rtc, chat),
         ],
@@ -403,18 +447,49 @@ class _ChatsScreenState extends State<ChatsScreen> {
     AudioModel audio = AudioModel.of(context, listen: false);
 
     bool isScreenSmall = checkIsScreenSmall(context);
+    // On a phone the two halves are whole pages rather than a pane and a
+    // sidebar: the chat list, which carries its own New Message / New Group
+    // Chat buttons, or the conversation. Re-tapping Chat in the mobile
+    // navigation goes back to that list (see OverviewScreen._onNavTapped) --
+    // it's a better destination than the list as a slide-in drawer would be,
+    // so this screen deliberately hands no sidebar to the drawer at all.
     return !isScreenSmall
-        ? Row(children: [
-            ActiveChatsListMenu(client, inputFocusNode, rtc),
-            Expanded(
-                child: Container(
-              margin: const EdgeInsets.all(1),
-              child: ActiveChat(client, rtc, audio, inputFocusNode),
-            )),
-          ])
+        ? Consumer<ActiveChatModel>(
+            builder: (context, activeChat, child) => ActiveChatsListMenu(
+                  client,
+                  inputFocusNode,
+                  rtc,
+                  isDetail: !activeChat.empty,
+                  detailKey: activeChat.chat?.id,
+                  content: Container(
+                    margin: const EdgeInsets.all(1),
+                    child: ActiveChat(client, rtc, audio, inputFocusNode),
+                  ),
+                ))
         : Consumer<ActiveChatModel>(
             builder: (context, activeChat, child) => activeChat.empty
                 ? ActiveChatsListMenu(client, inputFocusNode, rtc)
-                : ActiveChat(client, rtc, audio, inputFocusNode));
+                : _MobileActiveChat(client, rtc, audio, inputFocusNode));
+  }
+}
+
+// _MobileActiveChat is the conversation as a full page, and the one screen
+// in the app that reaches CollapsedSidebarModel without a
+// SecondarySideMenuLayout to do it: the chat list isn't built at all while
+// a conversation is open here, so nothing else is in a position to hand the
+// drawer back, and it would otherwise still be holding whichever page's
+// sidebar was registered last.
+class _MobileActiveChat extends StatelessWidget {
+  final ClientModel client;
+  final RealtimeChatModel rtc;
+  final AudioModel audio;
+  final CustomInputFocusNode inputFocusNode;
+  const _MobileActiveChat(
+      this.client, this.rtc, this.audio, this.inputFocusNode);
+
+  @override
+  Widget build(BuildContext context) {
+    client.ui.collapsedSidebar.unregister();
+    return ActiveChat(client, rtc, audio, inputFocusNode);
   }
 }

@@ -2,15 +2,20 @@ import 'dart:convert';
 import 'dart:io';
 // import 'package:dart_vlc/dart_vlc.dart' as vlc;
 import 'package:bruig/components/context_menu.dart';
+import 'package:bruig/components/feed/markdown_blocks.dart';
 import 'package:bruig/components/pages/forms.dart';
 import 'package:bruig/components/snackbars.dart';
 import 'package:bruig/components/text_dialog.dart';
 import 'package:bruig/components/audio_element.dart';
+import 'package:bruig/components/interactive_avatar.dart';
 import 'package:bruig/models/audio.dart';
+import 'package:bruig/models/client.dart';
 import 'package:bruig/models/downloads.dart';
+import 'package:bruig/models/feed.dart';
 import 'package:bruig/models/payments.dart';
 import 'package:bruig/models/resources.dart';
 import 'package:bruig/models/snackbar.dart';
+import 'package:bruig/screens/feed.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -21,7 +26,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:bruig/theme_manager.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
+import 'package:bruig/theming_system/theme_preset.dart';
 import 'package:bruig/components/image_dialog.dart';
 import 'package:pdfrx/pdfrx.dart';
 import 'package:path/path.dart' as path;
@@ -91,6 +97,30 @@ class LnpayURLSyntax extends md.InlineSyntax {
   }
 }
 
+/// Matches bare (not already markdown-linked) http(s) URLs so the "Pretty
+/// Links" plugin can offer a native preview card for known domains. Because
+/// user-supplied inline syntaxes are tried before flutter_markdown's
+/// built-in link/autolink syntaxes, this only ever fires on genuinely bare
+/// URLs in the source text -- an explicit `[text](url)` markdown link is
+/// fully consumed by the built-in LinkSyntax before the parser's cursor
+/// ever reaches the URL text on its own.
+class BareLinkSyntax extends md.InlineSyntax {
+  /// The element tag matched URLs are emitted as, for whichever
+  /// MarkdownExtension registered this syntax to render.
+  final String tag;
+
+  BareLinkSyntax({
+    required this.tag,
+    String pattern = r'https?:\/\/\S+',
+  }) : super(pattern);
+
+  @override
+  bool onMatch(md.InlineParser parser, Match match) {
+    parser.addNode(md.Element.text(tag, match.group(0) ?? ""));
+    return true;
+  }
+}
+
 class EmbedInlineSyntax extends md.InlineSyntax {
   final String dbRoot;
 
@@ -109,6 +139,17 @@ class EmbedInlineSyntax extends md.InlineSyntax {
       if (p == -1) return;
       parms[element.substring(0, p)] = element.substring(p + 1);
     });
+
+    // Quote embed: a reference to another post (rendered as a nested
+    // card). Only ever produced by the feed's Quote Post action, which is
+    // gated behind AreaStyle.feedCardActions.
+    if (parms["type"] == "quote") {
+      var el = md.Element.text("quote", "");
+      el.attributes["from"] = parms["from"] ?? "";
+      el.attributes["post"] = parms["post"] ?? "";
+      parser.addNode(el);
+      return true;
+    }
 
     // Only accept valid download FIDs.
     var download = parms["download"] ?? "";
@@ -170,9 +211,17 @@ class EmbedInlineSyntax extends md.InlineSyntax {
           break;
         case "image/avif":
           tag = "avif";
+          break;
         case "text/plain":
           // Decode plain text directly.
-          tag = "pre";
+          //
+          // Its own tag, not "pre". A fenced code block parses to <pre>
+          // too, so registering a builder for "pre" -- which is what an
+          // attached text file needed -- took over every code block in
+          // every post as well: they lost the monospaced face and the block
+          // background, and each one grew a "View" button belonging to a
+          // file that was not there. See MarkdownAreaModel.builders.
+          tag = "embedtext";
           try {
             data = utf8.fuse(base64).decode(data);
           } catch (exception) {
@@ -348,7 +397,13 @@ class MarkdownAreaModel extends ChangeNotifier {
       [md.EmojiSyntax(), ...md.ExtensionSet.gitHubFlavored.inlineSyntaxes]);
 
   final Map<String, MarkdownElementBuilder> builders = {
-    "pre": PreformattedElementBuilder(),
+    // An attached text file, which EmbedInlineSyntax emits as "embedtext".
+    // Deliberately not "pre": that is what a fenced code block parses to,
+    // and a builder registered there renders every code block in the app as
+    // a scrolling box with a "View" button, in the body face rather than the
+    // code one -- flutter_markdown asks the builder for the block's tag
+    // before it reaches its own code-block rendering.
+    "embedtext": PreformattedElementBuilder(),
     "pdf": PDFMarkdownElementBuilder(),
     "audio": AudioElementBuilder(),
     //"video": VideoMarkdownElementBuilder(basedir),
@@ -358,18 +413,109 @@ class MarkdownAreaModel extends ChangeNotifier {
     "form": FormElementBuilder(),
     "lnpay": _LNPayURLElementBuilder(),
     "avif": AVIFElementBuilder(),
+    "quote": QuoteMarkdownElementBuilder(),
+    "columns": ColumnsMarkdownElementBuilder(),
+    "cards": CardsMarkdownElementBuilder(),
   };
 
   final List<md.InlineSyntax> inlineSyntaxes = [
     LnpayURLSyntax(),
   ];
-  final List<FormBlockSyntax> blockSyntaxes = [
+  final List<md.BlockSyntax> blockSyntaxes = [
     FormBlockSyntax(),
+    ColumnsBlockSyntax(),
+    CardsBlockSyntax(),
   ];
+
+  // _pluginExtensions is whatever the last setPluginExtensions call added,
+  // kept so the next one can remove exactly those again.
+  List<MarkdownExtension> _pluginExtensions = const [];
 
   MarkdownAreaModel(String dbroot) {
     inlineSyntaxes.add(EmbedInlineSyntax(dbroot));
   }
+
+  /// setPluginExtensions replaces the markdown renderers contributed from
+  /// outside this file -- see lib/plugin_system, which is the only caller.
+  /// The built-in builders and syntaxes declared above are never touched by
+  /// it, so a plugin can add a rendering but never remove or replace one of
+  /// Bison Relay's own.
+  ///
+  /// Called whenever the set of enabled plugins changes. Markdown already
+  /// rendered on screen keeps its old rendering until it rebuilds.
+  void setPluginExtensions(List<MarkdownExtension> extensions) {
+    var sameTags = _pluginExtensions.length == extensions.length &&
+        _pluginExtensions.every((e) => extensions.any((n) => n.tag == e.tag));
+    if (sameTags) return;
+
+    for (var e in _pluginExtensions) {
+      builders.remove(e.tag);
+      if (e.inlineSyntax != null) inlineSyntaxes.remove(e.inlineSyntax);
+    }
+    _pluginExtensions = extensions;
+    for (var e in extensions) {
+      builders[e.tag] = e.builder;
+      if (e.inlineSyntax != null) inlineSyntaxes.add(e.inlineSyntax!);
+    }
+    notifyListeners();
+  }
+}
+
+/// MarkdownExtension is one markdown rendering contributed from outside this
+/// file. It is the whole of the app's markdown extension point: a tag to
+/// render, the builder that renders it, and optionally an inline syntax that
+/// produces that tag in the first place.
+class MarkdownExtension {
+  /// The markdown element tag [builder] renders.
+  final String tag;
+  final MarkdownElementBuilder builder;
+
+  /// An optional syntax that emits [tag]. Needed when the extension renders
+  /// something the markdown source doesn't already mark up -- a bare URL,
+  /// say, which is otherwise just text.
+  final md.InlineSyntax? inlineSyntax;
+
+  const MarkdownExtension({
+    required this.tag,
+    required this.builder,
+    this.inlineSyntax,
+  });
+}
+
+/// MarkdownGuideScope carries a style guide's picture rules down to the
+/// embeds inside one piece of markdown.
+///
+/// An InheritedWidget rather than a parameter because the widget that draws
+/// an embed is built by flutter_markdown from a builder, several layers
+/// below whoever chose the guide, and there is no argument to thread down.
+///
+/// Absent means "as it was". Chat installs no scope, so a picture in a
+/// message is drawn exactly as it was before guides existed -- which is what
+/// keeps this a posts-only feature.
+class MarkdownGuideScope extends InheritedWidget {
+  final ImageRule image;
+  final ColumnRule columns;
+  final CardRule cards;
+
+  const MarkdownGuideScope(
+      {required this.image,
+      this.columns = const ColumnRule(),
+      this.cards = const CardRule(),
+      required super.child,
+      super.key});
+
+  static ImageRule? of(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<MarkdownGuideScope>()?.image;
+
+  static ColumnRule? columnsOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<MarkdownGuideScope>()?.columns;
+
+  static CardRule? cardsOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<MarkdownGuideScope>()?.cards;
+
+  @override
+  bool updateShouldNotify(MarkdownGuideScope old) =>
+      old.image != image || old.columns != columns || old.cards != cards;
 }
 
 class MarkdownArea extends StatelessWidget {
@@ -383,7 +529,37 @@ class MarkdownArea extends StatelessWidget {
 
   final String text;
   final bool hasNick;
-  MarkdownArea(srcText, this.hasNick, {super.key})
+  // When true, links render with their normal styling but don't navigate on
+  // tap. Used by the Feed page's AreaStyle.feedHideLinks toggle -- only
+  // affects this MarkdownArea instance, not markdown rendering elsewhere
+  // (chat, pages, etc).
+  final bool disableLinks;
+  // When true, headers/bold/italic/strikethrough all render with normal
+  // body text styling instead of their usual formatting -- the markdown is
+  // still parsed (embeds/links/etc still work), only the *visual*
+  // formatting is flattened. Used by the Feed page's
+  // AreaStyle.feedStripMarkdown toggle -- only affects this MarkdownArea
+  // instance, not markdown rendering elsewhere (chat, pages, etc).
+  final bool plainText;
+
+  /// guide is the style guide to set this text in, or null for whichever
+  /// the reader's theme is using.
+  ///
+  /// A guide rather than the name of one, which is what this used to take.
+  /// Naming it meant looking it up among the built-ins, and a reader who had
+  /// edited theirs has a guide that is not among them -- so every change
+  /// made in Settings was saved correctly and then rendered by the built-in
+  /// it had been forked from. Nothing the editor did appeared to work.
+  ///
+  /// Passed in only by the composer, which shows the writer the guide the
+  /// post will carry rather than the one the reader happens to use.
+  final MarkdownStyleGuide? guide;
+
+  MarkdownArea(srcText, this.hasNick,
+      {this.disableLinks = false,
+      this.plainText = false,
+      this.guide,
+      super.key})
       : text = MarkdownArea._cleanupSrcText(srcText);
 
   Future<void> launchUrlAwait(context, url) async {
@@ -420,21 +596,121 @@ class MarkdownArea extends StatelessWidget {
     }
   }
 
+  // Flattens header/bold/italic/strikethrough styles down to plain body
+  // text, leaving everything else (code, blockquote, links, etc) alone.
+  MarkdownStyleSheet _plainStyleSheet(
+      MarkdownStyleSheet base, BuildContext context) {
+    final plain = DefaultTextStyle.of(context).style;
+    return base.copyWith(
+      h1: plain,
+      h2: plain,
+      h3: plain,
+      h4: plain,
+      h5: plain,
+      h6: plain,
+      strong: plain,
+      em: plain,
+      del: plain,
+    );
+  }
+
+  /// _guidedStyleSheet is the theme's own stylesheet with the style guide
+  /// folded onto it.
+  ///
+  /// The theme's is returned untouched for Default, which is not an
+  /// optimisation but the definition of it: Default is the guide that says
+  /// nothing, so folding it on is a no-op with extra steps.
+  MarkdownStyleSheet _guidedStyleSheet(
+      ThemeNotifier theme, BuildContext context) {
+    var guide = this.guide ?? theme.markdownGuide;
+    if (guide.id == defaultGuideId && !_saysAnything(guide)) {
+      return theme.mdStyleSheet;
+    }
+
+    // Folded onto the *effective* sheet, not the app's sparse one.
+    //
+    // The app's sheet names only the few things it overrides and leaves the
+    // rest null, and MarkdownBody fills those in from the Material theme --
+    // "fallbackStyleSheet.merge(widget.styleSheet)". A guide that writes
+    // into a null field therefore replaces a value that had not been worked
+    // out yet, and whatever it worked from becomes the answer.
+    //
+    // The first version worked from DefaultTextStyle, which is near-black
+    // with a purple cast while the theme's own text is near-white -- so
+    // every guide but Default rendered its paragraphs in dark purple, and
+    // links lost the theme's styling the same way. Merging first means the
+    // guide adjusts colours and sizes that are already right.
+    var effective = MarkdownStyleSheet.fromTheme(Theme.of(context))
+        .merge(theme.mdStyleSheet);
+    return applyGuide(
+      effective,
+      guide,
+      (role) => theme.markdownRoleColor(role),
+      paletteColor: theme.markdownPaletteColor,
+    );
+  }
+
+  /// _saysAnything reports whether a guide differs from the plain one.
+  ///
+  /// Default is the guide that changes nothing, so it can be skipped -- but
+  /// only while it really is unchanged. A reader who edited Default has a
+  /// guide still carrying its id, and skipping that would throw their work
+  /// away every time a post was drawn.
+  ///
+  /// Compared against the built-in Default rather than against an empty
+  /// guide. Default is not empty -- it states the heading ladder the app has
+  /// always drawn, because a size in a guide is a share of the body and an
+  /// unsaid one would mean "the same size as the body". An empty guide is no
+  /// longer any guide the app can be using, so comparing with one made this
+  /// answer yes every time.
+  static bool _saysAnything(MarkdownStyleGuide guide) =>
+      guide.toJson().toString() !=
+      builtInGuideFor(defaultGuideId)!.toJson().toString();
+
   @override
   Widget build(BuildContext context) {
     return Consumer3<ThemeNotifier, PaymentsModel, MarkdownAreaModel>(
-        builder: (context, theme, payments, mk, _) => MarkdownBody(
-              codeBlockMaxHeight: 200,
-              styleSheet: theme.mdStyleSheet,
-              data: text.trim(),
-              extensionSet: mk.extensionSet,
-              builders: mk.builders,
-              onTapLink: (text, url, _) {
-                launchUrlAwait(context, url);
-              },
-              inlineSyntaxes: mk.inlineSyntaxes,
-              blockSyntaxes: mk.blockSyntaxes,
+        builder: (context, theme, payments, mk, _) => _withGuide(
+              theme,
+              MarkdownBody(
+                codeBlockMaxHeight: 200,
+                // Plain text wins over a guide: it is the Feed's "strip
+                // markdown" setting, which is a decision not to show
+                // formatting at all, and a guide is only ever about how
+                // formatting looks.
+                styleSheet: plainText
+                    ? _plainStyleSheet(theme.mdStyleSheet, context)
+                    : _guidedStyleSheet(theme, context),
+                data: text.trim(),
+                extensionSet: mk.extensionSet,
+                builders: mk.builders,
+                onTapLink: (text, url, _) {
+                  if (disableLinks) return;
+                  launchUrlAwait(context, url);
+                },
+                inlineSyntaxes: mk.inlineSyntaxes,
+                blockSyntaxes: mk.blockSyntaxes,
+              ),
             ));
+  }
+
+  /// _withGuide puts the guide's picture rules where the embeds can see
+  /// them, and nothing at all around text that has no guide.
+  Widget _withGuide(ThemeNotifier theme, Widget child) {
+    var guide = this.guide ?? theme.markdownGuide;
+    // Default with nothing changed is the app as it was, so it gets no scope
+    // at all rather than one that happens to match.
+    if (guide.id == defaultGuideId &&
+        guide.image == const ImageRule() &&
+        guide.columns == const ColumnRule() &&
+        guide.cards == const CardRule()) {
+      return child;
+    }
+    return MarkdownGuideScope(
+        image: guide.image,
+        columns: guide.columns,
+        cards: guide.cards,
+        child: child);
   }
 }
 
@@ -474,6 +750,22 @@ class Downloadable extends StatelessWidget {
       );
 }
 
+// chatImageConstraints resolves the configured chat image size setting into
+// concrete BoxConstraints, given the width available to the image within its
+// chat bubble (as reported by an enclosing LayoutBuilder).
+BoxConstraints chatImageConstraints(String size, double availableWidth) {
+  switch (size) {
+    case "half":
+      return BoxConstraints(
+          maxWidth: availableWidth.isFinite ? availableWidth * 0.5 : 250);
+    case "full":
+      return BoxConstraints(
+          maxWidth: availableWidth.isFinite ? availableWidth : 250);
+    default:
+      return const BoxConstraints(maxHeight: 250, maxWidth: 250);
+  }
+}
+
 class ImageMd extends StatelessWidget {
   final String tip;
   final Uint8List imgContent;
@@ -482,30 +774,109 @@ class ImageMd extends StatelessWidget {
   const ImageMd(this.tip, this.imgContent, this.type, {this.name, super.key});
 
   @override
-  Widget build(BuildContext context) => Tooltip(
-        message: tip,
-        child: InkWell(
-          borderRadius: const BorderRadius.all(Radius.circular(30)),
+  Widget build(BuildContext context) {
+    var theme = ThemeNotifier.of(context);
+    var chatImageSize = theme.chatImageSize;
+    // The style guide's picture rules, when this markdown has one. Null is
+    // every other case -- chat, and posts read under Default -- and keeps
+    // the sizes and corners this drew before guides existed.
+    var rule = MarkdownGuideScope.of(context);
+
+    var image = Image.memory(
+      imgContent,
+      fit: BoxFit.contain,
+      errorBuilder: (context, error, stackTrace) {
+        debugPrint("ImageMd unable to decode image: $error");
+        return const SizedBox.shrink();
+      },
+    );
+
+    var corners = BorderRadius.all(
+        Radius.circular(rule == null ? 8.0 : rule.boundedRadius));
+    var border = rule == null || rule.boundedBorder == 0
+        ? null
+        : Border.all(
+            color: theme.markdownInk(rule.borderInk) ??
+                theme.colors.outlineVariant,
+            width: rule.boundedBorder);
+
+    Widget sized = LayoutBuilder(
+      builder: (context, constraints) {
+        // Chat, which has no guide: a bound on how large a picture may be
+        // drawn, exactly as it always was.
+        if (rule == null) {
+          return ConstrainedBox(
+            constraints:
+                chatImageConstraints(chatImageSize, constraints.maxWidth),
+            child: ClipRRect(borderRadius: corners, child: image),
+          );
+        }
+
+        // The guide's share of the column it is in, so a picture keeps its
+        // proportion of the page at any window size.
+        //
+        // A width, not a maximum width. As a maximum it was only ever a cap:
+        // an Image set to contain draws at its natural size whenever that
+        // fits, so a picture narrower than the column ignored the setting
+        // entirely and 100% did not fill the post -- it meant "up to the
+        // full width", which every picture smaller than the column was
+        // already under. The height follows from the width, the aspect
+        // ratio being the picture's own.
+        //
+        // Unbounded width has no share to take, so the picture is left at
+        // its natural size rather than given an infinite one.
+        return SizedBox(
+          width: constraints.maxWidth.isFinite
+              ? constraints.maxWidth * rule.boundedWidth / 100
+              : null,
+          child: ClipRRect(borderRadius: corners, child: image),
+        );
+      },
+    );
+
+    if (border != null) {
+      sized = Container(
+        decoration: BoxDecoration(border: border, borderRadius: corners),
+        child: sized,
+      );
+    }
+
+    // A gesture rather than an InkWell: the picture is the thing you are
+    // looking at, and it needs no highlight drawn under it to say so.
+    //
+    // The highlight was drawn over the whole tappable area, which includes
+    // the space above and below the picture that the style guide's Gap
+    // setting puts there -- so it stood off the picture by the gap at the
+    // top and bottom and by two pixels at the sides, a lopsided box that
+    // grew as the gap was widened. The pointer still turns to a hand, which
+    // is what actually says the picture can be opened.
+    return Tooltip(
+      message: tip,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: GestureDetector(
           onTap: () {
             showDialog(
                 context: context,
                 builder: (_) => ImageDialog(imgContent, type, name: name));
           },
           child: Container(
-            constraints: const BoxConstraints(maxHeight: 250, maxWidth: 250),
-            margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
-            decoration: BoxDecoration(
-              borderRadius: const BorderRadius.all(Radius.circular(8.0)),
-              image: DecorationImage(
-                image: MemoryImage(imgContent),
-                onError: (exception, stackTrace) {
-                  debugPrint("ImageMd unable to decode image: $exception");
-                },
-              ),
-            ),
+            margin: rule == null
+                ? const EdgeInsets.symmetric(horizontal: 2, vertical: 2)
+                : EdgeInsets.symmetric(horizontal: 2, vertical: rule.gap),
+            alignment: rule == null ? null : _alignOf(rule.align),
+            child: sized,
           ),
         ),
-      );
+      ),
+    );
+  }
+
+  static Alignment _alignOf(MarkdownAlign align) => switch (align) {
+        MarkdownAlign.center => Alignment.topCenter,
+        MarkdownAlign.right => Alignment.topRight,
+        MarkdownAlign.left || MarkdownAlign.inherit => Alignment.topLeft,
+      };
 }
 
 class AvifMd extends StatelessWidget {
@@ -514,29 +885,38 @@ class AvifMd extends StatelessWidget {
   const AvifMd(this.tip, this.imgContent, {super.key});
 
   @override
-  Widget build(BuildContext context) => Tooltip(
-        message: tip,
-        child: InkWell(
-          borderRadius: const BorderRadius.all(Radius.circular(30)),
-          onTap: () {
-            showDialog(
-                context: context, builder: (_) => AvifDialog(imgContent));
-          },
-          child: Container(
-            constraints: const BoxConstraints(maxHeight: 250, maxWidth: 250),
-            margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
-            decoration: BoxDecoration(
-              borderRadius: const BorderRadius.all(Radius.circular(8.0)),
-              image: DecorationImage(
-                image: AvifImage.memory(imgContent).image,
-                onError: (exception, stackTrace) {
-                  debugPrint("AvifMd unable to decode image: $exception");
-                },
+  Widget build(BuildContext context) {
+    var chatImageSize = ThemeNotifier.of(context).chatImageSize;
+    return Tooltip(
+      message: tip,
+      child: InkWell(
+        borderRadius: const BorderRadius.all(Radius.circular(30)),
+        onTap: () {
+          showDialog(context: context, builder: (_) => AvifDialog(imgContent));
+        },
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+          child: ClipRRect(
+            borderRadius: const BorderRadius.all(Radius.circular(8.0)),
+            child: LayoutBuilder(
+              builder: (context, constraints) => ConstrainedBox(
+                constraints:
+                    chatImageConstraints(chatImageSize, constraints.maxWidth),
+                child: Image(
+                  image: AvifImage.memory(imgContent).image,
+                  fit: BoxFit.contain,
+                  errorBuilder: (context, error, stackTrace) {
+                    debugPrint("AvifMd unable to decode image: $error");
+                    return const SizedBox.shrink();
+                  },
+                ),
               ),
             ),
           ),
         ),
-      );
+      ),
+    );
+  }
 }
 
 class PreformattedElementBuilder extends MarkdownElementBuilder {
@@ -614,7 +994,8 @@ class PDFMarkdownElementBuilder extends MarkdownElementBuilder {
         }
         fname = path.join(dir, fname);
         File(fname).writeAsBytesSync(pdfBytes);
-        Share.shareXFiles([XFile(fname)], text: "Pdf");
+        SharePlus.instance
+            .share(ShareParams(files: [XFile(fname)], text: "Pdf"));
         break;
     }
   }
@@ -687,7 +1068,125 @@ class DownloadLinkElementBuilder extends MarkdownElementBuilder {
   Widget visitElementAfter(md.Element element, TextStyle? preferredStyle) {
     var download = element.attributes["fid"] ?? "";
     var tip = "Click to download file $download";
-    return Downloadable(tip, download, Text(element.textContent));
+    // Set as the link it is. With no style of its own it fell through to
+    // Material's stock text colour -- the seed purple, which is not in the
+    // palette and appears nowhere else in the app on purpose.
+    return Downloadable(
+      tip,
+      download,
+      Builder(
+        builder: (context) => Text(
+          element.textContent,
+          style: ThemeNotifier.of(context).markdownLinkStyle(preferredStyle),
+        ),
+      ),
+    );
+  }
+}
+
+class QuoteMarkdownElementBuilder extends MarkdownElementBuilder {
+  @override
+  Widget visitElementAfter(md.Element element, TextStyle? preferredStyle) {
+    return _QuotedPostCard(
+      from: element.attributes["from"] ?? "",
+      postId: element.attributes["post"] ?? "",
+    );
+  }
+}
+
+class _QuotedPostCard extends StatefulWidget {
+  final String from;
+  final String postId;
+  const _QuotedPostCard({required this.from, required this.postId});
+  @override
+  State<_QuotedPostCard> createState() => _QuotedPostCardState();
+}
+
+class _QuotedPostCardState extends State<_QuotedPostCard> {
+  bool _requested = false;
+
+  Widget _shell(BuildContext context, Widget child, VoidCallback? onTap) {
+    final theme = ThemeNotifier.of(context);
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 8),
+        decoration: BoxDecoration(
+          color: theme.surfaceColor(SurfaceColor.surfaceContainer),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+              color: theme.surfaceColor(SurfaceColor.surfaceContainerHigh)),
+        ),
+        child: child,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final feed = Provider.of<FeedModel>(context);
+    final client = Provider.of<ClientModel>(context, listen: false);
+    final post = feed.getPost(widget.from, widget.postId);
+    final theme = ThemeNotifier.of(context);
+
+    if (post == null) {
+      if (!_requested && widget.from.isNotEmpty && widget.postId.isNotEmpty) {
+        _requested = true;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          feed.getUserPost(widget.from, widget.postId);
+        });
+      }
+      return _shell(
+        context,
+        Padding(
+          padding: const EdgeInsets.all(12),
+          child: Text("Loading quoted post...",
+              style: TextStyle(
+                  fontSize: 13,
+                  color: theme.textColor(TextColor.onSurfaceVariant))),
+        ),
+        null,
+      );
+    }
+
+    var nick = client.getNick(widget.from);
+    if (nick == "") nick = post.summ.authorNick;
+    if (nick == "") nick = widget.from;
+
+    return _shell(
+      context,
+      Padding(
+        padding: const EdgeInsets.all(11),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: UserAvatarFromID(client, widget.from, nick: nick)),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(nick,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: theme.textColor(TextColor.onSurface))),
+              ),
+            ]),
+            const SizedBox(height: 6),
+            Provider<DownloadSource>(
+              create: (_) => DownloadSource(widget.from),
+              child: MarkdownArea(post.content, false),
+            ),
+          ],
+        ),
+      ),
+      () => FeedScreen.showPost(context, post),
+    );
   }
 }
 

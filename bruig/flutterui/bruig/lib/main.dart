@@ -3,6 +3,8 @@ import 'dart:io';
 import 'dart:math';
 import 'dart:developer' as developer;
 
+import 'package:bruig/components/eyedropper.dart';
+import 'package:bruig/components/tooltips.dart';
 import 'package:bruig/components/md_elements.dart';
 import 'package:bruig/components/route_error.dart';
 import 'package:bruig/models/emoji.dart';
@@ -31,7 +33,7 @@ import 'package:bruig/screens/realtimechat/rtclist.dart';
 import 'package:bruig/screens/server_unwelcome_error.dart';
 import 'package:bruig/screens/settings.dart';
 import 'package:bruig/storage_manager.dart';
-import 'package:bruig/theme_manager.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:bruig/config.dart';
 import 'package:bruig/models/downloads.dart';
 import 'package:bruig/screens/overview.dart';
@@ -41,6 +43,7 @@ import 'package:bruig/screens/confirm_file_download.dart';
 import 'package:bruig/screens/fatal_error.dart';
 // import 'package:dart_vlc/dart_vlc.dart';
 import 'package:bruig/models/client.dart';
+import 'package:bruig/models/exchange_rate.dart';
 import 'package:bruig/models/feed.dart';
 import 'package:bruig/screens/init_local_id.dart';
 import 'package:bruig/screens/ln_management.dart';
@@ -171,7 +174,6 @@ Future<void> runMainApp(Config cfg) async {
       ChangeNotifierProvider.value(value: client.ui.chatSideMenuActive),
       ChangeNotifierProvider.value(value: client.ui.settingsTitle),
       ChangeNotifierProvider.value(value: client.connState),
-      ChangeNotifierProvider.value(value: client.ui.smallScreenActiveTab),
       ChangeNotifierProvider.value(value: client.ui.overviewActivePath),
       ChangeNotifierProvider.value(value: client.gcInviteCount),
       ChangeNotifierProvider(create: (c) => FeedModel()),
@@ -179,11 +181,18 @@ Future<void> runMainApp(Config cfg) async {
       ChangeNotifierProvider(create: (c) => DownloadsModel()),
       ChangeNotifierProvider(create: (c) => AppNotifications()),
       ChangeNotifierProvider.value(value: theme),
-      ChangeNotifierProvider(create: (c) => MainMenuModel()),
+      ChangeNotifierProvider(
+          create: (c) => MainMenuModel(
+              initialLabels: theme.activePreset?.menuLabels,
+              initialOrder: theme.activePreset?.menuOrder)),
       ChangeNotifierProvider(create: (c) => ResourcesModel()),
       ChangeNotifierProvider.value(value: snackbar),
       ChangeNotifierProvider(create: (c) => PaymentsModel()),
       ChangeNotifierProvider(create: (c) => WalletModel()),
+      // Started here rather than lazily inside the nav bar: the direction
+      // arrows need a previous price to compare against, so the poll has to
+      // be running before the setting is switched on, not after.
+      ChangeNotifierProvider(create: (c) => ExchangeRateModel()),
       ChangeNotifierProvider(create: (c) => TypingEmojiSelModel()),
       ChangeNotifierProvider(create: (c) => AudioModel(), lazy: false),
       ChangeNotifierProvider(create: (c) => MarkdownAreaModel(cfg.dbRoot)),
@@ -455,10 +464,18 @@ class _AppState extends State<App> with WindowListener {
     var rtc = Provider.of<RealtimeChatModel>(context, listen: false);
 
     await client.readAddressBook();
-    navkey.currentState?.pushNamedAndRemoveUntil(OverviewScreen.routeName,
-        (route) {
-      return false;
-    });
+    // Skip re-pushing Overview if it's already mounted (e.g. a
+    // resumed-from-background call into addressBookLoaded(true) above): the
+    // route below would need to survive its exit transition before
+    // Navigator removes it, so a fresh OverviewScreen would briefly coexist
+    // with the still-mounted one, and both share static GlobalKeys
+    // (scaffoldKey/overviewNavKey), tripping "Duplicate GlobalKey".
+    if (scaffoldKey.currentState == null) {
+      navkey.currentState?.pushNamedAndRemoveUntil(OverviewScreen.routeName,
+          (route) {
+        return false;
+      });
+    }
     await doWalletChecks(wasAlreadyRunning);
     await client.fetchNetworkInfo();
     await client.fetchMyAvatar();
@@ -614,15 +631,28 @@ class _AppState extends State<App> with WindowListener {
                 );
               },
               builder: (context, child) {
+                // Wraps the whole navigated app in a RepaintBoundary keyed
+                // by appRepaintBoundaryKey (see components/eyedropper.dart)
+                // so its current frame can be captured for the in-app
+                // eyedropper color picker.
+                // AppTooltips sits outside everything the app navigates to
+                // so the hover-text settings reach the login screens too --
+                // Flutter's TooltipVisibility applies to its whole subtree,
+                // which is why nothing below has to know about it.
+                Widget wrapped = AppTooltips(
+                    child: RepaintBoundary(
+                        key: appRepaintBoundaryKey,
+                        child: child ?? const Text("no child")));
+
                 if (theme.fontScale <= 0) {
                   // Use system default font scale.
-                  return child ?? const Text("no child");
+                  return wrapped;
                 }
 
                 return MediaQuery(
                     data: MediaQuery.of(context).copyWith(
                         textScaler: TextScaler.linear(theme.fontScale)),
-                    child: child ?? const Text("no child"));
+                    child: wrapped);
               },
             ));
   }

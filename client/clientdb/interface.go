@@ -228,6 +228,15 @@ type SharedFileAndShares struct {
 	Size   uint64          `json:"size"`
 	Global bool            `json:"global"`
 	Shares []clientintf.ID `json:"shares"`
+
+	// Descr is the description given when the file was shared, shown to
+	// whoever the file is offered to.
+	Descr string `json:"descr"`
+
+	// DiskPath is where this client read the file from when it was shared.
+	// Empty for files shared by an older version, or on a different
+	// machine -- it is local bookkeeping, never sent to anyone.
+	DiskPath string `json:"disk_path"`
 }
 
 type ChunkState string

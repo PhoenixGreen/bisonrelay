@@ -1,7 +1,7 @@
 import 'dart:io';
-
 import 'package:bruig/components/buttons.dart';
 import 'package:bruig/components/containers.dart';
+import 'package:bruig/components/copyable.dart';
 import 'package:bruig/components/empty_widget.dart';
 import 'package:bruig/components/info_grid.dart';
 import 'package:bruig/components/interactive_avatar.dart';
@@ -10,34 +10,36 @@ import 'package:bruig/components/snackbars.dart';
 import 'package:bruig/components/text.dart';
 import 'package:bruig/components/volume_control.dart';
 import 'package:bruig/models/audio.dart';
+import 'package:bruig/models/client.dart';
+import 'package:bruig/models/log.dart';
+import 'package:bruig/models/menus.dart';
 import 'package:bruig/models/realtimechat.dart';
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/models/uistate.dart';
 import 'package:bruig/notification_service.dart';
+import 'package:bruig/screens/about.dart';
 import 'package:bruig/screens/config_network.dart';
-import 'package:bruig/screens/list_kxs.dart';
 import 'package:bruig/screens/config_rpc.dart';
+import 'package:bruig/screens/list_kxs.dart';
 import 'package:bruig/screens/ln_management.dart';
 import 'package:bruig/screens/log.dart';
 import 'package:bruig/screens/manage_content/manage_content.dart';
 import 'package:bruig/screens/paystats.dart';
-import 'package:bruig/screens/about.dart';
 import 'package:bruig/screens/realtimechat/rtclist.dart';
 import 'package:bruig/screens/shutdown.dart';
+import 'package:bruig/storage_manager.dart';
+import 'package:bruig/theming_system/theme_editor.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
+import 'package:bruig/theming_system/theme_preset.dart';
 import 'package:bruig/util.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:bruig/theme_manager.dart';
 import 'package:golib_plugin/definitions.dart';
+import 'package:golib_plugin/golib_plugin.dart';
 import 'package:golib_plugin/util.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
-import 'package:bruig/models/client.dart';
-import 'package:golib_plugin/golib_plugin.dart';
-import 'package:bruig/storage_manager.dart';
-import 'package:bruig/models/menus.dart';
-import 'package:bruig/components/copyable.dart';
 
 typedef ChangePageCB = void Function(String);
 typedef NotficationsCB = void Function(bool?, bool?);
@@ -50,7 +52,7 @@ class SettingsScreenTitle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Consumer<SettingsTitleModel>(
-        builder: (context, settingsTitle, child) => Text(settingsTitle.title));
+        builder: (context, settingsTitle, child) => Txt.L(settingsTitle.title));
   }
 }
 
@@ -66,7 +68,7 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   ClientModel get client => widget.client;
   bool loading = false;
-  String settingsPage = "main";
+  late String settingsPage = client.ui.settingsNav.page;
   bool showRPCWarning = true;
 
   void loadSettings() async {
@@ -154,6 +156,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void changePage(String newPage) {
     setState(() {
       client.ui.settingsTitle.title = newPage;
+      client.ui.settingsNav.page = newPage;
       settingsPage = newPage;
     });
   }
@@ -167,6 +170,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.initState();
     loadSettings();
     client.connState.addListener(connStateChanged);
+    client.ui.settingsNav.addListener(settingsNavChanged);
+  }
+
+  // settingsPage seeds itself from settingsNav once, so anything that
+  // changes the page from *outside* this screen -- the header's self-avatar
+  // sending you to Account (see OverviewScreen.goToSelf) -- would otherwise
+  // set the model and leave the screen showing the page it was already on.
+  void settingsNavChanged() {
+    var page = client.ui.settingsNav.page;
+    if (page == settingsPage) return;
+    setState(() => settingsPage = page);
   }
 
   @override
@@ -175,6 +189,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (oldWidget.client != widget.client) {
       oldWidget.client.connState.removeListener(connStateChanged);
       client.connState.addListener(connStateChanged);
+      oldWidget.client.ui.settingsNav.removeListener(settingsNavChanged);
+      client.ui.settingsNav.addListener(settingsNavChanged);
     }
   }
 
@@ -183,6 +199,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     WidgetsBinding.instance.addPostFrameCallback(
         (_) => client.ui.settingsTitle.title = "Settings");
     client.connState.removeListener(connStateChanged);
+    client.ui.settingsNav.removeListener(settingsNavChanged);
     super.dispose();
   }
 
@@ -233,7 +250,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           StorageManager.showRPCWarningKey, false);
                       setState(() => showRPCWarning = false);
                     }
-                    setState(() => settingsPage = "RPC");
+                    changePage("RPC");
                   },
                   child: const Text("Continue"),
                 ),
@@ -248,6 +265,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     bool isScreenSmall = checkIsScreenSmall(context);
+    // "main" is the list of settings destinations, which is a page in its
+    // own right on a small screen but has no content pane to fill on a wide
+    // one -- the list is already the side menu there, so it used to open on
+    // a blank pane. Account is what that pane starts on instead.
+    if (!isScreenSmall && settingsPage == "main") settingsPage = "Account";
     Widget settingsView = isScreenSmall
         ? MainSettingsScreen(client, pickAvatarFile, changePage, shutdown)
         : const Empty();
@@ -278,55 +300,88 @@ class _SettingsScreenState extends State<SettingsScreen> {
             builder: (context, audio, child) =>
                 AudioSettingsScreen(audio: audio));
         break;
+      case "Stats":
+        settingsView = Consumer<ClientModel>(
+            builder: (context, client, child) => PayStatsScreen(client));
+        break;
+      case "Logs":
+        settingsView = Consumer<LogModel>(
+            builder: (context, log, child) => LogScreen(log));
+        break;
       default:
         break;
     }
-    if (isScreenSmall) {
-      return Scaffold(
-          body: Container(
+    // The left nav is a plain SecondarySideMenuLayout like every other
+    // screen's, so it picks up the Sidebar theme area's own settings
+    // (icons, rounded rows, visibility) and sizes itself to its own labels
+    // -- it used to have a second, near-duplicate implementation of its own
+    // behind a "Settings page restyle" toggle, which those settings
+    // supersede.
+    //
+    // A small screen used to return the content bare, which meant Settings
+    // never handed a sidebar to CollapsedSidebarModel: re-tapping it in the
+    // mobile navigation opened whichever page had registered one last, not
+    // its own. Below the collapse width this still renders content-only --
+    // the "main" list of destinations is the page there -- but the list
+    // below is now also what the re-tap slides in.
+    return SecondarySideMenuLayout(
+      storageKey: "settings",
+      content: isScreenSmall
+          ? Container(
               padding: const EdgeInsets.symmetric(horizontal: 3),
-              child: settingsView));
-    }
-
-    // Desktop-sized version.
-    return Row(children: [
-      Consumer<ThemeNotifier>(
-          builder: (context, theme, _) => SecondarySideMenuList(
-                  width: 130 * (theme.fontScale > 0 ? theme.fontScale : 1),
-                  items: [
-                    ListTile(
-                      selected: settingsPage == "Account",
-                      title: const Txt.S("Account"),
-                      onTap: () => changePage("Account"),
-                    ),
-                    ListTile(
-                      selected: settingsPage == "Appearance",
-                      title: const Txt.S("Appearance"),
-                      onTap: () => changePage("Appearance"),
-                    ),
-                    ListTile(
-                      selected: settingsPage == "Notifications",
-                      title: const Txt.S("Notifications"),
-                      onTap: () => changePage("Notifications"),
-                    ),
-                    ListTile(
-                      selected: settingsPage == "Network",
-                      title: const Txt.S("Network"),
-                      onTap: () => changePage("Network"),
-                    ),
-                    ListTile(
-                      selected: settingsPage == "Audio",
-                      title: const Txt.S("Audio"),
-                      onTap: () => changePage("Audio"),
-                    ),
-                    ListTile(
-                      selected: settingsPage == "RPC",
-                      title: const Txt.S("RPC"),
-                      onTap: () => showRpcWarningDialog(),
-                    ),
-                  ])),
-      Expanded(child: settingsView),
-    ]);
+              child: settingsView)
+          : settingsView,
+      items: [
+        SidebarNavItem(
+          icon: Icons.person_outline,
+          selected: settingsPage == "Account",
+          label: "Account",
+          onTap: () => changePage("Account"),
+        ),
+        SidebarNavItem(
+          icon: Icons.palette_outlined,
+          selected: settingsPage == "Appearance",
+          label: "Appearance",
+          onTap: () => changePage("Appearance"),
+        ),
+        SidebarNavItem(
+          icon: Icons.notifications_outlined,
+          selected: settingsPage == "Notifications",
+          label: "Notifications",
+          onTap: () => changePage("Notifications"),
+        ),
+        SidebarNavItem(
+          icon: Icons.public,
+          selected: settingsPage == "Network",
+          label: "Network",
+          onTap: () => changePage("Network"),
+        ),
+        SidebarNavItem(
+          icon: Icons.volume_up_outlined,
+          selected: settingsPage == "Audio",
+          label: "Audio",
+          onTap: () => changePage("Audio"),
+        ),
+        SidebarNavItem(
+          icon: Icons.terminal,
+          selected: settingsPage == "RPC",
+          label: "RPC",
+          onTap: () => showRpcWarningDialog(),
+        ),
+        SidebarNavItem(
+          icon: Icons.bar_chart_outlined,
+          selected: settingsPage == "Stats",
+          label: "Stats",
+          onTap: () => changePage("Stats"),
+        ),
+        SidebarNavItem(
+          icon: Icons.list_outlined,
+          selected: settingsPage == "Logs",
+          label: "Logs",
+          onTap: () => changePage("Logs"),
+        ),
+      ],
+    );
   }
 }
 
@@ -375,30 +430,34 @@ class MainSettingsScreen extends StatelessWidget {
                     leading: const Icon(Icons.notifications_outlined),
                     title: const Text("Notifications")),
                 Consumer<ConnStateModel>(
-                    builder: (context, connState, child) => ListTile(
-                        tileColor: connState.state.state == connStateOffline
-                            ? Colors.red
-                            : (connState.checkWalletErr ?? "") != ""
-                                ? Colors.amber[800]
-                                : null,
-                        onTap: () => changePage("Network"),
-                        leading: const Icon(Icons.shield),
-                        title: const Text("Network"))),
+                    builder: (context, connState, child) => Material(
+                        type: MaterialType.transparency,
+                        child: ListTile(
+                            tileColor: connState.state.state == connStateOffline
+                                ? Colors.red
+                                : (connState.checkWalletErr ?? "") != ""
+                                    ? Colors.amber[800]
+                                    : null,
+                            onTap: () => changePage("Network"),
+                            leading: const Icon(Icons.shield),
+                            title: const Text("Network")))),
                 ListTile(
                     onTap: () => changePage("Audio"),
                     leading: const Icon(Icons.perm_camera_mic_outlined),
                     title: const Text("Audio")),
                 Consumer<LiveRTDTSessionsModel>(
-                    builder: (context, liveSessions, child) => ListTile(
-                        tileColor: liveSessions.hasSessions
-                            ? Colors.green.shade700
-                            : null,
-                        onTap: () {
-                          Navigator.of(context).pushReplacementNamed(
-                              RealtimeChatScreen.routeName);
-                        },
-                        leading: const Icon(Icons.voice_chat),
-                        title: const Text("Realtime chat"))),
+                    builder: (context, liveSessions, child) => Material(
+                        type: MaterialType.transparency,
+                        child: ListTile(
+                            tileColor: liveSessions.hasSessions
+                                ? Colors.green.shade700
+                                : null,
+                            onTap: () {
+                              Navigator.of(context).pushReplacementNamed(
+                                  RealtimeChatScreen.routeName);
+                            },
+                            leading: const Icon(Icons.voice_chat),
+                            title: const Text("Realtime chat")))),
                 ListTile(
                     onTap: () {
                       Navigator.of(context)
@@ -416,18 +475,12 @@ class MainSettingsScreen extends StatelessWidget {
                         "assets/icons/icons-menu-files.svg"),
                     title: const Text("Manage Content")),
                 ListTile(
-                    onTap: () {
-                      Navigator.of(context)
-                          .pushReplacementNamed(PayStatsScreen.routeName);
-                    },
+                    onTap: () => changePage("Stats"),
                     leading: const SidebarSvgIcon(
                         "assets/icons/icons-menu-stats.svg"),
                     title: const Text("Payment Stats")),
                 ListTile(
-                    onTap: () {
-                      Navigator.of(context)
-                          .pushReplacementNamed(LogScreen.routeName);
-                    },
+                    onTap: () => changePage("Logs"),
                     leading: const Icon(Icons.list_outlined),
                     title: const Text("Logs")),
                 ListTile(
@@ -454,8 +507,233 @@ class AccountSettingsScreen extends StatelessWidget {
       this.pickAvatarCB, this.subAllPostsCB, this.listKXs,
       {super.key});
 
+  Widget _settLabel(String text, ColorScheme cs) => Padding(
+        padding: const EdgeInsets.fromLTRB(4, 0, 4, 9),
+        child: Text(text.toUpperCase(),
+            style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.8,
+                color: cs.onSurfaceVariant)),
+      );
+
+  Widget _settCard(ColorScheme cs, List<Widget> children) => Container(
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: cs.outlineVariant),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Column(children: children),
+      );
+
+  Widget _settChip(IconData icon, ColorScheme cs) => Container(
+        width: 36,
+        height: 36,
+        decoration: BoxDecoration(
+            color: cs.surfaceContainerHigh,
+            borderRadius: BorderRadius.circular(9)),
+        alignment: Alignment.center,
+        child: Icon(icon, size: 19, color: cs.onSurfaceVariant),
+      );
+
+  Widget _settDivider(ColorScheme cs) =>
+      Divider(height: 1, thickness: 1, indent: 66, color: cs.outlineVariant);
+
+  Widget _settRow(ColorScheme cs,
+          {required IconData icon,
+          required String title,
+          String? subtitle,
+          Widget? trailing,
+          VoidCallback? onTap}) =>
+      InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Row(children: [
+            _settChip(icon, cs),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title,
+                      style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w500,
+                          color: cs.onSurface)),
+                  if (subtitle != null) ...[
+                    const SizedBox(height: 2),
+                    Text(subtitle,
+                        style: TextStyle(
+                            fontSize: 12.5, color: cs.onSurfaceVariant)),
+                  ],
+                ],
+              ),
+            ),
+            if (trailing != null) ...[const SizedBox(width: 8), trailing],
+            if (onTap != null && trailing == null)
+              Icon(Icons.chevron_right, size: 20, color: cs.onSurfaceVariant),
+          ]),
+        ),
+      );
+
+  Widget _restyled(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 18, 16, 24),
+      children: [
+        Center(
+          child: Column(children: [
+            Stack(alignment: Alignment.center, children: [
+              SizedBox(
+                  width: 96,
+                  height: 96,
+                  child: SelfAvatar(client, onTap: pickAvatarCB)),
+              Positioned(
+                right: 0,
+                bottom: 0,
+                child: IgnorePointer(
+                  child: Container(
+                    width: 30,
+                    height: 30,
+                    decoration: BoxDecoration(
+                      color: cs.primary,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: cs.surface, width: 2),
+                    ),
+                    child:
+                        Icon(Icons.photo_camera, size: 16, color: cs.onPrimary),
+                  ),
+                ),
+              ),
+            ]),
+            const SizedBox(height: 10),
+            Text(client.nick,
+                style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    color: cs.onSurface)),
+            const SizedBox(height: 2),
+            Text("Tap the avatar to change it",
+                style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant)),
+          ]),
+        ),
+        const SizedBox(height: 24),
+        _settLabel("Identity", cs),
+        _settCard(cs, [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
+            child: Row(children: [
+              _settChip(Icons.fingerprint, cs),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text("Public identity",
+                        style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w500,
+                            color: cs.onSurface)),
+                    const SizedBox(height: 2),
+                    Text(
+                        "Your unique Bison Relay ID. Share it so others "
+                        "can add you.",
+                        style: TextStyle(
+                            fontSize: 12.5, color: cs.onSurfaceVariant)),
+                  ],
+                ),
+              ),
+            ]),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+            child: Copyable(client.publicID),
+          ),
+        ]),
+        const SizedBox(height: 22),
+        _settLabel("Relay Counter", cs),
+        AnimatedBuilder(
+          animation: client,
+          builder: (context, _) => _settCard(cs, [
+            _settRow(cs,
+                icon: Icons.insights,
+                title: "Relay Counter",
+                subtitle: "Messages you've sent",
+                trailing: Text("${client.msgsSent}",
+                    style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        color: cs.primary))),
+            _settDivider(cs),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+              child: Row(children: [
+                _settChip(Icons.tag, cs),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text("Count Relays",
+                          style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w500,
+                              color: cs.onSurface)),
+                      const SizedBox(height: 2),
+                      Text("Show a running count of messages you send",
+                          style: TextStyle(
+                              fontSize: 12.5, color: cs.onSurfaceVariant)),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Switch(
+                    value: client.countRelays,
+                    onChanged: (v) => client.setCountRelays(v)),
+              ]),
+            ),
+          ]),
+        ),
+        const SizedBox(height: 22),
+        _settLabel("Account", cs),
+        _settCard(cs, [
+          _settRow(cs,
+              icon: Icons.refresh,
+              title: "Reset all KX",
+              onTap: () => resetAllKXCB(context)),
+          _settDivider(cs),
+          _settRow(cs,
+              icon: Icons.history,
+              title: "Reset KX from users 30d stale",
+              onTap: () => resetKXCB(context)),
+          _settDivider(cs),
+          _settRow(cs,
+              icon: Icons.rss_feed,
+              title: "Subscribe to all posts",
+              onTap: () => subAllPostsCB()),
+          _settDivider(cs),
+          _settRow(cs,
+              icon: Icons.list_alt,
+              title: "List ongoing KX attempts",
+              onTap: () => listKXs()),
+        ]),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    // No frame of its own: Dual Panel wraps every page's sidebar and
+    // content together, this one included.
+    var theme = ThemeNotifier.of(context);
+    return theme.areaStyle(ThemeArea.settingsPages).accountCardLayout
+        ? _restyled(context)
+        : _plain(context);
+  }
+
+  Widget _plain(BuildContext context) {
     return Column(children: [
       const SizedBox(height: 10),
       SizedBox(
@@ -469,6 +747,23 @@ class AccountSettingsScreen extends StatelessWidget {
       const SizedBox(height: 10),
       Expanded(
           child: ListView(children: [
+        AnimatedBuilder(
+          animation: client,
+          builder: (context, _) => Column(children: [
+            ListTile(
+              title: const Text("Relay Counter"),
+              subtitle: const Text("Messages you've sent"),
+              trailing: Text("${client.msgsSent}"),
+            ),
+            SwitchListTile(
+              title: const Text("Count Relays"),
+              subtitle: const Text("Show a running count of messages you send"),
+              value: client.countRelays,
+              onChanged: (v) => client.setCountRelays(v),
+            ),
+          ]),
+        ),
+        const Divider(),
         ListTile(
           title: const Text("Reset all KX"),
           onTap: () => resetAllKXCB(context),
@@ -499,88 +794,185 @@ class AppearanceSettingsScreen extends StatefulWidget {
       _AppearanceSettingsScreenState();
 }
 
-void _showSelectThemeDialog(BuildContext context, ThemeNotifier theme) {
-  void switchToTheme(BuildContext context, String v) {
-    theme.switchTheme(v);
-    Navigator.of(context).pop();
-  }
-
-  showDialog(
-      context: context,
-      builder: (BuildContext context) => SimpleDialog(
-          backgroundColor: theme.colors.primaryContainer,
-          shape: const RoundedRectangleBorder(
-              borderRadius: BorderRadius.all(Radius.circular(16.0))),
-          children: appThemes.entries
-              .map((e) => ListTile(
-                  title:
-                      Txt(e.value.descr, color: TextColor.onPrimaryContainer),
-                  onTap: () => switchToTheme(context, e.key),
-                  leading: Radio<String>(
-                    value: e.key,
-                    groupValue: theme.getThemeMode(),
-                    onChanged: (_) => switchToTheme(context, e.key),
-                  )))
-              .toList()));
-}
-
-void _showSelectTextSizeDialog(BuildContext context, ThemeNotifier theme) {
-  void switchFontSize(BuildContext context, String key) {
-    theme.setFontSize(appFontSizes[key]?.scale ?? 1);
-  }
-
-  showDialog(
-      context: context,
-      builder: (BuildContext context) => SimpleDialog(
-          backgroundColor: theme.colors.primaryContainer,
-          shape: const RoundedRectangleBorder(
-            borderRadius: BorderRadius.all(Radius.circular(16.0)),
-          ),
-          children: appFontSizes.entries
-              .map((e) => ListTile(
-                  title:
-                      Txt(e.value.descr, color: TextColor.onPrimaryContainer),
-                  onTap: () => switchFontSize(context, e.key),
-                  leading: Radio<String>(
-                    value: e.key,
-                    groupValue: appFontSizeKeyForScale(theme.fontScale),
-                    onChanged: (_) => switchFontSize(context, e.key),
-                  )))
-              .toList()));
-}
+// _appearanceScrollOffset survives this screen's State being torn down and
+// rebuilt, which happens every time you navigate away and back (each
+// main-menu destination is a fresh Navigator route). Editing a theme means
+// constantly hopping to the screen you're restyling to see the change and
+// back again, and this page is long enough that landing at the top each
+// time loses your place. A plain top-level double outlives the route the
+// way PageStorage, scoped to a route that no longer exists, would not.
+double _appearanceScrollOffset = 0;
 
 /// This is the private State class that goes with MyStatefulWidget.
 class _AppearanceSettingsScreenState extends State<AppearanceSettingsScreen> {
   ThemeNotifier get theme => widget.theme;
+  ClientModel get client => widget.client;
+
+  late final ScrollController _scrollCtrl =
+      ScrollController(initialScrollOffset: _appearanceScrollOffset)
+        ..addListener(_rememberScroll);
+
+  // hasClients is false while the controller is detached mid-teardown, and
+  // reading offset then throws.
+  void _rememberScroll() {
+    if (_scrollCtrl.hasClients) _appearanceScrollOffset = _scrollCtrl.offset;
+  }
+
+  @override
+  void dispose() {
+    _scrollCtrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return ListView(
+    var mainMenu = Provider.of<MainMenuModel>(context, listen: false);
+    return Column(
       children: [
-        ListTile(
-            onTap: () => _showSelectThemeDialog(context, theme),
-            leading: const Icon(Icons.color_lens_outlined),
-            title: const Text("Theme")),
-        ListTile(
-            onTap: () => _showSelectTextSizeDialog(context, theme),
-            leading: const Icon(Icons.text_increase),
-            title: const Text("Message font size")),
-        if (kDebugMode) ...[
-          ListTile(
-              title: const Text("Widget Test Screen"),
-              onTap: () {
-                Navigator.of(context, rootNavigator: true)
-                    .pushNamed(ThemeTestScreen.routeName);
-              }),
-          ListTile(
-              title: const Text("Unset Unkx Members Notice Flag"),
-              onTap: () async {
-                await StorageManager.saveBool(
-                    StorageManager.notifiedGCUnkxdMembers, false);
-                if (context.mounted) showSuccessSnackbar(context, "Done");
-              })
-        ]
+        // Kept outside the ListView (rather than as a pinned/sliver header)
+        // so it stays fixed in place while the rest of the page scrolls --
+        // the active preset and its actions are relevant no matter which
+        // section below is being edited.
+        Padding(
+          padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ListTile(
+                  title: Txt.S("Active Theme: ${theme.presetDisplayName}")),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      ThemeModeDropdown(theme, mainMenu),
+                      OutlinedButton.icon(
+                        onPressed: () => createNewPreset(theme),
+                        icon: const Icon(Icons.add_circle_outline),
+                        label: const Text("New Preset"),
+                      ),
+                      IconButton(
+                        onPressed: () =>
+                            importPresetFile(context, theme, mainMenu),
+                        icon: const Icon(Icons.file_upload_outlined),
+                        tooltip: "Import",
+                      ),
+                      IconButton(
+                        onPressed: () => exportPresetFile(context, theme),
+                        icon: const Icon(Icons.file_download_outlined),
+                        tooltip: "Export",
+                      ),
+                      IconButton(
+                        onPressed: () => resetToDefaultTheme(theme, mainMenu),
+                        icon: const Icon(Icons.restart_alt_outlined),
+                        tooltip: "Reset to Default",
+                      ),
+                      IconButton(
+                        onPressed: () => savePreset(context, theme, mainMenu),
+                        icon: const Icon(Icons.save_outlined),
+                        tooltip: "Save",
+                      ),
+                      IconButton(
+                        onPressed: theme.activePreset != null
+                            ? () => deletePreset(context, theme)
+                            : null,
+                        icon: const Icon(Icons.delete_outline),
+                        tooltip: "Delete",
+                      ),
+                    ]),
+              ),
+              const Divider(),
+            ],
+          ),
+        ),
+        Expanded(
+          child: ListView(
+            controller: _scrollCtrl,
+            padding: const EdgeInsets.all(8),
+            children: [
+              _SettingsGroupCard(
+                theme: theme,
+                child: const PaletteExpansionTile(),
+              ),
+              _SettingsGroupCard(
+                theme: theme,
+                child: ExpansionTile(
+                  title: const Txt.S("Theme Areas"),
+                  initiallyExpanded: client.ui.settingsNav.themeAreasExpanded,
+                  onExpansionChanged: (v) =>
+                      client.ui.settingsNav.themeAreasExpanded = v,
+                  children: [
+                    Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: AreasSection(
+                          initialArea: client.ui.settingsNav.selectedThemeArea,
+                          onAreaChanged: (a) =>
+                              client.ui.settingsNav.selectedThemeArea = a,
+                        ))
+                  ],
+                ),
+              ),
+              _SettingsGroupCard(
+                theme: theme,
+                child: ExpansionTile(
+                  title: const Txt.S("Menu"),
+                  initiallyExpanded: false,
+                  children: const [MenuSection()],
+                ),
+              ),
+              const Divider(),
+              ListTile(
+                title: const Txt.S("Message font size"),
+                trailing: FontSizeDropdown(theme),
+              ),
+              if (kDebugMode) ...[
+                const Divider(),
+                ListTile(
+                    title: const Text("Widget Test Screen"),
+                    onTap: () {
+                      Navigator.of(context, rootNavigator: true)
+                          .pushNamed(ThemeTestScreen.routeName);
+                    }),
+                ListTile(
+                    title: const Text("Unset Unkx Members Notice Flag"),
+                    onTap: () async {
+                      await StorageManager.saveBool(
+                          StorageManager.notifiedGCUnkxdMembers, false);
+                      if (context.mounted) {
+                        showSuccessSnackbar(context, "Done");
+                      }
+                    })
+              ]
+            ],
+          ),
+        ),
       ],
+    );
+  }
+}
+
+// _SettingsGroupCard wraps one of the Appearance page's collapsible
+// sections (Color Palette/Theme Areas/Menu) in a visibly distinct card, so
+// they read as separate groups instead of blending into one long list.
+// Uses surfaceContainerHigh explicitly (rather than relying on Card's own
+// default M3 elevation tint) since the active preset's own
+// surfaceContainerLow/Lowest tones are deliberately very subtle -- too
+// close to the page background to read as a separate section on their own.
+class _SettingsGroupCard extends StatelessWidget {
+  final ThemeNotifier theme;
+  final Widget child;
+  const _SettingsGroupCard({required this.theme, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 6),
+      clipBehavior: Clip.antiAlias,
+      color: theme.colors.surfaceContainerHigh,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      child: child,
     );
   }
 }
@@ -1002,9 +1394,9 @@ class _AudioSettingsScreenState extends State<AudioSettingsScreen> {
             padding: const EdgeInsets.all(10),
             margin:
                 const EdgeInsets.only(top: 2, bottom: 5, left: 10, right: 12),
-            color: SurfaceColor.secondaryContainer,
+            color: SurfaceColor.tertiary,
             child: Wrap(spacing: 5, runSpacing: 10, children: [
-              const Text("Microphone Volume"),
+              const Txt.S("Microphone Volume", color: TextColor.onSurface),
               VolumeGainControl(
                 initialValue: audio.captureGain.value,
                 onChanged: (value) async {
@@ -1018,9 +1410,9 @@ class _AudioSettingsScreenState extends State<AudioSettingsScreen> {
             padding: const EdgeInsets.all(10),
             margin:
                 const EdgeInsets.only(top: 2, bottom: 5, left: 10, right: 12),
-            color: SurfaceColor.secondaryContainer,
+            color: SurfaceColor.tertiary,
             child: Wrap(spacing: 5, runSpacing: 10, children: [
-              const Text("Output Volume"),
+              const Txt.S("Output Volume", color: TextColor.onSurface),
               VolumeGainControl(
                 initialValue: audio.playbackGain.value,
                 onChanged: (value) async {
@@ -1093,12 +1485,9 @@ class ThemeTestScreen extends StatelessWidget {
     return Scaffold(
       floatingActionButton:
           Column(mainAxisAlignment: MainAxisAlignment.end, children: [
-        IconButton(
-            onPressed: () => _showSelectThemeDialog(context, theme),
-            icon: const Icon(Icons.color_lens_outlined)),
-        IconButton(
-            onPressed: () => _showSelectTextSizeDialog(context, theme),
-            icon: const Icon(Icons.text_increase)),
+        ThemeModeDropdown(
+            theme, Provider.of<MainMenuModel>(context, listen: false)),
+        FontSizeDropdown(theme),
         IconButton(
             icon: const Icon(Icons.cancel_outlined),
             onPressed: () => Navigator.of(context).pop()),

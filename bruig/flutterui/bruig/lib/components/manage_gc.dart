@@ -12,7 +12,7 @@ import 'package:bruig/components/usersearch/user_search_panel.dart';
 import 'package:bruig/models/client.dart';
 import 'package:bruig/models/realtimechat.dart';
 import 'package:bruig/models/snackbar.dart';
-import 'package:bruig/theme_manager.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:golib_plugin/definitions.dart';
 import 'package:golib_plugin/golib_plugin.dart';

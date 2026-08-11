@@ -14,6 +14,55 @@ import 'package:blake_hash/blake_hash.dart';
 
 part 'definitions.g.dart';
 
+String _normalizeDateTimeString(String value) {
+  final trimmed = value.trim();
+  if (trimmed.isEmpty) {
+    return trimmed;
+  }
+
+  final looseOffsetMatch = RegExp(r'(\d{2}:\d{2})$').firstMatch(trimmed);
+  if (looseOffsetMatch != null &&
+      !trimmed.endsWith('Z') &&
+      !trimmed.contains(RegExp(r'[+-]\d{2}:\d{2}$'))) {
+    return '${trimmed.substring(0, looseOffsetMatch.start)}+${looseOffsetMatch.group(0)!}';
+  }
+
+  return trimmed;
+}
+
+DateTime _parseDateTime(dynamic value) {
+  if (value is DateTime) {
+    return value;
+  }
+
+  if (value is int) {
+    return DateTime.fromMillisecondsSinceEpoch(value);
+  }
+
+  if (value is num) {
+    return DateTime.fromMillisecondsSinceEpoch(value.toInt());
+  }
+
+  if (value is String) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) {
+      return DateTime.fromMillisecondsSinceEpoch(0);
+    }
+
+    try {
+      return DateTime.parse(_normalizeDateTimeString(trimmed));
+    } on FormatException {
+      try {
+        return DateTime.parse(trimmed);
+      } on FormatException {
+        return DateTime.fromMillisecondsSinceEpoch(0);
+      }
+    }
+  }
+
+  return DateTime.fromMillisecondsSinceEpoch(0);
+}
+
 @JsonSerializable()
 class InitClient {
   @JsonKey(name: 'dbroot')
@@ -405,7 +454,7 @@ class GCAddressBookEntry {
   final String id;
   final String name;
   final List<String> members;
-  @JsonKey(name: "last_read_msg_time")
+  @JsonKey(name: "last_read_msg_time", fromJson: _parseDateTime)
   final DateTime lastReadMsgTime;
   GCAddressBookEntry(this.id, this.name, this.members, this.lastReadMsgTime);
 
@@ -437,7 +486,7 @@ class GroupChat {
   final String alias;
   @JsonKey(name: "rtdt_session_rv", defaultValue: "")
   final String rtdtSessionRV;
-  @JsonKey(name: "last_read_msg_time")
+  @JsonKey(name: "last_read_msg_time", fromJson: _parseDateTime)
   final DateTime lastReadMsgTime;
 
   GroupChat(
@@ -520,15 +569,15 @@ class AddressBookEntry {
   final String nick;
   final String name;
   final bool ignored;
-  @JsonKey(name: "first_created")
+  @JsonKey(name: "first_created", fromJson: _parseDateTime)
   final DateTime firstCreated;
-  @JsonKey(name: "last_handshake_attempt")
+  @JsonKey(name: "last_handshake_attempt", fromJson: _parseDateTime)
   final DateTime lastHandshakeAttempt;
   @JsonKey(fromJson: base64ToUint8list)
   final Uint8List? avatar;
-  @JsonKey(name: "last_completed_kx")
+  @JsonKey(name: "last_completed_kx", fromJson: _parseDateTime)
   final DateTime lastCompletedKx;
-  @JsonKey(name: "last_read_msg_time")
+  @JsonKey(name: "last_read_msg_time", fromJson: _parseDateTime)
   final DateTime lastReadMsgTime;
 
   AddressBookEntry(
@@ -662,6 +711,398 @@ class FileMetadata {
 }
 
 @JsonSerializable()
+class ImportPluginArgs {
+  final String path;
+  ImportPluginArgs(this.path);
+  Map<String, dynamic> toJson() => _$ImportPluginArgsToJson(this);
+}
+
+@JsonSerializable()
+class SetPluginEnabledArgs {
+  final String id;
+  final bool enabled;
+  SetPluginEnabledArgs(this.id, this.enabled);
+  Map<String, dynamic> toJson() => _$SetPluginEnabledArgsToJson(this);
+}
+
+@JsonSerializable()
+class ScreenDef {
+  final String id;
+  final String label;
+  ScreenDef(this.id, this.label);
+  factory ScreenDef.fromJson(Map<String, dynamic> json) =>
+      _$ScreenDefFromJson(json);
+}
+
+@JsonSerializable()
+class PluginManifest {
+  final String id;
+  final String name;
+  final String version;
+  final String description;
+
+  /// summary is one line for the plugins list, where [description] is the
+  /// full account shown once a plugin has been opened.
+  ///
+  /// Optional, and empty for every plugin written before it existed, so the
+  /// list falls back to the opening of the description -- see
+  /// PluginInfo.summaryLine.
+  @JsonKey(name: "summary", defaultValue: "")
+  final String summary;
+  @JsonKey(name: "rendererKind")
+  final String rendererKind;
+
+  // navLabel/navIcon/screens are populated only for rendererKind
+  // "dynamic-wasm" plugins (see DynPluginsModel), which contribute their
+  // own top-level nav item and sub-pages rendered by DynPluginScreen.
+  @JsonKey(name: "navLabel", defaultValue: "")
+  final String navLabel;
+  @JsonKey(name: "navIcon", defaultValue: "")
+  final String navIcon;
+  @JsonKey(name: "screens", defaultValue: [])
+  final List<ScreenDef> screens;
+
+  // capabilities declares optional headless behaviors a dynamic-wasm
+  // plugin implements independent of (and possibly in addition to) having
+  // a nav item -- e.g. "spellcheck-data" or "link-card". See
+  // PluginsModel.spellcheckActive/prettyLinksActive.
+  @JsonKey(name: "capabilities", defaultValue: [])
+  final List<String> capabilities;
+
+  PluginManifest(this.id, this.name, this.version, this.description,
+      this.summary, this.rendererKind, this.navLabel, this.navIcon,
+      this.screens, this.capabilities);
+  factory PluginManifest.fromJson(Map<String, dynamic> json) =>
+      _$PluginManifestFromJson(json);
+
+  /// summaryLine is the one line to show in a list: [summary] when the
+  /// plugin gives one, and otherwise the opening of [description].
+  ///
+  /// The fallback cuts at the first colon or full stop, which is where a
+  /// description written as one long sentence tends to stop introducing
+  /// itself and start listing what it contains. Failing that it takes whole
+  /// words up to a limit, because a line cut mid-word reads as damage
+  /// rather than as an abbreviation.
+  String get summaryLine {
+    if (summary.isNotEmpty) return summary;
+    var text = description.trim();
+    var stop = text.length;
+    for (var mark in [": ", ". "]) {
+      var at = text.indexOf(mark);
+      if (at > 0 && at < stop) stop = at;
+    }
+    if (stop <= 110) return text.substring(0, stop);
+    var cut = text.lastIndexOf(" ", 110);
+    return "${text.substring(0, cut < 40 ? 110 : cut)}\u2026";
+  }
+}
+
+@JsonSerializable()
+class PluginInfo {
+  final PluginManifest manifest;
+  final bool enabled;
+  PluginInfo(this.manifest, this.enabled);
+  factory PluginInfo.fromJson(Map<String, dynamic> json) =>
+      _$PluginInfoFromJson(json);
+}
+
+// DynWidget is one node of a dynamic-wasm plugin's declarative screen (see
+// DynScreenUI): the plugin describes what to show, this app decides how to
+// draw it (in components/dynplugin_screen.dart) -- named Dyn* rather than
+// the bare Go-side ScreenUI/Widget names to avoid colliding with Flutter's
+// own foundational Widget class.
+@JsonSerializable()
+class DynWidget {
+  final String type; // "text","list","textfield","button","switch"
+
+  @JsonKey(defaultValue: "")
+  final String text;
+  @JsonKey(defaultValue: "")
+  final String hint;
+  @JsonKey(defaultValue: "")
+  final String value;
+  @JsonKey(name: "bool", defaultValue: false)
+  final bool boolValue;
+  @JsonKey(defaultValue: "")
+  final String name;
+  @JsonKey(defaultValue: "")
+  final String event;
+  @JsonKey(name: "openUrl", defaultValue: "")
+  final String openUrl;
+  @JsonKey(defaultValue: false)
+  final bool danger;
+  @JsonKey(defaultValue: false)
+  final bool muted;
+  @JsonKey(defaultValue: false)
+  final bool bookmarkable;
+  @JsonKey(defaultValue: false)
+  final bool bookmarked;
+  @JsonKey(defaultValue: [])
+  final List<DynWidget> items;
+
+  DynWidget(
+      this.type,
+      this.text,
+      this.hint,
+      this.value,
+      this.boolValue,
+      this.name,
+      this.event,
+      this.openUrl,
+      this.danger,
+      this.muted,
+      this.bookmarkable,
+      this.bookmarked,
+      this.items);
+  factory DynWidget.fromJson(Map<String, dynamic> json) =>
+      _$DynWidgetFromJson(json);
+}
+
+@JsonSerializable()
+class DynScreenUI {
+  final String title;
+  @JsonKey(defaultValue: [])
+  final List<DynWidget> widgets;
+  DynScreenUI(this.title, this.widgets);
+  factory DynScreenUI.fromJson(Map<String, dynamic> json) =>
+      _$DynScreenUIFromJson(json);
+}
+
+@JsonSerializable()
+class DynPluginRenderScreenArgs {
+  @JsonKey(name: "pluginId")
+  final String pluginId;
+  @JsonKey(name: "screenId")
+  final String screenId;
+  DynPluginRenderScreenArgs(this.pluginId, this.screenId);
+  Map<String, dynamic> toJson() => _$DynPluginRenderScreenArgsToJson(this);
+}
+
+@JsonSerializable()
+class DynPluginHandleEventArgs {
+  @JsonKey(name: "pluginId")
+  final String pluginId;
+  @JsonKey(name: "screenId")
+  final String screenId;
+  final String event;
+  final Map<String, dynamic> payload;
+  DynPluginHandleEventArgs(
+      this.pluginId, this.screenId, this.event, this.payload);
+  Map<String, dynamic> toJson() => _$DynPluginHandleEventArgsToJson(this);
+}
+
+@JsonSerializable()
+class LinkMetadata {
+  final String title;
+  final String description;
+  final String author;
+  @JsonKey(name: "thumbnailB64")
+  final String thumbnailB64;
+  // player names a client-side player the plugin asks be offered for this
+  // link instead of a still thumbnail, or "" for an ordinary card. It is a
+  // request, not a guarantee: an unrecognized name falls back to the card.
+  @JsonKey(defaultValue: "")
+  final String player;
+  LinkMetadata(this.title, this.description, this.author, this.thumbnailB64,
+      this.player);
+  factory LinkMetadata.fromJson(Map<String, dynamic> json) =>
+      _$LinkMetadataFromJson(json);
+}
+
+@JsonSerializable()
+class GrammarRule {
+  final String pattern;
+  final String message;
+  final String suggest;
+
+  /// A group heading for the rule -- "Capitalization", "Punctuation". Empty
+  /// from a provider that sends none, in which case the UI shows the message
+  /// alone.
+  @JsonKey(defaultValue: "")
+  final String category;
+
+  /// A sentence saying what is wrong and why, for a reader who does not
+  /// already know. [message] names the problem in the few words a menu row
+  /// allows; this does not have to fit anywhere and can afford to teach.
+  @JsonKey(defaultValue: "")
+  final String explanation;
+
+  /// Separates a mistake from an opinion: "error" (the default) for text
+  /// that is wrong whatever the writer meant, "suggestion" for a rewrite that
+  /// is usually an improvement and sometimes not. The two are underlined in
+  /// different colours and listed apart.
+  @JsonKey(defaultValue: "")
+  final String severity;
+
+  /// Patterns that suppress this rule wherever they match over it: the rule
+  /// fires, and then does not, because the text turned out to be one of the
+  /// readings it is not about.
+  ///
+  /// Suppression only -- an antipattern can take a match away and cannot
+  /// create one.
+  @JsonKey(defaultValue: [])
+  final List<String> antipatterns;
+
+  GrammarRule(this.pattern, this.message, this.suggest,
+      [this.category = "",
+      this.explanation = "",
+      this.severity = "",
+      this.antipatterns = const []]);
+  factory GrammarRule.fromJson(Map<String, dynamic> json) =>
+      _$GrammarRuleFromJson(json);
+}
+
+/// AnalysisCheck is a check a regex cannot express because it has to count or
+/// compare across a whole message: how often a word is used, how long a
+/// sentence runs, whether two spellings of one word are mixed.
+///
+/// The provider names a check the app knows how to run and supplies
+/// everything else about it -- the threshold, what to call it, how to explain
+/// it. It never supplies the logic, exactly as it never executes the regexes
+/// it writes.
+@JsonSerializable()
+class AnalysisCheck {
+  /// Names the check. An id the app does not implement is ignored, which is
+  /// what lets a provider ship a check ahead of the app that runs it.
+  @JsonKey(defaultValue: "")
+  final String id;
+
+  /// The number the check fires at, in whatever unit it counts.
+  @JsonKey(defaultValue: 0)
+  final int threshold;
+
+  /// Names the problem. May reference `$1` (what the check is about, such as
+  /// the repeated word) and `$2` (the count that tripped it).
+  @JsonKey(defaultValue: "")
+  final String message;
+
+  @JsonKey(defaultValue: "")
+  final String category;
+  @JsonKey(defaultValue: "")
+  final String explanation;
+  @JsonKey(defaultValue: "")
+  final String severity;
+
+  /// Data the named check needs, in a form only that check defines. The
+  /// spelling-variant check reads pairs written "colour|color"; the counting
+  /// checks need none.
+  @JsonKey(defaultValue: [])
+  final List<String> values;
+
+  AnalysisCheck(this.id, this.threshold, this.message,
+      [this.category = "",
+      this.explanation = "",
+      this.severity = "",
+      this.values = const []]);
+  factory AnalysisCheck.fromJson(Map<String, dynamic> json) =>
+      _$AnalysisCheckFromJson(json);
+}
+
+/// SpellcheckLanguage is one language a spellcheck-data provider can check
+/// against.
+@JsonSerializable()
+class SpellcheckLanguage {
+  @JsonKey(defaultValue: "")
+  final String code;
+  @JsonKey(defaultValue: "")
+  final String name;
+  SpellcheckLanguage(this.code, this.name);
+  factory SpellcheckLanguage.fromJson(Map<String, dynamic> json) =>
+      _$SpellcheckLanguageFromJson(json);
+}
+
+@JsonSerializable()
+class SpellcheckData {
+  @JsonKey(defaultValue: [])
+  final List<String> words;
+  // commonWords is a subset of words, most common first, used to rank
+  // corrections. Empty from a provider that doesn't supply one.
+  @JsonKey(name: "commonWords", defaultValue: [])
+  final List<String> commonWords;
+  @JsonKey(name: "grammarRules", defaultValue: [])
+  final List<GrammarRule> grammarRules;
+
+  /// The checks that count rather than match. Older providers send none.
+  @JsonKey(name: "analysisChecks", defaultValue: [])
+  final List<AnalysisCheck> analysisChecks;
+
+  /// The language [words] is for, which need not be the one asked for: a
+  /// provider that does not have it answers in what it has and says so.
+  @JsonKey(defaultValue: "")
+  final String language;
+
+  /// Every language the enabled providers between them can serve, so the UI
+  /// can offer the choice without knowing in advance what is on offer.
+  @JsonKey(defaultValue: [])
+  final List<SpellcheckLanguage> languages;
+
+  SpellcheckData(this.words, this.commonWords, this.grammarRules,
+      [this.analysisChecks = const [],
+      this.language = "",
+      this.languages = const []]);
+  factory SpellcheckData.fromJson(Map<String, dynamic> json) =>
+      _$SpellcheckDataFromJson(json);
+}
+
+/// ThesaurusSense is one meaning of a word. A word usually has several, and
+/// their synonyms are not interchangeable -- the synonyms for "bank" as a
+/// place to keep money are wrong for its river sense -- so they stay apart
+/// here and in the UI.
+@JsonSerializable()
+class ThesaurusSense {
+  /// A short label ("noun", "verb", "adj", "adv") captioning the sense.
+  @JsonKey(name: "pos", defaultValue: "")
+  final String partOfSpeech;
+  @JsonKey(defaultValue: [])
+  final List<String> synonyms;
+  @JsonKey(defaultValue: [])
+  final List<String> antonyms;
+  ThesaurusSense(this.partOfSpeech, this.synonyms, this.antonyms);
+  factory ThesaurusSense.fromJson(Map<String, dynamic> json) =>
+      _$ThesaurusSenseFromJson(json);
+}
+
+/// ThesaurusDefinition is one of a word's meanings.
+@JsonSerializable()
+class ThesaurusDefinition {
+  /// A short label ("noun", "verb", "adj", "adv") captioning the meaning.
+  @JsonKey(name: "pos", defaultValue: "")
+  final String partOfSpeech;
+  @JsonKey(defaultValue: "")
+  final String text;
+  ThesaurusDefinition(this.partOfSpeech, this.text);
+  factory ThesaurusDefinition.fromJson(Map<String, dynamic> json) =>
+      _$ThesaurusDefinitionFromJson(json);
+}
+
+/// ThesaurusEntry is everything a thesaurus provider knows about one word.
+@JsonSerializable()
+class ThesaurusEntry {
+  @JsonKey(defaultValue: "")
+  final String word;
+  @JsonKey(defaultValue: [])
+  final List<ThesaurusSense> senses;
+
+  /// What the word means, listed separately from [senses] rather than
+  /// attached to them: a provider's synonyms and its definitions need not
+  /// come from the same source, and two sources will not divide a word into
+  /// the same senses. Pairing them would mean guessing, and a wrong guess
+  /// reads as confidently wrong rather than merely unhelpful.
+  @JsonKey(defaultValue: [])
+  final List<ThesaurusDefinition> definitions;
+
+  ThesaurusEntry(this.word, this.senses, [this.definitions = const []]);
+  factory ThesaurusEntry.fromJson(Map<String, dynamic> json) =>
+      _$ThesaurusEntryFromJson(json);
+
+  /// isEmpty is the ordinary outcome for a name, a typo, or a word the
+  /// provider's data doesn't cover.
+  bool get isEmpty =>
+      definitions.isEmpty &&
+      senses.every((s) => s.synonyms.isEmpty && s.antonyms.isEmpty);
+}
+
+@JsonSerializable()
 class SharedFile {
   @JsonKey(name: "file_hash")
   final String fileHash;
@@ -680,7 +1121,19 @@ class SharedFileAndShares {
   final int size;
   final bool global;
   final List<String> shares;
-  SharedFileAndShares(this.sf, this.cost, this.size, this.global, this.shares);
+
+  // descr is the description given when the file was shared -- what the
+  // recipient sees offered alongside the name.
+  @JsonKey(defaultValue: "")
+  final String descr;
+
+  // diskPath is where this client read the file from when it was shared.
+  // Empty for files shared before the client recorded it, or on another
+  // machine -- it is local bookkeeping and never leaves this device.
+  @JsonKey(name: "disk_path", defaultValue: "")
+  final String diskPath;
+  SharedFileAndShares(this.sf, this.cost, this.size, this.global, this.shares,
+      this.descr, this.diskPath);
   factory SharedFileAndShares.fromJson(Map<String, dynamic> json) =>
       _$SharedFileAndSharesFromJson(json);
 }
@@ -814,8 +1267,9 @@ class PostSummary {
   final String authorID;
   @JsonKey(name: "author_nick")
   final String authorNick;
+  @JsonKey(fromJson: _parseDateTime)
   final DateTime date;
-  @JsonKey(name: "last_status_ts")
+  @JsonKey(name: "last_status_ts", fromJson: _parseDateTime)
   final DateTime lastStatusTS;
   final String title;
 
@@ -1732,9 +2186,9 @@ class RatchetDebugInfo {
   final int nbSavedKeys;
   @JsonKey(name: "will_ratchet")
   final bool willRatchet;
-  @JsonKey(name: "last_enc_time")
+  @JsonKey(name: "last_enc_time", fromJson: _parseDateTime)
   final DateTime lastEncTime;
-  @JsonKey(name: "last_dec_time")
+  @JsonKey(name: "last_dec_time", fromJson: _parseDateTime)
   final DateTime lastDecTime;
 
   RatchetDebugInfo(
@@ -1911,7 +2365,7 @@ class RMKXSearch {
 @JsonSerializable()
 class KXSearchQuery {
   final String user;
-  @JsonKey(name: "date_sent")
+  @JsonKey(name: "date_sent", fromJson: _parseDateTime)
   final DateTime dateSent;
   @JsonKey(name: "ids_received", defaultValue: [])
   final List<String> idsReceived;
@@ -2222,6 +2676,7 @@ class SSCartItem {
 @JsonSerializable()
 class SSCart {
   final List<SSCartItem> items;
+  @JsonKey(fromJson: _parseDateTime)
   final DateTime updated;
 
   SSCart(this.items, this.updated);
@@ -2258,9 +2713,9 @@ class FetchedResource {
   final int parentPage;
   @JsonKey(name: "page_id")
   final int pageID;
-  @JsonKey(name: "request_ts")
+  @JsonKey(name: "request_ts", fromJson: _parseDateTime)
   final DateTime requestTS;
-  @JsonKey(name: "response_ts")
+  @JsonKey(name: "response_ts", fromJson: _parseDateTime)
   final DateTime responseTS;
 
   final RMFetchResource request;
@@ -2381,6 +2836,23 @@ class ProfileUpdated extends ChatEvent {
 }
 
 @JsonSerializable()
+// ExchangeRate is the USD price pair the client's rate tracker holds. Its
+// fromJson is hand-written rather than generated: this type has no
+// json_serializable part, so adding it doesn't require regenerating
+// definitions.g.dart.
+class ExchangeRate {
+  final double dcrPrice;
+  final double btcPrice;
+
+  const ExchangeRate({required this.dcrPrice, required this.btcPrice});
+
+  factory ExchangeRate.fromJson(Map<String, dynamic> json) => ExchangeRate(
+        dcrPrice: (json["dcr_price"] as num?)?.toDouble() ?? 0,
+        btcPrice: (json["btc_price"] as num?)?.toDouble() ?? 0,
+      );
+}
+
+@JsonSerializable()
 class RunState {
   @JsonKey(name: "dcrlnd_running")
   final bool dcrlndRunning;
@@ -2463,6 +2935,7 @@ class KXData {
   final String theirResetRV;
   @JsonKey(name: "stage")
   final KXStage stage;
+  @JsonKey(fromJson: _parseDateTime)
   final DateTime timestamp;
   final PublicIdentity? invitee;
   @JsonKey(name: "is_for_reset")
@@ -2489,6 +2962,7 @@ class KXData {
 class MediateIDRequest {
   final String mediator;
   final String target;
+  @JsonKey(fromJson: _parseDateTime)
   final DateTime date;
 
   MediateIDRequest(this.mediator, this.target, this.date);
@@ -3071,6 +3545,13 @@ mixin NtfStreams {
       StreamController<SendFileProgress>();
   Stream<SendFileProgress> sendFileProgress() => ntfSendFileProgress.stream;
 
+  // Fired with a plugin id after that dynamic-wasm plugin's background
+  // poll (see wasmhost.Config.OnPollComplete) completes, so a currently
+  // open DynPluginScreen for that plugin knows to re-render.
+  StreamController<String> ntfDynPluginScreenUpdated =
+      StreamController<String>();
+  Stream<String> dynPluginScreenUpdated() => ntfDynPluginScreenUpdated.stream;
+
   handleNotifications(int cmd, bool isError, String jsonPayload) {
     dynamic payload;
     if (jsonPayload != "") {
@@ -3388,6 +3869,12 @@ mixin NtfStreams {
         ntfSendFileProgress.add(event);
         break;
 
+      case NTDynPluginScreenUpdated:
+        isError
+            ? ntfDynPluginScreenUpdated.addError(payload)
+            : ntfDynPluginScreenUpdated.add(payload as String);
+        break;
+
       default:
         debugPrint("Received unknown notification ${cmd.toRadixString(16)}");
     }
@@ -3432,6 +3919,7 @@ abstract class PluginPlatform {
       throw "unimplemented";
   Stream<RTDTRTT> rtdtRTTStream() => throw "unimplemented";
   Stream<SendFileProgress> sendFileProgress() => throw "unimplemented";
+  Stream<String> dynPluginScreenUpdated() => throw "unimplemented";
 
   Future<bool> hasServer() async => throw "unimplemented";
 
@@ -3571,6 +4059,83 @@ abstract class PluginPlatform {
     return (res as List)
         .map<SharedFileAndShares>((v) => SharedFileAndShares.fromJson(v))
         .toList();
+  }
+
+  Future<List<PluginInfo>> listPlugins() async {
+    var res = await asyncCall(CTListPlugins, "");
+    if (res == null) {
+      return List<PluginInfo>.empty();
+    }
+    return (res as List)
+        .map<PluginInfo>((v) => PluginInfo.fromJson(v))
+        .toList();
+  }
+
+  Future<PluginInfo> importPlugin(String path) async {
+    var res = await asyncCall(CTImportPlugin, ImportPluginArgs(path));
+    return PluginInfo.fromJson(res);
+  }
+
+  Future<void> setPluginEnabled(String id, bool enabled) async {
+    await asyncCall(CTSetPluginEnabled, SetPluginEnabledArgs(id, enabled));
+  }
+
+  Future<void> removePlugin(String id) async {
+    await asyncCall(CTRemovePlugin, id);
+  }
+
+  /// Returns link preview metadata for [url] if an enabled plugin handles
+  /// it, or null if no plugin matches (or the fetch otherwise fails) so
+  /// callers can fall back to plain-link rendering.
+  Future<LinkMetadata?> fetchLinkMetadata(String url) async {
+    try {
+      var res = await asyncCall(CTFetchLinkMetadata, url);
+      if (res == null) return null;
+      return LinkMetadata.fromJson(res);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Returns the merged dictionary and grammar rules for [language] from all
+  /// currently enabled spellcheck-capability plugins (empty if none are
+  /// enabled). An empty language asks each provider for its default.
+  Future<SpellcheckData> getSpellcheckData([String language = ""]) async {
+    var res = await asyncCall(CTGetSpellcheckData, language);
+    if (res == null) return SpellcheckData([], [], []);
+    return SpellcheckData.fromJson(res);
+  }
+
+  /// Returns what an enabled thesaurus plugin knows about [word], or null
+  /// when no plugin is enabled, none covers the word, or the lookup fails --
+  /// all of which the caller treats the same way, by offering nothing.
+  Future<ThesaurusEntry?> lookupSynonyms(String word) async {
+    try {
+      var res = await asyncCall(CTLookupSynonyms, word);
+      if (res == null) return null;
+      var entry = ThesaurusEntry.fromJson(res);
+      return entry.isEmpty ? null : entry;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Renders one screen of an enabled dynamic-wasm plugin (e.g. "feeds" on
+  /// the RSS plugin) by calling into its WebAssembly module.
+  Future<DynScreenUI> renderDynPluginScreen(
+      String pluginId, String screenId) async {
+    var res = await asyncCall(
+        CTDynPluginRenderScreen, DynPluginRenderScreenArgs(pluginId, screenId));
+    return DynScreenUI.fromJson(res);
+  }
+
+  /// Delivers a widget-originated event (button tap, form submit) to an
+  /// enabled dynamic-wasm plugin and returns the resulting updated screen.
+  Future<DynScreenUI> handleDynPluginEvent(String pluginId, String screenId,
+      String event, Map<String, dynamic> payload) async {
+    var res = await asyncCall(CTDynPluginHandleEvent,
+        DynPluginHandleEventArgs(pluginId, screenId, event, payload));
+    return DynScreenUI.fromJson(res);
   }
 
   Future<void> listUserContent(String uid) async =>
@@ -4112,6 +4677,9 @@ abstract class PluginPlatform {
   Future<void> zipLogs(ZipLogsArgs args) async =>
       await asyncCall(CTZipLogs, args);
 
+  Future<ExchangeRate> getExchangeRate() async =>
+      ExchangeRate.fromJson(await asyncCall(CTGetExchangeRate, null));
+
   Future<void> notifyServerSessionState() async =>
       await asyncCall(CTNotifyServerSessionState, null);
 
@@ -4482,6 +5050,16 @@ const int CTRTDTCancelInvite = 0xb1;
 const int CTDeclineKXSuggestion = 0xb2;
 const int CTUpdateLastMsgReadTime = 0xb3;
 const int CTDeclineGCInvite = 0xb4;
+const int CTListPlugins = 0xb5;
+const int CTImportPlugin = 0xb6;
+const int CTSetPluginEnabled = 0xb7;
+const int CTRemovePlugin = 0xb8;
+const int CTFetchLinkMetadata = 0xb9;
+const int CTGetSpellcheckData = 0xba;
+const int CTLookupSynonyms = 0xbe;
+const int CTDynPluginRenderScreen = 0xbb;
+const int CTDynPluginHandleEvent = 0xbc;
+const int CTGetExchangeRate = 0xbd;
 
 const int notificationsStartID = 0x1000;
 
@@ -4550,3 +5128,4 @@ const int NTRTDTRTTCalculated = 0x103e;
 const int NTRTDTJoinedInstantCall = 0x103f;
 const int NTRTDTSessionInviteCanceled = 0x1040;
 const int NTSendFileProgress = 0x1041;
+const int NTDynPluginScreenUpdated = 0x1042;

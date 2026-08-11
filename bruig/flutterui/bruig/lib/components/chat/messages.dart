@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:bruig/components/empty_widget.dart';
-import 'package:bruig/theme_manager.dart';
+import 'package:bruig/theming_system/theme_preset.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:bruig/models/client.dart';
 import 'package:bruig/components/chat/events.dart';
@@ -189,20 +190,51 @@ class _MessagesState extends State<Messages> {
 
   @override
   Widget build(BuildContext context) {
+    var chatBackdropWash =
+        ThemeNotifier.of(context).areaStyle(ThemeArea.chat).chatBackdropWash;
     return Scaffold(
+      // Transparent, so whatever is painted behind the message list shows
+      // through -- the Chat area's "Message area background", which
+      // follows the Content Area (see active_chat.dart). A Scaffold
+      // otherwise fills itself with the theme's scaffoldBackgroundColor,
+      // which is opaque and covered every one of those.
+      backgroundColor: Colors.transparent,
       resizeToAvoidBottomInset: true,
       floatingActionButton: _getFAB(),
-      body: PageStorage(
-        bucket: _pageStorageBucket,
-        child: ScrollablePositionedList.builder(
-          reverse: true,
-          key: PageStorageKey<String>('chat ${chat.nick}'),
-          itemCount: chat.msgs.length,
-          physics: const ClampingScrollPhysics(),
-          itemBuilder: (context, index) =>
-              Event(chat, chat.msgs[index], client),
-          itemScrollController: widget.itemScrollController,
-          itemPositionsListener: widget.itemPositionsListener,
+      body: Stack(children: [
+        if (chatBackdropWash) const Positioned.fill(child: ChatBackdropWash()),
+        PageStorage(
+          bucket: _pageStorageBucket,
+          child: ScrollablePositionedList.builder(
+            reverse: true,
+            key: PageStorageKey<String>('chat ${chat.nick}'),
+            itemCount: chat.msgs.length,
+            physics: const ClampingScrollPhysics(),
+            itemBuilder: (context, index) =>
+                Event(chat, chat.msgs[index], client),
+            itemScrollController: widget.itemScrollController,
+            itemPositionsListener: widget.itemPositionsListener,
+          ),
+        ),
+      ]),
+    );
+  }
+}
+
+// ChatBackdropWash renders a subtle radial-gradient wash behind the message
+// list, gated by AreaStyle.chatBackdropWash on ThemeArea.chat.
+class ChatBackdropWash extends StatelessWidget {
+  const ChatBackdropWash({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: RadialGradient(
+          center: Alignment.bottomRight,
+          radius: 1.25,
+          colors: [Color(0x12FFFFFF), Color(0x00FFFFFF)],
+          stops: [0.0, 0.62],
         ),
       ),
     );

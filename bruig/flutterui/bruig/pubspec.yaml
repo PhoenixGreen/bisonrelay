@@ -34,6 +34,7 @@ dependencies:
   provider: ^6.0.0
   path: ^1.8.0
   video_player: ^2.2.5
+  youtube_explode_dart: ^2.3.9
   crypto: ^3.0.1
   ini: ^2.1.0
   args: ^2.3.0
@@ -44,6 +45,7 @@ dependencies:
   sidebarx: ^0.17.1
   markdown: ^7.0.0
   file_picker: ^10.1.0
+  flutter_colorpicker: ^1.1.0
   path_provider: ^2.0.11
   url_launcher: ^6.2.5
   msix: ^3.6.3
@@ -55,11 +57,15 @@ dependencies:
   scrollable_positioned_list: ^0.3.8
   duration: ^4.0.0
   flutter_svg: ^2.0.7
+  # Vendored from tiagoalvesdulce/packages @ b98386c14fef19537a8b45a232c6b04c8cf49acd
+  # with one change, marked "Bison Relay:" in lib/src/builder.dart: the
+  # blockquote text style is folded on top of the paragraph's rather than
+  # underneath it. Upstream's order makes styleSheet.blockquote dead in any
+  # sheet that fully specifies `p`, which is every sheet built from a theme --
+  # so a style guide could set a quote's colour, size, face or italics and
+  # none of it reached the screen.
   flutter_markdown:
-    git:
-      url: https://github.com/tiagoalvesdulce/packages
-      ref: b98386c14fef19537a8b45a232c6b04c8cf49acd
-      path: packages/flutter_markdown
+    path: ../packages/flutter_markdown
   permission_handler: ^12.0.0
   optimize_battery: ^0.0.4
   dropdown_button2: ^2.3.8
@@ -92,6 +98,7 @@ dependencies:
   pub_semver: ^2.2.0
   wakelock_plus: 1.3.3
   proximity_sensor: ^1.3.9
+  desktop_drop: ^0.7.1
 
 msix_config:
   display_name: Bison Relay GUI
@@ -222,6 +229,20 @@ flutter:
     - family: notoemoji_unix
       fonts:
         - asset: assets/fonts/NotoColorEmoji-Regular.ttf
+    # PT Serif, SIL Open Font License 1.1 -- see assets/fonts/PTSerif-OFL.txt.
+    # Bundled rather than named, because a guide asking for a font the device
+    # does not have falls back silently and renders differently everywhere it
+    # goes, which is the thing a style guide exists to prevent.
+    - family: PTSerif
+      fonts:
+        - asset: assets/fonts/PTSerif-Regular.ttf
+        - asset: assets/fonts/PTSerif-Italic.ttf
+          style: italic
+        - asset: assets/fonts/PTSerif-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/PTSerif-BoldItalic.ttf
+          weight: 700
+          style: italic
     - family: RobotoMono
       fonts:
         - asset: "assets/fonts/RobotoMono-VariableFont_wght.ttf"

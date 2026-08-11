@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:bruig/components/buttons.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:bruig/theme_manager.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
 
 class NewLNWalletSeedPage extends StatelessWidget {
   final NewConfigModel newconf;

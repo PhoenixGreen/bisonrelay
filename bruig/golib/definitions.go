@@ -202,6 +202,27 @@ type getRemoteFileArgs struct {
 	FID zkidentity.ShortID `json:"fid"`
 }
 
+type importPluginArgs struct {
+	Path string `json:"path"`
+}
+
+type setPluginEnabledArgs struct {
+	ID      string `json:"id"`
+	Enabled bool   `json:"enabled"`
+}
+
+type dynPluginRenderScreenArgs struct {
+	PluginID string `json:"pluginId"`
+	ScreenID string `json:"screenId"`
+}
+
+type dynPluginHandleEventArgs struct {
+	PluginID string                 `json:"pluginId"`
+	ScreenID string                 `json:"screenId"`
+	Event    string                 `json:"event"`
+	Payload  map[string]interface{} `json:"payload"`
+}
+
 type payTipArgs struct {
 	UID    clientintf.UserID `json:"uid"`
 	Amount float64           `json:"amount"`
@@ -453,6 +474,13 @@ type writeInvite struct {
 	FundAccount string              `json:"fund_account"`
 	GCID        *zkidentity.ShortID `json:"gc_id"`
 	Prepaid     bool                `json:"prepaid"`
+}
+
+// exchangeRate is the USD price pair the client's rates tracker holds,
+// as handed to the UI by CTGetExchangeRate.
+type exchangeRate struct {
+	DCRPrice float64 `json:"dcr_price"`
+	BTCPrice float64 `json:"btc_price"`
 }
 
 type generatedKXInvite struct {

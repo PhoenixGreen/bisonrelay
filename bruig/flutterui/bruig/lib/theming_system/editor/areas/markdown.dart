@@ -1,0 +1,956 @@
+import 'package:bruig/components/md_elements.dart';
+import 'package:bruig/components/text.dart';
+import 'package:bruig/theming_system/editor/areas/sample_image.dart';
+import 'package:bruig/theming_system/theme_editor.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
+import 'package:bruig/theming_system/theme_preset.dart';
+import 'package:flutter/material.dart';
+
+// markdown.dart is the "Markdown" area's settings: which style guide posts
+// are read in, and whether a post may ask for a different one.
+//
+// A style guide is a named set of rules for how a post's headings, quotes,
+// code, lists and pictures are set -- see model/markdown_style.dart. It is
+// always local. A post carries the name of one and never the guide itself,
+// so a name this device has never heard of falls back to Default rather than
+// arriving with anything to apply.
+
+/// _sampleFor is the markdown the preview renders for one element.
+///
+/// Each carries a line of ordinary body text as well, because nearly every
+/// setting is expressed relative to the body -- a heading at 190% means
+/// nothing without the 100% beside it.
+String _sampleFor(_Element element) => switch (element) {
+      _Element.text => """
+# Heading one
+Ordinary body text, which is what every other size is measured against. This
+paragraph runs long enough to wrap, so the line height has somewhere to show.
+
+A second paragraph, so the space between them is visible.
+## Heading two
+### Heading three
+#### Heading four
+##### Heading five
+###### Heading six
+""",
+      _Element.emphasis => """
+Ordinary body text, so the two below have something to be measured against.
+
+Body text with **a bold run** in the middle of it, and _an italic one_
+further along, and **_both at once_** to finish.
+""",
+      _Element.links => """
+Body text with [a link](https://decred.org) in the middle of it, and
+[another](https://bisonrelay.org) further along.
+""",
+      // The callout goes in beside the plain quotation because it is one:
+      // Markdown has no callout of its own, and a blockquote opening with a
+      // bold word is what every renderer shows sensibly. Anything set here
+      // is what a callout is set in too, which is only obvious when the two
+      // are side by side.
+      _Element.quotes => """
+Body text before the quotation.
+
+> A quotation, which shows the bar and the background.
+> It runs to a second line so the bar's full height can be seen.
+
+> **Note** A callout is a quotation opening with a bold word, so it is set
+> in exactly what the rules below say.
+
+Body text after it.
+""",
+      // One of each shape: a callout with everything filled in, and a pair
+      // of cards side by side, because the settings below are about how the
+      // box is drawn and that only shows with more than one of them.
+      _Element.cards => """
+Body text above the callout.
+
+--card--
+icon: info
+title: A callout
+text: A callout and a card are the same thing with a different amount
+  filled in. Every field is optional.
+--/card--
+
+--cards[2]--
+--card--
+icon: announce
+title: Stay updated
+text: A card with a button under it.
+button: Subscribe
+link: https://decred.org
+--/card--
+--card--
+icon: star
+title: Beside it
+text: Two across, and up to three rows of them.
+--/card--
+--/cards--
+
+Body text below them.
+""",
+      _Element.code => """
+Body text with `inline code` in it.
+
+```
+a fenced block
+a second line, for the padding
+```
+""",
+      _Element.lists => """
+Body text before the list.
+
+- The first item
+- The second item, long enough to wrap onto another line so the indent shows
+- The third item
+
+1. A numbered item
+2. Another
+""",
+      _Element.tables => """
+Body text before the table.
+
+| Element | Set in | Notes |
+| --- | --- | --- |
+| Heading | The heading rules | A share of the body |
+| Quote | The quote rules | Bar and background |
+
+Body text after it.
+""",
+      // Flowed rather than divided by hand, because that is what the
+      // buttons in a post's Formatting & Content panel write and so what
+      // most runs will be. Enough blocks in it for the balancing to have
+      // something to do, and a picture so the divider has a tall column to
+      // run beside.
+      _Element.columns => """
+Body text above the columns.
+
+--columns[2]--
+### A flowed run
+The writing is shared out between the columns rather than divided by hand,
+in the order it was written -- so when the page is too narrow for columns
+and they stack, it still reads as the post it was.
+
+- The first point
+- The second point, longer than the first so the balance has something to
+  weigh
+
+${sampleImageMarkdown ?? ""}
+
+A closing paragraph, which is the last block the run has to place.
+--/columns--
+
+Body text below them.
+""",
+      _Element.rule => """
+Body text above the rule.
+
+---
+
+Body text below it.
+""",
+      // A real embed, drawn rather than described: the width is a share of
+      // the column and the corners, border and spacing are drawn around it,
+      // none of which can be judged from a sentence.
+      _Element.images => """
+Body text above the picture.
+
+${sampleImageMarkdown ?? ""}
+
+Body text below it, so the spacing has something to push against.
+""",
+    };
+
+/// _Element is which part of a post is being tuned.
+///
+/// One at a time, picked from a dropdown, for the same reason the Buttons
+/// area does it: ten elements' worth of sliders stacked up reads as one
+/// undifferentiated wall, and only one of them is being adjusted anyway.
+/// Which one is showing is local to the editor and is not stored on a theme.
+enum _Element {
+  text("Text and headings"),
+  emphasis("Bold and italic"),
+  links("Links"),
+  quotes("Quotes"),
+  cards("Callouts and cards"),
+  code("Code"),
+  lists("Lists"),
+  tables("Tables"),
+  columns("Columns"),
+  rule("Horizontal rule"),
+  images("Images");
+
+  final String label;
+  const _Element(this.label);
+}
+
+List<Widget> markdownAreaEditor(AreaEditorContext ctx) =>
+    [_MarkdownEditor(ctx)];
+
+class _MarkdownEditor extends StatefulWidget {
+  final AreaEditorContext ctx;
+  const _MarkdownEditor(this.ctx);
+
+  @override
+  State<_MarkdownEditor> createState() => _MarkdownEditorState();
+}
+
+class _MarkdownEditorState extends State<_MarkdownEditor> {
+  /// _lastElement is the element that was last being worked on.
+  ///
+  /// Static, so it outlives this State. The editor is built fresh every time
+  /// the page is come back to -- switching to another theme area and back is
+  /// enough, let alone leaving Settings -- and starting again at Text and
+  /// headings each time means finding your place before every edit.
+  ///
+  /// Not stored on the theme: which control you happen to have open is not
+  /// part of how the app looks, and a preset carrying it would hand your
+  /// place to whoever you sent the theme to. Not written to disk either --
+  /// a fresh start opening on the first element is the right place to begin.
+  static _Element _lastElement = _Element.text;
+
+  _Element element = _lastElement;
+
+  @override
+  void initState() {
+    super.initState();
+    // Prepared once, not per frame: this page rebuilds on every drag of
+    // every slider.
+    if (sampleImageMarkdown == null) {
+      var seed = ThemeNotifier.of(context, listen: false)
+          .surfaceColor(SurfaceColor.primary);
+      prepareSampleImage(seed).then((_) {
+        if (mounted) setState(() {});
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    var ctx = widget.ctx;
+    var style = ctx.style;
+    var chosen = builtInGuideFor(style.markdownGuideId) == null
+        ? defaultGuideId
+        : style.markdownGuideId;
+    var guide = style.markdownGuide(builtInGuideFor(chosen));
+
+    /// edit changes one rule of the guide.
+    ///
+    /// A built-in is never changed: the first edit to one forks it into a
+    /// guide of the reader's own and every edit after goes to the fork. The
+    /// built-ins are what a published post names, so an "Article" quietly
+    /// edited here would make a post naming it mean something different on
+    /// this machine than on anyone else's.
+    void edit(MarkdownStyleGuide Function(MarkdownStyleGuide) change) {
+      var next = change(guide.builtIn ? guide.forked("custom") : guide);
+      ctx.setStyle((s) => s.copyWith(markdownCustomGuide: next.toJson()));
+    }
+
+    var choices = style.markdownGuideChoices(builtInGuides);
+    var unsaved = style.markdownCustomGuide != null;
+
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [
+        Expanded(
+          child: ctx.choice<String>(
+            "Style guide",
+            value: choices.any((g) => g.id == chosen) ? chosen : defaultGuideId,
+            options: [for (var g in choices) g.id],
+            labelOf: (id) => choices
+                .firstWhere((g) => g.id == id, orElse: () => choices.first)
+                .name,
+            onChanged: (v) => ctx.setStyle((s) =>
+                s.copyWith(markdownGuideId: v, clearMarkdownCustomGuide: true)),
+          ),
+        ),
+        // Save appears only when there is something unsaved to save, and
+        // Delete only on a guide that can be deleted -- a built-in cannot,
+        // because it is the same everywhere by definition.
+        if (unsaved)
+          IconButton(
+            tooltip: "Save as a style guide of your own",
+            icon: const Icon(Icons.save_outlined, size: 20),
+            onPressed: () => _askToSave(ctx, guide),
+          ),
+        if (!guide.builtIn &&
+            !unsaved &&
+            style.markdownSavedGuides.containsKey(chosen))
+          IconButton(
+            tooltip: "Delete this style guide",
+            icon: const Icon(Icons.delete_outline, size: 20),
+            onPressed: () => _delete(ctx, chosen),
+          ),
+      ]),
+      ctx.note(unsaved
+          ? "Unsaved changes. They are in use already -- save them to keep "
+              "them under a name of their own, or choose a guide above to "
+              "start again from that one."
+          : "How posts are set on this device. Changing anything below "
+              "starts a guide of your own; the built-in ones are left as "
+              "they are."),
+      const SizedBox(height: 16),
+      ctx.choice<_Element>(
+        "Element",
+        value: element,
+        options: _Element.values,
+        labelOf: (e) => e.label,
+        onChanged: (e) => setState(() => element = _lastElement = e),
+      ),
+      const SizedBox(height: 12),
+      // The preview sits between the picker and the settings, so a change
+      // and its effect are next to each other rather than a scroll apart.
+      _MarkdownPreview(element: element),
+      const SizedBox(height: 16),
+      ..._settingsFor(ctx, guide, edit),
+    ]);
+  }
+
+  /// _textControls are the five every text rule has.
+  List<Widget> _textControls(
+    AreaEditorContext ctx,
+    String name,
+    TextRule rule,
+    void Function(MarkdownStyleGuide Function(MarkdownStyleGuide)) edit,
+    MarkdownStyleGuide Function(MarkdownStyleGuide, TextRule) put, {
+    double maxScale = 3.0,
+  }) =>
+      [
+        ctx.slider("md-$name-scale", rule.scale,
+            label: (v) => "Size: ${(v * 100).round()}% of body text",
+            min: 0.6,
+            max: maxScale,
+            divisions: ((maxScale - 0.6) * 20).round(),
+            onCommit: (v) => edit((g) => put(g, rule.copyWith(scale: v)))),
+        // The same palette dropdown every other colour in this editor uses,
+        // rather than a private list of eight role names. A role names a
+        // colour without showing it, and the eight were not the palette the
+        // rest of the theme is built from -- so "Accent" here and Accent
+        // anywhere else in Appearance were two unrelated things.
+        _inkPick(ctx, "Colour", rule.ink,
+            (i) => edit((g) => put(g, rule.copyWith(ink: i)))),
+        ctx.choice<MarkdownFont>(
+          "Font",
+          value: rule.font,
+          options: MarkdownFont.values,
+          labelOf: (f) => f.label,
+          onChanged: (f) => edit((g) => put(g, rule.copyWith(font: f))),
+        ),
+        ctx.toggle("Bold",
+            value: rule.bold ?? false,
+            onChanged: (v) => edit((g) => put(g, rule.copyWith(bold: v)))),
+        ctx.toggle("Italic",
+            value: rule.italic ?? false,
+            onChanged: (v) => edit((g) => put(g, rule.copyWith(italic: v)))),
+        // Letter spacing was in the guide and saved with it from the start,
+        // and was the one thing in a text rule with nowhere to set it.
+        ctx.slider("md-$name-tracking", rule.letterSpacing ?? 0,
+            label: (v) => v == 0
+                ? "Letter spacing: Theme default"
+                : "Letter spacing: ${v.toStringAsFixed(2)}px",
+            min: -1,
+            max: 4,
+            divisions: 50,
+            onCommit: (v) =>
+                edit((g) => put(g, rule.copyWith(letterSpacing: v)))),
+      ];
+
+  /// _askToSave names the working copy and puts it in the library.
+  void _askToSave(AreaEditorContext ctx, MarkdownStyleGuide guide) async {
+    var controller =
+        TextEditingController(text: guide.name.replaceAll(" (edited)", ""));
+    var name = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Save style guide"),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(labelText: "Name"),
+          onSubmitted: (v) => Navigator.pop(context, v),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("Cancel")),
+          TextButton(
+              onPressed: () => Navigator.pop(context, controller.text),
+              child: const Text("Save")),
+        ],
+      ),
+    );
+    if (name == null || name.trim().isEmpty || !mounted) return;
+
+    // A fresh id each time, so saving twice under different names keeps both
+    // rather than the second quietly replacing the first.
+    var id = "guide-${DateTime.now().microsecondsSinceEpoch}";
+    var saved = guide.copyWith(id: id, name: name.trim());
+    ctx.setStyle((s) => s.copyWith(
+          markdownSavedGuides: {...s.markdownSavedGuides, id: saved.toJson()},
+          markdownGuideId: id,
+          clearMarkdownCustomGuide: true,
+        ));
+  }
+
+  void _delete(AreaEditorContext ctx, String id) {
+    ctx.setStyle((s) => s.copyWith(
+          markdownSavedGuides: {...s.markdownSavedGuides}..remove(id),
+          markdownGuideId: defaultGuideId,
+          clearMarkdownCustomGuide: true,
+        ));
+  }
+
+  /// _columnSpacing is one of the column box's four-way settings.
+  ///
+  /// The same control the rest of the theme editor uses for a padding, a
+  /// margin, a border width or a set of corners -- one slider with a button
+  /// to split it into four -- pointed at the style guide rather than at the
+  /// area's own style, which is where a column's settings live.
+  List<Widget> _columnSpacing(
+    AreaEditorContext ctx,
+    MarkdownStyleGuide guide,
+    void Function(MarkdownStyleGuide Function(MarkdownStyleGuide)) edit, {
+    required String key,
+    required String name,
+    required double max,
+    required double single,
+    required SideValues? sides,
+    List<String> slotLabels = sideLabels,
+    required ColumnRule Function(ColumnRule) Function(double) onSingle,
+    required ColumnRule Function(ColumnRule) Function(SideValues?) onSides,
+  }) =>
+      ctx.spacing(
+        key: key,
+        name: name,
+        max: max,
+        single: single,
+        sides: sides,
+        slotLabels: slotLabels,
+        onSingle: (v) =>
+            edit((g) => g.copyWith(columns: onSingle(v)(g.columns))),
+        updateSides: (f) => edit((g) {
+          var next = f(sides, single);
+          return g.copyWith(columns: onSides(next)(g.columns));
+        }),
+      );
+
+  /// _cardSpacing is _columnSpacing pointed at the card rules instead.
+  List<Widget> _cardSpacing(
+    AreaEditorContext ctx,
+    MarkdownStyleGuide guide,
+    void Function(MarkdownStyleGuide Function(MarkdownStyleGuide)) edit, {
+    required String key,
+    required String name,
+    required double max,
+    required double single,
+    required SideValues? sides,
+    List<String> slotLabels = sideLabels,
+    required CardRule Function(CardRule) Function(double) onSingle,
+    required CardRule Function(CardRule) Function(SideValues?) onSides,
+  }) =>
+      ctx.spacing(
+        key: key,
+        name: name,
+        max: max,
+        single: single,
+        sides: sides,
+        slotLabels: slotLabels,
+        onSingle: (v) => edit((g) => g.copyWith(cards: onSingle(v)(g.cards))),
+        updateSides: (f) => edit((g) {
+          var next = f(sides, single);
+          return g.copyWith(cards: onSides(next)(g.cards));
+        }),
+      );
+
+  /// _inkPick is the editor's own palette dropdown, bound to a guide colour.
+  ///
+  /// The same control every other area uses, which shows a swatch beside
+  /// each slot. The plain text dropdown this replaces named colours without
+  /// showing any of them, and offered a short list of roles rather than the
+  /// palette the rest of the theme is built from.
+  ///
+  /// The built-in guides still use roles, which adapt to whatever theme they
+  /// are read in. Picking here replaces that with a slot from this palette:
+  /// a specific colour, chosen deliberately, which is what reaching for the
+  /// picker means. It follows the palette when that is edited, because the
+  /// slot is stored beside the colour.
+  Widget _inkPick(AreaEditorContext ctx, String label, MarkdownInk current,
+          ValueChanged<MarkdownInk> onChanged) =>
+      ctx.colorPick(
+        label,
+        value: current.resolve(ctx.theme.markdownRoleColor,
+            paletteColor: ctx.theme.markdownPaletteColor),
+        valueIndex: current.paletteIndex,
+        noneLabel: "Theme default",
+        onChanged: (color, index) => onChanged(color == null
+            ? MarkdownInk.inherit
+            : MarkdownInk.literal(color, paletteIndex: index)),
+      );
+
+  List<Widget> _settingsFor(
+    AreaEditorContext ctx,
+    MarkdownStyleGuide guide,
+    void Function(MarkdownStyleGuide Function(MarkdownStyleGuide)) edit,
+  ) {
+    List<Widget> ink(String label, MarkdownInk current,
+            MarkdownStyleGuide Function(MarkdownStyleGuide, MarkdownInk) put) =>
+        [
+          _inkPick(ctx, label, current, (i) => edit((g) => put(g, i))),
+        ];
+
+    switch (element) {
+      case _Element.text:
+        return [
+          ctx.note("Body text. Everything else is a share of this size."),
+          ..._textControls(
+              ctx, "body", guide.body, edit, (g, r) => g.copyWith(body: r),
+              maxScale: 2.0),
+          ctx.slider("md-body-line", guide.body.lineHeight ?? 1.4,
+              label: (v) => "Line height: ${v.toStringAsFixed(2)}",
+              min: 0.9,
+              max: 3.0,
+              divisions: 21,
+              onCommit: (v) => edit(
+                  (g) => g.copyWith(body: g.body.copyWith(lineHeight: v)))),
+          ctx.slider("md-blockgap", guide.blockGap,
+              label: (v) => "Space between paragraphs: ${v.round()}px",
+              max: 48,
+              divisions: 24,
+              onCommit: (v) => edit((g) => g.copyWith(blockGap: v))),
+          ctx.choice<MarkdownAlign>(
+            "Alignment",
+            value: guide.bodyAlign,
+            options: MarkdownAlign.values,
+            labelOf: (a) => switch (a) {
+              MarkdownAlign.inherit => "Theme default",
+              MarkdownAlign.center => "Center",
+              MarkdownAlign.right => "Right",
+              MarkdownAlign.left => "Left",
+            },
+            onChanged: (a) => edit((g) => g.copyWith(bodyAlign: a)),
+          ),
+          const SizedBox(height: 16),
+          const Txt.M("Headings"),
+          ctx.note("Each level, as a share of the body text size above."),
+          for (var i = 0; i < 6; i++)
+            ctx.slider("md-h${i + 1}", guide.headings[i].scale,
+                label: (v) => "H${i + 1}: ${(v * 100).round()}%",
+                min: 0.6,
+                max: 3.0,
+                divisions: 48,
+                onCommit: (v) => edit((g) => g.copyWith(headings: [
+                      for (var j = 0; j < 6; j++)
+                        j == i
+                            ? g.headings[j].copyWith(scale: v)
+                            : g.headings[j]
+                    ]))),
+          ctx.note("Colour, font and weight apply to every level."),
+          ..._textControls(
+                  ctx,
+                  "head",
+                  guide.headings[0],
+                  edit,
+                  (g, r) => g.copyWith(headings: [
+                        for (var h in g.headings)
+                          h.copyWith(
+                              ink: r.ink,
+                              font: r.font,
+                              bold: r.bold,
+                              italic: r.italic)
+                      ]))
+              // The per-level sliders above already cover size.
+              .skip(1),
+        ];
+
+      // Bold and italic were in the guide and saved with it from the start,
+      // and were the two elements with nowhere to set them: a guide could
+      // only get them by being written by hand.
+      //
+      // The Bold and Italic toggles inside each set are not the same thing
+      // as the element itself. "**a**" is bold because it is written bold;
+      // the toggle is whether that run is *also* set in the other, which is
+      // how a guide sets bold text in italics as well.
+      case _Element.emphasis:
+        return [
+          ctx.note("Text written **bold**."),
+          ..._textControls(ctx, "strong", guide.strong, edit,
+              (g, r) => g.copyWith(strong: r),
+              maxScale: 2.0),
+          const SizedBox(height: 16),
+          const Txt.M("Italic"),
+          ctx.note("Text written _italic_."),
+          ..._textControls(ctx, "em", guide.emphasis, edit,
+              (g, r) => g.copyWith(emphasis: r),
+              maxScale: 2.0),
+        ];
+
+      case _Element.links:
+        return [
+          ..._textControls(
+              ctx, "link", guide.link, edit, (g, r) => g.copyWith(link: r),
+              maxScale: 2.0),
+          ctx.toggle("Underline",
+              value: guide.link.underline ?? false,
+              onChanged: (v) =>
+                  edit((g) => g.copyWith(link: g.link.copyWith(underline: v)))),
+        ];
+
+      case _Element.quotes:
+        return [
+          ..._textControls(
+              ctx, "quote", guide.quote, edit, (g, r) => g.copyWith(quote: r),
+              maxScale: 2.0),
+          ...ink("Bar colour", guide.quoteBarInk,
+              (g, i) => g.copyWith(quoteBarInk: i)),
+          ctx.slider("md-quotebar", guide.quoteBarWidth,
+              label: (v) => v == 0 ? "Bar: None" : "Bar width: ${v.round()}px",
+              max: 12,
+              divisions: 12,
+              onCommit: (v) => edit((g) => g.copyWith(quoteBarWidth: v))),
+          ...ink("Background", guide.quoteBackground,
+              (g, i) => g.copyWith(quoteBackground: i)),
+          ctx.slider("md-quotepad", guide.quotePadding,
+              label: (v) => "Padding: ${v.round()}px",
+              max: 40,
+              divisions: 20,
+              onCommit: (v) => edit((g) => g.copyWith(quotePadding: v))),
+        ];
+
+      case _Element.cards:
+        return [
+          ctx.note("A callout and a card are the same thing with a different "
+              "amount filled in -- a title, some text, an icon and a button, "
+              "any of which may be left out. Write them with the buttons in "
+              "a post's Formatting & Content panel."),
+          ...ink("Background", guide.cards.background,
+              (g, i) => g.copyWith(cards: g.cards.copyWith(background: i))),
+          ctx.slider("md-card-radius", guide.cards.radius,
+              label: (v) =>
+                  v == 0 ? "Corners: Square" : "Corners: ${v.round()}px",
+              max: 48,
+              divisions: 24,
+              onCommit: (v) =>
+                  edit((g) => g.copyWith(cards: g.cards.copyWith(radius: v)))),
+          ctx.slider("md-card-border", guide.cards.borderWidth,
+              label: (v) => v == 0 ? "Border: None" : "Border: ${v.round()}px",
+              max: 12,
+              divisions: 12,
+              onCommit: (v) => edit(
+                  (g) => g.copyWith(cards: g.cards.copyWith(borderWidth: v)))),
+          ...ink("Border colour", guide.cards.borderInk,
+              (g, i) => g.copyWith(cards: g.cards.copyWith(borderInk: i))),
+          ..._cardSpacing(ctx, guide, edit,
+              key: "md-card-pad",
+              name: "Padding",
+              max: 64,
+              single: guide.cards.padding,
+              sides: guide.cards.paddingSides,
+              onSingle: (v) => (c) => c.copyWith(padding: v),
+              onSides: (v) => (c) =>
+                  c.copyWith(paddingSides: v, clearPaddingSides: v == null)),
+          ctx.slider("md-card-gap", guide.cards.gap,
+              label: (v) => "Space between cards: ${v.round()}px",
+              max: 64,
+              divisions: 32,
+              onCommit: (v) =>
+                  edit((g) => g.copyWith(cards: g.cards.copyWith(gap: v)))),
+          const SizedBox(height: 16),
+          const Txt.M("Icon"),
+          ctx.slider("md-card-icon", guide.cards.iconSize,
+              label: (v) => "Size: ${v.round()}px",
+              min: 12,
+              max: 96,
+              divisions: 21,
+              onCommit: (v) => edit(
+                  (g) => g.copyWith(cards: g.cards.copyWith(iconSize: v)))),
+          ...ink("Colour", guide.cards.iconInk,
+              (g, i) => g.copyWith(cards: g.cards.copyWith(iconInk: i))),
+          ...ink("Disc behind it", guide.cards.iconBackground,
+              (g, i) => g.copyWith(cards: g.cards.copyWith(iconBackground: i))),
+          ctx.note("Leave the disc on Theme default for a plain icon."),
+          const SizedBox(height: 16),
+          const Txt.M("Title"),
+          ..._textControls(ctx, "card-title", guide.cards.title, edit,
+              (g, r) => g.copyWith(cards: g.cards.copyWith(title: r)),
+              maxScale: 2.0),
+          const SizedBox(height: 16),
+          const Txt.M("Text"),
+          ..._textControls(ctx, "card-text", guide.cards.text, edit,
+              (g, r) => g.copyWith(cards: g.cards.copyWith(text: r)),
+              maxScale: 2.0),
+        ];
+
+      case _Element.code:
+        return [
+          ..._textControls(
+              ctx, "code", guide.code, edit, (g, r) => g.copyWith(code: r),
+              maxScale: 2.0),
+          // One colour for both, because they are one thing drawn twice: it
+          // is the block's background and it is also what is painted behind
+          // the letters, so the two agree exactly and the block reads as a
+          // single shape rather than as text on a patch on a panel.
+          ...ink("Background", guide.codeBackground,
+              (g, i) => g.copyWith(codeBackground: i)),
+          ctx.note("Used for fenced blocks and for `inline code`."),
+        ];
+
+      case _Element.lists:
+        return [
+          ..._textControls(ctx, "bullet", guide.listBullet, edit,
+              (g, r) => g.copyWith(listBullet: r),
+              maxScale: 2.0),
+          ctx.slider("md-listgap", guide.listItemGap,
+              label: (v) => "Space between items: ${v.round()}px",
+              max: 32,
+              divisions: 16,
+              onCommit: (v) => edit((g) => g.copyWith(listItemGap: v))),
+          ctx.slider("md-listindent", guide.listIndent,
+              label: (v) => "Indent: ${v.round()}px",
+              min: 8,
+              max: 64,
+              divisions: 14,
+              onCommit: (v) => edit((g) => g.copyWith(listIndent: v))),
+        ];
+
+      case _Element.tables:
+        return [
+          ctx.note("The header row."),
+          ..._textControls(ctx, "thead", guide.tableHead, edit,
+              (g, r) => g.copyWith(tableHead: r),
+              maxScale: 2.0),
+          const SizedBox(height: 16),
+          const Txt.M("Body rows"),
+          ..._textControls(ctx, "tbody", guide.tableBody, edit,
+              (g, r) => g.copyWith(tableBody: r),
+              maxScale: 2.0),
+          const SizedBox(height: 16),
+          const Txt.M("Rows"),
+          ctx.note("The two things that make a table readable across as well "
+              "as down."),
+          ...ink("Header background", guide.tableHeadBackground,
+              (g, i) => g.copyWith(tableHeadBackground: i)),
+          ...ink("Alternating rows", guide.tableStripeInk,
+              (g, i) => g.copyWith(tableStripeInk: i)),
+          ctx.note("Every other body row, starting with the first."),
+          const SizedBox(height: 16),
+          const Txt.M("Cells and grid"),
+          ctx.slider("md-tablepad", guide.tableCellPadding,
+              label: (v) => "Cell padding: ${v.round()}px",
+              max: 32,
+              divisions: 16,
+              onCommit: (v) => edit((g) => g.copyWith(tableCellPadding: v))),
+          ctx.choice<MarkdownTableFit>(
+            "Column widths",
+            value: guide.tableFit,
+            options: MarkdownTableFit.values,
+            labelOf: (f) => f.label,
+            onChanged: (f) => edit((g) => g.copyWith(tableFit: f)),
+          ),
+          ...ink("Line colour", guide.tableBorderInk,
+              (g, i) => g.copyWith(tableBorderInk: i)),
+          ctx.slider("md-tableborder", guide.tableBorderWidth,
+              label: (v) =>
+                  v == 0 ? "Lines: None" : "Line width: ${v.round()}px",
+              max: 6,
+              divisions: 6,
+              onCommit: (v) => edit((g) => g.copyWith(tableBorderWidth: v))),
+        ];
+
+      case _Element.columns:
+        return [
+          ctx.note("Markdown has no columns of its own, so these are Bison "
+              "Relay's own -- write them with the buttons in a post's "
+              "Formatting & Content panel. A reader whose app does not know "
+              "them still sees the writing, in order, with the markers "
+              "showing."),
+          ctx.slider("md-colgap", guide.columns.gap,
+              label: (v) => "Space between columns: ${v.round()}px",
+              max: 64,
+              divisions: 32,
+              onCommit: (v) =>
+                  edit((g) => g.copyWith(columns: g.columns.copyWith(gap: v)))),
+          ctx.slider("md-colstack", guide.columns.stackBelow,
+              label: (v) => "Stack when a column would be under ${v.round()}px",
+              min: 80,
+              max: 480,
+              divisions: 20,
+              onCommit: (v) => edit((g) =>
+                  g.copyWith(columns: g.columns.copyWith(stackBelow: v)))),
+          ctx.note("The same post is read in windows of every width. Below "
+              "this, columns become one above another rather than three "
+              "words wide."),
+          const SizedBox(height: 16),
+          const Txt.M("Divider"),
+          ctx.note("A single line down the middle of each gap. Its own "
+              "setting rather than part of the border below, because a rule "
+              "between columns usually reads better at a different weight -- "
+              "and most of the time there is no border at all."),
+          ctx.slider("md-col-divider", guide.columns.dividerWidth,
+              label: (v) => v == 0 ? "Divider: None" : "Width: ${v.round()}px",
+              max: 12,
+              divisions: 12,
+              onCommit: (v) => edit((g) =>
+                  g.copyWith(columns: g.columns.copyWith(dividerWidth: v)))),
+          _inkPick(
+              ctx,
+              "Divider colour",
+              guide.columns.dividerInk,
+              (i) => edit((g) =>
+                  g.copyWith(columns: g.columns.copyWith(dividerInk: i)))),
+          const SizedBox(height: 16),
+          const Txt.M("The run's box"),
+          ctx.note("Around the whole run, not around each column: a border "
+              "on every column is a row of boxes, and one round the outside "
+              "is a block set in columns. Each can be split into four sides."),
+          ..._columnSpacing(ctx, guide, edit,
+              key: "md-col-pad",
+              name: "Padding",
+              max: 64,
+              single: guide.columns.padding,
+              sides: guide.columns.paddingSides,
+              onSingle: (v) => (c) => c.copyWith(padding: v),
+              onSides: (v) => (c) =>
+                  c.copyWith(paddingSides: v, clearPaddingSides: v == null)),
+          ..._columnSpacing(ctx, guide, edit,
+              key: "md-col-margin",
+              name: "Margin",
+              max: 64,
+              single: guide.columns.margin,
+              sides: guide.columns.marginSides,
+              onSingle: (v) => (c) => c.copyWith(margin: v),
+              onSides: (v) => (c) =>
+                  c.copyWith(marginSides: v, clearMarginSides: v == null)),
+          ..._columnSpacing(ctx, guide, edit,
+              key: "md-col-border",
+              name: "Border width",
+              max: 12,
+              single: guide.columns.borderWidth,
+              sides: guide.columns.borderWidthSides,
+              onSingle: (v) => (c) => c.copyWith(borderWidth: v),
+              onSides: (v) => (c) => c.copyWith(
+                  borderWidthSides: v, clearBorderWidthSides: v == null)),
+          _inkPick(
+              ctx,
+              "Border colour",
+              guide.columns.borderInk,
+              (i) => edit((g) =>
+                  g.copyWith(columns: g.columns.copyWith(borderInk: i)))),
+          ..._columnSpacing(ctx, guide, edit,
+              key: "md-col-radius",
+              name: "Corners",
+              max: 48,
+              single: guide.columns.radius,
+              sides: guide.columns.radiusSides,
+              slotLabels: cornerLabels,
+              onSingle: (v) => (c) => c.copyWith(radius: v),
+              onSides: (v) => (c) =>
+                  c.copyWith(radiusSides: v, clearRadiusSides: v == null)),
+          ctx.note("Rounded corners and a border with different widths per "
+              "side cannot be drawn together, so a split border squares the "
+              "corners off."),
+        ];
+
+      case _Element.rule:
+        return [
+          ...ink("Colour", guide.ruleInk, (g, i) => g.copyWith(ruleInk: i)),
+          ctx.slider("md-rule", guide.ruleThickness,
+              label: (v) => "Thickness: ${v.toStringAsFixed(1)}px",
+              min: 0.5,
+              max: 8,
+              divisions: 15,
+              onCommit: (v) => edit((g) => g.copyWith(ruleThickness: v))),
+        ];
+
+      case _Element.images:
+        return [
+          ctx.slider("md-img-width", guide.image.boundedWidth,
+              label: (v) => "Width: ${v.round()}% of the column",
+              min: 10,
+              max: 100,
+              divisions: 18,
+              onCommit: (v) => edit(
+                  (g) => g.copyWith(image: g.image.copyWith(widthPercent: v)))),
+          ctx.slider("md-img-radius", guide.image.boundedRadius,
+              label: (v) =>
+                  v == 0 ? "Corners: Square" : "Corners: ${v.round()}px",
+              max: 48,
+              divisions: 24,
+              onCommit: (v) => edit(
+                  (g) => g.copyWith(image: g.image.copyWith(cornerRadius: v)))),
+          ctx.slider("md-img-border", guide.image.boundedBorder,
+              label: (v) => v == 0 ? "Border: None" : "Border: ${v.round()}px",
+              max: 8,
+              divisions: 8,
+              onCommit: (v) => edit(
+                  (g) => g.copyWith(image: g.image.copyWith(borderWidth: v)))),
+          ...ink("Border colour", guide.image.borderInk,
+              (g, i) => g.copyWith(image: g.image.copyWith(borderInk: i))),
+          ctx.slider("md-img-gap", guide.image.gap,
+              label: (v) => "Space above and below: ${v.round()}px",
+              max: 48,
+              divisions: 24,
+              onCommit: (v) =>
+                  edit((g) => g.copyWith(image: g.image.copyWith(gap: v)))),
+          ctx.choice<MarkdownAlign>(
+            "Alignment",
+            value: guide.image.align == MarkdownAlign.inherit
+                ? MarkdownAlign.left
+                : guide.image.align,
+            options: const [
+              MarkdownAlign.left,
+              MarkdownAlign.center,
+              MarkdownAlign.right
+            ],
+            labelOf: (a) => switch (a) {
+              MarkdownAlign.center => "Center",
+              MarkdownAlign.right => "Right",
+              _ => "Left",
+            },
+            onChanged: (a) =>
+                edit((g) => g.copyWith(image: g.image.copyWith(align: a))),
+          ),
+        ];
+    }
+  }
+}
+
+/// _MarkdownPreview renders the sample in the chosen guide.
+///
+/// The whole reason this page exists before an editor for making guides
+/// does: whether the vocabulary is the right one is a question you answer by
+/// looking at it, not by reading a list of properties.
+class _MarkdownPreview extends StatelessWidget {
+  /// element decides what the sample contains.
+  ///
+  /// A sample showing everything at once means the part being adjusted is
+  /// somewhere in the middle of it, and a slider's effect has to be hunted
+  /// for. Showing the element being tuned -- with a line of body text around
+  /// it for scale, since almost every setting is relative to that -- makes
+  /// the change the obvious thing on screen.
+  final _Element element;
+
+  const _MarkdownPreview({required this.element});
+
+  @override
+  Widget build(BuildContext context) {
+    var theme = ThemeNotifier.of(context);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: theme.surfaceColor(SurfaceColor.surfaceContainerLow),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: theme.colors.outlineVariant),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Txt.S("Preview", color: TextColor.onSurfaceVariant),
+        const SizedBox(height: 8),
+        // Keyed by the guide so switching rebuilds rather than reusing the
+        // element tree with a stale stylesheet.
+        // No guide passed: the preview shows what this theme renders,
+        // which is the reader's own guide once they have edited one. Naming
+        // a built-in here is what made every edit look like it did nothing.
+        MarkdownArea(_sampleFor(element), false, key: ValueKey(element)),
+      ]),
+    );
+  }
+}

@@ -1,12 +1,34 @@
 import 'dart:async';
 import 'dart:math';
 
+import 'package:bruig/components/containers.dart';
 import 'package:bruig/components/empty_widget.dart';
 import 'package:bruig/components/text.dart';
 import 'package:flutter/material.dart';
-import 'package:bruig/theme_manager.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
+import 'package:bruig/theming_system/theme_preset.dart';
 import 'package:provider/provider.dart';
 
+// _sized layers the fixed geometry the login/startup screens' buttons have
+// always had (a wide, tall pill) over a role's compiled ButtonStyle, without
+// overwriting anything the Buttons theme area set: merge keeps the receiver's
+// own non-null properties and fills the rest in from the argument, so a
+// padding chosen in the editor still wins over the one below.
+ButtonStyle _sized(ButtonStyle style, {double minWidth = 150}) =>
+    style.merge(ButtonStyle(
+      padding: const WidgetStatePropertyAll(
+          EdgeInsets.only(left: 34, top: 10, right: 34, bottom: 10)),
+      minimumSize: WidgetStatePropertyAll(Size(minWidth, 55)),
+      shape: const WidgetStatePropertyAll(RoundedRectangleBorder(
+        borderRadius: BorderRadius.all(Radius.circular(30)),
+      )),
+    ));
+
+// CancelButton is the app's Danger button (ButtonRole.danger) -- the red one
+// in every screenshot of Bison Relay: Clear Post, Close Channel, and the
+// ~24 plain Cancel/dismiss actions that share the widget. It's styled from
+// the palette's "Button Background Secondary" via the compiled role style,
+// so the Buttons theme area can retune all of them at once.
 class CancelButton extends StatelessWidget {
   final VoidCallback? onPressed;
   final bool loading;
@@ -21,37 +43,21 @@ class CancelButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer<ThemeNotifier>(
         builder: (context, theme, child) => ElevatedButton(
-            style: ElevatedButton.styleFrom(
-                backgroundColor: theme.colors.errorContainer),
+            style: theme.buttonStyle(ButtonRole.danger),
             onPressed: !loading ? onPressed : null,
-            child: Text(label,
-                style: theme.textStyleFor(
-                    context, null, TextColor.onErrorContainer))));
+            child: Text(label)));
   }
 }
 
-ButtonStyle raisedButtonStyle(ThemeNotifier theme) {
-  return ElevatedButton.styleFrom(
-    padding: const EdgeInsets.only(left: 34, top: 10, right: 34, bottom: 10),
-    minimumSize: const Size(150, 55),
-    foregroundColor: theme.colors.onPrimaryContainer,
-    backgroundColor: theme.colors.primaryContainer,
-    //padding: EdgeInsets.symmetric(horizontal: 16),
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.all(Radius.circular(30)),
-    ),
-  );
-}
+// raisedButtonStyle is the Primary button (ButtonRole.primary) at the size
+// the login/startup screens draw it: Unlock Wallet, Create Wallet.
+ButtonStyle raisedButtonStyle(ThemeNotifier theme) =>
+    _sized(theme.buttonStyle(ButtonRole.primary));
 
-ButtonStyle emptyButtonStyle(ThemeNotifier theme) {
-  return ElevatedButton.styleFrom(
-    padding: const EdgeInsets.only(left: 34, top: 10, right: 34, bottom: 10),
-    minimumSize: const Size(150, 55),
-    shape: RoundedRectangleBorder(
-        borderRadius: const BorderRadius.all(Radius.circular(30)),
-        side: BorderSide(color: theme.colors.outlineVariant, width: 2)),
-  );
-}
+// emptyButtonStyle is the same geometry over the Outlined role
+// (ButtonRole.outlined) -- the bordered, unfilled button.
+ButtonStyle emptyButtonStyle(ThemeNotifier theme) =>
+    _sized(theme.buttonStyle(ButtonRole.outlined));
 
 ButtonStyle readMoreButton(ThemeNotifier theme) {
   return ElevatedButton.styleFrom(
@@ -83,15 +89,11 @@ class LoadingScreenButton extends StatelessWidget {
     return Consumer<ThemeNotifier>(
         builder: (context, theme, _) => TextButton(
             style: minSize != 0
-                ? ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.only(
-                        left: 34, top: 10, right: 34, bottom: 10),
-                    minimumSize: Size(minSize - 30, 55),
-                    //padding: EdgeInsets.symmetric(horizontal: 16),
-                    shape: const RoundedRectangleBorder(
-                      borderRadius: BorderRadius.all(Radius.circular(30)),
-                    ),
-                  )
+                // A caller-set width still draws the Primary role -- it's
+                // the same login-screen button, just measured to fit a
+                // specific column.
+                ? _sized(theme.buttonStyle(ButtonRole.primary),
+                    minWidth: minSize - 30)
                 : empty
                     ? emptyButtonStyle(theme)
                     : raisedButtonStyle(theme),
@@ -105,15 +107,24 @@ class AboutButton extends StatelessWidget {
   const AboutButton({super.key});
   @override
   Widget build(BuildContext context) {
-    return IconButton(
-        tooltip: "About Bison Relay",
-        onPressed: () {
-          Navigator.of(context).pushNamed("/about");
-        },
-        icon: Image.asset(
-          fit: BoxFit.contain,
-          "assets/images/icon.png",
-        ));
+    // Follows the app icon setting like every other place the icon is
+    // drawn (see customAppIcon). This button is only ever shown on the
+    // startup/login screens, so the header area's loginLogoSize is what
+    // sizes it; without one it falls back to whatever the icon theme says,
+    // which is what it used before the setting existed.
+    return Consumer<ThemeNotifier>(builder: (context, theme, _) {
+      var iconSize = theme.areaStyle(ThemeArea.header).loginLogoSize ??
+          IconTheme.of(context).size ??
+          24;
+      return IconButton(
+          tooltip: "About Bison Relay",
+          iconSize: iconSize,
+          onPressed: () {
+            Navigator.of(context).pushNamed("/about");
+          },
+          icon: customAppIcon(theme, iconSize) ??
+              Image.asset(BisonRelayLogo.assetPath, fit: BoxFit.contain));
+    });
   }
 }
 

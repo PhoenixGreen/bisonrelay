@@ -1,11 +1,11 @@
 import 'dart:async';
 
 import 'package:bruig/components/buttons.dart';
+import 'package:bruig/components/containers.dart';
 import 'package:bruig/components/text.dart';
 import 'package:bruig/components/collapsable.dart';
 import 'package:bruig/components/copyable.dart';
 import 'package:bruig/models/client.dart';
-import 'package:bruig/models/uistate.dart';
 import 'package:bruig/models/wallet.dart';
 import 'package:bruig/screens/ln/accounts.dart';
 import 'package:bruig/screens/ln/backups.dart';
@@ -20,10 +20,9 @@ import 'package:golib_plugin/golib_plugin.dart';
 import 'package:golib_plugin/util.dart';
 import 'package:bruig/components/ln_management_bar.dart';
 import 'package:bruig/screens/overview.dart';
-import 'package:bruig/components/empty_widget.dart';
 import 'package:bruig/models/menus.dart';
 import 'package:provider/provider.dart';
-import 'package:bruig/theme_manager.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
 
 class LNScreenTitle extends StatelessWidget {
   const LNScreenTitle({super.key});
@@ -99,20 +98,24 @@ class _LNScreenState extends State<LNScreen> {
 
   @override
   Widget build(BuildContext context) {
-    bool isScreenSmall = checkIsScreenSmall(context);
     if (ModalRoute.of(context)!.settings.arguments != null) {
       final args = ModalRoute.of(context)!.settings.arguments as PageTabs;
       tabIndex = args.tabIndex;
     }
 
-    return Row(children: [
-      ModalRoute.of(context)!.settings.arguments == null
-          ? isScreenSmall
-              ? const Empty()
-              : LNManagementBar(onItemChanged, tabIndex)
-          : const Empty(),
-      Expanded(child: activeTab())
-    ]);
+    // Deliberately not short-circuited to a bare activeTab() on a small
+    // screen: below SecondarySideMenuLayout's collapse width it already
+    // renders content-only, but it also hands its item list to
+    // CollapsedSidebarModel on the way -- which is what gives the mobile
+    // navigation's re-tap gesture (see the Mobile theme area) something to
+    // slide in, and what the mobile header's three-dot menu used to be the
+    // only route to.
+    return SecondarySideMenuLayout(
+      storageKey: "lnManagement",
+      items: lnManagementBarItems(onItemChanged, tabIndex),
+      isDetail: ModalRoute.of(context)!.settings.arguments != null,
+      content: activeTab(),
+    );
   }
 }
 

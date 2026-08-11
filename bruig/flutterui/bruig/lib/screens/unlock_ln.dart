@@ -22,7 +22,7 @@ import 'package:flutter/material.dart';
 import 'package:golib_plugin/golib_plugin.dart';
 import 'package:path/path.dart' as path;
 import 'package:provider/provider.dart';
-import 'package:bruig/theme_manager.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:window_manager/window_manager.dart';
 
 class UnlockLNApp extends StatefulWidget {
@@ -216,7 +216,13 @@ class __LNUnlockPageState extends State<_LNUnlockPage> {
                 autofocus: true,
                 decoration: InputDecoration(
                     labelText: "Password",
-                    errorText: _validate,
+                    // Flutter's TextField treats a non-null errorText as
+                    // "has error" regardless of whether it's empty --
+                    // passing "" (rather than null) here left the field
+                    // permanently rendered in the theme's Error color
+                    // (cursor, focus/enabled underline, label) from first
+                    // render, before any unlock attempt ever failed.
+                    errorText: _validate.isEmpty ? null : _validate,
                     filled: true,
                     fillColor: theme.colors.surface),
                 controller: passCtrl,

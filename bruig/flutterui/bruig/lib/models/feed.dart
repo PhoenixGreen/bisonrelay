@@ -236,8 +236,17 @@ class NewPostModel {
   Map<String, String> embedContents = {};
   String content = "";
 
+  /// caret is where the cursor was when the composer was last taken down.
+  ///
+  /// The composer's own State does not survive leaving the Feed -- the
+  /// screen is built fresh by its route -- so anything the writer would
+  /// notice losing has to live out here with the text. Going to Chat to
+  /// read a message and coming back put them at the top of an empty post.
+  int caret = 0;
+
   void clear() {
     content = "";
+    caret = 0;
     embedContents = {};
   }
 
@@ -268,12 +277,25 @@ class NewPostModel {
 }
 
 class FeedModel extends ChangeNotifier {
+  /// lastTab is which of the Feed's tabs was last open.
+  ///
+  /// The Feed screen is built fresh by its route with no arguments when it
+  /// is reached from the main menu, so it always opened on the post list --
+  /// and someone who stepped away from a half-written post to read a message
+  /// came back to find the composer apparently gone. The draft was never
+  /// lost; the way back to it was.
+  ///
+  /// Explicit navigation still wins: arriving with route arguments, from a
+  /// notification or a link to one post, sets the tab those arguments name.
+  int lastTab = 0;
+
   final List<FeedPostModel> _posts = [];
   Iterable<FeedPostModel> get posts => UnmodifiableListView(_posts);
 
   bool _hasUnreadPostsComments = false;
   bool get hasUnreadPostsComments => _hasUnreadPostsComments;
   set hasUnreadPostsComments(bool b) {
+    if (_hasUnreadPostsComments == b) return;
     _hasUnreadPostsComments = b;
     notifyListeners();
   }

@@ -3,7 +3,7 @@ import 'package:bruig/components/icons.dart';
 import 'package:bruig/components/text.dart';
 import 'package:bruig/models/notifications.dart';
 import 'package:bruig/screens/server_unwelcome_error.dart';
-import 'package:bruig/theme_manager.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
 class _NotificationW extends StatelessWidget {

@@ -1,0 +1,280 @@
+import 'package:bruig/components/eyedropper.dart';
+import 'package:bruig/theming_system/theme_preset.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_colorpicker/flutter_colorpicker.dart';
+
+// PaletteColorDropdown lets the user pick one of the active palette's colors
+// (plus, optionally, "None", and always a free-form "Custom color...") for a
+// single field -- no popup dialog for the common case, just a standard
+// dropdown menu. Used by every area editor that needs a color.
+class PaletteColorDropdown extends StatelessWidget {
+  final ThemePreset preset;
+  final Color? value;
+  // onChanged's second argument is the picked palette slot's index (into
+  // preset.palette), or null for "None"/a custom-picked color -- callers
+  // that persist it (rather than just the resolved Color) get a live
+  // binding: re-resolving preset.palette[index] on every rebuild means
+  // editing that slot's own color later is picked up automatically,
+  // instead of the field being stuck on a frozen snapshot of whatever the
+  // slot's color happened to be at pick time (which stops matching, or
+  // worse, silently starts matching a *different* slot, the moment any
+  // slot's value changes).
+  final void Function(Color? color, int? index) onChanged;
+  // valueIndex is the palette slot `value` was picked from, for a caller
+  // that persists one (see onChanged). Given it, this shows that exact
+  // slot as selected instead of searching the palette for one holding the
+  // same color -- a search that can't tell duplicate slots apart, and
+  // duplicates are normal: in the stock Default Theme six of the seventeen
+  // slots hold a color an earlier slot already holds (speechBackground
+  // repeats tertiary, speechBackgroundSent repeats fourth, navText and
+  // sidebarText repeat onSurfaceVariant, navAccent and sidebarAccent
+  // repeat accentContainer). A color-matched lookup lands on the first of
+  // each group, so a field bound to "Sidebar Accent Color" displayed as
+  // "Button Background" -- and then editing the slot it named changed
+  // nothing, while editing the one it didn't name moved it.
+  final int? valueIndex;
+  final bool allowNone;
+  // noneLabel overrides the "None" entry's label -- e.g. "Default" for a
+  // field whose null value doesn't mean "no color at all" but "use the
+  // built-in computed default" (unlike, say, an accent color that's truly
+  // absent when unset).
+  final String noneLabel;
+  // isExpanded fills the available width instead of sizing to the current
+  // entry -- for a caller that lays this out in a fixed-width column
+  // (rather than a Row that sizes around it), where the intrinsic width
+  // would otherwise overflow on the longer palette slot names.
+  final bool isExpanded;
+  const PaletteColorDropdown(
+      {required this.preset,
+      required this.value,
+      required this.onChanged,
+      this.valueIndex,
+      this.allowNone = false,
+      this.noneLabel = "None",
+      this.isExpanded = false,
+      super.key});
+
+  // -2 is a sentinel dropdown value for "Custom color..." -- distinct from
+  // -1 (None, only present when allowNone) and from any real palette index
+  // (>= 0). Picking it opens a full color picker so a field isn't limited
+  // to the fixed palette slots.
+  static const _customValue = -2;
+
+  Future<void> _pickCustomColor(BuildContext context, Color initial) async {
+    var result = await showDialog<_ColorPickResult>(
+      context: context,
+      builder: (context) => _CustomColorDialog(initial: initial),
+    );
+    if (result == null) return;
+    if (result.useEyedropper) {
+      // The dialog is already closed at this point (see _CustomColorDialog's
+      // eyedropper button), so the capture below sees whatever's actually
+      // behind it, not the dialog's own chrome.
+      if (!context.mounted) return;
+      var picked = await pickColorFromApp(context);
+      if (picked != null) onChanged(picked, null);
+      return;
+    }
+    if (result.color != null) onChanged(result.color, null);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    var palette = preset.palette;
+    // A stored slot binding is authoritative; only a caller that has none
+    // falls back to finding the palette entry holding this exact color.
+    var bound =
+        valueIndex != null && valueIndex! >= 0 && valueIndex! < palette.length
+            ? valueIndex
+            : null;
+    var matchIdx = bound ??
+        (value == null
+            ? -1
+            : palette.indexWhere((c) => c.toARGB32() == value!.toARGB32()));
+    // A value that matches no palette slot is a previously picked custom
+    // color -- show it as such instead of silently falling back to the
+    // first palette entry.
+    var isCustom = bound == null && value != null && matchIdx < 0;
+    if (matchIdx < 0 && !allowNone && !isCustom) matchIdx = 0;
+    if (isCustom) matchIdx = _customValue;
+
+    // Each entry is a swatch beside its name. A Row lays a plain Text out
+    // with unbounded width, so a name too long for the space it's in --
+    // "Outline (Borders/Dividers)" -- overflows rather than being cut
+    // short; only Flexible gives the Text a width to ellipsize within.
+    Widget entry(Widget leading, String label, {bool clip = true}) =>
+        Row(mainAxisSize: MainAxisSize.min, children: [
+          leading,
+          const SizedBox(width: 8),
+          if (clip)
+            Flexible(child: Text(label, overflow: TextOverflow.ellipsis))
+          else
+            Text(label),
+        ]);
+
+    Widget customLeading() => isCustom
+        ? colorSwatchBox(value!)
+        : const Icon(Icons.palette_outlined, size: 18);
+
+    // The open menu is only ever as wide as the button that opened it, so
+    // its entries need clipping too -- in a narrow column (four of these
+    // side by side for a gradient) the longer names overflow the menu.
+    //
+    // The closed button is built separately, by selectedItemBuilder, for
+    // one reason: a dropdown left to size itself to its content (rather
+    // than filling a column) hands its row unbounded width, and RenderFlex
+    // asserts outright on a Flexible child there. The menu is bounded
+    // either way, so only this copy has to care.
+    List<Widget> selectedItems(BuildContext context) => [
+          if (allowNone) Text(noneLabel),
+          for (var i = 0; i < PaletteSlot.values.length; i++)
+            entry(colorSwatchBox(palette[i]),
+                paletteSlotLabel(PaletteSlot.values[i]),
+                clip: isExpanded),
+          entry(customLeading(), "Custom color...", clip: isExpanded),
+        ];
+
+    return DropdownButton<int>(
+      value: matchIdx,
+      isExpanded: isExpanded,
+      selectedItemBuilder: selectedItems,
+      items: [
+        if (allowNone) DropdownMenuItem(value: -1, child: Text(noneLabel)),
+        for (var i = 0; i < PaletteSlot.values.length; i++)
+          DropdownMenuItem(
+            value: i,
+            child: entry(colorSwatchBox(palette[i]),
+                paletteSlotLabel(PaletteSlot.values[i])),
+          ),
+        DropdownMenuItem(
+          value: _customValue,
+          child: entry(customLeading(), "Custom color..."),
+        ),
+      ],
+      onChanged: (i) {
+        if (i == null) return;
+        if (i == _customValue) {
+          _pickCustomColor(context, value ?? palette.first);
+        } else if (i < 0) {
+          onChanged(null, null);
+        } else {
+          onChanged(palette[i], i);
+        }
+      },
+    );
+  }
+}
+
+// colorSwatchBox is the small rounded color chip used wherever the editor
+// shows "this is the color" -- dropdown entries and palette rows.
+Widget colorSwatchBox(Color color, {double size = 18, double radius = 3}) {
+  var box = Container(
+    width: size,
+    height: size,
+    decoration: BoxDecoration(
+      color: color,
+      border: Border.all(color: Colors.grey),
+      borderRadius: BorderRadius.circular(radius),
+    ),
+  );
+  // Fully opaque colours are just themselves. Anything see-through is
+  // painted over a checkerboard, the convention every image editor uses --
+  // otherwise a transparent swatch is indistinguishable from one holding
+  // whatever colour happens to be behind it.
+  if (color.a >= 1.0) return box;
+  return ClipRRect(
+    borderRadius: BorderRadius.circular(radius),
+    child: SizedBox(
+      width: size,
+      height: size,
+      child: Stack(children: [
+        Positioned.fill(
+            child: CustomPaint(painter: _CheckerboardPainter(size / 4))),
+        box,
+      ]),
+    ),
+  );
+}
+
+class _CheckerboardPainter extends CustomPainter {
+  final double cell;
+  const _CheckerboardPainter(this.cell);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    var light = Paint()..color = const Color(0xFFBDBDBD);
+    var dark = Paint()..color = const Color(0xFF757575);
+    canvas.drawRect(Offset.zero & size, light);
+    for (var y = 0; y * cell < size.height; y++) {
+      for (var x = 0; x * cell < size.width; x++) {
+        if ((x + y).isEven) continue;
+        canvas.drawRect(Rect.fromLTWH(x * cell, y * cell, cell, cell), dark);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_CheckerboardPainter old) => old.cell != cell;
+}
+
+// _ColorPickResult is _CustomColorDialog's pop() value: either a committed
+// color (Select) or a request to hand off to the in-app eyedropper (which
+// needs the dialog closed first so it can capture what's behind it).
+class _ColorPickResult {
+  final Color? color;
+  final bool useEyedropper;
+  const _ColorPickResult.color(this.color) : useEyedropper = false;
+  const _ColorPickResult.eyedropper()
+      : color = null,
+        useEyedropper = true;
+}
+
+// _CustomColorDialog lets the user pick an arbitrary color (not limited to
+// the active preset's fixed palette slots) for a single AreaStyle field,
+// via PaletteColorDropdown's "Custom color..." entry.
+class _CustomColorDialog extends StatefulWidget {
+  final Color initial;
+  const _CustomColorDialog({required this.initial});
+
+  @override
+  State<_CustomColorDialog> createState() => _CustomColorDialogState();
+}
+
+class _CustomColorDialogState extends State<_CustomColorDialog> {
+  late Color _color = widget.initial;
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Row(children: [
+        const Expanded(child: Text("Custom color")),
+        IconButton(
+          icon: const Icon(Icons.colorize),
+          tooltip: "Pick color from app (eyedropper)",
+          onPressed: () =>
+              Navigator.of(context).pop(const _ColorPickResult.eyedropper()),
+        ),
+      ]),
+      content: SingleChildScrollView(
+        child: ColorPicker(
+          pickerColor: _color,
+          enableAlpha: true,
+          displayThumbColor: true,
+          hexInputBar: true,
+          onColorChanged: (c) => setState(() => _color = c),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text("Cancel"),
+        ),
+        TextButton(
+          onPressed: () =>
+              Navigator.of(context).pop(_ColorPickResult.color(_color)),
+          child: const Text("Select"),
+        ),
+      ],
+    );
+  }
+}

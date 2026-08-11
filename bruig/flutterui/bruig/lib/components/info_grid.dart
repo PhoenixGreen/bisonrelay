@@ -1,6 +1,6 @@
 import 'package:bruig/components/copyable.dart';
 import 'package:bruig/components/text.dart';
-import 'package:bruig/theme_manager.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:tuple/tuple.dart';

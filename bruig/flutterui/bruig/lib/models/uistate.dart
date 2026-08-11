@@ -1,12 +1,14 @@
 import 'package:bruig/models/client.dart';
-import 'package:bruig/screens/chats.dart';
-import 'package:bruig/screens/feed.dart';
-import 'package:bruig/screens/viewpage_screen.dart';
+import 'package:bruig/theming_system/theme_preset.dart';
 import 'package:flutter/material.dart';
 
 class ShowProfileModel extends BoolFlagModel {}
 
 class CreateGroupChatModel extends BoolFlagModel {}
+
+// ChatSearchModel tracks whether the active chat's in-chat search panel is
+// open. Only meaningful when AreaStyle.enableChatSearch is on.
+class ChatSearchModel extends BoolFlagModel {}
 
 class ChatSideMenuActiveModel extends ChangeNotifier {
   ChatModel? _chat;
@@ -30,17 +32,38 @@ class SettingsTitleModel extends ChangeNotifier {
   }
 }
 
-enum SmallScreenActiveTab {
-  chat,
-  feed,
-  pages,
-}
+// SettingsNavModel remembers where the user last was in Settings >
+// Appearance (which sub-page, whether the Theme Areas section was expanded,
+// and which area was selected) so navigating away to check a setting (e.g.
+// visiting the chat page to see an area style take effect) and back doesn't
+// lose the spot -- Settings is rebuilt from scratch on every navigation to
+// it (pushReplacementNamed), so this can't just live in State.
+class SettingsNavModel extends ChangeNotifier {
+  String _page = "main";
+  String get page => _page;
+  set page(String v) {
+    _page = v;
+    notifyListeners();
+  }
 
-class SmallScreenActiveTabModel extends ChangeNotifier {
-  SmallScreenActiveTab _active = SmallScreenActiveTab.chat;
-  SmallScreenActiveTab get active => _active;
-  set active(SmallScreenActiveTab v) {
-    _active = v;
+  bool _themeAreasExpanded = false;
+  bool get themeAreasExpanded => _themeAreasExpanded;
+  set themeAreasExpanded(bool v) {
+    _themeAreasExpanded = v;
+    notifyListeners();
+  }
+
+  bool _paletteExpanded = false;
+  bool get paletteExpanded => _paletteExpanded;
+  set paletteExpanded(bool v) {
+    _paletteExpanded = v;
+    notifyListeners();
+  }
+
+  ThemeArea _selectedThemeArea = ThemeArea.chat;
+  ThemeArea get selectedThemeArea => _selectedThemeArea;
+  set selectedThemeArea(ThemeArea v) {
+    _selectedThemeArea = v;
     notifyListeners();
   }
 }
@@ -54,24 +77,125 @@ class OverviewActivePath extends ChangeNotifier {
       notifyListeners();
     }
   }
+}
 
-  // onActiveBottomTab is true if the current active route is one that corresponds
-  // to one of the bottom tabs ("chats", "feeds", "pages").
-  bool get onActiveBottomTab => [
-        ChatsScreen.routeName,
-        FeedScreen.routeName,
-        ViewPageScreen.routeName
-      ].contains(route);
+// CollapsedSidebarModel connects the three parts of the narrow-window
+// sidebar drawer, which live in three different places in the tree:
+//
+// - the screen that owns a sidebar (SecondarySideMenuLayout, or the feed's
+//   own panel) registers how to build it, and stops rendering it inline;
+// - the main navigation opens it, when its already-selected destination is
+//   tapped again (see Sidebar.switchScreen);
+// - OverviewScreen paints it, above everything, when it's open -- which is
+//   what lets the drawer cover the main navigation rather than starting
+//   beside it.
+//
+// The screen can't paint it itself: it sits inside the content area, so
+// anything it draws is clipped to the right of the main nav.
+class CollapsedSidebarModel extends ChangeNotifier {
+  WidgetBuilder? _builder;
+  Object? _revision;
+  Object? _owner;
+  double _width = 200;
+  bool _open = false;
+
+  // available is "some screen currently has a collapsed sidebar", which is
+  // what decides whether the main nav's re-tap opens anything.
+  bool get available => _builder != null;
+  WidgetBuilder? get builder => _builder;
+  double get width => _width;
+  bool get open => _open && available;
+
+  // register/unregister are called from a screen's build, so they defer
+  // notifying until the frame is done -- listeners rebuilding mid-build
+  // would throw.
+  //
+  // The builder itself is stored every time (it's a fresh closure on each
+  // build, so it can never compare equal), but only a change in whether
+  // there *is* one, or in how wide it is, is worth telling anyone about --
+  // notifying on every build would wake the drawer once per frame for no
+  // visible change.
+  /// revision is whatever the caller's sidebar would look different for.
+  ///
+  /// The builder alone cannot answer that -- it is a fresh closure every
+  /// build and can never compare equal, so notifying on it would wake the
+  /// drawer once per frame for no visible change. But a sidebar whose
+  /// *contents* change while the drawer is open needs the drawer told, and
+  /// without this it silently kept rendering whatever it had: the composer's
+  /// panel icons registered their taps, changed the panel, and redrew
+  /// nothing.
+  ///
+  /// A caller whose sidebar cannot change while it is open passes nothing
+  /// and behaves exactly as before.
+  /// owner identifies who registered, so it can take its own registration
+  /// back without taking somebody else's.
+  ///
+  /// A screen registers from its build and has to unregister when it goes
+  /// away, or its sidebar follows the user to whatever they open next --
+  /// which is how the post composer's panel turned up in the drawer over
+  /// Realtime Chat, the LN screens and Pages. Screens that never register
+  /// have nothing to clear it, so clearing it is the registrant's job.
+  void register(WidgetBuilder builder, double width,
+      {Object? revision, Object? owner}) {
+    // A different owner means a different screen, or the same screen
+    // rebuilt into a new State -- which a resize does, whenever it crosses a
+    // width where the layout above switches branches. Its predecessor's
+    // output is then defunct: it still paints, because the drawer keeps
+    // whatever it last built, but nothing in it is wired to anything live,
+    // so every tap lands on a widget that is no longer there.
+    //
+    // That is why the fault survived a resize and not a restart, and why
+    // width and revision alone could not catch it: both are identical
+    // across the swap.
+    var changed = _builder == null ||
+        _width != width ||
+        _revision != revision ||
+        !identical(_owner, owner);
+    _builder = builder;
+    _width = width;
+    _revision = revision;
+    _owner = owner;
+    if (changed) _notifyLater();
+  }
+
+  /// unregister clears the drawer. With an [owner] it does so only if that
+  /// owner is the one still registered -- a screen being torn down must not
+  /// wipe the registration of the screen that replaced it, which on any
+  /// navigation happens in that order.
+  void unregister({Object? owner}) {
+    if (_builder == null) return;
+    if (owner != null && !identical(_owner, owner)) return;
+    _builder = null;
+    _revision = null;
+    _owner = null;
+    _open = false;
+    _notifyLater();
+  }
+
+  void toggle() {
+    _open = !_open;
+    notifyListeners();
+  }
+
+  void close() {
+    if (!_open) return;
+    _open = false;
+    notifyListeners();
+  }
+
+  void _notifyLater() =>
+      WidgetsBinding.instance.addPostFrameCallback((_) => notifyListeners());
 }
 
 // UIStateModel holds state related to the app's UI.
 class UIStateModel {
   final ShowProfileModel showProfile = ShowProfileModel();
+  final ChatSearchModel chatSearch = ChatSearchModel();
   final ChatSideMenuActiveModel chatSideMenuActive = ChatSideMenuActiveModel();
   final SettingsTitleModel settingsTitle = SettingsTitleModel();
-  final SmallScreenActiveTabModel smallScreenActiveTab =
-      SmallScreenActiveTabModel();
+  final SettingsNavModel settingsNav = SettingsNavModel();
   final OverviewActivePath overviewActivePath = OverviewActivePath();
+  final CollapsedSidebarModel collapsedSidebar = CollapsedSidebarModel();
   final RouteObserver<ModalRoute<void>> overviewRouteObserver =
       RouteObserver<ModalRoute<void>>();
 }

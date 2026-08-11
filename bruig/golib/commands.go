@@ -187,6 +187,16 @@ const (
 	CTDeclineKXSuggestion          CmdType = 0xb2
 	CTUpdateLastMsgReadTime        CmdType = 0xb3
 	CTDeclineGCInvite              CmdType = 0xb4
+	CTListPlugins                  CmdType = 0xb5
+	CTImportPlugin                 CmdType = 0xb6
+	CTSetPluginEnabled             CmdType = 0xb7
+	CTRemovePlugin                 CmdType = 0xb8
+	CTFetchLinkMetadata            CmdType = 0xb9
+	CTGetSpellcheckData            CmdType = 0xba
+	CTDynPluginRenderScreen        CmdType = 0xbb
+	CTDynPluginHandleEvent         CmdType = 0xbc
+	CTLookupSynonyms               CmdType = 0xbe
+	CTGetExchangeRate              CmdType = 0xbd
 
 	NTInviteReceived            = 0x1001
 	NTInviteAccepted            = 0x1002
@@ -253,6 +263,7 @@ const (
 	NTRTDTJoinedInstantCall     = 0x103f
 	NTRTDTSessionInviteCanceled = 0x1040
 	NTSendFileProgress          = 0x1041
+	NTDynPluginScreenUpdated    = 0x1042
 )
 
 type cmd struct {

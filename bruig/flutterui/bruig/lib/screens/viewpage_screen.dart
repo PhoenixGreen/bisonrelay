@@ -9,7 +9,7 @@ import 'package:bruig/models/resources.dart';
 import 'package:bruig/models/snackbar.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:bruig/theme_manager.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
 
 class ViewPagesScreenTitle extends StatelessWidget {
   const ViewPagesScreenTitle({super.key});
@@ -167,10 +167,10 @@ class _ViewPageScreenState extends State<ViewPageScreen> {
   @override
   Widget build(BuildContext context) {
     var activeSess = resources.mostRecent;
-    return Row(children: [
-      Consumer<ThemeNotifier>(
-          builder: (context, theme, _) => SecondarySideMenuList(
-              width: 130 * (theme.fontScale > 0 ? theme.fontScale : 1),
+    return Consumer<ThemeNotifier>(
+        builder: (context, theme, _) => SecondarySideMenuLayout(
+              width: 200 * (theme.fontScale > 0 ? theme.fontScale : 1),
+              storageKey: "pages",
               list: ListView.builder(
                   itemCount: sessions.length,
                   itemBuilder: (BuildContext context, int index) {
@@ -189,10 +189,10 @@ class _ViewPageScreenState extends State<ViewPageScreen> {
                   icon: const Icon(Icons.browser_updated_sharp),
                   tooltip: "Open local pages",
                 )
-              ]))),
-      activeSess != null
-          ? Expanded(child: _ActivePageScreen(activeSess, widget.client))
-          : const Empty(),
-    ]);
+              ]),
+              content: activeSess != null
+                  ? _ActivePageScreen(activeSess, widget.client)
+                  : const Empty(),
+            ));
   }
 }

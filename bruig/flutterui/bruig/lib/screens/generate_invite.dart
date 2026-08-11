@@ -22,7 +22,12 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
 
 class GenerateInviteScreen extends StatefulWidget {
-  const GenerateInviteScreen({super.key});
+  // embedded is true when shown inline as Address Book tab content instead
+  // of pushed as a full-screen route -- skips StartupScreen's Scaffold/
+  // background/About-button chrome, since the embedding page already
+  // provides its own frame.
+  final bool embedded;
+  const GenerateInviteScreen({this.embedded = false, super.key});
 
   @override
   State<GenerateInviteScreen> createState() => _GenerateInviteScreenState();
@@ -291,7 +296,8 @@ class _GenerateInviteScreenState extends State<GenerateInviteScreen> {
               style: TextStyle(fontStyle: FontStyle.italic))),
       const SizedBox(height: 20),
       ElevatedButton(
-          onPressed: () => Navigator.pop(context), child: const Text("Done"))
+          onPressed: () => Navigator.of(context).maybePop(),
+          child: const Text("Done"))
     ];
   }
 
@@ -358,21 +364,44 @@ class _GenerateInviteScreenState extends State<GenerateInviteScreen> {
                         ? generateInvite
                         : null,
                     child: const Text("Generate invite")),
-                CancelButton(onPressed: () => Navigator.pop(context))
+                CancelButton(onPressed: () => Navigator.of(context).maybePop())
               ])),
     ];
   }
 
+  // Address Book tabs all use the same title: same size (Txt.L), centred
+  // across the full width of the page. Pushed as a standalone route these
+  // screens keep the larger startup-screen heading.
+  Widget _title(String text) => SizedBox(
+      width: double.infinity,
+      child: widget.embedded
+          ? Txt.L(text, textAlign: TextAlign.center)
+          : Txt.H(text, textAlign: TextAlign.center));
   @override
   Widget build(BuildContext context) {
-    return StartupScreen(childrenWidth: 600, [
+    var children = [
       generated == null
-          ? const Txt.H("Generate Invite")
-          : const Txt.H("Generated Invite"),
+          // Embedded, the title matches every other Address Book tab;
+          // pushed as its own screen it stays the larger heading that
+          // startup-style screens use.
+          ? _title("Generate Invite")
+          : _title("Generated Invite"),
       const SizedBox(height: 20),
       ...(generated == null
           ? buildGeneratePanel(context)
           : buildGeneratedInvite(context)),
-    ]);
+    ];
+
+    if (widget.embedded) {
+      return SingleChildScrollView(
+          // The gutters every content-area page uses, so the Address Book
+          // tabs sit where the pages beside them do.
+          padding: const EdgeInsets.fromLTRB(16, 18, 16, 24),
+          child: Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: children));
+    }
+
+    return StartupScreen(childrenWidth: 600, children);
   }
 }
