@@ -481,11 +481,9 @@ packages:
   flutter_markdown:
     dependency: "direct main"
     description:
-      path: "packages/flutter_markdown"
-      ref: b98386c14fef19537a8b45a232c6b04c8cf49acd
-      resolved-ref: b98386c14fef19537a8b45a232c6b04c8cf49acd
-      url: "https://github.com/tiagoalvesdulce/packages"
-    source: git
+      path: "../packages/flutter_markdown"
+      relative: true
+    source: path
     version: "0.6.14+1"
   flutter_plugin_android_lifecycle:
     dependency: transitive

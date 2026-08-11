@@ -57,11 +57,15 @@ dependencies:
   scrollable_positioned_list: ^0.3.8
   duration: ^4.0.0
   flutter_svg: ^2.0.7
+  # Vendored from tiagoalvesdulce/packages @ b98386c14fef19537a8b45a232c6b04c8cf49acd
+  # with one change, marked "Bison Relay:" in lib/src/builder.dart: the
+  # blockquote text style is folded on top of the paragraph's rather than
+  # underneath it. Upstream's order makes styleSheet.blockquote dead in any
+  # sheet that fully specifies `p`, which is every sheet built from a theme --
+  # so a style guide could set a quote's colour, size, face or italics and
+  # none of it reached the screen.
   flutter_markdown:
-    git:
-      url: https://github.com/tiagoalvesdulce/packages
-      ref: b98386c14fef19537a8b45a232c6b04c8cf49acd
-      path: packages/flutter_markdown
+    path: ../packages/flutter_markdown
   permission_handler: ^12.0.0
   optimize_battery: ^0.0.4
   dropdown_button2: ^2.3.8
