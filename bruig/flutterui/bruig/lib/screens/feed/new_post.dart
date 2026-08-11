@@ -3,9 +3,11 @@ import 'dart:typed_data';
 import 'dart:async';
 
 import 'package:bruig/components/buttons.dart';
-import 'package:bruig/components/feed/markdown_preview.dart';
+import 'package:bruig/components/md_elements.dart';
 import 'package:bruig/components/text.dart';
 import 'package:bruig/components/feed/embed_options.dart';
+import 'package:bruig/components/feed/post_column.dart';
+import 'package:bruig/components/feed/reading_selection.dart';
 import 'package:bruig/models/feed.dart';
 import 'package:bruig/post_library/embed_store.dart';
 import 'package:bruig/post_library/post_library_model.dart';
@@ -241,37 +243,21 @@ class _NewPostScreenState extends State<NewPostScreen> {
   // A writing controller rather than a plain one: it is what paints the
   // spelling, grammar and phrasing marks. Behaves exactly like the plain
   // one when no plugin provides them.
-  //
-  // The decorations are how the preview is drawn: when it is off the field
-  // gets nothing extra and paints exactly what was typed, and when it is on
-  // the same characters are restyled in place. Asked for on every build
-  // rather than stored, so toggling the preview is a repaint and never an
-  // edit -- the text the post is made of is untouched either way.
-  late final TextEditingController contentCtrl = WritingTextEditingController(
-    decorations: (text) {
-      if (!previewing) return const [];
-      var theme = ThemeNotifier.of(context, listen: false);
-      // The guide the writer picked, so the preview shows what a reader
-      // with that guide will see rather than a house style of its own.
-      // This reader's own guide. A post does not carry one -- the styling is
-      // a decision about how you read, not something published alongside
-      // what you wrote -- so the composer previews in exactly what the app
-      // will draw the finished post with.
-      var guide = theme.markdownGuide;
-      return markdownDecorations(
-        text,
-        embeds: composerEmbeds(post),
-        muted: theme.colors.onSurfaceVariant,
-        link: theme.colors.primary,
-        guide: guide,
-        roleColor: theme.markdownRoleColor,
-        image: guide.image,
-        // So a continued line hangs under the first line's text by the same
-        // amount the rendered post will indent it.
-        indent: guide.listIndent,
-      );
-    },
-  );
+  late final TextEditingController contentCtrl = WritingTextEditingController();
+
+  /// previewContent is the post's markdown with its embeds filled in, ready
+  /// to be rendered.
+  ///
+  /// The same substitution publishing does, but forgiving: a reference with
+  /// nothing behind it yet is left as it stands rather than stopping the
+  /// preview, because a post being written is allowed to be half finished.
+  String get previewContent {
+    try {
+      return post.getFullContent();
+    } catch (_) {
+      return post.content;
+    }
+  }
 
   /// previewing is read from the sidebar the composer is sitting beside.
   ///
@@ -287,6 +273,10 @@ class _NewPostScreenState extends State<NewPostScreen> {
   // dialog nobody remembers opening.
   final TextEditingController titleCtrl = TextEditingController();
   final FocusNode titleFocus = FocusNode();
+
+  /// contentFocus is the writing area's own focus, so a click anywhere on the
+  /// page lands in the field rather than only on the lines already written.
+  final FocusNode contentFocus = FocusNode();
 
   bool loading = false;
 
@@ -502,6 +492,7 @@ class _NewPostScreenState extends State<NewPostScreen> {
       ..onAddEmbed = null;
     _postLibrary?.removeListener(syncTitle);
     titleFocus.dispose();
+    contentFocus.dispose();
     titleCtrl.dispose();
     // Flush before the controller goes: the pending write reads its text.
     _postLibrary?.flush();
@@ -589,6 +580,47 @@ class _NewPostScreenState extends State<NewPostScreen> {
     syncTitle();
   }
 
+  /// _editor is the composer itself: the post's markdown, as typed.
+  Widget _editor(BuildContext context) => GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        // The field is only as tall as what has been written, and the page
+        // it sits on is as tall as the screen -- so without this, clicking
+        // the empty part of the page below the last line did nothing.
+        onTap: () => contentFocus.requestFocus(),
+        child: TextField(
+          decoration: const InputDecoration(hintText: "Post Content"),
+          controller: contentCtrl,
+          focusNode: contentFocus,
+          keyboardType: TextInputType.multiline,
+          maxLines: null,
+          // Whatever an enabled plugin capability offers for the text under
+          // the pointer, falling back to the standard menu. The marks on the
+          // text come from contentCtrl, which is a
+          // WritingTextEditingController.
+          contextMenuBuilder: (context, editableTextState) =>
+              writingContextMenu(context, editableTextState,
+                  fallbackItems: editableTextState.contextMenuButtonItems),
+        ),
+      );
+
+  /// _preview is the post as it will be read, drawn by the same renderer
+  /// that draws it in the feed.
+  ///
+  /// The renderer itself rather than an imitation of it. This used to be the
+  /// composer's own field with its markdown restyled where it was typed,
+  /// which keeps the caret honest but can only ever approximate: a table has
+  /// nowhere to put a grid when every character has to stay where the writer
+  /// put it, a quotation gets a bar for each line rather than one down the
+  /// side, and a block background can only be painted behind the letters
+  /// rather than across the block. Rendering it properly costs the ability
+  /// to type while looking at it, which is what the Raw view is for.
+  Widget _preview(BuildContext context) => Align(
+        alignment: Alignment.topLeft,
+        child: ReadingSelectionArea(
+          child: MarkdownArea(previewContent, false),
+        ),
+      );
+
   @override
   Widget build(BuildContext context) {
     var validSize = estimatedSize <= Golib.maxPayloadSize;
@@ -596,36 +628,50 @@ class _NewPostScreenState extends State<NewPostScreen> {
     var publishMenu =
         ThemeNotifier.of(context).areaStyle(ThemeArea.feed).feedPublishMenu;
 
+    // No horizontal padding out here. It goes on each row instead, and for
+    // the scrolling one it goes *inside* the scroll view -- which is what
+    // leaves the scrollbar hard against the edge of the screen, where a
+    // post's is, rather than inset by the padding along with the writing.
     return Container(
-        padding: const EdgeInsets.all(16),
+        // The header row starts where the sidebar's does, and stands at the
+        // same height, so the two line up as one band across the top instead
+        // of as two rows that nearly agree.
+        padding: const EdgeInsets.fromLTRB(0, 4, 0, 16),
         child: Column(children: [
-          _topBar(context, sidebar, publishMenu, validSize),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: SizedBox(
+              height: composerNavHeight,
+              child: _topBar(context, sidebar, publishMenu, validSize),
+            ),
+          ),
+          const SizedBox(height: 12),
+          // Written in the column it will be read in. Full width on no
+          // background, the writing had none of the shape of the post it was
+          // going to be: the lines ran the width of the window, which is
+          // most of what a page looks like, and the words sat on the app
+          // rather than on the post. Raw and Preview both, because the point
+          // of the raw view is to be the same post with its markup showing.
+          // The page scrolls, not the writing inside it -- which is what
+          // puts the scrollbar at the edge of the screen, where a post's is,
+          // instead of down the middle of the column across the words.
+          //
+          // The column is held to at least the height of the view so an
+          // empty post still shows the page it is going to be, rather than a
+          // card the depth of one line.
           Expanded(
-            child: Container(
-              margin: const EdgeInsets.only(bottom: 15),
-              child: TextField(
-                decoration: const InputDecoration(hintText: "Post Content"),
-                controller: contentCtrl,
-                keyboardType: TextInputType.multiline,
-                maxLines: null,
-                // The strut forces every line to one height, which is what
-                // is wanted for text and disastrous for a picture: a tall
-                // image was drawn at its full size inside a line that had
-                // stayed 19 pixels, so it spilled over the words above it
-                // and off the top of the page. Measured at 72 pixels of line
-                // for 200 pixels of image.
-                //
-                // Only while previewing. With no pictures in it, raw text
-                // wants the even spacing the strut is there to give.
-                strutStyle: previewing ? StrutStyle.disabled : null,
-                // Whatever an enabled plugin capability offers for the text
-                // under the pointer, falling back to the standard menu. The
-                // marks on the text come from contentCtrl, which is a
-                // WritingTextEditingController.
-                contextMenuBuilder: (context, editableTextState) =>
-                    writingContextMenu(context, editableTextState,
-                        fallbackItems:
-                            editableTextState.contextMenuButtonItems),
+            child: LayoutBuilder(
+              builder: (context, constraints) => SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 15),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                      minHeight: (constraints.maxHeight - 15)
+                          .clamp(0, double.infinity)),
+                  child: PostColumn(
+                    fill: true,
+                    child: previewing ? _preview(context) : _editor(context),
+                  ),
+                ),
               ),
             ),
           ),
@@ -641,7 +687,10 @@ class _NewPostScreenState extends State<NewPostScreen> {
             ),
             */
           const SizedBox(height: 10),
-          const Divider(thickness: 2),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16),
+            child: Divider(thickness: 2),
+          ),
           Txt.S(
             "Estimated Size: ${humanReadableSize(estimatedSize)}",
             color: validSize ? TextColor.onSurfaceVariant : TextColor.error,
@@ -650,8 +699,9 @@ class _NewPostScreenState extends State<NewPostScreen> {
           // Unless they have moved to the top-right menu -- see the Feed
           // area's "Publish menu".
           if (!publishMenu)
-            SizedBox(
+            Container(
                 width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Wrap(
                     alignment: WrapAlignment.spaceBetween,
                     runSpacing: 10,
@@ -680,14 +730,28 @@ class _NewPostScreenState extends State<NewPostScreen> {
   Widget _topBar(BuildContext context, ComposerSidebarController sidebar,
       bool publishMenu, bool validSize) {
     var theme = ThemeNotifier.of(context);
+    // Three slots, with the two ends given equal room so the title stays
+    // centred on the page rather than drifting to whichever side has less
+    // in it. Scaled down rather than overflowing when the window is too
+    // narrow to hold all three at their natural size.
     return Row(children: [
-      // Only while the sidebar is hidden, and always in the same corner: a
-      // hidden sidebar with no way back is a trap.
-      if (sidebar.minimized)
-        ComposerSidebarRestoreButton(controller: sidebar)
-      else
-        const SizedBox(width: 40),
       Expanded(
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            // Only while the sidebar is hidden, and always in the same
+            // corner: a hidden sidebar with no way back is a trap.
+            if (sidebar.minimized)
+              ComposerSidebarRestoreButton(controller: sidebar),
+            // Beside the title, which is the one row that is about this post
+            // rather than about the screen around it.
+            ComposerViewToggle(controller: sidebar),
+          ]),
+        ),
+      ),
+      Expanded(
+        flex: 3,
         child: TextField(
           controller: titleCtrl,
           focusNode: titleFocus,
@@ -718,7 +782,12 @@ class _NewPostScreenState extends State<NewPostScreen> {
           ),
         ),
       ),
-      SizedBox(width: 40, child: publishMenu ? _publishMenu(validSize) : null),
+      Expanded(
+        child: Align(
+          alignment: Alignment.centerRight,
+          child: publishMenu ? _publishMenu(validSize) : const SizedBox(),
+        ),
+      ),
     ]);
   }
 

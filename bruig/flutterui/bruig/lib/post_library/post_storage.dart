@@ -24,6 +24,19 @@ const _libraryDirName = "my-posts";
 
 const _extension = ".md";
 
+/// _orderFile is where a folder's chosen order is kept.
+///
+/// One hidden file per folder, holding the names in the order they should be
+/// shown. Hidden because the listing already skips dotted names, so it needs
+/// no special case to stay out of the library it describes -- and because it
+/// is the library's own bookkeeping rather than something the user wrote.
+///
+/// Names rather than positions, so a file renamed outside the app, or one
+/// deleted while the app was closed, drops out of the order instead of
+/// shifting everything after it. Anything the file does not mention is shown
+/// after what it does, in the alphabetical order the library always used.
+const _orderFile = ".order";
+
 /// maxNameLength bounds a folder or document name. Chosen well under the 255
 /// bytes most filesystems allow, since the name is also what has to fit in a
 /// sidebar row.
@@ -207,7 +220,62 @@ class PostStorage {
         a.name.toLowerCase().compareTo(b.name.toLowerCase());
     folders.sort(byName);
     documents.sort(byName);
-    return [...folders, ...documents];
+
+    // Documents first. They are what the library is for -- a folder is
+    // where some of them are kept -- and putting the folders on top meant
+    // scrolling past the filing to reach the writing.
+    var order = await readOrder(folder);
+    return [..._inOrder(documents, order), ..._inOrder(folders, order)];
+  }
+
+  /// _inOrder puts the entries the order file names first, in its order, and
+  /// leaves everything else after them exactly as it was.
+  static List<PostEntry> _inOrder(List<PostEntry> entries, List<String> order) {
+    if (order.isEmpty) return entries;
+    var byName = {for (var e in entries) e.name: e};
+    var out = <PostEntry>[];
+    for (var name in order) {
+      var entry = byName.remove(name);
+      if (entry != null) out.add(entry);
+    }
+    // What the order has never heard of -- a document made on another
+    // machine, or before anything was moved -- keeps its alphabetical place
+    // at the end rather than disappearing.
+    for (var entry in entries) {
+      if (byName.containsKey(entry.name)) out.add(entry);
+    }
+    return out;
+  }
+
+  /// readOrder is the names [folder] has been arranged into, or empty when
+  /// nothing in it has been moved.
+  static Future<List<String>> readOrder(String folder) async {
+    var dirPath = await _resolve(folder, null);
+    if (dirPath == null) return const [];
+    var file = File(path.join(dirPath, _orderFile));
+    if (!await file.exists()) return const [];
+    try {
+      return (await file.readAsLines())
+          .map((l) => l.trim())
+          .where((l) => l.isNotEmpty)
+          .toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  /// writeOrder records the order [folder] should be shown in.
+  static Future<bool> writeOrder(String folder, List<String> names) async {
+    var dirPath = await _resolve(folder, null);
+    if (dirPath == null) return false;
+    try {
+      await Directory(dirPath).create(recursive: true);
+      await File(path.join(dirPath, _orderFile))
+          .writeAsString(names.join("\n"));
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   /// read returns a document's Markdown, or null if it is gone.

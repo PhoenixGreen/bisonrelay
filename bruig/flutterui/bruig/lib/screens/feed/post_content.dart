@@ -1,6 +1,8 @@
 import 'package:bruig/components/feed/comment_input.dart';
 import 'package:bruig/components/typing_emoji_panel.dart';
 import 'package:bruig/components/containers.dart';
+import 'package:bruig/components/feed/post_column.dart';
+import 'package:bruig/components/feed/reading_selection.dart';
 import 'package:bruig/components/empty_widget.dart';
 import 'package:bruig/components/icons.dart';
 import 'package:bruig/components/interactive_avatar.dart';
@@ -307,7 +309,7 @@ class _CommentWState extends State<_CommentW> {
                 top: 0, left: isScreenSmall ? 0 : 2, bottom: 20),
             padding: const EdgeInsets.only(top: 10, bottom: 10, left: 0),
             child: Column(children: [
-              SelectionArea(
+              ReadingSelectionArea(
                   child: Row(children: [
                 Expanded(child: MarkdownArea(widget.comment.comment, false))
               ])),
@@ -713,7 +715,7 @@ class _PostContentScreenForArgsState extends State<_PostContentScreenForArgs> {
                       padding: const EdgeInsets.symmetric(horizontal: 40),
                       child: Column(children: [
                         const SizedBox(width: 300, child: Divider()),
-                        SelectionArea(
+                        ReadingSelectionArea(
                             child: Container(
                                 alignment: Alignment.topLeft,
                                 child: Provider<DownloadSource>(
@@ -879,7 +881,7 @@ class _PostContentScreenForArgsState extends State<_PostContentScreenForArgs> {
 
               // Post content
               const SizedBox(height: 10),
-              SelectionArea(
+              ReadingSelectionArea(
                   child: Container(
                       alignment: Alignment.topLeft,
                       padding: const EdgeInsets.all(15),
@@ -903,7 +905,8 @@ class _PostContentScreenForArgsState extends State<_PostContentScreenForArgs> {
               child: feedCardRedesign
                   ? Center(
                       child: ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 780),
+                          constraints: const BoxConstraints(
+                              maxWidth: postColumnMaxWidth),
                           child: postAreaColumn),
                     )
                   : postAreaColumn),

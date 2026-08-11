@@ -124,20 +124,39 @@ class _PostSidebarState extends State<PostSidebar> {
                   "document below."
               : "This folder is empty.");
     }
-    return ListView(
+    // Reorderable rather than a plain list, with a handle of its own: the
+    // rows are tapped to open a document, so a drag that starts anywhere on
+    // one would have to be told apart from a tap by how long it was held.
+    return ReorderableListView.builder(
       padding: const EdgeInsets.symmetric(vertical: 4),
-      children: [
-        for (var entry in library.entries) _row(theme, library, entry),
-      ],
+      buildDefaultDragHandles: false,
+      itemCount: library.entries.length,
+      itemBuilder: (context, i) {
+        var entry = library.entries[i];
+        return _row(theme, library, entry, i,
+            key: ValueKey("${entry.isFolder}:${entry.folder}/${entry.name}"));
+      },
+      onReorder: (from, to) => library.reorder(from, to),
+      // The row lifted out of the list, without the list's own shadow --
+      // this sidebar is already a panel and a second raised surface inside
+      // it reads as a dialog opening.
+      proxyDecorator: (child, index, animation) => Material(
+        color: theme.colors.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(6),
+        child: child,
+      ),
     );
   }
 
-  Widget _row(ThemeNotifier theme, PostLibraryModel library, PostEntry entry) {
+  Widget _row(
+      ThemeNotifier theme, PostLibraryModel library, PostEntry entry, int index,
+      {required Key key}) {
     var isOpen = !entry.isFolder &&
         entry.name == library.openName &&
         entry.folder == library.openFolder;
 
     return InkWell(
+      key: key,
       onTap: () => entry.isFolder
           ? library.openFolderNamed(entry.name)
           : library.open(entry),
@@ -173,6 +192,7 @@ class _PostSidebarState extends State<PostSidebar> {
               ],
             ),
           ),
+          _dragHandle(theme, index),
           _rowMenu(library, entry),
         ]),
       ),
@@ -204,6 +224,27 @@ class _PostSidebarState extends State<PostSidebar> {
     if (at.year == now.year) return DateFormat.MMMd().format(at);
     return DateFormat.yMMMd().format(at);
   }
+
+  /// _dragHandle is what a row is dragged by.
+  ///
+  /// A handle rather than the whole row, because a row is also the thing you
+  /// tap to open a document. Without one, every drag would have to be told
+  /// apart from a tap by how long it was held -- which means either a pause
+  /// before every drag or an open document every time one is started
+  /// slightly too fast.
+  Widget _dragHandle(ThemeNotifier theme, int index) =>
+      ReorderableDragStartListener(
+        index: index,
+        child: MouseRegion(
+          cursor: SystemMouseCursors.grab,
+          child: SizedBox(
+            width: 24,
+            height: 28,
+            child: Icon(Icons.drag_indicator,
+                size: 15, color: theme.colors.onSurfaceVariant),
+          ),
+        ),
+      );
 
   Widget _rowMenu(PostLibraryModel library, PostEntry entry) =>
       PopupMenuButton<String>(

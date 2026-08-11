@@ -101,11 +101,17 @@ void _replaceSelection(
 
 /// showThesaurusSheet presents what a provider knows about [word] and calls
 /// [onReplace] with whichever alternative is chosen.
+///
+/// [onReplace] is null when the words are somebody else's -- a post being
+/// read rather than written. The sheet still answers what the word means and
+/// what else it could have been; there is simply nothing to swap it for, and
+/// alternatives that looked like buttons and did nothing would be worse than
+/// alternatives that look like the list they are.
 Future<void> showThesaurusSheet(
   BuildContext context, {
   required ThesaurusCapability capability,
   required String word,
-  required ValueChanged<String> onReplace,
+  ValueChanged<String>? onReplace,
 }) {
   return showModalBottomSheet<void>(
     context: context,
@@ -178,7 +184,7 @@ List<Widget> definitionList(
 class _ThesaurusSheet extends StatefulWidget {
   final ThesaurusCapability capability;
   final String word;
-  final ValueChanged<String> onReplace;
+  final ValueChanged<String>? onReplace;
 
   const _ThesaurusSheet({
     required this.capability,
@@ -194,10 +200,14 @@ class _ThesaurusSheetState extends State<_ThesaurusSheet> {
   late final Future<ThesaurusEntry?> _entry =
       widget.capability.lookUp(widget.word);
 
-  void _choose(String replacement) {
-    widget.onReplace(replacement);
-    Navigator.of(context).pop();
-  }
+  /// _choose is null when there is nothing to replace, which is what the
+  /// alternatives read as: text rather than buttons.
+  void Function(String)? get _choose => widget.onReplace == null
+      ? null
+      : (replacement) {
+          widget.onReplace!(replacement);
+          Navigator.of(context).pop();
+        };
 
   @override
   Widget build(BuildContext context) {
@@ -278,23 +288,32 @@ class _ThesaurusSheetState extends State<_ThesaurusSheet> {
             spacing: 8,
             runSpacing: 8,
             children: [
+              // A chip you can press when there is something to press it
+              // for, and a plain one when the words belong to somebody else.
               for (var synonym in sense.synonyms)
-                ActionChip(
-                  label: Text(synonym),
-                  onPressed: () => _choose(synonym),
-                ),
+                _choose == null
+                    ? Chip(label: Text(synonym))
+                    : ActionChip(
+                        label: Text(synonym),
+                        onPressed: () => _choose!(synonym),
+                      ),
               // Antonyms are offered too, marked, because "the opposite of
               // what I wrote" is a thing people reach for -- but they are
               // never a like-for-like swap, so they must not sit unlabelled
               // among the synonyms.
               for (var antonym in sense.antonyms)
-                ActionChip(
-                  avatar: Icon(Icons.swap_horiz,
-                      size: 16, color: theme.colors.onSurfaceVariant),
-                  label: Text(antonym),
-                  tooltip: "Opposite meaning",
-                  onPressed: () => _choose(antonym),
-                ),
+                _choose == null
+                    ? Chip(
+                        avatar: Icon(Icons.swap_horiz,
+                            size: 16, color: theme.colors.onSurfaceVariant),
+                        label: Text(antonym))
+                    : ActionChip(
+                        avatar: Icon(Icons.swap_horiz,
+                            size: 16, color: theme.colors.onSurfaceVariant),
+                        label: Text(antonym),
+                        tooltip: "Opposite meaning",
+                        onPressed: () => _choose!(antonym),
+                      ),
             ],
           ),
         ],

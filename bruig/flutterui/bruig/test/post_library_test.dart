@@ -95,15 +95,16 @@ void main() {
   });
 
   group("listing", () {
-    test("folders come before documents, each alphabetically", () async {
+    test("documents come before folders, each alphabetically", () async {
       await PostStorage.createFolder("Zebra");
       await PostStorage.createFolder("Apples");
       await PostStorage.write("", "beta", "b");
       await PostStorage.write("", "alpha", "a");
 
       var entries = await PostStorage.list();
-      expect(entries.map((e) => e.name), ["Apples", "Zebra", "alpha", "beta"]);
-      expect(entries.take(2).every((e) => e.isFolder), isTrue);
+      expect(entries.map((e) => e.name), ["alpha", "beta", "Apples", "Zebra"]);
+      expect(entries.take(2).every((e) => e.isFolder), isFalse,
+          reason: "the writing is above the filing");
     });
 
     test("only .md files are listed", () async {
@@ -418,6 +419,73 @@ void main() {
       expect(await PostStorage.read("", "At the top"),
           "edited while browsing elsewhere");
       expect(await PostStorage.read("Drafts", "At the top"), isNull);
+    });
+  });
+
+  // The library is a directory listing, so its order was whatever the
+  // filesystem's alphabet said. A post being worked on is worth having at the
+  // top, and that is a decision the library has to remember for itself.
+  group("the order things are shown in", () {
+    Future<List<String>> names([String folder = ""]) async =>
+        (await PostStorage.list(folder)).map((e) => e.name).toList();
+
+    setUp(() async {
+      for (var name in ["Beta", "Alpha", "Gamma"]) {
+        await PostStorage.write("", name, "x");
+      }
+    });
+
+    test("with nothing moved it is still alphabetical", () async {
+      expect(await names(), ["Alpha", "Beta", "Gamma"]);
+    });
+
+    test("a recorded order is the order it is shown in", () async {
+      await PostStorage.writeOrder("", ["Gamma", "Alpha", "Beta"]);
+      expect(await names(), ["Gamma", "Alpha", "Beta"]);
+    });
+
+    // A document made on another machine, or before anything was moved, has
+    // to appear somewhere -- at the end, in the order the library always
+    // used, rather than not at all.
+    test("what the order has never heard of comes after it", () async {
+      await PostStorage.writeOrder("", ["Gamma"]);
+      expect(await names(), ["Gamma", "Alpha", "Beta"]);
+    });
+
+    // Deleted outside the app, or renamed: the name simply drops out rather
+    // than shifting everything after it.
+    test("a name that is gone is skipped", () async {
+      await PostStorage.writeOrder("", ["Missing", "Gamma", "Alpha", "Beta"]);
+      expect(await names(), ["Gamma", "Alpha", "Beta"]);
+    });
+
+    // The order file is the library's own bookkeeping, and the listing skips
+    // dotted names -- so it needs no special case to stay out of the library
+    // it describes.
+    test("the order file is not itself a document", () async {
+      await PostStorage.writeOrder("", ["Gamma"]);
+      expect(await names(), isNot(contains(".order")));
+    });
+
+    // Documents first: they are what the library is for, and a folder is
+    // where some of them are kept.
+    test("folders keep their own order, below the documents", () async {
+      await PostStorage.createFolder("Later");
+      await PostStorage.createFolder("Earlier");
+      await PostStorage.writeOrder(
+          "", ["Gamma", "Alpha", "Beta", "Later", "Earlier"]);
+      expect(await names(), ["Gamma", "Alpha", "Beta", "Later", "Earlier"]);
+    });
+
+    test("each folder has an order of its own", () async {
+      await PostStorage.createFolder("Outer");
+      await PostStorage.write("Outer", "One", "x");
+      await PostStorage.write("Outer", "Two", "x");
+      await PostStorage.writeOrder("Outer", ["Two", "One"]);
+
+      expect(await names("Outer"), ["Two", "One"]);
+      expect(await names(), ["Alpha", "Beta", "Gamma", "Outer"],
+          reason: "the top level is untouched by it");
     });
   });
 }

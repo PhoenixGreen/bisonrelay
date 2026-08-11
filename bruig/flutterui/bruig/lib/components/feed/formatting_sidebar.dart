@@ -80,11 +80,54 @@ const _blocks = [
     placeholder: "cell",
     block: true,
   ),
-  // A callout has no Markdown of its own; a blockquote opening with a bold
-  // word is how every renderer that lacks the extension still shows one
-  // sensibly, and Bison Relay's does.
-  _Snippet(Icons.info_outline, "Callout", "> **Note** \n> ",
-      placeholder: "text", block: true),
+  // A callout and a card are the same thing with a different amount filled
+  // in, so one syntax writes both. Every field is optional -- a callout with
+  // only a title and some text is a card with two fields.
+  _Snippet(
+    Icons.info_outline,
+    "Callout",
+    "--card--\nicon: info\ntitle: ",
+    after: "\ntext: What it says.\n--/card--",
+    placeholder: "Something worth knowing",
+    block: true,
+  ),
+  _Snippet(
+    Icons.credit_card_outlined,
+    "Cards",
+    "--cards[2]--\n--card--\nicon: announce\ntitle: ",
+    after: "\ntext: What this one says.\nbutton: Read more\n"
+        "link: https://\n--/card--\n--card--\nicon: star\n"
+        "title: Second card\ntext: What that one says.\n--/card--\n"
+        "--/cards--",
+    placeholder: "First card",
+    block: true,
+  ),
+  // Columns have no Markdown of their own either, and unlike a callout there
+  // is nothing to borrow -- so they are Bison Relay's own block syntax, in
+  // the shape the app already uses for what Markdown has no word for.
+  //
+  // The count in the marker means "divide this between that many", so the
+  // selection is simply wrapped and the writing is shared out between the
+  // columns rather than all of it landing in the first one beside an empty
+  // second. A break can still be forced by hand -- that is what the button
+  // below these two puts in.
+  _Snippet(
+    Icons.view_column_outlined,
+    "Two columns",
+    "--columns[2]--\n",
+    after: "\n--/columns--",
+    placeholder: "Your text",
+    block: true,
+  ),
+  _Snippet(
+    Icons.view_week_outlined,
+    "Three columns",
+    "--columns[3]--\n",
+    after: "\n--/columns--",
+    placeholder: "Your text",
+    block: true,
+  ),
+  _Snippet(Icons.splitscreen_outlined, "Column break", "--col--", block: true),
 ];
 
 /// FormattingSidebar offers embeds and Markdown, applied to the composer the
@@ -93,63 +136,43 @@ class FormattingSidebar extends StatelessWidget {
   final ComposerSidebarController controller;
   const FormattingSidebar({required this.controller, super.key});
 
-  /// _viewToggle chooses between the source and the rendering of it.
-  ///
-  /// Two buttons rather than a switch, because neither state is the
-  /// "on" one -- raw and preview are both ways of looking at the post, and a
-  /// switch would have to be labelled with only one of them.
-  Widget _viewToggle(ThemeNotifier theme) => ListenableBuilder(
-        listenable: controller,
-        builder: (context, _) => Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-          child: SegmentedButton<bool>(
-            segments: const [
-              ButtonSegment(
-                  value: false,
-                  label: Text("Raw"),
-                  icon: Icon(Icons.code, size: 16)),
-              ButtonSegment(
-                  value: true,
-                  label: Text("Preview"),
-                  icon: Icon(Icons.visibility_outlined, size: 16)),
-            ],
-            selected: {controller.preview},
-            showSelectedIcon: false,
-            style: const ButtonStyle(
-              visualDensity: VisualDensity.compact,
-              textStyle: WidgetStatePropertyAll(TextStyle(fontSize: 11)),
-            ),
-            onSelectionChanged: (chosen) => controller.preview = chosen.first,
-          ),
-        ),
-      );
-
   @override
   Widget build(BuildContext context) {
     var theme = ThemeNotifier.of(context);
-    var editor = controller.editor;
 
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(10, 10, 10, 16),
-      children: [
-        _section(theme, "View"),
-        _viewToggle(theme),
-        _section(theme, "Content"),
-        // Delegated to the composer: picking a file means tracking an embed
-        // and re-estimating the post's size, which is its business.
-        _wide(
-          theme,
-          Icons.attach_file,
-          "Add Embed",
-          controller.onAddEmbed,
-        ),
-        _section(theme, "Headings"),
-        _grid(theme, editor, _headings),
-        _section(theme, "Text"),
-        _grid(theme, editor, _inline),
-        _section(theme, "Blocks"),
-        _grid(theme, editor, _blocks),
-      ],
+    // Rebuilt with the controller, so switching between Raw and Preview
+    // reaches the buttons below and not only the toggle itself.
+    return ListenableBuilder(
+      listenable: controller,
+      builder: (context, _) {
+        // Nothing to insert into while the post is being read rather than
+        // written: the snippets edit the markdown, and in Preview the
+        // markdown is not on screen. Left visible and disabled rather than
+        // taken away, so the panel does not change shape under the pointer.
+        var editor = controller.preview ? null : controller.editor;
+
+        return ListView(
+          padding: const EdgeInsets.fromLTRB(10, 10, 10, 16),
+          children: [
+            _section(theme, "Content"),
+            // Delegated to the composer: picking a file means tracking an
+            // embed and re-estimating the post's size, which is its
+            // business.
+            _wide(
+              theme,
+              Icons.attach_file,
+              "Add Embed",
+              controller.preview ? null : controller.onAddEmbed,
+            ),
+            _section(theme, "Headings"),
+            _grid(theme, editor, _headings),
+            _section(theme, "Text"),
+            _grid(theme, editor, _inline),
+            _section(theme, "Blocks"),
+            _grid(theme, editor, _blocks),
+          ],
+        );
+      },
     );
   }
 

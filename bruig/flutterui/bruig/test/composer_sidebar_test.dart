@@ -14,7 +14,7 @@ import 'package:provider/provider.dart';
 // the editor, and the formatting panel one of its icons opens.
 
 Future<void> _pump(WidgetTester tester, ComposerSidebarController controller,
-    {List<ComposerPanel>? panels}) async {
+    {List<ComposerPanel>? panels, VoidCallback? onLeaveComposer}) async {
   await tester.pumpWidget(MultiProvider(
     providers: [
       ChangeNotifierProvider<ThemeNotifier>(
@@ -37,6 +37,7 @@ Future<void> _pump(WidgetTester tester, ComposerSidebarController controller,
                     child: ComposerSidebarShell(
                       controller: controller,
                       panels: panels ?? ComposerPanel.values,
+                      onLeaveComposer: onLeaveComposer,
                       child: Text("PANEL: ${controller.panel.name}"),
                     ),
                   ),
@@ -85,6 +86,70 @@ void main() {
   _feedPanelFlagTests();
   _hideButtonTests();
   _titleDecorationTests();
+  // Reported: opening a new post landed on the feed menu, so the first thing
+  // in front of somebody about to write was the list of ways to go somewhere
+  // else -- and the panel they had set up before visiting Chat was gone.
+  group("where a composer opens", () {
+    test("the first composer opens on My Posts", () {
+      var controller = ComposerSidebarController();
+      var editor = TextEditingController();
+      addTearDown(editor.dispose);
+
+      expect(controller.panel, ComposerPanel.none,
+          reason: "no composer yet, so the screen's own menu");
+      controller.attach(editor);
+      expect(controller.panel, ComposerPanel.posts,
+          reason: "the first thing anyone does is find the document");
+    });
+
+    test("a later composer opens where the last one was left", () {
+      var controller = ComposerSidebarController();
+      var first = TextEditingController();
+      var second = TextEditingController();
+      addTearDown(first.dispose);
+      addTearDown(second.dispose);
+
+      controller.attach(first);
+      controller.show(ComposerPanel.writing);
+
+      // Leaving for another page: the feed menu is what that sets.
+      controller.close();
+      expect(controller.panel, ComposerPanel.none);
+
+      controller.detach(first);
+      controller.attach(second);
+      expect(controller.panel, ComposerPanel.writing,
+          reason: "coming back finds the panel that was set up");
+    });
+
+    test("a composer arriving on a panel is left alone", () {
+      var controller = ComposerSidebarController();
+      var editor = TextEditingController();
+      addTearDown(editor.dispose);
+
+      controller.show(ComposerPanel.formatting);
+      controller.attach(editor);
+      expect(controller.panel, ComposerPanel.formatting);
+    });
+
+    // Hiding the sidebar is a decision about the screen, and arriving at a
+    // composer is not a reason to overturn it.
+    test("arriving does not un-hide a hidden sidebar", () {
+      var controller = ComposerSidebarController();
+      var editor = TextEditingController();
+      addTearDown(editor.dispose);
+
+      controller.close();
+      controller.toggleMinimized();
+      expect(controller.minimized, isTrue);
+
+      controller.attach(editor);
+      expect(controller.minimized, isTrue);
+      expect(controller.panel, ComposerPanel.posts,
+          reason: "hidden, but on the right panel for when it comes back");
+    });
+  });
+
   group("the panel nav", () {
     testWidgets("starts on the screen's own menu", (tester) async {
       var controller = ComposerSidebarController();
@@ -115,6 +180,25 @@ void main() {
       ]);
       expect(find.byIcon(ComposerPanel.writing.icon), findsNothing);
       expect(find.byIcon(ComposerPanel.posts.icon), findsOneWidget);
+    });
+
+    // Reported: the Feed menu showed the Feed's own menu beside a composer
+    // that was still open, which is a way out that takes nobody anywhere.
+    // The other three are the composer's own panels and stay where they are.
+    testWidgets("the screen's own menu leaves the composer", (tester) async {
+      var controller = ComposerSidebarController();
+      var left = 0;
+      await _pump(tester, controller, onLeaveComposer: () => left++);
+
+      await tester.tap(find.byIcon(ComposerPanel.posts.icon));
+      await tester.pumpAndSettle();
+      expect(left, 0, reason: "My Posts belongs beside the post");
+
+      await tester.tap(find.byIcon(ComposerPanel.none.icon));
+      await tester.pumpAndSettle();
+      expect(left, 1);
+      expect(controller.panel, ComposerPanel.none,
+          reason: "the panel is still switched, so coming back finds it here");
     });
   });
 

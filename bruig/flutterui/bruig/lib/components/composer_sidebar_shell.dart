@@ -12,11 +12,58 @@ import 'package:flutter/material.dart';
 // Add Embed -- were three things competing with the text for the reader's
 // attention, all of them about the tools rather than about the post.
 
-/// _navButtonHeight is what every control in the nav row stands at. Below
+/// composerNavHeight is what every control in the nav row stands at, and what
+/// the composer's own header row matches so the two read as one band across
+/// the top of the screen rather than as two rows that nearly line up.
+///
+/// Below
 /// about this, a pointer that moves a few pixels between press and release
 /// -- which is most trackpad clicks -- starts landing outside the thing it
 /// was aimed at.
-const double _navButtonHeight = 36;
+const double composerNavHeight = 36;
+
+/// ComposerViewToggle chooses between the source of a post and the rendering
+/// of it.
+///
+/// Two buttons rather than a switch, because neither state is the "on" one --
+/// raw and preview are both ways of looking at the post, and a switch would
+/// have to be labelled with only one of them.
+///
+/// On the writing area rather than in the sidebar, where it started. It is
+/// about the post rather than about the panel beside it, and reaching across
+/// the screen to a panel that might not even be open is a long way to go to
+/// glance at what you have written.
+class ComposerViewToggle extends StatelessWidget {
+  final ComposerSidebarController controller;
+  const ComposerViewToggle({required this.controller, super.key});
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+        listenable: controller,
+        builder: (context, _) => SegmentedButton<bool>(
+          // Icons alone. The words were half the width of the title row for
+          // a choice made with one glance, and the tooltips say what they
+          // are for anyone who has not met them before.
+          segments: const [
+            ButtonSegment(
+                value: false, icon: Icon(Icons.code, size: 16), tooltip: "Raw"),
+            ButtonSegment(
+                value: true,
+                icon: Icon(Icons.visibility_outlined, size: 16),
+                tooltip: "Preview"),
+          ],
+          selected: {controller.preview},
+          showSelectedIcon: false,
+          style: const ButtonStyle(
+            visualDensity: VisualDensity.compact,
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            padding:
+                WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 10)),
+          ),
+          onSelectionChanged: (chosen) => controller.preview = chosen.first,
+        ),
+      );
+}
 
 /// ComposerSidebarShell wraps [child] with the panel nav.
 class ComposerSidebarShell extends StatelessWidget {
@@ -30,10 +77,21 @@ class ComposerSidebarShell extends StatelessWidget {
   /// child is the chosen panel's contents.
   final Widget child;
 
+  /// onLeaveComposer is called when the screen's own menu is chosen, so the
+  /// screen can go back to what that menu is a menu of.
+  ///
+  /// The other panels are the composer's own -- the post library, the
+  /// writing tools, the formatting -- and belong beside the post being
+  /// written. This one is the screen's, and asking for it is asking to be
+  /// back on the screen: showing the Feed's menu while still sitting in the
+  /// composer offered a way out that took nobody anywhere.
+  final VoidCallback? onLeaveComposer;
+
   const ComposerSidebarShell({
     required this.controller,
     required this.panels,
     required this.child,
+    this.onLeaveComposer,
     super.key,
   });
 
@@ -93,7 +151,7 @@ class ComposerSidebarShell extends StatelessWidget {
             bottomLeft: Radius.circular(6),
           ),
           child: Container(
-            height: _navButtonHeight,
+            height: composerNavHeight,
             alignment: Alignment.center,
             padding: const EdgeInsets.fromLTRB(8, 0, 10, 0),
             child: Icon(
@@ -110,7 +168,13 @@ class ComposerSidebarShell extends StatelessWidget {
         icon: panel.icon,
         tooltip: panel.label,
         selected: panel == controller.panel,
-        onTap: () => controller.show(panel),
+        onTap: () {
+          controller.show(panel);
+          // The panel is still switched on the way out, so coming back to
+          // the composer finds the menu where it was left rather than on
+          // whichever panel happened to be open when it was left.
+          if (panel == ComposerPanel.none) onLeaveComposer?.call();
+        },
       );
 
   Widget _button(
@@ -129,7 +193,7 @@ class ComposerSidebarShell extends StatelessWidget {
             // A height rather than padding: the row is what is being aimed
             // at, and a target the size of the glyph inside it is a target
             // you can miss while pointing straight at the button.
-            height: _navButtonHeight,
+            height: composerNavHeight,
             alignment: Alignment.center,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(6),

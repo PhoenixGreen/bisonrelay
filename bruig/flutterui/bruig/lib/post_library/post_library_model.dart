@@ -366,6 +366,51 @@ class PostLibraryModel extends ChangeNotifier {
     return true;
   }
 
+  /// reorder moves the entry at [from] to [to], as a drag ends.
+  ///
+  /// The indices are into [entries] as it is shown, and [to] is where the
+  /// list said the row was dropped -- which for a downward move counts the
+  /// row being moved as still occupying its old place, so it is corrected
+  /// here rather than at every call site.
+  ///
+  /// A document cannot be dropped among the folders or the other way about:
+  /// the two are separate runs and stay that way, so a drag that ends past
+  /// the boundary lands against it instead of crossing it.
+  Future<bool> reorder(int from, int to) async {
+    if (from < 0 || from >= _entries.length) return false;
+    if (to > from) to -= 1;
+
+    var moving = _entries[from];
+    var first = _entries.indexWhere((e) => e.isFolder == moving.isFolder);
+    var last = _entries.lastIndexWhere((e) => e.isFolder == moving.isFolder);
+    to = to.clamp(first, last);
+    if (to == from) return false;
+
+    var next = [..._entries];
+    next.insert(to, next.removeAt(from));
+
+    // Written as one list for the folder, documents then folders, which is
+    // the order the listing puts them back in.
+    var order = [
+      for (var e in next)
+        if (!e.isFolder) e.name,
+      for (var e in next)
+        if (e.isFolder) e.name,
+    ];
+
+    // Shown before it is saved. A drag that snaps back while the disk write
+    // finishes reads as the drag having failed.
+    _entries = next;
+    _notify();
+
+    if (!await PostStorage.writeOrder(_folder, order)) {
+      _error = "Could not save the order of this folder";
+      await refresh();
+      return false;
+    }
+    return true;
+  }
+
   Future<void> delete(PostEntry entry) async {
     await PostStorage.delete(entry);
     // Deleting what is open stops the autosave, which would otherwise write

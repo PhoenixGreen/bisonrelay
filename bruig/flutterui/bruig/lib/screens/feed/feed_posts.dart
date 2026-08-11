@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:bruig/components/containers.dart';
+import 'package:bruig/components/feed/reading_selection.dart';
 import 'package:bruig/components/empty_widget.dart';
 import 'package:bruig/components/interactive_avatar.dart';
 import 'package:bruig/components/pay_tip.dart';
@@ -674,7 +675,7 @@ class _FeedPostsState extends State<FeedPosts> {
     return list;
   }
 
-  Widget _plainList(List<FeedPostModel> posts) => SelectionArea(
+  Widget _plainList(List<FeedPostModel> posts) => ReadingSelectionArea(
           child: Container(
         padding: const EdgeInsets.only(left: 10, right: 0, top: 0, bottom: 10),
         child: ListView.builder(
@@ -770,7 +771,7 @@ class _FeedPostsState extends State<FeedPosts> {
             // sidebar/search/sort controls in it too made its drag-to-select
             // gesture recognizers compete with the list's own scroll gesture
             // across a much bigger surface, which is what broke scrolling.
-            Expanded(child: SelectionArea(child: body)),
+            Expanded(child: ReadingSelectionArea(child: body)),
           ]),
         ));
 

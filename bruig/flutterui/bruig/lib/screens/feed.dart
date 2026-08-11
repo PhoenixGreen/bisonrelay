@@ -360,6 +360,10 @@ class _FeedScreenState extends State<FeedScreen> {
     var composerSidebar = composing && composer.visible
         ? ComposerSidebarShell(
             controller: composer,
+            // The Feed menu is this screen's menu, so choosing it goes back
+            // to the Feed rather than showing the menu beside a composer
+            // that is still open.
+            onLeaveComposer: () => onItemChanged(0, null),
             // In ComposerPanel's own order, so the row cannot drift from
             // the enum it is built out of.
             panels: [
