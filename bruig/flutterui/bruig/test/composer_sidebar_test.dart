@@ -2,7 +2,6 @@ import 'package:bruig/components/composer_sidebar_shell.dart';
 import 'package:bruig/components/feed/formatting_sidebar.dart';
 import 'package:bruig/components/containers.dart';
 import 'package:bruig/models/composer_sidebar.dart';
-import 'package:bruig/models/feed.dart';
 import 'package:bruig/models/uistate.dart';
 import 'package:bruig/screens/feed/feed_posts.dart';
 import 'package:bruig/theming_system/theme_manager.dart';

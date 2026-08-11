@@ -454,6 +454,24 @@ class ThemeNotifier with ChangeNotifier {
     return index >= 0 && index < palette.length ? palette[index] : null;
   }
 
+  /// markdownInk turns one of a style guide's colours into a real one.
+  ///
+  /// A guide names a colour three ways -- a role, a palette slot, or a
+  /// literal -- and which of them wins, and what the live palette currently
+  /// holds, is this object's business rather than every caller's. Spelled out
+  /// at each call site it was the same two arguments repeated with a fallback
+  /// bolted on, and one of them getting the pair wrong would be invisible.
+  Color? markdownInk(MarkdownInk ink) =>
+      ink.resolve(markdownRoleColor, paletteColor: markdownPaletteColor);
+
+  /// markdownTextStyle folds one of a guide's text rules onto [base].
+  ///
+  /// The companion to markdownInk, and here for the same reason: a rule
+  /// needs both the role resolver and the palette resolver, and the two
+  /// always travel together.
+  TextStyle markdownTextStyle(TextRule rule, TextStyle base) =>
+      rule.applyTo(base, markdownRoleColor, paletteColor: markdownPaletteColor);
+
   /// markdownRoleColor resolves the short list of colours a style guide can
   /// name against the live theme.
   ///

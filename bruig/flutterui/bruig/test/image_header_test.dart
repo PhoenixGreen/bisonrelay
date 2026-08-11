@@ -50,7 +50,8 @@ void main() {
       return d.buffer.asUint8List();
     }
 
-    test("top-up rows", () => expect(imageDimensions(bmp(200)), const Size(400, 200)));
+    test("top-up rows",
+        () => expect(imageDimensions(bmp(200)), const Size(400, 200)));
 
     // A negative height means the rows are stored the other way up. It is
     // still that many rows, and a picture cannot be -200 pixels tall.
@@ -87,7 +88,8 @@ void main() {
     });
 
     test("no frame at all is no answer", () {
-      expect(imageDimensions(_bytes([0xFF, 0xD8, ...List.filled(30, 0)])), isNull);
+      expect(
+          imageDimensions(_bytes([0xFF, 0xD8, ...List.filled(30, 0)])), isNull);
     });
   });
 

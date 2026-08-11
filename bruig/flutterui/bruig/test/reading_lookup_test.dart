@@ -1,5 +1,3 @@
-import 'package:bruig/plugin_system/capabilities/thesaurus.dart';
-import 'package:bruig/plugin_system/capabilities/thesaurus_menu.dart';
 import 'package:bruig/plugin_system/plugin_system.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';

@@ -13,8 +13,19 @@ import 'plugin_test_support.dart';
 // rule for good or rewriting a sentence you were happy with.
 
 const _dictionary = [
-  "the", "release", "payment", "cleared", "in", "order", "to", "ship",
-  "and", "we", "did", "it", "again",
+  "the",
+  "release",
+  "payment",
+  "cleared",
+  "in",
+  "order",
+  "to",
+  "ship",
+  "and",
+  "we",
+  "did",
+  "it",
+  "again",
 ];
 
 Future<(SpellcheckCapability, WritingPreferences)> _configured({
@@ -69,9 +80,10 @@ void main() {
     const text = "the reliese and the reliese again";
 
     var issues = capability.review(text);
-    expect(issues.where((i) => i.kind == WritingIssueKind.spelling), isNotEmpty);
-    var repetition =
-        issues.firstWhere((i) => i.checkId == "analysis:repeated-word-in-paragraph");
+    expect(
+        issues.where((i) => i.kind == WritingIssueKind.spelling), isNotEmpty);
+    var repetition = issues
+        .firstWhere((i) => i.checkId == "analysis:repeated-word-in-paragraph");
 
     prefs.ignoreMatch(repetition.checkId!, repetition.text);
     var after = capability.review(text);

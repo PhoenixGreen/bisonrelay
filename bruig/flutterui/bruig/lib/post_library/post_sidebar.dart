@@ -136,7 +136,7 @@ class _PostSidebarState extends State<PostSidebar> {
         return _row(theme, library, entry, i,
             key: ValueKey("${entry.isFolder}:${entry.folder}/${entry.name}"));
       },
-      onReorder: (from, to) => library.reorder(from, to),
+      onReorderItem: (from, to) => library.reorder(from, to),
       // The row lifted out of the list, without the list's own shadow --
       // this sidebar is already a panel and a second raised surface inside
       // it reads as a dialog opening.

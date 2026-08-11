@@ -21,7 +21,8 @@ List<WritingIssue> _run(String text, AnalysisCheck check) =>
 
 void main() {
   group("weekday against a written year", () {
-    var check = _check("date-weekday-mismatch", r"That date was a $2, not a $1");
+    var check =
+        _check("date-weekday-mismatch", r"That date was a $2, not a $1");
 
     test("a wrong weekday is flagged and corrected", () {
       var issue = _run("We shipped on Tuesday, 10 August 2026.", check).single;
@@ -108,13 +109,14 @@ void main() {
   });
 
   group("impossible dates", () {
-    var check =
-        _check("impossible-date", r'"$1" is not a date -- that month has $2 days');
+    var check = _check(
+        "impossible-date", r'"$1" is not a date -- that month has $2 days');
 
     test("a day that month never has is flagged", () {
       var issue = _run("The deadline is 31 February.", check).single;
       expect(issue.text, "31 February");
-      expect(issue.message, '"31 February" is not a date -- that month has 28 days');
+      expect(issue.message,
+          '"31 February" is not a date -- that month has 28 days');
     });
 
     test("31 in a 30-day month is flagged", () {
@@ -123,7 +125,12 @@ void main() {
     });
 
     test("real dates are left alone", () {
-      for (var text in ["30 April", "31 May", "29 February 2028", "1 January"]) {
+      for (var text in [
+        "30 April",
+        "31 May",
+        "29 February 2028",
+        "1 January"
+      ]) {
         expect(_run(text, check), isEmpty, reason: text);
       }
     });
@@ -160,8 +167,8 @@ void main() {
   });
 
   group("mixed apostrophes", () {
-    var check = _check(
-        "apostrophe-inconsistency", r'Mixed apostrophes -- "$1" is the odd one out',
+    var check = _check("apostrophe-inconsistency",
+        r'Mixed apostrophes -- "$1" is the odd one out',
         severity: "suggestion");
 
     test("the minority apostrophe is flagged", () {
@@ -173,8 +180,7 @@ void main() {
 
     test("one kind used throughout is left alone", () {
       expect(_run("I don't think it's right and can't say.", check), isEmpty);
-      expect(
-          _run("I don’t think it’s right.", check), isEmpty);
+      expect(_run("I don’t think it’s right.", check), isEmpty);
     });
 
     // The whole reason this only looks between letters: a quoted message is
@@ -200,8 +206,8 @@ void main() {
         "but the plan is still to ship on Tuesday, 10 August 2026. "
         "I have 31 things to finish first and about 12 hours to do them. "
         "The August figures are due later, and I may need 30 more minutes.";
-    var issues =
-        runAnalysisChecks(text, checks, isIgnoredCheck: (_) => false, now: _now);
+    var issues = runAnalysisChecks(text, checks,
+        isIgnoredCheck: (_) => false, now: _now);
 
     expect(issues, hasLength(1),
         reason: "only the wrong weekday is a finding: everything else here "

@@ -1,6 +1,5 @@
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/plugin_system.dart';
-import 'package:bruig/plugin_system/screens/plugin_settings_screen.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';

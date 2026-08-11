@@ -76,8 +76,12 @@ void main() {
     expect(names(), ["One", "Two", "Three", "Drafts", "Archive"]);
   });
 
+  // The indices are where the row starts and where it ends up, which is
+  // what ReorderableListView's onReorderItem reports -- its older onReorder
+  // counted the row as still occupying its old place and had to be corrected
+  // by every caller.
   test("a drag that ends where it began changes nothing", () async {
-    expect(await library.reorder(1, 2), isFalse);
+    expect(await library.reorder(1, 1), isFalse);
     expect(names(), ["One", "Two", "Three", "Archive", "Drafts"]);
   });
 
