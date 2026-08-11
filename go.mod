@@ -1,6 +1,6 @@
 module github.com/companyzero/bisonrelay
 
-go 1.23
+go 1.25.0
 
 require (
 	github.com/BurntSushi/toml v0.3.1
@@ -57,7 +57,7 @@ require (
 	golang.org/x/mobile v0.0.0-20240604190613-2782386b8afd
 	golang.org/x/net v0.28.0
 	golang.org/x/sync v0.11.0
-	golang.org/x/sys v0.30.0
+	golang.org/x/sys v0.44.0
 	golang.org/x/term v0.29.0
 	golang.org/x/text v0.22.0
 	google.golang.org/grpc v1.59.0
@@ -162,6 +162,7 @@ require (
 	github.com/soheilhy/cmux v0.1.5 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/stretchr/testify v1.8.4 // indirect
+	github.com/tetratelabs/wazero v1.12.0 // indirect
 	github.com/tmc/grpc-websocket-proxy v0.0.0-20220101234140-673ab2c3ae75 // indirect
 	github.com/tv42/zbase32 v0.0.0-20220222190657-f76a9fc892fa // indirect
 	github.com/xi2/xz v0.0.0-20171230120015-48954b6210f8 // indirect

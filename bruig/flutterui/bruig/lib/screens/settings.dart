@@ -13,6 +13,7 @@ import 'package:bruig/models/audio.dart';
 import 'package:bruig/models/client.dart';
 import 'package:bruig/models/log.dart';
 import 'package:bruig/models/menus.dart';
+import 'package:bruig/plugin_system/plugin_system.dart';
 import 'package:bruig/models/realtimechat.dart';
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/models/uistate.dart';
@@ -308,6 +309,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
         settingsView = Consumer<LogModel>(
             builder: (context, log, child) => LogScreen(log));
         break;
+      case "Plugins":
+        settingsView = const PluginsSettingsScreen();
+        break;
       default:
         break;
     }
@@ -379,6 +383,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
           selected: settingsPage == "Logs",
           label: "Logs",
           onTap: () => changePage("Logs"),
+        ),
+        SidebarNavItem(
+          icon: Icons.extension_outlined,
+          selected: settingsPage == "Plugins",
+          label: "Plugins",
+          onTap: () => changePage("Plugins"),
         ),
       ],
     );
@@ -474,6 +484,10 @@ class MainSettingsScreen extends StatelessWidget {
                     leading: const SidebarSvgIcon(
                         "assets/icons/icons-menu-files.svg"),
                     title: const Text("Manage Content")),
+                ListTile(
+                    onTap: () => changePage("Plugins"),
+                    leading: const Icon(Icons.extension_outlined),
+                    title: const Text("Plugins")),
                 ListTile(
                     onTap: () => changePage("Stats"),
                     leading: const SidebarSvgIcon(
@@ -870,7 +884,9 @@ class _AppearanceSettingsScreenState extends State<AppearanceSettingsScreen> {
                         tooltip: "Reset to Default",
                       ),
                       IconButton(
-                        onPressed: () => savePreset(context, theme, mainMenu),
+                        onPressed: theme.activePreset != null
+                            ? () => savePreset(context, theme, mainMenu)
+                            : null,
                         icon: const Icon(Icons.save_outlined),
                         tooltip: "Save",
                       ),
@@ -970,7 +986,12 @@ class _SettingsGroupCard extends StatelessWidget {
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 6),
       clipBehavior: Clip.antiAlias,
-      color: theme.colors.surfaceContainerHigh,
+      // Shares Tertiary ("Second Background") with the Feed post card/
+      // post-detail background and the RTC banner/blockquote, instead of a
+      // Primary-derived surface tier -- previously this used
+      // surfaceContainerHigh, which tied every Settings group panel to
+      // Primary while Feed post cards used a separate, unrelated field.
+      color: theme.colors.tertiary,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       child: child,
     );
