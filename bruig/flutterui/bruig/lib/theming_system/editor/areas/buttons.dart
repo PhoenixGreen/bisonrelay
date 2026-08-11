@@ -30,7 +30,16 @@ class _ButtonRolePicker extends StatefulWidget {
 }
 
 class _ButtonRolePickerState extends State<_ButtonRolePicker> {
-  ButtonRole role = ButtonRole.primary;
+  /// _lastRole is the button that was last being worked on.
+  ///
+  /// Static for the same reason the Markdown area's element is: this editor
+  /// is built fresh every time the page is come back to, and starting again
+  /// at Primary each time means finding your place before every edit. Not
+  /// stored on the theme and not written to disk -- which control you have
+  /// open is not part of how the app looks.
+  static ButtonRole _lastRole = ButtonRole.primary;
+
+  ButtonRole role = _lastRole;
 
   @override
   Widget build(BuildContext context) {
@@ -53,11 +62,13 @@ class _ButtonRolePickerState extends State<_ButtonRolePicker> {
         value: role,
         options: ButtonRole.values,
         labelOf: buttonRoleLabel,
-        onChanged: (r) => setState(() => role = r),
+        onChanged: (r) => setState(() => role = _lastRole = r),
       ),
       ctx.note(buttonRoleExamples[role]!),
       const SizedBox(height: 12),
-      _Preview(selected: role, onSelect: (r) => setState(() => role = r)),
+      _Preview(
+          selected: role,
+          onSelect: (r) => setState(() => role = _lastRole = r)),
       const SizedBox(height: 16),
       // The three colors share one line (stacking as the pane narrows):
       // they're the settings most worth changing and re-judging against the

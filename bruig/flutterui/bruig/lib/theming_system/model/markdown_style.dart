@@ -1,3 +1,4 @@
+import 'package:bruig/theming_system/model/area_sides.dart';
 import 'package:bruig/theming_system/model/color_hex.dart';
 import 'package:flutter/material.dart';
 
@@ -141,6 +142,21 @@ enum MarkdownFont {
   const MarkdownFont(this.label, this.family);
 }
 
+/// MarkdownTableFit is how a table divides its width between its columns.
+///
+/// Two answers, because they are the two a writer actually wants: every
+/// column the same, or every column as wide as what is in it. Anything finer
+/// -- this column 30%, that one 70% -- would have to be said in the post
+/// rather than in a guide, and a guide is about how posts look, not about
+/// what one particular table says.
+enum MarkdownTableFit {
+  equal("Equal width"),
+  fitContent("Fit the contents");
+
+  final String label;
+  const MarkdownTableFit(this.label);
+}
+
 /// MarkdownAlign is how a block sits across the column.
 enum MarkdownAlign { inherit, left, center, right }
 
@@ -200,9 +216,27 @@ class TextRule {
   /// left as the reader's theme had it.
   TextStyle applyTo(TextStyle base, Color Function(MarkdownRole) roleColor,
       {Color? Function(int)? paletteColor}) {
+    // Resolved once and used for the underline as well as the text.
+    //
+    // An underline with no colour of its own is drawn in whatever
+    // decorationColor the style carries, and Material's own text styles set
+    // that to the body colour. flutter_markdown builds a link's style by
+    // merging the `a` style onto the paragraph's, so a link that named a
+    // colour got that colour for its letters and the body's for the line
+    // under them -- an underline in a visibly different colour from the text
+    // it underlines.
+    var color =
+        ink.resolve(roleColor, paletteColor: paletteColor) ?? base.color;
     return base.copyWith(
-      fontSize: (base.fontSize ?? 14) * scale.clamp(_minScale, _maxScale),
-      color: ink.resolve(roleColor, paletteColor: paletteColor) ?? base.color,
+      // A rule that asks for no change in size, applied to a style that
+      // names none, states none either -- so an inline run left at 100%
+      // stays whatever the text around it is. Anything else would give a
+      // bold word inside a heading a size of its own.
+      fontSize: base.fontSize == null && scale == 1.0
+          ? null
+          : (base.fontSize ?? 14) * scale.clamp(_minScale, _maxScale),
+      color: color,
+      decorationColor: color,
       fontFamily: font.family ?? base.fontFamily,
       fontWeight: bold == null
           ? base.fontWeight
@@ -300,6 +334,28 @@ class ImageRule {
   double get boundedRadius => cornerRadius.clamp(0, 48);
   double get boundedBorder => borderWidth.clamp(0, 8);
 
+  // Compared by value, not by identity.
+  //
+  // MarkdownArea decides whether a piece of markdown needs a guide at all by
+  // asking whether the rules differ from the plain ones, and chat relies on
+  // the answer being no. Without this, two ImageRules holding identical
+  // numbers were never equal -- and AreaStyle.markdownGuide rebuilds the
+  // rule every time it is read, so the answer was always "different" and
+  // chat was quietly being drawn with a post's picture rules.
+  @override
+  bool operator ==(Object other) =>
+      other is ImageRule &&
+      other.widthPercent == widthPercent &&
+      other.cornerRadius == cornerRadius &&
+      other.borderWidth == borderWidth &&
+      other.borderInk.toJson() == borderInk.toJson() &&
+      other.align == align &&
+      other.gap == gap;
+
+  @override
+  int get hashCode =>
+      Object.hash(widthPercent, cornerRadius, borderWidth, align, gap);
+
   Map<String, Object?> toJson() => {
         "widthPercent": widthPercent,
         "cornerRadius": cornerRadius,
@@ -318,6 +374,372 @@ class ImageRule {
             orElse: () => MarkdownAlign.left),
         gap: _asDouble(json["gap"]) ?? 8,
       );
+}
+
+/// ColumnRule is how a run of columns is laid out.
+///
+/// Markdown has no columns of its own, so they are a block syntax this app
+/// adds -- see ColumnsBlockSyntax. What a guide gets to say about them is the
+/// space between them and the width below which they stop being columns at
+/// all, which are the only two decisions that are about the page rather than
+/// about the writing.
+class ColumnRule {
+  /// gap is the space between one column and the next.
+  final double gap;
+
+  /// stackBelow is the narrowest a column may be before the run gives up and
+  /// stacks them one above another.
+  ///
+  /// Not optional and not a screen size: the same post is read in a window a
+  /// third the width of somebody else's, and three columns of nine
+  /// characters each is not a layout. Below this width they become what they
+  /// would have been without the markup, which is the one reading that is
+  /// always legible.
+  final double stackBelow;
+
+  /// The box the run of columns is drawn in: space inside it, space around
+  /// it, and the line between the two.
+  ///
+  /// Around the run as a whole, not around each column. A border on every
+  /// column is a row of boxes; a border round the outside is a block with
+  /// columns in it, which is what columns are. What separates one column
+  /// from the next is [dividerWidth], and it is deliberately a different
+  /// setting -- a rule down the middle usually reads better when it is not
+  /// the same weight as the frame, and most of the time there is no frame at
+  /// all.
+  ///
+  /// Each is a single figure with an optional per-side split beside it,
+  /// which is the form every other spacing setting in the theme editor
+  /// takes. Null means "not split", so a guide that never touched the four
+  /// is stored as small as it was before they existed.
+  final double padding;
+  final SideValues? paddingSides;
+  final double margin;
+  final SideValues? marginSides;
+  final double borderWidth;
+  final SideValues? borderWidthSides;
+  final MarkdownInk borderInk;
+  final double radius;
+  final SideValues? radiusSides;
+
+  /// dividerWidth is the rule drawn down the middle of the gap between one
+  /// column and the next, or zero for none.
+  ///
+  /// One line between each pair, not a border on each column: two adjacent
+  /// borders make a double line with a channel down the middle of it, which
+  /// is the thing that looked wrong.
+  final double dividerWidth;
+  final MarkdownInk dividerInk;
+
+  const ColumnRule({
+    this.gap = 16,
+    this.stackBelow = 220,
+    this.padding = 0,
+    this.paddingSides,
+    this.margin = 0,
+    this.marginSides,
+    this.borderWidth = 0,
+    this.borderWidthSides,
+    this.borderInk = const MarkdownInk.of(MarkdownRole.outline),
+    this.radius = 0,
+    this.radiusSides,
+    this.dividerWidth = 0,
+    this.dividerInk = const MarkdownInk.of(MarkdownRole.outline),
+  });
+
+  double get boundedGap => gap.clamp(0, 64);
+  double get boundedStackBelow => stackBelow.clamp(80, 480);
+
+  /// The four resolved values for each setting: the split when there is one,
+  /// otherwise the single figure all round.
+  SideValues get paddings =>
+      paddingSides ?? SideValues.all(padding.clamp(0, 64));
+  SideValues get margins => marginSides ?? SideValues.all(margin.clamp(0, 64));
+  SideValues get borderWidths =>
+      borderWidthSides ?? SideValues.all(borderWidth.clamp(0, 12));
+  SideValues get radii => radiusSides ?? SideValues.all(radius.clamp(0, 48));
+  double get boundedDivider => dividerWidth.clamp(0, 12);
+
+  ColumnRule copyWith({
+    double? gap,
+    double? stackBelow,
+    double? padding,
+    SideValues? paddingSides,
+    bool clearPaddingSides = false,
+    double? margin,
+    SideValues? marginSides,
+    bool clearMarginSides = false,
+    double? borderWidth,
+    SideValues? borderWidthSides,
+    bool clearBorderWidthSides = false,
+    MarkdownInk? borderInk,
+    double? radius,
+    SideValues? radiusSides,
+    bool clearRadiusSides = false,
+    double? dividerWidth,
+    MarkdownInk? dividerInk,
+  }) =>
+      ColumnRule(
+        gap: gap ?? this.gap,
+        stackBelow: stackBelow ?? this.stackBelow,
+        padding: padding ?? this.padding,
+        paddingSides:
+            clearPaddingSides ? null : (paddingSides ?? this.paddingSides),
+        margin: margin ?? this.margin,
+        marginSides:
+            clearMarginSides ? null : (marginSides ?? this.marginSides),
+        borderWidth: borderWidth ?? this.borderWidth,
+        borderWidthSides: clearBorderWidthSides
+            ? null
+            : (borderWidthSides ?? this.borderWidthSides),
+        borderInk: borderInk ?? this.borderInk,
+        radius: radius ?? this.radius,
+        radiusSides:
+            clearRadiusSides ? null : (radiusSides ?? this.radiusSides),
+        dividerWidth: dividerWidth ?? this.dividerWidth,
+        dividerInk: dividerInk ?? this.dividerInk,
+      );
+
+  Map<String, Object?> toJson() => {
+        "gap": gap,
+        "stackBelow": stackBelow,
+        if (padding != 0) "padding": padding,
+        if (paddingSides != null) "paddingSides": paddingSides!.toJson(),
+        if (margin != 0) "margin": margin,
+        if (marginSides != null) "marginSides": marginSides!.toJson(),
+        if (borderWidth != 0) "borderWidth": borderWidth,
+        if (borderWidthSides != null)
+          "borderWidthSides": borderWidthSides!.toJson(),
+        if (!borderInk.isInherit) "borderInk": borderInk.toJson(),
+        if (radius != 0) "radius": radius,
+        if (radiusSides != null) "radiusSides": radiusSides!.toJson(),
+        if (dividerWidth != 0) "dividerWidth": dividerWidth,
+        if (!dividerInk.isInherit) "dividerInk": dividerInk.toJson(),
+      };
+
+  static ColumnRule fromJson(Map<String, Object?> json) => ColumnRule(
+        gap: _asDouble(json["gap"]) ?? 16,
+        stackBelow: _asDouble(json["stackBelow"]) ?? 220,
+        padding: _asDouble(json["padding"]) ?? 0,
+        paddingSides: SideValues.fromJson(json["paddingSides"]),
+        margin: _asDouble(json["margin"]) ?? 0,
+        marginSides: SideValues.fromJson(json["marginSides"]),
+        borderWidth: _asDouble(json["borderWidth"]) ?? 0,
+        borderWidthSides: SideValues.fromJson(json["borderWidthSides"]),
+        borderInk: json.containsKey("borderInk")
+            ? MarkdownInk.fromJson(json["borderInk"])
+            : const MarkdownInk.of(MarkdownRole.outline),
+        radius: _asDouble(json["radius"]) ?? 0,
+        radiusSides: SideValues.fromJson(json["radiusSides"]),
+        dividerWidth: _asDouble(json["dividerWidth"]) ?? 0,
+        dividerInk: json.containsKey("dividerInk")
+            ? MarkdownInk.fromJson(json["dividerInk"])
+            : const MarkdownInk.of(MarkdownRole.outline),
+      );
+
+  @override
+  bool operator ==(Object other) =>
+      other is ColumnRule &&
+      other.gap == gap &&
+      other.stackBelow == stackBelow &&
+      other.padding == padding &&
+      other.paddingSides == paddingSides &&
+      other.margin == margin &&
+      other.marginSides == marginSides &&
+      other.borderWidth == borderWidth &&
+      other.borderWidthSides == borderWidthSides &&
+      other.borderInk.toJson() == borderInk.toJson() &&
+      other.radius == radius &&
+      other.radiusSides == radiusSides &&
+      other.dividerWidth == dividerWidth &&
+      other.dividerInk.toJson() == dividerInk.toJson();
+
+  @override
+  int get hashCode => Object.hash(
+      gap,
+      stackBelow,
+      padding,
+      paddingSides,
+      margin,
+      marginSides,
+      borderWidth,
+      borderWidthSides,
+      radius,
+      radiusSides,
+      dividerWidth);
+}
+
+/// MarkdownCardIcon is the icon a card may carry.
+///
+/// A closed list, like every other choice a guide or a post can make. A post
+/// naming an icon is naming something the reader's app has to already have,
+/// and "whatever Material calls this string" is not that: a name that means
+/// nothing renders as an empty box on some builds and a different picture on
+/// others. These are chosen for the things a callout is usually for.
+enum MarkdownCardIcon {
+  info("info", Icons.info_outline),
+  note("note", Icons.push_pin_outlined),
+  tip("tip", Icons.lightbulb_outline),
+  warning("warning", Icons.warning_amber_outlined),
+  danger("danger", Icons.report_gmailerrorred_outlined),
+  success("success", Icons.check_circle_outline),
+  question("question", Icons.help_outline),
+  announce("announce", Icons.campaign_outlined),
+  mail("mail", Icons.mail_outline),
+  star("star", Icons.star_outline),
+  heart("heart", Icons.favorite_border),
+  calendar("calendar", Icons.calendar_today_outlined),
+  clock("clock", Icons.schedule_outlined),
+  link("link", Icons.link),
+  download("download", Icons.download_outlined),
+  payment("payment", Icons.payments_outlined);
+
+  /// name is what a post writes, and [icon] what it is drawn as.
+  final String label;
+  final IconData icon;
+  const MarkdownCardIcon(this.label, this.icon);
+
+  /// named returns the icon a post asked for, or null when it asked for
+  /// something this app does not have -- in which case the card is drawn
+  /// without one rather than with a guess.
+  static MarkdownCardIcon? named(String name) {
+    var wanted = name.trim().toLowerCase();
+    for (var i in values) {
+      if (i.label == wanted) return i;
+    }
+    return null;
+  }
+}
+
+/// CardRule is how a callout or a card is drawn.
+///
+/// A callout and a card are the same thing with a different amount filled in:
+/// a title, some text, an icon and a button, any of which may be left out. So
+/// there is one set of rules for both rather than two that would drift apart.
+class CardRule {
+  /// gap is the space between one card and the next in a grid of them.
+  final double gap;
+
+  final double padding;
+  final SideValues? paddingSides;
+  final MarkdownInk background;
+  final double borderWidth;
+  final MarkdownInk borderInk;
+  final double radius;
+
+  /// iconSize is the icon itself; iconBackground is the disc behind it, or
+  /// inherit for no disc at all.
+  final double iconSize;
+  final MarkdownInk iconInk;
+  final MarkdownInk iconBackground;
+
+  final TextRule title;
+  final TextRule text;
+
+  const CardRule({
+    this.gap = 16,
+    this.padding = 16,
+    this.paddingSides,
+    this.background = const MarkdownInk.of(MarkdownRole.raised),
+    this.borderWidth = 0,
+    this.borderInk = const MarkdownInk.of(MarkdownRole.outline),
+    this.radius = 12,
+    this.iconSize = 28,
+    this.iconInk = const MarkdownInk.of(MarkdownRole.accent),
+    this.iconBackground = MarkdownInk.inherit,
+    this.title = const TextRule(scale: 1.3, bold: true),
+    this.text = const TextRule(ink: MarkdownInk.of(MarkdownRole.muted)),
+  });
+
+  double get boundedGap => gap.clamp(0, 64);
+  double get boundedRadius => radius.clamp(0, 48);
+  double get boundedBorder => borderWidth.clamp(0, 12);
+  double get boundedIconSize => iconSize.clamp(12, 96);
+  SideValues get paddings =>
+      paddingSides ?? SideValues.all(padding.clamp(0, 64));
+
+  CardRule copyWith({
+    double? gap,
+    double? padding,
+    SideValues? paddingSides,
+    bool clearPaddingSides = false,
+    MarkdownInk? background,
+    double? borderWidth,
+    MarkdownInk? borderInk,
+    double? radius,
+    double? iconSize,
+    MarkdownInk? iconInk,
+    MarkdownInk? iconBackground,
+    TextRule? title,
+    TextRule? text,
+  }) =>
+      CardRule(
+        gap: gap ?? this.gap,
+        padding: padding ?? this.padding,
+        paddingSides:
+            clearPaddingSides ? null : (paddingSides ?? this.paddingSides),
+        background: background ?? this.background,
+        borderWidth: borderWidth ?? this.borderWidth,
+        borderInk: borderInk ?? this.borderInk,
+        radius: radius ?? this.radius,
+        iconSize: iconSize ?? this.iconSize,
+        iconInk: iconInk ?? this.iconInk,
+        iconBackground: iconBackground ?? this.iconBackground,
+        title: title ?? this.title,
+        text: text ?? this.text,
+      );
+
+  Map<String, Object?> toJson() => {
+        "gap": gap,
+        "padding": padding,
+        if (paddingSides != null) "paddingSides": paddingSides!.toJson(),
+        if (!background.isInherit) "background": background.toJson(),
+        "borderWidth": borderWidth,
+        if (!borderInk.isInherit) "borderInk": borderInk.toJson(),
+        "radius": radius,
+        "iconSize": iconSize,
+        if (!iconInk.isInherit) "iconInk": iconInk.toJson(),
+        if (!iconBackground.isInherit)
+          "iconBackground": iconBackground.toJson(),
+        "title": title.toJson(),
+        "text": text.toJson(),
+      };
+
+  static CardRule fromJson(Map<String, Object?> json) {
+    TextRule rule(String key, TextRule fallback) {
+      var v = json[key];
+      return v is Map<String, Object?> ? TextRule.fromJson(v) : fallback;
+    }
+
+    return CardRule(
+      gap: _asDouble(json["gap"]) ?? 16,
+      padding: _asDouble(json["padding"]) ?? 16,
+      paddingSides: SideValues.fromJson(json["paddingSides"]),
+      background: json.containsKey("background")
+          ? MarkdownInk.fromJson(json["background"])
+          : const MarkdownInk.of(MarkdownRole.raised),
+      borderWidth: _asDouble(json["borderWidth"]) ?? 0,
+      borderInk: json.containsKey("borderInk")
+          ? MarkdownInk.fromJson(json["borderInk"])
+          : const MarkdownInk.of(MarkdownRole.outline),
+      radius: _asDouble(json["radius"]) ?? 12,
+      iconSize: _asDouble(json["iconSize"]) ?? 28,
+      iconInk: json.containsKey("iconInk")
+          ? MarkdownInk.fromJson(json["iconInk"])
+          : const MarkdownInk.of(MarkdownRole.accent),
+      iconBackground: MarkdownInk.fromJson(json["iconBackground"]),
+      title: rule("title", const TextRule(scale: 1.3, bold: true)),
+      text:
+          rule("text", const TextRule(ink: MarkdownInk.of(MarkdownRole.muted))),
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is CardRule && other.toJson().toString() == toJson().toString();
+
+  @override
+  int get hashCode => toJson().toString().hashCode;
 }
 
 /// MarkdownStyleGuide is one named set of rules.
@@ -368,13 +790,36 @@ class MarkdownStyleGuide {
   final MarkdownInk quoteBarInk;
   final double quoteBarWidth;
   final MarkdownInk quoteBackground;
+
+  /// quotePadding is the space between a quotation's bar and its text, and
+  /// around the rest of it. The bar and the words sat hard against each
+  /// other without it.
+  final double quotePadding;
   final MarkdownInk codeBackground;
   final MarkdownInk ruleInk;
   final double ruleThickness;
   final MarkdownInk tableBorderInk;
   final double tableBorderWidth;
+
+  /// tableHeadBackground is what the header row is drawn on, and
+  /// tableStripeInk what every other body row is drawn on -- the two things
+  /// that make a table readable across rather than only down.
+  final MarkdownInk tableHeadBackground;
+  final MarkdownInk tableStripeInk;
+
+  /// tableCellPadding is the space between a cell's edge and what is in it.
+  final double tableCellPadding;
+
+  /// tableFit is how the width is divided between the columns.
+  final MarkdownTableFit tableFit;
   final MarkdownAlign bodyAlign;
   final ImageRule image;
+
+  /// columns is how a run of columns is laid out -- see ColumnRule.
+  final ColumnRule columns;
+
+  /// cards is how a callout or a card is drawn -- see CardRule.
+  final CardRule cards;
 
   /// copyWith returns this guide with some rules changed.
   ///
@@ -395,17 +840,28 @@ class MarkdownStyleGuide {
     TextRule? quote,
     TextRule? code,
     TextRule? listBullet,
+    TextRule? tableHead,
+    TextRule? tableBody,
     double? blockGap,
     double? listItemGap,
     double? listIndent,
     MarkdownInk? quoteBarInk,
     double? quoteBarWidth,
     MarkdownInk? quoteBackground,
+    double? quotePadding,
     MarkdownInk? codeBackground,
     MarkdownInk? ruleInk,
     double? ruleThickness,
+    MarkdownInk? tableBorderInk,
+    double? tableBorderWidth,
+    MarkdownInk? tableHeadBackground,
+    MarkdownInk? tableStripeInk,
+    double? tableCellPadding,
+    MarkdownTableFit? tableFit,
     MarkdownAlign? bodyAlign,
     ImageRule? image,
+    ColumnRule? columns,
+    CardRule? cards,
   }) =>
       MarkdownStyleGuide(
         id: id ?? this.id,
@@ -419,21 +875,28 @@ class MarkdownStyleGuide {
         quote: quote ?? this.quote,
         code: code ?? this.code,
         listBullet: listBullet ?? this.listBullet,
-        tableHead: tableHead,
-        tableBody: tableBody,
+        tableHead: tableHead ?? this.tableHead,
+        tableBody: tableBody ?? this.tableBody,
         blockGap: blockGap ?? this.blockGap,
         listItemGap: listItemGap ?? this.listItemGap,
         listIndent: listIndent ?? this.listIndent,
         quoteBarInk: quoteBarInk ?? this.quoteBarInk,
         quoteBarWidth: quoteBarWidth ?? this.quoteBarWidth,
         quoteBackground: quoteBackground ?? this.quoteBackground,
+        quotePadding: quotePadding ?? this.quotePadding,
         codeBackground: codeBackground ?? this.codeBackground,
         ruleInk: ruleInk ?? this.ruleInk,
         ruleThickness: ruleThickness ?? this.ruleThickness,
-        tableBorderInk: tableBorderInk,
-        tableBorderWidth: tableBorderWidth,
+        tableBorderInk: tableBorderInk ?? this.tableBorderInk,
+        tableBorderWidth: tableBorderWidth ?? this.tableBorderWidth,
+        tableHeadBackground: tableHeadBackground ?? this.tableHeadBackground,
+        tableStripeInk: tableStripeInk ?? this.tableStripeInk,
+        tableCellPadding: tableCellPadding ?? this.tableCellPadding,
+        tableFit: tableFit ?? this.tableFit,
         bodyAlign: bodyAlign ?? this.bodyAlign,
         image: image ?? this.image,
+        columns: columns ?? this.columns,
+        cards: cards ?? this.cards,
       );
 
   /// forked is this guide as the beginning of one of the reader's own.
@@ -454,6 +917,8 @@ class MarkdownStyleGuide {
         "quote": quote.toJson(),
         "code": code.toJson(),
         "listBullet": listBullet.toJson(),
+        "tableHead": tableHead.toJson(),
+        "tableBody": tableBody.toJson(),
         "blockGap": blockGap,
         "listItemGap": listItemGap,
         "listIndent": listIndent,
@@ -461,12 +926,24 @@ class MarkdownStyleGuide {
         "quoteBarWidth": quoteBarWidth,
         if (!quoteBackground.isInherit)
           "quoteBackground": quoteBackground.toJson(),
+        "quotePadding": quotePadding,
         if (!codeBackground.isInherit)
           "codeBackground": codeBackground.toJson(),
         if (!ruleInk.isInherit) "ruleInk": ruleInk.toJson(),
         "ruleThickness": ruleThickness,
+        if (!tableBorderInk.isInherit)
+          "tableBorderInk": tableBorderInk.toJson(),
+        "tableBorderWidth": tableBorderWidth,
+        if (!tableHeadBackground.isInherit)
+          "tableHeadBackground": tableHeadBackground.toJson(),
+        if (!tableStripeInk.isInherit)
+          "tableStripeInk": tableStripeInk.toJson(),
+        "tableCellPadding": tableCellPadding,
+        "tableFit": tableFit.name,
         "bodyAlign": bodyAlign.name,
         "image": image.toJson(),
+        "columns": columns.toJson(),
+        "cards": cards.toJson(),
       };
 
   static MarkdownStyleGuide fromJson(Map<String, Object?> json) {
@@ -503,21 +980,38 @@ class MarkdownStyleGuide {
       quote: rule("quote"),
       code: rule("code"),
       listBullet: rule("listBullet"),
+      tableHead: rule("tableHead"),
+      tableBody: rule("tableBody"),
       blockGap: _asDouble(json["blockGap"]) ?? 8,
       listItemGap: _asDouble(json["listItemGap"]) ?? 8,
       listIndent: _asDouble(json["listIndent"]) ?? 24,
       quoteBarInk: MarkdownInk.fromJson(json["quoteBarInk"]),
       quoteBarWidth: _asDouble(json["quoteBarWidth"]) ?? 2,
       quoteBackground: MarkdownInk.fromJson(json["quoteBackground"]),
+      quotePadding: _asDouble(json["quotePadding"]) ?? 8,
       codeBackground: MarkdownInk.fromJson(json["codeBackground"]),
       ruleInk: MarkdownInk.fromJson(json["ruleInk"]),
       ruleThickness: _asDouble(json["ruleThickness"]) ?? 1,
+      tableBorderInk: MarkdownInk.fromJson(json["tableBorderInk"]),
+      tableBorderWidth: _asDouble(json["tableBorderWidth"]) ?? 1,
+      tableHeadBackground: MarkdownInk.fromJson(json["tableHeadBackground"]),
+      tableStripeInk: MarkdownInk.fromJson(json["tableStripeInk"]),
+      tableCellPadding: _asDouble(json["tableCellPadding"]) ?? 8,
+      tableFit: MarkdownTableFit.values.firstWhere(
+          (f) => f.name == json["tableFit"],
+          orElse: () => MarkdownTableFit.equal),
       bodyAlign: MarkdownAlign.values.firstWhere(
           (a) => a.name == json["bodyAlign"],
           orElse: () => MarkdownAlign.inherit),
       image: json["image"] is Map<String, Object?>
           ? ImageRule.fromJson(json["image"] as Map<String, Object?>)
           : const ImageRule(),
+      columns: json["columns"] is Map<String, Object?>
+          ? ColumnRule.fromJson(json["columns"] as Map<String, Object?>)
+          : const ColumnRule(),
+      cards: json["cards"] is Map<String, Object?>
+          ? CardRule.fromJson(json["cards"] as Map<String, Object?>)
+          : const CardRule(),
     );
   }
 
@@ -548,12 +1042,19 @@ class MarkdownStyleGuide {
     this.quoteBarInk = MarkdownInk.inherit,
     this.quoteBarWidth = 2,
     this.quoteBackground = MarkdownInk.inherit,
+    this.quotePadding = 8,
     this.codeBackground = MarkdownInk.inherit,
     this.ruleInk = const MarkdownInk.of(MarkdownRole.outline),
     this.ruleThickness = 1,
     this.tableBorderInk = const MarkdownInk.of(MarkdownRole.outline),
     this.tableBorderWidth = 1,
+    this.tableHeadBackground = MarkdownInk.inherit,
+    this.tableStripeInk = MarkdownInk.inherit,
+    this.tableCellPadding = 8,
+    this.tableFit = MarkdownTableFit.equal,
     this.bodyAlign = MarkdownAlign.inherit,
     this.image = const ImageRule(),
+    this.columns = const ColumnRule(),
+    this.cards = const CardRule(),
   });
 }

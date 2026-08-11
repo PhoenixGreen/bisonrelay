@@ -116,13 +116,21 @@ class _LinkCardState extends State<LinkCard> {
   }
 
   Widget _buildPlainLink(BuildContext context) {
-    var theme = Theme.of(context);
+    // Set exactly as a written-out markdown link is set, style guide and
+    // all, rather than in the raw Material accent with an underline added
+    // here regardless.
+    //
+    // It is the same thing on the page, so it has to be the same thing on
+    // screen. Drawn its own way it was a different colour from a
+    // [text](url) link in the same post, and it carried an underline in
+    // every guide -- including the ones, Default among them, that ask for
+    // no underline at all. That is the mismatch between the settings
+    // preview and a real post.
     return GestureDetector(
       onTap: _openInBrowser,
       child: Text(widget.url,
-          style: (widget.preferredStyle ?? const TextStyle()).copyWith(
-              color: theme.colorScheme.primary,
-              decoration: TextDecoration.underline)),
+          style: ThemeNotifier.of(context)
+              .markdownLinkStyle(widget.preferredStyle)),
     );
   }
 

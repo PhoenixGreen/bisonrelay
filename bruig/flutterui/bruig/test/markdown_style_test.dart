@@ -78,10 +78,88 @@ void main() {
   });
 
   group("the guide that changes nothing", () {
-    test("Default leaves the theme's own sizes alone", () {
+    // Default leaves the body exactly as the theme has it and states the
+    // heading ladder the app has always drawn -- 24 points against a
+    // 14-point body, and so on down.
+    //
+    // It has to state it rather than leave it unsaid, because every size in
+    // a guide is a share of the body: an unsaid heading size means "the same
+    // size as the body", which is what a reader who changed one unrelated
+    // thing about Default used to get.
+    test("Default keeps the body and states the customary ladder", () {
       var sheet = _sheetFor(builtInGuideFor(defaultGuideId)!);
       expect(sheet.p?.fontSize, 14);
-      expect(sheet.h1?.fontSize, 28);
+      expect(sheet.h1?.fontSize, closeTo(24, 0.001));
+      expect(sheet.h5?.fontSize, closeTo(14, 0.001));
+      expect(sheet.h6?.fontSize, closeTo(12, 0.001));
+    });
+
+    // The sizes the editor's sliders read out are the sizes that come out
+    // the other end. A guide is written against the body -- "H1: 190%" --
+    // and used to be applied to whatever size the theme gave that element,
+    // so Article's 1.9 landed on a 24-point h1 and came out at 45.
+    test("a heading is a share of the body, not of the theme's own heading",
+        () {
+      var sheet = _sheetFor(const MarkdownStyleGuide(
+        id: "x",
+        name: "X",
+        headings: [
+          TextRule(scale: 1.9),
+          TextRule(),
+          TextRule(),
+          TextRule(),
+          TextRule(),
+          TextRule(),
+        ],
+      ));
+      expect(sheet.h1?.fontSize, closeTo(14 * 1.9, 0.001),
+          reason: "the base sheet's own h1 is 28, which is not the body");
+    });
+
+    // A link, a bold word and an italic one are runs inside a line, and
+    // flutter_markdown builds them by merging their style onto the style of
+    // whatever they sit in. A size stated here replaces the surrounding
+    // text's, so at 100% none is stated -- otherwise a link in a heading and
+    // a bold word in a heading both came out at 14 points.
+    test("an inline run at 100% keeps the size around it", () {
+      var sheet = applyGuide(
+          MarkdownStyleSheet(
+              p: const TextStyle(fontSize: 20, color: Color(0xFF111111)),
+              a: const TextStyle(color: Color(0xFF0077CC)),
+              strong: const TextStyle(fontWeight: FontWeight.w700)),
+          const MarkdownStyleGuide(id: "x", name: "X"),
+          _role);
+      expect(sheet.a?.fontSize, isNull);
+      expect(sheet.strong?.fontSize, isNull);
+      expect(sheet.strong?.fontWeight, FontWeight.w700,
+          reason: "saying nothing about size says nothing about weight");
+    });
+
+    test("an inline run that asks for a size gets a share of the body", () {
+      var sheet = applyGuide(
+          MarkdownStyleSheet(
+              p: const TextStyle(fontSize: 20, color: Color(0xFF111111)),
+              a: const TextStyle(color: Color(0xFF0077CC))),
+          const MarkdownStyleGuide(
+              id: "x", name: "X", link: TextRule(scale: 1.5)),
+          _role);
+      expect(sheet.a?.fontSize, closeTo(30, 0.001));
+    });
+
+    // An underline with no colour of its own is drawn in whatever
+    // decorationColor the style carries, and flutter_markdown builds a link
+    // by merging `a` onto the paragraph's style -- so an underlined link
+    // came out with its letters in one colour and the line under them in
+    // the body's.
+    test("an underline is the colour of the text it underlines", () {
+      var sheet = _sheetFor(const MarkdownStyleGuide(
+        id: "x",
+        name: "X",
+        link: TextRule(ink: MarkdownInk.of(MarkdownRole.link), underline: true),
+      ));
+      expect(sheet.a?.decoration, TextDecoration.underline);
+      expect(sheet.a?.decorationColor, sheet.a?.color);
+      expect(sheet.a?.color, _role(MarkdownRole.link));
     });
 
     // The point of Default existing as a named thing rather than as an
@@ -121,6 +199,128 @@ void main() {
       expect(const TextRule(lineHeight: 99).applyTo(_body, _role).height, 3.0);
       expect(const TextRule(lineHeight: 0.1).applyTo(_body, _role).height, 0.9,
           reason: "lines that overlap the one above are unreadable");
+    });
+  });
+
+  // Code, which is drawn twice over: once as the block's decoration and once
+  // as a background behind the letters themselves.
+  //
+  // MarkdownStyleSheet.fromTheme gives `code` a backgroundColor of the card
+  // colour and nothing in the app cleared it, so a code block came out with a
+  // second, differently coloured shape folded tightly around its text and
+  // broken between the lines. Reported from the settings preview, where the
+  // block was blue and the shape behind the words was not.
+  group("code has one background, not two", () {
+    test("the letters are painted in the block's own colour", () {
+      var sheet = applyGuide(
+          _base().copyWith(
+              code: const TextStyle(backgroundColor: Color(0xFF333333))),
+          const MarkdownStyleGuide(
+            id: "x",
+            name: "X",
+            codeBackground: MarkdownInk.of(MarkdownRole.raised),
+          ),
+          _role);
+      expect(sheet.code?.backgroundColor, _role(MarkdownRole.raised));
+      expect((sheet.codeblockDecoration! as BoxDecoration).color,
+          sheet.code?.backgroundColor,
+          reason: "the same colour twice over is the same colour once");
+    });
+
+    test("with no colour named nothing is painted behind the letters", () {
+      var sheet = applyGuide(
+          _base().copyWith(
+              code: const TextStyle(backgroundColor: Color(0xFF333333))),
+          const MarkdownStyleGuide(id: "x", name: "X"),
+          _role);
+      expect(sheet.code?.backgroundColor, const Color(0x00000000),
+          reason: "a TextStyle field cannot be un-set, so it is transparent");
+    });
+  });
+
+  group("quotations", () {
+    test("the padding is the guide's", () {
+      var sheet = _sheetFor(
+          const MarkdownStyleGuide(id: "x", name: "X", quotePadding: 20));
+      expect(sheet.blockquotePadding, const EdgeInsets.all(20));
+    });
+
+    test("the padding survives being saved and read back", () {
+      var guide = const MarkdownStyleGuide(id: "x", name: "X")
+          .copyWith(quotePadding: 24);
+      expect(MarkdownStyleGuide.fromJson(guide.toJson()).quotePadding, 24);
+    });
+
+    test("the padding is bounded", () {
+      var sheet = _sheetFor(
+          const MarkdownStyleGuide(id: "x", name: "X", quotePadding: 400));
+      expect(sheet.blockquotePadding, const EdgeInsets.all(40));
+    });
+  });
+
+  // The design a table needs to be read across as well as down: a header row
+  // told apart from the body, every other row tinted, cells with room in
+  // them, and a choice about how the width is divided.
+  group("tables", () {
+    test("the header row gets a background of its own", () {
+      var sheet = _sheetFor(const MarkdownStyleGuide(
+        id: "x",
+        name: "X",
+        tableHeadBackground: MarkdownInk.of(MarkdownRole.raised),
+      ));
+      expect(sheet.tableHeadDecoration?.color, _role(MarkdownRole.raised));
+    });
+
+    test("alternating rows get theirs", () {
+      var sheet = _sheetFor(const MarkdownStyleGuide(
+        id: "x",
+        name: "X",
+        tableStripeInk: MarkdownInk.of(MarkdownRole.raised),
+      ));
+      expect((sheet.tableCellsDecoration! as BoxDecoration).color,
+          _role(MarkdownRole.raised));
+    });
+
+    // Naming neither leaves a table exactly as the theme draws one, which is
+    // what a guide that says nothing has to mean.
+    test("naming neither paints nothing", () {
+      var sheet = _sheetFor(const MarkdownStyleGuide(id: "x", name: "X"));
+      expect(sheet.tableHeadDecoration, isNull);
+      expect(sheet.tableCellsDecoration, isNull);
+    });
+
+    test("cell padding is wider than it is tall", () {
+      var sheet = _sheetFor(
+          const MarkdownStyleGuide(id: "x", name: "X", tableCellPadding: 10));
+      expect(sheet.tableCellsPadding?.top, 10);
+      expect(sheet.tableCellsPadding?.left, greaterThan(10),
+          reason: "a cell needs more room beside its text than above it");
+    });
+
+    test("the columns divide the width or fit their contents", () {
+      expect(
+          _sheetFor(const MarkdownStyleGuide(id: "x", name: "X"))
+              .tableColumnWidth,
+          isA<FlexColumnWidth>());
+      expect(
+          _sheetFor(const MarkdownStyleGuide(
+                  id: "x", name: "X", tableFit: MarkdownTableFit.fitContent))
+              .tableColumnWidth,
+          isA<IntrinsicColumnWidth>());
+    });
+
+    test("every table setting survives being saved", () {
+      var guide = const MarkdownStyleGuide(id: "x", name: "X").copyWith(
+        tableHeadBackground: const MarkdownInk.of(MarkdownRole.accent),
+        tableStripeInk: const MarkdownInk.of(MarkdownRole.raised),
+        tableCellPadding: 12,
+        tableFit: MarkdownTableFit.fitContent,
+      );
+      var back = MarkdownStyleGuide.fromJson(guide.toJson());
+      expect(back.tableHeadBackground.role, MarkdownRole.accent);
+      expect(back.tableStripeInk.role, MarkdownRole.raised);
+      expect(back.tableCellPadding, 12);
+      expect(back.tableFit, MarkdownTableFit.fitContent);
     });
   });
 
@@ -234,21 +434,41 @@ void main() {
   // spacing figure between every pair of blocks -- paragraphs and list items
   // alike -- so the gap that made the prose read well pulled the bullets
   // apart.
+  // Two gaps, and every block gets the one that belongs to it.
+  //
+  // Upstream flutter_markdown has a single figure and puts it between every
+  // pair of block children, list items included. This used to set it to the
+  // smaller of the two and have paragraphs make up the difference with
+  // padding of their own -- but only a paragraph can do that. There is no
+  // such padding for a quotation, a code block, a table or a rule, so
+  // everything except prose sat hard against whatever came before it and
+  // the blank line the writer left produced no space at all. The vendored
+  // copy takes both figures.
   group("paragraphs and list items are spaced separately", () {
-    test("the shared figure is the list's, and paragraphs add their own", () {
+    test("blocks get the block gap and list items get their own", () {
       var guide = const MarkdownStyleGuide(
           id: "x", name: "X", blockGap: 16, listItemGap: 4);
       var sheet = applyGuide(_base(), guide, _role);
-      expect(sheet.blockSpacing, 4, reason: "what goes between list items");
-      expect(sheet.pPadding?.bottom, 12,
-          reason: "paragraphs make up the difference to 16 themselves");
+      expect(sheet.blockSpacing, 16,
+          reason: "what goes between a heading and the quotation under it");
+      expect(sheet.listItemSpacing, 4, reason: "what goes between bullets");
     });
 
-    test("a guide that wants them equal adds no padding", () {
+    // The padding is what the old workaround was made of, and a paragraph
+    // carrying it as well would now be spaced twice over.
+    test("paragraphs no longer carry a gap of their own", () {
       var guide = const MarkdownStyleGuide(
-          id: "x", name: "X", blockGap: 8, listItemGap: 8);
+          id: "x", name: "X", blockGap: 16, listItemGap: 4);
       var sheet = applyGuide(_base(), guide, _role);
-      expect(sheet.pPadding?.bottom, 0);
+      expect(sheet.pPadding, EdgeInsets.zero);
+    });
+
+    test("both are bounded", () {
+      var guide = const MarkdownStyleGuide(
+          id: "x", name: "X", blockGap: 400, listItemGap: 400);
+      var sheet = applyGuide(_base(), guide, _role);
+      expect(sheet.blockSpacing, 48);
+      expect(sheet.listItemSpacing, 48);
     });
 
     test("Article no longer spaces its bullets like paragraphs", () {

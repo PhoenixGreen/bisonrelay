@@ -19,10 +19,34 @@ const defaultGuideId = "default";
 /// Default changes nothing at all. It is the app exactly as it renders
 /// without this feature, and it is here as a named thing so that "use the
 /// plain one" is a choice a writer can make rather than an absence.
+///
+/// It has to *say* the customary ladder rather than leave it unsaid, because
+/// every size in a guide is a share of the body -- which is what the editor's
+/// sliders read, what the composer's preview draws, and how the guides below
+/// are written. A Default that said nothing would mean "every heading the
+/// same size as the body", and the moment a reader changed one unrelated
+/// thing about it that is what they would get. These are the ratios the app
+/// has always drawn: 24, 22, 16, 16, 14 and 12 points against a 14-point
+/// body, and inline code at 85% of it.
 const _default = MarkdownStyleGuide(
   id: defaultGuideId,
   name: "Default",
   builtIn: true,
+  headings: [
+    TextRule(scale: 24 / 14),
+    TextRule(scale: 22 / 14),
+    TextRule(scale: 16 / 14),
+    TextRule(scale: 16 / 14),
+    TextRule(scale: 1.0),
+    TextRule(scale: 12 / 14),
+  ],
+  code: TextRule(scale: 0.85),
+  // Inherit rather than the class's own "lines and borders", so the rule and
+  // the table grid are left as the reader's theme draws them. Default is the
+  // guide that changes nothing, and naming a colour -- even a sensible one --
+  // is changing something.
+  ruleInk: MarkdownInk.inherit,
+  tableBorderInk: MarkdownInk.inherit,
 );
 
 /// Article is for something meant to be read at length: generous line

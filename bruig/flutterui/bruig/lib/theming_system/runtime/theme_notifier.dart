@@ -465,32 +465,81 @@ class ThemeNotifier with ChangeNotifier {
         MarkdownRole.muted => textColor(TextColor.onSurfaceVariant),
         MarkdownRole.accent => surfaceColor(SurfaceColor.primary),
         MarkdownRole.link => surfaceColor(SurfaceColor.primary),
-        MarkdownRole.quote => textColor(TextColor.onTertiaryContainer),
+        MarkdownRole.quote => textColor(TextColor.onSurfaceVariant),
         MarkdownRole.quoteBar => surfaceColor(SurfaceColor.inverseSurface),
         MarkdownRole.raised => surfaceColor(SurfaceColor.surfaceContainer),
         MarkdownRole.outline => colors.outlineVariant,
       };
 
+  /// markdownLinkStyle is [base] set as a link would be set in a post.
+  ///
+  /// The theme's link colour with the active style guide's Links rule folded
+  /// on -- the same two steps applyGuide takes for the `a` entry of a
+  /// stylesheet, offered here for the things that draw a link without going
+  /// through one.
+  ///
+  /// The link-card plugin is the reason it exists. It draws a bare URL
+  /// itself, and did so in the raw Material accent with an underline it
+  /// added unconditionally -- so a written-out link and a bare URL in the
+  /// same post were two different colours, and Links > Underline was obeyed
+  /// by one of them and not the other.
+  TextStyle markdownLinkStyle(TextStyle? base) {
+    var ink = markdownRoleColor(MarkdownRole.link);
+    return markdownGuide.link.applyTo(
+      (base ?? const TextStyle()).copyWith(color: ink, decorationColor: ink),
+      markdownRoleColor,
+      paletteColor: markdownPaletteColor,
+    );
+  }
+
   MarkdownStyleSheet _mdStyleSheet = MarkdownStyleSheet();
   MarkdownStyleSheet get mdStyleSheet => _mdStyleSheet;
   void _rebuildMarkdownStyleSheet() {
     _mdStyleSheet = MarkdownStyleSheet(
+      // Links, in the theme's own accent rather than flutter_markdown's
+      // hard-coded Colors.blue -- which is what a link rendered as until
+      // this was set, in every theme, whatever the palette said.
+      //
+      // decorationColor with it, so an underline drawn on a link (the style
+      // guide's Links > Underline) is the colour of the link and not of the
+      // paragraph the link happens to sit in.
+      a: TextStyle(
+          color: markdownRoleColor(MarkdownRole.link),
+          decorationColor: markdownRoleColor(MarkdownRole.link)),
       // Explicit color: without it, flutter_markdown falls back to the raw
       // Material3 seed ColorScheme instead of this app's theme, which is
       // where the stray, un-themed purple tint on inline code/relayed text
       // came from.
-      code: extraTextStyles.monospaced
-          .copyWith(color: textColor(TextColor.onSurfaceVariant)),
+      // Transparent, not absent: MarkdownStyleSheet.fromTheme gives `code` a
+      // backgroundColor of the card colour, and that is painted behind the
+      // letters themselves. Inside a code block -- which already has a
+      // background of its own -- it showed as a second, darker shape folded
+      // tightly around the text and broken between the lines. A TextStyle
+      // field cannot be un-set by copyWith, so it is painted with nothing.
+      code: extraTextStyles.monospaced.copyWith(
+          color: textColor(TextColor.onSurfaceVariant),
+          backgroundColor: Colors.transparent),
       codeblockDecoration:
           BoxDecoration(color: surfaceColor(SurfaceColor.surfaceContainer)),
-      blockquote: TextStyle(color: textColor(TextColor.onTertiaryContainer)),
+      // A quotation is set quieter than the body on a raised panel, both
+      // taken from the palette.
+      //
+      // It used to use the tertiary container pair, which is not a palette
+      // colour at all: ColorScheme.fromSeed derives it from the seed's own
+      // tonal ramp, so whatever the palette said, a quotation came out on
+      // Material's stock purple. Reported as an unknown purple, and it was.
+      blockquote: TextStyle(color: textColor(TextColor.onSurfaceVariant)),
       blockquoteDecoration: BoxDecoration(
-          color: surfaceColor(SurfaceColor.tertiaryContainer),
+          color: surfaceColor(SurfaceColor.surfaceContainerHigh),
           border: Border(
               left: BorderSide(
                   color: surfaceColor(SurfaceColor.inverseSurface), width: 2))),
     );
+    // <pre> is what a fenced code block parses to, and the sheet's own map
+    // sets it from the paragraph style. Code blocks are set in the code
+    // face, so it is pointed at that instead.
     _mdStyleSheet.styles["pre"] = _mdStyleSheet.code;
+    _mdStyleSheet.styles["embedtext"] = _mdStyleSheet.code;
   }
 
   late emoji_picker.Config _emojiPickerConfig;

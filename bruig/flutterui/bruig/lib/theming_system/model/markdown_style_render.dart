@@ -24,9 +24,42 @@ MarkdownStyleSheet applyGuide(
   Color Function(MarkdownRole) roleColor, {
   Color? Function(int)? paletteColor,
 }) {
-  TextStyle on(TextStyle? from, TextRule rule) =>
-      rule.applyTo(from ?? const TextStyle(fontSize: 14), roleColor,
-          paletteColor: paletteColor);
+  // The body first, because every other size is a share of it.
+  var body = guide.body.applyTo(
+      base.p ?? const TextStyle(fontSize: 14), roleColor,
+      paletteColor: paletteColor);
+  var bodySize = body.fontSize ?? 14;
+
+  /// on folds one rule onto the theme's style for that element, measuring
+  /// the rule's scale against the body rather than against whatever size the
+  /// theme happened to give that element.
+  ///
+  /// The editor says "Size: 190% of body text" and the guides are written
+  /// that way, so that is what it has to mean. Applied to the theme's own
+  /// style it did not: MarkdownStyleSheet.fromTheme sets h1 from
+  /// headlineSmall, so Article's 1.9 was 1.9 times *that* -- an h1 at some
+  /// 325% of the body, and inline code at 85% of it while the editor read
+  /// 100%. The composer's preview already scaled from the body, so the two
+  /// disagreed about the same guide.
+  TextStyle on(TextStyle? from, TextRule rule) => rule.applyTo(
+      (from ?? const TextStyle()).copyWith(fontSize: bodySize), roleColor,
+      paletteColor: paletteColor);
+
+  /// onInline is [on] for a run inside a line rather than a line of its own:
+  /// bold, italic, a link.
+  ///
+  /// flutter_markdown builds these by merging their style onto the style of
+  /// whatever they sit in, so a size stated here replaces the surrounding
+  /// text's -- and a bold word inside a heading would come out at body size.
+  /// At 100% nothing is stated and the run keeps the size around it; a rule
+  /// that does ask for a different size gets a share of the body, which is
+  /// what the editor's slider says.
+  TextStyle onInline(TextStyle? from, TextRule rule) => rule.applyTo(
+      rule.scale == 1.0
+          ? (from ?? const TextStyle())
+          : (from ?? const TextStyle()).copyWith(fontSize: bodySize),
+      roleColor,
+      paletteColor: paletteColor);
 
   WrapAlignment wrap(MarkdownAlign align) => switch (align) {
         MarkdownAlign.left => WrapAlignment.start,
@@ -44,35 +77,59 @@ MarkdownStyleSheet applyGuide(
   var rule = guide.ruleInk.resolve(roleColor, paletteColor: paletteColor);
   var tableEdge =
       guide.tableBorderInk.resolve(roleColor, paletteColor: paletteColor);
+  var tableHead =
+      guide.tableHeadBackground.resolve(roleColor, paletteColor: paletteColor);
+  var tableStripe =
+      guide.tableStripeInk.resolve(roleColor, paletteColor: paletteColor);
 
-  return base.copyWith(
-    p: on(base.p, guide.body),
+  var sheet = base.copyWith(
+    p: body,
     h1: on(base.h1, guide.headings[0]),
     h2: on(base.h2, guide.headings[1]),
     h3: on(base.h3, guide.headings[2]),
     h4: on(base.h4, guide.headings[3]),
     h5: on(base.h5, guide.headings[4]),
     h6: on(base.h6, guide.headings[5]),
-    a: on(base.a, guide.link),
-    strong: on(base.strong, guide.strong),
-    em: on(base.em, guide.emphasis),
+    // Links, bold and italic are runs inside a line, so they keep the size
+    // of whatever they sit in unless the guide asks otherwise. Folded on as
+    // block elements were, a rule saying "100% of body text" pinned them to
+    // a flat 14 points -- so a link read at the old size for anyone who had
+    // scaled their body text up, and a bold word inside a heading came out
+    // no bigger than the paragraph below it.
+    a: onInline(base.a, guide.link),
+    strong: onInline(base.strong, guide.strong),
+    em: onInline(base.em, guide.emphasis),
     blockquote: on(base.blockquote, guide.quote),
-    code: on(base.code, guide.code),
+    // The block's colour goes behind the letters as well as behind the
+    // block, so the two agree exactly and a code block reads as one shape.
+    //
+    // MarkdownStyleSheet.fromTheme paints `code` on the card colour, and
+    // that survives into every sheet built from it -- a second background,
+    // a different colour from the block's, folded around the text and
+    // breaking between the lines. Matching it to the block makes it vanish
+    // there and gives inline code the same tint everywhere else.
+    code: on(base.code, guide.code)
+        .copyWith(backgroundColor: codeBack ?? Colors.transparent),
     listBullet: on(base.listBullet, guide.listBullet),
     tableHead: on(base.tableHead, guide.tableHead),
     tableBody: on(base.tableBody, guide.tableBody),
-    // flutter_markdown has one spacing figure and puts it between every
-    // pair of block children -- paragraphs and list items alike (see
-    // _addBlockChild in its builder). The two want different numbers: prose
-    // reads better with a clear gap, and a list with that same gap between
-    // every bullet falls apart into unrelated lines.
+    // The space between blocks, and the space between the items of a list,
+    // which are two different numbers: prose reads better with a clear gap
+    // between paragraphs, and a list with that same gap between every
+    // bullet falls apart into unrelated lines.
     //
-    // So the shared figure is set to the smaller of the two, and paragraphs
-    // make up the difference with padding of their own, which nothing else
-    // uses.
-    blockSpacing: guide.listItemGap.clamp(0, 48),
-    pPadding: EdgeInsets.only(
-        bottom: (guide.blockGap - guide.listItemGap).clamp(0, 48)),
+    // Upstream flutter_markdown has one figure and puts it between every
+    // pair of block children, list items included, so this used to set it
+    // to the smaller of the two and have paragraphs make up the difference
+    // with padding of their own. Only paragraphs can do that -- there is no
+    // such padding for a quotation, a code block, a table or a rule -- so
+    // everything else sat hard against whatever came before it, and the
+    // blank line the writer left between a heading and a quotation produced
+    // no space at all. The vendored copy takes both figures; see
+    // MarkdownStyleSheet.listItemSpacing.
+    blockSpacing: guide.blockGap.clamp(0, 48),
+    listItemSpacing: guide.listItemGap.clamp(0, 48),
+    pPadding: EdgeInsets.zero,
     listIndent: guide.listIndent.clamp(8, 64),
     textAlign: wrap(guide.bodyAlign),
     // The quote's bar and background are one decoration, so a guide that
@@ -87,6 +144,9 @@ MarkdownStyleSheet applyGuide(
     // bar, because the branch that built the decoration wrote a null border
     // whenever no bar colour had been given.
     blockquoteDecoration: _quoteDecoration(base, guide, quoteBar, quoteBack),
+    // The space between the bar and the words, and around the rest of it.
+    // Without it the two sit hard against each other.
+    blockquotePadding: EdgeInsets.all(guide.quotePadding.clamp(0, 40)),
     codeblockDecoration: codeBack == null
         ? base.codeblockDecoration
         : BoxDecoration(color: codeBack),
@@ -96,11 +156,39 @@ MarkdownStyleSheet applyGuide(
             border: Border(
                 top: BorderSide(
                     color: rule, width: guide.ruleThickness.clamp(0.5, 8)))),
+    // Width zero is "no grid", not a hairline: BorderSide treats 0 as the
+    // thinnest line it can draw rather than as nothing, so the slider's
+    // bottom stop has to be spelled out as an absent border.
+    // The header row and every other body row, which are what make a table
+    // readable across as well as down. Upstream has no header decoration at
+    // all -- see the vendored copy.
+    tableHeadDecoration:
+        tableHead == null ? null : BoxDecoration(color: tableHead),
+    tableCellsDecoration:
+        tableStripe == null ? null : BoxDecoration(color: tableStripe),
+    tableCellsPadding: EdgeInsets.symmetric(
+        horizontal: (guide.tableCellPadding * 1.5).clamp(0, 48),
+        vertical: guide.tableCellPadding.clamp(0, 32)),
+    tableColumnWidth: switch (guide.tableFit) {
+      MarkdownTableFit.fitContent => const IntrinsicColumnWidth(),
+      MarkdownTableFit.equal => const FlexColumnWidth(),
+    },
     tableBorder: tableEdge == null
         ? base.tableBorder
-        : TableBorder.all(
-            color: tableEdge, width: guide.tableBorderWidth.clamp(0, 6)),
+        : (guide.tableBorderWidth <= 0
+            ? const TableBorder()
+            : TableBorder.all(
+                color: tableEdge, width: guide.tableBorderWidth.clamp(0, 6))),
   );
+
+  // copyWith rebuilds the sheet's tag map from its fields, and that map sets
+  // <pre> -- what a fenced code block parses to -- from the paragraph style.
+  // Code is set in the code face wherever it appears, so both the block tag
+  // and the attached-text-file tag are pointed at it again, exactly as the
+  // theme's own sheet does.
+  sheet.styles["pre"] = sheet.code;
+  sheet.styles["embedtext"] = sheet.code;
+  return sheet;
 }
 
 /// _quoteDecoration is the theme's quote styling with the guide's changes.
