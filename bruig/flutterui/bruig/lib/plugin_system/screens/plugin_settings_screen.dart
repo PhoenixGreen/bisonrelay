@@ -28,6 +28,32 @@ class PluginsSettingsScreen extends StatefulWidget {
 class _PluginsSettingsScreenState extends State<PluginsSettingsScreen> {
   bool importing = false;
 
+  /// importPlugin asks first, then picks.
+  ///
+  /// The disclosure is not a formality. A plugin runs sandboxed -- no
+  /// filesystem, no raw syscalls -- but every one of them is granted network
+  /// access by the host, unconditionally and without ever saying so, and a
+  /// plugin can draw its own UI in places the app also draws. Neither is
+  /// unreasonable for software somebody chose to install; both are things
+  /// they should be told before choosing.
+  ///
+  /// Stated in general terms because there is nothing per-plugin to state
+  /// yet: every plugin has exactly these reaches. When a manifest can declare
+  /// what it actually wants, this becomes that list and the wording here goes
+  /// away.
+  void confirmImportPlugin() {
+    showConfirmDialog(context,
+        title: "Install a plugin?",
+        content: "Plugins run in a sandbox: they cannot read your files or "
+            "run programs on your computer.\n\n"
+            "They can access the internet, store their own data, and show "
+            "their own controls inside Bison Relay -- including in Settings. "
+            "Anything a plugin shows is labelled with its name.\n\n"
+            "Install plugins only from a source you trust.",
+        confirmButtonText: "Choose a plugin",
+        onConfirm: importPlugin);
+  }
+
   void importPlugin() async {
     var snackbar = SnackBarModel.of(context);
     var model = Provider.of<PluginManagerModel>(context, listen: false);
@@ -110,7 +136,7 @@ class _PluginsSettingsScreenState extends State<PluginsSettingsScreen> {
             // so the button keeps its size while an import runs and nothing
             // on the row moves.
             IconButton(
-              onPressed: importing ? null : importPlugin,
+              onPressed: importing ? null : confirmImportPlugin,
               tooltip: "Import a plugin",
               icon: importing
                   ? const SizedBox(

@@ -55,16 +55,41 @@ class PluginSlots {
 }
 
 /// SlotEntry is one plugin's contribution to a slot, with the plugin it came
-/// from -- which the renderer needs in order to call back into it, and which
-/// nothing else should use to decide anything.
+/// from.
+///
+/// [pluginId] is what the renderer calls back into, and nothing else should
+/// use it to decide anything. [pluginName] is for saying whose UI this is --
+/// which every slot has to do, and which is the whole reason the name is
+/// carried here rather than looked up where it happens to be needed.
 class SlotEntry {
   final String pluginId;
+  final String pluginName;
   final PluginContribution contribution;
-  const SlotEntry(this.pluginId, this.contribution);
+  const SlotEntry(this.pluginId, this.pluginName, this.contribution);
 
   String get id => contribution.id;
   String get label => contribution.label;
   IconData? get icon => pluginIconOrNull(contribution.icon);
+
+  /// attributedLabel names the contribution and the plugin behind it, for
+  /// anywhere a plugin draws outside its own tab.
+  ///
+  /// This matters more than it looks. A widget tree is data and cannot
+  /// execute anything, so the worst a hostile plugin can do is *say*
+  /// something -- but a plugin drawing a form inside Settings is drawing it
+  /// somewhere the reader takes to be the app speaking, and "please re-enter
+  /// your seed phrase" is a sentence anybody can write. Naming the plugin
+  /// everywhere its UI appears is what keeps the reader able to tell who is
+  /// asking, and it is cheap enough that there is no reason not to.
+  ///
+  /// Collapses to just the label when the plugin named its contribution
+  /// after itself, which is common and would otherwise read "RSS -- RSS".
+  String get attributedLabel {
+    var name = pluginName.trim();
+    if (name.isEmpty || name.toLowerCase() == label.toLowerCase()) return label;
+    if (label.toLowerCase().contains(name.toLowerCase())) return label;
+    return "$label \u2014 $name";
+  }
 }
 
 /// slotEntries lists what the currently enabled plugins contribute to [slot],
@@ -78,7 +103,8 @@ List<SlotEntry> slotEntries(PluginManagerModel plugins, String slot) {
   for (var plugin in plugins.plugins) {
     if (!plugin.enabled) continue;
     for (var contribution in plugin.manifest.contributionsTo(slot)) {
-      out.add(SlotEntry(plugin.manifest.id, contribution));
+      out.add(SlotEntry(
+          plugin.manifest.id, plugin.manifest.name, contribution));
     }
   }
   out.sort((a, b) => a.pluginId.compareTo(b.pluginId));
@@ -239,8 +265,13 @@ class PluginSlotPanel extends StatelessWidget {
   /// that is already about a particular plugin -- its row in Settings.
   final String? pluginId;
 
-  /// heading draws each contribution's label above it. Off where the
-  /// surrounding surface already names them.
+  /// headings draws each contribution's label, and the plugin behind it,
+  /// above the contribution.
+  ///
+  /// Only turn this off where the surrounding surface ALREADY names the
+  /// plugin -- inside its own row in Settings, say. Somewhere that does not,
+  /// a plugin's UI would be drawing unattributed in the app's own chrome,
+  /// which is the one thing slots must not allow.
   final bool headings;
 
   const PluginSlotPanel(this.slot,
@@ -267,7 +298,7 @@ class PluginSlotPanel extends StatelessWidget {
                   Icon(entry.icon, size: 16),
                   const SizedBox(width: 6),
                 ],
-                Txt.S(entry.label,
+                Txt.S(entry.attributedLabel,
                     style: const TextStyle(fontWeight: FontWeight.w600)),
               ]),
             ),
@@ -308,7 +339,7 @@ class PluginSlotActions extends StatelessWidget {
         for (var entry in entries)
           IconButton(
             iconSize: iconSize,
-            tooltip: entry.label,
+            tooltip: entry.attributedLabel,
             // A contribution with no icon still needs something pressable;
             // the generic plugin marker says "this came from a plugin",
             // which is the honest thing for it to say.
@@ -334,6 +365,10 @@ List<ContextMenuButtonItem> pluginSlotMenuItems(
   return [
     for (var entry in slotEntries(plugins, slot))
       ContextMenuButtonItem(
+        // The bare label here, not the attributed one: a selection toolbar
+        // is a row of one-word entries and does not survive a long label.
+        // The dialog it opens is attributed, which is where anything is
+        // actually read or typed.
         label: entry.label,
         onPressed: () {
           // The caller usually has a toolbar to dismiss first: leaving it up
@@ -352,7 +387,10 @@ Future<void> showPluginContributionDialog(
     showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(entry.label),
+        // Attributed, always. This is the one slot presentation that fills
+        // the screen and takes input, so it is the one that most needs to
+        // say whose it is.
+        title: Text(entry.attributedLabel),
         content: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 420),
           child: SingleChildScrollView(

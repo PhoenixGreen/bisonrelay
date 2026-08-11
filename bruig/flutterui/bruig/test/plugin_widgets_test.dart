@@ -276,8 +276,9 @@ void main() {
 
   group("slots", () {
     PluginManifest manifestWith(
-            String id, Map<String, List<PluginContribution>> contributes) =>
-        PluginManifest(id, id, "1.0.0", "d", "s", "dynamic-wasm", 1,
+            String id, Map<String, List<PluginContribution>> contributes,
+            {String? name}) =>
+        PluginManifest(id, name ?? id, "1.0.0", "d", "s", "dynamic-wasm", 1,
             contributes, const []);
 
     test("a slot lists the contributions to it, in plugin-id order", () {
@@ -302,6 +303,68 @@ void main() {
       expect(entries.map((e) => e.pluginId), ["alpha", "zed"],
           reason: "a stable order means the same set always draws the same");
       expect(entries.last.label, "Zed Settings");
+    });
+
+    // Attribution is a security property, not a nicety. A widget tree cannot
+    // execute anything, so the worst a hostile plugin can do is *say*
+    // something -- but saying it inside Settings, where the reader takes the
+    // app to be speaking, is most of what makes a convincing lie. Every slot
+    // that draws a plugin's UI has to name the plugin.
+    group("attribution", () {
+      test("a contribution is labelled with the plugin behind it", () {
+        var plugins = FakePluginManager([
+          PluginInfo(
+              manifestWith(
+                  "citations",
+                  {
+                    PluginSlots.composerAction: [
+                      PluginContribution("insert", "Insert citation", "", const [])
+                    ]
+                  },
+                  name: "Citations"),
+              true),
+        ]);
+
+        var entry = slotEntries(plugins, PluginSlots.composerAction).single;
+        expect(entry.attributedLabel, "Insert citation \u2014 Citations");
+      });
+
+      test("a label that already names the plugin is not doubled", () {
+        var plugins = FakePluginManager([
+          PluginInfo(
+              manifestWith(
+                  "rss",
+                  {
+                    PluginSlots.settingsPage: [
+                      PluginContribution("prefs", "RSS Settings", "", const [])
+                    ]
+                  },
+                  name: "RSS"),
+              true),
+        ]);
+
+        var entry = slotEntries(plugins, PluginSlots.settingsPage).single;
+        expect(entry.attributedLabel, "RSS Settings",
+            reason: "\"RSS Settings -- RSS\" reads as a mistake");
+      });
+
+      test("a plugin with no name falls back to the bare label", () {
+        var plugins = FakePluginManager([
+          PluginInfo(
+              manifestWith(
+                  "x",
+                  {
+                    PluginSlots.settingsPage: [
+                      PluginContribution("p", "Options", "", const [])
+                    ]
+                  },
+                  name: ""),
+              true),
+        ]);
+
+        expect(slotEntries(plugins, PluginSlots.settingsPage).single
+            .attributedLabel, "Options");
+      });
     });
 
     test("a disabled plugin contributes nothing", () {
