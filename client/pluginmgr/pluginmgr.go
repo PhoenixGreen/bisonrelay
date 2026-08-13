@@ -23,14 +23,21 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/companyzero/bisonrelay/client/pluginmgr/builtin"
 	"github.com/companyzero/bisonrelay/internal/jsonfile"
 	"github.com/decred/slog"
 )
 
 const (
 	installedDirName = "installed"
+	builtinDirName   = "builtin"
 	stateFileName    = "state.json"
 	manifestFileName = "manifest.json"
+
+	// builtinStampName records which build wrote the built-in plugin
+	// currently on disk, so a launch that would write identical bytes can
+	// skip decompressing an 8MB module instead.
+	builtinStampName = ".builtin-stamp"
 
 	// RendererKindDynamicWasm is the only renderer kind: Manifest.WasmFile
 	// names a WebAssembly module (sandboxed by client/pluginmgr/wasmhost)
@@ -346,6 +353,11 @@ type ScreenDef struct {
 type Plugin struct {
 	Manifest Manifest `json:"manifest"`
 	Enabled  bool     `json:"enabled"`
+
+	// Builtin reports that this plugin ships inside the client rather than
+	// having been imported. It may be enabled and disabled like any other,
+	// but it cannot be removed and nothing imported may take its id.
+	Builtin bool `json:"builtin"`
 }
 
 // Config configures a Manager.
@@ -365,6 +377,10 @@ type Manager struct {
 	mtx     sync.Mutex
 	byID    map[string]Manifest
 	enabled map[string]bool
+
+	// builtin is the ids that ship with the client. Held separately from
+	// byID because it decides what may be done to a plugin, not what it is.
+	builtin map[string]bool
 }
 
 // NewManager creates a Manager, loading any already-installed plugins and
@@ -383,10 +399,19 @@ func NewManager(cfg Config) (*Manager, error) {
 		log:     log,
 		byID:    make(map[string]Manifest),
 		enabled: make(map[string]bool),
+		builtin: make(map[string]bool),
 	}
 
 	if err := os.MkdirAll(m.installedDir(), 0o700); err != nil {
 		return nil, fmt.Errorf("unable to create installed dir: %w", err)
+	}
+
+	// Built-ins first, so an imported plugin that somehow shares an id is
+	// the one that loses -- see loadInstalled. Their failure is not fatal:
+	// a client that cannot write them out is still a working client with
+	// two features missing, which beats one that will not start.
+	if err := m.loadBuiltins(); err != nil {
+		m.log.Errorf("pluginmgr: unable to install built-in plugins: %v", err)
 	}
 
 	if err := m.loadInstalled(); err != nil {
@@ -403,12 +428,134 @@ func (m *Manager) installedDir() string {
 	return filepath.Join(m.cfg.Root, installedDirName)
 }
 
+// builtinDir is where the plugins that ship with the client are written out.
+//
+// Separate from installed/ so the two can never be confused: nothing here
+// was imported, removing a folder here achieves nothing (the next launch
+// writes it back), and a user reading their own app data can see at a glance
+// which plugins they chose and which came with the app.
+func (m *Manager) builtinDir() string {
+	return filepath.Join(m.cfg.Root, builtinDirName)
+}
+
+// loadBuiltins writes the embedded plugins out and registers them.
+//
+// They are written to disk rather than run from memory because a wasm module
+// is loaded by path (see wasmhost and InstallDir), and because a plugin's
+// manifest.json is read by exactly one piece of code, which should not need
+// to care where the bytes came from.
+//
+// One built-in failing does not stop the others: a missing feature is worth
+// reporting, but not worth taking the rest of the plugin system down for.
+func (m *Manager) loadBuiltins() error {
+	var firstErr error
+	for _, bp := range builtin.All() {
+		if err := m.installBuiltin(bp); err != nil {
+			m.log.Errorf("pluginmgr: built-in %q unavailable: %v", bp.ID, err)
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+
+		manifest, err := m.readManifest(m.builtinPluginDir(bp.ID))
+		if err != nil {
+			m.log.Errorf("pluginmgr: built-in %q has an unreadable manifest: %v",
+				bp.ID, err)
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		if manifest.ID != bp.ID {
+			err := fmt.Errorf("manifest id %q does not match %q", manifest.ID, bp.ID)
+			m.log.Errorf("pluginmgr: built-in %q: %v", bp.ID, err)
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+
+		m.mtx.Lock()
+		m.byID[bp.ID] = manifest
+		m.builtin[bp.ID] = true
+		m.mtx.Unlock()
+	}
+	return firstErr
+}
+
+func (m *Manager) builtinPluginDir(id string) string {
+	return filepath.Join(m.builtinDir(), id)
+}
+
+// installBuiltin writes one built-in out, skipping the work when what is
+// already there came from the same build.
+//
+// The stamp is the size of the compressed module and of the manifest, which
+// is enough: the bytes are baked into the binary, so they only change when
+// the binary does, and a rebuild that changed neither length changed nothing
+// a user can see. Hashing 5MB on every launch to be certain of that would
+// cost more than it could ever save.
+func (m *Manager) installBuiltin(bp builtin.Plugin) error {
+	dir := m.builtinPluginDir(bp.ID)
+	stampPath := filepath.Join(dir, builtinStampName)
+	stamp := fmt.Sprintf("%d %d\n", len(bp.WasmGz), len(bp.Manifest))
+
+	if have, err := os.ReadFile(stampPath); err == nil && string(have) == stamp {
+		return nil
+	}
+
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return fmt.Errorf("unable to create built-in dir: %w", err)
+	}
+
+	var manifest Manifest
+	if err := json.Unmarshal(bp.Manifest, &manifest); err != nil {
+		return fmt.Errorf("unable to parse embedded manifest: %w", err)
+	}
+	manifest.Normalize()
+	// Validated like anything imported. Being shipped is not a reason to
+	// skip the check -- it is a reason for the check to have been run
+	// before anyone shipped it.
+	if err := validateManifest(manifest); err != nil {
+		return fmt.Errorf("embedded manifest is invalid: %w", err)
+	}
+
+	wasm, err := bp.Wasm()
+	if err != nil {
+		return err
+	}
+
+	wasmName := manifest.WasmFile
+	if wasmName == "" {
+		return fmt.Errorf("embedded manifest names no wasm file")
+	}
+	if err := os.WriteFile(filepath.Join(dir, wasmName), wasm, 0o600); err != nil {
+		return fmt.Errorf("unable to write built-in module: %w", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, manifestFileName), bp.Manifest, 0o600); err != nil {
+		return fmt.Errorf("unable to write built-in manifest: %w", err)
+	}
+	// Stamped last, so an interrupted write is retried next launch rather
+	// than being taken for a finished one.
+	if err := os.WriteFile(stampPath, []byte(stamp), 0o600); err != nil {
+		return fmt.Errorf("unable to write built-in stamp: %w", err)
+	}
+	return nil
+}
+
 // InstallDir returns the on-disk directory a plugin with the given id is
 // installed under (whether or not that id is actually installed). Callers
 // that need to reach files alongside a plugin's manifest.json -- e.g.
 // wasmhost loading Manifest.WasmFile -- use this rather than reconstructing
 // Config.Root themselves.
 func (m *Manager) InstallDir(id string) string {
+	m.mtx.Lock()
+	isBuiltin := m.builtin[id]
+	m.mtx.Unlock()
+	if isBuiltin {
+		return m.builtinPluginDir(id)
+	}
 	return filepath.Join(m.installedDir(), id)
 }
 
@@ -441,6 +588,14 @@ func (m *Manager) loadInstalled() error {
 		if manifest.ID != id {
 			m.log.Warnf("pluginmgr: skipping plugin dir %q: manifest id %q does not match dir name",
 				id, manifest.ID)
+			continue
+		}
+		// A built-in of the same id wins. Import refuses to create this
+		// case, so reaching it means the folder was put there by hand or
+		// predates the plugin becoming built in -- either way the shipped
+		// one is the one the app's own features were written against.
+		if m.builtin[id] {
+			m.log.Warnf("pluginmgr: ignoring installed plugin %q: shadowed by the built-in of the same id", id)
 			continue
 		}
 		m.byID[id] = manifest
@@ -638,7 +793,11 @@ func (m *Manager) List() []Plugin {
 
 	out := make([]Plugin, 0, len(m.byID))
 	for id, manifest := range m.byID {
-		out = append(out, Plugin{Manifest: manifest, Enabled: m.enabled[id]})
+		out = append(out, Plugin{
+			Manifest: manifest,
+			Enabled:  m.enabled[id],
+			Builtin:  m.builtin[id],
+		})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Manifest.ID < out[j].Manifest.ID })
 	return out
@@ -689,6 +848,12 @@ func (m *Manager) Remove(id string) error {
 	if _, ok := m.byID[id]; !ok {
 		return fmt.Errorf("no installed plugin with id %q", id)
 	}
+	// A built-in was never installed, so there is nothing to uninstall --
+	// and the next launch would write it straight back. Disabling is what
+	// this means for one of them.
+	if m.builtin[id] {
+		return fmt.Errorf("plugin %q ships with the app and cannot be removed; disable it instead", id)
+	}
 	if err := os.RemoveAll(filepath.Join(m.installedDir(), id)); err != nil {
 		return fmt.Errorf("unable to remove plugin dir: %w", err)
 	}
@@ -728,6 +893,15 @@ func (m *Manager) Import(srcPath string) (Plugin, error) {
 
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
+
+	// Importing over a built-in is refused rather than shadowed. The app's
+	// own features are written against the services these provide, so a
+	// file that claimed one of their ids could replace a shipped feature
+	// with anything at all -- and the user would have no way to tell, since
+	// the settings page would still show one plugin under that name.
+	if m.builtin[manifest.ID] {
+		return Plugin{}, fmt.Errorf("plugin id %q ships with the app and cannot be replaced", manifest.ID)
+	}
 
 	destDir := filepath.Join(m.installedDir(), manifest.ID)
 	if err := os.RemoveAll(destDir); err != nil {

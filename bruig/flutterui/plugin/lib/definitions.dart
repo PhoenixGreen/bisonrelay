@@ -859,16 +859,30 @@ class PluginManifest {
 class PluginInfo {
   final PluginManifest manifest;
   final bool enabled;
-  PluginInfo(this.manifest, this.enabled);
+
+  /// builtin reports that this plugin ships inside the app rather than
+  /// having been imported.
+  ///
+  /// It buys presence, not privilege: a built-in runs in the same sandbox
+  /// and reaches the network through the same proxied client as anything
+  /// imported. What it changes is that it is there without being installed,
+  /// and that it cannot be removed -- only disabled. Defaulted rather than
+  /// required so a client older than the field still parses.
+  @JsonKey(defaultValue: false)
+  final bool builtin;
+
+  // Optional so a caller that predates the field -- a test, or any
+  // construction that only cares about the manifest -- still compiles.
+  PluginInfo(this.manifest, this.enabled, [this.builtin = false]);
   factory PluginInfo.fromJson(Map<String, dynamic> json) =>
       _$PluginInfoFromJson(json);
 }
 
 // DynWidget is one node of a dynamic-wasm plugin's declarative screen (see
 // DynScreenUI): the plugin describes what to show, this app decides how to
-// draw it (in components/dynplugin_screen.dart) -- named Dyn* rather than
-// the bare Go-side ScreenUI/Widget names to avoid colliding with Flutter's
-// own foundational Widget class.
+// draw it (in plugin_system/screens/widget_renderer.dart) -- named Dyn*
+// rather than the bare Go-side ScreenUI/Widget names to avoid colliding with
+// Flutter's own foundational Widget class.
 @JsonSerializable()
 class DynWidget {
   /// The widget to draw. See widget_renderer.dart for the set implemented,
@@ -1160,7 +1174,18 @@ class ThesaurusDefinition {
   final String partOfSpeech;
   @JsonKey(defaultValue: "")
   final String text;
-  ThesaurusDefinition(this.partOfSpeech, this.text);
+
+  /// One sentence using the word in this sense, or empty when the provider
+  /// has none for it.
+  ///
+  /// Often the more useful half. "Marked by good fortune" settles less about
+  /// how to use "happy" than "a felicitous life" does, and a writer choosing
+  /// between two words is usually asking how each is used rather than what
+  /// each denotes. Optional, and empty for most senses.
+  @JsonKey(defaultValue: "")
+  final String example;
+
+  ThesaurusDefinition(this.partOfSpeech, this.text, [this.example = ""]);
   factory ThesaurusDefinition.fromJson(Map<String, dynamic> json) =>
       _$ThesaurusDefinitionFromJson(json);
 }

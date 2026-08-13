@@ -1,5 +1,5 @@
 import 'package:bruig/plugin_system/plugin_system.dart';
-import 'package:bruig/writing_tools/writing_tools.dart';
+import 'package:bruig/plugin_system/writing_tools/writing_tools.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:golib_plugin/definitions.dart';
 import 'package:shared_preferences/shared_preferences.dart';

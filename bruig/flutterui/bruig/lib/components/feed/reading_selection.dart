@@ -1,4 +1,4 @@
-import 'package:bruig/writing_tools/writing_tools.dart';
+import 'package:bruig/plugin_system/writing_tools/writing_tools.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 

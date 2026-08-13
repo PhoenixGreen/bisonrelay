@@ -13,7 +13,7 @@ import 'package:bruig/post_library/post_library_model.dart';
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/components/composer_sidebar_shell.dart';
 import 'package:bruig/models/composer_sidebar.dart';
-import 'package:bruig/writing_tools/writing_tools.dart';
+import 'package:bruig/plugin_system/writing_tools/writing_tools.dart';
 import 'package:bruig/post_library/post_library.dart';
 import 'package:bruig/screens/feed.dart';
 import 'package:bruig/util.dart';

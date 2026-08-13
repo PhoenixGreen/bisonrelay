@@ -1,0 +1,22 @@
+{
+  "id": "prettylinks",
+  "name": "Pretty Links",
+  "version": "1.1.0",
+  "description": "Renders link previews for YouTube and X/Twitter links as native cards (title, author, description, thumbnail) instead of a plain URL.",
+  "enabledByDefault": false,
+  "rendererKind": "dynamic-wasm",
+  "wasmFile": "plugin.wasm",
+  "capabilities": [
+    "link-card"
+  ],
+  "domains": [
+    "youtube.com",
+    "www.youtube.com",
+    "youtu.be",
+    "m.youtube.com",
+    "twitter.com",
+    "www.twitter.com",
+    "x.com",
+    "www.x.com"
+  ]
+}

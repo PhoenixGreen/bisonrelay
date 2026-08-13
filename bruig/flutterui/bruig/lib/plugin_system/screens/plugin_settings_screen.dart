@@ -148,17 +148,41 @@ class _PluginsSettingsScreenState extends State<PluginsSettingsScreen> {
             ),
           ]),
           const SizedBox(height: 10),
-          Consumer<PluginManagerModel>(
-              builder: (context, model, child) => model.plugins.isEmpty
-                  ? const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 20),
-                      child: Txt.S("No plugins installed."),
-                    )
-                  : Column(
-                      children: [
-                        for (var plugin in model.plugins) _pluginTile(plugin),
-                      ],
-                    )),
+          // Split in two, because the two answer different questions. What
+          // ships with the app is not something the reader chose and cannot
+          // remove; what they imported is theirs, and the list of it is
+          // where "what have I installed, and do I still want it" is
+          // answered. Run together, a built-in read as something they had
+          // installed and forgotten.
+          //
+          // The built-in group has no empty state: there is always at least
+          // one, and a heading over nothing would be a bug rather than a
+          // message.
+          Consumer<PluginManagerModel>(builder: (context, model, child) {
+            var builtin = [for (var p in model.plugins) if (p.builtin) p];
+            var imported = [for (var p in model.plugins) if (!p.builtin) p];
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (builtin.isNotEmpty) ...[
+                  _groupHeading("Included with Bison Relay",
+                      "Always available. Turn one off to stop it running; "
+                          "they cannot be removed."),
+                  for (var plugin in builtin) _pluginTile(plugin),
+                  const SizedBox(height: 18),
+                ],
+                _groupHeading("Imported",
+                    "Plugins you have added yourself, from a file."),
+                if (imported.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 16),
+                    child: Txt.S("None imported."),
+                  )
+                else
+                  for (var plugin in imported) _pluginTile(plugin),
+              ],
+            );
+          }),
           // A capability's settings live inside the panel of whichever plugin
           // provides them, but some of them outlive it: a word added to a
           // personal dictionary is a decision about this app, and removing the
@@ -179,6 +203,15 @@ class _PluginsSettingsScreenState extends State<PluginsSettingsScreen> {
           ),
         ]));
   }
+
+  /// _groupHeading labels one of the two lists.
+  Widget _groupHeading(String title, String note) => Padding(
+        padding: const EdgeInsets.only(top: 6, bottom: 2),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Txt.S(title),
+          Txt.S(note, color: TextColor.onSurfaceVariant),
+        ]),
+      );
 
   Widget _pluginTile(PluginInfo plugin) {
     var theme = ThemeNotifier.of(context);
@@ -209,11 +242,18 @@ class _PluginsSettingsScreenState extends State<PluginsSettingsScreen> {
                 value: plugin.enabled,
                 onChanged: (v) => setEnabled(plugin, v),
               ),
-              IconButton(
-                icon: const Icon(Icons.delete_outline, color: Colors.red),
-                tooltip: "Remove plugin",
-                onPressed: () => confirmRemovePlugin(plugin),
-              ),
+              // No Remove on a built-in: it was never installed, the next
+              // launch would write it back, and the Go side refuses anyway.
+              // Left out rather than shown disabled -- a greyed button
+              // invites hunting for the way to enable it, and there isn't
+              // one. The switch beside it is what "I don't want this" means
+              // for these.
+              if (!plugin.builtin)
+                IconButton(
+                  icon: const Icon(Icons.delete_outline, color: Colors.red),
+                  tooltip: "Remove plugin",
+                  onPressed: () => confirmRemovePlugin(plugin),
+                ),
             ],
           ),
         ),

@@ -6,6 +6,9 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
+
+	"github.com/companyzero/bisonrelay/client/pluginmgr/builtin"
 )
 
 func writeManifest(t *testing.T, dir string, manifest Manifest) {
@@ -90,11 +93,150 @@ func TestLoadInstalledAndDefaults(t *testing.T) {
 	}
 }
 
-func TestFreshManagerHasNoPlugins(t *testing.T) {
+// A fresh manager has the plugins that ship with the client and nothing
+// else. They are what the app's own features are written against -- a
+// composer expects somebody to answer "spellcheck-data" -- so "no plugins at
+// all" is no longer a state the client can be in.
+func TestFreshManagerHasOnlyBuiltins(t *testing.T) {
 	root := t.TempDir()
 	m := newTestManager(t, root)
-	if got := m.List(); len(got) != 0 {
-		t.Fatalf("expected a fresh manager to have no plugins, got %+v", got)
+
+	got := m.List()
+	if len(got) != len(builtin.All()) {
+		t.Fatalf("expected only the built-ins, got %d plugins", len(got))
+	}
+	for _, p := range got {
+		if !p.Builtin {
+			t.Fatalf("plugin %q is not marked built in", p.Manifest.ID)
+		}
+	}
+	for _, bp := range builtin.All() {
+		if _, ok := findPlugin(got, bp.ID); !ok {
+			t.Fatalf("built-in %q is missing", bp.ID)
+		}
+	}
+}
+
+// The module has to actually be on disk under the directory wasmhost will
+// look in, or the plugin is listed and then fails to load when consulted.
+func TestBuiltinModuleIsWrittenOut(t *testing.T) {
+	root := t.TempDir()
+	m := newTestManager(t, root)
+
+	for _, bp := range builtin.All() {
+		dir := m.InstallDir(bp.ID)
+		manifest, err := m.readManifest(dir)
+		if err != nil {
+			t.Fatalf("built-in %q manifest: %v", bp.ID, err)
+		}
+		wasm := filepath.Join(dir, manifest.WasmFile)
+		fi, err := os.Stat(wasm)
+		if err != nil {
+			t.Fatalf("built-in %q module: %v", bp.ID, err)
+		}
+		if fi.Size() == 0 {
+			t.Fatalf("built-in %q module is empty", bp.ID)
+		}
+	}
+}
+
+// The second launch must not decompress several megabytes again.
+func TestBuiltinIsNotRewrittenEveryLaunch(t *testing.T) {
+	root := t.TempDir()
+	m := newTestManager(t, root)
+
+	id := builtin.All()[0].ID
+	manifest, err := m.readManifest(m.InstallDir(id))
+	if err != nil {
+		t.Fatalf("readManifest: %v", err)
+	}
+	wasm := filepath.Join(m.InstallDir(id), manifest.WasmFile)
+	before, err := os.Stat(wasm)
+	if err != nil {
+		t.Fatalf("stat: %v", err)
+	}
+
+	// Touch it to something recognisable, then start again over the same
+	// root: an untouched file means the stamp did its job.
+	stale := before.ModTime().Add(-time.Hour)
+	if err := os.Chtimes(wasm, stale, stale); err != nil {
+		t.Fatalf("chtimes: %v", err)
+	}
+	newTestManager(t, root)
+
+	after, err := os.Stat(wasm)
+	if err != nil {
+		t.Fatalf("stat: %v", err)
+	}
+	if !after.ModTime().Equal(stale) {
+		t.Fatalf("built-in %q was rewritten on the second launch", id)
+	}
+}
+
+func TestBuiltinCannotBeRemoved(t *testing.T) {
+	root := t.TempDir()
+	m := newTestManager(t, root)
+
+	id := builtin.All()[0].ID
+	if err := m.Remove(id); err == nil {
+		t.Fatalf("expected removing a built-in to fail")
+	}
+	if _, ok := findPlugin(m.List(), id); !ok {
+		t.Fatalf("built-in %q went missing after a refused remove", id)
+	}
+}
+
+// Disabling is what removing means for a built-in, and it has to work.
+func TestBuiltinCanBeDisabled(t *testing.T) {
+	root := t.TempDir()
+	m := newTestManager(t, root)
+
+	id := builtin.All()[0].ID
+	if err := m.SetEnabled(id, true); err != nil {
+		t.Fatalf("SetEnabled: %v", err)
+	}
+	if err := m.SetEnabled(id, false); err != nil {
+		t.Fatalf("SetEnabled: %v", err)
+	}
+	p, ok := findPlugin(m.List(), id)
+	if !ok || p.Enabled {
+		t.Fatalf("expected built-in %q to be disabled", id)
+	}
+}
+
+// An import claiming a built-in's id could otherwise replace a shipped
+// feature with anything, under a name the settings page still shows once.
+func TestImportCannotReplaceABuiltin(t *testing.T) {
+	root := t.TempDir()
+	m := newTestManager(t, root)
+
+	id := builtin.All()[0].ID
+	src := filepath.Join(t.TempDir(), "evil")
+	writeManifest(t, src, testManifest(id))
+
+	if _, err := m.Import(src); err == nil {
+		t.Fatalf("expected importing over a built-in to fail")
+	}
+	p, ok := findPlugin(m.List(), id)
+	if !ok || !p.Builtin {
+		t.Fatalf("built-in %q was replaced", id)
+	}
+}
+
+// A folder put there by hand, or left over from before the plugin shipped,
+// must not win over what the app was built against.
+func TestInstalledDoesNotShadowABuiltin(t *testing.T) {
+	root := t.TempDir()
+	id := builtin.All()[0].ID
+	writeManifest(t, filepath.Join(root, installedDirName, id), testManifest(id))
+
+	m := newTestManager(t, root)
+	p, ok := findPlugin(m.List(), id)
+	if !ok {
+		t.Fatalf("built-in %q is missing", id)
+	}
+	if !p.Builtin {
+		t.Fatalf("the installed copy shadowed the built-in")
 	}
 }
 

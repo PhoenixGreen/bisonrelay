@@ -675,12 +675,14 @@ Map<String, dynamic> _$PluginManifestToJson(PluginManifest instance) =>
 PluginInfo _$PluginInfoFromJson(Map<String, dynamic> json) => PluginInfo(
       PluginManifest.fromJson(json['manifest'] as Map<String, dynamic>),
       json['enabled'] as bool,
+      json['builtin'] as bool? ?? false,
     );
 
 Map<String, dynamic> _$PluginInfoToJson(PluginInfo instance) =>
     <String, dynamic>{
       'manifest': instance.manifest,
       'enabled': instance.enabled,
+      'builtin': instance.builtin,
     };
 
 DynWidget _$DynWidgetFromJson(Map<String, dynamic> json) => DynWidget(
@@ -922,6 +924,7 @@ ThesaurusDefinition _$ThesaurusDefinitionFromJson(Map<String, dynamic> json) =>
     ThesaurusDefinition(
       json['pos'] as String? ?? '',
       json['text'] as String? ?? '',
+      json['example'] as String? ?? '',
     );
 
 Map<String, dynamic> _$ThesaurusDefinitionToJson(
@@ -929,6 +932,7 @@ Map<String, dynamic> _$ThesaurusDefinitionToJson(
     <String, dynamic>{
       'pos': instance.partOfSpeech,
       'text': instance.text,
+      'example': instance.example,
     };
 
 ThesaurusEntry _$ThesaurusEntryFromJson(Map<String, dynamic> json) =>
