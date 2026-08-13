@@ -63,6 +63,8 @@ Future<void> _pump(WidgetTester tester, String markdown,
 }
 
 void main() {
+  _multiBlockWeighing();
+
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
   group("the syntax", () {
@@ -789,6 +791,37 @@ void main() {
       }
       await _pump(tester, markdown, width: 2000);
       expect(find.textContaining("--columns--"), findsWidgets);
+    });
+  });
+}
+
+// columnWeigher reads the heading level from the start of what it is handed
+// and sets all of it at that size. Right for one block, badly wrong for
+// several -- a column beginning with an h1 measured as though every word in
+// it were an h1. flowColumns only ever passes single blocks, so this never
+// showed on the page, but weighing a whole column is the obvious thing to do
+// with one in hand and it used to lie.
+void _multiBlockWeighing() {
+  group("weighing more than one block", () {
+    const body = TextStyle(fontSize: 14, height: 1.4);
+    var weigh = columnWeigher(width: 300, body: body, gap: 8);
+    var para = "It is the thing every other size is measured against, so if "
+        "this looks wrong nothing else will look right. There is nothing "
+        "wrong with being right. A guide sets its line height here.";
+
+    test("a column weighs what its blocks weigh", () {
+      var heading = "# A flowed run";
+      expect(weigh("$heading\n\n$para"),
+          closeTo(weigh(heading) + weigh(para), 1));
+    });
+
+    test("a heading does not set the whole column at heading size", () {
+      // The bug: 1130 against a true 429.
+      expect(weigh("# A flowed run\n\n$para"), lessThan(weigh(para) * 1.5));
+    });
+
+    test("plain paragraphs are unaffected", () {
+      expect(weigh("$para\n\n$para"), closeTo(weigh(para) * 2, 1));
     });
   });
 }

@@ -120,7 +120,6 @@ class _LNPaymentsPageState extends State<LNPaymentsPage> {
     var inv = decoded!;
     return [
       const LNInfoSectionHeader("Decoded Invoice to Pay"),
-      const SizedBox(height: 8),
       Row(children: [
         const SizedBox(width: 80, child: Txt.S("Description:")),
         Expanded(child: Txt.S(inv.description))
@@ -176,12 +175,10 @@ class _LNPaymentsPageState extends State<LNPaymentsPage> {
                 ? []
                 : [
                     const LNInfoSectionHeader("Generated Invoice"),
-                    const SizedBox(height: 8),
                     Copyable.txt(Txt.S(generatedInvoice)),
                     const SizedBox(height: 21),
                   ]),
             const LNInfoSectionHeader("Pay Invoice"),
-            const SizedBox(height: 8),
             Row(children: [
               const SizedBox(width: 80, child: Text("Invoice:")),
               Expanded(

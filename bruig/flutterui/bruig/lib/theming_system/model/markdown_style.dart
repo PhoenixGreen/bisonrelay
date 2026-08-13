@@ -1,3 +1,4 @@
+import 'package:bruig/theming_system/model/button_style.dart';
 import 'package:bruig/theming_system/model/area_sides.dart';
 import 'package:bruig/theming_system/model/color_hex.dart';
 import 'package:flutter/material.dart';
@@ -636,6 +637,16 @@ class CardRule {
   final TextRule title;
   final TextRule text;
 
+  /// button is which of the app's five button designs a card's button is
+  /// drawn as -- see ButtonRole and the Buttons theme area.
+  ///
+  /// A choice rather than its own set of colours: a card sits in a post, in
+  /// the same app as every other button, and a button that looked like
+  /// nothing else in it would read as part of the writing rather than as
+  /// something to press. Plain is the default because that is the button
+  /// this was hardcoded to before it could be chosen.
+  final ButtonRole button;
+
   const CardRule({
     this.gap = 16,
     this.padding = 16,
@@ -649,6 +660,7 @@ class CardRule {
     this.iconBackground = MarkdownInk.inherit,
     this.title = const TextRule(scale: 1.3, bold: true),
     this.text = const TextRule(ink: MarkdownInk.of(MarkdownRole.muted)),
+    this.button = ButtonRole.plain,
   });
 
   double get boundedGap => gap.clamp(0, 64);
@@ -672,6 +684,7 @@ class CardRule {
     MarkdownInk? iconBackground,
     TextRule? title,
     TextRule? text,
+    ButtonRole? button,
   }) =>
       CardRule(
         gap: gap ?? this.gap,
@@ -687,6 +700,7 @@ class CardRule {
         iconBackground: iconBackground ?? this.iconBackground,
         title: title ?? this.title,
         text: text ?? this.text,
+        button: button ?? this.button,
       );
 
   Map<String, Object?> toJson() => {
@@ -703,6 +717,7 @@ class CardRule {
           "iconBackground": iconBackground.toJson(),
         "title": title.toJson(),
         "text": text.toJson(),
+        if (button != ButtonRole.plain) "button": button.name,
       };
 
   static CardRule fromJson(Map<String, Object?> json) {
@@ -731,6 +746,9 @@ class CardRule {
       title: rule("title", const TextRule(scale: 1.3, bold: true)),
       text:
           rule("text", const TextRule(ink: MarkdownInk.of(MarkdownRole.muted))),
+      button: ButtonRole.values.firstWhere(
+          (r) => r.name == json["button"],
+          orElse: () => ButtonRole.plain),
     );
   }
 
@@ -796,6 +814,23 @@ class MarkdownStyleGuide {
   /// other without it.
   final double quotePadding;
   final MarkdownInk codeBackground;
+
+  /// codePadding is the space between a fenced block's edge and the code in
+  /// it. Null leaves the built-in 8.
+  final double? codePadding;
+
+  /// codeLineNumbers draws a numbered gutter down the left of a fenced
+  /// block. Off by default: most posts are not about a particular line.
+  final bool codeLineNumbers;
+
+  /// codeHighlight colours strings, numbers, comments and keywords in a
+  /// fenced block.
+  ///
+  /// Off by default, and deliberately language-agnostic when on -- a fenced
+  /// block arrives here as text, with whatever language was written after
+  /// the backticks left behind by the parser, so there is nothing to select
+  /// a grammar with. See markdownHighlight.
+  final bool codeHighlight;
   final MarkdownInk ruleInk;
   final double ruleThickness;
   final MarkdownInk tableBorderInk;
@@ -850,6 +885,9 @@ class MarkdownStyleGuide {
     MarkdownInk? quoteBackground,
     double? quotePadding,
     MarkdownInk? codeBackground,
+    double? codePadding,
+    bool? codeLineNumbers,
+    bool? codeHighlight,
     MarkdownInk? ruleInk,
     double? ruleThickness,
     MarkdownInk? tableBorderInk,
@@ -885,6 +923,9 @@ class MarkdownStyleGuide {
         quoteBackground: quoteBackground ?? this.quoteBackground,
         quotePadding: quotePadding ?? this.quotePadding,
         codeBackground: codeBackground ?? this.codeBackground,
+        codePadding: codePadding ?? this.codePadding,
+        codeLineNumbers: codeLineNumbers ?? this.codeLineNumbers,
+        codeHighlight: codeHighlight ?? this.codeHighlight,
         ruleInk: ruleInk ?? this.ruleInk,
         ruleThickness: ruleThickness ?? this.ruleThickness,
         tableBorderInk: tableBorderInk ?? this.tableBorderInk,
@@ -929,6 +970,9 @@ class MarkdownStyleGuide {
         "quotePadding": quotePadding,
         if (!codeBackground.isInherit)
           "codeBackground": codeBackground.toJson(),
+        if (codePadding != null) "codePadding": codePadding,
+        if (codeLineNumbers) "codeLineNumbers": codeLineNumbers,
+        if (codeHighlight) "codeHighlight": codeHighlight,
         if (!ruleInk.isInherit) "ruleInk": ruleInk.toJson(),
         "ruleThickness": ruleThickness,
         if (!tableBorderInk.isInherit)
@@ -990,6 +1034,9 @@ class MarkdownStyleGuide {
       quoteBackground: MarkdownInk.fromJson(json["quoteBackground"]),
       quotePadding: _asDouble(json["quotePadding"]) ?? 8,
       codeBackground: MarkdownInk.fromJson(json["codeBackground"]),
+      codePadding: _asDouble(json["codePadding"]),
+      codeLineNumbers: json["codeLineNumbers"] == true,
+      codeHighlight: json["codeHighlight"] == true,
       ruleInk: MarkdownInk.fromJson(json["ruleInk"]),
       ruleThickness: _asDouble(json["ruleThickness"]) ?? 1,
       tableBorderInk: MarkdownInk.fromJson(json["tableBorderInk"]),
@@ -1044,6 +1091,9 @@ class MarkdownStyleGuide {
     this.quoteBackground = MarkdownInk.inherit,
     this.quotePadding = 8,
     this.codeBackground = MarkdownInk.inherit,
+    this.codePadding,
+    this.codeLineNumbers = false,
+    this.codeHighlight = false,
     this.ruleInk = const MarkdownInk.of(MarkdownRole.outline),
     this.ruleThickness = 1,
     this.tableBorderInk = const MarkdownInk.of(MarkdownRole.outline),

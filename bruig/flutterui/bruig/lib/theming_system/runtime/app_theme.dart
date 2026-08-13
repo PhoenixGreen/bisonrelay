@@ -121,6 +121,22 @@ final appThemes = {
           surface: const Color(0xFF19172C),
           surfaceContainerLow: const Color(0xFF17152A),
           surfaceContainerLowest: const Color(0xFF161429),
+          // colorScheme.outline is the *button* edge, not the divider --
+          // see ThemePreset.toAppTheme(), which pins it to
+          // buttonBorderColor and gives the subtler divider role
+          // (outlineVariant) the outline slot. Pinned here to the same
+          // value _darkButtonColors.border already uses, so an outlined
+          // button's edge doesn't shift the moment a preset becomes
+          // active. ColorScheme.fromSeed happens to derive exactly this,
+          // so pinning it changes nothing today and stops it drifting.
+          outline: const Color(0xFF928F99),
+          // The divider role, and the other half of that pair: pinned to
+          // the Default palette's Outline swatch (ThemePreset
+          // .seedFromDark()'s outline) so the panel seams look the same
+          // with no preset active as they do the moment one is. Left to
+          // fromSeed this was 0xFF47464F, which is the value the Default
+          // palette *used* to carry -- the two have to move together.
+          outlineVariant: const Color(0xFF0D0D0D),
           // Matches ThemePreset.seedFromDark()'s tertiary exactly -- without
           // this, colorScheme.tertiary is left to Material's own tonal
           // derivation from the seed, which doesn't equal the "Default
@@ -168,9 +184,11 @@ final appThemes = {
         disabledColor: Colors.grey[850],
       ),
       // sidebarDivider/successOnSurface must equal ThemePreset
-      // .seedFromDark()'s own outline/success -- see the note there.
+      // .seedFromDark()'s own outline/success -- see the note there. This
+      // is the value the nav bar's right edge and every sidebar edge draw
+      // with no preset active (components/sidebar.dart, containers.dart).
       extraColors: const CustomColors(
-        sidebarDivider: Color(0xFF47464F),
+        sidebarDivider: Color(0xFF0D0D0D),
         successOnSurface: Color(0xFF5BC46B),
       ),
       buttonStyles: _darkButtonStyles,
@@ -198,6 +216,9 @@ final appThemes = {
           surface: const Color(0xFFE8E7F3),
           surfaceContainerLow: const Color(0xFFE6E5F2),
           surfaceContainerLowest: const Color(0xFFE2E1ED),
+          // The button edge, matching _lightButtonColors.border -- see the
+          // dark theme's comment above.
+          outline: const Color(0xFF767680),
           // Matches ThemePreset.seedFromLight()'s tertiary -- see the dark
           // theme's comment above.
           tertiary: const Color(0xFFF5F4FA),

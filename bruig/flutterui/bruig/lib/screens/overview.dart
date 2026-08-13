@@ -518,8 +518,9 @@ class __MainAppBarState extends State<_MainAppBar>
     // theme setting now, so this can't be the hardcoded three it used to
     // be. It's what the leading widget keys off: on a top-level tab that
     // corner is the self-avatar, and anywhere else it's a back arrow.
-    var bottomTabRoutes =
-        mobileNavItems(mainMenu, mobileStyle).map((e) => e.routeName).toSet();
+    var bottomTabRoutes = mobileNavItems(mainMenu, theme.areaStyle(ThemeArea.navBar))
+        .map((e) => e.routeName)
+        .toSet();
     bool onBottomTab(String route) => bottomTabRoutes.contains(route);
 
     // Read here rather than through a Consumer down inside the leading

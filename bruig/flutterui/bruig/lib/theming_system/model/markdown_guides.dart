@@ -1,3 +1,6 @@
+import 'package:bruig/theming_system/model/area_sides.dart';
+import 'package:bruig/theming_system/model/button_style.dart';
+import 'package:flutter/material.dart';
 import 'package:bruig/theming_system/model/markdown_style.dart';
 
 // markdown_guides.dart holds the guides that ship with the app.
@@ -123,12 +126,97 @@ const _terminal = MarkdownStyleGuide(
   image: ImageRule(widthPercent: 100, borderWidth: 1),
 );
 
+/// Ulysses is the writing app's own typography: generous line height, a warm
+/// accent on the few things that carry one, and code blocks set up to be
+/// read rather than skimmed past.
+///
+/// Built in the editor and copied in as authored, rather than rewritten in
+/// roles. Its colours are bound to palette *slots* (the accent to Input
+/// Color, the lines to Third Background, and so on), so the guide follows
+/// whichever palette is applied instead of freezing one theme's colours --
+/// which is what a built-in has to do. Each carries the colour it was
+/// authored against as well, as the fallback for a palette too short to
+/// hold the slot.
+///
+/// The companion to the "Ulysses" colour palette, though the two are
+/// independent: this is how a post is *set*, that is what it is set in.
+// Not const: SideValues asserts on its list length, which cannot be
+// evaluated in a constant expression, and the columns rule below splits its
+// margin per side.
+final _ulysses = MarkdownStyleGuide(
+  id: "ulysses",
+  name: "Ulysses",
+  builtIn: true,
+  body: TextRule(lineHeight: 1.6),
+  headings: [
+    TextRule(scale: 1.9, bold: true, lineHeight: 1.25),
+    TextRule(scale: 1.5, bold: true, lineHeight: 1.3),
+    TextRule(scale: 1.25, bold: true, lineHeight: 1.35),
+    TextRule(scale: 1.1, bold: true),
+    TextRule(bold: true),
+    TextRule(bold: true, ink: MarkdownInk.of(MarkdownRole.muted)),
+  ],
+  // No underline: the accent is doing the work, and a rule under every link
+  // in a long post is a lot of ruling.
+  link: TextRule(
+      ink: MarkdownInk.literal(Color(0xFFC08A5B), paletteIndex: 25),
+      underline: false),
+  strong: TextRule(bold: true, italic: false),
+  emphasis: TextRule(italic: true),
+  quote: TextRule(italic: true, ink: MarkdownInk.of(MarkdownRole.muted)),
+  code: TextRule(font: MarkdownFont.mono),
+  tableHead: TextRule(scale: 1.1, bold: true, italic: false),
+  blockGap: 16,
+  listItemGap: 4,
+  listIndent: 24,
+  quoteBarInk: MarkdownInk.literal(Color(0xFFC08A5B), paletteIndex: 25),
+  quoteBarWidth: 5,
+  quotePadding: 20,
+  // Fenced blocks are numbered and coloured -- the two settings that only
+  // earn their place in a guide meant for writing about code.
+  codePadding: 16,
+  codeLineNumbers: true,
+  codeHighlight: true,
+  ruleInk: MarkdownInk.literal(Color(0xFF3F3F3F), paletteIndex: 18),
+  ruleThickness: 1,
+  tableBorderInk: MarkdownInk.literal(Color(0xFF4A4A4A), paletteIndex: 8),
+  tableBorderWidth: 1,
+  tableHeadBackground: MarkdownInk.literal(Color(0xFF1E1E1E), paletteIndex: 0),
+  tableCellPadding: 8,
+  tableFit: MarkdownTableFit.equal,
+  image: ImageRule(widthPercent: 100, cornerRadius: 8, gap: 10),
+  columns: ColumnRule(
+    gap: 30,
+    stackBelow: 220,
+    marginSides: SideValues([0, 5, 0, 5]),
+    dividerWidth: 1,
+    dividerInk: MarkdownInk.literal(Color(0xFF3F3F3F), paletteIndex: 18),
+  ),
+  // A card is the page with a line round it rather than a lighter panel,
+  // which is why its background is the master background slot.
+  cards: CardRule(
+    gap: 16,
+    padding: 16,
+    background: MarkdownInk.literal(Color(0xFF1E1E1E), paletteIndex: 0),
+    borderWidth: 1,
+    borderInk: MarkdownInk.literal(Color(0xFF8C8C94), paletteIndex: 13),
+    radius: 12,
+    iconSize: 52,
+    iconInk: MarkdownInk.literal(Color(0xFFC08A5B), paletteIndex: 25),
+    iconBackground: MarkdownInk.literal(Color(0xFF3F3F3F), paletteIndex: 18),
+    title: TextRule(scale: 1.5, bold: true),
+    text: TextRule(ink: MarkdownInk.of(MarkdownRole.muted)),
+    button: ButtonRole.outlined,
+  ),
+);
+
 /// builtInGuides, in the order they are offered.
-const builtInGuides = <MarkdownStyleGuide>[
+final builtInGuides = <MarkdownStyleGuide>[
   _default,
   _article,
   _compact,
   _terminal,
+  _ulysses,
 ];
 
 /// builtInGuideFor returns the guide with [id], or null when nothing ships

@@ -120,12 +120,8 @@ class _AreasSectionState extends State<AreasSection> implements AreaEditorHost {
   late ThemeArea selected = widget.initialArea ?? _editableAreas.first;
 
   @override
-  void setAreaStyle(ThemeNotifier theme, AreaStyle Function(AreaStyle) update) {
-    var draft = ensureDraftPreset(theme);
-    var current = draft.areas[selected] ?? const AreaStyle();
-    theme.previewPreset(
-        draft.copyWith(areas: {...draft.areas, selected: update(current)}));
-  }
+  void setAreaStyle(ThemeNotifier theme, AreaStyle Function(AreaStyle) update) =>
+      setAreaStyleOn(theme, selected, update);
 
   // _slider keys each _ValueSlider by area *and* setting, so switching areas
   // gives the new area's value a fresh widget state rather than one still

@@ -582,15 +582,22 @@ class ThemePreset {
       headerBackground: const Color(0xFF19172C),
       sidebarText: const Color(0xFF8C8C94),
       sidebarAccent: scheme.primary,
-      // Master's outlineVariant, which is what its dividers and panel
-      // borders actually draw. Still equal to extraColors.sidebarDivider,
-      // the fallback used when NO preset is active -- once any preset
-      // (including this "Default Theme" one) is active, activePreset
-      // ?.outline takes precedence over it (see containers.dart's border
-      // color chains), so the two must match or borders visibly shift the
-      // moment a preset is applied. Both were Colors.black, which is 1.2:1
-      // against this background: every divider in the app was invisible.
-      outline: const Color(0xFF47464F),
+      // The seam between panels: a line darker than the backgrounds it
+      // separates, rather than a lighter one drawn on top of them. This is
+      // what the "Default" palette card shows for Outline (the card is
+      // built from this seed -- see color_palette_section.dart) and it must
+      // stay equal to appThemes["dark"]'s extraColors.sidebarDivider and
+      // colorScheme.outlineVariant, the values used when NO preset is
+      // active: once any preset is, activePreset?.outline takes precedence
+      // (see containers.dart's border color chains), so a mismatch shows up
+      // as every border in the app shifting the moment a preset is applied.
+      //
+      // Deliberately very low contrast against the surfaces either side
+      // (~1.1:1). An earlier pass raised this from Colors.black to master's
+      // outlineVariant 0xFF47464F on the grounds that a divider should be
+      // *visible*; in this app's chrome that reads as a pale rule drawn
+      // over the panels rather than as the gap between them.
+      outline: const Color(0xFF0D0D0D),
       // Master's dark-theme colorScheme.error. This was 0xFFBA1A1A --
       // M3's *light*-theme error, used unchanged on a near-black
       // background at 2.7:1. `error` is read directly as foreground here

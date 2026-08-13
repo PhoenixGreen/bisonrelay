@@ -561,6 +561,56 @@ Future<void> loadInvite(BuildContext context) async {
   }
 }
 
+/// _FooterIconButton is one icon of the row under the chat list.
+///
+/// [tag] is the small badge over the corner, for the GC invitation count.
+/// [onlyWhenOnline] greys the button out and says why while the client is
+/// offline, rather than letting it open a page that cannot do anything.
+class _FooterIconButton extends StatelessWidget {
+  final bool onlyWhenOnline;
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onPressed;
+  final String? tag;
+  const _FooterIconButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onPressed,
+    this.onlyWhenOnline = false,
+    this.tag,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer2<ThemeNotifier, ConnStateModel>(
+      builder: (context, theme, connState, child) => Stack(
+        children: [
+          IconButton(
+            splashRadius: 15,
+            iconSize: 15,
+            tooltip: !onlyWhenOnline || connState.isOnline
+                ? tooltip
+                : "Cannot perform this action when offline",
+            disabledColor: theme.theme.disabledColor,
+            onPressed: !onlyWhenOnline || connState.isOnline ? onPressed : null,
+            icon: Icon(icon, size: 20),
+          ),
+          if ((tag ?? "") != "")
+            Positioned(
+              right: 0,
+              child: Box(
+                borderRadius: BorderRadius.circular(5),
+                padding: const EdgeInsets.all(2),
+                color: SurfaceColor.primary,
+                child: Txt.S(tag!),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 class _SmallScreenFabIconButton extends StatelessWidget {
   final IconData icon;
   final String tooltip;
@@ -636,11 +686,20 @@ class _ActiveChatsListMenuState extends State<ActiveChatsListMenu>
   // New Message anyway (its first tab), but with its own sidebar alongside,
   // so creating a GC, generating or fetching an invite and the rest are all
   // one click away instead of being dead ends from here.
-  void gotoNewMessage() =>
-      Navigator.of(context).pushNamed(AddressBookScreen.routeName);
+  void gotoNewMessage() => gotoAddressBook(AddressBookTab.newMessage);
 
   void gotoNewGroupChat() =>
       Navigator.of(context).pushNamed(NewGcScreen.routeName);
+
+  /// gotoAddressBook opens the Address Book on one of its pages.
+  ///
+  /// What every icon in the footer row does. Each of those six is a page of
+  /// the Address Book, so this is the whole difference between that row and
+  /// the one it replaces: the six used to be full-screen routes of their
+  /// own, reached from here and nowhere else, and are now the address book
+  /// opened at the right page with the other five listed beside it.
+  void gotoAddressBook(AddressBookTab tab) => Navigator.of(context)
+      .pushNamed(AddressBookScreen.routeName, arguments: tab);
 
   bool hasLiveRTCSess = false;
   bool hasHotAudio = false;
@@ -719,6 +778,58 @@ class _ActiveChatsListMenuState extends State<ActiveChatsListMenu>
 
     super.dispose();
   }
+
+  /// _footer is the row of Address Book shortcuts under the chat list.
+  ///
+  /// A Wrap rather than a Row: the sidebar is resizable, and six icons at a
+  /// narrow width overflow a Row rather than going onto a second line.
+  Widget _footer() => SizedBox(
+        width: double.infinity,
+        child: Wrap(
+          alignment: WrapAlignment.start,
+          children: [
+            _FooterIconButton(
+              onlyWhenOnline: true,
+              tooltip: "Generate Invite",
+              onPressed: () => gotoAddressBook(AddressBookTab.generateInvite),
+              icon: Icons.add_outlined,
+            ),
+            _FooterIconButton(
+              tooltip: "List last received message time",
+              onPressed: () => gotoAddressBook(AddressBookTab.messageTimes),
+              icon: Icons.list_outlined,
+            ),
+            _FooterIconButton(
+              onlyWhenOnline: true,
+              tooltip: "Fetch, import or accept invite",
+              onPressed: () => gotoAddressBook(AddressBookTab.fetchInvite),
+              icon: Icons.get_app_outlined,
+            ),
+            _FooterIconButton(
+              tooltip: "Create new group chat",
+              onPressed: () => gotoAddressBook(AddressBookTab.newGroupChat),
+              icon: Icons.people_outline,
+            ),
+            _FooterIconButton(
+              tooltip: "New Message",
+              onPressed: () => gotoAddressBook(AddressBookTab.newMessage),
+              icon: Icons.edit_outlined,
+            ),
+            Consumer<GCInviteCountModel>(
+                builder: (context, gcInviteCount, child) => _FooterIconButton(
+                      tooltip: "Show GC Invitations",
+                      onPressed: () =>
+                          gotoAddressBook(AddressBookTab.gcInvitations),
+                      icon: Icons.groups,
+                      tag: gcInviteCount.value == 0
+                          ? null
+                          : gcInviteCount.value > 9
+                              ? "9+"
+                              : gcInviteCount.value.toString(),
+                    )),
+          ],
+        ),
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -827,12 +938,15 @@ class _ActiveChatsListMenuState extends State<ActiveChatsListMenu>
                   ),
                 ),
           list: chatList,
-          // Generate Invite / Received Message Time / Fetch or Accept
-          // Invite / Show GC Invitations moved to the Address Book main
-          // menu item's submenu (see address_book_bar.dart). New
-          // Message/New Group Chat remain reachable here too via
-          // gotoNewMessage/gotoNewGroupChat (used by the mobile FAB
-          // buttons above).
+          // The row of icons under the list: six shortcuts into the Address
+          // Book, which is where all six of these pages live (see
+          // address_book_bar.dart and gotoAddressBook above).
+          //
+          // Optional because the Address Book's own main-menu item reaches
+          // the same six -- see the Chat area's "Address book shortcuts".
+          footer: theme.areaStyle(ThemeArea.chat).chatSidebarFooter
+              ? _footer()
+              : null,
         );
       },
     );

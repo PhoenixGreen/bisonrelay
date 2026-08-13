@@ -18,6 +18,23 @@ class AddressBookScreenTitle extends StatelessWidget {
   Widget build(BuildContext context) => const Txt.L("Address Book");
 }
 
+/// AddressBookTab names the screen's pages, for a caller that wants to open
+/// it on one of them.
+///
+/// Pushed as the route's argument: `pushNamed(AddressBookScreen.routeName,
+/// arguments: AddressBookTab.generateInvite)`. That is how the chat list's
+/// footer row reaches these pages (see chats_list.dart) -- each of its icons
+/// is one of them, and every one of them lands here with the rest of the
+/// address book alongside rather than on a screen of its own.
+enum AddressBookTab {
+  newMessage,
+  newGroupChat,
+  generateInvite,
+  messageTimes,
+  fetchInvite,
+  gcInvitations,
+}
+
 class AddressBookScreen extends StatefulWidget {
   static const routeName = '/addressBook';
 
@@ -29,6 +46,23 @@ class AddressBookScreen extends StatefulWidget {
 
 class _AddressBookScreenState extends State<AddressBookScreen> {
   int tabIndex = 0;
+
+  /// _openedInitialTab keeps the route's argument from reasserting itself.
+  ///
+  /// The arguments are read in didChangeDependencies rather than initState
+  /// because ModalRoute isn't reachable from the latter; that runs again on
+  /// any dependency change, which without this would snap the screen back to
+  /// the tab it was opened on the moment anything above it rebuilt.
+  bool _openedInitialTab = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_openedInitialTab) return;
+    _openedInitialTab = true;
+    var arg = ModalRoute.of(context)?.settings.arguments;
+    if (arg is AddressBookTab) tabIndex = arg.index;
+  }
 
   void onItemChanged(int index) => setState(() => tabIndex = index);
 

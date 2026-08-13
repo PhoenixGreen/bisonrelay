@@ -83,16 +83,23 @@ ThemePreset paletteApplied(ThemePreset draft, ColorPalette palette) {
     // is a separate swatch to tune afterwards.
     navSelected: colorAt(legacySevenColor ? 5 : 6, base.navAccent),
     sidebarAccent: colorAt(legacySevenColor ? 6 : 7, base.sidebarAccent),
-    // Inputs follow the palette's own accent, the same way the nav bar's
-    // selected item does. They were left out of this list entirely, and
-    // because a library palette carries no entry for them they simply kept
-    // whatever the draft already had -- which for a fresh draft is the
-    // seed's lavender, so every text box in the app stayed purple no
-    // matter which palette was applied.
-    inputSelected: colorAt(legacySevenColor ? 5 : 6, base.navAccent),
-    inputResting: restingBorderFrom(
-        colorAt(legacySevenColor ? 5 : 6, base.navAccent),
-        colorAt(0, base.primary)),
+    // Inputs are the palette's own (tail slots 15-16), falling back to the
+    // accent-derived pair for a palette that doesn't carry them -- focused
+    // takes navAccent, resting is that faded toward the page. That
+    // derivation is right for a palette whose accent is the only colour it
+    // has, and wrong for one that treats the input box as its own thing,
+    // which is why the two are storable now.
+    //
+    // Before either existed these were left out of the mapping entirely, so
+    // a library palette kept whatever the draft already had -- the seed's
+    // lavender on a fresh draft, which is why every text box in the app
+    // stayed purple no matter which palette was applied.
+    inputSelected:
+        colorAt(16, colorAt(legacySevenColor ? 5 : 6, base.navAccent)),
+    inputResting: colorAt(
+        15,
+        restingBorderFrom(colorAt(legacySevenColor ? 5 : 6, base.navAccent),
+            colorAt(0, base.primary))),
     // Inputs have never carried a fill; reset rather than left behind, so
     // applying a palette always lands on the same result.
     inputBackground: base.inputBackground,
@@ -211,8 +218,12 @@ class _PaletteSectionState extends State<PaletteSection> {
         draftColor = null;
       });
 
-  Future<String?> _promptForName(String title, String hint) {
-    var ctrl = TextEditingController();
+  /// _promptForName asks for a name. [initial] pre-fills it, which is what a
+  /// rename wants -- retyping a name to change one word in it is how a
+  /// rename turns into a typo.
+  Future<String?> _promptForName(String title, String hint,
+      {String initial = "", String action = "Save"}) {
+    var ctrl = TextEditingController(text: initial);
     return showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
@@ -220,14 +231,15 @@ class _PaletteSectionState extends State<PaletteSection> {
         content: TextField(
             controller: ctrl,
             autofocus: true,
-            decoration: InputDecoration(hintText: hint)),
+            decoration: InputDecoration(hintText: hint),
+            onSubmitted: (v) => Navigator.of(context).pop(v)),
         actions: [
           TextButton(
               onPressed: () => Navigator.of(context).pop(),
               child: const Text("Cancel")),
           TextButton(
               onPressed: () => Navigator.of(context).pop(ctrl.text),
-              child: const Text("Save")),
+              child: Text(action)),
         ],
       ),
     );
@@ -246,6 +258,84 @@ class _PaletteSectionState extends State<PaletteSection> {
     await PaletteLibraryStorage.savePalette(palette);
     if (!mounted) return;
     setState(() => userPalettes = [...userPalettes, palette]);
+  }
+
+  /// _newPalette starts the colours again from the base seed.
+  ///
+  /// The palette rows only -- area styles, menu order and the rest of the
+  /// preset are left alone, because this is the Color Palette section's own
+  /// "start over" and not the theme's. Nothing is written to the library:
+  /// like New Preset in the theme row above, it is a fresh starting point
+  /// to work from, and Save is what keeps it.
+  void _newPalette(ThemeNotifier theme) {
+    var draft = ensureDraftPreset(theme);
+    var seed = ThemePreset.seedFor(draft.brightness);
+    var next = draft;
+    for (var slot in PaletteSlot.values) {
+      next = next.withSlot(slot, seed.forSlot(slot));
+    }
+    theme.previewPreset(next);
+  }
+
+  /// _overwritePalette writes the current colours over a palette already in
+  /// the library, keeping its id and name.
+  ///
+  /// Confirmed first: unlike every other action here it destroys something,
+  /// and the menu it is chosen from lists the palettes close together.
+  Future<void> _overwritePalette(ThemeNotifier theme, String id) async {
+    var existing = userPalettes.where((p) => p.id == id).firstOrNull;
+    if (existing == null) return;
+    var ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text("Overwrite \"${existing.name}\"?"),
+        content: const Text(
+            "Its colours are replaced with the ones in the editor. This "
+            "cannot be undone."),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text("Cancel")),
+          TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text("Overwrite")),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+
+    var preset = displayPreset(theme);
+    var updated = ColorPalette(
+      id: existing.id,
+      name: existing.name,
+      colors: kVividPaletteSlots.map(preset.forSlot).toList(),
+      brightness: preset.brightness,
+    );
+    await PaletteLibraryStorage.savePalette(updated);
+    if (!mounted) return;
+    setState(() => userPalettes = [
+          for (var p in userPalettes) p.id == id ? updated : p,
+        ]);
+    if (mounted) showSuccessSnackbar(context, "Saved \"${updated.name}\"");
+  }
+
+  /// _renamePalette changes a saved palette's name, keeping its id and its
+  /// colours.
+  Future<void> _renamePalette(ColorPalette palette) async {
+    var name = await _promptForName("Rename Palette", "Palette name",
+        initial: palette.name, action: "Rename");
+    if (name == null || name.trim().isEmpty || !mounted) return;
+    var updated = ColorPalette(
+      id: palette.id,
+      name: name.trim(),
+      colors: palette.colors,
+      brightness: palette.brightness,
+    );
+    await PaletteLibraryStorage.savePalette(updated);
+    if (!mounted) return;
+    setState(() => userPalettes = [
+          for (var p in userPalettes) p.id == palette.id ? updated : p,
+        ]);
   }
 
   Future<void> _exportPalette(ColorPalette palette) async {
@@ -315,14 +405,21 @@ class _PaletteSectionState extends State<PaletteSection> {
                   SizedBox(
                     height: 22,
                     width: 22,
+                    // A built-in can only be exported: it ships with the
+                    // app, so there is no file of the user's to rename or
+                    // remove. One of their own gets the full set.
                     child: PopupMenuButton<String>(
                       iconSize: 16,
                       padding: EdgeInsets.zero,
                       onSelected: (v) {
+                        if (v == "rename") _renamePalette(palette);
                         if (v == "export") _exportPalette(palette);
                         if (v == "delete") _deletePalette(palette);
                       },
                       itemBuilder: (context) => [
+                        if (!palette.builtin)
+                          const PopupMenuItem(
+                              value: "rename", child: Text("Rename")),
                         const PopupMenuItem(
                             value: "export", child: Text("Export")),
                         if (!palette.builtin)
@@ -603,10 +700,51 @@ class _PaletteSectionState extends State<PaletteSection> {
               ),
             ),
             const SizedBox(width: 4),
+            // New, Save, Import. Export is per-palette and lives in each
+            // card's own menu, since exporting is always about one named
+            // palette rather than about the editor's current state.
             IconButton(
-                onPressed: () => _saveCurrentAsPalette(theme),
-                icon: const Icon(Icons.save_outlined),
-                tooltip: "Save current palette"),
+                onPressed: () => _newPalette(theme),
+                icon: const Icon(Icons.add),
+                tooltip: "New palette"),
+            // Save is a menu rather than a button because there are two
+            // different saves and picking the wrong one silently either
+            // litters the library with near-duplicates or overwrites
+            // something. It used to be the first of these only, so the way
+            // to edit a saved palette was to save a second copy and delete
+            // the first.
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.save_outlined),
+              tooltip: "Save palette",
+              onSelected: (v) {
+                if (v == "new") _saveCurrentAsPalette(theme);
+                if (v.startsWith("over:")) {
+                  _overwritePalette(theme, v.substring("over:".length));
+                }
+              },
+              itemBuilder: (context) => [
+                const PopupMenuItem(
+                    value: "new", child: Text("Save as new palette...")),
+                // Only the user's own: a built-in ships with the app and is
+                // the same on every device, which is what makes it worth
+                // naming. Nothing to overwrite until they have saved one.
+                if (userPalettes.isEmpty)
+                  const PopupMenuItem(
+                      enabled: false,
+                      child: Text("Overwrite  (no saved palettes yet)"))
+                else ...[
+                  const PopupMenuDivider(),
+                  const PopupMenuItem(enabled: false, child: Text("Overwrite")),
+                  for (var p in userPalettes)
+                    PopupMenuItem(
+                        value: "over:${p.id}",
+                        child: Padding(
+                          padding: const EdgeInsets.only(left: 12),
+                          child: Text(p.name, overflow: TextOverflow.ellipsis),
+                        )),
+                ],
+              ],
+            ),
             IconButton(
                 onPressed: _importPalette,
                 icon: const Icon(Icons.file_upload_outlined),

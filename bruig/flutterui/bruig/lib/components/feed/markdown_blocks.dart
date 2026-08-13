@@ -362,8 +362,13 @@ class _MarkdownCards extends StatelessWidget {
           Align(
             alignment: Alignment.centerLeft,
             // The app's own button, so a card's button is the same button as
-            // every other button in the app and follows the Buttons area.
+            // every other button in the app and follows the Buttons area --
+            // in whichever of the five designs the guide asks for (see
+            // CardRule.button). The style carries the fill, the border and
+            // the label colour for every role, so one widget draws all five
+            // rather than the card having to pick a widget class per role.
             child: ElevatedButton(
+              style: theme.buttonStyle(rule.button),
               onPressed: link.isEmpty
                   ? null
                   : () async {

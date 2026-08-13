@@ -150,6 +150,10 @@ MarkdownStyleSheet applyGuide(
     codeblockDecoration: codeBack == null
         ? base.codeblockDecoration
         : BoxDecoration(color: codeBack),
+    // The guide's own figure, or the built-in 8 it has always been.
+    codeblockPadding: guide.codePadding == null
+        ? base.codeblockPadding
+        : EdgeInsets.all(guide.codePadding!.clamp(0, 48)),
     horizontalRuleDecoration: rule == null
         ? base.horizontalRuleDecoration
         : BoxDecoration(

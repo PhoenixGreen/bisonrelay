@@ -455,10 +455,15 @@ class _NewPostScreenState extends State<NewPostScreen> {
           // The column is held to at least the height of the view so an
           // empty post still shows the page it is going to be, rather than a
           // card the depth of one line.
+          //
+          // No horizontal padding of its own: how far in a post sits is part
+          // of how wide a post is, and PostColumn owns both. Padding to a
+          // figure of the composer's own is what left the writing narrower
+          // than the post on the default theme.
           Expanded(
             child: LayoutBuilder(
               builder: (context, constraints) => SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 15),
+                padding: const EdgeInsets.only(bottom: 15),
                 child: ConstrainedBox(
                   constraints: BoxConstraints(
                       minHeight: (constraints.maxHeight - 15)

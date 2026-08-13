@@ -361,7 +361,27 @@ double Function(String) columnWeigher({
     return height;
   }
 
-  return (block) {
+  late final double Function(String) weigh;
+
+  weigh = (String block) {
+    // Handed more than one block -- a whole column, say -- weigh each and
+    // add them up.
+    //
+    // Everything below reads the heading level from the *start* of what it
+    // is given and then sets all of it at that size, which is right for one
+    // block and badly wrong for several: a column beginning with an h1 came
+    // out measured as though every word in it were an h1, at two and a half
+    // times its real height. flowColumns only ever passes single blocks, so
+    // this was never wrong on the page -- but it is the obvious thing to
+    // call with a column in hand, and it quietly lied when you did.
+    var blocks = block
+        .split(RegExp(r'\n\s*\n'))
+        .where((b) => b.trim().isNotEmpty)
+        .toList();
+    if (blocks.length > 1) {
+      return blocks.fold<double>(0, (a, b) => a + weigh(b));
+    }
+
     var height = gap;
     for (var m in _embedRe.allMatches(block)) {
       height += pictureWidth * _embedAspect(m.group(1) ?? "") + image.gap * 2;
@@ -381,6 +401,8 @@ double Function(String) columnWeigher({
 
     return height + measure(text.replaceAll(_markup, ""), style);
   };
+
+  return weigh;
 }
 
 /// CardsBlockSyntax reads a callout, or a grid of them.

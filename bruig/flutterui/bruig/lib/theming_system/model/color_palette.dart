@@ -181,4 +181,14 @@ const List<PaletteSlot> kVividPaletteSlots = [
   PaletteSlot.buttonText1,
   PaletteSlot.buttonBorderColor,
   PaletteSlot.buttonBackgroundThird,
+  // The input border pair, appended for the same reason and in the same
+  // way. These used to be derived on apply -- focused took the palette's
+  // navAccent and resting was that faded toward the background -- which is
+  // right for a palette whose accent is the only colour it has, and wrong
+  // for one that deliberately treats the input box differently from the
+  // nav bar (Ulysses sets it warm while the chrome stays blue). A palette
+  // that says nothing about them still gets the derivation, so nothing
+  // shipped before this moves.
+  PaletteSlot.inputResting,
+  PaletteSlot.inputSelected,
 ];

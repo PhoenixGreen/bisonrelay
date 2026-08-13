@@ -183,18 +183,57 @@ final List<MainMenuItem> mainMenu = [
   ),
 ];
 
-// defaultMobileNavRoutes is what the narrow-screen bottom navigation
-// carries until a theme says otherwise (see AreaStyle.mobileNavRoutes) --
-// the four destinations that earn a permanent slot on a phone. The bar was
-// a hardcoded three (Chat, Feed, Pages) before it was configurable;
-// Settings joins them because it's the only way to reach the rest without
-// the sidebar a phone doesn't have.
-final List<String> defaultMobileNavRoutes = [
-  ChatsScreen.routeName,
-  FeedScreen.routeName,
-  ViewPageScreen.routeName,
-  SettingsScreen.routeName,
-];
+// defaultHiddenNavRoutes are the destinations an untouched theme leaves out
+// of the navigation. Everything not named here starts switched on.
+//
+// Both of these are reachable without a permanent slot of their own, which
+// is what a slot in the navigation is for. Every page of the Address Book
+// is one tap from the row under the chat list (see the Chat area's "Address
+// book shortcuts", on by default), and RSS is a plugin -- someone who has
+// installed it can switch it on in Settings > Appearance > Menu, and
+// someone who hasn't never had the item at all.
+const defaultHiddenNavRoutes = <String>{
+  AddressBookScreen.routeName,
+  // PluginNavModel.routeNameFor("rss"), written out because that isn't a
+  // const expression. A plugin that isn't installed contributes no menu
+  // item, so naming it here does nothing until it is.
+  "/dynplugin/rss",
+};
+
+// navRouteShown is whether the navigation carries [routeName], given the
+// theme's [routes] (null for an untouched theme -- see AreaStyle.navRoutes).
+//
+// The editor and both bars ask this same question, and have to agree: a
+// switch drawn from one rule beside a bar drawn from another is a switch
+// that lies about what it did.
+bool navRouteShown(String routeName, List<String>? routes) => routes == null
+    ? !defaultHiddenNavRoutes.contains(routeName)
+    : routes.contains(routeName);
+
+// navItemsFor is the destination list the navigation carries: the theme's
+// chosen routes, in the menu's own order.
+//
+// Shared by the desktop nav bar (components/sidebar.dart), the phone's
+// bottom bar (components/mobile_nav_bar.dart) and OverviewScreen, which
+// needs the same list to decide what counts as a top-level tab. One
+// function because they are one navigation -- see AreaStyle.navRoutes.
+//
+// A null list means the default set -- see defaultHiddenNavRoutes. An empty
+// one means none, and is a real setting rather than an absent one.
+//
+// Settings is the exception, and is carried whatever the list says. It is
+// the way back to the switches: with it gone from both bars there is no
+// route to the control that would put it back, and the app would have to be
+// reinstalled to undo one tap. The editor won't let it be switched off (see
+// editor/menus_section.dart); this is for a preset that arrived from
+// somewhere else -- imported, or edited by hand -- with it already missing.
+List<MainMenuItem> navItemsFor(MainMenuModel mainMenu, List<String>? routes) =>
+    mainMenu.menus
+        .where((e) =>
+            !e.hiddenFromSideBar &&
+            (navRouteShown(e.routeName, routes) ||
+                e.routeName == SettingsScreen.routeName))
+        .toList();
 
 class MainMenuModel extends ChangeNotifier {
   // A mutable copy of the static mainMenu list: dynamic-wasm plugins (see

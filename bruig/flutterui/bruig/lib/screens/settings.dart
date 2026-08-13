@@ -861,27 +861,17 @@ class _AppearanceSettingsScreenState extends State<AppearanceSettingsScreen> {
                     runSpacing: 8,
                     crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
+                      // The same actions, in the same order and with the same
+                      // icons, as the Markdown area's style-guide row: new,
+                      // save, rename, import, export, delete. Two preset
+                      // pickers a scroll apart that each named and ordered
+                      // the same six things differently made each of them
+                      // look like its own feature.
                       ThemeModeDropdown(theme, mainMenu),
-                      OutlinedButton.icon(
+                      IconButton(
                         onPressed: () => createNewPreset(theme),
-                        icon: const Icon(Icons.add_circle_outline),
-                        label: const Text("New Preset"),
-                      ),
-                      IconButton(
-                        onPressed: () =>
-                            importPresetFile(context, theme, mainMenu),
-                        icon: const Icon(Icons.file_upload_outlined),
-                        tooltip: "Import",
-                      ),
-                      IconButton(
-                        onPressed: () => exportPresetFile(context, theme),
-                        icon: const Icon(Icons.file_download_outlined),
-                        tooltip: "Export",
-                      ),
-                      IconButton(
-                        onPressed: () => resetToDefaultTheme(theme, mainMenu),
-                        icon: const Icon(Icons.restart_alt_outlined),
-                        tooltip: "Reset to Default",
+                        icon: const Icon(Icons.add),
+                        tooltip: "New theme",
                       ),
                       IconButton(
                         onPressed: theme.activePreset != null
@@ -891,7 +881,36 @@ class _AppearanceSettingsScreenState extends State<AppearanceSettingsScreen> {
                         tooltip: "Save",
                       ),
                       IconButton(
-                        onPressed: theme.activePreset != null
+                        // A built-in's name is what a shipped theme is
+                        // known by, so it is not the reader's to change --
+                        // editing one forks it, and the fork can be
+                        // renamed freely.
+                        onPressed: theme.activePreset != null &&
+                                !theme.isBuiltinPreset(theme.activePreset!.id)
+                            ? () => renamePreset(context, theme)
+                            : null,
+                        icon: const Icon(Icons.edit_outlined),
+                        tooltip: "Rename this theme",
+                      ),
+                      IconButton(
+                        onPressed: () =>
+                            importPresetFile(context, theme, mainMenu),
+                        icon: const Icon(Icons.file_upload_outlined),
+                        tooltip: "Import a theme",
+                      ),
+                      IconButton(
+                        onPressed: () => exportPresetFile(context, theme),
+                        icon: const Icon(Icons.file_download_outlined),
+                        tooltip: "Export this theme",
+                      ),
+                      // Reset is gone: it did the same thing as picking
+                      // "Default Theme" from the dropdown beside it, and a
+                      // second, louder-looking route to that was read as
+                      // "throw away all my presets" rather than "switch
+                      // back". Deleting one preset is still Delete.
+                      IconButton(
+                        onPressed: theme.activePreset != null &&
+                                !theme.isBuiltinPreset(theme.activePreset!.id)
                             ? () => deletePreset(context, theme)
                             : null,
                         icon: const Icon(Icons.delete_outline),

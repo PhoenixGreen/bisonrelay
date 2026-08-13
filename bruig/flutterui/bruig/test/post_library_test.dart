@@ -171,6 +171,59 @@ void main() {
       editor.dispose();
     });
 
+    // Deleting the open document left its text on screen belonging to no
+    // document -- which is the state fileLooseText exists to rescue, so
+    // opening anything else filed it straight back under a name taken from
+    // its own first heading. That is the name it had just been deleted
+    // under, so it reappeared in the folder it had just been removed from.
+    test("a deleted document is not refiled out of the composer", () async {
+      await PostStorage.createFolder("Drafts");
+      await PostStorage.write("Drafts", "Routing fees", "# Routing fees\n\nx");
+      await PostStorage.write("Drafts", "Other", "# Other\n\ny");
+      await model.openFolderNamed("Drafts");
+
+      await model.open(
+          model.entries.firstWhere((e) => e.name == "Routing fees"));
+      expect(editor.text, contains("Routing fees"));
+
+      await model.delete(
+          model.entries.firstWhere((e) => e.name == "Routing fees"));
+      expect(await PostStorage.exists("Drafts", "Routing fees"), isFalse);
+
+      // Opening another document is what used to bring it back.
+      await model.open(model.entries.firstWhere((e) => e.name == "Other"));
+      expect(await PostStorage.exists("Drafts", "Routing fees"), isFalse,
+          reason: "the deleted document came back");
+
+      await model.refresh();
+      expect(model.entries.where((e) => e.name == "Routing fees"), isEmpty);
+    });
+
+    test("deleting the open document empties the composer", () async {
+      await PostStorage.write("", "A draft", "# A draft\n\nbody");
+      await model.refresh();
+      await model.open(model.entries.firstWhere((e) => e.name == "A draft"));
+      expect(editor.text, isNotEmpty);
+
+      await model.delete(
+          model.entries.firstWhere((e) => e.name == "A draft"));
+      expect(editor.text, isEmpty,
+          reason: "text with no document behind it gets refiled");
+      expect(model.openName, isNull);
+    });
+
+    // Deleting something else must leave the writing alone.
+    test("deleting another document leaves the composer alone", () async {
+      await PostStorage.write("", "Keep", "# Keep\n\nbody");
+      await PostStorage.write("", "Bin", "# Bin\n\nbody");
+      await model.refresh();
+      await model.open(model.entries.firstWhere((e) => e.name == "Keep"));
+
+      await model.delete(model.entries.firstWhere((e) => e.name == "Bin"));
+      expect(editor.text, contains("Keep"));
+      expect(model.openName, "Keep");
+    });
+
     test("saving the current post opens it for further edits", () async {
       editor.text = "# A draft\n\nSome text.";
       expect(await model.newDocument("A draft"), isTrue);

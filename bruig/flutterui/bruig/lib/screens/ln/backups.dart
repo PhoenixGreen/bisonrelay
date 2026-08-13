@@ -60,7 +60,6 @@ class _LNBackupsPageState extends State<LNBackupsPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const LNInfoSectionHeader("Backups"),
-            const SizedBox(height: 8),
             const SizedBox(
                 width: 650,
                 child: Text(

@@ -417,7 +417,23 @@ class PostLibraryModel extends ChangeNotifier {
         entry.name == _openName &&
         entry.folder == _openFolder;
     var deletedOpenFolder = entry.isFolder && entry.name == _openFolder;
-    if (deletedOpen || deletedOpenFolder) closeDocument();
+    if (deletedOpen || deletedOpenFolder) {
+      closeDocument();
+      // ...and the writing goes with it.
+      //
+      // Stopping the autosave is not enough on its own. closeDocument leaves
+      // the text on screen belonging to no document, which is exactly the
+      // state fileLooseText exists to rescue -- so opening anything else
+      // filed it under a name taken from its own first heading, which is the
+      // name it had just been deleted under, and the document reappeared in
+      // the folder it had just been removed from.
+      //
+      // Clearing it here rather than teaching fileLooseText to recognise
+      // deleted text: text that has been explicitly deleted is not unsaved
+      // writing, and a flag saying "do not rescue this" would still be
+      // sitting there over whatever the user typed next.
+      _setEditorText("");
+    }
     await refresh();
   }
 

@@ -304,5 +304,17 @@ Map<ThemeArea, AreaStyle> migrateAreas(Map<ThemeArea, AreaStyle> areas) {
     moved = true;
   }
   if (moved) migrated[ThemeArea.settingsPages] = settings;
+
+  // Mobile's "mobileNavRoutes" is deliberately *not* carried into the
+  // Navigation Bar's navRoutes, and AreaStyle.fromJson no longer reads it.
+  //
+  // The two are not the same setting. mobileNavRoutes said which four
+  // destinations were worth a permanent slot on a phone; navRoutes says
+  // which destinations the app has navigation for at all, on every screen
+  // size. Carrying a phone's shortlist across would take five items off the
+  // desktop nav bar of anyone who had ever touched the mobile setting --
+  // and there is no way back to them, because the way back is the nav bar.
+  // Left unset, both bars carry everything, which is the new default and is
+  // recoverable by switching items off.
   return migrated;
 }

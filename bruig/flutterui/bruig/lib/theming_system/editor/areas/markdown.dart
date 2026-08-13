@@ -1,5 +1,10 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:bruig/components/md_elements.dart';
+import 'package:bruig/components/snackbars.dart';
 import 'package:bruig/components/text.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:bruig/theming_system/editor/areas/sample_image.dart';
 import 'package:bruig/theming_system/theme_editor.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
@@ -89,12 +94,19 @@ text: Two across, and up to three rows of them.
 
 Body text below them.
 """,
+      // Real code rather than two lines of prose: the padding needs
+      // something to sit around, the numbering needs more than a line or
+      // two to be worth looking at, and the highlighting needs a comment, a
+      // string, a number and a keyword before any of it shows.
       _Element.code => """
 Body text with `inline code` in it.
 
 ```
-a fenced block
-a second line, for the padding
+// Count how many of them are still open.
+function openChannels(list) {
+  const open = list.filter(c => c.state == "open");
+  return open.length + 1;
+}
 ```
 """,
       _Element.lists => """
@@ -229,10 +241,8 @@ class _MarkdownEditorState extends State<_MarkdownEditor> {
   Widget build(BuildContext context) {
     var ctx = widget.ctx;
     var style = ctx.style;
-    var chosen = builtInGuideFor(style.markdownGuideId) == null
-        ? defaultGuideId
-        : style.markdownGuideId;
-    var guide = style.markdownGuide(builtInGuideFor(chosen));
+    var unsaved = style.markdownCustomGuide != null;
+    var guide = style.markdownGuide(builtInGuideFor(style.markdownGuideId));
 
     /// edit changes one rule of the guide.
     ///
@@ -246,35 +256,85 @@ class _MarkdownEditorState extends State<_MarkdownEditor> {
       ctx.setStyle((s) => s.copyWith(markdownCustomGuide: next.toJson()));
     }
 
+    // The working copy stands in the picker as itself, so the name above the
+    // settings is the name of the guide those settings belong to. Editing a
+    // built-in used to leave "Article" showing while every control under it
+    // was driving a fork called "Article (edited)" -- the same trap the
+    // theme presets avoid by putting the new draft in the dropdown the
+    // moment it exists.
+    //
+    // Only when it isn't already there: editing a guide of the reader's own
+    // edits it in place, under the id it is saved as.
     var choices = style.markdownGuideChoices(builtInGuides);
-    var unsaved = style.markdownCustomGuide != null;
+    if (unsaved && !choices.any((g) => g.id == guide.id)) {
+      choices = [...choices, guide];
+    }
+    var chosen =
+        choices.any((g) => g.id == guide.id) ? guide.id : defaultGuideId;
+    var savedGuide = style.markdownSavedGuides.containsKey(chosen);
 
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(children: [
         Expanded(
           child: ctx.choice<String>(
             "Style guide",
-            value: choices.any((g) => g.id == chosen) ? chosen : defaultGuideId,
+            value: chosen,
             options: [for (var g in choices) g.id],
-            labelOf: (id) => choices
-                .firstWhere((g) => g.id == id, orElse: () => choices.first)
-                .name,
+            labelOf: (id) {
+              var g = choices.firstWhere((g) => g.id == id,
+                  orElse: () => choices.first);
+              return unsaved && g.id == guide.id
+                  ? "${g.name} (unsaved)"
+                  : g.name;
+            },
             onChanged: (v) => ctx.setStyle((s) =>
                 s.copyWith(markdownGuideId: v, clearMarkdownCustomGuide: true)),
           ),
         ),
-        // Save appears only when there is something unsaved to save, and
-        // Delete only on a guide that can be deleted -- a built-in cannot,
-        // because it is the same everywhere by definition.
-        if (unsaved)
+        // The same actions, in the same order, as the theme presets above:
+        // new, save, rename, import, export, delete.
+        //
+        // Save writes over the guide being edited. It used to be the only
+        // way to keep a change and it always minted a fresh id, so editing
+        // a guide of your own and saving left you with a second copy of it
+        // -- and doing that twice, a third. Making a new guide is what the
+        // New button is for, and saving now means what it says.
+        IconButton(
+          tooltip: "New style guide",
+          icon: const Icon(Icons.add, size: 20),
+          onPressed: () => _saveAsNew(ctx, guide, title: "New style guide"),
+        ),
+        IconButton(
+          tooltip: savedGuide
+              ? "Save changes to \"${guide.name}\""
+              // A built-in is the same everywhere by definition -- that is
+              // the whole point of naming one in a post -- so there is
+              // nothing to write over and saving names a new guide.
+              : "Save as a style guide of your own",
+          icon: const Icon(Icons.save_outlined, size: 20),
+          onPressed: !unsaved
+              ? null
+              : savedGuide
+                  ? () => _saveOver(ctx, guide, chosen)
+                  : () => _saveAsNew(ctx, guide, title: "Save style guide"),
+        ),
+        if (savedGuide)
           IconButton(
-            tooltip: "Save as a style guide of your own",
-            icon: const Icon(Icons.save_outlined, size: 20),
-            onPressed: () => _askToSave(ctx, guide),
+            tooltip: "Rename this style guide",
+            icon: const Icon(Icons.edit_outlined, size: 20),
+            onPressed: () => _rename(ctx, guide, chosen),
           ),
-        if (!guide.builtIn &&
-            !unsaved &&
-            style.markdownSavedGuides.containsKey(chosen))
+        IconButton(
+          tooltip: "Import a style guide",
+          icon: const Icon(Icons.file_upload_outlined, size: 20),
+          onPressed: () => _import(ctx),
+        ),
+        IconButton(
+          tooltip: "Export this style guide",
+          icon: const Icon(Icons.file_download_outlined, size: 20),
+          onPressed: () => _export(guide),
+        ),
+        if (savedGuide)
           IconButton(
             tooltip: "Delete this style guide",
             icon: const Icon(Icons.delete_outline, size: 20),
@@ -282,12 +342,21 @@ class _MarkdownEditorState extends State<_MarkdownEditor> {
           ),
       ]),
       ctx.note(unsaved
-          ? "Unsaved changes. They are in use already -- save them to keep "
-              "them under a name of their own, or choose a guide above to "
-              "start again from that one."
-          : "How posts are set on this device. Changing anything below "
-              "starts a guide of your own; the built-in ones are left as "
-              "they are."),
+          ? savedGuide
+              // Editing one of your own: Save writes back to it.
+              ? "Unsaved changes to \"${guide.name}\". They are in use "
+                  "already -- Save keeps them, or choose a guide above to "
+                  "start again from that one."
+              // Editing a built-in: there is nothing to write back to.
+              : "Unsaved changes. They are in use already -- Save keeps "
+                  "them as a guide of your own, since the built-in ones "
+                  "have to stay the same on every device."
+          : guide.builtIn
+              ? "How posts are set on this device. Changing anything below "
+                  "starts a guide of your own; the built-in ones are left "
+                  "as they are."
+              : "How posts are set on this device. Changing anything below "
+                  "edits this guide -- New starts another one from it."),
       const SizedBox(height: 16),
       ctx.choice<_Element>(
         "Element",
@@ -354,14 +423,15 @@ class _MarkdownEditorState extends State<_MarkdownEditor> {
                 edit((g) => put(g, rule.copyWith(letterSpacing: v)))),
       ];
 
-  /// _askToSave names the working copy and puts it in the library.
-  void _askToSave(AreaEditorContext ctx, MarkdownStyleGuide guide) async {
-    var controller =
-        TextEditingController(text: guide.name.replaceAll(" (edited)", ""));
+  /// _promptName asks for a name, returning null if the reader backs out or
+  /// leaves it blank.
+  Future<String?> _promptName(String title, String initial,
+      {String action = "Save"}) async {
+    var controller = TextEditingController(text: initial);
     var name = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text("Save style guide"),
+        title: Text(title),
         content: TextField(
           controller: controller,
           autofocus: true,
@@ -374,20 +444,69 @@ class _MarkdownEditorState extends State<_MarkdownEditor> {
               child: const Text("Cancel")),
           TextButton(
               onPressed: () => Navigator.pop(context, controller.text),
-              child: const Text("Save")),
+              child: Text(action)),
         ],
       ),
     );
-    if (name == null || name.trim().isEmpty || !mounted) return;
+    if (name == null || name.trim().isEmpty) return null;
+    return name.trim();
+  }
 
-    // A fresh id each time, so saving twice under different names keeps both
-    // rather than the second quietly replacing the first.
+  /// _saveAsNew names the working copy and puts it in the library as a guide
+  /// of its own.
+  ///
+  /// What the New button does, and what Save falls back to on a built-in --
+  /// there is nothing to write over in that case, since a built-in is the
+  /// same on every device by definition.
+  void _saveAsNew(AreaEditorContext ctx, MarkdownStyleGuide guide,
+      {required String title}) async {
+    var name = await _promptName(title, guide.name.replaceAll(" (edited)", ""));
+    if (name == null || !mounted) return;
+
+    // A fresh id each time, so making two guides from the same starting
+    // point keeps both rather than the second quietly replacing the first.
     var id = "guide-${DateTime.now().microsecondsSinceEpoch}";
-    var saved = guide.copyWith(id: id, name: name.trim());
+    var saved = guide.copyWith(id: id, name: name);
     ctx.setStyle((s) => s.copyWith(
           markdownSavedGuides: {...s.markdownSavedGuides, id: saved.toJson()},
           markdownGuideId: id,
           clearMarkdownCustomGuide: true,
+        ));
+  }
+
+  /// _saveOver writes the working copy back to the guide it came from.
+  ///
+  /// No dialog: the guide already has a name, and asking for it again is how
+  /// this used to end up making a second copy every time. Renaming is its
+  /// own button.
+  void _saveOver(AreaEditorContext ctx, MarkdownStyleGuide guide, String id) {
+    var saved = guide.copyWith(id: id);
+    ctx.setStyle((s) => s.copyWith(
+          markdownSavedGuides: {...s.markdownSavedGuides, id: saved.toJson()},
+          markdownGuideId: id,
+          clearMarkdownCustomGuide: true,
+        ));
+  }
+
+  /// _rename changes a saved guide's name, keeping its id.
+  ///
+  /// The id is what a post names and what the picker selects, so renaming
+  /// leaves both alone -- this is the label, not the identity. Any unsaved
+  /// changes are carried along rather than dropped: the name is on the same
+  /// working copy the settings below are editing.
+  void _rename(
+      AreaEditorContext ctx, MarkdownStyleGuide guide, String id) async {
+    var name =
+        await _promptName("Rename style guide", guide.name, action: "Rename");
+    if (name == null || !mounted) return;
+    var renamed = guide.copyWith(id: id, name: name);
+    ctx.setStyle((s) => s.copyWith(
+          markdownSavedGuides: {...s.markdownSavedGuides, id: renamed.toJson()},
+          markdownGuideId: id,
+          // The working copy is rewritten rather than cleared, so a rename
+          // mid-edit doesn't quietly throw the edits away.
+          markdownCustomGuide:
+              s.markdownCustomGuide == null ? null : renamed.toJson(),
         ));
   }
 
@@ -397,6 +516,77 @@ class _MarkdownEditorState extends State<_MarkdownEditor> {
           markdownGuideId: defaultGuideId,
           clearMarkdownCustomGuide: true,
         ));
+  }
+
+  /// _export writes the guide to a file.
+  ///
+  /// Plain JSON rather than the zip a theme preset is exported as: a preset
+  /// carries pictures and so needs a container, and a guide is only ever the
+  /// rules -- it names colours by palette slot and role, never by value, so
+  /// there is nothing else to travel with it. That is also what lets an
+  /// exported guide look right in the theme it lands in rather than dragging
+  /// the exporter's colours along.
+  Future<void> _export(MarkdownStyleGuide guide) async {
+    var destPath = await FilePicker.platform.saveFile(
+      dialogTitle: "Export style guide",
+      fileName: "${guide.name}.json",
+      type: FileType.custom,
+      allowedExtensions: ["json"],
+    );
+    if (destPath == null || !mounted) return;
+    try {
+      // A guide is never written out as a built-in, whatever it was forked
+      // from -- toJson carries no such key, and fromJson reads none, so an
+      // exported "Article" arrives as an ordinary guide of the reader's own
+      // rather than as an undeletable fifth built-in.
+      await File(destPath).writeAsString(
+          const JsonEncoder.withIndent("  ").convert(guide.toJson()));
+      if (mounted) {
+        showSuccessSnackbar(context, "Exported style guide to $destPath");
+      }
+    } catch (exception) {
+      if (mounted) {
+        showErrorSnackbar(context, "Unable to export style guide: $exception");
+      }
+    }
+  }
+
+  /// _import reads a guide from a file into the library and selects it.
+  ///
+  /// A fresh id, like an imported theme preset: the id in the file is the
+  /// exporting machine's, and reusing it would silently overwrite a guide of
+  /// the same id already here.
+  Future<void> _import(AreaEditorContext ctx) async {
+    var res = await FilePicker.platform.pickFiles(
+      allowMultiple: false,
+      dialogTitle: "Import style guide",
+      type: FileType.custom,
+      allowedExtensions: ["json"],
+    );
+    var srcPath = res?.files.first.path;
+    if (srcPath == null || !mounted) return;
+    try {
+      var json = jsonDecode(await File(srcPath).readAsString());
+      if (json is! Map) throw Exception("not a style guide");
+      var guide = MarkdownStyleGuide.fromJson(Map<String, Object?>.from(json));
+      var id = "guide-${DateTime.now().microsecondsSinceEpoch}";
+      // copyWith drops builtIn as soon as the id changes, which is exactly
+      // what an import wants.
+      var saved = guide.copyWith(id: id);
+      if (!mounted) return;
+      ctx.setStyle((s) => s.copyWith(
+            markdownSavedGuides: {...s.markdownSavedGuides, id: saved.toJson()},
+            markdownGuideId: id,
+            clearMarkdownCustomGuide: true,
+          ));
+      if (mounted) {
+        showSuccessSnackbar(context, "Imported style guide \"${saved.name}\"");
+      }
+    } catch (exception) {
+      if (mounted) {
+        showErrorSnackbar(context, "Unable to import style guide: $exception");
+      }
+    }
   }
 
   /// _columnSpacing is one of the column box's four-way settings.
@@ -677,6 +867,20 @@ class _MarkdownEditorState extends State<_MarkdownEditor> {
           ..._textControls(ctx, "card-text", guide.cards.text, edit,
               (g, r) => g.copyWith(cards: g.cards.copyWith(text: r)),
               maxScale: 2.0),
+          const SizedBox(height: 16),
+          const Txt.M("Button"),
+          ctx.choice<ButtonRole>(
+            "Design",
+            value: guide.cards.button,
+            options: ButtonRole.values,
+            labelOf: buttonRoleLabel,
+            onChanged: (r) =>
+                edit((g) => g.copyWith(cards: g.cards.copyWith(button: r))),
+          ),
+          ctx.note("One of the app's own five buttons, so a card's button "
+              "matches every other button in the app -- its colours come "
+              "from the Buttons theme area, not from here. Shown only on a "
+              "card with a button: field."),
         ];
 
       case _Element.code:
@@ -691,6 +895,29 @@ class _MarkdownEditorState extends State<_MarkdownEditor> {
           ...ink("Background", guide.codeBackground,
               (g, i) => g.copyWith(codeBackground: i)),
           ctx.note("Used for fenced blocks and for `inline code`."),
+          const SizedBox(height: 16),
+          const Txt.M("Fenced blocks"),
+          ctx.note("The three below apply to ``` blocks only. Inline code "
+              "sits in a line of prose and has no room for any of them."),
+          ctx.slider("md-code-pad", guide.codePadding ?? 8,
+              label: (v) => "Padding: ${v.round()}px",
+              min: 0,
+              max: 48,
+              divisions: 48,
+              onCommit: (v) => edit((g) => g.copyWith(codePadding: v))),
+          ctx.toggle("Line numbers",
+              subtitle: "A numbered gutter down the left. It is a column of "
+                  "its own, so copying the block still gives back the code "
+                  "without the numbering",
+              value: guide.codeLineNumbers,
+              onChanged: (v) => edit((g) => g.copyWith(codeLineNumbers: v))),
+          ctx.toggle("Syntax highlighting",
+              subtitle: "Colours strings, numbers, comments and keywords. "
+                  "The language written after the backticks never reaches "
+                  "the renderer, so this is the part every language agrees "
+                  "on rather than a grammar per language",
+              value: guide.codeHighlight,
+              onChanged: (v) => edit((g) => g.copyWith(codeHighlight: v))),
         ];
 
       case _Element.lists:

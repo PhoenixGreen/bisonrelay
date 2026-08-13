@@ -115,271 +115,144 @@ class ColorPalette {
 // multiple slots (e.g. a deliberately flat, uniform dark theme) -- that's
 // the author's choice, not something to compensate for algorithmically.
 //
-// Curated to exactly 11, each modeled on a real, recognizable app's actual
-// brand palette (rather than an arbitrary named hue) so every entry reads
-// as a deliberate, professional design instead of a generic color-wheel
-// pick -- users can save/build their own beyond these via the theme
-// editor's "Save current palette".
+// Curated, and deliberately short. Each entry is modeled on something real
+// -- an app's actual dark mode, or a club's two colors -- rather than an
+// arbitrary named hue, so every one reads as a design instead of a
+// color-wheel pick. Users can save and build their own beyond these via
+// the theme editor's "Save current palette".
+//
+// This was eleven, one per recognizable brand. Eight of them (X, VS Code,
+// Facebook, Snapchat, Instagram, WhatsApp, Reddit, YouTube) were dropped:
+// as a set they were near-black chrome plus one brand accent over and
+// over, so most of the list looked the same in use and picking between
+// them wasn't a real choice. What's left is five that differ from each
+// other -- flat black, navy and gold, neutral grey, green, and warm grey.
+//
+// Removing a palette is safe: applying one copies its colors into the
+// preset, so nothing stores a palette id. A user who had applied one keeps
+// exactly the theme they had; they just can't pick it from the strip again.
 const List<ColorPalette> builtinPalettes = [
   // Exact values tuned live in the theme editor and exported (see
   // Dark_Palette_T2.json in the conversation this was pulled from), not run
   // through any re-derivation. Kept first in this list (right after the
   // synthetic "Default Theme" card prepended in theme_editor.dart) since
   // it's the primary dark option.
-  ColorPalette(
-      id: "builtin-dark-theme",
-      name: "Dark Theme",
-      builtin: true,
-      colors: [
-        Color(0xFF000000), // primary
-        Color(0xFF000000), // secondary (nav bg)
-        Color(0xFF262A32), // tertiary
-        Color(0xFF0B0C0C), // sidebar bg
-        Color(0xFF2F303B), // speech bg (received)
-        Color(0xFF17324A), // speech bg sent: blue-tinted, echoes navAccent
-        Color(0xFF1D9BF0), // navAccent
-        Color(0xFFFFFFFF), // sidebarAccent
-        Color(
-            0xFF1B4A66), // accentContainer: muted blue container, echoes navAccent
-        Color(0xFFFF6B6B), // error
-        Color(0xFF1A1C20), // outline: subtle, between primary and tertiary
-        Color(
-            0xFF42516D), // fourth: notifications/toast surface -- deliberately
-        // a clear step up in lightness (not just a subtle third background
-        // tier) so a "Theme saved"-style toast or the chat reply-preview box
-        // actually reads as a raised surface instead of blending into Primary.
-        // Button label / border / tonal fill (tail slots 12-14): X-blue label, muted blue border, slate tonal fill.
-        Color(0xFF1D9BF0), // buttonText1
-        Color(0xFF5A83A0), // buttonBorderColor
-        Color(0xFF4C6372), // buttonBackgroundThird
-      ]),
-  // X (Twitter)'s "Lights out" dark theme -- exact values tuned live in the
-  // theme editor and exported (see preset.json in the conversation this was
-  // pulled from), not run through any re-derivation. Primary/secondary/
-  // sidebar background are deliberately identical, matching X's genuinely
-  // flat black chrome; X blue and white carry the accents.
-  ColorPalette(
-      id: "builtin-x-dark",
-      name: "X (Twitter) Dark",
-      builtin: true,
-      colors: [
-        Color(0xFF121417), // primary
-        Color(
-            0xFF121417), // secondary (nav bg) -- same as primary, deliberately flat
-        Color(0xFF262A32), // tertiary
-        Color(0xFF121417), // sidebar bg -- same as primary, deliberately flat
-        Color(0xFF2F303B), // speech bg (received)
-        Color(0xFF1A2E42), // speech bg sent: X's navy DM bubble, lifted from
-        // the literal #15202B -- against this palette's deliberately flat
-        // black chrome that sat at 1.12:1, so an own-message bubble had no
-        // visible edge against the page at all
-        Color(0xFF1D9BF0), // navAccent: X blue
-        Color(0xFFFFFFFF), // sidebarAccent: white (X's icon/text color)
-        Color(
-            0xFF16405C), // accentContainer: muted blue container, echoes navAccent
-        Color(0xFFFF6B6B), // error
-        Color(0xFF1D2024), // outline: subtle, between primary and tertiary
-        Color(0xFF495977), // fourth: notifications/toast surface -- a clear
-        // step up in lightness so it reads as raised, not just another
-        // near-black background tier
-        // Button label / border / tonal fill (tail slots 12-14): X blue label, muted blue border, slate tonal fill.
-        Color(0xFF1D9BF0), // buttonText1
-        Color(0xFF648DA8), // buttonBorderColor
-        Color(0xFF4C6372), // buttonBackgroundThird
-      ]),
-  // VS Code's default Dark+ theme: near-neutral blue-grey panels (editor/
-  // sidebar/activity bar/status bar are each a subtly different grey) with
-  // its signature status-bar blue as the accent.
-  ColorPalette(
-      id: "builtin-vscode-dark",
-      name: "VS Code",
-      builtin: true,
-      colors: [
-        Color(0xFF1E1F22), // primary hue: editor background, faint blue-grey
-        Color(0xFF24262A), // secondary (nav bg) hue: activity bar -- darkened
-        // slightly from the real #2A2D31 (was under 3:1 against the app's
-        // fixed unselected-nav-text grey, the weakest contrast of any
-        // built-in palette; still a visible tier above primary/below tertiary)
-        Color(0xFF33363B), // tertiary hue
-        Color(0xFF232529), // sidebar bg hue: explorer panel
-        Color(0xFF2C2F33), // speech bg hue (received)
-        Color(
-            0xFF264F78), // speech bg sent: VS Code's real selection-highlight blue
-        Color(
-            0xFF4FC1FF), // navAccent: VS Code's own "active link" blue (used for
-        // clickable text/links in the real editor) -- the literal status-bar
-        // blue (#007ACC) reads fine as a *background* but was only 2.7:1 as
-        // *foreground text/icons* (nav selected item, default button/link
-        // text) against this palette's own Tertiary, failing even the 3:1 UI
-        // floor; this is the same real VS Code hue family, just the one
-        // that's actually meant to sit on top of dark panels as text.
-        Color(
-            0xFF3794FF), // sidebarAccent: VS Code active-item blue -- unchanged
-        Color(
-            0xFF1F4E73), // accentContainer: muted blue container, echoes navAccent
-        Color(0xFFFF6B6B), // error
-        Color(0xFF282A2E), // outline: subtle, between primary and tertiary
-        Color(0xFF556174), // fourth: notifications/toast surface -- a clear
-        // step up in lightness so it reads as raised, not just another
-        // near-black background tier
-        // Button label / border / tonal fill (tail slots 12-14): VS Code link blue, muted blue-grey border and fill.
-        Color(0xFF4FC1FF), // buttonText1
-        Color(0xFF6D96AD), // buttonBorderColor
-        Color(0xFF4B6371), // buttonBackgroundThird
-      ]),
-  // Facebook: matches its real dark-mode chrome -- near-black neutral
-  // panels (background/nav rail/sidebar all a tight blue-grey cluster, the
-  // way Facebook's own #18191A/#242526 chrome reads) with the brand blue
-  // reserved for accents, not painted across the whole background.
-  ColorPalette(
-      id: "builtin-facebook",
-      name: "Facebook",
-      builtin: true,
-      colors: [
-        Color(0xFF18191B), // primary: FB's real dark-mode background
-        Color(0xFF0E0F10), // secondary (nav bg): recessed rail
-        Color(0xFF2A2C30), // tertiary: elevated panel/card
-        Color(0xFF141518), // sidebar bg
-        Color(0xFF242526), // speech bg (received): FB's real raised-panel color
-        Color(0xFF0D3B70), // speech bg sent: darkened from Messenger's real
-        // #1B5FCC outgoing-bubble blue -- that value only held a 4.58:1
-        // contrast against this app's near-white chat text (barely over the
-        // 4.5 AA floor, effectively no safety margin); this deeper navy keeps
-        // the same blue identity at 8.67:1.
-        Color(0xFF1877F2), // navAccent: Facebook blue
-        Color(0xFF4599FF), // sidebarAccent: FB's dark-mode link blue
-        Color(
-            0xFF1B4A8A), // accentContainer: muted blue container, echoes navAccent
-        Color(0xFFFF6B6B), // error
-        Color(0xFF212226), // outline: subtle, between primary and tertiary
-        Color(0xFF4A586A), // fourth: notifications/toast surface -- a muted
-        // FB-blue-slate tone, clearly raised above Primary rather than nearly
-        // merging with it
-        // Button label / border / tonal fill (tail slots 12-14): FB's own dark-mode link blue -- the #1877F2 brand blue is
-        // only 4.15:1 as button text on this background.
-        Color(0xFF4599FF), // buttonText1
-        Color(0xFF738EB0), // buttonBorderColor
-        Color(0xFF506178), // buttonBackgroundThird
-      ]),
-  // Snapchat: near-black panels with a faint warm amber-black undertone
-  // (echoing its yellow brand even in the neutral chrome) so the
-  // unmistakable pure yellow accent is what actually carries the brand.
-  ColorPalette(
-      id: "builtin-snapchat",
-      name: "Snapchat",
-      builtin: true,
-      colors: [
-        Color(0xFF15130E), // primary
-        Color(0xFF0C0B08), // secondary (nav bg)
-        Color(0xFF2B2619), // tertiary
-        Color(0xFF1A170F), // sidebar bg
-        Color(0xFF231F14), // speech bg (received)
-        Color(
-            0xFF3D3212), // speech bg sent: deeper amber-gold, echoes navAccent
-        Color(0xFFFFFC00), // navAccent: Snapchat yellow
-        Color(0xFFFFD500), // sidebarAccent: deeper gold-yellow
-        Color(0xFF5C4C0E), // accentContainer: muted gold-olive container
-        Color(0xFFFF6B6B), // error
-        Color(0xFF201C13), // outline: subtle, between primary and tertiary
-        Color(0xFF5A5335), // fourth: notifications/toast surface -- muted gold,
-        // clearly raised above Primary rather than nearly merging with it
-        // Button label / border / tonal fill (tail slots 12-14): brand yellow, which reads at 17:1; muted olive border and fill.
-        Color(0xFFFFFC00), // buttonText1
-        Color(0xFF8B8B4E), // buttonBorderColor
-        Color(0xFF626241), // buttonBackgroundThird
-      ]),
-  // Instagram: near-black panels with a faint cool plum-black undertone
-  // (echoing the magenta end of its gradient even in the neutral chrome --
-  // and keeping it visually distinct from Snapchat's warm-black neutral
-  // cluster) with the brand pink/orange duo from its gradient carrying the
-  // accents.
-  ColorPalette(
-      id: "builtin-instagram",
-      name: "Instagram",
-      builtin: true,
-      colors: [
-        Color(0xFF161114), // primary
-        Color(0xFF0D0A0C), // secondary (nav bg)
-        Color(0xFF2B2227), // tertiary
-        Color(0xFF1B161A), // sidebar bg
-        Color(0xFF231C21), // speech bg (received)
-        Color(
-            0xFF3A1830), // speech bg sent: deep magenta-plum, echoes navAccent
-        Color(0xFFF2528F), // navAccent: Instagram pink -- lightened from the
-        // real #C13584 brand swatch, which only held a 3.02:1 contrast as
-        // foreground text/icons (nav selected item, default button/link
-        // text) against this palette's own Tertiary, under the 3:1 UI floor;
-        // this stays in the same pink family at 4.69:1.
-        Color(0xFFF77737), // sidebarAccent: Instagram orange
-        Color(0xFF7A2E5C), // accentContainer: muted magenta container
-        Color(0xFFFF6B6B), // error
-        Color(0xFF1F191C), // outline: subtle, between primary and tertiary
-        Color(0xFF6A4758), // fourth: notifications/toast surface -- muted
-        // plum-pink, clearly raised above Primary rather than nearly merging
-        // with it
-        // Button label / border / tonal fill (tail slots 12-14): brand pink, muted plum border and fill.
-        Color(0xFFF2528F), // buttonText1
-        Color(0xFFB2768D), // buttonBorderColor
-        Color(0xFF7D5464), // buttonBackgroundThird
-      ]),
-  // WhatsApp: matches its real dark-mode chrome -- deep teal-black panels
-  // (background/sidebar/panel all pulled from WhatsApp's actual
-  // #0B141A/#111B21/#202C33 chrome) with the brand green/teal duo as
-  // accents.
-  ColorPalette(
-      id: "builtin-whatsapp",
-      name: "WhatsApp",
-      builtin: true,
-      colors: [
-        Color(0xFF0B141A), // primary: WhatsApp's real dark-mode background
-        Color(0xFF080F13), // secondary (nav bg)
-        Color(0xFF202C33), // tertiary: WhatsApp's real panel/hover color
-        Color(0xFF111B21), // sidebar bg: WhatsApp's real chat-list bg
-        Color(0xFF202C33), // speech bg (received): WhatsApp's real bubble color
-        Color(
-            0xFF005C4B), // speech bg sent: WhatsApp's real outgoing-bubble teal
-        Color(0xFF25D366), // navAccent: WhatsApp green
-        Color(0xFF00A884), // sidebarAccent: WhatsApp teal
-        Color(0xFF1D5C4A), // accentContainer: muted teal-green container
-        Color(0xFFFF6B6B), // error
-        Color(0xFF162026), // outline: subtle, between primary and tertiary
-        Color(0xFF395952), // fourth: notifications/toast surface -- muted
-        // teal, clearly raised above Primary rather than nearly merging with
-        // it
-        // Button label / border / tonal fill (tail slots 12-14): brand green, muted green border and fill.
-        Color(0xFF25D366), // buttonText1
-        Color(0xFF54956C), // buttonBorderColor
-        Color(0xFF456752), // buttonBackgroundThird
-      ]),
-  // Reddit: matches its real dark-mode chrome -- near-black neutral panels
-  // (Reddit's own #030303/#1A1A1B/#272729 chrome) with the real
-  // upvote-orange and comment-blue accent pairing.
-  ColorPalette(id: "builtin-reddit", name: "Reddit", builtin: true, colors: [
-    Color(0xFF1A1A1B), // primary: Reddit's real dark-mode background
-    Color(0xFF0B0B0C), // secondary (nav bg)
-    Color(0xFF272729), // tertiary: Reddit's real panel color
-    Color(0xFF161617), // sidebar bg
-    Color(0xFF2E2E30), // speech bg (received): lifted from #1E1E20, which
-    // was 1.04:1 against this palette's primary -- and kept just above
-    // Tertiary rather than just under it, so the bubble doesn't collide
-    // with the feed-card tier instead
-    Color(0xFF3D2013), // speech bg sent: deep upvote-orange tint
-    Color(0xFFFF4500), // navAccent: Reddit orangered
-    Color(0xFF3D9BE9), // sidebarAccent: Reddit blue, lightened from the
-    // real #0079D3 -- that value sat at 4.03:1 against this palette's own
-    // sidebar background, the only sidebar accent in the set under 4.5:1
+  ColorPalette(id: "builtin-dark-theme", name: "Dark", builtin: true, colors: [
+    Color(0xFF000000), // primary
+    Color(0xFF000000), // secondary (nav bg)
+    Color(0xFF262A32), // tertiary
+    Color(0xFF0B0C0C), // sidebar bg
+    Color(0xFF2F303B), // speech bg (received)
+    Color(0xFF17324A), // speech bg sent: blue-tinted, echoes navAccent
+    Color(0xFF1D9BF0), // navAccent
+    Color(0xFFFFFFFF), // sidebarAccent
     Color(
-        0xFF1B4A73), // accentContainer: muted blue container (Reddit's comment blue)
+        0xFF1B4A66), // accentContainer: muted blue container, echoes navAccent
     Color(0xFFFF6B6B), // error
-    Color(0xFF212122), // outline: subtle, between primary and tertiary
-    Color(0xFF724F40), // fourth: notifications/toast surface -- muted
-    // upvote-orange, clearly raised above Primary rather than nearly
-    // merging with it
-    // Button label / border / tonal fill (tail slots 12-14): orangered lifted from #FF4500, which fell under 4.5:1 on
-    // this palette's own Tertiary.
-    Color(0xFFFF5C1F), // buttonText1
-    Color(0xFFB08272), // buttonBorderColor
-    Color(0xFF76594F), // buttonBackgroundThird
+    Color(0xFF1A1C20), // outline: subtle, between primary and tertiary
+    Color(0xFF42516D), // fourth: notifications/toast surface -- deliberately
+    // a clear step up in lightness (not just a subtle third background
+    // tier) so a "Theme saved"-style toast or the chat reply-preview box
+    // actually reads as a raised surface instead of blending into Primary.
+    // Button label / border / tonal fill (tail slots 12-14): X-blue label, muted blue border, slate tonal fill.
+    Color(0xFF1D9BF0), // buttonText1
+    Color(0xFF5A83A0), // buttonBorderColor
+    Color(0xFF4C6372), // buttonBackgroundThird
+    // The input pair (tail slots 15-16): the accent-derived values this
+    // palette already rendered, written out so appending the slots
+    // changed nothing about how it looks.
+    Color(0xFF115A8B), // inputResting
+    Color(0xFF1D9BF0), // inputSelected
+  ]), // Leeds United: the club's navy and gold, built as a theme in the editor
+  // and exported before being brought in here (leeds-united-v3.json). Navy
+  // #1D428A and gold #FFCD00 are the club's own two colors; the background
+  // tiers are that navy taken down toward black so the gold has somewhere
+  // quiet to sit. Gold carries the accents and white the sidebar, which is
+  // the shirt.
+  ColorPalette(
+      id: "builtin-leeds-united",
+      name: "Leeds United",
+      builtin: true,
+      colors: [
+        Color(0xFF0F1A30), // primary: deep navy-black
+        Color(0xFF0A1322), // secondary (nav bg): darker still
+        Color(0xFF1C2B49), // tertiary: the lifted navy panel
+        Color(0xFF101B33), // sidebar bg
+        Color(0xFF1E2E4E), // speech bg (received)
+        Color(0xFF1D428A), // speech bg sent: the club navy itself
+        Color(0xFFFFCD00), // navAccent: club gold
+        Color(0xFFFFFFFF), // sidebarAccent: the shirt
+        Color(0xFF2C4E8F), // accentContainer: navy container, echoes navAccent
+        Color(0xFFFF6B6B), // error
+        Color(0xFF1A2540), // outline: subtle, between primary and tertiary
+        Color(0xFF3E5687), // fourth: notifications/toast surface -- a clear
+        // step up in lightness so it reads as raised, not just another navy tier
+        // Button label / border / tonal fill (tail slots 12-14): gold label, with
+        // the border and fill desaturated toward the navy so they stay chrome
+        // rather than two more gold elements competing with the accent.
+        Color(0xFFFFCD00), // buttonText1
+        Color(0xFF9B8D53), // buttonBorderColor
+        Color(0xFF6C602E), // buttonBackgroundThird
+        // The input pair (tail slots 15-16): the accent-derived values this
+        // palette already rendered, written out so appending the slots
+        // changed nothing about how it looks.
+        Color(0xFF9D8414), // inputResting
+        Color(0xFFFFCD00), // inputSelected
+      ]),
+  // Ulysses: the writing app's dark mode -- flat, near-neutral greys with no
+  // hue in the chrome at all, and two accents that never appear together.
+  // The point of the design is that nothing competes with the text, so the
+  // tiers sit close together and the only saturated colors in the palette
+  // are the two accents.
+  //
+  // The blue is the app's chrome accent -- the selected folder, the nav's
+  // own selected item, the toggles. The warm brown/tan pair is the other:
+  // Ulysses sets an annotated line as tan text on a brown ground, and it is
+  // the only warmth anywhere in that design, which is what makes it read as
+  // a mark on the page rather than as part of the furniture. Here that pair
+  // is the input box and the sidebar's selected item, so the two accents
+  // stay on separate parts of the app and never sit side by side.
+  //
+  // Tuned in the editor and exported ("Ulysses Take 2"), then copied in
+  // exactly -- not re-derived, and not re-tuned toward the contrast floors.
+  // See the notes on speech bg sent and inputResting for the two places
+  // that needed a word.
+  ColorPalette(id: "builtin-ulysses", name: "Ulysses", builtin: true, colors: [
+    Color(0xFF1E1E1E), // primary: the editor sheet
+    Color(0xFF161616), // secondary (nav bg): the darkest column
+    Color(0xFF262626), // tertiary: the raised card in the note list
+    Color(0xFF1A1A1A), // sidebar bg: between the two
+    Color(0xFF262626), // speech bg (received): the same tone as the card
+    Color(0xFF0E0E0E), // speech bg sent: below the sheet rather than above
+    // it, which is the one place this design puts a surface *under* the
+    // page. Authored as 0xFF161616, which measured 1.085:1 against the
+    // sheet -- under the 1.15 a bubble needs to have any visible edge at
+    // all -- so it is taken down to the nearest tone that clears it, 1.158:1
+    Color(0xFF0A84FF), // navAccent: the blue on the selected folder
+    Color(0xFFC08A5B), // sidebarAccent: the tan. The chrome accent is the
+    // blue above; the sidebar taking the warm one is what keeps the
+    // design's two colors on separate furniture
+    Color(0xFF17456F), // accentContainer: the muted blue container
+    Color(0xFFFF6B6B), // error
+    Color(0xFF2B2B2B), // outline: just above the card tone, so a divider
+    // reads as the edge of a panel rather than as a line drawn on one
+    Color(0xFF4A4A4A), // fourth: notifications/toast surface -- neutral, and
+    // a clear step up in lightness so it reads as raised
+    // Button label / border / tonal fill (tail slots 12-14): the tan as the
+    // label, and neutral greys for the border and fill. Tinting those as
+    // well would put an accent on every button edge in the app, which is the
+    // opposite of what this design does.
+    Color(0xFFC08A5B), // buttonText1: the tan, 5.58:1 on the sheet
+    Color(0xFF7A7A7A), // buttonBorderColor
+    Color(0xFF3F3F3F), // buttonBackgroundThird
+    // The input pair (tail slots 15-16): warm, while the chrome stays blue.
+    // This is why those two slots are storable at all -- derived from
+    // navAccent they would both come out blue.
+    Color(0xFF3B2F26), // inputResting: 1.29:1 against the sheet, which is
+    // below the 1.6 a *derived* resting border is held to. Authored, seen
+    // rendered, and kept: the design wants the box to be felt rather than
+    // read, and the focused state below carries the visible state
+    Color(0xFFC08A5B), // inputSelected: the tan, focused
   ]),
   // Matrix/Element: matches its real dark-mode chrome -- neutral blue-grey
   // panels (Element's own #15191E/#21262C chrome) with its green/blue
@@ -404,8 +277,12 @@ const List<ColorPalette> builtinPalettes = [
     Color(0xFF0DBD8B), // buttonText1
     Color(0xFF559885), // buttonBorderColor
     Color(0xFF44675D), // buttonBackgroundThird
-  ]),
-  // Gmail: matches its real dark-mode chrome -- neutral grey panels
+    // The input pair (tail slots 15-16): the accent-derived values this
+    // palette already rendered, written out so appending the slots
+    // changed nothing about how it looks.
+    Color(0xFF117058), // inputResting
+    Color(0xFF0DBD8B), // inputSelected
+  ]), // Gmail: matches its real dark-mode chrome -- neutral grey panels
   // (Google's own #202124/#292A2D chrome) with Google's red/blue duo as
   // accents -- a lighter, dark-mode-friendly blue rather than the fully
   // saturated light-mode one, since it needs to hold contrast on dark
@@ -431,28 +308,10 @@ const List<ColorPalette> builtinPalettes = [
     Color(0xFF8AB4F8), // buttonText1
     Color(0xFFB98682), // buttonBorderColor
     Color(0xFF7D5653), // buttonBackgroundThird
-  ]),
-  // YouTube: matches its real dark-mode chrome -- near-black neutral panels
-  // (YouTube's own #0F0F0F/#212121 chrome) with pure brand red for the
-  // accent.
-  ColorPalette(id: "builtin-youtube", name: "YouTube", builtin: true, colors: [
-    Color(0xFF0F0F0F), // primary: YouTube's real dark-mode background
-    Color(0xFF0A0A0A), // secondary (nav bg)
-    Color(0xFF272727), // tertiary: YouTube's real panel color
-    Color(0xFF181818), // sidebar bg
-    Color(0xFF212121), // speech bg (received)
-    Color(0xFF3D1013), // speech bg sent: deep brand-red tint
-    Color(0xFFFF0000), // navAccent: YouTube red
-    Color(0xFFFF4444), // sidebarAccent: lighter YouTube red
-    Color(0xFF7A1F1F), // accentContainer: muted red container, echoes navAccent
-    Color(0xFFFF6B6B), // error
-    Color(0xFF1B1B1B), // outline: subtle, between primary and tertiary
-    Color(0xFF6E4747), // fourth: notifications/toast surface -- muted
-    // brand red, clearly raised above Primary rather than nearly merging
-    // with it
-    // Button label / border / tonal fill (tail slots 12-14): brand red lightened for text, muted red border and fill.
-    Color(0xFFFF5252), // buttonText1
-    Color(0xFFB27575), // buttonBorderColor
-    Color(0xFF7F5555), // buttonBackgroundThird
+    // The input pair (tail slots 15-16): the accent-derived values this
+    // palette already rendered, written out so appending the slots
+    // changed nothing about how it looks.
+    Color(0xFF712F2B), // inputResting
+    Color(0xFFEA4335), // inputSelected
   ]),
 ];

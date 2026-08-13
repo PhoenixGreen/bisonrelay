@@ -145,7 +145,6 @@ class _LNOnChainPageState extends State<LNOnChainPage> {
             child:
                 Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           const LNInfoSectionHeader("Receive On-Chain"),
-          const SizedBox(height: 10),
           Row(children: [
             const Text("Account: "),
             const SizedBox(width: 10),
@@ -164,7 +163,6 @@ class _LNOnChainPageState extends State<LNOnChainPage> {
               : Copyable.txt(Txt(recvAddr!)),
           const SizedBox(height: 40),
           const LNInfoSectionHeader("Send On-Chain"),
-          const SizedBox(height: 10),
           Row(
             children: [
               const SizedBox(width: 110, child: Text("From Account: ")),
@@ -201,7 +199,6 @@ class _LNOnChainPageState extends State<LNOnChainPage> {
               onPressed: confirmSend, child: const Text("Send On-Chain")),
           const SizedBox(height: 10),
           const LNInfoSectionHeader("Rescan"),
-          const SizedBox(height: 10),
           OutlinedButton(
               onPressed: !rescanState.rescanning ? rescan : null,
               child: const Text("Rescan Wallet")),

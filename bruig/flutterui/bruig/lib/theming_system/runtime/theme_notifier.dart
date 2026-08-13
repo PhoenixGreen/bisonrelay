@@ -5,6 +5,7 @@ import 'package:bruig/theming_system/model/button_style.dart';
 import 'package:bruig/theming_system/model/markdown_guides.dart';
 import 'package:bruig/theming_system/model/markdown_style.dart';
 import 'package:bruig/theming_system/model/preset.dart';
+import 'package:bruig/theming_system/model/preset_library.dart';
 import 'package:bruig/theming_system/model/preset_theme.dart';
 import 'package:bruig/theming_system/model/theme_area.dart';
 import 'package:bruig/theming_system/runtime/app_theme.dart';
@@ -82,6 +83,14 @@ class ThemeNotifier with ChangeNotifier {
         ? chatImageSizeCfg!
         : defaultChatImageSize;
 
+    // The themes that ship with the app go in first, so a saved preset that
+    // somehow shares an id with one replaces it rather than the other way
+    // round -- the reader's own work always wins.
+    for (var preset in builtinPresets) {
+      registerCustomPreset(preset, notify: false, markSaved: true);
+      builtinPresetIds.add(preset.id);
+    }
+
     // Register any saved custom presets into appThemes *before* resolving
     // the persisted theme mode, so a stored "custom:<id>" selection is
     // already available for switchTheme() to find.
@@ -113,6 +122,14 @@ class ThemeNotifier with ChangeNotifier {
   // own; that only happens when the user explicitly saves.
   final Set<String> savedPresetIds = {};
   bool isPresetSaved(String id) => savedPresetIds.contains(id);
+
+  // builtinPresetIds are the presets that ship with the app (see
+  // model/preset_library.dart). They are registered like any other so they
+  // appear in the picker, but they have no file behind them: they cannot be
+  // deleted, and editing one forks it rather than changing it, so the
+  // shipped theme means the same thing on every device.
+  final Set<String> builtinPresetIds = {};
+  bool isBuiltinPreset(String id) => builtinPresetIds.contains(id);
 
   // activePreset returns the raw ThemePreset behind the active theme, or
   // null if the active theme is one of the built-ins (dark/light/system).
@@ -195,6 +212,8 @@ class ThemeNotifier with ChangeNotifier {
   Future<void> deleteActivePreset() async {
     var preset = activePreset;
     if (preset == null) return;
+    // A built-in has no file to remove and is not the reader's to remove.
+    if (isBuiltinPreset(preset.id)) return;
     if (isPresetSaved(preset.id)) {
       await ThemePresetStorage.deletePreset(preset.id);
     }

@@ -559,10 +559,18 @@ class _AddContentPanelState extends State<AddContentPanel> {
               TextField(
                 controller: descrCtrl,
                 style: kInputTextStyle,
-                // No outline: it sits directly under the Cost field, which
-                // uses Flutter's plain underline (see dcrInput), and two
-                // different input designs in one card read as an accident.
-                decoration: themedInputDecoration(context,
+                // Flutter's plain underline, deliberately *not*
+                // themedInputDecoration.
+                //
+                // This box sits directly under the Cost field, which is a
+                // dcrInput and draws a bare underline of its own, and two
+                // different input designs stacked in one card read as an
+                // accident rather than as a choice. The Input Areas theme
+                // area draws a full outlined box, so routing this through it
+                // -- which the code did, while the comment here claimed the
+                // opposite -- is what put a border around one of the pair
+                // and not the other.
+                decoration: const InputDecoration(
                     hintText: "Optional -- shown with the file when offered"),
               ),
             ]),

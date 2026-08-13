@@ -83,7 +83,6 @@ class _LNAccountsPageState extends State<LNAccountsPage> {
                           }),
                     ),
                     const LNInfoSectionHeader("Create New Account"),
-                    const SizedBox(height: 21),
                     Row(children: [
                       const Txt.S("Account Name:"),
                       const SizedBox(width: 10),

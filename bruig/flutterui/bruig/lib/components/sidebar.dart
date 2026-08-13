@@ -79,7 +79,28 @@ class _SidebarState extends State<Sidebar> with WindowListener {
 
   void menuUpdated() {
     setState(() {
-      ctrl.selectIndex(mainMenu.activeIndex);
+      // Which row of *this bar* to light up, found by route.
+      //
+      // Not mainMenu.activeIndex: that is a position in the full menu,
+      // which carries entries this bar never draws -- the two hidden
+      // route-only items, and now any destination the theme has switched
+      // off (see AreaStyle.navRoutes). The hidden two sit at the end, so
+      // the two lists agreed by accident for as long as they were the only
+      // difference; switching off a destination in the middle put every row
+      // below it one out, and the bar highlighted the item under the one
+      // that had been tapped. Tapping again appeared to fix it because
+      // switchScreen short-circuits when the route is unchanged, so this
+      // never ran a second time and SidebarX's own (correct) selection
+      // stood.
+      var routes = ThemeNotifier.of(context, listen: false)
+          .areaStyle(ThemeArea.navBar)
+          .navRoutes;
+      var index = navItemsFor(mainMenu, routes)
+          .indexWhere((e) => e.routeName == mainMenu.activeRoute);
+      // A route this bar doesn't carry -- the Address Book reached from the
+      // chat list's footer, say. Nothing to light up, so the previous row
+      // is left as it is rather than moving the highlight somewhere wrong.
+      if (index >= 0) ctrl.selectIndex(index);
     });
   }
 
@@ -330,8 +351,10 @@ class _SidebarState extends State<Sidebar> with WindowListener {
                   ])),
             ]),
             controller: ctrl,
-            items: mainMenu.menus
-                .where((m) => m.hiddenFromSideBar == false)
+            // The theme's chosen destinations, not every one the app has --
+            // the same list the phone's bottom bar carries, from the same
+            // setting (Settings > Appearance > Menu).
+            items: navItemsFor(mainMenu, navStyle.navRoutes)
                 .map((e) => SidebarXItem(
                       label: e.label,
                       // Always the same Stack/icon element regardless of

@@ -191,7 +191,6 @@ class _LNNetworkPageState extends State<LNNetworkPage> {
       ]),
       const SizedBox(height: 8),
       const LNInfoSectionHeader("Channels"),
-      const SizedBox(height: 8),
       ...(nodeInfo.channels.isEmpty
           ? [const Text("No channels for node")]
           : nodeInfo.channels.map((chan) => _buildChannel(chan)).toList())
@@ -217,7 +216,6 @@ class _LNNetworkPageState extends State<LNNetworkPage> {
       Txt.S("Success Probability: $successProb%"),
       const SizedBox(height: 8),
       const LNInfoSectionHeader("Route"),
-      const SizedBox(height: 8),
       ...(res.routes.isEmpty
           ? [const Txt.S("No routes to node")]
           : res.routes[0].hops
@@ -243,11 +241,9 @@ class _LNNetworkPageState extends State<LNNetworkPage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                   const LNInfoSectionHeader("Node Info"),
-                  const SizedBox(height: 8),
                   ..._buildNodeInfo(context),
                   const SizedBox(height: 12),
                   const LNInfoSectionHeader("Queried Route Results"),
-                  const SizedBox(height: 8),
                   ..._buildRoute(context, queryRouteRes),
                 ])),
             Positioned(
@@ -268,7 +264,6 @@ class _LNNetworkPageState extends State<LNNetworkPage> {
           child:
               Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             const LNInfoSectionHeader("Server Node"),
-            const SizedBox(height: 8),
             Row(children: [
               const SizedBox(width: 100, child: Txt.S("Node ID:")),
               Expanded(child: Copyable.txt(Txt.S(serverNode))),

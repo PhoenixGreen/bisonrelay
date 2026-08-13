@@ -63,7 +63,6 @@ class _LNInfoPageState extends State<LNInfoPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const LNInfoSectionHeader("Balances"),
-            const SizedBox(height: 21),
             SimpleInfoGrid(colLabelSize: 110, [
               Tuple2(const Txt.S("Max Receivable:"), Txt.S(maxReceive)),
               Tuple2(const Txt.S("Max Sendable:"), Txt.S(maxSend)),
@@ -71,7 +70,6 @@ class _LNInfoPageState extends State<LNInfoPage> {
             ]),
             const SizedBox(height: 34),
             const LNInfoSectionHeader("Balances"),
-            const SizedBox(height: 21),
             SimpleInfoGrid(colLabelSize: 110, [
               Tuple2(const Txt.S("Chain Height"),
                   Txt.S(info.blockHeight.toString())),

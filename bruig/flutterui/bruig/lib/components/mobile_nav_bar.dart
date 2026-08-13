@@ -41,12 +41,11 @@ const double _iconSize = 32;
 // mobileNavItems is the destination list the bar shows: the theme's chosen
 // routes, in the menu's own order. Shared with OverviewScreen, which needs
 // the same list to decide what counts as a top-level tab.
-List<MainMenuItem> mobileNavItems(MainMenuModel mainMenu, AreaStyle style) {
-  var enabled = style.mobileNavRoutes ?? defaultMobileNavRoutes;
-  return mainMenu.menus
-      .where((e) => !e.hiddenFromSideBar && enabled.contains(e.routeName))
-      .toList();
-}
+//
+// The same routes the desktop nav bar carries, from the same setting -- see
+// AreaStyle.navRoutes. [style] is the Navigation Bar area's, not Mobile's.
+List<MainMenuItem> mobileNavItems(MainMenuModel mainMenu, AreaStyle style) =>
+    navItemsFor(mainMenu, style.navRoutes);
 
 class MobileNavBar extends StatelessWidget {
   final ClientModel client;
@@ -66,7 +65,7 @@ class MobileNavBar extends StatelessWidget {
     return Consumer2<ThemeNotifier, MainMenuModel>(
         builder: (context, theme, mainMenu, _) {
       var mobileStyle = theme.areaStyle(ThemeArea.mobile);
-      var items = mobileNavItems(mainMenu, mobileStyle);
+      var items = mobileNavItems(mainMenu, theme.areaStyle(ThemeArea.navBar));
       if (items.isEmpty) return const Empty();
       var showLabels = !mobileStyle.mobileNavHideLabels;
 

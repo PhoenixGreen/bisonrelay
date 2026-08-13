@@ -212,6 +212,25 @@ class AreaStyle {
   // Navigation bar -- see editor/areas/navbar.dart.
   // -------------------------------------------------------------------------
 
+  // navRoutes is which main-menu destinations the navigation carries, by
+  // route name. Null -- the default -- means all of them.
+  //
+  // One list for both bars. The desktop nav bar and the phone's bottom bar
+  // are the same navigation at two sizes, and a destination switched off in
+  // one of them but not the other is a destination the user has to remember
+  // the shape of the window to find. Set in Settings > Appearance > Menu,
+  // beside the reorder and rename controls for the same items, rather than
+  // in an area editor -- which of them the navigation carries is a fact
+  // about the menu, like their order and their names.
+  //
+  // Only *which* items, never their order or their labels -- both of those
+  // come from the menu itself, so the two bars can't drift into disagreeing
+  // about what a destination is called or where it sits. An unknown route
+  // name in a saved list resolves to nothing: a list from a build (or a
+  // plugin) that had a destination this one doesn't just carries one item
+  // fewer.
+  final List<String>? navRoutes;
+
   // showLogo displays the Bison Relay logo at the top of the nav bar.
   // Intended for when the header is set to HeaderPosition.content or .none,
   // since the header's own logo disappears in both of those (the header
@@ -294,6 +313,16 @@ class AreaStyle {
   // on inactive rows (vs. a flat background); default on.
   final bool chatBackdropWash; // Radial-gradient wash behind messages.
   final bool enableChatSearch; // In-chat message search panel.
+  // chatSidebarFooter is the row of icons under the chat list -- generate
+  // an invite, list message times, fetch an invite, new group chat, new
+  // message, GC invitations. Default on.
+  //
+  // Every one of them is a page of the Address Book, and that is where each
+  // now goes: the row is a shortcut into it rather than six dead-end
+  // screens of its own. Left as a setting because the Address Book's own
+  // menu item reaches all six as well, so on a narrow window it is a second
+  // route to the same six places.
+  final bool chatSidebarFooter;
   final bool formattingToolbar; // Composer markdown formatting toolbar.
   final bool composerPolish; // Tip button, glow send, dynamic hint.
   // bubbleCorners hands the message bubbles' corners to the user: a radius
@@ -487,19 +516,6 @@ class AreaStyle {
   // Mobile -- see editor/areas/mobile.dart.
   // -------------------------------------------------------------------------
 
-  // mobileNavRoutes is which main-menu destinations the narrow-screen
-  // bottom navigation carries, by route name. Null -- the default -- means
-  // defaultMobileNavRoutes (Chat, Feed, Pages, Settings), which is also
-  // what an unknown route name in a saved list resolves to nothing for: a
-  // list from a build (or a plugin) that had a destination this one
-  // doesn't just carries one item fewer.
-  //
-  // Only *which* items, never their order or their labels -- both of those
-  // come from the menu itself (Settings > Appearance > Menu), so the
-  // mobile bar and the desktop nav bar can't drift into disagreeing about
-  // what a destination is called or where it sits.
-  final List<String>? mobileNavRoutes;
-
   // mobileTapOpensSidebar makes re-tapping the destination you're already
   // on open that page's own sidebar, sliding in from the left -- the same
   // drawer, and the same gesture, the desktop nav bar already uses when
@@ -611,6 +627,7 @@ class AreaStyle {
     this.inputBorderRadius = 0,
     this.buttonStyles = const {},
     this.headerPosition,
+    this.navRoutes,
     this.showLogo = false,
     this.showDcrPrice = false,
     this.showBtcPrice = false,
@@ -637,6 +654,7 @@ class AreaStyle {
     this.chatListTopHighlight = true,
     this.chatBackdropWash = false,
     this.enableChatSearch = false,
+    this.chatSidebarFooter = true,
     this.formattingToolbar = false,
     this.composerPolish = false,
     this.bubbleCorners = false,
@@ -680,7 +698,6 @@ class AreaStyle {
     this.feedLinksMode = FeedLinksMode.standard,
     this.feedTextLimit = 0,
     this.feedStripMarkdown = false,
-    this.mobileNavRoutes,
     this.mobileTapOpensSidebar = false,
     this.mobileNavHideLabels = false,
     this.mobileSidebarAvatarCloses = false,
@@ -763,6 +780,8 @@ class AreaStyle {
     double? inputBorderRadius,
     Map<ButtonRole, ButtonAreaStyle>? buttonStyles,
     HeaderPosition? headerPosition,
+    List<String>? navRoutes,
+    bool clearNavRoutes = false,
     bool? showLogo,
     bool? showDcrPrice,
     bool? showBtcPrice,
@@ -800,6 +819,7 @@ class AreaStyle {
     bool? chatListTopHighlight,
     bool? chatBackdropWash,
     bool? enableChatSearch,
+    bool? chatSidebarFooter,
     bool? formattingToolbar,
     bool? composerPolish,
     bool? bubbleCorners,
@@ -856,8 +876,6 @@ class AreaStyle {
     FeedLinksMode? feedLinksMode,
     double? feedTextLimit,
     bool? feedStripMarkdown,
-    List<String>? mobileNavRoutes,
-    bool clearMobileNavRoutes = false,
     bool? mobileTapOpensSidebar,
     bool? mobileNavHideLabels,
     bool? mobileSidebarAvatarCloses,
@@ -946,6 +964,7 @@ class AreaStyle {
         inputBorderRadius: inputBorderRadius ?? this.inputBorderRadius,
         buttonStyles: buttonStyles ?? this.buttonStyles,
         headerPosition: headerPosition ?? this.headerPosition,
+        navRoutes: clearNavRoutes ? null : (navRoutes ?? this.navRoutes),
         showLogo: showLogo ?? this.showLogo,
         showDcrPrice: showDcrPrice ?? this.showDcrPrice,
         showBtcPrice: showBtcPrice ?? this.showBtcPrice,
@@ -996,6 +1015,7 @@ class AreaStyle {
         chatListTopHighlight: chatListTopHighlight ?? this.chatListTopHighlight,
         chatBackdropWash: chatBackdropWash ?? this.chatBackdropWash,
         enableChatSearch: enableChatSearch ?? this.enableChatSearch,
+        chatSidebarFooter: chatSidebarFooter ?? this.chatSidebarFooter,
         formattingToolbar: formattingToolbar ?? this.formattingToolbar,
         composerPolish: composerPolish ?? this.composerPolish,
         bubbleCorners: bubbleCorners ?? this.bubbleCorners,
@@ -1078,9 +1098,6 @@ class AreaStyle {
         feedLinksMode: feedLinksMode ?? this.feedLinksMode,
         feedTextLimit: feedTextLimit ?? this.feedTextLimit,
         feedStripMarkdown: feedStripMarkdown ?? this.feedStripMarkdown,
-        mobileNavRoutes: clearMobileNavRoutes
-            ? null
-            : (mobileNavRoutes ?? this.mobileNavRoutes),
         mobileTapOpensSidebar:
             mobileTapOpensSidebar ?? this.mobileTapOpensSidebar,
         mobileNavHideLabels: mobileNavHideLabels ?? this.mobileNavHideLabels,
@@ -1179,6 +1196,10 @@ class AreaStyle {
               if (!e.value.isEmpty) e.key.name: e.value.toJson(),
           },
         if (headerPosition != null) "headerPosition": headerPosition!.name,
+        // An empty list is a real setting -- "no navigation items at all"
+        // -- and has to survive a save, so this writes whenever the list
+        // isn't null rather than whenever it isn't empty.
+        if (navRoutes != null) "navRoutes": navRoutes,
         if (showLogo) "showLogo": showLogo,
         if (showDcrPrice) "showDcrPrice": showDcrPrice,
         if (showBtcPrice) "showBtcPrice": showBtcPrice,
@@ -1218,6 +1239,7 @@ class AreaStyle {
         if (!chatListTopHighlight) "chatListTopHighlight": chatListTopHighlight,
         if (chatBackdropWash) "chatBackdropWash": chatBackdropWash,
         if (enableChatSearch) "enableChatSearch": enableChatSearch,
+        if (!chatSidebarFooter) "chatSidebarFooter": chatSidebarFooter,
         if (formattingToolbar) "formattingToolbar": formattingToolbar,
         if (composerPolish) "composerPolish": composerPolish,
         if (bubbleCorners) "bubbleCorners": bubbleCorners,
@@ -1285,10 +1307,6 @@ class AreaStyle {
           "feedLinksMode": feedLinksMode.name,
         if (feedTextLimit != 0) "feedTextLimit": feedTextLimit,
         if (feedStripMarkdown) "feedStripMarkdown": feedStripMarkdown,
-        // An empty list is a real setting -- "no mobile navigation at all"
-        // -- and has to survive a save, so this writes whenever the list
-        // isn't null rather than whenever it isn't empty.
-        if (mobileNavRoutes != null) "mobileNavRoutes": mobileNavRoutes,
         if (mobileTapOpensSidebar)
           "mobileTapOpensSidebar": mobileTapOpensSidebar,
         if (mobileNavHideLabels) "mobileNavHideLabels": mobileNavHideLabels,
@@ -1391,6 +1409,8 @@ class AreaStyle {
             role: ButtonAreaStyle.fromJson(e.value as Map<String, dynamic>),
       },
       headerPosition: _enumOrNull(HeaderPosition.values, j["headerPosition"]),
+      navRoutes:
+          (j["navRoutes"] as List<dynamic>?)?.map((e) => e.toString()).toList(),
       showLogo: flag("showLogo"),
       showDcrPrice: flag("showDcrPrice"),
       showBtcPrice: flag("showBtcPrice"),
@@ -1424,6 +1444,7 @@ class AreaStyle {
       chatListTopHighlight: flag("chatListTopHighlight", fallback: true),
       chatBackdropWash: flag("chatBackdropWash"),
       enableChatSearch: flag("enableChatSearch"),
+      chatSidebarFooter: flag("chatSidebarFooter", fallback: true),
       formattingToolbar: flag("formattingToolbar"),
       composerPolish: flag("composerPolish"),
       // "squareBubbles" is what this was before the corners became fully
@@ -1509,9 +1530,6 @@ class AreaStyle {
           FeedLinksMode.values, j["feedLinksMode"], FeedLinksMode.standard),
       feedTextLimit: number("feedTextLimit") ?? 0,
       feedStripMarkdown: flag("feedStripMarkdown"),
-      mobileNavRoutes: (j["mobileNavRoutes"] as List<dynamic>?)
-          ?.map((e) => e.toString())
-          .toList(),
       mobileTapOpensSidebar: flag("mobileTapOpensSidebar"),
       mobileNavHideLabels: flag("mobileNavHideLabels"),
       mobileSidebarAvatarCloses: flag("mobileSidebarAvatarCloses"),

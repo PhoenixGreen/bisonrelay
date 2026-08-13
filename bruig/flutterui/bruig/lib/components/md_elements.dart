@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 // import 'package:dart_vlc/dart_vlc.dart' as vlc;
 import 'package:bruig/components/context_menu.dart';
+import 'package:bruig/components/feed/code_highlight.dart';
 import 'package:bruig/components/feed/markdown_blocks.dart';
 import 'package:bruig/components/pages/forms.dart';
 import 'package:bruig/components/snackbars.dart';
@@ -947,15 +948,81 @@ class PreformattedElementBuilder extends MarkdownElementBuilder {
   }
 }
 
+/// CodeblockMarkdownElementBuilder draws the inside of a fenced block: the
+/// code, optionally numbered down the side and optionally coloured.
+///
+/// Both are style-guide settings (see MarkdownStyleGuide.codeLineNumbers and
+/// .codeHighlight) and both are off unless a guide asks for them, so a post
+/// reads exactly as it did unless somebody chooses otherwise.
+///
+/// The padding and the background are not here -- they are the stylesheet's
+/// codeblockPadding and codeblockDecoration, applied by the markdown builder
+/// around whatever this returns.
 class CodeblockMarkdownElementBuilder extends MarkdownElementBuilder {
   @override
-  Widget visitText(md.Text text, TextStyle? preferredStyle) {
-    return Text.rich(
-      TextSpan(text: text.text),
-      style: preferredStyle,
-    );
-  }
+  Widget visitText(md.Text text, TextStyle? preferredStyle) =>
+      Consumer<ThemeNotifier>(
+        builder: (context, theme, _) {
+          // The theme's own guide, which is also the one the editor's
+          // preview shows: an unsaved edit is written straight onto the
+          // active preset, so this is live while the sliders are moving.
+          var guide = theme.markdownGuide;
+          var style = preferredStyle;
+
+          var code = text.text;
+          // A fenced block usually arrives with the trailing newline the
+          // closing fence sat on, which would otherwise number an empty
+          // last line.
+          if (code.endsWith("\n")) code = code.substring(0, code.length - 1);
+
+          Widget body = guide.codeHighlight
+              ? Text.rich(TextSpan(
+                  children:
+                      highlightCode(code, markdownCodeInk(theme), style)))
+              : Text.rich(TextSpan(text: code), style: style);
+
+          if (!guide.codeLineNumbers) return body;
+
+          // The gutter is its own column beside the code rather than
+          // numbers pasted onto each line, so selecting and copying the
+          // block gives back the code and not the numbering.
+          var lines = code.split("\n");
+          var muted = theme.colors.onSurfaceVariant;
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text.rich(
+                TextSpan(
+                    text: [
+                      for (var n = 1; n <= lines.length; n++)
+                        n.toString().padLeft(lines.length.toString().length),
+                    ].join("\n")),
+                textAlign: TextAlign.right,
+                style: (style ?? const TextStyle()).copyWith(color: muted),
+              ),
+              const SizedBox(width: 12),
+              Flexible(child: body),
+            ],
+          );
+        },
+      );
 }
+
+/// markdownCodeInk is the palette a highlighted block is coloured from.
+///
+/// The theme's own colours rather than a fixed scheme, so a block belongs to
+/// the post it sits in: comments take the muted text colour, strings and
+/// numbers the success and error hues, keywords the accent. Those four are
+/// already held apart from each other and from the background by the
+/// palette's own contrast rules, which is what a highlighter needs.
+CodeInk markdownCodeInk(ThemeNotifier theme) => CodeInk(
+      text: theme.colors.onSurface,
+      comment: theme.colors.onSurfaceVariant,
+      string: theme.activePreset?.success ?? theme.extraColors.successOnSurface,
+      number: theme.colors.error,
+      keyword: theme.activePreset?.navAccent ?? theme.colors.primary,
+    );
 
 class PDFMarkdownElementBuilder extends MarkdownElementBuilder {
   Future<String> _tempPDFDir() async {

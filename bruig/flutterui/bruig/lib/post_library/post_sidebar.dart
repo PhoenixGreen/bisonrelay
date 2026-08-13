@@ -192,8 +192,7 @@ class _PostSidebarState extends State<PostSidebar> {
               ],
             ),
           ),
-          _dragHandle(theme, index),
-          _rowMenu(library, entry),
+          _rowButton(theme, library, entry, index),
         ]),
       ),
     );
@@ -225,53 +224,96 @@ class _PostSidebarState extends State<PostSidebar> {
     return DateFormat.yMMMd().format(at);
   }
 
-  /// _dragHandle is what a row is dragged by.
+  /// _rowButton is the one control at the end of a row: tap it for the
+  /// menu, hold it to drag the row.
   ///
-  /// A handle rather than the whole row, because a row is also the thing you
-  /// tap to open a document. Without one, every drag would have to be told
-  /// apart from a tap by how long it was held -- which means either a pause
-  /// before every drag or an open document every time one is started
-  /// slightly too fast.
-  Widget _dragHandle(ThemeNotifier theme, int index) =>
-      ReorderableDragStartListener(
+  /// One button rather than the two this used to be -- a drag handle and a
+  /// "more" button beside it. Two controls in a column this narrow left the
+  /// name of the document about a dozen characters wide, and they are the
+  /// same thing to a reader: the things you can do to this row. Holding to
+  /// move is the gesture a phone already uses for reordering anything.
+  ///
+  /// A handle rather than the whole row, still. A row is the thing you tap
+  /// to open a document, so a hold that started anywhere on one would take
+  /// the place of that tap for anybody who pauses before releasing.
+  Widget _rowButton(ThemeNotifier theme, PostLibraryModel library,
+          PostEntry entry, int index) =>
+      ReorderableDelayedDragStartListener(
         index: index,
-        child: MouseRegion(
-          cursor: SystemMouseCursors.grab,
-          child: SizedBox(
-            width: 24,
-            height: 28,
-            child: Icon(Icons.drag_indicator,
-                size: 15, color: theme.colors.onSurfaceVariant),
+        child: Tooltip(
+          message: "More -- press and hold to move",
+          // Hover only. The default also opens a tooltip on a long press,
+          // which is the gesture that starts the drag: the two recognizers
+          // would be in the same arena for the same press, and the row
+          // would sometimes explain itself instead of moving.
+          triggerMode: TooltipTriggerMode.manual,
+          child: MouseRegion(
+            cursor: SystemMouseCursors.grab,
+            // A Builder so the menu can be anchored to this button rather
+            // than to the sidebar: the State's own context is the whole
+            // panel, and a menu positioned off that opens at its corner.
+            child: Builder(
+              builder: (buttonContext) => GestureDetector(
+                // Opaque so the tap stops here rather than reaching the
+                // row's own InkWell, which would open the document under
+                // the menu.
+                behavior: HitTestBehavior.opaque,
+                onTap: () => _openRowMenu(buttonContext, library, entry),
+                child: SizedBox(
+                  width: 28,
+                  height: 28,
+                  child: Icon(Icons.more_vert,
+                      size: 16, color: theme.colors.onSurfaceVariant),
+                ),
+              ),
+            ),
           ),
         ),
       );
 
-  Widget _rowMenu(PostLibraryModel library, PostEntry entry) =>
-      PopupMenuButton<String>(
-        icon: const Icon(Icons.more_vert, size: 16),
-        tooltip: "More",
-        padding: EdgeInsets.zero,
-        onSelected: (choice) async {
-          switch (choice) {
-            case "rename":
-              var name = await _askName(
-                  title: "Rename ${entry.isFolder ? "folder" : "document"}",
-                  initial: entry.name);
-              if (name != null) await library.rename(entry, name);
-            case "move":
-              await _moveDocument(library, entry);
-            case "delete":
-              if (await _confirmDelete(entry)) await library.delete(entry);
-          }
-        },
-        itemBuilder: (context) => [
-          const PopupMenuItem(value: "rename", child: Text("Rename")),
-          // A folder has nowhere to go: the library is one level deep.
-          if (!entry.isFolder)
-            const PopupMenuItem(value: "move", child: Text("Move to...")),
-          const PopupMenuItem(value: "delete", child: Text("Delete")),
-        ],
-      );
+  /// _openRowMenu shows the row's menu under the button that was tapped.
+  ///
+  /// showMenu by hand rather than a PopupMenuButton, because that widget
+  /// wraps itself in a Tooltip whose long press would compete with the drag
+  /// this button now also starts.
+  Future<void> _openRowMenu(BuildContext buttonContext,
+      PostLibraryModel library, PostEntry entry) async {
+    var button = buttonContext.findRenderObject() as RenderBox?;
+    var overlay =
+        Overlay.of(buttonContext).context.findRenderObject() as RenderBox?;
+    if (button == null || overlay == null) return;
+    var topLeft = button.localToGlobal(Offset.zero, ancestor: overlay);
+    var bottomRight = button
+        .localToGlobal(button.size.bottomRight(Offset.zero), ancestor: overlay);
+    var choice = await showMenu<String>(
+      context: buttonContext,
+      position: RelativeRect.fromLTRB(
+        topLeft.dx,
+        bottomRight.dy,
+        overlay.size.width - bottomRight.dx,
+        overlay.size.height - bottomRight.dy,
+      ),
+      items: [
+        const PopupMenuItem(value: "rename", child: Text("Rename")),
+        // A folder has nowhere to go: the library is one level deep.
+        if (!entry.isFolder)
+          const PopupMenuItem(value: "move", child: Text("Move to...")),
+        const PopupMenuItem(value: "delete", child: Text("Delete")),
+      ],
+    );
+    if (!mounted) return;
+    switch (choice) {
+      case "rename":
+        var name = await _askName(
+            title: "Rename ${entry.isFolder ? "folder" : "document"}",
+            initial: entry.name);
+        if (name != null) await library.rename(entry, name);
+      case "move":
+        await _moveDocument(library, entry);
+      case "delete":
+        if (await _confirmDelete(entry)) await library.delete(entry);
+    }
+  }
 
   Widget _actions(ThemeNotifier theme, PostLibraryModel library) => Container(
         width: double.infinity,

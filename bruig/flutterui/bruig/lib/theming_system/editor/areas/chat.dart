@@ -130,6 +130,15 @@ List<Widget> chatAreaEditor(AreaEditorContext ctx) {
       onChanged: (v) => ctx.setStyle((s) => s.copyWith(enableChatSearch: v)),
     ),
     ctx.toggle(
+      "Address book shortcuts",
+      subtitle: "A row of icons under the chat list -- new message, new "
+          "group chat, invites, message times -- each opening the Address "
+          "Book at that page. Off leaves the Address Book's own menu item "
+          "as the way to all six",
+      value: style.chatSidebarFooter,
+      onChanged: (v) => ctx.setStyle((s) => s.copyWith(chatSidebarFooter: v)),
+    ),
+    ctx.toggle(
       "Formatting toolbar",
       subtitle: "Adds a Bold/Italic/Code/Strikethrough/Link toolbar to "
           "the message composer",
