@@ -199,6 +199,24 @@ void main() {
       expect(model.entries.where((e) => e.name == "Routing fees"), isEmpty);
     });
 
+    // What publishing relies on: it flushes, closes, then empties the
+    // composer, and the empty text must not reach the document it just
+    // published from.
+    test("a closed document is not written to again", () async {
+      await PostStorage.write("", "Published", "# Published\n\nbody");
+      await model.refresh();
+      await model.open(model.entries.firstWhere((e) => e.name == "Published"));
+
+      await model.flush();
+      model.closeDocument();
+      editor.text = "";
+      await Future.delayed(const Duration(seconds: 3));
+
+      expect(await PostStorage.read("", "Published"), "# Published\n\nbody",
+          reason: "clearing the composer emptied the document");
+      expect(model.openName, isNull);
+    });
+
     test("deleting the open document empties the composer", () async {
       await PostStorage.write("", "A draft", "# A draft\n\nbody");
       await model.refresh();

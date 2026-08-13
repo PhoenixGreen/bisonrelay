@@ -326,12 +326,14 @@ class _CommentWState extends State<_CommentW> {
                           padding: const EdgeInsets.only(
                               left: 13, right: 13, top: 11, bottom: 11),
                           margin: const EdgeInsets.symmetric(horizontal: 10),
+                          // chat, not chat!: replying to a comment of your
+                          // own has no chat behind it either.
                           child: CommentInput(
                               sendReply,
                               "Reply",
                               "Reply to this comment",
                               widget.inputFocusNode,
-                              chat!))
+                              chat))
                     ])
                   : const Text(""),
               commentRRs != null ? const SizedBox(height: 10) : const Empty(),
@@ -681,12 +683,17 @@ class _PostContentScreenForArgsState extends State<_PostContentScreenForArgs> {
                     padding: const EdgeInsets.only(
                         left: 13, right: 13, top: 11, bottom: 11),
                     margin: const EdgeInsets.symmetric(horizontal: 30),
+                    // authorChat, not authorChat!: commenting on your own
+                    // post has no chat behind it, because there is no chat
+                    // with yourself. Asserting it crashed the screen the
+                    // moment Add Comment was pressed on anything you had
+                    // just published.
                     child: CommentInput(
                         addComment,
                         "Add Comment",
                         "Add a comment to this post",
                         inputFocusNode,
-                        authorChat!)),
+                        authorChat)),
               ]),
         ...comments.map((e) => _CommentW(widget.args.post, e, sendReply,
             widget.client, showingReplyCB, canComment, inputFocusNode)),

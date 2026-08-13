@@ -107,7 +107,12 @@ class AttachFileScreen extends StatefulWidget {
   final SendMsg _send;
   final Uint8List? initialFileData;
   final String? initialMime;
-  final ChatModel chat;
+
+  /// chat is who a file would be *sent* to, and is null when there is
+  /// nobody: commenting on your own post, where there is no chat with
+  /// yourself. Everything else here embeds into the message being written
+  /// and needs no counterparty, so only the send-a-file route is withheld.
+  final ChatModel? chat;
   final VoidCallback closeAttachScreen;
   const AttachFileScreen(this._send, this.initialFileData, this.initialMime,
       this.chat, this.closeAttachScreen,
@@ -210,8 +215,13 @@ class _AttachFileScreenState extends State<AttachFileScreen> {
         if (filePath == null) return;
         filePath = filePath.trim();
         if (filePath == "") return;
+        var chat = widget.chat;
+        if (chat == null) {
+          snackbar.error("Sending a file needs somebody to send it to.");
+          return;
+        }
         await showSendFileScreen(context,
-            chat: widget.chat, file: File(filePath), uploads: uploads);
+            chat: chat, file: File(filePath), uploads: uploads);
         widget.closeAttachScreen(); // File screen already does the sending.
       } catch (exception) {
         snackbar.error("Unable to attach file: $exception");
@@ -274,8 +284,13 @@ class _AttachFileScreenState extends State<AttachFileScreen> {
         if (compressRes.data.length > Golib.maxPayloadSize) {
           // Compression was insufficient to reduce size. This needs to be sent
           // as a file.
+          var chat = widget.chat;
+          if (chat == null) {
+            throw "Image is too large to attach, and there is nobody to "
+                "send it to as a file.";
+          }
           await showSendFileScreen(context,
-              chat: widget.chat, file: File(filePath), uploads: uploads);
+              chat: chat, file: File(filePath), uploads: uploads);
           return;
         }
 

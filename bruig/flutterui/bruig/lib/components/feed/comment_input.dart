@@ -21,7 +21,10 @@ class CommentInput extends StatefulWidget {
   final String label;
   final String hintText;
   final CustomInputFocusNode inputFocusNode;
-  final ChatModel chat;
+
+  /// chat is the post's author, for the attach-a-file route, and is null on
+  /// your own post -- there is no chat with yourself. See AttachFileScreen.
+  final ChatModel? chat;
   const CommentInput(this.commentReply, this.label, this.hintText,
       this.inputFocusNode, this.chat,
       {super.key});

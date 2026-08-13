@@ -93,6 +93,19 @@ class _NewPostScreenState extends State<NewPostScreen> {
     });
     try {
       await widget.feed.createPost(post.getFullContent());
+      // Emptying the composer must not empty the document it was written
+      // in. The library is watching this controller, so clearing it looks
+      // exactly like selecting everything and pressing delete -- the
+      // autosave wrote the empty text straight back, and publishing a post
+      // left the draft it came from as a nought-byte file.
+      //
+      // Written out first and then closed, in that order: flush puts the
+      // text that was just published on disk even if it was still inside
+      // the autosave's debounce, and closing stops the clear below from
+      // reaching it. The document stays exactly as it was published.
+      await _postLibrary?.flush();
+      _postLibrary?.closeDocument();
+      if (!mounted) return;
       setState(() {
         post.clear();
         contentCtrl.clear();
