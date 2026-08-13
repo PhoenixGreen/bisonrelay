@@ -76,10 +76,25 @@ class ThesaurusCapability {
     return entry;
   }
 
-  /// normalizeWord reduces a selection to the single lowercase word a
+  /// maxLookupWords is how long a selection may be and still be a lookup.
+  ///
+  /// Three. The datasets carry phrases of up to three words -- "take off",
+  /// "put up with" -- and a selection longer than that is a sentence
+  /// somebody highlighted, not a thing to look up. Offering the entry for
+  /// one would mean a menu item that is never useful appearing over every
+  /// drag of the cursor.
+  static const maxLookupWords = 3;
+
+  /// normalizeWord reduces a selection to the lowercase word or phrase a
   /// thesaurus can be asked about, or null if it isn't one. Surrounding
   /// punctuation and whitespace are trimmed, since a double-click selection
   /// often carries them.
+  ///
+  /// A phrase is allowed because the data has them. It used to reject
+  /// anything containing a space, which meant the two constructions somebody
+  /// learning English most wants explained -- a phrasal verb and an idiom --
+  /// were the two it could not be asked about, while 64,246 entries covering
+  /// them sat unused in the source data.
   static String? normalizeWord(String raw) {
     // Folded first, so a contraction typed with the apostrophe a text field
     // substituted reaches the provider in the form its data is keyed by.
@@ -95,7 +110,12 @@ class ThesaurusCapability {
       end--;
     }
     var word = trimmed.substring(start, end);
-    if (word.isEmpty || word.contains(RegExp(r"\s"))) return null;
-    return word;
+    if (word.isEmpty) return null;
+    // Runs of whitespace collapse to one space: a selection dragged across a
+    // line break carries the newline with it, and the data is keyed by
+    // single spaces.
+    var words = word.split(RegExp(r"\s+")).where((w) => w.isNotEmpty).toList();
+    if (words.isEmpty || words.length > maxLookupWords) return null;
+    return words.join(" ");
   }
 }

@@ -107,7 +107,10 @@ class _ThesaurusPageState extends State<ThesaurusPage> {
           padding: const EdgeInsets.only(top: 6),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
-            children: definitionList(theme, entry.definitions),
+            children: [
+              ...inflectionLine(theme, entry.inflections),
+              ...definitionList(theme, entry.definitions),
+            ],
           ),
         ),
       if (entry.senses.isNotEmpty)

@@ -1198,6 +1198,15 @@ class ThesaurusEntry {
   @JsonKey(defaultValue: [])
   final List<ThesaurusSense> senses;
 
+  /// The other forms the word takes: go/goes/went/gone, child/children.
+  ///
+  /// Empty for a word that does not inflect, and for a phrase. Listed
+  /// because a dictionary that can find "child" from "children" and cannot
+  /// say that "child" becomes "children" knows the fact and is keeping it
+  /// to itself.
+  @JsonKey(defaultValue: [])
+  final List<String> inflections;
+
   /// What the word means, listed separately from [senses] rather than
   /// attached to them: a provider's synonyms and its definitions need not
   /// come from the same source, and two sources will not divide a word into
@@ -1206,7 +1215,8 @@ class ThesaurusEntry {
   @JsonKey(defaultValue: [])
   final List<ThesaurusDefinition> definitions;
 
-  ThesaurusEntry(this.word, this.senses, [this.definitions = const []]);
+  ThesaurusEntry(this.word, this.senses,
+      [this.definitions = const [], this.inflections = const []]);
   factory ThesaurusEntry.fromJson(Map<String, dynamic> json) =>
       _$ThesaurusEntryFromJson(json);
 

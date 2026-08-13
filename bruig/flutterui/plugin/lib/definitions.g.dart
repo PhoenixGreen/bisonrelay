@@ -947,12 +947,17 @@ ThesaurusEntry _$ThesaurusEntryFromJson(Map<String, dynamic> json) =>
                   ThesaurusDefinition.fromJson(e as Map<String, dynamic>))
               .toList() ??
           [],
+      (json['inflections'] as List<dynamic>?)
+              ?.map((e) => e as String)
+              .toList() ??
+          [],
     );
 
 Map<String, dynamic> _$ThesaurusEntryToJson(ThesaurusEntry instance) =>
     <String, dynamic>{
       'word': instance.word,
       'senses': instance.senses,
+      'inflections': instance.inflections,
       'definitions': instance.definitions,
     };
 

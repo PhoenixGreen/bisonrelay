@@ -91,9 +91,22 @@ void main() {
       expect(ThesaurusCapability.normalizeWord("  Happy.  "), "happy");
     });
 
-    test("not a phrase, and not nothing", () {
-      expect(ThesaurusCapability.normalizeWord("happy little"), isNull);
+    // A phrase of up to three words is a lookup now: the datasets carry
+    // "take off" and "put up with", and those are the constructions somebody
+    // learning English most wants explained.
+    test("a phrase of two or three words", () {
+      expect(ThesaurusCapability.normalizeWord("take off"), "take off");
+      expect(ThesaurusCapability.normalizeWord("Put Up With"), "put up with");
+      // Dragged across a line break, or over a double space.
+      expect(ThesaurusCapability.normalizeWord("take\n off"), "take off");
+      expect(ThesaurusCapability.normalizeWord("  take   off. "), "take off");
+    });
+
+    test("not a sentence, and not nothing", () {
+      expect(ThesaurusCapability.normalizeWord("four words is too many"),
+          isNull);
       expect(ThesaurusCapability.normalizeWord(""), isNull);
+      expect(ThesaurusCapability.normalizeWord("   "), isNull);
     });
   });
 }

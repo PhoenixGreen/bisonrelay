@@ -138,6 +138,30 @@ String? lookedUpAs(String asked, ThesaurusEntry entry) {
   return answered;
 }
 
+/// inflectionLine renders the other forms a word takes, or nothing when it
+/// does not inflect.
+///
+/// One quiet line rather than a labelled section. It answers a question the
+/// reader may not have asked -- how does this word change -- so it should be
+/// there to be noticed and not compete with the definitions, which are what
+/// was actually wanted.
+List<Widget> inflectionLine(ThemeNotifier theme, List<String> forms) {
+  if (forms.isEmpty) return const [];
+  return [
+    Padding(
+      padding: const EdgeInsets.only(top: 2, bottom: 6),
+      child: Text(
+        "also ${forms.join(", ")}",
+        style: TextStyle(
+          fontSize: 11.5,
+          fontStyle: FontStyle.italic,
+          color: theme.colors.onSurfaceVariant,
+        ),
+      ),
+    ),
+  ];
+}
+
 /// definitionList renders a word's meanings, or nothing when a provider
 /// supplied none.
 ///
@@ -279,6 +303,7 @@ class _ThesaurusSheetState extends State<_ThesaurusSheet> {
         // Meanings first. Someone who does not know the word cannot judge a
         // list of replacements for it, and someone who does will read past
         // this in a glance.
+        ...inflectionLine(theme, entry.inflections),
         ...definitionList(theme, entry.definitions),
         if (entry.definitions.isNotEmpty && entry.senses.isNotEmpty)
           const Padding(

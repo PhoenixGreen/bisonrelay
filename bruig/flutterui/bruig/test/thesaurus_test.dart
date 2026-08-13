@@ -100,12 +100,20 @@ void main() {
     });
 
     test("rejects what no thesaurus can answer", () {
-      // A phrase, a number, and pure punctuation: asking about any of these
-      // wakes the plugin to no purpose.
-      for (var raw in ["two words", "", "   ", "123", "!!!", "3.5"]) {
+      // A sentence, a number, and pure punctuation: asking about any of
+      // these wakes the plugin to no purpose. A phrase is not on the list --
+      // the datasets carry "take off" and "wedding ring", and those are the
+      // entries somebody learning English most wants.
+      for (var raw in ["four words is plenty", "", "   ", "123", "!!!", "3.5"]) {
         expect(ThesaurusCapability.normalizeWord(raw), isNull,
             reason: "for input '$raw'");
       }
+    });
+
+    test("accepts a phrase of two or three words", () {
+      expect(ThesaurusCapability.normalizeWord("two words"), "two words");
+      expect(ThesaurusCapability.normalizeWord("Take Off"), "take off");
+      expect(ThesaurusCapability.normalizeWord("put up with"), "put up with");
     });
   });
 }
