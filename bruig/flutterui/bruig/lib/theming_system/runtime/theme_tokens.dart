@@ -206,10 +206,15 @@ class AppImageSize {
   AppImageSize({required this.descr});
 }
 
-// Available chat image display sizes.
+// Available chat image display sizes, smallest first so the dropdown reads
+// in the order the sizes actually grow. Every entry but "default" is a
+// fraction of the width the message has to draw in -- see chatImageWidth.
 final Map<String, AppImageSize> appImageSizes = {
   "default": AppImageSize(descr: "Default"),
+  "quarter": AppImageSize(descr: "Quarter width"),
+  "third": AppImageSize(descr: "Third width"),
   "half": AppImageSize(descr: "Half width"),
+  "twoThirds": AppImageSize(descr: "Two-thirds width"),
   "full": AppImageSize(descr: "Full width"),
 };
 

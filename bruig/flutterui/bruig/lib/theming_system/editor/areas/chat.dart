@@ -225,6 +225,14 @@ List<Widget> chatAreaEditor(AreaEditorContext ctx) {
         }),
       ),
     ],
+    ctx.slider("messageSpacing", style.messageGap,
+        label: (v) => "Space between messages: ${v.toStringAsFixed(1)}",
+        min: 0,
+        max: 48,
+        onCommit: (v) => ctx.setStyle((s) => s.copyWith(messageSpacing: v))),
+    ctx.note("The gap above a message from a new speaker. Messages from "
+        "whoever just spoke stay closer together, by the same proportion, "
+        "so a run of them still reads as one group. Default is 10."),
     ctx.choice<MessageLayoutMode>(
       "Message layout",
       value: layout,
@@ -273,5 +281,8 @@ List<Widget> chatAreaEditor(AreaEditorContext ctx) {
         ImageSizeDropdown(ctx.theme),
       ]),
     ),
+    ctx.note("A share of the width the message has to draw in, so it "
+        "follows the Message layout above. Default instead leaves a picture "
+        "at its own size, up to 250."),
   ];
 }

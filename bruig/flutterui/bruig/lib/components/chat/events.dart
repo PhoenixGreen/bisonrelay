@@ -33,6 +33,20 @@ import 'package:bruig/theming_system/theme_preset.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:path/path.dart' as path;
 
+// _bubbleShare/_smallBubbleShare are how much of the room a message has that
+// its bubble may fill, the rest being the gap on the far side that makes a
+// sent message tell itself apart from a received one at a glance.
+//
+// Roughly the two-thirds to three-quarters every chat app settles on, and
+// deliberately a share of the *conversation* rather than of the window: the
+// bubble used to be capped at 0.4 of the window, which on a typical desktop
+// -- a sidebar and a chat list taking about a third of it -- worked out at
+// about two-thirds of the conversation. That is the figure kept here. The
+// window-based form only looked right at one window size and one sidebar
+// width, and left the messages squashed as soon as either changed.
+const double _bubbleShare = 0.68;
+const double _smallBubbleShare = 0.85;
+
 class ServerEvent extends StatelessWidget {
   final Widget? child;
   final String? msg;
@@ -323,17 +337,45 @@ class _ReceivedSentPMState extends State<ReceivedSentPM> {
               // conversation viewport (see active_chat.dart), not per-message here.
               var expand = layoutMode != MessageLayoutMode.standard &&
                   chatStyle.expandMessageWidth;
+
+              // The three widths below are worked out from the space the
+              // message actually has, rather than from the window: the
+              // window includes the sidebar and the chat list, so a share
+              // of it was a different share of the conversation at every
+              // window size, and the margins here were already measured
+              // against the conversation while the bubble was not. Getting
+              // those two onto the same basis is also what lets Image size
+              // mean anything (see chatImageWidth).
+              //
+              // panel -> the conversation's full width.
+              // lead  -> the avatar column, or the indent standing in for it.
+              // room  -> what is left for the message itself.
+              var panel = constraints.maxWidth.isFinite
+                  ? constraints.maxWidth
+                  : MediaQuery.sizeOf(context).width;
+              var rightMargin = expand
+                  ? 0.0
+                  : (narrow
+                      ? (panel > 700 ? panel * 0.32 : 20.0)
+                      : ((isOwnMessage && !leftAlign) ? 20.0 : 0.0));
+              var lead = showAvatar ? 48.0 : (isScreenSmall ? 20.0 : 48.0);
+              var room = (panel - rightMargin - lead).clamp(0.0, panel);
+              // The width inside the bubble: its share of the room, less the
+              // 10pt padding on each side below. Handed to the pictures in
+              // the message, which are inline markdown and so cannot measure
+              // it for themselves -- see ChatImageWidth.
+              var bubbleMax = expand
+                  ? room
+                  : room * (isScreenSmall ? _smallBubbleShare : _bubbleShare);
+              var contentWidth = (bubbleMax - 20).clamp(0.0, bubbleMax);
+
               return Container(
                   margin: EdgeInsets.fromLTRB(
                       0,
-                      widget.evnt.sameUser ? 2 : 10,
-                      expand
-                          ? 0
-                          : (narrow
-                              ? (constraints.maxWidth > 700
-                                  ? constraints.maxWidth * 0.32
-                                  : 20)
-                              : ((isOwnMessage && !leftAlign) ? 20 : 0)),
+                      widget.evnt.sameUser
+                          ? chatStyle.sameUserMessageGap
+                          : chatStyle.messageGap,
+                      rightMargin,
                       0),
                   child: Row(
                       crossAxisAlignment: CrossAxisAlignment.end,
@@ -377,15 +419,23 @@ class _ReceivedSentPMState extends State<ReceivedSentPM> {
                                 },
                                 child: ConstrainedBox(
                                     constraints: BoxConstraints(
-                                      maxWidth: expand
-                                          ? constraints.maxWidth
-                                          : (isScreenSmall
-                                              ? MediaQuery.sizeOf(context)
-                                                      .width *
-                                                  0.75
-                                              : MediaQuery.sizeOf(context)
-                                                      .width *
-                                                  0.4),
+                                      // A share of the room the message has
+                                      // rather than of the whole panel, so
+                                      // the narrowed layouts compose: in
+                                      // Narrow conversation the 0.32 margin
+                                      // has already come off, and the
+                                      // bubble takes its share of what is
+                                      // left instead of being measured
+                                      // against a width it cannot reach.
+                                      //
+                                      // Expand fills that room outright --
+                                      // that is what the setting says. The
+                                      // others leave a margin on the far
+                                      // side, which is what makes sent and
+                                      // received tell each other apart;
+                                      // phones give it less, having less to
+                                      // spare.
+                                      maxWidth: bubbleMax,
                                     ),
                                     child: Container(
                                         padding: const EdgeInsets.only(
@@ -437,15 +487,19 @@ class _ReceivedSentPMState extends State<ReceivedSentPM> {
                                                     style:
                                                         theme.textStyleForNick(
                                                             widget.nick)),
-                                              Provider<DownloadSource>(
-                                                  create: (context) =>
-                                                      DownloadSource(sourceID),
-                                                  child: MarkdownArea(
-                                                      msg,
-                                                      widget.userNick !=
-                                                              widget.nick &&
-                                                          msg.contains(widget
-                                                              .userNick))),
+                                              ChatImageWidth(
+                                                width: contentWidth,
+                                                child: Provider<DownloadSource>(
+                                                    create: (context) =>
+                                                        DownloadSource(
+                                                            sourceID),
+                                                    child: MarkdownArea(
+                                                        msg,
+                                                        widget.userNick !=
+                                                                widget.nick &&
+                                                            msg.contains(widget
+                                                                .userNick))),
+                                              ),
                                               Padding(
                                                   padding:
                                                       const EdgeInsets.only(

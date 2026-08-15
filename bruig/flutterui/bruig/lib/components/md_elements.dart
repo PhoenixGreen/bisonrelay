@@ -754,17 +754,71 @@ class Downloadable extends StatelessWidget {
 // chatImageConstraints resolves the configured chat image size setting into
 // concrete BoxConstraints, given the width available to the image within its
 // chat bubble (as reported by an enclosing LayoutBuilder).
-BoxConstraints chatImageConstraints(String size, double availableWidth) {
-  switch (size) {
-    case "half":
-      return BoxConstraints(
-          maxWidth: availableWidth.isFinite ? availableWidth * 0.5 : 250);
-    case "full":
-      return BoxConstraints(
-          maxWidth: availableWidth.isFinite ? availableWidth : 250);
-    default:
-      return const BoxConstraints(maxHeight: 250, maxWidth: 250);
+// ChatImageWidth carries the width a chat message has to draw in down to the
+// pictures inside it.
+//
+// It has to be handed down rather than measured, because a picture in a
+// message is *inline* markdown (see ImageInlineSyntax/EmbedInlineSyntax) and
+// flutter_markdown renders an inline builder's widget inside a WidgetSpan --
+// which lays its child out with an unbounded width. A LayoutBuilder around
+// the picture is therefore told it has infinite room and can take no share
+// of anything, which is why every Image size behaved identically: with no
+// finite width to take a fraction of, they all fell through to the same 250
+// bound. Nothing about the picture itself was wrong; it simply never knew
+// how much room it had.
+class ChatImageWidth extends InheritedWidget {
+  final double width;
+  const ChatImageWidth({required this.width, required super.child, super.key});
+
+  static double? of(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<ChatImageWidth>()?.width;
+
+  @override
+  bool updateShouldNotify(ChatImageWidth old) => old.width != width;
+}
+
+// chatImageFraction is the share of the available width a chat image size
+// asks for, or null for "Default" -- which is a bound on how large a picture
+// may be drawn rather than a proportion of anything.
+double? chatImageFraction(String size) => switch (size) {
+      "quarter" => 0.25,
+      "third" => 1 / 3,
+      "half" => 0.5,
+      "twoThirds" => 2 / 3,
+      "full" => 1.0,
+      _ => null,
+    };
+
+// chatImageWidth is the width a chat image should actually be drawn at, or
+// null to leave it at its natural size (the "Default" bound, and any case
+// with no finite width to take a share of).
+//
+// A width, not a maximum width -- the same lesson the style guide's pictures
+// already learned (see ImageMd.build). An Image set to contain draws at its
+// natural size whenever that fits, so as a cap these settings did nothing at
+// all to any picture already smaller than the share: "Full width" meant only
+// "up to the full width", which every small picture was under, and half of a
+// narrow bubble is narrower still. That is why the setting looked broken,
+// and why it looked *differently* broken under each Message layout -- the
+// layouts change the width, and so change whether the cap binds at all.
+double? chatImageWidth(String size, double availableWidth) {
+  var fraction = chatImageFraction(size);
+  if (fraction == null || !availableWidth.isFinite) return null;
+  return availableWidth * fraction;
+}
+
+// chatImageSized draws a chat picture at whatever its size setting asks for:
+// a real width for the proportional sizes, and for "Default" the 250pt box
+// it has always been bounded to, natural size below that.
+Widget chatImageSized(String size, double availableWidth, Widget child) {
+  var width = chatImageWidth(size, availableWidth);
+  if (width == null) {
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxHeight: 250, maxWidth: 250),
+      child: child,
+    );
   }
+  return SizedBox(width: width, child: child);
 }
 
 class ImageMd extends StatelessWidget {
@@ -806,11 +860,12 @@ class ImageMd extends StatelessWidget {
         // Chat, which has no guide: a bound on how large a picture may be
         // drawn, exactly as it always was.
         if (rule == null) {
-          return ConstrainedBox(
-            constraints:
-                chatImageConstraints(chatImageSize, constraints.maxWidth),
-            child: ClipRRect(borderRadius: corners, child: image),
-          );
+          // The message's own width when one has been handed down (see
+          // ChatImageWidth); the measured one otherwise, for the places a
+          // picture is laid out with real constraints.
+          var available = ChatImageWidth.of(context) ?? constraints.maxWidth;
+          return chatImageSized(chatImageSize, available,
+              ClipRRect(borderRadius: corners, child: image));
         }
 
         // The guide's share of the column it is in, so a picture keeps its
@@ -900,10 +955,10 @@ class AvifMd extends StatelessWidget {
           child: ClipRRect(
             borderRadius: const BorderRadius.all(Radius.circular(8.0)),
             child: LayoutBuilder(
-              builder: (context, constraints) => ConstrainedBox(
-                constraints:
-                    chatImageConstraints(chatImageSize, constraints.maxWidth),
-                child: Image(
+              builder: (context, constraints) => chatImageSized(
+                chatImageSize,
+                ChatImageWidth.of(context) ?? constraints.maxWidth,
+                Image(
                   image: AvifImage.memory(imgContent).image,
                   fit: BoxFit.contain,
                   errorBuilder: (context, error, stackTrace) {

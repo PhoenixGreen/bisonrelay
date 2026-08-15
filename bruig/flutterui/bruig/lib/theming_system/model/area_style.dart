@@ -336,6 +336,12 @@ class AreaStyle {
   final SideValues? bubbleRadiusReceivedSides;
   final BubbleCornerStyle bubbleCornerStyle;
   final MessageLayoutMode? messageLayoutMode; // Null = standard/default.
+  // messageSpacing is the gap above a message from a different sender than
+  // the one before it. Null = the built-in 10. Messages from the *same*
+  // sender keep their tighter gap, at the same proportion the built-in
+  // pair already uses (2 of 10), so a conversation still reads as groups of
+  // messages rather than an evenly spaced list however far it is opened up.
+  final double? messageSpacing;
   // avatarTheme colors the fallback avatar circle. Despite living on the
   // Chat area it applies app-wide -- every avatar in the app funnels
   // through the same InteractiveAvatar widget -- but chat is where users
@@ -664,6 +670,7 @@ class AreaStyle {
     this.bubbleRadiusReceivedSides,
     this.bubbleCornerStyle = BubbleCornerStyle.rounded,
     this.messageLayoutMode,
+    this.messageSpacing,
     this.avatarTheme = AvatarTheme.standard,
     this.expandMessageWidth = false,
     this.expandMessagePadding,
@@ -831,6 +838,8 @@ class AreaStyle {
     bool clearBubbleRadiusReceivedSides = false,
     BubbleCornerStyle? bubbleCornerStyle,
     MessageLayoutMode? messageLayoutMode,
+    double? messageSpacing,
+    bool clearMessageSpacing = false,
     AvatarTheme? avatarTheme,
     bool clearMessageLayoutMode = false,
     bool? expandMessageWidth,
@@ -1032,6 +1041,8 @@ class AreaStyle {
         messageLayoutMode: clearMessageLayoutMode
             ? null
             : (messageLayoutMode ?? this.messageLayoutMode),
+        messageSpacing:
+            clearMessageSpacing ? null : (messageSpacing ?? this.messageSpacing),
         expandMessageWidth: expandMessageWidth ?? this.expandMessageWidth,
         expandMessagePaddingSides: clearExpandMessagePaddingSides
             ? null
@@ -1254,6 +1265,7 @@ class AreaStyle {
           "bubbleCornerStyle": bubbleCornerStyle.name,
         if (messageLayoutMode != null)
           "messageLayoutMode": messageLayoutMode!.name,
+        if (messageSpacing != null) "messageSpacing": messageSpacing,
         if (avatarTheme != AvatarTheme.standard)
           "avatarTheme": avatarTheme.name,
         if (expandMessageWidth) "expandMessageWidth": expandMessageWidth,
@@ -1461,6 +1473,7 @@ class AreaStyle {
           j["bubbleCornerStyle"], BubbleCornerStyle.rounded),
       messageLayoutMode:
           _enumOrNull(MessageLayoutMode.values, j["messageLayoutMode"]),
+      messageSpacing: (j["messageSpacing"] as num?)?.toDouble(),
       // "monochromeAvatars" is what this was before it grew from a toggle
       // into a set of variants, back when it lived on the Master area (see
       // ThemePreset.fromJson for moving it across).
@@ -1563,6 +1576,18 @@ class AreaStyle {
       bubbleRadiusReceivedSides ?? SideValues.all(bubbleRadiusReceived);
   SideValues get expandMessagePaddings =>
       expandMessagePaddingSides ?? SideValues.all(expandMessagePadding ?? 0);
+
+  // messageGap/sameUserMessageGap are the two vertical gaps between chat
+  // messages: above one from a new sender, and above one from whoever just
+  // spoke. Untouched they are the 10 and 2 the conversation has always
+  // used; setting the first scales the second by the proportion those two
+  // already stood in, so opening the conversation up keeps a run of
+  // messages reading as one group rather than flattening it into an evenly
+  // spaced list.
+  static const double _defaultMessageGap = 10;
+  static const double _sameUserGapRatio = 0.2; // 2 of 10.
+  double get messageGap => messageSpacing ?? _defaultMessageGap;
+  double get sameUserMessageGap => messageGap * _sameUserGapRatio;
   SideValues get dcrPricePaddings =>
       dcrPricePaddingSides ?? SideValues.all(dcrPricePadding);
   SideValues get btcPricePaddings =>
