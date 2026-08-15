@@ -357,6 +357,12 @@ Color sidebarEdgeColor(ThemeNotifier theme) {
   if (style.borderMode != AreaBackgroundMode.token) {
     var c = style.resolveBorderColor(theme);
     if (c != null) return c;
+    // A gradient border has no single color; these callers (drag handles
+    // and the like) need one, so take the color the gradient starts from
+    // rather than dropping back to the built-in divider, which would leave
+    // the handle a visibly different color from the edge beside it.
+    var grad = style.resolveBorderGradientColors(theme);
+    if (grad.isNotEmpty) return grad.first;
   }
   return theme.activePreset?.outline ?? theme.extraColors.sidebarDivider;
 }
@@ -445,10 +451,7 @@ class SecondarySideMenu extends StatelessWidget {
       // color palette slot, read live, so it can never silently diverge
       // from what the palette editor shows (a stored solidColor snapshot
       // wouldn't update when the palette color is edited later). Any other
-      // Background mode resolves through AreaStyle like every other area,
-      // just with a flat-color-only border (no gradient/image border
-      // support here, matching what the "unmodified" case already only
-      // ever supported).
+      // Background mode resolves through AreaStyle like every other area.
       var bg = areaStyle.toBoxDecoration(theme, SurfaceColor.surface,
           presetDir: theme.fullTheme.presetDir);
       var background = areaStyle.mode == AreaBackgroundMode.token
@@ -466,23 +469,39 @@ class SecondarySideMenu extends StatelessWidget {
       // custom preset), not the preset's own outline swatch, so it's only
       // reached by the built-in themes, which have no preset to read and so
       // keep their original divider color.
+      //
+      // A gradient or image border is not a BorderSide and cannot go in a
+      // BoxDecoration at all, so it is painted by wrapBorderOnly below --
+      // an outer box carrying the fill, inset by the border widths -- the
+      // same way the nav bar draws one. Before that, picking Border >
+      // Gradient here resolved to no flat color, so the sidebar fell
+      // through to its built-in divider and the setting appeared to do
+      // nothing.
       var liveBorderColor = areaStyle.resolveBorderColor(theme);
-      var hasOwnBorder = areaStyle.borderMode != AreaBackgroundMode.token &&
+      var gradientBorder = areaStyle.borderMode != AreaBackgroundMode.token &&
+          areaStyle.borderMode != AreaBackgroundMode.solid &&
+          areaStyle.hasBorderWidth;
+      var hasOwnBorder = areaStyle.borderMode == AreaBackgroundMode.solid &&
           liveBorderColor != null &&
           areaStyle.hasBorderWidth;
-      var border = hasOwnBorder
-          ? areaStyle.borderSides(liveBorderColor)
-          : Border(
-              right: BorderSide(
-                  color: theme.activePreset?.outline ??
-                      theme.extraColors.sidebarDivider));
+      var border = gradientBorder
+          ? null
+          : hasOwnBorder
+              ? areaStyle.borderSides(liveBorderColor)
+              : Border(
+                  right: BorderSide(
+                      color: theme.activePreset?.outline ??
+                          theme.extraColors.sidebarDivider));
       // Flutter refuses to paint a non-uniform border with a borderRadius,
       // and a lone right-hand divider never is uniform (see AreaStyle
       // .toBoxDecoration, which drops the radius on the same grounds).
-      var borderRadius = border.isUniform ? bg.borderRadius : null;
+      // (A gradient border leaves `border` null and is painted outside this
+      // box, so the rounding is kept.)
+      var borderRadius =
+          border == null || border.isUniform ? bg.borderRadius : null;
 
       var spaced = !areaStyle.paddings.isZero || !areaStyle.margins.isZero;
-      if (!hasOwnBorder && !spaced) {
+      if (!hasOwnBorder && !gradientBorder && !spaced) {
         // Unmodified: reproduce the original plain divider exactly.
         return Container(
           margin: const EdgeInsets.all(1),
@@ -498,20 +517,26 @@ class SecondarySideMenu extends StatelessWidget {
       }
       // Customized border/padding/margin: same background fill and right
       // edge as above, with the area's own spacing on top.
+      Widget body = Container(
+        padding: areaStyle.paddings.insets,
+        decoration: BoxDecoration(
+          color: background,
+          gradient: bg.gradient,
+          image: bg.image,
+          border: border,
+          borderRadius: borderRadius,
+        ),
+        child: child,
+      );
+      if (gradientBorder) {
+        body = areaStyle.wrapBorderOnly(theme, SurfaceColor.surface,
+            presetDir: theme.fullTheme.presetDir, child: body);
+      }
       return SizedBox(
         width: effectiveWidth,
-        child: Container(
-          margin: areaStyle.margins.insets,
-          padding: areaStyle.paddings.insets,
-          decoration: BoxDecoration(
-            color: background,
-            gradient: bg.gradient,
-            image: bg.image,
-            border: border,
-            borderRadius: borderRadius,
-          ),
-          child: child,
-        ),
+        // The margin goes outside the border, not between it and the fill,
+        // so a gradient border stays on the sidebar's own edge.
+        child: Container(margin: areaStyle.margins.insets, child: body),
       );
     });
   }
