@@ -77,6 +77,13 @@ class ButtonAreaStyle {
   final int? hoverIndex;
   final Color? border;
   final int? borderIndex;
+  // text is the label (and icon) color. Left unset, each role keeps the
+  // palette text color its default names -- Text Color 1 for the two
+  // unfilled roles, Text Color 2 for the three filled ones (see
+  // _roleDefaults). Setting it also moves the faded disabled label with it,
+  // so a role stays recognizably one color in both states.
+  final Color? text;
+  final int? textIndex;
   final double borderWidth;
   // Zero means this role keeps its built-in shape, which for every button
   // in the app is a stadium (a pill whose corners are half its height) --
@@ -96,6 +103,8 @@ class ButtonAreaStyle {
     this.hoverIndex,
     this.border,
     this.borderIndex,
+    this.text,
+    this.textIndex,
     this.borderWidth = 0,
     this.borderRadius = 0,
     this.borderRadiusSides,
@@ -111,6 +120,7 @@ class ButtonAreaStyle {
       background == null &&
       hover == null &&
       border == null &&
+      text == null &&
       borderWidth == 0 &&
       borderRadius == 0 &&
       borderRadiusSides == null &&
@@ -146,6 +156,10 @@ class ButtonAreaStyle {
     int? borderIndex,
     bool clearBorder = false,
     bool clearBorderIndex = false,
+    Color? text,
+    int? textIndex,
+    bool clearText = false,
+    bool clearTextIndex = false,
     double? borderWidth,
     double? borderRadius,
     SideValues? borderRadiusSides,
@@ -167,6 +181,8 @@ class ButtonAreaStyle {
         border: clearBorder ? null : (border ?? this.border),
         borderIndex:
             clearBorderIndex ? null : (borderIndex ?? this.borderIndex),
+        text: clearText ? null : (text ?? this.text),
+        textIndex: clearTextIndex ? null : (textIndex ?? this.textIndex),
         borderWidth: borderWidth ?? this.borderWidth,
         borderRadius: borderRadius ?? this.borderRadius,
         borderRadiusSides: clearBorderRadiusSides
@@ -181,7 +197,7 @@ class ButtonAreaStyle {
       );
 
   // remapPaletteIndexes mirrors AreaStyle.remapPaletteIndexes for this
-  // role's three color bindings -- see there for why removing a palette
+  // role's four color bindings -- see there for why removing a palette
   // entry has to shift them.
   ButtonAreaStyle remapPaletteIndexes(int removed) {
     int? remap(int? i) => i == null || i < removed
@@ -196,6 +212,8 @@ class ButtonAreaStyle {
       clearHoverIndex: remap(hoverIndex) == null,
       borderIndex: remap(borderIndex),
       clearBorderIndex: remap(borderIndex) == null,
+      textIndex: remap(textIndex),
+      clearTextIndex: remap(textIndex) == null,
     );
   }
 
@@ -206,6 +224,8 @@ class ButtonAreaStyle {
         if (hoverIndex != null) "hoverIndex": hoverIndex,
         if (border != null) "border": colorToHex(border!),
         if (borderIndex != null) "borderIndex": borderIndex,
+        if (text != null) "text": colorToHex(text!),
+        if (textIndex != null) "textIndex": textIndex,
         if (borderWidth != 0) "borderWidth": borderWidth,
         if (borderRadius != 0) "borderRadius": borderRadius,
         if (borderRadiusSides != null)
@@ -227,6 +247,8 @@ class ButtonAreaStyle {
       hoverIndex: (j["hoverIndex"] as num?)?.toInt(),
       border: color("border"),
       borderIndex: (j["borderIndex"] as num?)?.toInt(),
+      text: color("text"),
+      textIndex: (j["textIndex"] as num?)?.toInt(),
       borderWidth: number("borderWidth"),
       borderRadius: number("borderRadius"),
       borderRadiusSides: SideValues.fromJson(j["borderRadiusSides"]),
@@ -244,6 +266,7 @@ class ButtonAreaStyle {
   Color? resolveHover(List<Color> palette) => _live(palette, hoverIndex, hover);
   Color? resolveBorder(List<Color> palette) =>
       _live(palette, borderIndex, border);
+  Color? resolveText(List<Color> palette) => _live(palette, textIndex, text);
 
   static Color? _live(List<Color> palette, int? index, Color? raw) =>
       index != null && index < palette.length ? palette[index] : raw;
@@ -342,6 +365,7 @@ ButtonStyle _buildRoleStyle(ButtonRole role, ButtonAreaStyle s,
   var fill = s.resolveBackground(palette) ?? d.fill;
   var hover = s.resolveHover(palette) ?? c.hover;
   var border = s.resolveBorder(palette) ?? (d.bordered ? c.border : null);
+  var labelColor = s.resolveText(palette) ?? d.label;
   // A role that draws a border gets Material's own 1px unless the user has
   // asked for a specific width; one that doesn't only grows a border once a
   // width is actually set.
@@ -369,8 +393,8 @@ ButtonStyle _buildRoleStyle(ButtonRole role, ButtonAreaStyle s,
   // button still reads as the theme's button.
   var label = WidgetStateProperty.resolveWith<Color?>((states) =>
       states.contains(WidgetState.disabled)
-          ? d.label.withValues(alpha: 0.38)
-          : d.label);
+          ? labelColor.withValues(alpha: 0.38)
+          : labelColor);
   var background = WidgetStateProperty.resolveWith<Color?>((states) =>
       states.contains(WidgetState.disabled)
           ? fill.withValues(alpha: fill.a * 0.12)

@@ -162,4 +162,83 @@ void main() {
     var style = preset.toAppTheme().buttonStyles[ButtonRole.tonal]!;
     expect(style.backgroundColor!.resolve({}), preset.primary);
   });
+
+  group('text colour', () {
+    ButtonStyle styleFor(ButtonRole role, ButtonAreaStyle spec) =>
+        ThemePreset.seedFromDark()
+            .copyWith(areas: {
+              ThemeArea.buttons: AreaStyle(buttonStyles: {role: spec}),
+            })
+            .toAppTheme()
+            .buttonStyles[role]!;
+
+    test('untouched, each role keeps the palette text colour it names', () {
+      var preset = ThemePreset.seedFromDark();
+      var styles = preset.toAppTheme().buttonStyles;
+      const on = <WidgetState>{};
+      // The unfilled roles read against the page, the filled ones against
+      // their own fill -- which is what the palette's two button text
+      // colours are for.
+      expect(styles[ButtonRole.plain]!.foregroundColor!.resolve(on),
+          preset.buttonText1);
+      expect(styles[ButtonRole.outlined]!.foregroundColor!.resolve(on),
+          preset.buttonText1);
+      for (var role in [
+        ButtonRole.primary,
+        ButtonRole.tonal,
+        ButtonRole.danger
+      ]) {
+        expect(styles[role]!.foregroundColor!.resolve(on), preset.buttonText2,
+            reason: '${role.name} does not use Text Color 2');
+      }
+    });
+
+    test('a chosen colour replaces it, on the label and the icon', () {
+      var style = styleFor(
+          ButtonRole.primary, const ButtonAreaStyle(text: Color(0xFF00FF00)));
+      expect(style.foregroundColor!.resolve({}), const Color(0xFF00FF00));
+      // The icon goes with the label -- a button whose text and icon
+      // disagreed about their colour would read as two things.
+      expect(style.iconColor!.resolve({}), const Color(0xFF00FF00));
+    });
+
+    test('a bound slot beats the frozen colour, and still fades', () {
+      var preset = ThemePreset.seedFromDark().copyWith(areas: {
+        ThemeArea.buttons: const AreaStyle(buttonStyles: {
+          ButtonRole.plain:
+              ButtonAreaStyle(text: Color(0xFF000001), textIndex: 0),
+        }),
+      });
+      var style = preset.toAppTheme().buttonStyles[ButtonRole.plain]!;
+      expect(style.foregroundColor!.resolve({}), preset.primary);
+      // Disabled fades the chosen colour, not the default it replaced.
+      var off = style.foregroundColor!.resolve({WidgetState.disabled})!;
+      expect(off.a, lessThan(preset.primary.a));
+      expect(off.r, preset.primary.r);
+    });
+
+    test('it round-trips, and an untouched role writes nothing', () {
+      var spec = const ButtonAreaStyle(text: Color(0xFF884444), textIndex: 5);
+      var style = AreaStyle(buttonStyles: {ButtonRole.danger: spec});
+      var back =
+          AreaStyle.fromJson(style.toJson()).buttonStyles[ButtonRole.danger]!;
+      expect(back.text, const Color(0xFF884444));
+      expect(back.textIndex, 5);
+      expect(const ButtonAreaStyle().toJson().containsKey('text'), isFalse);
+      // A role with only a text colour set is still a role that has been
+      // touched, so it survives the isEmpty shortcut.
+      expect(spec.isEmpty, isFalse);
+    });
+
+    test('removing the bound palette entry shifts the binding', () {
+      // Same rule as the other three colour bindings: an entry removed from
+      // the palette must not leave this one pointing at its neighbour.
+      var spec = const ButtonAreaStyle(text: Color(0xFF884444), textIndex: 5);
+      expect(spec.remapPaletteIndexes(3).textIndex, 4);
+      // The entry it was bound to is the one removed, so the binding goes
+      // and the frozen colour is what is left.
+      expect(spec.remapPaletteIndexes(5).textIndex, isNull);
+      expect(spec.remapPaletteIndexes(5).text, const Color(0xFF884444));
+    });
+  });
 }

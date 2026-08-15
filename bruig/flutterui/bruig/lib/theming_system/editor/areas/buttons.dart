@@ -70,12 +70,24 @@ class _ButtonRolePickerState extends State<_ButtonRolePicker> {
           selected: role,
           onSelect: (r) => setState(() => role = _lastRole = r)),
       const SizedBox(height: 16),
-      // The three colors share one line (stacking as the pane narrows):
+      // The four colors share one line (stacking as the pane narrows):
       // they're the settings most worth changing and re-judging against the
-      // preview above, and three of them stacked pushed it off screen. Each
-      // keeps its own one-line explanation underneath, so nothing is lost
-      // to the tighter layout.
+      // preview above, and stacked they pushed it off screen. Each keeps its
+      // own one-line explanation underneath, so nothing is lost to the
+      // tighter layout.
+      //
+      // Text leads the row because it is the part of a button that has to
+      // stay readable against whatever the other three do to it.
       ctx.row([
+        ctx.colorCell(
+          "Text color",
+          value: spec.resolveText(ctx.preset.palette),
+          valueIndex: spec.textIndex,
+          note: _textNote(role),
+          onChanged: (c, i) => setSpec((s) => c == null
+              ? s.copyWith(clearText: true, clearTextIndex: true)
+              : s.copyWith(text: c, textIndex: i, clearTextIndex: i == null)),
+        ),
         ctx.colorCell(
           "Background",
           value: spec.resolveBackground(ctx.preset.palette),
@@ -251,6 +263,16 @@ class _Preview extends StatelessWidget {
     );
   }
 }
+
+// The label default splits the five roles the same way the palette's two
+// button text colors do: the accent color where the label sits on the page,
+// the near-white one where it sits on a fill.
+String _textNote(ButtonRole role) => switch (role) {
+      ButtonRole.plain ||
+      ButtonRole.outlined =>
+        "The label and its icon. Default: Text Color 1.",
+      _ => "The label and its icon. Default: Text Color 2.",
+    };
 
 String _backgroundNote(ButtonRole role) => switch (role) {
       ButtonRole.primary => "Default: Button Background Primary.",
