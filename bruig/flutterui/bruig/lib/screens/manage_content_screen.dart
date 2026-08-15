@@ -42,6 +42,13 @@ class ManageContentScreen extends StatefulWidget {
 class _ManageContentScreenState extends State<ManageContentScreen> {
   int tabIndex = 0;
 
+  // The file the Downloads tab has open in the preview, if any. Opening one
+  // takes the sidebar aside (see SecondarySideMenuLayout.collapseSidebar),
+  // which reshapes the tree below and rebuilds that tab's State -- so this
+  // has to live above the reshape or opening a preview destroys it. See
+  // DownloadsScreen.previewing.
+  String? previewing;
+
   Widget activeTab() {
     switch (tabIndex) {
       case 0:
@@ -50,14 +57,20 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
         return const ManageContent(1);
       case 2:
         return Consumer2<DownloadsModel, ClientModel>(
-            builder: (context, downloads, client, child) =>
-                DownloadsScreen(downloads, client));
+            builder: (context, downloads, client, child) => DownloadsScreen(
+                downloads, client,
+                previewing: previewing,
+                onPreviewing: (p) => setState(() => previewing = p)));
     }
     return Text("Active is $tabIndex");
   }
 
   void onItemChanged(int index) {
-    setState(() => tabIndex = index);
+    // Switching tabs takes the preview with it, so the sidebar comes back.
+    setState(() {
+      tabIndex = index;
+      previewing = null;
+    });
     Timer(const Duration(milliseconds: 1),
         () async => widget.menu.activePageTab = index);
   }
@@ -80,6 +93,7 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
       storageKey: "manageContent",
       items: manageContentBarItems(onItemChanged, tabIndex),
       isDetail: ModalRoute.of(context)!.settings.arguments != null,
+      collapseSidebar: previewing != null,
       content: activeTab(),
     );
   }

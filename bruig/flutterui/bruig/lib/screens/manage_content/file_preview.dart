@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:io';
 
+import 'package:bruig/screens/manage_content/file_notes.dart';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as path;
 import 'package:pdfrx/pdfrx.dart';
@@ -45,7 +47,13 @@ FileKind fileKindOf(String filePath) {
 // than handing it to whatever the OS has registered for it. Opening a file
 // externally is still there beside it -- this is for a look at what
 // something is without leaving the app.
-class FilePreview extends StatelessWidget {
+//
+// It also keeps a reader's place. Where they had got to is recorded as they
+// go (see FileNotes.position), but nothing jumps on its own: a file always
+// opens at its beginning, and the Continue button in the header is how you
+// go back to where you were. A document that silently opened four hundred
+// pages in would be worse than one that forgot.
+class FilePreview extends StatefulWidget {
   final String filePath;
   final VoidCallback onClose;
   const FilePreview({
@@ -55,8 +63,85 @@ class FilePreview extends StatelessWidget {
   });
 
   @override
+  State<FilePreview> createState() => _FilePreviewState();
+}
+
+class _FilePreviewState extends State<FilePreview> {
+  FileNotes notes = FileNotes.empty;
+  bool showNotes = false;
+
+  /// resumeTo is the saved position, handed to the view below when Continue
+  /// is pressed and cleared once it has been used, so pressing it is a
+  /// one-way trip rather than something that keeps yanking the view back.
+  double? resumeTo;
+
+  /// _kind names the unit this file's position is measured in -- see
+  /// FileNotes.position. The FileKind's own name, so it can never disagree
+  /// with the view that is doing the measuring.
+  String get _kind => fileKindOf(widget.filePath).name;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadNotes();
+  }
+
+  @override
+  void didUpdateWidget(FilePreview old) {
+    super.didUpdateWidget(old);
+    if (old.filePath != widget.filePath) {
+      setState(() {
+        notes = FileNotes.empty;
+        resumeTo = null;
+      });
+      _loadNotes();
+    }
+  }
+
+  Future<void> _loadNotes() async {
+    var loaded = await FileNotesStore.load(widget.filePath);
+    if (mounted) setState(() => notes = loaded);
+  }
+
+  /// _recordPosition writes where the reader has got to, merging into
+  /// whatever else the sidecar holds -- the notes panel below writes to the
+  /// same file, and re-reading first is what stops one of them erasing the
+  /// other's work.
+  ///
+  /// Kept off the UI thread's critical path deliberately: this is called as
+  /// the reader scrolls or plays, and none of it is worth a rebuild.
+  Future<void> _recordPosition(double position) async {
+    if (!mounted) return;
+    var existing = await FileNotesStore.load(widget.filePath);
+    if (existing.position == position) return;
+    notes = existing.copyWith(position: position, positionKind: _kind);
+    await FileNotesStore.save(widget.filePath, notes);
+  }
+
+  /// _resumeLabel names what Continue will actually do, in the units of the
+  /// thing being resumed -- "page 12" is a promise, "continue" alone is not.
+  String? get _resumeLabel {
+    var at = notes.positionFor(_kind);
+    if (at == null) return null;
+    return switch (fileKindOf(widget.filePath)) {
+      FileKind.pdf => "Continue from page ${at.round()}",
+      FileKind.video => "Continue from ${_clock(at)}",
+      FileKind.text => "Continue where you left off",
+      _ => null,
+    };
+  }
+
+  static String _clock(double seconds) {
+    var d = Duration(seconds: seconds.round());
+    var mm = d.inMinutes.remainder(60).toString().padLeft(2, "0");
+    var ss = d.inSeconds.remainder(60).toString().padLeft(2, "0");
+    return d.inHours > 0 ? "${d.inHours}:$mm:$ss" : "$mm:$ss";
+  }
+
+  @override
   Widget build(BuildContext context) {
     var cs = Theme.of(context).colorScheme;
+    var resume = _resumeLabel;
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Padding(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
@@ -64,13 +149,28 @@ class FilePreview extends StatelessWidget {
           IconButton(
             icon: const Icon(Icons.close),
             tooltip: "Close preview",
-            onPressed: onClose,
+            onPressed: widget.onClose,
           ),
           const SizedBox(width: 8),
           Expanded(
-            child: Text(path.basename(filePath),
+            child: Text(path.basename(widget.filePath),
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(fontWeight: FontWeight.w500)),
+          ),
+          if (resume != null)
+            TextButton.icon(
+              icon: const Icon(Icons.bookmark, size: 16),
+              label: Text(resume),
+              onPressed: () => setState(() {
+                resumeTo = notes.position;
+              }),
+            ),
+          // The note button is here as well as on the list rows, because
+          // notes are most worth taking while the thing is in front of you.
+          FileNotesButton(
+            filePath: widget.filePath,
+            open: showNotes,
+            onPressed: () => setState(() => showNotes = !showNotes),
           ),
         ]),
       ),
@@ -89,19 +189,26 @@ class FilePreview extends StatelessWidget {
           ),
         ),
       ),
+      if (showNotes)
+        FileNotesPanel(
+          filePath: widget.filePath,
+          height: 180,
+          onClose: () => setState(() => showNotes = false),
+        ),
     ]);
   }
 
   Widget _body(BuildContext context) {
-    var file = File(filePath);
+    var file = File(widget.filePath);
     if (!file.existsSync()) {
       return const Center(child: Text("File no longer exists on disk"));
     }
 
-    switch (fileKindOf(filePath)) {
+    switch (fileKindOf(widget.filePath)) {
       case FileKind.image:
         // Zoomable: a photo shown at page size is otherwise less useful
-        // than the same photo in any image viewer.
+        // than the same photo in any image viewer. Nothing to remember --
+        // an image has no "where you were".
         return InteractiveViewer(
           maxScale: 8,
           child: Center(
@@ -110,15 +217,63 @@ class FilePreview extends StatelessWidget {
                       Center(child: Text("Unable to read image: $error")))),
         );
       case FileKind.pdf:
-        return PdfViewer.file(filePath);
+        return _PdfPreview(
+          filePath: widget.filePath,
+          resumeToPage: resumeTo?.round(),
+          onPage: (p) => _recordPosition(p.toDouble()),
+        );
       case FileKind.video:
-        return _VideoPreview(file: file);
+        return _VideoPreview(
+            file: file, resumeToSeconds: resumeTo, onPosition: _recordPosition);
       case FileKind.text:
-        return _TextPreview(file: file);
+        return _TextPreview(
+            file: file, resumeToOffset: resumeTo, onOffset: _recordPosition);
       case FileKind.other:
         return const Center(child: Text("No preview for this file type"));
     }
   }
+}
+
+// _PdfPreview wraps the PDF viewer with the two things a bookmark needs: a
+// controller to jump with, and the page change to record.
+class _PdfPreview extends StatefulWidget {
+  final String filePath;
+  final int? resumeToPage;
+  final ValueChanged<int> onPage;
+  const _PdfPreview({
+    required this.filePath,
+    required this.resumeToPage,
+    required this.onPage,
+  });
+
+  @override
+  State<_PdfPreview> createState() => _PdfPreviewState();
+}
+
+class _PdfPreviewState extends State<_PdfPreview> {
+  final controller = PdfViewerController();
+
+  @override
+  void didUpdateWidget(_PdfPreview old) {
+    super.didUpdateWidget(old);
+    var page = widget.resumeToPage;
+    // Only on the edge -- rebuilding with the same target must not keep
+    // dragging the reader back to it after they have paged on from there.
+    if (page != null && page != old.resumeToPage && controller.isReady) {
+      controller.goToPage(pageNumber: page);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => PdfViewer.file(
+        widget.filePath,
+        controller: controller,
+        params: PdfViewerParams(
+          onPageChanged: (page) {
+            if (page != null) widget.onPage(page);
+          },
+        ),
+      );
 }
 
 // _TextPreview reads the file itself rather than streaming it, so it caps
@@ -126,7 +281,15 @@ class FilePreview extends StatelessWidget {
 // the whole thing in memory to show one screenful is not worth it.
 class _TextPreview extends StatefulWidget {
   final File file;
-  const _TextPreview({required this.file});
+  // resumeToOffset is a scroll offset to jump to, set when Continue is
+  // pressed; onOffset reports where the reader has scrolled to.
+  final double? resumeToOffset;
+  final ValueChanged<double> onOffset;
+  const _TextPreview({
+    required this.file,
+    required this.resumeToOffset,
+    required this.onOffset,
+  });
 
   @override
   State<_TextPreview> createState() => _TextPreviewState();
@@ -138,11 +301,40 @@ class _TextPreviewState extends State<_TextPreview> {
   String? content;
   String? error;
   bool truncated = false;
+  final scrollCtrl = ScrollController();
+  Timer? _record;
 
   @override
   void initState() {
     super.initState();
+    scrollCtrl.addListener(_scrolled);
     load();
+  }
+
+  // Reported on a timer rather than on every frame of a scroll: this ends
+  // in a file write, and a flung scrollbar would otherwise produce hundreds
+  // of them for one gesture.
+  void _scrolled() {
+    if (_record?.isActive ?? false) return;
+    _record = Timer(const Duration(milliseconds: 400), () {
+      if (mounted && scrollCtrl.hasClients) widget.onOffset(scrollCtrl.offset);
+    });
+  }
+
+  @override
+  void didUpdateWidget(_TextPreview old) {
+    super.didUpdateWidget(old);
+    var to = widget.resumeToOffset;
+    if (to != null && to != old.resumeToOffset && scrollCtrl.hasClients) {
+      scrollCtrl.jumpTo(to.clamp(0, scrollCtrl.position.maxScrollExtent));
+    }
+  }
+
+  @override
+  void dispose() {
+    _record?.cancel();
+    scrollCtrl.dispose();
+    super.dispose();
   }
 
   void load() async {
@@ -172,6 +364,7 @@ class _TextPreviewState extends State<_TextPreview> {
       return const Center(child: CircularProgressIndicator());
     }
     return SingleChildScrollView(
+      controller: scrollCtrl,
       padding: const EdgeInsets.all(12),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         if (truncated)
@@ -189,7 +382,15 @@ class _TextPreviewState extends State<_TextPreview> {
 
 class _VideoPreview extends StatefulWidget {
   final File file;
-  const _VideoPreview({required this.file});
+  // resumeToSeconds is a playback position to seek to, set when Continue is
+  // pressed; onPosition reports where playback has reached.
+  final double? resumeToSeconds;
+  final ValueChanged<double> onPosition;
+  const _VideoPreview({
+    required this.file,
+    required this.resumeToSeconds,
+    required this.onPosition,
+  });
 
   @override
   State<_VideoPreview> createState() => _VideoPreviewState();
@@ -198,6 +399,7 @@ class _VideoPreview extends StatefulWidget {
 class _VideoPreviewState extends State<_VideoPreview> {
   VideoPlayerController? controller;
   String? error;
+  Timer? _record;
 
   @override
   void initState() {
@@ -220,10 +422,36 @@ class _VideoPreviewState extends State<_VideoPreview> {
     // Not auto-played: a preview that starts making noise the moment it
     // opens is a worse default than one more click.
     setState(() => controller = next);
+    // Sampled on a timer rather than from the player's own listener, which
+    // fires several times a second while playing -- once every few seconds
+    // is as close as anyone needs to be put back.
+    _record = Timer.periodic(const Duration(seconds: 3), (_) {
+      var c = controller;
+      if (c != null && c.value.isPlaying) {
+        widget.onPosition(c.value.position.inMilliseconds / 1000);
+      }
+    });
+  }
+
+  @override
+  void didUpdateWidget(_VideoPreview old) {
+    super.didUpdateWidget(old);
+    var to = widget.resumeToSeconds;
+    if (to != null && to != old.resumeToSeconds) {
+      controller?.seekTo(Duration(milliseconds: (to * 1000).round()));
+    }
   }
 
   @override
   void dispose() {
+    _record?.cancel();
+    // The position at the moment of closing, which the periodic sample will
+    // usually have just missed -- closing a video is exactly when where you
+    // got to matters most.
+    var c = controller;
+    if (c != null && c.value.isInitialized) {
+      widget.onPosition(c.value.position.inMilliseconds / 1000);
+    }
     controller?.dispose();
     super.dispose();
   }

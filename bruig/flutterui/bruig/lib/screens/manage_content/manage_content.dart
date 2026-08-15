@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:bruig/components/snackbars.dart';
 import 'dart:io';
 import 'package:path/path.dart' as path;
+import 'package:bruig/screens/manage_content/file_notes.dart';
 import 'package:bruig/screens/manage_content/file_row.dart';
 import 'package:bruig/util.dart';
 import 'package:golib_plugin/util.dart';
@@ -40,9 +41,13 @@ class SharedContentFile extends StatefulWidget {
   // onTap is only set when the screen was opened to pick a file for
   // something else (see ManageContentScreenArgs).
   final VoidCallback? onTap;
+  // onNotes opens this file's notes panel. Owned by the page rather than
+  // the row, so the panel survives the list rebuilding around it.
+  final ValueChanged<String>? onNotes;
+  final String? notesFor;
   const SharedContentFile(
       this.file, this.removeContentCB, this.client, this.onTap,
-      {super.key});
+      {this.onNotes, this.notesFor, super.key});
 
   @override
   State<SharedContentFile> createState() => _SharedContentFileState();
@@ -192,6 +197,14 @@ class _SharedContentFileState extends State<SharedContentFile> {
           tooltip: "Copy link",
           onPressed: () => copyLink(context),
         ),
+        // Notes are about the file on disk, so a share with no known path
+        // has nothing to attach them to.
+        if (widget.onNotes != null && canOpen)
+          FileNotesButton(
+            filePath: diskPath,
+            open: widget.notesFor == diskPath,
+            onPressed: () => widget.onNotes!(diskPath),
+          ),
         TextButton(
           onPressed: canOpen ? () => OpenFilex.open(diskPath) : null,
           child: Text("Open",
@@ -267,6 +280,8 @@ class SharedContent extends StatefulWidget {
 class _SharedContentState extends State<SharedContent> {
   String filter = "";
   _SharedSort sort = _SharedSort.name;
+  // The file whose notes panel is open at the foot of the page, if any.
+  String? notesFor;
 
   @override
   Widget build(BuildContext context) {
@@ -313,10 +328,20 @@ class _SharedContentState extends State<SharedContent> {
                     widget.client,
                     widget.fileSelectedCB != null
                         ? () => widget.fileSelectedCB!(files[index].sf)
-                        : null));
+                        : null,
+                    // Pressing the button of the file already showing closes
+                    // the panel, so one button both opens and dismisses it.
+                    onNotes: (p) =>
+                        setState(() => notesFor = notesFor == p ? null : p),
+                    notesFor: notesFor));
           },
         ),
       ),
+      if (notesFor != null)
+        FileNotesPanel(
+          filePath: notesFor!,
+          onClose: () => setState(() => notesFor = null),
+        ),
     ]);
   }
 }

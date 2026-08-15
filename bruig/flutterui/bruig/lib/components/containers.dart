@@ -627,6 +627,17 @@ class SecondarySideMenuLayout extends StatefulWidget {
   final bool isDetail;
   final Object? detailKey;
 
+  /// collapseSidebar hands the sidebar to the drawer even on a wide window,
+  /// for a screen whose content wants the room for a while -- the file
+  /// preview, which is something being read or watched rather than a list
+  /// being scanned.
+  ///
+  /// Deliberately the same path a narrow window takes rather than simply
+  /// not drawing it: that registers the sidebar with CollapsedSidebarModel,
+  /// so re-tapping the destination in the main navigation still slides it
+  /// in. A sidebar that is merely hidden is one the reader cannot get back.
+  final bool collapseSidebar;
+
   /// sidebarRevision is whatever this screen's sidebar would look different
   /// for, so the collapsed drawer knows to redraw it. Only needed by a
   /// sidebar whose contents change while it is open -- see
@@ -649,6 +660,7 @@ class SecondarySideMenuLayout extends StatefulWidget {
       this.isDetail = false,
       this.detailKey,
       this.sidebarRevision,
+      this.collapseSidebar = false,
       super.key});
 
   @override
@@ -796,9 +808,40 @@ class _SecondarySideMenuLayoutState extends State<SecondarySideMenuLayout> {
             constraints.maxWidth < _collapseBelowWidth) {
           return _compactLayout(client, kCollapsedSidebarWidth);
         }
-        // Wide again: hand the drawer back, so re-tapping this page in the
-        // main nav can't open a sidebar that's already on screen.
-        client.ui.collapsedSidebar.unregister();
+
+        // An explicit collapse -- the content asking for the room, rather
+        // than the window being too narrow to give it -- keeps whichever
+        // layout this style already had and empties the sidebar's slot,
+        // instead of dropping to the content-only shape above.
+        //
+        // The shape has to hold still because this one happens mid-session
+        // at the reader's request: changing it rebuilds the content's State
+        // from scratch, which is what lost the file preview that had just
+        // been opened and would reset the list's search and sort besides.
+        // (Reaching for a GlobalKey to carry the element across the reshape
+        // instead is worse than the problem: reparenting one inside this
+        // LayoutBuilder mutates a render object during layout, and the
+        // framework asserts outright.)
+        //
+        // The sidebar is still handed to the drawer, so re-tapping the
+        // destination in the main navigation slides it back in.
+        if (widget.collapseSidebar) {
+          client.ui.collapsedSidebar.register(
+              (context) => _menuList(kCollapsedSidebarWidth, closeOnTap: true),
+              kCollapsedSidebarWidth,
+              revision: widget.sidebarRevision,
+              owner: this);
+        } else {
+          // Wide again: hand the drawer back, so re-tapping this page in the
+          // main nav can't open a sidebar that's already on screen.
+          client.ui.collapsedSidebar.unregister();
+        }
+
+        // The sidebar's slot, kept in the layout even when empty so the
+        // content beside it stays at the same position in the tree.
+        Widget sidebarSlot(double? width) => widget.collapseSidebar
+            ? const SizedBox.shrink()
+            : _menuList(width);
 
         if (style == SubMenuStyle.resizable) {
           var defaultWidth = sidebarWidth(menuWidth);
@@ -807,8 +850,11 @@ class _SecondarySideMenuLayoutState extends State<SecondarySideMenuLayout> {
           return Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _menuList(currentWidth),
-              MouseRegion(
+              sidebarSlot(currentWidth),
+              if (widget.collapseSidebar)
+                const SizedBox.shrink()
+              else
+                MouseRegion(
                 cursor: SystemMouseCursors.resizeLeftRight,
                 child: GestureDetector(
                   behavior: HitTestBehavior.translucent,
@@ -838,7 +884,7 @@ class _SecondarySideMenuLayoutState extends State<SecondarySideMenuLayout> {
 
         // alwaysVisible (default).
         return Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          _menuList(menuWidth),
+          sidebarSlot(menuWidth),
           Expanded(child: contentAreaFrame(theme, widget.content)),
         ]);
       });
