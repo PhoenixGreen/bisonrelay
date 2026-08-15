@@ -316,7 +316,9 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
     var preview = previewing;
     if (preview != null) {
       return FilePreview(
-          filePath: preview, onClose: () => _setPreviewing(null));
+          filePath: preview,
+          nav: widget.client.ui.manageContentNav,
+          onClose: () => _setPreviewing(null));
     }
 
     var needle = filter.trim().toLowerCase();

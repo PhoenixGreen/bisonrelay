@@ -187,6 +187,63 @@ class CollapsedSidebarModel extends ChangeNotifier {
       WidgetsBinding.instance.addPostFrameCallback((_) => notifyListeners());
 }
 
+// ManageContentNavModel remembers where the reader was on the Manage Content
+// page: which tab, and the file it had open in its preview with the place
+// they had got to in it.
+//
+// Out here rather than on the screen for the same reason SettingsNavModel is:
+// every page is rebuilt from scratch by its route (pushReplacementNamed), so
+// stepping over to Chat to read a message and coming back put them on the
+// Shared tab with the document closed. The tab has to be remembered for the
+// preview to be worth remembering at all -- MainMenuModel.activeRoute resets
+// activePageTab on every navigation, which is the same thing FeedModel
+// .lastTab exists to undo for the Feed.
+//
+// The position here is the *session's*, which is not the bookmark written
+// beside the file: the sidecar is how you come back to a document tomorrow,
+// deliberately behind a Continue button, while this is simply the page not
+// having been closed in the first place.
+class ManageContentNavModel extends ChangeNotifier {
+  int _tab = 0;
+  int get tab => _tab;
+  set tab(int v) {
+    if (_tab == v) return;
+    _tab = v;
+    notifyListeners();
+  }
+
+  String? _path;
+  String? get path => _path;
+
+  /// position is in whatever unit the open file's kind counts in -- see
+  /// FileNotes.position, which stores the same figure.
+  double _position = 0;
+  double get position => _position;
+
+  /// zoom is the preview's zoom level as a share of the fit view (1.0, 0.5,
+  /// 0.25) -- see FilePreviewZoom.
+  double _zoom = 1;
+  double get zoom => _zoom;
+
+  void open(String? path) {
+    if (_path == path) return;
+    _path = path;
+    // A different document starts at its own beginning and its own zoom;
+    // carrying the last one's page over would be meaningless.
+    _position = 0;
+    _zoom = 1;
+    notifyListeners();
+  }
+
+  /// remember records where the reader is now. Deliberately silent: it is
+  /// called as they scroll or play, and nothing on screen is driven by it --
+  /// it is only read back when the page is built again.
+  void remember({double? position, double? zoom}) {
+    if (position != null) _position = position;
+    if (zoom != null) _zoom = zoom;
+  }
+}
+
 // UIStateModel holds state related to the app's UI.
 class UIStateModel {
   final ShowProfileModel showProfile = ShowProfileModel();
@@ -196,6 +253,7 @@ class UIStateModel {
   final SettingsNavModel settingsNav = SettingsNavModel();
   final OverviewActivePath overviewActivePath = OverviewActivePath();
   final CollapsedSidebarModel collapsedSidebar = CollapsedSidebarModel();
+  final ManageContentNavModel manageContentNav = ManageContentNavModel();
   final RouteObserver<ModalRoute<void>> overviewRouteObserver =
       RouteObserver<ModalRoute<void>>();
 }

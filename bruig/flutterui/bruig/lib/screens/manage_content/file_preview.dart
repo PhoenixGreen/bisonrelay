@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:bruig/components/text.dart';
+import 'package:bruig/models/uistate.dart';
 import 'package:bruig/screens/manage_content/file_notes.dart';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as path;
@@ -48,17 +50,27 @@ FileKind fileKindOf(String filePath) {
 // externally is still there beside it -- this is for a look at what
 // something is without leaving the app.
 //
-// It also keeps a reader's place. Where they had got to is recorded as they
-// go (see FileNotes.position), but nothing jumps on its own: a file always
-// opens at its beginning, and the Continue button in the header is how you
-// go back to where you were. A document that silently opened four hundred
-// pages in would be worse than one that forgot.
+// It also keeps a reader's place, in two different senses that are worth
+// keeping apart. Across a *session* -- stepping over to Chat and coming back
+// -- the document is simply still open where it was, restored from
+// FilePreviewNavModel without anything being asked for. Across a *closing*,
+// where they had got to is written beside the file (see FileNotes.position)
+// and nothing jumps on its own: the file opens at its beginning and the
+// Continue button in the header is how you go back. A document that silently
+// opened four hundred pages in would be worse than one that forgot; a
+// document that closed itself because you glanced at a message would be
+// worse still.
 class FilePreview extends StatefulWidget {
   final String filePath;
   final VoidCallback onClose;
+
+  /// nav is where the session's own position and zoom are kept, so they
+  /// outlive this widget being rebuilt by its route.
+  final ManageContentNavModel nav;
   const FilePreview({
     required this.filePath,
     required this.onClose,
+    required this.nav,
     super.key,
   });
 
@@ -69,6 +81,15 @@ class FilePreview extends StatefulWidget {
 class _FilePreviewState extends State<FilePreview> {
   FileNotes notes = FileNotes.empty;
   bool showNotes = false;
+
+  /// zoom is the share of the fit view the document is drawn at -- 1.0 being
+  /// the whole page fitted to the panel, which is how it opens.
+  late double zoom = widget.nav.zoom;
+
+  /// page/pageCount are the PDF's own, for the counter in the header. Null
+  /// until the document has loaded, and for every other kind of file.
+  int? page;
+  int? pageCount;
 
   /// resumeTo is the saved position, handed to the view below when Continue
   /// is pressed and cleared once it has been used, so pressing it is a
@@ -84,6 +105,12 @@ class _FilePreviewState extends State<FilePreview> {
   void initState() {
     super.initState();
     _loadNotes();
+    // Coming back to a page that was already open: pick the document up
+    // where it was left rather than at the top. Distinct from Continue,
+    // which is for a document being opened again from cold.
+    if (widget.nav.path == widget.filePath && widget.nav.position > 0) {
+      resumeTo = widget.nav.position;
+    }
   }
 
   @override
@@ -111,11 +138,19 @@ class _FilePreviewState extends State<FilePreview> {
   /// Kept off the UI thread's critical path deliberately: this is called as
   /// the reader scrolls or plays, and none of it is worth a rebuild.
   Future<void> _recordPosition(double position) async {
+    // The session's own copy first, and unconditionally: it is what restores
+    // the view on coming back to this page, and it costs nothing.
+    widget.nav.remember(position: position);
     if (!mounted) return;
     var existing = await FileNotesStore.load(widget.filePath);
     if (existing.position == position) return;
     notes = existing.copyWith(position: position, positionKind: _kind);
     await FileNotesStore.save(widget.filePath, notes);
+  }
+
+  void _setZoom(double v) {
+    widget.nav.remember(zoom: v);
+    setState(() => zoom = v);
   }
 
   /// _resumeLabel names what Continue will actually do, in the units of the
@@ -142,21 +177,40 @@ class _FilePreviewState extends State<FilePreview> {
   Widget build(BuildContext context) {
     var cs = Theme.of(context).colorScheme;
     var resume = _resumeLabel;
+    var kind = fileKindOf(widget.filePath);
+    // Only the two kinds with a page to scale. Text has a font size rather
+    // than a zoom, and a video has neither.
+    var zoomable = kind == FileKind.pdf || kind == FileKind.image;
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Padding(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-        child: Row(children: [
+        // Wrap rather than Row: the name, the page counter, the zoom and the
+        // two buttons do not fit across a narrow panel, and a Row would
+        // overflow rather than give way.
+        child: Wrap(
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 8,
+          runSpacing: 4,
+          children: [
           IconButton(
             icon: const Icon(Icons.close),
             tooltip: "Close preview",
             onPressed: widget.onClose,
           ),
-          const SizedBox(width: 8),
-          Expanded(
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 320),
             child: Text(path.basename(widget.filePath),
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(fontWeight: FontWeight.w500)),
           ),
+          if (pageCount != null)
+            _PageCounter(
+              page: page ?? 1,
+              pageCount: pageCount!,
+              onGoTo: (p) => setState(() => resumeTo = p.toDouble()),
+            ),
+          if (zoomable)
+            _ZoomPicker(zoom: zoom, onChanged: _setZoom),
           if (resume != null)
             TextButton.icon(
               icon: const Icon(Icons.bookmark, size: 16),
@@ -209,18 +263,23 @@ class _FilePreviewState extends State<FilePreview> {
         // Zoomable: a photo shown at page size is otherwise less useful
         // than the same photo in any image viewer. Nothing to remember --
         // an image has no "where you were".
-        return InteractiveViewer(
-          maxScale: 8,
-          child: Center(
-              child: Image.file(file,
-                  errorBuilder: (context, error, stack) =>
-                      Center(child: Text("Unable to read image: $error")))),
-        );
+        return _ImagePreview(file: file, zoom: zoom);
       case FileKind.pdf:
         return _PdfPreview(
           filePath: widget.filePath,
           resumeToPage: resumeTo?.round(),
-          onPage: (p) => _recordPosition(p.toDouble()),
+          zoom: zoom,
+          onPage: (p) {
+            _recordPosition(p.toDouble());
+            // The counter in the header follows the document, so it has to
+            // rebuild -- unlike the recording above, which nothing shows.
+            if (mounted && p != page) setState(() => page = p);
+          },
+          onLoaded: (count) {
+            if (mounted && count != pageCount) {
+              setState(() => pageCount = count);
+            }
+          },
         );
       case FileKind.video:
         return _VideoPreview(
@@ -239,11 +298,15 @@ class _FilePreviewState extends State<FilePreview> {
 class _PdfPreview extends StatefulWidget {
   final String filePath;
   final int? resumeToPage;
+  final double zoom;
   final ValueChanged<int> onPage;
+  final ValueChanged<int> onLoaded;
   const _PdfPreview({
     required this.filePath,
     required this.resumeToPage,
+    required this.zoom,
     required this.onPage,
+    required this.onLoaded,
   });
 
   @override
@@ -252,6 +315,13 @@ class _PdfPreview extends StatefulWidget {
 
 class _PdfPreviewState extends State<_PdfPreview> {
   final controller = PdfViewerController();
+
+  /// _fitZoom is the scale the document opened at -- the whole page fitted
+  /// to the panel, which is what 100% means here. pdfrx's own zoom is an
+  /// absolute scale, so the percentages have to be taken against this rather
+  /// than against 1.0, which would mean something different at every window
+  /// size and page size.
+  double? _fitZoom;
 
   @override
   void didUpdateWidget(_PdfPreview old) {
@@ -262,6 +332,13 @@ class _PdfPreviewState extends State<_PdfPreview> {
     if (page != null && page != old.resumeToPage && controller.isReady) {
       controller.goToPage(pageNumber: page);
     }
+    if (widget.zoom != old.zoom) _applyZoom();
+  }
+
+  void _applyZoom() {
+    var fit = _fitZoom;
+    if (fit == null || !controller.isReady) return;
+    controller.setZoom(controller.centerPosition, fit * widget.zoom);
   }
 
   @override
@@ -272,8 +349,171 @@ class _PdfPreviewState extends State<_PdfPreview> {
           onPageChanged: (page) {
             if (page != null) widget.onPage(page);
           },
+          onViewerReady: (document, controller) {
+            // The scale it settled on is the fit, and the page count is now
+            // known. Both are reported out of the frame that produced them.
+            _fitZoom ??= controller.currentZoom;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (!mounted) return;
+              widget.onLoaded(document.pages.length);
+              if (widget.zoom != 1) _applyZoom();
+              var page = widget.resumeToPage;
+              if (page != null) controller.goToPage(pageNumber: page);
+            });
+          },
         ),
       );
+}
+
+// _ImagePreview is the pinch/drag viewer with the zoom buttons driving the
+// same transform, so the two agree instead of fighting: pressing 50% takes
+// the picture to half the size it opened at, and dragging from there still
+// works.
+class _ImagePreview extends StatefulWidget {
+  final File file;
+  final double zoom;
+  const _ImagePreview({required this.file, required this.zoom});
+
+  @override
+  State<_ImagePreview> createState() => _ImagePreviewState();
+}
+
+class _ImagePreviewState extends State<_ImagePreview> {
+  final _transform = TransformationController();
+
+  @override
+  void didUpdateWidget(_ImagePreview old) {
+    super.didUpdateWidget(old);
+    if (widget.zoom != old.zoom) {
+      _transform.value = Matrix4.identity()..scaleByDouble(
+          widget.zoom, widget.zoom, widget.zoom, 1);
+    }
+  }
+
+  @override
+  void dispose() {
+    _transform.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => InteractiveViewer(
+        transformationController: _transform,
+        // Below 1 so the zoom-out levels are reachable by gesture too, not
+        // only by the buttons.
+        minScale: 0.2,
+        maxScale: 8,
+        child: Center(
+            child: Image.file(widget.file,
+                errorBuilder: (context, error, stack) =>
+                    Center(child: Text("Unable to read image: $error")))),
+      );
+}
+
+/// _ZoomPicker is the 100/50/25% control.
+///
+/// 100% is the view the document opens at -- the whole page fitted to the
+/// panel -- rather than true actual size, so the figure means the same thing
+/// whatever the page size and window size are.
+class _ZoomPicker extends StatelessWidget {
+  static const levels = [1.0, 0.5, 0.25];
+  final double zoom;
+  final ValueChanged<double> onChanged;
+  const _ZoomPicker({required this.zoom, required this.onChanged});
+
+  static String label(double z) => "${(z * 100).round()}%";
+
+  @override
+  Widget build(BuildContext context) => Tooltip(
+        message: "Zoom, as a share of the page fitted to the panel",
+        child: DropdownButton<double>(
+          value: levels.contains(zoom) ? zoom : 1.0,
+          underline: const SizedBox.shrink(),
+          items: [
+            for (var l in levels)
+              DropdownMenuItem(value: l, child: Txt.S(label(l))),
+          ],
+          onChanged: (v) {
+            if (v != null) onChanged(v);
+          },
+        ),
+      );
+}
+
+/// _PageCounter shows "Page: 25 / 100" and lets the number be typed.
+///
+/// The field carries the current page rather than being a blank box to fill
+/// in: it is the counter, and typing over it is how you go somewhere. Out of
+/// range or not a number puts the real page back rather than refusing.
+class _PageCounter extends StatefulWidget {
+  final int page;
+  final int pageCount;
+  final ValueChanged<int> onGoTo;
+  const _PageCounter({
+    required this.page,
+    required this.pageCount,
+    required this.onGoTo,
+  });
+
+  @override
+  State<_PageCounter> createState() => _PageCounterState();
+}
+
+class _PageCounterState extends State<_PageCounter> {
+  late final TextEditingController ctrl =
+      TextEditingController(text: "${widget.page}");
+  final focus = FocusNode();
+
+  @override
+  void didUpdateWidget(_PageCounter old) {
+    super.didUpdateWidget(old);
+    // Follow the document as it is scrolled, but never while the reader is
+    // part-way through typing a number into the box.
+    if (widget.page != old.page && !focus.hasFocus) {
+      ctrl.text = "${widget.page}";
+    }
+  }
+
+  @override
+  void dispose() {
+    ctrl.dispose();
+    focus.dispose();
+    super.dispose();
+  }
+
+  void _submit(String raw) {
+    var n = int.tryParse(raw.trim());
+    if (n == null || n < 1 || n > widget.pageCount) {
+      ctrl.text = "${widget.page}";
+      return;
+    }
+    widget.onGoTo(n);
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      Row(mainAxisSize: MainAxisSize.min, children: [
+        const Txt.S("Page: "),
+        SizedBox(
+          width: 48,
+          child: TextField(
+            controller: ctrl,
+            focusNode: focus,
+            textAlign: TextAlign.right,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(
+              isDense: true,
+              contentPadding: EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+            ),
+            onSubmitted: _submit,
+            onTapOutside: (_) {
+              focus.unfocus();
+              _submit(ctrl.text);
+            },
+          ),
+        ),
+        Txt.S(" / ${widget.pageCount}"),
+      ]);
 }
 
 // _TextPreview reads the file itself rather than streaming it, so it caps

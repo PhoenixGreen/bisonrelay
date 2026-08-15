@@ -11,6 +11,7 @@ import 'package:bruig/screens/manage_content/downloads.dart';
 import 'package:bruig/components/manage_bar.dart';
 import 'package:bruig/screens/overview.dart';
 import 'package:bruig/models/menus.dart';
+import 'package:bruig/models/uistate.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 
 class ManageContentScreenTitle extends StatelessWidget {
@@ -40,16 +41,18 @@ class ManageContentScreen extends StatefulWidget {
 }
 
 class _ManageContentScreenState extends State<ManageContentScreen> {
-  int tabIndex = 0;
+  // Which tab is open, and the file the Downloads tab has in its preview,
+  // both held on ManageContentNavModel rather than here.
+  //
+  // Out there for two reasons at once. This screen is rebuilt from scratch
+  // every time it is navigated to, so anything kept here is lost by stepping
+  // over to Chat and back. And opening a preview takes the sidebar aside
+  // (see SecondarySideMenuLayout.collapseSidebar), which rebuilds the tab's
+  // own State -- so the preview could not live down there either.
+  ManageContentNavModel get nav =>
+      ClientModel.of(context, listen: false).ui.manageContentNav;
 
-  // The file the Downloads tab has open in the preview, if any. Opening one
-  // takes the sidebar aside (see SecondarySideMenuLayout.collapseSidebar),
-  // which reshapes the tree below and rebuilds that tab's State -- so this
-  // has to live above the reshape or opening a preview destroys it. See
-  // DownloadsScreen.previewing.
-  String? previewing;
-
-  Widget activeTab() {
+  Widget activeTab(int tabIndex, String? previewing) {
     switch (tabIndex) {
       case 0:
         return const ManageContent(0);
@@ -60,26 +63,28 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
             builder: (context, downloads, client, child) => DownloadsScreen(
                 downloads, client,
                 previewing: previewing,
-                onPreviewing: (p) => setState(() => previewing = p)));
+                onPreviewing: nav.open));
     }
     return Text("Active is $tabIndex");
   }
 
   void onItemChanged(int index) {
     // Switching tabs takes the preview with it, so the sidebar comes back.
-    setState(() {
-      tabIndex = index;
-      previewing = null;
-    });
+    nav
+      ..open(null)
+      ..tab = index;
     Timer(const Duration(milliseconds: 1),
         () async => widget.menu.activePageTab = index);
   }
 
   @override
   Widget build(BuildContext context) {
+    // Explicit navigation still wins: arriving with arguments (from a link
+    // or a notification) opens the tab those name, rather than the one that
+    // happened to be open last.
     if (ModalRoute.of(context)!.settings.arguments != null) {
       final args = ModalRoute.of(context)!.settings.arguments as PageTabs;
-      tabIndex = args.tabIndex;
+      nav.tab = args.tabIndex;
     }
 
     // Deliberately not short-circuited to a bare activeTab() on a small
@@ -89,12 +94,18 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
     // navigation's re-tap gesture (see the Mobile theme area) something to
     // slide in, and what the mobile header's three-dot menu used to be the
     // only route to.
-    return SecondarySideMenuLayout(
-      storageKey: "manageContent",
-      items: manageContentBarItems(onItemChanged, tabIndex),
-      isDetail: ModalRoute.of(context)!.settings.arguments != null,
-      collapseSidebar: previewing != null,
-      content: activeTab(),
+    return ListenableBuilder(
+      listenable: nav,
+      builder: (context, _) {
+        var previewing = nav.tab == 2 ? nav.path : null;
+        return SecondarySideMenuLayout(
+          storageKey: "manageContent",
+          items: manageContentBarItems(onItemChanged, nav.tab),
+          isDetail: ModalRoute.of(context)!.settings.arguments != null,
+          collapseSidebar: previewing != null,
+          content: activeTab(nav.tab, previewing),
+        );
+      },
     );
   }
 }
