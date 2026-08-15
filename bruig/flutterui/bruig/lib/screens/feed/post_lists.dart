@@ -113,7 +113,6 @@ class _PostListsScreenState extends State<PostListsScreen> {
             padding: const EdgeInsets.all(16),
             child: Column(children: [
               const LNInfoSectionHeader("Subscribers to local posts"),
-              const SizedBox(height: 20),
               Expanded(
                   child: ListView.builder(
                       controller: subcribersCtrl,
@@ -124,8 +123,14 @@ class _PostListsScreenState extends State<PostListsScreen> {
                           client.getExistingChat(subscribers[index]),
                           false,
                           unsub))),
+              // The gap above the heading is the caller's, the same way it
+              // is between two LN sections -- the list above this runs right
+              // up to its own edge, so without it the heading reads as the
+              // last row of that list rather than the start of a new
+              // section. (The gap *below* a heading is the heading's own,
+              // which is why neither section adds one.)
+              const SizedBox(height: 40),
               const LNInfoSectionHeader("Subscriptions to remote posters"),
-              const SizedBox(height: 20),
               Expanded(
                   child: ListView.builder(
                 controller: subscriptnsCtrl,
