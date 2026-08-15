@@ -25,7 +25,9 @@ import 'package:bruig/screens/send_file.dart';
 import 'package:bruig/screens/realtimechat/rtclist.dart';
 import 'package:bruig/screens/settings.dart';
 import 'package:bruig/screens/viewpage_screen.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
+import 'package:path/path.dart' as path;
 import 'package:flutter/scheduler.dart';
 import 'package:golib_plugin/golib_plugin.dart';
 import 'package:provider/provider.dart';
@@ -250,9 +252,11 @@ class MainMenuModel extends ChangeNotifier {
   // constructed (see main.dart), so its result is available synchronously
   // here, unlike a from-scratch async load.
   MainMenuModel(
-      {Map<String, String>? initialLabels, List<String>? initialOrder}) {
-    if (initialLabels != null || initialOrder != null) {
-      applyThemeMenu(initialLabels, initialOrder);
+      {Map<String, String>? initialLabels,
+      List<String>? initialOrder,
+      Map<String, String>? initialIcons}) {
+    if (initialLabels != null || initialOrder != null || initialIcons != null) {
+      applyThemeMenu(initialLabels, initialOrder, initialIcons);
     }
   }
 
@@ -264,6 +268,11 @@ class MainMenuModel extends ChangeNotifier {
   Map<String, String> _customLabels = {};
   List<String>? _customOrder;
 
+  // _customIcons is the same cache for chosen menu icons -- see menuIcons on
+  // ThemePreset for what a value is. Kept apart from the labels because an
+  // item can have one without the other.
+  Map<String, String> _customIcons = {};
+
   // currentLabels/currentOrder snapshot the visible menu's current
   // labels/order, for a ThemePreset save to embed (see
   // ThemeNotifier.saveActivePreset).
@@ -273,6 +282,40 @@ class MainMenuModel extends ChangeNotifier {
       };
   List<String> currentOrder() =>
       menus.where((e) => !e.hiddenFromSideBar).map((e) => e.routeName).toList();
+
+  // currentIcons snapshots only the items whose icon has actually been
+  // changed, unlike currentLabels: a menu icon has no text form to write
+  // down, and recording the untouched ones would freeze each item's
+  // built-in icon into the preset, so a later change to it in the app would
+  // never reach a theme somebody had already saved.
+  Map<String, String> currentIcons() => Map.of(_customIcons);
+
+  /// headerLabel is the name a destination's page *header* should show, or
+  /// null to leave the header alone.
+  ///
+  /// Null while an item still carries its built-in name, so each page keeps
+  /// the heading it composes for itself -- which is not always its menu
+  /// label (LN Management's header is the shorter "LN", Chat's names the
+  /// open chat, Settings' names the open settings page). Once the name has
+  /// been changed in Settings > Appearance > Menu, that *is* what the
+  /// destination is called and the header says it too: renaming "Feed" to
+  /// "Posts" used to leave the navigation and the heading above it
+  /// disagreeing about which page you were on.
+  ///
+  /// Compared against the built-in label rather than read from a list of
+  /// renames, so it makes no difference whether the new name was typed just
+  /// now or came from the active preset (see applyThemeMenu) -- and so
+  /// saving a preset, which snapshots *every* label including the untouched
+  /// ones, doesn't turn them all into overrides.
+  String? headerLabel(String routeName) {
+    var idx = menus.indexWhere((e) => e.routeName == routeName);
+    if (idx < 0) return null;
+    var builtIn = mainMenu.indexWhere((e) => e.routeName == routeName);
+    // A route with no built-in entry is a plugin's, whose name comes from
+    // its manifest; there is nothing to have diverged from.
+    if (builtIn < 0 || menus[idx].label == mainMenu[builtIn].label) return null;
+    return menus[idx].label;
+  }
 
   void _setLabel(String routeName, String newLabel) {
     var idx = menus.indexWhere((e) => e.routeName == routeName);
@@ -286,6 +329,44 @@ class MainMenuModel extends ChangeNotifier {
       _activeMenu = updated;
     }
   }
+
+  // _setIcon swaps one item's icon widget, leaving everything else about it
+  // alone -- the icon-shaped counterpart of _setLabel.
+  void _setIcon(String routeName, Widget? icon) {
+    var idx = menus.indexWhere((e) => e.routeName == routeName);
+    if (idx < 0) return;
+    var old = menus[idx];
+    var updated = MainMenuItem(old.label, old.routeName, old.builder,
+        old.titleBuilder, icon, old.subMenuInfo,
+        hiddenFromSideBar: old.hiddenFromSideBar);
+    menus[idx] = updated;
+    if (_activeRoute == routeName) {
+      _activeMenu = updated;
+    }
+  }
+
+  /// setItemIcon changes which icon a destination shows, or restores its
+  /// built-in one when [iconPath] is null.
+  ///
+  /// Live and in-memory only, exactly like renameItem: saving a theme preset
+  /// is what writes it down (see currentIcons). Restoring the default has to
+  /// go back to `mainMenu` for the widget rather than just dropping the
+  /// override, since the built-in icon is not recorded anywhere else.
+  void setItemIcon(String routeName, String? iconPath) {
+    if (iconPath == null) {
+      _customIcons.remove(routeName);
+      var builtIn = mainMenu.indexWhere((e) => e.routeName == routeName);
+      _setIcon(routeName, builtIn < 0 ? null : mainMenu[builtIn].icon);
+    } else {
+      _customIcons[routeName] = iconPath;
+      _setIcon(routeName, MenuIcon(iconPath));
+    }
+    notifyListeners();
+  }
+
+  /// iconPathFor is the chosen icon for a route, or null while it still has
+  /// its built-in one.
+  String? iconPathFor(String routeName) => _customIcons[routeName];
 
   void _sortByOrder(List<String> order) {
     menus.sort((a, b) {
@@ -322,14 +403,19 @@ class MainMenuModel extends ChangeNotifier {
   // called whenever the active color theme changes (switching/loading a
   // preset, creating one, importing one, or resetting to default), so that
   // each theme's own menu layout travels with it.
-  void applyThemeMenu(Map<String, String>? labels, List<String>? order) {
+  void applyThemeMenu(Map<String, String>? labels, List<String>? order,
+      [Map<String, String>? icons]) {
     menus
       ..clear()
       ..addAll(mainMenu);
     _customLabels = labels ?? {};
     _customOrder = order;
+    _customIcons = icons ?? {};
     for (var entry in _customLabels.entries) {
       _setLabel(entry.key, entry.value);
+    }
+    for (var entry in _customIcons.entries) {
+      _setIcon(entry.key, MenuIcon(entry.value));
     }
     if (order != null) _sortByOrder(order);
     notifyListeners();
@@ -745,6 +831,56 @@ class SidebarIcon extends StatelessWidget {
     // what actually makes the selected-item accent color apply; hardcoding
     // onSurfaceVariant here, like this used to, ignored selection entirely.
     return Icon(icon);
+  }
+}
+
+// bundledMenuIcons are the menu SVGs that ship with the app, offered as the
+// ready-made choices in Settings > Appearance > Menu. Every one of them is
+// already some item's default, so picking from this set can only ever
+// produce an icon that looks like it belongs to the app.
+const List<String> bundledMenuIcons = [
+  "assets/icons/icons-menu-chat.svg",
+  "assets/icons/icons-menu-news.svg",
+  "assets/icons/icons-menu-lnmng.svg",
+  "assets/icons/icons-menu-pages.svg",
+  "assets/icons/icons-menu-files.svg",
+  "assets/icons/icons-menu-stats.svg",
+  "assets/icons/icons-menu-settings.svg",
+];
+
+/// MenuIcon draws a menu icon named by a path rather than by a widget, which
+/// is what lets one be *chosen* -- see ThemePreset.menuIcons.
+///
+/// The path is either one of the app's own assets or, for an SVG the user
+/// supplied, a path relative to the active preset's directory (resolved at
+/// build time, not when the icon is picked, so a preset that is exported and
+/// imported elsewhere still finds its own file).
+class MenuIcon extends StatelessWidget {
+  final String iconPath;
+  const MenuIcon(this.iconPath, {super.key});
+
+  static bool isAsset(String p) => p.startsWith("assets/");
+
+  @override
+  Widget build(BuildContext context) {
+    // Same deal as SidebarSvgIcon: read the ambient IconTheme so a selected
+    // item still tints.
+    var color = IconTheme.of(context).color ??
+        Theme.of(context).colorScheme.onSurfaceVariant;
+    var filter = ColorFilter.mode(color, BlendMode.srcIn);
+    if (isAsset(iconPath)) {
+      return SvgPicture.asset(iconPath, colorFilter: filter);
+    }
+    var dir = ThemeNotifier.of(context).activePreset?.sourceDir;
+    var file = dir == null ? null : File(path.join(dir, iconPath));
+    // A preset that has not been saved yet has no directory, and an import
+    // can arrive without the file it names. Neither is worth an exception
+    // in the navigation bar -- fall back to a placeholder that reads as an
+    // icon so the row keeps its shape.
+    if (file == null || !file.existsSync()) {
+      return Icon(Icons.broken_image_outlined, color: color);
+    }
+    return SvgPicture.file(file, colorFilter: filter);
   }
 }
 

@@ -194,7 +194,8 @@ class ThemeNotifier with ChangeNotifier {
   Future<void> saveActivePreset(
       {String? name,
       Map<String, String>? menuLabels,
-      List<String>? menuOrder}) async {
+      List<String>? menuOrder,
+      Map<String, String>? menuIcons}) async {
     var preset = activePreset;
     if (preset == null) return;
     if (name != null && name.trim().isNotEmpty) {
@@ -202,6 +203,7 @@ class ThemeNotifier with ChangeNotifier {
     }
     if (menuLabels != null) preset = preset.copyWith(menuLabels: menuLabels);
     if (menuOrder != null) preset = preset.copyWith(menuOrder: menuOrder);
+    if (menuIcons != null) preset = preset.copyWith(menuIcons: menuIcons);
     var saved = await ThemePresetStorage.savePreset(preset);
     registerCustomPreset(saved, markSaved: true);
   }

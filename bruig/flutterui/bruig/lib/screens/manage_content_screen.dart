@@ -22,8 +22,10 @@ class ManageContentScreenTitle extends StatelessWidget {
         builder: (context, menu, theme, child) {
       var idx = manageContentScreenSub
           .indexWhere((e) => e.pageTab == menu.activePageTab);
+      var name =
+          menu.headerLabel(ManageContentScreen.routeName) ?? "Manage Content";
 
-      return Txt.L("Manage Content / ${manageContentScreenSub[idx].label}");
+      return Txt.L("$name / ${manageContentScreenSub[idx].label}");
     });
   }
 }

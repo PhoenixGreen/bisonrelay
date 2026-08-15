@@ -2,6 +2,7 @@ import 'package:bruig/components/address_book_bar.dart';
 import 'package:bruig/components/containers.dart';
 import 'package:bruig/components/text.dart';
 import 'package:bruig/models/client.dart';
+import 'package:bruig/models/menus.dart';
 import 'package:bruig/screens/chat/new_gc_screen.dart';
 import 'package:bruig/screens/chat/new_message_screen.dart';
 import 'package:bruig/screens/contacts_msg_times.dart';
@@ -15,7 +16,9 @@ class AddressBookScreenTitle extends StatelessWidget {
   const AddressBookScreenTitle({super.key});
 
   @override
-  Widget build(BuildContext context) => const Txt.L("Address Book");
+  Widget build(BuildContext context) => Consumer<MainMenuModel>(
+      builder: (context, menu, _) => Txt.L(
+          menu.headerLabel(AddressBookScreen.routeName) ?? "Address Book"));
 }
 
 /// AddressBookTab names the screen's pages, for a caller that wants to open

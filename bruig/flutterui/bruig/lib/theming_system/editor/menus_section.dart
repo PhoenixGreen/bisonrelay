@@ -1,5 +1,8 @@
+import 'package:bruig/components/text.dart';
 import 'package:bruig/models/menus.dart';
 import 'package:bruig/screens/settings.dart';
+import 'package:bruig/theming_system/storage/theme_preset_storage.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:bruig/theming_system/theme_editor.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:bruig/theming_system/theme_preset.dart';
@@ -102,7 +105,7 @@ class _MenuSectionState extends State<MenuSection> {
         children: [
           for (var i = 0; i < items.length; i++)
             ListTile(
-              leading: items[i].icon,
+              leading: _IconButton(item: items[i], mainMenu: mainMenu),
               title: TextField(
                 controller: _controllerFor(items[i]),
                 decoration: const InputDecoration(border: InputBorder.none),
@@ -134,6 +137,209 @@ class _MenuSectionState extends State<MenuSection> {
         ],
       );
     });
+  }
+}
+
+/// _IconButton is the item's own icon, used as the control that changes it.
+///
+/// The icon is the button rather than sitting beside one: it is small, it is
+/// already in the row, and what you press is exactly what you are about to
+/// replace. An item with no icon at all (the Address Book's, before one is
+/// chosen) still needs somewhere to press, so it shows an outline instead of
+/// nothing.
+class _IconButton extends StatelessWidget {
+  final MainMenuItem item;
+  final MainMenuModel mainMenu;
+  const _IconButton({required this.item, required this.mainMenu});
+
+  @override
+  Widget build(BuildContext context) => Tooltip(
+        message: "Change icon",
+        child: InkWell(
+          onTap: () => _pickMenuIcon(context, mainMenu, item),
+          borderRadius: BorderRadius.circular(4),
+          child: Padding(
+            padding: const EdgeInsets.all(4),
+            child: SizedBox(
+              width: 24,
+              height: 24,
+              child: item.icon ??
+                  Icon(Icons.add_photo_alternate_outlined,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant),
+            ),
+          ),
+        ),
+      );
+}
+
+/// _pickMenuIcon opens the icon chooser for one menu item.
+///
+/// Choosing writes straight through to the live menu (and so to the preview),
+/// like renaming does -- it is not saved anywhere until the theme is, which
+/// is what makes trying a few of them and settling on none of them free.
+Future<void> _pickMenuIcon(
+    BuildContext context, MainMenuModel mainMenu, MainMenuItem item) async {
+  // listen: false -- this runs from a tap, not from a build, and the default
+  // (listening) form asserts outright when called from an event handler.
+  var theme = ThemeNotifier.of(context, listen: false);
+  var choice = await showDialog<_IconChoice>(
+    context: context,
+    builder: (context) => _IconPickerDialog(item: item, mainMenu: mainMenu),
+  );
+  if (choice == null) return;
+
+  switch (choice.kind) {
+    case _IconChoiceKind.reset:
+      mainMenu.setItemIcon(item.routeName, null);
+    case _IconChoiceKind.bundled:
+      mainMenu.setItemIcon(item.routeName, choice.assetPath);
+    case _IconChoiceKind.file:
+      var res = await FilePicker.platform.pickFiles(
+        allowMultiple: false,
+        dialogTitle: "Pick menu icon",
+        type: FileType.custom,
+        allowedExtensions: const ["svg"],
+      );
+      var srcPath = res?.files.first.path;
+      if (srcPath == null) return;
+      // The file is copied into the preset's own directory, so the icon is
+      // part of the theme and travels with an export -- the same treatment
+      // area background images get. That needs a preset to copy *into*,
+      // hence the draft, and its directory has to be published right away
+      // or nothing can resolve the path until the preset happens to be
+      // saved (see AreasSection.copyPickedImage, which says the same).
+      var draft = ensureDraftPreset(theme);
+      var relPath = await ThemePresetStorage.saveMenuIcon(
+          draft.id, item.routeName, srcPath);
+      var presetDir = await ThemePresetStorage.presetDir(draft.id);
+      theme.previewPreset(draft.copyWith(sourceDir: presetDir));
+      mainMenu.setItemIcon(item.routeName, relPath);
+  }
+}
+
+enum _IconChoiceKind { bundled, file, reset }
+
+class _IconChoice {
+  final _IconChoiceKind kind;
+  final String? assetPath;
+  const _IconChoice(this.kind, [this.assetPath]);
+}
+
+class _IconPickerDialog extends StatelessWidget {
+  final MainMenuItem item;
+  final MainMenuModel mainMenu;
+  const _IconPickerDialog({required this.item, required this.mainMenu});
+
+  @override
+  Widget build(BuildContext context) {
+    var cs = Theme.of(context).colorScheme;
+    var current = mainMenu.iconPathFor(item.routeName);
+    return AlertDialog(
+      title: Text("Icon for ${item.label}"),
+      content: SizedBox(
+        width: 360,
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (var asset in bundledMenuIcons)
+                _IconTile(
+                  selected: current == asset,
+                  onTap: () => Navigator.of(context)
+                      .pop(_IconChoice(_IconChoiceKind.bundled, asset)),
+                  child: MenuIcon(asset),
+                ),
+              // The user's own icon, when one is set, sits at the end of the
+              // same row rather than in a section of its own -- it is one
+              // more of the choices, and showing it is how you can tell
+              // which one is currently picked.
+              if (current != null && !MenuIcon.isAsset(current))
+                _IconTile(
+                  selected: true,
+                  onTap: () => Navigator.of(context).pop(),
+                  child: MenuIcon(current),
+                ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          // A Wrap rather than a Row with a Spacer: the two buttons sit at
+          // either end while they both fit and drop onto a second line when
+          // they don't. A Row pins them to one line at their full width,
+          // which overflowed as soon as the labels grew -- a larger font
+          // scale is enough to do it.
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              OutlinedButton.icon(
+                onPressed: () => Navigator.of(context)
+                    .pop(const _IconChoice(_IconChoiceKind.file)),
+                icon: const Icon(Icons.folder_open),
+                label: const Text("Choose SVG..."),
+              ),
+              // Disabled while the item still has its built-in icon: there is
+              // nothing to undo, and an enabled button that does nothing reads
+              // as broken.
+              TextButton.icon(
+                onPressed: current == null
+                    ? null
+                    : () => Navigator.of(context)
+                        .pop(const _IconChoice(_IconChoiceKind.reset)),
+                icon: const Icon(Icons.restart_alt),
+                label: const Text("Default"),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Txt.S(
+            "SVG only, and drawn in the navigation's own text color -- a "
+            "multi-colored icon will come out one color.",
+            color: TextColor.onSurfaceVariant,
+          ),
+          const SizedBox(height: 4),
+          if (current != null && !MenuIcon.isAsset(current))
+            Txt.S("Copied into this theme, so exporting it takes the icon too.",
+                color: TextColor.onSurfaceVariant),
+        ]),
+      ),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text("Cancel")),
+      ],
+      backgroundColor: cs.surface,
+    );
+  }
+}
+
+class _IconTile extends StatelessWidget {
+  final bool selected;
+  final VoidCallback onTap;
+  final Widget child;
+  const _IconTile(
+      {required this.selected, required this.onTap, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    var cs = Theme.of(context).colorScheme;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(6),
+      child: Container(
+        width: 48,
+        height: 48,
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(
+              color: selected ? cs.primary : cs.outlineVariant,
+              width: selected ? 2 : 1),
+        ),
+        child: child,
+      ),
+    );
   }
 }
 

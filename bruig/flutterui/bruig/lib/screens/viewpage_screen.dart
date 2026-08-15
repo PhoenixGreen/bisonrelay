@@ -5,6 +5,7 @@ import 'package:bruig/components/empty_widget.dart';
 import 'package:bruig/components/md_elements.dart';
 import 'package:bruig/components/text.dart';
 import 'package:bruig/models/client.dart';
+import 'package:bruig/models/menus.dart';
 import 'package:bruig/models/resources.dart';
 import 'package:bruig/models/snackbar.dart';
 import 'package:flutter/material.dart';
@@ -16,7 +17,9 @@ class ViewPagesScreenTitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Txt.L("Pages");
+    return Consumer<MainMenuModel>(
+        builder: (context, menu, _) =>
+            Txt.L(menu.headerLabel(ViewPageScreen.routeName) ?? "Pages"));
   }
 }
 

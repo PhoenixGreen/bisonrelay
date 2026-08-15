@@ -32,13 +32,17 @@ class FeedScreenTitle extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer2<MainMenuModel, ThemeNotifier>(
         builder: (context, menu, theme, child) {
+      // The name the menu currently gives this destination, so renaming it
+      // renames the heading with it. Only the page's own part; the sub-page
+      // after the slash is named by the sidebar, not the main menu.
+      var name = menu.headerLabel(FeedScreen.routeName) ?? "Feed";
       if (menu.activePageTab <= 0) {
-        return const Txt.L("Feed");
+        return Txt.L(name);
       }
       var idx =
           feedScreenSub.indexWhere((e) => e.pageTab == menu.activePageTab);
 
-      return Txt.L("Feed / ${feedScreenSub[idx].label}");
+      return Txt.L("$name / ${feedScreenSub[idx].label}");
     });
   }
 }

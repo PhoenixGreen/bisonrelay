@@ -71,6 +71,22 @@ class ThemePresetStorage {
     return relPath;
   }
 
+  // saveMenuIcon copies a chosen SVG into a preset's images/ subfolder,
+  // returning the path to store in ThemePreset.menuIcons (relative to the
+  // preset's directory, like saveAreaImage's). Named after the route rather
+  // than an area, since that is what a menu icon belongs to -- with the
+  // slashes taken out, because a routeName is not a filename.
+  static Future<String> saveMenuIcon(
+      String presetId, String routeName, String sourceFilePath) async {
+    var dir = await presetDir(presetId);
+    var imagesDir = path.join(dir, "images");
+    await Directory(imagesDir).create(recursive: true);
+    var slug = routeName.replaceAll(RegExp(r"[^A-Za-z0-9]+"), "_");
+    var relPath = "images/menuicon$slug${path.extension(sourceFilePath)}";
+    await File(sourceFilePath).copy(path.join(dir, relPath));
+    return relPath;
+  }
+
   static Future<void> deletePreset(String id) async {
     var dir = Directory(await presetDir(id));
     if (await dir.exists()) {

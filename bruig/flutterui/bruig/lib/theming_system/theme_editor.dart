@@ -104,7 +104,8 @@ void switchToTheme(ThemeNotifier theme, MainMenuModel mainMenu, String key) {
   theme.switchTheme(key);
   var id = key.startsWith("custom:") ? key.substring("custom:".length) : null;
   var preset = id != null ? theme.customPresets[id] : null;
-  mainMenu.applyThemeMenu(preset?.menuLabels, preset?.menuOrder);
+  mainMenu.applyThemeMenu(
+      preset?.menuLabels, preset?.menuOrder, preset?.menuIcons);
 }
 
 // resetToDefaultTheme reverts both the color theme and the menu
@@ -123,7 +124,9 @@ Future<void> savePreset(
     return;
   }
   await theme.saveActivePreset(
-      menuLabels: mainMenu.currentLabels(), menuOrder: mainMenu.currentOrder());
+      menuLabels: mainMenu.currentLabels(),
+      menuOrder: mainMenu.currentOrder(),
+      menuIcons: mainMenu.currentIcons());
   if (context.mounted) showSuccessSnackbar(context, "Theme saved");
 }
 
@@ -187,7 +190,8 @@ Future<void> importPresetFile(
     var preset = await ThemePresetStorage.importPresetZip(bytes);
     theme.registerCustomPreset(preset, markSaved: true);
     theme.switchTheme("custom:${preset.id}");
-    mainMenu.applyThemeMenu(preset.menuLabels, preset.menuOrder);
+    mainMenu.applyThemeMenu(
+        preset.menuLabels, preset.menuOrder, preset.menuIcons);
     if (context.mounted) {
       showSuccessSnackbar(context, "Imported theme \"${preset.name}\"");
     }

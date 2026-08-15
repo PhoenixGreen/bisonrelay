@@ -31,12 +31,16 @@ class LNScreenTitle extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer2<MainMenuModel, ThemeNotifier>(
         builder: (context, menu, theme, child) {
+      // "LN" rather than the menu's longer "LN Management" until the item
+      // is renamed -- the heading has always been the short form, and only
+      // a name the user chose should displace it.
+      var name = menu.headerLabel(LNScreen.routeName) ?? "LN";
       if (menu.activePageTab <= 0) {
-        return const Txt.L("LN");
+        return Txt.L(name);
       }
       var idx = lnScreenSub.indexWhere((e) => e.pageTab == menu.activePageTab);
 
-      return Txt.L("LN / ${lnScreenSub[idx].label}");
+      return Txt.L("$name / ${lnScreenSub[idx].label}");
     });
   }
 }

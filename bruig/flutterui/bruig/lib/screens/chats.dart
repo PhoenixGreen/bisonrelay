@@ -6,6 +6,7 @@ import 'package:bruig/components/text.dart';
 import 'package:bruig/models/audio.dart';
 import 'package:bruig/models/client.dart';
 import 'package:bruig/models/emoji.dart';
+import 'package:bruig/models/menus.dart';
 import 'package:bruig/models/notifications.dart';
 import 'package:bruig/models/realtimechat.dart';
 import 'package:bruig/theming_system/theme_preset.dart';
@@ -58,9 +59,15 @@ class ChatsScreenTitle extends StatelessWidget {
       var client = rtc.client;
       var activeHeading = activeChat.chat;
 
+      // The name the menu currently gives this destination, or null while it
+      // still carries its built-in one -- in which case every state below
+      // keeps exactly the wording it already had.
+      var menu = Provider.of<MainMenuModel>(context);
+      var renamed = menu.headerLabel(ChatsScreen.routeName);
+
       // No active chat or address book page is active.
       if (activeHeading == null) {
-        return const Txt.L("Bison Relay");
+        return Txt.L(renamed ?? "Bison Relay");
       }
 
       // Has active chat.
@@ -116,7 +123,7 @@ class ChatsScreenTitle extends StatelessWidget {
       // even with the setting on Center or Right.
       return Row(mainAxisSize: MainAxisSize.min, children: [
         Flexible(
-            child: Txt.L("Chat$suffix$profileSuffix",
+            child: Txt.L("${renamed ?? "Chat"}$suffix$profileSuffix",
                 overflow: TextOverflow.ellipsis)),
         if (enableChatSearch) ...[
           const SizedBox(width: 10),

@@ -198,7 +198,8 @@ Future<void> runMainApp(Config cfg) async {
       ChangeNotifierProvider(
           create: (c) => MainMenuModel(
               initialLabels: theme.activePreset?.menuLabels,
-              initialOrder: theme.activePreset?.menuOrder)),
+              initialOrder: theme.activePreset?.menuOrder,
+              initialIcons: theme.activePreset?.menuIcons)),
       ChangeNotifierProvider(create: (c) => ResourcesModel()),
       ChangeNotifierProvider.value(value: snackbar),
       ChangeNotifierProvider(create: (c) => PaymentsModel()),

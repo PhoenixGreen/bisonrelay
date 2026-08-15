@@ -52,8 +52,15 @@ class SettingsScreenTitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<SettingsTitleModel>(
-        builder: (context, settingsTitle, child) => Txt.L(settingsTitle.title));
+    // A renamed menu item renames only the section's own heading, not the
+    // sub-page ones: SettingsTitleModel carries "Audio", "Logs" and the
+    // rest while one is open, and those are named by the sidebar rather
+    // than by the main menu.
+    return Consumer2<SettingsTitleModel, MainMenuModel>(
+        builder: (context, settingsTitle, menu, child) => Txt.L(
+            settingsTitle.title == "Settings"
+                ? menu.headerLabel(SettingsScreen.routeName) ?? "Settings"
+                : settingsTitle.title));
   }
 }
 

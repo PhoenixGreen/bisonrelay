@@ -138,6 +138,15 @@ class ThemePreset {
   final Map<String, String>? menuLabels;
   final List<String>? menuOrder;
 
+  // menuIcons overrides the icon a destination shows in the navigation,
+  // keyed by routeName like the labels are. A value is either a bundled
+  // asset path ("assets/icons/...svg") or, for an SVG the user supplied, a
+  // path relative to sourceDir like the area images -- so exporting a
+  // preset carries its icons with it. An absent key means that item keeps
+  // its built-in icon; the map itself is null until the first icon is
+  // changed.
+  final Map<String, String>? menuIcons;
+
   // Directory this preset was loaded from on disk (null for a preset that
   // only exists in memory, e.g. mid-edit before its first save). Area
   // background images are stored relative to this directory.
@@ -181,6 +190,7 @@ class ThemePreset {
     this.areas = const {},
     this.menuLabels,
     this.menuOrder,
+    this.menuIcons,
     this.sourceDir,
   });
 
@@ -308,6 +318,7 @@ class ThemePreset {
     Map<ThemeArea, AreaStyle>? areas,
     Map<String, String>? menuLabels,
     List<String>? menuOrder,
+    Map<String, String>? menuIcons,
     String? sourceDir,
   }) =>
       ThemePreset(
@@ -350,6 +361,7 @@ class ThemePreset {
         areas: areas ?? this.areas,
         menuLabels: menuLabels ?? this.menuLabels,
         menuOrder: menuOrder ?? this.menuOrder,
+        menuIcons: menuIcons ?? this.menuIcons,
         sourceDir: sourceDir ?? this.sourceDir,
       );
 
@@ -383,6 +395,7 @@ class ThemePreset {
         "areas": areas.map((k, v) => MapEntry(k.name, v.toJson())),
         if (menuLabels != null) "menuLabels": menuLabels,
         if (menuOrder != null) "menuOrder": menuOrder,
+        if (menuIcons != null) "menuIcons": menuIcons,
       };
 
   factory ThemePreset.fromJson(Map<String, dynamic> j) {
@@ -492,6 +505,10 @@ class ThemePreset {
           : null,
       menuOrder: j["menuOrder"] != null
           ? (j["menuOrder"] as List).cast<String>()
+          : null,
+      menuIcons: j["menuIcons"] != null
+          ? (j["menuIcons"] as Map<String, dynamic>)
+              .map((k, v) => MapEntry(k, v as String))
           : null,
     );
   }

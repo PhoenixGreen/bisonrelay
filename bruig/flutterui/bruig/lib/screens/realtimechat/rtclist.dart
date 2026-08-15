@@ -8,6 +8,7 @@ import 'package:bruig/components/volume_control.dart';
 import 'package:bruig/models/audio.dart';
 import 'package:bruig/models/client.dart';
 import 'package:bruig/models/emoji.dart';
+import 'package:bruig/models/menus.dart';
 import 'package:bruig/models/realtimechat.dart';
 import 'package:bruig/screens/chats.dart';
 import 'package:bruig/screens/realtimechat/activertc.dart';
@@ -28,8 +29,9 @@ class RealtimeChatTitle extends StatelessWidget {
     // move this: a max-size Row fills the whole title area whatever the
     // AppBar is told to do with it, which pinned the text to the left even
     // with the setting on Center or Right.
+    var menu = Provider.of<MainMenuModel>(context);
     return Row(mainAxisSize: MainAxisSize.min, children: [
-      const Txt.L("Realtime Chat"),
+      Txt.L(menu.headerLabel(RealtimeChatScreen.routeName) ?? "Realtime Chat"),
       if (!headerStyle.hideHeaderNewSession)
         IconButton(
             onPressed: () {
