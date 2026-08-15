@@ -49,6 +49,32 @@ void main() {
     });
   });
 
+  group("the composer remembers how far down it was scrolled", () {
+    test("a new post starts at the top", () {
+      expect(NewPostModel().scrollOffset, 0);
+    });
+
+    test("clearing the post scrolls back to the top", () {
+      var post = NewPostModel()
+        ..content = "many paragraphs"
+        ..scrollOffset = 1840;
+      post.clear();
+      expect(post.scrollOffset, 0,
+          reason: "an emptied composer left scrolled down shows nothing");
+    });
+
+    // Separate from the caret because the two genuinely differ: reading
+    // back over what you have written moves the page without moving the
+    // cursor.
+    test("it is kept apart from the caret", () {
+      var post = NewPostModel()
+        ..caret = 4
+        ..scrollOffset = 900;
+      expect(post.caret, 4);
+      expect(post.scrollOffset, 900);
+    });
+  });
+
   group("the writing sidebar remembers its page", () {
     test("it starts on the first page", () {
       expect(WritingPreferences().sidebarPage, 0);

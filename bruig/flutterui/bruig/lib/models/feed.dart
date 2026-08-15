@@ -244,9 +244,19 @@ class NewPostModel {
   /// read a message and coming back put them at the top of an empty post.
   int caret = 0;
 
+  /// scrollOffset is how far down the composer was scrolled when it was last
+  /// taken down, kept out here for the same reason [caret] is.
+  ///
+  /// It is separate from the caret because the two genuinely differ: reading
+  /// back over what you have written moves the page without moving the
+  /// cursor, and returning to a long draft scrolled back to the top is
+  /// losing your place just as surely.
+  double scrollOffset = 0;
+
   void clear() {
     content = "";
     caret = 0;
+    scrollOffset = 0;
     embedContents = {};
   }
 

@@ -74,6 +74,23 @@ class _NewPostScreenState extends State<NewPostScreen> {
   /// page lands in the field rather than only on the lines already written.
   final FocusNode contentFocus = FocusNode();
 
+  /// pageCtrl scrolls the composer, and starts where the draft was left.
+  ///
+  /// The offset is written back on every scroll rather than read off in
+  /// dispose, because by then the controller has already been detached from
+  /// its position and there is nothing left to ask. Restoring it is
+  /// initialScrollOffset's job -- Flutter clamps that to the real extent on
+  /// first layout, so a draft that has since been shortened (or is being
+  /// come back to in Preview, which is a different height from the raw
+  /// text) lands at the bottom rather than out of range.
+  late final ScrollController pageCtrl =
+      ScrollController(initialScrollOffset: post.scrollOffset)
+        ..addListener(_rememberScroll);
+
+  void _rememberScroll() {
+    if (pageCtrl.hasClients) post.scrollOffset = pageCtrl.offset;
+  }
+
   bool loading = false;
 
   // Add embed fields.
@@ -287,6 +304,9 @@ class _NewPostScreenState extends State<NewPostScreen> {
   void clearPost() {
     post.clear();
     contentCtrl.text = "";
+    // post.clear() resets the remembered offset, but the live view is still
+    // wherever it was; an emptied composer left scrolled down shows nothing.
+    if (pageCtrl.hasClients) pageCtrl.jumpTo(0);
   }
 
   @override
@@ -303,6 +323,7 @@ class _NewPostScreenState extends State<NewPostScreen> {
     titleFocus.dispose();
     contentFocus.dispose();
     titleCtrl.dispose();
+    pageCtrl.dispose();
     // Flush before the controller goes: the pending write reads its text.
     _postLibrary?.flush();
     super.dispose();
@@ -476,6 +497,7 @@ class _NewPostScreenState extends State<NewPostScreen> {
           Expanded(
             child: LayoutBuilder(
               builder: (context, constraints) => SingleChildScrollView(
+                controller: pageCtrl,
                 padding: const EdgeInsets.only(bottom: 15),
                 child: ConstrainedBox(
                   constraints: BoxConstraints(
