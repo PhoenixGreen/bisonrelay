@@ -852,8 +852,9 @@ class _AppearanceSettingsScreenState extends State<AppearanceSettingsScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              ListTile(
-                  title: Txt.S("Active Theme: ${theme.presetDisplayName}")),
+              // No "Active Theme:" line: the preset dropdown in the row below
+              // already names the theme in use and marks it unsaved, so the
+              // label was a second, staler copy of what it sits above.
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Wrap(

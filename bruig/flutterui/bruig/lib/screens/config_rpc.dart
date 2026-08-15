@@ -1,6 +1,5 @@
 import 'package:bruig/components/buttons.dart';
 import 'package:bruig/components/confirmation_dialog.dart';
-import 'package:bruig/components/text.dart';
 import 'package:bruig/config.dart';
 import 'package:bruig/models/newconfig.dart';
 import 'package:bruig/screens/shutdown.dart';
@@ -170,7 +169,11 @@ class _RpcConfigScreenState extends State<RpcConfigScreen> {
   @override
   Widget build(BuildContext context) {
     var children = [
-      const Txt.H("Configure RPC Options"),
+      // A subtitle, not a page heading: every Settings page is already
+      // titled by the Settings header itself, and a Txt.H here made this
+      // one page look like it had a second, larger title the others didn't.
+      // Same weight as the Audio page's "Capture Device".
+      const Text("Configure RPC Options"),
       const SizedBox(height: 20),
       _secretField(rpcListenCtrl,
           label: "JSON-RPC Listen Address", hint: "127.0.0.1:7676"),

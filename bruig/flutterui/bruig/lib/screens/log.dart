@@ -53,7 +53,11 @@ class LogScreen extends StatelessWidget {
           borderRadius: BorderRadius.circular(3),
         ),
         padding: const EdgeInsets.all(16),
-        child: Column(children: [
+        // Stretch, so the heading starts at the page's left edge like every
+        // other Settings page's does -- a plain Column centres its children,
+        // which left this one page with a centred title.
+        child:
+            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           const SizedBox(height: 20),
           const Txt.L("Recent Log"),
           const SizedBox(height: 20),
