@@ -1,4 +1,3 @@
-import 'package:bruig/models/composer_sidebar.dart';
 import 'package:bruig/plugin_system/plugin_system.dart';
 import 'package:bruig/plugin_system/writing_tools/writing_tools.dart';
 import 'package:bruig/theming_system/theme_manager.dart';

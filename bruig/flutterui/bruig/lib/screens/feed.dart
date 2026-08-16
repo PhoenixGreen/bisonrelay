@@ -4,11 +4,8 @@ import 'package:bruig/components/chat/chat_side_menu.dart';
 import 'package:bruig/components/containers.dart';
 import 'package:bruig/components/text.dart';
 import 'package:bruig/models/client.dart';
-import 'package:bruig/components/composer_sidebar_shell.dart';
-import 'package:bruig/components/feed/formatting_sidebar.dart';
-import 'package:bruig/models/composer_sidebar.dart';
-import 'package:bruig/plugin_system/writing_tools/writing_tools.dart';
-import 'package:bruig/post_library/post_library.dart';
+import 'package:bruig/plugin_system/writing_tools/writing_nav.dart';
+import 'package:bruig/plugin_system/writing_tools/ui/writing_screen.dart';
 import 'package:bruig/models/uistate.dart';
 import 'package:bruig/screens/feed/user_posts.dart';
 import 'package:bruig/screens/overview.dart';
@@ -46,6 +43,11 @@ class FeedScreenTitle extends StatelessWidget {
     });
   }
 }
+
+/// kNewPostTab is the Feed's compose tab, named because two places have to
+/// agree on it: the tab list that offers it, and the redirect that sends it
+/// to the Writing section when there is one.
+const int kNewPostTab = 3;
 
 class FeedScreen extends StatefulWidget {
   static const routeName = '/feed';
@@ -94,15 +96,6 @@ class _FeedScreenState extends State<FeedScreen> {
   // expected, since those are part of that tab's own experience.
   int _yourPostsResetToken = 0;
 
-  // Which writing-tools page is showing. Held here rather than inside the
-  // sidebar, because in the collapsed drawer that widget is rebuilt from a
-  // stored builder and would forget it -- and because the drawer only
-  // redraws for things this screen tells it changed, which it can only do
-  // for state it holds.
-  /// _writingPage mirrors the one on WritingPreferences, which outlives this
-  /// screen. Kept as a field as well so the build path reads a plain value.
-  WritingSidebarPage _writingPage = WritingSidebarPage.mistakes;
-
   Widget activeTab() {
     switch (tabIndex) {
       case 0:
@@ -148,6 +141,17 @@ class _FeedScreenState extends State<FeedScreen> {
   }
 
   void onItemChanged(int index, PostContentScreenArgs? args) {
+    // New Post, with the writing tools switched on, is the Writing section
+    // -- the same destination the navigation carries, reached from the place
+    // somebody looking to write a post actually looks. This screen's own New
+    // Post tab is what is left for everybody else; see new_post.dart.
+    //
+    // A redirect rather than a hidden item, so the link stays where it has
+    // always been and simply leads somewhere better.
+    if (index == kNewPostTab && hasWritingPage(widget.mainMenu)) {
+      Navigator.of(context).pushReplacementNamed(WritingScreen.routeName);
+      return;
+    }
     setState(() {
       showPost = args;
       tabIndex = index;
@@ -161,14 +165,17 @@ class _FeedScreenState extends State<FeedScreen> {
   @override
   void initState() {
     super.initState();
-    // Where the writer left off, none of which is this screen's to forget:
-    // the screen goes when the route does, and the composer with it.
+    // Where the reader left off, which is not this screen's to forget: the
+    // screen goes when the route does.
+    //
+    // Except the compose tab, once the Writing section exists: a session
+    // that ended on New Post, and a plugin enabled since, would otherwise
+    // reopen the composer this page no longer offers. Corrected here rather
+    // than redirected, because initState is too early to navigate from.
     tabIndex = Provider.of<FeedModel>(context, listen: false).lastTab;
-    var prefs = Provider.of<WritingPreferences>(context, listen: false);
-    var at = prefs.sidebarPage;
-    _writingPage = at >= 0 && at < WritingSidebarPage.values.length
-        ? WritingSidebarPage.values[at]
-        : WritingSidebarPage.mistakes;
+    if (tabIndex == kNewPostTab && hasWritingPage(widget.mainMenu)) {
+      tabIndex = 0;
+    }
   }
 
   // _appliedRouteArgs is the PageTabs this screen has already navigated to,
@@ -231,20 +238,15 @@ class _FeedScreenState extends State<FeedScreen> {
   // interpret it (Subscriptions/New Post/detail views).
   void _gotoFeedView(FeedView v) => onItemChanged(0, null);
 
-  /// _feedSidePanel is this screen's own navigation panel.
-  ///
-  /// One builder for both the places it appears -- the minimal layout below
-  /// and the composer's sidebar -- so the two cannot drift into showing
-  /// different sections of the same menu.
-  FeedSidePanel _feedSidePanel(AreaStyle feedStyle,
-          {bool framed = true, bool showSearch = true}) =>
-      FeedSidePanel(
+  /// _feedSidePanel is this screen's own navigation panel, for the tabs that
+  /// do not own a post list of their own to draw it from.
+  FeedSidePanel _feedSidePanel(AreaStyle feedStyle) => FeedSidePanel(
         view: FeedView.all,
         sort: FeedSort.newest,
         unreadOnly: false,
         searchController: _dummySearchCtrl,
-        showSearch: showSearch,
-        framed: framed,
+        showSearch: true,
+        framed: true,
         showBookmarks: feedStyle.feedCardActions,
         showHidden: feedStyle.feedCardActions,
         showDrafts: feedStyle.feedInlineComposer,
@@ -340,70 +342,8 @@ class _FeedScreenState extends State<FeedScreen> {
 
     var client = Provider.of<ClientModel>(context);
 
-    // A composer on this screen can take the sidebar slot over -- for its
-    // writing tools, or for the saved-post library. Nothing here knows what
-    // either of those are: the slot is handed to whichever panel the
-    // controller says has it, and taken back when neither does.
-    var composer = Provider.of<ComposerSidebarController>(context);
-    // Only while composing, and only ever built once. Every panel acts on a
-    // composer's text, and there is no composer on the browsing tabs.
-    //
-    // Built once because three separate decisions below depend on it, and
-    // when they were three separate conditions two of them were updated and
-    // one was not -- which put the writing tools in the slot on every Feed
-    // tab. Derived from one value, they cannot disagree.
     var feedStyle = ThemeNotifier.of(context).areaStyle(ThemeArea.feed);
     bool feedSidePanel = feedStyle.feedSidePanel;
-    var composing = tabIndex == 3;
-    var writingAvailable = context.watch<SpellcheckCapability>().active;
-    // On the compose tab the slot is always the composer's, because the nav
-    // that switches panels lives in it -- including on the panel that shows
-    // this screen's own menu. Minimizing is the only thing that gives the
-    // slot back, and then the whole sidebar goes rather than reverting to
-    // the tab list.
-    var composerSidebar = composing && composer.visible
-        ? ComposerSidebarShell(
-            controller: composer,
-            // The Feed menu is this screen's menu, so choosing it goes back
-            // to the Feed rather than showing the menu beside a composer
-            // that is still open.
-            onLeaveComposer: () => onItemChanged(0, null),
-            // In ComposerPanel's own order, so the row cannot drift from
-            // the enum it is built out of.
-            panels: [
-              for (var panel in ComposerPanel.values)
-                // Writing Tools is left out rather than shown disabled when
-                // no plugin provides it: there is nothing the user could do
-                // about that from here.
-                if (panel != ComposerPanel.writing || writingAvailable) panel,
-            ],
-            child: switch (composer.panel) {
-              // The screen's own menu, in whichever form this screen is
-              // showing it elsewhere. Turning the side panel on and still
-              // getting the plain tab list here made the composer the one
-              // place the setting did not reach.
-              //
-              // Without its search field: beside a composer this panel is
-              // navigation, and searching posts is not what somebody
-              // writing one came to the sidebar for.
-              ComposerPanel.none => feedSidePanel
-                  ? _feedSidePanel(feedStyle, framed: false, showSearch: false)
-                  : SecondarySideMenuList(
-                      items: feedBarItems(onItemChanged, tabIndex)),
-              ComposerPanel.writing => WritingSidebar(
-                  controller: composer.editor,
-                  page: _writingPage,
-                  onPageChanged: (page) => setState(() {
-                        _writingPage = page;
-                        Provider.of<WritingPreferences>(context, listen: false)
-                            .sidebarPage = page.index;
-                      })),
-              ComposerPanel.posts => PostSidebar(controller: composer.editor),
-              ComposerPanel.formatting =>
-                FormattingSidebar(controller: composer),
-            },
-          )
-        : null;
 
     // AreaStyle.feedSidePanel replaces this screen's own sub-menu
     // everywhere: tabs 0/1 (All posts/Your Posts) render their own full
@@ -415,22 +355,7 @@ class _FeedScreenState extends State<FeedScreen> {
     bool onOwnPanelTab =
         (tabIndex == 0 || tabIndex == 1) && !viewingPost && !hasArgs;
 
-    // Hiding the composer's sidebar means nothing beside the editor, not
-    // the Feed's own sidebar back again. Without this the fall-through
-    // below put the tab list where the panel had been, so the icon looked
-    // like it had merely closed the panel it was on.
-    //
-    // Not gated on feedSidePanel, unlike the reading case below: this one
-    // was asked for by pressing a button, whatever the sidebar is styled as.
-    if (composing && composer.minimized) {
-      return ScreenWithChatSideMenu(
-          client, contentAreaFrame(ThemeNotifier.of(context), activeTab()));
-    }
-
-    // The composer's panel takes precedence over the feed's own: it was
-    // asked for explicitly, and the feed panel is a place to browse from
-    // rather than something needed while composing.
-    if (feedSidePanel && !isScreenSmall && composerSidebar == null) {
+    if (feedSidePanel && !isScreenSmall) {
       // Reading a single post: drop the sidebar entirely for a more focused
       // read, instead of falling back to the minimal nav-only panel.
       if (viewingPost && feedStyle.feedHideSidebarOnPost) {
@@ -462,35 +387,21 @@ class _FeedScreenState extends State<FeedScreen> {
             // SecondarySideMenu's 120 default, too narrow for
             // "Subscriptions" to fit on one line.
             storageKey: "feed",
-            // Swapped in place rather than returned from a branch of their
-            // own: the same widget in the same position keeps the composer's
-            // State, and with it the draft being written, across the switch.
-            list: composerSidebar,
-            items: composerSidebar != null
-                ? null
-                : feedBarItems(onItemChanged, tabIndex),
+            items: feedBarItems(onItemChanged, tabIndex),
             // Detail views that don't need the tab list: reading a
-            // single post/user-post (showPost set) or composing a new
-            // one (tabIndex 3). hasArgs alone only reflects the route's
-            // *initial* navigation arguments, so it misses these once
-            // the user navigates within the already-mounted screen.
-            // A detail view hides the sidebar; a composer panel is the one
-            // thing that should still show while composing.
-            isDetail: composerSidebar == null &&
-                (hasArgs || showPost != null || composing),
+            // single post/user-post (showPost set). hasArgs alone only
+            // reflects the route's *initial* navigation arguments, so it
+            // misses these once the user navigates within the
+            // already-mounted screen.
+            //
+            // New Post is deliberately not one of them: it is a tab of this
+            // screen like the other three, and it keeps this screen's
+            // sidebar exactly as they do.
+            isDetail: hasArgs || showPost != null,
             // Distinguishes one detail view from the next (e.g. post A
             // vs. post B) so a manual reopen of the submenu doesn't
             // leak across into an unrelated detail view.
             detailKey: showPost ?? tabIndex,
-            // The composer's sidebar changes while it is open, and the
-            // collapsed drawer has no other way to know: its icons
-            // registered their taps and redrew nothing.
-            // Everything the composer's sidebar would look different for.
-            // The panel alone was not enough: switching pages within the
-            // writing tools changes it just as much, and the drawer has no
-            // other way to find out.
-            sidebarRevision:
-                composerSidebar == null ? null : (composer.panel, _writingPage),
             content: activeTab()));
   }
 }

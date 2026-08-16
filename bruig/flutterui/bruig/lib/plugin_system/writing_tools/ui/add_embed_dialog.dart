@@ -4,7 +4,7 @@ import 'dart:typed_data';
 import 'package:bruig/components/feed/embed_options.dart';
 import 'package:bruig/components/text.dart';
 import 'package:bruig/models/feed.dart';
-import 'package:bruig/post_library/embed_store.dart';
+import 'package:bruig/plugin_system/writing_tools/post_library/embed_store.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 

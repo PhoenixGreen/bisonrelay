@@ -1,4 +1,4 @@
-import 'package:bruig/post_library/post_library.dart';
+import 'package:bruig/plugin_system/writing_tools/post_library/post_library.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 // post_storage_test.dart covers the part of the saved-post library that has

@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:bruig/post_library/post_library.dart';
+import 'package:bruig/plugin_system/writing_tools/post_library/post_library.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 // post_reorder_test.dart covers dragging a document or a folder to a new

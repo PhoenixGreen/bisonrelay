@@ -1,7 +1,7 @@
-import 'package:bruig/components/composer_sidebar_shell.dart';
-import 'package:bruig/components/feed/formatting_sidebar.dart';
+import 'package:bruig/plugin_system/writing_tools/ui/composer_sidebar_shell.dart';
+import 'package:bruig/plugin_system/writing_tools/ui/sidebar/formatting_sidebar.dart';
 import 'package:bruig/components/containers.dart';
-import 'package:bruig/models/composer_sidebar.dart';
+import 'package:bruig/plugin_system/writing_tools/composer_sidebar.dart';
 import 'package:bruig/models/uistate.dart';
 import 'package:bruig/screens/feed/feed_posts.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
@@ -13,7 +13,7 @@ import 'package:provider/provider.dart';
 // the editor, and the formatting panel one of its icons opens.
 
 Future<void> _pump(WidgetTester tester, ComposerSidebarController controller,
-    {List<ComposerPanel>? panels, VoidCallback? onLeaveComposer}) async {
+    {List<ComposerPanel>? panels}) async {
   await tester.pumpWidget(MultiProvider(
     providers: [
       ChangeNotifierProvider<ThemeNotifier>(
@@ -36,7 +36,6 @@ Future<void> _pump(WidgetTester tester, ComposerSidebarController controller,
                     child: ComposerSidebarShell(
                       controller: controller,
                       panels: panels ?? ComposerPanel.values,
-                      onLeaveComposer: onLeaveComposer,
                       child: Text("PANEL: ${controller.panel.name}"),
                     ),
                   ),
@@ -54,22 +53,21 @@ void main() {
   // changing: every other test here walks ComposerPanel.values, so it agrees
   // with whatever the enum currently says rather than with what was wanted.
   //
-  // It runs outwards from the post: where you are, what you have written
-  // before, the words in front of you, and what you can put around them.
+  // It runs outwards from the post: what you have written before, the words
+  // in front of you, and what you can put around them.
   testWidgets("the panel icons run left to right in a fixed order",
       (tester) async {
     var controller = ComposerSidebarController();
     await _pump(tester, controller);
 
     var order = [
-      ComposerPanel.none,
       ComposerPanel.posts,
       ComposerPanel.writing,
       ComposerPanel.formatting,
     ];
     expect(ComposerPanel.values, order,
-        reason: "the Feed builds its row by walking this enum, so the "
-            "declaration order is the on-screen order");
+        reason: "the Writing page builds its row by walking this enum, so "
+            "the declaration order is the on-screen order");
 
     var xs = [
       for (var panel in order) tester.getCenter(find.byIcon(panel.icon)).dx
@@ -88,17 +86,20 @@ void main() {
   // Reported: opening a new post landed on the feed menu, so the first thing
   // in front of somebody about to write was the list of ways to go somewhere
   // else -- and the panel they had set up before visiting Chat was gone.
+  //
+  // That menu is gone with the Feed's composer (the Writing page is its own
+  // destination and the navigation is the way out of it), but the second
+  // half still holds: the panel outlives the composer.
   group("where a composer opens", () {
     test("the first composer opens on My Posts", () {
       var controller = ComposerSidebarController();
       var editor = TextEditingController();
       addTearDown(editor.dispose);
 
-      expect(controller.panel, ComposerPanel.none,
-          reason: "no composer yet, so the screen's own menu");
-      controller.attach(editor);
       expect(controller.panel, ComposerPanel.posts,
           reason: "the first thing anyone does is find the document");
+      controller.attach(editor);
+      expect(controller.panel, ComposerPanel.posts);
     });
 
     test("a later composer opens where the last one was left", () {
@@ -110,10 +111,6 @@ void main() {
 
       controller.attach(first);
       controller.show(ComposerPanel.writing);
-
-      // Leaving for another page: the feed menu is what that sets.
-      controller.close();
-      expect(controller.panel, ComposerPanel.none);
 
       controller.detach(first);
       controller.attach(second);
@@ -138,7 +135,6 @@ void main() {
       var editor = TextEditingController();
       addTearDown(editor.dispose);
 
-      controller.close();
       controller.toggleMinimized();
       expect(controller.minimized, isTrue);
 
@@ -150,10 +146,10 @@ void main() {
   });
 
   group("the panel nav", () {
-    testWidgets("starts on the screen's own menu", (tester) async {
+    testWidgets("starts on My Posts", (tester) async {
       var controller = ComposerSidebarController();
       await _pump(tester, controller);
-      expect(find.text("PANEL: none"), findsOneWidget);
+      expect(find.text("PANEL: posts"), findsOneWidget);
     });
 
     testWidgets("an icon switches panels", (tester) async {
@@ -174,30 +170,11 @@ void main() {
     testWidgets("a panel can be left out", (tester) async {
       var controller = ComposerSidebarController();
       await _pump(tester, controller, panels: [
-        ComposerPanel.none,
         ComposerPanel.posts,
+        ComposerPanel.formatting,
       ]);
       expect(find.byIcon(ComposerPanel.writing.icon), findsNothing);
       expect(find.byIcon(ComposerPanel.posts.icon), findsOneWidget);
-    });
-
-    // Reported: the Feed menu showed the Feed's own menu beside a composer
-    // that was still open, which is a way out that takes nobody anywhere.
-    // The other three are the composer's own panels and stay where they are.
-    testWidgets("the screen's own menu leaves the composer", (tester) async {
-      var controller = ComposerSidebarController();
-      var left = 0;
-      await _pump(tester, controller, onLeaveComposer: () => left++);
-
-      await tester.tap(find.byIcon(ComposerPanel.posts.icon));
-      await tester.pumpAndSettle();
-      expect(left, 0, reason: "My Posts belongs beside the post");
-
-      await tester.tap(find.byIcon(ComposerPanel.none.icon));
-      await tester.pumpAndSettle();
-      expect(left, 1);
-      expect(controller.panel, ComposerPanel.none,
-          reason: "the panel is still switched, so coming back finds it here");
     });
   });
 
@@ -220,7 +197,7 @@ void main() {
     });
 
     // Somebody who minimized while reading their library did not ask to be
-    // returned to the feed menu.
+    // returned to the writing tools.
     testWidgets("comes back to the panel that was showing", (tester) async {
       var controller = ComposerSidebarController();
       await _pump(tester, controller);
@@ -462,14 +439,13 @@ void _hideButtonTests() {
   });
 }
 
-// Reported: turning "Feed side panel" on left the composer's Feed tab
-// showing the plain tab list, so the composer was the one place in the Feed
-// the setting did not reach.
+// FeedSidePanel can render bare and without its search field, for a caller
+// placing it inside a sidebar that has already drawn the chrome.
 //
-// The panel is placed inside a sidebar that has already drawn the chrome and
-// beside somebody writing rather than browsing, so it needs to render bare
-// and without its search field. These cover those two flags, which is what
-// the fix rests on.
+// Nothing in the app asks for that today -- it was how the panel appeared
+// beside the Feed's composer, and the composer has moved to the Writing
+// section with a sidebar of its own. These cover the two flags rather than a
+// screen, so the panel keeps working either way for whoever needs it next.
 void _feedPanelFlagTests() {
   Future<void> pumpPanel(WidgetTester tester,
       {required bool framed, required bool showSearch}) async {
@@ -518,8 +494,7 @@ void _feedPanelFlagTests() {
     expect(find.text("All posts"), findsOneWidget);
   });
 
-  testWidgets("beside a composer it drops both, keeping the navigation",
-      (tester) async {
+  testWidgets("it can drop both and keep the navigation", (tester) async {
     await pumpPanel(tester, framed: false, showSearch: false);
 
     expect(find.byIcon(Icons.search), findsNothing,

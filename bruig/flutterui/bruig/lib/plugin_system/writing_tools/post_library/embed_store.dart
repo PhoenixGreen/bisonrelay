@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:bruig/post_library/post_storage.dart';
+import 'package:bruig/plugin_system/writing_tools/post_library/post_storage.dart';
 import 'package:path/path.dart' as path;
 
 // embed_store.dart keeps the pictures a draft refers to.

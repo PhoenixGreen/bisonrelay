@@ -19,21 +19,18 @@ import 'package:flutter/scheduler.dart';
 
 /// ComposerPanel is which panel currently has the slot.
 ///
-/// Declaration order is the order the icons appear in, so the nav is read
-/// straight off this rather than repeated beside it.
 /// The declaration order is the order the icons appear in, and it is the
-/// only place that order is set -- the Feed builds its row by walking this.
-/// It runs outwards from the post: where you are (the feed menu), what you
-/// have written before (My Posts), the words in front of you (Writing
-/// Tools), and what you can put around them (Formatting & Content).
+/// only place that order is set -- the Writing page builds its row by walking
+/// this. It runs outwards from the post: what you have written before (My
+/// Posts), the words in front of you (Writing Tools), and what you can put
+/// around them (Formatting & Content).
+///
+/// There is no entry for the host screen's own menu. There was, back when
+/// this sidebar sat inside the Feed and choosing it meant leaving the
+/// composer for the Feed's tab list. The Writing page is its own destination
+/// with its own slot in the navigation, so the way out of it is the way out
+/// of any page, and an icon here offering a second one only competed with it.
 enum ComposerPanel {
-  /// The screen's own navigation -- for the Feed, its tab list.
-  ///
-  /// Not a panel the composer ever rests on. Choosing it is choosing to
-  /// leave the composer, and the Feed page opens with it; a composer that
-  /// opened on it would be showing the way out instead of the tools.
-  none(Icons.list, "Feed menu"),
-
   /// The saved-post library: folders and documents on disk.
   posts(Icons.folder_outlined, "My Posts"),
 
@@ -51,20 +48,13 @@ enum ComposerPanel {
 /// ComposerSidebarController connects a composer to the screen that owns the
 /// sidebar slot beside it.
 class ComposerSidebarController extends ChangeNotifier {
-  ComposerPanel _panel = ComposerPanel.none;
-
-  /// _lastWorkingPanel is the panel the composer was last actually working
-  /// in, which is where it opens the next time one arrives.
+  /// _panel is which panel has the slot.
   ///
   /// My Posts to begin with, because the first thing anyone does with a new
   /// post is find or name the document it belongs to. After that it is
   /// wherever they were: going to Chat and coming back should not lose the
-  /// panel they had set up any more than switching tabs does.
-  ///
-  /// Never the feed menu. That one is the way out of the composer rather
-  /// than a place in it -- choosing it opens the Feed page -- so opening on
-  /// it would mean every new post started by showing the exit.
-  ComposerPanel _lastWorkingPanel = ComposerPanel.posts;
+  /// panel they had set up any more than switching pages does.
+  ComposerPanel _panel = ComposerPanel.posts;
 
   bool _minimized = false;
 
@@ -130,7 +120,7 @@ class ComposerSidebarController extends ChangeNotifier {
   ///
   /// Separate from the panel rather than another value of it, so restoring
   /// comes back to whatever was showing. Somebody who minimized while
-  /// reading their library did not ask to be returned to the feed menu.
+  /// reading their library did not ask to be returned to the writing tools.
   bool get minimized => _minimized;
 
   void toggleMinimized() {
@@ -150,26 +140,20 @@ class ComposerSidebarController extends ChangeNotifier {
   /// be coped with at all.
   ///
   /// Always true while a composer is on screen, because the nav that
-  /// switches panels lives in the slot too -- including on the panel that
-  /// shows the screen's own menu. Minimizing is the only thing that gives
-  /// the slot back.
+  /// switches panels lives in the slot too. Minimizing is the only thing
+  /// that gives the slot back.
   bool get visible => !_minimized;
 
   /// attach offers a composer's text. Called as the composer mounts; it does
   /// not open anything by itself, since arriving at an editor should not
   /// rearrange the screen.
+  ///
+  /// Minimized is left exactly as it was: hiding the sidebar is a decision
+  /// about the screen, and arriving at a composer is not a reason to
+  /// overturn it.
   void attach(TextEditingController editor) {
     if (identical(_editor, editor)) return;
     _editor = editor;
-    // A composer has arrived, so the slot goes back to something a composer
-    // can use. Left on the feed menu -- which is where leaving the composer
-    // puts it -- the panel beside a new post would be the list of ways to go
-    // somewhere else.
-    //
-    // Minimized is left exactly as it was: hiding the sidebar is a decision
-    // about the screen, and arriving at a composer is not a reason to
-    // overturn it.
-    if (_panel == ComposerPanel.none) _panel = _lastWorkingPanel;
     notifyListeners();
   }
 
@@ -200,15 +184,7 @@ class ComposerSidebarController extends ChangeNotifier {
   void show(ComposerPanel panel) {
     if (panel == _panel && !_minimized) return;
     _panel = panel;
-    // Remembered so the next composer opens here. The feed menu is not one
-    // of these: see _lastWorkingPanel.
-    if (panel != ComposerPanel.none) _lastWorkingPanel = panel;
     _minimized = false;
     notifyListeners();
   }
-
-  /// close leaves the composer's panels for the screen's own menu, which is
-  /// also what opens the Feed page. The panel that was open is remembered --
-  /// see _lastWorkingPanel -- so coming back finds it again.
-  void close() => show(ComposerPanel.none);
 }

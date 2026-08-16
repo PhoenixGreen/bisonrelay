@@ -14,6 +14,6 @@
 //   post_storage.dart        the files on disk, and the name sanitizing
 //   post_library_model.dart  what the sidebar is showing, and autosave
 //   post_sidebar.dart        the sidebar itself
-export 'package:bruig/post_library/post_library_model.dart';
-export 'package:bruig/post_library/post_sidebar.dart';
-export 'package:bruig/post_library/post_storage.dart';
+export 'package:bruig/plugin_system/writing_tools/post_library/post_library_model.dart';
+export 'package:bruig/plugin_system/writing_tools/post_library/post_sidebar.dart';
+export 'package:bruig/plugin_system/writing_tools/post_library/post_storage.dart';

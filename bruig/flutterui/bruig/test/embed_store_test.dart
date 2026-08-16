@@ -1,7 +1,7 @@
 import 'dart:io';
 
-import 'package:bruig/post_library/embed_store.dart';
-import 'package:bruig/post_library/post_storage.dart';
+import 'package:bruig/plugin_system/writing_tools/post_library/embed_store.dart';
+import 'package:bruig/plugin_system/writing_tools/post_library/post_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as path;
 

@@ -1,7 +1,7 @@
 import 'dart:async';
 
-import 'package:bruig/post_library/embed_store.dart';
-import 'package:bruig/post_library/post_storage.dart';
+import 'package:bruig/plugin_system/writing_tools/post_library/embed_store.dart';
+import 'package:bruig/plugin_system/writing_tools/post_library/post_storage.dart';
 import 'package:flutter/material.dart';
 
 // post_library_model.dart holds what the sidebar is showing and keeps the

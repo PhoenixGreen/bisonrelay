@@ -1,4 +1,4 @@
-import 'package:bruig/models/composer_sidebar.dart';
+import 'package:bruig/plugin_system/writing_tools/composer_sidebar.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 

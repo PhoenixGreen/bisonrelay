@@ -1,5 +1,5 @@
 import 'package:bruig/components/containers.dart';
-import 'package:bruig/models/composer_sidebar.dart';
+import 'package:bruig/plugin_system/writing_tools/composer_sidebar.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
@@ -23,7 +23,7 @@ import 'package:flutter/material.dart';
 const double composerNavHeight = 36;
 
 /// ComposerViewToggle chooses between the source of a post and the rendering
-/// of it.
+/// of it -- the Raw/Preview pair on the Writing page's top bar.
 ///
 /// Two buttons rather than a switch, because neither state is the "on" one --
 /// raw and preview are both ways of looking at the post, and a switch would
@@ -77,21 +77,10 @@ class ComposerSidebarShell extends StatelessWidget {
   /// child is the chosen panel's contents.
   final Widget child;
 
-  /// onLeaveComposer is called when the screen's own menu is chosen, so the
-  /// screen can go back to what that menu is a menu of.
-  ///
-  /// The other panels are the composer's own -- the post library, the
-  /// writing tools, the formatting -- and belong beside the post being
-  /// written. This one is the screen's, and asking for it is asking to be
-  /// back on the screen: showing the Feed's menu while still sitting in the
-  /// composer offered a way out that took nobody anywhere.
-  final VoidCallback? onLeaveComposer;
-
   const ComposerSidebarShell({
     required this.controller,
     required this.panels,
     required this.child,
-    this.onLeaveComposer,
     super.key,
   });
 
@@ -168,13 +157,7 @@ class ComposerSidebarShell extends StatelessWidget {
         icon: panel.icon,
         tooltip: panel.label,
         selected: panel == controller.panel,
-        onTap: () {
-          controller.show(panel);
-          // The panel is still switched on the way out, so coming back to
-          // the composer finds the menu where it was left rather than on
-          // whichever panel happened to be open when it was left.
-          if (panel == ComposerPanel.none) onLeaveComposer?.call();
-        },
+        onTap: () => controller.show(panel),
       );
 
   Widget _button(

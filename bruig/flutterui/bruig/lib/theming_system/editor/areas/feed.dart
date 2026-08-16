@@ -50,14 +50,13 @@ List<Widget> feedAreaEditor(AreaEditorContext ctx) {
       onChanged: (v) =>
           ctx.setStyle((s) => s.copyWith(feedHideSidebarOnPost: v)),
     ),
-    ctx.toggle(
-      "Publish menu",
-      subtitle: "Moves Create Post into a menu button in the top-right "
-          "corner of the New Post page, giving the editor the height the "
-          "footer took",
-      value: style.feedPublishMenu,
-      onChanged: (v) => ctx.setStyle((s) => s.copyWith(feedPublishMenu: v)),
-    ),
+    // "Publish menu" was here. It moved Create Post into a menu button in
+    // the composer's top-right corner, back when the Feed's composer and the
+    // writing tools' were one screen and the menu had to be opted into. They
+    // are two screens now: the Feed's keeps its footer buttons, and the
+    // Writing section's has the menu because that is what that page is. A
+    // switch that changed a page the Feed no longer owns had nothing left to
+    // do here.
     ctx.choice<FeedImageLayout>(
       "First image display",
       value: style.feedImageLayout,

@@ -40,27 +40,47 @@ import 'package:bruig/plugin_system/writing_tools/ui/writing_settings.dart';
 //   spellcheck_capability.dart  keeps the checker fed; owns the fetch
 //   thesaurus_capability.dart   answers one word at a time
 //
+//   composer_sidebar.dart  which panel has the slot beside the editor
+//   writing_nav.dart       the Writing destination, while the plugin is on
+//
+//   post_library/      the saved posts: folders and documents on disk
+//
 //   ui/
 //     writing_field.dart   the controller that paints the marks
 //     writing_actions.dart what was clicked, and how to apply what was chosen
 //     writing_popup.dart   the right-click popup explaining an issue
 //     thesaurus_menu.dart  the "Look up" entry and the sheet it opens
 //     writing_settings.dart the Settings > Plugins section
-//     sidebar/             the post editor's four review pages
+//     writing_screen.dart  the Writing section itself
+//     composer.dart        the post editor on it
+//     add_embed_dialog.dart  putting a picture into a post
+//     composer_sidebar_shell.dart  the panel icons above the sidebar
+//     sidebar/             the review pages, and Formatting & Content
 //
-// The sidebar slot it occupies is not owned here: it is shared with the
-// saved-post library, which is not a plugin at all. See
-// models/composer_sidebar.dart.
+// The Writing section, its editor and its whole sidebar live here rather than
+// under screens/feed/ because they exist only while this plugin is enabled.
+// The Feed keeps a plain composer of its own for everybody else, and the two
+// share no code: this one is free to assume a sidebar beside it, a document
+// on disk behind it, and marks under its words.
+//
+// The one thing in here that is not a writing tool is the post library. It
+// is no plugin's -- documents on disk are the user's -- but it is a panel of
+// this sidebar and reachable from nowhere else, so it travels with the page
+// that shows it.
+export 'package:bruig/plugin_system/writing_tools/composer_sidebar.dart';
 export 'package:bruig/plugin_system/writing_tools/engine/preferences.dart';
 export 'package:bruig/plugin_system/writing_tools/engine/stats.dart';
 export 'package:bruig/plugin_system/writing_tools/engine/writing_issue.dart';
+export 'package:bruig/plugin_system/writing_tools/post_library/post_library.dart';
 export 'package:bruig/plugin_system/writing_tools/spellcheck_capability.dart';
 export 'package:bruig/plugin_system/writing_tools/thesaurus_capability.dart';
+export 'package:bruig/plugin_system/writing_tools/writing_nav.dart';
 export 'package:bruig/plugin_system/writing_tools/ui/sidebar/writing_sidebar.dart';
 export 'package:bruig/plugin_system/writing_tools/ui/thesaurus_menu.dart';
 export 'package:bruig/plugin_system/writing_tools/ui/writing_actions.dart';
 export 'package:bruig/plugin_system/writing_tools/ui/writing_field.dart';
 export 'package:bruig/plugin_system/writing_tools/ui/writing_popup.dart';
+export 'package:bruig/plugin_system/writing_tools/ui/writing_screen.dart';
 export 'package:bruig/plugin_system/writing_tools/ui/writing_settings.dart';
 
 /// registerWritingTools attaches this module to the plugin system.

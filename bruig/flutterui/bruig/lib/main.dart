@@ -11,11 +11,9 @@ import 'package:bruig/models/emoji.dart';
 import 'package:bruig/models/audio.dart';
 import 'package:bruig/models/menus.dart';
 import 'package:bruig/models/payments.dart';
-import 'package:bruig/models/composer_sidebar.dart';
 import 'package:bruig/plugin_system/link_previews/link_previews.dart';
 import 'package:bruig/plugin_system/plugin_system.dart';
 import 'package:bruig/plugin_system/writing_tools/writing_tools.dart';
-import 'package:bruig/post_library/post_library.dart';
 import 'package:bruig/models/realtimechat.dart';
 import 'package:bruig/models/resources.dart';
 import 'package:bruig/models/uploads.dart';
@@ -250,6 +248,15 @@ Future<void> runMainApp(Config cfg) async {
         create: (c) => PluginNavModel(),
         update: (c, plugins, mainMenu, dyn) =>
             dyn!..update(plugins.plugins, mainMenu),
+      ),
+      // The Writing section, which comes and goes with the writing tools.
+      // Eager for the same reason as the one above: nothing reads it, it
+      // exists to register a nav item.
+      ChangeNotifierProxyProvider2<PluginManagerModel, MainMenuModel,
+          WritingNavModel>(
+        lazy: false,
+        create: (c) => WritingNavModel(),
+        update: (c, plugins, mainMenu, nav) => nav!..update(plugins, mainMenu),
       ),
       ChangeNotifierProvider.value(value: rtc),
       ChangeNotifierProvider.value(value: rtc.active),

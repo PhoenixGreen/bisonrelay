@@ -23,6 +23,8 @@ import 'package:bruig/screens/chats.dart';
 import 'package:bruig/screens/feed.dart';
 import 'package:bruig/screens/feed/post_content.dart';
 import 'package:bruig/notification_service.dart';
+import 'package:bruig/plugin_system/writing_tools/writing_nav.dart';
+import 'package:bruig/plugin_system/writing_tools/ui/writing_screen.dart';
 import 'package:bruig/screens/settings.dart';
 import 'package:flutter/material.dart';
 import 'package:golib_plugin/definitions.dart';
@@ -191,6 +193,14 @@ class __MainAppBarState extends State<_MainAppBar>
   bool get hasAnimation => hasLiveRTCSess || hasHotAudio;
 
   void goToNewPost(BuildContext context) {
+    // The Writing section when there is one, and the Feed's own New Post tab
+    // otherwise -- the same choice the Feed's own New Post link makes. The
+    // header button says "new post" either way; where that lands is a
+    // question about which pages exist, not about which button was pressed.
+    if (hasWritingPage(widget.mainMenu)) {
+      navKey.currentState?.pushReplacementNamed(WritingScreen.routeName);
+      return;
+    }
     navKey.currentState
         ?.pushReplacementNamed('/feed', arguments: PageTabs(3, null, null));
   }

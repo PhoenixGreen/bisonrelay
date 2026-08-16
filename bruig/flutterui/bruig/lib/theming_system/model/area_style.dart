@@ -514,10 +514,6 @@ class AreaStyle {
         align: markdownImageAlign,
       );
 
-  final bool feedPublishMenu; // Moves Create Post out of the composer's
-  // footer and into a menu button in its top-right corner, giving the editor
-  // the height the footer took and leaving somewhere for further publish
-  // options to go. Clear Post is not moved with it -- see _publishMenu.
   final FeedImageLayout feedImageLayout; // How each post's first embedded
   // image is displayed (see FeedImageLayout).
   final double feedImageCropHeight; // Max height (px) for
@@ -718,7 +714,6 @@ class AreaStyle {
     this.markdownImageGap,
     this.markdownImageAlign,
     this.markdownGuideId = "default",
-    this.feedPublishMenu = false,
     this.feedImageLayout = FeedImageLayout.standard,
     this.feedImageCropHeight = 300,
     this.feedTextOrder = FeedTextOrder.standard,
@@ -909,7 +904,6 @@ class AreaStyle {
     MarkdownAlign? markdownImageAlign,
     bool clearMarkdownImages = false,
     String? markdownGuideId,
-    bool? feedPublishMenu,
     FeedImageLayout? feedImageLayout,
     double? feedImageCropHeight,
     FeedTextOrder? feedTextOrder,
@@ -1149,7 +1143,6 @@ class AreaStyle {
             ? null
             : (markdownImageAlign ?? this.markdownImageAlign),
         markdownGuideId: markdownGuideId ?? this.markdownGuideId,
-        feedPublishMenu: feedPublishMenu ?? this.feedPublishMenu,
         feedImageLayout: feedImageLayout ?? this.feedImageLayout,
         feedImageCropHeight: feedImageCropHeight ?? this.feedImageCropHeight,
         feedTextOrder: feedTextOrder ?? this.feedTextOrder,
@@ -1363,7 +1356,6 @@ class AreaStyle {
         if (markdownImageAlign != null)
           "markdownImageAlign": markdownImageAlign!.name,
         if (markdownGuideId != "default") "markdownGuideId": markdownGuideId,
-        if (feedPublishMenu) "feedPublishMenu": feedPublishMenu,
         if (feedHideSidebarOnPost)
           "feedHideSidebarOnPost": feedHideSidebarOnPost,
         if (feedImageLayout != FeedImageLayout.standard)
@@ -1596,7 +1588,6 @@ class AreaStyle {
       markdownGuideId: j["markdownGuideId"] is String
           ? j["markdownGuideId"] as String
           : "default",
-      feedPublishMenu: flag("feedPublishMenu"),
       feedImageLayout: _enumOr(FeedImageLayout.values, j["feedImageLayout"],
           FeedImageLayout.standard),
       feedImageCropHeight: number("feedImageCropHeight") ?? 300,
