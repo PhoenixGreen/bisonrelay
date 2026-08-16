@@ -57,9 +57,11 @@ class _PostSidebarState extends State<PostSidebar> {
     var theme = ThemeNotifier.of(context);
 
     var header = _header(theme, library);
+    var hint = _reorderHint(theme, library);
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       if (header != null) header,
       Expanded(child: _list(theme, library)),
+      if (hint != null) hint,
       if (library.error case var message?) _error(theme, message),
       _actions(theme, library),
     ]);
@@ -236,24 +238,46 @@ class _PostSidebarState extends State<PostSidebar> {
   /// A handle rather than the whole row, still. A row is the thing you tap
   /// to open a document, so a hold that started anywhere on one would take
   /// the place of that tap for anybody who pauses before releasing.
+  ///
+  /// There is deliberately no Tooltip on this button, and there must not be
+  /// one. A Tooltip is an OverlayPortal: while it is showing it has a child
+  /// parked in the Overlay's render tree, rooted somewhere else entirely.
+  /// Reordering moves a row's element rather than rebuilding it -- every row
+  /// carries a GlobalKey of ReorderableListView's own -- and reactivating an
+  /// OverlayPortal that way re-attaches its overlay child in the middle of a
+  /// layout pass, which the framework refuses:
+  ///
+  ///   A _RenderLayoutBuilder was mutated in _RenderLayoutBuilder.performLayout
+  ///
+  /// and the whole sidebar is replaced by a red error box. Reported after
+  /// dragging a document to the bottom of a folder, and only reproducible
+  /// with a real pointer: the tooltip has to be *showing* for the portal to
+  /// have anything to re-attach, and it is showing because the pointer is
+  /// resting on this button -- which is exactly where it has to rest to
+  /// press and hold. The gesture and the tooltip were the same hover.
+  ///
+  /// Timing around it does not work either: rows slide under a stationary
+  /// pointer while the drag is live, so a tooltip dismissed when the drag
+  /// starts is re-armed by the next row to pass beneath. Nothing inside a
+  /// reorderable row may own an overlay.
+  ///
+  /// What the tooltip said -- that holding this moves the row -- was never a
+  /// fact about one row anyway. It is said once, under the list, by
+  /// _reorderHint.
   Widget _rowButton(ThemeNotifier theme, PostLibraryModel library,
           PostEntry entry, int index) =>
       ReorderableDelayedDragStartListener(
         index: index,
-        child: Tooltip(
-          message: "More -- press and hold to move",
-          // Hover only. The default also opens a tooltip on a long press,
-          // which is the gesture that starts the drag: the two recognizers
-          // would be in the same arena for the same press, and the row
-          // would sometimes explain itself instead of moving.
-          triggerMode: TooltipTriggerMode.manual,
-          child: MouseRegion(
-            cursor: SystemMouseCursors.grab,
-            // A Builder so the menu can be anchored to this button rather
-            // than to the sidebar: the State's own context is the whole
-            // panel, and a menu positioned off that opens at its corner.
-            child: Builder(
-              builder: (buttonContext) => GestureDetector(
+        child: MouseRegion(
+          cursor: SystemMouseCursors.grab,
+          // A Builder so the menu can be anchored to this button rather
+          // than to the sidebar: the State's own context is the whole
+          // panel, and a menu positioned off that opens at its corner.
+          child: Builder(
+            builder: (buttonContext) => Semantics(
+              button: true,
+              label: "More -- press and hold to move",
+              child: GestureDetector(
                 // Opaque so the tap stops here rather than reaching the
                 // row's own InkWell, which would open the document under
                 // the menu.
@@ -270,6 +294,22 @@ class _PostSidebarState extends State<PostSidebar> {
           ),
         ),
       );
+
+  /// _reorderHint is where the row tooltips went: one line, under the list,
+  /// saying the thing they each said separately.
+  ///
+  /// Only with something to reorder. On a single document it would be
+  /// explaining a gesture that cannot change anything.
+  Widget? _reorderHint(ThemeNotifier theme, PostLibraryModel library) {
+    if (library.entries.length < 2) return null;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+      child: Text(
+        "Press and hold a row's ⋮ to move it",
+        style: TextStyle(fontSize: 10, color: theme.colors.onSurfaceVariant),
+      ),
+    );
+  }
 
   /// _openRowMenu shows the row's menu under the button that was tapped.
   ///
