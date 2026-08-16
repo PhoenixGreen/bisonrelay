@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:bruig/components/chat/input.dart';
 import 'package:bruig/components/chat/messages.dart';
+import 'package:bruig/components/chat/rtc_colors.dart';
 import 'package:bruig/components/chat/rtc_session_header.dart';
 import 'package:bruig/components/confirmation_dialog.dart';
 import 'package:bruig/components/containers.dart';
@@ -144,6 +145,7 @@ class __RealtimeSessionPublisherWState
 
   @override
   Widget build(BuildContext context) {
+    var c = RtcColors.of(context);
     var theme = ThemeNotifier.of(context, listen: false);
     String pubNick = publisher.alias;
     var knownNick = client.getNick(publisher.publisherID);
@@ -183,16 +185,13 @@ class __RealtimeSessionPublisherWState
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           border: Border.all(
-            color: (livePeer?.hasSound ?? false)
-                ? const Color(0xFF1DFF8C)
-                : Colors.transparent,
+            color: (livePeer?.hasSound ?? false) ? c.live : Colors.transparent,
             width: 2.5,
           ),
           boxShadow: (livePeer?.hasSound ?? false)
               ? [
                   BoxShadow(
-                      color: const Color(0xFF1DFF8C).withValues(alpha: 0.45),
-                      blurRadius: 12)
+                      color: c.live.withValues(alpha: 0.45), blurRadius: 12)
                 ]
               : null,
         ),
@@ -201,10 +200,8 @@ class __RealtimeSessionPublisherWState
       ),
       const SizedBox(width: 12, height: 48),
       Text(pubNick,
-          style: const TextStyle(
-              fontSize: 15.5,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFFF2F4F3))),
+          style: TextStyle(
+              fontSize: 15.5, fontWeight: FontWeight.w600, color: c.text)),
       if (session.inLiveSession &&
           peer != null &&
           (peer?.bufferCount ?? 0) > 0) ...[
@@ -257,21 +254,18 @@ class _ActiveRealtimeChatScreenState extends State<ActiveRealtimeChatScreen> {
 
   // A muted label/value row for the tucked-away session metadata (only used
   // (the expandable session-info row).
-  Widget _infoRow(String k, String v) => Padding(
+  Widget _infoRow(RtcColors c, String k, String v) => Padding(
         padding: const EdgeInsets.only(bottom: 4),
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           SizedBox(
               width: 92,
               child: Text(k,
-                  style: const TextStyle(
-                      fontSize: 12.5, color: Color(0xFF5F6764)))),
+                  style: TextStyle(fontSize: 12.5, color: c.faintText))),
           Expanded(
               child: SelectableText(v,
                   maxLines: 1,
-                  style: const TextStyle(
-                      fontSize: 12.5,
-                      letterSpacing: 0,
-                      color: Color(0xFF9AA3A0)))),
+                  style: TextStyle(
+                      fontSize: 12.5, letterSpacing: 0, color: c.subtext))),
         ]),
       );
   ChatModel get sessionChat => session.info.gc == ""
@@ -341,6 +335,7 @@ class _ActiveRealtimeChatScreenState extends State<ActiveRealtimeChatScreen> {
 
   @override
   Widget build(BuildContext context) {
+    var c = RtcColors.of(context);
     var ownerNick = rtc.client.getNick(session.info.metadata.owner);
     var live = session.inLiveSession;
     var desc = session.info.metadata.description;
@@ -362,10 +357,10 @@ class _ActiveRealtimeChatScreenState extends State<ActiveRealtimeChatScreen> {
                 height: 52,
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(15),
-                  color: const Color(0xFF0E1A13),
-                  border: Border.all(color: const Color(0xFF1D3B2B)),
+                  color: RtcColors.tint(c.live),
+                  border: Border.all(color: c.live.withValues(alpha: 0.35)),
                 ),
-                child: const Icon(Icons.headphones, color: Color(0xFF1DFF8C)),
+                child: Icon(Icons.headphones, color: c.live),
               ),
               const SizedBox(width: 14),
               Expanded(
@@ -375,14 +370,13 @@ class _ActiveRealtimeChatScreenState extends State<ActiveRealtimeChatScreen> {
                       Text(lobbyTitle,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
+                          style: TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.w600,
-                              color: Color(0xFFF2F4F3))),
+                              color: c.text)),
                       const SizedBox(height: 3),
                       Text("${publishers.length} members · not live",
-                          style: const TextStyle(
-                              fontSize: 12.5, color: Color(0xFF5F6764))),
+                          style: TextStyle(fontSize: 12.5, color: c.faintText)),
                     ]),
               ),
             ]),
@@ -403,27 +397,26 @@ class _ActiveRealtimeChatScreenState extends State<ActiveRealtimeChatScreen> {
               padding: const EdgeInsets.symmetric(vertical: 4),
               child: Row(children: [
                 Icon(showInfo ? Icons.expand_less : Icons.info_outline,
-                    size: 16, color: const Color(0xFF9AA3A0)),
+                    size: 16, color: c.subtext),
                 const SizedBox(width: 6),
-                const Text("Session info",
-                    style: TextStyle(fontSize: 13, color: Color(0xFF9AA3A0))),
+                Text("Session info",
+                    style: TextStyle(fontSize: 13, color: c.subtext)),
               ]),
             ),
           ),
           if (showInfo) ...[
             const SizedBox(height: 8),
-            _infoRow("RV", session.info.metadata.rv),
-            _infoRow("Size", "${session.info.metadata.size}"),
+            _infoRow(c, "RV", session.info.metadata.rv),
+            _infoRow(c, "Size", "${session.info.metadata.size}"),
             _infoRow(
-                "Local Peer ID", session.info.localPeerID.toRadixString(16)),
+                c, "Local Peer ID", session.info.localPeerID.toRadixString(16)),
             Padding(
               padding: const EdgeInsets.only(top: 2),
               child: Row(children: [
-                const SizedBox(
+                SizedBox(
                     width: 92,
                     child: Text("Owner",
-                        style: TextStyle(
-                            fontSize: 12.5, color: Color(0xFF5F6764)))),
+                        style: TextStyle(fontSize: 12.5, color: c.faintText))),
                 UserAvatarFromID(rtc.client, session.info.metadata.owner,
                     radius: 14),
                 const SizedBox(width: 6),
@@ -503,26 +496,24 @@ class _AudioTestPanelState extends State<_AudioTestPanel> {
     } catch (_) {}
   }
 
-  Widget _deviceRow(IconData ic, String hint, List<dynamic> devices,
-      String currentId, ValueChanged<String> onPick) {
+  Widget _deviceRow(RtcColors c, IconData ic, String hint,
+      List<dynamic> devices, String currentId, ValueChanged<String> onPick) {
     final hasCurrent = devices.any((d) => d.id == currentId);
     return Row(children: [
-      Icon(ic, size: 18, color: const Color(0xFF9AA3A0)),
+      Icon(ic, size: 18, color: c.subtext),
       const SizedBox(width: 10),
       Expanded(
         child: devices.isEmpty
-            ? Text(hint,
-                style: const TextStyle(fontSize: 13, color: Color(0xFF9AA3A0)))
+            ? Text(hint, style: TextStyle(fontSize: 13, color: c.subtext))
             : DropdownButton<String>(
                 value: hasCurrent ? currentId : null,
                 isExpanded: true,
                 isDense: true,
                 underline: const SizedBox(),
-                dropdownColor: const Color(0xFF15171A),
+                dropdownColor: c.menu,
                 hint: Text(hint,
-                    style: const TextStyle(
-                        fontSize: 13, color: Color(0xFF9AA3A0))),
-                style: const TextStyle(fontSize: 13, color: Color(0xFFF2F4F3)),
+                    style: TextStyle(fontSize: 13, color: c.subtext)),
+                style: TextStyle(fontSize: 13, color: c.text),
                 items: devices
                     .map<DropdownMenuItem<String>>((d) => DropdownMenuItem(
                           value: d.id as String,
@@ -539,7 +530,8 @@ class _AudioTestPanelState extends State<_AudioTestPanel> {
   }
 
   Widget _testBtn(
-      {required IconData icon,
+      {required RtcColors c,
+      required IconData icon,
       required String label,
       required Color color,
       required VoidCallback onTap,
@@ -552,9 +544,9 @@ class _AudioTestPanelState extends State<_AudioTestPanel> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
           decoration: BoxDecoration(
-            color: const Color(0xFF141614),
+            color: c.inset,
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: const Color(0xFF23262B)),
+            border: Border.all(color: c.insetBorder),
           ),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             Icon(icon, size: 16, color: color),
@@ -571,30 +563,31 @@ class _AudioTestPanelState extends State<_AudioTestPanel> {
   @override
   Widget build(BuildContext context) {
     final audio = widget.audio;
+    final c = RtcColors.of(context);
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFF0C0D0C),
+        color: c.panel,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFF1C1F1D)),
+        border: Border.all(color: c.panelBorder),
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          const Icon(Icons.tune, size: 17, color: Color(0xFF1DFF8C)),
+          Icon(Icons.tune, size: 17, color: c.live),
           const SizedBox(width: 8),
-          const Expanded(
+          Expanded(
             child: Text("Test audio and microphone prior to joining",
                 style: TextStyle(
                     fontSize: 13.5,
                     fontWeight: FontWeight.w600,
-                    color: Color(0xFFF2F4F3))),
+                    color: c.text)),
           ),
         ]),
         const SizedBox(height: 12),
-        _deviceRow(Icons.mic, "Default microphone", _capture,
+        _deviceRow(c, Icons.mic, "Default microphone", _capture,
             audio.captureDeviceId, (v) => audio.captureDeviceId = v),
         const SizedBox(height: 8),
-        _deviceRow(Icons.headphones, "Default speakers", _playback,
+        _deviceRow(c, Icons.headphones, "Default speakers", _playback,
             audio.playbackDeviceId, (v) => audio.playbackDeviceId = v),
         const SizedBox(height: 12),
         AnimatedBuilder(
@@ -605,11 +598,10 @@ class _AudioTestPanelState extends State<_AudioTestPanel> {
             final hasRecord = audio.hasRecord;
             return Row(children: [
               _testBtn(
+                c: c,
                 icon: recording ? Icons.stop : Icons.fiber_manual_record,
                 label: recording ? "Stop" : "Record",
-                color: recording
-                    ? const Color(0xFFFF6B6B)
-                    : const Color(0xFF1DFF8C),
+                color: recording ? c.muted : c.live,
                 onTap: () async {
                   try {
                     if (recording) {
@@ -622,9 +614,10 @@ class _AudioTestPanelState extends State<_AudioTestPanel> {
               ),
               const SizedBox(width: 10),
               _testBtn(
+                c: c,
                 icon: playing ? Icons.stop : Icons.play_arrow,
                 label: playing ? "Stop" : "Play back",
-                color: const Color(0xFF4D9FFF),
+                color: c.accent,
                 enabled: hasRecord && !recording,
                 onTap: () async {
                   try {
@@ -644,8 +637,7 @@ class _AudioTestPanelState extends State<_AudioTestPanel> {
                         : hasRecord
                             ? "Play back to hear yourself"
                             : "Record a clip, then play it back",
-                    style: const TextStyle(
-                        fontSize: 12, color: Color(0xFF9AA3A0))),
+                    style: TextStyle(fontSize: 12, color: c.subtext)),
               ),
             ]);
           },
@@ -684,6 +676,16 @@ class _LiveStageState extends State<_LiveStage>
   List<dynamic> _captureDevices = [];
   List<dynamic> _playbackDevices = [];
   late final AnimationController _pulse;
+
+  /// _collapsed is whether the speakers are folded away.
+  ///
+  /// Seeded from the theme's "Start the stage folded away" and then owned by
+  /// the reader: a setting decides how a session opens, not what you are
+  /// allowed to do once you are in one.
+  bool? _collapsedOverride;
+  bool get _collapsed =>
+      _collapsedOverride ?? RtcColors.of(context).stageCollapsed;
+  set _collapsed(bool v) => _collapsedOverride = v;
 
   RTDTSessionModel get session => widget.session;
 
@@ -746,86 +748,111 @@ class _LiveStageState extends State<_LiveStage>
   @override
   Widget build(BuildContext context) {
     final pubs = session.info.metadata.publishers;
+    final c = RtcColors.of(context);
     return Container(
       margin: const EdgeInsets.fromLTRB(10, 0, 12, 10),
       padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16),
       decoration: BoxDecoration(
-        color: const Color(0xFF0C0D0C),
+        color: c.panel,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF1C1F1D)),
+        border: Border.all(color: c.panelBorder),
       ),
       child: Column(children: [
         Row(children: [
           Container(
               width: 8,
               height: 8,
-              decoration: const BoxDecoration(
-                  shape: BoxShape.circle, color: Color(0xFFFF4D4D))),
+              decoration:
+                  BoxDecoration(shape: BoxShape.circle, color: c.muted)),
           const SizedBox(width: 7),
-          const Text("LIVE",
+          Text("LIVE",
               style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w800,
                   letterSpacing: 1,
-                  color: Color(0xFFFF6B6B))),
+                  color: c.muted)),
           const SizedBox(width: 10),
           Text(_fmt(_elapsed),
-              style: const TextStyle(
-                  fontSize: 13.5,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFFF2F4F3))),
+              style: TextStyle(
+                  fontSize: 13.5, fontWeight: FontWeight.w600, color: c.text)),
           const Spacer(),
+          // The stage can be folded away, leaving this one line and the
+          // session's messages -- what the theme area's "Start the stage
+          // folded away" decides the opening state of.
+          IconButton(
+            onPressed: () => setState(() => _collapsed = !_collapsed),
+            iconSize: 18,
+            visualDensity: VisualDensity.compact,
+            tooltip: _collapsed ? "Show the speakers" : "Hide the speakers",
+            icon: Icon(_collapsed ? Icons.expand_more : Icons.expand_less,
+                color: c.subtext),
+          ),
+          const SizedBox(width: 4),
           Consumer<RealtimeChatRTTModel>(builder: (context, rtt, _) {
             return Row(children: [
-              _SignalBars(bars: _barsForRTT(rtt.lastRTTNano)),
+              _SignalBars(bars: _barsForRTT(rtt.lastRTTNano), colors: c),
               const SizedBox(width: 7),
               Text(rtt.lastRTTNano > 0 ? rtt.lastRTTNanoStr : "—",
-                  style:
-                      const TextStyle(fontSize: 12, color: Color(0xFF9AA3A0))),
+                  style: TextStyle(fontSize: 12, color: c.subtext)),
             ]);
           }),
         ]),
-        const SizedBox(height: 22),
-        Wrap(
-          spacing: 30,
-          runSpacing: 18,
-          alignment: WrapAlignment.center,
-          children: pubs.map((pub) {
-            final peer = session.livePeer(pub.peerID);
-            final isMe = pub.publisherID == widget.client.publicID;
-            final speaking =
-                isMe ? session.localHasSound : (peer?.hasSound ?? false);
-            final muted = isMe
-                ? !session.hasHotAudio
-                : (peer != null && !peer.hasSoundStream);
-            var nick = widget.client.getNick(pub.publisherID);
-            if (nick == "") nick = pub.alias;
-            return _StageAvatar(
-                client: widget.client,
-                uid: pub.publisherID,
-                nick: nick,
-                speaking: speaking,
-                muted: muted,
-                pulse: _pulse);
-          }).toList(),
-        ),
-        if (pubs.length <= 1) ...[
-          const SizedBox(height: 18),
-          const Text("You're the only one here",
-              style: TextStyle(fontSize: 13.5, color: Color(0xFF9AA3A0))),
-          const SizedBox(height: 2),
-          const Text("Invite someone from the menu to start talking",
-              style: TextStyle(fontSize: 12, color: Color(0xFF5F6764))),
+        if (_collapsed)
+          // Folded, the stage still says who is here -- the count is the
+          // one thing from it worth keeping on a single line.
+          Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: Text(
+                "${pubs.length} ${pubs.length == 1 ? "person" : "people"} in "
+                "this session",
+                style: TextStyle(fontSize: 12.5, color: c.faintText)),
+          )
+        else ...[
+          const SizedBox(height: 22),
+          Wrap(
+            spacing: 30,
+            runSpacing: 18,
+            alignment: WrapAlignment.center,
+            children: pubs.map((pub) {
+              final peer = session.livePeer(pub.peerID);
+              final isMe = pub.publisherID == widget.client.publicID;
+              final speaking =
+                  isMe ? session.localHasSound : (peer?.hasSound ?? false);
+              final muted = isMe
+                  ? !session.hasHotAudio
+                  : (peer != null && !peer.hasSoundStream);
+              var nick = widget.client.getNick(pub.publisherID);
+              if (nick == "") nick = pub.alias;
+              return _StageAvatar(
+                  client: widget.client,
+                  uid: pub.publisherID,
+                  nick: nick,
+                  speaking: speaking,
+                  muted: muted,
+                  pulse: _pulse,
+                  colors: c);
+            }).toList(),
+          ),
+          if (pubs.length <= 1) ...[
+            const SizedBox(height: 18),
+            Text("You're the only one here",
+                style: TextStyle(fontSize: 13.5, color: c.subtext)),
+            const SizedBox(height: 2),
+            Text("Invite someone from the menu to start talking",
+                style: TextStyle(fontSize: 12, color: c.faintText)),
+          ],
+          const SizedBox(height: 22),
+          _MicPanel(
+              audio: widget.audio,
+              devices: _captureDevices,
+              hot: session.hasHotAudio,
+              active: _localHasSound,
+              pulse: _pulse,
+              colors: c),
+          const SizedBox(height: 10),
+          _SpeakerPanel(
+              audio: widget.audio, devices: _playbackDevices, colors: c),
         ],
-        const SizedBox(height: 22),
-        _MicPanel(
-            audio: widget.audio,
-            devices: _captureDevices,
-            hot: session.hasHotAudio,
-            active: _localHasSound,
-            pulse: _pulse),
-        const SizedBox(height: 10),
-        _SpeakerPanel(audio: widget.audio, devices: _playbackDevices),
       ]),
     );
   }
@@ -834,15 +861,16 @@ class _LiveStageState extends State<_LiveStage>
 // Connection-quality bars derived from RTT.
 class _SignalBars extends StatelessWidget {
   final int bars; // 0..4
-  const _SignalBars({required this.bars});
+  final RtcColors colors;
+  const _SignalBars({required this.bars, required this.colors});
   @override
   Widget build(BuildContext context) {
     const heights = [7.0, 11.0, 15.0, 19.0];
     Color colorFor(int i) {
-      if (i >= bars) return const Color(0xFF2A2E2B);
-      if (bars >= 3) return const Color(0xFF1DFF8C);
-      if (bars == 2) return const Color(0xFFE2B340);
-      return const Color(0xFFFF6B6B);
+      if (i >= bars) return colors.idle;
+      if (bars >= 3) return colors.live;
+      if (bars == 2) return colors.warning;
+      return colors.muted;
     }
 
     return Row(
@@ -871,13 +899,15 @@ class _StageAvatar extends StatelessWidget {
   final bool speaking;
   final bool muted;
   final AnimationController pulse;
+  final RtcColors colors;
   const _StageAvatar(
       {required this.client,
       required this.uid,
       required this.nick,
       required this.speaking,
       required this.muted,
-      required this.pulse});
+      required this.pulse,
+      required this.colors});
 
   @override
   Widget build(BuildContext context) {
@@ -892,23 +922,28 @@ class _StageAvatar extends StatelessWidget {
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 border: Border.all(
+                  // The ring breathes between a dimmed live colour and the
+                  // live colour itself, so the pulse works whatever the
+                  // theme sets live to rather than only for the green it
+                  // used to be written against.
                   color: speaking
-                      ? Color.lerp(
-                          const Color(0xFF13D673), const Color(0xFF1DFF8C), t)!
-                      : const Color(0xFF23262B),
+                      ? Color.lerp(Color.lerp(colors.live, colors.panel, 0.35)!,
+                          colors.live, t)!
+                      : colors.insetBorder,
                   width: 3,
                 ),
                 boxShadow: speaking
                     ? [
                         BoxShadow(
-                            color: const Color(0xFF1DFF8C)
-                                .withValues(alpha: 0.25 + 0.35 * t),
+                            color:
+                                colors.live.withValues(alpha: 0.25 + 0.35 * t),
                             blurRadius: 14 + 12 * t,
                             spreadRadius: 1 + 2 * t),
                       ]
                     : null,
               ),
-              child: UserAvatarFromID(client, uid, radius: 34),
+              child: UserAvatarFromID(client, uid,
+                  radius: colors.stageAvatarRadius),
             ),
             if (muted)
               Positioned(
@@ -918,12 +953,10 @@ class _StageAvatar extends StatelessWidget {
                   padding: const EdgeInsets.all(4),
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: const Color(0xFF2A1416),
-                    border:
-                        Border.all(color: const Color(0xFF0C0D0C), width: 2),
+                    color: RtcColors.tint(colors.muted),
+                    border: Border.all(color: colors.panel, width: 2),
                   ),
-                  child: const Icon(Icons.mic_off,
-                      size: 14, color: Color(0xFFFF6B6B)),
+                  child: Icon(Icons.mic_off, size: 14, color: colors.muted),
                 ),
               ),
           ]);
@@ -931,17 +964,12 @@ class _StageAvatar extends StatelessWidget {
       ),
       const SizedBox(height: 10),
       Text(nick,
-          style: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFFF2F4F3))),
+          style: TextStyle(
+              fontSize: 14, fontWeight: FontWeight.w600, color: colors.text)),
       const SizedBox(height: 2),
       Text(speaking ? "speaking" : (muted ? "muted" : ""),
           style: TextStyle(
-              fontSize: 11.5,
-              color: speaking
-                  ? const Color(0xFF1DFF8C)
-                  : const Color(0xFFFF6B6B))),
+              fontSize: 11.5, color: speaking ? colors.live : colors.muted)),
     ]);
   }
 }
@@ -956,12 +984,14 @@ class _MicPanel extends StatelessWidget {
   final bool hot;
   final bool active;
   final AnimationController pulse;
+  final RtcColors colors;
   const _MicPanel(
       {required this.audio,
       required this.devices,
       required this.hot,
       required this.active,
-      required this.pulse});
+      required this.pulse,
+      required this.colors});
 
   @override
   Widget build(BuildContext context) {
@@ -970,30 +1000,27 @@ class _MicPanel extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: const Color(0xFF0E100E),
+        color: colors.inset,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFF1F231F)),
+        border: Border.all(color: colors.insetBorder),
       ),
       child: Row(children: [
         Icon(hot ? Icons.mic : Icons.mic_off,
-            size: 20,
-            color: hot ? const Color(0xFF1DFF8C) : const Color(0xFF5F6764)),
+            size: 20, color: hot ? colors.live : colors.faintText),
         const SizedBox(width: 10),
         Expanded(
           child: devices.isEmpty
-              ? const Text("Default microphone",
-                  style: TextStyle(fontSize: 13.5, color: Color(0xFF9AA3A0)))
+              ? Text("Default microphone",
+                  style: TextStyle(fontSize: 13.5, color: colors.subtext))
               : DropdownButton<String>(
                   value: hasCurrent ? currentId : null,
                   isExpanded: true,
                   isDense: true,
                   underline: const SizedBox(),
-                  dropdownColor: const Color(0xFF15171A),
-                  hint: const Text("Default microphone",
-                      style:
-                          TextStyle(fontSize: 13.5, color: Color(0xFF9AA3A0))),
-                  style:
-                      const TextStyle(fontSize: 13.5, color: Color(0xFFF2F4F3)),
+                  dropdownColor: colors.menu,
+                  hint: Text("Default microphone",
+                      style: TextStyle(fontSize: 13.5, color: colors.subtext)),
+                  style: TextStyle(fontSize: 13.5, color: colors.text),
                   items: devices
                       .map<DropdownMenuItem<String>>((d) => DropdownMenuItem(
                             value: d.id as String,
@@ -1007,7 +1034,7 @@ class _MicPanel extends StatelessWidget {
                 ),
         ),
         const SizedBox(width: 10),
-        _MicActivityBars(active: hot && active, pulse: pulse),
+        _MicActivityBars(active: hot && active, pulse: pulse, colors: colors),
       ]),
     );
   }
@@ -1017,7 +1044,9 @@ class _MicPanel extends StatelessWidget {
 class _SpeakerPanel extends StatelessWidget {
   final AudioModel audio;
   final List<dynamic> devices;
-  const _SpeakerPanel({required this.audio, required this.devices});
+  final RtcColors colors;
+  const _SpeakerPanel(
+      {required this.audio, required this.devices, required this.colors});
 
   @override
   Widget build(BuildContext context) {
@@ -1026,28 +1055,26 @@ class _SpeakerPanel extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: const Color(0xFF0E100E),
+        color: colors.inset,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFF1F231F)),
+        border: Border.all(color: colors.insetBorder),
       ),
       child: Row(children: [
-        const Icon(Icons.headphones, size: 20, color: Color(0xFF9AA3A0)),
+        Icon(Icons.headphones, size: 20, color: colors.subtext),
         const SizedBox(width: 10),
         Expanded(
           child: devices.isEmpty
-              ? const Text("Default speakers",
-                  style: TextStyle(fontSize: 13.5, color: Color(0xFF9AA3A0)))
+              ? Text("Default speakers",
+                  style: TextStyle(fontSize: 13.5, color: colors.subtext))
               : DropdownButton<String>(
                   value: hasCurrent ? currentId : null,
                   isExpanded: true,
                   isDense: true,
                   underline: const SizedBox(),
-                  dropdownColor: const Color(0xFF15171A),
-                  hint: const Text("Default speakers",
-                      style:
-                          TextStyle(fontSize: 13.5, color: Color(0xFF9AA3A0))),
-                  style:
-                      const TextStyle(fontSize: 13.5, color: Color(0xFFF2F4F3)),
+                  dropdownColor: colors.menu,
+                  hint: Text("Default speakers",
+                      style: TextStyle(fontSize: 13.5, color: colors.subtext)),
+                  style: TextStyle(fontSize: 13.5, color: colors.text),
                   items: devices
                       .map<DropdownMenuItem<String>>((d) => DropdownMenuItem(
                             value: d.id as String,
@@ -1069,7 +1096,9 @@ class _SpeakerPanel extends StatelessWidget {
 class _MicActivityBars extends StatelessWidget {
   final bool active;
   final AnimationController pulse;
-  const _MicActivityBars({required this.active, required this.pulse});
+  final RtcColors colors;
+  const _MicActivityBars(
+      {required this.active, required this.pulse, required this.colors});
 
   @override
   Widget build(BuildContext context) {
@@ -1095,9 +1124,7 @@ class _MicActivityBars extends StatelessWidget {
                       width: 3,
                       height: h(i),
                       decoration: BoxDecoration(
-                        color: active
-                            ? const Color(0xFF1DFF8C)
-                            : const Color(0xFF2A2E2B),
+                        color: active ? colors.live : colors.idle,
                         borderRadius: BorderRadius.circular(2),
                       ),
                     ),

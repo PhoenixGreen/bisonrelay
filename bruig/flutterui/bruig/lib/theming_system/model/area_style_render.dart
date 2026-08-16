@@ -75,6 +75,10 @@ extension AreaStyleRender on AreaStyle {
       _liveColor(theme, rtcActiveSessionColorIndex, rtcActiveSessionColor);
   Color? resolveRtcLiveColor(ThemeNotifier theme) =>
       _liveColor(theme, rtcLiveColorIndex, rtcLiveColor);
+  Color? resolveRtcMutedColor(ThemeNotifier theme) =>
+      _liveColor(theme, rtcMutedColorIndex, rtcMutedColor);
+  Color? resolveRtcWarningColor(ThemeNotifier theme) =>
+      _liveColor(theme, rtcWarningColorIndex, rtcWarningColor);
   Color? resolveChatListBackgroundColor(ThemeNotifier theme) =>
       _liveColor(theme, chatListBackgroundColorIndex, chatListBackgroundColor);
   Color? resolveChatListSelectedColor(ThemeNotifier theme) =>

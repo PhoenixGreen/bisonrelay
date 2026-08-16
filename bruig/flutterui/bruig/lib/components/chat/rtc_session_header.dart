@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:async';
 
+import 'package:bruig/components/chat/rtc_colors.dart';
 import 'package:bruig/components/confirmation_dialog.dart';
 import 'package:bruig/components/context_menu.dart';
 import 'package:bruig/components/empty_widget.dart';
@@ -206,6 +207,7 @@ class _RTCSessionHeaderState extends State<RTCSessionHeader> {
   @override
   Widget build(BuildContext context) {
     var isSmallScreen = checkIsScreenSmall(context);
+    var c = RtcColors.of(context);
 
     // Helper to show an icon button or elevated button depending on screen size.
     Widget button(IconData icon, String label, VoidCallback? onPressed,
@@ -246,9 +248,9 @@ class _RTCSessionHeaderState extends State<RTCSessionHeader> {
                       : const Txt("Unmute"),
                   onPressed: makeAudioHot,
                   style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF3A2326),
-                      foregroundColor: const Color(0xFFFF6B6B),
-                      side: const BorderSide(color: Color(0xFF5A2E33)))),
+                      backgroundColor: RtcColors.tint(c.muted),
+                      foregroundColor: c.muted,
+                      side: BorderSide(color: c.muted.withValues(alpha: 0.4)))),
             if (session.hasHotAudio)
               _MicLiveIndicator(onTap: disableHotAudio, small: isSmallScreen),
             if (Platform.isAndroid &&
@@ -279,19 +281,20 @@ class _RTCSessionHeaderState extends State<RTCSessionHeader> {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF2A2410),
+                    color: RtcColors.tint(c.warning),
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: const Color(0xFF5A4A1E)),
+                    border:
+                        Border.all(color: c.warning.withValues(alpha: 0.45)),
                   ),
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    const Icon(Icons.warning_amber_rounded,
-                        size: 16, color: Color(0xFFE0B33A)),
+                    Icon(Icons.warning_amber_rounded,
+                        size: 16, color: c.warning),
                     if (!isSmallScreen) ...[
                       const SizedBox(width: 7),
-                      const Text("Leave session before closing BR",
+                      Text("Leave session before closing BR",
                           style: TextStyle(
                               fontSize: 12.5,
-                              color: Color(0xFFE0B33A),
+                              color: c.warning,
                               fontWeight: FontWeight.w500)),
                     ],
                   ]),
@@ -348,6 +351,12 @@ class _RTCSessionHeaderState extends State<RTCSessionHeader> {
 // Prominent, pulsing indicator shown while the local mic is hot, when
 // live. Makes it obvious the user is
 // live/transmitting. Tapping it mutes (disables hot audio).
+// _onLive is what reads on top of the live colour -- worked out from it
+// rather than fixed at the near-black the green wanted, so a theme that sets
+// live to something pale still gets legible text on the pill.
+Color _onLive(Color live) =>
+    live.computeLuminance() > 0.5 ? Colors.black87 : Colors.white;
+
 class _MicLiveIndicator extends StatefulWidget {
   final VoidCallback onTap;
   final bool small;
@@ -385,16 +394,17 @@ class _MicLiveIndicatorState extends State<_MicLiveIndicator>
           animation: _ctrl,
           builder: (context, _) {
             final t = _ctrl.value; // 0..1
+            final c = RtcColors.of(context);
+            final onLive = _onLive(c.live);
             return Container(
               padding: EdgeInsets.symmetric(
                   horizontal: widget.small ? 12 : 16, vertical: 9),
               decoration: BoxDecoration(
-                color: const Color(0xFF13D673),
+                color: Color.lerp(c.live, Colors.black, 0.12),
                 borderRadius: BorderRadius.circular(22),
                 boxShadow: [
                   BoxShadow(
-                    color: const Color(0xFF1DFF8C)
-                        .withValues(alpha: 0.30 + 0.35 * t),
+                    color: c.live.withValues(alpha: 0.30 + 0.35 * t),
                     blurRadius: 8 + 14 * t,
                     spreadRadius: 1 + 2 * t,
                   ),
@@ -406,19 +416,21 @@ class _MicLiveIndicatorState extends State<_MicLiveIndicator>
                   height: 9,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: Color.lerp(const Color(0xFF04130B),
-                        const Color(0xFFFFFFFF), 0.4 + 0.6 * t),
+                    color: Color.lerp(
+                        onLive,
+                        onLive == Colors.white ? Colors.black : Colors.white,
+                        0.4 + 0.6 * t),
                   ),
                 ),
                 const SizedBox(width: 8),
-                const Icon(Icons.mic, size: 18, color: Color(0xFF04130B)),
+                Icon(Icons.mic, size: 18, color: onLive),
                 if (!widget.small) ...[
                   const SizedBox(width: 6),
-                  const Text("Click to mute",
+                  Text("Click to mute",
                       style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w800,
-                          color: Color(0xFF04130B))),
+                          color: onLive)),
                 ],
               ]),
             );

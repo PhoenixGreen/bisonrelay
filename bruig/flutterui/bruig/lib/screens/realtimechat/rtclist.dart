@@ -1,5 +1,6 @@
 import 'package:bruig/components/confirmation_dialog.dart';
 import 'package:bruig/components/containers.dart';
+import 'package:bruig/components/chat/rtc_colors.dart';
 import 'package:bruig/components/equalizer_icon.dart';
 import 'package:bruig/components/inputs.dart';
 import 'package:bruig/components/interactive_avatar.dart';
@@ -282,20 +283,13 @@ class __RTDTSessionWState extends State<_RTDTSessionW> {
   @override
   Widget build(BuildContext context) {
     final live = session.hasHotAudio || session.inLiveSession;
-    // The three things a theme decides about this row (see the Realtime
-    // Chat theme area); each keeps its built-in value until set.
-    var rtcStyle = ThemeNotifier.of(context).areaStyle(ThemeArea.realtimeChat);
-    var radius = BorderRadius.circular(rtcStyle.rtcSessionCornerRadius ?? 12);
-    var activeColor =
-        rtcStyle.resolveRtcActiveSessionColor(ThemeNotifier.of(context)) ??
-            const Color(0xFF0B0F16);
-    var liveColor = rtcStyle.resolveRtcLiveColor(ThemeNotifier.of(context)) ??
-        const Color(0xFF1DFF8C);
+    var c = RtcColors.of(context);
+    var radius = BorderRadius.circular(c.sessionCornerRadius);
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       child: Material(
-        color: isActive ? activeColor : Colors.transparent,
+        color: isActive ? c.activeSessionFill : Colors.transparent,
         borderRadius: radius,
         child: InkWell(
           borderRadius: radius,
@@ -310,11 +304,11 @@ class __RTDTSessionWState extends State<_RTDTSessionW> {
                 margin: const EdgeInsets.only(right: 10),
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: live ? liveColor : const Color(0xFF3A403D),
+                  color: live ? c.live : c.idle,
                   boxShadow: live
                       ? [
                           BoxShadow(
-                            color: liveColor.withValues(alpha: 0.6),
+                            color: c.live.withValues(alpha: 0.6),
                             blurRadius: 7,
                           )
                         ]
@@ -332,21 +326,17 @@ class __RTDTSessionWState extends State<_RTDTSessionW> {
                             fontSize: 15,
                             fontWeight:
                                 isActive ? FontWeight.w600 : FontWeight.w500,
-                            color: isActive
-                                ? const Color(0xFF4D9FFF)
-                                : const Color(0xFFF2F4F3),
+                            color: isActive ? c.accent : c.text,
                           )),
                       const SizedBox(height: 2),
                       Text(session.info.metadata.rv.substring(0, 10),
-                          style: const TextStyle(
-                              fontSize: 12, color: Color(0xFF5F6764))),
+                          style: TextStyle(fontSize: 12, color: c.faintText)),
                     ]),
               ),
               if (session.hasHotAudio)
-                Icon(Icons.mic, size: 18, color: liveColor)
+                Icon(Icons.mic, size: 18, color: c.live)
               else if (session.inLiveSession)
-                const Icon(Icons.headphones,
-                    size: 18, color: Color(0xFF4D9FFF)),
+                Icon(Icons.headphones, size: 18, color: c.accent),
             ]),
           ),
         ),
@@ -448,31 +438,32 @@ class _RTDTIntro extends StatelessWidget {
   final bool hasSessions;
   const _RTDTIntro({required this.hasSessions});
 
-  Widget _feature(IconData ic, String title, String body) => Padding(
+  Widget _feature(RtcColors c, IconData ic, String title, String body) =>
+      Padding(
         padding: const EdgeInsets.only(bottom: 12),
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Container(
             width: 32,
             height: 32,
             decoration: BoxDecoration(
-              color: const Color(0xFF101826),
+              color: RtcColors.tint(c.accent),
               borderRadius: BorderRadius.circular(9),
             ),
-            child: Icon(ic, size: 16, color: const Color(0xFF4D9FFF)),
+            child: Icon(ic, size: 16, color: c.accent),
           ),
           const SizedBox(width: 12),
           Expanded(
             child:
                 Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(title,
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 12.5,
                       fontWeight: FontWeight.w600,
-                      color: Color(0xFFF2F4F3))),
+                      color: c.text)),
               const SizedBox(height: 1),
               Text(body,
-                  style: const TextStyle(
-                      fontSize: 11.5, height: 1.35, color: Color(0xFF9AA3A0))),
+                  style: TextStyle(
+                      fontSize: 11.5, height: 1.35, color: c.subtext)),
             ]),
           ),
         ]),
@@ -481,10 +472,11 @@ class _RTDTIntro extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     var theme = ThemeNotifier.of(context);
+    var c = RtcColors.of(context);
     // Was a hardcoded bright-green gradient with no palette field behind
     // it -- now uses the same "Accent (Buttons/Toggles)" slot the rest of
     // the app's unthemed buttons/toggles were pinned to.
-    var accent = theme.activePreset?.accentContainer ?? const Color(0xFF1DFF8C);
+    var accent = theme.activePreset?.accentContainer ?? c.live;
     var onAccent = theme.activePreset?.onSurface ?? const Color(0xFF04130B);
     return Center(
       child: SingleChildScrollView(
@@ -508,44 +500,46 @@ class _RTDTIntro extends StatelessWidget {
               child: Icon(Icons.graphic_eq, size: 29, color: onAccent),
             ),
             const SizedBox(height: 16),
-            const Text("Realtime Chat",
+            Text("Realtime Chat",
                 style: TextStyle(
-                    fontSize: 19,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFFF2F4F3))),
+                    fontSize: 19, fontWeight: FontWeight.w700, color: c.text)),
             const SizedBox(height: 6),
-            const Text(
+            Text(
                 "Encrypted realtime voice over Bison Relay, with live group "
                 "messaging in the same session. Audio is relayed through an "
                 "RTDT server but stays end-to-end encrypted along the way.",
                 textAlign: TextAlign.center,
-                style: TextStyle(
-                    fontSize: 12.5, height: 1.45, color: Color(0xFF9AA3A0))),
+                style:
+                    TextStyle(fontSize: 12.5, height: 1.45, color: c.subtext)),
             const SizedBox(height: 20),
             Container(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
               decoration: BoxDecoration(
-                color: const Color(0xFF0C0D0C),
+                color: c.panel,
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: const Color(0xFF1C1F1D)),
+                border: Border.all(color: c.panelBorder),
               ),
               child: Column(children: [
                 _feature(
+                    c,
                     Icons.lock_outline,
                     "End-to-end encrypted",
                     "Audio and messages use a key only session participants "
                         "share — the relay can't read them."),
                 _feature(
+                    c,
                     Icons.groups_outlined,
                     "Group voice + chat",
                     "Talk live with multiple peers and send messages in the "
                         "same session."),
                 _feature(
+                    c,
                     Icons.bolt_outlined,
                     "Realtime UDP transport",
                     "RTDT (Real Time Datagram Tunneling) is built on UDP for "
                         "live audio; round-trip time is shown during calls."),
                 _feature(
+                    c,
                     Icons.bolt,
                     "Pay-as-you-go",
                     "Senders pre-pay a small Lightning allowance for the "
@@ -577,8 +571,8 @@ class _RTDTIntro extends StatelessWidget {
             ),
             if (hasSessions) ...[
               const SizedBox(height: 10),
-              const Text("…or pick an existing session on the left",
-                  style: TextStyle(fontSize: 11.5, color: Color(0xFF5F6764))),
+              Text("…or pick an existing session on the left",
+                  style: TextStyle(fontSize: 11.5, color: c.faintText)),
             ],
           ]),
         ),

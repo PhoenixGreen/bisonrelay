@@ -371,6 +371,20 @@ class AreaStyle {
   // ring around an avatar. Null = the built-in green.
   final Color? rtcLiveColor;
   final int? rtcLiveColorIndex;
+  // The muted/trouble accent: a muted badge, the "LIVE" label, a mic that
+  // is off, the weakest signal bar. Null = the built-in red.
+  final Color? rtcMutedColor;
+  final int? rtcMutedColorIndex;
+  // The middling accent, used where a state is neither good nor bad: the
+  // two-bar connection reading. Null = the built-in amber.
+  final Color? rtcWarningColor;
+  final int? rtcWarningColorIndex;
+  // How large a speaker is drawn on the live stage, as the avatar's radius.
+  // Null = the built-in 34.
+  final double? rtcStageAvatarRadius;
+  // Whether the live stage opens folded away, leaving the session's
+  // messages the whole page. It can still be opened by hand.
+  final bool rtcStageCollapsed;
 
   // -------------------------------------------------------------------------
   // Stats -- see editor/areas/settings_pages.dart.
@@ -681,6 +695,12 @@ class AreaStyle {
     this.rtcActiveSessionColorIndex,
     this.rtcLiveColor,
     this.rtcLiveColorIndex,
+    this.rtcMutedColor,
+    this.rtcMutedColorIndex,
+    this.rtcWarningColor,
+    this.rtcWarningColorIndex,
+    this.rtcStageAvatarRadius,
+    this.rtcStageCollapsed = false,
     this.payStatsCardStyle = false,
     this.accountCardLayout = false,
     this.feedCardRedesign = false,
@@ -858,6 +878,17 @@ class AreaStyle {
     bool clearRtcLiveColor = false,
     int? rtcLiveColorIndex,
     bool clearRtcLiveColorIndex = false,
+    Color? rtcMutedColor,
+    bool clearRtcMutedColor = false,
+    int? rtcMutedColorIndex,
+    bool clearRtcMutedColorIndex = false,
+    Color? rtcWarningColor,
+    bool clearRtcWarningColor = false,
+    int? rtcWarningColorIndex,
+    bool clearRtcWarningColorIndex = false,
+    double? rtcStageAvatarRadius,
+    bool clearRtcStageAvatarRadius = false,
+    bool? rtcStageCollapsed,
     bool? payStatsCardStyle,
     bool? accountCardLayout,
     bool? feedCardRedesign,
@@ -1041,8 +1072,9 @@ class AreaStyle {
         messageLayoutMode: clearMessageLayoutMode
             ? null
             : (messageLayoutMode ?? this.messageLayoutMode),
-        messageSpacing:
-            clearMessageSpacing ? null : (messageSpacing ?? this.messageSpacing),
+        messageSpacing: clearMessageSpacing
+            ? null
+            : (messageSpacing ?? this.messageSpacing),
         expandMessageWidth: expandMessageWidth ?? this.expandMessageWidth,
         expandMessagePaddingSides: clearExpandMessagePaddingSides
             ? null
@@ -1065,6 +1097,21 @@ class AreaStyle {
         rtcLiveColorIndex: clearRtcLiveColorIndex
             ? null
             : (rtcLiveColorIndex ?? this.rtcLiveColorIndex),
+        rtcMutedColor:
+            clearRtcMutedColor ? null : (rtcMutedColor ?? this.rtcMutedColor),
+        rtcMutedColorIndex: clearRtcMutedColorIndex
+            ? null
+            : (rtcMutedColorIndex ?? this.rtcMutedColorIndex),
+        rtcWarningColor: clearRtcWarningColor
+            ? null
+            : (rtcWarningColor ?? this.rtcWarningColor),
+        rtcWarningColorIndex: clearRtcWarningColorIndex
+            ? null
+            : (rtcWarningColorIndex ?? this.rtcWarningColorIndex),
+        rtcStageAvatarRadius: clearRtcStageAvatarRadius
+            ? null
+            : (rtcStageAvatarRadius ?? this.rtcStageAvatarRadius),
+        rtcStageCollapsed: rtcStageCollapsed ?? this.rtcStageCollapsed,
         payStatsCardStyle: payStatsCardStyle ?? this.payStatsCardStyle,
         accountCardLayout: accountCardLayout ?? this.accountCardLayout,
         feedCardRedesign: feedCardRedesign ?? this.feedCardRedesign,
@@ -1282,6 +1329,16 @@ class AreaStyle {
           "rtcActiveSessionColorIndex": rtcActiveSessionColorIndex,
         if (rtcLiveColor != null) "rtcLiveColor": colorToHex(rtcLiveColor!),
         if (rtcLiveColorIndex != null) "rtcLiveColorIndex": rtcLiveColorIndex,
+        if (rtcMutedColor != null) "rtcMutedColor": colorToHex(rtcMutedColor!),
+        if (rtcMutedColorIndex != null)
+          "rtcMutedColorIndex": rtcMutedColorIndex,
+        if (rtcWarningColor != null)
+          "rtcWarningColor": colorToHex(rtcWarningColor!),
+        if (rtcWarningColorIndex != null)
+          "rtcWarningColorIndex": rtcWarningColorIndex,
+        if (rtcStageAvatarRadius != null)
+          "rtcStageAvatarRadius": rtcStageAvatarRadius,
+        if (rtcStageCollapsed) "rtcStageCollapsed": rtcStageCollapsed,
         if (payStatsCardStyle) "payStatsCardStyle": payStatsCardStyle,
         if (accountCardLayout) "accountCardLayout": accountCardLayout,
         if (feedCardRedesign) "feedCardRedesign": feedCardRedesign,
@@ -1494,6 +1551,12 @@ class AreaStyle {
           (j["rtcActiveSessionColorIndex"] as num?)?.toInt(),
       rtcLiveColor: color("rtcLiveColor"),
       rtcLiveColorIndex: (j["rtcLiveColorIndex"] as num?)?.toInt(),
+      rtcMutedColor: color("rtcMutedColor"),
+      rtcMutedColorIndex: (j["rtcMutedColorIndex"] as num?)?.toInt(),
+      rtcWarningColor: color("rtcWarningColor"),
+      rtcWarningColorIndex: (j["rtcWarningColorIndex"] as num?)?.toInt(),
+      rtcStageAvatarRadius: number("rtcStageAvatarRadius"),
+      rtcStageCollapsed: j["rtcStageCollapsed"] == true,
       payStatsCardStyle: flag("payStatsCardStyle"),
       // "settingsShellRestyle" is accountCardLayout's old name, from when
       // it lived on the Master area (see ThemePreset.fromJson, which moves
@@ -1620,6 +1683,10 @@ class AreaStyle {
           remap(rtcActiveSessionColorIndex) == null,
       rtcLiveColorIndex: remap(rtcLiveColorIndex),
       clearRtcLiveColorIndex: remap(rtcLiveColorIndex) == null,
+      rtcMutedColorIndex: remap(rtcMutedColorIndex),
+      clearRtcMutedColorIndex: remap(rtcMutedColorIndex) == null,
+      rtcWarningColorIndex: remap(rtcWarningColorIndex),
+      clearRtcWarningColorIndex: remap(rtcWarningColorIndex) == null,
       chatListBackgroundColorIndex: remap(chatListBackgroundColorIndex),
       clearChatListBackgroundColorIndex:
           remap(chatListBackgroundColorIndex) == null,
