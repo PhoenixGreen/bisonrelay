@@ -1,9 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
-import 'dart:ui' as ui;
 
 import 'package:bruig/components/containers.dart';
+import 'package:bruig/components/feed/feed_image.dart';
+import 'package:bruig/plugin_system/plugin_system.dart';
+import 'package:bruig/components/feed/feed_render_scope.dart';
 import 'package:bruig/components/feed/reading_selection.dart';
 import 'package:bruig/components/empty_widget.dart';
 import 'package:bruig/components/interactive_avatar.dart';
@@ -166,13 +167,13 @@ class _FeedPostWState extends State<FeedPostW>
       }
 
       if (feedStyle.feedImageLayout == FeedImageLayout.none) {
-        markdownData = _stripAllImages(markdownData);
+        markdownData = stripAllImages(markdownData);
       }
 
       final legacyStripLinks = feedStyle.feedLinksMode == FeedLinksMode.off ||
           (feedStyle.feedLinksMode == FeedLinksMode.offIfImage &&
-              _hasImageEmbed(markdownData));
-      if (legacyStripLinks) markdownData = _stripLinks(markdownData);
+              hasImageEmbed(markdownData));
+      if (legacyStripLinks) markdownData = stripLinks(markdownData);
 
       return Card.filled(
           color: theme.colors.tertiary,
@@ -235,7 +236,7 @@ class _FeedPostWState extends State<FeedPostW>
     // "has an image" for FeedLinksMode.offIfImage shouldn't depend on
     // whether the image layout/text order settings happen to pull that
     // image out for special positioning.
-    final postHasImage = _hasImageEmbed(markdownData);
+    final postHasImage = hasImageEmbed(markdownData);
 
     // Only the first image is ever pulled out for separate placement --
     // posts with no image fall straight through to the original
@@ -244,22 +245,47 @@ class _FeedPostWState extends State<FeedPostW>
     // chosen -- picking "Text first"/"Text last" is meaningless unless the
     // image actually gets pulled out of the text flow and stacked.
     final wantsTextOrder = feedStyle.feedTextOrder != FeedTextOrder.standard;
-    _ExtractedImage? firstImage;
+    ExtractedImage? firstImage;
     var resolvedImageLayout = FeedImageLayout.standard;
     if (feedStyle.feedImageLayout == FeedImageLayout.none) {
       // Every image is removed, not just the first -- there's nothing left
       // to extract/position.
-      markdownData = _stripAllImages(markdownData);
+      markdownData = stripAllImages(markdownData);
     } else if (feedStyle.feedImageLayout != FeedImageLayout.standard ||
         wantsTextOrder) {
-      final (extracted, stripped) = _extractFirstImage(markdownData);
+      final (extracted, stripped) = extractFirstImage(markdownData);
       if (extracted != null) {
         firstImage = extracted;
         markdownData = stripped;
         resolvedImageLayout =
             feedStyle.feedImageLayout == FeedImageLayout.standard
                 ? FeedImageLayout.standard
-                : _resolveFeedImageLayout(feedStyle.feedImageLayout,
+                : resolveFeedImageLayout(feedStyle.feedImageLayout,
+                    widget.post.summ.from, widget.post.summ.id);
+      }
+    }
+
+    // A post whose media is a quoted post or a link preview follows the same
+    // setting a post with a picture does. Only when there was no picture to
+    // place: a post carrying both has one piece of media, and the picture is
+    // it.
+    final plugins = Provider.of<PluginManagerModel>(context, listen: false);
+    String? firstCard;
+    if (firstImage == null &&
+        feedStyle.feedImageLayout != FeedImageLayout.none &&
+        (feedStyle.feedImageLayout != FeedImageLayout.standard ||
+            wantsTextOrder)) {
+      final (card, rest) = extractFirstCard(markdownData,
+          claimsLink: feedStyle.feedLinksMode == FeedLinksMode.off
+              ? null
+              : (url) => plugins.claimsUrl(PluginCapability.linkCard, url));
+      if (card != null) {
+        firstCard = card;
+        markdownData = rest;
+        resolvedImageLayout =
+            feedStyle.feedImageLayout == FeedImageLayout.standard
+                ? FeedImageLayout.standard
+                : resolveFeedImageLayout(feedStyle.feedImageLayout,
                     widget.post.summ.from, widget.post.summ.id);
       }
     }
@@ -267,15 +293,17 @@ class _FeedPostWState extends State<FeedPostW>
     // Limits how much of the (possibly image-stripped) body text is shown;
     // 0 (the default) leaves it unlimited, same as before this setting
     // existed.
-    if (feedStyle.feedTextLimit > 0 &&
-        markdownData.length > feedStyle.feedTextLimit) {
-      markdownData =
-          "${markdownData.substring(0, feedStyle.feedTextLimit.toInt())}…";
-    }
+    //
+    // Through limitText rather than a plain substring: an embed carries a
+    // whole picture in base64, so it is routinely tens of thousands of
+    // characters and a cut at the limit lands inside one far more often than
+    // not -- which showed the raw tag and a wall of base64 instead of the
+    // picture.
+    markdownData = limitText(markdownData, feedStyle.feedTextLimit);
 
-    final stripLinks = feedStyle.feedLinksMode == FeedLinksMode.off ||
+    final linksDisabled = feedStyle.feedLinksMode == FeedLinksMode.off ||
         (feedStyle.feedLinksMode == FeedLinksMode.offIfImage && postHasImage);
-    if (stripLinks) markdownData = _stripLinks(markdownData);
+    if (linksDisabled) markdownData = stripLinks(markdownData);
 
     final textContent = _ClampedContent(
       cacheKey: "${widget.post.summ.from}:${widget.post.summ.id}",
@@ -284,15 +312,26 @@ class _FeedPostWState extends State<FeedPostW>
       child: Provider<DownloadSource>(
           create: (context) => DownloadSource(widget.post.summ.authorID),
           child: MarkdownArea(markdownData, false,
-              disableLinks: stripLinks,
+              disableLinks: linksDisabled,
               plainText: feedStyle.feedStripMarkdown)),
     );
 
-    Widget postBody;
-    if (firstImage == null) {
-      postBody = textContent;
-    } else {
-      final imageWidget = _FeedFirstImage(
+    // The layout the *settings* ask of this post, which is not always the one
+    // its own first image was drawn in: resolvedImageLayout stays Default
+    // when there was no image to extract, and a post whose only content is a
+    // quoted post or a link is exactly that case. What a reader asked for
+    // still has to reach the things inside it, so random is resolved here
+    // too -- by the same post id, so a post's nested content is set the way
+    // the post itself is.
+    final scopeImageLayout = resolveFeedImageLayout(
+        feedStyle.feedImageLayout, widget.post.summ.from, widget.post.summ.id);
+
+    // The media this post places beside or around its writing: its first
+    // picture, or -- failing that -- the card it leads with.
+    Widget? mediaWidget;
+    var mediaWidth = 140.0;
+    if (firstImage != null) {
+      mediaWidget = FeedFirstImage(
         bytes: firstImage.bytes,
         tip: firstImage.tip,
         layout: resolvedImageLayout,
@@ -300,11 +339,39 @@ class _FeedPostWState extends State<FeedPostW>
         applyCropCapToFull: feedStyle.feedImageLayout == FeedImageLayout.random,
         onTap: () => showContent(context),
       );
+    } else if (firstCard != null) {
+      mediaWidth = FeedRenderScope.cardColumnWidth;
+      // Under a scope of its own: the card *is* the media, so what is inside
+      // it must not be split into columns all over again. asMedia caps the
+      // picture inside the card to the column's height and stacks it above
+      // the card's own writing.
+      mediaWidget = FeedRenderScope(
+        linksDisabled: linksDisabled,
+        imageLayout: scopeImageLayout,
+        cropHeight: feedStyle.feedImageCropHeight,
+        textLimit: feedStyle.feedTextLimit,
+        stripMarkdown: feedStyle.feedStripMarkdown,
+        child: const SizedBox.shrink(),
+      ).asMedia(
+        child: Provider<DownloadSource>(
+          create: (context) => DownloadSource(widget.post.summ.authorID),
+          child: MarkdownArea(firstCard, false,
+              disableLinks: linksDisabled,
+              plainText: feedStyle.feedStripMarkdown),
+        ),
+      );
+    }
+
+    Widget postBody;
+    if (mediaWidget == null) {
+      postBody = textContent;
+    } else {
+      final media = mediaWidget;
       switch (resolvedImageLayout) {
         case FeedImageLayout.left:
           postBody =
               Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            SizedBox(width: 140, child: imageWidget),
+            SizedBox(width: mediaWidth, child: media),
             const SizedBox(width: 12),
             Expanded(child: textContent),
           ]);
@@ -314,7 +381,7 @@ class _FeedPostWState extends State<FeedPostW>
               Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Expanded(child: textContent),
             const SizedBox(width: 12),
-            SizedBox(width: 140, child: imageWidget),
+            SizedBox(width: mediaWidth, child: media),
           ]);
           break;
         case FeedImageLayout.full:
@@ -322,14 +389,14 @@ class _FeedPostWState extends State<FeedPostW>
         case FeedImageLayout.standard:
           postBody = feedStyle.feedTextOrder == FeedTextOrder.textLast
               ? Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  imageWidget,
+                  media,
                   const SizedBox(height: 10),
                   textContent,
                 ])
               : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   textContent,
                   const SizedBox(height: 10),
-                  imageWidget,
+                  media,
                 ]);
           break;
         case FeedImageLayout.random:
@@ -339,189 +406,206 @@ class _FeedPostWState extends State<FeedPostW>
       }
     }
 
-    return InkWell(
-      onTap: () => showContent(context),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
-        decoration: const BoxDecoration(
-          border:
-              Border(bottom: BorderSide(color: Color(0xFF2F3336), width: 1)),
-        ),
-        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          SizedBox(
-              width: 38,
-              child: _AvatarOrUnread(
-                  widget.client, authorID, hasUnreadPost, authorNick)),
-          const SizedBox(width: 12),
-          Expanded(
-            child:
-                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [
-                Flexible(
-                    child: Text(authorNick,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 14.5,
-                            color: theme.textColor(TextColor.onSurface)))),
-                const SizedBox(width: 6),
-                Text("· $sincePost",
-                    style: TextStyle(
-                        fontSize: 12.5,
-                        color: theme
-                            .textColor(TextColor.onSurface)
-                            .withValues(alpha: 0.6))),
-                const Spacer(),
-              ]),
-              const SizedBox(height: 6),
-              postBody,
-              const SizedBox(height: 10),
-              Row(children: [
-                const Icon(Icons.mode_comment_outlined,
-                    size: 16, color: Color(0xFF5F6764)),
-                const SizedBox(width: 6),
-                Text(
-                    _commentCount == null
-                        ? "—"
-                        : "${_commentCount!} ${_commentCount == 1 ? "comment" : "comments"}",
-                    style: const TextStyle(
-                        fontSize: 12.5, color: Color(0xFF9AA3A0))),
-                if (hasUnreadComments) ...[
-                  const SizedBox(width: 9),
-                  Container(
-                    width: 7,
-                    height: 7,
-                    decoration: const BoxDecoration(
-                        shape: BoxShape.circle, color: Color(0xFF4D9FFF)),
-                  ),
-                  const SizedBox(width: 5),
-                  const Text("new",
-                      style: TextStyle(
-                          fontSize: 11.5,
-                          color: Color(0xFF4D9FFF),
-                          fontWeight: FontWeight.w500)),
-                ],
-                const Spacer(),
-                if (cardActions) ...[
-                  Tooltip(
-                    message: "Relay to your subscribers",
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () => Golib.relayPostToAll(
-                          widget.post.summ.from, widget.post.summ.id),
-                      child: const Padding(
-                        padding:
-                            EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                        child: Icon(Icons.cached,
-                            size: 18, color: Color(0xFF5F6764)),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  if (!mine)
-                    Tooltip(
-                      message: "Tip the author",
-                      child: GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: () {
-                          final c = widget.client.getExistingChat(authorID);
-                          if (c != null) showPayTipModalBottom(context, c);
-                        },
-                        child: const Padding(
-                          padding:
-                              EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                          child: Icon(Icons.bolt,
-                              size: 18, color: Color(0xFF4D9FFF)),
-                        ),
-                      ),
-                    ),
-                  if (!mine) const SizedBox(width: 4),
-                  Tooltip(
-                    message: "Quote post",
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () {
-                        widget.feed.newPost.content =
-                            "\n\n--embed[type=quote,from=${widget.post.summ.authorID},post=${widget.post.summ.id}]--\n";
-                        widget.onTabChange(3, null);
-                      },
-                      child: const Padding(
-                        padding:
-                            EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                        child: Icon(Icons.repeat,
-                            size: 18, color: Color(0xFF5F6764)),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                ],
-                if (cardActions)
-                  ListenableBuilder(
-                    listenable: FeedBookmarks.instance,
-                    builder: (context, _) {
-                      final marked = FeedBookmarks.instance
-                          .contains(widget.post.summ.from, widget.post.summ.id);
-                      return GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: () => FeedBookmarks.instance
-                            .toggle(widget.post.summ.from, widget.post.summ.id),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 4, vertical: 2),
-                          child: Icon(
-                              marked ? Icons.bookmark : Icons.bookmark_border,
-                              size: 18,
-                              color: marked
-                                  ? const Color(0xFF4D9FFF)
-                                  : const Color(0xFF5F6764)),
-                        ),
-                      );
-                    },
-                  ),
-                // The overflow menu sits at the end of this bar, beside the
-                // other things you can do to a post, rather than up beside
-                // the author's name where it used to be. Bookmarking isn't
-                // in it: it's already one tap away, immediately to its left.
-                if (cardActions)
-                  ListenableBuilder(
-                    listenable: FeedHidden.instance,
-                    builder: (context, _) {
-                      final hidden = FeedHidden.instance
-                          .contains(widget.post.summ.from, widget.post.summ.id);
-                      return SizedBox(
-                        height: 22,
-                        width: 28,
-                        child: PopupMenuButton<String>(
-                          tooltip: "More",
-                          padding: EdgeInsets.zero,
-                          iconSize: 18,
-                          position: PopupMenuPosition.under,
-                          color: const Color(0xFF15171A),
-                          icon: const Icon(Icons.more_horiz,
-                              color: Color(0xFF5F6764)),
-                          onSelected: (v) {
-                            if (v == "hide") {
-                              FeedHidden.instance.toggle(
-                                  widget.post.summ.from, widget.post.summ.id);
-                            }
-                          },
-                          itemBuilder: (context) => [
-                            PopupMenuItem(
-                              value: "hide",
-                              child: Text(hidden ? "Unhide post" : "Hide post",
-                                  style: const TextStyle(
-                                      fontSize: 13, color: Color(0xFFF2F4F3))),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
-              ]),
-            ]),
+    return FeedRenderScope(
+      linksDisabled: linksDisabled,
+      imageLayout: scopeImageLayout,
+      cropHeight: feedStyle.feedImageCropHeight,
+      textLimit: feedStyle.feedTextLimit,
+      stripMarkdown: feedStyle.feedStripMarkdown,
+      child: InkWell(
+        onTap: () => showContent(context),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
+          decoration: const BoxDecoration(
+            border:
+                Border(bottom: BorderSide(color: Color(0xFF2F3336), width: 1)),
           ),
-        ]),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            SizedBox(
+                width: 38,
+                child: _AvatarOrUnread(
+                    widget.client, authorID, hasUnreadPost, authorNick)),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(children: [
+                      Flexible(
+                          child: Text(authorNick,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 14.5,
+                                  color:
+                                      theme.textColor(TextColor.onSurface)))),
+                      const SizedBox(width: 6),
+                      Text("· $sincePost",
+                          style: TextStyle(
+                              fontSize: 12.5,
+                              color: theme
+                                  .textColor(TextColor.onSurface)
+                                  .withValues(alpha: 0.6))),
+                      const Spacer(),
+                    ]),
+                    const SizedBox(height: 6),
+                    postBody,
+                    const SizedBox(height: 10),
+                    Row(children: [
+                      const Icon(Icons.mode_comment_outlined,
+                          size: 16, color: Color(0xFF5F6764)),
+                      const SizedBox(width: 6),
+                      Text(
+                          _commentCount == null
+                              ? "—"
+                              : "${_commentCount!} ${_commentCount == 1 ? "comment" : "comments"}",
+                          style: const TextStyle(
+                              fontSize: 12.5, color: Color(0xFF9AA3A0))),
+                      if (hasUnreadComments) ...[
+                        const SizedBox(width: 9),
+                        Container(
+                          width: 7,
+                          height: 7,
+                          decoration: const BoxDecoration(
+                              shape: BoxShape.circle, color: Color(0xFF4D9FFF)),
+                        ),
+                        const SizedBox(width: 5),
+                        const Text("new",
+                            style: TextStyle(
+                                fontSize: 11.5,
+                                color: Color(0xFF4D9FFF),
+                                fontWeight: FontWeight.w500)),
+                      ],
+                      const Spacer(),
+                      if (cardActions) ...[
+                        Tooltip(
+                          message: "Relay to your subscribers",
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: () => Golib.relayPostToAll(
+                                widget.post.summ.from, widget.post.summ.id),
+                            child: const Padding(
+                              padding: EdgeInsets.symmetric(
+                                  horizontal: 4, vertical: 2),
+                              child: Icon(Icons.cached,
+                                  size: 18, color: Color(0xFF5F6764)),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        if (!mine)
+                          Tooltip(
+                            message: "Tip the author",
+                            child: GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onTap: () {
+                                final c =
+                                    widget.client.getExistingChat(authorID);
+                                if (c != null) {
+                                  showPayTipModalBottom(context, c);
+                                }
+                              },
+                              child: const Padding(
+                                padding: EdgeInsets.symmetric(
+                                    horizontal: 4, vertical: 2),
+                                child: Icon(Icons.bolt,
+                                    size: 18, color: Color(0xFF4D9FFF)),
+                              ),
+                            ),
+                          ),
+                        if (!mine) const SizedBox(width: 4),
+                        Tooltip(
+                          message: "Quote post",
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: () {
+                              widget.feed.newPost.content =
+                                  "\n\n--embed[type=quote,from=${widget.post.summ.authorID},post=${widget.post.summ.id}]--\n";
+                              widget.onTabChange(3, null);
+                            },
+                            child: const Padding(
+                              padding: EdgeInsets.symmetric(
+                                  horizontal: 4, vertical: 2),
+                              child: Icon(Icons.repeat,
+                                  size: 18, color: Color(0xFF5F6764)),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                      ],
+                      if (cardActions)
+                        ListenableBuilder(
+                          listenable: FeedBookmarks.instance,
+                          builder: (context, _) {
+                            final marked = FeedBookmarks.instance.contains(
+                                widget.post.summ.from, widget.post.summ.id);
+                            return GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onTap: () => FeedBookmarks.instance.toggle(
+                                  widget.post.summ.from, widget.post.summ.id),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 4, vertical: 2),
+                                child: Icon(
+                                    marked
+                                        ? Icons.bookmark
+                                        : Icons.bookmark_border,
+                                    size: 18,
+                                    color: marked
+                                        ? const Color(0xFF4D9FFF)
+                                        : const Color(0xFF5F6764)),
+                              ),
+                            );
+                          },
+                        ),
+                      // The overflow menu sits at the end of this bar, beside the
+                      // other things you can do to a post, rather than up beside
+                      // the author's name where it used to be. Bookmarking isn't
+                      // in it: it's already one tap away, immediately to its left.
+                      if (cardActions)
+                        ListenableBuilder(
+                          listenable: FeedHidden.instance,
+                          builder: (context, _) {
+                            final hidden = FeedHidden.instance.contains(
+                                widget.post.summ.from, widget.post.summ.id);
+                            return SizedBox(
+                              height: 22,
+                              width: 28,
+                              child: PopupMenuButton<String>(
+                                tooltip: "More",
+                                padding: EdgeInsets.zero,
+                                iconSize: 18,
+                                position: PopupMenuPosition.under,
+                                color: const Color(0xFF15171A),
+                                icon: const Icon(Icons.more_horiz,
+                                    color: Color(0xFF5F6764)),
+                                onSelected: (v) {
+                                  if (v == "hide") {
+                                    FeedHidden.instance.toggle(
+                                        widget.post.summ.from,
+                                        widget.post.summ.id);
+                                  }
+                                },
+                                itemBuilder: (context) => [
+                                  PopupMenuItem(
+                                    value: "hide",
+                                    child: Text(
+                                        hidden ? "Unhide post" : "Hide post",
+                                        style: const TextStyle(
+                                            fontSize: 13,
+                                            color: Color(0xFFF2F4F3))),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                    ]),
+                  ]),
+            ),
+          ]),
+        ),
       ),
     );
   }
@@ -1326,268 +1410,9 @@ class _ClampedContentState extends State<_ClampedContent> {
   }
 }
 
-class _ExtractedImage {
-  final Uint8List bytes;
-  final String tip;
-  _ExtractedImage(this.bytes, this.tip);
-}
-
-final RegExp _embedRe = RegExp(r'--embed\[(.*?)\]--');
-
-// Finds the first image embed in a post's raw markdown content (skipping
-// non-image embeds like quote-posts or file downloads), decodes it, and
-// returns it alongside the content with that embed's raw tag removed --
-// so callers that pull the image out for separate placement (see
-// FeedImageLayout) don't also render it a second time inline via
-// MarkdownArea. Returns (null, content unchanged) if there's no image, or
-// if AreaStyle.feedImageLayout is FeedImageLayout.standard (the caller is
-// expected to skip calling this in that case, but it's harmless either
-// way).
-(_ExtractedImage?, String) _extractFirstImage(String content) {
-  for (final m in _embedRe.allMatches(content)) {
-    final raw = m.group(1) ?? "";
-    final parms = <String, String>{};
-    for (final part in raw.split(",")) {
-      final p = part.indexOf("=");
-      if (p == -1) continue;
-      parms[part.substring(0, p)] = part.substring(p + 1);
-    }
-    final type = parms["type"] ?? "";
-    if (!type.startsWith("image/")) continue;
-    final data = parms["data"] ?? "";
-    if (data == "") continue;
-    try {
-      final bytes = base64Decode(data);
-      var alt = parms["alt"] ?? "";
-      if (alt != "") {
-        try {
-          alt = Uri.decodeComponent(alt);
-        } catch (_) {
-          // Keep the raw (undecoded) alt text.
-        }
-      }
-      final stripped = content.replaceRange(m.start, m.end, "");
-      return (_ExtractedImage(bytes, alt != "" ? alt : "Image"), stripped);
-    } catch (_) {
-      continue;
-    }
-  }
-  return (null, content);
-}
-
-// Whether a post's raw content contains at least one image embed --
-// independent of FeedImageLayout/FeedTextOrder, which only control
-// whether/how the *first* image gets specially positioned. Used by
-// FeedLinksMode.offIfImage.
-bool _hasImageEmbed(String content) => _extractFirstImage(content).$1 != null;
-
-// Removes every image embed from a post's raw content, not just the first
-// -- used by FeedImageLayout.none.
-String _stripAllImages(String content) {
-  var result = content;
-  while (true) {
-    final (extracted, stripped) = _extractFirstImage(result);
-    if (extracted == null) return result;
-    result = stripped;
-  }
-}
-
-// Strips links out of a post's raw markdown content for FeedLinksMode.off/
-// offIfImage: markdown-style links ("[label](url)") are reduced to just
-// their label text, and bare http(s) URLs are removed outright.
-String _stripLinks(String content) {
-  var result = content.replaceAllMapped(
-      RegExp(r'\[([^\]]*)\]\([^)]*\)'), (m) => m.group(1) ?? "");
-  result = result.replaceAll(RegExp(r'https?://\S+'), "");
-  return result;
-}
-
-// FeedImageLayout.random deterministically picks one of the concrete
-// (non-standard) layouts per post, so the mix looks varied but a given
-// post doesn't reshuffle between rebuilds.
-const _randomFeedImageLayouts = [
-  FeedImageLayout.left,
-  FeedImageLayout.right,
-  FeedImageLayout.full,
-  FeedImageLayout.cropped,
-];
-
-FeedImageLayout _resolveFeedImageLayout(
-    FeedImageLayout layout, String from, String id) {
-  if (layout != FeedImageLayout.random) return layout;
-  final hash = "$from:$id".hashCode.abs();
-  return _randomFeedImageLayouts[hash % _randomFeedImageLayouts.length];
-}
-
-// Renders a feed post's first (extracted) image per FeedImageLayout. Only
-// ever called with a concrete (non-standard, non-random) layout --
-// FeedImageLayout.random is resolved to one of these by
-// _resolveFeedImageLayout before this widget is built.
-class _FeedFirstImage extends StatelessWidget {
-  final Uint8List bytes;
-  final String tip;
-  final FeedImageLayout layout;
-  final double cropHeight;
-  // Whether cropHeight should also cap the "full" layout's height -- true
-  // when this layout was resolved from FeedImageLayout.random, since the
-  // crop-height slider is shown (and implied to apply) for the whole random
-  // rotation, not just the 1-in-4 chance it lands on FeedImageLayout.cropped.
-  final bool applyCropCapToFull;
-  final VoidCallback onTap;
-  const _FeedFirstImage(
-      {required this.bytes,
-      required this.tip,
-      required this.layout,
-      required this.cropHeight,
-      this.applyCropCapToFull = false,
-      required this.onTap});
-
-  // Surfaces decode failures instead of silently swallowing them into an
-  // invisible SizedBox.shrink() -- previously a failed decode left a blank,
-  // unexplained gap (the reserved box from the layout's fixed height/width
-  // stayed, but nothing indicated why nothing was drawn inside it).
-  static Widget _errorPlaceholder(Object error, {double? height}) {
-    debugPrint("_FeedFirstImage unable to decode image: $error");
-    return SizedBox(
-      height: height,
-      width: double.infinity,
-      child: const Center(
-        child: Icon(Icons.broken_image_outlined, color: Colors.grey),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    Widget image;
-    switch (layout) {
-      case FeedImageLayout.left:
-      case FeedImageLayout.right:
-        image = SizedBox(
-          height: 140,
-          width: double.infinity,
-          child: Image.memory(bytes,
-              fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) =>
-                  _errorPlaceholder(error, height: 140)),
-        );
-        break;
-      case FeedImageLayout.full:
-        image = applyCropCapToFull
-            ? _CappedHeightImage(bytes: bytes, maxHeight: cropHeight)
-            : Image.memory(bytes,
-                width: double.infinity,
-                fit: BoxFit.fitWidth,
-                errorBuilder: (context, error, stackTrace) =>
-                    _errorPlaceholder(error, height: 140));
-        break;
-      case FeedImageLayout.cropped:
-        image = _CappedHeightImage(bytes: bytes, maxHeight: cropHeight);
-        break;
-      case FeedImageLayout.standard:
-        // Reached only when the image layout is left at Default but a
-        // Text order has been chosen -- the image still needs to be
-        // extracted to be positioned, but keeps its natural (inline-like)
-        // size rather than being stretched or cropped.
-        image = ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 400, maxHeight: 400),
-          child: Image.memory(bytes,
-              fit: BoxFit.contain,
-              errorBuilder: (context, error, stackTrace) =>
-                  _errorPlaceholder(error, height: 140)),
-        );
-        break;
-      case FeedImageLayout.random:
-      case FeedImageLayout.none:
-        image = const SizedBox.shrink(); // Unreachable: resolved earlier.
-        break;
-    }
-    return Tooltip(
-      message: tip,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(8),
-        onTap: onTap,
-        child: ClipRRect(borderRadius: BorderRadius.circular(8), child: image),
-      ),
-    );
-  }
-}
-
-// Renders an image at full available width, only imposing a fixed height
-// (and cropping via BoxFit.cover) when the image would naturally render
-// taller than maxHeight at that width. Images shorter than maxHeight are
-// left at their natural height instead of being scaled up to fill it --
-// scaling a short/wide image up to maxHeight while also stretching it to
-// fill the available width would crop its sides off, which is the opposite
-// of what a height cap should do.
-class _CappedHeightImage extends StatefulWidget {
-  final Uint8List bytes;
-  final double maxHeight;
-  const _CappedHeightImage({required this.bytes, required this.maxHeight});
-
-  @override
-  State<_CappedHeightImage> createState() => _CappedHeightImageState();
-}
-
-class _CappedHeightImageState extends State<_CappedHeightImage> {
-  double? _aspectRatio; // width / height of the decoded image.
-
-  @override
-  void initState() {
-    super.initState();
-    _decodeAspectRatio();
-  }
-
-  @override
-  void didUpdateWidget(covariant _CappedHeightImage oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.bytes != widget.bytes) {
-      _aspectRatio = null;
-      _decodeAspectRatio();
-    }
-  }
-
-  void _decodeAspectRatio() {
-    ui.decodeImageFromList(widget.bytes, (image) {
-      if (!mounted) return;
-      setState(() => _aspectRatio = image.width / image.height);
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final aspectRatio = _aspectRatio;
-    if (aspectRatio == null) {
-      // Aspect ratio not decoded yet: reserve nothing and let the image
-      // pop in at its natural size once decoding completes.
-      return Image.memory(widget.bytes,
-          width: double.infinity,
-          fit: BoxFit.fitWidth,
-          errorBuilder: (context, error, stackTrace) =>
-              _FeedFirstImage._errorPlaceholder(error, height: 140));
-    }
-    return LayoutBuilder(builder: (context, constraints) {
-      final naturalHeight = constraints.maxWidth / aspectRatio;
-      if (naturalHeight <= widget.maxHeight) {
-        return Image.memory(widget.bytes,
-            width: double.infinity,
-            fit: BoxFit.fitWidth,
-            errorBuilder: (context, error, stackTrace) =>
-                _FeedFirstImage._errorPlaceholder(error, height: 140));
-      }
-      return SizedBox(
-        height: widget.maxHeight,
-        width: double.infinity,
-        child: Image.memory(widget.bytes,
-            fit: BoxFit.cover,
-            alignment: Alignment.topCenter,
-            errorBuilder: (context, error, stackTrace) =>
-                _FeedFirstImage._errorPlaceholder(error,
-                    height: widget.maxHeight)),
-      );
-    });
-  }
-}
+// The image extraction, stripping and layout-resolution helpers this file
+// used to keep privately now live in components/feed/feed_render_scope.dart,
+// beside the scope that hands the same settings to a post's nested contents.
 
 // Local-only bookmarks for feed posts, gated by AreaStyle.feedBookmarks.
 // Persisted to device storage as a JSON list of "from\tid" keys.

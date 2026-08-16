@@ -67,6 +67,15 @@ const _blocks = [
       placeholder: "item", lineStart: true),
   _Snippet(Icons.format_list_numbered, "Numbered list", "1. ",
       placeholder: "item", lineStart: true),
+  // A task list is an ordinary list whose items open with a box. Two
+  // buttons rather than one, because both states are written by hand and a
+  // reader listing what is already done should not have to type the x --
+  // how the boxes are drawn is the Lists element in Settings > Appearance >
+  // Markdown.
+  _Snippet(Icons.check_box_outline_blank, "Task", "- [ ] ",
+      placeholder: "task", lineStart: true),
+  _Snippet(Icons.check_box, "Task done", "- [x] ",
+      placeholder: "task", lineStart: true),
   _Snippet(Icons.format_quote, "Quote", "> ",
       placeholder: "quoted", lineStart: true),
   _Snippet(Icons.data_array, "Code block", "```\n",

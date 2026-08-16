@@ -3,6 +3,7 @@ import 'package:bruig/models/payments.dart';
 import 'package:bruig/theming_system/editor/area_editor_context.dart';
 import 'package:bruig/theming_system/editor/areas/buttons.dart';
 import 'package:bruig/theming_system/editor/areas/markdown.dart';
+import 'package:bruig/theming_system/editor/areas/realtimechat.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:bruig/theming_system/theme_preset.dart';
 import 'package:flutter/material.dart';
@@ -74,7 +75,7 @@ class _FakeHost implements AreaEditorHost {
 
 /// _pumpArea builds one area's settings page, the way the settings screen
 /// does. Each call builds it afresh, which is exactly the thing under test.
-Future<void> _pumpArea(
+Future<_FakeHost> _pumpArea(
   WidgetTester tester,
   ThemeArea area,
   List<Widget> Function(AreaEditorContext) editor,
@@ -107,6 +108,7 @@ Future<void> _pumpArea(
     ),
   ));
   await tester.pump();
+  return host;
 }
 
 /// _choose opens the picker labelled [label] and taps the entry [value].
@@ -115,6 +117,11 @@ Future<void> _pumpArea(
 /// dropdowns and the ones being driven here are typed on enums the editor
 /// keeps private, so there is no type to name from out here.
 Future<void> _choose(WidgetTester tester, String label, String value) async {
+  // Scrolled to first: these pages are taller than the screen, and a tap on
+  // a control below the fold silently misses rather than failing, which
+  // shows up later as the menu never having opened.
+  await tester.ensureVisible(find.text("$label: ").first);
+  await tester.pumpAndSettle();
   var picker = find.descendant(
     of: find
         .ancestor(of: find.text("$label: "), matching: find.byType(Row))
@@ -159,5 +166,52 @@ void main() {
     await _choose(tester, "Button", "Button 3 - Outlined");
     await _pumpArea(tester, ThemeArea.buttons, buttonsAreaEditor);
     expect(find.text("Button 3 - Outlined"), findsWidgets);
+  });
+
+  // A control is only real once it is on the page. Two once shipped that
+  // were not, because the tests read the model back rather than looking at
+  // what had been built -- so these name what the reader should see.
+  testWidgets("the Realtime Chat area offers its status and stage settings",
+      (tester) async {
+    await _pumpArea(tester, ThemeArea.realtimeChat, realtimeChatAreaEditor);
+    for (var label in [
+      "Status colours",
+      "Live: ",
+      "Muted and trouble: ",
+      "Middling: ",
+      "Live stage",
+      "Start the stage folded away",
+      "Auto-unmute on join",
+    ]) {
+      expect(find.text(label), findsWidgets, reason: "$label is missing");
+    }
+  });
+
+  testWidgets("folding the stage away is written to the theme", (tester) async {
+    var host =
+        await _pumpArea(tester, ThemeArea.realtimeChat, realtimeChatAreaEditor);
+    expect(host.style.rtcStageCollapsed, isFalse);
+
+    await tester.tap(find.ancestor(
+        of: find.text("Start the stage folded away"),
+        matching: find.byType(SwitchListTile)));
+    await tester.pumpAndSettle();
+    expect(host.style.rtcStageCollapsed, isTrue);
+  });
+
+  testWidgets("choosing a check mark writes it to the guide", (tester) async {
+    var host = await _pumpArea(tester, ThemeArea.markdown, markdownAreaEditor);
+    await _choose(tester, "Element", "Lists");
+    expect(find.text("Check boxes"), findsWidgets);
+    expect(find.text("Done: "), findsWidgets);
+    expect(find.text("Not done: "), findsWidgets);
+
+    await _choose(tester, "Done", "Cross");
+    // Written to the working copy of the guide, which is where an edit to a
+    // built-in goes -- the built-ins themselves never change.
+    var guide = host.style.markdownGuide(builtInGuideFor(defaultGuideId));
+    expect(guide.listCheckedMark, MarkdownCheckMark.cross);
+    expect(guide.listUncheckedMark, MarkdownCheckMark.empty,
+        reason: "the other end is left alone");
   });
 }

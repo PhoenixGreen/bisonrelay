@@ -118,6 +118,9 @@ Body text before the list.
 
 1. A numbered item
 2. Another
+
+- [x] A task that is done
+- [ ] A task that is not
 """,
       _Element.tables => """
 Body text before the table.
@@ -922,6 +925,7 @@ class _MarkdownEditorState extends State<_MarkdownEditor> {
 
       case _Element.lists:
         return [
+          ctx.note("The bullet of a - list and the numbers of a 1. list."),
           ..._textControls(ctx, "bullet", guide.listBullet, edit,
               (g, r) => g.copyWith(listBullet: r),
               maxScale: 2.0),
@@ -936,6 +940,36 @@ class _MarkdownEditorState extends State<_MarkdownEditor> {
               max: 64,
               divisions: 14,
               onCommit: (v) => edit((g) => g.copyWith(listIndent: v))),
+          const SizedBox(height: 16),
+          const Txt.M("Check boxes"),
+          ctx.note("A list item written `- [ ]` is a task, and one written "
+              "`- [x]` is a task that is done. Both ends are set here, "
+              "because which mark reads as done is a matter of taste -- a "
+              "tick for work finished, a cross for something ruled out."),
+          ctx.choice<MarkdownCheckMark>(
+            "Done",
+            value: guide.listCheckedMark,
+            options: MarkdownCheckMark.values,
+            labelOf: (m) => m.label,
+            onChanged: (m) => edit((g) => g.copyWith(listCheckedMark: m)),
+          ),
+          ctx.choice<MarkdownCheckMark>(
+            "Not done",
+            value: guide.listUncheckedMark,
+            options: MarkdownCheckMark.values,
+            labelOf: (m) => m.label,
+            onChanged: (m) => edit((g) => g.copyWith(listUncheckedMark: m)),
+          ),
+          ctx.slider("md-listchecksize", guide.listCheckSize,
+              label: (v) => "Size: ${v.round()}px",
+              min: 8,
+              max: 48,
+              divisions: 20,
+              onCommit: (v) => edit((g) => g.copyWith(listCheckSize: v))),
+          _inkPick(ctx, "Colour", guide.listCheckInk,
+              (i) => edit((g) => g.copyWith(listCheckInk: i))),
+          ctx.note("Theme default sets the box in whatever the bullet above "
+              "is set in."),
         ];
 
       case _Element.tables:

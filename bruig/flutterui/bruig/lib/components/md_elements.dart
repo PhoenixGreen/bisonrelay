@@ -3,6 +3,8 @@ import 'dart:io';
 // import 'package:dart_vlc/dart_vlc.dart' as vlc;
 import 'package:bruig/components/context_menu.dart';
 import 'package:bruig/components/feed/code_highlight.dart';
+import 'package:bruig/components/feed/feed_image.dart';
+import 'package:bruig/components/feed/feed_render_scope.dart';
 import 'package:bruig/components/feed/markdown_blocks.dart';
 import 'package:bruig/components/pages/forms.dart';
 import 'package:bruig/components/snackbars.dart';
@@ -115,9 +117,24 @@ class BareLinkSyntax extends md.InlineSyntax {
     String pattern = r'https?:\/\/\S+',
   }) : super(pattern);
 
+  /// aloneAttribute marks a URL that is the whole of what it was written in,
+  /// as opposed to one sitting in a sentence.
+  ///
+  /// The difference decides how much room the card may take. A card has to be
+  /// the full width of the line when there are words beside it, or
+  /// flutter_markdown's Wrap seats them alongside it and the reader gets
+  /// their message to the left of its own preview. Written on its own there
+  /// is nothing to sit beside it, so it claims only what it draws -- and a
+  /// chat bubble, which is as wide as its widest content, then fits the card
+  /// instead of running the width of the window.
+  static const aloneAttribute = "alone";
+
   @override
   bool onMatch(md.InlineParser parser, Match match) {
-    parser.addNode(md.Element.text(tag, match.group(0) ?? ""));
+    var url = match.group(0) ?? "";
+    var el = md.Element.text(tag, url);
+    if (parser.source.trim() == url) el.attributes[aloneAttribute] = "true";
+    parser.addNode(el);
     return true;
   }
 }
@@ -460,6 +477,75 @@ class MarkdownAreaModel extends ChangeNotifier {
     }
     notifyListeners();
   }
+
+  // _fence matches the start or end of a fenced code block.
+  static final _fence = RegExp(r'^\s*(```|~~~)');
+
+  /// isolate gives every standalone match a paragraph of its own.
+  ///
+  /// See MarkdownExtension.standalone for why. Applied to the text before it
+  /// is parsed, and a no-op when no extension asks for it -- which is every
+  /// case with no such plugin enabled, so text is left exactly as written.
+  ///
+  /// Code is left alone: a URL in a fenced block or between backticks is
+  /// being shown, not linked, and breaking the block apart would stop it
+  /// being code at all.
+  String isolate(String text) {
+    var patterns = [
+      for (var e in _pluginExtensions)
+        if (e.standalone != null) e.standalone!
+    ];
+    if (patterns.isEmpty) return text;
+
+    var out = <String>[];
+    var inFence = false;
+    for (var line in text.split("\n")) {
+      if (_fence.hasMatch(line)) {
+        inFence = !inFence;
+        out.add(line);
+        continue;
+      }
+      if (inFence || line.contains("`")) {
+        out.add(line);
+        continue;
+      }
+      out.addAll(_split(line, patterns));
+    }
+    return out.join("\n");
+  }
+
+  /// _split breaks one line into the runs around its standalone matches,
+  /// each separated by the blank line that makes a paragraph.
+  static List<String> _split(String line, List<RegExp> patterns) {
+    var out = <String>[];
+    var rest = line;
+
+    /// add appends one paragraph, with the blank line that separates it from
+    /// whatever came before it.
+    void add(String part) {
+      if (part.isEmpty) return;
+      if (out.isNotEmpty) out.add("");
+      out.add(part);
+    }
+
+    while (true) {
+      Match? first;
+      for (var p in patterns) {
+        var m = p.firstMatch(rest);
+        if (m == null) continue;
+        if (first == null || m.start < first.start) first = m;
+      }
+      if (first == null) {
+        add(rest.trim());
+        // A line with no match at all comes back exactly as it was written,
+        // spaces and all -- only a line actually being broken up is rebuilt.
+        return out.isEmpty ? [line] : out;
+      }
+      add(rest.substring(0, first.start).trim());
+      add(rest.substring(first.start, first.end));
+      rest = rest.substring(first.end);
+    }
+  }
 }
 
 /// MarkdownExtension is one markdown rendering contributed from outside this
@@ -476,10 +562,28 @@ class MarkdownExtension {
   /// say, which is otherwise just text.
   final md.InlineSyntax? inlineSyntax;
 
+  /// An optional pattern whose matches want a paragraph to themselves.
+  ///
+  /// For an extension that draws a *block* out of something written inline.
+  /// Markdown has no way to say "this is a block" about a run of text in the
+  /// middle of a sentence, and flutter_markdown lays a paragraph out in a
+  /// Wrap -- so a card built from a bare URL is seated beside the words
+  /// around it, however wide it is drawn.
+  ///
+  /// Given this, the model puts each match in a paragraph of its own before
+  /// the text is parsed, so the card becomes a block in its own right: on
+  /// its own line, and no wider than it draws. The alternative -- having the
+  /// card claim the full width of the line to push the words off it -- works
+  /// on the line but makes every container it sits in full width too, which
+  /// is what left a chat bubble running the width of the window around a
+  /// half-width card.
+  final RegExp? standalone;
+
   const MarkdownExtension({
     required this.tag,
     required this.builder,
     this.inlineSyntax,
+    this.standalone,
   });
 }
 
@@ -668,36 +772,216 @@ class MarkdownArea extends StatelessWidget {
       guide.toJson().toString() !=
       builtInGuideFor(defaultGuideId)!.toJson().toString();
 
+  /// _checkBoxSize is how large a task list's box is drawn, bounded.
+  static double _checkBoxSize(MarkdownStyleGuide guide) =>
+      guide.listCheckSize.clamp(8.0, 48.0);
+
+  /// _bulletBuilder draws a list's marker.
+  ///
+  /// Every marker is set the same way: hard against the right of the marker
+  /// column, held off its text by [_markerGap]. So a bullet, a number and a
+  /// check box all end at the same place and all their text begins at the
+  /// same place, and the indent means one thing -- the space to the left of
+  /// the marker -- whichever kind of list it is applied to.
+  ///
+  /// flutter_markdown's own arrangement is not that: it centres a bullet in
+  /// the column and right-aligns a number hard against the text. Under one
+  /// indent setting the two moved quite differently, and a list of each kind
+  /// one after another did not line up down the page.
+  /// _markerGap is the space kept between a list's marker and its text.
+  ///
+  /// A share of the indent, so the two move apart together. The same figure
+  /// for the number and the check box, because they are aligned the same
+  /// way: what the indent adds is space to the *left* of the marker, which
+  /// is what it already did for a bullet.
+  static double _markerGap(MarkdownStyleSheet sheet) =>
+      ((sheet.listIndent ?? 24) * 0.25).clamp(4.0, 16.0);
+
+  MarkdownBulletBuilder _bulletBuilder(
+      BuildContext context, MarkdownStyleSheet sheet, double gap) {
+    var marker = _markerStyle(context, sheet);
+    return (index, style) => Padding(
+          padding: EdgeInsets.only(right: gap),
+          child: Text(
+            style == BulletStyle.unorderedList ? "•" : "${index + 1}.",
+            textAlign: TextAlign.right,
+            style: marker,
+          ),
+        );
+  }
+
+  /// _markerStyle is what a list's bullet or number is set in.
+  ///
+  /// Merged onto the Material fallback rather than read straight off the
+  /// app's sheet, because that is what MarkdownBody itself does with the
+  /// sheet it is handed -- "fallbackStyleSheet.merge(widget.styleSheet)".
+  /// The app's sheet names only what it overrides and leaves the rest null,
+  /// so reading listBullet from it directly gave a style with no size and no
+  /// colour, and every bullet and number came out small and dark against the
+  /// page. The package was filling those in; a builder has to do it too.
+  TextStyle? _markerStyle(BuildContext context, MarkdownStyleSheet sheet) =>
+      MarkdownStyleSheet.fromTheme(Theme.of(context)).merge(sheet).listBullet;
+
+  /// _checkboxBuilder draws the box on a markdown task list -- `- [ ]` for an
+  /// open item, `- [x]` for a done one.
+  ///
+  /// A box with a mark in it rather than a character, so it does not depend
+  /// on the reader's font having ☑ and ☒. The box is always drawn; what
+  /// changes between the two states is what is inside it, which is what the
+  /// guide chooses.
+  MarkdownCheckboxBuilder _checkboxBuilder(
+      BuildContext context,
+      MarkdownStyleGuide guide,
+      ThemeNotifier theme,
+      MarkdownStyleSheet sheet,
+      double gap) {
+    // Falls back to the bullet's own colour, so an unset box is set in
+    // whatever the rest of the list is rather than in a colour of its own.
+    var ink = guide.listCheckInk.resolve(theme.markdownRoleColor,
+            paletteColor: theme.markdownPaletteColor) ??
+        _markerStyle(context, sheet)?.color ??
+        theme.textColor(TextColor.onSurface);
+    var size = _checkBoxSize(guide);
+
+    return (checked) {
+      var mark = checked ? guide.listCheckedMark : guide.listUncheckedMark;
+      // Aligned to the right of the marker column, and not just padded.
+      //
+      // Two things are going on. flutter_markdown puts the marker in a
+      // SizedBox as wide as the list indent, and a SizedBox constrains its
+      // child *tightly* -- so a box asked to be 16px wide was stretched to
+      // whatever the indent was. Align takes that tight width for itself and
+      // hands the box loose constraints, so the box stays the size it was
+      // asked for.
+      //
+      // Then it sits at the right of that column, as a bullet and a number
+      // both effectively do. Left-aligned, the indent added its space
+      // *between* the box and the text, while for every other kind of list
+      // it added space to the left of the marker -- one setting measured two
+      // different ways, depending on the list.
+      return Align(
+        alignment: Alignment.topRight,
+        child: Padding(
+          // Nudged down so the box sits on the line of text beside it
+          // rather than riding above it, and held off the text by the same
+          // gap a number keeps -- plus the bullet padding, which
+          // flutter_markdown adds around a bullet or a number but not around
+          // a check box. Without it the box ended four pixels to the right
+          // of every other marker on the page.
+          padding: EdgeInsets.only(
+              top: 2, right: gap + (sheet.listBulletPadding?.right ?? 0)),
+          child: SizedBox(
+            width: size,
+            height: size,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                border: Border.all(color: ink, width: size / 12),
+                borderRadius: BorderRadius.circular(size / 6),
+              ),
+              child: mark.icon == null
+                  ? null
+                  : Icon(mark.icon, size: size * 0.78, color: ink),
+            ),
+          ),
+        ),
+      );
+    };
+  }
+
   @override
   Widget build(BuildContext context) {
     return Consumer3<ThemeNotifier, PaymentsModel, MarkdownAreaModel>(
-        builder: (context, theme, payments, mk, _) => _withGuide(
-              theme,
-              MarkdownBody(
-                codeBlockMaxHeight: 200,
-                // Plain text wins over a guide: it is the Feed's "strip
-                // markdown" setting, which is a decision not to show
-                // formatting at all, and a guide is only ever about how
-                // formatting looks.
-                styleSheet: plainText
-                    ? _plainStyleSheet(theme.mdStyleSheet, context)
-                    : _guidedStyleSheet(theme, context),
-                data: text.trim(),
-                extensionSet: mk.extensionSet,
-                builders: mk.builders,
-                onTapLink: (text, url, _) {
-                  if (disableLinks) return;
-                  launchUrlAwait(context, url);
-                },
-                inlineSyntaxes: mk.inlineSyntaxes,
-                blockSyntaxes: mk.blockSyntaxes,
-              ),
-            ));
+        builder: (context, theme, payments, mk, _) {
+      // Plain text wins over a guide: it is the Feed's "strip markdown"
+      // setting, which is a decision not to show formatting at all, and a
+      // guide is only ever about how formatting looks.
+      var sheet = plainText
+          ? _plainStyleSheet(theme.mdStyleSheet, context)
+          : _guidedStyleSheet(theme, context);
+      var effectiveGuide = guide ?? theme.markdownGuide;
+
+      // The gap every marker keeps from its text, worked out once from the
+      // indent the guide actually asks for.
+      //
+      // Once, because widening the column below would otherwise widen the
+      // gap with it, leaving less room for the box than the widening was
+      // meant to provide -- the two chased each other and the box still came
+      // out a pixel or two short.
+      var gap = _markerGap(sheet);
+
+      // The marker column is the list indent wide plus the bullet padding
+      // the package adds around it, and a check box is sized in its own
+      // right -- so a box larger than the column had nowhere to be drawn and
+      // came out squashed to whatever room was left. The list makes room for
+      // it instead: the indent is the space to the left of the marker, and
+      // it can only do that job once the marker itself fits.
+      var pad = sheet.listBulletPadding ?? EdgeInsets.zero;
+      var needed =
+          _checkBoxSize(effectiveGuide) + gap + pad.right - pad.horizontal;
+      if ((sheet.listIndent ?? 24) < needed) {
+        sheet = sheet.copyWith(listIndent: needed);
+      }
+      return _withGuide(
+        context,
+        theme,
+        MarkdownBody(
+          // Keyed by the checkbox settings, so changing one redraws the list.
+          //
+          // MarkdownBody parses its markdown into widgets once and re-parses
+          // only when the text or the stylesheet changes -- and a checkbox is
+          // neither: it is baked into the children at parse time by
+          // checkboxBuilder. Changing only a mark therefore left the list
+          // exactly as it was already built, and the setting looked dead
+          // until something else about the guide was touched as well. A key
+          // that changes with them makes the state fresh, which is the parse.
+          key: ValueKey((
+            effectiveGuide.listCheckedMark,
+            effectiveGuide.listUncheckedMark,
+            effectiveGuide.listCheckSize,
+            effectiveGuide.listCheckInk.toJson(),
+          )),
+          codeBlockMaxHeight: 200,
+          styleSheet: sheet,
+          checkboxBuilder:
+              _checkboxBuilder(context, effectiveGuide, theme, sheet, gap),
+          bulletBuilder: _bulletBuilder(context, sheet, gap),
+          data: mk.isolate(text.trim()),
+          extensionSet: mk.extensionSet,
+          builders: mk.builders,
+          onTapLink: (text, url, _) {
+            if (disableLinks) return;
+            launchUrlAwait(context, url);
+          },
+          inlineSyntaxes: mk.inlineSyntaxes,
+          blockSyntaxes: mk.blockSyntaxes,
+        ),
+      );
+    });
   }
 
   /// _withGuide puts the guide's picture rules where the embeds can see
   /// them, and nothing at all around text that has no guide.
-  Widget _withGuide(ThemeNotifier theme, Widget child) {
+  Widget _withGuide(BuildContext context, ThemeNotifier theme, Widget child) {
+    // Never in a chat message.
+    //
+    // A style guide is how *posts* are set -- that is what the Markdown area
+    // says it is and what a post carries the name of. A message has no guide
+    // and never asked for one, so its pictures are drawn the way they always
+    // were: by the Chat area's Image size.
+    //
+    // This was the intent from the start (see MarkdownGuideScope: "Chat
+    // installs no scope"), but nothing enforced it, and the scope goes on
+    // whenever the guide is not the untouched Default. So the moment a
+    // reader edited any guide setting at all -- a list indent, a check box
+    // -- every picture in every message quietly switched from the Chat
+    // area's Image size to the guide's own 100%-of-the-column rule, and the
+    // Image size setting appeared to stop working.
+    //
+    // Chat is the case with a width handed down from the message:
+    // ChatImageWidth is installed by the chat message path and by nothing
+    // else.
+    if (ChatImageWidth.of(context) != null) return child;
+
     var guide = this.guide ?? theme.markdownGuide;
     // Default with nothing changed is the app as it was, so it gets no scope
     // at all rather than one that happens to match.
@@ -1032,8 +1316,7 @@ class CodeblockMarkdownElementBuilder extends MarkdownElementBuilder {
 
           Widget body = guide.codeHighlight
               ? Text.rich(TextSpan(
-                  children:
-                      highlightCode(code, markdownCodeInk(theme), style)))
+                  children: highlightCode(code, markdownCodeInk(theme), style)))
               : Text.rich(TextSpan(text: code), style: style);
 
           if (!guide.codeLineNumbers) return body;
@@ -1050,9 +1333,9 @@ class CodeblockMarkdownElementBuilder extends MarkdownElementBuilder {
               Text.rich(
                 TextSpan(
                     text: [
-                      for (var n = 1; n <= lines.length; n++)
-                        n.toString().padLeft(lines.length.toString().length),
-                    ].join("\n")),
+                  for (var n = 1; n <= lines.length; n++)
+                    n.toString().padLeft(lines.length.toString().length),
+                ].join("\n")),
                 textAlign: TextAlign.right,
                 style: (style ?? const TextStyle()).copyWith(color: muted),
               ),
@@ -1276,6 +1559,69 @@ class _QuotedPostCardState extends State<_QuotedPostCard> {
     if (nick == "") nick = post.summ.authorNick;
     if (nick == "") nick = widget.from;
 
+    // A quoted post is a post, so the Feed area's settings for how a post is
+    // presented apply to it as well: no links means none in here either, a
+    // text limit cuts this text too, and its own first picture is placed in
+    // whatever layout the reader chose. Outside the feed there is no scope
+    // and the card is rendered exactly as it always was.
+    //
+    // The card itself is not made narrower for Left/Right. Those put the
+    // *picture* in a column beside the text -- and a quoted post is part of
+    // the text, so it sits in the wide column, not the 140px one. What
+    // follows the layout is the picture inside this card, which is the thing
+    // the setting is about.
+    final scope = FeedRenderScope.of(context);
+    var content = scope?.constrain(post.content) ?? post.content;
+
+    ExtractedImage? firstImage;
+    var imageLayout = FeedImageLayout.standard;
+    if (scope != null &&
+        scope.imageLayout != FeedImageLayout.standard &&
+        !scope.imagesHidden) {
+      final (extracted, stripped) = extractFirstImage(content);
+      if (extracted != null) {
+        firstImage = extracted;
+        content = stripped;
+        imageLayout = scope.imageLayout;
+      }
+    }
+
+    Widget body = Provider<DownloadSource>(
+      create: (_) => DownloadSource(widget.from),
+      child: MarkdownArea(content, false,
+          disableLinks: scope?.linksDisabled ?? false,
+          plainText: scope?.stripMarkdown ?? false),
+    );
+
+    if (firstImage != null) {
+      final image = FeedFirstImage(
+        bytes: firstImage.bytes,
+        tip: firstImage.tip,
+        layout: imageLayout,
+        cropHeight: scope!.cropHeight,
+        onTap: () => FeedScreen.showPost(context, post),
+      );
+      body = switch (imageLayout) {
+        FeedImageLayout.left =>
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            SizedBox(width: 110, child: image),
+            const SizedBox(width: 10),
+            Expanded(child: body),
+          ]),
+        FeedImageLayout.right =>
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Expanded(child: body),
+            const SizedBox(width: 10),
+            SizedBox(width: 110, child: image),
+          ]),
+        _ => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            body,
+            const SizedBox(height: 8),
+            image,
+          ]),
+      };
+    }
+
     return _shell(
       context,
       Padding(
@@ -1300,10 +1646,7 @@ class _QuotedPostCardState extends State<_QuotedPostCard> {
               ),
             ]),
             const SizedBox(height: 6),
-            Provider<DownloadSource>(
-              create: (_) => DownloadSource(widget.from),
-              child: MarkdownArea(post.content, false),
-            ),
+            body,
           ],
         ),
       ),

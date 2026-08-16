@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:bruig/components/feed/feed_render_scope.dart';
+import 'package:bruig/components/md_elements.dart';
 import 'package:bruig/components/text.dart';
 import 'package:bruig/plugin_system/link_previews/youtube_player.dart';
 import 'package:bruig/models/snackbar.dart';
@@ -23,7 +25,10 @@ class LinkCardElementBuilder extends MarkdownElementBuilder {
     // undifferentiated "selected" region (a solid blue overlay) instead of
     // leaving it alone.
     return SelectionContainer.disabled(
-        child: LinkCard(element.textContent, preferredStyle: preferredStyle));
+        child: LinkCard(element.textContent,
+            preferredStyle: preferredStyle,
+            alone:
+                element.attributes[BareLinkSyntax.aloneAttribute] == "true"));
   }
 }
 
@@ -54,7 +59,13 @@ final Map<String, Widget Function(String url)> _players = {
 class LinkCard extends StatefulWidget {
   final String url;
   final TextStyle? preferredStyle;
-  const LinkCard(this.url, {this.preferredStyle, super.key});
+
+  /// alone is whether the URL was the whole of what it was written in, rather
+  /// than one sitting in a sentence -- see BareLinkSyntax.aloneAttribute.
+  final bool alone;
+
+  const LinkCard(this.url,
+      {this.preferredStyle, this.alone = false, super.key});
 
   @override
   State<LinkCard> createState() => _LinkCardState();
@@ -69,6 +80,17 @@ class LinkCard extends StatefulWidget {
 // the URL) is left uncached so a later render can still retry rather than
 // permanently freezing on a transient failure.
 final Map<String, LinkMetadata> _linkMetadataCache = {};
+
+/// seedLinkMetadata puts a fetch result in the cache without one having been
+/// made.
+///
+/// For tests: a card only draws once the metadata has arrived, and the fetch
+/// goes through the client, so without this the only thing a test can ever
+/// see is the plain link shown while loading -- which is not the part with a
+/// layout to get wrong.
+@visibleForTesting
+void seedLinkMetadata(String url, LinkMetadata metadata) =>
+    _linkMetadataCache[url] = metadata;
 
 class _LinkCardState extends State<LinkCard> {
   LinkMetadata? _metadata;
@@ -134,8 +156,19 @@ class _LinkCardState extends State<LinkCard> {
     );
   }
 
-  Widget _buildThumbnailArea(Uint8List? thumbBytes) {
+  // _thumbAspectRatio is the standard 16:9 a thumbnail is drawn at, and what
+  // YoutubeInlineVideo uses once playing starts.
+  static const _thumbAspectRatio = 16 / 9;
+
+  Widget _buildThumbnailArea(Uint8List? thumbBytes, FeedRenderScope? scope) {
     var player = _player;
+
+    // A thumbnail is a picture in a post, so the Feed area's First image
+    // display governs it: None means the card keeps its title and
+    // description but shows nothing, and the player goes with it -- there is
+    // no sense in a play button over a picture the reader asked not to see.
+    if (scope?.imagesHidden ?? false) return const SizedBox.shrink();
+
     if (_playing && player != null) {
       return player(widget.url);
     }
@@ -146,19 +179,30 @@ class _LinkCardState extends State<LinkCard> {
       return const SizedBox.shrink();
     }
 
-    // Standard thumbnail aspect ratio (matches YoutubeInlineVideo's own
-    // AspectRatio once playing starts). Computed explicitly from the
-    // available width via LayoutBuilder rather than using an AspectRatio
-    // widget directly: AspectRatio derives its size from the incoming
-    // constraints, and in some rendering contexts (e.g. posts) the width
-    // isn't as tightly bounded as it is for chat messages, which made
-    // AspectRatio blow up to an oversized height that covered the rest of
-    // the post.
-    const thumbAspectRatio = 16 / 9;
-
+    // The thumbnail's size is computed explicitly from the available width
+    // via LayoutBuilder rather than using an AspectRatio widget directly:
+    // AspectRatio derives its size from the incoming constraints, and in
+    // some rendering contexts (e.g. posts) the width isn't as tightly
+    // bounded as it is for chat messages, which made AspectRatio blow up to
+    // an oversized height that covered the rest of the post.
     return LayoutBuilder(builder: (context, constraints) {
       var width = constraints.maxWidth.isFinite ? constraints.maxWidth : 300.0;
-      var height = width / thumbAspectRatio;
+
+      var height = width / _thumbAspectRatio;
+
+      // Cropped, Left and Right all cap how tall a picture in a post may be,
+      // and a 16:9 thumbnail derived from the full width ignores that -- a
+      // card in a feed cropped to 200px was three times the height of the
+      // pictures beside it.
+      //
+      // The height is cut and the width left alone, which is what "cropped"
+      // means: the thumbnail is already drawn with BoxFit.cover, so a
+      // shorter box crops it rather than shrinking it. Narrowing the card to
+      // keep 16:9 instead -- which is what this did first -- made the card
+      // stop short of the column it was in, so a link preview no longer ran
+      // the full width of the feed.
+      var cap = scope?.mediaMaxHeight;
+      if (cap != null && cap < height) height = cap;
 
       var thumbnail = thumbBytes != null
           ? Image.memory(thumbBytes,
@@ -194,6 +238,14 @@ class _LinkCardState extends State<LinkCard> {
 
   @override
   Widget build(BuildContext context) {
+    // A link card is a link, drawn richly. Where the Feed area has taken
+    // links away, there is nothing for it to draw: the feed removes bare
+    // URLs from a post's own body, so what reaches here is a URL inside
+    // something nested -- a quoted post -- which was still unfurling cards
+    // in a feed set to show no links at all.
+    var scope = FeedRenderScope.of(context);
+    if (scope?.linksDisabled ?? false) return const SizedBox.shrink();
+
     if (_loading) {
       // Render the plain link immediately so text flows normally while the
       // metadata fetch (which may be slow, or may never resolve) completes
@@ -207,6 +259,7 @@ class _LinkCardState extends State<LinkCard> {
     }
 
     var theme = Theme.of(context);
+
     Uint8List? thumbBytes;
     if (metadata.thumbnailB64.isNotEmpty) {
       try {
@@ -216,71 +269,107 @@ class _LinkCardState extends State<LinkCard> {
       }
     }
 
-    return SizedBox(
-      width: double.infinity,
-      child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 4),
-        decoration: BoxDecoration(
-          border: Border.all(color: theme.dividerColor),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _buildThumbnailArea(thumbBytes),
-            Padding(
-              padding: const EdgeInsets.all(8),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (metadata.title.isNotEmpty)
-                    Txt.S(metadata.title,
-                        color: TextColor.onSurface,
-                        style: const TextStyle(fontWeight: FontWeight.bold)),
-                  // Author acts as the card's header when there's no title
-                  // (e.g. tweets, whose oEmbed response has no title field
-                  // at all) so the card doesn't just open on a wall of
-                  // unstyled paragraph text.
-                  if (metadata.author.isNotEmpty)
-                    Txt.S(metadata.author,
-                        color: TextColor.onSurface,
-                        style: const TextStyle(fontWeight: FontWeight.bold)),
-                  if (metadata.description.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Container(
-                        padding: const EdgeInsets.only(left: 8),
-                        decoration: BoxDecoration(
-                          border: Border(
-                              left: BorderSide(
-                                  color: theme.dividerColor, width: 2)),
-                        ),
-                        child: Txt.S(metadata.description,
-                            color: TextColor.onSurfaceVariant,
-                            style:
-                                const TextStyle(fontStyle: FontStyle.italic)),
+    Widget card = Container(
+      margin: const EdgeInsets.symmetric(vertical: 6),
+      decoration: BoxDecoration(
+        border: Border.all(color: theme.dividerColor),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _buildThumbnailArea(thumbBytes, scope),
+          Padding(
+            // Tighter in a narrow column, where 8px on each side of a
+            // 260px card is a noticeable share of it.
+            padding: EdgeInsets.all((scope?.narrow ?? false) ? 6 : 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (metadata.title.isNotEmpty)
+                  Txt.S(metadata.title,
+                      color: TextColor.onSurface,
+                      style: const TextStyle(fontWeight: FontWeight.bold)),
+                // Author acts as the card's header when there's no title
+                // (e.g. tweets, whose oEmbed response has no title field
+                // at all) so the card doesn't just open on a wall of
+                // unstyled paragraph text.
+                if (metadata.author.isNotEmpty)
+                  Txt.S(metadata.author,
+                      color: TextColor.onSurface,
+                      style: const TextStyle(fontWeight: FontWeight.bold)),
+                if (metadata.description.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Container(
+                      padding: const EdgeInsets.only(left: 8),
+                      decoration: BoxDecoration(
+                        border: Border(
+                            left: BorderSide(
+                                color: theme.dividerColor, width: 2)),
                       ),
+                      child: Txt.S(metadata.description,
+                          color: TextColor.onSurfaceVariant,
+                          style: const TextStyle(fontStyle: FontStyle.italic)),
                     ),
-                  const SizedBox(height: 4),
-                  GestureDetector(
-                    onTap: _openInBrowser,
-                    child: Row(mainAxisSize: MainAxisSize.min, children: [
-                      Icon(Icons.open_in_new,
-                          size: 14, color: theme.colorScheme.primary),
-                      const SizedBox(width: 4),
-                      Txt.S("Open in Browser",
-                          style: TextStyle(color: theme.colorScheme.primary)),
-                    ]),
                   ),
-                ],
-              ),
+                const SizedBox(height: 4),
+                GestureDetector(
+                  onTap: _openInBrowser,
+                  // The label gives way rather than overflowing. A card is
+                  // now drawn at whatever width the Chat area's Image size
+                  // or the feed's media column allows, and at a quarter of
+                  // a narrow message "Open in Browser" is wider than the
+                  // card it sits in.
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(Icons.open_in_new,
+                        size: 14, color: theme.colorScheme.primary),
+                    const SizedBox(width: 4),
+                    Flexible(
+                      child: Txt.S("Open in Browser",
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(color: theme.colorScheme.primary)),
+                    ),
+                  ]),
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
+
+    // How large the card is allowed to grow, in a chat message.
+    //
+    // The Chat area's Image size, read as a *maximum* rather than as a share
+    // to be drawn at: a card fills whatever it is given, so nothing inside
+    // it is ever left with a gap beside it, but it does not grow past the
+    // size a picture in the same message would be allowed. Half means a card
+    // no wider than a half-width picture, filled edge to edge.
+    //
+    // Chat is the case with no feed scope and a width handed down from the
+    // message: ChatImageWidth is installed by the chat message path and by
+    // nothing else. Default has no share to take, so the card is left at the
+    // width of the bubble, which is what a preview has always been drawn at
+    // -- unlike a picture, a card has no natural size for the 250pt bound to
+    // be a bound on.
+    var messageWidth = scope == null ? ChatImageWidth.of(context) : null;
+    if (messageWidth != null) {
+      var max = chatImageWidth(
+              ThemeNotifier.of(context).chatImageSize, messageWidth) ??
+          messageWidth;
+      card = ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: max), child: card);
+    }
+
+    // No claim on the width of the line: the card is a block in its own
+    // paragraph by the time it gets here (see MarkdownExtension.standalone),
+    // so nothing can be seated beside it and it need only be as wide as it
+    // draws. That is what lets a chat bubble -- as wide as its widest
+    // content -- fit the card instead of running the width of the window.
+    return card;
   }
 }

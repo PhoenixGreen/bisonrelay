@@ -26,5 +26,14 @@ List<MarkdownExtension> linkPreviewExtensions(PluginManagerModel plugins) => [
           // Bare URLs aren't markup, so without a syntax emitting the tag
           // there would be nothing for the builder to render.
           inlineSyntax: BareLinkSyntax(tag: _linkCardTag),
+          // A card is a block, and a bare URL is written in the middle of a
+          // sentence like any other word -- so it is given a paragraph of
+          // its own before the text is parsed. See
+          // MarkdownExtension.standalone.
+          //
+          // Bare only: a URL inside a written-out [label](url) link, an
+          // <autolink> or a reference is markup already and never becomes a
+          // card, so moving it would break the link it belongs to.
+          standalone: RegExp(r'(?<![(\]<])https?://\S+'),
         ),
     ];

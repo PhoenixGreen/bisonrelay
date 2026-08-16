@@ -438,10 +438,9 @@ class MarkdownBuilder implements md.NodeVisitor {
             element.children!.add(md.Text(''));
           }
           Widget bullet;
-          final dynamic el = element.children![0];
-          if (el is md.Element && el.attributes['type'] == 'checkbox') {
-            final bool val = el.attributes.containsKey('checked');
-            bullet = _buildCheckbox(val);
+          final md.Element? checkbox = _checkboxOf(element);
+          if (checkbox != null) {
+            bullet = _buildCheckbox(checkbox.attributes.containsKey('checked'));
           } else {
             bullet = _buildBullet(_listIndents.last);
           }
@@ -591,6 +590,26 @@ class MarkdownBuilder implements md.NodeVisitor {
     } else {
       return child;
     }
+  }
+
+  /// Finds the checkbox that makes a list item a task, or null for an
+  /// ordinary item.
+  ///
+  /// Looks through a wrapping paragraph as well as at the item itself. A
+  /// "loose" list -- one whose items are separated by blank lines -- has each
+  /// item's content wrapped in a `<p>`, so the checkbox is the paragraph's
+  /// first child rather than the item's. Checking only the item meant a task
+  /// list written with blank lines between its items lost every box and came
+  /// out as ordinary bullets.
+  md.Element? _checkboxOf(md.Element listItem) {
+    md.Node? first = listItem.children?.firstOrNull;
+    if (first is md.Element && first.tag == 'p') {
+      first = first.children?.firstOrNull;
+    }
+    if (first is md.Element && first.attributes['type'] == 'checkbox') {
+      return first;
+    }
+    return null;
   }
 
   Widget _buildCheckbox(bool checked) {

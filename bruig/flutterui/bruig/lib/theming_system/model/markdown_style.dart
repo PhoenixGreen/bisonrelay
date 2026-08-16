@@ -158,6 +158,29 @@ enum MarkdownTableFit {
   const MarkdownTableFit(this.label);
 }
 
+/// MarkdownCheckMark is what goes inside a task list's box.
+///
+/// Markdown has task lists -- `- [ ]` for an open item and `- [x]` for a done
+/// one -- and this is how the two are drawn. Both ends are settable, because
+/// which mark reads as "done" is genuinely a matter of taste: a tick for work
+/// finished, a cross for something ruled out.
+///
+/// Drawn as a box with a mark in it rather than as a character, so it does
+/// not depend on the reader's font having ☑ and ☒ -- a guide travels, and a
+/// glyph that is a box on one machine and a blank rectangle on another is not
+/// a setting anybody can rely on.
+enum MarkdownCheckMark {
+  empty("Empty", null),
+  cross("Cross", Icons.close),
+  tick("Tick", Icons.check);
+
+  /// label is what the settings show, and [icon] what goes in the box --
+  /// null for a box left open.
+  final String label;
+  final IconData? icon;
+  const MarkdownCheckMark(this.label, this.icon);
+}
+
 /// MarkdownAlign is how a block sits across the column.
 enum MarkdownAlign { inherit, left, center, right }
 
@@ -746,8 +769,7 @@ class CardRule {
       title: rule("title", const TextRule(scale: 1.3, bold: true)),
       text:
           rule("text", const TextRule(ink: MarkdownInk.of(MarkdownRole.muted))),
-      button: ButtonRole.values.firstWhere(
-          (r) => r.name == json["button"],
+      button: ButtonRole.values.firstWhere((r) => r.name == json["button"],
           orElse: () => ButtonRole.plain),
     );
   }
@@ -805,6 +827,16 @@ class MarkdownStyleGuide {
   /// spacing that made the prose read well made the lists too airy.
   final double listItemGap;
   final double listIndent;
+
+  /// listCheckedMark and listUncheckedMark are what a task list's boxes get
+  /// -- `- [x]` and `- [ ]` respectively.
+  final MarkdownCheckMark listCheckedMark;
+  final MarkdownCheckMark listUncheckedMark;
+
+  /// listCheckSize is how large the box is drawn, and listCheckInk what it
+  /// and the mark in it are drawn in.
+  final double listCheckSize;
+  final MarkdownInk listCheckInk;
   final MarkdownInk quoteBarInk;
   final double quoteBarWidth;
   final MarkdownInk quoteBackground;
@@ -880,6 +912,10 @@ class MarkdownStyleGuide {
     double? blockGap,
     double? listItemGap,
     double? listIndent,
+    MarkdownCheckMark? listCheckedMark,
+    MarkdownCheckMark? listUncheckedMark,
+    double? listCheckSize,
+    MarkdownInk? listCheckInk,
     MarkdownInk? quoteBarInk,
     double? quoteBarWidth,
     MarkdownInk? quoteBackground,
@@ -918,6 +954,10 @@ class MarkdownStyleGuide {
         blockGap: blockGap ?? this.blockGap,
         listItemGap: listItemGap ?? this.listItemGap,
         listIndent: listIndent ?? this.listIndent,
+        listCheckedMark: listCheckedMark ?? this.listCheckedMark,
+        listUncheckedMark: listUncheckedMark ?? this.listUncheckedMark,
+        listCheckSize: listCheckSize ?? this.listCheckSize,
+        listCheckInk: listCheckInk ?? this.listCheckInk,
         quoteBarInk: quoteBarInk ?? this.quoteBarInk,
         quoteBarWidth: quoteBarWidth ?? this.quoteBarWidth,
         quoteBackground: quoteBackground ?? this.quoteBackground,
@@ -963,6 +1003,10 @@ class MarkdownStyleGuide {
         "blockGap": blockGap,
         "listItemGap": listItemGap,
         "listIndent": listIndent,
+        "listCheckedMark": listCheckedMark.name,
+        "listUncheckedMark": listUncheckedMark.name,
+        "listCheckSize": listCheckSize,
+        "listCheckInk": listCheckInk.toJson(),
         if (!quoteBarInk.isInherit) "quoteBarInk": quoteBarInk.toJson(),
         "quoteBarWidth": quoteBarWidth,
         if (!quoteBackground.isInherit)
@@ -1029,6 +1073,17 @@ class MarkdownStyleGuide {
       blockGap: _asDouble(json["blockGap"]) ?? 8,
       listItemGap: _asDouble(json["listItemGap"]) ?? 8,
       listIndent: _asDouble(json["listIndent"]) ?? 24,
+      // A guide written before these existed, or by an app that does not
+      // have them, means the tick-and-empty-box pair every task list has
+      // always been drawn with.
+      listCheckedMark: MarkdownCheckMark.values.firstWhere(
+          (m) => m.name == json["listCheckedMark"],
+          orElse: () => MarkdownCheckMark.tick),
+      listUncheckedMark: MarkdownCheckMark.values.firstWhere(
+          (m) => m.name == json["listUncheckedMark"],
+          orElse: () => MarkdownCheckMark.empty),
+      listCheckSize: _asDouble(json["listCheckSize"]) ?? 16,
+      listCheckInk: MarkdownInk.fromJson(json["listCheckInk"]),
       quoteBarInk: MarkdownInk.fromJson(json["quoteBarInk"]),
       quoteBarWidth: _asDouble(json["quoteBarWidth"]) ?? 2,
       quoteBackground: MarkdownInk.fromJson(json["quoteBackground"]),
@@ -1086,6 +1141,10 @@ class MarkdownStyleGuide {
     this.blockGap = 8,
     this.listItemGap = 8,
     this.listIndent = 24,
+    this.listCheckedMark = MarkdownCheckMark.tick,
+    this.listUncheckedMark = MarkdownCheckMark.empty,
+    this.listCheckSize = 16,
+    this.listCheckInk = MarkdownInk.inherit,
     this.quoteBarInk = MarkdownInk.inherit,
     this.quoteBarWidth = 2,
     this.quoteBackground = MarkdownInk.inherit,
