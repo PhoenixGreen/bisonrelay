@@ -74,37 +74,33 @@ class _PostSidebarState extends State<PostSidebar> {
   /// meaning "My Posts" is a line of a narrow column spent twice on the same
   /// word. Inside a folder the name is the only thing saying where you are,
   /// so it stays, with the way back beside it.
+  ///
+  /// Note what is NOT here: the saving indicator. It used to be, and at the
+  /// top level -- where there is otherwise no header at all -- that meant
+  /// every autosave inserted a row into the Column and removed it again a
+  /// moment later, shoving the whole list down and back on a timer while
+  /// somebody typed. The indicator moved to _actions, which is always drawn,
+  /// so a save changes no layout at all. Anything added here in future has to
+  /// keep that property: this widget's presence must depend only on which
+  /// folder is open.
   Widget? _header(ThemeNotifier theme, PostLibraryModel library) {
-    if (library.folder.isEmpty && !library.saving) return null;
+    if (library.folder.isEmpty) return null;
     return Padding(
       padding: const EdgeInsets.fromLTRB(4, 4, 8, 4),
       child: Row(children: [
-        if (library.folder.isNotEmpty) ...[
-          IconButton(
-            icon: const Icon(Icons.arrow_back, size: 18),
-            tooltip: "Back to My Posts",
-            visualDensity: VisualDensity.compact,
-            onPressed: () => library.openFolderNamed(""),
+        IconButton(
+          icon: const Icon(Icons.arrow_back, size: 18),
+          tooltip: "Back to My Posts",
+          visualDensity: VisualDensity.compact,
+          onPressed: () => library.openFolderNamed(""),
+        ),
+        Expanded(
+          child: Text(
+            library.folder,
+            style: const TextStyle(fontWeight: FontWeight.w600),
+            overflow: TextOverflow.ellipsis,
           ),
-          Expanded(
-            child: Text(
-              library.folder,
-              style: const TextStyle(fontWeight: FontWeight.w600),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-        ] else
-          const Spacer(),
-        // Shown while a write is in flight rather than after it: the point
-        // is to answer "did that save", and an indicator that only appears
-        // once the answer is yes never gets seen.
-        if (library.saving)
-          SizedBox(
-            width: 12,
-            height: 12,
-            child: CircularProgressIndicator(
-                strokeWidth: 2, color: theme.colors.onSurfaceVariant),
-          ),
+        ),
       ]),
     );
   }
@@ -166,7 +162,15 @@ class _PostSidebarState extends State<PostSidebar> {
         padding: const EdgeInsets.fromLTRB(12, 7, 4, 7),
         child: Row(children: [
           Icon(
-            entry.isFolder ? Icons.folder_outlined : Icons.description_outlined,
+            // The reserved notes folder gets an icon of its own: it behaves
+            // differently from the folders around it -- it fills itself, and
+            // it cannot be renamed or deleted -- and a row that is not quite
+            // like its neighbours should not look exactly like them.
+            entry.isNotesFolder
+                ? Icons.sticky_note_2_outlined
+                : entry.isFolder
+                    ? Icons.folder_outlined
+                    : Icons.description_outlined,
             size: 16,
             color:
                 isOpen ? theme.colors.primary : theme.colors.onSurfaceVariant,
@@ -265,35 +269,42 @@ class _PostSidebarState extends State<PostSidebar> {
   /// fact about one row anyway. It is said once, under the list, by
   /// _reorderHint.
   Widget _rowButton(ThemeNotifier theme, PostLibraryModel library,
-          PostEntry entry, int index) =>
-      ReorderableDelayedDragStartListener(
-        index: index,
-        child: MouseRegion(
-          cursor: SystemMouseCursors.grab,
-          // A Builder so the menu can be anchored to this button rather
-          // than to the sidebar: the State's own context is the whole
-          // panel, and a menu positioned off that opens at its corner.
-          child: Builder(
-            builder: (buttonContext) => Semantics(
-              button: true,
-              label: "More -- press and hold to move",
-              child: GestureDetector(
-                // Opaque so the tap stops here rather than reaching the
-                // row's own InkWell, which would open the document under
-                // the menu.
-                behavior: HitTestBehavior.opaque,
-                onTap: () => _openRowMenu(buttonContext, library, entry),
-                child: SizedBox(
-                  width: 28,
-                  height: 28,
-                  child: Icon(Icons.more_vert,
-                      size: 16, color: theme.colors.onSurfaceVariant),
-                ),
+      PostEntry entry, int index) {
+    // The notes folder has neither of the two things this button is for. It
+    // cannot be renamed or deleted, so the menu would open empty, and it is
+    // pinned to the bottom of the list, so there is nowhere to drag it to.
+    // The space it would take is kept, so its row lines up with the others.
+    if (entry.isNotesFolder) return const SizedBox(width: 28, height: 28);
+
+    return ReorderableDelayedDragStartListener(
+      index: index,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.grab,
+        // A Builder so the menu can be anchored to this button rather
+        // than to the sidebar: the State's own context is the whole
+        // panel, and a menu positioned off that opens at its corner.
+        child: Builder(
+          builder: (buttonContext) => Semantics(
+            button: true,
+            label: "More -- press and hold to move",
+            child: GestureDetector(
+              // Opaque so the tap stops here rather than reaching the
+              // row's own InkWell, which would open the document under
+              // the menu.
+              behavior: HitTestBehavior.opaque,
+              onTap: () => _openRowMenu(buttonContext, library, entry),
+              child: SizedBox(
+                width: 28,
+                height: 28,
+                child: Icon(Icons.more_vert,
+                    size: 16, color: theme.colors.onSurfaceVariant),
               ),
             ),
           ),
         ),
-      );
+      ),
+    );
+  }
 
   /// _reorderHint is where the row tooltips went: one line, under the list,
   /// saying the thing they each said separately.
@@ -323,8 +334,8 @@ class _PostSidebarState extends State<PostSidebar> {
         Overlay.of(buttonContext).context.findRenderObject() as RenderBox?;
     if (button == null || overlay == null) return;
     var topLeft = button.localToGlobal(Offset.zero, ancestor: overlay);
-    var bottomRight = button
-        .localToGlobal(button.size.bottomRight(Offset.zero), ancestor: overlay);
+    var bottomRight = button.localToGlobal(button.size.bottomRight(Offset.zero),
+        ancestor: overlay);
     var choice = await showMenu<String>(
       context: buttonContext,
       position: RelativeRect.fromLTRB(
@@ -334,11 +345,18 @@ class _PostSidebarState extends State<PostSidebar> {
         overlay.size.height - bottomRight.dy,
       ),
       items: [
-        const PopupMenuItem(value: "rename", child: Text("Rename")),
+        // The notes folder is offered neither: the app files notes into it by
+        // name from every page in the app, so a rename or a delete would
+        // strand every note in it and the next one written would recreate the
+        // folder anyway. Storage refuses both regardless (see PostStorage);
+        // this is only so the menu does not offer what will not happen.
+        if (!entry.isNotesFolder)
+          const PopupMenuItem(value: "rename", child: Text("Rename")),
         // A folder has nowhere to go: the library is one level deep.
         if (!entry.isFolder)
           const PopupMenuItem(value: "move", child: Text("Move to...")),
-        const PopupMenuItem(value: "delete", child: Text("Delete")),
+        if (!entry.isNotesFolder)
+          const PopupMenuItem(value: "delete", child: Text("Delete")),
       ],
     );
     if (!mounted) return;
@@ -361,12 +379,38 @@ class _PostSidebarState extends State<PostSidebar> {
           border: Border(top: BorderSide(color: theme.colors.outlineVariant)),
         ),
         padding: const EdgeInsets.fromLTRB(8, 8, 8, 10),
-        child: Wrap(spacing: 6, runSpacing: 6, children: [
-          _action(theme, Icons.note_add_outlined, "New document",
-              () => _newDocument(library)),
-          if (library.folder.isEmpty)
-            _action(theme, Icons.create_new_folder_outlined, "New folder",
-                () => _newFolder(library)),
+        child: Row(children: [
+          Expanded(
+            child: Wrap(spacing: 6, runSpacing: 6, children: [
+              _action(theme, Icons.note_add_outlined, "New document",
+                  () => _newDocument(library)),
+              if (library.folder.isEmpty)
+                _action(theme, Icons.create_new_folder_outlined, "New folder",
+                    () => _newFolder(library)),
+            ]),
+          ),
+          // Shown while a write is in flight rather than after it: the point
+          // is to answer "did that save", and an indicator that only appears
+          // once the answer is yes never gets seen.
+          //
+          // It lives in this row, which is always drawn, rather than in the
+          // header, which at the top level is not -- see _header. The box is
+          // reserved either way so that the indicator appearing does not
+          // shuffle the chips beside it.
+          SizedBox(
+            width: 20,
+            height: 12,
+            child: library.saving
+                ? Center(
+                    child: SizedBox(
+                      width: 12,
+                      height: 12,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: theme.colors.onSurfaceVariant),
+                    ),
+                  )
+                : null,
+          ),
         ]),
       );
 

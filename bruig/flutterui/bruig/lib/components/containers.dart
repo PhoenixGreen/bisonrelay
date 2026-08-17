@@ -373,6 +373,29 @@ double sidebarEdgeWidth(ThemeNotifier theme) {
   return style.borderMode != AreaBackgroundMode.token && right > 0 ? right : 1;
 }
 
+/// contentAreaOverlay wraps whatever any screen is about to draw as its
+/// content area -- the region beside a sidebar, not the whole page.
+///
+/// One hook rather than a line in every screen, because the content area is
+/// already the one thing every layout in the app agrees on: SecondarySideMenu-
+/// Layout puts its content through [contentAreaFrame], and the two screens
+/// that lay their own sidebar out (the feed, the writing page) call it
+/// themselves. Anything wrapped here therefore lands inside the region the
+/// reader thinks of as "the page", on every screen, without this file or those
+/// screens knowing what was wrapped.
+///
+/// Inverted deliberately: the notes button and panel are the only user of it
+/// today (see plugin_system/writing_tools/notes), and a component this generic
+/// must not import a feature. The feature registers itself at startup, exactly
+/// as a capability registers its settings section -- see
+/// plugin_system/plugin_settings.dart, which makes the same trade for the same
+/// reason.
+///
+/// A wrapper must tolerate being applied more than once on one screen: the
+/// feed nests content areas. Handling that is the wrapper's business, not this
+/// hook's.
+Widget Function(Widget content)? contentAreaOverlay;
+
 // contentAreaFrame wraps a screen's content in the Content Area's own
 // styling -- what puts space or a border between a sidebar and the content
 // beside it, and what draws a border around, say, the chat area. Screens
@@ -383,6 +406,11 @@ double sidebarEdgeWidth(ThemeNotifier theme) {
 // untouched area still resolves to an opaque token-colored box, which would
 // paint over content that never had a background of its own.
 Widget contentAreaFrame(ThemeNotifier theme, Widget content) {
+  // Anything a feature wants drawn over every content area, in every screen,
+  // goes on before the styling gate below -- so it appears whether or not the
+  // area has been given a background of its own. See [contentAreaOverlay].
+  content = contentAreaOverlay?.call(content) ?? content;
+
   // Its Background "Default" is the palette's Content Background, seeded to
   // the same value as Master Background so this paints what showed through
   // before it existed. The built-in themes have no palette to read, so they

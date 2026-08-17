@@ -173,6 +173,11 @@ Future<void> runMainApp(Config cfg) async {
   // app to leave alone.
   final writingPrefs = WritingPreferences();
   await writingPrefs.load();
+  // Awaited for a different reason: these decide whether a button is drawn and
+  // where. Read late, the notes button would appear a moment after the window
+  // did, and then jump to another corner.
+  final notesPrefs = NotesPreferences();
+  await notesPrefs.load();
   // Attaches the writing tools' settings section to the capability it belongs
   // to. Done from the feature's side of the boundary, so the plugin system
   // never learns what a dictionary is -- see plugin_system/plugin_settings.
@@ -231,6 +236,19 @@ Future<void> runMainApp(Config cfg) async {
       // it; the two cannot reach each other directly.
       ChangeNotifierProvider(create: (c) => ComposerSidebarController()),
       ChangeNotifierProvider(create: (c) => PostLibraryModel()),
+      // Notes. The preferences and the target are separate from the panel's
+      // own state because they answer to different things: the preferences are
+      // the reader's settings, the target is owned by whichever page is on
+      // screen, and only the panel's state is the panel's.
+      ChangeNotifierProvider<NotesPreferences>.value(value: notesPrefs),
+      ChangeNotifierProvider(create: (c) => NoteTargetModel()),
+      // The join between the two: a page publishes its target and the panel
+      // follows it here, so neither NotesHost nor NotesModel has to know
+      // anything about the navigation.
+      ChangeNotifierProxyProvider<NoteTargetModel, NotesModel>(
+        create: (c) => NotesModel(),
+        update: (c, targets, notes) => notes!..setTarget(targets.target),
+      ),
       // The thesaurus holds no state of its own -- it asks the plugin a
       // word at a time -- so it is a plain ProxyProvider rather than a
       // notifier, rebuilt only if the plugin list itself changes.

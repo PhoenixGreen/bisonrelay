@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:bruig/plugin_system/writing_tools/notes/note_storage.dart';
 import 'package:bruig/plugin_system/writing_tools/post_library/embed_store.dart';
 import 'package:bruig/plugin_system/writing_tools/post_library/post_storage.dart';
 import 'package:flutter/material.dart';
@@ -362,6 +363,13 @@ class PostLibraryModel extends ChangeNotifier {
         entry.folder == _openFolder) {
       _openName = renamed;
     }
+    // A note is an ordinary document, so this Rename applies to it -- and the
+    // index that says which page each note belongs to has to follow, or the
+    // renamed note detaches and that page starts an empty second one beside
+    // it. See NoteStorage.noteRenamed.
+    if (!entry.isFolder && entry.folder == notesFolderName) {
+      await NoteStorage.noteRenamed(entry.name, renamed);
+    }
     await refresh();
     return true;
   }
@@ -379,8 +387,14 @@ class PostLibraryModel extends ChangeNotifier {
     if (from < 0 || from >= _entries.length) return false;
 
     var moving = _entries[from];
+    // The notes folder is pinned to the bottom by the listing itself and is
+    // not among the rows that can move. Its own row offers no drag handle;
+    // this is the guard for everything else, so a folder dragged to the end
+    // lands above it rather than past it.
+    if (moving.isNotesFolder) return false;
     var first = _entries.indexWhere((e) => e.isFolder == moving.isFolder);
-    var last = _entries.lastIndexWhere((e) => e.isFolder == moving.isFolder);
+    var last = _entries.lastIndexWhere(
+        (e) => e.isFolder == moving.isFolder && !e.isNotesFolder);
     to = to.clamp(first, last);
     if (to == from) return false;
 

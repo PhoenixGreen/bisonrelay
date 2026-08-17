@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:bruig/components/buttons.dart';
+import 'package:bruig/plugin_system/writing_tools/writing_tools.dart';
 import 'package:bruig/components/chats_list.dart';
 import 'package:bruig/components/text.dart';
 import 'package:bruig/models/audio.dart';
@@ -460,24 +461,38 @@ class _ChatsScreenState extends State<ChatsScreen> {
     // navigation goes back to that list (see OverviewScreen._onNavTapped) --
     // it's a better destination than the list as a slide-in drawer would be,
     // so this screen deliberately hands no sidebar to the drawer at all.
-    return !isScreenSmall
-        ? Consumer<ActiveChatModel>(
-            builder: (context, activeChat, child) => ActiveChatsListMenu(
-                  client,
-                  inputFocusNode,
-                  rtc,
-                  isDetail: !activeChat.empty,
-                  detailKey: activeChat.chat?.id,
-                  content: Container(
-                    margin: const EdgeInsets.all(1),
-                    child: ActiveChat(client, rtc, audio, inputFocusNode),
-                  ),
-                ))
-        : Consumer<ActiveChatModel>(
-            builder: (context, activeChat, child) => activeChat.empty
-                ? ActiveChatsListMenu(client, inputFocusNode, rtc)
-                : _MobileActiveChat(client, rtc, audio, inputFocusNode));
+    //
+    // One Consumer around both layouts rather than one inside each, because
+    // the note follows the conversation and has to be declared whichever
+    // layout is drawing it. A note here is about the chat, not about the
+    // page: walking away and coming back to the same person finds it again.
+    return Consumer<ActiveChatModel>(
+        builder: (context, activeChat, child) => NoteTargetScope(
+              target: _noteTargetFor(activeChat.chat),
+              child: !isScreenSmall
+                  ? ActiveChatsListMenu(
+                      client,
+                      inputFocusNode,
+                      rtc,
+                      isDetail: !activeChat.empty,
+                      detailKey: activeChat.chat?.id,
+                      content: Container(
+                        margin: const EdgeInsets.all(1),
+                        child: ActiveChat(client, rtc, audio, inputFocusNode),
+                      ),
+                    )
+                  : activeChat.empty
+                      ? ActiveChatsListMenu(client, inputFocusNode, rtc)
+                      : _MobileActiveChat(client, rtc, audio, inputFocusNode),
+            ));
   }
+
+  /// _noteTargetFor is the open conversation, or nothing when the chat list is
+  /// showing on its own -- a list of everybody is not a thing to take notes
+  /// about, and the app-wide note is the better answer there.
+  NoteTarget? _noteTargetFor(ChatModel? chat) => chat == null
+      ? null
+      : NoteTarget.chat(chat.id, chat.nick, isGC: chat.isGC);
 }
 
 // _MobileActiveChat is the conversation as a full page, and the one screen

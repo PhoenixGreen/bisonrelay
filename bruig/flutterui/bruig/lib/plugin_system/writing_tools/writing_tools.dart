@@ -1,5 +1,9 @@
+import 'package:bruig/components/containers.dart';
 import 'package:bruig/plugin_system/plugin_system.dart';
+import 'package:bruig/plugin_system/writing_tools/notes/notes_settings.dart';
+import 'package:bruig/plugin_system/writing_tools/notes/ui/notes_host.dart';
 import 'package:bruig/plugin_system/writing_tools/ui/writing_settings.dart';
+import 'package:flutter/material.dart';
 
 // writing_tools.dart is the single entry point to Bison Relay's writing tools:
 // the spelling, grammar and phrasing marks in every composer, the thesaurus,
@@ -44,6 +48,7 @@ import 'package:bruig/plugin_system/writing_tools/ui/writing_settings.dart';
 //   writing_nav.dart       the Writing destination, while the plugin is on
 //
 //   post_library/      the saved posts: folders and documents on disk
+//   notes/             the note for whatever page you are on
 //
 //   ui/
 //     writing_field.dart   the controller that paints the marks
@@ -67,7 +72,13 @@ import 'package:bruig/plugin_system/writing_tools/ui/writing_settings.dart';
 // is no plugin's -- documents on disk are the user's -- but it is a panel of
 // this sidebar and reachable from nowhere else, so it travels with the page
 // that shows it.
+//
+// Notes are here for the same reason and one more. They are documents in that
+// same library, written in the same Markdown, and they are the writing you do
+// while reading rather than the writing you do to publish -- which is a
+// writing tool if anything is. See notes/notes.dart.
 export 'package:bruig/plugin_system/writing_tools/composer_sidebar.dart';
+export 'package:bruig/plugin_system/writing_tools/notes/notes.dart';
 export 'package:bruig/plugin_system/writing_tools/engine/preferences.dart';
 export 'package:bruig/plugin_system/writing_tools/engine/stats.dart';
 export 'package:bruig/plugin_system/writing_tools/engine/writing_issue.dart';
@@ -93,7 +104,37 @@ export 'package:bruig/plugin_system/writing_tools/ui/writing_settings.dart';
 void registerWritingTools() {
   PluginSettingsRegistry.register(
     PluginCapability.spellcheckData,
-    (context, inPluginPanel) =>
-        WritingOverridesSection(inPluginPanel: inPluginPanel),
+    (context, inPluginPanel) => _WritingToolsSettings(inPluginPanel),
   );
+
+  // Notes are drawn over every screen's content area -- the region beside a
+  // page's own sidebar. Registered here rather than written into a layout,
+  // for the same reason the settings section above is: components/containers
+  // is the most generic file in the app and must not import a feature. See
+  // contentAreaOverlay.
+  contentAreaOverlay = (content) => NotesHost(child: content);
+}
+
+/// _WritingToolsSettings is everything this module puts on Settings > Plugins.
+///
+/// The registry holds one section per capability, and these two belong to the
+/// same one: notes exist because the writing tools do, and both are undone
+/// from the same panel. Composing them here rather than widening the registry
+/// keeps that a fact about this module instead of a rule the plugin system has
+/// to know.
+///
+/// Notes first because they are a feature to turn on and off, which is what
+/// somebody opening this panel is usually looking for. The overrides below are
+/// a list of past decisions to undo, and are absent entirely until there are
+/// some.
+class _WritingToolsSettings extends StatelessWidget {
+  final bool inPluginPanel;
+  const _WritingToolsSettings(this.inPluginPanel);
+
+  @override
+  Widget build(BuildContext context) =>
+      Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const NotesSettingsSection(),
+        WritingOverridesSection(inPluginPanel: inPluginPanel),
+      ]);
 }

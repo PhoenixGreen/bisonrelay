@@ -1,4 +1,4 @@
-import 'package:bruig/screens/manage_content/file_notes.dart';
+import 'package:bruig/plugin_system/writing_tools/writing_tools.dart';
 import 'package:bruig/screens/manage_content/file_preview.dart';
 import 'package:bruig/screens/manage_content/file_filter_bar.dart';
 import 'package:bruig/screens/manage_content/file_row.dart';
@@ -63,13 +63,7 @@ class _FileDownloadW extends StatefulWidget {
   // list above owns which file is being previewed -- the row itself is
   // rebuilt (and replaced) whenever the download list changes.
   final ValueChanged<String> onPreview;
-  // onNotes opens this file's notes panel, owned by the page for the same
-  // reason: the panel has to outlive a row that is rebuilt on every
-  // download progress tick.
-  final ValueChanged<String> onNotes;
-  final String? notesFor;
-  const _FileDownloadW(this.fd, this.downloads, this.client, this.onPreview,
-      this.onNotes, this.notesFor);
+  const _FileDownloadW(this.fd, this.downloads, this.client, this.onPreview);
 
   @override
   State<_FileDownloadW> createState() => _FileDownloadWState();
@@ -212,11 +206,6 @@ class _FileDownloadWState extends State<_FileDownloadW> {
                   TextButton(
                       onPressed: () => widget.onPreview(diskPath),
                       child: const Text("Preview")),
-                FileNotesButton(
-                  filePath: diskPath,
-                  open: widget.notesFor == diskPath,
-                  onPressed: () => widget.onNotes(diskPath),
-                ),
                 TextButton(onPressed: openFile, child: const Text("Open")),
                 IconButton(
                   iconSize: 18,
@@ -277,8 +266,6 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
   /// sidebar's state, so a single rebuild up there puts the preview on
   /// screen and takes the sidebar down together, in the same frame.
   void _setPreviewing(String? path) => widget.onPreviewing?.call(path);
-  // The file whose notes panel is open at the foot of the page, if any.
-  String? notesFor;
 
   String _name(FileDownloadModel fd) => fd.rf.metadata?.filename ?? "";
   int _size(FileDownloadModel fd) => fd.rf.metadata?.size ?? 0;
@@ -340,37 +327,33 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
 
     // No heading: the tab bar to the left already says Downloads, and none
     // of the other Manage pages repeat their own name.
-    return Column(children: [
-      FileFilterBar<_DownloadSort>(
-        hintText: "Search downloads",
-        onSearch: (v) => setState(() => filter = v),
-        sort: sort,
-        sortLabels: _downloadSortLabels,
-        onSort: (s) => setState(() => sort = s),
-        summary: fileCountSummary(shown.length, humanReadableSize(totalSize)),
-      ),
-      Expanded(
-          child: ListView.builder(
-        shrinkWrap: true,
-        // The same gutters every content-area page uses; the top comes
-        // from the filter bar above.
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-        itemCount: shown.length,
-        itemBuilder: (context, index) => _FileDownloadW(
-            shown[index],
-            widget.downloads,
-            widget.client,
-            _setPreviewing,
-            // Pressing the button of the file already showing closes the
-            // panel, so the same button both opens and dismisses it.
-            (p) => setState(() => notesFor = notesFor == p ? null : p),
-            notesFor),
-      )),
-      if (notesFor != null)
-        FileNotesPanel(
-          filePath: notesFor!,
-          onClose: () => setState(() => notesFor = null),
+    //
+    // The list has a note of its own, separate from the notes on the files in
+    // it -- somewhere for "still waiting on the second half of these" that
+    // belongs to no one file. Previewing a file replaces this whole body, and
+    // FilePreview declares its own target, so the two never overlap.
+    return NoteTargetScope(
+      target: NoteTarget.page("/manage/downloads", "Downloads"),
+      child: Column(children: [
+        FileFilterBar<_DownloadSort>(
+          hintText: "Search downloads",
+          onSearch: (v) => setState(() => filter = v),
+          sort: sort,
+          sortLabels: _downloadSortLabels,
+          onSort: (s) => setState(() => sort = s),
+          summary: fileCountSummary(shown.length, humanReadableSize(totalSize)),
         ),
-    ]);
+        Expanded(
+            child: ListView.builder(
+          shrinkWrap: true,
+          // The same gutters every content-area page uses; the top comes
+          // from the filter bar above.
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+          itemCount: shown.length,
+          itemBuilder: (context, index) => _FileDownloadW(
+              shown[index], widget.downloads, widget.client, _setPreviewing),
+        )),
+      ]),
+    );
   }
 }

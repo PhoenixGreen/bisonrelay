@@ -55,6 +55,11 @@ Future<void> _pump(
       ChangeNotifierProvider<ThemeNotifier>(
           create: (c) => ThemeNotifier(doLoad: false)),
       ChangeNotifierProvider<WritingPreferences>.value(value: settings),
+      // The writing tools' section carries the notes settings above the
+      // overrides -- both belong to the spellcheck-data capability, and the
+      // registry holds one section per capability. See registerWritingTools.
+      ChangeNotifierProvider<NotesPreferences>(
+          create: (c) => NotesPreferences()),
       ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
       ChangeNotifierProvider<PluginManagerModel>(
           create: (c) => FakePluginManager(plugins)),
@@ -168,8 +173,7 @@ void main() {
       await prefs.addToDictionary("bisonrelay");
       await _pump(tester, prefs: prefs, plugins: [
         PluginInfo(
-            _manifest(
-                id: "links", name: "Link Cards", services: ["link-card"]),
+            _manifest(id: "links", name: "Link Cards", services: ["link-card"]),
             true),
         // Installed so the page-level fallback stays quiet: this test is
         // about which panel the settings appear in, not about that.

@@ -17,6 +17,7 @@ import 'package:bruig/models/uistate.dart';
 import 'package:bruig/screens/overview.dart';
 import 'package:bruig/screens/chats.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
+import 'package:bruig/plugin_system/writing_tools/writing_tools.dart';
 import 'package:bruig/util.dart';
 import 'package:flutter/material.dart';
 import 'package:golib_plugin/golib_plugin.dart';
@@ -904,33 +905,41 @@ class _PostContentScreenForArgsState extends State<_PostContentScreenForArgs> {
       ...receiveReceiptsWidgets,
     ]);
 
-    return Align(
-        alignment: Alignment.topLeft,
-        child: Stack(alignment: Alignment.topLeft, children: [
-          SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 10),
-              child: feedCardRedesign
-                  ? Center(
-                      child: ConstrainedBox(
-                          constraints: const BoxConstraints(
-                              maxWidth: postColumnMaxWidth),
-                          child: postAreaColumn),
-                    )
-                  : postAreaColumn),
+    // A note about this post, opened by the notes button at the foot of the
+    // content area. Keyed by relayer and post id together, which is what
+    // identifies a post -- a post id is unique to whoever sent it, not to the
+    // network -- so the note is still here on coming back to it tomorrow.
+    return NoteTargetScope(
+      target: NoteTarget.post(widget.args.post.summ.from,
+          widget.args.post.summ.id, widget.args.post.summ.title),
+      child: Align(
+          alignment: Alignment.topLeft,
+          child: Stack(alignment: Alignment.topLeft, children: [
+            SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                child: feedCardRedesign
+                    ? Center(
+                        child: ConstrainedBox(
+                            constraints: const BoxConstraints(
+                                maxWidth: postColumnMaxWidth),
+                            child: postAreaColumn),
+                      )
+                    : postAreaColumn),
 
-          // Back button on desktop.
-          if (!isScreenSmall)
-            IconButton(
-                alignment: Alignment.topLeft,
-                padding: const EdgeInsets.all(15),
-                iconSize: 15,
-                tooltip: "Go back",
-                onPressed: () => Navigator.of(context).pushReplacementNamed(
-                    '/feed',
-                    arguments:
-                        PageTabs(0, null, null)), //widget.tabChange(0, null),
-                icon: const ColoredIcon(Icons.close_outlined,
-                    color: TextColor.onSurface)),
-        ]));
+            // Back button on desktop.
+            if (!isScreenSmall)
+              IconButton(
+                  alignment: Alignment.topLeft,
+                  padding: const EdgeInsets.all(15),
+                  iconSize: 15,
+                  tooltip: "Go back",
+                  onPressed: () => Navigator.of(context).pushReplacementNamed(
+                      '/feed',
+                      arguments:
+                          PageTabs(0, null, null)), //widget.tabChange(0, null),
+                  icon: const ColoredIcon(Icons.close_outlined,
+                      color: TextColor.onSurface)),
+          ])),
+    );
   }
 }

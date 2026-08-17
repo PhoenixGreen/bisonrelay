@@ -3,7 +3,8 @@ import 'dart:io';
 
 import 'package:bruig/components/text.dart';
 import 'package:bruig/models/uistate.dart';
-import 'package:bruig/screens/manage_content/file_notes.dart';
+import 'package:bruig/plugin_system/writing_tools/writing_tools.dart';
+import 'package:bruig/screens/manage_content/reading_position.dart';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as path;
 import 'package:pdfrx/pdfrx.dart';
@@ -54,7 +55,7 @@ FileKind fileKindOf(String filePath) {
 // keeping apart. Across a *session* -- stepping over to Chat and coming back
 // -- the document is simply still open where it was, restored from
 // FilePreviewNavModel without anything being asked for. Across a *closing*,
-// where they had got to is written beside the file (see FileNotes.position)
+// where they had got to is written beside the file (see ReadingPosition)
 // and nothing jumps on its own: the file opens at its beginning and the
 // Continue button in the header is how you go back. A document that silently
 // opened four hundred pages in would be worse than one that forgot; a
@@ -79,8 +80,7 @@ class FilePreview extends StatefulWidget {
 }
 
 class _FilePreviewState extends State<FilePreview> {
-  FileNotes notes = FileNotes.empty;
-  bool showNotes = false;
+  ReadingPosition mark = ReadingPosition.empty;
 
   /// zoom is the share of the fit view the document is drawn at -- 1.0 being
   /// the whole page fitted to the panel, which is how it opens.
@@ -97,14 +97,14 @@ class _FilePreviewState extends State<FilePreview> {
   double? resumeTo;
 
   /// _kind names the unit this file's position is measured in -- see
-  /// FileNotes.position. The FileKind's own name, so it can never disagree
-  /// with the view that is doing the measuring.
+  /// ReadingPosition.position. The FileKind's own name, so it can never
+  /// disagree with the view that is doing the measuring.
   String get _kind => fileKindOf(widget.filePath).name;
 
   @override
   void initState() {
     super.initState();
-    _loadNotes();
+    _loadMark();
     // Coming back to a page that was already open: pick the document up
     // where it was left rather than at the top. Distinct from Continue,
     // which is for a document being opened again from cold.
@@ -118,22 +118,19 @@ class _FilePreviewState extends State<FilePreview> {
     super.didUpdateWidget(old);
     if (old.filePath != widget.filePath) {
       setState(() {
-        notes = FileNotes.empty;
+        mark = ReadingPosition.empty;
         resumeTo = null;
       });
-      _loadNotes();
+      _loadMark();
     }
   }
 
-  Future<void> _loadNotes() async {
-    var loaded = await FileNotesStore.load(widget.filePath);
-    if (mounted) setState(() => notes = loaded);
+  Future<void> _loadMark() async {
+    var loaded = await ReadingPositionStore.load(widget.filePath);
+    if (mounted) setState(() => mark = loaded);
   }
 
-  /// _recordPosition writes where the reader has got to, merging into
-  /// whatever else the sidecar holds -- the notes panel below writes to the
-  /// same file, and re-reading first is what stops one of them erasing the
-  /// other's work.
+  /// _recordPosition writes where the reader has got to.
   ///
   /// Kept off the UI thread's critical path deliberately: this is called as
   /// the reader scrolls or plays, and none of it is worth a rebuild.
@@ -142,10 +139,9 @@ class _FilePreviewState extends State<FilePreview> {
     // the view on coming back to this page, and it costs nothing.
     widget.nav.remember(position: position);
     if (!mounted) return;
-    var existing = await FileNotesStore.load(widget.filePath);
-    if (existing.position == position) return;
-    notes = existing.copyWith(position: position, positionKind: _kind);
-    await FileNotesStore.save(widget.filePath, notes);
+    if (mark.position == position && mark.positionKind == _kind) return;
+    mark = mark.copyWith(position: position, positionKind: _kind);
+    await ReadingPositionStore.save(widget.filePath, mark);
   }
 
   void _setZoom(double v) {
@@ -156,7 +152,7 @@ class _FilePreviewState extends State<FilePreview> {
   /// _resumeLabel names what Continue will actually do, in the units of the
   /// thing being resumed -- "page 12" is a promise, "continue" alone is not.
   String? get _resumeLabel {
-    var at = notes.positionFor(_kind);
+    var at = mark.positionFor(_kind);
     if (at == null) return null;
     return switch (fileKindOf(widget.filePath)) {
       FileKind.pdf => "Continue from page ${at.round()}",
@@ -181,75 +177,68 @@ class _FilePreviewState extends State<FilePreview> {
     // Only the two kinds with a page to scale. Text has a font size rather
     // than a zoom, and a video has neither.
     var zoomable = kind == FileKind.pdf || kind == FileKind.image;
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-        // Wrap rather than Row: the name, the page counter, the zoom and the
-        // two buttons do not fit across a narrow panel, and a Row would
-        // overflow rather than give way.
-        child: Wrap(
-          crossAxisAlignment: WrapCrossAlignment.center,
-          spacing: 8,
-          runSpacing: 4,
-          children: [
-          IconButton(
-            icon: const Icon(Icons.close),
-            tooltip: "Close preview",
-            onPressed: widget.onClose,
-          ),
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 320),
-            child: Text(path.basename(widget.filePath),
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontWeight: FontWeight.w500)),
-          ),
-          if (pageCount != null)
-            _PageCounter(
-              page: page ?? 1,
-              pageCount: pageCount!,
-              onGoTo: (p) => setState(() => resumeTo = p.toDouble()),
-            ),
-          if (zoomable)
-            _ZoomPicker(zoom: zoom, onChanged: _setZoom),
-          if (resume != null)
-            TextButton.icon(
-              icon: const Icon(Icons.bookmark, size: 16),
-              label: Text(resume),
-              onPressed: () => setState(() {
-                resumeTo = notes.position;
-              }),
-            ),
-          // The note button is here as well as on the list rows, because
-          // notes are most worth taking while the thing is in front of you.
-          FileNotesButton(
-            filePath: widget.filePath,
-            open: showNotes,
-            onPressed: () => setState(() => showNotes = !showNotes),
-          ),
-        ]),
-      ),
-      Expanded(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: cs.outlineVariant),
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(10),
-              child: _body(context),
+    // Notes taken here are about this document, and the notes button at the
+    // foot of the content area opens them. This one line is the whole of what
+    // the preview knows about notes; the button and the panel are drawn once,
+    // around the whole content area, by NotesHost.
+    return NoteTargetScope(
+      target: NoteTarget.document(widget.filePath),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+          // Wrap rather than Row: the name, the page counter, the zoom and the
+          // two buttons do not fit across a narrow panel, and a Row would
+          // overflow rather than give way.
+          child: Wrap(
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 8,
+              runSpacing: 4,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  tooltip: "Close preview",
+                  onPressed: widget.onClose,
+                ),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 320),
+                  child: Text(path.basename(widget.filePath),
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w500)),
+                ),
+                if (pageCount != null)
+                  _PageCounter(
+                    page: page ?? 1,
+                    pageCount: pageCount!,
+                    onGoTo: (p) => setState(() => resumeTo = p.toDouble()),
+                  ),
+                if (zoomable) _ZoomPicker(zoom: zoom, onChanged: _setZoom),
+                if (resume != null)
+                  TextButton.icon(
+                    icon: const Icon(Icons.bookmark, size: 16),
+                    label: Text(resume),
+                    onPressed: () => setState(() {
+                      resumeTo = mark.position;
+                    }),
+                  ),
+              ]),
+        ),
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: cs.outlineVariant),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: _body(context),
+              ),
             ),
           ),
         ),
-      ),
-      if (showNotes)
-        FileNotesPanel(
-          filePath: widget.filePath,
-          height: 180,
-          onClose: () => setState(() => showNotes = false),
-        ),
-    ]);
+      ]),
+    );
   }
 
   Widget _body(BuildContext context) {
@@ -385,8 +374,8 @@ class _ImagePreviewState extends State<_ImagePreview> {
   void didUpdateWidget(_ImagePreview old) {
     super.didUpdateWidget(old);
     if (widget.zoom != old.zoom) {
-      _transform.value = Matrix4.identity()..scaleByDouble(
-          widget.zoom, widget.zoom, widget.zoom, 1);
+      _transform.value = Matrix4.identity()
+        ..scaleByDouble(widget.zoom, widget.zoom, widget.zoom, 1);
     }
   }
 

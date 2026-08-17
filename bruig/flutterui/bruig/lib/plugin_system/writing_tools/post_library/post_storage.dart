@@ -37,6 +37,22 @@ const _extension = ".md";
 /// after what it does, in the alphabetical order the library always used.
 const _orderFile = ".order";
 
+/// notesFolderName is the one folder in the library the app keeps for itself.
+///
+/// Notes taken around the app are written into it as ordinary Markdown
+/// documents (see notes/note_storage.dart), which is the whole point: a note
+/// is a post you have not decided to send, so it belongs in the same library,
+/// in the same format, openable in the same composer. What it needs on top of
+/// an ordinary folder is only that it stays put -- it is pinned to the bottom
+/// of the top-level listing, and refuses to be renamed or deleted, because
+/// notes are still being filed into it by name from elsewhere in the app and
+/// a folder that could vanish under them would strand every one of them.
+///
+/// It is not created here. Nothing makes it until the first note is written,
+/// so somebody who turns notes off never grows an empty folder they did not
+/// ask for.
+const notesFolderName = "Bison Relay Notes";
+
 /// maxNameLength bounds a folder or document name. Chosen well under the 255
 /// bytes most filesystems allow, since the name is also what has to fit in a
 /// sidebar row.
@@ -66,6 +82,11 @@ class PostEntry {
     this.modified,
     this.size,
   });
+
+  /// isNotesFolder marks the reserved folder, which the sidebar draws
+  /// differently and offers neither Rename nor Delete on. See
+  /// [notesFolderName].
+  bool get isNotesFolder => isFolder && name == notesFolderName;
 }
 
 /// PostStorage reads and writes the library.
@@ -221,11 +242,23 @@ class PostStorage {
     folders.sort(byName);
     documents.sort(byName);
 
+    // The reserved folder is held out of the ordering entirely and put back
+    // on the end, so it is always the last row of the top level however the
+    // rest has been arranged. Notes accumulate on their own, without anyone
+    // filing them, and a folder that drifted up the list as it grew would put
+    // itself between somebody and the writing they came here for.
+    var reserved = folders.where((f) => f.isNotesFolder).toList();
+    folders.removeWhere((f) => f.isNotesFolder);
+
     // Documents first. They are what the library is for -- a folder is
     // where some of them are kept -- and putting the folders on top meant
     // scrolling past the filing to reach the writing.
     var order = await readOrder(folder);
-    return [..._inOrder(documents, order), ..._inOrder(folders, order)];
+    return [
+      ..._inOrder(documents, order),
+      ..._inOrder(folders, order),
+      ...reserved,
+    ];
   }
 
   /// _inOrder puts the entries the order file names first, in its order, and
@@ -320,7 +353,16 @@ class PostStorage {
   }
 
   /// rename moves a folder or document to a new name in the same place.
+  ///
+  /// Refuses the reserved notes folder: notes are still being filed into it
+  /// by name from elsewhere in the app, and renaming it would send the next
+  /// one to a folder of the old name made fresh beside it.
   static Future<String?> rename(PostEntry entry, String newName) async {
+    if (entry.isNotesFolder) return null;
+    // ...and nothing else may be renamed onto it either, which would leave
+    // two folders claiming the same reserved name.
+    if (entry.isFolder && sanitizeName(newName) == notesFolderName) return null;
+
     var from =
         await _resolve(entry.folder, entry.name, asDocument: !entry.isFolder);
     var to = await _resolve(entry.folder, newName, asDocument: !entry.isFolder);
@@ -361,13 +403,24 @@ class PostStorage {
   }
 
   /// folderNames lists the folders a document could be moved into.
+  ///
+  /// Not the reserved notes folder. What is in there is a note *about*
+  /// something -- a file, a chat, a post -- and a document dropped in beside
+  /// them is about nothing, so it would sit there forever as a row no page
+  /// ever opens. Moving the other way is allowed and is how a note is
+  /// promoted to an ordinary post: it leaves the folder, and the page it came
+  /// from starts a fresh note next time.
   static Future<List<String>> folderNames() async => [
         for (var entry in await list())
-          if (entry.isFolder) entry.name,
+          if (entry.isFolder && !entry.isNotesFolder) entry.name,
       ];
 
   /// delete removes a document, or a folder and everything in it.
+  ///
+  /// The reserved notes folder is refused; the notes inside it are not, so
+  /// there is still a way to clear it out. See [notesFolderName].
   static Future<void> delete(PostEntry entry) async {
+    if (entry.isNotesFolder) return;
     var target =
         await _resolve(entry.folder, entry.name, asDocument: !entry.isFolder);
     if (target == null) return;

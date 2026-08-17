@@ -1,11 +1,11 @@
 import 'package:bruig/components/inputs.dart';
+import 'package:bruig/plugin_system/writing_tools/writing_tools.dart';
 import 'package:bruig/screens/manage_content/file_filter_bar.dart';
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:flutter/services.dart';
 import 'package:bruig/components/snackbars.dart';
 import 'dart:io';
 import 'package:path/path.dart' as path;
-import 'package:bruig/screens/manage_content/file_notes.dart';
 import 'package:bruig/screens/manage_content/file_row.dart';
 import 'package:bruig/util.dart';
 import 'package:golib_plugin/util.dart';
@@ -41,13 +41,9 @@ class SharedContentFile extends StatefulWidget {
   // onTap is only set when the screen was opened to pick a file for
   // something else (see ManageContentScreenArgs).
   final VoidCallback? onTap;
-  // onNotes opens this file's notes panel. Owned by the page rather than
-  // the row, so the panel survives the list rebuilding around it.
-  final ValueChanged<String>? onNotes;
-  final String? notesFor;
   const SharedContentFile(
       this.file, this.removeContentCB, this.client, this.onTap,
-      {this.onNotes, this.notesFor, super.key});
+      {super.key});
 
   @override
   State<SharedContentFile> createState() => _SharedContentFileState();
@@ -197,14 +193,6 @@ class _SharedContentFileState extends State<SharedContentFile> {
           tooltip: "Copy link",
           onPressed: () => copyLink(context),
         ),
-        // Notes are about the file on disk, so a share with no known path
-        // has nothing to attach them to.
-        if (widget.onNotes != null && canOpen)
-          FileNotesButton(
-            filePath: diskPath,
-            open: widget.notesFor == diskPath,
-            onPressed: () => widget.onNotes!(diskPath),
-          ),
         TextButton(
           onPressed: canOpen ? () => OpenFilex.open(diskPath) : null,
           child: Text("Open",
@@ -280,8 +268,6 @@ class SharedContent extends StatefulWidget {
 class _SharedContentState extends State<SharedContent> {
   String filter = "";
   _SharedSort sort = _SharedSort.name;
-  // The file whose notes panel is open at the foot of the page, if any.
-  String? notesFor;
 
   @override
   Widget build(BuildContext context) {
@@ -302,47 +288,40 @@ class _SharedContentState extends State<SharedContent> {
         });
     var totalSize = files.fold<int>(0, (sum, f) => sum + f.size);
 
-    return Column(children: [
-      FileFilterBar<_SharedSort>(
-        hintText: "Search shared files",
-        onSearch: (v) => setState(() => filter = v),
-        sort: sort,
-        sortLabels: _sharedSortLabels,
-        onSort: (s) => setState(() => sort = s),
-        summary: fileCountSummary(files.length, humanReadableSize(totalSize)),
-      ),
-      Expanded(
-        child: ListView.builder(
-          // The same gutters every content-area page uses; the top comes
-          // from the filter bar above.
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-          itemCount: files.length,
-          itemBuilder: (BuildContext context, int index) {
-            // The row draws its own card (see ManageFileRow), so both
-            // Manage pages frame their files identically.
-            return Container(
-                margin: const EdgeInsets.only(bottom: 10),
-                child: SharedContentFile(
-                    files[index],
-                    widget.removeContent,
-                    widget.client,
-                    widget.fileSelectedCB != null
-                        ? () => widget.fileSelectedCB!(files[index].sf)
-                        : null,
-                    // Pressing the button of the file already showing closes
-                    // the panel, so one button both opens and dismisses it.
-                    onNotes: (p) =>
-                        setState(() => notesFor = notesFor == p ? null : p),
-                    notesFor: notesFor));
-          },
+    return NoteTargetScope(
+      target: NoteTarget.page("/manage/shared", "Shared"),
+      child: Column(children: [
+        FileFilterBar<_SharedSort>(
+          hintText: "Search shared files",
+          onSearch: (v) => setState(() => filter = v),
+          sort: sort,
+          sortLabels: _sharedSortLabels,
+          onSort: (s) => setState(() => sort = s),
+          summary: fileCountSummary(files.length, humanReadableSize(totalSize)),
         ),
-      ),
-      if (notesFor != null)
-        FileNotesPanel(
-          filePath: notesFor!,
-          onClose: () => setState(() => notesFor = null),
+        Expanded(
+          child: ListView.builder(
+            // The same gutters every content-area page uses; the top comes
+            // from the filter bar above.
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+            itemCount: files.length,
+            itemBuilder: (BuildContext context, int index) {
+              // The row draws its own card (see ManageFileRow), so both
+              // Manage pages frame their files identically.
+              return Container(
+                  margin: const EdgeInsets.only(bottom: 10),
+                  child: SharedContentFile(
+                      files[index],
+                      widget.removeContent,
+                      widget.client,
+                      widget.fileSelectedCB != null
+                          ? () => widget.fileSelectedCB!(files[index].sf)
+                          : null));
+            },
+          ),
         ),
-    ]);
+      ]),
+    );
   }
 }
 
