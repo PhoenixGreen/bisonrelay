@@ -1,5 +1,6 @@
 import 'dart:collection';
 
+import 'package:bruig/markdown_line_breaks.dart';
 import 'package:bruig/util.dart';
 import 'package:collection/collection.dart';
 import 'package:flutter/cupertino.dart';
@@ -272,8 +273,18 @@ class NewPostModel {
 
   // Returns the actual full content that will be included in the post.
   String getFullContent() {
-    // Replace embedded content with actual content.
-    var fc = content;
+    // A line break somebody typed becomes a line break every reader sees.
+    //
+    // Done here rather than in the renderer because this is the text that
+    // leaves the machine, and a post is drawn by each reader's own client --
+    // see markdown_line_breaks.dart. Done here rather than in the composer so
+    // that the preview, which renders exactly this, cannot show a layout the
+    // published post does not have.
+    //
+    // Before the embeds are substituted, not after: the placeholders are
+    // twelve characters and the content they stand for can be megabytes of
+    // base64, and there is nothing in base64 for this to do.
+    var fc = hardenSoftLineBreaks(content);
     final pattern = RegExp(r"(--embed\[.*data=)\[content ([a-zA-Z0-9]{12})]");
     fc = fc.replaceAllMapped(pattern, (match) {
       var embed = embedContents[match.group(2)];
