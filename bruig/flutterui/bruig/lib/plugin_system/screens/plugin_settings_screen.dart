@@ -121,7 +121,15 @@ class _PluginsSettingsScreenState extends State<PluginsSettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    // Scrolls, because this page has no idea how tall it is. Its height is the
+    // sum of however many plugins are installed and whatever settings each of
+    // their capabilities contributes -- neither of which this file knows or
+    // should know. It went un-scrolled for a while only because the panels
+    // happened to fit; the first capability to contribute a section of any
+    // size overflowed the bottom of the window with the yellow-and-black
+    // stripes and no way to reach what was under them.
+    return SingleChildScrollView(
+      child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
@@ -159,13 +167,20 @@ class _PluginsSettingsScreenState extends State<PluginsSettingsScreen> {
           // one, and a heading over nothing would be a bug rather than a
           // message.
           Consumer<PluginManagerModel>(builder: (context, model, child) {
-            var builtin = [for (var p in model.plugins) if (p.builtin) p];
-            var imported = [for (var p in model.plugins) if (!p.builtin) p];
+            var builtin = [
+              for (var p in model.plugins)
+                if (p.builtin) p
+            ];
+            var imported = [
+              for (var p in model.plugins)
+                if (!p.builtin) p
+            ];
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 if (builtin.isNotEmpty) ...[
-                  _groupHeading("Included with Bison Relay",
+                  _groupHeading(
+                      "Included with Bison Relay",
                       "Always available. Turn one off to stop it running; "
                           "they cannot be removed."),
                   for (var plugin in builtin) _pluginTile(plugin),
@@ -201,7 +216,9 @@ class _PluginsSettingsScreenState extends State<PluginsSettingsScreen> {
               ],
             ),
           ),
-        ]));
+        ]),
+      ),
+    );
   }
 
   /// _groupHeading labels one of the two lists.
