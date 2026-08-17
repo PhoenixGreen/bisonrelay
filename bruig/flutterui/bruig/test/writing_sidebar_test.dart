@@ -417,7 +417,7 @@ void main() {
       expect(find.byTooltip("Spelling & grammar (1)"), findsOneWidget,
           reason: "a page with nothing on it should say so before it is "
               "opened, not after");
-      expect(find.byTooltip("Phrasing"), findsOneWidget,
+      expect(find.byTooltip("Suggestions"), findsOneWidget,
           reason: "an empty page carries no count");
     });
   });
