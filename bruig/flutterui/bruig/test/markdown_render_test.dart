@@ -198,6 +198,48 @@ void main() {
     });
   });
 
+  // Reported: line breaks stopped working in the post preview.
+  //
+  // isolate() splits a line around a plugin's standalone matches, and the
+  // line it hands back for a line with no match at all was the *trimmed*
+  // one -- so the two trailing spaces that are how markdown spells a line
+  // break were deleted before the parser ever saw them. Only with a plugin
+  // registered, since with none isolate returns early, which is why it
+  // survived every test here: link previews supplies one and ships enabled,
+  // so in the running app it was every post and in the tests it was none.
+  group("isolate keeps the text it is not splitting", () {
+    MarkdownAreaModel withStandalone() {
+      var model = MarkdownAreaModel("/tmp");
+      model.setPluginExtensions([
+        MarkdownExtension(
+            tag: "probe",
+            builder: _Claim(),
+            standalone: RegExp(r'(?<![(\]<])https?://\S+')),
+      ]);
+      return model;
+    }
+
+    test("a hard line break survives a registered standalone pattern", () {
+      expect(withStandalone().isolate("one  \ntwo"), "one  \ntwo");
+    });
+
+    test("and survives when no plugin is registered either", () {
+      expect(MarkdownAreaModel("/tmp").isolate("one  \ntwo"), "one  \ntwo");
+    });
+
+    test("a line that really is split is still split", () {
+      var out = withStandalone().isolate("see https://example.com now");
+      expect(out.split("\n").where((l) => l.trim().isNotEmpty).length, 3,
+          reason: "the URL is pulled into a paragraph of its own");
+      expect(out, contains("https://example.com"));
+    });
+
+    test("a line inside a fence is untouched", () {
+      const code = "```\n  indented  \n```";
+      expect(withStandalone().isolate(code), code);
+    });
+  });
+
   // Quotes. flutter_markdown upstream folds the blockquote style *underneath*
   // the paragraph's, and TextStyle.merge lets the argument win -- so
   // styleSheet.blockquote was dead in any sheet that fully specifies `p`,

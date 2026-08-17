@@ -536,10 +536,18 @@ class MarkdownAreaModel extends ChangeNotifier {
         if (first == null || m.start < first.start) first = m;
       }
       if (first == null) {
-        add(rest.trim());
         // A line with no match at all comes back exactly as it was written,
         // spaces and all -- only a line actually being broken up is rebuilt.
-        return out.isEmpty ? [line] : out;
+        //
+        // Asked before the tail is added rather than after. Adding it first
+        // put the trimmed line into `out`, so the emptiness test could never
+        // be true and every line came back trimmed -- which quietly deleted
+        // the two trailing spaces that make a markdown line break, for as
+        // long as any plugin supplied a standalone pattern. Link previews
+        // supplies one and ships enabled, so this was every post.
+        if (out.isEmpty) return [line];
+        add(rest.trim());
+        return out;
       }
       add(rest.substring(0, first.start).trim());
       add(rest.substring(first.start, first.end));
