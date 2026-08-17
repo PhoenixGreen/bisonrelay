@@ -31,11 +31,20 @@ bool hasWritingPage(MainMenuModel mainMenu) =>
 /// It holds no state anyone reads -- it exists for the side effect -- so
 /// whatever provides it must do so eagerly (lazy: false).
 class WritingNavModel extends ChangeNotifier {
-  // Whether the item is currently registered, so update() is a no-op on the
-  // rebuilds where nothing has actually changed. MainMenuModel tolerates a
-  // repeat registration, but a repeat *un*registration would clear the
-  // active route out from under a reader standing on it.
-  bool _registered = false;
+  // Whether the item is *wanted*, so a repeat unregistration cannot happen.
+  //
+  // Only the removal is guarded. MainMenuModel tolerates a repeat
+  // registration -- it updates in place and notifies nobody when nothing
+  // render-relevant has changed -- but a repeat unregistration would clear
+  // the active route out from under a reader standing on the page.
+  //
+  // This deliberately does not record whether the item is *present*, which is
+  // what it used to do. Applying a theme's menu rebuilds the menu from the
+  // built-in list, taking every dynamic item with it, and a model that
+  // believed it had already registered had nothing to do -- so switching
+  // themes took the Writing section away until the plugin was turned off and
+  // on again. The menu is the only thing that knows what is in the menu.
+  bool _wanted = false;
 
   /// update registers or unregisters the Writing nav item to match the
   /// current set of enabled plugins.
@@ -48,14 +57,22 @@ class WritingNavModel extends ChangeNotifier {
   /// fetched before the destination appears.
   void update(PluginManagerModel plugins, MainMenuModel mainMenu) {
     var wanted = plugins.hasCapability(PluginCapability.spellcheckData);
-    if (wanted == _registered) return;
-    _registered = wanted;
 
     if (!wanted) {
+      if (!_wanted) return;
+      _wanted = false;
       mainMenu.unregisterDynamicItem(WritingScreen.routeName);
       return;
     }
 
+    // Registered on every run while the plugin is on, rather than once when
+    // it comes on. That is what makes the item reappear after a theme has
+    // emptied the menu of dynamic items, and it costs nothing on the rebuilds
+    // where nothing has changed: registerDynamicItem updates in place and
+    // notifies only when something render-relevant actually differs, which is
+    // also what stops this from notifying the menu it is listening to and
+    // looping. The plugin nav next door has always worked this way.
+    _wanted = true;
     mainMenu.registerDynamicItem(MainMenuItem(
       "Writing",
       WritingScreen.routeName,

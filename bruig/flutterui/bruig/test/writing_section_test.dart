@@ -79,6 +79,50 @@ void main() {
       expect(hasWritingPage(menu), isFalse);
     });
 
+    // Reported: switching between two themes took the Writing section out of
+    // the navigation, and only turning the plugin off and on again brought it
+    // back.
+    //
+    // Applying a theme's menu customization rebuilds the menu from the
+    // built-in list, which by definition holds no dynamic item -- so the
+    // Writing entry goes with it. The plugin has not changed, so a model that
+    // remembers having registered the item has nothing to do and does
+    // nothing, and the section stays gone until the plugin set actually
+    // moves. The neighbouring plugin nav survives the same wipe because it
+    // registers unconditionally every time it runs.
+    test("survives a theme's menu being applied", () {
+      var menu = _menu();
+      var nav = WritingNavModel();
+      var plugins = FakePlugins({PluginCapability.spellcheckData});
+
+      nav.update(plugins, menu);
+      expect(hasWritingPage(menu), isTrue);
+
+      // What switching to another theme does to the menu.
+      menu.applyThemeMenu({"/feed": "Posts"}, null);
+      expect(hasWritingPage(menu), isFalse,
+          reason: "the wipe itself is not the bug -- not coming back is");
+
+      // The rebuild that applying a theme triggers, since the model is wired
+      // to the menu as well as to the plugins.
+      nav.update(plugins, menu);
+      expect(hasWritingPage(menu), isTrue,
+          reason: "the plugin is still on, so the page still belongs there");
+    });
+
+    test("comes back after a theme wipe without the plugin moving", () {
+      var menu = _menu();
+      var nav = WritingNavModel();
+      var plugins = FakePlugins({PluginCapability.spellcheckData});
+
+      nav.update(plugins, menu);
+      for (var i = 0; i < 3; i++) {
+        menu.applyThemeMenu(null, null);
+        nav.update(plugins, menu);
+        expect(hasWritingPage(menu), isTrue, reason: "after theme $i");
+      }
+    });
+
     // Reported against the plugin nav this one is modelled on: update() runs
     // on every rebuild of the provider tree it is wired into, not only when
     // a plugin is switched on or off. An unregister on one of those rebuilds
