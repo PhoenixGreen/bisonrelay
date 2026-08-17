@@ -340,18 +340,19 @@ class _ActiveChatState extends State<ActiveChat> with RouteAware {
       var theme = ThemeNotifier.of(context);
       var chatStyle = theme.areaStyle(ThemeArea.chat);
       var enableChatSearch = chatStyle.enableChatSearch;
-      // expandPad reserves space around the conversation viewport (between
-      // it and the pinned bar/RTC header above, and the input bar below)
-      // when AreaStyle.expandMessageWidth is on -- separate from the
-      // per-message maxWidth handled in chat/events.dart.
-      var expand =
-          (chatStyle.messageLayoutMode ?? MessageLayoutMode.standard) !=
-                  MessageLayoutMode.standard &&
-              chatStyle.expandMessageWidth;
-      // Per side, so the gap above the messages, beside them, and before
-      // the input bar can each be set independently.
-      var expandPad =
-          expand ? chatStyle.expandMessagePaddings : SideValues.all(0);
+      // expandPad reserves space around the conversation viewport: between it
+      // and the pinned bar or RTC header above, beside it, and before the
+      // input bar below. Per side, so each of those can be set on its own.
+      //
+      // It applies in every message layout, including Default. It used to be
+      // gated on the layout being non-standard and on expandMessageWidth,
+      // which it shipped alongside -- but that is a different setting about a
+      // different thing. "Expand to fill panel" is the width of a *message*
+      // (chat/events.dart, which still gates on it); this is the space around
+      // the *viewport*, and a conversation can want breathing room at its
+      // edges whatever shape the bubbles in it are. The gate meant the
+      // editor showed a Panel padding slider on Default that moved nothing.
+      var expandPad = chatStyle.expandMessagePaddings;
       return ScreenWithChatSideMenu(
           client,
           Column(

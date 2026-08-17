@@ -349,8 +349,17 @@ class AreaStyle {
   final AvatarTheme avatarTheme;
   final bool expandMessageWidth; // Fill the panel instead of margining in;
   // only meaningful when messageLayoutMode != null/standard.
-  final double? expandMessagePadding; // Null = built-in default (0); only
-  // meaningful when expandMessageWidth is on.
+  // expandMessagePadding is the room around the whole conversation viewport:
+  // above it, beside it, and before the input bar. Null = the built-in 0,
+  // which fills the panel edge-to-edge as the chat always did.
+  //
+  // Despite the name it shares with the two fields around it, this applies in
+  // every message layout and whether or not expandMessageWidth is on. The
+  // name is the accident of it having shipped with them; what it does is
+  // unrelated -- those are the width of a *message*, this is the space around
+  // the *viewport*. It was gated on them once, which made the editor offer a
+  // slider on the Default layout that moved nothing.
+  final double? expandMessagePadding;
   final SideValues? expandMessagePaddingSides; // Per-side split of it.
 
   // -------------------------------------------------------------------------

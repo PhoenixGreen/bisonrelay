@@ -253,23 +253,28 @@ List<Widget> chatAreaEditor(AreaEditorContext ctx) {
       ),
     // The space around the whole conversation viewport (top, sides, and
     // before the input bar); 0 (the default) fills the panel edge-to-edge.
-    if (style.expandMessageWidth)
-      ...ctx.spacing(
-        key: "expandMessagePadding",
-        name: "Panel padding",
-        max: 48,
-        single: style.expandMessagePadding ?? 0,
-        sides: style.expandMessagePaddingSides,
-        onSingle: (v) =>
-            ctx.setStyle((s) => s.copyWith(expandMessagePadding: v)),
-        updateSides: (f) => ctx.setStyle((s) {
-          var next =
-              f(s.expandMessagePaddingSides, s.expandMessagePadding ?? 0);
-          return s.copyWith(
-              expandMessagePaddingSides: next,
-              clearExpandMessagePaddingSides: next == null);
-        }),
-      ),
+    //
+    // Always offered, and deliberately not nested under "Expand to fill
+    // panel". It used to appear only with that toggle on, which had two
+    // consequences: on Default -- where the toggle is not even shown -- the
+    // slider still appeared if the toggle had been left on from another
+    // layout, and moved nothing at all; and it read as part of a setting it
+    // has nothing to do with. That one is the width of a message, this is the
+    // room around the conversation.
+    ...ctx.spacing(
+      key: "expandMessagePadding",
+      name: "Panel padding",
+      max: 48,
+      single: style.expandMessagePadding ?? 0,
+      sides: style.expandMessagePaddingSides,
+      onSingle: (v) => ctx.setStyle((s) => s.copyWith(expandMessagePadding: v)),
+      updateSides: (f) => ctx.setStyle((s) {
+        var next = f(s.expandMessagePaddingSides, s.expandMessagePadding ?? 0);
+        return s.copyWith(
+            expandMessagePaddingSides: next,
+            clearExpandMessagePaddingSides: next == null);
+      }),
+    ),
     // Chat image size is a global preference (ThemeNotifier.chatImageSize),
     // not a per-preset AreaStyle field, but it belongs with the rest of the
     // chat settings.
