@@ -813,9 +813,50 @@ class MarkdownArea extends StatelessWidget {
           child: Text(
             style == BulletStyle.unorderedList ? "•" : "${index + 1}.",
             textAlign: TextAlign.right,
+            // Never wrapped, whatever room the column turned out to have.
+            //
+            // Reported: every item from 10 onwards broke across two lines,
+            // with the full stop alone on the second. The package puts this
+            // in a SizedBox one indent wide, and a Text in a box too narrow
+            // wraps -- so "10." became "10" and ".". _orderedMarkerIndent
+            // below makes the column wide enough that this should not
+            // happen, and this makes the failure a marker that reaches into
+            // the margin rather than a list that comes apart.
+            softWrap: false,
+            maxLines: 1,
+            overflow: TextOverflow.visible,
             style: marker,
           ),
         );
+  }
+
+  /// _orderedItem matches a numbered list item, capturing the number, so the
+  /// marker column can be measured against the widest one actually written.
+  static final _orderedItem = RegExp(r'^\s{0,3}(\d+)[.)]\s', multiLine: true);
+
+  /// _orderedMarkerIndent is the room the widest number in [text] needs.
+  ///
+  /// A marker column sized for "9." is too narrow for "10.", and the list
+  /// that overflows it is the long one -- exactly the list somebody wrote
+  /// because they had a lot to say. Measured from the text rather than
+  /// assumed, so a list of nine costs nothing and a list of a hundred and
+  /// nine still fits.
+  ///
+  /// Returns null when there is no ordered list to measure.
+  static double? _orderedMarkerIndent(
+      String text, TextStyle? style, double gap) {
+    var widest = 0;
+    for (var m in _orderedItem.allMatches(text)) {
+      var digits = m.group(1)!.length;
+      if (digits > widest) widest = digits;
+    }
+    if (widest < 2) return null;
+
+    var painter = TextPainter(
+      text: TextSpan(text: "${"9" * widest}.", style: style),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    return painter.width + gap;
   }
 
   /// _markerStyle is what a list's bullet or number is set in.
@@ -926,6 +967,12 @@ class MarkdownArea extends StatelessWidget {
       var pad = sheet.listBulletPadding ?? EdgeInsets.zero;
       var needed =
           _checkBoxSize(effectiveGuide) + gap + pad.right - pad.horizontal;
+      // The same job for a two- or three-digit number, which outgrows the
+      // column the same way a check box does and came apart more visibly:
+      // the marker wrapped and left the full stop on a line of its own.
+      var numbered = _orderedMarkerIndent(
+          text, _markerStyle(context, sheet), gap + pad.horizontal);
+      if (numbered != null && numbered > needed) needed = numbered;
       if ((sheet.listIndent ?? 24) < needed) {
         sheet = sheet.copyWith(listIndent: needed);
       }
