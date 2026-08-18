@@ -205,9 +205,16 @@ class WritingChecker {
     // completely different routes and this is the one point they have both
     // already passed. Spelling issues carry no checkId and are unaffected --
     // those have their own two ways out.
+    //
+    // Accepted usages are dropped in the same pass. Those are permanent and
+    // come from a check's "Correct Usage", where an ignore is for the session
+    // -- but both are the same question at this point, which is whether the
+    // user has already answered this rule about this phrase.
     var dismissed = prefs;
     if (dismissed != null) {
-      issues.removeWhere((i) => dismissed.isIgnoredMatch(i.checkId, i.text));
+      issues.removeWhere((i) =>
+          dismissed.isIgnoredMatch(i.checkId, i.text) ||
+          dismissed.isAcceptedUsage(i.checkId, i.text));
     }
 
     issues.sort((a, b) => a.range.start.compareTo(b.range.start));

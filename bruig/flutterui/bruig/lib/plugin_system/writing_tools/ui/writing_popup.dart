@@ -140,7 +140,9 @@ class _WritingPopup extends StatelessWidget {
           Icon(
             issue.kind == WritingIssueKind.spelling
                 ? Icons.spellcheck
-                : Icons.edit_note,
+                : issue.kind.isCheck
+                    ? Icons.help_outline
+                    : Icons.edit_note,
             size: 15,
             color: theme.colors.onSurfaceVariant,
           ),
@@ -206,6 +208,18 @@ class _WritingPopup extends StatelessWidget {
       change();
     }
 
+    // The answer a check asks for, and the same pair the sidebar row offers --
+    // see the note in issue_list_page.dart.
+    if (issue.checkId != null && issue.kind.isCheck) {
+      return [
+        _action(theme, "Correct Usage",
+            () => act(() => prefs.acceptUsage(issue.checkId!, issue.text))),
+        _action(theme, "Turn off this check", () {
+          act(() => prefs.disableCheck(issue.checkId!,
+              description: issue.ruleMessage));
+        }),
+      ];
+    }
     if (issue.checkId != null) {
       return [
         // Two ways out rather than one, and in this order. Disagreeing with

@@ -44,13 +44,22 @@ class WritingOverridesSection extends StatelessWidget {
     // section people learn to skip.
     if (languages.length < 2 &&
         prefs.personalDictionary.isEmpty &&
-        prefs.disabledChecks.isEmpty) {
+        prefs.disabledChecks.isEmpty &&
+        prefs.acceptedUsages.isEmpty) {
       return const SizedBox.shrink();
     }
 
     var words = prefs.personalDictionary.toList()..sort();
     var checks = prefs.disabledChecks.entries.toList()
       ..sort((a, b) => a.value.compareTo(b.value));
+    // Listed by the phrase that was accepted, which is what the reader
+    // pressed the button on. The rule half of the key is not shown: two
+    // checks can ask about the same phrase, and the answer to both is the
+    // phrase, so a list naming the patterns would be longer and no clearer.
+    var usages = [
+      for (var key in prefs.acceptedUsages)
+        (key: key, text: WritingPreferences.describeUsage(key).$2)
+    ]..sort((a, b) => a.text.compareTo(b.text));
 
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       if (!inPluginPanel) ...[
@@ -82,6 +91,15 @@ class WritingOverridesSection extends StatelessWidget {
               label: Text(check.value.isEmpty ? check.key : check.value),
               onDeleted: () => prefs.enableCheck(check.key),
               tooltip: "Turn this check back on",
+            ),
+        ]),
+      if (usages.isNotEmpty)
+        _chips("Wordings you marked correct", [
+          for (var usage in usages)
+            InputChip(
+              label: Text(usage.text),
+              onDeleted: () => prefs.unacceptUsage(usage.key),
+              tooltip: "Ask about this wording again",
             ),
         ]),
     ]);

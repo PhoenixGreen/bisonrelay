@@ -112,9 +112,20 @@ class SpellcheckCapability extends ChangeNotifier {
   /// misspelling would put an alarming red wave under prose that is perfectly
   /// good, and the reader who learns to ignore that mark ignores it over the
   /// misspellings too.
+  ///
+  /// Amber for a check, which is neither: the word is spelled right and the
+  /// sentence parses, and all that is being said is that this is a pair people
+  /// confuse. Sharing the suggestion's blue would have been the smaller change
+  /// and the wrong one -- blue means "this could read better", where a check
+  /// means "this may be the wrong word", and the two want different answers
+  /// from the reader.
   static TextStyle styleFor(WritingIssueKind kind) => TextStyle(
         decoration: TextDecoration.underline,
-        decorationColor: kind.isMistake ? Colors.red : const Color(0xFF3B82F6),
+        decorationColor: kind.isMistake
+            ? Colors.red
+            : kind.isCheck
+                ? const Color(0xFFF59E0B)
+                : const Color(0xFF3B82F6),
         decorationStyle: TextDecorationStyle.wavy,
         // Thick enough to survive being selected. The underline is not removed
         // by a selection, but the selection highlight is painted across the

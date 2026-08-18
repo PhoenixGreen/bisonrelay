@@ -1033,8 +1033,10 @@ class GrammarRule {
 
   /// Separates a mistake from an opinion: "error" (the default) for text
   /// that is wrong whatever the writer meant, "suggestion" for a rewrite that
-  /// is usually an improvement and sometimes not. The two are underlined in
-  /// different colours and listed apart.
+  /// is usually an improvement and sometimes not, and "check" for a word that
+  /// is spelled right and may still be the wrong one -- "brake" where "break"
+  /// was meant. Each is underlined in its own colour, and the last two are
+  /// listed apart from the mistakes.
   @JsonKey(defaultValue: "")
   final String severity;
 

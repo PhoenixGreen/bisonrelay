@@ -66,9 +66,7 @@ class _IssueRow extends StatelessWidget {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Icon(
-            issue.kind == WritingIssueKind.spelling
-                ? Icons.spellcheck
-                : Icons.edit_note,
+            _iconFor(issue.kind),
             size: 14,
             color: theme.colors.onSurfaceVariant,
           ),
@@ -110,11 +108,31 @@ class _IssueRow extends StatelessWidget {
     );
   }
 
-  /// _waysOut are the same two the context menu offers, since the panel is
-  /// where someone works through a whole post and is exactly where "stop
+  /// _waysOut are the same ways out the context menu offers, since the panel
+  /// is where someone works through a whole post and is exactly where "stop
   /// telling me about this" belongs.
   List<Widget> _waysOut(ThemeNotifier theme) {
     var checkId = issue.checkId;
+    // A check asked a question, so it gets the answer the other kinds have no
+    // use for. "Correct Usage" is the whole reason checks are a separate kind:
+    // a reader who is told "brake" might be "break" and knows it is not needs
+    // to be able to say so once, rather than dismissing the same question in
+    // every draft -- and telling them to turn the rule off instead would lose
+    // the sentence where they did mean "break".
+    //
+    // No "Ignore once" beside it. Session and permanent dismissals of the same
+    // phrase are the same click to anybody reading the row, and offering both
+    // only makes the reader guess which one they are being asked for.
+    if (checkId != null && issue.kind.isCheck) {
+      return [
+        dismissChip(theme, "Correct Usage",
+            () => prefs.acceptUsage(checkId, issue.text)),
+        dismissChip(
+            theme,
+            "Turn off",
+            () => prefs.disableCheck(checkId, description: issue.ruleMessage)),
+      ];
+    }
     if (checkId == null) {
       return [
         dismissChip(theme, "Ignore", () => prefs.ignoreOnce(issue.text)),
@@ -137,6 +155,15 @@ class _IssueRow extends StatelessWidget {
     ];
   }
 }
+
+/// _iconFor marks what kind of thing the row is, in the one glyph a 14-pixel
+/// icon can say it in: the dictionary for a misspelling, an edit for an
+/// opinion, and a question for a check, which is what a check is.
+IconData _iconFor(WritingIssueKind kind) => switch (kind) {
+      WritingIssueKind.spelling => Icons.spellcheck,
+      WritingIssueKind.check => Icons.help_outline,
+      _ => Icons.edit_note,
+    };
 
 /// _SynonymChips offers other words for a repeated one.
 ///

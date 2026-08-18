@@ -42,18 +42,24 @@ enum WritingSidebarPage {
   /// four times in a paragraph. Opinions, kept away from the mistakes so the
   /// list of things that are actually wrong stays short.
   ///
-  /// Called "Suggestions" rather than "Phrasing", which is what it held when
-  /// it was only the style rules. It now also carries the checks that count --
-  /// repetition, sentence length, mixed spellings and apostrophes -- and none
-  /// of those is phrasing, so a reader whose repeated word was not under
-  /// "Phrasing" had no reason to look again. "Suggestions" is also the name of
-  /// the distinction being drawn: every issue here comes from a rule the
+  /// Called "Suggestions and Checks" rather than "Phrasing", which is what it
+  /// held when it was only the style rules. It now also carries the checks
+  /// that count -- repetition, sentence length, mixed spellings and
+  /// apostrophes -- and none of those is phrasing, so a reader whose repeated
+  /// word was not under "Phrasing" had no reason to look again. The name is
+  /// also the distinction being drawn: every issue here comes from a rule the
   /// provider marked as a suggestion rather than an error, and saying so is
-  /// what earns the page the right to be wrong occasionally.
+  /// what earns the page the right to be wrong occasionally. "Checks" is the
+  /// half that invites a look -- a homophone the rules cannot decide is right
+  /// or wrong is listed here to be checked, not corrected.
+  ///
+  /// The tab itself still says "Suggestions": the full title is a tooltip and
+  /// a heading, and four tabs of that length do not fit the width this panel
+  /// opens at.
   ///
   /// The enum value keeps its name, which matches WritingIssueKind.phrasing --
   /// the kind is still what decides which page an issue lands on.
-  phrasing(Icons.auto_fix_high, "Suggestions"),
+  phrasing(Icons.auto_fix_high, "Suggestions and Checks", "Suggestions"),
 
   /// What else could have been said, and what the selected word means.
   thesaurus(Icons.menu_book_outlined, "Thesaurus"),

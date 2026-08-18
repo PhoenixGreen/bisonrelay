@@ -67,20 +67,46 @@ String matchCase(String original, String replacement) {
 /// and marking them like a misspelling would put the same alarming red under
 /// prose that is perfectly good, which is how people learn to ignore every
 /// underline including the ones that matter. They get their own colour.
+///
+/// [check] is a question rather than either. The text is real English and is
+/// probably what was meant; it belongs to a pair people get wrong, and the
+/// rules cannot tell from the sentence which one this is. "It would brake the
+/// system" is the case: nothing about it is ungrammatical, and "brake" is
+/// spelled correctly, so neither of the kinds above can carry it -- an error
+/// rule would have to fire on "he started to brake" too, and a phrasing rule
+/// would be claiming the writing could be better when the claim is that it
+/// might be wrong.
+///
+/// The distinction earns its keep at the two ends. The error rules hold to
+/// never firing on correct writing, and that standard is exactly what kept
+/// most confusable pairs out of the plugin entirely -- as checks they can be
+/// written at all. And a check is the only kind where "this usage is correct"
+/// is a sensible answer, which is the button it gets and the others do not.
 enum WritingIssueKind {
   spelling,
   grammar,
-  phrasing;
+  phrasing,
+  check;
 
-  /// isMistake groups the two kinds a writer should fix from the one they
+  /// isMistake groups the two kinds a writer should fix from the two they
   /// should merely consider.
-  bool get isMistake => this != WritingIssueKind.phrasing;
+  bool get isMistake =>
+      this == WritingIssueKind.spelling || this == WritingIssueKind.grammar;
+
+  /// isCheck is the one kind that can be answered with "that is correct" --
+  /// see [check]. Asked as a question of its own rather than by comparing
+  /// against the enum at each call site, since every one of those comparisons
+  /// is really asking this.
+  bool get isCheck => this == WritingIssueKind.check;
 
   /// fromSeverity reads a provider's severity string. Anything a provider
-  /// does not explicitly call a suggestion is a mistake, so a provider that
-  /// never heard of severity keeps the behaviour it had.
-  static WritingIssueKind fromSeverity(String severity) =>
-      severity == "suggestion" ? phrasing : grammar;
+  /// does not explicitly call a suggestion or a check is a mistake, so a
+  /// provider that never heard of severity keeps the behaviour it had.
+  static WritingIssueKind fromSeverity(String severity) => switch (severity) {
+        "suggestion" => phrasing,
+        "check" => check,
+        _ => grammar,
+      };
 }
 
 /// WritingIssue is one flagged span, with enough context to list it away

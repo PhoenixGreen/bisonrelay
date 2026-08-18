@@ -17,6 +17,7 @@ import 'package:flutter/foundation.dart';
 // out of the way of the app's own settings.
 const _dictionaryKey = "writing.personalDictionary";
 const _disabledChecksKey = "writing.disabledChecks";
+const _acceptedUsagesKey = "writing.acceptedUsages";
 const _languageKey = "writing.language";
 
 /// WritingPreferences is the user's own overrides on top of whatever the
@@ -30,6 +31,9 @@ const _languageKey = "writing.language";
 ///     jargon stops being flagged for good.
 ///   - [ignoreMatch] is for this session and applies to one phrase under one
 ///     rule. It exists because the assumption below turned out to be wrong.
+///   - [acceptUsage] is permanent and applies to one phrase under one rule.
+///     "This word is the right one here" -- the answer a check asks for, and
+///     an answer that does not stop being true when the app restarts.
 ///   - [disableCheck] is permanent and applies to a whole rule.
 ///
 /// [disableCheck] was for a long time the only thing offered on a style
@@ -65,6 +69,20 @@ class WritingPreferences extends ChangeNotifier {
   // provider disabled, which is when someone is most likely to be wondering
   // what they switched off.
   final Map<String, String> _disabledChecks = {};
+
+  // Persisted, and that is the whole difference between this and
+  // _ignoredMatches above. A check asks a question about a word -- "brake"
+  // here, did you mean "break"? -- and "no, that is the word I meant" is a
+  // fact about the writing rather than a mood. Asking it again next week
+  // would make the check a nuisance to exactly the writer who answered it
+  // correctly, which is the reader a check exists to leave alone.
+  //
+  // Keyed by rule and text like _ignoredMatches, and for the same reasons.
+  // Kept as a separate set rather than a persisted flag on that one so the
+  // settings page can show these and take them back -- a permanent dismissal
+  // with no way to undo it is how the tools quietly stop working and nobody
+  // can say why.
+  final Set<String> _acceptedUsages = {};
 
   /// sidebarPage is which of the writing tools' four pages was last open,
   /// held as an index rather than as the enum itself.
@@ -117,11 +135,17 @@ class WritingPreferences extends ChangeNotifier {
   /// disabledChecks maps each turned-off rule's pattern to its description.
   Map<String, String> get disabledChecks => Map.unmodifiable(_disabledChecks);
 
+  /// acceptedUsages is every phrase accepted under a rule, as the stored
+  /// "rule\u0000phrase" keys. Exposed for the settings page, which is the
+  /// only way back from one.
+  Set<String> get acceptedUsages => Set.unmodifiable(_acceptedUsages);
+
   /// load reads the persisted sets. Failures are non-fatal: a corrupt or
   /// missing entry means no overrides, which is the same as a fresh install
   /// and strictly safer than refusing to check anything.
   Future<void> load() async {
     _dictionary.addAll(await _readSet(_dictionaryKey));
+    _acceptedUsages.addAll(await _readSet(_acceptedUsagesKey));
     _disabledChecks.addAll(await _readChecks());
     var stored = await StorageManager.readData(_languageKey);
     if (stored is String && stored.isNotEmpty) {
@@ -129,6 +153,7 @@ class WritingPreferences extends ChangeNotifier {
     }
     if (_dictionary.isNotEmpty ||
         _disabledChecks.isNotEmpty ||
+        _acceptedUsages.isNotEmpty ||
         _language.isNotEmpty) {
       notifyListeners();
     }
@@ -213,6 +238,39 @@ class WritingPreferences extends ChangeNotifier {
   void ignoreMatch(String checkId, String text) {
     if (!_ignoredMatches.add(_matchKey(checkId, text))) return;
     notifyListeners();
+  }
+
+  /// isAcceptedUsage reports whether this rule has been told, for good, that
+  /// this phrase is the right wording.
+  bool isAcceptedUsage(String? checkId, String text) =>
+      checkId != null && _acceptedUsages.contains(_matchKey(checkId, text));
+
+  /// acceptUsage records that a check's question has been answered: the word
+  /// it asked about is the one that was meant, here and in future.
+  ///
+  /// The phrase and not the word alone. "Brake" accepted in "brake the
+  /// system" must not also silence "brake the news" -- the check is about
+  /// this wording, and a writer who confirms one is not confirming every
+  /// other sentence they will ever write.
+  Future<void> acceptUsage(String checkId, String text) async {
+    if (!_acceptedUsages.add(_matchKey(checkId, text))) return;
+    notifyListeners();
+    await _writeSet(_acceptedUsagesKey, _acceptedUsages);
+  }
+
+  /// unacceptUsage puts a phrase back in front of its check.
+  Future<void> unacceptUsage(String key) async {
+    if (!_acceptedUsages.remove(key)) return;
+    notifyListeners();
+    await _writeSet(_acceptedUsagesKey, _acceptedUsages);
+  }
+
+  /// describeUsage splits a stored key back into the rule and the phrase, for
+  /// a settings page listing what has been accepted.
+  static (String checkId, String text) describeUsage(String key) {
+    var at = key.indexOf("\u0000");
+    if (at < 0) return (key, "");
+    return (key.substring(0, at), key.substring(at + 1));
   }
 
   void ignoreOnce(String word) {
