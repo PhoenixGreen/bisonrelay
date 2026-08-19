@@ -22,6 +22,19 @@ String pageOwnerName(String uid, String ownID, String nick) {
   return nick.isNotEmpty ? nick : uid;
 }
 
+/// noAnswerDetail explains an unanswered request without guessing which of
+/// the two reasons it was.
+///
+/// Both are common and neither can be told from the other here. A client from
+/// before the not-hosting reply existed drops a request it cannot serve
+/// rather than answering it, so no site and no connection look identical from
+/// this end -- and saying only "still queued" reads as though the page is
+/// about to arrive when usually it never will.
+String noAnswerDetail(String who) =>
+    "Either $who is not online, or they host nothing and are running a "
+    "version that does not say so. The request stays queued either way, and "
+    "the page will appear if it arrives.";
+
 /// PageBrowser shows one pages session, with the chrome a reader expects of
 /// something that follows links: where they are, how to get back, and what
 /// happened when a page does not arrive.

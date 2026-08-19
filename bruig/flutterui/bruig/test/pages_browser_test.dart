@@ -196,6 +196,39 @@ void main() {
     });
   });
 
+  group('noAnswerDetail', () {
+    test('names both reasons, since neither can be ruled out', () {
+      var d = noAnswerDetail("alice");
+      expect(d, contains("not online"));
+      expect(d, contains("host nothing"));
+      expect(d, contains("alice"));
+      // The old copy asserted only the queued explanation, which read as
+      // though the page were about to arrive.
+      expect(d.startsWith("The request is still queued"), isFalse);
+    });
+  });
+
+  group('SiteStatus recheck', () {
+    test('offers another try for every inconclusive outcome', () {
+      expect(SiteStatus.unknown.rechecking, isTrue);
+      expect(SiteStatus.noAnswer.rechecking, isTrue);
+      expect(SiteStatus.silent.rechecking, isTrue);
+      expect(SiteStatus.failed.rechecking, isTrue);
+      // A definite answer is not worth asking again for.
+      expect(SiteStatus.hosting.rechecking, isFalse);
+      expect(SiteStatus.notHosting.rechecking, isFalse);
+      expect(SiteStatus.noIndex.rechecking, isFalse);
+      expect(SiteStatus.checking.rechecking, isFalse);
+    });
+
+    test('silence is evidence, so it stays visitable', () {
+      // A contact heard from since the request went out probably hosts
+      // nothing -- but that is an inference, not their answer.
+      expect(SiteStatus.silent.visitable, isTrue);
+      expect(SiteStatus.silent.label, "Probably no site");
+    });
+  });
+
   group('pageOwnerName', () {
     test('names the reader own site rather than showing their public id', () {
       // The reader has no chat with themselves, so getNick returns nothing

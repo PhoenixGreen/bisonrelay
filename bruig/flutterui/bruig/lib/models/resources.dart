@@ -43,6 +43,19 @@ class PagesSession extends ChangeNotifier {
   final List<FetchedResource> _history = [];
   int _cursor = -1;
 
+  // What the outstanding request is for. Held so the viewer can say where it
+  // is going before anything has come back -- on a first fetch there is no
+  // page yet, so this is the only record of who is being asked.
+  String _pendingUid = "";
+  List<String> _pendingPath = const [];
+  String get pendingUid => _pendingUid;
+  List<String> get pendingPath => _pendingPath;
+
+  void setPending(String uid, List<String> path) {
+    _pendingUid = uid;
+    _pendingPath = path;
+  }
+
   List<FetchedResource> get history => List.unmodifiable(_history);
   int get historyCursor => _cursor;
 
@@ -263,6 +276,7 @@ class ResourcesModel extends ChangeNotifier {
 
     var sess = session(sessionID);
     if (asyncTargetID == "") {
+      sess.setPending(uid, path);
       sess._setLoading(true);
     } else {
       sess.replaceAsyncTargetWithLoading(asyncTargetID);

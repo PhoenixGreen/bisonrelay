@@ -32,9 +32,16 @@ enum SiteStatus {
   /// Answered with some other status.
   failed,
 
-  /// Nothing came back before the deadline. Says nothing about whether they
-  /// host a site: the request is still queued for whenever they reconnect.
+  /// Nothing came back before the deadline, and nothing since suggests they
+  /// were there to answer. The request stays queued for whenever they
+  /// reconnect.
   noAnswer,
+
+  /// Nothing came back, but they have been heard from since the request went
+  /// out -- so they were reachable and did not answer. Evidence of no site,
+  /// not proof: clients before the not-hosting reply existed simply drop a
+  /// request they cannot serve.
+  silent,
 }
 
 extension SiteStatusLabel on SiteStatus {
@@ -54,13 +61,23 @@ extension SiteStatusLabel on SiteStatus {
         return "Error";
       case SiteStatus.noAnswer:
         return "No answer yet";
+      case SiteStatus.silent:
+        return "Probably no site";
     }
   }
 
   /// visitable is whether opening this contact's site is worth offering.
   /// Everything but a definite "serves nothing" is, because an unanswered
-  /// request may still be delivered.
+  /// request may still be delivered -- including [silent], which is evidence
+  /// rather than an answer.
   bool get visitable => this != SiteStatus.notHosting;
+
+  /// rechecking is whether offering to ask again makes sense.
+  bool get rechecking =>
+      this == SiteStatus.unknown ||
+      this == SiteStatus.noAnswer ||
+      this == SiteStatus.silent ||
+      this == SiteStatus.failed;
 }
 
 /// SiteInfo is what is known about one contact's site.
@@ -171,33 +188,71 @@ class PagesModel extends ChangeNotifier {
     }
   }
 
-  /// check asks a contact for their front page, purely to find out whether
-  /// they have one.
+  /// open fetches a contact's front page and records what comes of it.
   ///
-  /// This costs one message each way, so it is never done for the whole
-  /// contact list at once -- [SiteStatus.unknown] is an honest thing to show,
-  /// and checking is the visitor's decision.
-  Future<void> check(String uid) async {
-    if (siteInfo(uid).status == SiteStatus.checking) return;
+  /// Both checking and visiting go through here. They are the same request --
+  /// a visit that is never answered is exactly as informative as a check that
+  /// is never answered, and routing visits around this is what left a
+  /// contact reading "Not checked" after being opened.
+  ///
+  /// Each call costs a message each way, so nothing calls it for the whole
+  /// contact list: [SiteStatus.unknown] is an honest thing to show, and
+  /// asking is the visitor's decision.
+  Future<PagesSession> open(String uid, {List<String>? path}) async {
+    _timeouts.remove(uid)?.cancel();
+    _setSite(
+        uid,
+        siteInfo(uid).copyWith(
+            status: SiteStatus.checking, checkedAt: DateTime.now()));
 
-    _setSite(uid,
-        siteInfo(uid).copyWith(status: SiteStatus.checking, checkedAt: DateTime.now()));
-    unawaited(refreshLastSeen(uid));
-
+    PagesSession sess;
     try {
-      await resources.fetchPage(uid, ["index.md"], 0, 0, null, "");
+      sess = await resources.fetchPage(
+          uid, path ?? const ["index.md"], 0, 0, null, "");
     } catch (exception) {
-      _timeouts.remove(uid)?.cancel();
       _setSite(uid, siteInfo(uid).copyWith(status: SiteStatus.failed));
-      return;
+      rethrow;
     }
 
-    _timeouts[uid]?.cancel();
-    _timeouts[uid] = Timer(pageFetchTimeout, () {
-      _timeouts.remove(uid);
-      if (siteInfo(uid).status != SiteStatus.checking) return;
-      _setSite(uid, siteInfo(uid).copyWith(status: SiteStatus.noAnswer));
-    });
+    _timeouts[uid] = Timer(pageFetchTimeout, () => _onCheckTimeout(uid));
+    return sess;
+  }
+
+  /// check asks for a contact's front page purely to find out whether they
+  /// have one, discarding the page itself.
+  Future<void> check(String uid) async {
+    if (siteInfo(uid).status == SiteStatus.checking) return;
+    try {
+      await open(uid);
+    } catch (_) {
+      // open has already recorded the failure.
+    }
+  }
+
+  /// _onCheckTimeout decides what an unanswered request means.
+  ///
+  /// If the contact has been heard from since it went out, they were
+  /// reachable and did not answer -- which is evidence they host nothing,
+  /// because a client from before the not-hosting reply existed simply drops
+  /// a request it cannot serve. If they have not been heard from, the honest
+  /// answer is that nothing has come back yet.
+  Future<void> _onCheckTimeout(String uid) async {
+    _timeouts.remove(uid);
+    if (siteInfo(uid).status != SiteStatus.checking) return;
+
+    var sentAt = siteInfo(uid).checkedAt;
+    await refreshLastSeen(uid);
+
+    var info = siteInfo(uid);
+    if (info.status != SiteStatus.checking) return;
+
+    var heardSince = sentAt != null &&
+        info.lastSeen != null &&
+        info.lastSeen!.isAfter(sentAt);
+    _setSite(
+        uid,
+        info.copyWith(
+            status: heardSince ? SiteStatus.silent : SiteStatus.noAnswer));
   }
 
   /// _onFetched records what came back. It listens to every reply rather than

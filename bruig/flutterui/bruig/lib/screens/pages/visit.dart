@@ -62,21 +62,18 @@ class _VisitTabState extends State<VisitTab> {
     return res.where((c) => c.nick.toLowerCase().contains(f)).toList();
   }
 
+  // Deliberately through PagesModel.open rather than straight to
+  // ResourcesModel: a visit is the same request as a check, and going around
+  // the bookkeeping left the contact reading "Not checked" after being
+  // opened, with no deadline on the wait either.
   void visit(ChatModel chat) async {
     var snackbar = SnackBarModel.of(context);
     try {
-      var sess =
-          await widget.resources.fetchPage(chat.id, ["index.md"], 0, 0, null, "");
-      widget.resources.mostRecent = sess;
-      unawaitedRefresh(chat.id);
+      widget.resources.mostRecent = await widget.pages.open(chat.id);
       widget.onOpened();
     } catch (exception) {
       snackbar.error("Unable to open ${chat.nick}'s site: $exception");
     }
-  }
-
-  void unawaitedRefresh(String uid) {
-    widget.pages.refreshLastSeen(uid);
   }
 
   @override
@@ -157,9 +154,7 @@ class _ContactRow extends StatelessWidget {
       trailing: Row(mainAxisSize: MainAxisSize.min, children: [
         _StatusChip(info.status),
         const SizedBox(width: 8),
-        if (info.status == SiteStatus.unknown ||
-            info.status == SiteStatus.noAnswer ||
-            info.status == SiteStatus.failed)
+        if (info.status.rechecking)
           IconButton(
             icon: const Icon(Icons.refresh, size: 18),
             tooltip: "Check for a site",
