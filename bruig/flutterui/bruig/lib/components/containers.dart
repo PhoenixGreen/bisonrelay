@@ -711,7 +711,7 @@ final Map<String, double> _sidebarWidthCache = {};
 class _SecondarySideMenuLayoutState extends State<SecondarySideMenuLayout> {
   // Below this width the sidebar becomes an overlay drawer instead of a
   // column. See _compactLayout.
-  static const _collapseBelowWidth = 900.0;
+  static const _collapseBelowWidth = kSidebarCollapseWidth;
 
   // Drag-resized width for SubMenuStyle.resizable, persisted per screen (see
   // storageKey doc above). Null until loaded/dragged, meaning "use the
@@ -918,6 +918,32 @@ class _SecondarySideMenuLayoutState extends State<SecondarySideMenuLayout> {
       });
     });
   }
+}
+
+// kSidebarCollapseWidth is the window width below which a sidebar column
+// leaves too little room for content and is handed to the drawer instead.
+const double kSidebarCollapseWidth = 900;
+
+/// sidebarIsInDrawer reports whether a sidebar in this space is the drawer's
+/// rather than a column of its own -- because the window is too narrow for
+/// one, or because the theme asks for the collapsed style.
+///
+/// Public so a screen can tell whether its own show/hide control would do
+/// anything. When the sidebar is the drawer's, only the main navigation's
+/// re-tap opens it, and a screen-level toggle is inert: it sets a flag that
+/// SecondarySideMenuLayout never reaches, because both conditions below are
+/// checked before it looks at collapseSidebar at all.
+///
+/// Deliberately here beside the layout that acts on it, rather than
+/// recomputed by each caller: two copies of this rule would drift, and the
+/// symptom of drift is a control that silently does nothing.
+bool sidebarIsInDrawer(BuildContext context, double availableWidth) {
+  var style = ThemeNotifier.of(context, listen: false)
+          .areaStyle(ThemeArea.subMenuTabBar)
+          .subMenuStyle ??
+      SubMenuStyle.alwaysVisible;
+  return style == SubMenuStyle.collapsed ||
+      availableWidth < kSidebarCollapseWidth;
 }
 
 // kCollapsedSidebarWidth is how wide the narrow-window drawer is, for every

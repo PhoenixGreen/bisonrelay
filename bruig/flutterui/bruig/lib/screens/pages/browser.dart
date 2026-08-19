@@ -43,7 +43,12 @@ class PageBrowser extends StatefulWidget {
   final ClientModel client;
   final ResourcesModel resources;
   final bool sidebarOpen;
-  final VoidCallback onToggleSidebar;
+
+  /// onToggleSidebar is null where the sidebar is the drawer's rather than a
+  /// column of this screen's -- see sidebarIsInDrawer. The control is then
+  /// left out rather than shown dead: it is the main navigation's re-tap
+  /// that opens the drawer, and a button that cannot is only confusing.
+  final VoidCallback? onToggleSidebar;
   final VoidCallback onClose;
   const PageBrowser(
     this.session,
@@ -260,7 +265,7 @@ class PageBrowserBar extends StatelessWidget {
   final String path;
   final bool loading;
   final bool sidebarOpen;
-  final VoidCallback onToggleSidebar;
+  final VoidCallback? onToggleSidebar;
   final VoidCallback onClose;
   final VoidCallback onBack;
   final VoidCallback onForward;
@@ -287,13 +292,12 @@ class PageBrowserBar extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       child: Row(children: [
-        IconButton(
-          icon: Icon(
-              sidebarOpen ? Icons.menu_open : Icons.menu,
-              size: 18),
-          tooltip: sidebarOpen ? "Hide sidebar" : "Show sidebar",
-          onPressed: onToggleSidebar,
-        ),
+        if (onToggleSidebar != null)
+          IconButton(
+            icon: Icon(sidebarOpen ? Icons.menu_open : Icons.menu, size: 18),
+            tooltip: sidebarOpen ? "Hide sidebar" : "Show sidebar",
+            onPressed: onToggleSidebar,
+          ),
         IconButton(
           icon: const Icon(Icons.arrow_back, size: 18),
           tooltip: "Back",

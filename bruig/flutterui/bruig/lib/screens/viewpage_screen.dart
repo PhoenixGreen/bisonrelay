@@ -87,8 +87,12 @@ class _ViewPageScreenState extends State<ViewPageScreen> {
       pages.tab = args.tabIndex;
     }
 
-    return Consumer2<PagesModel, ResourcesModel>(
-      builder: (context, pagesModel, resources, _) {
+    // The width the layout below will see, which is what decides whether a
+    // sidebar can be a column at all -- not the width of the browser bar,
+    // which sits inside the narrower content area.
+    return LayoutBuilder(builder: (context, constraints) {
+      return Consumer2<PagesModel, ResourcesModel>(
+        builder: (context, pagesModel, resources, _) {
         var session = resources.mostRecent;
         var items = pagesBarItems(onItemChanged, pagesModel.tab);
         var tab = pagesModel.tab.clamp(0, items.length - 1);
@@ -96,38 +100,46 @@ class _ViewPageScreenState extends State<ViewPageScreen> {
         // A session that is open takes the content area: the tabs are how
         // you get to a page, and the page is what you came for. Closing it
         // hands the area back to whichever tab is selected.
-        if (!identical(session, _openSession)) {
-          _openSession = session;
-          sidebarOpen = false;
-        }
+          if (!identical(session, _openSession)) {
+            _openSession = session;
+            sidebarOpen = false;
+          }
 
-        Widget content;
-        if (session != null) {
-          content = PageBrowser(
-            session,
-            widget.client,
-            resources,
-            sidebarOpen: sidebarOpen,
-            onToggleSidebar: toggleSidebar,
-            onClose: () => resources.mostRecent = null,
+          // Below the collapse width -- or under the collapsed submenu
+          // style -- the sidebar is the drawer's whatever this screen sets,
+          // and only the main navigation's re-tap opens it. The toggle
+          // would set a flag nothing reads, so it is not offered rather
+          // than offered and dead.
+          var inDrawer = sidebarIsInDrawer(context, constraints.maxWidth);
+
+          Widget content;
+          if (session != null) {
+            content = PageBrowser(
+              session,
+              widget.client,
+              resources,
+              sidebarOpen: sidebarOpen,
+              onToggleSidebar: inDrawer ? null : toggleSidebar,
+              onClose: () => resources.mostRecent = null,
+            );
+          } else {
+            content = activeTab(tab);
+          }
+
+          return SecondarySideMenuLayout(
+            storageKey: "pages",
+            items: items,
+            sidebarRevision: Object.hash(tab, items.length, sidebarOpen),
+            isDetail: ModalRoute.of(context)!.settings.arguments != null,
+            // Deliberately the same path a narrow window takes rather than
+            // simply not drawing it: that registers the sidebar with
+            // CollapsedSidebarModel, so re-tapping Pages in the main
+            // navigation still slides it in.
+            collapseSidebar: session != null && !sidebarOpen,
+            content: content,
           );
-        } else {
-          content = activeTab(tab);
-        }
-
-        return SecondarySideMenuLayout(
-          storageKey: "pages",
-          items: items,
-          sidebarRevision: Object.hash(tab, items.length, sidebarOpen),
-          isDetail: ModalRoute.of(context)!.settings.arguments != null,
-          // Deliberately the same path a narrow window takes rather than
-          // simply not drawing it: that registers the sidebar with
-          // CollapsedSidebarModel, so re-tapping Pages in the main
-          // navigation still slides it in.
-          collapseSidebar: session != null && !sidebarOpen,
-          content: content,
-        );
-      },
-    );
+        },
+      );
+    });
   }
 }

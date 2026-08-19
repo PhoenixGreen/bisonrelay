@@ -1,3 +1,4 @@
+import 'package:bruig/components/containers.dart';
 import 'package:bruig/models/resources.dart';
 import 'package:bruig/screens/pages/browser.dart';
 import 'package:flutter/material.dart';
@@ -11,6 +12,7 @@ void main() {
     required bool sidebarOpen,
     VoidCallback? onToggle,
     VoidCallback? onClose,
+    bool toggleable = true,
   }) async {
     var session = PagesSession(1);
     await tester.pumpWidget(ChangeNotifierProvider<ThemeNotifier>.value(
@@ -23,7 +25,7 @@ void main() {
         path: "index.md",
         loading: false,
         sidebarOpen: sidebarOpen,
-        onToggleSidebar: onToggle ?? () {},
+        onToggleSidebar: toggleable ? (onToggle ?? () {}) : null,
         onClose: onClose ?? () {},
         onBack: () {},
         onForward: () {},
@@ -66,6 +68,40 @@ void main() {
     await pumpBar(tester, sidebarOpen: true);
     expect(find.byTooltip("Hide sidebar"), findsOneWidget);
     expect(find.byTooltip("Show sidebar"), findsNothing);
+  });
+
+  testWidgets('the toggle is left out where it could not work', (tester) async {
+    // Below the collapse width the sidebar belongs to the drawer, which only
+    // the main navigation's re-tap opens. The toggle used to be drawn there
+    // and did nothing when tapped.
+    await pumpBar(tester, sidebarOpen: false, toggleable: false);
+
+    expect(find.byTooltip("Show sidebar"), findsNothing);
+    expect(find.byTooltip("Hide sidebar"), findsNothing);
+    // Everything else still there -- close especially.
+    expect(find.byTooltip("Close page"), findsOneWidget);
+    expect(find.byTooltip("Back"), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('sidebarIsInDrawer agrees with the width the layout uses',
+      (tester) async {
+    late bool narrow, wide;
+    await tester.pumpWidget(ChangeNotifierProvider<ThemeNotifier>.value(
+      value: ThemeNotifier(doLoad: false),
+      child: MaterialApp(
+          home: Builder(builder: (context) {
+        narrow = sidebarIsInDrawer(context, kSidebarCollapseWidth - 1);
+        wide = sidebarIsInDrawer(context, kSidebarCollapseWidth);
+        return const SizedBox();
+      })),
+    ));
+
+    // The layout branches on "< kSidebarCollapseWidth", so the boundary
+    // itself is still wide enough for a column. Getting this off by one
+    // would put a dead toggle back at exactly one width.
+    expect(narrow, isTrue);
+    expect(wide, isFalse);
   });
 
   testWidgets('the bar lays out without overflowing a narrow window',
