@@ -33,6 +33,14 @@ import (
 // download, and the cost is one decompression the first time a given build
 // starts.
 //
+// Both .gz files and both manifests are build outputs, committed so that an
+// ordinary client build needs no wasm toolchain. writingtools.wasm.gz is
+// produced by plugins/writingtools/build.sh, which compiles the module and
+// writes it here; changing a writing rule means running that script and
+// committing what it leaves behind. A stale file here is invisible in every
+// way that matters -- the build succeeds and the app runs the old rules --
+// which is why the script does the copying rather than a person.
+//
 //go:embed writingtools.wasm.gz
 var writingToolsWasmGz []byte
 
@@ -45,8 +53,8 @@ var prettyLinksWasmGz []byte
 //go:embed prettylinks.manifest.json
 var prettyLinksManifest []byte
 
-// Plugin is one shipped plugin: the manifest exactly as its own repository
-// declares it, and its module.
+// Plugin is one shipped plugin: the manifest exactly as the plugin declares
+// it, and its module.
 //
 // The manifest is embedded verbatim rather than rewritten here, so a built-in
 // is described by its author and validated by the same code that validates an

@@ -1,0 +1,150 @@
+# Supplemental vocabulary, merged into the SCOWL-derived dictionary at build
+# time (see tools/mkwords). A general English dictionary has none of these,
+# so without this file the app's own subject matter -- its name, the coins
+# it moves, the jargon of the rooms it hosts -- underlines as misspelled in
+# every message.
+#
+# One lowercase word per line; "#" comments and blank lines are ignored.
+# Keep it conservative: every word here is one the checker will stop
+# flagging, so a typo added here is a typo it can no longer catch.
+
+# --- Bison Relay itself ---
+bisonrelay
+brclient
+bruig
+zkidentity
+ratchet
+ratchets
+kx
+gc
+gcs
+rvpoint
+rvpoints
+
+# --- Decred ---
+decred
+dcr
+dcrd
+dcrwallet
+dcrdex
+dcrctl
+politeia
+stakepool
+stakepools
+
+# --- Lightning / payment channels ---
+lnd
+onchain
+offchain
+routable
+satoshi
+satoshis
+sats
+msat
+msats
+preimage
+htlc
+htlcs
+
+# --- crypto generally ---
+blockchain
+blockchains
+crypto
+cryptocurrency
+cryptocurrencies
+bitcoin
+bitcoins
+btc
+altcoin
+altcoins
+stablecoin
+stablecoins
+seedphrase
+multisig
+timelock
+timelocks
+mempool
+utxo
+utxos
+sidechain
+sidechains
+mainnet
+testnet
+simnet
+hashrate
+merkle
+secp
+schnorr
+
+# --- software vernacular the dictionary omits ---
+username
+usernames
+login
+logins
+logout
+signup
+signups
+timestamp
+timestamps
+emoji
+emojis
+avatar
+avatars
+url
+urls
+uri
+uris
+api
+apis
+backend
+frontend
+config
+configs
+plugin
+plugins
+metadata
+markdown
+changelog
+runtime
+runtimes
+toolchain
+toolchains
+sandboxed
+wasm
+webassembly
+repo
+repos
+
+# --- Product names the brand-casing rules correct ---
+# Every name in spellcheck/rules_brands.go has to be a word the dictionary
+# knows, or it is flagged twice over: once as a misspelling and once for its
+# capitals. SCOWL carries most of them already; these are the rest.
+gitlab
+graphql
+kubernetes
+devops
+oauth
+macos
+ipados
+macbook
+powershell
+whatsapp
+linkedin
+reddit
+tiktok
+spotify
+photoshop
+onedrive
+ethereum
+monero
+litecoin
+dogecoin
+
+# --- ordinary computing words SCOWL does not carry ---
+# Each has a gloss in data/function-words.txt, and a definition for a word
+# the checker underlines is the worst of both.
+webpage
+decrypt
+offline
+vpn
+dao

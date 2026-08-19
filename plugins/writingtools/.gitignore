@@ -1,0 +1,26 @@
+plugin.wasm
+writing-tools-plugin-v*.zip
+
+# The third-party corpora the tools/ generators read. Downloaded rather than
+# committed: WordNet, SCOWL and MyThes come to 46MB between them, they are
+# read only when a dataset is regenerated, and the outputs they produce -- the
+# .gz files beside this -- are what the plugin actually ships. See README.md
+# for where each comes from. The two hand-written files in data/ are committed,
+# since nothing can regenerate those.
+data/wordnet/
+data/scowl/
+data/th_en_US_v2.dat
+
+# The datasets are embedded compressed; only the .gz files are committed.
+# Keeping the plain text alongside them would be the same data twice, free to
+# drift. Regenerate with the tools/ commands, then run build.sh.
+words-en-US.txt
+words-en-GB.txt
+common-en-US.txt
+common-en-GB.txt
+thesaurus.txt
+definitions.txt
+exceptions.txt
+inflections.txt
+
+.DS_Store
