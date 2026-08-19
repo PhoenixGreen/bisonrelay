@@ -169,4 +169,50 @@ void _languageTests() {
     await reloaded.load();
     expect(reloaded.language, "en-GB");
   });
+  // Loading is not cheap -- 2.2MB of JSON, 120,000 words to index and 787
+  // regular expressions to compile, about 100ms of it -- and update() runs
+  // from a ChangeNotifierProxyProvider, so it is called whenever the plugin
+  // manager notifies about anything at all. Every one of those calls used to
+  // pay in full to arrive at the data already held.
+  group("reloading", () {
+    PluginInfo installed(String id, String version) => PluginInfo(
+        PluginManifest(id, id, version, "d", "s", "dynamic-wasm", 1, const {},
+            [PluginService("spellcheck-data", "get_spellcheck_data", const [])]),
+        true);
+
+    test("the same plugin set is not fetched twice", () async {
+      var fetches = 0;
+      var capability = SpellcheckCapability(fetch: (_) async {
+        fetches++;
+        return SpellcheckData(const ["the"], const [], const [], const []);
+      });
+      var plugins = FakePluginManager([installed("spellcheck", "1.0.0")]);
+
+      await capability.update(plugins);
+      await capability.update(plugins);
+      await capability.update(plugins);
+      expect(fetches, 1, reason: "nothing about the answer had changed");
+    });
+
+    test("a plugin set that moved is fetched again", () async {
+      var fetches = 0;
+      var capability = SpellcheckCapability(fetch: (_) async {
+        fetches++;
+        return SpellcheckData(const ["the"], const [], const [], const []);
+      });
+
+      await capability
+          .update(FakePluginManager([installed("spellcheck", "1.0.0")]));
+      // A new version of the provider: the same capability, different data.
+      await capability
+          .update(FakePluginManager([installed("spellcheck", "1.1.0")]));
+      expect(fetches, 2, reason: "the provider changed under it");
+
+      // And a second provider arriving is a change as well, whoever it is.
+      await capability.update(FakePluginManager(
+          [installed("spellcheck", "1.1.0"), installed("other", "1.0.0")]));
+      expect(fetches, 3);
+    });
+  });
+
 }

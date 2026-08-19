@@ -107,6 +107,28 @@ class SpellcheckCapability extends ChangeNotifier {
   // The language the loaded data was fetched for, so a preference change is
   // noticed even though nothing else about the plugin set has moved.
   String? _loadedFor;
+
+  // What the plugin set looked like when that data was fetched.
+  //
+  // Loading is not cheap: the reply is 2.2MB of JSON, and decoding it,
+  // indexing 120,000 words and compiling 787 regular expressions comes to
+  // about 100ms. update() runs from a ChangeNotifierProxyProvider and is
+  // therefore called whenever the plugin manager notifies -- for any plugin,
+  // for reasons that have nothing to do with this one -- and every one of
+  // those was paying the full 100ms to arrive at exactly the data already
+  // held.
+  //
+  // A signature over the enabled plugins rather than a check for this
+  // particular one, which keeps the rule the plugin system is built on: ask
+  // whether a capability is available, never whether a named plugin is
+  // installed. Any movement in the set is a reason to ask again; nothing
+  // else is.
+  String? _loadedFrom;
+
+  static String _signature(PluginManagerModel plugins) => [
+        for (var p in plugins.plugins)
+          if (p.enabled) "${p.manifest.id}@${p.manifest.version}",
+      ].join(",");
   PluginManagerModel? _plugins;
 
   /// styleFor is how a flagged span is marked in the text.
@@ -180,9 +202,15 @@ class SpellcheckCapability extends ChangeNotifier {
     if (!active) return;
 
     var language = preferences.language;
+    var signature = _signature(plugins);
+    if (_loadedFor == language && _loadedFrom == signature && _checker.hasData) {
+      return;
+    }
+
     try {
       var data = await _fetch(language);
       _loadedFor = language;
+      _loadedFrom = signature;
       _activeLanguage = data.language;
       if (data.languages.isNotEmpty) _languages = data.languages;
       _checker.updateData(data);

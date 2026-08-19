@@ -13,6 +13,13 @@ class FakePlugins extends ChangeNotifier implements PluginManagerModel {
   bool hasCapability(PluginCapability capability) =>
       present.contains(capability);
 
+  /// The list itself, for the consumers that ask whether the plugin set has
+  /// moved rather than what is in it. Empty: a fake built from capabilities
+  /// alone has no plugins to name, and an empty list is a stable answer,
+  /// which is what such a consumer is looking for.
+  @override
+  List<PluginInfo> get plugins => const [];
+
   @override
   noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
