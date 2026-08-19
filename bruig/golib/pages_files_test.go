@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/decred/slog"
 )
 
 // TestPageFileNameRejectsEscapes is the check that keeps the pages directory
@@ -159,5 +161,20 @@ func TestParseUpstream(t *testing.T) {
 	}
 	if !parseUpstream("pages:/tmp/site", "", "", "", 0).editable() {
 		t.Error("pages reported as not editable")
+	}
+}
+
+// TestDefaultPathsFollowTheApp guards the thing that would quietly serve an
+// empty directory: bruig and brclient keep their data in different places, so
+// the offered default has to come from the running app rather than from a
+// hardcoded application name.
+func TestDefaultPathsFollowTheApp(t *testing.T) {
+	ph := newPagesHost(slog.Disabled, "/home/someone/.bruig")
+
+	if got, want := ph.defaultPagesPath(), "/home/someone/.bruig/pages"; got != want {
+		t.Errorf("pages path %q, want %q", got, want)
+	}
+	if got, want := ph.defaultStorePath(), "/home/someone/.bruig/store"; got != want {
+		t.Errorf("store path %q, want %q", got, want)
 	}
 }

@@ -11,7 +11,6 @@ import (
 	"github.com/companyzero/bisonrelay/client"
 	"github.com/companyzero/bisonrelay/client/resources"
 	"github.com/companyzero/bisonrelay/client/resources/simplestore"
-	"github.com/decred/dcrd/dcrutil/v4"
 	"github.com/decred/slog"
 )
 
@@ -68,6 +67,13 @@ type pagesHost struct {
 	slot *resources.Swappable
 	log  slog.Logger
 
+	// appDataDir is where the app keeps everything else, and where a site
+	// and a store are offered by default. It comes from the running app
+	// rather than dcrutil.AppDataDir: bruig and brclient keep their data
+	// in different places, and offering the wrong one would quietly serve
+	// an empty directory.
+	appDataDir string
+
 	mtx       sync.Mutex
 	cfg       pagesHostConfig
 	store     *simplestore.Store
@@ -84,11 +90,12 @@ type pagesHost struct {
 	rpcRouter *resources.Router
 }
 
-func newPagesHost(log slog.Logger) *pagesHost {
+func newPagesHost(log slog.Logger, appDataDir string) *pagesHost {
 	return &pagesHost{
-		slot: resources.NewSwappable(nil),
-		log:  log,
-		cfg:  pagesHostConfig{Mode: hostModeOff},
+		slot:       resources.NewSwappable(nil),
+		log:        log,
+		appDataDir: appDataDir,
+		cfg:        pagesHostConfig{Mode: hostModeOff},
 	}
 }
 
@@ -307,13 +314,13 @@ func (ph *pagesHost) stopStoreLocked() {
 
 // defaultPagesPath is where the UI offers to keep a site when hosting is
 // switched on and the user has no directory of their own in mind.
-func defaultPagesPath() string {
-	return filepath.Join(dcrutil.AppDataDir("brclient", false), "pages")
+func (ph *pagesHost) defaultPagesPath() string {
+	return filepath.Join(ph.appDataDir, "pages")
 }
 
 // defaultStorePath is the same for a store.
-func defaultStorePath() string {
-	return filepath.Join(dcrutil.AppDataDir("brclient", false), "store")
+func (ph *pagesHost) defaultStorePath() string {
+	return filepath.Join(ph.appDataDir, "store")
 }
 
 // pagesHostStatus assembles what the Pages UI needs in one round trip.
@@ -326,8 +333,8 @@ func (cc *clientCtx) pagesHostStatus() (pagesHostStatus, error) {
 	return pagesHostStatus{
 		Config:           cfg,
 		Editable:         cfg.editable(),
-		DefaultPath:      defaultPagesPath(),
-		DefaultStorePath: defaultStorePath(),
+		DefaultPath:      cc.pagesHost.defaultPagesPath(),
+		DefaultStorePath: cc.pagesHost.defaultStorePath(),
 		Pages:            pages,
 	}, nil
 }

@@ -633,7 +633,9 @@ func handleInitClient(handle uint32, args initClient) error {
 	// swappable provider so it can be reconfigured from the UI while the
 	// client runs, rather than only by editing the config file and
 	// restarting.
-	pagesHost := newPagesHost(logBknd.logger("PAGE"))
+	// DBRoot is <appdata>/db, which is the only handle golib is given on
+	// where this app keeps its data.
+	pagesHost := newPagesHost(logBknd.logger("PAGE"), filepath.Dir(args.DBRoot))
 
 	// Initialize dialer
 	var d net.Dialer
