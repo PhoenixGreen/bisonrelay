@@ -86,6 +86,10 @@ class SpellcheckCapability extends ChangeNotifier {
   void _invalidate() {
     _reviewedText = null;
     _reviewed = null;
+    // The checker keeps its own cache of the same text, for the overlapping
+    // findings a context menu wants, and it cannot see a preference change
+    // from where it sits.
+    _checker.invalidate();
     notifyListeners();
   }
 

@@ -168,6 +168,25 @@ class WritingIssue {
     String? ruleMessage,
   }) : ruleMessage = ruleMessage ?? message;
 
+  /// shifted moves the issue [by] characters, for a finding made inside one
+  /// piece of a document and reported against the whole of it.
+  ///
+  /// The range is the only thing that moves. The text, the message and the
+  /// rule behind it are the same finding wherever it was made -- which is
+  /// what lets the checker review a paragraph once and keep the answer while
+  /// the paragraphs above it are edited.
+  WritingIssue shifted(int by) => WritingIssue(
+        range: TextRange(start: range.start + by, end: range.end + by),
+        text: text,
+        message: message,
+        suggestions: suggestions,
+        kind: kind,
+        checkId: checkId,
+        category: category,
+        explanation: explanation,
+        ruleMessage: ruleMessage,
+      );
+
   /// title is what to head the issue with: the category if the provider gave
   /// one, and the message otherwise, so a rule with no category still gets a
   /// heading rather than an empty line.

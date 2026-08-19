@@ -1,6 +1,7 @@
 import 'package:bruig/plugin_system/writing_tools/engine/analysis.dart';
 import 'package:bruig/plugin_system/writing_tools/engine/preferences.dart';
 import 'package:bruig/plugin_system/writing_tools/engine/suggester.dart';
+import 'package:bruig/plugin_system/writing_tools/engine/text_segments.dart';
 import 'package:bruig/plugin_system/writing_tools/engine/writing_issue.dart';
 import 'package:flutter/material.dart';
 import 'package:golib_plugin/definitions.dart';
@@ -72,6 +73,96 @@ List<RegExp> _compileAll(List<String> sources) {
   return out;
 }
 
+/// requiredLiteral finds a run of letters [pattern] cannot match without.
+///
+/// A rule is a regular expression over the whole text, and running 700 of
+/// them on every keystroke is most of what the checker costs. Nearly all of
+/// them are about one word: `\b([wW]ould|[cC]ould)\s+brake\b` cannot match
+/// text with no "brake" in it, and the cheapest way to know that is to look.
+///
+/// Only what is *outside* every group and class is mandatory -- an alternation
+/// is by definition optional -- so groups, classes and anything quantified are
+/// skipped, and the longest literal run that survives is the anchor. A class
+/// spelling one letter in both cases (`[wW]`) is the exception and folds to
+/// the letter, since that idiom is how every rule in this plugin writes a word
+/// that may open a sentence, and dropping it would throw away the best anchor
+/// in the file.
+///
+/// Returns null when nothing survives, which is the honest answer for the
+/// punctuation and repeated-word rules -- those match shapes rather than
+/// words, and a rule with no anchor is simply always run.
+String? requiredLiteral(String pattern) {
+  var out = StringBuffer();
+  var depth = 0;
+  for (var i = 0; i < pattern.length; i++) {
+    var c = pattern[i];
+    if (c == "\\") {
+      i++; // An escape: never a literal letter worth anchoring on.
+      out.write(" ");
+      continue;
+    }
+    if (c == "[") {
+      var close = pattern.indexOf("]", i);
+      if (close < 0) return null;
+      var body = pattern.substring(i + 1, close);
+      // Consumed wherever it is, but only *read* outside a group -- a class
+      // inside an alternation is as optional as the branch holding it, and
+      // an earlier version that folded it anyway anchored
+      // `(Yes|No)\s+([Ii]|[Ww]e|...)` on "iwyhsit", a string no text
+      // contains, so the rule stopped firing altogether.
+      if (depth == 0) {
+        // `[wW]` and friends: one letter, either case.
+        if (body.length == 2 &&
+            body[0].toLowerCase() == body[1].toLowerCase() &&
+            body[0] != body[1]) {
+          out.write(body[0].toLowerCase());
+        } else {
+          out.write(" ");
+        }
+      }
+      i = close;
+      continue;
+    }
+    if (c == "(") {
+      depth++;
+      out.write(" ");
+      continue;
+    }
+    if (c == ")") {
+      if (depth > 0) depth--;
+      continue;
+    }
+    if (depth > 0) continue;
+    // A quantifier makes the character before it optional, so that character
+    // cannot be part of an anchor either.
+    if (c == "?" || c == "*") {
+      var text = out.toString();
+      out = StringBuffer(text.isEmpty ? "" : text.substring(0, text.length - 1));
+      out.write(" ");
+      continue;
+    }
+    // A top-level alternation makes everything optional, and there is
+    // nothing the whole pattern must contain. Rare -- every rule in the
+    // plugin brackets its alternations -- and silently wrong if assumed
+    // away, since the anchor would come from one branch and skip the rule on
+    // text matching another.
+    if (c == "|") return null;
+    if (c == "+" || c == "{" || c == "}" || c == "." || c == "^" || c == r"$") {
+      out.write(" ");
+      continue;
+    }
+    out.write(c);
+  }
+
+  String? best;
+  for (var run in out.toString().split(" ")) {
+    if (run.length < 3) continue;
+    if (!RegExp(r"^[A-Za-z]+$").hasMatch(run)) continue;
+    if (best == null || run.length > best.length) best = run;
+  }
+  return best?.toLowerCase();
+}
+
 /// _CompiledRule is one provider rule, ready to match.
 class _CompiledRule {
   final RegExp pattern;
@@ -84,6 +175,10 @@ class _CompiledRule {
   final String category;
   final String explanation;
   final WritingIssueKind kind;
+
+  /// anchor is a lowercase run of letters the pattern cannot match without,
+  /// or null when it has none -- see requiredLiteral.
+  final String? anchor;
 
   /// antipatterns suppress this rule where they match over it. Compiled
   /// alongside the pattern, and an uncompilable one is dropped rather than
@@ -101,6 +196,7 @@ class _CompiledRule {
     required this.explanation,
     required this.kind,
     required this.antipatterns,
+    this.anchor,
   });
 
   /// compile returns null for a pattern Dart's regex engine cannot read, so
@@ -116,6 +212,7 @@ class _CompiledRule {
         explanation: rule.explanation,
         kind: WritingIssueKind.fromSeverity(rule.severity),
         antipatterns: _compileAll(rule.antipatterns),
+        anchor: requiredLiteral(rule.pattern),
       );
     } catch (_) {
       return null;
@@ -138,6 +235,7 @@ class WritingChecker {
   bool get hasData => _words.isNotEmpty || _rules.isNotEmpty;
 
   void updateData(SpellcheckData data) {
+    invalidate();
     _words = data.words.map((w) => w.toLowerCase()).toSet();
     _suggester.index(_words, data.commonWords);
     _rules = data.grammarRules
@@ -180,25 +278,66 @@ class WritingChecker {
           if (issue.range.start < end && issue.range.end > start) issue,
       ];
 
+  // The last text reviewed and what it produced. One entry, because the
+  // question is always asked about the text on screen and never about the
+  // text as it was two keystrokes ago.
+  //
+  // The capability memoises review() as well, and this is the other half of
+  // that: issuesAt() asks the same question with the overlaps left in, so
+  // opening the context menu in a long post used to run all seven hundred
+  // rules again for a menu the field had already paid to build.
+  String? _rawText;
+  List<WritingIssue>? _raw;
+
+  /// invalidate drops the cache. Called when something other than the text
+  /// changes the answer -- a word added to the dictionary, a check turned
+  /// off, a wording accepted -- which the checker cannot see for itself,
+  /// since the preferences are read during a review and never announced to
+  /// it.
+  void invalidate() {
+    _rawText = null;
+    _raw = null;
+    _paragraphCache = {};
+  }
+
   /// _reviewRaw finds everything, in no particular order.
   List<WritingIssue> _reviewRaw(String original) {
+    if (_rawText == original) return _raw!;
+    var found = _reviewUncached(original);
+    _rawText = original;
+    _raw = found;
+    return found;
+  }
+
+  List<WritingIssue> _reviewUncached(String original) {
     if (!hasData) return const [];
-    // Matched against the normalized text and reported against the original.
-    // The two are the same length, so the ranges are interchangeable -- see
-    // normalizeForMatching.
-    var text = normalizeForMatching(original);
     var issues = <WritingIssue>[];
 
-    for (var rule in _rules) {
-      _applyRule(rule, text, original, issues);
+    // The rules and the dictionary are asked one paragraph at a time, and the
+    // answers are kept -- see _paragraphCache. Typing changes one paragraph
+    // and leaves the rest of a long post exactly as it was, so re-scanning it
+    // is the same work for the same answer.
+    var fresh = <String, List<WritingIssue>>{};
+    for (var paragraph in splitKeepingOffsets(original, paragraphBreak)) {
+      var found =
+          _paragraphCache[paragraph.text] ?? _reviewParagraph(paragraph.text);
+      // Kept under the new document's paragraphs rather than added to the old
+      // document's, so a paragraph that has been edited away stops being held
+      // in memory. The cache is never larger than one document.
+      fresh[paragraph.text] = found;
+      for (var issue in found) {
+        issues.add(
+            paragraph.start == 0 ? issue : issue.shifted(paragraph.start));
+      }
     }
+    _paragraphCache = fresh;
 
-    // Given the original: these checks count and compare rather than match
-    // contractions, and their results are spliced back into the field.
+    // Given the original and the whole of it: these count and compare rather
+    // than match, and what they count -- a word repeated down a paragraph, two
+    // spellings of the same word in one post -- is a fact about the document
+    // rather than about any one part of it.
     issues.addAll(runAnalysisChecks(original, _analysis,
         isIgnoredCheck: (id) => prefs?.isCheckDisabled(id) ?? false));
-
-    _checkSpelling(text, original, issues);
 
     // Dismissed phrases are dropped here rather than inside each producer
     // above, because the grammar rules and the counting checks arrive by
@@ -218,6 +357,45 @@ class WritingChecker {
     }
 
     issues.sort((a, b) => a.range.start.compareTo(b.range.start));
+    return issues;
+  }
+
+  // What each paragraph of the last-reviewed document produced, keyed by the
+  // paragraph's own text and holding ranges relative to its start.
+  //
+  // Keyed by text rather than by position because a position moves: adding a
+  // line at the top of a post shifts every paragraph below it, and an index
+  // would throw away findings that had not changed at all. Two identical
+  // paragraphs share one entry, which is right -- the same words produce the
+  // same findings.
+  Map<String, List<WritingIssue>> _paragraphCache = {};
+
+  /// _reviewParagraph runs the rules and the dictionary over one paragraph,
+  /// reporting at offsets relative to its start.
+  ///
+  /// A rule therefore cannot match across a blank line. That is a real limit
+  /// and an acceptable one: every pattern here is about a word and the words
+  /// beside it, and two words on either side of a paragraph break are not
+  /// beside each other in any sense a rule means. The counting checks, which
+  /// do reason across paragraphs, are not run here.
+  List<WritingIssue> _reviewParagraph(String original) {
+    // Matched against the normalized text and reported against the original.
+    // The two are the same length, so the ranges are interchangeable -- see
+    // normalizeForMatching.
+    var text = normalizeForMatching(original);
+    var issues = <WritingIssue>[];
+
+    // Lower-cased once for the anchor test below, which is the difference
+    // between running seven hundred regular expressions over every paragraph
+    // and running the handful whose word is actually in it.
+    var lower = text.toLowerCase();
+    for (var rule in _rules) {
+      var anchor = rule.anchor;
+      if (anchor != null && !lower.contains(anchor)) continue;
+      _applyRule(rule, text, original, issues);
+    }
+
+    _checkSpelling(text, original, issues);
     return issues;
   }
 

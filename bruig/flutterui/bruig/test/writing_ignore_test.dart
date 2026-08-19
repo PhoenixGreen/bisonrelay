@@ -116,6 +116,21 @@ void main() {
     expect(capability.review("reliese"), isNotEmpty);
   });
 
+  // Both readings of the same text are cached -- the field's disjoint list
+  // and the context menu's overlapping one -- and a dismissal has to reach
+  // both. The menu's cache lives in the checker, one layer below the one the
+  // capability drops, and for a while nothing told it anything had changed.
+  test("the context menu sees a dismissal too", () async {
+    var (capability, prefs) = await _configured(rules: [_wordy]);
+    const text = "we did it in order to ship";
+    var at = text.indexOf("in order to");
+
+    var issue = capability.issuesAt(text, at, at + 11).single;
+    prefs.ignoreMatch(issue.checkId!, issue.text);
+    expect(capability.issuesAt(text, at, at + 11), isEmpty,
+        reason: "the menu would keep offering a rule that was dismissed");
+  });
+
   test("dismissal does not survive a restart", () async {
     var (_, prefs) = await _configured(rules: [_wordy]);
     prefs.ignoreMatch(r"\bin order to\b", "in order to");
