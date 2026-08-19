@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:bruig/config.dart';
 import 'package:bruig/models/resources.dart';
+import 'package:bruig/storage_manager.dart';
 import 'package:flutter/foundation.dart';
 import 'package:golib_plugin/definitions.dart';
 import 'package:golib_plugin/golib_plugin.dart';
@@ -113,6 +114,80 @@ class SiteInfo {
       );
 }
 
+/// PagesSort is how the Visit list is ordered.
+enum PagesSort {
+  /// Contacts who answered with a site first, then whoever was heard from
+  /// most recently. The default: the list exists to be revisited, and the
+  /// sites known to work are what it is being opened for.
+  sitesFirst,
+
+  /// Plain alphabetical, for finding a particular person.
+  name,
+}
+
+/// siteRank orders statuses by how much of a site is known to be there.
+///
+/// Deliberately not the enum's declaration order: what matters here is how
+/// good a bet opening it is, so an inference of no site sorts below a wait
+/// that has told us nothing either way, and only their own answer that they
+/// serve nothing sorts last.
+int siteRank(SiteStatus s) {
+  switch (s) {
+    case SiteStatus.hosting:
+      return 0;
+    case SiteStatus.noIndex:
+      return 1;
+    case SiteStatus.checking:
+      return 2;
+    case SiteStatus.unknown:
+      return 3;
+    case SiteStatus.noAnswer:
+      return 4;
+    case SiteStatus.failed:
+      return 5;
+    case SiteStatus.silent:
+      return 6;
+    case SiteStatus.notHosting:
+      return 7;
+  }
+}
+
+/// sortSites orders a Visit list in place.
+///
+/// [nick] and [info] are passed in rather than the model reaching for them so
+/// this can be tested without a client. Ties break on nick so the order is
+/// stable between rebuilds -- two contacts with the same status and no
+/// last-seen would otherwise swap places as the list redrew.
+void sortSites<T>(
+  List<T> items,
+  PagesSort mode, {
+  required String Function(T) nick,
+  required SiteInfo Function(T) info,
+}) {
+  int byNick(T a, T b) =>
+      nick(a).toLowerCase().compareTo(nick(b).toLowerCase());
+
+  if (mode == PagesSort.name) {
+    items.sort(byNick);
+    return;
+  }
+
+  items.sort((a, b) {
+    var ra = siteRank(info(a).status), rb = siteRank(info(b).status);
+    if (ra != rb) return ra.compareTo(rb);
+
+    // Most recently heard from first. A contact never heard from sorts
+    // after every contact who has been -- an unknown last-seen is not the
+    // same as a very old one, but it belongs at the same end.
+    var la = info(a).lastSeen, lb = info(b).lastSeen;
+    if (la != null && lb != null && la != lb) return lb.compareTo(la);
+    if (la != null && lb == null) return -1;
+    if (la == null && lb != null) return 1;
+
+    return byNick(a, b);
+  });
+}
+
 /// siteStatusForReply maps a reply's status code onto what it tells the
 /// visitor. Split out from the model so it can be tested without a client.
 SiteStatus siteStatusForReply(int status) {
@@ -141,6 +216,7 @@ class PagesModel extends ChangeNotifier {
 
   PagesModel(this.resources) {
     resources.addFetchListener(_onFetched);
+    _loadSort();
   }
 
   @override
@@ -159,6 +235,26 @@ class PagesModel extends ChangeNotifier {
   set tab(int v) {
     if (_tab == v) return;
     _tab = v;
+    notifyListeners();
+  }
+
+  // ---- how the Visit list is ordered ----
+
+  PagesSort _sort = PagesSort.sitesFirst;
+  PagesSort get sort => _sort;
+
+  set sort(PagesSort v) {
+    if (_sort == v) return;
+    _sort = v;
+    StorageManager.saveString(StorageManager.pagesSortKey, v.name);
+    notifyListeners();
+  }
+
+  Future<void> _loadSort() async {
+    var saved = await StorageManager.readString(StorageManager.pagesSortKey);
+    var found = PagesSort.values.where((v) => v.name == saved);
+    if (found.isEmpty) return;
+    _sort = found.first;
     notifyListeners();
   }
 
@@ -186,6 +282,17 @@ class PagesModel extends ChangeNotifier {
     } catch (_) {
       // No ratchet info for this contact; nothing to show.
     }
+  }
+
+  /// refreshAllLastSeen fills in last-seen for a whole contact list.
+  ///
+  /// Safe to call on entering the Visit tab: the ratchet is held in memory
+  /// on this side, so each of these reads local state and sends nothing.
+  /// That is what makes ordering by last-seen worth offering at all -- it
+  /// would otherwise only be known for contacts whose site had been asked
+  /// for, which is the small minority the ordering is meant to surface.
+  Future<void> refreshAllLastSeen(Iterable<String> uids) async {
+    await Future.wait(uids.map(refreshLastSeen));
   }
 
   /// open fetches a contact's front page and records what comes of it.

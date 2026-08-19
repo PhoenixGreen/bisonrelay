@@ -21,6 +21,7 @@ class StorageManager {
   static const String notesToSelfKey = "notesToSelf";
   static const String msgsSentCountKey = "msgsSentCount";
   static const String countRelaysEnabledKey = "countRelaysEnabled";
+  static const String pagesSortKey = "pagesSort";
 
   static Future<void> saveData(String key, dynamic value) async {
     final prefs = await SharedPreferences.getInstance();

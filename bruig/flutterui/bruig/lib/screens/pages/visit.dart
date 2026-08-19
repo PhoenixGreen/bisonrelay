@@ -1,3 +1,4 @@
+import 'package:bruig/components/empty_widget.dart';
 import 'package:bruig/components/interactive_avatar.dart';
 import 'package:bruig/components/text.dart';
 import 'package:bruig/models/client.dart';
@@ -56,10 +57,25 @@ class _VisitTabState extends State<VisitTab> {
         res.add(c);
       }
     }
-    res.sort((a, b) => a.nick.toLowerCase().compareTo(b.nick.toLowerCase()));
-    if (filter.isEmpty) return res;
-    var f = filter.toLowerCase();
-    return res.where((c) => c.nick.toLowerCase().contains(f)).toList();
+    if (filter.isNotEmpty) {
+      var f = filter.toLowerCase();
+      res = res.where((c) => c.nick.toLowerCase().contains(f)).toList();
+    }
+    sortSites(res, widget.pages.sort,
+        nick: (c) => c.nick, info: (c) => widget.pages.siteInfo(c.id));
+    return res;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    // Last-seen is read from the ratchet, locally, so filling it in for
+    // everyone costs nothing over the wire -- and without it the default
+    // ordering would have almost nothing to order by.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      widget.pages.refreshAllLastSeen(contacts.map((c) => c.id));
+    });
   }
 
   // Deliberately through PagesModel.open rather than straight to
@@ -91,15 +107,34 @@ class _VisitTabState extends State<VisitTab> {
               "only be read while its owner is reachable.",
               color: TextColor.onSurfaceVariant),
           const SizedBox(height: 12),
-          TextField(
-            decoration: const InputDecoration(
-              isDense: true,
-              prefixIcon: Icon(Icons.search, size: 18),
-              hintText: "Filter contacts",
-              border: OutlineInputBorder(),
+          Row(children: [
+            Expanded(
+              child: TextField(
+                decoration: const InputDecoration(
+                  isDense: true,
+                  prefixIcon: Icon(Icons.search, size: 18),
+                  hintText: "Filter contacts",
+                  border: OutlineInputBorder(),
+                ),
+                onChanged: (v) => setState(() => filter = v),
+              ),
             ),
-            onChanged: (v) => setState(() => filter = v),
-          ),
+            const SizedBox(width: 12),
+            const Txt.S("Order", color: TextColor.onSurfaceVariant),
+            const SizedBox(width: 6),
+            DropdownButton<PagesSort>(
+              value: widget.pages.sort,
+              underline: const Empty(),
+              onChanged: (v) =>
+                  setState(() => widget.pages.sort = v ?? PagesSort.sitesFirst),
+              items: const [
+                DropdownMenuItem(
+                    value: PagesSort.sitesFirst,
+                    child: Txt.S("Sites first, then recent")),
+                DropdownMenuItem(value: PagesSort.name, child: Txt.S("Name")),
+              ],
+            ),
+          ]),
           const SizedBox(height: 16),
           if (list.isEmpty)
             const Expanded(

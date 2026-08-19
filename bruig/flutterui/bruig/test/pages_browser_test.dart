@@ -196,6 +196,82 @@ void main() {
     });
   });
 
+  group('sortSites', () {
+    var t0 = DateTime(2026, 8, 19, 12, 0);
+    ({String nick, SiteInfo info}) c(String nick, SiteStatus st, [int? mins]) =>
+        (
+          nick: nick,
+          info: SiteInfo(
+              status: st,
+              lastSeen: mins == null ? null : t0.subtract(Duration(minutes: mins)))
+        );
+
+    List<String> order(List<({String nick, SiteInfo info})> items,
+        [PagesSort mode = PagesSort.sitesFirst]) {
+      var l = List.of(items);
+      sortSites(l, mode, nick: (e) => e.nick, info: (e) => e.info);
+      return l.map((e) => e.nick).toList();
+    }
+
+    test('sites come before everything else, whatever their nick', () {
+      expect(
+          order([
+            c("aaa", SiteStatus.notHosting, 1),
+            c("zzz", SiteStatus.hosting, 500),
+          ]),
+          ["zzz", "aaa"]);
+    });
+
+    test('within the same status, most recently heard from wins', () {
+      expect(
+          order([
+            c("old", SiteStatus.hosting, 6000),
+            c("recent", SiteStatus.hosting, 5),
+            c("mid", SiteStatus.hosting, 300),
+          ]),
+          ["recent", "mid", "old"]);
+    });
+
+    test('a contact never heard from sorts after those who have been', () {
+      expect(
+          order([
+            c("never", SiteStatus.hosting),
+            c("ancient", SiteStatus.hosting, 99999),
+          ]),
+          ["ancient", "never"]);
+    });
+
+    test('an inference of no site outranks a definite one, and both sink', () {
+      // Nothing known beats probably-nothing, which beats their own answer
+      // that they serve nothing.
+      expect(
+          order([
+            c("said-no", SiteStatus.notHosting, 1),
+            c("probably-no", SiteStatus.silent, 1),
+            c("unknown", SiteStatus.unknown, 1),
+          ]),
+          ["unknown", "probably-no", "said-no"]);
+    });
+
+    test('ties break on nick, so the list does not shuffle as it redraws', () {
+      var items = [
+        c("Bravo", SiteStatus.unknown),
+        c("alpha", SiteStatus.unknown),
+      ];
+      expect(order(items), ["alpha", "Bravo"]);
+      expect(order(items), ["alpha", "Bravo"]);
+    });
+
+    test('name mode ignores status entirely', () {
+      expect(
+          order([
+            c("zed", SiteStatus.hosting, 1),
+            c("amy", SiteStatus.notHosting),
+          ], PagesSort.name),
+          ["amy", "zed"]);
+    });
+  });
+
   group('noAnswerDetail', () {
     test('names both reasons, since neither can be ruled out', () {
       var d = noAnswerDetail("alice");
