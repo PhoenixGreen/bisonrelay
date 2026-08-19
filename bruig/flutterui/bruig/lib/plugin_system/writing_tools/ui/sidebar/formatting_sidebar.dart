@@ -137,6 +137,19 @@ const _blocks = [
     block: true,
   ),
   _Snippet(Icons.splitscreen_outlined, "Column break", "--col--", block: true),
+  // A gallery: every picture opens a cell and takes the writing after it as
+  // its caption, so there is no separator to keep in step. The snippet puts
+  // in the shape rather than a single empty cell, since one picture is not
+  // a gallery and the pattern is what needs showing.
+  _Snippet(
+    Icons.grid_view_outlined,
+    "Gallery",
+    "--grid[2]--\n--embed[type=image/png,data=]--\n### ",
+    after: "\nWhat it is.\n--embed[type=image/png,data=]--\n"
+        "### Second picture\nWhat that one is.\n--/grid--",
+    placeholder: "First picture",
+    block: true,
+  ),
 ];
 
 /// FormattingSidebar offers embeds and Markdown, applied to the composer the

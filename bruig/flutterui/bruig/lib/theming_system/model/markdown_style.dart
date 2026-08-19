@@ -635,6 +635,77 @@ enum MarkdownCardIcon {
   }
 }
 
+/// GridRule is how a gallery is laid out -- see GridBlockSyntax.
+///
+/// Deliberately its own rule rather than borrowing ColumnRule. The two look
+/// alike and are not: a run of columns is one piece of writing shared out,
+/// where the gap is a reading gutter, while a gallery is separate pictures
+/// side by side, where the gap is the space between two things. Setting one
+/// should not move the other.
+///
+/// Only the decisions that are about the page rather than the writing: how
+/// far apart the cells sit, how many across when the writer did not say, and
+/// the width below which side-by-side stops being a layout.
+class GridRule {
+  /// gap is the space between one cell and the next, across and down.
+  final double gap;
+
+  /// columns is how many across a bare --grid-- is, when the writer did not
+  /// write --grid[n]--.
+  final int columns;
+
+  /// stackBelow is the narrowest a cell may be before the gallery gives up
+  /// and stacks the pictures one above another.
+  ///
+  /// The same reasoning as ColumnRule.stackBelow: the same page is read in a
+  /// window a third the width of somebody else's, and four pictures across
+  /// at thumbnail size is not a gallery.
+  final double stackBelow;
+
+  const GridRule({
+    this.gap = 12,
+    this.columns = 2,
+    this.stackBelow = 180,
+  });
+
+  /// boundedGap keeps a guide from setting a gap that swallows the page.
+  double get boundedGap => gap.clamp(0, 96);
+
+  /// boundedColumns keeps the default inside what GridBlockSyntax accepts.
+  int get boundedColumns => columns.clamp(1, 4);
+
+  double get boundedStackBelow => stackBelow.clamp(0, 600);
+
+  GridRule copyWith({double? gap, int? columns, double? stackBelow}) =>
+      GridRule(
+        gap: gap ?? this.gap,
+        columns: columns ?? this.columns,
+        stackBelow: stackBelow ?? this.stackBelow,
+      );
+
+  Map<String, Object?> toJson() => {
+        "gap": gap,
+        "columns": columns,
+        "stackBelow": stackBelow,
+      };
+
+  static GridRule fromJson(Map<String, Object?> json) => GridRule(
+        gap: (json["gap"] as num?)?.toDouble() ?? 12,
+        columns: (json["columns"] as num?)?.toInt() ?? 2,
+        stackBelow: (json["stackBelow"] as num?)?.toDouble() ?? 180,
+      );
+
+  @override
+  int get hashCode => Object.hash(gap, columns, stackBelow);
+
+  @override
+  bool operator ==(Object other) =>
+      other is GridRule &&
+      other.gap == gap &&
+      other.columns == columns &&
+      other.stackBelow == stackBelow;
+}
+
 /// CardRule is how a callout or a card is drawn.
 ///
 /// A callout and a card are the same thing with a different amount filled in:
@@ -888,6 +959,9 @@ class MarkdownStyleGuide {
   /// cards is how a callout or a card is drawn -- see CardRule.
   final CardRule cards;
 
+  /// grid is how a gallery is laid out -- see GridRule.
+  final GridRule grid;
+
   /// copyWith returns this guide with some rules changed.
   ///
   /// Editing a built-in is not possible, and this is where that is made
@@ -936,6 +1010,7 @@ class MarkdownStyleGuide {
     ImageRule? image,
     ColumnRule? columns,
     CardRule? cards,
+    GridRule? grid,
   }) =>
       MarkdownStyleGuide(
         id: id ?? this.id,
@@ -978,6 +1053,7 @@ class MarkdownStyleGuide {
         image: image ?? this.image,
         columns: columns ?? this.columns,
         cards: cards ?? this.cards,
+        grid: grid ?? this.grid,
       );
 
   /// forked is this guide as the beginning of one of the reader's own.
@@ -1032,6 +1108,7 @@ class MarkdownStyleGuide {
         "image": image.toJson(),
         "columns": columns.toJson(),
         "cards": cards.toJson(),
+        "grid": grid.toJson(),
       };
 
   static MarkdownStyleGuide fromJson(Map<String, Object?> json) {
@@ -1111,6 +1188,9 @@ class MarkdownStyleGuide {
       columns: json["columns"] is Map<String, Object?>
           ? ColumnRule.fromJson(json["columns"] as Map<String, Object?>)
           : const ColumnRule(),
+      grid: json["grid"] is Map<String, Object?>
+          ? GridRule.fromJson(json["grid"] as Map<String, Object?>)
+          : const GridRule(),
       cards: json["cards"] is Map<String, Object?>
           ? CardRule.fromJson(json["cards"] as Map<String, Object?>)
           : const CardRule(),
@@ -1165,5 +1245,6 @@ class MarkdownStyleGuide {
     this.image = const ImageRule(),
     this.columns = const ColumnRule(),
     this.cards = const CardRule(),
+    this.grid = const GridRule(),
   });
 }

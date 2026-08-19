@@ -157,6 +157,20 @@ A closing paragraph, which is the last block the run has to place.
 
 Body text below them.
 """,
+      _Element.gallery => """
+Body text above the gallery.
+
+--grid--
+${sampleImageMarkdown ?? ""}
+### The first one
+A caption, which is the writing after the picture.
+${sampleImageMarkdown ?? ""}
+### The second one
+Captions need not be the same length; the cells hang from a common top.
+--/grid--
+
+Body text below it.
+""",
       _Element.rule => """
 Body text above the rule.
 
@@ -192,6 +206,7 @@ enum _Element {
   lists("Lists"),
   tables("Tables"),
   columns("Columns"),
+  gallery("Gallery"),
   rule("Horizontal rule"),
   images("Images");
 
@@ -1014,6 +1029,43 @@ class _MarkdownEditorState extends State<_MarkdownEditor> {
               max: 6,
               divisions: 6,
               onCommit: (v) => edit((g) => g.copyWith(tableBorderWidth: v))),
+        ];
+
+      case _Element.gallery:
+        return [
+          ctx.note("A gallery is pictures side by side, each with the "
+              "writing after it as its caption -- write one with the Gallery "
+              "button in a post's Formatting & Content panel. How many "
+              "across is set here rather than in the writing, so the same "
+              "page reads well in a window of any width."),
+          ctx.slider("md-gridcols", guide.grid.columns.toDouble(),
+              label: (v) => v == 1
+                  ? "One picture across"
+                  : "${v.round()} pictures across",
+              min: 1,
+              max: 4,
+              divisions: 3,
+              onCommit: (v) => edit((g) =>
+                  g.copyWith(grid: g.grid.copyWith(columns: v.round())))),
+          ctx.note("What a plain --grid-- uses. A writer who asks for a "
+              "width with --grid[3]-- gets that instead."),
+          ctx.slider("md-gridgap", guide.grid.gap,
+              label: (v) => "Space between pictures: ${v.round()}px",
+              max: 64,
+              divisions: 32,
+              onCommit: (v) =>
+                  edit((g) => g.copyWith(grid: g.grid.copyWith(gap: v)))),
+          ctx.slider("md-gridstack", guide.grid.stackBelow,
+              label: (v) => "Stack when a picture would be under ${v.round()}px",
+              min: 80,
+              max: 480,
+              divisions: 20,
+              onCommit: (v) => edit(
+                  (g) => g.copyWith(grid: g.grid.copyWith(stackBelow: v)))),
+          ctx.note("Four pictures across a narrow window are thumbnails in "
+              "a row with a word of caption under each. Below this width "
+              "they stack, which is what they would have been without the "
+              "markup."),
         ];
 
       case _Element.columns:

@@ -434,6 +434,7 @@ class MarkdownAreaModel extends ChangeNotifier {
     "quote": QuoteMarkdownElementBuilder(),
     "columns": ColumnsMarkdownElementBuilder(),
     "cards": CardsMarkdownElementBuilder(),
+    "grid": GridMarkdownElementBuilder(),
   };
 
   final List<md.InlineSyntax> inlineSyntaxes = [
@@ -443,6 +444,7 @@ class MarkdownAreaModel extends ChangeNotifier {
     FormBlockSyntax(),
     ColumnsBlockSyntax(),
     CardsBlockSyntax(),
+    GridBlockSyntax(),
   ];
 
   // _pluginExtensions is whatever the last setPluginExtensions call added,
@@ -609,11 +611,13 @@ class MarkdownGuideScope extends InheritedWidget {
   final ImageRule image;
   final ColumnRule columns;
   final CardRule cards;
+  final GridRule grid;
 
   const MarkdownGuideScope(
       {required this.image,
       this.columns = const ColumnRule(),
       this.cards = const CardRule(),
+      this.grid = const GridRule(),
       required super.child,
       super.key});
 
@@ -625,6 +629,9 @@ class MarkdownGuideScope extends InheritedWidget {
 
   static CardRule? cardsOf(BuildContext context) =>
       context.dependOnInheritedWidgetOfExactType<MarkdownGuideScope>()?.cards;
+
+  static GridRule? gridOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<MarkdownGuideScope>()?.grid;
 
   @override
   bool updateShouldNotify(MarkdownGuideScope old) =>
@@ -1050,6 +1057,7 @@ class MarkdownArea extends StatelessWidget {
         image: guide.image,
         columns: guide.columns,
         cards: guide.cards,
+        grid: guide.grid,
         child: child);
   }
 }

@@ -236,6 +236,229 @@ class _ColumnDepth extends InheritedWidget {
   bool updateShouldNotify(_ColumnDepth old) => old.depth != depth;
 }
 
+
+/// GridBlockSyntax reads a picture gallery.
+///
+/// Imported from Decred Pulse, which added it to the page format Bison Relay
+/// serves. A run of pictures with a caption after each one:
+///
+///     --grid--
+///     --embed[type=image/png,data=...]--
+///     ### The first one
+///     What it is.
+///     --embed[type=image/png,data=...]--
+///     ### The second one
+///     --/grid--
+///
+/// Every picture starts a cell and takes the writing after it as its caption,
+/// so a gallery is written the way it reads -- picture, words, picture, words
+/// -- with no separator to keep in step. Anything before the first picture is
+/// a cell of its own, which is where a heading over the gallery goes.
+///
+/// --grid[n]-- sets how many across, matching --columns[n]-- and --cards[n]--
+/// next door. Decred Pulse spells the one-across case --grid2-- and gives it
+/// a separate implementation; here it is --grid[1]--, since that is what it
+/// is, and it comes out for free.
+///
+/// --grid2-- is still read, and means --grid[1]--, so a page written for
+/// Decred Pulse renders here as its author laid it out. Importing a format
+/// and then not reading what is already written in it would be a poor
+/// import.
+///
+/// Cells hold markdown, not text: each is rendered by a MarkdownArea of its
+/// own, so a heading, a list or a link inside a cell is the same as outside
+/// one. A reader whose client does not know the markers sees them as
+/// ordinary lines with the pictures and writing still in order underneath.
+class GridBlockSyntax extends md.BlockSyntax {
+  static final _open = RegExp(r'^\s*--grid(2)?(?:\[(\d+)\])?--\s*$');
+  static final _close = RegExp(r'^\s*--/grid2?--\s*$');
+
+  /// _picture is what starts a new cell: an image embed, or a markdown
+  /// image. A download embed of something that is not a picture does not --
+  /// it belongs in the caption of the cell it is written in.
+  static final _picture = RegExp(
+      r'--embed\[[^\]]*type=image/|!\[[^\]]*\]\(');
+
+  /// The most a grid may hold across, matching ColumnsBlockSyntax. Past four
+  /// a cell in a chat-width window is a word wide.
+  static const maxColumns = 4;
+
+  @override
+  RegExp get pattern => _open;
+
+  static bool startsCell(String line) => _picture.hasMatch(line);
+
+  /// splitCells divides a run into cells at each picture.
+  ///
+  /// Separate from parse so the division can be tested without a parser.
+  static List<String> splitCells(List<String> lines) {
+    var cells = <String>[];
+    var current = <String>[];
+
+    void flush() {
+      var text = current.join("\n").trim();
+      if (text.isNotEmpty) cells.add(text);
+      current = [];
+    }
+
+    for (var line in lines) {
+      // A picture opens a cell, but only once there is something to close:
+      // a leading picture would otherwise emit an empty cell before itself.
+      if (startsCell(line) && current.any((l) => l.trim().isNotEmpty)) {
+        flush();
+      }
+      current.add(line);
+    }
+    flush();
+    return cells;
+  }
+
+  @override
+  md.Node? parse(md.BlockParser parser) {
+    var line = parser.current.content;
+    var match = _open.firstMatch(line);
+    // --grid2-- is one across by definition, and takes no count of its own.
+    // A bare --grid-- carries no count at all: it is left for the builder to
+    // fill from the guide, since how many across a gallery should be is a
+    // decision about the page rather than about the writing.
+    var count = match?.group(1) != null ? "1" : (match?.group(2) ?? "");
+    parser.advance();
+
+    var lines = <String>[];
+    while (!parser.isDone) {
+      if (_close.hasMatch(parser.current.content)) {
+        parser.advance();
+        break;
+      }
+      lines.add(parser.current.content);
+      parser.advance();
+    }
+
+    var cells = splitCells(lines);
+    var element = md.Element.text("grid", "");
+    if (count.isNotEmpty) {
+      element.attributes["columns"] =
+          "${(int.tryParse(count) ?? 2).clamp(1, maxColumns)}";
+    }
+    element.attributes["count"] = "${cells.length}";
+    for (var i = 0; i < cells.length; i++) {
+      element.attributes["cell$i"] = cells[i];
+    }
+    // Wrapped in a paragraph for the same reason a run of columns is: the
+    // builder that draws this is reached through flutter_markdown's inline
+    // path, which expects to be inside a block.
+    return md.Element("p", [element]);
+  }
+}
+
+/// GridMarkdownElementBuilder draws a gallery.
+class GridMarkdownElementBuilder extends MarkdownElementBuilder {
+  @override
+  Widget visitElementAfter(md.Element element, TextStyle? preferredStyle) {
+    var count = int.tryParse(element.attributes["count"] ?? "") ?? 0;
+    var cells = <String>[];
+    for (var i = 0; i < count; i++) {
+      cells.add(element.attributes["cell$i"] ?? "");
+    }
+    return _MarkdownGrid(
+      cells: cells,
+      // Null when the writer wrote a bare --grid--, which the guide answers.
+      columns: int.tryParse(element.attributes["columns"] ?? ""),
+    );
+  }
+}
+
+/// _MarkdownGrid lays the cells out in rows.
+class _MarkdownGrid extends StatelessWidget {
+  final List<String> cells;
+
+  /// columns is what the writer asked for, or null to take the guide's.
+  final int? columns;
+  const _MarkdownGrid({required this.cells, required this.columns});
+
+  @override
+  Widget build(BuildContext context) {
+    if (cells.isEmpty) return const SizedBox.shrink();
+
+    // Shares the columns guard: a gallery inside a gallery inside a gallery
+    // is a way to hang the renderer, not a layout.
+    var depth = _ColumnDepth.of(context);
+    if (depth >= _ColumnDepth._maxDepth) {
+      return Text(cells.join("\n\n"));
+    }
+
+    var rule = MarkdownGuideScope.gridOf(context) ?? const GridRule();
+    var gap = rule.boundedGap;
+    var asked = columns ?? rule.boundedColumns;
+
+    return LayoutBuilder(builder: (context, constraints) {
+      // Narrow enough and a gallery stops being one: four pictures across a
+      // phone-width window are thumbnails in a row, and the captions under
+      // them are a word wide. Below the guide's width they stack, which is
+      // what they would have been without the markup.
+      var available = constraints.maxWidth;
+      var across = asked;
+      while (across > 1 &&
+          (available - gap * (across - 1)) / across < rule.boundedStackBelow) {
+        across--;
+      }
+      return _rows(context, across, gap, depth);
+    });
+  }
+
+  Widget _rows(BuildContext context, int across, double gap, int depth) {
+
+    // One across is a stack of blocks, not a layout -- drawing it as a Row
+    // of one would stretch a child where a plain block belongs. This is also
+    // Decred Pulse's --grid2--.
+    if (across <= 1) {
+      return _ColumnDepth(
+        depth: depth + 1,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (var i = 0; i < cells.length; i++) ...[
+              if (i > 0) SizedBox(height: gap),
+              MarkdownArea(cells[i], false),
+            ],
+          ],
+        ),
+      );
+    }
+
+    // Laid out in rows rather than a Wrap so cells line up across as well as
+    // down: a Wrap gives each cell its own height and the grid stops being
+    // one. A short last row keeps its cells at column width rather than
+    // spreading them, by padding the row with blanks.
+    var rows = <Widget>[];
+    for (var start = 0; start < cells.length; start += across) {
+      var row = <Widget>[];
+      for (var i = start; i < start + across; i++) {
+        if (i > start) row.add(SizedBox(width: gap));
+        row.add(Expanded(
+          child: i < cells.length
+              ? MarkdownArea(cells[i], false)
+              : const SizedBox.shrink(),
+        ));
+      }
+      if (rows.isNotEmpty) rows.add(SizedBox(height: gap));
+      // Deliberately not wrapped in IntrinsicHeight to even the cells up: a
+      // cell is a MarkdownArea, which lays out through a LayoutBuilder, and
+      // LayoutBuilder cannot be dry-laid-out -- asking for the intrinsic
+      // height of a row of them throws. Cells hang from a common top
+      // instead, which is what a gallery of unequal captions wants anyway.
+      rows.add(
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: row));
+    }
+
+    return _ColumnDepth(
+      depth: depth + 1,
+      child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch, children: rows),
+    );
+  }
+}
+
 class ColumnsMarkdownElementBuilder extends MarkdownElementBuilder {
   @override
   Widget visitElementAfter(md.Element element, TextStyle? preferredStyle) {
