@@ -42,7 +42,18 @@ class PageBrowser extends StatefulWidget {
   final PagesSession session;
   final ClientModel client;
   final ResourcesModel resources;
-  const PageBrowser(this.session, this.client, this.resources, {super.key});
+  final bool sidebarOpen;
+  final VoidCallback onToggleSidebar;
+  final VoidCallback onClose;
+  const PageBrowser(
+    this.session,
+    this.client,
+    this.resources, {
+    required this.sidebarOpen,
+    required this.onToggleSidebar,
+    required this.onClose,
+    super.key,
+  });
 
   @override
   State<PageBrowser> createState() => _PageBrowserState();
@@ -116,21 +127,39 @@ class _PageBrowserState extends State<PageBrowser> {
   Widget build(BuildContext context) {
     var page = session.currentPage;
 
-    if (page == null) {
-      return BrowserMessage(
-        icon: session.timedOut ? Icons.schedule : Icons.hourglass_empty,
-        title: session.timedOut ? "No answer yet" : "Requesting page…",
-        detail: session.timedOut
-            ? "The request is still queued and will be delivered whenever "
-                "they reconnect. Nothing has come back so far."
-            : "Waiting for the page to come back.",
-      );
-    }
-
-    var path = page.request.path.join("/");
+    // Where the bar points. Before anything has come back there is no page
+    // to read it off, so it falls back to what was asked for -- which is
+    // also what lets the wait name the contact.
+    var uid = page?.uid ?? session.pendingUid;
+    var path = (page?.request.path ?? session.pendingPath).join("/");
     var nick = pageOwnerName(
-        page.uid, widget.client.publicID, widget.client.getNick(page.uid));
-    var status = page.response.status;
+        uid, widget.client.publicID, widget.client.getNick(uid));
+
+    Widget body;
+    if (page == null) {
+      body = BrowserMessage(
+        icon: session.timedOut ? Icons.schedule : Icons.hourglass_empty,
+        title: session.timedOut ? "No answer" : "Requesting page…",
+        detail: session.timedOut
+            ? noAnswerDetail(nick)
+            : "Waiting for $nick.",
+      );
+    } else if (page.response.status == 200) {
+      body = ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Provider<PagesSource>(
+            key: pageKey,
+            create: (context) =>
+                PagesSource(page.uid, page.sessionID, page.pageID),
+            builder: (context, child) => MarkdownArea(markdownData, false),
+          ),
+        ],
+      );
+    } else {
+      body = PageStatusMessage(
+          status: page.response.status, nick: nick, path: path);
+    }
 
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       PageBrowserBar(
@@ -138,28 +167,16 @@ class _PageBrowserState extends State<PageBrowser> {
         nick: nick,
         path: path,
         loading: session.loading,
+        sidebarOpen: widget.sidebarOpen,
+        onToggleSidebar: widget.onToggleSidebar,
+        onClose: widget.onClose,
         onBack: () => session.goBack(),
         onForward: () => session.goForward(),
         onReload: reload,
         onHome: goHome,
       ),
       const Divider(height: 1),
-      Expanded(
-        child: status == 200
-            ? ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  Provider<PagesSource>(
-                    key: pageKey,
-                    create: (context) =>
-                        PagesSource(page.uid, page.sessionID, page.pageID),
-                    builder: (context, child) =>
-                        MarkdownArea(markdownData, false),
-                  ),
-                ],
-              )
-            : PageStatusMessage(status: status, nick: nick, path: path),
-      ),
+      Expanded(child: body),
     ]);
   }
 }
@@ -242,6 +259,9 @@ class PageBrowserBar extends StatelessWidget {
   final String nick;
   final String path;
   final bool loading;
+  final bool sidebarOpen;
+  final VoidCallback onToggleSidebar;
+  final VoidCallback onClose;
   final VoidCallback onBack;
   final VoidCallback onForward;
   final VoidCallback onReload;
@@ -252,6 +272,9 @@ class PageBrowserBar extends StatelessWidget {
     required this.nick,
     required this.path,
     required this.loading,
+    required this.sidebarOpen,
+    required this.onToggleSidebar,
+    required this.onClose,
     required this.onBack,
     required this.onForward,
     required this.onReload,
@@ -264,6 +287,13 @@ class PageBrowserBar extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       child: Row(children: [
+        IconButton(
+          icon: Icon(
+              sidebarOpen ? Icons.menu_open : Icons.menu,
+              size: 18),
+          tooltip: sidebarOpen ? "Hide sidebar" : "Show sidebar",
+          onPressed: onToggleSidebar,
+        ),
         IconButton(
           icon: const Icon(Icons.arrow_back, size: 18),
           tooltip: "Back",
@@ -306,6 +336,11 @@ class PageBrowserBar extends StatelessWidget {
               ),
             ]),
           ),
+        ),
+        IconButton(
+          icon: const Icon(Icons.close, size: 18),
+          tooltip: "Close page",
+          onPressed: onClose,
         ),
       ]),
     );
