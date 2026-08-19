@@ -1019,6 +1019,16 @@ class GrammarRule {
   final String message;
   final String suggest;
 
+  /// Further replacements, offered after [suggest] and in this order. Empty
+  /// for the rules with one answer, which is nearly all of them.
+  ///
+  /// For the questions that have two right answers. "Hi Sarah thanks for the
+  /// notes" wants either "Hi Sarah," or "Hi, Sarah," depending on how formal
+  /// the writer is being, and a checker that picks one of those for the
+  /// reader is wrong half the time while looking certain.
+  @JsonKey(defaultValue: [])
+  final List<String> alternatives;
+
   /// A group heading for the rule -- "Capitalization", "Punctuation". Empty
   /// from a provider that sends none, in which case the UI shows the message
   /// alone.
@@ -1053,7 +1063,8 @@ class GrammarRule {
       [this.category = "",
       this.explanation = "",
       this.severity = "",
-      this.antipatterns = const []]);
+      this.antipatterns = const [],
+      this.alternatives = const []]);
   factory GrammarRule.fromJson(Map<String, dynamic> json) =>
       _$GrammarRuleFromJson(json);
 }

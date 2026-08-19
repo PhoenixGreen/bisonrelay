@@ -46,8 +46,44 @@ Future<(SpellcheckCapability, WritingPreferences)> _configured(
   return (capability, prefs);
 }
 
+/// _greeting is the vocative check as the plugin ships it: two right answers,
+/// offered in the order the rule names them.
+final _greeting = GrammarRule(
+  r"(^|[.!?]\s|\n)(Hi|Hello)\s+([A-Z][a-z]{2,})\s+([a-z]+)",
+  "Comma after the name?",
+  r"$1$2 $3, $4",
+  "Punctuation",
+  "The name you are addressing is separated from what you go on to say.",
+  "check",
+  const [],
+  [r"$1$2, $3, $4"],
+);
+
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  // A question with two right answers has to be allowed to say so. Picking
+  // one of them for the reader is wrong half the time while looking certain.
+  test("a rule can offer more than one answer", () async {
+    var prefs = WritingPreferences();
+    var capability = SpellcheckCapability(
+        fetch: (_) async => SpellcheckData(
+            const ["hi", "sarah", "thanks", "for", "the", "notes"],
+            const [],
+            [_greeting],
+            const []),
+        prefs: prefs);
+    await capability.update(FakePlugins({PluginCapability.spellcheckData}));
+
+    var issue = capability.review("Hi Sarah thanks for the notes").single;
+    expect(issue.suggestions, ["Hi Sarah, thanks", "Hi, Sarah, thanks"],
+        reason: "the rule's own answer leads, and its alternative follows");
+
+    // Both have to be applicable, not merely listed.
+    var fixed = "Hi Sarah thanks for the notes".replaceRange(
+        issue.range.start, issue.range.end, issue.suggestions.last);
+    expect(fixed, "Hi, Sarah, thanks for the notes");
+  });
 
   test("a check is neither a mistake nor a phrasing opinion", () async {
     var (capability, _) = await _configured();

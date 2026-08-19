@@ -167,7 +167,16 @@ String? requiredLiteral(String pattern) {
 class _CompiledRule {
   final RegExp pattern;
   final String message;
-  final String suggest;
+
+  /// Every replacement the rule offers, in the order they are shown: the
+  /// provider's own suggestion first, then its alternatives.
+  ///
+  /// A list rather than one string because some questions have two right
+  /// answers. A bare "which" takes either a comma or a "that", and a greeting
+  /// takes the comma before the name or after it depending on how formal the
+  /// writer is being -- and a checker that picks one of those for the reader
+  /// is wrong half the time while looking certain.
+  final List<String> suggest;
 
   /// source is the pattern as the provider wrote it, which is how a rule is
   /// identified when the user turns it off -- see WritingPreferences.
@@ -206,7 +215,13 @@ class _CompiledRule {
       return _CompiledRule(
         pattern: RegExp(rule.pattern),
         message: rule.message,
-        suggest: rule.suggest,
+        suggest: [
+          if (rule.suggest.isNotEmpty) rule.suggest,
+          // An alternative with no first answer is a provider bug, and
+          // dropping it is the quiet reading: the rule still flags the text
+          // and simply proposes nothing.
+          if (rule.suggest.isNotEmpty) ...rule.alternatives,
+        ],
         source: rule.pattern,
         category: rule.category,
         explanation: rule.explanation,
@@ -436,9 +451,10 @@ class WritingChecker {
           // either case in its first letter, because the mistake is commonest
           // at the start of a sentence, which is precisely where the fix must
           // not hand back a lowercase word.
-          suggestions: rule.suggest.isEmpty
-              ? const []
-              : [matchCase(found, _expandTemplate(rule.suggest, m))],
+          suggestions: [
+            for (var answer in rule.suggest)
+              matchCase(found, _expandTemplate(answer, m)),
+          ],
           kind: rule.kind,
           checkId: rule.source,
           // The message as the provider wrote it. Turning a rule off names it

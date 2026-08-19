@@ -823,6 +823,10 @@ GrammarRule _$GrammarRuleFromJson(Map<String, dynamic> json) => GrammarRule(
               ?.map((e) => e as String)
               .toList() ??
           [],
+      (json['alternatives'] as List<dynamic>?)
+              ?.map((e) => e as String)
+              .toList() ??
+          [],
     );
 
 Map<String, dynamic> _$GrammarRuleToJson(GrammarRule instance) =>
@@ -830,6 +834,7 @@ Map<String, dynamic> _$GrammarRuleToJson(GrammarRule instance) =>
       'pattern': instance.pattern,
       'message': instance.message,
       'suggest': instance.suggest,
+      'alternatives': instance.alternatives,
       'category': instance.category,
       'explanation': instance.explanation,
       'severity': instance.severity,
