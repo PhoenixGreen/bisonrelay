@@ -1,6 +1,7 @@
 import 'package:bruig/components/buttons.dart';
 import 'package:bruig/components/text.dart';
 import 'package:bruig/models/client.dart';
+import 'package:bruig/config.dart';
 import 'package:bruig/models/pages.dart';
 import 'package:bruig/models/resources.dart';
 import 'package:bruig/models/snackbar.dart';
@@ -197,7 +198,7 @@ class _SiteOverview extends StatelessWidget {
         title: const Txt.M("Host a site"),
         subtitle: Txt.S(
             cfg.hostsPages
-                ? "Serving from ${cfg.pagesPath}"
+                ? "Serving from ${displayPath(cfg.pagesPath)}"
                 : "Not serving anything",
             color: TextColor.onSurfaceVariant),
         value: cfg.hostsPages,

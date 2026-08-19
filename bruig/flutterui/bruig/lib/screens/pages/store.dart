@@ -1,5 +1,6 @@
 import 'package:bruig/components/buttons.dart';
 import 'package:bruig/components/text.dart';
+import 'package:bruig/config.dart';
 import 'package:bruig/models/pages.dart';
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
@@ -213,7 +214,7 @@ class _StoreOverview extends StatelessWidget {
         OutlinedButton(onPressed: onDisable, child: const Text("Turn off")),
       ]),
       const SizedBox(height: 4),
-      Txt.S("Serving from ${cfg.storePath}",
+      Txt.S("Serving from ${displayPath(cfg.storePath)}",
           color: TextColor.onSurfaceVariant),
       if (pages.storeError != null) ...[
         const SizedBox(height: 8),

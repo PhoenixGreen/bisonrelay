@@ -37,6 +37,29 @@ String cleanAndExpandPath(String p) {
   return path.canonicalize(p);
 }
 
+/// displayPath is cleanAndExpandPath's inverse, for showing a path to the
+/// reader: it puts back the "~" that expansion replaced.
+///
+/// Worth doing wherever a path is shown rather than typed. The home
+/// directory carries the account name, which is not information the reader
+/// needs to recognise their own folder -- and these paths sit on screens
+/// people screenshot and share when asking for help.
+///
+/// Leaves anything outside the home directory alone: an absolute path
+/// elsewhere is shown in full, because shortening it would be a lie.
+String displayPath(String p) {
+  var home = homeDir();
+  if (p.isEmpty || home.isEmpty) return p;
+
+  // Only a path *inside* home, never a sibling that merely shares its
+  // prefix -- "/Users/kim2" must not become "~2" for user "kim".
+  if (p == home) return "~";
+  var prefix = home.endsWith(path.separator) ? home : home + path.separator;
+  if (!p.startsWith(prefix)) return p;
+
+  return "~${path.separator}${p.substring(prefix.length)}";
+}
+
 Future<String> defaultAppDataDir() async {
   if (Platform.isLinux) {
     final home = Platform.environment["HOME"];
