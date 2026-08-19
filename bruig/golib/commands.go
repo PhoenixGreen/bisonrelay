@@ -209,6 +209,15 @@ const (
 	// answers never needs a command of its own again.
 	CTCallPluginService CmdType = 0xbf
 
+	// Pages hosting: what this client serves to others, and the markdown
+	// files behind it.
+	CTGetPagesHostConfig CmdType = 0xc0
+	CTSetPagesHostConfig CmdType = 0xc1
+	CTListLocalPages     CmdType = 0xc2
+	CTReadLocalPage      CmdType = 0xc3
+	CTWriteLocalPage     CmdType = 0xc4
+	CTDeleteLocalPage    CmdType = 0xc5
+
 	NTInviteReceived            = 0x1001
 	NTInviteAccepted            = 0x1002
 	NTInviteErrored             = 0x1003

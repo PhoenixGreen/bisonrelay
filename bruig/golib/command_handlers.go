@@ -26,7 +26,6 @@ import (
 	"github.com/companyzero/bisonrelay/client/pluginmgr"
 	"github.com/companyzero/bisonrelay/client/pluginmgr/capabilities"
 	"github.com/companyzero/bisonrelay/client/pluginmgr/wasmhost"
-	"github.com/companyzero/bisonrelay/client/resources"
 	"github.com/companyzero/bisonrelay/client/resources/simplestore"
 	"github.com/companyzero/bisonrelay/client/rpcserver"
 	"github.com/companyzero/bisonrelay/clientrpc/types"
@@ -95,6 +94,10 @@ type clientCtx struct {
 	serverState atomic.Value
 
 	pluginMgr *pluginmgr.Manager
+
+	// pagesHost owns what this client serves to others, and lets the UI
+	// change it without a restart.
+	pagesHost *pagesHost
 
 	// dynRuntime executes the guest code of any installed
 	// RendererKindDynamicWasm plugin (e.g. the RSS plugin). Its lifecycle
@@ -626,9 +629,11 @@ func handleInitClient(handle uint32, args initClient) error {
 		notify(NTRTDTRTTCalculated, event, nil)
 	}))
 
-	// Initialize resources router.
-	var sstore *simplestore.Store
-	resRouter := resources.NewRouter()
+	// Initialize the resource host. What this client serves lives behind a
+	// swappable provider so it can be reconfigured from the UI while the
+	// client runs, rather than only by editing the config file and
+	// restarting.
+	pagesHost := newPagesHost(logBknd.logger("PAGE"))
 
 	// Initialize dialer
 	var d net.Dialer
@@ -666,7 +671,7 @@ func handleInitClient(handle uint32, args initClient) error {
 		ReconnectDelay:        5 * time.Second,
 		CompressLevel:         4,
 		Notifications:         ntfns,
-		ResourcesProvider:     resRouter,
+		ResourcesProvider:     pagesHost.provider(),
 		NoLoadChatHistory:     args.NoLoadChatHistory,
 		Collator:              collate.New(language.Und, collate.Loose),
 		TrackRTDTChatMessages: true, // Needed for when mobile restarts.
@@ -852,63 +857,26 @@ func handleInitClient(handle uint32, args initClient) error {
 		syncDynPlugin(ctx, pluginMgr, dynRuntime, logBknd.logger("PLGN"), p)
 	}
 
-	// Bind the selected upstream resource provider.
-	switch {
-	case strings.HasPrefix(args.ResourcesUpstream, "http://"),
-		strings.HasPrefix(args.ResourcesUpstream, "https://"):
-		p := resources.NewHttpProvider(args.ResourcesUpstream)
-		resRouter.BindPrefixPath([]string{}, p)
-	case strings.HasPrefix(args.ResourcesUpstream, "simplestore:"):
-		// Generate the template store if the path does not exist.
-		path := args.ResourcesUpstream[len("simplestore:"):]
-		if _, err := os.Stat(path); os.IsNotExist(err) {
-			err := simplestore.WriteTemplate(path)
-			if err != nil {
-				return fmt.Errorf("unable to write simplestore"+
-					" template: %v", err)
-			}
-		}
+	// Stand up whatever this client hosts. cctx is not built yet, so the
+	// pieces the store needs are handed over first.
+	pagesHost.attach(ctx, c, lnpc,
+		func() float64 {
+			dcrPrice, _ := c.Rates().Get()
+			return dcrPrice
+		},
+		func(order *simplestore.Order, msg string) {
+			notify(NTSimpleStoreOrderPlaced, simpleStoreOrder{
+				Order: *order,
+				Msg:   msg,
+			}, nil)
+		})
 
-		scfg := simplestore.Config{
-			Root:        path,
-			Log:         logBknd.logger("SSTR"),
-			LiveReload:  true, // FIXME: parametrize
-			Client:      c,
-			PayType:     simplestore.PayType(args.SimpleStorePayType),
-			Account:     args.SimpleStoreAccount,
-			ShipCharge:  args.SimpleStoreShipCharge,
-			LNPayClient: lnpc,
-
-			ExchangeRateProvider: func() float64 {
-				dcrPrice, _ := cctx.c.Rates().Get()
-				return dcrPrice
-			},
-
-			OrderPlaced: func(order *simplestore.Order, msg string) {
-				event := simpleStoreOrder{
-					Order: *order,
-					Msg:   msg,
-				}
-				notify(NTSimpleStoreOrderPlaced, event, nil)
-			},
-
-			StatusChanged: func(order *simplestore.Order, msg string) {
-				event := simpleStoreOrder{
-					Order: *order,
-					Msg:   msg,
-				}
-				notify(NTSimpleStoreOrderPlaced, event, nil)
-			},
-		}
-		sstore, err = simplestore.New(scfg)
-		if err != nil {
-			return fmt.Errorf("unable to initialize simple store: %v", err)
-		}
-		resRouter.BindPrefixPath([]string{}, sstore)
-	case strings.HasPrefix(args.ResourcesUpstream, "pages:"):
-		path := args.ResourcesUpstream[len("pages:"):]
-		p := resources.NewFilesystemResource(path, logBknd.logger("PAGE"))
-		resRouter.BindPrefixPath([]string{}, p)
+	hostCfg := parseUpstream(args.ResourcesUpstream, args.SimpleStorePayType,
+		args.SimpleStoreAccount, args.SimpleStoreShipCharge)
+	if err := pagesHost.apply(hostCfg); err != nil {
+		// Bad hosting config must not stop the client from starting:
+		// the user needs to be able to get in and fix it.
+		logBknd.logger("PAGE").Errorf("Unable to start resource hosting: %v", err)
 	}
 
 	var rpcServer *rpcserver.Server
@@ -1006,8 +974,8 @@ func handleInitClient(handle uint32, args initClient) error {
 			Log:    logBknd.logger("RPCS"),
 			Client: c,
 		}
-		if args.ResourcesUpstream == "clientrpc" {
-			resServerCfg.Router = resRouter
+		if r := pagesHost.clientRPCRouter(); r != nil {
+			resServerCfg.Router = r
 		}
 		err = rpcServer.InitResourcesService(resServerCfg)
 		if err != nil {
@@ -1053,12 +1021,9 @@ func handleInitClient(handle uint32, args initClient) error {
 
 		pluginMgr:  pluginMgr,
 		dynRuntime: dynRuntime,
+		pagesHost:  pagesHost,
 	}
 	cs[handle] = cctx
-
-	if sstore != nil {
-		go sstore.Run(ctx)
-	}
 
 	if rpcServer != nil {
 		go func() {
@@ -2318,6 +2283,56 @@ func handleClientCmd(cc *clientCtx, cmd *cmd) (interface{}, error) {
 		_, err := c.FetchResource(args.UID, args.Path, args.Metadata,
 			args.SessionID, args.ParentPage, args.Data, args.AsyncTargetID)
 		return args.SessionID, err
+
+	case CTGetPagesHostConfig:
+		return cc.pagesHostStatus()
+
+	case CTSetPagesHostConfig:
+		var args pagesHostConfig
+		if err := cmd.decode(&args); err != nil {
+			return nil, err
+		}
+		if !cc.pagesHost.config().editable() {
+			return nil, fmt.Errorf("hosting is set to %q in the "+
+				"config file and cannot be changed here",
+				cc.pagesHost.config().Mode)
+		}
+		if err := cc.pagesHost.apply(args); err != nil {
+			return nil, err
+		}
+		return cc.pagesHostStatus()
+
+	case CTListLocalPages:
+		return listLocalPages(cc.pagesHost.config().PagesPath)
+
+	case CTReadLocalPage:
+		var name string
+		if err := cmd.decode(&name); err != nil {
+			return nil, err
+		}
+		return readLocalPage(cc.pagesHost.config().PagesPath, name)
+
+	case CTWriteLocalPage:
+		var args localPageArgs
+		if err := cmd.decode(&args); err != nil {
+			return nil, err
+		}
+		root := cc.pagesHost.config().PagesPath
+		if err := writeLocalPage(root, args.Name, args.Content); err != nil {
+			return nil, err
+		}
+		return listLocalPages(root)
+
+	case CTDeleteLocalPage:
+		var name string
+		if err := cmd.decode(&name); err != nil {
+			return nil, err
+		}
+		root := cc.pagesHost.config().PagesPath
+		if err := deleteLocalPage(root, name); err != nil {
+			return nil, err
+		}
+		return listLocalPages(root)
 
 	case CTHandshake:
 		var args clientintf.UserID

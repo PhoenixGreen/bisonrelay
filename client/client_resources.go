@@ -139,6 +139,27 @@ func (c *Client) FetchResource(uid UserID, path []string, meta map[string]string
 	return rm.Tag, err
 }
 
+// replyResourceStatus sends a bare status reply (no data) to a resource
+// request. It is used for the cases the local client cannot serve: not being
+// configured to host anything at all, or having nothing bound to the
+// requested path.
+//
+// Answering costs one outbound RM, which the local client pays for. That is
+// deliberate: without a reply, the requester cannot tell "not hosting" from
+// "offline" from "still queued", and its page view hangs indefinitely. Only
+// KX'd users can send a request in the first place, so this is bounded by the
+// contact list rather than open to the network.
+func (c *Client) replyResourceStatus(ru *RemoteUser, fr rpc.RMFetchResource,
+	status rpc.ResourceStatus) error {
+
+	reply := rpc.RMFetchResourceReply{
+		Tag:    fr.Tag,
+		Status: status,
+	}
+	payEvent := "resource." + strescape.ResourcesPath(fr.Path)
+	return c.sendWithSendQ(payEvent, reply, ru.ID())
+}
+
 // handleFetchResource handles receiving a request to send a resource to the
 // remote client.
 func (c *Client) handleFetchResource(ru *RemoteUser, fr rpc.RMFetchResource) error {
@@ -148,7 +169,9 @@ func (c *Client) handleFetchResource(ru *RemoteUser, fr rpc.RMFetchResource) err
 	}
 
 	if c.cfg.ResourcesProvider == nil {
-		return fmt.Errorf("resources provider not configured")
+		ru.log.Debugf("Replying not-hosting to request tag %s path %s",
+			fr.Tag, strescape.ResourcesPath(fr.Path))
+		return c.replyResourceStatus(ru, fr, rpc.ResourceStatusNotHosting)
 	}
 
 	if ru.log.Level() < slog.LevelInfo {
@@ -162,10 +185,14 @@ func (c *Client) handleFetchResource(ru *RemoteUser, fr rpc.RMFetchResource) err
 	}
 
 	res, err := c.cfg.ResourcesProvider.Fulfill(c.ctx, ru.ID(), &fr)
-	if errors.Is(err, resources.ErrProviderNotFound) {
+	if errors.Is(err, resources.ErrNotHosting) {
+		ru.log.Debugf("Replying not-hosting to request tag %s path %s",
+			fr.Tag, strescape.ResourcesPath(fr.Path))
+		return c.replyResourceStatus(ru, fr, rpc.ResourceStatusNotHosting)
+	} else if errors.Is(err, resources.ErrProviderNotFound) {
 		ru.log.Infof("Provider not found for request tag %s path %s",
 			fr.Tag, strescape.ResourcesPath(fr.Path))
-		return nil
+		return c.replyResourceStatus(ru, fr, rpc.ResourceStatusNotFound)
 	} else if err != nil {
 		return err
 	}

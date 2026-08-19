@@ -176,6 +176,14 @@ const (
 	ResourceStatusBadRequest = 400
 	ResourceStatusNotFound   = 404
 
+	// ResourceStatusNotHosting is returned when the remote client is not
+	// configured to serve resources at all (as opposed to being configured
+	// but not having the requested path, which is ResourceStatusNotFound).
+	//
+	// Clients that predate this status treat it the same as any other
+	// non-ok status: the reply is stored and shown with its number.
+	ResourceStatusNotHosting = 501
+
 	ResourceMetaResponseIsBundle      = "IsBundle"
 	ResourceMetaResponseIsBundleValue = "1"
 )

@@ -660,3 +660,54 @@ func (s *Store) Run(ctx context.Context) error {
 
 	return g.Wait()
 }
+
+// storeRoutePrefixes are the path prefixes the store answers on, excluding
+// its index. They mirror the switch in Fulfill and exist so a router can bind
+// the store beside another provider without either having to know the other's
+// paths.
+var storeRoutePrefixes = [][]string{
+	{"product"},
+	{"addToCart"},
+	{"clearCart"},
+	{"cart"},
+	{"placeOrder"},
+	{"orders"},
+	{"order"},
+	{"orderaddcomment"},
+	{"static"},
+	{"admin"},
+}
+
+// StoreIndexPath is the path a store mounted beside a pages site answers its
+// front page on. A store mounted on its own answers the index at the root, as
+// it always has.
+const StoreIndexPath = "store"
+
+// BindRoutes binds the store into the passed router.
+//
+// With withIndex, the store also takes the root and "index.md", which is how
+// a store-only client has always been served. Without it, the root is left
+// for a pages provider and the store's front page moves to StoreIndexPath --
+// every other store path is unchanged, so templates that link to "/cart" or
+// "/admin" keep working either way.
+func (s *Store) BindRoutes(r *resources.Router, withIndex bool) {
+	if withIndex {
+		r.BindExactPath(nil, s)
+		r.BindExactPath([]string{"index.md"}, s)
+	} else {
+		// Rewrite the mount path to the index the handlers expect,
+		// rather than teaching every template a prefix.
+		r.BindExactPath([]string{StoreIndexPath}, resources.ProviderFunc(
+			func(ctx context.Context, uid clientintf.UserID,
+				req *rpc.RMFetchResource) (*rpc.RMFetchResourceReply, error) {
+
+				indexReq := *req
+				indexReq.Path = []string{"index.md"}
+				return s.Fulfill(ctx, uid, &indexReq)
+			}))
+	}
+
+	for _, prefix := range storeRoutePrefixes {
+		r.BindPrefixPath(prefix, s)
+	}
+}

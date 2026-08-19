@@ -527,6 +527,22 @@ type fetchResourceArgs struct {
 	AsyncTargetID string                    `json:"async_target_id"`
 }
 
+// pagesHostStatus is what the Pages UI shows and edits: the hosting config
+// plus the things only the backend knows -- whether this mode is one the UI
+// may change, and the pages that exist.
+type pagesHostStatus struct {
+	Config           pagesHostConfig `json:"config"`
+	Editable         bool            `json:"editable"`
+	DefaultPath      string          `json:"default_path"`
+	DefaultStorePath string          `json:"default_store_path"`
+	Pages            []localPage     `json:"pages"`
+}
+
+type localPageArgs struct {
+	Name    string `json:"name"`
+	Content string `json:"content"`
+}
+
 type loadFetchedResourceArgs struct {
 	UID       clientintf.UserID         `json:"uid"`
 	SessionID clientintf.PagesSessionID `json:"session_id"`

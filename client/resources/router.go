@@ -10,6 +10,13 @@ import (
 
 var ErrProviderNotFound = errors.New("provider not found for the request")
 
+// ErrNotHosting is returned when the client serves nothing at all. It is
+// distinct from ErrProviderNotFound, which means "hosting, but nothing at
+// that path" -- the two become a not-hosting and a not-found status
+// respectively, which is what lets a requester tell "this user has no site"
+// from "this user has no such page".
+var ErrNotHosting = errors.New("client is not hosting any resources")
+
 type routeMatcher func(req *rpc.RMFetchResource) bool
 
 type matcherProvider struct {
