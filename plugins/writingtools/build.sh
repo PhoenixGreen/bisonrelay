@@ -11,11 +11,20 @@ for name in words-en-US common-en-US words-en-GB common-en-GB \
             thesaurus definitions exceptions; do
   if [ -f "$name.txt" ] && [ "$name.txt" -nt "$name.txt.gz" ]; then
     echo "Recompressing $name.txt"
-    gzip -9 -c "$name.txt" > "$name.txt.gz"
+    gzip -9 -n -c "$name.txt" > "$name.txt.gz"
   fi
 done
 
-GOOS=wasip1 GOARCH=wasm go build -buildmode=c-shared -o plugin.wasm .
+# Built to be reproducible, so that rebuilding without changing anything
+# leaves the embedded copy byte-identical and git has nothing to report. The
+# alternative is a 9MB binary diff on every build, which is noise in a review
+# and, repeated, weight in the repository.
+#
+#   -trimpath        keeps the building machine's directory names out
+#   -buildvcs=false  keeps the commit it happened to be built at out
+#   -buildid=        drops the id Go derives from all of the above
+GOOS=wasip1 GOARCH=wasm go build -trimpath -buildvcs=false \
+  -ldflags=-buildid= -buildmode=c-shared -o plugin.wasm .
 
 echo "Built plugin.wasm ($(du -h plugin.wasm | cut -f1))"
 
@@ -33,6 +42,8 @@ echo "Built plugin.wasm ($(du -h plugin.wasm | cut -f1))"
 # The client is Go, so a new rule still needs bruig/build_desktop.sh before it
 # reaches a running copy. See the top of client/pluginmgr/builtin/builtin.go.
 builtin="../../client/pluginmgr/builtin"
-gzip -9 -c plugin.wasm > "$builtin/writingtools.wasm.gz"
+# -n: no name, no timestamp. Without it the gz carries plugin.wasm's mtime,
+# which moves on every build even when the module itself has not.
+gzip -9 -n -c plugin.wasm > "$builtin/writingtools.wasm.gz"
 cp manifest.json "$builtin/writingtools.manifest.json"
 echo "Embedded in $builtin -- rebuild bruig for it to take effect"
