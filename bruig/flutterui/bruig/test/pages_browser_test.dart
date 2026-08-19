@@ -196,6 +196,18 @@ void main() {
     });
   });
 
+  group('pageOwnerName', () {
+    test('names the reader own site rather than showing their public id', () {
+      // The reader has no chat with themselves, so getNick returns nothing
+      // and the address bar would otherwise read as 64 hex characters on the
+      // page they open most.
+      expect(pageOwnerName("me", "me", ""), "Your site");
+      expect(pageOwnerName("them", "me", "alice"), "alice");
+      // A contact with no nick still has to be identifiable.
+      expect(pageOwnerName("abc123", "me", ""), "abc123");
+    });
+  });
+
   group('relativeTime', () {
     test('reads as a person would say it', () {
       var now = DateTime(2026, 8, 19, 12, 0);

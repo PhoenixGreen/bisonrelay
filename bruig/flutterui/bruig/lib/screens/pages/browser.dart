@@ -7,6 +7,21 @@ import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+/// pageOwnerName is who a page belongs to, in the reader's terms.
+///
+/// Takes the ids rather than the client so it can be tested: constructing a
+/// ClientModel loads golib.dylib.
+///
+/// Falls back to the public id only for someone with no chat -- and never for
+/// the reader's own site, which has no chat at all and would otherwise be
+/// labelled with a bare hex id on the one page they look at most. "Your site"
+/// rather than "My site" so that it still reads as a sentence in the status
+/// messages below: "Your site is hosting, but has nothing at ...".
+String pageOwnerName(String uid, String ownID, String nick) {
+  if (uid == ownID) return "Your site";
+  return nick.isNotEmpty ? nick : uid;
+}
+
 /// PageBrowser shows one pages session, with the chrome a reader expects of
 /// something that follows links: where they are, how to get back, and what
 /// happened when a page does not arrive.
@@ -99,14 +114,15 @@ class _PageBrowserState extends State<PageBrowser> {
       );
     }
 
-    var nick = widget.client.getNick(page.uid);
     var path = page.request.path.join("/");
+    var nick = pageOwnerName(
+        page.uid, widget.client.publicID, widget.client.getNick(page.uid));
     var status = page.response.status;
 
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       PageBrowserBar(
         session: session,
-        nick: nick.isNotEmpty ? nick : page.uid,
+        nick: nick,
         path: path,
         loading: session.loading,
         onBack: () => session.goBack(),
