@@ -2335,6 +2335,76 @@ func handleClientCmd(cc *clientCtx, cmd *cmd) (interface{}, error) {
 		}
 		return listLocalPages(root)
 
+	case CTListStoreProducts:
+		store, err := cc.pagesHost.runningStore()
+		if err != nil {
+			return nil, err
+		}
+		return store.ListManagedProducts()
+
+	case CTSaveStoreProduct:
+		var args saveProductArgs
+		if err := cmd.decode(&args); err != nil {
+			return nil, err
+		}
+		store, err := cc.pagesHost.runningStore()
+		if err != nil {
+			return nil, err
+		}
+		if err := store.SaveProduct(args.Product, args.File); err != nil {
+			return nil, err
+		}
+		return store.ListManagedProducts()
+
+	case CTDeleteStoreProduct:
+		var sku string
+		if err := cmd.decode(&sku); err != nil {
+			return nil, err
+		}
+		store, err := cc.pagesHost.runningStore()
+		if err != nil {
+			return nil, err
+		}
+		if err := store.DeleteProduct(sku); err != nil {
+			return nil, err
+		}
+		return store.ListManagedProducts()
+
+	case CTListStoreOrders:
+		store, err := cc.pagesHost.runningStore()
+		if err != nil {
+			return nil, err
+		}
+		return store.ListOrders()
+
+	case CTSetStoreOrderStatus:
+		var args orderStatusArgs
+		if err := cmd.decode(&args); err != nil {
+			return nil, err
+		}
+		store, err := cc.pagesHost.runningStore()
+		if err != nil {
+			return nil, err
+		}
+		if _, err := store.SetOrderStatus(args.User, args.Order, args.Status); err != nil {
+			return nil, err
+		}
+		return store.ListOrders()
+
+	case CTAddStoreOrderComment:
+		var args orderCommentArgs
+		if err := cmd.decode(&args); err != nil {
+			return nil, err
+		}
+		store, err := cc.pagesHost.runningStore()
+		if err != nil {
+			return nil, err
+		}
+		if _, err := store.AddOrderComment(args.User, args.Order, args.Comment, true); err != nil {
+			return nil, err
+		}
+		return store.ListOrders()
+
 	case CTHandshake:
 		var args clientintf.UserID
 		if err := cmd.decode(&args); err != nil {

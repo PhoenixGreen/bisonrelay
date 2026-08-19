@@ -14,6 +14,18 @@ upstream = simplestore:/home/user/.brclient/store
 
 To disable the store, just comment out the `upstream` line above.
 
+To serve a store *and* a [pages site](pages.md) at the same time, set the
+store's directory separately instead:
+
+```
+[resources]
+upstream = pages:/home/user/.brclient/pages
+storepath = /home/user/.brclient/store
+```
+
+The store then keeps all of its own paths and its front page moves to
+`/store`, leaving the site's `index.md` as what visitors land on.
+
 Next, the payment type needs to be set.  The options are `ln`, `onchain`, or
 it can be left empty for manual charging.  If using `onchain`, an optional
 account may be set to receive funds:
@@ -54,6 +66,16 @@ sendfilename = "guitar_solo.mp3"
 In the above example, `guitar_solo.mp3` should be located in the defined
 `upstream` directory.
 
+### Managing the store
+
+In the app, the Pages section's Store tab sets up a store, edits the
+catalogue, and works through the order book. Products written there land in
+`products/` as the same TOML shown above, and the running store picks them up
+without a restart.
+
 ### Viewing
 To see your store within `brclient`, run the command `/pages local`.
+
+Within the app, use Pages > My Site > View my site. The seller's own view of
+the order book is also served as pages, at `/admin/orders`.
 

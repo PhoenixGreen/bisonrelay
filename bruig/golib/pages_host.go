@@ -276,6 +276,18 @@ func (ph *pagesHost) startStoreLocked(cfg pagesHostConfig) (*simplestore.Store, 
 	return store, nil
 }
 
+// runningStore returns the store this client is serving, or an error naming
+// what to do about it. Every store command goes through here, so "the store
+// is off" is one message rather than a nil dereference per command.
+func (ph *pagesHost) runningStore() (*simplestore.Store, error) {
+	ph.mtx.Lock()
+	defer ph.mtx.Unlock()
+	if ph.store == nil {
+		return nil, fmt.Errorf("no store is being hosted")
+	}
+	return ph.store, nil
+}
+
 // clientRPCRouter returns the router the clientrpc resources service should
 // bind into, or nil when hosting is not delegated over RPC.
 func (ph *pagesHost) clientRPCRouter() *resources.Router {

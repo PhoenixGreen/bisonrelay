@@ -7,5 +7,6 @@ Several documents about internals of the FR system.
   communication.
 - [P2P KX](p2p_kx.md): Explanation of how the initial P2P KX process happens.
 - [P2P Messaging](p2p_messaging.md): Explanation about P2P RV points.
+- [Pages](pages.md): Serving markdown pages to other clients.
 - [Simple Store](simplestore.md): Configuration a simple store.
 - [RTDT](rtdt.md): Realtime chat protocol (including voice).

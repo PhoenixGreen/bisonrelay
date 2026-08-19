@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 
 // Pages tabs. Visit is first because it is what the section is for most of
 // the time: reading someone else's site. My Site and Store are the authoring
-// half, and Store only appears when one is being hosted.
+// half.
 const int pagesTabVisit = 0;
 const int pagesTabMySite = 1;
 const int pagesTabStore = 2;
@@ -15,8 +15,10 @@ const List<String> pagesTabLabels = ["Visit", "My Site", "Store"];
 
 // pagesBarItems returns the Pages submenu's tabs, for use with
 // SecondarySideMenuLayout (see containers.dart).
-List<SidebarNavItem> pagesBarItems(
-    Function tabChange, int selectedIndex, bool hasStore) {
+//
+// Store is always here, including when no store is being hosted: it is where
+// one is set up, so hiding it until one exists would leave no way to make one.
+List<SidebarNavItem> pagesBarItems(Function tabChange, int selectedIndex) {
   return [
     SidebarNavItem(
         icon: Icons.travel_explore_outlined,
@@ -28,11 +30,10 @@ List<SidebarNavItem> pagesBarItems(
         selected: selectedIndex == pagesTabMySite,
         label: pagesTabLabels[pagesTabMySite],
         onTap: () => tabChange(pagesTabMySite)),
-    if (hasStore)
-      SidebarNavItem(
-          icon: Icons.storefront_outlined,
-          selected: selectedIndex == pagesTabStore,
-          label: pagesTabLabels[pagesTabStore],
-          onTap: () => tabChange(pagesTabStore)),
+    SidebarNavItem(
+        icon: Icons.storefront_outlined,
+        selected: selectedIndex == pagesTabStore,
+        label: pagesTabLabels[pagesTabStore],
+        onTap: () => tabChange(pagesTabStore)),
   ];
 }

@@ -321,6 +321,70 @@ class PagesModel extends ChangeNotifier {
 
   Future<String> readPage(String name) => Golib.readLocalPage(name);
 
+  // ---- the store ----
+  //
+  // Products and orders are read on demand rather than kept in step with the
+  // running store: the store reloads its catalogue from disk on every change,
+  // so the files are the record and this is a view of them.
+
+  List<ManagedProduct> _products = const [];
+  List<ManagedProduct> get products => _products;
+
+  List<ManagedOrder> _orders = const [];
+  List<ManagedOrder> get orders => _orders;
+
+  String? _storeError;
+  String? get storeError => _storeError;
+
+  bool _loadingStore = false;
+  bool get loadingStore => _loadingStore;
+
+  /// loadStore reads the catalogue and order book. A store that is not being
+  /// hosted is not an error worth showing -- the UI offers to switch one on
+  /// instead -- so the lists are simply left empty.
+  Future<void> loadStore() async {
+    if (!hostConfig.hostsStore) {
+      _products = const [];
+      _orders = const [];
+      _storeError = null;
+      notifyListeners();
+      return;
+    }
+
+    _loadingStore = true;
+    notifyListeners();
+    try {
+      _products = await Golib.listStoreProducts();
+      _orders = await Golib.listStoreOrders();
+      _storeError = null;
+    } catch (exception) {
+      _storeError = "$exception";
+    } finally {
+      _loadingStore = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> saveProduct(ManagedProduct product, String file) async {
+    _products = await Golib.saveStoreProduct(product, file);
+    notifyListeners();
+  }
+
+  Future<void> deleteProduct(String sku) async {
+    _products = await Golib.deleteStoreProduct(sku);
+    notifyListeners();
+  }
+
+  Future<void> setOrderStatus(String user, int order, String status) async {
+    _orders = await Golib.setStoreOrderStatus(user, order, status);
+    notifyListeners();
+  }
+
+  Future<void> addOrderComment(String user, int order, String comment) async {
+    _orders = await Golib.addStoreOrderComment(user, order, comment);
+    notifyListeners();
+  }
+
   void _replacePages(List<LocalPage> pages) {
     var h = _host;
     if (h == null) return;

@@ -539,6 +539,23 @@ type pagesHostStatus struct {
 	Pages            []localPage     `json:"pages"`
 }
 
+type saveProductArgs struct {
+	Product simplestore.Product `json:"product"`
+	File    string              `json:"file"`
+}
+
+type orderStatusArgs struct {
+	User   clientintf.UserID       `json:"user"`
+	Order  simplestore.OrderID     `json:"order"`
+	Status simplestore.OrderStatus `json:"status"`
+}
+
+type orderCommentArgs struct {
+	User    clientintf.UserID   `json:"user"`
+	Order   simplestore.OrderID `json:"order"`
+	Comment string              `json:"comment"`
+}
+
 type localPageArgs struct {
 	Name    string `json:"name"`
 	Content string `json:"content"`

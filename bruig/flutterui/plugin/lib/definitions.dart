@@ -2943,6 +2943,148 @@ class SSPlacedOrder {
       _$SSPlacedOrderFromJson(json);
 }
 
+// Order statuses, mirroring simplestore's OrderStatus. The seller moves an
+// order along these; the store rejects anything else.
+const List<String> ssOrderStatuses = [
+  "placed",
+  "paid",
+  "shipped",
+  "completed",
+  "canceled",
+];
+
+/// ManagedProduct is a catalogue entry as the seller edits it, together with
+/// the product file it is defined in.
+@JsonSerializable()
+class ManagedProduct {
+  final String title;
+  final String sku;
+  @JsonKey(defaultValue: "")
+  final String description;
+  @JsonKey(defaultValue: [])
+  final List<String> tags;
+  @JsonKey(defaultValue: 0.0)
+  final double price;
+  @JsonKey(defaultValue: false)
+  final bool disabled;
+  @JsonKey(defaultValue: false)
+  final bool shipping;
+  @JsonKey(name: "send_filename", defaultValue: "")
+  final String sendFilename;
+  @JsonKey(defaultValue: "")
+  final String file;
+
+  ManagedProduct(this.title, this.sku, this.description, this.tags, this.price,
+      this.disabled, this.shipping, this.sendFilename, this.file);
+  factory ManagedProduct.empty() =>
+      ManagedProduct("", "", "", [], 0, false, false, "", "");
+  factory ManagedProduct.fromJson(Map<String, dynamic> json) =>
+      _$ManagedProductFromJson(json);
+  Map<String, dynamic> toJson() => _$ManagedProductToJson(this);
+
+  ManagedProduct copyWith({
+    String? title,
+    String? sku,
+    String? description,
+    List<String>? tags,
+    double? price,
+    bool? disabled,
+    bool? shipping,
+    String? sendFilename,
+    String? file,
+  }) =>
+      ManagedProduct(
+          title ?? this.title,
+          sku ?? this.sku,
+          description ?? this.description,
+          tags ?? this.tags,
+          price ?? this.price,
+          disabled ?? this.disabled,
+          shipping ?? this.shipping,
+          sendFilename ?? this.sendFilename,
+          file ?? this.file);
+}
+
+@JsonSerializable()
+class SaveProductArgs {
+  final ManagedProduct product;
+  final String file;
+
+  SaveProductArgs(this.product, this.file);
+  Map<String, dynamic> toJson() => _$SaveProductArgsToJson(this);
+}
+
+@JsonSerializable()
+class SSOrderComment {
+  @JsonKey(name: "ts", fromJson: _parseDateTime)
+  final DateTime timestamp;
+  @JsonKey(name: "fromAdmin", defaultValue: false)
+  final bool fromAdmin;
+  @JsonKey(defaultValue: "")
+  final String comment;
+
+  SSOrderComment(this.timestamp, this.fromAdmin, this.comment);
+  factory SSOrderComment.fromJson(Map<String, dynamic> json) =>
+      _$SSOrderCommentFromJson(json);
+}
+
+/// ManagedOrder is one order as the seller sees it.
+@JsonSerializable()
+class ManagedOrder {
+  final int id;
+  final String user;
+  @JsonKey(name: "user_nick", defaultValue: "")
+  final String userNick;
+  final SSCart cart;
+  @JsonKey(defaultValue: "")
+  final String status;
+  @JsonKey(name: "placed_ts", fromJson: _parseDateTime)
+  final DateTime placedTS;
+  @JsonKey(name: "ship_charge", defaultValue: 0.0)
+  final double shipCharge;
+  @JsonKey(name: "exchange_rate", defaultValue: 0.0)
+  final double exchangeRate;
+  @JsonKey(name: "pay_type", defaultValue: "")
+  final String payType;
+  @JsonKey(defaultValue: [])
+  final List<SSOrderComment> comments;
+
+  ManagedOrder(this.id, this.user, this.userNick, this.cart, this.status,
+      this.placedTS, this.shipCharge, this.exchangeRate, this.payType,
+      this.comments);
+  factory ManagedOrder.fromJson(Map<String, dynamic> json) =>
+      _$ManagedOrderFromJson(json);
+
+  /// total is what the buyer owes, in the store's currency.
+  double get total {
+    var sum = shipCharge;
+    for (var item in cart.items) {
+      sum += item.product.price * item.quantity;
+    }
+    return sum;
+  }
+}
+
+@JsonSerializable()
+class OrderStatusArgs {
+  final String user;
+  final int order;
+  final String status;
+
+  OrderStatusArgs(this.user, this.order, this.status);
+  Map<String, dynamic> toJson() => _$OrderStatusArgsToJson(this);
+}
+
+@JsonSerializable()
+class OrderCommentArgs {
+  final String user;
+  final int order;
+  final String comment;
+
+  OrderCommentArgs(this.user, this.order, this.comment);
+  Map<String, dynamic> toJson() => _$OrderCommentArgsToJson(this);
+}
+
 @JsonSerializable()
 class FetchedResource {
   final String uid;
@@ -4904,6 +5046,42 @@ abstract class PluginPlatform {
       ? List.empty()
       : (res as List).map<LocalPage>((v) => LocalPage.fromJson(v)).toList();
 
+  // Store management. Every one of these fails when no store is being
+  // hosted, which is the caller's cue to offer to switch one on.
+  Future<List<ManagedProduct>> listStoreProducts() async =>
+      _products(await asyncCall(CTListStoreProducts, null));
+
+  Future<List<ManagedProduct>> saveStoreProduct(
+          ManagedProduct product, String file) async =>
+      _products(
+          await asyncCall(CTSaveStoreProduct, SaveProductArgs(product, file)));
+
+  Future<List<ManagedProduct>> deleteStoreProduct(String sku) async =>
+      _products(await asyncCall(CTDeleteStoreProduct, sku));
+
+  Future<List<ManagedOrder>> listStoreOrders() async =>
+      _orders(await asyncCall(CTListStoreOrders, null));
+
+  Future<List<ManagedOrder>> setStoreOrderStatus(
+          String user, int order, String status) async =>
+      _orders(await asyncCall(
+          CTSetStoreOrderStatus, OrderStatusArgs(user, order, status)));
+
+  Future<List<ManagedOrder>> addStoreOrderComment(
+          String user, int order, String comment) async =>
+      _orders(await asyncCall(
+          CTAddStoreOrderComment, OrderCommentArgs(user, order, comment)));
+
+  List<ManagedProduct> _products(dynamic res) => res == null
+      ? List.empty()
+      : (res as List)
+          .map<ManagedProduct>((v) => ManagedProduct.fromJson(v))
+          .toList();
+
+  List<ManagedOrder> _orders(dynamic res) => res == null
+      ? List.empty()
+      : (res as List).map<ManagedOrder>((v) => ManagedOrder.fromJson(v)).toList();
+
   Future<void> handshake(String uid) async => await asyncCall(CTHandshake, uid);
 
   Future<void> transReset(String muid, tuid) async =>
@@ -5350,6 +5528,12 @@ const int CTListLocalPages = 0xc2;
 const int CTReadLocalPage = 0xc3;
 const int CTWriteLocalPage = 0xc4;
 const int CTDeleteLocalPage = 0xc5;
+const int CTListStoreProducts = 0xc6;
+const int CTSaveStoreProduct = 0xc7;
+const int CTDeleteStoreProduct = 0xc8;
+const int CTListStoreOrders = 0xc9;
+const int CTSetStoreOrderStatus = 0xca;
+const int CTAddStoreOrderComment = 0xcb;
 
 const int notificationsStartID = 0x1000;
 

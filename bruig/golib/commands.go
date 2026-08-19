@@ -218,6 +218,15 @@ const (
 	CTWriteLocalPage     CmdType = 0xc4
 	CTDeleteLocalPage    CmdType = 0xc5
 
+	// Store management: the catalogue and the order book, for the seller's
+	// own UI rather than the markdown pages a buyer sees.
+	CTListStoreProducts    CmdType = 0xc6
+	CTSaveStoreProduct     CmdType = 0xc7
+	CTDeleteStoreProduct   CmdType = 0xc8
+	CTListStoreOrders      CmdType = 0xc9
+	CTSetStoreOrderStatus  CmdType = 0xca
+	CTAddStoreOrderComment CmdType = 0xcb
+
 	NTInviteReceived            = 0x1001
 	NTInviteAccepted            = 0x1002
 	NTInviteErrored             = 0x1003

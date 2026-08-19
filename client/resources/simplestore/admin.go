@@ -6,8 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
-	"sort"
-	"time"
 
 	"github.com/companyzero/bisonrelay/client/clientintf"
 	"github.com/companyzero/bisonrelay/internal/jsonfile"
@@ -30,43 +28,27 @@ func (s *Store) handleAdminIndex(ctx context.Context, uid clientintf.UserID,
 
 func (s *Store) handleAdminOrders(ctx context.Context, uid clientintf.UserID,
 	request *rpc.RMFetchResource) (*rpc.RMFetchResourceReply, error) {
-	s.mtx.Lock()
-	defer s.mtx.Unlock()
 
-	// List all orders for all users.
-	pattern := filepath.Join(s.root, ordersDir, "*", "*.json")
-	files, err := filepath.Glob(pattern)
+	orders, err := s.ListOrders()
 	if err != nil {
 		return nil, err
 	}
 
 	tctx := adminOrdersContext{
-		Orders: make([]adminOrderSummary, 0, len(files)),
+		Orders: make([]adminOrderSummary, 0, len(orders)),
 	}
-
-	for _, f := range files {
-		var order Order
-		if err := jsonfile.Read(f, &order); err != nil {
-			s.log.Warnf("Unable to decode order file %s: %v", f, err)
-			continue
-		}
-
-		nick, _ := s.c.UserNick(order.User)
-		nick = strescape.Nick(nick)
-
-		summ := adminOrderSummary{
+	for _, order := range orders {
+		tctx.Orders = append(tctx.Orders, adminOrderSummary{
 			ID:       order.ID,
 			User:     order.User,
-			UserNick: nick,
+			UserNick: strescape.Nick(order.UserNick),
 			Status:   order.Status,
 			PlacedTS: order.PlacedTS,
-		}
-		tctx.Orders = append(tctx.Orders, summ)
+		})
 	}
 
-	sort.Slice(tctx.Orders, func(i, j int) bool {
-		return tctx.Orders[i].PlacedTS.After(tctx.Orders[j].PlacedTS)
-	})
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
 
 	// Generate template.
 	w := &bytes.Buffer{}
@@ -129,22 +111,15 @@ func (s *Store) handleAdminViewOrder(ctx context.Context, _ clientintf.UserID,
 func (s *Store) handleAdminAddOrderComment(ctx context.Context, _ clientintf.UserID,
 	request *rpc.RMFetchResource) (*rpc.RMFetchResourceReply, error) {
 
-	s.mtx.Lock()
-	defer s.mtx.Unlock()
-
 	// Process form data.
-	var formData string
-	if err := json.Unmarshal(request.Data, &formData); err != nil {
+	var comment string
+	if err := json.Unmarshal(request.Data, &comment); err != nil {
 		return nil, err
 	}
-	comment := formData
 
-	// Load Order.
 	if len(request.Path) < 4 {
 		return nil, fmt.Errorf("path has < 4 elements")
 	}
-
-	// Load order.
 	var uid clientintf.UserID
 	if err := uid.FromString(request.Path[2]); err != nil {
 		return nil, err
@@ -153,26 +128,11 @@ func (s *Store) handleAdminAddOrderComment(ctx context.Context, _ clientintf.Use
 	if err := oid.FromString(request.Path[3]); err != nil {
 		return nil, err
 	}
-	orderDir := filepath.Join(s.root, ordersDir, uid.String())
-	orderFname := filepath.Join(orderDir, orderFnamePattern.FilenameFor(uint64(oid)))
-	var order Order
-	if err := jsonfile.Read(orderFname, &order); err != nil {
-		return nil, err
-	}
-
-	// Add comment.
-	order.Comments = append(order.Comments, OrderComment{
-		Timestamp: time.Now(),
-		FromAdmin: true,
-		Comment:   comment,
-	})
-
-	// Save order.
-	if err := jsonfile.Write(orderFname, &order, s.log); err != nil {
-		return nil, err
-	}
 
 	// TODO - notify user of new comment?
+	if _, err := s.AddOrderComment(uid, oid, comment, true); err != nil {
+		return nil, err
+	}
 
 	// Generate template.
 	w := &bytes.Buffer{}
@@ -182,21 +142,14 @@ func (s *Store) handleAdminAddOrderComment(ctx context.Context, _ clientintf.Use
 		Data:   w.Bytes(),
 		Status: rpc.ResourceStatusOk,
 	}, nil
-
 }
 
 func (s *Store) handleAdminUpdateOrderStatus(ctx context.Context, _ clientintf.UserID,
 	request *rpc.RMFetchResource) (*rpc.RMFetchResourceReply, error) {
 
-	s.mtx.Lock()
-	defer s.mtx.Unlock()
-
-	// Load Order.
 	if len(request.Path) < 5 {
 		return nil, fmt.Errorf("path has < 5 elements")
 	}
-
-	// Load order.
 	var uid clientintf.UserID
 	if err := uid.FromString(request.Path[2]); err != nil {
 		return nil, err
@@ -205,25 +158,9 @@ func (s *Store) handleAdminUpdateOrderStatus(ctx context.Context, _ clientintf.U
 	if err := oid.FromString(request.Path[3]); err != nil {
 		return nil, err
 	}
-	orderDir := filepath.Join(s.root, ordersDir, uid.String())
-	orderFname := filepath.Join(orderDir, orderFnamePattern.FilenameFor(uint64(oid)))
-	var order Order
-	if err := jsonfile.Read(orderFname, &order); err != nil {
+
+	if _, err := s.SetOrderStatus(uid, oid, OrderStatus(request.Path[4])); err != nil {
 		return nil, err
-	}
-
-	// Modify Status.
-	order.Status = OrderStatus(request.Path[4])
-
-	// Save order.
-	if err := jsonfile.Write(orderFname, &order, s.log); err != nil {
-		return nil, err
-	}
-
-	if s.cfg.StatusChanged != nil {
-		msg := fmt.Sprintf("Your order %s/%s changed to status %s",
-			order.User.ShortLogID(), order.ID, order.Status)
-		s.cfg.StatusChanged(&order, msg)
 	}
 
 	// Generate template.

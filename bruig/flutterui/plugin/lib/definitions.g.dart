@@ -2645,6 +2645,116 @@ Map<String, dynamic> _$SSPlacedOrderToJson(SSPlacedOrder instance) =>
       'msg': instance.msg,
     };
 
+ManagedProduct _$ManagedProductFromJson(Map<String, dynamic> json) =>
+    ManagedProduct(
+      json['title'] as String,
+      json['sku'] as String,
+      json['description'] as String? ?? '',
+      (json['tags'] as List<dynamic>?)?.map((e) => e as String).toList() ?? [],
+      (json['price'] as num?)?.toDouble() ?? 0.0,
+      json['disabled'] as bool? ?? false,
+      json['shipping'] as bool? ?? false,
+      json['send_filename'] as String? ?? '',
+      json['file'] as String? ?? '',
+    );
+
+Map<String, dynamic> _$ManagedProductToJson(ManagedProduct instance) =>
+    <String, dynamic>{
+      'title': instance.title,
+      'sku': instance.sku,
+      'description': instance.description,
+      'tags': instance.tags,
+      'price': instance.price,
+      'disabled': instance.disabled,
+      'shipping': instance.shipping,
+      'send_filename': instance.sendFilename,
+      'file': instance.file,
+    };
+
+SaveProductArgs _$SaveProductArgsFromJson(Map<String, dynamic> json) =>
+    SaveProductArgs(
+      ManagedProduct.fromJson(json['product'] as Map<String, dynamic>),
+      json['file'] as String,
+    );
+
+Map<String, dynamic> _$SaveProductArgsToJson(SaveProductArgs instance) =>
+    <String, dynamic>{
+      'product': instance.product,
+      'file': instance.file,
+    };
+
+SSOrderComment _$SSOrderCommentFromJson(Map<String, dynamic> json) =>
+    SSOrderComment(
+      _parseDateTime(json['ts']),
+      json['fromAdmin'] as bool? ?? false,
+      json['comment'] as String? ?? '',
+    );
+
+Map<String, dynamic> _$SSOrderCommentToJson(SSOrderComment instance) =>
+    <String, dynamic>{
+      'ts': instance.timestamp.toIso8601String(),
+      'fromAdmin': instance.fromAdmin,
+      'comment': instance.comment,
+    };
+
+ManagedOrder _$ManagedOrderFromJson(Map<String, dynamic> json) => ManagedOrder(
+      (json['id'] as num).toInt(),
+      json['user'] as String,
+      json['user_nick'] as String? ?? '',
+      SSCart.fromJson(json['cart'] as Map<String, dynamic>),
+      json['status'] as String? ?? '',
+      _parseDateTime(json['placed_ts']),
+      (json['ship_charge'] as num?)?.toDouble() ?? 0.0,
+      (json['exchange_rate'] as num?)?.toDouble() ?? 0.0,
+      json['pay_type'] as String? ?? '',
+      (json['comments'] as List<dynamic>?)
+              ?.map((e) => SSOrderComment.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          [],
+    );
+
+Map<String, dynamic> _$ManagedOrderToJson(ManagedOrder instance) =>
+    <String, dynamic>{
+      'id': instance.id,
+      'user': instance.user,
+      'user_nick': instance.userNick,
+      'cart': instance.cart,
+      'status': instance.status,
+      'placed_ts': instance.placedTS.toIso8601String(),
+      'ship_charge': instance.shipCharge,
+      'exchange_rate': instance.exchangeRate,
+      'pay_type': instance.payType,
+      'comments': instance.comments,
+    };
+
+OrderStatusArgs _$OrderStatusArgsFromJson(Map<String, dynamic> json) =>
+    OrderStatusArgs(
+      json['user'] as String,
+      (json['order'] as num).toInt(),
+      json['status'] as String,
+    );
+
+Map<String, dynamic> _$OrderStatusArgsToJson(OrderStatusArgs instance) =>
+    <String, dynamic>{
+      'user': instance.user,
+      'order': instance.order,
+      'status': instance.status,
+    };
+
+OrderCommentArgs _$OrderCommentArgsFromJson(Map<String, dynamic> json) =>
+    OrderCommentArgs(
+      json['user'] as String,
+      (json['order'] as num).toInt(),
+      json['comment'] as String,
+    );
+
+Map<String, dynamic> _$OrderCommentArgsToJson(OrderCommentArgs instance) =>
+    <String, dynamic>{
+      'user': instance.user,
+      'order': instance.order,
+      'comment': instance.comment,
+    };
+
 FetchedResource _$FetchedResourceFromJson(Map<String, dynamic> json) =>
     FetchedResource(
       json['uid'] as String,

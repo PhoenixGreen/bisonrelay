@@ -11,6 +11,7 @@ import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:bruig/screens/overview.dart';
 import 'package:bruig/screens/pages/browser.dart';
 import 'package:bruig/screens/pages/my_site.dart';
+import 'package:bruig/screens/pages/store.dart';
 import 'package:bruig/screens/pages/visit.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -61,7 +62,7 @@ class _ViewPageScreenState extends State<ViewPageScreen> {
       case pagesTabMySite:
         return MySiteTab(pages, widget.client, resources, showBrowser);
       case pagesTabStore:
-        return const _StorePlaceholder();
+        return StoreTab(pages);
       default:
         return VisitTab(widget.client, pages, resources, showBrowser);
     }
@@ -77,8 +78,7 @@ class _ViewPageScreenState extends State<ViewPageScreen> {
     return Consumer2<PagesModel, ResourcesModel>(
       builder: (context, pagesModel, resources, _) {
         var session = resources.mostRecent;
-        var items = pagesBarItems(
-            onItemChanged, pagesModel.tab, pagesModel.hostConfig.hostsStore);
+        var items = pagesBarItems(onItemChanged, pagesModel.tab);
         var tab = pagesModel.tab.clamp(0, items.length - 1);
 
         // A session that is open takes the content area: the tabs are how
@@ -112,12 +112,4 @@ class _ViewPageScreenState extends State<ViewPageScreen> {
       },
     );
   }
-}
-
-class _StorePlaceholder extends StatelessWidget {
-  const _StorePlaceholder();
-
-  @override
-  Widget build(BuildContext context) => const Center(
-      child: Txt.M("Store", color: TextColor.onSurfaceVariant));
 }
