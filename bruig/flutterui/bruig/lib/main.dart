@@ -15,6 +15,7 @@ import 'package:bruig/plugin_system/link_previews/link_previews.dart';
 import 'package:bruig/plugin_system/plugin_system.dart';
 import 'package:bruig/plugin_system/writing_tools/writing_tools.dart';
 import 'package:bruig/models/realtimechat.dart';
+import 'package:bruig/models/pages.dart';
 import 'package:bruig/models/resources.dart';
 import 'package:bruig/models/uploads.dart';
 import 'package:bruig/models/wallet.dart';
@@ -204,6 +205,14 @@ Future<void> runMainApp(Config cfg) async {
               initialOrder: theme.activePreset?.menuOrder,
               initialIcons: theme.activePreset?.menuIcons)),
       ChangeNotifierProvider(create: (c) => ResourcesModel()),
+      // PagesModel listens to ResourcesModel for replies, so it is built
+      // from it rather than beside it.
+      ChangeNotifierProxyProvider<ResourcesModel, PagesModel>(
+        create: (c) => PagesModel(
+            Provider.of<ResourcesModel>(c, listen: false))
+          ..loadHost(),
+        update: (c, resources, pages) => pages!,
+      ),
       ChangeNotifierProvider.value(value: snackbar),
       ChangeNotifierProvider(create: (c) => PaymentsModel()),
       ChangeNotifierProvider(create: (c) => PluginManagerModel()..reload()),
@@ -446,6 +455,7 @@ class _AppState extends State<App> with WindowListener {
           cfg.debugLevel,
           true,
           cfg.resourcesUpstream,
+          cfg.simpleStorePath,
           cfg.simpleStorePayType,
           cfg.simpleStoreAccount,
           cfg.simpleStoreShipCharge,

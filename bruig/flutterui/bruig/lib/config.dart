@@ -84,6 +84,7 @@ class Config {
   late final String network;
   late final String internalWalletDir;
   late final String resourcesUpstream;
+  late final String simpleStorePath;
   late final String simpleStorePayType;
   late final String simpleStoreAccount;
   late final double simpleStoreShipCharge;
@@ -133,6 +134,7 @@ class Config {
       this.network = "",
       this.internalWalletDir = "",
       this.resourcesUpstream = "",
+      this.simpleStorePath = "",
       this.simpleStorePayType = "",
       this.simpleStoreAccount = "",
       this.simpleStoreShipCharge = 0,
@@ -182,6 +184,7 @@ class Config {
         network: cfg.network,
         internalWalletDir: cfg.internalWalletDir,
         resourcesUpstream: cfg.resourcesUpstream,
+        simpleStorePath: cfg.simpleStorePath,
         simpleStorePayType: cfg.simpleStorePayType,
         simpleStoreAccount: cfg.simpleStoreAccount,
         simpleStoreShipCharge: cfg.simpleStoreShipCharge,
@@ -269,6 +272,11 @@ Future<void> replaceConfig(
   bool? rpcIssueClientCert,
   bool? rpcAllowRemoteSendTip,
   double? rpcMaxRemoteSendTipAmt,
+  String? resourcesUpstream,
+  String? simpleStorePath,
+  String? simpleStorePayType,
+  String? simpleStoreAccount,
+  double? simpleStoreShipCharge,
 }) async {
   var f = ini.Config.fromStrings(File(filepath).readAsLinesSync());
 
@@ -307,6 +315,14 @@ Future<void> replaceConfig(
   setBool("default", "torisolation", torIsolation);
 
   // RPC settings
+  // Pages hosting. Written back so a site switched on from the Pages
+  // section is still being served after a restart.
+  set("resources", "upstream", resourcesUpstream);
+  set("resources", "storepath", simpleStorePath);
+  set("resources", "account", simpleStoreAccount);
+  setDouble("resources", "shipcharge", simpleStoreShipCharge);
+  set("simplestore", "paytype", simpleStorePayType);
+
   set("clientrpc", "jsonrpclisten", jsonRPCListen);
   set("clientrpc", "rpccertpath", rpcCertPath);
   set("clientrpc", "rpckeypath", rpcKeyPath);
@@ -479,6 +495,10 @@ Future<Config> loadConfig(String filepath) async {
   c.sendRecvReceipts = getBoolDefaultTrue("default", "sendrecvreceipts");
 
   c.resourcesUpstream = resUpstream;
+  // storepath is how a site and a store are hosted at the same time: the
+  // single upstream line can only name one of them.
+  var storePath = f.get("resources", "storepath") ?? "";
+  c.simpleStorePath = storePath == "" ? "" : cleanAndExpandPath(storePath);
   c.simpleStorePayType = f.get("simplestore", "paytype") ?? "";
   c.simpleStoreAccount = f.get("resources", "account") ?? "";
   c.simpleStoreShipCharge =

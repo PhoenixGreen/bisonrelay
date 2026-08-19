@@ -19,6 +19,7 @@ InitClient _$InitClientFromJson(Map<String, dynamic> json) => InitClient(
       json['debug_level'] as String,
       json['wants_log_ntfns'] as bool,
       json['resources_upstream'] as String,
+      json['simplestore_path'] as String? ?? '',
       json['simplestore_pay_type'] as String,
       json['simplestore_account'] as String,
       (json['simplestore_ship_charge'] as num).toDouble(),
@@ -66,6 +67,7 @@ Map<String, dynamic> _$InitClientToJson(InitClient instance) =>
       'debug_level': instance.debugLevel,
       'wants_log_ntfns': instance.wantsLogNtfns,
       'resources_upstream': instance.resourcesUpstream,
+      'simplestore_path': instance.simpleStorePath,
       'simplestore_pay_type': instance.simpleStorePayType,
       'simplestore_account': instance.simpleStoreAccount,
       'simplestore_ship_charge': instance.simpleStoreShipCharge,
@@ -2507,6 +2509,75 @@ Map<String, dynamic> _$RMFetchResourceReplyToJson(
       'data': instance.data,
       'index': instance.index,
       'count': instance.count,
+    };
+
+PagesHostConfig _$PagesHostConfigFromJson(Map<String, dynamic> json) =>
+    PagesHostConfig(
+      json['mode'] as String,
+      json['pages_path'] as String? ?? '',
+      json['store_path'] as String? ?? '',
+      json['store_pay_type'] as String? ?? '',
+      json['store_account'] as String? ?? '',
+      (json['store_ship_charge'] as num?)?.toDouble() ?? 0.0,
+      json['http_upstream'] as String? ?? '',
+    );
+
+Map<String, dynamic> _$PagesHostConfigToJson(PagesHostConfig instance) =>
+    <String, dynamic>{
+      'mode': instance.mode,
+      'pages_path': instance.pagesPath,
+      'store_path': instance.storePath,
+      'store_pay_type': instance.storePayType,
+      'store_account': instance.storeAccount,
+      'store_ship_charge': instance.storeShipCharge,
+      'http_upstream': instance.httpUpstream,
+    };
+
+LocalPage _$LocalPageFromJson(Map<String, dynamic> json) => LocalPage(
+      json['name'] as String,
+      (json['size'] as num?)?.toInt() ?? 0,
+      DateTime.parse(json['modified'] as String),
+      json['is_index'] as bool? ?? false,
+    );
+
+Map<String, dynamic> _$LocalPageToJson(LocalPage instance) => <String, dynamic>{
+      'name': instance.name,
+      'size': instance.size,
+      'modified': instance.modified.toIso8601String(),
+      'is_index': instance.isIndex,
+    };
+
+PagesHostStatus _$PagesHostStatusFromJson(Map<String, dynamic> json) =>
+    PagesHostStatus(
+      PagesHostConfig.fromJson(json['config'] as Map<String, dynamic>),
+      json['editable'] as bool? ?? true,
+      json['default_path'] as String? ?? '',
+      json['default_store_path'] as String? ?? '',
+      (json['pages'] as List<dynamic>?)
+              ?.map((e) => LocalPage.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          [],
+    );
+
+Map<String, dynamic> _$PagesHostStatusToJson(PagesHostStatus instance) =>
+    <String, dynamic>{
+      'config': instance.config,
+      'editable': instance.editable,
+      'default_path': instance.defaultPath,
+      'default_store_path': instance.defaultStorePath,
+      'pages': instance.pages,
+    };
+
+LocalPageArgs _$LocalPageArgsFromJson(Map<String, dynamic> json) =>
+    LocalPageArgs(
+      json['name'] as String,
+      json['content'] as String,
+    );
+
+Map<String, dynamic> _$LocalPageArgsToJson(LocalPageArgs instance) =>
+    <String, dynamic>{
+      'name': instance.name,
+      'content': instance.content,
     };
 
 SSProduct _$SSProductFromJson(Map<String, dynamic> json) => SSProduct(

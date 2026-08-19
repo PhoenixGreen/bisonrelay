@@ -89,6 +89,8 @@ class InitClient {
   final bool wantsLogNtfns;
   @JsonKey(name: 'resources_upstream')
   final String resourcesUpstream;
+  @JsonKey(name: 'simplestore_path', defaultValue: "")
+  final String simpleStorePath;
   @JsonKey(name: 'simplestore_pay_type')
   final String simpleStorePayType;
   @JsonKey(name: 'simplestore_account')
@@ -158,6 +160,7 @@ class InitClient {
       this.debugLevel,
       this.wantsLogNtfns,
       this.resourcesUpstream,
+      this.simpleStorePath,
       this.simpleStorePayType,
       this.simpleStoreAccount,
       this.simpleStoreShipCharge,
@@ -2783,6 +2786,104 @@ class RMFetchResourceReply {
       RMFetchResourceReply(tag, status, meta, data ?? this.data, index, count);
 }
 
+
+// Hosting modes, mirroring golib's pagesHost. "http" and "clientrpc" hand
+// serving to something outside the app and are config-file only, which is
+// what PagesHostStatus.editable reports.
+const String pagesHostModeOff = "off";
+const String pagesHostModePages = "pages";
+const String pagesHostModeStore = "store";
+const String pagesHostModeBoth = "both";
+
+@JsonSerializable()
+class PagesHostConfig {
+  final String mode;
+  @JsonKey(name: "pages_path", defaultValue: "")
+  final String pagesPath;
+  @JsonKey(name: "store_path", defaultValue: "")
+  final String storePath;
+  @JsonKey(name: "store_pay_type", defaultValue: "")
+  final String storePayType;
+  @JsonKey(name: "store_account", defaultValue: "")
+  final String storeAccount;
+  @JsonKey(name: "store_ship_charge", defaultValue: 0.0)
+  final double storeShipCharge;
+  @JsonKey(name: "http_upstream", defaultValue: "")
+  final String httpUpstream;
+
+  PagesHostConfig(this.mode, this.pagesPath, this.storePath, this.storePayType,
+      this.storeAccount, this.storeShipCharge, this.httpUpstream);
+  factory PagesHostConfig.off() =>
+      PagesHostConfig(pagesHostModeOff, "", "", "", "", 0, "");
+  factory PagesHostConfig.fromJson(Map<String, dynamic> json) =>
+      _$PagesHostConfigFromJson(json);
+  Map<String, dynamic> toJson() => _$PagesHostConfigToJson(this);
+
+  bool get hostsPages =>
+      mode == pagesHostModePages || mode == pagesHostModeBoth;
+  bool get hostsStore =>
+      mode == pagesHostModeStore || mode == pagesHostModeBoth;
+  bool get hostsAnything => mode != pagesHostModeOff;
+
+  PagesHostConfig copyWith({
+    String? mode,
+    String? pagesPath,
+    String? storePath,
+    String? storePayType,
+    String? storeAccount,
+    double? storeShipCharge,
+  }) =>
+      PagesHostConfig(
+          mode ?? this.mode,
+          pagesPath ?? this.pagesPath,
+          storePath ?? this.storePath,
+          storePayType ?? this.storePayType,
+          storeAccount ?? this.storeAccount,
+          storeShipCharge ?? this.storeShipCharge,
+          httpUpstream);
+}
+
+@JsonSerializable()
+class LocalPage {
+  final String name;
+  @JsonKey(defaultValue: 0)
+  final int size;
+  final DateTime modified;
+  @JsonKey(name: "is_index", defaultValue: false)
+  final bool isIndex;
+
+  LocalPage(this.name, this.size, this.modified, this.isIndex);
+  factory LocalPage.fromJson(Map<String, dynamic> json) =>
+      _$LocalPageFromJson(json);
+}
+
+@JsonSerializable()
+class PagesHostStatus {
+  final PagesHostConfig config;
+  @JsonKey(defaultValue: true)
+  final bool editable;
+  @JsonKey(name: "default_path", defaultValue: "")
+  final String defaultPath;
+  @JsonKey(name: "default_store_path", defaultValue: "")
+  final String defaultStorePath;
+  @JsonKey(defaultValue: [])
+  final List<LocalPage> pages;
+
+  PagesHostStatus(this.config, this.editable, this.defaultPath,
+      this.defaultStorePath, this.pages);
+  factory PagesHostStatus.fromJson(Map<String, dynamic> json) =>
+      _$PagesHostStatusFromJson(json);
+}
+
+@JsonSerializable()
+class LocalPageArgs {
+  final String name;
+  final String content;
+
+  LocalPageArgs(this.name, this.content);
+  Map<String, dynamic> toJson() => _$LocalPageArgsToJson(this);
+}
+
 @JsonSerializable()
 class SSProduct {
   final String title;
@@ -4780,6 +4881,29 @@ abstract class PluginPlatform {
     return await asyncCall(CTFetchResource, args);
   }
 
+  // Pages hosting: what this client serves to others.
+  Future<PagesHostStatus> getPagesHostConfig() async =>
+      PagesHostStatus.fromJson(await asyncCall(CTGetPagesHostConfig, null));
+
+  Future<PagesHostStatus> setPagesHostConfig(PagesHostConfig cfg) async =>
+      PagesHostStatus.fromJson(await asyncCall(CTSetPagesHostConfig, cfg));
+
+  Future<List<LocalPage>> listLocalPages() async =>
+      _localPages(await asyncCall(CTListLocalPages, null));
+
+  Future<String> readLocalPage(String name) async =>
+      (await asyncCall(CTReadLocalPage, name)) as String? ?? "";
+
+  Future<List<LocalPage>> writeLocalPage(String name, String content) async =>
+      _localPages(await asyncCall(CTWriteLocalPage, LocalPageArgs(name, content)));
+
+  Future<List<LocalPage>> deleteLocalPage(String name) async =>
+      _localPages(await asyncCall(CTDeleteLocalPage, name));
+
+  List<LocalPage> _localPages(dynamic res) => res == null
+      ? List.empty()
+      : (res as List).map<LocalPage>((v) => LocalPage.fromJson(v)).toList();
+
   Future<void> handshake(String uid) async => await asyncCall(CTHandshake, uid);
 
   Future<void> transReset(String muid, tuid) async =>
@@ -5220,6 +5344,12 @@ const int CTDynPluginRenderScreen = 0xbb;
 const int CTDynPluginHandleEvent = 0xbc;
 const int CTGetExchangeRate = 0xbd;
 const int CTCallPluginService = 0xbf;
+const int CTGetPagesHostConfig = 0xc0;
+const int CTSetPagesHostConfig = 0xc1;
+const int CTListLocalPages = 0xc2;
+const int CTReadLocalPage = 0xc3;
+const int CTWriteLocalPage = 0xc4;
+const int CTDeleteLocalPage = 0xc5;
 
 const int notificationsStartID = 0x1000;
 

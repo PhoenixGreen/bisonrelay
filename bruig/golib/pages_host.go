@@ -117,10 +117,13 @@ func (ph *pagesHost) config() pagesHostConfig {
 	return ph.cfg
 }
 
-// parseUpstream turns the legacy `upstream = pages:/path` /
-// `upstream = simplestore:/path` config line into a hosting config, so an
-// existing config file keeps behaving exactly as it did.
-func parseUpstream(upstream, payType, account string, shipCharge float64) pagesHostConfig {
+// parseUpstream turns the config file's hosting lines into a hosting config.
+//
+// The legacy `upstream = pages:/path` / `upstream = simplestore:/path` forms
+// keep behaving exactly as they did. A separate storePath alongside a pages
+// upstream is the one thing they could not express: a site with a shop in it.
+func parseUpstream(upstream, storePath, payType, account string,
+	shipCharge float64) pagesHostConfig {
 	cfg := pagesHostConfig{
 		Mode:            hostModeOff,
 		StorePayType:    payType,
@@ -140,6 +143,15 @@ func parseUpstream(upstream, payType, account string, shipCharge float64) pagesH
 		cfg.HTTPUpstream = upstream
 	case upstream == "clientrpc":
 		cfg.Mode = hostModeClientRPC
+	}
+
+	if storePath != "" && cfg.editable() {
+		cfg.StorePath = storePath
+		if cfg.Mode == hostModePages {
+			cfg.Mode = hostModePagesAndStore
+		} else if cfg.Mode == hostModeOff {
+			cfg.Mode = hostModeStore
+		}
 	}
 	return cfg
 }

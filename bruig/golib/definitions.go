@@ -35,6 +35,7 @@ type initClient struct {
 	PingIntervalMs    int64  `json:"ping_interval_ms"`
 	DisableSeeder     bool   `json:"disable_seeder"`
 
+	SimpleStorePath       string  `json:"simplestore_path"`
 	SimpleStorePayType    string  `json:"simplestore_pay_type"`
 	SimpleStoreAccount    string  `json:"simplestore_account"`
 	SimpleStoreShipCharge float64 `json:"simplestore_ship_charge"`
