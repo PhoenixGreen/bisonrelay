@@ -248,3 +248,42 @@ func TestListIncludesPartialsByPath(t *testing.T) {
 		t.Fatalf("the fragment is missing: %v", names)
 	}
 }
+
+// TestWriteCreatesThePartialsDirectory covers the first fragment written.
+//
+// partials/ does not exist until then, and the writer used to create only
+// the root -- so writing the first fragment failed on a directory nothing
+// had made, which is what "error creating the navigation partial" was.
+func TestWriteCreatesThePartialsDirectory(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "pages")
+
+	if err := writeLocalPage(root, "partials/nav.md", "[Home](index.md)"); err != nil {
+		t.Fatalf("writing the first fragment: %v", err)
+	}
+
+	got, err := readLocalPage(root, "partials/nav.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "[Home](index.md)" {
+		t.Fatalf("got %q", got)
+	}
+
+	// And the temp file it was written through is not left behind next to
+	// it, which a rename across directories would have done.
+	entries, err := os.ReadDir(filepath.Join(root, "partials"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || entries[0].Name() != "nav.md" {
+		var names []string
+		for _, e := range entries {
+			names = append(names, e.Name())
+		}
+		t.Fatalf("partials/ holds %v", names)
+	}
+
+	if err := deleteLocalPage(root, "partials/nav.md"); err != nil {
+		t.Fatalf("deleting it: %v", err)
+	}
+}

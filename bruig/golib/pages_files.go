@@ -136,14 +136,18 @@ func writeLocalPage(root, name, content string) error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(root, 0o700); err != nil {
+	// The file's own directory, not the root: a shared fragment lives in
+	// partials/, which does not exist until the first one is written.
+	dir := filepath.Dir(fname)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
 
 	// Write through a temp file in the same directory: the pages dir is
 	// live, and a visitor fetching mid-write would otherwise get half a
-	// page.
-	tmp, err := os.CreateTemp(root, ".tmp-page-*")
+	// page. Beside the target rather than in the root, so the rename that
+	// finishes it cannot cross a directory that does not exist yet.
+	tmp, err := os.CreateTemp(dir, ".tmp-page-*")
 	if err != nil {
 		return err
 	}
