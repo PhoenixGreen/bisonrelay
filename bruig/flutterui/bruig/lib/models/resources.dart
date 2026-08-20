@@ -294,9 +294,20 @@ class ResourcesModel extends ChangeNotifier {
   /// says. The pages themselves are still in the client's own store, so
   /// nothing is lost that a fresh request would not find again.
   void closeSession(int id) {
-    var sess = _sessions.remove(id);
-    if (sess == null) return;
-    if (identical(_mostRecent, sess)) _mostRecent = null;
+    var order = _sessions.keys.toList();
+    var at = order.indexOf(id);
+    if (at < 0) return;
+
+    var sess = _sessions.remove(id)!;
+    if (identical(_mostRecent, sess)) {
+      // Move to the neighbour on the right, or on the left when the one
+      // closed was the last. Removing at [at] shifts the right-hand
+      // neighbour down into that index, so it is the same subscript both
+      // times; clamping is what turns it into the left-hand one at the end.
+      var left = _sessions.values.toList();
+      _mostRecent =
+          left.isEmpty ? null : left[at.clamp(0, left.length - 1)];
+    }
     sess.dispose();
     notifyListeners();
   }

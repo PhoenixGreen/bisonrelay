@@ -11,9 +11,7 @@ void main() {
     WidgetTester tester, {
     required bool sidebarOpen,
     VoidCallback? onToggle,
-    VoidCallback? onClose,
     bool toggleable = true,
-    bool closeable = true,
   }) async {
     var session = PagesSession(1);
     await tester.pumpWidget(ChangeNotifierProvider<ThemeNotifier>.value(
@@ -27,7 +25,6 @@ void main() {
         loading: false,
         sidebarOpen: sidebarOpen,
         onToggleSidebar: toggleable ? (onToggle ?? () {}) : null,
-        onClose: closeable ? (onClose ?? () {}) : null,
         onBack: () {},
         onForward: () {},
         onReload: () {},
@@ -36,22 +33,6 @@ void main() {
     ));
     await tester.pumpAndSettle();
   }
-
-  testWidgets('close is an icon in the bar, not a labelled button',
-      (tester) async {
-    var closed = 0;
-    await pumpBar(tester, sidebarOpen: false, onClose: () => closed++);
-
-    // It used to sit above the bar as a TextButton.icon reading "Close
-    // page". The words are now only the tooltip.
-    expect(find.text("Close page"), findsNothing);
-    expect(find.byTooltip("Close page"), findsOneWidget);
-
-    await tester.tap(find.byTooltip("Close page"));
-    await tester.pumpAndSettle();
-    expect(closed, 1);
-    expect(tester.takeException(), isNull);
-  });
 
   testWidgets('the sidebar toggle fires and says which way it goes',
       (tester) async {
@@ -71,18 +52,6 @@ void main() {
     expect(find.byTooltip("Show sidebar"), findsNothing);
   });
 
-  testWidgets('the close button gives way to the tab strip', (tester) async {
-    // With two or more pages open every tab carries its own close, so the
-    // one in the bar would be a second way to shut the same page.
-    await pumpBar(tester, sidebarOpen: false, closeable: false);
-
-    expect(find.byTooltip("Close page"), findsNothing);
-    // The rest of the bar is untouched.
-    expect(find.byTooltip("Back"), findsOneWidget);
-    expect(find.byTooltip("Reload"), findsOneWidget);
-    expect(tester.takeException(), isNull);
-  });
-
   testWidgets('the toggle is left out where it could not work', (tester) async {
     // Below the collapse width the sidebar belongs to the drawer, which only
     // the main navigation's re-tap opens. The toggle used to be drawn there
@@ -91,9 +60,9 @@ void main() {
 
     expect(find.byTooltip("Show sidebar"), findsNothing);
     expect(find.byTooltip("Hide sidebar"), findsNothing);
-    // Everything else still there -- close especially.
-    expect(find.byTooltip("Close page"), findsOneWidget);
+    // Everything else still there.
     expect(find.byTooltip("Back"), findsOneWidget);
+    expect(find.byTooltip("Reload"), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

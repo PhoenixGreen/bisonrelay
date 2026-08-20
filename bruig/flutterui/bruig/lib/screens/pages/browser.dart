@@ -49,20 +49,12 @@ class PageBrowser extends StatefulWidget {
   /// left out rather than shown dead: it is the main navigation's re-tap
   /// that opens the drawer, and a button that cannot is only confusing.
   final VoidCallback? onToggleSidebar;
-  final VoidCallback onClose;
-
-  /// tabs are every open page. One page draws no strip and keeps the close
-  /// button in the address bar; two or more draw the strip, which carries a
-  /// close of its own per tab and so takes the bar's place.
-  final List<PageTab> tabs;
   const PageBrowser(
     this.session,
     this.client,
     this.resources, {
     required this.sidebarOpen,
     required this.onToggleSidebar,
-    required this.onClose,
-    this.tabs = const [],
     super.key,
   });
 
@@ -175,12 +167,7 @@ class _PageBrowserState extends State<PageBrowser> {
           status: page.response.status, nick: nick, path: path);
     }
 
-    var stripped = widget.tabs.length > 1;
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      if (stripped) ...[
-        PageTabStrip(tabs: widget.tabs),
-        const Divider(height: 1),
-      ],
       PageBrowserBar(
         session: session,
         nick: nick,
@@ -188,9 +175,6 @@ class _PageBrowserState extends State<PageBrowser> {
         loading: session.loading,
         sidebarOpen: widget.sidebarOpen,
         onToggleSidebar: widget.onToggleSidebar,
-        // Null once the strip is drawn: every tab there carries its own
-        // close, and two ways to shut the same page is one too many.
-        onClose: stripped ? null : widget.onClose,
         onBack: () => session.goBack(),
         onForward: () => session.goForward(),
         onReload: reload,
@@ -216,15 +200,32 @@ class PageTab {
   });
 }
 
-/// PageTabStrip is the row of open pages above the address bar.
+/// PageTabStrip is the row of open pages, above the Visit area.
 ///
-/// Only drawn once there are two. A strip of one is a label for the thing
-/// already filling the screen, and the address bar underneath already says
-/// whose page it is -- so a single page keeps the plain close button in the
-/// bar instead, and gains no chrome for having been opened.
+/// Above the whole area rather than inside the browser, because the contact
+/// list is one of the things it switches to: [onNewTab] is the button at the
+/// end, and the list it opens is this app's new-tab page -- where a page is
+/// started from, and so where the strip has to be able to reach.
+///
+/// Drawn whenever a page is open, one tab or several. A strip that appeared
+/// only at two would leave a single open page with no way back to the list
+/// except closing it, and so no way to open a second.
 class PageTabStrip extends StatelessWidget {
   final List<PageTab> tabs;
-  const PageTabStrip({super.key, required this.tabs});
+
+  /// onNewTab opens the contact list. Null leaves the button out.
+  final VoidCallback? onNewTab;
+
+  /// newTabSelected is true when the contact list is what is showing, so no
+  /// page tab is current.
+  final bool newTabSelected;
+
+  const PageTabStrip({
+    super.key,
+    required this.tabs,
+    this.onNewTab,
+    this.newTabSelected = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -232,11 +233,35 @@ class PageTabStrip extends StatelessWidget {
     return Container(
       height: 34,
       color: theme.colors.surfaceContainerHighest.withValues(alpha: 0.4),
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        itemCount: tabs.length,
-        itemBuilder: (context, i) => _Tab(tabs[i]),
-      ),
+      child: Row(children: [
+        Expanded(
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            itemCount: tabs.length,
+            itemBuilder: (context, i) => _Tab(tabs[i]),
+          ),
+        ),
+        if (onNewTab != null)
+          Container(
+            decoration: BoxDecoration(
+              color: newTabSelected ? theme.colors.surface : null,
+              border: Border(
+                top: BorderSide(
+                  color: newTabSelected
+                      ? theme.colors.primary
+                      : Colors.transparent,
+                  width: 2,
+                ),
+              ),
+            ),
+            child: IconButton(
+              icon: const Icon(Icons.add, size: 16),
+              tooltip: "Visit another site",
+              onPressed: onNewTab,
+              visualDensity: VisualDensity.compact,
+            ),
+          ),
+      ]),
     );
   }
 }
@@ -255,7 +280,7 @@ class _Tab extends StatelessWidget {
         // Bounded so a long page name cannot push the other tabs off, and
         // floored so a short one is still big enough to aim at.
         constraints: const BoxConstraints(minWidth: 96, maxWidth: 200),
-        padding: const EdgeInsets.only(left: 10, right: 4),
+        padding: const EdgeInsets.only(left: 4, right: 10),
         decoration: BoxDecoration(
           color: selected
               ? theme.colors.surface
@@ -271,15 +296,11 @@ class _Tab extends StatelessWidget {
             ),
           ),
         ),
+        // Close on the left, away from the edge a reader aims at when
+        // reaching for the next tab along. On the right it sits directly
+        // beside the neighbouring tab's label, and closing a page by
+        // mistake is not an action there is any undo for.
         child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Flexible(
-            child: Txt.S(
-              tab.label,
-              overflow: TextOverflow.ellipsis,
-              color: selected ? TextColor.onSurface : TextColor.onSurfaceVariant,
-            ),
-          ),
-          const SizedBox(width: 2),
           IconButton(
             icon: const Icon(Icons.close, size: 13),
             tooltip: "Close ${tab.label}",
@@ -287,6 +308,14 @@ class _Tab extends StatelessWidget {
             visualDensity: VisualDensity.compact,
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(minWidth: 22, minHeight: 22),
+          ),
+          const SizedBox(width: 2),
+          Flexible(
+            child: Txt.S(
+              tab.label,
+              overflow: TextOverflow.ellipsis,
+              color: selected ? TextColor.onSurface : TextColor.onSurfaceVariant,
+            ),
           ),
         ]),
       ),
@@ -375,9 +404,6 @@ class PageBrowserBar extends StatelessWidget {
   final bool sidebarOpen;
   final VoidCallback? onToggleSidebar;
 
-  /// onClose is null when the tab strip is showing, which closes pages
-  /// itself.
-  final VoidCallback? onClose;
   final VoidCallback onBack;
   final VoidCallback onForward;
   final VoidCallback onReload;
@@ -390,7 +416,6 @@ class PageBrowserBar extends StatelessWidget {
     required this.loading,
     required this.sidebarOpen,
     required this.onToggleSidebar,
-    required this.onClose,
     required this.onBack,
     required this.onForward,
     required this.onReload,
@@ -452,12 +477,6 @@ class PageBrowserBar extends StatelessWidget {
             ]),
           ),
         ),
-        if (onClose != null)
-          IconButton(
-            icon: const Icon(Icons.close, size: 18),
-            tooltip: "Close page",
-            onPressed: onClose,
-          ),
       ]),
     );
   }

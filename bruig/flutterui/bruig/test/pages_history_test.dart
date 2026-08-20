@@ -122,15 +122,36 @@ void main() {
   });
 
   group('closing a session', () {
-    test('forgets it, and stops it being the one on screen', () {
+    test('moves to the tab on the right', () {
       var r = ResourcesModel(runStream: false);
       var a = r.session(1), b = r.session(2);
+      r.session(3);
       r.mostRecent = a;
 
       r.closeSession(1);
-      expect(r.sessions.length, 1);
+      expect(r.sessions.length, 2);
+      expect(identical(r.mostRecent, b), isTrue);
+    });
+
+    test('moves to the left when the one closed was the last', () {
+      var r = ResourcesModel(runStream: false);
+      r.session(1);
+      var b = r.session(2), c = r.session(3);
+      r.mostRecent = c;
+
+      r.closeSession(3);
+      expect(identical(r.mostRecent, b), isTrue);
+    });
+
+    test('closing the only page leaves nothing on screen', () {
+      // Which is what sends the area back to the contact list.
+      var r = ResourcesModel(runStream: false);
+      var a = r.session(1);
+      r.mostRecent = a;
+
+      r.closeSession(1);
+      expect(r.sessions, isEmpty);
       expect(r.mostRecent, isNull);
-      expect(identical(r.sessions.first, b), isTrue);
     });
 
     test('closing one that is not on screen leaves the current one alone', () {

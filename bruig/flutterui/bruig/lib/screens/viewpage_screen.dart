@@ -86,14 +86,28 @@ class _ViewPageScreenState extends State<ViewPageScreen> {
 
   void toggleSidebar() => setState(() => sidebarOpen = !sidebarOpen);
 
-  Widget activeTab(int tab) {
+  Widget activeTab(int tab, Widget visitArea) {
     switch (tab) {
       case pagesTabMySite:
         return MySiteTab(pages, widget.client, resources, showBrowser);
       case pagesTabStore:
         return StoreTab(pages);
       default:
-        return VisitTab(widget.client, pages, resources, showBrowser);
+        return visitArea;
+    }
+  }
+
+  /// closeSession shuts a page and decides what to show instead.
+  ///
+  /// With pages left, ResourcesModel has already moved to a neighbour.
+  /// With none, there is nothing to browse: the area falls back to the
+  /// contact list, which is where a page is started from.
+  void closeSession(PagesSession sess) {
+    resources.closeSession(sess.id);
+    if (resources.mostRecent == null) {
+      pages
+        ..browsing = false
+        ..tab = pagesTabVisit;
     }
   }
 
@@ -115,37 +129,10 @@ class _ViewPageScreenState extends State<ViewPageScreen> {
           var tab = pagesModel.tab.clamp(0, pagesTabLabels.length - 1);
 
           var open = resources.sessions;
+          var items = pagesBarItems(onItemChanged, tab);
 
-          // One tab per open page, above the address bar, the way a browser
-          // does it -- built here rather than in the browser because the
-          // sessions belong to the model, not to whichever page is showing.
-          var tabs = [
-            for (var sess in open)
-              PageTab(
-                label: sessionLabel(sess),
-                current: identical(sess, session),
-                onOpen: () => openSession(sess),
-                onClose: () => resources.closeSession(sess.id),
-              ),
-          ];
-
-          // The sidebar gets one entry rather than a list: choosing between
-          // open pages is the strip's job, and all the sidebar has to answer
-          // is that a page is still open after a tab was chosen.
-          var items = pagesBarItems(
-            onItemChanged,
-            tab,
-            browsing: browsing,
-            openPages: open.length,
-            openLabel: open.isEmpty ? "" : sessionLabel(open.first),
-            onResume: open.isEmpty
-                ? null
-                : () => openSession(session ?? open.first),
-          );
-
-        // A session that is open takes the content area: the tabs are how
-        // you get to a page, and the page is what you came for. Closing it
-        // hands the area back to whichever tab is selected.
+          // A page opening for the first time takes the sidebar aside, so
+          // the reading measure is the page's -- see sidebarOpen.
           if (!identical(session, _openSession)) {
             _openSession = session;
             sidebarOpen = false;
@@ -158,20 +145,45 @@ class _ViewPageScreenState extends State<ViewPageScreen> {
           // than offered and dead.
           var inDrawer = sidebarIsInDrawer(context, constraints.maxWidth);
 
-          Widget content;
-          if (browsing) {
-            content = PageBrowser(
-              session,
-              widget.client,
-              resources,
-              sidebarOpen: sidebarOpen,
-              onToggleSidebar: inDrawer ? null : toggleSidebar,
-              onClose: () => resources.closeSession(session.id),
-              tabs: tabs,
+          // The Visit area is the browser: the contact list is what shows
+          // with nothing open, and it stays reachable through the strip's
+          // new-tab button once something is -- which is what a browser's
+          // new-tab page is. Keeping them in one place is what lets the
+          // sidebar go back to three plain destinations.
+          Widget visitArea = browsing
+              ? PageBrowser(
+                  session,
+                  widget.client,
+                  resources,
+                  sidebarOpen: sidebarOpen,
+                  onToggleSidebar: inDrawer ? null : toggleSidebar,
+                )
+              : VisitTab(widget.client, pages, resources, showBrowser);
+
+          if (open.isNotEmpty) {
+            visitArea = Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                PageTabStrip(
+                  tabs: [
+                    for (var sess in open)
+                      PageTab(
+                        label: sessionLabel(sess),
+                        current: browsing && identical(sess, session),
+                        onOpen: () => openSession(sess),
+                        onClose: () => closeSession(sess),
+                      ),
+                  ],
+                  newTabSelected: !browsing,
+                  onNewTab: () => pages.browsing = false,
+                ),
+                const Divider(height: 1),
+                Expanded(child: visitArea),
+              ],
             );
-          } else {
-            content = activeTab(tab);
           }
+
+          var content = activeTab(tab, visitArea);
 
           return SecondarySideMenuLayout(
             storageKey: "pages",

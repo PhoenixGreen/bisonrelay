@@ -51,6 +51,34 @@ void main() {
       expect(closed, [1]);
     });
 
+    testWidgets('the new-tab button reaches the contact list', (tester) async {
+      // The list is where a page is started from, so with one open there
+      // has to be a way back to it that is not closing the page. That is
+      // what this button is, and why the strip shows at one tab and not
+      // only at two.
+      var opened = 0;
+      await tester.pumpWidget(_host(PageTabStrip(
+          tabs: _tabs(1), onNewTab: () => opened++, newTabSelected: false)));
+      await tester.pump();
+
+      await tester.tap(find.byTooltip("Visit another site"));
+      await tester.pump();
+      expect(opened, 1);
+    });
+
+    testWidgets('the close sits before the label, not after it',
+        (tester) async {
+      // On the right it lands beside the next tab's label, where a reader
+      // aiming for that tab can shut this one by mistake -- and there is no
+      // undo for a closed page.
+      await tester.pumpWidget(_host(PageTabStrip(tabs: _tabs(2))));
+      await tester.pump();
+
+      var close = tester.getCenter(find.byTooltip("Close page0"));
+      var label = tester.getCenter(find.text("page0"));
+      expect(close.dx, lessThan(label.dx));
+    });
+
     testWidgets('many tabs scroll rather than overflowing', (tester) async {
       // A long page name must not be able to push the others off, and eight
       // open pages must not overflow a narrow window.
@@ -58,15 +86,6 @@ void main() {
           PageTabStrip(tabs: _tabs(8)), width: 400));
       await tester.pump();
       expect(tester.takeException(), isNull);
-    });
-  });
-
-  group('openPagesLabel', () {
-    test('one page is named, several are counted', () {
-      // Which of several is a choice made in the strip, so the sidebar only
-      // has to say there is something to go back to.
-      expect(openPagesLabel(1, "alice / about"), "alice / about");
-      expect(openPagesLabel(3, "alice / about"), "3 pages");
     });
   });
 }
