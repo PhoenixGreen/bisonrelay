@@ -20,6 +20,19 @@ import 'package:markdown/markdown.dart' as md;
 /// headerSlots are the places across a header, left to right.
 const List<String> headerSlots = ["left", "middle", "right"];
 
+/// headerFields is every field a header understands.
+///
+/// A closed list, because it is what tells a new field from a line that
+/// happens to have a colon in it -- which is most lines of a navigation bar
+/// with a br:// link in it. See HeaderBlockSyntax.
+const List<String> headerFields = [
+  "background",
+  ...headerSlots,
+  "description",
+  "nav",
+  "navat",
+];
+
 /// HeaderBlockSyntax reads a page's banner.
 ///
 ///     --header[220]--
@@ -54,7 +67,17 @@ class HeaderBlockSyntax extends md.BlockSyntax {
     var height = int.tryParse(_open.firstMatch(line)?.group(1) ?? "");
     parser.advance();
 
-    var fields = <String, String>{};
+    // A field's value runs to the next field, so it can hold something
+    // several lines long. Which it usually does: "nav: --include[bar]--" is
+    // replaced with the whole of that fragment before this is parsed, and
+    // reading one line per field kept the first line of a navigation bar and
+    // threw the links away.
+    //
+    // Only a known field name starts a new one. Anything else with a colon
+    // in it belongs to the value being read -- which is most lines of a bar,
+    // since "[Home](br://...)" has one.
+    var fields = <String, List<String>>{};
+    String? current;
     while (!parser.isDone) {
       var at = parser.current.content;
       if (_close.hasMatch(at)) {
@@ -62,8 +85,12 @@ class HeaderBlockSyntax extends md.BlockSyntax {
         break;
       }
       var m = _field.firstMatch(at);
-      if (m != null) {
-        fields[m.group(1)!.toLowerCase()] = m.group(2)!.trim();
+      var key = m?.group(1)?.toLowerCase();
+      if (m != null && key != null && headerFields.contains(key)) {
+        current = key;
+        fields[current] = [m.group(2)!.trim()];
+      } else if (current != null) {
+        fields[current]!.add(at);
       }
       parser.advance();
     }
@@ -72,8 +99,9 @@ class HeaderBlockSyntax extends md.BlockSyntax {
     if (height != null) {
       element.attributes["height"] = "${height.clamp(40, maxHeight)}";
     }
-    fields.forEach((k, v) {
-      if (v.isNotEmpty) element.attributes[k] = v;
+    fields.forEach((k, lines) {
+      var value = lines.join("\n").trim();
+      if (value.isNotEmpty) element.attributes[k] = value;
     });
     // Wrapped in a paragraph for the same reason a run of columns is: the
     // builder that draws this is reached through flutter_markdown's inline

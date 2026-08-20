@@ -93,8 +93,14 @@ navat: bottom
 ```
 
 Every field is optional — one with only a background is a banner, one with
-only a title is a masthead. The number is the tallest it may be; without one
-the reader's theme decides.
+only a title is a masthead. The number is how tall it is; without one the
+reader's theme decides.
+
+A field's value runs until the next field, so it can be several lines. That
+matters for `nav:`, since `--include[navigation]--` is replaced with the whole
+of that fragment before the header is read. Only the names above start a new
+field, so a colon inside a value — which every `br://` link has — belongs to
+the value.
 
 The three slots run left, middle and right. A slot on its own takes the whole
 width and sits where its name says. Otherwise each takes a column and the last

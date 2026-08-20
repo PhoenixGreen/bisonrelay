@@ -114,6 +114,47 @@ navat: top
           "40");
     });
 
+    test('a field can be several lines, which is what a bar is', () {
+      // "nav: --include[bar]--" is replaced with the whole of that fragment
+      // before this is parsed, so a field that stopped at one line kept the
+      // first line of a navigation bar and threw the links away.
+      var e = _parse('''
+--header--
+nav: --nav[pills]--
+[Home](index.md)
+[About](about.md)
+--/nav--
+right: # My site
+--/header--
+''', HeaderBlockSyntax());
+
+      expect(e.attributes["nav"], contains("[Home](index.md)"));
+      expect(e.attributes["nav"], contains("[About](about.md)"));
+      expect(e.attributes["nav"], contains("--/nav--"));
+      // And the field after it is still its own.
+      expect(e.attributes["right"], "# My site");
+    });
+
+    test('a colon in a value does not start a new field', () {
+      // Which is most lines of a bar: "[Home](br://...)" has one.
+      var e = _parse('''
+--header--
+nav: [Home](br://abc123/index.md)
+[Notes](notes.md)
+--/header--
+''', HeaderBlockSyntax());
+
+      expect(e.attributes["nav"], contains("br://abc123/index.md"));
+      expect(e.attributes["nav"], contains("[Notes](notes.md)"));
+    });
+
+    test('a line before any field is not kept', () {
+      var e = _parse("--header--\nstray text\nleft: hi\n--/header--",
+          HeaderBlockSyntax());
+      expect(e.attributes["left"], "hi");
+      expect(e.attributes.values, isNot(contains("stray text")));
+    });
+
     test('an unterminated header still renders what was written', () {
       var e = _parse("--header--\nleft: hi", HeaderBlockSyntax());
       expect(e.attributes["left"], "hi");
