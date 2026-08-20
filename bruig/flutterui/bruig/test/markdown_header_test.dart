@@ -1,5 +1,6 @@
 import 'package:bruig/components/feed/markdown_header.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:bruig/components/md_elements.dart';
 import 'package:bruig/theming_system/model/markdown_style.dart';
 import 'package:markdown/markdown.dart' as md;
 
@@ -112,23 +113,45 @@ navat: top
     });
   });
 
-  group('embedImageBytes', () {
-    test('takes the picture out of an inline embed', () {
-      // "AAAA" is four zero bytes.
-      var got = embedImageBytes("--embed[type=image/png,data=AAAA]--");
+  group('embedImage', () {
+    test('takes the picture and its kind out of an inline embed', () {
+      var got = embedImage("--embed[type=image/png,data=AAAA]--");
       expect(got, isNotNull);
-      expect(got!.length, 3);
+      expect(got!.bytes.length, 3);
+      // The kind matters: a vector needs a different decoder, and guessing
+      // from the bytes is guessing at something the writer already knew.
+      expect(got.mime, "image/png");
+    });
+
+    test('a vector keeps its kind so it can be drawn as one', () {
+      var got = embedImage("--embed[type=image/svg+xml,data=AAAA]--");
+      expect(got!.mime, "image/svg+xml");
+      expect(isSvgMime(got.mime), isTrue);
     });
 
     test('anything that is not an inline image is simply not drawn', () {
-      expect(embedImageBytes(null), isNull);
-      expect(embedImageBytes("photo.png"), isNull);
-      expect(embedImageBytes("--embed[type=application/pdf,data=AAAA]--"),
+      expect(embedImage(null), isNull);
+      expect(embedImage("photo.png"), isNull);
+      expect(embedImage("--embed[type=application/pdf,data=AAAA]--"), isNull);
+      expect(embedImage("--embed[type=image/png]--"), isNull);
+      // A reference the document still carries while it is being written,
+      // rather than the picture itself.
+      expect(embedImage("--embed[type=image/png,data=[content abcdefghijkl]]--"),
           isNull);
-      expect(embedImageBytes("--embed[type=image/png]--"), isNull);
-      // A truncated or mistyped embed is not a background; the header still
-      // draws without one.
-      expect(embedImageBytes("--embed[type=image/png,data=!!!]--"), isNull);
+    });
+  });
+
+  group('isSvgMime', () {
+    test('recognises what a vector is declared as', () {
+      expect(isSvgMime("image/svg+xml"), isTrue);
+      expect(isSvgMime("IMAGE/SVG+XML"), isTrue);
+      expect(isSvgMime("image/svg"), isTrue);
+    });
+
+    test('and nothing else', () {
+      expect(isSvgMime("image/png"), isFalse);
+      expect(isSvgMime("image/webp"), isFalse);
+      expect(isSvgMime(""), isFalse);
     });
   });
 

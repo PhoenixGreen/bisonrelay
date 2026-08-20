@@ -125,7 +125,9 @@ class _WritingComposerState extends State<WritingComposer> {
   PostLibraryModel get _library =>
       _postLibrary ?? Provider.of<PostLibraryModel>(context, listen: false);
 
-  PagesModel get _pages => Provider.of<PagesModel>(context, listen: false);
+  PagesModel? _pagesModel;
+  PagesModel get _pages =>
+      _pagesModel ?? Provider.of<PagesModel>(context, listen: false);
 
   /// isPage is whether the open document belongs to the site -- a page, or
   /// one of the fragments its pages share.
@@ -425,6 +427,7 @@ class _WritingComposerState extends State<WritingComposer> {
       ..onAddEmbed = null;
     _postLibrary?.removeListener(syncTitle);
     _postLibrary?.removeListener(_openDocumentChanged);
+    _pagesModel?.removeListener(refreshPageState);
     titleFocus.dispose();
     contentFocus.dispose();
     titleCtrl.dispose();
@@ -478,6 +481,13 @@ class _WritingComposerState extends State<WritingComposer> {
       _composerSidebar =
           Provider.of<ComposerSidebarController>(context, listen: false)
             ..attach(contentCtrl);
+      // What the site is serving can change from the other screen -- My
+      // Site publishes and unpublishes too -- and the menu here has to
+      // agree with it. Without this the two disagreed until whichever one
+      // was stale happened to be rebuilt.
+      _pagesModel = Provider.of<PagesModel>(context, listen: false)
+        ..addListener(refreshPageState);
+
       _postLibrary = Provider.of<PostLibraryModel>(context, listen: false)
         ..watch(contentCtrl)
         ..addListener(syncTitle)

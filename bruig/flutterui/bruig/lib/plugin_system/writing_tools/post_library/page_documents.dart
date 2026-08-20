@@ -1,4 +1,5 @@
 import 'package:bruig/models/pages.dart';
+import 'package:bruig/plugin_system/writing_tools/post_library/embed_store.dart';
 import 'package:golib_plugin/definitions.dart';
 import 'package:bruig/plugin_system/writing_tools/post_library/post_storage.dart';
 
@@ -107,6 +108,26 @@ String partialFileNameFor(String documentName) =>
 /// partialsSubdir is where fragments are served from. Kept in step with
 /// resources.PartialsDir on the Go side.
 const String partialsSubdir = "partials";
+
+/// _embedReference matches a picture a document refers to rather than
+/// carries. Must match what the composer writes -- see EmbedStore.
+final RegExp _embedReference =
+    RegExp(r"(--embed\[.*?data=)\[content ([a-zA-Z0-9]{12})\]");
+
+/// resolveEmbeds puts the pictures back into a document's text.
+///
+/// A reference with nothing behind it is left as it stands rather than
+/// throwing. Publishing a page with one picture missing is a page with one
+/// picture missing; refusing to publish at all is a site that cannot be
+/// updated because of something the writer may not even remember adding.
+Future<String> resolveEmbeds(String text) async {
+  if (!_embedReference.hasMatch(text)) return text;
+  var contents = await EmbedStore.loadFor(text);
+  return text.replaceAllMapped(_embedReference, (m) {
+    var data = contents[m.group(2)];
+    return data == null ? m[0]! : "${m.group(1)}$data";
+  });
+}
 
 /// isSiteFolder is whether documents in [folder] belong to the site -- the
 /// pages themselves, and the fragments those pages share.
@@ -314,6 +335,13 @@ class PageDocuments {
   static Future<void> publish(PagesModel pages, PageDocument page) async {
     var text = await PostStorage.read(page.folder, page.name);
     if (text == null) return;
+
+    // Pictures are kept out of the document while it is being written --
+    // the text carries "data=[content abc]" and the bytes live in the embed
+    // store -- so what is published has to have them put back. Without
+    // this a page with a picture in it published the reference, and every
+    // visitor got a page with a hole where the picture was.
+    text = await resolveEmbeds(text);
     var target = fileNameFor(page.folder, page.name);
     await pages.savePage(target, text);
     if (page.state.live && page.file != target) {

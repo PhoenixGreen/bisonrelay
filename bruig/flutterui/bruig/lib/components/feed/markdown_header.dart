@@ -5,6 +5,7 @@ import 'package:bruig/components/md_elements.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:bruig/theming_system/theme_preset.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:markdown/markdown.dart' as md;
 
@@ -120,7 +121,7 @@ List<int> headerSpans(Map<String, String> fields) {
 /// and be cropped to it, which is a decision about the box and not something
 /// the markdown renderer can be asked for. Returns null for anything that is
 /// not an inline image, which is then simply not drawn.
-Uint8List? embedImageBytes(String? value) {
+({Uint8List bytes, String mime})? embedImage(String? value) {
   if (value == null) return null;
   var m = RegExp(r'--embed\[(.*?)\]--').firstMatch(value);
   if (m == null) return null;
@@ -131,14 +132,16 @@ Uint8List? embedImageBytes(String? value) {
     if (at == -1) continue;
     parms[part.substring(0, at)] = part.substring(at + 1);
   }
-  if (!(parms["type"] ?? "").startsWith("image/")) return null;
+  var mime = parms["type"] ?? "";
+  if (!mime.startsWith("image/")) return null;
   var data = parms["data"];
   if (data == null || data.isEmpty) return null;
   try {
-    return base64Decode(data);
+    return (bytes: base64Decode(data), mime: mime);
   } catch (_) {
-    // A truncated or mistyped embed is not a background; the header still
-    // draws without one.
+    // A truncated embed, or one still holding the "[content abc]" reference
+    // a document carries while it is being written. Neither is a
+    // background; the header draws without one.
     return null;
   }
 }
@@ -159,7 +162,7 @@ class _MarkdownHeader extends StatelessWidget {
     var rule = MarkdownGuideScope.headerOf(context) ?? const HeaderRule();
     var height = double.tryParse(fields["height"] ?? "") ?? rule.boundedHeight;
     var spans = headerSpans(fields);
-    var background = embedImageBytes(fields["background"]);
+    var background = embedImage(fields["background"]);
     var nav = fields["nav"];
     var navAtTop = (fields["navat"] ?? "bottom").toLowerCase() == "top";
 
@@ -219,7 +222,14 @@ class _MarkdownHeader extends StatelessWidget {
               Positioned.fill(
                 // Cover, not contain: a banner fills its space and is
                 // cropped to it, which is what a background is.
-                child: Image.memory(background, fit: BoxFit.cover),
+                child: isSvgMime(background.mime)
+                    ? SvgPicture.memory(background.bytes, fit: BoxFit.cover)
+                    : Image.memory(
+                        background.bytes,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stack) =>
+                            const SizedBox.shrink(),
+                      ),
               ),
             // A wash over the picture, so writing stays readable on top of
             // whatever was chosen. Skipped entirely when there is no

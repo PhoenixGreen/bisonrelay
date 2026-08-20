@@ -23,6 +23,7 @@ import 'package:bruig/screens/feed.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:golib_plugin/util.dart';
 import 'package:markdown/markdown.dart' as md;
@@ -1185,6 +1186,16 @@ Widget chatImageSized(String size, double availableWidth, Widget child) {
   return SizedBox(width: width, child: child);
 }
 
+/// isSvgMime is whether a declared type is a vector image.
+///
+/// Its own function because two places need the same answer -- an ordinary
+/// picture and a header's background -- and a second spelling of it would be
+/// a format that worked in one place and not the other.
+bool isSvgMime(String type) {
+  var t = type.toLowerCase();
+  return t == "image/svg+xml" || t == "image/svg";
+}
+
 class ImageMd extends StatelessWidget {
   final String tip;
   final Uint8List imgContent;
@@ -1201,14 +1212,25 @@ class ImageMd extends StatelessWidget {
     // the sizes and corners this drew before guides existed.
     var rule = MarkdownGuideScope.of(context);
 
-    var image = Image.memory(
-      imgContent,
-      fit: BoxFit.contain,
-      errorBuilder: (context, error, stackTrace) {
-        debugPrint("ImageMd unable to decode image: $error");
-        return const SizedBox.shrink();
-      },
-    );
+    // SVG is drawn by a different decoder: Image.memory reads raster
+    // formats and hands back nothing for a vector, which is why a logo
+    // saved as one appeared as a gap. Matched on the type the embed
+    // declares rather than by sniffing the bytes, since that is what the
+    // writer's client already worked out.
+    Widget image = isSvgMime(type)
+        ? SvgPicture.memory(
+            imgContent,
+            fit: BoxFit.contain,
+            placeholderBuilder: (context) => const SizedBox.shrink(),
+          )
+        : Image.memory(
+            imgContent,
+            fit: BoxFit.contain,
+            errorBuilder: (context, error, stackTrace) {
+              debugPrint("ImageMd unable to decode image: $error");
+              return const SizedBox.shrink();
+            },
+          );
 
     var corners = BorderRadius.all(
         Radius.circular(rule == null ? 8.0 : rule.boundedRadius));
