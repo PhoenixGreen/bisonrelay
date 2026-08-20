@@ -221,7 +221,8 @@ const _pages = [
     Icons.branding_watermark_outlined,
     "Header",
     "--header[220]--\nbackground: \nleft: ",
-    after: "\nright: # My site\nnav: --include[navigation]--\n--/header--",
+    after: "\nright: # My site\nnav: --include[navigation]--\n"
+        "navat: bottom middle\n--/header--",
     placeholder: "![](logo)",
     block: true,
   ),

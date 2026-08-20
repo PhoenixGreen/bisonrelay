@@ -88,7 +88,7 @@ left: ![](logo)
 right: # My site
 description: What the site is for.
 nav: --include[navigation]--
-navat: bottom
+navat: bottom middle
 --/header--
 ```
 
@@ -111,6 +111,11 @@ title right keeps the gap between them.
 The three give three distances from the logo: `middle` sits beside it,
 `right` against the far edge, and a `middle` with nothing to its left is
 centred in the banner.
+
+`navat` says where the bar goes: `top` or `bottom`, and `left`, `middle` or
+`right` across. Either word may be left out and either order works, so `top`,
+`middle` and `middle top` all mean something. Without it a bar sits at the
+bottom left.
 
 A bar of links, one link a line:
 

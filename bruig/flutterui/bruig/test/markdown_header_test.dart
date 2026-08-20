@@ -24,6 +24,24 @@ md.Element _parse(String src, md.BlockSyntax syntax) {
   return (nodes.first as md.Element).children!.first as md.Element;
 }
 
+Widget _drawHost(Widget child, {double width = 900}) => MultiProvider(
+      providers: [
+        ChangeNotifierProvider<ThemeNotifier>(
+            create: (c) => ThemeNotifier(doLoad: false)),
+        ChangeNotifierProvider<PaymentsModel>(create: (c) => PaymentsModel()),
+        ChangeNotifierProvider<MarkdownAreaModel>(
+            create: (c) => MarkdownAreaModel("/tmp")),
+        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+      ],
+      child: MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: SizedBox(width: width, child: child),
+          ),
+        ),
+      ),
+    );
+
 void main() {
   group('headerSpans', () {
     test('a slot grows into the empty ones after it', () {
@@ -67,7 +85,8 @@ void main() {
         var spans = headerSpans(f);
         // Empty columns between named slots are drawn as a flexible gap of
         // one, so the total is the width either way.
-        var gaps = spans.sublist(0, spans.lastIndexOf(spans.lastWhere((s) => s > 0)))
+        var gaps = spans
+            .sublist(0, spans.lastIndexOf(spans.lastWhere((s) => s > 0)))
             .where((s) => s == 0)
             .length;
         expect(spans.reduce((a, b) => a + b) + gaps, headerSlots.length,
@@ -106,11 +125,13 @@ navat: top
     });
 
     test('a height is bounded to something that is still a banner', () {
-      expect(_parse("--header[5000]--\nleft: a\n--/header--",
-              HeaderBlockSyntax()).attributes["height"],
+      expect(
+          _parse("--header[5000]--\nleft: a\n--/header--", HeaderBlockSyntax())
+              .attributes["height"],
           "${HeaderBlockSyntax.maxHeight}");
-      expect(_parse("--header[1]--\nleft: a\n--/header--",
-              HeaderBlockSyntax()).attributes["height"],
+      expect(
+          _parse("--header[1]--\nleft: a\n--/header--", HeaderBlockSyntax())
+              .attributes["height"],
           "40");
     });
 
@@ -149,8 +170,8 @@ nav: [Home](br://abc123/index.md)
     });
 
     test('a line before any field is not kept', () {
-      var e = _parse("--header--\nstray text\nleft: hi\n--/header--",
-          HeaderBlockSyntax());
+      var e = _parse(
+          "--header--\nstray text\nleft: hi\n--/header--", HeaderBlockSyntax());
       expect(e.attributes["left"], "hi");
       expect(e.attributes.values, isNot(contains("stray text")));
     });
@@ -184,7 +205,8 @@ nav: [Home](br://abc123/index.md)
       expect(embedImage("--embed[type=image/png]--"), isNull);
       // A reference the document still carries while it is being written,
       // rather than the picture itself.
-      expect(embedImage("--embed[type=image/png,data=[content abcdefghijkl]]--"),
+      expect(
+          embedImage("--embed[type=image/png,data=[content abcdefghijkl]]--"),
           isNull);
     });
   });
@@ -220,8 +242,8 @@ nav: [Home](br://abc123/index.md)
 
     test('the writer picks the shape', () {
       for (var s in NavStyle.values) {
-        var e = _parse("--nav[${s.name}]--\n[a](a.md)\n--/nav--",
-            NavBlockSyntax());
+        var e =
+            _parse("--nav[${s.name}]--\n[a](a.md)\n--/nav--", NavBlockSyntax());
         expect(e.attributes["style"], s.name);
       }
     });
@@ -232,8 +254,8 @@ nav: [Home](br://abc123/index.md)
     });
 
     test('blank lines are not links', () {
-      var e = _parse("--nav--\n[a](a.md)\n\n\n[b](b.md)\n--/nav--",
-          NavBlockSyntax());
+      var e = _parse(
+          "--nav--\n[a](a.md)\n\n\n[b](b.md)\n--/nav--", NavBlockSyntax());
       expect(e.attributes["count"], "2");
     });
 
@@ -246,8 +268,8 @@ nav: [Home](br://abc123/index.md)
 
   group('the rules survive being saved', () {
     test('a header round-trips', () {
-      const r = HeaderRule(
-          height: 300, padding: 24, radius: 12, gap: 16, scrim: 0.5);
+      const r =
+          HeaderRule(height: 300, padding: 24, radius: 12, gap: 16, scrim: 0.5);
       expect(HeaderRule.fromJson(r.toJson()), r);
     });
 
@@ -301,24 +323,8 @@ nav: [Home](br://abc123/index.md)
   group('drawn', () {
     setUp(() => SharedPreferences.setMockInitialValues({}));
 
-    Widget host(Widget child, {double width = 900}) => MultiProvider(
-          providers: [
-            ChangeNotifierProvider<ThemeNotifier>(
-                create: (c) => ThemeNotifier(doLoad: false)),
-            ChangeNotifierProvider<PaymentsModel>(
-                create: (c) => PaymentsModel()),
-            ChangeNotifierProvider<MarkdownAreaModel>(
-                create: (c) => MarkdownAreaModel("/tmp")),
-            ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-          ],
-          child: MaterialApp(
-            home: Scaffold(
-              body: SingleChildScrollView(
-                child: SizedBox(width: width, child: child),
-              ),
-            ),
-          ),
-        );
+    Widget host(Widget child, {double width = 900}) =>
+        _drawHost(child, width: width);
 
     // Note on what these can and cannot catch: a picture does not decode in
     // a widget test, so an embed lays out as nothing and a banner holding
@@ -335,9 +341,9 @@ right: # My site
       await tester.pump();
 
       // Found through the slot's text, since the header widget is private.
-      var box = tester.getSize(find.ancestor(
-          of: find.text("My site"),
-          matching: find.byType(ClipRRect)).first);
+      var box = tester.getSize(find
+          .ancestor(of: find.text("My site"), matching: find.byType(ClipRRect))
+          .first);
       expect(box.height, 150);
       expect(tester.takeException(), isNull);
     });
@@ -352,6 +358,79 @@ right: [Contact](contact.md)
 """, false), width: 320));
       await tester.pump();
 
+      expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('where the bar sits', () {
+    test('reads both words, in either order', () {
+      expect(NavPlacement.parse("bottom middle"),
+          const NavPlacement(atTop: false, across: Alignment.center));
+      expect(NavPlacement.parse("middle bottom"),
+          const NavPlacement(atTop: false, across: Alignment.center));
+      expect(NavPlacement.parse("top right"),
+          const NavPlacement(atTop: true, across: Alignment.centerRight));
+    });
+
+    test('either word may be left out', () {
+      // "top" on its own was the whole of this field before, and still
+      // means what it did.
+      expect(NavPlacement.parse("top").atTop, isTrue);
+      expect(NavPlacement.parse("top").across, Alignment.centerLeft);
+      expect(NavPlacement.parse("middle").atTop, isFalse);
+      expect(NavPlacement.parse("middle").across, Alignment.center);
+    });
+
+    test('nothing at all is the bottom left', () {
+      expect(NavPlacement.parse(null),
+          const NavPlacement(atTop: false, across: Alignment.centerLeft));
+      expect(NavPlacement.parse(""), NavPlacement.parse(null));
+    });
+
+    test('spelt either way', () {
+      expect(NavPlacement.parse("center"), NavPlacement.parse("centre"));
+      expect(
+          NavPlacement.parse("TOP MIDDLE"), NavPlacement.parse("top middle"));
+    });
+
+    test('a word it does not know is ignored, not fatal', () {
+      expect(NavPlacement.parse("top sideways").atTop, isTrue);
+    });
+  });
+
+  group('the bar is drawn where it was put', () {
+    setUp(() => SharedPreferences.setMockInitialValues({}));
+
+    Future<Rect> barRect(WidgetTester tester, String navat) async {
+      await tester.pumpWidget(_drawHost(MarkdownArea("""
+--header[200]--
+left: # Logo
+nav: [Home](index.md)
+navat: $navat
+--/header--
+""", false)));
+      await tester.pump();
+      return tester.getRect(find.text("Home"));
+    }
+
+    testWidgets('top puts it above the slots, bottom below', (tester) async {
+      var logo = () => tester.getRect(find.text("Logo"));
+
+      var top = await barRect(tester, "top");
+      expect(top.top, lessThan(logo().top),
+          reason: "asked for the top and drawn below the logo");
+
+      var bottom = await barRect(tester, "bottom");
+      expect(bottom.top, greaterThan(logo().top));
+    });
+
+    testWidgets('and across where it was asked for', (tester) async {
+      var left = await barRect(tester, "bottom left");
+      var middle = await barRect(tester, "bottom middle");
+      var right = await barRect(tester, "bottom right");
+
+      expect(middle.left, greaterThan(left.left));
+      expect(right.left, greaterThan(middle.left));
       expect(tester.takeException(), isNull);
     });
   });

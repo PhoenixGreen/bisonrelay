@@ -143,6 +143,48 @@ List<int> headerSpans(Map<String, String> fields) {
   return spans;
 }
 
+/// NavPlacement is where the bar sits in a banner: which edge, and how far
+/// across.
+///
+/// Written as one field -- "navat: bottom middle" -- because it is one
+/// decision. Either word may be left out and either order works, so "top",
+/// "middle" and "middle top" all mean something sensible.
+@immutable
+class NavPlacement {
+  final bool atTop;
+  final Alignment across;
+  const NavPlacement({required this.atTop, required this.across});
+
+  static const _across = {
+    "left": Alignment.centerLeft,
+    "middle": Alignment.center,
+    "centre": Alignment.center,
+    "center": Alignment.center,
+    "right": Alignment.centerRight,
+  };
+
+  /// parse reads the field. The default is the bottom left, which is where a
+  /// bar goes when nobody has said otherwise.
+  factory NavPlacement.parse(String? raw) {
+    var atTop = false;
+    var across = Alignment.centerLeft;
+    for (var word in (raw ?? "").toLowerCase().split(RegExp(r'\s+'))) {
+      if (word == "top") atTop = true;
+      if (word == "bottom") atTop = false;
+      var a = _across[word];
+      if (a != null) across = a;
+    }
+    return NavPlacement(atTop: atTop, across: across);
+  }
+
+  @override
+  int get hashCode => Object.hash(atTop, across);
+
+  @override
+  bool operator ==(Object other) =>
+      other is NavPlacement && other.atTop == atTop && other.across == across;
+}
+
 /// headerSlotAlignment is where a slot's contents sit within it.
 ///
 /// Where the slot is named for, with one exception: a middle slot that has
@@ -210,7 +252,14 @@ class _MarkdownHeader extends StatelessWidget {
     var spans = headerSpans(fields);
     var background = embedImage(fields["background"]);
     var nav = fields["nav"];
-    var navAtTop = (fields["navat"] ?? "bottom").toLowerCase() == "top";
+    var navAt = NavPlacement.parse(fields["navat"]);
+
+    // Placed in a row of its own so it can sit anywhere across the banner --
+    // a bar is rarely as wide as the page, and where it sits along the edge
+    // is as much a decision as which edge it is on.
+    Widget? bar = nav == null
+        ? null
+        : Align(alignment: navAt.across, child: MarkdownArea(nav, false));
 
     Widget slots() => Row(
           crossAxisAlignment: CrossAxisAlignment.center,
@@ -248,8 +297,8 @@ class _MarkdownHeader extends StatelessWidget {
       mainAxisSize: MainAxisSize.max,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (nav != null && navAtTop) ...[
-          MarkdownArea(nav, false),
+        if (bar != null && navAt.atTop) ...[
+          bar,
           SizedBox(height: rule.boundedGap),
         ],
         if (anySlot) Expanded(child: slots()) else const Spacer(),
@@ -257,9 +306,9 @@ class _MarkdownHeader extends StatelessWidget {
           SizedBox(height: rule.boundedGap),
           MarkdownArea(fields["description"]!, false),
         ],
-        if (nav != null && !navAtTop) ...[
+        if (bar != null && !navAt.atTop) ...[
           SizedBox(height: rule.boundedGap),
-          MarkdownArea(nav, false),
+          bar,
         ],
       ],
     );
