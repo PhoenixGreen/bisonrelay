@@ -363,7 +363,12 @@ Widget _slot(BuildContext context, String value, HeaderTextStyle style,
         ? picture
         : SizedBox(height: logoHeight, child: picture);
   }
-  return _HeaderText(text: value, style: style, rule: rule, within: within);
+  return _HeaderText(
+      text: value,
+      style: style,
+      rule: rule,
+      within: within,
+      fillTo: logoHeight);
 }
 
 /// _HeaderText draws a title.
@@ -376,11 +381,18 @@ class _HeaderText extends StatelessWidget {
   /// what puts a right-hand title against the right edge rather than
   /// centred in its half of the banner.
   final Alignment within;
+
+  /// fillTo is the height "titlesize: fill" fills, when there is a figure to
+  /// fill: the logo's, so the two come out level. Null when the logo has no
+  /// height of its own either, where filling means taking the row's -- see
+  /// the stretch in slots().
+  final double? fillTo;
   const _HeaderText(
       {required this.text,
       required this.style,
       required this.rule,
-      required this.within});
+      required this.within,
+      this.fillTo});
 
   /// _stripped removes the heading marks a writer puts in out of habit. How
   /// large a title is set is [HeaderTextStyle.size], not how many hashes
@@ -436,11 +448,20 @@ class _HeaderText extends StatelessWidget {
 
     // "fill" sets a title as tall as the room it has, which is what makes it
     // sit level with a logo and grow and shrink with it.
-    return FittedBox(
-      fit: style.fill ? BoxFit.contain : BoxFit.scaleDown,
-      alignment: within,
-      child: out,
-    );
+    if (!style.fill) {
+      return FittedBox(fit: BoxFit.scaleDown, alignment: within, child: out);
+    }
+
+    // Filling needs a height to fill. A FittedBox only ever scales a child
+    // down into a box larger than it, and under the loose constraints a slot
+    // gets there is no such box -- it simply sized itself to the words,
+    // which is why "fill" did nothing at all.
+    var filled = FittedBox(fit: BoxFit.contain, alignment: within, child: out);
+    return fillTo == null
+        // No figure to match: the row is stretched instead, so this is
+        // handed a tight height and fills that.
+        ? filled
+        : SizedBox(height: fillTo, child: filled);
   }
 }
 
@@ -556,22 +577,24 @@ class _MarkdownHeader extends StatelessWidget {
           Widget slot = _slot(context, fields[headerSlots[i]]!, titleStyle,
               rule, headerSlotAlignment(fields, i), logoHeight);
 
-          // At the two ends each takes half and its contents go to its own
-          // outside edge, which is what puts a title against the right of
-          // the banner rather than in the middle of its half. An Align
-          // fills the room it is given -- wanted here, and the reason it is
-          // not used when the slots are meant to sit together.
-          children.add(endsApart
-              ? SizedBox(
-                  width: share,
-                  child: Align(
-                      alignment: headerSlotAlignment(fields, i), child: slot))
-              : ConstrainedBox(
-                  constraints: BoxConstraints(maxWidth: share), child: slot));
+          // Bounded to its share and no more. Nothing is wrapped in an
+          // Align: the row's own alignment places these, and an Align
+          // passes loose constraints to its child -- which undid the
+          // stretch below, so a title told to fill went on sizing itself to
+          // the words.
+          children.add(ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: share), child: slot));
         }
 
         return Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
+          // Stretched when a title is to fill and there is no logo height
+          // to match: that hands every slot the row's height, which is what
+          // a logo without one takes, so the two come out level. Centred
+          // otherwise, since stretching a slot that wanted its own size
+          // would undo the sizing above.
+          crossAxisAlignment: titleStyle.fill && logoHeight == null
+              ? CrossAxisAlignment.stretch
+              : CrossAxisAlignment.center,
           mainAxisAlignment: endsApart
               ? MainAxisAlignment.spaceBetween
               // A single slot sits where its name says; anything else starts

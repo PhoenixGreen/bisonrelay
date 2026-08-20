@@ -143,8 +143,9 @@ titleradius: 8
 titlepadding: 12
 ```
 
-`titlesize: fill` is what makes a title sit level with a logo and grow and
-shrink with it. Heading marks in a slot are dropped: how large a title is set
+`titlesize: fill` sets the title as tall as the logo beside it — the logo's
+`logosize` when it has one, and the banner's height when it does not, which is
+what the logo takes then too. Heading marks in a slot are dropped: how large a title is set
 is `titlesize`, not how many hashes were typed.
 
 `navat` says where the bar goes: `top` or `bottom`, and `left`, `middle` or

@@ -626,4 +626,43 @@ logosize: 48
       expect(tester.takeException(), isNull);
     });
   });
+
+  group('a title told to fill', () {
+    setUp(() => SharedPreferences.setMockInitialValues({}));
+
+    Future<Rect> titleRect(WidgetTester tester, String extra) async {
+      await tester.pumpWidget(_drawHost(MarkdownArea("""
+--header[200]--
+left: # Logo
+right: # Title
+$extra
+--/header--
+""", false)));
+      await tester.pump();
+      return tester.getRect(find.text("Title"));
+    }
+
+    testWidgets('is taller than one left alone', (tester) async {
+      // A FittedBox only scales a child down into a box larger than it, and
+      // a slot's constraints are loose -- so "fill" used to size itself to
+      // the words and do nothing at all.
+      var plain = await titleRect(tester, "");
+      var filled = await titleRect(tester, "titlesize: fill");
+      expect(filled.height, greaterThan(plain.height));
+    });
+
+    testWidgets('matches the logo when the logo has a height', (tester) async {
+      var filled = await titleRect(tester, "logosize: 80\ntitlesize: fill");
+      // The point of the pair: set both and they come out level.
+      expect(filled.height, moreOrLessEquals(80, epsilon: 2));
+    });
+
+    testWidgets('takes the row when the logo has none', (tester) async {
+      var filled = await titleRect(tester, "titlesize: fill");
+      // The banner is 200 less its padding, which is what a logo without a
+      // height of its own also takes.
+      expect(filled.height, greaterThan(100));
+      expect(tester.takeException(), isNull);
+    });
+  });
 }
