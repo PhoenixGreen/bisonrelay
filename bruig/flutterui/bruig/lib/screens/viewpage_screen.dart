@@ -190,21 +190,39 @@ class _ViewPageScreenState extends State<ViewPageScreen> {
                 : PageBrowser(session, widget.client, resources),
           );
 
+          // Sections open as tabs too, beside the pages -- so what is open
+          // is visible, and moving between a page and the store is one
+          // click rather than a trip through the sidebar. Kept in the tab
+          // order rather than the order they were opened, so they do not
+          // swap places under the pointer.
+          var sectionTabs = [
+            for (var i in const [pagesTabMySite, pagesTabStore])
+              if (pagesModel.openSections.contains(i))
+                PageTab(
+                  label: pagesTabLabels[i],
+                  icon: sectionIcon(i),
+                  current: !browsing && tab == i,
+                  onOpen: () => onItemChanged(i),
+                  onClose: () => pagesModel.closeSection(i),
+                ),
+          ];
+
+          var tabs = [
+            ...sectionTabs,
+            for (var sess in open)
+              PageTab(
+                label: sessionLabel(sess),
+                current: browsing && identical(sess, session),
+                onOpen: () => openSession(sess),
+                onClose: () => closeSession(sess),
+              ),
+          ];
+
           var content = Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (open.isNotEmpty) ...[
-                PageTabStrip(
-                  tabs: [
-                    for (var sess in open)
-                      PageTab(
-                        label: sessionLabel(sess),
-                        current: browsing && identical(sess, session),
-                        onOpen: () => openSession(sess),
-                        onClose: () => closeSession(sess),
-                      ),
-                  ],
-                ),
+              if (tabs.isNotEmpty) ...[
+                PageTabStrip(tabs: tabs),
                 const Divider(height: 1),
               ],
               PageBrowserBar(

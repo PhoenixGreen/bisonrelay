@@ -51,6 +51,26 @@ void main() {
       expect(closed, [1]);
     });
 
+    testWidgets('a section tab carries an icon, a page tab does not',
+        (tester) async {
+      // The icon is what tells a section apart from a page in the strip.
+      // On every tab it would say nothing.
+      await tester.pumpWidget(_host(PageTabStrip(tabs: [
+        PageTab(
+            label: "My Site",
+            icon: Icons.web_outlined,
+            current: true,
+            onOpen: () {},
+            onClose: () {}),
+        ..._tabs(1),
+      ])));
+      await tester.pump();
+
+      expect(find.byIcon(Icons.web_outlined), findsOneWidget);
+      expect(find.text("My Site"), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('the close sits before the label, not after it',
         (tester) async {
       // On the right it lands beside the next tab's label, where a reader

@@ -138,6 +138,11 @@ class _PageBrowserState extends State<PageBrowser> {
 /// PageTab is one open page, for the strip above the address bar.
 class PageTab {
   final String label;
+
+  /// icon marks a tab that is not a page -- a section of Pages open beside
+  /// them. A page has none: they are the common case, and an icon on every
+  /// tab would say nothing.
+  final IconData? icon;
   final bool current;
   final VoidCallback onOpen;
   final VoidCallback onClose;
@@ -146,6 +151,7 @@ class PageTab {
     required this.current,
     required this.onOpen,
     required this.onClose,
+    this.icon,
   });
 }
 
@@ -221,6 +227,10 @@ class _Tab extends StatelessWidget {
             constraints: const BoxConstraints(minWidth: 22, minHeight: 22),
           ),
           const SizedBox(width: 2),
+          if (tab.icon != null) ...[
+            Icon(tab.icon, size: 13),
+            const SizedBox(width: 4),
+          ],
           Flexible(
             child: Txt.S(
               tab.label,

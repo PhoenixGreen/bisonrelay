@@ -196,4 +196,59 @@ void main() {
       expect(r.sessions, isEmpty);
     });
   });
+
+  group('sections as tabs', () {
+    test('opening one gives it a tab, and Visit never gets one', () {
+      var m = PagesModel(ResourcesModel(runStream: false));
+      expect(m.openSections, isEmpty);
+
+      m.tab = pagesTabMySite;
+      expect(m.openSections, {pagesTabMySite});
+
+      // Visit is where a page or a section is opened from -- a tab for it
+      // would be a tab for "no tab".
+      m.tab = pagesTabVisit;
+      expect(m.openSections, {pagesTabMySite});
+    });
+
+    test('both can be open at once', () {
+      var m = PagesModel(ResourcesModel(runStream: false))
+        ..tab = pagesTabMySite
+        ..tab = pagesTabStore;
+      expect(m.openSections, {pagesTabMySite, pagesTabStore});
+      expect(m.tab, pagesTabStore);
+    });
+
+    test('closing the one being looked at falls back to Visit', () {
+      var m = PagesModel(ResourcesModel(runStream: false))
+        ..tab = pagesTabStore;
+      m.closeSection(pagesTabStore);
+      expect(m.openSections, isEmpty);
+      expect(m.tab, pagesTabVisit);
+    });
+
+    test('closing one being left alone does not move the reader', () {
+      var m = PagesModel(ResourcesModel(runStream: false))
+        ..tab = pagesTabMySite
+        ..tab = pagesTabStore;
+      m.closeSection(pagesTabMySite);
+      expect(m.tab, pagesTabStore);
+    });
+
+    test('reopening a section already open still selects it', () {
+      // It has a tab and the reader is elsewhere; clicking it has to come
+      // back to it rather than do nothing.
+      var m = PagesModel(ResourcesModel(runStream: false))
+        ..tab = pagesTabMySite
+        ..tab = pagesTabVisit;
+      m.tab = pagesTabMySite;
+      expect(m.tab, pagesTabMySite);
+    });
+
+    test('closing something that was never open is not an error', () {
+      var m = PagesModel(ResourcesModel(runStream: false));
+      m.closeSection(pagesTabStore);
+      expect(m.tab, pagesTabVisit);
+    });
+  });
 }

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:bruig/config.dart';
+import 'package:bruig/components/pages_bar.dart';
 import 'package:bruig/models/resources.dart';
 import 'package:bruig/storage_manager.dart';
 import 'package:flutter/foundation.dart';
@@ -337,12 +338,32 @@ class PagesModel extends ChangeNotifier {
   int _tab = 0;
   int get tab => _tab;
   set tab(int v) {
-    // Choosing a tab is asking to look at it, so it also stops the browser
-    // covering the content area -- but the page stays open, in the sidebar,
-    // rather than being closed on the reader's behalf.
-    if (_tab == v && !_browsing) return;
+    // Choosing a section is asking to look at it, so it also stops the
+    // browser covering the content area -- but the page stays open, in the
+    // strip, rather than being closed on the reader's behalf.
+    var opened = v != pagesTabVisit && _openSections.add(v);
+    if (_tab == v && !_browsing && !opened) return;
     _tab = v;
     _browsing = false;
+    notifyListeners();
+  }
+
+  /// openSections are the sections open as tabs, beside the open pages.
+  ///
+  /// Visit is never one. It is where a page or a section is opened from --
+  /// the equivalent of a browser's new-tab page -- so a tab for it would be
+  /// a tab for "no tab".
+  final Set<int> _openSections = {};
+  Set<int> get openSections => Set.unmodifiable(_openSections);
+
+  /// closeSection takes a section's tab away. What was in it is not lost:
+  /// a section is a view of what is on disk, not a document.
+  void closeSection(int v) {
+    if (!_openSections.remove(v)) return;
+    if (_tab == v) {
+      _tab = pagesTabVisit;
+      _browsing = false;
+    }
     notifyListeners();
   }
 

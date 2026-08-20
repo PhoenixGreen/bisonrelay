@@ -1,5 +1,4 @@
 import 'package:bruig/components/buttons.dart';
-import 'package:bruig/components/md_elements.dart';
 import 'package:bruig/components/text.dart';
 import 'package:bruig/models/client.dart';
 import 'package:bruig/config.dart';
@@ -109,26 +108,6 @@ class _MySiteTabState extends State<MySiteTab> {
           .fetchPage(widget.client.publicID, [page.file], 0, 0, null, "");
       widget.pages.browsing = true;
       widget.onOpenedOwnSite();
-    } catch (exception) {
-      snackbar.error("Unable to preview ${page.name}: $exception");
-    }
-  }
-
-  /// previewDraft renders the document as it stands.
-  ///
-  /// Separate from Preview because they answer different questions: Preview
-  /// is what a visitor gets, and a page that has never been published has no
-  /// answer to that. This is what they would get if it were published now.
-  void previewDraft(PageDocument page) async {
-    var snackbar = SnackBarModel.of(context);
-    try {
-      var text = await PostStorage.read(pagesFolderName, page.name);
-      if (text == null) {
-        snackbar.error("${page.name} has nothing written in it yet.");
-        return;
-      }
-      if (!mounted) return;
-      await showDraftPreview(context, page.name, text);
     } catch (exception) {
       snackbar.error("Unable to preview ${page.name}: $exception");
     }
@@ -324,7 +303,6 @@ class _MySiteTabState extends State<MySiteTab> {
           onPublish: publishPage,
           onUnpublish: unpublishPage,
           onPreview: previewPage,
-          onPreviewDraft: previewDraft,
           onToggle: toggleHosting,
           onChooseDir: chooseDir,
           onView: viewOwnSite,
@@ -351,9 +329,6 @@ class _SiteOverview extends StatelessWidget {
   /// onPreview fetches the page from the site: what a visitor would get.
   final void Function(PageDocument) onPreview;
 
-  /// onPreviewDraft renders the document instead, which is the only way to
-  /// look at a page that has never been published or has been written since.
-  final void Function(PageDocument) onPreviewDraft;
 
   /// documents is every page of the site with where it stands -- see
   /// PageDocuments.list.
@@ -370,7 +345,6 @@ class _SiteOverview extends StatelessWidget {
     required this.onPublish,
     required this.onUnpublish,
     required this.onPreview,
-    required this.onPreviewDraft,
   });
 
   @override
@@ -444,7 +418,6 @@ class _SiteOverview extends StatelessWidget {
               onPublish: () => onPublish(p),
               onUnpublish: () => onUnpublish(p),
               onPreview: () => onPreview(p),
-              onPreviewDraft: () => onPreviewDraft(p),
             )),
       if (cfg.hostsPages) ...[
         const SizedBox(height: 24),
@@ -461,7 +434,6 @@ class _PageRow extends StatelessWidget {
   final VoidCallback onPublish;
   final VoidCallback onUnpublish;
   final VoidCallback onPreview;
-  final VoidCallback onPreviewDraft;
   const _PageRow({
     required this.page,
     required this.onEdit,
@@ -469,7 +441,6 @@ class _PageRow extends StatelessWidget {
     required this.onPublish,
     required this.onUnpublish,
     required this.onPreview,
-    required this.onPreviewDraft,
   });
 
   @override
@@ -513,13 +484,6 @@ class _PageRow extends StatelessWidget {
         ],
       ),
       trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-        IconButton(
-          icon: const Icon(Icons.drafts_outlined, size: 18),
-          // Always available: it reads the document, which exists whatever
-          // the site is serving.
-          tooltip: "Preview ${page.name} as written",
-          onPressed: onPreviewDraft,
-        ),
         IconButton(
           icon: const Icon(Icons.visibility_outlined, size: 18),
           // Preview fetches the page from the site, which is the point:
@@ -568,52 +532,6 @@ class _PageRow extends StatelessWidget {
     );
   }
 }
-
-/// showDraftPreview renders a page as it stands, without publishing it.
-///
-/// Drawn by the same renderer a visitor's client uses, so what it shows is
-/// what they would see -- but from the document rather than from the site,
-/// which is the only way to look at a page that has never been published or
-/// has been written since.
-///
-/// br:// links inside it are not followed: this is a look at one page, and
-/// following a link would mean fetching, which is the other preview's job.
-Future<void> showDraftPreview(
-        BuildContext context, String name, String text) =>
-    showDialog<void>(
-      context: context,
-      builder: (context) => Dialog(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 720, maxHeight: 640),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
-                child: Row(children: [
-                  const Icon(Icons.drafts_outlined, size: 18),
-                  const SizedBox(width: 8),
-                  Expanded(child: Txt.L("Draft — $name")),
-                  IconButton(
-                    icon: const Icon(Icons.close, size: 18),
-                    tooltip: "Close preview",
-                    onPressed: () => Navigator.of(context).pop(),
-                  ),
-                ]),
-              ),
-              const Divider(height: 1),
-              Flexible(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(16),
-                  child: MarkdownArea(text, false),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
 
 /// _LinkChip shows the link a page is reached by, and warns when two pages
 /// want the same one.

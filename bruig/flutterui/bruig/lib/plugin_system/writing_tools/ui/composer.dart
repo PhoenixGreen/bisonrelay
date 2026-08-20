@@ -130,24 +130,37 @@ class _WritingComposerState extends State<WritingComposer> {
   /// isPage is whether the open document is a page of the site.
   bool get isPage => _library.openFolder == pagesFolderName;
 
-  /// pageState is where the open page stands. Held rather than computed in
-  /// build: it reads two files, and build runs on every keystroke.
-  PagePublishState pageState = PagePublishState.draft;
+  /// _publishedText is what the site is currently serving for the open
+  /// page, or null when nothing is. Read when the document changes and
+  /// after publishing, which are the only times it can move.
+  String? _publishedText;
+
+  /// pageState is where the open page stands.
+  ///
+  /// Compared against what is in the editor rather than against the saved
+  /// document, so it is right as the page is typed. It used to be computed
+  /// from two files when the open document changed, which meant editing a
+  /// published page offered no Publish update until the writer left the
+  /// section and came back -- the state was correct for a file nobody had
+  /// written yet.
+  PagePublishState get pageState =>
+      pagePublishState(_publishedText, contentCtrl.text);
 
   Future<void> refreshPageState() async {
-    if (!isPage) return;
+    if (!isPage) {
+      if (_publishedText != null && mounted) {
+        setState(() => _publishedText = null);
+      }
+      return;
+    }
     var name = _library.openName;
     if (name == null) return;
     // The file it is actually served as, which is not always the slug of
     // its name -- see PageDocument.file.
     var page = PageDocuments.forName(_pages, name);
-    String? served;
-    if (page.state.live) {
-      served = await _pages.readPage(page.file);
-    }
-    var doc = await PostStorage.read(pagesFolderName, name) ?? "";
+    var served = page.state.live ? await _pages.readPage(page.file) : null;
     if (!mounted) return;
-    setState(() => pageState = pagePublishState(served, doc));
+    setState(() => _publishedText = served);
   }
 
   void publishPage() async {
@@ -188,11 +201,7 @@ class _WritingComposerState extends State<WritingComposer> {
     var now = "${_library.openFolder}/${_library.openName}";
     if (now == _lastOpen) return;
     _lastOpen = now;
-    if (isPage) {
-      refreshPageState();
-    } else if (pageState != PagePublishState.draft) {
-      setState(() => pageState = PagePublishState.draft);
-    }
+    refreshPageState();
   }
 
   void createPost() async {
