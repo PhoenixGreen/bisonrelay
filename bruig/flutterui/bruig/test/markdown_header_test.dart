@@ -1,0 +1,200 @@
+import 'package:bruig/components/feed/markdown_header.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:bruig/theming_system/model/markdown_style.dart';
+import 'package:markdown/markdown.dart' as md;
+
+// markdown_header_test.dart covers a site's furniture: the banner at the top
+// of a page and the bar of links usually in it.
+//
+// Both are fielded, so what is tested here is how the fields are read and
+// how the slots across a header are shared out -- which is the part with a
+// rule in it rather than a layout.
+
+md.Element _parse(String src, md.BlockSyntax syntax) {
+  var doc = md.Document(blockSyntaxes: [syntax]);
+  var nodes = doc.parseLines(src.trim().split("\n"));
+  return (nodes.first as md.Element).children!.first as md.Element;
+}
+
+void main() {
+  group('headerSpans', () {
+    test('a slot grows into the empty ones after it', () {
+      // Logo left, title middle: the title takes the right-hand space too,
+      // because there is nothing to its right to keep it out of.
+      expect(headerSpans({"left": "logo", "middle": "title"}), [1, 2, 0]);
+    });
+
+    test('two at the ends leave the middle open between them', () {
+      // Which is the shape somebody writing exactly those two means.
+      expect(headerSpans({"left": "logo", "right": "title"}), [1, 0, 1]);
+    });
+
+    test('one on its own takes the whole width, wherever it sits', () {
+      expect(headerSpans({"middle": "title"}), [0, 3, 0]);
+      expect(headerSpans({"left": "logo"}), [3, 0, 0]);
+      expect(headerSpans({"right": "title"}), [0, 0, 3]);
+    });
+
+    test('the last named slot absorbs what is left at the end', () {
+      expect(headerSpans({"middle": "a", "right": "b"}), [0, 1, 1]);
+    });
+
+    test('all three take one each', () {
+      expect(
+          headerSpans({"left": "a", "middle": "b", "right": "c"}), [1, 1, 1]);
+    });
+
+    test('an empty value is not a slot', () {
+      expect(headerSpans({"left": "a", "middle": ""}), [3, 0, 0]);
+    });
+
+    test('the spans always add up to the width', () {
+      for (var f in [
+        {"left": "a"},
+        {"left": "a", "middle": "b"},
+        {"left": "a", "right": "c"},
+        {"middle": "b", "right": "c"},
+        {"left": "a", "middle": "b", "right": "c"},
+      ]) {
+        var spans = headerSpans(f);
+        // Empty columns between named slots are drawn as a flexible gap of
+        // one, so the total is the width either way.
+        var gaps = spans.sublist(0, spans.lastIndexOf(spans.lastWhere((s) => s > 0)))
+            .where((s) => s == 0)
+            .length;
+        expect(spans.reduce((a, b) => a + b) + gaps, headerSlots.length,
+            reason: "$f gave $spans");
+      }
+    });
+
+    test('none at all is no slots', () {
+      expect(headerSpans({}), [0, 0, 0]);
+    });
+  });
+
+  group('HeaderBlockSyntax', () {
+    test('reads its fields and its height', () {
+      var e = _parse('''
+--header[300]--
+background: --embed[type=image/png,data=AAAA]--
+left: ![](logo)
+right: # My Site
+description: What it is for.
+nav: --include[navigation]--
+navat: top
+--/header--
+''', HeaderBlockSyntax());
+
+      expect(e.tag, "header");
+      expect(e.attributes["height"], "300");
+      expect(e.attributes["right"], "# My Site");
+      expect(e.attributes["navat"], "top");
+      expect(e.attributes["description"], "What it is for.");
+    });
+
+    test('without a height the reader\'s theme decides', () {
+      var e = _parse("--header--\nleft: hi\n--/header--", HeaderBlockSyntax());
+      expect(e.attributes["height"], isNull);
+    });
+
+    test('a height is bounded to something that is still a banner', () {
+      expect(_parse("--header[5000]--\nleft: a\n--/header--",
+              HeaderBlockSyntax()).attributes["height"],
+          "${HeaderBlockSyntax.maxHeight}");
+      expect(_parse("--header[1]--\nleft: a\n--/header--",
+              HeaderBlockSyntax()).attributes["height"],
+          "40");
+    });
+
+    test('an unterminated header still renders what was written', () {
+      var e = _parse("--header--\nleft: hi", HeaderBlockSyntax());
+      expect(e.attributes["left"], "hi");
+    });
+  });
+
+  group('embedImageBytes', () {
+    test('takes the picture out of an inline embed', () {
+      // "AAAA" is four zero bytes.
+      var got = embedImageBytes("--embed[type=image/png,data=AAAA]--");
+      expect(got, isNotNull);
+      expect(got!.length, 3);
+    });
+
+    test('anything that is not an inline image is simply not drawn', () {
+      expect(embedImageBytes(null), isNull);
+      expect(embedImageBytes("photo.png"), isNull);
+      expect(embedImageBytes("--embed[type=application/pdf,data=AAAA]--"),
+          isNull);
+      expect(embedImageBytes("--embed[type=image/png]--"), isNull);
+      // A truncated or mistyped embed is not a background; the header still
+      // draws without one.
+      expect(embedImageBytes("--embed[type=image/png,data=!!!]--"), isNull);
+    });
+  });
+
+  group('NavBlockSyntax', () {
+    test('one link a line, in order', () {
+      var e = _parse('''
+--nav--
+[Home](index.md)
+[About](about.md)
+--/nav--
+''', NavBlockSyntax());
+
+      expect(e.attributes["count"], "2");
+      expect(e.attributes["l0"], "[Home](index.md)");
+      expect(e.attributes["l1"], "[About](about.md)");
+      expect(e.attributes["style"], "plain");
+    });
+
+    test('the writer picks the shape', () {
+      for (var s in NavStyle.values) {
+        var e = _parse("--nav[${s.name}]--\n[a](a.md)\n--/nav--",
+            NavBlockSyntax());
+        expect(e.attributes["style"], s.name);
+      }
+    });
+
+    test('an unknown shape falls back rather than failing', () {
+      var e = _parse("--nav[sparkly]--\n[a](a.md)\n--/nav--", NavBlockSyntax());
+      expect(e.attributes["style"], "plain");
+    });
+
+    test('blank lines are not links', () {
+      var e = _parse("--nav--\n[a](a.md)\n\n\n[b](b.md)\n--/nav--",
+          NavBlockSyntax());
+      expect(e.attributes["count"], "2");
+    });
+
+    test('a bar stops being navigation past a point', () {
+      var many = List.generate(40, (i) => "[$i]($i.md)").join("\n");
+      var e = _parse("--nav--\n$many\n--/nav--", NavBlockSyntax());
+      expect(int.parse(e.attributes["count"]!), NavBlockSyntax.maxLinks);
+    });
+  });
+
+  group('the rules survive being saved', () {
+    test('a header round-trips', () {
+      const r = HeaderRule(
+          height: 300, padding: 24, radius: 12, gap: 16, scrim: 0.5);
+      expect(HeaderRule.fromJson(r.toJson()), r);
+    });
+
+    test('a bar round-trips', () {
+      const r = NavRule(gap: 20, padding: 10, radius: 99, borderWidth: 2);
+      expect(NavRule.fromJson(r.toJson()), r);
+    });
+
+    test('a guide written before either existed still loads', () {
+      var guide = MarkdownStyleGuide.fromJson({"id": "x", "name": "X"});
+      expect(guide.header, const HeaderRule());
+      expect(guide.nav, const NavRule());
+    });
+
+    test('bounds keep a guide from setting something unusable', () {
+      expect(const HeaderRule(height: 5000).boundedHeight, 600);
+      expect(const HeaderRule(height: 1).boundedHeight, 40);
+      expect(const NavRule(radius: 999).boundedRadius, 32);
+    });
+  });
+}

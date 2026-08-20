@@ -706,6 +706,155 @@ class GridRule {
       other.stackBelow == stackBelow;
 }
 
+/// HeaderRule is how a page's banner is drawn -- see HeaderBlockSyntax.
+///
+/// Only what is about the page rather than the writing: how tall a banner is
+/// when the writer did not say, how far its contents sit from its edges, how
+/// rounded it is, and how much the picture behind is muted so writing on top
+/// stays readable.
+class HeaderRule {
+  /// height is the tallest a header is when the writer did not say.
+  final double height;
+
+  /// padding is the space between the banner's edge and what is in it.
+  final double padding;
+  final double radius;
+
+  /// gap separates the rows inside a banner -- the bar from the title, the
+  /// title from the description.
+  final double gap;
+
+  /// scrim is how much of the surface colour is laid over the picture, from
+  /// 0 for none to 1 for opaque.
+  ///
+  /// A background chosen for how it looks is rarely chosen for how legible
+  /// white text is on it, and the writer cannot know what colour the reader
+  /// reads in. This is the reader's answer to that.
+  final double scrim;
+
+  const HeaderRule({
+    this.height = 220,
+    this.padding = 20,
+    this.radius = 8,
+    this.gap = 12,
+    this.scrim = 0.35,
+  });
+
+  double get boundedHeight => height.clamp(40, 600);
+  double get boundedPadding => padding.clamp(0, 64);
+  double get boundedRadius => radius.clamp(0, 48);
+  double get boundedGap => gap.clamp(0, 48);
+
+  HeaderRule copyWith({
+    double? height,
+    double? padding,
+    double? radius,
+    double? gap,
+    double? scrim,
+  }) =>
+      HeaderRule(
+        height: height ?? this.height,
+        padding: padding ?? this.padding,
+        radius: radius ?? this.radius,
+        gap: gap ?? this.gap,
+        scrim: scrim ?? this.scrim,
+      );
+
+  Map<String, Object?> toJson() => {
+        "height": height,
+        "padding": padding,
+        "radius": radius,
+        "gap": gap,
+        "scrim": scrim,
+      };
+
+  static HeaderRule fromJson(Map<String, Object?> json) => HeaderRule(
+        height: (json["height"] as num?)?.toDouble() ?? 220,
+        padding: (json["padding"] as num?)?.toDouble() ?? 20,
+        radius: (json["radius"] as num?)?.toDouble() ?? 8,
+        gap: (json["gap"] as num?)?.toDouble() ?? 12,
+        scrim: (json["scrim"] as num?)?.toDouble() ?? 0.35,
+      );
+
+  @override
+  int get hashCode => Object.hash(height, padding, radius, gap, scrim);
+
+  @override
+  bool operator ==(Object other) =>
+      other is HeaderRule && other.toJson().toString() == toJson().toString();
+}
+
+/// NavRule is how a bar of links is drawn -- see NavBlockSyntax.
+///
+/// The look is the reader's, the shape is the writer's: --nav[pills]-- says
+/// what kind of bar it is, and this says what that kind looks like here.
+class NavRule {
+  final double gap;
+
+  /// padding is inside each link, which is what gives a pill or a box its
+  /// size. Zero for a plain bar, where the links are just words.
+  final double padding;
+  final double radius;
+
+  /// borderWidth is the line around a boxed link, or under an underlined
+  /// one.
+  final double borderWidth;
+  final MarkdownInk ink;
+
+  const NavRule({
+    this.gap = 14,
+    this.padding = 8,
+    this.radius = 6,
+    this.borderWidth = 1,
+    this.ink = const MarkdownInk.of(MarkdownRole.link),
+  });
+
+  double get boundedGap => gap.clamp(0, 48);
+  double get boundedPadding => padding.clamp(0, 32);
+  double get boundedRadius => radius.clamp(0, 32);
+  double get boundedBorder => borderWidth.clamp(0, 8);
+
+  NavRule copyWith({
+    double? gap,
+    double? padding,
+    double? radius,
+    double? borderWidth,
+    MarkdownInk? ink,
+  }) =>
+      NavRule(
+        gap: gap ?? this.gap,
+        padding: padding ?? this.padding,
+        radius: radius ?? this.radius,
+        borderWidth: borderWidth ?? this.borderWidth,
+        ink: ink ?? this.ink,
+      );
+
+  Map<String, Object?> toJson() => {
+        "gap": gap,
+        "padding": padding,
+        "radius": radius,
+        "borderWidth": borderWidth,
+        "ink": ink.toJson(),
+      };
+
+  static NavRule fromJson(Map<String, Object?> json) => NavRule(
+        gap: (json["gap"] as num?)?.toDouble() ?? 14,
+        padding: (json["padding"] as num?)?.toDouble() ?? 8,
+        radius: (json["radius"] as num?)?.toDouble() ?? 6,
+        borderWidth: (json["borderWidth"] as num?)?.toDouble() ?? 1,
+        ink: json["ink"] is Map<String, Object?>
+            ? MarkdownInk.fromJson(json["ink"] as Map<String, Object?>)
+            : const MarkdownInk.of(MarkdownRole.link),
+      );
+
+  @override
+  int get hashCode => Object.hash(gap, padding, radius, borderWidth, ink);
+
+  @override
+  bool operator ==(Object other) =>
+      other is NavRule && other.toJson().toString() == toJson().toString();
+}
+
 /// CardRule is how a callout or a card is drawn.
 ///
 /// A callout and a card are the same thing with a different amount filled in:
@@ -962,6 +1111,12 @@ class MarkdownStyleGuide {
   /// grid is how a gallery is laid out -- see GridRule.
   final GridRule grid;
 
+  /// header is how a page's banner is drawn -- see HeaderRule.
+  final HeaderRule header;
+
+  /// nav is how a bar of links is drawn -- see NavRule.
+  final NavRule nav;
+
   /// copyWith returns this guide with some rules changed.
   ///
   /// Editing a built-in is not possible, and this is where that is made
@@ -1011,6 +1166,8 @@ class MarkdownStyleGuide {
     ColumnRule? columns,
     CardRule? cards,
     GridRule? grid,
+    HeaderRule? header,
+    NavRule? nav,
   }) =>
       MarkdownStyleGuide(
         id: id ?? this.id,
@@ -1054,6 +1211,8 @@ class MarkdownStyleGuide {
         columns: columns ?? this.columns,
         cards: cards ?? this.cards,
         grid: grid ?? this.grid,
+        header: header ?? this.header,
+        nav: nav ?? this.nav,
       );
 
   /// forked is this guide as the beginning of one of the reader's own.
@@ -1109,6 +1268,8 @@ class MarkdownStyleGuide {
         "columns": columns.toJson(),
         "cards": cards.toJson(),
         "grid": grid.toJson(),
+        "header": header.toJson(),
+        "nav": nav.toJson(),
       };
 
   static MarkdownStyleGuide fromJson(Map<String, Object?> json) {
@@ -1188,6 +1349,12 @@ class MarkdownStyleGuide {
       columns: json["columns"] is Map<String, Object?>
           ? ColumnRule.fromJson(json["columns"] as Map<String, Object?>)
           : const ColumnRule(),
+      header: json["header"] is Map<String, Object?>
+          ? HeaderRule.fromJson(json["header"] as Map<String, Object?>)
+          : const HeaderRule(),
+      nav: json["nav"] is Map<String, Object?>
+          ? NavRule.fromJson(json["nav"] as Map<String, Object?>)
+          : const NavRule(),
       grid: json["grid"] is Map<String, Object?>
           ? GridRule.fromJson(json["grid"] as Map<String, Object?>)
           : const GridRule(),
@@ -1246,5 +1413,7 @@ class MarkdownStyleGuide {
     this.columns = const ColumnRule(),
     this.cards = const CardRule(),
     this.grid = const GridRule(),
+    this.header = const HeaderRule(),
+    this.nav = const NavRule(),
   });
 }

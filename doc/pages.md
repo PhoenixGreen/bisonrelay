@@ -77,6 +77,48 @@ serving side before anything is sent, and have access to the store's data;
 `--include[...]--` survives being sent and is filled in by the reader. Both
 may appear in one site.
 
+### Headers and navigation
+
+A banner across the top of a page:
+
+```
+--header[220]--
+background: --embed[type=image/png,data=...]--
+left: ![](logo)
+right: # My site
+description: What the site is for.
+nav: --include[navigation]--
+navat: bottom
+--/header--
+```
+
+Every field is optional — one with only a background is a banner, one with
+only a title is a masthead. The number is the tallest it may be; without one
+the reader's theme decides.
+
+The three slots run left, middle and right. A slot on its own takes the whole
+width and sits where its name says. Otherwise each takes a column and the last
+one absorbs whatever is left at the end — so a logo on the left and a title in
+the middle gives the title the right-hand space too, while a logo left and a
+title right keeps the gap between them.
+
+A bar of links, one link a line:
+
+```
+--nav[pills]--
+[Home](index.md)
+[About](about.md)
+--/nav--
+```
+
+`plain`, `pills`, `underline` or `boxed`. The writer picks the shape, because
+it is part of how the page is laid out; what each shape looks like is the
+reader's, through Settings > Appearance > Markdown > Header and navigation and
+the colours they read in.
+
+A bar is usually written once as a fragment and included wherever it is
+wanted, which is what `nav:` above is doing.
+
 ### Other markup
 
 Pages use the same Markdown extensions posts do — `--embed[...]--` for

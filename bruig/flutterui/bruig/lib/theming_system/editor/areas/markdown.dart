@@ -157,6 +157,21 @@ A closing paragraph, which is the last block the run has to place.
 
 Body text below them.
 """,
+      _Element.header => """
+--header[200]--
+left: ### My site
+right: A line about it
+nav: --include[navigation]--
+--/header--
+
+--nav[pills]--
+[Home](index.md)
+[About](about.md)
+[Contact](contact.md)
+--/nav--
+
+Body text below the header, set the way the rest of a page is.
+""",
       _Element.gallery => """
 Body text above the gallery.
 
@@ -207,6 +222,7 @@ enum _Element {
   tables("Tables"),
   columns("Columns"),
   gallery("Gallery"),
+  header("Header and navigation"),
   rule("Horizontal rule"),
   images("Images");
 
@@ -1029,6 +1045,76 @@ class _MarkdownEditorState extends State<_MarkdownEditor> {
               max: 6,
               divisions: 6,
               onCommit: (v) => edit((g) => g.copyWith(tableBorderWidth: v))),
+        ];
+
+      case _Element.header:
+        return [
+          ctx.note("A banner across the top of a page, and the bar of links "
+              "that usually sits in it. The writer says what goes in them; "
+              "these say what they look like here."),
+          const Txt.M("Banner"),
+          ctx.slider("md-hdrheight", guide.header.height,
+              label: (v) => "Tallest: ${v.round()}px",
+              min: 80,
+              max: 480,
+              divisions: 20,
+              onCommit: (v) => edit(
+                  (g) => g.copyWith(header: g.header.copyWith(height: v)))),
+          ctx.note("What a plain --header-- uses. A writer who asks for a "
+              "height with --header[300]-- gets that instead."),
+          ctx.slider("md-hdrpad", guide.header.padding,
+              label: (v) => "Space inside: ${v.round()}px",
+              max: 64,
+              divisions: 32,
+              onCommit: (v) => edit(
+                  (g) => g.copyWith(header: g.header.copyWith(padding: v)))),
+          ctx.slider("md-hdrradius", guide.header.radius,
+              label: (v) => v == 0 ? "Corners: Square" : "Corners: ${v.round()}px",
+              max: 48,
+              divisions: 24,
+              onCommit: (v) => edit(
+                  (g) => g.copyWith(header: g.header.copyWith(radius: v)))),
+          ctx.slider("md-hdrscrim", guide.header.scrim * 100,
+              label: (v) => v == 0
+                  ? "Picture: Untouched"
+                  : "Picture dimmed by ${v.round()}%",
+              max: 90,
+              divisions: 18,
+              onCommit: (v) => edit((g) =>
+                  g.copyWith(header: g.header.copyWith(scrim: v / 100)))),
+          ctx.note("A background is chosen for how it looks, rarely for how "
+              "readable writing is on top of it -- and the writer cannot "
+              "know what colours you read in. This is the answer to that."),
+          const SizedBox(height: 16),
+          const Txt.M("Navigation"),
+          ctx.slider("md-navgap", guide.nav.gap,
+              label: (v) => "Space between links: ${v.round()}px",
+              max: 48,
+              divisions: 24,
+              onCommit: (v) =>
+                  edit((g) => g.copyWith(nav: g.nav.copyWith(gap: v)))),
+          ctx.slider("md-navpad", guide.nav.padding,
+              label: (v) => "Space inside a link: ${v.round()}px",
+              max: 32,
+              divisions: 16,
+              onCommit: (v) =>
+                  edit((g) => g.copyWith(nav: g.nav.copyWith(padding: v)))),
+          ctx.note("What gives a pill or a box its size. A plain bar is just "
+              "words and ignores it."),
+          ctx.slider("md-navradius", guide.nav.radius,
+              label: (v) => v == 0 ? "Corners: Square" : "Corners: ${v.round()}px",
+              max: 32,
+              divisions: 16,
+              onCommit: (v) =>
+                  edit((g) => g.copyWith(nav: g.nav.copyWith(radius: v)))),
+          ctx.slider("md-navborder", guide.nav.borderWidth,
+              label: (v) => "Line: ${v.round()}px",
+              max: 8,
+              divisions: 8,
+              onCommit: (v) => edit(
+                  (g) => g.copyWith(nav: g.nav.copyWith(borderWidth: v)))),
+          _inkPick(ctx, "Link colour", guide.nav.ink,
+              (i) => edit((g) => g.copyWith(nav: g.nav.copyWith(ink: i)))),
         ];
 
       case _Element.gallery:

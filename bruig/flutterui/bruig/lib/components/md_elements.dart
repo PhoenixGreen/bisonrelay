@@ -6,6 +6,7 @@ import 'package:bruig/components/feed/code_highlight.dart';
 import 'package:bruig/components/feed/feed_image.dart';
 import 'package:bruig/components/feed/feed_render_scope.dart';
 import 'package:bruig/components/feed/markdown_blocks.dart';
+import 'package:bruig/components/feed/markdown_header.dart';
 import 'package:bruig/components/pages/forms.dart';
 import 'package:bruig/components/snackbars.dart';
 import 'package:bruig/components/text_dialog.dart';
@@ -435,6 +436,8 @@ class MarkdownAreaModel extends ChangeNotifier {
     "columns": ColumnsMarkdownElementBuilder(),
     "cards": CardsMarkdownElementBuilder(),
     "grid": GridMarkdownElementBuilder(),
+    "header": HeaderMarkdownElementBuilder(),
+    "nav": NavMarkdownElementBuilder(),
   };
 
   final List<md.InlineSyntax> inlineSyntaxes = [
@@ -445,6 +448,8 @@ class MarkdownAreaModel extends ChangeNotifier {
     ColumnsBlockSyntax(),
     CardsBlockSyntax(),
     GridBlockSyntax(),
+    HeaderBlockSyntax(),
+    NavBlockSyntax(),
   ];
 
   // _pluginExtensions is whatever the last setPluginExtensions call added,
@@ -612,12 +617,16 @@ class MarkdownGuideScope extends InheritedWidget {
   final ColumnRule columns;
   final CardRule cards;
   final GridRule grid;
+  final HeaderRule header;
+  final NavRule nav;
 
   const MarkdownGuideScope(
       {required this.image,
       this.columns = const ColumnRule(),
       this.cards = const CardRule(),
       this.grid = const GridRule(),
+      this.header = const HeaderRule(),
+      this.nav = const NavRule(),
       required super.child,
       super.key});
 
@@ -632,6 +641,12 @@ class MarkdownGuideScope extends InheritedWidget {
 
   static GridRule? gridOf(BuildContext context) =>
       context.dependOnInheritedWidgetOfExactType<MarkdownGuideScope>()?.grid;
+
+  static HeaderRule? headerOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<MarkdownGuideScope>()?.header;
+
+  static NavRule? navOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<MarkdownGuideScope>()?.nav;
 
   @override
   bool updateShouldNotify(MarkdownGuideScope old) =>
@@ -1058,6 +1073,8 @@ class MarkdownArea extends StatelessWidget {
         columns: guide.columns,
         cards: guide.cards,
         grid: guide.grid,
+        header: guide.header,
+        nav: guide.nav,
         child: child);
   }
 }

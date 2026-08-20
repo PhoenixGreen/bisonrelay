@@ -1,0 +1,394 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
+import 'package:bruig/components/md_elements.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
+import 'package:bruig/theming_system/theme_preset.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:markdown/markdown.dart' as md;
+
+// markdown_header.dart is the two blocks a site's furniture is made of: the
+// banner at the top of a page, and the bar of links that usually sits in it.
+//
+// Both are fielded rather than markdown-inside-markdown, for the same reason
+// a card is: their parts are named things, in named places. A reader whose
+// client does not know them sees labelled lines in the order they were
+// written, which is still the header, just not drawn.
+
+/// headerSlots are the places across a header, left to right.
+const List<String> headerSlots = ["left", "middle", "right"];
+
+/// HeaderBlockSyntax reads a page's banner.
+///
+///     --header[220]--
+///     background: --embed[type=image/png,data=...]--
+///     left: ![](logo)
+///     right: # My Site
+///     description: What the site is for.
+///     nav: --include[navigation]--
+///     navat: bottom
+///     --/header--
+///
+/// The number is the tallest it may be, in pixels, matching --columns[n]--
+/// and --grid[n]-- next door; without one the reader's theme decides.
+///
+/// Every field is optional. A header with only a background is a banner; one
+/// with only a title is a masthead.
+class HeaderBlockSyntax extends md.BlockSyntax {
+  static final _open = RegExp(r'^\s*--header(?:\[(\d+)\])?--\s*$');
+  static final _close = RegExp(r'^\s*--/header--\s*$');
+  static final _field = RegExp(r'^\s*(\w+)\s*:\s*(.*)$');
+
+  /// The tallest a header may be asked to be. Past this it is not a banner
+  /// on a page, it is the page.
+  static const maxHeight = 600;
+
+  @override
+  RegExp get pattern => _open;
+
+  @override
+  md.Node? parse(md.BlockParser parser) {
+    var line = parser.current.content;
+    var height = int.tryParse(_open.firstMatch(line)?.group(1) ?? "");
+    parser.advance();
+
+    var fields = <String, String>{};
+    while (!parser.isDone) {
+      var at = parser.current.content;
+      if (_close.hasMatch(at)) {
+        parser.advance();
+        break;
+      }
+      var m = _field.firstMatch(at);
+      if (m != null) {
+        fields[m.group(1)!.toLowerCase()] = m.group(2)!.trim();
+      }
+      parser.advance();
+    }
+
+    var element = md.Element.text("header", "");
+    if (height != null) {
+      element.attributes["height"] = "${height.clamp(40, maxHeight)}";
+    }
+    fields.forEach((k, v) {
+      if (v.isNotEmpty) element.attributes[k] = v;
+    });
+    // Wrapped in a paragraph for the same reason a run of columns is: the
+    // builder that draws this is reached through flutter_markdown's inline
+    // path, which expects to be inside a block.
+    return md.Element("p", [element]);
+  }
+}
+
+/// headerSpans works out how wide each slot is.
+///
+/// Three rules, which between them give the shapes people actually write:
+///
+///  - A slot on its own takes the whole width, and sits where its name says.
+///  - Otherwise each named slot takes one column, and the last of them
+///    absorbs whatever is left at the end -- so a logo left and a title in
+///    the middle gives the title the right-hand space too.
+///  - An empty column *between* two named slots stays empty. A logo on the
+///    left and a title on the right means the gap between them, not a logo
+///    stretched across two thirds of the banner.
+///
+/// Returns a span per slot, zero for a slot that was not named.
+List<int> headerSpans(Map<String, String> fields) {
+  var named = [for (var s in headerSlots) fields[s]?.isNotEmpty ?? false];
+  var count = named.where((n) => n).length;
+  var spans = List<int>.filled(headerSlots.length, 0);
+  if (count == 0) return spans;
+
+  if (count == 1) {
+    var only = named.indexOf(true);
+    spans[only] = headerSlots.length;
+    return spans;
+  }
+
+  var last = named.lastIndexOf(true);
+  for (var i = 0; i < headerSlots.length; i++) {
+    if (named[i]) spans[i] = 1;
+  }
+  spans[last] += headerSlots.length - 1 - last;
+  return spans;
+}
+
+/// embedImageBytes pulls the picture out of an --embed[...]-- string.
+///
+/// The background is drawn rather than rendered: it has to fill the banner
+/// and be cropped to it, which is a decision about the box and not something
+/// the markdown renderer can be asked for. Returns null for anything that is
+/// not an inline image, which is then simply not drawn.
+Uint8List? embedImageBytes(String? value) {
+  if (value == null) return null;
+  var m = RegExp(r'--embed\[(.*?)\]--').firstMatch(value);
+  if (m == null) return null;
+
+  var parms = <String, String>{};
+  for (var part in (m.group(1) ?? "").split(",")) {
+    var at = part.indexOf("=");
+    if (at == -1) continue;
+    parms[part.substring(0, at)] = part.substring(at + 1);
+  }
+  if (!(parms["type"] ?? "").startsWith("image/")) return null;
+  var data = parms["data"];
+  if (data == null || data.isEmpty) return null;
+  try {
+    return base64Decode(data);
+  } catch (_) {
+    // A truncated or mistyped embed is not a background; the header still
+    // draws without one.
+    return null;
+  }
+}
+
+class HeaderMarkdownElementBuilder extends MarkdownElementBuilder {
+  @override
+  Widget visitElementAfter(md.Element element, TextStyle? preferredStyle) =>
+      _MarkdownHeader(fields: element.attributes);
+}
+
+class _MarkdownHeader extends StatelessWidget {
+  final Map<String, String> fields;
+  const _MarkdownHeader({required this.fields});
+
+  @override
+  Widget build(BuildContext context) {
+    var theme = ThemeNotifier.of(context);
+    var rule = MarkdownGuideScope.headerOf(context) ?? const HeaderRule();
+    var height = double.tryParse(fields["height"] ?? "") ?? rule.boundedHeight;
+    var spans = headerSpans(fields);
+    var background = embedImageBytes(fields["background"]);
+    var nav = fields["nav"];
+    var navAtTop = (fields["navat"] ?? "bottom").toLowerCase() == "top";
+
+    Widget slots() => Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            for (var i = 0; i < headerSlots.length; i++)
+              if (spans[i] > 0)
+                Expanded(
+                  flex: spans[i],
+                  child: Align(
+                    // Where the slot is named for, whatever width it ended
+                    // up with: "right" put on the right even when it is the
+                    // only thing in the banner.
+                    alignment: i == 0
+                        ? Alignment.centerLeft
+                        : (i == headerSlots.length - 1
+                            ? Alignment.centerRight
+                            : Alignment.center),
+                    child: MarkdownArea(fields[headerSlots[i]]!, false),
+                  ),
+                )
+              else
+                const Spacer(),
+          ],
+        );
+
+    var anySlot = spans.any((s) => s > 0);
+    var content = Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (nav != null && navAtTop) MarkdownArea(nav, false),
+        if (anySlot) ...[
+          if (nav != null && navAtTop) SizedBox(height: rule.boundedGap),
+          slots(),
+        ],
+        if (fields["description"] != null) ...[
+          SizedBox(height: rule.boundedGap),
+          MarkdownArea(fields["description"]!, false),
+        ],
+        if (nav != null && !navAtTop) ...[
+          const Spacer(),
+          MarkdownArea(nav, false),
+        ],
+      ],
+    );
+
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: rule.boundedGap),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(rule.boundedRadius),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: height),
+          child: Stack(fit: StackFit.passthrough, children: [
+            if (background != null)
+              Positioned.fill(
+                // Cover, not contain: a banner fills its space and is
+                // cropped to it, which is what a background is.
+                child: Image.memory(background, fit: BoxFit.cover),
+              ),
+            // A wash over the picture, so writing stays readable on top of
+            // whatever was chosen. Skipped entirely when there is no
+            // picture, where it would only mute the page's own background.
+            if (background != null && rule.scrim > 0)
+              Positioned.fill(
+                child: ColoredBox(
+                  color: theme.colors.surface
+                      .withValues(alpha: rule.scrim.clamp(0, 1)),
+                ),
+              ),
+            Padding(
+              padding: EdgeInsets.all(rule.boundedPadding),
+              child: content,
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+/// NavStyle is the shape of a bar of links. The writer picks one, because it
+/// is part of how the page is laid out; what each looks like is the reader's,
+/// through NavRule and the palette.
+enum NavStyle {
+  /// Words with space between them.
+  plain,
+
+  /// Each link in a filled, rounded box.
+  pills,
+
+  /// A line under each link.
+  underline,
+
+  /// Each link in an outlined box.
+  boxed;
+
+  static NavStyle parse(String? raw) {
+    for (var s in NavStyle.values) {
+      if (s.name == (raw ?? "").toLowerCase().trim()) return s;
+    }
+    return NavStyle.plain;
+  }
+}
+
+/// NavBlockSyntax reads a bar of links.
+///
+///     --nav[pills]--
+///     [Home](index.md)
+///     [About](about.md)
+///     --/nav--
+///
+/// One link a line, which is what makes it a bar rather than a paragraph
+/// that happens to contain links: the writer says what is in it and the
+/// reader's theme says what it looks like, so a bar written once reads
+/// correctly on a narrow window and in somebody else's colours.
+///
+/// A reader whose client does not know it sees the links, one a line, in
+/// order -- which is still the navigation, just not drawn as a bar.
+class NavBlockSyntax extends md.BlockSyntax {
+  static final _open = RegExp(r'^\s*--nav(?:\[(\w+)\])?--\s*$');
+  static final _close = RegExp(r'^\s*--/nav--\s*$');
+
+  /// The most links one bar may hold. Past this it is not navigation.
+  static const maxLinks = 24;
+
+  @override
+  RegExp get pattern => _open;
+
+  @override
+  md.Node? parse(md.BlockParser parser) {
+    var style = NavStyle.parse(_open.firstMatch(parser.current.content)?.group(1));
+    parser.advance();
+
+    var links = <String>[];
+    while (!parser.isDone) {
+      var at = parser.current.content;
+      if (_close.hasMatch(at)) {
+        parser.advance();
+        break;
+      }
+      var text = at.trim();
+      if (text.isNotEmpty && links.length < maxLinks) links.add(text);
+      parser.advance();
+    }
+
+    var element = md.Element.text("nav", "");
+    element.attributes["style"] = style.name;
+    element.attributes["count"] = "${links.length}";
+    for (var i = 0; i < links.length; i++) {
+      element.attributes["l$i"] = links[i];
+    }
+    return md.Element("p", [element]);
+  }
+}
+
+class NavMarkdownElementBuilder extends MarkdownElementBuilder {
+  @override
+  Widget visitElementAfter(md.Element element, TextStyle? preferredStyle) {
+    var count = int.tryParse(element.attributes["count"] ?? "") ?? 0;
+    return _MarkdownNav(
+      links: [for (var i = 0; i < count; i++) element.attributes["l$i"] ?? ""],
+      style: NavStyle.parse(element.attributes["style"]),
+    );
+  }
+}
+
+class _MarkdownNav extends StatelessWidget {
+  final List<String> links;
+  final NavStyle style;
+  const _MarkdownNav({required this.links, required this.style});
+
+  @override
+  Widget build(BuildContext context) {
+    if (links.isEmpty) return const SizedBox.shrink();
+    var theme = ThemeNotifier.of(context);
+    var rule = MarkdownGuideScope.navOf(context) ?? const NavRule();
+    var ink = theme.markdownInk(rule.ink) ?? theme.colors.primary;
+
+    // Each link is markdown of its own, so a link is a link -- followed the
+    // same way as one in a paragraph, br:// and all.
+    Widget item(String text) {
+      var inner = MarkdownArea(text, false);
+      switch (style) {
+        case NavStyle.plain:
+          return inner;
+        case NavStyle.pills:
+          return Container(
+            padding: EdgeInsets.symmetric(
+                horizontal: rule.boundedPadding, vertical: rule.boundedPadding / 2),
+            decoration: BoxDecoration(
+              color: ink.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(rule.boundedRadius),
+            ),
+            child: inner,
+          );
+        case NavStyle.boxed:
+          return Container(
+            padding: EdgeInsets.symmetric(
+                horizontal: rule.boundedPadding, vertical: rule.boundedPadding / 2),
+            decoration: BoxDecoration(
+              border: Border.all(color: ink, width: rule.boundedBorder),
+              borderRadius: BorderRadius.circular(rule.boundedRadius),
+            ),
+            child: inner,
+          );
+        case NavStyle.underline:
+          return Container(
+            padding: EdgeInsets.only(bottom: rule.boundedPadding / 2),
+            decoration: BoxDecoration(
+              border: Border(
+                  bottom: BorderSide(color: ink, width: rule.boundedBorder)),
+            ),
+            child: inner,
+          );
+      }
+    }
+
+    // Wrapped rather than a Row: a bar of six links in a narrow window is
+    // two rows of three, not six squeezed columns.
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: rule.boundedGap / 2),
+      child: Wrap(
+        spacing: rule.boundedGap,
+        runSpacing: rule.boundedGap / 2,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [for (var l in links) item(l)],
+      ),
+    );
+  }
+}

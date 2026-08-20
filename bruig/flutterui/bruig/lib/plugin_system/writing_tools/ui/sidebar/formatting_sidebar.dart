@@ -213,6 +213,26 @@ const _pages = [
   // A fragment shared by several pages -- a header, a navigation bar. Sent
   // once and filled in by the reader's client, so a bar on twenty pages
   // crosses the wire once rather than twenty times.
+  // A banner across the top of a page. Every field is optional -- one with
+  // only a background is a banner, one with only a title is a masthead --
+  // so the snippet puts in the shape somebody would keep rather than the
+  // whole of it.
+  _Snippet(
+    Icons.branding_watermark_outlined,
+    "Header",
+    "--header[220]--\nbackground: \nleft: ",
+    after: "\nright: # My site\nnav: --include[navigation]--\n--/header--",
+    placeholder: "![](logo)",
+    block: true,
+  ),
+  _Snippet(
+    Icons.menu_outlined,
+    "Navigation bar",
+    "--nav[pills]--\n[",
+    after: "](index.md)\n[About](about.md)\n--/nav--",
+    placeholder: "Home",
+    block: true,
+  ),
   _Snippet(
     Icons.dashboard_customize_outlined,
     "Shared fragment",
