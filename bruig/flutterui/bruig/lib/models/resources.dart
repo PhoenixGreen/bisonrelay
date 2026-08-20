@@ -41,6 +41,44 @@ List<String> partialNames(String page) {
 /// partialPath is where a fragment lives, as a request path.
 List<String> partialPath(String name) => ["partials", "$name.md"];
 
+/// maxPartialDepth is how far a fragment may reach through others.
+///
+/// A header holding a navigation bar is two. Much beyond that and the page
+/// being read is assembled from more pieces than anybody is keeping track
+/// of, and each level costs another pass over the text.
+const int maxPartialDepth = 8;
+
+/// expandPartials fills in --include[name]-- from what is held, including
+/// fragments that refer to other fragments.
+///
+/// [active] is what is being expanded right now, which is what stops a cycle:
+/// a header including itself, or two fragments including each other, would
+/// otherwise never finish. A marker that would loop is left as written --
+/// visible, which is what tells the writer they have made one.
+String expandPartials(String text, Map<String, String> partials,
+    {Set<String>? active, int depth = 0}) {
+  if (depth >= maxPartialDepth) return text;
+  active ??= <String>{};
+
+  return text.splitMapJoin(
+    includeRegexp,
+    onMatch: (m) {
+      var name = m.group(1)!;
+      if (active!.contains(name)) return m[0]!;
+      var body = partials[name];
+      // Not arrived yet, or not there at all. Shown as nothing rather than
+      // as the raw marker, which reads as something the writer typed wrong.
+      if (body == null) return "";
+      active.add(name);
+      var out = expandPartials(body, partials,
+          active: active, depth: depth + 1);
+      active.remove(name);
+      return out;
+    },
+    onNonMatch: (t) => t,
+  );
+}
+
 /// decodePage reads a reply's bytes as text.
 ///
 /// Lenient on purpose. A page is markdown and should decode cleanly, but a
@@ -213,20 +251,7 @@ class PagesSession extends ChangeNotifier {
     var data = decodePage(currentPage?.response.data);
 
     // Shared fragments, filled in from what this client has been given.
-    // One pass, not repeated: a fragment that includes itself would
-    // otherwise never finish, and a fragment referring to another is not
-    // worth the loop it would take to allow.
-    data = data.splitMapJoin(
-      includeRegexp,
-      onMatch: (m) {
-        var name = m.group(1)!;
-        var text = partials[name];
-        // Not arrived yet, or not there at all. Shown rather than left as
-        // the raw marker, which reads as something the writer typed wrong.
-        return text ?? "";
-      },
-      onNonMatch: (t) => t,
-    );
+    data = expandPartials(data, partials);
 
     // Remove --section-- strings (these are handled internally, not at the
     // markdown rendering level.
@@ -450,18 +475,26 @@ class ResourcesModel extends ChangeNotifier {
   void _fetchPartials(PagesSession sess, FetchedResource page) {
     var data = page.response.data;
     if (data == null) return;
-    var held = _partials[page.uid] ?? {};
-    var missing = partialNames(decodePage(data))
-        .where((n) => !held.containsKey(n))
-        .toList();
+    _requestPartials(
+        sess, page.uid, page.pageID, partialNames(decodePage(data)));
+  }
+
+  /// _requestPartials asks for the fragments in [names] that are not held.
+  void _requestPartials(
+      PagesSession sess, String uid, int pageID, List<String> names) {
+    var held = _partials[uid] ?? {};
+    var missing = names.where((n) => !held.containsKey(n)).toList();
     if (missing.isEmpty) return;
 
     for (var name in missing) {
       // Marked as a partial rather than a page so the reply is filed as one
       // -- it is not somewhere the reader navigated to, and putting it in
       // the history would make Back step through the furniture.
-      Golib.fetchResource(page.uid, partialPath(name), null, sess.id,
-              page.pageID, null, "$_partialTarget$name")
+      // Marked as held before the reply arrives, so a cycle between two
+      // fragments cannot ask for the same pair forever.
+      (_partials[uid] ??= {})[name] = "";
+      Golib.fetchResource(uid, partialPath(name), null, sess.id, pageID, null,
+              "$_partialTarget$name")
           .catchError((exception) {
         debugPrint("Unable to fetch partial $name: $exception");
         return 0;
@@ -487,10 +520,15 @@ class ResourcesModel extends ChangeNotifier {
       if (fr.asyncTargetID.startsWith(_partialTarget)) {
         var name = fr.asyncTargetID.substring(_partialTarget.length);
         if (fr.response.status == 200 && fr.response.data != null) {
-          (_partials[fr.uid] ??= {})[name] = decodePage(fr.response.data);
+          var body = decodePage(fr.response.data);
+          (_partials[fr.uid] ??= {})[name] = body;
           var sess = session(fr.sessionID);
           sess.partials = Map.of(_partials[fr.uid]!);
           sess.redraw();
+          // What this one refers to in turn. Usually already in hand: the
+          // server sends everything a page reaches in one bundle, so these
+          // requests are answered locally.
+          _requestPartials(sess, fr.uid, fr.pageID, partialNames(body));
         }
         continue;
       }

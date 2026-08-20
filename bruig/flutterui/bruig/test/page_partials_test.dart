@@ -74,15 +74,57 @@ void main() {
       expect(s.pageData(), contains("# Home"));
     });
 
-    test('a fragment naming itself does not loop', () {
-      // Substitution is one pass on purpose. A second would never finish.
+    test('a fragment can hold another', () {
+      // A header holding a navigation bar is the ordinary case, and the
+      // page names only the header.
+      var s = PagesSession(1)
+        ..partials = {
+          "header": "# Site\n--include[navigation]--",
+          "navigation": "[Home](index.md)",
+        }
+        ..currentPage = _page("--include[header]--\n# Welcome");
+
+      expect(s.pageData(), contains("# Site"));
+      expect(s.pageData(), contains("[Home](index.md)"));
+      expect(s.pageData(), contains("# Welcome"));
+      expect(s.pageData(), isNot(contains("--include")));
+    });
+
+    test('a fragment naming itself is left as written, not looped', () {
       var s = PagesSession(1)
         ..partials = {"loop": "before --include[loop]-- after"}
         ..currentPage = _page("--include[loop]--");
       expect(s.pageData(), contains("before"));
       expect(s.pageData(), contains("after"));
-      expect(s.pageData(), contains("--include[loop]--"),
-          reason: "left as written rather than expanded again");
+      // Visible, which is what tells the writer they have made a cycle.
+      expect(s.pageData(), contains("--include[loop]--"));
+    });
+
+    test('two fragments naming each other do not loop', () {
+      var s = PagesSession(1)
+        ..partials = {
+          "a": "A --include[b]--",
+          "b": "B --include[a]--",
+        }
+        ..currentPage = _page("--include[a]--");
+      var out = s.pageData();
+      expect(out, contains("A"));
+      expect(out, contains("B"));
+      expect(out, contains("--include[a]--"));
+    });
+
+    test('nesting is bounded, however deep the chain', () {
+      // Each level is another pass over the text; a chain longer than
+      // anybody is tracking stops rather than running away.
+      var deep = {
+        for (var i = 0; i < 40; i++) "p$i": "x --include[p${i + 1}]--",
+      };
+      var s = PagesSession(1)
+        ..partials = deep
+        ..currentPage = _page("--include[p0]--");
+      expect(() => s.pageData(), returnsNormally);
+      expect("x".allMatches(s.pageData()).length,
+          lessThanOrEqualTo(maxPartialDepth));
     });
 
     test('a page with nothing shared is unchanged', () {

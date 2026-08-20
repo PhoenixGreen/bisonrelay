@@ -56,8 +56,20 @@ Requests say which fragments the asking client already holds, so the serving
 side leaves those out. A client that does not send that list simply receives
 them again: it costs bandwidth and breaks nothing.
 
-Substitution is a single pass. A fragment that refers to another, or to
-itself, is left as written rather than expanded further.
+A fragment may refer to another — a header holding a navigation bar is the
+ordinary case:
+
+```
+partials/navigation.md      [Home](index.md) · [About](about.md)
+partials/header.md          # My site
+                            --include[navigation]--
+index.md                    --include[header]--
+```
+
+Everything a page reaches is sent with it, so the nesting costs no extra
+round trips. A fragment that refers to itself, or two that refer to each
+other, are left as written rather than expanded — the marker stays visible,
+which is what says a cycle has been made.
 
 Note that this is a different mechanism from the `{{...}}` templates a
 [simple store](simplestore.md) uses. Those are Go templates, expanded by the

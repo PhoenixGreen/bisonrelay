@@ -16,6 +16,12 @@ import (
 // PartialsDir is where a site keeps the fragments its pages share.
 const PartialsDir = "partials"
 
+// MaxPartialsPerPage bounds how many fragments one page may reach through
+// others. A page needing more than this has stopped being a page with shared
+// furniture and become something the reader should not be made to fetch in
+// one go.
+const MaxPartialsPerPage = 32
+
 // includeRegexp matches a reference to a shared fragment: --include[name]--.
 //
 // Deliberately not Go's {{...}}, which a store's templates already use and
@@ -140,10 +146,26 @@ func (pr *PagesResource) Fulfill(ctx context.Context, uid clientintf.UserID,
 	bundle := rpc.RMResourceBundle{
 		Resources: map[string]rpc.RMFetchResourceReply{},
 	}
-	for _, name := range wanted {
-		if _, ok := have[name]; ok {
-			continue
+
+	// Fragments may refer to other fragments -- a header holding a
+	// navigation bar is the ordinary case -- so this walks what is
+	// reachable from the page rather than only its first level.
+	//
+	// A fragment the client already holds is still read here, and still
+	// not sent: what it refers to may be something the client does not
+	// have, and stopping at it would leave that hole unfilled forever.
+	queue := append([]string(nil), wanted...)
+	seen := make(map[string]struct{}, len(queue))
+	for _, n := range queue {
+		seen[n] = struct{}{}
+	}
+	for i := 0; i < len(queue); i++ {
+		if len(seen) > MaxPartialsPerPage {
+			pr.log.Warnf("Page %s reaches more than %d fragments; "+
+				"the rest are not sent", requestPath, MaxPartialsPerPage)
+			break
 		}
+		name := queue[i]
 		path := PartialPath(name)
 		pdata, pfound, err := pr.read(path)
 		if err != nil {
@@ -151,8 +173,23 @@ func (pr *PagesResource) Fulfill(ctx context.Context, uid clientintf.UserID,
 		}
 		if !pfound {
 			// A page may refer to a fragment that is not there; the
-			// reader is told so where it would have gone rather than
-			// the whole page failing.
+			// reader is shown nothing where it would have gone rather
+			// than the whole page failing.
+			continue
+		}
+
+		for _, nested := range PartialNames(string(pdata)) {
+			if _, ok := seen[nested]; ok {
+				// Already queued, or a cycle -- header including
+				// itself, or two including each other. Either way
+				// there is nothing further to collect.
+				continue
+			}
+			seen[nested] = struct{}{}
+			queue = append(queue, nested)
+		}
+
+		if _, ok := have[name]; ok {
 			continue
 		}
 		bundle.Resources[strescape.ResourcesPath(path)] =

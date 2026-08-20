@@ -167,3 +167,66 @@ func keys(b rpc.RMResourceBundle) []string {
 	}
 	return out
 }
+
+func TestNestedFragmentsAreCollected(t *testing.T) {
+	root := t.TempDir()
+	writePageFile(t, root, "index.md", "--include[header]--")
+	writePageFile(t, root, "partials/header.md",
+		"# Site\n--include[navigation]--")
+	writePageFile(t, root, "partials/navigation.md", "[Home](index.md)")
+	pr := NewPagesResource(root, nil)
+
+	// A header holding a navigation bar is the ordinary case, and the page
+	// only names the header.
+	reply := fulfillPage(t, pr, []string{"index.md"}, nil)
+	b := decodeBundle(t, reply)
+	for _, want := range []string{"index.md", "partials/header.md",
+		"partials/navigation.md"} {
+		if _, ok := b.Resources[want]; !ok {
+			t.Fatalf("%q missing from %v", want, keys(b))
+		}
+	}
+}
+
+func TestAHeldFragmentStillYieldsWhatItReaches(t *testing.T) {
+	root := t.TempDir()
+	writePageFile(t, root, "index.md", "--include[header]--")
+	writePageFile(t, root, "partials/header.md", "--include[navigation]--")
+	writePageFile(t, root, "partials/navigation.md", "[Home](index.md)")
+	pr := NewPagesResource(root, nil)
+
+	// The client has the header but has never seen what the header refers
+	// to. Stopping at the header would leave that hole unfilled forever.
+	reply := fulfillPage(t, pr, []string{"index.md"},
+		map[string]string{rpc.ResourceMetaHavePartials: "header"})
+	b := decodeBundle(t, reply)
+
+	if _, ok := b.Resources["partials/header.md"]; ok {
+		t.Fatal("the header was already held and should not be sent again")
+	}
+	if _, ok := b.Resources["partials/navigation.md"]; !ok {
+		t.Fatalf("what the header reaches is missing: %v", keys(b))
+	}
+}
+
+func TestFragmentCyclesDoNotHang(t *testing.T) {
+	root := t.TempDir()
+	writePageFile(t, root, "index.md", "--include[a]--")
+	writePageFile(t, root, "partials/a.md", "--include[b]--")
+	writePageFile(t, root, "partials/b.md", "--include[a]--")
+	writePageFile(t, root, "partials/self.md", "--include[self]--")
+	pr := NewPagesResource(root, nil)
+
+	reply := fulfillPage(t, pr, []string{"index.md"}, nil)
+	b := decodeBundle(t, reply)
+	if len(b.Resources) != 3 { // the page, a, b
+		t.Fatalf("got %v", keys(b))
+	}
+
+	// And one that names itself.
+	writePageFile(t, root, "index.md", "--include[self]--")
+	reply = fulfillPage(t, pr, []string{"index.md"}, nil)
+	if b := decodeBundle(t, reply); len(b.Resources) != 2 {
+		t.Fatalf("got %v", keys(b))
+	}
+}
