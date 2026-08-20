@@ -1,80 +1,71 @@
 Pages
 ===
 
-A page is a markdown document one client serves to another over the same
-encrypted transport everything else travels on. There is no server in the
-middle and no copy anywhere else: a site is readable by the people its author
-is already connected to, and only while the author's client is reachable.
+A Bison Relay client can serve pages to the people it is connected to. They
+are Markdown files in one directory, fetched on request over the same
+encrypted transport as everything else — there is no server, and nothing is
+uploaded anywhere. A page can only be read while the client serving it is
+online.
 
-### The protocol
-
-A request is an `RMFetchResource` -- a path, optional metadata, and an
-optional JSON body -- and the answer is an `RMFetchResourceReply` carrying a
-status and the page. The statuses are deliberately HTTP-shaped:
-
-| Status | Meaning |
-| --- | --- |
-| 200 | Here is the page. |
-| 400 | The request made no sense. |
-| 404 | Hosting, but nothing at that path. |
-| 501 | Not hosting anything at all. |
-
-The 404/501 distinction is what lets a visitor tell "this user has no site"
-from "this user has no such page". A client that serves nothing still answers,
-at the cost of one message: without a reply there is no way to tell it apart
-from being offline, and the request simply waits in the send queue.
-
-Note that no status means "offline". Bison Relay has no presence, by design --
-a request to someone unreachable stays queued and is delivered whenever they
-next connect.
-
-### Hosting from the app
-
-Settings live in the Pages section: **My Site** switches hosting on, chooses
-the directory, and edits the markdown. Changes take effect immediately and are
-written back to the config file.
-
-### Hosting from the config file
+### Enabling
 
 ```
 [resources]
-upstream = pages:~/.brclient/pages
+upstream = pages:/home/user/.brclient/pages
 ```
 
-The directory is served as-is. `index.md` is the front page -- it is what the
-app requests when someone opens your site.
+In bruig this is Pages > My Site, which writes the same setting.
 
-Pages may link to each other with a plain relative path, and to *another
-user's* site with an absolute one:
+`index.md` is the front page: it is what a visitor's client asks for when
+they open somebody's site, so a site without one cannot be entered.
 
-```
-[About me](about.md)
-[Their front page](br://<their public id>/index.md)
-```
+### Linking
 
-Markdown embeds work the same as they do in posts, including images and
-download links to shared files.
-
-### A site and a store together
-
-A [simple store](simplestore.md) can be served alongside a pages site:
+A link with no scheme is a page of the same site:
 
 ```
-[resources]
-upstream = pages:~/.brclient/pages
-storepath = ~/.brclient/store
+[About](about.md)
 ```
 
-The store keeps its own paths (`/cart`, `/orders`, `/admin` and so on) and its
-front page moves to `/store`, leaving the root index to the pages site. Store
-templates that link to absolute paths keep working unchanged.
+`br://<user id>/<path>` reaches somebody else's site, which is how one site
+links to another.
 
-With `storepath` alone and no `upstream`, the store takes the root, which is
-what `upstream = simplestore:...` has always done.
+Page names should avoid spaces. A space ends a Markdown link, so
+`[x](Test Page.md)` links to `Test` and leaves `Page.md)` as text — bruig
+publishes pages under a lowercased, underscored name for this reason.
 
-### Other upstreams
+### Shared fragments
 
-`upstream` also accepts an `http://`/`https://` base URL, which proxies
-requests to a web server, and `clientrpc`, which hands them to a client
-connected over the RPC interface. Neither is editable from the app, since the
-app is not the thing serving.
+A fragment several pages share — a header, a navigation bar — is written once
+in `partials/` and referred to by name:
+
+```
+partials/navigation.md      one file
+--include[navigation]--     in any page
+```
+
+The fragment is **not** expanded into the page before it is sent. It travels
+alongside the first page that refers to it, in a single reply, and the
+reader's client keeps it and fills in every later page itself. A navigation
+bar on twenty pages therefore crosses the wire once rather than twenty times,
+and each subsequent page costs one round trip carrying only its own text.
+
+Requests say which fragments the asking client already holds, so the serving
+side leaves those out. A client that does not send that list simply receives
+them again: it costs bandwidth and breaks nothing.
+
+Substitution is a single pass. A fragment that refers to another, or to
+itself, is left as written rather than expanded further.
+
+Note that this is a different mechanism from the `{{...}}` templates a
+[simple store](simplestore.md) uses. Those are Go templates, expanded by the
+serving side before anything is sent, and have access to the store's data;
+`--include[...]--` survives being sent and is filled in by the reader. Both
+may appear in one site.
+
+### Other markup
+
+Pages use the same Markdown extensions posts do — `--embed[...]--` for
+images and file downloads, `--columns--`, `--cards--`, `--grid--` — plus two
+of their own: `--form--` for something the reader answers, and
+`--section id=x --` for the region an answer is written into.

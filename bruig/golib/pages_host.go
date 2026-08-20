@@ -230,7 +230,11 @@ func (ph *pagesHost) apply(cfg pagesHostConfig) error {
 			ph.stopStoreLocked()
 			return fmt.Errorf("unable to create pages dir: %v", err)
 		}
-		router.BindPrefixPath(nil, resources.NewFilesystemResource(
+		// PagesResource rather than a plain filesystem one: it serves
+		// the same files, and bundles the shared fragments a page
+		// refers to so they cross the wire once rather than once per
+		// page. See resources.PagesResource.
+		router.BindPrefixPath(nil, resources.NewPagesResource(
 			cfg.PagesPath, ph.log))
 	}
 

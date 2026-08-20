@@ -210,6 +210,17 @@ const _pages = [
   ),
   // The cut between the part of a page an index shows and the rest of it.
   _Snippet(Icons.content_cut, "Read-more cut", "--endofpost--", block: true),
+  // A fragment shared by several pages -- a header, a navigation bar. Sent
+  // once and filled in by the reader's client, so a bar on twenty pages
+  // crosses the wire once rather than twenty times.
+  _Snippet(
+    Icons.dashboard_customize_outlined,
+    "Shared fragment",
+    "--include[",
+    after: "]--",
+    placeholder: "navigation",
+    block: true,
+  ),
 ];
 
 /// FormattingSidebar offers embeds and Markdown, applied to the composer the

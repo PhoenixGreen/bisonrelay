@@ -18,6 +18,29 @@ class RequestedResource extends ChangeNotifier {
 final sectionStartRegexp = RegExp(r'--section id=([\w]+) --');
 final sectionEndRegexp = RegExp(r'--/section--');
 
+/// includeRegexp matches a reference to a shared fragment of a site --
+/// --include[navigation]-- and the like. Must match the Go side's, in
+/// client/resources/pages.go.
+///
+/// Deliberately not Go's {{...}}, which a store's templates already use.
+/// Those are expanded before anything is sent; these are the opposite --
+/// they survive being sent and are filled in here, out of fragments this
+/// client has already been given, so a navigation bar shared by twenty
+/// pages crosses the wire once instead of twenty times.
+final includeRegexp = RegExp(r'--include\[([\w-]{1,64})\]--');
+
+/// partialNames returns the fragments a page refers to, without repeats.
+List<String> partialNames(String page) {
+  var seen = <String>{};
+  for (var m in includeRegexp.allMatches(page)) {
+    seen.add(m.group(1)!);
+  }
+  return seen.toList();
+}
+
+/// partialPath is where a fragment lives, as a request path.
+List<String> partialPath(String name) => ["partials", "$name.md"];
+
 // pageFetchTimeout is how long a page request waits before the session
 // reports that nothing came back.
 //
@@ -89,6 +112,10 @@ class PagesSession extends ChangeNotifier {
     }
     _finishLoad();
   }
+
+  /// redraw tells the viewer to rebuild without changing what is shown --
+  /// a fragment arriving fills part of the page already on screen.
+  void redraw() => notifyListeners();
 
   void _finishLoad() {
     _loading = false;
@@ -168,9 +195,29 @@ class PagesSession extends ChangeNotifier {
     super.dispose();
   }
 
+  /// partials are the shared fragments known for the page being shown,
+  /// by name. Filled in by ResourcesModel, which is what fetches them.
+  Map<String, String> partials = const {};
+
   String pageData() {
     var utfData = currentPage?.response.data ?? Uint8List(0);
     var data = utf8.decode(utfData);
+
+    // Shared fragments, filled in from what this client has been given.
+    // One pass, not repeated: a fragment that includes itself would
+    // otherwise never finish, and a fragment referring to another is not
+    // worth the loop it would take to allow.
+    data = data.splitMapJoin(
+      includeRegexp,
+      onMatch: (m) {
+        var name = m.group(1)!;
+        var text = partials[name];
+        // Not arrived yet, or not there at all. Shown rather than left as
+        // the raw marker, which reads as something the writer typed wrong.
+        return text ?? "";
+      },
+      onNonMatch: (t) => t,
+    );
 
     // Remove --section-- strings (these are handled internally, not at the
     // markdown rendering level.
@@ -267,6 +314,11 @@ class PagesSession extends ChangeNotifier {
   }
 }
 
+/// _partialTarget marks a reply as a shared fragment rather than a page.
+/// Carried in the async target field, which is already how a reply that is
+/// not a navigation is told apart.
+const String _partialTarget = "partial:";
+
 class ResourcesModel extends ChangeNotifier {
   /// [runStream] is false in tests, which have no golib to listen to.
   /// Everything else about the model works without it -- the stream only
@@ -347,8 +399,18 @@ class ResourcesModel extends ChangeNotifier {
       }
     }
 
+    // Tell the other side which shared fragments this client already has,
+    // so the ones it holds are left out of what comes back. Only the asking
+    // side knows, and without it a navigation bar would arrive with every
+    // page -- which is the whole thing partials exist to avoid.
+    Map<String, String>? meta;
+    var held = partialsFor(uid);
+    if (held.isNotEmpty) {
+      meta = {"HavePartials": held.keys.join(",")};
+    }
+
     sessionID = await Golib.fetchResource(
-        uid, path, null, sessionID, parentPage, data, asyncTargetID);
+        uid, path, meta, sessionID, parentPage, data, asyncTargetID);
 
     var sess = session(sessionID);
     if (asyncTargetID == "") {
@@ -358,6 +420,44 @@ class ResourcesModel extends ChangeNotifier {
       sess.replaceAsyncTargetWithLoading(asyncTargetID);
     }
     return sess;
+  }
+
+  // _partials are the shared fragments held for each user, by name.
+  //
+  // Per user because they are one site's: two people's "navigation" are two
+  // different things. Kept for the run rather than the session -- a fragment
+  // is the part of a site least likely to change, and refetching it per tab
+  // would undo most of what it is for.
+  final Map<String, Map<String, String>> _partials = {};
+
+  /// partialsFor is what is held for a user, for the request to say so.
+  Map<String, String> partialsFor(String uid) => _partials[uid] ?? const {};
+
+  /// _fetchPartials asks for the fragments a page needs and does not have.
+  ///
+  /// Usually free: the server bundles them with the page that first refers
+  /// to them, and a bundled resource is served out of the client's own store
+  /// without another message. The request is what pulls it out of there.
+  void _fetchPartials(PagesSession sess, FetchedResource page) {
+    var data = page.response.data;
+    if (data == null) return;
+    var held = _partials[page.uid] ?? {};
+    var missing = partialNames(utf8.decode(data))
+        .where((n) => !held.containsKey(n))
+        .toList();
+    if (missing.isEmpty) return;
+
+    for (var name in missing) {
+      // Marked as a partial rather than a page so the reply is filed as one
+      // -- it is not somewhere the reader navigated to, and putting it in
+      // the history would make Back step through the furniture.
+      Golib.fetchResource(page.uid, partialPath(name), null, sess.id,
+              page.pageID, null, "$_partialTarget$name")
+          .catchError((exception) {
+        debugPrint("Unable to fetch partial $name: $exception");
+        return 0;
+      });
+    }
   }
 
   // _fetchListeners are told about every reply that arrives, whichever
@@ -373,6 +473,19 @@ class ResourcesModel extends ChangeNotifier {
   void _handleFetchedResources() async {
     var stream = Golib.fetchedResources();
     await for (var fr in stream) {
+      // A shared fragment, not a page: stored for the site it came from and
+      // put into whatever is on screen, without disturbing the history.
+      if (fr.asyncTargetID.startsWith(_partialTarget)) {
+        var name = fr.asyncTargetID.substring(_partialTarget.length);
+        if (fr.response.status == 200 && fr.response.data != null) {
+          (_partials[fr.uid] ??= {})[name] = utf8.decode(fr.response.data!);
+          var sess = session(fr.sessionID);
+          sess.partials = Map.of(_partials[fr.uid]!);
+          sess.redraw();
+        }
+        continue;
+      }
+
       for (var l in List.of(_fetchListeners)) {
         l(fr);
       }
@@ -401,7 +514,9 @@ class ResourcesModel extends ChangeNotifier {
         sess.replaceAsyncTargets(targets);
       } else {
         // Full page reload.
+        sess.partials = Map.of(_partials[fr.uid] ?? const {});
         sess.currentPage = fr;
+        _fetchPartials(sess, fr);
       }
     }
   }

@@ -186,6 +186,18 @@ const (
 
 	ResourceMetaResponseIsBundle      = "IsBundle"
 	ResourceMetaResponseIsBundleValue = "1"
+
+	// ResourceMetaHavePartials is sent by a client that already holds some
+	// of the shared fragments a page may include, as a comma-separated
+	// list of their names. The server leaves those out of the bundle it
+	// replies with.
+	//
+	// The whole point of a partial is that a navigation bar shared by
+	// twenty pages crosses the wire once rather than twenty times, and
+	// only the asking side knows what it already has. A server that does
+	// not read this simply sends them every time, which costs bandwidth
+	// and breaks nothing.
+	ResourceMetaHavePartials = "HavePartials"
 )
 
 const RMCFetchResource = "fetchresource"
