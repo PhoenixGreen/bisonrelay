@@ -1,4 +1,5 @@
 import 'package:bruig/components/containers.dart';
+import 'package:bruig/screens/pages/browser.dart';
 import 'package:flutter/material.dart';
 
 // Pages tabs. Visit is first because it is what the section is for most of
@@ -27,17 +28,17 @@ const List<String> pagesTabLabels = ["Visit", "My Site", "Store"];
 List<SidebarNavItem> pagesBarItems(Function tabChange, int selectedIndex) {
   return [
     SidebarNavItem(
-        icon: Icons.travel_explore_outlined,
+        icon: sectionIcon(pagesTabVisit),
         selected: selectedIndex == pagesTabVisit,
         label: pagesTabLabels[pagesTabVisit],
         onTap: () => tabChange(pagesTabVisit)),
     SidebarNavItem(
-        icon: Icons.web_outlined,
+        icon: sectionIcon(pagesTabMySite),
         selected: selectedIndex == pagesTabMySite,
         label: pagesTabLabels[pagesTabMySite],
         onTap: () => tabChange(pagesTabMySite)),
     SidebarNavItem(
-        icon: Icons.storefront_outlined,
+        icon: sectionIcon(pagesTabStore),
         selected: selectedIndex == pagesTabStore,
         label: pagesTabLabels[pagesTabStore],
         onTap: () => tabChange(pagesTabStore)),

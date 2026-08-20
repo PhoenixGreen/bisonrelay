@@ -1,4 +1,5 @@
 import 'package:bruig/components/md_elements.dart';
+import 'package:bruig/components/pages_bar.dart';
 import 'package:bruig/components/text.dart';
 import 'package:bruig/models/client.dart';
 import 'package:bruig/models/resources.dart';
@@ -363,9 +364,22 @@ class PageBrowserBar extends StatelessWidget {
   /// sectionLabel is what the address area says when there is no page open
   /// -- the name of the section being looked at instead.
   final String sectionLabel;
+
+  /// section is the Pages section showing, or -1 while a page is. Together
+  /// with [onSection] it puts My Site and Store in the bar as well as in the
+  /// sidebar -- which matters because the sidebar can be shut, and these
+  /// would otherwise have nowhere left to be reached from.
+  ///
+  /// Visit is deliberately not among them: the new-tab button on the strip
+  /// already goes there, and a second control for the same place would be
+  /// one to work out rather than one to use.
+  final int section;
+  final void Function(int)? onSection;
   const PageBrowserBar({
     super.key,
     this.sectionLabel = "",
+    this.section = -1,
+    this.onSection,
     required this.session,
     required this.nick,
     required this.path,
@@ -431,6 +445,11 @@ class PageBrowserBar extends StatelessWidget {
                       height: 12,
                       child: CircularProgressIndicator(strokeWidth: 2)),
                 ),
+              if (session == null && sectionIcon(section) != null)
+                Padding(
+                  padding: const EdgeInsets.only(right: 6),
+                  child: Icon(sectionIcon(section), size: 14),
+                ),
               Flexible(
                 child: session == null
                     ? Txt.S(sectionLabel,
@@ -441,7 +460,32 @@ class PageBrowserBar extends StatelessWidget {
             ]),
           ),
         ),
+        if (onSection != null) ...[
+          const SizedBox(width: 4),
+          for (var i in const [pagesTabMySite, pagesTabStore])
+            IconButton(
+              icon: Icon(sectionIcon(i), size: 18),
+              tooltip: pagesTabLabels[i],
+              isSelected: section == i,
+              color: section == i ? theme.colors.primary : null,
+              onPressed: () => onSection!(i),
+            ),
+        ],
       ]),
     );
   }
+}
+
+/// sectionIcon is the icon for a Pages section, matching the sidebar's, so
+/// the same destination looks the same in both places.
+IconData? sectionIcon(int section) {
+  switch (section) {
+    case pagesTabVisit:
+      return Icons.travel_explore_outlined;
+    case pagesTabMySite:
+      return Icons.web_outlined;
+    case pagesTabStore:
+      return Icons.storefront_outlined;
+  }
+  return null;
 }

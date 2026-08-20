@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:bruig/components/containers.dart';
+import 'package:bruig/components/empty_widget.dart';
 import 'package:bruig/components/pages_bar.dart';
 import 'package:bruig/components/text.dart';
 import 'package:bruig/models/client.dart';
@@ -11,6 +12,7 @@ import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/screens/overview.dart';
 import 'package:bruig/screens/pages/browser.dart';
 import 'package:bruig/screens/pages/my_site.dart';
+import 'package:bruig/screens/pages/sections.dart';
 import 'package:bruig/screens/pages/store.dart';
 import 'package:bruig/screens/pages/visit.dart';
 import 'package:flutter/material.dart';
@@ -124,16 +126,7 @@ class _ViewPageScreenState extends State<ViewPageScreen> {
   // for why it is not reset when a page opens.
   void toggleSidebar() => pages.sidebarOpen = !pages.sidebarOpen;
 
-  Widget activeTab(int tab) {
-    switch (tab) {
-      case pagesTabMySite:
-        return MySiteTab(pages, widget.client, resources, showBrowser);
-      case pagesTabStore:
-        return StoreTab(pages);
-      default:
-        return VisitTab(widget.client, pages, resources, showBrowser);
-    }
-  }
+
 
   /// closeSession shuts a page and decides what to show instead.
   ///
@@ -184,9 +177,18 @@ class _ViewPageScreenState extends State<ViewPageScreen> {
           // always find it. It lives in this bar, so a bar that appeared
           // only while reading a page would leave the sidebar shut with no
           // way to open it again.
-          var body = browsing
-              ? PageBrowser(session, widget.client, resources)
-              : activeTab(tab);
+          // Every section stays built while another is looked at, so a
+          // half-written page or product survives the trip -- see
+          // PagesSections.
+          var body = PagesSections(
+            index: browsing ? PagesSections.browserIndex : tab,
+            visit: VisitTab(widget.client, pages, resources, showBrowser),
+            mySite: MySiteTab(pages, widget.client, resources, showBrowser),
+            store: StoreTab(pages),
+            browser: session == null
+                ? const Empty()
+                : PageBrowser(session, widget.client, resources),
+          );
 
           var content = Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -217,6 +219,11 @@ class _ViewPageScreenState extends State<ViewPageScreen> {
                 loading: browsing && session.loading,
                 sidebarOpen: sidebarOpen,
                 onToggleSidebar: inDrawer ? null : toggleSidebar,
+                // The sidebar is the usual way to these two, and it can be
+                // shut -- so the bar carries them as well, or hiding the
+                // sidebar would put them out of reach entirely.
+                section: browsing ? -1 : tab,
+                onSection: (i) => onItemChanged(i),
                 onBack: () => session?.goBack(),
                 onForward: () => session?.goForward(),
                 onReload: reload,

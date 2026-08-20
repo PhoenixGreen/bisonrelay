@@ -1,4 +1,5 @@
 import 'package:bruig/components/containers.dart';
+import 'package:bruig/components/pages_bar.dart';
 import 'package:bruig/models/resources.dart';
 import 'package:bruig/screens/pages/browser.dart';
 import 'package:flutter/material.dart';
@@ -19,6 +20,8 @@ void main() {
     VoidCallback? onToggle,
     bool toggleable = true,
     bool withPage = true,
+    int section = -1,
+    void Function(int)? onSection,
   }) async {
     var session = withPage ? PagesSession(1) : null;
     await tester.pumpWidget(ChangeNotifierProvider<ThemeNotifier>.value(
@@ -28,6 +31,8 @@ void main() {
               body: PageBrowserBar(
         session: session,
         sectionLabel: "My Site",
+        section: section,
+        onSection: onSection,
         nick: "alice",
         path: "index.md",
         loading: false,
@@ -83,6 +88,25 @@ void main() {
       expect(find.byTooltip(t), findsOneWidget, reason: t);
       expect(_button(tester, t).onPressed, isNull, reason: t);
     }
+  });
+
+  testWidgets('the bar reaches My Site and Store, which the sidebar may not',
+      (tester) async {
+    // The sidebar is the usual way to these and can be shut, so without
+    // them here hiding it would put both out of reach.
+    var went = <int>[];
+    await pumpBar(tester,
+        sidebarOpen: false, withPage: false, onSection: went.add);
+
+    expect(find.byTooltip("My Site"), findsOneWidget);
+    expect(find.byTooltip("Store"), findsOneWidget);
+    // Visit is not among them: the strip's new-tab button already goes
+    // there, and two controls for one place is one to work out.
+    expect(find.byTooltip("Visit"), findsNothing);
+
+    await tester.tap(find.byTooltip("Store"));
+    await tester.pumpAndSettle();
+    expect(went, [pagesTabStore]);
   });
 
   testWidgets('the toggle is left out where it could not work', (tester) async {
