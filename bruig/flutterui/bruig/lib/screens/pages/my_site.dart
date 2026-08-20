@@ -103,8 +103,12 @@ class _MySiteTabState extends State<MySiteTab> {
       // A page only being served, with no document behind it, has to be
       // brought into the library before it can be published from one.
       await PageDocuments.adopt(pages, page);
-      await PageDocuments.publish(pages, page);
+      var missing = await PageDocuments.publish(pages, page);
       await refreshDocuments();
+      if (missing > 0) {
+        snackbar.error("${page.name} was published with $missing picture"
+            "${missing == 1 ? "" : "s"} missing.");
+      }
     } catch (exception) {
       snackbar.error("Unable to publish ${page.name}: $exception");
     }

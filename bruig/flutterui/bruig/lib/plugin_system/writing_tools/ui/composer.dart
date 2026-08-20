@@ -145,26 +145,36 @@ class _WritingComposerState extends State<WritingComposer> {
   /// _thing is what the publish menu calls the open document.
   String get _thing => isFragment ? "fragment" : "page";
 
-  /// _publishedText is what the site is currently serving for the open
-  /// page, or null when nothing is. Read when the document changes and
-  /// after publishing, which are the only times it can move.
-  String? _publishedText;
-
   /// pageState is where the open page stands.
   ///
-  /// Compared against what is in the editor rather than against the saved
-  /// document, so it is right as the page is typed. It used to be computed
-  /// from two files when the open document changed, which meant editing a
-  /// published page offered no Publish update until the writer left the
-  /// section and came back -- the state was correct for a file nobody had
-  /// written yet.
-  PagePublishState get pageState =>
-      pagePublishState(_publishedText, contentCtrl.text);
+  /// Worked out by comparing what is served against what is in the editor
+  /// -- but the two are not written the same way. A document keeps its
+  /// pictures as "data=[content abc]" references while it is being edited,
+  /// and what is published has them filled in, so comparing the two
+  /// directly reported "edited" the instant anything with a picture in it
+  /// was published, and went on reporting it.
+  ///
+  /// The editor's text is therefore put through the same substitution
+  /// publishing does before the comparison. That reads the embed store,
+  /// which is why this is worked out on a debounce and held rather than
+  /// computed in build.
+  PagePublishState pageState = PagePublishState.draft;
+
+  Timer? _stateDebounce;
+
+  /// refreshPageStateSoon batches the typing case: the answer only changes
+  /// at the moment the text stops matching what was published, and asking
+  /// on every keystroke would read a file per character.
+  void refreshPageStateSoon() {
+    _stateDebounce?.cancel();
+    _stateDebounce =
+        Timer(const Duration(milliseconds: 400), refreshPageState);
+  }
 
   Future<void> refreshPageState() async {
     if (!isPage) {
-      if (_publishedText != null && mounted) {
-        setState(() => _publishedText = null);
+      if (pageState != PagePublishState.draft && mounted) {
+        setState(() => pageState = PagePublishState.draft);
       }
       return;
     }
@@ -172,10 +182,15 @@ class _WritingComposerState extends State<WritingComposer> {
     if (name == null) return;
     // The file it is actually served as, which is not always the slug of
     // its name -- see PageDocument.file.
-    var page = PageDocuments.forName(_pages, name);
+    var page =
+        PageDocuments.forName(_pages, name, folder: _library.openFolder);
     var served = page.state.live ? await _pages.readPage(page.file) : null;
+    var mine = served == null
+        ? contentCtrl.text
+        : (await resolveEmbeds(contentCtrl.text)).text;
     if (!mounted) return;
-    setState(() => _publishedText = served);
+    var next = pagePublishState(served, mine);
+    if (next != pageState) setState(() => pageState = next);
   }
 
   void publishPage() async {
@@ -186,10 +201,15 @@ class _WritingComposerState extends State<WritingComposer> {
       // Written out first, or the copy taken would be the last save rather
       // than what is on screen.
       await _library.flush();
-      await PageDocuments.publish(_pages,
+      var missing = await PageDocuments.publish(_pages,
           PageDocuments.forName(_pages, name, folder: _library.openFolder));
       await refreshPageState();
-      snackbar.success("Published $name.");
+      if (missing > 0) {
+        snackbar.error("Published $name with $missing picture"
+            "${missing == 1 ? "" : "s"} missing.");
+      } else {
+        snackbar.success("Published $name.");
+      }
     } catch (exception) {
       snackbar.error("Unable to publish $name: $exception");
     }
@@ -419,6 +439,8 @@ class _WritingComposerState extends State<WritingComposer> {
   dispose() {
     _debounce?.cancel();
     _debounceSizeCalc?.cancel();
+    _stateDebounce?.cancel();
+    _stateDebounce?.cancel();
     // Withdraw this composer, so the sidebar slot goes back to whatever the
     // screen normally shows there. Read without listening: dispose must not
     // register a dependency.
@@ -455,6 +477,12 @@ class _WritingComposerState extends State<WritingComposer> {
     contentCtrl.selection = TextSelection.collapsed(
         offset: post.caret.clamp(0, contentCtrl.text.length));
     contentCtrl.addListener(contentChanged);
+    // Typing is what moves a published page to "edited", so the menu has to
+    // follow the text as well as the document.
+    contentCtrl.addListener(refreshPageStateSoon);
+    // Typing is what moves a published page to "edited", so the menu has to
+    // follow the text as well as the document.
+    contentCtrl.addListener(refreshPageStateSoon);
     // The listener is added after the text, so the first pass has to be
     // asked for: a post restored from the model already has its references
     // in it and nothing has been typed yet.

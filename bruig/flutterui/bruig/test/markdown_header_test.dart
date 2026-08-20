@@ -1,6 +1,7 @@
 import 'package:bruig/components/feed/markdown_header.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:bruig/components/md_elements.dart';
+import 'package:flutter/material.dart';
 import 'package:bruig/theming_system/model/markdown_style.dart';
 import 'package:markdown/markdown.dart' as md;
 
@@ -218,6 +219,35 @@ navat: top
       expect(const HeaderRule(height: 5000).boundedHeight, 600);
       expect(const HeaderRule(height: 1).boundedHeight, 40);
       expect(const NavRule(radius: 999).boundedRadius, 32);
+    });
+  });
+
+  group('where a slot sits in itself', () {
+    test('a middle beside a logo hugs the logo', () {
+      // Centring it in the space it grew into would put the title further
+      // from the logo than writing it on the right would have.
+      expect(headerSlotAlignment({"left": "logo", "middle": "title"}, 1),
+          Alignment.centerLeft);
+    });
+
+    test('a middle with nothing to its left is centred', () {
+      expect(headerSlotAlignment({"middle": "title"}, 1), Alignment.center);
+    });
+
+    test('the ends sit at their ends', () {
+      expect(headerSlotAlignment({"left": "a"}, 0), Alignment.centerLeft);
+      expect(headerSlotAlignment({"right": "c"}, 2), Alignment.centerRight);
+      // Even alone, so "right" means right.
+      expect(headerSlotAlignment({"right": "c"}, 2), Alignment.centerRight);
+    });
+
+    test('the three slots give three distances from the logo', () {
+      // Which is what makes having three worth it: next to it, centred,
+      // and against the far edge.
+      var withLogo = {"left": "logo", "middle": "m", "right": "r"};
+      expect(headerSlotAlignment(withLogo, 1), Alignment.centerLeft);
+      expect(headerSlotAlignment(withLogo, 2), Alignment.centerRight);
+      expect(headerSlotAlignment({"middle": "m"}, 1), Alignment.center);
     });
   });
 }

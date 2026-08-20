@@ -120,13 +120,23 @@ final RegExp _embedReference =
 /// throwing. Publishing a page with one picture missing is a page with one
 /// picture missing; refusing to publish at all is a site that cannot be
 /// updated because of something the writer may not even remember adding.
-Future<String> resolveEmbeds(String text) async {
-  if (!_embedReference.hasMatch(text)) return text;
+///
+/// [missing] counts those, so the writer can be told. They cannot see it
+/// themselves: their own preview fills the references in from memory, so a
+/// page with a hole in it looks right to the only person able to look.
+Future<({String text, int missing})> resolveEmbeds(String text) async {
+  if (!_embedReference.hasMatch(text)) return (text: text, missing: 0);
   var contents = await EmbedStore.loadFor(text);
-  return text.replaceAllMapped(_embedReference, (m) {
+  var missing = 0;
+  var out = text.replaceAllMapped(_embedReference, (m) {
     var data = contents[m.group(2)];
-    return data == null ? m[0]! : "${m.group(1)}$data";
+    if (data == null) {
+      missing++;
+      return m[0]!;
+    }
+    return "${m.group(1)}$data";
   });
+  return (text: out, missing: missing);
 }
 
 /// isSiteFolder is whether documents in [folder] belong to the site -- the
@@ -332,21 +342,25 @@ class PageDocuments {
   /// Publishing is also where a page served under an old, unsluggable name
   /// moves to its slug: the new file is written first and the old one
   /// dropped after, so there is no moment where nothing is served.
-  static Future<void> publish(PagesModel pages, PageDocument page) async {
+  /// publish returns how many pictures could not be filled in, which is
+  /// zero for almost every page and worth saying out loud when it is not.
+  static Future<int> publish(PagesModel pages, PageDocument page) async {
     var text = await PostStorage.read(page.folder, page.name);
-    if (text == null) return;
+    if (text == null) return 0;
 
     // Pictures are kept out of the document while it is being written --
     // the text carries "data=[content abc]" and the bytes live in the embed
     // store -- so what is published has to have them put back. Without
     // this a page with a picture in it published the reference, and every
     // visitor got a page with a hole where the picture was.
-    text = await resolveEmbeds(text);
+    var resolved = await resolveEmbeds(text);
+    text = resolved.text;
     var target = fileNameFor(page.folder, page.name);
     await pages.savePage(target, text);
     if (page.state.live && page.file != target) {
       await pages.deletePage(page.file);
     }
+    return resolved.missing;
   }
 
   /// unpublish takes the page down, keeping the document.

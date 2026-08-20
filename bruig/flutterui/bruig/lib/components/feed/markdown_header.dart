@@ -115,6 +115,24 @@ List<int> headerSpans(Map<String, String> fields) {
   return spans;
 }
 
+/// headerSlotAlignment is where a slot's contents sit within it.
+///
+/// Where the slot is named for, with one exception: a middle slot that has
+/// something to its left hugs that instead of centring. A logo and a title
+/// written as left and middle means the title beside the logo -- centring it
+/// in the space it grew into puts it further from the logo than writing it
+/// on the right would have.
+///
+/// So the three slots give three distances: middle is next to the logo,
+/// right is against the far edge, and a middle with nothing to its left is
+/// centred in the banner.
+Alignment headerSlotAlignment(Map<String, String> fields, int index) {
+  if (index == 0) return Alignment.centerLeft;
+  if (index == headerSlots.length - 1) return Alignment.centerRight;
+  var hasLeft = fields[headerSlots[0]]?.isNotEmpty ?? false;
+  return hasLeft ? Alignment.centerLeft : Alignment.center;
+}
+
 /// embedImageBytes pulls the picture out of an --embed[...]-- string.
 ///
 /// The background is drawn rather than rendered: it has to fill the banner
@@ -174,14 +192,7 @@ class _MarkdownHeader extends StatelessWidget {
                 Expanded(
                   flex: spans[i],
                   child: Align(
-                    // Where the slot is named for, whatever width it ended
-                    // up with: "right" put on the right even when it is the
-                    // only thing in the banner.
-                    alignment: i == 0
-                        ? Alignment.centerLeft
-                        : (i == headerSlots.length - 1
-                            ? Alignment.centerRight
-                            : Alignment.center),
+                    alignment: headerSlotAlignment(fields, i),
                     child: MarkdownArea(fields[headerSlots[i]]!, false),
                   ),
                 )

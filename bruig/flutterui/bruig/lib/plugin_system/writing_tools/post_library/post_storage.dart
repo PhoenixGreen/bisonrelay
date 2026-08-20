@@ -492,6 +492,22 @@ class PostStorage {
           if (entry.isFolder && !entry.isReservedFolder) entry.name,
       ];
 
+  /// allFolderNames is every folder, reserved ones included.
+  ///
+  /// Deliberately separate from [folderNames], which answers a different
+  /// question -- where a document may be filed -- and leaves the reserved
+  /// folders out because nothing may be filed into them by hand.
+  ///
+  /// Anything asking "what is in the library" needs this one. Asking the
+  /// other is how the embed sweep came to delete every picture that only a
+  /// page, a fragment or a note referred to: it read the folders a document
+  /// could be moved to, decided nothing pointed at those pictures, and
+  /// tidied them away.
+  static Future<List<String>> allFolderNames() async => [
+        for (var entry in await list())
+          if (entry.isFolder) entry.name,
+      ];
+
   /// delete removes a document, or a folder and everything in it.
   ///
   /// A reserved folder is refused; what is inside one is not, so there is

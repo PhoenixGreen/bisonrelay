@@ -35,10 +35,11 @@ void main() {
     var got = await resolveEmbeds(
         "# Home\n--embed[type=image/png,data=[content $id]]--");
 
-    expect(got, contains("data=$data"));
-    expect(got, isNot(contains("[content")));
+    expect(got.text, contains("data=$data"));
+    expect(got.text, isNot(contains("[content")));
     // Everything around it is left alone.
-    expect(got, contains("# Home"));
+    expect(got.text, contains("# Home"));
+    expect(got.missing, 0);
   });
 
   test('a reference with nothing behind it is left as it stands', () async {
@@ -46,11 +47,16 @@ void main() {
     // missing. Refusing to publish is a site that cannot be updated because
     // of something the writer may not remember adding.
     var src = "--embed[type=image/png,data=[content zzzzzzzzzzzz]]--";
-    expect(await resolveEmbeds(src), src);
+    var got = await resolveEmbeds(src);
+    expect(got.text, src);
+    // Counted, so the writer can be told. They cannot see it themselves:
+    // their own preview fills the reference in from memory, so a page with
+    // a hole in it looks right to the only person able to look.
+    expect(got.missing, 1);
   });
 
   test('text with no pictures is returned untouched', () async {
-    expect(await resolveEmbeds("# Just words"), "# Just words");
+    expect((await resolveEmbeds("# Just words")).text, "# Just words");
   });
 
   test('several references are all filled in', () async {
@@ -61,6 +67,7 @@ void main() {
     var got = await resolveEmbeds(
         "--embed[type=image/png,data=[content $id]]--\n"
         "--embed[type=image/svg+xml,data=[content $other]]--");
-    expect("data=$data".allMatches(got).length, 2);
+    expect("data=$data".allMatches(got.text).length, 2);
+    expect(got.missing, 0);
   });
 }

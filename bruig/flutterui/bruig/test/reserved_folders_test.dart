@@ -144,4 +144,29 @@ void main() {
       expect(await PostStorage.rename(doc, "renamed"), isNotNull);
     });
   });
+
+  group('listing folders', () {
+    test('the move list leaves the reserved ones out', () async {
+      await folder("Drafts");
+      for (var name in reservedFolderNames) {
+        await folder(name);
+      }
+      expect(await PostStorage.folderNames(), ["Drafts"]);
+    });
+
+    test('the full list includes them', () async {
+      // Anything asking "what is in the library" needs this one. Asking the
+      // other is how the embed sweep came to delete every picture that only
+      // a page, a fragment or a note referred to.
+      await folder("Drafts");
+      for (var name in reservedFolderNames) {
+        await folder(name);
+      }
+      var all = await PostStorage.allFolderNames();
+      expect(all, contains("Drafts"));
+      for (var name in reservedFolderNames) {
+        expect(all, contains(name), reason: name);
+      }
+    });
+  });
 }

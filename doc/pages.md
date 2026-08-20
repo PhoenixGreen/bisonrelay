@@ -102,6 +102,10 @@ one absorbs whatever is left at the end — so a logo on the left and a title in
 the middle gives the title the right-hand space too, while a logo left and a
 title right keeps the gap between them.
 
+The three give three distances from the logo: `middle` sits beside it,
+`right` against the far edge, and a `middle` with nothing to its left is
+centred in the banner.
+
 A bar of links, one link a line:
 
 ```

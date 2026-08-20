@@ -154,7 +154,9 @@ class PostLibraryModel extends ChangeNotifier {
     _sweptEmbeds = true;
     try {
       var live = Set<String>.from(alsoLive?.call() ?? const <String>{});
-      for (var folder in ["", ...await PostStorage.folderNames()]) {
+      // Every folder, reserved ones included: a picture in a page, a
+      // fragment or a note is as spoken for as one in a post.
+      for (var folder in ["", ...await PostStorage.allFolderNames()]) {
         for (var entry in await PostStorage.list(folder)) {
           if (entry.isFolder) continue;
           var content = await PostStorage.read(entry.folder, entry.name);
