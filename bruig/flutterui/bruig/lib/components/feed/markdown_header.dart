@@ -193,7 +193,15 @@ class _MarkdownHeader extends StatelessWidget {
                   flex: spans[i],
                   child: Align(
                     alignment: headerSlotAlignment(fields, i),
-                    child: MarkdownArea(fields[headerSlots[i]]!, false),
+                    // Scaled down to the room it has rather than overrunning
+                    // it: a logo is whatever size it was saved at, and the
+                    // banner's height is the writer's decision about the
+                    // page.
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: headerSlotAlignment(fields, i),
+                      child: MarkdownArea(fields[headerSlots[i]]!, false),
+                    ),
                   ),
                 )
               else
@@ -202,21 +210,27 @@ class _MarkdownHeader extends StatelessWidget {
         );
 
     var anySlot = spans.any((s) => s > 0);
+
+    // The banner is a fixed height, so the row of slots takes what the bar
+    // and the description leave rather than whatever its tallest picture
+    // wants. Without that a logo taller than the banner pushed the bar out
+    // of the bottom of it -- a Spacer cannot give back room that has
+    // already been claimed.
     var content = Column(
-      mainAxisSize: MainAxisSize.min,
+      mainAxisSize: MainAxisSize.max,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (nav != null && navAtTop) MarkdownArea(nav, false),
-        if (anySlot) ...[
-          if (nav != null && navAtTop) SizedBox(height: rule.boundedGap),
-          slots(),
+        if (nav != null && navAtTop) ...[
+          MarkdownArea(nav, false),
+          SizedBox(height: rule.boundedGap),
         ],
+        if (anySlot) Expanded(child: slots()) else const Spacer(),
         if (fields["description"] != null) ...[
           SizedBox(height: rule.boundedGap),
           MarkdownArea(fields["description"]!, false),
         ],
         if (nav != null && !navAtTop) ...[
-          const Spacer(),
+          SizedBox(height: rule.boundedGap),
           MarkdownArea(nav, false),
         ],
       ],
@@ -226,9 +240,12 @@ class _MarkdownHeader extends StatelessWidget {
       padding: EdgeInsets.symmetric(vertical: rule.boundedGap),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(rule.boundedRadius),
-        child: ConstrainedBox(
-          constraints: BoxConstraints(maxHeight: height),
-          child: Stack(fit: StackFit.passthrough, children: [
+        // A fixed height rather than a maximum: what is in a banner is laid
+        // out against a height that is known, instead of discovering it by
+        // overrunning. The number the writer gives is what the banner is.
+        child: SizedBox(
+          height: height,
+          child: Stack(fit: StackFit.expand, children: [
             if (background != null)
               Positioned.fill(
                 // Cover, not contain: a banner fills its space and is
@@ -313,7 +330,8 @@ class NavBlockSyntax extends md.BlockSyntax {
 
   @override
   md.Node? parse(md.BlockParser parser) {
-    var style = NavStyle.parse(_open.firstMatch(parser.current.content)?.group(1));
+    var style =
+        NavStyle.parse(_open.firstMatch(parser.current.content)?.group(1));
     parser.advance();
 
     var links = <String>[];
@@ -371,7 +389,8 @@ class _MarkdownNav extends StatelessWidget {
         case NavStyle.pills:
           return Container(
             padding: EdgeInsets.symmetric(
-                horizontal: rule.boundedPadding, vertical: rule.boundedPadding / 2),
+                horizontal: rule.boundedPadding,
+                vertical: rule.boundedPadding / 2),
             decoration: BoxDecoration(
               color: ink.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(rule.boundedRadius),
@@ -381,7 +400,8 @@ class _MarkdownNav extends StatelessWidget {
         case NavStyle.boxed:
           return Container(
             padding: EdgeInsets.symmetric(
-                horizontal: rule.boundedPadding, vertical: rule.boundedPadding / 2),
+                horizontal: rule.boundedPadding,
+                vertical: rule.boundedPadding / 2),
             decoration: BoxDecoration(
               border: Border.all(color: ink, width: rule.boundedBorder),
               borderRadius: BorderRadius.circular(rule.boundedRadius),

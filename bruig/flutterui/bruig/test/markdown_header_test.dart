@@ -1,7 +1,13 @@
 import 'package:bruig/components/feed/markdown_header.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:bruig/components/md_elements.dart';
+import 'package:bruig/models/payments.dart';
+import 'package:bruig/models/snackbar.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
 import 'package:bruig/theming_system/model/markdown_style.dart';
 import 'package:markdown/markdown.dart' as md;
 
@@ -248,6 +254,64 @@ navat: top
       expect(headerSlotAlignment(withLogo, 1), Alignment.centerLeft);
       expect(headerSlotAlignment(withLogo, 2), Alignment.centerRight);
       expect(headerSlotAlignment({"middle": "m"}, 1), Alignment.center);
+    });
+  });
+
+  group('drawn', () {
+    setUp(() => SharedPreferences.setMockInitialValues({}));
+
+    Widget host(Widget child, {double width = 900}) => MultiProvider(
+          providers: [
+            ChangeNotifierProvider<ThemeNotifier>(
+                create: (c) => ThemeNotifier(doLoad: false)),
+            ChangeNotifierProvider<PaymentsModel>(
+                create: (c) => PaymentsModel()),
+            ChangeNotifierProvider<MarkdownAreaModel>(
+                create: (c) => MarkdownAreaModel("/tmp")),
+            ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+          ],
+          child: MaterialApp(
+            home: Scaffold(
+              body: SingleChildScrollView(
+                child: SizedBox(width: width, child: child),
+              ),
+            ),
+          ),
+        );
+
+    // Note on what these can and cannot catch: a picture does not decode in
+    // a widget test, so an embed lays out as nothing and a banner holding
+    // only a logo cannot overflow here however wrong the layout is. Text
+    // does lay out, which is what the narrow case below leans on -- checked
+    // against the version that shipped the overflow, where it fails.
+
+    testWidgets('the banner is the height it was asked for', (tester) async {
+      await tester.pumpWidget(host(MarkdownArea("""
+--header[150]--
+right: # My site
+--/header--
+""", false)));
+      await tester.pump();
+
+      // Found through the slot's text, since the header widget is private.
+      var box = tester.getSize(find.ancestor(
+          of: find.text("My site"),
+          matching: find.byType(ClipRRect)).first);
+      expect(box.height, 150);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('a narrow window does not overflow either', (tester) async {
+      await tester.pumpWidget(host(MarkdownArea("""
+--header[120]--
+left: # A logo would go here
+middle: # A rather long site name that has to wrap
+right: [Contact](contact.md)
+--/header--
+""", false), width: 320));
+      await tester.pump();
+
+      expect(tester.takeException(), isNull);
     });
   });
 }

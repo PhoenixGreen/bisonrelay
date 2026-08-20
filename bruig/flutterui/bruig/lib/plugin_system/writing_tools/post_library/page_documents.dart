@@ -270,7 +270,12 @@ class PageDocuments {
       if (servedFile != null) {
         servedText = await pages.readPage(servedFile.name);
       }
+      // Put the pictures back before comparing. What is served has them
+      // filled in and the document holds references, so comparing the two
+      // as written reported every page with a picture in it as edited the
+      // moment it was published, and went on reporting it.
       var text = await PostStorage.read(folder, doc.name) ?? "";
+      if (servedText != null) text = (await resolveEmbeds(text)).text;
       out.add(PageDocument(
         name: doc.name,
         file: file,
