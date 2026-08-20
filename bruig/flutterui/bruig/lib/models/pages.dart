@@ -581,11 +581,44 @@ class PagesModel extends ChangeNotifier {
   bool _loadingHost = false;
   bool get loadingHost => _loadingHost;
 
-  Future<void> loadHost() async {
+  Future<void>? _hostLoad;
+
+  /// hostReady completes once the hosting configuration has been read.
+  ///
+  /// Anything that depends on what is being hosted has to wait for this. The
+  /// store's catalogue is read on the Store section being built, which now
+  /// happens as Pages opens rather than when the section is first looked at
+  /// -- so without this it asked whether a store was being hosted before the
+  /// answer had arrived, was told no, and showed an empty catalogue until
+  /// something else refilled it.
+  Future<void> get hostReady =>
+      _host != null ? Future.value() : (_hostLoad ??= loadHost());
+
+  Future<void> loadHost() {
+    var load = _load();
+    _hostLoad = load;
+    return load;
+  }
+
+  /// fetchHost, fetchProducts and fetchOrders are the calls into golib,
+  /// named so a test can stand in for them. PagesModel talks to golib
+  /// directly and the plugin's own mock is long out of date, so without
+  /// these the ordering below -- which is what this went wrong on -- cannot
+  /// be tested at all.
+  @visibleForTesting
+  Future<PagesHostStatus> fetchHost() => Golib.getPagesHostConfig();
+
+  @visibleForTesting
+  Future<List<ManagedProduct>> fetchProducts() => Golib.listStoreProducts();
+
+  @visibleForTesting
+  Future<List<ManagedOrder>> fetchOrders() => Golib.listStoreOrders();
+
+  Future<void> _load() async {
     _loadingHost = true;
     notifyListeners();
     try {
-      _host = await Golib.getPagesHostConfig();
+      _host = await fetchHost();
       _hostError = null;
     } catch (exception) {
       _hostError = "$exception";
@@ -691,6 +724,7 @@ class PagesModel extends ChangeNotifier {
   /// hosted is not an error worth showing -- the UI offers to switch one on
   /// instead -- so the lists are simply left empty.
   Future<void> loadStore() async {
+    await hostReady;
     if (!hostConfig.hostsStore) {
       _products = const [];
       _orders = const [];
@@ -702,8 +736,8 @@ class PagesModel extends ChangeNotifier {
     _loadingStore = true;
     notifyListeners();
     try {
-      _products = await Golib.listStoreProducts();
-      _orders = await Golib.listStoreOrders();
+      _products = await fetchProducts();
+      _orders = await fetchOrders();
       _storeError = null;
     } catch (exception) {
       _storeError = "$exception";
