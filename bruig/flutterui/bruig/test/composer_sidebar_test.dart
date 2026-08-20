@@ -253,6 +253,43 @@ void main() {
       controller.dispose();
     });
 
+    // Every icon in the panel is unique bar the headings, which share one on
+    // purpose and carry their level on the button face. Worth pinning: a
+    // duplicate is two buttons a reader cannot tell apart, and it breaks
+    // every test that taps by icon.
+    testWidgets("no two buttons wear the same icon", (tester) async {
+      await pumpPanel(tester);
+
+      var icons = tester
+          .widgetList<Icon>(find.byType(Icon))
+          .map((i) => i.icon)
+          .toList();
+      var headings = icons.where((i) => i == Icons.title).length;
+      var rest = icons.where((i) => i != Icons.title).toList();
+
+      expect(headings, 3);
+      expect(rest.toSet().length, rest.length,
+          reason: "duplicate icon in the formatting panel");
+    });
+
+    testWidgets("the Pages and store section writes page syntax",
+        (tester) async {
+      await pumpPanel(tester);
+
+      // A download embed is the app's own syntax and works in a post too --
+      // it is in this section because attaching a file to a page is what
+      // somebody looking here is doing.
+      await tester.tap(find.byTooltip("Download"));
+      await tester.pumpAndSettle();
+      expect(editor.text, contains("--embed[download="));
+
+      editor.clear();
+      await tester.tap(find.byTooltip("Reply region"));
+      await tester.pumpAndSettle();
+      expect(editor.text, contains("--section id=reply --"));
+      expect(editor.text, contains("--/section--"));
+    });
+
     testWidgets("wrapping keeps the selection so it stays highlighted",
         (tester) async {
       editor.value = const TextEditingValue(

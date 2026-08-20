@@ -152,6 +152,66 @@ const _blocks = [
   ),
 ];
 
+// _pages is what a page can carry that a post cannot: a link to another of
+// your pages, a form the reader answers, a region a reply is written into,
+// and the cut between what an index shows and the rest.
+//
+// Downloads are here too, but they are not new -- --embed[download=...]-- is
+// the app's own syntax and works in a post just as well. It is in this
+// section because attaching a file to a page is what somebody looking at
+// this section is trying to do, and Manage Content is where the id comes
+// from.
+const _pages = [
+  // Deliberately not Icons.link, which the inline Link button already has.
+  // Two buttons in one panel wearing the same icon are two buttons nobody
+  // can tell apart -- and a test that taps one of them by icon cannot
+  // either.
+  _Snippet(
+    Icons.article_outlined,
+    "Page link",
+    "[",
+    after: "](about.md)",
+    placeholder: "Read more",
+  ),
+  _Snippet(
+    Icons.person_outline,
+    "Someone's page",
+    "[",
+    after: "](br://<their id>/index.md)",
+    placeholder: "Their site",
+  ),
+  _Snippet(
+    Icons.download_outlined,
+    "Download",
+    "--embed[download=",
+    after: ",alt=A file]--",
+    placeholder: "<file id>",
+    block: true,
+  ),
+  // A form and the region its answer lands in. Two buttons rather than one:
+  // a form that posts back into the page it came from needs both, and they
+  // are written at opposite ends of it.
+  _Snippet(
+    Icons.checklist_outlined,
+    "Form",
+    "--form--\ntype=\"text\" name=\"answer\" label=\"",
+    after: "\"\ntype=\"action\" value=\"reply\"\n"
+        "type=\"submit\" label=\"Send\"\n--/form--",
+    placeholder: "Your answer",
+    block: true,
+  ),
+  _Snippet(
+    Icons.crop_din,
+    "Reply region",
+    "--section id=reply --\n",
+    after: "\n--/section--",
+    placeholder: "Waiting for an answer.",
+    block: true,
+  ),
+  // The cut between the part of a page an index shows and the rest of it.
+  _Snippet(Icons.content_cut, "Read-more cut", "--endofpost--", block: true),
+];
+
 /// FormattingSidebar offers embeds and Markdown, applied to the composer the
 /// controller is attached to.
 class FormattingSidebar extends StatelessWidget {
@@ -192,6 +252,8 @@ class FormattingSidebar extends StatelessWidget {
             _grid(theme, editor, _inline),
             _section(theme, "Blocks"),
             _grid(theme, editor, _blocks),
+            _section(theme, "Pages and store"),
+            _grid(theme, editor, _pages),
           ],
         );
       },
