@@ -45,10 +45,12 @@ void main() {
     await folder("Zebra");
     await folder(notesFolderName);
     await folder("Apple");
+    await folder(partialsFolderName);
     await folder(pagesFolderName);
 
     var names = (await PostStorage.list()).map((e) => e.name).toList();
-    expect(names.sublist(names.length - 3), reservedFolderNames,
+    expect(names.sublist(names.length - reservedFolderNames.length),
+        reservedFolderNames,
         reason: "pinned last, and in reservedFolderNames' order rather than "
             "the order they happened to be read in");
   });

@@ -116,4 +116,37 @@ void main() {
       expect(page.link, pageFileNameFor(page.name));
     });
   });
+
+  group('shared fragments', () {
+    test('publish into the one subdirectory a site has', () {
+      expect(fileNameFor(partialsFolderName, "Navigation"),
+          "partials/navigation.md");
+      // Which is what --include[navigation]-- resolves to, or the page
+      // would refer to a file nothing serves.
+      expect(partialFileNameFor("Navigation"), "partials/navigation.md");
+    });
+
+    test('a page still publishes to the root', () {
+      expect(fileNameFor(pagesFolderName, "About"), "about.md");
+    });
+
+    test('a fragment is never the front page', () {
+      // "index" in Partials is a fragment called index, not the site's
+      // entrance -- and treating it as one would protect the wrong file.
+      const f = PageDocument(
+          name: "index",
+          file: "partials/index.md",
+          folder: partialsFolderName,
+          state: PagePublishState.published);
+      expect(f.isPartial, isTrue);
+      expect(f.isIndex, isFalse);
+    });
+
+    test('a page in the Pages folder still is', () {
+      const p = PageDocument(
+          name: "index", file: "index.md", state: PagePublishState.draft);
+      expect(p.isPartial, isFalse);
+      expect(p.isIndex, isTrue);
+    });
+  });
 }

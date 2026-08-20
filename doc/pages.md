@@ -37,7 +37,9 @@ publishes pages under a lowercased, underscored name for this reason.
 ### Shared fragments
 
 A fragment several pages share — a header, a navigation bar — is written once
-in `partials/` and referred to by name:
+in `partials/` and referred to by name. In bruig it is written in
+**Writing > My Posts > Partials**, or made with the "New fragment" button in
+Pages > My Site, and published like a page:
 
 ```
 partials/navigation.md      one file

@@ -98,6 +98,22 @@ String pageSlug(String documentName) {
 /// it, because that is what has to survive being written into a link.
 String pageFileNameFor(String documentName) => "${pageSlug(documentName)}.md";
 
+/// partialFileNameFor is the same for a shared fragment, which lives in the
+/// one subdirectory a site has. The name has to match what --include[name]--
+/// resolves to, so the slug is what a page refers to it by.
+String partialFileNameFor(String documentName) =>
+    "$partialsSubdir/${pageSlug(documentName)}.md";
+
+/// partialsSubdir is where fragments are served from. Kept in step with
+/// resources.PartialsDir on the Go side.
+const String partialsSubdir = "partials";
+
+/// fileNameFor is the served file for a document in [folder].
+String fileNameFor(String folder, String documentName) =>
+    folder == partialsFolderName
+        ? partialFileNameFor(documentName)
+        : pageFileNameFor(documentName);
+
 /// documentNameFor is the name to show for a file.
 ///
 /// Not [pageFileNameFor] backwards -- it cannot be, because slugging throws
@@ -118,6 +134,7 @@ class PageDocument {
     required this.name,
     required this.file,
     required this.state,
+    this.folder = pagesFolderName,
     this.modified,
     this.conflict = false,
   });
@@ -144,11 +161,18 @@ class PageDocument {
   /// replace the first. Worth saying rather than discovering.
   final bool conflict;
 
+  /// folder is the library folder this came from -- Pages, or Partials for
+  /// a shared fragment. What decides where publishing puts it.
+  final String folder;
+
+  /// isPartial is whether this is a shared fragment rather than a page.
+  bool get isPartial => folder == partialsFolderName;
+
   /// isIndex marks the front page, which is the one every visitor lands on.
   /// Worth saying out loud wherever this is shown: a front page that is not
   /// published does not take one page down, it makes the whole site answer
   /// "no front page" to everyone who asks.
-  bool get isIndex => pageSlug(name) == "index";
+  bool get isIndex => !isPartial && pageSlug(name) == "index";
 }
 
 /// PageDocuments reads and writes the pages of the site.
@@ -160,17 +184,24 @@ class PageDocuments {
   /// how a site written before any of this existed appears -- and leaving
   /// them out would mean a page being served that nothing in the app admits
   /// to.
-  static Future<List<PageDocument>> list(PagesModel pages) async {
-    var docs = await PostStorage.list(pagesFolderName);
+  static Future<List<PageDocument>> list(PagesModel pages,
+      {String folder = pagesFolderName}) async {
+    var docs = await PostStorage.list(folder);
 
     // Keyed by slug rather than by file name, so a document finds the file
     // it is published as even when that file predates the slug rule --
     // "Test page.md" and a document called "Test page" are one page, not
     // two, and listing them separately is what put the same page on screen
     // twice.
+    // Only the files this folder publishes: a fragment lives under
+    // partials/ and a page at the root, so listing one must not find the
+    // other's file and call it published.
+    var wantPartials = folder == partialsFolderName;
     var served = <String, LocalPage>{};
     for (var p in pages.localPages) {
-      served[pageSlug(p.name)] = p;
+      var isPartial = p.name.startsWith("$partialsSubdir/");
+      if (isPartial != wantPartials) continue;
+      served[pageSlug(p.name.split("/").last)] = p;
     }
 
     var out = <PageDocument>[];
@@ -194,15 +225,16 @@ class PageDocuments {
       // The file it is actually served as, when it is served at all --
       // otherwise the one it would take.
       var servedFile = served[slug];
-      var file = servedFile?.name ?? pageFileNameFor(doc.name);
+      var file = servedFile?.name ?? fileNameFor(folder, doc.name);
       String? servedText;
       if (servedFile != null) {
         servedText = await pages.readPage(servedFile.name);
       }
-      var text = await PostStorage.read(pagesFolderName, doc.name) ?? "";
+      var text = await PostStorage.read(folder, doc.name) ?? "";
       out.add(PageDocument(
         name: doc.name,
         file: file,
+        folder: folder,
         state: pagePublishState(servedText, text),
         modified: doc.modified,
         conflict: (slugCounts[slug] ?? 0) > 1,
@@ -212,8 +244,9 @@ class PageDocuments {
     for (var entry in served.entries) {
       if (claimed.contains(entry.key)) continue;
       out.add(PageDocument(
-        name: documentNameFor(entry.value.name),
+        name: documentNameFor(entry.value.name.split("/").last),
         file: entry.value.name,
+        folder: folder,
         state: PagePublishState.published,
         modified: entry.value.modified,
       ));
@@ -236,14 +269,20 @@ class PageDocuments {
   /// For callers that hold a name rather than a row -- the editor, the
   /// starter front page. Same slug lookup [list] uses, so a page served
   /// under a name predating the slug rule is found rather than missed.
-  static PageDocument forName(PagesModel pages, String name) {
-    var doc = documentNameFor(name);
-    var slug = pageSlug(name);
-    var served =
-        pages.localPages.where((p) => pageSlug(p.name) == slug).toList();
+  static PageDocument forName(PagesModel pages, String name,
+      {String folder = pagesFolderName}) {
+    var doc = documentNameFor(name.split("/").last);
+    var slug = pageSlug(doc);
+    var wantPartials = folder == partialsFolderName;
+    var served = pages.localPages.where((p) {
+      var isPartial = p.name.startsWith("$partialsSubdir/");
+      return isPartial == wantPartials &&
+          pageSlug(p.name.split("/").last) == slug;
+    }).toList();
     return PageDocument(
       name: doc,
-      file: served.isEmpty ? pageFileNameFor(doc) : served.first.name,
+      file: served.isEmpty ? fileNameFor(folder, doc) : served.first.name,
+      folder: folder,
       state: served.isEmpty
           ? PagePublishState.draft
           : PagePublishState.published,
@@ -251,9 +290,9 @@ class PageDocuments {
   }
 
   static Future<void> adopt(PagesModel pages, PageDocument page) async {
-    if (await PostStorage.read(pagesFolderName, page.name) != null) return;
+    if (await PostStorage.read(page.folder, page.name) != null) return;
     await PostStorage.write(
-        pagesFolderName, page.name, await pages.readPage(page.file));
+        page.folder, page.name, await pages.readPage(page.file));
   }
 
   /// publish copies the document into the served directory, which is what
@@ -264,9 +303,9 @@ class PageDocuments {
   /// moves to its slug: the new file is written first and the old one
   /// dropped after, so there is no moment where nothing is served.
   static Future<void> publish(PagesModel pages, PageDocument page) async {
-    var text = await PostStorage.read(pagesFolderName, page.name);
+    var text = await PostStorage.read(page.folder, page.name);
     if (text == null) return;
-    var target = pageFileNameFor(page.name);
+    var target = fileNameFor(page.folder, page.name);
     await pages.savePage(target, text);
     if (page.state.live && page.file != target) {
       await pages.deletePage(page.file);

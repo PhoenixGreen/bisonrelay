@@ -50,6 +50,12 @@ class _MySiteTabState extends State<MySiteTab> {
   /// stored -- there is nothing here that is not already on disk.
   List<PageDocument> documents = const [];
 
+  /// fragments are the shared pieces the pages include -- see
+  /// PageDocuments and doc/pages.md. Listed apart from the pages because
+  /// they are not pages: a visitor never lands on one, and it has no link
+  /// of its own worth showing.
+  List<PageDocument> fragments = const [];
+
   @override
   void initState() {
     super.initState();
@@ -74,7 +80,14 @@ class _MySiteTabState extends State<MySiteTab> {
     _refreshing = true;
     try {
       var docs = await PageDocuments.list(pages);
-      if (mounted) setState(() => documents = docs);
+      var frags =
+          await PageDocuments.list(pages, folder: partialsFolderName);
+      if (mounted) {
+        setState(() {
+          documents = docs;
+          fragments = frags;
+        });
+      }
     } catch (exception) {
       if (mounted) {
         SnackBarModel.of(context).error("Unable to list pages: $exception");
@@ -252,6 +265,49 @@ class _MySiteTabState extends State<MySiteTab> {
     pages.startPageDraft("");
   }
 
+  /// newFragment makes a shared piece and opens it. Only offered with the
+  /// writing tools on: the fallback editor below writes pages, and a second
+  /// one for fragments would be the same editor twice.
+  void newFragment() async {
+    var snackbar = SnackBarModel.of(context);
+    var library = Provider.of<PostLibraryModel>(context, listen: false);
+    var navigator = Navigator.of(context);
+    try {
+      var taken = {for (var f in fragments) f.name.toLowerCase()};
+      var name = "navigation";
+      for (var i = 2; taken.contains(name); i++) {
+        name = "fragment $i";
+      }
+      await PostStorage.write(partialsFolderName, name, "");
+      await library.requestOpen(partialsFolderName, name);
+      navigator.pushReplacementNamed(WritingScreen.routeName);
+    } catch (exception) {
+      snackbar.error("Unable to make a fragment: $exception");
+    }
+  }
+
+  void editFragment(String name) async {
+    if (!hasWriting) return;
+    var library = Provider.of<PostLibraryModel>(context, listen: false);
+    var navigator = Navigator.of(context);
+    await PageDocuments.adopt(pages,
+        PageDocuments.forName(pages, name, folder: partialsFolderName));
+    await library.requestOpen(partialsFolderName, name);
+    navigator.pushReplacementNamed(WritingScreen.routeName);
+  }
+
+  void deleteFragment(PageDocument f) async {
+    var snackbar = SnackBarModel.of(context);
+    try {
+      await pages.deletePage(f.file);
+      await PostStorage.delete(PostEntry(
+          name: f.name, folder: partialsFolderName, isFolder: false));
+      await refreshDocuments();
+    } catch (exception) {
+      snackbar.error("Unable to delete ${f.name}: $exception");
+    }
+  }
+
   void editPage(String name) {
     if (hasWriting) {
       openInWriting(name);
@@ -300,6 +356,10 @@ class _MySiteTabState extends State<MySiteTab> {
         return _SiteOverview(
           pages: pages,
           documents: documents,
+          fragments: fragments,
+          onNewFragment: hasWriting ? newFragment : null,
+          onEditFragment: editFragment,
+          onDeleteFragment: deleteFragment,
           onPublish: publishPage,
           onUnpublish: unpublishPage,
           onPreview: previewPage,
@@ -333,9 +393,22 @@ class _SiteOverview extends StatelessWidget {
   /// documents is every page of the site with where it stands -- see
   /// PageDocuments.list.
   final List<PageDocument> documents;
+
+  /// fragments are the shared pieces those pages include.
+  final List<PageDocument> fragments;
+
+  /// onNewFragment is null without the writing tools: making one opens the
+  /// Writing page, and there is nowhere else to write it.
+  final VoidCallback? onNewFragment;
+  final void Function(String) onEditFragment;
+  final void Function(PageDocument) onDeleteFragment;
   const _SiteOverview({
     required this.pages,
     required this.documents,
+    required this.fragments,
+    required this.onNewFragment,
+    required this.onEditFragment,
+    required this.onDeleteFragment,
     required this.onToggle,
     required this.onChooseDir,
     required this.onView,
@@ -420,6 +493,28 @@ class _SiteOverview extends StatelessWidget {
               onPreview: () => onPreview(p),
             )),
       if (cfg.hostsPages) ...[
+        const SizedBox(height: 24),
+        const _FragmentsHelp(),
+        Row(children: [
+          const Expanded(child: Txt.L("Shared fragments")),
+          if (onNewFragment != null)
+            OutlinedButton.icon(
+              onPressed: onNewFragment,
+              icon: const Icon(Icons.add, size: 16),
+              label: const Text("New fragment"),
+            ),
+        ]),
+        const SizedBox(height: 8),
+        if (fragments.isEmpty)
+          const Txt.S("None yet.", color: TextColor.onSurfaceVariant)
+        else
+          ...fragments.map((f) => _FragmentRow(
+                fragment: f,
+                onEdit: () => onEditFragment(f.name),
+                onDelete: () => onDeleteFragment(f),
+                onPublish: () => onPublish(f),
+                onUnpublish: () => onUnpublish(f),
+              )),
         const SizedBox(height: 24),
         const _LinkHelp(),
       ],
@@ -527,6 +622,87 @@ class _PageRow extends StatelessWidget {
             tooltip: "Delete ${page.name}",
             onPressed: onDelete,
           ),
+      ]),
+      onTap: onEdit,
+    );
+  }
+}
+
+/// _FragmentsHelp explains what a fragment is for, once, above the list.
+class _FragmentsHelp extends StatelessWidget {
+  const _FragmentsHelp();
+
+  @override
+  Widget build(BuildContext context) => const Padding(
+        padding: EdgeInsets.only(bottom: 8),
+        child: Txt.S(
+            "A piece several pages share — a header, a navigation bar. Put "
+            "--include[name]-- in a page and it appears there. It is sent "
+            "once and reused, so a bar on twenty pages costs what one page "
+            "costs.",
+            color: TextColor.onSurfaceVariant),
+      );
+}
+
+/// _FragmentRow is one shared fragment.
+///
+/// Deliberately plainer than a page's row: a fragment has no front-page
+/// warning, and no preview -- a visitor never opens one, so there is nothing
+/// to look at on its own.
+class _FragmentRow extends StatelessWidget {
+  final PageDocument fragment;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+  final VoidCallback onPublish;
+  final VoidCallback onUnpublish;
+  const _FragmentRow({
+    required this.fragment,
+    required this.onEdit,
+    required this.onDelete,
+    required this.onPublish,
+    required this.onUnpublish,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    var theme = ThemeNotifier.of(context);
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: const Icon(Icons.dashboard_customize_outlined),
+      title: Row(children: [
+        Flexible(child: Txt.M(fragment.name)),
+        const SizedBox(width: 8),
+        _StateChip(fragment.state),
+      ]),
+      // What to type to use it, which is the slug rather than the name.
+      subtitle: _LinkChip("--include[${pageSlug(fragment.name)}]--",
+          conflict: fragment.conflict),
+      trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+        if (fragment.state != PagePublishState.published)
+          IconButton(
+            icon: const Icon(Icons.publish_outlined, size: 18),
+            tooltip: fragment.state == PagePublishState.draft
+                ? "Publish ${fragment.name}"
+                : "Publish update to ${fragment.name}",
+            color: theme.colors.primary,
+            onPressed: onPublish,
+          ),
+        if (fragment.state.live)
+          IconButton(
+            icon: const Icon(Icons.visibility_off_outlined, size: 18),
+            tooltip: "Unpublish ${fragment.name}",
+            onPressed: onUnpublish,
+          ),
+        IconButton(
+          icon: const Icon(Icons.edit_outlined, size: 18),
+          tooltip: "Edit ${fragment.name}",
+          onPressed: onEdit,
+        ),
+        IconButton(
+          icon: const Icon(Icons.delete_outline, size: 18),
+          tooltip: "Delete ${fragment.name}",
+          onPressed: onDelete,
+        ),
       ]),
       onTap: onEdit,
     );

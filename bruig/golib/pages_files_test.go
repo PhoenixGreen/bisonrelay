@@ -178,3 +178,73 @@ func TestDefaultPathsFollowTheApp(t *testing.T) {
 		t.Errorf("store path %q, want %q", got, want)
 	}
 }
+
+// TestPartialsLiveInTheirOwnDirectory covers the one subdirectory a site has.
+//
+// Fragments have to be somewhere the serving side will read them from, and
+// "partials/" is that place -- but widening the name check is exactly how a
+// path traversal gets in, so what is allowed is one known prefix and nothing
+// else.
+func TestPartialsLiveInTheirOwnDirectory(t *testing.T) {
+	root := t.TempDir()
+
+	fname, err := pageFileName(root, "partials/nav.md")
+	if err != nil {
+		t.Fatalf("a fragment is a valid name: %v", err)
+	}
+	if want := filepath.Join(root, "partials", "nav.md"); fname != want {
+		t.Fatalf("got %q, want %q", fname, want)
+	}
+
+	// Everything else is still refused.
+	for _, bad := range []string{
+		"../escape.md",
+		"partials/../escape.md",
+		"partials/sub/deep.md",
+		"other/nav.md",
+		"partials/nav.txt",
+		"partials/.hidden.md",
+	} {
+		if _, err := pageFileName(root, bad); err == nil {
+			t.Fatalf("%q should not be a valid page name", bad)
+		}
+	}
+}
+
+func TestListIncludesPartialsByPath(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "partials"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	write := func(rel, body string) {
+		if err := os.WriteFile(filepath.Join(root, rel), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("index.md", "# Home")
+	write(filepath.Join("partials", "nav.md"), "[Home](index.md)")
+
+	pages, err := listLocalPages(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var names []string
+	for _, p := range pages {
+		names = append(names, p.Name)
+	}
+	// Named by path, so the two kinds are told apart by what they are
+	// called rather than by a second listing.
+	if len(names) != 2 {
+		t.Fatalf("got %v", names)
+	}
+	found := false
+	for _, n := range names {
+		if n == "partials/nav.md" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("the fragment is missing: %v", names)
+	}
+}

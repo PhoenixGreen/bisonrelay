@@ -66,6 +66,12 @@ const notesFolderName = "Bison Relay Notes";
 const pagesFolderName = "Pages";
 const storeFolderName = "Store";
 
+/// partialsFolderName holds the fragments a site's pages share -- a header,
+/// a navigation bar. Its own folder rather than a naming convention inside
+/// Pages, because the library is one level deep and these are not pages: a
+/// visitor never lands on one, and it would never want a link of its own.
+const partialsFolderName = "Partials";
+
 /// reservedFolderNames are the folders the app keeps for itself, in the
 /// order they are pinned at the bottom of the top-level listing.
 ///
@@ -75,6 +81,7 @@ const storeFolderName = "Store";
 const List<String> reservedFolderNames = [
   notesFolderName,
   pagesFolderName,
+  partialsFolderName,
   storeFolderName,
 ];
 

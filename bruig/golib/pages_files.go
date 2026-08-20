@@ -21,13 +21,19 @@ type localPage struct {
 // when someone opens another user's site.
 const indexPageName = "index.md"
 
+// partialsDir is the one subdirectory of a site, holding the fragments its
+// pages share. Kept in step with resources.PartialsDir, which is what serves
+// them.
+const partialsDir = "partials"
+
 // pageFileName validates a page name and returns the file it maps to inside
 // root.
 //
-// Names are deliberately flat and markdown-only. The pages directory is
-// served to anyone who asks, so a name that walks out of it (or that lands on
-// a store's templates and order files) would publish more than the author
-// meant to.
+// Names are markdown-only, and flat but for one allowed subdirectory:
+// "partials/". The pages directory is served to anyone who asks, so a name
+// that walks out of it -- or that lands on a store's templates and order
+// files -- would publish more than the author meant to. Allowing exactly one
+// known prefix keeps that guarantee while giving fragments somewhere to live.
 func pageFileName(root, name string) (string, error) {
 	if root == "" {
 		return "", fmt.Errorf("pages directory is not configured")
@@ -36,13 +42,18 @@ func pageFileName(root, name string) (string, error) {
 	if name == "" {
 		return "", fmt.Errorf("page name is empty")
 	}
+
+	dir := ""
+	if rest, ok := strings.CutPrefix(name, partialsDir+"/"); ok {
+		dir, name = partialsDir, rest
+	}
 	if name != filepath.Base(name) || strings.HasPrefix(name, ".") {
 		return "", fmt.Errorf("page name %q must be a plain file name", name)
 	}
 	if filepath.Ext(name) != ".md" {
 		return "", fmt.Errorf("page name %q must end in .md", name)
 	}
-	return filepath.Join(root, name), nil
+	return filepath.Join(root, dir, name), nil
 }
 
 // listLocalPages returns the markdown pages in root. A missing directory is
@@ -73,6 +84,26 @@ func listLocalPages(root string) ([]localPage, error) {
 			Modified: info.ModTime(),
 			IsIndex:  e.Name() == indexPageName,
 		})
+	}
+
+	// The shared fragments, named by their path so the two kinds are told
+	// apart by what they are called rather than by a second listing.
+	partials, err := os.ReadDir(filepath.Join(root, partialsDir))
+	if err == nil {
+		for _, e := range partials {
+			if e.IsDir() || filepath.Ext(e.Name()) != ".md" {
+				continue
+			}
+			info, err := e.Info()
+			if err != nil {
+				continue
+			}
+			pages = append(pages, localPage{
+				Name:     partialsDir + "/" + e.Name(),
+				Size:     info.Size(),
+				Modified: info.ModTime(),
+			})
+		}
 	}
 
 	// The index first, then the rest alphabetically: it is the page every
