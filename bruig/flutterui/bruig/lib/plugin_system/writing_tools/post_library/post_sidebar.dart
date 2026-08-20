@@ -1,4 +1,5 @@
 import 'package:bruig/plugin_system/writing_tools/post_library/post_library_model.dart';
+import 'package:bruig/plugin_system/writing_tools/post_library/page_documents.dart';
 import 'package:bruig/plugin_system/writing_tools/post_library/post_storage.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
@@ -11,6 +12,15 @@ import 'package:provider/provider.dart';
 
 /// PostSidebar browses `<appDataDir>/my-posts` and loads what is in it into
 /// the composer beside it.
+/// _isFrontPage is whether an entry is the site's front page.
+///
+/// Only inside the Pages folder: an ordinary document called "index" kept
+/// somewhere else is just a document.
+bool _isFrontPage(PostEntry entry) =>
+    !entry.isFolder &&
+    entry.folder == pagesFolderName &&
+    pageSlug(entry.name) == "index";
+
 /// reservedFolderIcon is the icon for one of the app's own folders.
 IconData reservedFolderIcon(String name) {
   switch (name) {
@@ -359,17 +369,24 @@ class _PostSidebarState extends State<PostSidebar> {
         overlay.size.height - bottomRight.dy,
       ),
       items: [
-        // The notes folder is offered neither: the app files notes into it by
-        // name from every page in the app, so a rename or a delete would
-        // strand every note in it and the next one written would recreate the
-        // folder anyway. Storage refuses both regardless (see PostStorage);
-        // this is only so the menu does not offer what will not happen.
-        if (!entry.isReservedFolder)
+        // A reserved folder is offered neither: the app files into it by
+        // name from elsewhere, so a rename or a delete would strand
+        // everything in it and the next write would recreate the folder
+        // anyway. Storage refuses both regardless (see PostStorage); this is
+        // only so the menu does not offer what will not happen.
+        //
+        // The front page is offered neither either. It is the page every
+        // visitor lands on, named "index" because that is the name they ask
+        // for -- renaming it does not rename the front page, it takes the
+        // site's entrance away and leaves an ordinary page behind.
+        if (!entry.isReservedFolder && !_isFrontPage(entry))
           const PopupMenuItem(value: "rename", child: Text("Rename")),
-        // A folder has nowhere to go: the library is one level deep.
-        if (!entry.isFolder)
+        // A folder has nowhere to go: the library is one level deep. Neither
+        // does a page -- the Pages folder is what makes a document a page of
+        // the site, so moving one out is not filing, it is unmaking it.
+        if (!entry.isFolder && entry.folder != pagesFolderName)
           const PopupMenuItem(value: "move", child: Text("Move to...")),
-        if (!entry.isReservedFolder)
+        if (!entry.isReservedFolder && !_isFrontPage(entry))
           const PopupMenuItem(value: "delete", child: Text("Delete")),
       ],
     );

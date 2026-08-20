@@ -57,15 +57,51 @@ PagePublishState pagePublishState(String? served, String document) {
       : PagePublishState.edited;
 }
 
-/// pageFileName is the file a library document is published as.
+/// pageSlug reduces a document's name to what goes in a link.
 ///
-/// The library holds names without the extension, because that is what a
-/// reader wants to see in a sidebar; the site serves ".md" files, because
-/// that is what the other end asks for.
-String pageFileNameFor(String documentName) =>
-    documentName.endsWith(".md") ? documentName : "$documentName.md";
+/// A page called "Test Page" is served as "test_page.md" and linked as
+/// "[...](test_page.md)". The document keeps the name the writer gave it,
+/// because that is what belongs in a sidebar; the link does not, because a
+/// space in a Markdown link ends it -- "[x](Test Page.md)" links to "Test"
+/// and leaves "Page.md)" as text.
+///
+/// Lowercased for the same reason: the writer types the link by hand and
+/// should not have to remember which words they capitalised, and two
+/// filesystems disagree about whether "About.md" and "about.md" are the same
+/// file.
+String pageSlug(String documentName) {
+  var name = documentName.endsWith(".md")
+      ? documentName.substring(0, documentName.length - 3)
+      : documentName;
+  var out = StringBuffer();
+  for (var rune in name.trim().toLowerCase().runes) {
+    var c = String.fromCharCode(rune);
+    var ok = (rune >= 0x30 && rune <= 0x39) || // 0-9
+        (rune >= 0x61 && rune <= 0x7A); // a-z
+    out.write(ok ? c : "_");
+  }
+  // Collapse the runs the substitution makes, so "a - b" is "a_b" rather
+  // than "a___b", and trim the ones at the ends.
+  var slug = out
+      .toString()
+      .replaceAll(RegExp(r'_+'), "_")
+      .replaceAll(RegExp(r'^_+|_+$'), "");
+  // Everything was punctuation. A page still needs a name to be linked by.
+  return slug.isEmpty ? "page" : slug;
+}
 
-/// documentNameFor is [pageFileNameFor] backwards.
+/// pageFileNameFor is the file a library document is published as.
+///
+/// The library holds names as the writer typed them, because that is what a
+/// reader wants to see in a sidebar; the site serves a slug with ".md" on
+/// it, because that is what has to survive being written into a link.
+String pageFileNameFor(String documentName) => "${pageSlug(documentName)}.md";
+
+/// documentNameFor is the name to show for a file.
+///
+/// Not [pageFileNameFor] backwards -- it cannot be, because slugging throws
+/// away the capitals and spaces. It is only used for a file being served
+/// with no document behind it, where the filename is all there is to go on.
 String documentNameFor(String fileName) => fileName.endsWith(".md")
     ? fileName.substring(0, fileName.length - 3)
     : fileName;
@@ -81,13 +117,24 @@ class PageDocument {
     required this.name,
     required this.state,
     this.modified,
+    this.conflict = false,
   });
+
+  /// link is what another page writes to reach this one.
+  String get link => pageFileNameFor(name);
+
+  /// conflict is true when another document publishes to the same file.
+  ///
+  /// Two names can slug to one link -- "Test Page" and "test-page" both
+  /// become "test_page.md" -- and publishing the second would quietly
+  /// replace the first. Worth saying rather than discovering.
+  final bool conflict;
 
   /// isIndex marks the front page, which is the one every visitor lands on.
   /// Worth saying out loud wherever this is shown: a front page that is not
   /// published does not take one page down, it makes the whole site answer
   /// "no front page" to everyone who asks.
-  bool get isIndex => pageFileNameFor(name) == "index.md";
+  bool get isIndex => pageSlug(name) == "index";
 }
 
 /// PageDocuments reads and writes the pages of the site.
@@ -106,6 +153,16 @@ class PageDocuments {
     var out = <PageDocument>[];
     var claimed = <String>{};
 
+    // Which link each document takes, counted first: two names can slug to
+    // one file and publishing the second would replace the first, so both
+    // are marked rather than one of them silently losing.
+    var linkCounts = <String, int>{};
+    for (var doc in docs) {
+      if (doc.isFolder) continue;
+      var file = pageFileNameFor(doc.name);
+      linkCounts[file] = (linkCounts[file] ?? 0) + 1;
+    }
+
     for (var doc in docs) {
       if (doc.isFolder) continue;
       var file = pageFileNameFor(doc.name);
@@ -119,6 +176,7 @@ class PageDocuments {
         name: doc.name,
         state: pagePublishState(servedText, text),
         modified: doc.modified,
+        conflict: (linkCounts[file] ?? 0) > 1,
       ));
     }
 
@@ -143,9 +201,12 @@ class PageDocuments {
   /// can be written like any other. Does nothing if a document already
   /// exists for it.
   static Future<void> adopt(PagesModel pages, String name) async {
-    var file = pageFileNameFor(name);
     var doc = documentNameFor(name);
     if (await PostStorage.read(pagesFolderName, doc) != null) return;
+    // The served file, not the slug of the display name: this is called for
+    // a page that is only being served, so the file is what exists and the
+    // name came from it.
+    var file = name.endsWith(".md") ? name : pageFileNameFor(name);
     await PostStorage.write(pagesFolderName, doc, await pages.readPage(file));
   }
 

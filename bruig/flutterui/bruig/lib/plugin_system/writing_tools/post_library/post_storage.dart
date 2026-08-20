@@ -291,11 +291,36 @@ class PostStorage {
     // where some of them are kept -- and putting the folders on top meant
     // scrolling past the filing to reach the writing.
     var order = await readOrder(folder);
+    var ordered = _inOrder(documents, order);
+
+    // In the Pages folder the front page is pinned first, however the rest
+    // has been arranged. It is the page every visitor lands on, so it is
+    // the one to keep at hand -- the same reasoning that puts index.md at
+    // the top of the served listing.
+    if (folder == pagesFolderName) {
+      var front = ordered.where(isFrontPageName).toList();
+      ordered = [...front, ...ordered.where((e) => !isFrontPageName(e))];
+    }
+
     return [
-      ..._inOrder(documents, order),
+      ...ordered,
       ..._inOrder(folders, order),
       ...reserved,
     ];
+  }
+
+  /// isFrontPageName is whether a document in the Pages folder is the site's
+  /// front page.
+  ///
+  /// Kept here rather than taken from page_documents.dart because storage
+  /// must not depend on the publishing layer above it -- and because the
+  /// rule is a name, not a state. Matches whatever a reader typed:
+  /// "index", "Index" and "index.md" are all the front page.
+  static bool isFrontPageName(PostEntry entry) {
+    if (entry.isFolder) return false;
+    var name = entry.name.toLowerCase().trim();
+    if (name.endsWith(".md")) name = name.substring(0, name.length - 3);
+    return name == "index";
   }
 
   /// _inOrder puts the entries the order file names first, in its order, and
@@ -396,6 +421,11 @@ class PostStorage {
   /// a folder of the old name made fresh beside it.
   static Future<String?> rename(PostEntry entry, String newName) async {
     if (entry.isReservedFolder) return null;
+    // The front page is named for what visitors ask for. Renaming it does
+    // not rename the front page -- it takes the site's entrance away and
+    // leaves an ordinary page behind. Refused here as well as hidden from
+    // the menu, since the menu is not the only caller.
+    if (entry.folder == pagesFolderName && isFrontPageName(entry)) return null;
     // ...and nothing else may be renamed onto one either, which would leave
     // two folders claiming the same reserved name.
     if (entry.isFolder &&
@@ -461,6 +491,7 @@ class PostStorage {
   /// still a way to clear it out. See [reservedFolderNames].
   static Future<void> delete(PostEntry entry) async {
     if (entry.isReservedFolder) return;
+    if (entry.folder == pagesFolderName && isFrontPageName(entry)) return;
     var target =
         await _resolve(entry.folder, entry.name, asDocument: !entry.isFolder);
     if (target == null) return;

@@ -91,4 +91,55 @@ void main() {
     }
     expect(await PostStorage.folderNames(), ["Drafts"]);
   });
+
+  group('the front page', () {
+    Future<PostEntry> page(String name) async {
+      await PostStorage.write(pagesFolderName, name, "# $name");
+      return (await PostStorage.list(pagesFolderName))
+          .firstWhere((e) => e.name == name);
+    }
+
+    test('is pinned to the top of the Pages folder', () async {
+      // Made last, and after names that sort before it.
+      await page("about");
+      await page("Zebra");
+      await page("index");
+
+      var names = (await PostStorage.list(pagesFolderName))
+          .map((e) => e.name)
+          .toList();
+      expect(names.first, "index");
+    });
+
+    test('cannot be renamed or deleted', () async {
+      var front = await page("index");
+      expect(await PostStorage.rename(front, "home"), isNull);
+      await PostStorage.delete(front);
+      expect((await PostStorage.list(pagesFolderName)).map((e) => e.name),
+          contains("index"));
+    });
+
+    test('is recognised however it was capitalised or spelled', () async {
+      for (var n in ["index", "Index", "index.md"]) {
+        expect(
+            PostStorage.isFrontPageName(
+                PostEntry(name: n, folder: pagesFolderName, isFolder: false)),
+            isTrue,
+            reason: n);
+      }
+      expect(
+          PostStorage.isFrontPageName(PostEntry(
+              name: "index-old", folder: pagesFolderName, isFolder: false)),
+          isFalse);
+    });
+
+    test('an index kept somewhere else is an ordinary document', () async {
+      // The rule is about the site's entrance, not about the word.
+      await PostStorage.createFolder("Drafts");
+      await PostStorage.write("Drafts", "index", "not a front page");
+      var doc =
+          (await PostStorage.list("Drafts")).firstWhere((e) => !e.isFolder);
+      expect(await PostStorage.rename(doc, "renamed"), isNotNull);
+    });
+  });
 }

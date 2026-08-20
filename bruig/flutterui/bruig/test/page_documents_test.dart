@@ -41,21 +41,36 @@ void main() {
     });
   });
 
-  group('names', () {
-    test('the library drops the extension, the site keeps it', () {
-      expect(pageFileNameFor("about"), "about.md");
-      expect(documentNameFor("about.md"), "about");
+  group('the link a page is reached by', () {
+    test('has no spaces, because a space ends a Markdown link', () {
+      // "[x](Test Page.md)" links to "Test" and leaves "Page.md)" as text.
+      expect(pageSlug("Test Page"), "test_page");
+      expect(pageFileNameFor("Test Page"), "test_page.md");
     });
 
-    test('a name that already has one is not given a second', () {
+    test('is lowercased, so the writer need not recall the capitals', () {
+      expect(pageSlug("About Me"), "about_me");
+      expect(pageSlug("ABOUT"), "about");
+    });
+
+    test('collapses runs and trims the ends', () {
+      expect(pageSlug("a - b"), "a_b");
+      expect(pageSlug("  spaced  "), "spaced");
+      expect(pageSlug("!!!leading"), "leading");
+    });
+
+    test('drops an extension the writer typed rather than doubling it', () {
       expect(pageFileNameFor("about.md"), "about.md");
-      expect(documentNameFor("about"), "about");
     });
 
-    test('they round-trip', () {
-      for (var n in ["about", "index", "a.b", "notes.md"]) {
-        expect(documentNameFor(pageFileNameFor(n)), documentNameFor(n));
-      }
+    test('a name of nothing but punctuation still gets a link', () {
+      // It has to be reachable by something.
+      expect(pageSlug("???"), "page");
+      expect(pageSlug(""), "page");
+    });
+
+    test('two names can slug to one link, which is why conflicts exist', () {
+      expect(pageSlug("Test Page"), pageSlug("test-page"));
     });
   });
 
@@ -66,6 +81,9 @@ void main() {
       const withExt =
           PageDocument(name: "index.md", state: PagePublishState.draft);
       expect(withExt.isIndex, isTrue);
+      // However it was capitalised.
+      const caps = PageDocument(name: "Index", state: PagePublishState.draft);
+      expect(caps.isIndex, isTrue);
     });
 
     test('is not just any page starting with index', () {

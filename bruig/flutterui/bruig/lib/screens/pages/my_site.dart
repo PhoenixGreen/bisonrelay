@@ -97,6 +97,22 @@ class _MySiteTabState extends State<MySiteTab> {
     }
   }
 
+  /// previewPage opens one page of the reader's own site in the browser.
+  ///
+  /// The same fetch a visitor makes, against the served copy, so what it
+  /// shows is what they would get rather than what the editor holds.
+  void previewPage(String link) async {
+    var snackbar = SnackBarModel.of(context);
+    try {
+      widget.resources.mostRecent = await widget.resources
+          .fetchPage(widget.client.publicID, [link], 0, 0, null, "");
+      widget.pages.browsing = true;
+      widget.onOpenedOwnSite();
+    } catch (exception) {
+      snackbar.error("Unable to preview $link: $exception");
+    }
+  }
+
   void unpublishPage(String name) async {
     var snackbar = SnackBarModel.of(context);
     try {
@@ -252,7 +268,7 @@ class _MySiteTabState extends State<MySiteTab> {
   /// copy is what Unpublish is for.
   void deletePage(String name) async {
     var snackbar = SnackBarModel.of(context);
-    var doc = documentNameFor(name);
+    var doc = name;
     try {
       await pages.deletePage(pageFileNameFor(name));
       await PostStorage.delete(
@@ -284,6 +300,7 @@ class _MySiteTabState extends State<MySiteTab> {
           documents: documents,
           onPublish: publishPage,
           onUnpublish: unpublishPage,
+          onPreview: previewPage,
           onToggle: toggleHosting,
           onChooseDir: chooseDir,
           onView: viewOwnSite,
@@ -307,6 +324,10 @@ class _SiteOverview extends StatelessWidget {
   final void Function(String) onPublish;
   final void Function(String) onUnpublish;
 
+  /// onPreview is given the page's link, not its name: it fetches the page
+  /// from the site, and the site knows it by its link.
+  final void Function(String) onPreview;
+
   /// documents is every page of the site with where it stands -- see
   /// PageDocuments.list.
   final List<PageDocument> documents;
@@ -321,6 +342,7 @@ class _SiteOverview extends StatelessWidget {
     required this.onDelete,
     required this.onPublish,
     required this.onUnpublish,
+    required this.onPreview,
   });
 
   @override
@@ -393,6 +415,7 @@ class _SiteOverview extends StatelessWidget {
               onDelete: () => onDelete(p.name),
               onPublish: () => onPublish(p.name),
               onUnpublish: () => onUnpublish(p.name),
+              onPreview: () => onPreview(p.link),
             )),
       if (cfg.hostsPages) ...[
         const SizedBox(height: 24),
@@ -408,12 +431,14 @@ class _PageRow extends StatelessWidget {
   final VoidCallback onDelete;
   final VoidCallback onPublish;
   final VoidCallback onUnpublish;
+  final VoidCallback onPreview;
   const _PageRow({
     required this.page,
     required this.onEdit,
     required this.onDelete,
     required this.onPublish,
     required this.onUnpublish,
+    required this.onPreview,
   });
 
   @override
@@ -439,11 +464,32 @@ class _PageRow extends StatelessWidget {
         const SizedBox(width: 8),
         _StateChip(page.state, warn: page.isIndex && !page.state.live),
       ]),
-      subtitle: Txt.S(subtitle,
-          color: page.isIndex && !page.state.live
-              ? TextColor.onErrorContainer
-              : TextColor.onSurfaceVariant),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Txt.S(subtitle,
+              color: page.isIndex && !page.state.live
+                  ? TextColor.onErrorContainer
+                  : TextColor.onSurfaceVariant),
+          // The link another page writes to reach this one. Shown because
+          // it is not the page's name -- a page called "Test Page" is
+          // linked as "test_page.md" -- so there is nowhere else to find
+          // out what to type.
+          _LinkChip(page.link, conflict: page.conflict),
+        ],
+      ),
       trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+        IconButton(
+          icon: const Icon(Icons.visibility_outlined, size: 18),
+          // Preview fetches the page from the site, which is the point:
+          // it is what a visitor gets, not what the editor thinks. So a
+          // page that is not published has nothing to show, and says so
+          // rather than opening an empty browser.
+          tooltip: page.state.live
+              ? "Preview ${page.name}"
+              : "Publish ${page.name} to preview it",
+          onPressed: page.state.live ? onPreview : null,
+        ),
         // Publish is offered whenever the served copy is not what the
         // document says -- which is both "never published" and "written
         // since", the two cases where a visitor is not reading this.
@@ -467,14 +513,50 @@ class _PageRow extends StatelessWidget {
           tooltip: "Edit ${page.name}",
           onPressed: onEdit,
         ),
-        IconButton(
-          icon: const Icon(Icons.delete_outline, size: 18),
-          tooltip: "Delete ${page.name}",
-          onPressed: onDelete,
-        ),
+        // No delete for the front page: a site with no front page cannot
+        // be visited at all, so taking it down is Unpublish's job, where it
+        // can be put back.
+        if (!page.isIndex)
+          IconButton(
+            icon: const Icon(Icons.delete_outline, size: 18),
+            tooltip: "Delete ${page.name}",
+            onPressed: onDelete,
+          ),
       ]),
       onTap: onEdit,
     );
+  }
+}
+
+/// _LinkChip shows the link a page is reached by, and warns when two pages
+/// want the same one.
+class _LinkChip extends StatelessWidget {
+  final String link;
+  final bool conflict;
+  const _LinkChip(this.link, {this.conflict = false});
+
+  @override
+  Widget build(BuildContext context) {
+    var theme = ThemeNotifier.of(context);
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      Flexible(
+        child: Text(link,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+                fontSize: 11,
+                fontFamily: "monospace",
+                color: theme.colors.onSurfaceVariant)),
+      ),
+      if (conflict) ...[
+        const SizedBox(width: 6),
+        Tooltip(
+          message: "Another page publishes to this same link, and would "
+              "replace this one",
+          child: Icon(Icons.warning_amber_rounded,
+              size: 13, color: theme.colors.error),
+        ),
+      ],
+    ]);
   }
 }
 
