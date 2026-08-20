@@ -31,6 +31,8 @@ const List<String> headerFields = [
   "description",
   "nav",
   "navat",
+  // How tall a logo is drawn -- see headerLogoHeight.
+  "logosize",
   // How the title is set -- see HeaderTextStyle.
   "titlesize",
   "titleweight",
@@ -324,6 +326,20 @@ class NavPlacement {
       other is NavPlacement && other.atTop == atTop && other.across == across;
 }
 
+/// headerLogoHeight is how tall a picture in a slot is drawn, or null to
+/// fill the height it has.
+///
+/// Filling is the sensible default and the wrong one as soon as there is a
+/// title beside it: a logo takes the whole banner and the words next to it
+/// are set to whatever titlesize says, and matching the two by eye means
+/// changing one of them. This is the other one.
+double? headerLogoHeight(Map<String, String> fields) {
+  var raw = (fields["logosize"] ?? "").trim().toLowerCase();
+  if (raw.isEmpty || raw == "fill") return null;
+  var v = double.tryParse(raw);
+  return v == null ? null : v.clamp(8, 600);
+}
+
 /// _slot draws one place across a banner.
 ///
 /// A slot is a logo or a title, not a page of markdown, and it is drawn as
@@ -333,15 +349,19 @@ class NavPlacement {
 /// slots drawn that way could not be put anywhere, and the gap between a
 /// logo and the title beside it grew with the window.
 Widget _slot(BuildContext context, String value, HeaderTextStyle style,
-    HeaderRule rule, Alignment within) {
+    HeaderRule rule, Alignment within, double? logoHeight) {
   var image = embedImage(value);
   if (image != null) {
-    // Sized to the banner, which is what makes a logo scale with it.
-    return isSvgMime(image.mime)
+    // Without a height of its own a logo fills the banner, which is what it
+    // did before there was anything to match it to.
+    Widget picture = isSvgMime(image.mime)
         ? SvgPicture.memory(image.bytes, fit: BoxFit.contain)
         : Image.memory(image.bytes,
             fit: BoxFit.contain,
             errorBuilder: (context, error, stack) => const SizedBox.shrink());
+    return logoHeight == null
+        ? picture
+        : SizedBox(height: logoHeight, child: picture);
   }
   return _HeaderText(text: value, style: style, rule: rule, within: within);
 }
@@ -490,6 +510,7 @@ class _MarkdownHeader extends StatelessWidget {
     var height = double.tryParse(fields["height"] ?? "") ?? rule.boundedHeight;
     var spans = headerSpans(fields);
     var titleStyle = HeaderTextStyle.parse(fields);
+    var logoHeight = headerLogoHeight(fields);
     var background = embedImage(fields["background"]);
     var nav = fields["nav"];
     var navAt = NavPlacement.parse(fields["navat"]);
@@ -533,7 +554,7 @@ class _MarkdownHeader extends StatelessWidget {
             children.add(SizedBox(width: rule.boundedGap));
           }
           Widget slot = _slot(context, fields[headerSlots[i]]!, titleStyle,
-              rule, headerSlotAlignment(fields, i));
+              rule, headerSlotAlignment(fields, i), logoHeight);
 
           // At the two ends each takes half and its contents go to its own
           // outside edge, which is what puts a title against the right of

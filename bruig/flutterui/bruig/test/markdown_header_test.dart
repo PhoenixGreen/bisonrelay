@@ -576,4 +576,54 @@ titlebordercolor: #ffffff
       expect(tester.takeException(), isNull);
     });
   });
+
+  group('how tall a logo is', () {
+    test('a number is the height, bounded', () {
+      expect(headerLogoHeight({"logosize": "64"}), 64);
+      expect(headerLogoHeight({"logosize": "9999"}), 600);
+      expect(headerLogoHeight({"logosize": "1"}), 8);
+    });
+
+    test('nothing said fills the banner, as it always did', () {
+      expect(headerLogoHeight({}), isNull);
+      expect(headerLogoHeight({"logosize": ""}), isNull);
+      expect(headerLogoHeight({"logosize": "fill"}), isNull);
+    });
+
+    test('something it cannot read fills too, rather than vanishing', () {
+      expect(headerLogoHeight({"logosize": "big"}), isNull);
+    });
+
+    test('it is a field, so it does not read as a slot', () {
+      // A line the header does not know becomes part of the value above it
+      // -- a logosize that was not a field would be swallowed by whatever
+      // slot preceded it.
+      expect(headerFields, contains("logosize"));
+    });
+  });
+
+  group('a sized logo is drawn', () {
+    setUp(() => SharedPreferences.setMockInitialValues({}));
+
+    testWidgets('at the height it was given', (tester) async {
+      // The picture cannot decode in a test, so this checks the box it is
+      // put in rather than the picture -- which is the part being decided
+      // here anyway.
+      await tester.pumpWidget(_drawHost(MarkdownArea("""
+--header[200]--
+left: --embed[type=image/png,data=AAAA]--
+right: # My site
+logosize: 48
+--/header--
+""", false)));
+      await tester.pump();
+
+      var boxes = tester
+          .widgetList<SizedBox>(find.byType(SizedBox))
+          .where((b) => b.height == 48);
+      expect(boxes, isNotEmpty,
+          reason: "the logo should be boxed to the height it was given");
+      expect(tester.takeException(), isNull);
+    });
+  });
 }

@@ -116,6 +116,15 @@ The gap between slots that sit together is fixed, so a logo and the title
 beside it stay the same distance apart however wide the window is. A `right`
 slot instead goes to the far edge, with the slack between the two.
 
+A logo fills the banner's height unless given one of its own:
+
+```
+logosize: 64           a height in pixels, or "fill"
+```
+
+Which is usually what you want as soon as there is a title beside it: set
+`logosize` and `titlesize` to the same number and the two sit level.
+
 A title can be set apart from the rest of the page — it is the one piece of a
 site whose look belongs to whoever wrote it:
 
