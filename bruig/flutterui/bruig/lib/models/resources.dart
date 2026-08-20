@@ -41,6 +41,16 @@ List<String> partialNames(String page) {
 /// partialPath is where a fragment lives, as a request path.
 List<String> partialPath(String name) => ["partials", "$name.md"];
 
+/// decodePage reads a reply's bytes as text.
+///
+/// Lenient on purpose. A page is markdown and should decode cleanly, but a
+/// reply is whatever the other end sent -- and something that is not text at
+/// all used to take the whole viewer down with a FormatException rather than
+/// showing a page that looks wrong. Losing a character beats losing the
+/// screen, and the malformed run is visible.
+String decodePage(Uint8List? data) =>
+    data == null ? "" : utf8.decode(data, allowMalformed: true);
+
 // pageFetchTimeout is how long a page request waits before the session
 // reports that nothing came back.
 //
@@ -200,8 +210,7 @@ class PagesSession extends ChangeNotifier {
   Map<String, String> partials = const {};
 
   String pageData() {
-    var utfData = currentPage?.response.data ?? Uint8List(0);
-    var data = utf8.decode(utfData);
+    var data = decodePage(currentPage?.response.data);
 
     // Shared fragments, filled in from what this client has been given.
     // One pass, not repeated: a fragment that includes itself would
@@ -233,7 +242,7 @@ class PagesSession extends ChangeNotifier {
       return;
     }
 
-    var data = utf8.decode(currentPage!.response.data!);
+    var data = decodePage(currentPage!.response.data);
     try {
       var reStartPattern = r'--section id=' + asyncTargetID + r' --\n';
       var reStart = RegExp(reStartPattern);
@@ -272,7 +281,7 @@ class PagesSession extends ChangeNotifier {
       return;
     }
 
-    var data = utf8.decode(currentPage!.response.data!);
+    var data = decodePage(currentPage!.response.data);
     for (var fr in history) {
       try {
         if (fr.response.data == null) {
@@ -299,7 +308,7 @@ class PagesSession extends ChangeNotifier {
         // Create the new buffer, replacing the contents inside the section with
         // the new data.
         data = data.substring(0, startPos.end) +
-            utf8.decode(fr.response.data!) +
+            decodePage(fr.response.data) +
             data.substring(endPosStart);
       } catch (exception) {
         // Ignore any errors when trying to replace this target.
@@ -442,7 +451,7 @@ class ResourcesModel extends ChangeNotifier {
     var data = page.response.data;
     if (data == null) return;
     var held = _partials[page.uid] ?? {};
-    var missing = partialNames(utf8.decode(data))
+    var missing = partialNames(decodePage(data))
         .where((n) => !held.containsKey(n))
         .toList();
     if (missing.isEmpty) return;
@@ -478,7 +487,7 @@ class ResourcesModel extends ChangeNotifier {
       if (fr.asyncTargetID.startsWith(_partialTarget)) {
         var name = fr.asyncTargetID.substring(_partialTarget.length);
         if (fr.response.status == 200 && fr.response.data != null) {
-          (_partials[fr.uid] ??= {})[name] = utf8.decode(fr.response.data!);
+          (_partials[fr.uid] ??= {})[name] = decodePage(fr.response.data);
           var sess = session(fr.sessionID);
           sess.partials = Map.of(_partials[fr.uid]!);
           sess.redraw();

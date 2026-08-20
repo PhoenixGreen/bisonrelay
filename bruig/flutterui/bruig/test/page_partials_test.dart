@@ -90,4 +90,32 @@ void main() {
       expect(s.pageData().trim(), "# Just a page");
     });
   });
+
+  group('a reply that is not text', () {
+    test('does not take the viewer down', () {
+      // A reply is whatever the other end sent. This used to throw a
+      // FormatException out of the render and blank the screen; a page that
+      // looks wrong is better than no screen at all.
+      var s = PagesSession(1)
+        ..currentPage = FetchedResource(
+          "alice",
+          1,
+          1,
+          0,
+          DateTime.now(),
+          DateTime.now(),
+          RMFetchResource(const ["index.md"], null, 0, null, 0, 0),
+          RMFetchResourceReply(
+              0, 200, null, Uint8List.fromList([0x78, 0x9c, 0xff, 0xfe]), 0, 0),
+          "",
+        );
+
+      expect(() => s.pageData(), returnsNormally);
+    });
+
+    test('an empty body reads as empty rather than throwing', () {
+      var s = PagesSession(1);
+      expect(s.pageData().trim(), isEmpty);
+    });
+  });
 }

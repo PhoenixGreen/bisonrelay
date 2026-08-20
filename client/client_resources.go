@@ -52,6 +52,21 @@ func (c *Client) FetchLocalResource(path []string, meta map[string]string,
 		return err
 	}
 
+	// A bundled reply carries several resources compressed together. A
+	// reply that came over the wire is unpacked as it is stored, but
+	// nothing stores this one -- there is no request to match it to and no
+	// session to file it under -- so it would reach the caller as the
+	// compressed bundle itself, which is not the page they asked for and
+	// not text at all.
+	//
+	// Only the resource that was asked for is taken out. The rest of a
+	// bundle exists to save messages, and a local fetch sends none: asking
+	// again costs nothing.
+	res, err = unbundleLocal(res, strescape.ResourcesPath(path))
+	if err != nil {
+		return err
+	}
+
 	fr := clientdb.FetchedResource{
 		UID:           c.PublicID(),
 		SessionID:     0,
@@ -67,6 +82,34 @@ func (c *Client) FetchLocalResource(path []string, meta map[string]string,
 
 	c.ntfns.notifyResourceFetched(nil, fr, overv)
 	return nil
+}
+
+// unbundleLocal returns the resource for wantPath out of a bundled reply,
+// or the reply unchanged when it is not a bundle.
+func unbundleLocal(res *rpc.RMFetchResourceReply, wantPath string) (*rpc.RMFetchResourceReply, error) {
+	if res.Meta[rpc.ResourceMetaResponseIsBundle] != rpc.ResourceMetaResponseIsBundleValue {
+		return res, nil
+	}
+
+	const maxBundleSize = 100000000 // 100MB, as in clientdb.
+	raw, err := rpc.ZLibDecode(res.Data, maxBundleSize)
+	if err != nil {
+		return nil, fmt.Errorf("unable to uncompress local bundle: %v", err)
+	}
+	var bundle rpc.RMResourceBundle
+	if err := json.Unmarshal(raw, &bundle); err != nil {
+		return nil, fmt.Errorf("unable to unmarshal local bundle: %v", err)
+	}
+
+	item, ok := bundle.Resources[wantPath]
+	if !ok {
+		// A bundle that does not contain what was asked for is a bug in
+		// whatever built it, and there is nothing sensible to show.
+		return &rpc.RMFetchResourceReply{
+			Status: rpc.ResourceStatusNotFound,
+		}, nil
+	}
+	return &item, nil
 }
 
 // FetchResource requests the specified resource from the client. Once the
