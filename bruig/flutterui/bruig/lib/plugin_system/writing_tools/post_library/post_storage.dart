@@ -53,6 +53,31 @@ const _orderFile = ".order";
 /// ask for.
 const notesFolderName = "Bison Relay Notes";
 
+/// pagesFolderName and storeFolderName are the library's other two reserved
+/// folders: the pages of the reader's own site, and the store's product
+/// copy.
+///
+/// Reserved for the same reason the notes folder is, and only that reason.
+/// Pages are written here and published from here, so the folder is named
+/// from elsewhere in the app -- a folder that could be renamed or moved out
+/// from under that would strand every page filed into it.
+///
+/// Like the notes folder, neither is created until something is put in one.
+const pagesFolderName = "Pages";
+const storeFolderName = "Store";
+
+/// reservedFolderNames are the folders the app keeps for itself, in the
+/// order they are pinned at the bottom of the top-level listing.
+///
+/// A list rather than a check per folder: the three behave identically, and
+/// the rules below read once for all of them instead of growing a clause
+/// each time one is added.
+const List<String> reservedFolderNames = [
+  notesFolderName,
+  pagesFolderName,
+  storeFolderName,
+];
+
 /// maxNameLength bounds a folder or document name. Chosen well under the 255
 /// bytes most filesystems allow, since the name is also what has to fit in a
 /// sidebar row.
@@ -83,10 +108,15 @@ class PostEntry {
     this.size,
   });
 
-  /// isNotesFolder marks the reserved folder, which the sidebar draws
-  /// differently and offers neither Rename nor Delete on. See
-  /// [notesFolderName].
+  /// isNotesFolder marks the notes folder specifically -- the one the notes
+  /// feature files into. See [notesFolderName].
   bool get isNotesFolder => isFolder && name == notesFolderName;
+
+  /// isReservedFolder marks any folder the app keeps for itself. The sidebar
+  /// draws these differently and offers neither Rename nor Delete on them,
+  /// and the listing pins them to the bottom. See [reservedFolderNames].
+  bool get isReservedFolder =>
+      isFolder && reservedFolderNames.contains(name);
 }
 
 /// PostStorage reads and writes the library.
@@ -242,13 +272,20 @@ class PostStorage {
     folders.sort(byName);
     documents.sort(byName);
 
-    // The reserved folder is held out of the ordering entirely and put back
-    // on the end, so it is always the last row of the top level however the
-    // rest has been arranged. Notes accumulate on their own, without anyone
-    // filing them, and a folder that drifted up the list as it grew would put
-    // itself between somebody and the writing they came here for.
-    var reserved = folders.where((f) => f.isNotesFolder).toList();
-    folders.removeWhere((f) => f.isNotesFolder);
+    // The reserved folders are held out of the ordering entirely and put
+    // back on the end, so they are always the last rows of the top level
+    // however the rest has been arranged. They fill up on their own, without
+    // anyone filing into them, and a folder that drifted up the list as it
+    // grew would put itself between somebody and the writing they came here
+    // for.
+    //
+    // Kept in reservedFolderNames' order rather than the order they were
+    // read in, so the three do not swap places between listings.
+    var reserved = [
+      for (var name in reservedFolderNames)
+        ...folders.where((f) => f.name == name),
+    ];
+    folders.removeWhere((f) => f.isReservedFolder);
 
     // Documents first. They are what the library is for -- a folder is
     // where some of them are kept -- and putting the folders on top meant
@@ -354,14 +391,17 @@ class PostStorage {
 
   /// rename moves a folder or document to a new name in the same place.
   ///
-  /// Refuses the reserved notes folder: notes are still being filed into it
-  /// by name from elsewhere in the app, and renaming it would send the next
-  /// one to a folder of the old name made fresh beside it.
+  /// Refuses the reserved folders: things are still being filed into them by
+  /// name from elsewhere in the app, and renaming one would send the next to
+  /// a folder of the old name made fresh beside it.
   static Future<String?> rename(PostEntry entry, String newName) async {
-    if (entry.isNotesFolder) return null;
-    // ...and nothing else may be renamed onto it either, which would leave
+    if (entry.isReservedFolder) return null;
+    // ...and nothing else may be renamed onto one either, which would leave
     // two folders claiming the same reserved name.
-    if (entry.isFolder && sanitizeName(newName) == notesFolderName) return null;
+    if (entry.isFolder &&
+        reservedFolderNames.contains(sanitizeName(newName))) {
+      return null;
+    }
 
     var from =
         await _resolve(entry.folder, entry.name, asDocument: !entry.isFolder);
@@ -412,15 +452,15 @@ class PostStorage {
   /// from starts a fresh note next time.
   static Future<List<String>> folderNames() async => [
         for (var entry in await list())
-          if (entry.isFolder && !entry.isNotesFolder) entry.name,
+          if (entry.isFolder && !entry.isReservedFolder) entry.name,
       ];
 
   /// delete removes a document, or a folder and everything in it.
   ///
-  /// The reserved notes folder is refused; the notes inside it are not, so
-  /// there is still a way to clear it out. See [notesFolderName].
+  /// A reserved folder is refused; what is inside one is not, so there is
+  /// still a way to clear it out. See [reservedFolderNames].
   static Future<void> delete(PostEntry entry) async {
-    if (entry.isNotesFolder) return;
+    if (entry.isReservedFolder) return;
     var target =
         await _resolve(entry.folder, entry.name, asDocument: !entry.isFolder);
     if (target == null) return;

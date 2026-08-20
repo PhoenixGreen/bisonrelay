@@ -11,6 +11,18 @@ import 'package:provider/provider.dart';
 
 /// PostSidebar browses `<appDataDir>/my-posts` and loads what is in it into
 /// the composer beside it.
+/// reservedFolderIcon is the icon for one of the app's own folders.
+IconData reservedFolderIcon(String name) {
+  switch (name) {
+    case pagesFolderName:
+      return Icons.web_outlined;
+    case storeFolderName:
+      return Icons.storefront_outlined;
+    default:
+      return Icons.sticky_note_2_outlined;
+  }
+}
+
 class PostSidebar extends StatefulWidget {
   /// The composer whose text is being saved, or null for the frame or two
   /// while one is being rebuilt -- see ComposerSidebarController.visible.
@@ -162,12 +174,14 @@ class _PostSidebarState extends State<PostSidebar> {
         padding: const EdgeInsets.fromLTRB(12, 7, 4, 7),
         child: Row(children: [
           Icon(
-            // The reserved notes folder gets an icon of its own: it behaves
-            // differently from the folders around it -- it fills itself, and
-            // it cannot be renamed or deleted -- and a row that is not quite
-            // like its neighbours should not look exactly like them.
-            entry.isNotesFolder
-                ? Icons.sticky_note_2_outlined
+            // The reserved folders each get an icon of their own: they
+            // behave differently from the folders around them -- they fill
+            // themselves, and cannot be renamed or deleted -- and a row that
+            // is not quite like its neighbours should not look exactly like
+            // them. Different from each other too, since what is in one is
+            // not what is in the next.
+            entry.isReservedFolder
+                ? reservedFolderIcon(entry.name)
                 : entry.isFolder
                     ? Icons.folder_outlined
                     : Icons.description_outlined,
@@ -274,7 +288,7 @@ class _PostSidebarState extends State<PostSidebar> {
     // cannot be renamed or deleted, so the menu would open empty, and it is
     // pinned to the bottom of the list, so there is nowhere to drag it to.
     // The space it would take is kept, so its row lines up with the others.
-    if (entry.isNotesFolder) return const SizedBox(width: 28, height: 28);
+    if (entry.isReservedFolder) return const SizedBox(width: 28, height: 28);
 
     return ReorderableDelayedDragStartListener(
       index: index,
@@ -350,12 +364,12 @@ class _PostSidebarState extends State<PostSidebar> {
         // strand every note in it and the next one written would recreate the
         // folder anyway. Storage refuses both regardless (see PostStorage);
         // this is only so the menu does not offer what will not happen.
-        if (!entry.isNotesFolder)
+        if (!entry.isReservedFolder)
           const PopupMenuItem(value: "rename", child: Text("Rename")),
         // A folder has nowhere to go: the library is one level deep.
         if (!entry.isFolder)
           const PopupMenuItem(value: "move", child: Text("Move to...")),
-        if (!entry.isNotesFolder)
+        if (!entry.isReservedFolder)
           const PopupMenuItem(value: "delete", child: Text("Delete")),
       ],
     );
