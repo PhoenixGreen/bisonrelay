@@ -2,6 +2,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:bruig/components/feed/image_header.dart';
+import 'package:bruig/components/md_elements.dart';
 import 'package:image_compression_flutter/image_compression_flutter.dart';
 
 // embed_options.dart shrinks a picture before it goes into a post.
@@ -69,6 +70,11 @@ Future<PreparedEmbed> prepareEmbed(
 ) async {
   if (!mime.startsWith("image/")) return PreparedEmbed(original, mime);
 
+  // A vector has no pixels to scale or quality to trade away, and putting
+  // one through the decoder would only turn a few kilobytes of markup into
+  // a bitmap of whatever size it happened to be drawn at.
+  if (isSvgMime(mime)) return PreparedEmbed(original, mime);
+
   var natural = imageDimensions(original);
   var data = original;
   var out = mime;
@@ -86,7 +92,18 @@ Future<PreparedEmbed> prepareEmbed(
     }
   }
 
-  if (options.quality < 100) {
+  // Compression encodes to JPEG, which has no alpha channel: a picture with
+  // anything see-through in it comes back with the transparency filled in,
+  // usually black. That is right for a photograph and wrong for a logo, and
+  // the writer is not told -- so a picture that uses transparency keeps the
+  // format it arrived in, whatever the quality setting says.
+  //
+  // Checked rather than assumed from the format. Most PNGs are opaque
+  // screenshots, which are exactly what the quality setting is for, and
+  // refusing to compress every PNG would give that up for the few that
+  // need it.
+  var transparent = await hasTransparency(data);
+  if (options.quality < 100 && !transparent) {
     var compressed = await _compress(data, options.quality);
     if (compressed != null) {
       data = compressed;
@@ -97,6 +114,38 @@ Future<PreparedEmbed> prepareEmbed(
   var size = imageDimensions(data);
   return PreparedEmbed(data, out,
       width: size?.width.round(), height: size?.height.round());
+}
+
+/// hasTransparency is whether any pixel is less than fully opaque.
+///
+/// Decoded and scanned rather than read out of the file's header: the header
+/// says whether a format *can* carry transparency, not whether this picture
+/// uses any, and most PNGs are opaque. Stops at the first see-through pixel,
+/// so a logo with a clear corner costs almost nothing to detect.
+///
+/// A picture that cannot be decoded is treated as transparent, which is the
+/// safe way to be wrong: the worst case is a file that could have been
+/// smaller, rather than one that comes back with black behind it.
+Future<bool> hasTransparency(Uint8List bytes) async {
+  ui.Codec? codec;
+  try {
+    codec = await ui.instantiateImageCodec(bytes);
+    var frame = await codec.getNextFrame();
+    var raw = await frame.image
+        .toByteData(format: ui.ImageByteFormat.rawStraightRgba);
+    frame.image.dispose();
+    if (raw == null) return true;
+
+    var data = raw.buffer.asUint8List();
+    for (var i = 3; i < data.length; i += 4) {
+      if (data[i] != 255) return true;
+    }
+    return false;
+  } catch (_) {
+    return true;
+  } finally {
+    codec?.dispose();
+  }
 }
 
 /// _scaleToWidth decodes at the requested width and re-encodes.

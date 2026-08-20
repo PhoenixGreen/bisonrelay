@@ -1,5 +1,7 @@
 import 'package:bruig/components/feed/embed_options.dart';
 import 'package:bruig/components/feed/image_header.dart';
+import 'dart:typed_data';
+
 import 'package:flutter_test/flutter_test.dart';
 
 import 'png_fixture.dart';
@@ -104,5 +106,55 @@ void main() {
     expect(EmbedOptions.none.changesAnything, isFalse);
     expect(const EmbedOptions(maxWidth: 800).changesAnything, isTrue);
     expect(const EmbedOptions(quality: 99).changesAnything, isTrue);
+  });
+
+  group("transparency", () {
+    final logo = pngWithAlphaOf(400, 300);
+    final opaque = pngWithAlphaOf(400, 300, transparent: false);
+
+    test("a see-through picture is found to be one", () async {
+      expect(await hasTransparency(logo), isTrue);
+    });
+
+    test("one with an alpha channel it does not use is not", () async {
+      // Which is most PNGs, and exactly what the quality setting is for.
+      expect(await hasTransparency(opaque), isFalse);
+    });
+
+    test("a logo keeps its format however low the quality", () async {
+      // Compression encodes to JPEG, which has no alpha channel: the
+      // transparency would come back filled in, usually black, and the
+      // writer would not be told.
+      var out = await prepareEmbed(
+          logo, "image/png", const EmbedOptions(quality: 30));
+      expect(out.mime, "image/png");
+      expect(out.data, same(logo));
+    });
+
+    test("an opaque picture is still compressed", () async {
+      var out = await prepareEmbed(
+          opaque, "image/png", const EmbedOptions(quality: 30));
+      expect(out.mime, "image/jpeg");
+      expect(out.data.length, lessThan(opaque.length));
+    });
+
+    test("something undecodable is treated as see-through", () async {
+      // The safe way to be wrong: a file that could have been smaller,
+      // rather than one that comes back with black behind it.
+      expect(await hasTransparency(Uint8List.fromList([1, 2, 3])), isTrue);
+    });
+  });
+
+  group("vectors", () {
+    test("are passed through untouched", () async {
+      // No pixels to scale and no quality to trade away -- and decoding one
+      // would turn a few kilobytes of markup into a bitmap.
+      var svg = Uint8List.fromList(
+          '<svg xmlns="http://www.w3.org/2000/svg"/>'.codeUnits);
+      var out = await prepareEmbed(svg, "image/svg+xml",
+          const EmbedOptions(maxWidth: 100, quality: 30));
+      expect(out.mime, "image/svg+xml");
+      expect(out.data, same(svg));
+    });
   });
 }

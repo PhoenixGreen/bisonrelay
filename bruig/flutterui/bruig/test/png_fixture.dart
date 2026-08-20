@@ -59,3 +59,35 @@ int _crc32(Uint8List bytes) {
   }
   return (crc ^ 0xFFFFFFFF) & 0xFFFFFFFF;
 }
+
+/// pngWithAlphaOf returns a [width] by [height] RGBA PNG whose corner is
+/// see-through, which is what a logo on a background looks like.
+Uint8List pngWithAlphaOf(int width, int height, {bool transparent = true}) {
+  var raw = BytesBuilder();
+  for (var y = 0; y < height; y++) {
+    raw.addByte(0); // No per-row filter.
+    for (var x = 0; x < width; x++) {
+      // Clear in the top-left quarter, opaque everywhere else -- or opaque
+      // throughout, for the case that has an alpha channel and no use for
+      // it, which is most PNGs.
+      var clear = transparent && x < width ~/ 2 && y < height ~/ 2;
+      raw.add([
+        (x * 7) % 256,
+        (y * 5) % 256,
+        (x * y) % 256,
+        clear ? 0 : 255,
+      ]);
+    }
+  }
+
+  var out = BytesBuilder();
+  out.add([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
+  var ihdr = BytesBuilder();
+  ihdr.add(_uint32(width));
+  ihdr.add(_uint32(height));
+  ihdr.add([8, 6, 0, 0, 0]); // 8 bits per channel, truecolour with alpha.
+  out.add(_chunk("IHDR", ihdr.takeBytes()));
+  out.add(_chunk("IDAT", Uint8List.fromList(zlib.encode(raw.takeBytes()))));
+  out.add(_chunk("IEND", Uint8List(0)));
+  return out.takeBytes();
+}
