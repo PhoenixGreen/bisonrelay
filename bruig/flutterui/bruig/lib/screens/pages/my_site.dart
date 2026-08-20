@@ -3,6 +3,7 @@ import 'package:bruig/components/text.dart';
 import 'package:bruig/models/client.dart';
 import 'package:bruig/config.dart';
 import 'package:bruig/models/pages.dart';
+import 'package:bruig/plugin_system/writing_tools/writing_tools.dart';
 import 'package:bruig/models/resources.dart';
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
@@ -42,10 +43,69 @@ class MySiteTab extends StatefulWidget {
 class _MySiteTabState extends State<MySiteTab> {
   PagesModel get pages => widget.pages;
 
+  /// documents is every page of the site with where it stands. Derived from
+  /// the library and the served directory, so it is recomputed rather than
+  /// stored -- there is nothing here that is not already on disk.
+  List<PageDocument> documents = const [];
+
   @override
   void initState() {
     super.initState();
-    pages.loadHost();
+    pages.loadHost().then((_) => refreshDocuments());
+    pages.addListener(refreshDocuments);
+  }
+
+  @override
+  void dispose() {
+    pages.removeListener(refreshDocuments);
+    super.dispose();
+  }
+
+  bool _refreshing = false;
+
+  /// refreshDocuments rereads the list. Guarded because it is hung off the
+  /// model's own notifications and publishing notifies -- without this a
+  /// publish would start a reread that finished, notified, and started
+  /// another.
+  Future<void> refreshDocuments() async {
+    if (_refreshing) return;
+    _refreshing = true;
+    try {
+      var docs = await PageDocuments.list(pages);
+      if (mounted) setState(() => documents = docs);
+    } catch (exception) {
+      if (mounted) {
+        SnackBarModel.of(context).error("Unable to list pages: $exception");
+      }
+    } finally {
+      _refreshing = false;
+    }
+  }
+
+  void publishPage(String name) async {
+    var snackbar = SnackBarModel.of(context);
+    try {
+      // A page only being served, with no document behind it, has to be
+      // brought into the library before it can be published from one.
+      await PageDocuments.adopt(pages, name);
+      await PageDocuments.publish(pages, name);
+      await refreshDocuments();
+    } catch (exception) {
+      snackbar.error("Unable to publish $name: $exception");
+    }
+  }
+
+  void unpublishPage(String name) async {
+    var snackbar = SnackBarModel.of(context);
+    try {
+      // Adopted first, or unpublishing a page that was only ever served
+      // would be a delete: there would be nothing left to publish again.
+      await PageDocuments.adopt(pages, name);
+      await PageDocuments.unpublish(pages, name);
+      await refreshDocuments();
+    } catch (exception) {
+      snackbar.error("Unable to unpublish $name: $exception");
+    }
   }
 
   Future<void> _apply(PagesHostConfig cfg) async {
@@ -81,7 +141,8 @@ class _MySiteTabState extends State<MySiteTab> {
     // time hosting is switched on.
     if (mounted && pages.localPages.isEmpty) {
       try {
-        await pages.savePage("index.md", starterIndex);
+        await PostStorage.write(pagesFolderName, "index", starterIndex);
+        await PageDocuments.publish(pages, "index");
       } catch (exception) {
         if (mounted) {
           SnackBarModel.of(context).error("Unable to write front page: $exception");
@@ -122,10 +183,20 @@ class _MySiteTabState extends State<MySiteTab> {
 
   void newPage() => pages.startPageDraft("");
 
+  /// deletePage removes the page for good: the document and anything
+  /// published under it.
+  ///
+  /// Both, deliberately. Deleting only the document would leave the page
+  /// still being served with nothing behind it, and deleting only the served
+  /// copy is what Unpublish is for.
   void deletePage(String name) async {
     var snackbar = SnackBarModel.of(context);
+    var doc = documentNameFor(name);
     try {
-      await pages.deletePage(name);
+      await pages.deletePage(pageFileNameFor(name));
+      await PostStorage.delete(
+          PostEntry(name: doc, folder: pagesFolderName, isFolder: false));
+      await refreshDocuments();
     } catch (exception) {
       snackbar.error("Unable to delete $name: $exception");
     }
@@ -149,6 +220,9 @@ class _MySiteTabState extends State<MySiteTab> {
         }
         return _SiteOverview(
           pages: pages,
+          documents: documents,
+          onPublish: publishPage,
+          onUnpublish: unpublishPage,
           onToggle: toggleHosting,
           onChooseDir: chooseDir,
           onView: viewOwnSite,
@@ -169,14 +243,23 @@ class _SiteOverview extends StatelessWidget {
   final VoidCallback onNew;
   final void Function(String) onEdit;
   final void Function(String) onDelete;
+  final void Function(String) onPublish;
+  final void Function(String) onUnpublish;
+
+  /// documents is every page of the site with where it stands -- see
+  /// PageDocuments.list.
+  final List<PageDocument> documents;
   const _SiteOverview({
     required this.pages,
+    required this.documents,
     required this.onToggle,
     required this.onChooseDir,
     required this.onView,
     required this.onNew,
     required this.onEdit,
     required this.onDelete,
+    required this.onPublish,
+    required this.onUnpublish,
   });
 
   @override
@@ -240,13 +323,15 @@ class _SiteOverview extends StatelessWidget {
       if (!cfg.hostsPages)
         const Txt.S("Switch hosting on to write pages.",
             color: TextColor.onSurfaceVariant)
-      else if (pages.localPages.isEmpty)
+      else if (documents.isEmpty)
         const Txt.S("No pages yet.", color: TextColor.onSurfaceVariant)
       else
-        ...pages.localPages.map((p) => _PageRow(
+        ...documents.map((p) => _PageRow(
               page: p,
               onEdit: () => onEdit(p.name),
               onDelete: () => onDelete(p.name),
+              onPublish: () => onPublish(p.name),
+              onUnpublish: () => onUnpublish(p.name),
             )),
       if (cfg.hostsPages) ...[
         const SizedBox(height: 24),
@@ -257,24 +342,65 @@ class _SiteOverview extends StatelessWidget {
 }
 
 class _PageRow extends StatelessWidget {
-  final LocalPage page;
+  final PageDocument page;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
-  const _PageRow(
-      {required this.page, required this.onEdit, required this.onDelete});
+  final VoidCallback onPublish;
+  final VoidCallback onUnpublish;
+  const _PageRow({
+    required this.page,
+    required this.onEdit,
+    required this.onDelete,
+    required this.onPublish,
+    required this.onUnpublish,
+  });
 
   @override
   Widget build(BuildContext context) {
+    var theme = ThemeNotifier.of(context);
+
+    // A front page that is not published is worth saying plainly: it does
+    // not take one page down, it makes the whole site answer "no front
+    // page" to everyone who asks.
+    var subtitle = page.state.label;
+    if (page.isIndex) {
+      subtitle = page.state.live
+          ? "Front page — what visitors land on"
+          : "Front page — nobody can reach the site without it";
+    }
+
     return ListTile(
       contentPadding: EdgeInsets.zero,
-      leading: Icon(page.isIndex ? Icons.home_outlined : Icons.description_outlined),
-      title: Txt.M(page.name),
-      subtitle: Txt.S(
-          page.isIndex
-              ? "Front page — what visitors land on"
-              : "${page.size} bytes",
-          color: TextColor.onSurfaceVariant),
+      leading:
+          Icon(page.isIndex ? Icons.home_outlined : Icons.description_outlined),
+      title: Row(children: [
+        Flexible(child: Txt.M(page.name)),
+        const SizedBox(width: 8),
+        _StateChip(page.state, warn: page.isIndex && !page.state.live),
+      ]),
+      subtitle: Txt.S(subtitle,
+          color: page.isIndex && !page.state.live
+              ? TextColor.onErrorContainer
+              : TextColor.onSurfaceVariant),
       trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+        // Publish is offered whenever the served copy is not what the
+        // document says -- which is both "never published" and "written
+        // since", the two cases where a visitor is not reading this.
+        if (page.state != PagePublishState.published)
+          IconButton(
+            icon: const Icon(Icons.publish_outlined, size: 18),
+            tooltip: page.state == PagePublishState.draft
+                ? "Publish ${page.name}"
+                : "Publish update to ${page.name}",
+            color: theme.colors.primary,
+            onPressed: onPublish,
+          ),
+        if (page.state.live)
+          IconButton(
+            icon: const Icon(Icons.visibility_off_outlined, size: 18),
+            tooltip: "Unpublish ${page.name}",
+            onPressed: onUnpublish,
+          ),
         IconButton(
           icon: const Icon(Icons.edit_outlined, size: 18),
           tooltip: "Edit ${page.name}",
@@ -287,6 +413,45 @@ class _PageRow extends StatelessWidget {
         ),
       ]),
       onTap: onEdit,
+    );
+  }
+}
+
+/// _StateChip says where a page stands. Deliberately drawn for every state
+/// including the settled one: a row with no marking would read as "no
+/// information" rather than "published and current".
+class _StateChip extends StatelessWidget {
+  final PagePublishState state;
+  final bool warn;
+  const _StateChip(this.state, {this.warn = false});
+
+  @override
+  Widget build(BuildContext context) {
+    var theme = ThemeNotifier.of(context);
+    Color color;
+    if (warn) {
+      color = theme.colors.error;
+    } else {
+      switch (state) {
+        case PagePublishState.published:
+          color = theme.extraColors.successOnSurface;
+          break;
+        case PagePublishState.edited:
+          color = theme.colors.primary;
+          break;
+        case PagePublishState.draft:
+          color = theme.colors.onSurfaceVariant;
+          break;
+      }
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Text(state.label, style: TextStyle(fontSize: 11, color: color)),
     );
   }
 }
@@ -392,7 +557,12 @@ class _PageEditorState extends State<_PageEditor> {
   void load() async {
     var name = draft.editing;
     try {
-      var content = await widget.pages.readPage(name);
+      // The document is what is edited. A page that is only being served --
+      // written before any of this existed -- is brought into the library
+      // first, so there is always a document behind the editor.
+      await PageDocuments.adopt(widget.pages, name);
+      var content =
+          await PostStorage.read(pagesFolderName, documentNameFor(name)) ?? "";
       if (!mounted) return;
       bodyCtrl.text = content;
     } catch (exception) {
@@ -408,22 +578,44 @@ class _PageEditorState extends State<_PageEditor> {
     setState(() {});
   }
 
-  void save() async {
+  /// save writes the document. It does not publish: what visitors are
+  /// reading only changes when somebody says so.
+  ///
+  /// [andPublish] is the other button, which does both -- the common case of
+  /// finishing a page and wanting it up.
+  void save({bool andPublish = false}) async {
     var snackbar = SnackBarModel.of(context);
     var name = nameCtrl.text.trim();
     if (name.isEmpty) {
       snackbar.error("The page needs a name.");
       return;
     }
-    if (!name.endsWith(".md")) name = "$name.md";
+    var doc = documentNameFor(name);
 
     setState(() => saving = true);
     try {
-      await widget.pages.savePage(name, bodyCtrl.text);
-      // Renaming through the name field leaves the old file behind, so drop
-      // it once the new one is safely written.
-      if (!isNew && name != draft.editing) {
-        await widget.pages.deletePage(draft.editing);
+      await PostStorage.write(pagesFolderName, doc, bodyCtrl.text);
+
+      // Renaming through the name field leaves the old one behind, so drop
+      // it -- both the document and anything published under it -- once the
+      // new one is safely written.
+      var wasPublished = false;
+      if (!isNew && doc != documentNameFor(draft.editing)) {
+        var old = documentNameFor(draft.editing);
+        wasPublished = widget.pages.localPages
+            .any((p) => p.name == pageFileNameFor(old));
+        if (wasPublished) {
+          await PageDocuments.unpublish(widget.pages, old);
+        }
+        var entry = PostEntry(
+            name: old, folder: pagesFolderName, isFolder: false);
+        await PostStorage.delete(entry);
+      }
+
+      // A rename of something that was published republishes under the new
+      // name, or renaming a live page would silently take it down.
+      if (andPublish || wasPublished) {
+        await PageDocuments.publish(widget.pages, doc);
       }
       widget.onDone();
     } catch (exception) {
@@ -474,11 +666,19 @@ class _PageEditorState extends State<_PageEditor> {
           ),
         ),
         const SizedBox(height: 12),
+        // Two buttons, because saving and publishing are two decisions.
+        // Save keeps the writing; publishing is what changes the page a
+        // visitor is reading, and nothing does that without being asked.
         Row(children: [
           ElevatedButton(
             style: raisedButtonStyle(ThemeNotifier.of(context)),
-            onPressed: saving ? null : save,
-            child: Text(saving ? "Saving…" : "Save"),
+            onPressed: saving ? null : () => save(andPublish: true),
+            child: Text(saving ? "Saving…" : "Save and publish"),
+          ),
+          const SizedBox(width: 8),
+          OutlinedButton(
+            onPressed: saving ? null : () => save(),
+            child: const Text("Save"),
           ),
           const SizedBox(width: 8),
           OutlinedButton(onPressed: widget.onDone, child: const Text("Cancel")),
