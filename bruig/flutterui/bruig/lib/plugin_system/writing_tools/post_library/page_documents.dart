@@ -108,6 +108,15 @@ String partialFileNameFor(String documentName) =>
 /// resources.PartialsDir on the Go side.
 const String partialsSubdir = "partials";
 
+/// isSiteFolder is whether documents in [folder] belong to the site -- the
+/// pages themselves, and the fragments those pages share.
+///
+/// One definition, because two would drift: the publish menu asks it to
+/// decide whether to offer publishing at all, and asking it about only the
+/// Pages folder is what left a fragment offering Create Post.
+bool isSiteFolder(String folder) =>
+    folder == pagesFolderName || folder == partialsFolderName;
+
 /// fileNameFor is the served file for a document in [folder].
 String fileNameFor(String folder, String documentName) =>
     folder == partialsFolderName

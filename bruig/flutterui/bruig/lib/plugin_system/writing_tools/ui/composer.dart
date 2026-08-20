@@ -127,8 +127,21 @@ class _WritingComposerState extends State<WritingComposer> {
 
   PagesModel get _pages => Provider.of<PagesModel>(context, listen: false);
 
-  /// isPage is whether the open document is a page of the site.
-  bool get isPage => _library.openFolder == pagesFolderName;
+  /// isPage is whether the open document belongs to the site -- a page, or
+  /// one of the fragments its pages share.
+  ///
+  /// Both, because both are published: a fragment nobody has published is a
+  /// fragment every page including it renders as nothing. Checking only the
+  /// Pages folder left a fragment offering Create Post, which is the one
+  /// thing it cannot be.
+  bool get isPage => isSiteFolder(_library.openFolder);
+
+  /// isFragment distinguishes the two for what the menu says. They behave
+  /// identically; they are not the same word.
+  bool get isFragment => _library.openFolder == partialsFolderName;
+
+  /// _thing is what the publish menu calls the open document.
+  String get _thing => isFragment ? "fragment" : "page";
 
   /// _publishedText is what the site is currently serving for the open
   /// page, or null when nothing is. Read when the document changes and
@@ -171,7 +184,8 @@ class _WritingComposerState extends State<WritingComposer> {
       // Written out first, or the copy taken would be the last save rather
       // than what is on screen.
       await _library.flush();
-      await PageDocuments.publish(_pages, PageDocuments.forName(_pages, name));
+      await PageDocuments.publish(_pages,
+          PageDocuments.forName(_pages, name, folder: _library.openFolder));
       await refreshPageState();
       snackbar.success("Published $name.");
     } catch (exception) {
@@ -184,8 +198,8 @@ class _WritingComposerState extends State<WritingComposer> {
     var name = _library.openName;
     if (name == null) return;
     try {
-      await PageDocuments.unpublish(
-          _pages, PageDocuments.forName(_pages, name));
+      await PageDocuments.unpublish(_pages,
+          PageDocuments.forName(_pages, name, folder: _library.openFolder));
       await refreshPageState();
       snackbar.success("$name is no longer published.");
     } catch (exception) {
@@ -736,7 +750,7 @@ class _WritingComposerState extends State<WritingComposer> {
                 contentPadding: EdgeInsets.zero,
                 leading: const Icon(Icons.publish_outlined, size: 18),
                 title: Text(pageState == PagePublishState.draft
-                    ? "Publish page"
+                    ? "Publish $_thing"
                     : "Publish update"),
                 subtitle: pageState == PagePublishState.published
                     ? const Text("Already published, with no changes since")
@@ -749,12 +763,14 @@ class _WritingComposerState extends State<WritingComposer> {
               // a missing entry says nothing, and this is the one action
               // whose absence would be read as "cannot be taken down".
               enabled: !loading && pageState.live,
-              child: const ListTile(
+              child: ListTile(
                 dense: true,
                 contentPadding: EdgeInsets.zero,
-                leading: Icon(Icons.visibility_off_outlined, size: 18),
-                title: Text("Unpublish page"),
-                subtitle: Text("Takes it down, keeps the writing"),
+                leading: const Icon(Icons.visibility_off_outlined, size: 18),
+                title: Text("Unpublish $_thing"),
+                subtitle: Text(isFragment
+                    ? "Every page including it renders it as nothing"
+                    : "Takes it down, keeps the writing"),
               ),
             ),
           ] else

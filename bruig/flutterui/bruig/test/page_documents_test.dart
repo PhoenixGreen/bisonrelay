@@ -149,4 +149,22 @@ void main() {
       expect(p.isIndex, isTrue);
     });
   });
+
+  group('what belongs to the site', () {
+    test('pages and fragments both do', () {
+      // Both are published, so both get the site's publish actions. Asking
+      // only about Pages left a fragment offering Create Post, which is the
+      // one thing it cannot be.
+      expect(isSiteFolder(pagesFolderName), isTrue);
+      expect(isSiteFolder(partialsFolderName), isTrue);
+    });
+
+    test('nothing else does', () {
+      expect(isSiteFolder(notesFolderName), isFalse);
+      expect(isSiteFolder(storeFolderName), isFalse);
+      expect(isSiteFolder("Drafts"), isFalse);
+      // The top level, where an ordinary post is written.
+      expect(isSiteFolder(""), isFalse);
+    });
+  });
 }
