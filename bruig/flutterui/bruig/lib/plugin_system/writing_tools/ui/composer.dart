@@ -138,10 +138,12 @@ class _WritingComposerState extends State<WritingComposer> {
     if (!isPage) return;
     var name = _library.openName;
     if (name == null) return;
-    var file = pageFileNameFor(name);
+    // The file it is actually served as, which is not always the slug of
+    // its name -- see PageDocument.file.
+    var page = PageDocuments.forName(_pages, name);
     String? served;
-    if (_pages.localPages.any((p) => p.name == file)) {
-      served = await _pages.readPage(file);
+    if (page.state.live) {
+      served = await _pages.readPage(page.file);
     }
     var doc = await PostStorage.read(pagesFolderName, name) ?? "";
     if (!mounted) return;
@@ -156,7 +158,7 @@ class _WritingComposerState extends State<WritingComposer> {
       // Written out first, or the copy taken would be the last save rather
       // than what is on screen.
       await _library.flush();
-      await PageDocuments.publish(_pages, name);
+      await PageDocuments.publish(_pages, PageDocuments.forName(_pages, name));
       await refreshPageState();
       snackbar.success("Published $name.");
     } catch (exception) {
@@ -169,7 +171,8 @@ class _WritingComposerState extends State<WritingComposer> {
     var name = _library.openName;
     if (name == null) return;
     try {
-      await PageDocuments.unpublish(_pages, name);
+      await PageDocuments.unpublish(
+          _pages, PageDocuments.forName(_pages, name));
       await refreshPageState();
       snackbar.success("$name is no longer published.");
     } catch (exception) {

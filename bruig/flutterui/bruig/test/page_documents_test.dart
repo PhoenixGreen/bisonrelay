@@ -76,20 +76,44 @@ void main() {
 
   group('the front page', () {
     test('is recognised by either name', () {
-      const doc = PageDocument(name: "index", state: PagePublishState.draft);
+      const doc = PageDocument(
+          name: "index", file: "index.md", state: PagePublishState.draft);
       expect(doc.isIndex, isTrue);
       const withExt =
-          PageDocument(name: "index.md", state: PagePublishState.draft);
+          PageDocument(name: "index.md", file: "x.md", state: PagePublishState.draft);
       expect(withExt.isIndex, isTrue);
       // However it was capitalised.
-      const caps = PageDocument(name: "Index", state: PagePublishState.draft);
+      const caps = PageDocument(name: "Index", file: "x.md", state: PagePublishState.draft);
       expect(caps.isIndex, isTrue);
     });
 
     test('is not just any page starting with index', () {
       const doc =
-          PageDocument(name: "index-old", state: PagePublishState.draft);
+          PageDocument(name: "index-old", file: "x.md", state: PagePublishState.draft);
       expect(doc.isIndex, isFalse);
+    });
+  });
+
+  group('the file a page is served as', () {
+    test('is what the row carries, not what the name would give', () {
+      // A page published before the slug rule is served under a name the
+      // document cannot reproduce. Deriving it meant preview fetched
+      // nothing, unpublish deleted nothing, and adopting one listed the
+      // same page twice.
+      const page = PageDocument(
+          name: "Test page",
+          file: "Test page.md",
+          state: PagePublishState.published);
+      expect(page.link, "Test page.md");
+      expect(page.link, isNot(pageFileNameFor(page.name)));
+    });
+
+    test('a page not yet served takes the link its name gives', () {
+      const page = PageDocument(
+          name: "Test page",
+          file: "test_page.md",
+          state: PagePublishState.draft);
+      expect(page.link, pageFileNameFor(page.name));
     });
   });
 }

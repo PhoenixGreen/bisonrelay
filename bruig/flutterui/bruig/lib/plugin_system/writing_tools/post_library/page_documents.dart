@@ -1,4 +1,5 @@
 import 'package:bruig/models/pages.dart';
+import 'package:golib_plugin/definitions.dart';
 import 'package:bruig/plugin_system/writing_tools/post_library/post_storage.dart';
 
 // page_documents.dart is the join between the post library and the site.
@@ -115,13 +116,26 @@ class PageDocument {
 
   const PageDocument({
     required this.name,
+    required this.file,
     required this.state,
     this.modified,
     this.conflict = false,
   });
 
-  /// link is what another page writes to reach this one.
-  String get link => pageFileNameFor(name);
+  /// file is the served file this page is, or would be.
+  ///
+  /// Carried rather than derived from [name]. Slugging is one-way, so a page
+  /// published before the slug rule existed is served under a name that
+  /// cannot be recovered from the document -- and re-deriving it meant every
+  /// action aimed at a file that was not there: preview fetched nothing,
+  /// unpublish deleted nothing, and adopting one made a second row for the
+  /// page that was already listed.
+  final String file;
+
+  /// link is what another page writes to reach this one -- the name it is
+  /// actually served under, which is what works today. Publishing moves it
+  /// to the slug, so it becomes [pageFileNameFor] once republished.
+  String get link => file;
 
   /// conflict is true when another document publishes to the same file.
   ///
@@ -148,7 +162,16 @@ class PageDocuments {
   /// to.
   static Future<List<PageDocument>> list(PagesModel pages) async {
     var docs = await PostStorage.list(pagesFolderName);
-    var served = {for (var p in pages.localPages) p.name: p};
+
+    // Keyed by slug rather than by file name, so a document finds the file
+    // it is published as even when that file predates the slug rule --
+    // "Test page.md" and a document called "Test page" are one page, not
+    // two, and listing them separately is what put the same page on screen
+    // twice.
+    var served = <String, LocalPage>{};
+    for (var p in pages.localPages) {
+      served[pageSlug(p.name)] = p;
+    }
 
     var out = <PageDocument>[];
     var claimed = <String>{};
@@ -156,36 +179,43 @@ class PageDocuments {
     // Which link each document takes, counted first: two names can slug to
     // one file and publishing the second would replace the first, so both
     // are marked rather than one of them silently losing.
-    var linkCounts = <String, int>{};
+    var slugCounts = <String, int>{};
     for (var doc in docs) {
       if (doc.isFolder) continue;
-      var file = pageFileNameFor(doc.name);
-      linkCounts[file] = (linkCounts[file] ?? 0) + 1;
+      var slug = pageSlug(doc.name);
+      slugCounts[slug] = (slugCounts[slug] ?? 0) + 1;
     }
 
     for (var doc in docs) {
       if (doc.isFolder) continue;
-      var file = pageFileNameFor(doc.name);
-      claimed.add(file);
+      var slug = pageSlug(doc.name);
+      claimed.add(slug);
+
+      // The file it is actually served as, when it is served at all --
+      // otherwise the one it would take.
+      var servedFile = served[slug];
+      var file = servedFile?.name ?? pageFileNameFor(doc.name);
       String? servedText;
-      if (served.containsKey(file)) {
-        servedText = await pages.readPage(file);
+      if (servedFile != null) {
+        servedText = await pages.readPage(servedFile.name);
       }
       var text = await PostStorage.read(pagesFolderName, doc.name) ?? "";
       out.add(PageDocument(
         name: doc.name,
+        file: file,
         state: pagePublishState(servedText, text),
         modified: doc.modified,
-        conflict: (linkCounts[file] ?? 0) > 1,
+        conflict: (slugCounts[slug] ?? 0) > 1,
       ));
     }
 
-    for (var file in served.keys) {
-      if (claimed.contains(file)) continue;
+    for (var entry in served.entries) {
+      if (claimed.contains(entry.key)) continue;
       out.add(PageDocument(
-        name: documentNameFor(file),
+        name: documentNameFor(entry.value.name),
+        file: entry.value.name,
         state: PagePublishState.published,
-        modified: served[file]!.modified,
+        modified: entry.value.modified,
       ));
     }
 
@@ -200,23 +230,47 @@ class PageDocuments {
   /// adopt brings a page that is only being served into the library, so it
   /// can be written like any other. Does nothing if a document already
   /// exists for it.
-  static Future<void> adopt(PagesModel pages, String name) async {
+  /// forName builds the page a name refers to, finding the file it is
+  /// actually served as.
+  ///
+  /// For callers that hold a name rather than a row -- the editor, the
+  /// starter front page. Same slug lookup [list] uses, so a page served
+  /// under a name predating the slug rule is found rather than missed.
+  static PageDocument forName(PagesModel pages, String name) {
     var doc = documentNameFor(name);
-    if (await PostStorage.read(pagesFolderName, doc) != null) return;
-    // The served file, not the slug of the display name: this is called for
-    // a page that is only being served, so the file is what exists and the
-    // name came from it.
-    var file = name.endsWith(".md") ? name : pageFileNameFor(name);
-    await PostStorage.write(pagesFolderName, doc, await pages.readPage(file));
+    var slug = pageSlug(name);
+    var served =
+        pages.localPages.where((p) => pageSlug(p.name) == slug).toList();
+    return PageDocument(
+      name: doc,
+      file: served.isEmpty ? pageFileNameFor(doc) : served.first.name,
+      state: served.isEmpty
+          ? PagePublishState.draft
+          : PagePublishState.published,
+    );
+  }
+
+  static Future<void> adopt(PagesModel pages, PageDocument page) async {
+    if (await PostStorage.read(pagesFolderName, page.name) != null) return;
+    await PostStorage.write(
+        pagesFolderName, page.name, await pages.readPage(page.file));
   }
 
   /// publish copies the document into the served directory, which is what
   /// makes it fetchable -- and what "Publish update" does to a page that has
   /// been written since.
-  static Future<void> publish(PagesModel pages, String name) async {
-    var text = await PostStorage.read(pagesFolderName, name);
+  ///
+  /// Publishing is also where a page served under an old, unsluggable name
+  /// moves to its slug: the new file is written first and the old one
+  /// dropped after, so there is no moment where nothing is served.
+  static Future<void> publish(PagesModel pages, PageDocument page) async {
+    var text = await PostStorage.read(pagesFolderName, page.name);
     if (text == null) return;
-    await pages.savePage(pageFileNameFor(name), text);
+    var target = pageFileNameFor(page.name);
+    await pages.savePage(target, text);
+    if (page.state.live && page.file != target) {
+      await pages.deletePage(page.file);
+    }
   }
 
   /// unpublish takes the page down, keeping the document.
@@ -224,7 +278,7 @@ class PageDocuments {
   /// A deliberate act rather than a side effect of editing: taking a page
   /// down is something a writer means to do, and having it happen because
   /// they fixed a typo would be a visitor's 404 nobody chose.
-  static Future<void> unpublish(PagesModel pages, String name) async {
-    await pages.deletePage(pageFileNameFor(name));
+  static Future<void> unpublish(PagesModel pages, PageDocument page) async {
+    await pages.deletePage(page.file);
   }
 }

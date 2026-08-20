@@ -1,4 +1,5 @@
 import 'package:bruig/components/buttons.dart';
+import 'package:bruig/components/md_elements.dart';
 import 'package:bruig/components/text.dart';
 import 'package:bruig/models/client.dart';
 import 'package:bruig/config.dart';
@@ -84,16 +85,16 @@ class _MySiteTabState extends State<MySiteTab> {
     }
   }
 
-  void publishPage(String name) async {
+  void publishPage(PageDocument page) async {
     var snackbar = SnackBarModel.of(context);
     try {
       // A page only being served, with no document behind it, has to be
       // brought into the library before it can be published from one.
-      await PageDocuments.adopt(pages, name);
-      await PageDocuments.publish(pages, name);
+      await PageDocuments.adopt(pages, page);
+      await PageDocuments.publish(pages, page);
       await refreshDocuments();
     } catch (exception) {
-      snackbar.error("Unable to publish $name: $exception");
+      snackbar.error("Unable to publish ${page.name}: $exception");
     }
   }
 
@@ -101,28 +102,48 @@ class _MySiteTabState extends State<MySiteTab> {
   ///
   /// The same fetch a visitor makes, against the served copy, so what it
   /// shows is what they would get rather than what the editor holds.
-  void previewPage(String link) async {
+  void previewPage(PageDocument page) async {
     var snackbar = SnackBarModel.of(context);
     try {
       widget.resources.mostRecent = await widget.resources
-          .fetchPage(widget.client.publicID, [link], 0, 0, null, "");
+          .fetchPage(widget.client.publicID, [page.file], 0, 0, null, "");
       widget.pages.browsing = true;
       widget.onOpenedOwnSite();
     } catch (exception) {
-      snackbar.error("Unable to preview $link: $exception");
+      snackbar.error("Unable to preview ${page.name}: $exception");
     }
   }
 
-  void unpublishPage(String name) async {
+  /// previewDraft renders the document as it stands.
+  ///
+  /// Separate from Preview because they answer different questions: Preview
+  /// is what a visitor gets, and a page that has never been published has no
+  /// answer to that. This is what they would get if it were published now.
+  void previewDraft(PageDocument page) async {
+    var snackbar = SnackBarModel.of(context);
+    try {
+      var text = await PostStorage.read(pagesFolderName, page.name);
+      if (text == null) {
+        snackbar.error("${page.name} has nothing written in it yet.");
+        return;
+      }
+      if (!mounted) return;
+      await showDraftPreview(context, page.name, text);
+    } catch (exception) {
+      snackbar.error("Unable to preview ${page.name}: $exception");
+    }
+  }
+
+  void unpublishPage(PageDocument page) async {
     var snackbar = SnackBarModel.of(context);
     try {
       // Adopted first, or unpublishing a page that was only ever served
       // would be a delete: there would be nothing left to publish again.
-      await PageDocuments.adopt(pages, name);
-      await PageDocuments.unpublish(pages, name);
+      await PageDocuments.adopt(pages, page);
+      await PageDocuments.unpublish(pages, page);
       await refreshDocuments();
     } catch (exception) {
-      snackbar.error("Unable to unpublish $name: $exception");
+      snackbar.error("Unable to unpublish ${page.name}: $exception");
     }
   }
 
@@ -160,7 +181,7 @@ class _MySiteTabState extends State<MySiteTab> {
     if (mounted && pages.localPages.isEmpty) {
       try {
         await PostStorage.write(pagesFolderName, "index", starterIndex);
-        await PageDocuments.publish(pages, "index");
+        await PageDocuments.publish(pages, PageDocuments.forName(pages, "index"));
       } catch (exception) {
         if (mounted) {
           SnackBarModel.of(context).error("Unable to write front page: $exception");
@@ -224,7 +245,7 @@ class _MySiteTabState extends State<MySiteTab> {
         doc = await _freeName();
         await PostStorage.write(pagesFolderName, doc, "");
       } else {
-        await PageDocuments.adopt(pages, name);
+        await PageDocuments.adopt(pages, PageDocuments.forName(pages, name));
       }
       await library.requestOpen(pagesFolderName, doc);
       navigator.pushReplacementNamed(WritingScreen.routeName);
@@ -266,16 +287,18 @@ class _MySiteTabState extends State<MySiteTab> {
   /// Both, deliberately. Deleting only the document would leave the page
   /// still being served with nothing behind it, and deleting only the served
   /// copy is what Unpublish is for.
-  void deletePage(String name) async {
+  void deletePage(PageDocument page) async {
     var snackbar = SnackBarModel.of(context);
-    var doc = name;
     try {
-      await pages.deletePage(pageFileNameFor(name));
-      await PostStorage.delete(
-          PostEntry(name: doc, folder: pagesFolderName, isFolder: false));
+      // The file it is actually served as, not the one its name would
+      // suggest -- a page published before the slug rule is served under a
+      // name the document cannot reproduce.
+      await pages.deletePage(page.file);
+      await PostStorage.delete(PostEntry(
+          name: page.name, folder: pagesFolderName, isFolder: false));
       await refreshDocuments();
     } catch (exception) {
-      snackbar.error("Unable to delete $name: $exception");
+      snackbar.error("Unable to delete ${page.name}: $exception");
     }
   }
 
@@ -301,6 +324,7 @@ class _MySiteTabState extends State<MySiteTab> {
           onPublish: publishPage,
           onUnpublish: unpublishPage,
           onPreview: previewPage,
+          onPreviewDraft: previewDraft,
           onToggle: toggleHosting,
           onChooseDir: chooseDir,
           onView: viewOwnSite,
@@ -320,13 +344,16 @@ class _SiteOverview extends StatelessWidget {
   final VoidCallback onView;
   final VoidCallback onNew;
   final void Function(String) onEdit;
-  final void Function(String) onDelete;
-  final void Function(String) onPublish;
-  final void Function(String) onUnpublish;
+  final void Function(PageDocument) onDelete;
+  final void Function(PageDocument) onPublish;
+  final void Function(PageDocument) onUnpublish;
 
-  /// onPreview is given the page's link, not its name: it fetches the page
-  /// from the site, and the site knows it by its link.
-  final void Function(String) onPreview;
+  /// onPreview fetches the page from the site: what a visitor would get.
+  final void Function(PageDocument) onPreview;
+
+  /// onPreviewDraft renders the document instead, which is the only way to
+  /// look at a page that has never been published or has been written since.
+  final void Function(PageDocument) onPreviewDraft;
 
   /// documents is every page of the site with where it stands -- see
   /// PageDocuments.list.
@@ -343,6 +370,7 @@ class _SiteOverview extends StatelessWidget {
     required this.onPublish,
     required this.onUnpublish,
     required this.onPreview,
+    required this.onPreviewDraft,
   });
 
   @override
@@ -412,10 +440,11 @@ class _SiteOverview extends StatelessWidget {
         ...documents.map((p) => _PageRow(
               page: p,
               onEdit: () => onEdit(p.name),
-              onDelete: () => onDelete(p.name),
-              onPublish: () => onPublish(p.name),
-              onUnpublish: () => onUnpublish(p.name),
-              onPreview: () => onPreview(p.link),
+              onDelete: () => onDelete(p),
+              onPublish: () => onPublish(p),
+              onUnpublish: () => onUnpublish(p),
+              onPreview: () => onPreview(p),
+              onPreviewDraft: () => onPreviewDraft(p),
             )),
       if (cfg.hostsPages) ...[
         const SizedBox(height: 24),
@@ -432,6 +461,7 @@ class _PageRow extends StatelessWidget {
   final VoidCallback onPublish;
   final VoidCallback onUnpublish;
   final VoidCallback onPreview;
+  final VoidCallback onPreviewDraft;
   const _PageRow({
     required this.page,
     required this.onEdit,
@@ -439,6 +469,7 @@ class _PageRow extends StatelessWidget {
     required this.onPublish,
     required this.onUnpublish,
     required this.onPreview,
+    required this.onPreviewDraft,
   });
 
   @override
@@ -448,12 +479,14 @@ class _PageRow extends StatelessWidget {
     // A front page that is not published is worth saying plainly: it does
     // not take one page down, it makes the whole site answer "no front
     // page" to everyone who asks.
-    var subtitle = page.state.label;
-    if (page.isIndex) {
-      subtitle = page.state.live
-          ? "Front page — what visitors land on"
-          : "Front page — nobody can reach the site without it";
-    }
+    // Deliberately not the state, which the chip beside the name already
+    // says -- a row that said "Not published" twice was saying nothing
+    // twice.
+    var subtitle = page.isIndex
+        ? (page.state.live
+            ? "Front page — what visitors land on"
+            : "Front page — nobody can reach the site without it")
+        : null;
 
     return ListTile(
       contentPadding: EdgeInsets.zero,
@@ -467,10 +500,11 @@ class _PageRow extends StatelessWidget {
       subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Txt.S(subtitle,
-              color: page.isIndex && !page.state.live
-                  ? TextColor.onErrorContainer
-                  : TextColor.onSurfaceVariant),
+          if (subtitle != null)
+            Txt.S(subtitle,
+                color: page.state.live
+                    ? TextColor.onSurfaceVariant
+                    : TextColor.onErrorContainer),
           // The link another page writes to reach this one. Shown because
           // it is not the page's name -- a page called "Test Page" is
           // linked as "test_page.md" -- so there is nowhere else to find
@@ -479,6 +513,13 @@ class _PageRow extends StatelessWidget {
         ],
       ),
       trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+        IconButton(
+          icon: const Icon(Icons.drafts_outlined, size: 18),
+          // Always available: it reads the document, which exists whatever
+          // the site is serving.
+          tooltip: "Preview ${page.name} as written",
+          onPressed: onPreviewDraft,
+        ),
         IconButton(
           icon: const Icon(Icons.visibility_outlined, size: 18),
           // Preview fetches the page from the site, which is the point:
@@ -527,6 +568,52 @@ class _PageRow extends StatelessWidget {
     );
   }
 }
+
+/// showDraftPreview renders a page as it stands, without publishing it.
+///
+/// Drawn by the same renderer a visitor's client uses, so what it shows is
+/// what they would see -- but from the document rather than from the site,
+/// which is the only way to look at a page that has never been published or
+/// has been written since.
+///
+/// br:// links inside it are not followed: this is a look at one page, and
+/// following a link would mean fetching, which is the other preview's job.
+Future<void> showDraftPreview(
+        BuildContext context, String name, String text) =>
+    showDialog<void>(
+      context: context,
+      builder: (context) => Dialog(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 720, maxHeight: 640),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
+                child: Row(children: [
+                  const Icon(Icons.drafts_outlined, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(child: Txt.L("Draft — $name")),
+                  IconButton(
+                    icon: const Icon(Icons.close, size: 18),
+                    tooltip: "Close preview",
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                ]),
+              ),
+              const Divider(height: 1),
+              Flexible(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(16),
+                  child: MarkdownArea(text, false),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
 
 /// _LinkChip shows the link a page is reached by, and warns when two pages
 /// want the same one.
@@ -703,7 +790,8 @@ class _PageEditorState extends State<_PageEditor> {
       // The document is what is edited. A page that is only being served --
       // written before any of this existed -- is brought into the library
       // first, so there is always a document behind the editor.
-      await PageDocuments.adopt(widget.pages, name);
+      await PageDocuments.adopt(
+          widget.pages, PageDocuments.forName(widget.pages, name));
       var content =
           await PostStorage.read(pagesFolderName, documentNameFor(name)) ?? "";
       if (!mounted) return;
@@ -742,21 +830,21 @@ class _PageEditorState extends State<_PageEditor> {
       // new one is safely written.
       var wasPublished = false;
       if (!isNew && doc != documentNameFor(draft.editing)) {
-        var old = documentNameFor(draft.editing);
-        wasPublished = widget.pages.localPages
-            .any((p) => p.name == pageFileNameFor(old));
+        var old = PageDocuments.forName(widget.pages, draft.editing);
+        wasPublished = old.state.live;
         if (wasPublished) {
           await PageDocuments.unpublish(widget.pages, old);
         }
         var entry = PostEntry(
-            name: old, folder: pagesFolderName, isFolder: false);
+            name: old.name, folder: pagesFolderName, isFolder: false);
         await PostStorage.delete(entry);
       }
 
       // A rename of something that was published republishes under the new
       // name, or renaming a live page would silently take it down.
       if (wasPublished) {
-        await PageDocuments.publish(widget.pages, doc);
+        await PageDocuments.publish(
+            widget.pages, PageDocuments.forName(widget.pages, doc));
       }
       widget.onDone();
     } catch (exception) {
