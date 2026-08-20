@@ -28,7 +28,6 @@ class _StoreTabState extends State<StoreTab> {
 
   // The product being edited, or null when the lists are showing. An empty
   // ManagedProduct is a new one.
-  ManagedProduct? editing;
 
   @override
   void initState() {
@@ -116,19 +115,23 @@ class _StoreTabState extends State<StoreTab> {
               editable: pages.hostEditable,
               mode: pages.hostConfig.mode);
         }
-        if (editing != null) {
+        var draft = pages.productDraft;
+        if (draft != null) {
           return _ProductEditor(
+            // Keyed on which product is being written, so switching from
+            // one to another builds a fresh editor rather than reusing the
+            // first one's boxes.
+            key: ValueKey("product-draft-${draft.original.file}/${draft.original.sku}"),
             pages: pages,
-            product: editing!,
-            onDone: () => setState(() => editing = null),
+            onDone: pages.endProductDraft,
           );
         }
         return _StoreOverview(
           pages: pages,
           onDisable: disableStore,
           onChooseDir: chooseDir,
-          onNew: () => setState(() => editing = ManagedProduct.empty()),
-          onEdit: (p) => setState(() => editing = p),
+          onNew: () => pages.startProductDraft(ManagedProduct.empty()),
+          onEdit: pages.startProductDraft,
           onDelete: deleteProduct,
           onStatus: setStatus,
         );
@@ -335,10 +338,9 @@ class _OrderRow extends StatelessWidget {
 /// a new one.
 class _ProductEditor extends StatefulWidget {
   final PagesModel pages;
-  final ManagedProduct product;
   final VoidCallback onDone;
   const _ProductEditor(
-      {required this.pages, required this.product, required this.onDone});
+      {super.key, required this.pages, required this.onDone});
 
   @override
   State<_ProductEditor> createState() => _ProductEditorState();
@@ -355,22 +357,41 @@ class _ProductEditorState extends State<_ProductEditor> {
   late bool disabled;
   bool saving = false;
 
-  bool get isNew => widget.product.sku.isEmpty;
+  ProductDraft get draft =>
+      widget.pages.productDraft ?? ProductDraft.of(ManagedProduct.empty());
+  bool get isNew => draft.isNew;
 
   @override
   void initState() {
     super.initState();
-    var p = widget.product;
-    titleCtrl = TextEditingController(text: p.title);
-    skuCtrl = TextEditingController(text: p.sku);
-    descCtrl = TextEditingController(text: p.description);
-    priceCtrl =
-        TextEditingController(text: p.price == 0 ? "" : p.price.toString());
-    tagsCtrl = TextEditingController(text: p.tags.join(", "));
-    sendCtrl = TextEditingController(text: p.sendFilename);
-    shipping = p.shipping;
-    disabled = p.disabled;
+    // Seeded from the draft, not from the product: coming back to one left
+    // half-written has to bring back what was typed, not what was saved.
+    var d = draft;
+    titleCtrl = TextEditingController(text: d.title);
+    skuCtrl = TextEditingController(text: d.sku);
+    descCtrl = TextEditingController(text: d.description);
+    priceCtrl = TextEditingController(text: d.price);
+    tagsCtrl = TextEditingController(text: d.tags);
+    sendCtrl = TextEditingController(text: d.sendFilename);
+    shipping = d.shipping;
+    disabled = d.disabled;
+    for (var c in [titleCtrl, skuCtrl, descCtrl, priceCtrl, tagsCtrl, sendCtrl]) {
+      c.addListener(remember);
+    }
   }
+
+  /// remember hands the boxes to the model, which outlives this screen.
+  /// Deliberately not notifying -- see PagesModel's draft section.
+  void remember() => widget.pages.updateProductDraft(draft.copyWith(
+        title: titleCtrl.text,
+        sku: skuCtrl.text,
+        description: descCtrl.text,
+        price: priceCtrl.text,
+        tags: tagsCtrl.text,
+        sendFilename: sendCtrl.text,
+        shipping: shipping,
+        disabled: disabled,
+      ));
 
   @override
   void dispose() {
@@ -397,7 +418,7 @@ class _ProductEditorState extends State<_ProductEditor> {
     setState(() => saving = true);
     try {
       await widget.pages.saveProduct(
-        widget.product.copyWith(
+        draft.original.copyWith(
           title: titleCtrl.text.trim(),
           sku: skuCtrl.text.trim(),
           description: descCtrl.text,
@@ -407,7 +428,7 @@ class _ProductEditorState extends State<_ProductEditor> {
           shipping: shipping,
           disabled: disabled,
         ),
-        widget.product.file,
+        draft.original.file,
       );
       widget.onDone();
     } catch (exception) {
@@ -426,7 +447,7 @@ class _ProductEditorState extends State<_ProductEditor> {
           onPressed: widget.onDone,
         ),
         Expanded(
-            child: Txt.L(isNew ? "New product" : widget.product.title)),
+            child: Txt.L(isNew ? "New product" : draft.original.title)),
       ]),
       const SizedBox(height: 12),
       TextField(
@@ -491,7 +512,10 @@ class _ProductEditorState extends State<_ProductEditor> {
         subtitle: const Txt.S("Asks the buyer for an address at checkout.",
             color: TextColor.onSurfaceVariant),
         value: shipping,
-        onChanged: (v) => setState(() => shipping = v),
+        onChanged: (v) => setState(() {
+          shipping = v;
+          remember();
+        }),
       ),
       SwitchListTile(
         contentPadding: EdgeInsets.zero,
@@ -499,7 +523,10 @@ class _ProductEditorState extends State<_ProductEditor> {
         subtitle: const Txt.S("Kept in the catalogue, but not offered for sale.",
             color: TextColor.onSurfaceVariant),
         value: disabled,
-        onChanged: (v) => setState(() => disabled = v),
+        onChanged: (v) => setState(() {
+          disabled = v;
+          remember();
+        }),
       ),
       const SizedBox(height: 12),
       Row(children: [

@@ -204,10 +204,6 @@ class _ViewPageScreenState extends State<ViewPageScreen> {
                         onClose: () => closeSession(sess),
                       ),
                   ],
-                  newTabSelected: !browsing,
-                  onNewTab: () => pages
-                    ..browsing = false
-                    ..tab = pagesTabVisit,
                 ),
                 const Divider(height: 1),
               ],

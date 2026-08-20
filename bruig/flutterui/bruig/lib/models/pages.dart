@@ -203,6 +203,109 @@ SiteStatus siteStatusForReply(int status) {
   }
 }
 
+/// PageDraft is a page being written.
+///
+/// Held on PagesModel rather than in the editor, because the Pages screen is
+/// rebuilt from scratch by its route on every navigation to it -- so a draft
+/// kept in the editor's State was thrown away by stepping over to Chat, with
+/// no warning and nothing to undo it with. Same reasoning as
+/// SettingsNavModel and ManageContentNavModel next door, with more at stake:
+/// those lose a scroll position, this loses writing.
+@immutable
+class PageDraft {
+  /// editing is the page being changed, or "" for one being written.
+  final String editing;
+  final String name;
+  final String body;
+
+  /// loaded is whether the body has been read off disk yet. A draft that has
+  /// not been read must not be saved over the file it came from, and must
+  /// not be filled in a second time on the way back.
+  final bool loaded;
+
+  const PageDraft({
+    required this.editing,
+    this.name = "",
+    this.body = "",
+    this.loaded = false,
+  });
+
+  bool get isNew => editing.isEmpty;
+
+  PageDraft copyWith({String? name, String? body, bool? loaded}) => PageDraft(
+        editing: editing,
+        name: name ?? this.name,
+        body: body ?? this.body,
+        loaded: loaded ?? this.loaded,
+      );
+}
+
+/// ProductDraft is a product being written. See [PageDraft] for why it is
+/// out here; the fields are strings because that is what is in the boxes,
+/// and a half-typed price is not a number yet.
+@immutable
+class ProductDraft {
+  /// original is the product being changed, or an empty one for a new
+  /// product -- kept so saving can carry over anything not on the form.
+  final ManagedProduct original;
+  final String title;
+  final String sku;
+  final String description;
+  final String price;
+  final String tags;
+  final String sendFilename;
+  final bool shipping;
+  final bool disabled;
+
+  const ProductDraft({
+    required this.original,
+    this.title = "",
+    this.sku = "",
+    this.description = "",
+    this.price = "",
+    this.tags = "",
+    this.sendFilename = "",
+    this.shipping = false,
+    this.disabled = false,
+  });
+
+  factory ProductDraft.of(ManagedProduct p) => ProductDraft(
+        original: p,
+        title: p.title,
+        sku: p.sku,
+        description: p.description,
+        price: p.price == 0 ? "" : p.price.toString(),
+        tags: p.tags.join(", "),
+        sendFilename: p.sendFilename,
+        shipping: p.shipping,
+        disabled: p.disabled,
+      );
+
+  bool get isNew => original.sku.isEmpty;
+
+  ProductDraft copyWith({
+    String? title,
+    String? sku,
+    String? description,
+    String? price,
+    String? tags,
+    String? sendFilename,
+    bool? shipping,
+    bool? disabled,
+  }) =>
+      ProductDraft(
+        original: original,
+        title: title ?? this.title,
+        sku: sku ?? this.sku,
+        description: description ?? this.description,
+        price: price ?? this.price,
+        tags: tags ?? this.tags,
+        sendFilename: sendFilename ?? this.sendFilename,
+        shipping: shipping ?? this.shipping,
+        disabled: disabled ?? this.disabled,
+      );
+}
+
 /// PagesModel holds the Pages section's own state: which tab is open, what
 /// this client hosts, and what is known about other people's sites.
 ///
@@ -280,6 +383,44 @@ class PagesModel extends ChangeNotifier {
   set browsing(bool v) {
     if (_browsing == v) return;
     _browsing = v;
+    notifyListeners();
+  }
+
+  // ---- what is being written ----
+  //
+  // Opening and closing an editor notifies, because the screen swaps between
+  // the list and the editor on it. Typing does not: a rebuild of the whole
+  // section on every keystroke is a cost with nothing to show for it, and
+  // the editor already has what it typed. The draft is storage here, read
+  // back when the screen is built again.
+
+  PageDraft? _pageDraft;
+  PageDraft? get pageDraft => _pageDraft;
+
+  void startPageDraft(String name) {
+    _pageDraft = PageDraft(editing: name, name: name, loaded: name.isEmpty);
+    notifyListeners();
+  }
+
+  void updatePageDraft(PageDraft draft) => _pageDraft = draft;
+
+  void endPageDraft() {
+    _pageDraft = null;
+    notifyListeners();
+  }
+
+  ProductDraft? _productDraft;
+  ProductDraft? get productDraft => _productDraft;
+
+  void startProductDraft(ManagedProduct p) {
+    _productDraft = ProductDraft.of(p);
+    notifyListeners();
+  }
+
+  void updateProductDraft(ProductDraft draft) => _productDraft = draft;
+
+  void endProductDraft() {
+    _productDraft = null;
     notifyListeners();
   }
 

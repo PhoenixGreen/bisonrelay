@@ -42,9 +42,6 @@ class MySiteTab extends StatefulWidget {
 class _MySiteTabState extends State<MySiteTab> {
   PagesModel get pages => widget.pages;
 
-  // The page being edited, or null when the list is showing.
-  String? editing;
-
   @override
   void initState() {
     super.initState();
@@ -123,7 +120,7 @@ class _MySiteTabState extends State<MySiteTab> {
     }
   }
 
-  void newPage() => setState(() => editing = "");
+  void newPage() => pages.startPageDraft("");
 
   void deletePage(String name) async {
     var snackbar = SnackBarModel.of(context);
@@ -139,11 +136,15 @@ class _MySiteTabState extends State<MySiteTab> {
     return ListenableBuilder(
       listenable: pages,
       builder: (context, _) {
-        if (editing != null) {
+        var draft = pages.pageDraft;
+        if (draft != null) {
           return _PageEditor(
+            // Keyed on which page is being written, so switching from one
+            // to another builds a fresh editor rather than reusing the
+            // first one's boxes.
+            key: ValueKey("page-draft-${draft.editing}"),
             pages: pages,
-            name: editing!,
-            onDone: () => setState(() => editing = null),
+            onDone: pages.endPageDraft,
           );
         }
         return _SiteOverview(
@@ -152,7 +153,7 @@ class _MySiteTabState extends State<MySiteTab> {
           onChooseDir: chooseDir,
           onView: viewOwnSite,
           onNew: newPage,
-          onEdit: (name) => setState(() => editing = name),
+          onEdit: pages.startPageDraft,
           onDelete: deletePage,
         );
       },
@@ -348,10 +349,9 @@ class _LinkHelp extends StatelessWidget {
 /// _PageEditor writes one markdown file. A name of "" is a new page.
 class _PageEditor extends StatefulWidget {
   final PagesModel pages;
-  final String name;
   final VoidCallback onDone;
   const _PageEditor(
-      {required this.pages, required this.name, required this.onDone});
+      {super.key, required this.pages, required this.onDone});
 
   @override
   State<_PageEditor> createState() => _PageEditorState();
@@ -360,15 +360,21 @@ class _PageEditor extends StatefulWidget {
 class _PageEditorState extends State<_PageEditor> {
   final nameCtrl = TextEditingController();
   final bodyCtrl = TextEditingController();
-  bool loading = true;
   bool saving = false;
 
-  bool get isNew => widget.name.isEmpty;
+  PageDraft get draft => widget.pages.pageDraft ?? const PageDraft(editing: "");
+  bool get isNew => draft.isNew;
 
   @override
   void initState() {
     super.initState();
-    load();
+    // Whatever was typed before, which is there when coming back to a draft
+    // left open. The boxes are the draft's, not the file's.
+    nameCtrl.text = draft.name;
+    bodyCtrl.text = draft.body;
+    nameCtrl.addListener(remember);
+    bodyCtrl.addListener(remember);
+    if (!draft.loaded) load();
   }
 
   @override
@@ -378,14 +384,15 @@ class _PageEditorState extends State<_PageEditor> {
     super.dispose();
   }
 
+  /// remember hands what is in the boxes to the model, which outlives this
+  /// screen. Deliberately not notifying -- see PagesModel's draft section.
+  void remember() => widget.pages
+      .updatePageDraft(draft.copyWith(name: nameCtrl.text, body: bodyCtrl.text));
+
   void load() async {
-    if (isNew) {
-      setState(() => loading = false);
-      return;
-    }
-    nameCtrl.text = widget.name;
+    var name = draft.editing;
     try {
-      var content = await widget.pages.readPage(widget.name);
+      var content = await widget.pages.readPage(name);
       if (!mounted) return;
       bodyCtrl.text = content;
     } catch (exception) {
@@ -393,7 +400,12 @@ class _PageEditorState extends State<_PageEditor> {
         SnackBarModel.of(context).error("Unable to read page: $exception");
       }
     }
-    if (mounted) setState(() => loading = false);
+    if (!mounted) return;
+    // Marked loaded either way: a page that could not be read is not going
+    // to read on the second attempt either, and retrying on every rebuild
+    // would overwrite whatever was typed in the meantime.
+    widget.pages.updatePageDraft(draft.copyWith(loaded: true));
+    setState(() {});
   }
 
   void save() async {
@@ -410,8 +422,8 @@ class _PageEditorState extends State<_PageEditor> {
       await widget.pages.savePage(name, bodyCtrl.text);
       // Renaming through the name field leaves the old file behind, so drop
       // it once the new one is safely written.
-      if (!isNew && name != widget.name) {
-        await widget.pages.deletePage(widget.name);
+      if (!isNew && name != draft.editing) {
+        await widget.pages.deletePage(draft.editing);
       }
       widget.onDone();
     } catch (exception) {
@@ -422,7 +434,7 @@ class _PageEditorState extends State<_PageEditor> {
 
   @override
   Widget build(BuildContext context) {
-    if (loading) {
+    if (!draft.loaded) {
       return const Center(child: CircularProgressIndicator());
     }
 
@@ -435,7 +447,7 @@ class _PageEditorState extends State<_PageEditor> {
             tooltip: "Back to pages",
             onPressed: widget.onDone,
           ),
-          Expanded(child: Txt.L(isNew ? "New page" : widget.name)),
+          Expanded(child: Txt.L(isNew ? "New page" : draft.editing)),
         ]),
         const SizedBox(height: 12),
         TextField(

@@ -51,21 +51,6 @@ void main() {
       expect(closed, [1]);
     });
 
-    testWidgets('the new-tab button reaches the contact list', (tester) async {
-      // The list is where a page is started from, so with one open there
-      // has to be a way back to it that is not closing the page. That is
-      // what this button is, and why the strip shows at one tab and not
-      // only at two.
-      var opened = 0;
-      await tester.pumpWidget(_host(PageTabStrip(
-          tabs: _tabs(1), onNewTab: () => opened++, newTabSelected: false)));
-      await tester.pump();
-
-      await tester.tap(find.byTooltip("Visit another site"));
-      await tester.pump();
-      expect(opened, 1);
-    });
-
     testWidgets('the close sits before the label, not after it',
         (tester) async {
       // On the right it lands beside the next tab's label, where a reader

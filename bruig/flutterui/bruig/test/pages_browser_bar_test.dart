@@ -90,23 +90,25 @@ void main() {
     }
   });
 
-  testWidgets('the bar reaches My Site and Store, which the sidebar may not',
+  testWidgets('the bar reaches every section, which the sidebar may not',
       (tester) async {
     // The sidebar is the usual way to these and can be shut, so without
-    // them here hiding it would put both out of reach.
+    // them here hiding it would put all three out of reach. Visit included:
+    // the strip's new-tab button used to cover it, but the strip only
+    // exists once a page is open.
     var went = <int>[];
     await pumpBar(tester,
         sidebarOpen: false, withPage: false, onSection: went.add);
 
-    expect(find.byTooltip("My Site"), findsOneWidget);
-    expect(find.byTooltip("Store"), findsOneWidget);
-    // Visit is not among them: the strip's new-tab button already goes
-    // there, and two controls for one place is one to work out.
-    expect(find.byTooltip("Visit"), findsNothing);
+    for (var t in ["Visit", "My Site", "Store"]) {
+      expect(find.byTooltip(t), findsOneWidget, reason: t);
+    }
 
     await tester.tap(find.byTooltip("Store"));
     await tester.pumpAndSettle();
-    expect(went, [pagesTabStore]);
+    await tester.tap(find.byTooltip("Visit"));
+    await tester.pumpAndSettle();
+    expect(went, [pagesTabStore, pagesTabVisit]);
   });
 
   testWidgets('the toggle is left out where it could not work', (tester) async {

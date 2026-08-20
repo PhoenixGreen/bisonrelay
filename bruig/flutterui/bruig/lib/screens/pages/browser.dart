@@ -149,32 +149,15 @@ class PageTab {
   });
 }
 
-/// PageTabStrip is the row of open pages, above the Visit area.
+/// PageTabStrip is the row of open pages, above the browser bar.
 ///
-/// Above the whole area rather than inside the browser, because the contact
-/// list is one of the things it switches to: [onNewTab] is the button at the
-/// end, and the list it opens is this app's new-tab page -- where a page is
-/// started from, and so where the strip has to be able to reach.
-///
-/// Drawn whenever a page is open, one tab or several. A strip that appeared
-/// only at two would leave a single open page with no way back to the list
-/// except closing it, and so no way to open a second.
+/// Drawn whenever a page is open, one tab or several: with one tab it is
+/// still the only thing that says a page is open at all once the reader has
+/// moved to another section.
 class PageTabStrip extends StatelessWidget {
   final List<PageTab> tabs;
 
-  /// onNewTab opens the contact list. Null leaves the button out.
-  final VoidCallback? onNewTab;
-
-  /// newTabSelected is true when the contact list is what is showing, so no
-  /// page tab is current.
-  final bool newTabSelected;
-
-  const PageTabStrip({
-    super.key,
-    required this.tabs,
-    this.onNewTab,
-    this.newTabSelected = false,
-  });
+  const PageTabStrip({super.key, required this.tabs});
 
   @override
   Widget build(BuildContext context) {
@@ -182,35 +165,14 @@ class PageTabStrip extends StatelessWidget {
     return Container(
       height: 34,
       color: theme.colors.surfaceContainerHighest.withValues(alpha: 0.4),
-      child: Row(children: [
-        Expanded(
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            itemCount: tabs.length,
-            itemBuilder: (context, i) => _Tab(tabs[i]),
-          ),
-        ),
-        if (onNewTab != null)
-          Container(
-            decoration: BoxDecoration(
-              color: newTabSelected ? theme.colors.surface : null,
-              border: Border(
-                top: BorderSide(
-                  color: newTabSelected
-                      ? theme.colors.primary
-                      : Colors.transparent,
-                  width: 2,
-                ),
-              ),
-            ),
-            child: IconButton(
-              icon: const Icon(Icons.add, size: 16),
-              tooltip: "Visit another site",
-              onPressed: onNewTab,
-              visualDensity: VisualDensity.compact,
-            ),
-          ),
-      ]),
+      // No new-tab button of its own: Visit is in the bar below, always,
+      // and that is where another site is started from. Two controls for
+      // one destination is one to work out rather than one to use.
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        itemCount: tabs.length,
+        itemBuilder: (context, i) => _Tab(tabs[i]),
+      ),
     );
   }
 }
@@ -370,9 +332,10 @@ class PageBrowserBar extends StatelessWidget {
   /// sidebar -- which matters because the sidebar can be shut, and these
   /// would otherwise have nowhere left to be reached from.
   ///
-  /// Visit is deliberately not among them: the new-tab button on the strip
-  /// already goes there, and a second control for the same place would be
-  /// one to work out rather than one to use.
+  /// All three, Visit included. It used to be left out because the strip's
+  /// new-tab button went there -- but the strip only exists once a page is
+  /// open, so with none open and the sidebar shut there was no way to reach
+  /// Visit at all.
   final int section;
   final void Function(int)? onSection;
   const PageBrowserBar({
@@ -462,7 +425,7 @@ class PageBrowserBar extends StatelessWidget {
         ),
         if (onSection != null) ...[
           const SizedBox(width: 4),
-          for (var i in const [pagesTabMySite, pagesTabStore])
+          for (var i in const [pagesTabVisit, pagesTabMySite, pagesTabStore])
             IconButton(
               icon: Icon(sectionIcon(i), size: 18),
               tooltip: pagesTabLabels[i],
