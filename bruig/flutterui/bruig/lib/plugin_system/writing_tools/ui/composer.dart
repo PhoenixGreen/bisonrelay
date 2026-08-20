@@ -7,7 +7,10 @@ import 'package:bruig/components/feed/post_column.dart';
 import 'package:bruig/components/feed/reading_selection.dart';
 import 'package:bruig/models/feed.dart';
 import 'package:bruig/plugin_system/writing_tools/post_library/embed_store.dart';
+import 'package:bruig/models/pages.dart';
+import 'package:bruig/plugin_system/writing_tools/post_library/page_documents.dart';
 import 'package:bruig/plugin_system/writing_tools/post_library/post_library_model.dart';
+import 'package:bruig/plugin_system/writing_tools/post_library/post_storage.dart';
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/writing_tools/ui/add_embed_dialog.dart';
 import 'package:bruig/plugin_system/writing_tools/ui/composer_sidebar_shell.dart';
@@ -110,6 +113,83 @@ class _WritingComposerState extends State<WritingComposer> {
 
   void goBack() {
     Navigator.pop(context);
+  }
+
+  // --- pages ---
+  //
+  // A document in the library's reserved Pages folder is a page of the
+  // writer's own site, so the publish menu offers the site's actions rather
+  // than Create Post. What "published" means, and why the served copy is
+  // allowed to lag behind the document, is in page_documents.dart.
+
+  PostLibraryModel get _library =>
+      _postLibrary ?? Provider.of<PostLibraryModel>(context, listen: false);
+
+  PagesModel get _pages => Provider.of<PagesModel>(context, listen: false);
+
+  /// isPage is whether the open document is a page of the site.
+  bool get isPage => _library.openFolder == pagesFolderName;
+
+  /// pageState is where the open page stands. Held rather than computed in
+  /// build: it reads two files, and build runs on every keystroke.
+  PagePublishState pageState = PagePublishState.draft;
+
+  Future<void> refreshPageState() async {
+    if (!isPage) return;
+    var name = _library.openName;
+    if (name == null) return;
+    var file = pageFileNameFor(name);
+    String? served;
+    if (_pages.localPages.any((p) => p.name == file)) {
+      served = await _pages.readPage(file);
+    }
+    var doc = await PostStorage.read(pagesFolderName, name) ?? "";
+    if (!mounted) return;
+    setState(() => pageState = pagePublishState(served, doc));
+  }
+
+  void publishPage() async {
+    var snackbar = SnackBarModel.of(context);
+    var name = _library.openName;
+    if (name == null) return;
+    try {
+      // Written out first, or the copy taken would be the last save rather
+      // than what is on screen.
+      await _library.flush();
+      await PageDocuments.publish(_pages, name);
+      await refreshPageState();
+      snackbar.success("Published $name.");
+    } catch (exception) {
+      snackbar.error("Unable to publish $name: $exception");
+    }
+  }
+
+  void unpublishPage() async {
+    var snackbar = SnackBarModel.of(context);
+    var name = _library.openName;
+    if (name == null) return;
+    try {
+      await PageDocuments.unpublish(_pages, name);
+      await refreshPageState();
+      snackbar.success("$name is no longer published.");
+    } catch (exception) {
+      snackbar.error("Unable to unpublish $name: $exception");
+    }
+  }
+
+  /// _openDocumentChanged rereads the page's state when the document being
+  /// edited changes. Cheap to ask and skipped entirely for anything that is
+  /// not a page.
+  String? _lastOpen;
+  void _openDocumentChanged() {
+    var now = "${_library.openFolder}/${_library.openName}";
+    if (now == _lastOpen) return;
+    _lastOpen = now;
+    if (isPage) {
+      refreshPageState();
+    } else if (pageState != PagePublishState.draft) {
+      setState(() => pageState = PagePublishState.draft);
+    }
   }
 
   void createPost() async {
@@ -318,6 +398,7 @@ class _WritingComposerState extends State<WritingComposer> {
       ?..detach(contentCtrl)
       ..onAddEmbed = null;
     _postLibrary?.removeListener(syncTitle);
+    _postLibrary?.removeListener(_openDocumentChanged);
     titleFocus.dispose();
     contentFocus.dispose();
     titleCtrl.dispose();
@@ -373,8 +454,13 @@ class _WritingComposerState extends State<WritingComposer> {
             ..attach(contentCtrl);
       _postLibrary = Provider.of<PostLibraryModel>(context, listen: false)
         ..watch(contentCtrl)
-        ..addListener(syncTitle);
+        ..addListener(syncTitle)
+        // Which document is open decides what the publish menu offers, so
+        // the menu has to be told when it changes -- opening a page from My
+        // Site is exactly that, happening while this screen is built.
+        ..addListener(_openDocumentChanged);
       syncTitle();
+      _openDocumentChanged();
       // The formatting panel's embed button is this screen's file picker:
       // tracking an embed and re-estimating the post's size is the
       // composer's business, and the panel only needs somewhere to send a
@@ -616,9 +702,50 @@ class _WritingComposerState extends State<WritingComposer> {
           switch (choice) {
             case "create":
               createPost();
+              break;
+            case "publish":
+              publishPage();
+              break;
+            case "unpublish":
+              unpublishPage();
+              break;
           }
         },
         itemBuilder: (context) => [
+          // A page is published to the site rather than sent as a post, so
+          // it gets the site's actions instead of Create Post -- the same
+          // menu, saying what this document can actually do.
+          if (isPage) ...[
+            PopupMenuItem(
+              value: "publish",
+              enabled: !loading && pageState != PagePublishState.published,
+              child: ListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.publish_outlined, size: 18),
+                title: Text(pageState == PagePublishState.draft
+                    ? "Publish page"
+                    : "Publish update"),
+                subtitle: pageState == PagePublishState.published
+                    ? const Text("Already published, with no changes since")
+                    : null,
+              ),
+            ),
+            PopupMenuItem(
+              value: "unpublish",
+              // Disabled rather than absent when there is nothing published:
+              // a missing entry says nothing, and this is the one action
+              // whose absence would be read as "cannot be taken down".
+              enabled: !loading && pageState.live,
+              child: const ListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(Icons.visibility_off_outlined, size: 18),
+                title: Text("Unpublish page"),
+                subtitle: Text("Takes it down, keeps the writing"),
+              ),
+            ),
+          ] else
           PopupMenuItem(
             value: "create",
             // Disabled rather than absent when the post is too large: that

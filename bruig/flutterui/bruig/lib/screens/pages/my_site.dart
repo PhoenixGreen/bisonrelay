@@ -3,12 +3,14 @@ import 'package:bruig/components/text.dart';
 import 'package:bruig/models/client.dart';
 import 'package:bruig/config.dart';
 import 'package:bruig/models/pages.dart';
+import 'package:bruig/models/menus.dart';
 import 'package:bruig/plugin_system/writing_tools/writing_tools.dart';
 import 'package:bruig/models/resources.dart';
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:golib_plugin/definitions.dart';
 
 /// starterIndex is what a brand new site says before its owner writes
@@ -181,7 +183,66 @@ class _MySiteTabState extends State<MySiteTab> {
     }
   }
 
-  void newPage() => pages.startPageDraft("");
+  /// writingPage is the Writing section, when the writing tools are on.
+  ///
+  /// New and Edit go there when it exists: a page is writing, and the
+  /// Writing page is the app's place for writing -- with the formatting
+  /// panel, the checks and the library beside it. The editor below is what
+  /// is left for everybody else, and is why it still exists.
+  ///
+  /// The same redirect the Feed's New Post link makes, for the same reason.
+  bool get hasWriting => hasWritingPage(
+      Provider.of<MainMenuModel>(context, listen: false));
+
+  /// openInWriting makes sure there is a document, hands it to the library
+  /// and goes there.
+  Future<void> openInWriting(String name, {bool creating = false}) async {
+    var snackbar = SnackBarModel.of(context);
+    var library = Provider.of<PostLibraryModel>(context, listen: false);
+    var navigator = Navigator.of(context);
+    var doc = documentNameFor(name);
+    try {
+      if (creating) {
+        // A name is needed before there is a document, and an empty one
+        // cannot be filed. Named for what it is until it is renamed.
+        doc = await _freeName();
+        await PostStorage.write(pagesFolderName, doc, "");
+      } else {
+        await PageDocuments.adopt(pages, name);
+      }
+      await library.requestOpen(pagesFolderName, doc);
+      navigator.pushReplacementNamed(WritingScreen.routeName);
+    } catch (exception) {
+      snackbar.error("Unable to open $doc for writing: $exception");
+    }
+  }
+
+  /// _freeName picks a name no page is using yet.
+  Future<String> _freeName() async {
+    var taken = {
+      for (var d in documents) d.name.toLowerCase(),
+    };
+    if (!taken.contains("new page")) return "New page";
+    for (var i = 2;; i++) {
+      if (!taken.contains("new page $i".toLowerCase())) return "New page $i";
+    }
+  }
+
+  void newPage() {
+    if (hasWriting) {
+      openInWriting("", creating: true);
+      return;
+    }
+    pages.startPageDraft("");
+  }
+
+  void editPage(String name) {
+    if (hasWriting) {
+      openInWriting(name);
+      return;
+    }
+    pages.startPageDraft(pageFileNameFor(name));
+  }
 
   /// deletePage removes the page for good: the document and anything
   /// published under it.
@@ -227,7 +288,7 @@ class _MySiteTabState extends State<MySiteTab> {
           onChooseDir: chooseDir,
           onView: viewOwnSite,
           onNew: newPage,
-          onEdit: pages.startPageDraft,
+          onEdit: editPage,
           onDelete: deletePage,
         );
       },
@@ -581,9 +642,7 @@ class _PageEditorState extends State<_PageEditor> {
   /// save writes the document. It does not publish: what visitors are
   /// reading only changes when somebody says so.
   ///
-  /// [andPublish] is the other button, which does both -- the common case of
-  /// finishing a page and wanting it up.
-  void save({bool andPublish = false}) async {
+  void save() async {
     var snackbar = SnackBarModel.of(context);
     var name = nameCtrl.text.trim();
     if (name.isEmpty) {
@@ -614,7 +673,7 @@ class _PageEditorState extends State<_PageEditor> {
 
       // A rename of something that was published republishes under the new
       // name, or renaming a live page would silently take it down.
-      if (andPublish || wasPublished) {
+      if (wasPublished) {
         await PageDocuments.publish(widget.pages, doc);
       }
       widget.onDone();
@@ -666,19 +725,15 @@ class _PageEditorState extends State<_PageEditor> {
           ),
         ),
         const SizedBox(height: 12),
-        // Two buttons, because saving and publishing are two decisions.
-        // Save keeps the writing; publishing is what changes the page a
-        // visitor is reading, and nothing does that without being asked.
+        // One button. Saving keeps the writing; publishing is done from the
+        // list this returns to, where the page's state is shown beside it --
+        // so there is one place a page is published from rather than two
+        // that have to agree.
         Row(children: [
           ElevatedButton(
             style: raisedButtonStyle(ThemeNotifier.of(context)),
-            onPressed: saving ? null : () => save(andPublish: true),
-            child: Text(saving ? "Saving…" : "Save and publish"),
-          ),
-          const SizedBox(width: 8),
-          OutlinedButton(
             onPressed: saving ? null : () => save(),
-            child: const Text("Save"),
+            child: Text(saving ? "Saving…" : "Save"),
           ),
           const SizedBox(width: 8),
           OutlinedButton(onPressed: widget.onDone, child: const Text("Cancel")),

@@ -90,6 +90,35 @@ class PostLibraryModel extends ChangeNotifier {
     _editor?.removeListener(_onEdited);
     _editor = editor;
     _editor?.addListener(_onEdited);
+    // Somebody asked for a document while there was nowhere to put it --
+    // see requestOpen.
+    if (_editor != null && _pendingOpen != null) {
+      var wanted = _pendingOpen!;
+      _pendingOpen = null;
+      open(wanted);
+    }
+  }
+
+  PostEntry? _pendingOpen;
+
+  /// requestOpen opens a document, or arranges to as soon as there is an
+  /// editor to open it into.
+  ///
+  /// The waiting is the point. Asking is done from elsewhere in the app --
+  /// My Site's New and Edit buttons -- which then navigates to the Writing
+  /// page, so at the moment of asking there is no composer yet and [open]
+  /// would have nothing to write into and quietly do nothing.
+  Future<void> requestOpen(String folder, String name) async {
+    var entry = PostEntry(name: name, folder: folder, isFolder: false);
+    if (_editor == null) {
+      _pendingOpen = entry;
+      // The sidebar should be showing the folder it came from when it
+      // arrives, not wherever it was left last.
+      _folder = folder;
+      return;
+    }
+    await open(entry);
+    await openFolderNamed(folder);
   }
 
   Future<void> refresh() async {
