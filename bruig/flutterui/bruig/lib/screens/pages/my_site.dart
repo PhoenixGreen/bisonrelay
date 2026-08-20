@@ -59,6 +59,7 @@ class _MySiteTabState extends State<MySiteTab> {
   @override
   void initState() {
     super.initState();
+    pages.ownUid = widget.client.publicID;
     pages.loadHost().then((_) => refreshDocuments());
     pages.addListener(refreshDocuments);
   }
@@ -122,7 +123,8 @@ class _MySiteTabState extends State<MySiteTab> {
     var snackbar = SnackBarModel.of(context);
     try {
       widget.resources.mostRecent = await widget.resources
-          .fetchPage(widget.client.publicID, [page.file], 0, 0, null, "");
+          .fetchPage(widget.client.publicID, [page.file], 0, 0, null, "",
+              reload: true);
       widget.pages.browsing = true;
       widget.onOpenedOwnSite();
     } catch (exception) {
@@ -207,7 +209,8 @@ class _MySiteTabState extends State<MySiteTab> {
     var snackbar = SnackBarModel.of(context);
     try {
       var sess = await widget.resources
-          .fetchPage(widget.client.publicID, ["index.md"], 0, 0, null, "");
+          .fetchPage(widget.client.publicID, ["index.md"], 0, 0, null, "",
+              reload: true);
       widget.resources.mostRecent = sess;
       widget.pages.browsing = true;
       widget.onOpenedOwnSite();

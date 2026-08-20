@@ -434,4 +434,146 @@ navat: $navat
       expect(tester.takeException(), isNull);
     });
   });
+
+  group('the gap between slots', () {
+    setUp(() => SharedPreferences.setMockInitialValues({}));
+
+    Future<double> gapAt(WidgetTester tester, double width) async {
+      await tester.pumpWidget(_drawHost(MarkdownArea("""
+--header[200]--
+left: # Logo
+middle: # Title
+--/header--
+""", false), width: width));
+      await tester.pump();
+      return tester.getRect(find.text("Title")).left -
+          tester.getRect(find.text("Logo")).right;
+    }
+
+    testWidgets('stays the same however wide the window', (tester) async {
+      // Sharing the width out proportionally made this grow with the
+      // window, and a logo and title written to sit together drifted apart
+      // on a wide one.
+      var narrow = await gapAt(tester, 500);
+      var wide = await gapAt(tester, 1200);
+      expect(wide, moreOrLessEquals(narrow, epsilon: 1));
+    });
+
+    testWidgets('a right-hand slot still goes to the right edge',
+        (tester) async {
+      await tester.pumpWidget(_drawHost(MarkdownArea("""
+--header[200]--
+left: # Logo
+right: # Title
+--/header--
+""", false), width: 1000));
+      await tester.pump();
+
+      // The title belongs against the far edge, with the slack between the
+      // two rather than to the right of the title. Measured against the
+      // banner rather than the window: the markdown area has gutters of its
+      // own, so the banner is narrower than the page and an absolute figure
+      // here would be measuring those.
+      var banner = tester.getRect(
+          find.ancestor(of: find.text("Title"), matching: find.byType(ClipRRect))
+              .first);
+      var title = tester.getRect(find.text("Title"));
+      var logo = tester.getRect(find.text("Logo"));
+
+      expect(banner.right - title.right, lessThan(40),
+          reason: "a right-hand slot should reach the banner's right edge");
+      expect(title.left - logo.right, greaterThan(banner.width / 2),
+          reason: "the slack belongs between them");
+    });
+  });
+
+  group('how a title is set', () {
+    test('reads the fields, and bounds what it reads', () {
+      var st = HeaderTextStyle.parse({
+        "titlesize": "48",
+        "titleweight": "bold",
+        "titleitalic": "yes",
+        "titlecase": "upper",
+        "titletracking": "3",
+        "titlebackground": "#00000080",
+        "titleborder": "2",
+        "titlebordercolor": "#fff",
+      });
+      expect(st.size, 48);
+      expect(st.bold, isTrue);
+      expect(st.italic, isTrue);
+      expect(st.tracking, 3);
+      expect(st.borderWidth, 2);
+      expect(st.background?.a, closeTo(0.5, 0.01),
+          reason: "#rrggbbaa, so a background can be see-through");
+      expect(st.border, const Color(0xffffffff));
+    });
+
+    test('"fill" makes a title as tall as the room it has', () {
+      // Which is what makes it sit level with a logo and scale with it.
+      var st = HeaderTextStyle.parse({"titlesize": "fill"});
+      expect(st.fill, isTrue);
+      expect(st.size, isNull);
+    });
+
+    test('case changes the words, not how they are drawn', () {
+      // So what is copied out of the page is what was written.
+      expect(HeaderTextStyle.parse({"titlecase": "upper"}).apply("My site"),
+          "MY SITE");
+      expect(HeaderTextStyle.parse({"titlecase": "lower"}).apply("My Site"),
+          "my site");
+      expect(HeaderTextStyle.parse({}).apply("My Site"), "My Site");
+    });
+
+    test('a gradient needs two colours; one is just a colour', () {
+      expect(HeaderTextStyle.parse({"titlegradient": "#f00,#00f"}).gradient,
+          hasLength(2));
+      var one = HeaderTextStyle.parse({"titlegradient": "#f00"});
+      expect(one.gradient, isEmpty);
+      expect(one.color, const Color(0xffff0000));
+    });
+
+    test('a colour it cannot read leaves what it would have replaced', () {
+      var st = HeaderTextStyle.parse({"titlecolor": "reddish"});
+      expect(st.color, isNull);
+    });
+
+    test('nothing said means nothing done', () {
+      expect(HeaderTextStyle.parse({}).plain, isTrue);
+      expect(HeaderTextStyle.parse({"titlecase": "upper"}).plain, isFalse);
+    });
+
+    test('sizes and spacing are bounded', () {
+      expect(HeaderTextStyle.parse({"titlesize": "9999"}).size, 200);
+      expect(HeaderTextStyle.parse({"titletracking": "500"}).tracking, 40);
+      expect(HeaderTextStyle.parse({"titleborder": "99"}).borderWidth, 16);
+    });
+  });
+
+  group('a styled title is drawn', () {
+    setUp(() => SharedPreferences.setMockInitialValues({}));
+
+    testWidgets('with the case applied and the heading marks dropped',
+        (tester) async {
+      await tester.pumpWidget(_drawHost(MarkdownArea("""
+--header[200]--
+middle: ## My site
+titlecase: upper
+titlesize: 40
+titleweight: bold
+titlegradient: #ff0000,#0000ff
+titlebackground: #00000040
+titleborder: 2
+titlebordercolor: #ffffff
+--/header--
+""", false)));
+      await tester.pump();
+
+      // How large a title is set is titlesize, not how many hashes were
+      // typed -- two of them in a banner would otherwise be small.
+      expect(find.text("MY SITE"), findsOneWidget);
+      expect(find.textContaining("##"), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+  });
 }

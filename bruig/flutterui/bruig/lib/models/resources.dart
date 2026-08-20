@@ -467,6 +467,21 @@ class ResourcesModel extends ChangeNotifier {
   /// partialsFor is what is held for a user, for the request to say so.
   Map<String, String> partialsFor(String uid) => _partials[uid] ?? const {};
 
+  /// forgetSite drops what is held for one site.
+  ///
+  /// Called when this client publishes: fragments are kept for the whole run
+  /// -- the part of a site least likely to change -- which is right for
+  /// somebody else's site and wrong for your own the moment you edit it. A
+  /// header rewritten and republished went on showing the old one until the
+  /// app was restarted.
+  void forgetSite(String uid) {
+    _partials.remove(uid);
+    for (var sess in _sessions.values) {
+      sess.partials = const {};
+    }
+    notifyListeners();
+  }
+
   /// _fetchPartials asks for the fragments a page needs and does not have.
   ///
   /// Usually free: the server bundles them with the page that first refers

@@ -714,12 +714,31 @@ class PagesModel extends ChangeNotifier {
   Future<void> savePage(String name, String content) async {
     var pages = await Golib.writeLocalPage(name, content);
     _replacePages(pages);
+    _ownSiteChanged();
   }
 
   Future<void> deletePage(String name) async {
     var pages = await Golib.deleteLocalPage(name);
     _replacePages(pages);
+    _ownSiteChanged();
   }
+
+  /// _ownSiteChanged forgets what is cached about this client's own site.
+  ///
+  /// Fragments are held for the whole run and pages for the session, which
+  /// is right for somebody else's site -- they cost a message to fetch and
+  /// rarely change. Your own costs nothing to re-read and changes every time
+  /// you publish, so keeping either is only a way to be shown yesterday's
+  /// page.
+  void _ownSiteChanged() {
+    var me = _ownUid;
+    if (me != null) resources.forgetSite(me);
+  }
+
+  /// ownUid is this client's own identity, told to the model rather than
+  /// looked up: PagesModel is built before there is a client to ask.
+  String? _ownUid;
+  set ownUid(String v) => _ownUid = v;
 
   Future<String> readPage(String name) => Golib.readLocalPage(name);
 

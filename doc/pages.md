@@ -112,6 +112,32 @@ The three give three distances from the logo: `middle` sits beside it,
 `right` against the far edge, and a `middle` with nothing to its left is
 centred in the banner.
 
+The gap between slots that sit together is fixed, so a logo and the title
+beside it stay the same distance apart however wide the window is. A `right`
+slot instead goes to the far edge, with the slack between the two.
+
+A title can be set apart from the rest of the page — it is the one piece of a
+site whose look belongs to whoever wrote it:
+
+```
+titlesize: 48          a number, or "fill" to match the height beside it
+titleweight: bold
+titleitalic: yes
+titlecase: upper       changes the words, so what is copied is what is shown
+titletracking: 3       letter spacing
+titlecolor: #ffcc00
+titlegradient: #f00,#00f    two or more colours, across the words
+titlebackground: #00000080  #rrggbbaa, so it can be see-through
+titleborder: 2
+titlebordercolor: #ffffff
+titleradius: 8
+titlepadding: 12
+```
+
+`titlesize: fill` is what makes a title sit level with a logo and grow and
+shrink with it. Heading marks in a slot are dropped: how large a title is set
+is `titlesize`, not how many hashes were typed.
+
 `navat` says where the bar goes: `top` or `bottom`, and `left`, `middle` or
 `right` across. Either word may be left out and either order works, so `top`,
 `middle` and `middle top` all mean something. Without it a bar sits at the

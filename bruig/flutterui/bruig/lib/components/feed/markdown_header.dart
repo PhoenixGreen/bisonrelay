@@ -31,6 +31,19 @@ const List<String> headerFields = [
   "description",
   "nav",
   "navat",
+  // How the title is set -- see HeaderTextStyle.
+  "titlesize",
+  "titleweight",
+  "titleitalic",
+  "titlecase",
+  "titletracking",
+  "titlecolor",
+  "titlegradient",
+  "titlebackground",
+  "titleborder",
+  "titlebordercolor",
+  "titleradius",
+  "titlepadding",
 ];
 
 /// HeaderBlockSyntax reads a page's banner.
@@ -143,6 +156,132 @@ List<int> headerSpans(Map<String, String> fields) {
   return spans;
 }
 
+/// HeaderTextStyle is how a banner's writing is set.
+///
+/// A banner's title is branding rather than reading: it is the one piece of
+/// a site whose look belongs to whoever wrote it, not to whoever is reading.
+/// So these are fields on the block, unlike everything else about a page.
+@immutable
+class HeaderTextStyle {
+  /// size in pixels, or null to match the banner -- "titlesize: fill" sets a
+  /// title as tall as the space it is in, which is what makes it sit level
+  /// with a logo and grow and shrink with it.
+  final double? size;
+  final bool fill;
+  final bool bold;
+  final bool italic;
+
+  /// caps transforms the words themselves rather than drawing them
+  /// differently, so what is copied out of the page is what was written.
+  final String caps;
+  final double tracking;
+  final List<Color> gradient;
+  final Color? color;
+  final Color? background;
+  final Color? border;
+  final double borderWidth;
+  final double radius;
+  final double padding;
+
+  const HeaderTextStyle({
+    this.size,
+    this.fill = false,
+    this.bold = false,
+    this.italic = false,
+    this.caps = "",
+    this.tracking = 0,
+    this.gradient = const [],
+    this.color,
+    this.background,
+    this.border,
+    this.borderWidth = 0,
+    this.radius = 0,
+    this.padding = 0,
+  });
+
+  /// none is a title with nothing said about it, which is drawn the way the
+  /// rest of the page is.
+  bool get plain =>
+      size == null &&
+      !fill &&
+      !bold &&
+      !italic &&
+      caps.isEmpty &&
+      tracking == 0 &&
+      gradient.isEmpty &&
+      color == null &&
+      background == null &&
+      border == null;
+
+  /// apply transforms the words. Only case does anything here; the rest is
+  /// drawing.
+  String apply(String text) {
+    switch (caps) {
+      case "upper":
+        return text.toUpperCase();
+      case "lower":
+        return text.toLowerCase();
+      default:
+        return text;
+    }
+  }
+
+  factory HeaderTextStyle.parse(Map<String, String> fields) {
+    var rawSize = (fields["titlesize"] ?? "").trim().toLowerCase();
+    var colours = _colourList(fields["titlegradient"]);
+    return HeaderTextStyle(
+      size: double.tryParse(rawSize)?.clamp(8, 200),
+      fill: rawSize == "fill",
+      bold: (fields["titleweight"] ?? "").trim().toLowerCase() == "bold",
+      italic: (fields["titleitalic"] ?? "").trim().toLowerCase() == "yes",
+      caps: (fields["titlecase"] ?? "").trim().toLowerCase(),
+      tracking:
+          (double.tryParse(fields["titletracking"] ?? "") ?? 0).clamp(-5, 40),
+      gradient: colours.length > 1 ? colours : const [],
+      color: _colour(fields["titlecolor"]) ??
+          (colours.length == 1 ? colours.first : null),
+      background: _colour(fields["titlebackground"]),
+      border: _colour(fields["titlebordercolor"]),
+      borderWidth:
+          (double.tryParse(fields["titleborder"] ?? "") ?? 0).clamp(0, 16),
+      radius: (double.tryParse(fields["titleradius"] ?? "") ?? 0).clamp(0, 64),
+      padding:
+          (double.tryParse(fields["titlepadding"] ?? "") ?? 0).clamp(0, 64),
+    );
+  }
+}
+
+/// _colour reads #rgb, #rrggbb or #rrggbbaa. Anything else is nothing, which
+/// leaves whatever it would have replaced in place.
+Color? _colour(String? raw) {
+  var t = (raw ?? "").trim();
+  if (!t.startsWith("#")) return null;
+  var hex = t.substring(1);
+
+  if (hex.length == 3) {
+    hex = hex.split("").map((c) => "$c$c").join();
+  }
+  if (hex.length == 8) {
+    // Written the way CSS writes it -- #rrggbbaa -- and read the way Flutter
+    // wants it, with the alpha first. Only here: a six-digit colour has no
+    // alpha to move, and rotating it after adding one turned #f00 into a
+    // fully transparent yellow.
+    hex = hex.substring(6) + hex.substring(0, 6);
+  } else if (hex.length == 6) {
+    hex = "ff$hex";
+  } else {
+    return null;
+  }
+
+  var v = int.tryParse(hex, radix: 16);
+  return v == null ? null : Color(v);
+}
+
+List<Color> _colourList(String? raw) => [
+      for (var part in (raw ?? "").split(","))
+        if (_colour(part) != null) _colour(part)!,
+    ];
+
 /// NavPlacement is where the bar sits in a banner: which edge, and how far
 /// across.
 ///
@@ -183,6 +322,106 @@ class NavPlacement {
   @override
   bool operator ==(Object other) =>
       other is NavPlacement && other.atTop == atTop && other.across == across;
+}
+
+/// _slot draws one place across a banner.
+///
+/// A slot is a logo or a title, not a page of markdown, and it is drawn as
+/// whichever it is. That is what lets the row place them: a block of
+/// markdown wants the whole width and cannot be measured on its own -- it
+/// lays out through a LayoutBuilder, so its intrinsic width throws -- so
+/// slots drawn that way could not be put anywhere, and the gap between a
+/// logo and the title beside it grew with the window.
+Widget _slot(BuildContext context, String value, HeaderTextStyle style,
+    HeaderRule rule, Alignment within) {
+  var image = embedImage(value);
+  if (image != null) {
+    // Sized to the banner, which is what makes a logo scale with it.
+    return isSvgMime(image.mime)
+        ? SvgPicture.memory(image.bytes, fit: BoxFit.contain)
+        : Image.memory(image.bytes,
+            fit: BoxFit.contain,
+            errorBuilder: (context, error, stack) => const SizedBox.shrink());
+  }
+  return _HeaderText(text: value, style: style, rule: rule, within: within);
+}
+
+/// _HeaderText draws a title.
+class _HeaderText extends StatelessWidget {
+  final String text;
+  final HeaderTextStyle style;
+  final HeaderRule rule;
+
+  /// within is where the words sit in the room the slot was given, which is
+  /// what puts a right-hand title against the right edge rather than
+  /// centred in its half of the banner.
+  final Alignment within;
+  const _HeaderText(
+      {required this.text,
+      required this.style,
+      required this.rule,
+      required this.within});
+
+  /// _stripped removes the heading marks a writer puts in out of habit. How
+  /// large a title is set is [HeaderTextStyle.size], not how many hashes
+  /// were typed -- three of them in a banner would otherwise be small.
+  String get _stripped =>
+      style.apply(text.replaceFirst(RegExp(r'^\s*#{1,6}\s*'), "").trim());
+
+  @override
+  Widget build(BuildContext context) {
+    var theme = ThemeNotifier.of(context);
+    var base = Theme.of(context).textTheme.headlineSmall ??
+        const TextStyle(fontSize: 22);
+
+    var painted = base.copyWith(
+      fontSize: style.size,
+      fontWeight: style.bold ? FontWeight.bold : base.fontWeight,
+      fontStyle: style.italic ? FontStyle.italic : base.fontStyle,
+      letterSpacing: style.tracking == 0 ? base.letterSpacing : style.tracking,
+      // White under a gradient: the shader replaces it, and anything else
+      // tints what the shader paints.
+      color: style.gradient.isNotEmpty
+          ? Colors.white
+          : (style.color ?? theme.colors.onSurface),
+    );
+
+    Widget out = Text(_stripped, style: painted, softWrap: false);
+
+    if (style.gradient.isNotEmpty) {
+      out = ShaderMask(
+        blendMode: BlendMode.srcIn,
+        shaderCallback: (bounds) => LinearGradient(colors: style.gradient)
+            .createShader(Rect.fromLTWH(0, 0, bounds.width, bounds.height)),
+        child: out,
+      );
+    }
+
+    if (style.background != null ||
+        (style.border != null && style.borderWidth > 0) ||
+        style.padding > 0) {
+      out = Container(
+        padding: EdgeInsets.symmetric(
+            horizontal: style.padding, vertical: style.padding / 2),
+        decoration: BoxDecoration(
+          color: style.background,
+          borderRadius: BorderRadius.circular(style.radius),
+          border: style.border != null && style.borderWidth > 0
+              ? Border.all(color: style.border!, width: style.borderWidth)
+              : null,
+        ),
+        child: out,
+      );
+    }
+
+    // "fill" sets a title as tall as the room it has, which is what makes it
+    // sit level with a logo and grow and shrink with it.
+    return FittedBox(
+      fit: style.fill ? BoxFit.contain : BoxFit.scaleDown,
+      alignment: within,
+      child: out,
+    );
+  }
 }
 
 /// headerSlotAlignment is where a slot's contents sit within it.
@@ -250,6 +489,7 @@ class _MarkdownHeader extends StatelessWidget {
     var rule = MarkdownGuideScope.headerOf(context) ?? const HeaderRule();
     var height = double.tryParse(fields["height"] ?? "") ?? rule.boundedHeight;
     var spans = headerSpans(fields);
+    var titleStyle = HeaderTextStyle.parse(fields);
     var background = embedImage(fields["background"]);
     var nav = fields["nav"];
     var navAt = NavPlacement.parse(fields["navat"]);
@@ -261,30 +501,69 @@ class _MarkdownHeader extends StatelessWidget {
         ? null
         : Align(alignment: navAt.across, child: MarkdownArea(nav, false));
 
-    Widget slots() => Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            for (var i = 0; i < headerSlots.length; i++)
-              if (spans[i] > 0)
-                Expanded(
-                  flex: spans[i],
+    // The row places the slots; nothing inside them is stretched to do it.
+    //
+    // Each slot is drawn at its natural size -- see _slot -- and bounded to
+    // a share of the width so one long title cannot push the others out.
+    // Deliberately no Flexible: a Row divides its space between flex
+    // children by their factors, so a Spacer sharing the row with two of
+    // them got a third of the width rather than the slack, and a title
+    // asked for the right-hand edge stopped in the middle.
+    Widget slots() {
+      var named = [
+        for (var i = 0; i < headerSlots.length; i++)
+          if (spans[i] > 0) i
+      ];
+      var endsApart = named.length == 2 &&
+          named.first == 0 &&
+          named.last == headerSlots.length - 1;
+
+      return LayoutBuilder(builder: (context, constraints) {
+        // The gaps come out of the width before it is shared, or three
+        // slots each given a third plus two gaps between them add up to
+        // more than there is.
+        var gaps = endsApart ? 0 : (named.length - 1) * rule.boundedGap;
+        var share =
+            ((constraints.maxWidth - gaps) / named.length).clamp(0.0, 1e6);
+        var children = <Widget>[];
+        for (var i in named) {
+          // A fixed gap between slots that belong together. Nothing between
+          // the two ends, where the alignment below puts the slack.
+          if (children.isNotEmpty && !endsApart) {
+            children.add(SizedBox(width: rule.boundedGap));
+          }
+          Widget slot = _slot(context, fields[headerSlots[i]]!, titleStyle,
+              rule, headerSlotAlignment(fields, i));
+
+          // At the two ends each takes half and its contents go to its own
+          // outside edge, which is what puts a title against the right of
+          // the banner rather than in the middle of its half. An Align
+          // fills the room it is given -- wanted here, and the reason it is
+          // not used when the slots are meant to sit together.
+          children.add(endsApart
+              ? SizedBox(
+                  width: share,
                   child: Align(
-                    alignment: headerSlotAlignment(fields, i),
-                    // Scaled down to the room it has rather than overrunning
-                    // it: a logo is whatever size it was saved at, and the
-                    // banner's height is the writer's decision about the
-                    // page.
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      alignment: headerSlotAlignment(fields, i),
-                      child: MarkdownArea(fields[headerSlots[i]]!, false),
-                    ),
-                  ),
-                )
-              else
-                const Spacer(),
-          ],
+                      alignment: headerSlotAlignment(fields, i), child: slot))
+              : ConstrainedBox(
+                  constraints: BoxConstraints(maxWidth: share), child: slot));
+        }
+
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          mainAxisAlignment: endsApart
+              ? MainAxisAlignment.spaceBetween
+              // A single slot sits where its name says; anything else starts
+              // at the left, with the gaps above holding them together.
+              : (named.length == 1 && named.first == 1
+                  ? MainAxisAlignment.center
+                  : (named.length == 1 && named.first == 2
+                      ? MainAxisAlignment.end
+                      : MainAxisAlignment.start)),
+          children: children,
         );
+      });
+    }
 
     var anySlot = spans.any((s) => s > 0);
 
