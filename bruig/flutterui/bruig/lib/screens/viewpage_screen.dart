@@ -47,14 +47,22 @@ class _ViewPageScreenState extends State<ViewPageScreen> {
   MainMenuModel get menu => Provider.of<MainMenuModel>(context, listen: false);
 
   void onItemChanged(int index) {
+    // Also leaves the browser, without closing the page -- see
+    // PagesModel.tab.
     pages.tab = index;
     Timer(const Duration(milliseconds: 1),
         () async => menu.activePageTab = index);
   }
 
   // Opening a site switches to the browser rather than staying on the list
-  // that launched it: the page is the thing that was asked for.
+  // that launched it: the page is the thing that was asked for. The callers
+  // set PagesModel.browsing; this is only to rebuild.
   void showBrowser() => setState(() {});
+
+  void openSession(PagesSession sess) {
+    resources.mostRecent = sess;
+    pages.browsing = true;
+  }
 
   // Whether the tab sidebar is showing while a page is open.
   //
@@ -93,9 +101,35 @@ class _ViewPageScreenState extends State<ViewPageScreen> {
     return LayoutBuilder(builder: (context, constraints) {
       return Consumer2<PagesModel, ResourcesModel>(
         builder: (context, pagesModel, resources, _) {
-        var session = resources.mostRecent;
-        var items = pagesBarItems(onItemChanged, pagesModel.tab);
-        var tab = pagesModel.tab.clamp(0, items.length - 1);
+          var session = resources.mostRecent;
+          var browsing = pagesModel.browsing && session != null;
+          var tab = pagesModel.tab.clamp(0, pagesTabLabels.length - 1);
+
+          // Every open page gets its own entry under the tabs, so a page can
+          // be left on screen while a tab is visited and come back to, and
+          // so more than one can be open at a time. Each visit already makes
+          // a session of its own; until now only the newest was reachable.
+          var items = pagesBarItems(
+            onItemChanged,
+            tab,
+            browsing: browsing,
+            openPages: [
+              for (var sess in resources.sessions)
+                OpenPageItem(
+                  label: openPageLabel(
+                    pageOwnerName(
+                        sess.currentPage?.uid ?? sess.pendingUid,
+                        widget.client.publicID,
+                        widget.client.getNick(
+                            sess.currentPage?.uid ?? sess.pendingUid)),
+                    sess.currentPage?.request.path ?? sess.pendingPath,
+                  ),
+                  current: identical(sess, session),
+                  onOpen: () => openSession(sess),
+                  onClose: () => resources.closeSession(sess.id),
+                ),
+            ],
+          );
 
         // A session that is open takes the content area: the tabs are how
         // you get to a page, and the page is what you came for. Closing it
@@ -113,14 +147,14 @@ class _ViewPageScreenState extends State<ViewPageScreen> {
           var inDrawer = sidebarIsInDrawer(context, constraints.maxWidth);
 
           Widget content;
-          if (session != null) {
+          if (browsing) {
             content = PageBrowser(
               session,
               widget.client,
               resources,
               sidebarOpen: sidebarOpen,
               onToggleSidebar: inDrawer ? null : toggleSidebar,
-              onClose: () => resources.mostRecent = null,
+              onClose: () => resources.closeSession(session.id),
             );
           } else {
             content = activeTab(tab);
@@ -129,13 +163,14 @@ class _ViewPageScreenState extends State<ViewPageScreen> {
           return SecondarySideMenuLayout(
             storageKey: "pages",
             items: items,
-            sidebarRevision: Object.hash(tab, items.length, sidebarOpen),
+            sidebarRevision:
+                Object.hash(tab, items.length, sidebarOpen, browsing),
             isDetail: ModalRoute.of(context)!.settings.arguments != null,
             // Deliberately the same path a narrow window takes rather than
             // simply not drawing it: that registers the sidebar with
             // CollapsedSidebarModel, so re-tapping Pages in the main
             // navigation still slides it in.
-            collapseSidebar: session != null && !sidebarOpen,
+            collapseSidebar: browsing && !sidebarOpen,
             content: content,
           );
         },

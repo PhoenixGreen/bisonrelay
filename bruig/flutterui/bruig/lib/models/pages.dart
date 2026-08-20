@@ -233,8 +233,25 @@ class PagesModel extends ChangeNotifier {
   int _tab = 0;
   int get tab => _tab;
   set tab(int v) {
-    if (_tab == v) return;
+    // Choosing a tab is asking to look at it, so it also stops the browser
+    // covering the content area -- but the page stays open, in the sidebar,
+    // rather than being closed on the reader's behalf.
+    if (_tab == v && !_browsing) return;
     _tab = v;
+    _browsing = false;
+    notifyListeners();
+  }
+
+  /// browsing is whether the content area is showing an open page rather
+  /// than the selected tab.
+  ///
+  /// Separate from "is a page open" because those stopped being the same
+  /// thing once pages could stay open behind a tab.
+  bool _browsing = false;
+  bool get browsing => _browsing;
+  set browsing(bool v) {
+    if (_browsing == v) return;
+    _browsing = v;
     notifyListeners();
   }
 

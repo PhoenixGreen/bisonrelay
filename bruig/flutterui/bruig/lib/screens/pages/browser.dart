@@ -109,8 +109,11 @@ class _PageBrowserState extends State<PageBrowser> {
     if (page == null) return;
     var snackbar = SnackBarModel.of(context);
     try {
+      // reload: true, or this would find the page it is meant to replace
+      // sitting in the history and show that instead.
       await widget.resources.fetchPage(
-          page.uid, page.request.path, session.id, page.pageID, null, "");
+          page.uid, page.request.path, session.id, page.pageID, null, "",
+          reload: true);
     } catch (exception) {
       snackbar.error("Unable to reload page: $exception");
     }

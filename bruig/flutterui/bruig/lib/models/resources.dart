@@ -105,6 +105,30 @@ class PagesSession extends ChangeNotifier {
     _finishLoad();
   }
 
+  /// findInHistory returns where a page already sits in this session's
+  /// history, or null.
+  ///
+  /// Keyed on who is serving it and what was asked for, which is all a
+  /// request is when it carries no data. A request that carries data is a
+  /// form being submitted and is never a match: two submissions of the same
+  /// form are two different things happening, however alike they look.
+  int? findInHistory(String uid, List<String> path) {
+    var wanted = path.join("/");
+    for (var i = _history.length - 1; i >= 0; i--) {
+      var fr = _history[i];
+      if (fr.uid == uid && fr.request.path.join("/") == wanted) return i;
+    }
+    return null;
+  }
+
+  /// jumpTo moves the reader to a page the session already holds.
+  void jumpTo(int index) {
+    if (index < 0 || index >= _history.length) return;
+    _cursor = index;
+    _current = _history[index];
+    _finishLoad();
+  }
+
   void goForward() {
     if (!canGoForward) return;
     _cursor++;
@@ -244,8 +268,11 @@ class PagesSession extends ChangeNotifier {
 }
 
 class ResourcesModel extends ChangeNotifier {
-  ResourcesModel() {
-    _handleFetchedResources();
+  /// [runStream] is false in tests, which have no golib to listen to.
+  /// Everything else about the model works without it -- the stream only
+  /// feeds replies in.
+  ResourcesModel({bool runStream = true}) {
+    if (runStream) _handleFetchedResources();
   }
 
   final Map<int, PagesSession> _sessions = {};
@@ -260,6 +287,20 @@ class ResourcesModel extends ChangeNotifier {
 
   List<PagesSession> get sessions => _sessions.values.toList(growable: false);
 
+  /// closeSession forgets an open page.
+  ///
+  /// The session's history goes with it: keeping it would mean a closed page
+  /// still holding every page it visited, and "close" would not mean what it
+  /// says. The pages themselves are still in the client's own store, so
+  /// nothing is lost that a fresh request would not find again.
+  void closeSession(int id) {
+    var sess = _sessions.remove(id);
+    if (sess == null) return;
+    if (identical(_mostRecent, sess)) _mostRecent = null;
+    sess.dispose();
+    notifyListeners();
+  }
+
   PagesSession? _mostRecent;
   PagesSession? get mostRecent => _mostRecent;
   set mostRecent(PagesSession? v) {
@@ -269,8 +310,32 @@ class ResourcesModel extends ChangeNotifier {
     }
   }
 
+  /// fetchPage asks for a page, or shows one the session already has.
+  ///
+  /// A page already in this session's history is shown from it rather than
+  /// asked for again. A request is a message each way, so following a link
+  /// back to somewhere already visited would be paying a second time for
+  /// what is already in hand -- and it is the same page the Back button
+  /// would have shown, reached a different way.
+  ///
+  /// [reload] is how to insist on asking anyway, which is what the browser's
+  /// reload button does. There is no way to tell whether a page has changed
+  /// since it was fetched: the protocol carries no validator, so the choice
+  /// is between showing what we have and paying to find out.
   Future<PagesSession> fetchPage(String uid, List<String> path, int sessionID,
-      int parentPage, dynamic data, String asyncTargetID) async {
+      int parentPage, dynamic data, String asyncTargetID,
+      {bool reload = false}) async {
+    // Only a plain request for a page. Submitting a form, or filling in a
+    // section of one, is an exchange rather than a fetch.
+    if (!reload && data == null && asyncTargetID == "" && sessionID != 0) {
+      var sess = _sessions[sessionID];
+      var at = sess?.findInHistory(uid, path);
+      if (sess != null && at != null) {
+        sess.jumpTo(at);
+        return sess;
+      }
+    }
+
     sessionID = await Golib.fetchResource(
         uid, path, null, sessionID, parentPage, data, asyncTargetID);
 

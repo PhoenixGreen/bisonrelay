@@ -116,6 +116,7 @@ class _MySiteTabState extends State<MySiteTab> {
       var sess = await widget.resources
           .fetchPage(widget.client.publicID, ["index.md"], 0, 0, null, "");
       widget.resources.mostRecent = sess;
+      widget.pages.browsing = true;
       widget.onOpenedOwnSite();
     } catch (exception) {
       snackbar.error("Unable to open own site: $exception");

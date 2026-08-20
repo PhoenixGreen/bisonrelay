@@ -1,0 +1,152 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
+import 'package:bruig/components/pages_bar.dart';
+import 'package:bruig/models/pages.dart';
+import 'package:bruig/models/resources.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:golib_plugin/definitions.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+FetchedResource _page(String uid, List<String> path, String body) =>
+    FetchedResource(
+      uid,
+      1,
+      1,
+      0,
+      DateTime.now(),
+      DateTime.now(),
+      RMFetchResource(path, null, 0, null, 0, 0),
+      RMFetchResourceReply(
+          0, 200, null, Uint8List.fromList(utf8.encode(body)), 0, 0),
+      "",
+    );
+
+void main() {
+  // PagesModel reads its saved sort order on construction.
+  TestWidgetsFlutterBinding.ensureInitialized();
+  setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  group('a session\'s history', () {
+    test('finds a page it already holds, by who serves it and what', () {
+      var s = PagesSession(1)
+        ..currentPage = _page("alice", ["index.md"], "front")
+        ..currentPage = _page("alice", ["about.md"], "about");
+
+      expect(s.findInHistory("alice", ["index.md"]), 0);
+      expect(s.findInHistory("alice", ["about.md"]), 1);
+      // Same path, different person, is a different page.
+      expect(s.findInHistory("bob", ["index.md"]), isNull);
+      expect(s.findInHistory("alice", ["missing.md"]), isNull);
+    });
+
+    test('finds the most recent copy when a page was visited twice', () {
+      var s = PagesSession(1)
+        ..currentPage = _page("alice", ["index.md"], "old")
+        ..currentPage = _page("alice", ["about.md"], "about")
+        ..currentPage = _page("alice", ["index.md"], "new");
+      expect(s.findInHistory("alice", ["index.md"]), 2);
+    });
+
+    test('jumping shows the held page and leaves the history intact', () {
+      var s = PagesSession(1)
+        ..currentPage = _page("alice", ["index.md"], "front")
+        ..currentPage = _page("alice", ["about.md"], "about");
+
+      s.jumpTo(0);
+      expect(s.pageData().trim(), "front");
+      expect(s.canGoForward, isTrue, reason: "about is still ahead");
+      expect(s.history.length, 2);
+    });
+
+    test('jumping out of range does nothing', () {
+      var s = PagesSession(1)..currentPage = _page("a", ["index.md"], "one");
+      s.jumpTo(5);
+      s.jumpTo(-1);
+      expect(s.pageData().trim(), "one");
+    });
+
+    test('a new page after a jump truncates what was ahead', () {
+      // Same rule the Back button already follows: going somewhere new from
+      // part-way back drops the forward history rather than branching.
+      var s = PagesSession(1)
+        ..currentPage = _page("a", ["index.md"], "one")
+        ..currentPage = _page("a", ["two.md"], "two");
+      s.jumpTo(0);
+      s.currentPage = _page("a", ["three.md"], "three");
+      expect(s.history.length, 2);
+      expect(s.canGoForward, isFalse);
+    });
+  });
+
+  group('openPageLabel', () {
+    test('a front page is named by whose site it is', () {
+      expect(openPageLabel("alice", ["index.md"]), "alice");
+      expect(openPageLabel("alice", []), "alice");
+      expect(openPageLabel("alice", [""]), "alice");
+    });
+
+    test('anything else names the page too', () {
+      // The nick alone stops being enough the moment two pages of the same
+      // person's are open, which is the case the sidebar list exists for.
+      expect(openPageLabel("alice", ["about.md"]), "alice / about");
+      expect(openPageLabel("alice", ["blog", "first-post.md"]),
+          "alice / first-post");
+    });
+
+    test('a path with no extension is left as it is', () {
+      expect(openPageLabel("store", ["cart"]), "store / cart");
+    });
+  });
+
+  group('PagesModel navigation', () {
+    test('choosing a tab leaves the browser without closing the page', () {
+      var m = PagesModel(ResourcesModel(runStream: false))
+        ..browsing = true
+        ..tab = pagesTabVisit;
+
+      // Re-choosing the tab already selected still has to leave the
+      // browser: the tab is what was tapped, and it was doing nothing.
+      m.browsing = true;
+      m.tab = pagesTabVisit;
+      expect(m.browsing, isFalse);
+      expect(m.tab, pagesTabVisit);
+    });
+
+    test('a different tab also leaves the browser', () {
+      var m = PagesModel(ResourcesModel(runStream: false))..browsing = true;
+      m.tab = pagesTabStore;
+      expect(m.browsing, isFalse);
+      expect(m.tab, pagesTabStore);
+    });
+  });
+
+  group('closing a session', () {
+    test('forgets it, and stops it being the one on screen', () {
+      var r = ResourcesModel(runStream: false);
+      var a = r.session(1), b = r.session(2);
+      r.mostRecent = a;
+
+      r.closeSession(1);
+      expect(r.sessions.length, 1);
+      expect(r.mostRecent, isNull);
+      expect(identical(r.sessions.first, b), isTrue);
+    });
+
+    test('closing one that is not on screen leaves the current one alone', () {
+      var r = ResourcesModel(runStream: false);
+      r.session(1);
+      var b = r.session(2);
+      r.mostRecent = b;
+
+      r.closeSession(1);
+      expect(identical(r.mostRecent, b), isTrue);
+    });
+
+    test('closing something already gone is not an error', () {
+      var r = ResourcesModel(runStream: false);
+      r.closeSession(99);
+      expect(r.sessions, isEmpty);
+    });
+  });
+}

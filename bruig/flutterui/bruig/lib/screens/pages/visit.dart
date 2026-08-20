@@ -86,6 +86,7 @@ class _VisitTabState extends State<VisitTab> {
     var snackbar = SnackBarModel.of(context);
     try {
       widget.resources.mostRecent = await widget.pages.open(chat.id);
+      widget.pages.browsing = true;
       widget.onOpened();
     } catch (exception) {
       snackbar.error("Unable to open ${chat.nick}'s site: $exception");
