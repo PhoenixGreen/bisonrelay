@@ -2,7 +2,6 @@ import 'package:bruig/components/md_elements.dart';
 import 'package:bruig/components/text.dart';
 import 'package:bruig/models/client.dart';
 import 'package:bruig/models/resources.dart';
-import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -42,19 +41,10 @@ class PageBrowser extends StatefulWidget {
   final PagesSession session;
   final ClientModel client;
   final ResourcesModel resources;
-  final bool sidebarOpen;
-
-  /// onToggleSidebar is null where the sidebar is the drawer's rather than a
-  /// column of this screen's -- see sidebarIsInDrawer. The control is then
-  /// left out rather than shown dead: it is the main navigation's re-tap
-  /// that opens the drawer, and a button that cannot is only confusing.
-  final VoidCallback? onToggleSidebar;
   const PageBrowser(
     this.session,
     this.client,
     this.resources, {
-    required this.sidebarOpen,
-    required this.onToggleSidebar,
     super.key,
   });
 
@@ -102,33 +92,6 @@ class _PageBrowserState extends State<PageBrowser> {
     super.dispose();
   }
 
-  void reload() async {
-    var page = session.currentPage;
-    if (page == null) return;
-    var snackbar = SnackBarModel.of(context);
-    try {
-      // reload: true, or this would find the page it is meant to replace
-      // sitting in the history and show that instead.
-      await widget.resources.fetchPage(
-          page.uid, page.request.path, session.id, page.pageID, null, "",
-          reload: true);
-    } catch (exception) {
-      snackbar.error("Unable to reload page: $exception");
-    }
-  }
-
-  void goHome() async {
-    var page = session.currentPage;
-    if (page == null) return;
-    var snackbar = SnackBarModel.of(context);
-    try {
-      await widget.resources
-          .fetchPage(page.uid, ["index.md"], session.id, page.pageID, null, "");
-    } catch (exception) {
-      snackbar.error("Unable to open front page: $exception");
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     var page = session.currentPage;
@@ -167,22 +130,7 @@ class _PageBrowserState extends State<PageBrowser> {
           status: page.response.status, nick: nick, path: path);
     }
 
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      PageBrowserBar(
-        session: session,
-        nick: nick,
-        path: path,
-        loading: session.loading,
-        sidebarOpen: widget.sidebarOpen,
-        onToggleSidebar: widget.onToggleSidebar,
-        onBack: () => session.goBack(),
-        onForward: () => session.goForward(),
-        onReload: reload,
-        onHome: goHome,
-      ),
-      const Divider(height: 1),
-      Expanded(child: body),
-    ]);
+    return body;
   }
 }
 
@@ -397,7 +345,11 @@ class BrowserMessage extends StatelessWidget {
 }
 
 class PageBrowserBar extends StatelessWidget {
-  final PagesSession session;
+  /// session is the page being read, or null on a section that is not a
+  /// page -- the bar is drawn on every section of Pages, because the
+  /// sidebar toggle lives in it and has to be reachable wherever the
+  /// sidebar is hidden.
+  final PagesSession? session;
   final String nick;
   final String path;
   final bool loading;
@@ -408,8 +360,12 @@ class PageBrowserBar extends StatelessWidget {
   final VoidCallback onForward;
   final VoidCallback onReload;
   final VoidCallback onHome;
+  /// sectionLabel is what the address area says when there is no page open
+  /// -- the name of the section being looked at instead.
+  final String sectionLabel;
   const PageBrowserBar({
     super.key,
+    this.sectionLabel = "",
     required this.session,
     required this.nick,
     required this.path,
@@ -434,25 +390,29 @@ class PageBrowserBar extends StatelessWidget {
             tooltip: sidebarOpen ? "Hide sidebar" : "Show sidebar",
             onPressed: onToggleSidebar,
           ),
+        // The navigation buttons stay in place with nothing open rather
+        // than the row rearranging itself: the bar is the same bar on every
+        // section, and controls that move as you cross the section are
+        // harder to aim at than controls that grey out.
         IconButton(
           icon: const Icon(Icons.arrow_back, size: 18),
           tooltip: "Back",
-          onPressed: session.canGoBack ? onBack : null,
+          onPressed: session?.canGoBack == true ? onBack : null,
         ),
         IconButton(
           icon: const Icon(Icons.arrow_forward, size: 18),
           tooltip: "Forward",
-          onPressed: session.canGoForward ? onForward : null,
+          onPressed: session?.canGoForward == true ? onForward : null,
         ),
         IconButton(
           icon: const Icon(Icons.home_outlined, size: 18),
           tooltip: "Front page",
-          onPressed: onHome,
+          onPressed: session == null ? null : onHome,
         ),
         IconButton(
           icon: const Icon(Icons.refresh, size: 18),
           tooltip: "Reload",
-          onPressed: loading ? null : onReload,
+          onPressed: loading || session == null ? null : onReload,
         ),
         const SizedBox(width: 8),
         Expanded(
@@ -472,7 +432,11 @@ class PageBrowserBar extends StatelessWidget {
                       child: CircularProgressIndicator(strokeWidth: 2)),
                 ),
               Flexible(
-                child: Txt.S("$nick / $path", overflow: TextOverflow.ellipsis),
+                child: session == null
+                    ? Txt.S(sectionLabel,
+                        overflow: TextOverflow.ellipsis,
+                        color: TextColor.onSurfaceVariant)
+                    : Txt.S("$nick / $path", overflow: TextOverflow.ellipsis),
               ),
             ]),
           ),

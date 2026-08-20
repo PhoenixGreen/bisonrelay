@@ -22,6 +22,7 @@ class StorageManager {
   static const String msgsSentCountKey = "msgsSentCount";
   static const String countRelaysEnabledKey = "countRelaysEnabled";
   static const String pagesSortKey = "pagesSort";
+  static const String pagesSidebarOpenKey = "pagesSidebarOpen";
 
   static Future<void> saveData(String key, dynamic value) async {
     final prefs = await SharedPreferences.getInstance();

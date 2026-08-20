@@ -217,6 +217,7 @@ class PagesModel extends ChangeNotifier {
   PagesModel(this.resources) {
     resources.addFetchListener(_onFetched);
     _loadSort();
+    _loadSidebar();
   }
 
   @override
@@ -239,6 +240,33 @@ class PagesModel extends ChangeNotifier {
     if (_tab == v && !_browsing) return;
     _tab = v;
     _browsing = false;
+    notifyListeners();
+  }
+
+  /// sidebarOpen is whether the Pages sidebar is showing.
+  ///
+  /// The reader's setting for the whole section, not a property of whatever
+  /// is on screen. It used to be closed automatically whenever a page was
+  /// opened, on the reasoning that a page wants the width -- but that made
+  /// the toggle a suggestion rather than a switch: closing the sidebar and
+  /// stepping to another page, or back to the contact list, opened it again.
+  /// A control that undoes itself is worse than no control.
+  ///
+  /// Starts open, and stays wherever it was put, across pages and restarts.
+  bool _sidebarOpen = true;
+  bool get sidebarOpen => _sidebarOpen;
+  set sidebarOpen(bool v) {
+    if (_sidebarOpen == v) return;
+    _sidebarOpen = v;
+    StorageManager.saveBool(StorageManager.pagesSidebarOpenKey, v);
+    notifyListeners();
+  }
+
+  Future<void> _loadSidebar() async {
+    var v = await StorageManager.readBool(StorageManager.pagesSidebarOpenKey,
+        defaultVal: true);
+    if (v == _sidebarOpen) return;
+    _sidebarOpen = v;
     notifyListeners();
   }
 

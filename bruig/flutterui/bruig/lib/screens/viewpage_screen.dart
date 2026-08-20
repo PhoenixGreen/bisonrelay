@@ -7,6 +7,7 @@ import 'package:bruig/models/client.dart';
 import 'package:bruig/models/menus.dart';
 import 'package:bruig/models/pages.dart';
 import 'package:bruig/models/resources.dart';
+import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/screens/overview.dart';
 import 'package:bruig/screens/pages/browser.dart';
 import 'package:bruig/screens/pages/my_site.dart';
@@ -59,6 +60,51 @@ class _ViewPageScreenState extends State<ViewPageScreen> {
   // set PagesModel.browsing; this is only to rebuild.
   void showBrowser() => setState(() {});
 
+  String sessionNick(PagesSession? sess) {
+    if (sess == null) return "";
+    var uid = sess.currentPage?.uid ?? sess.pendingUid;
+    return pageOwnerName(
+        uid, widget.client.publicID, widget.client.getNick(uid));
+  }
+
+  String sessionPath(PagesSession? sess) =>
+      (sess?.currentPage?.request.path ?? sess?.pendingPath ?? const [])
+          .join("/");
+
+  /// reload asks for the page again, and goHome for the front page of
+  /// whoever is being read.
+  ///
+  /// Here rather than in PageBrowser because the bar that calls them is
+  /// here: it is drawn above every section, not only above a page.
+  void reload() async {
+    var sess = resources.mostRecent;
+    var page = sess?.currentPage;
+    if (sess == null || page == null) return;
+    var snackbar = SnackBarModel.of(context);
+    try {
+      // reload: true, or this would find the page it is meant to replace
+      // sitting in the history and show that instead.
+      await resources.fetchPage(
+          page.uid, page.request.path, sess.id, page.pageID, null, "",
+          reload: true);
+    } catch (exception) {
+      snackbar.error("Unable to reload page: $exception");
+    }
+  }
+
+  void goHome() async {
+    var sess = resources.mostRecent;
+    var page = sess?.currentPage;
+    if (sess == null || page == null) return;
+    var snackbar = SnackBarModel.of(context);
+    try {
+      await resources
+          .fetchPage(page.uid, ["index.md"], sess.id, page.pageID, null, "");
+    } catch (exception) {
+      snackbar.error("Unable to open front page: $exception");
+    }
+  }
+
   /// sessionLabel names an open page: whose it is, and which of theirs.
   String sessionLabel(PagesSession sess) {
     var uid = sess.currentPage?.uid ?? sess.pendingUid;
@@ -73,27 +119,19 @@ class _ViewPageScreenState extends State<ViewPageScreen> {
     pages.browsing = true;
   }
 
-  // Whether the tab sidebar is showing while a page is open.
-  //
-  // A page starts with it hidden: the tabs are how you got here, and the
-  // page wants the width -- pages are written to a reading measure, and on a
-  // narrow window the sidebar takes a third of it. The toggle in the browser
-  // bar brings it back, and _openSession is what makes "starts hidden" mean
-  // per page rather than once ever, so closing a page and opening another
-  // does not inherit the last one's choice.
-  bool sidebarOpen = false;
-  PagesSession? _openSession;
+  // The sidebar's visibility is PagesModel's -- the reader's setting for
+  // the whole section, kept wherever they put it. See PagesModel.sidebarOpen
+  // for why it is not reset when a page opens.
+  void toggleSidebar() => pages.sidebarOpen = !pages.sidebarOpen;
 
-  void toggleSidebar() => setState(() => sidebarOpen = !sidebarOpen);
-
-  Widget activeTab(int tab, Widget visitArea) {
+  Widget activeTab(int tab) {
     switch (tab) {
       case pagesTabMySite:
         return MySiteTab(pages, widget.client, resources, showBrowser);
       case pagesTabStore:
         return StoreTab(pages);
       default:
-        return visitArea;
+        return VisitTab(widget.client, pages, resources, showBrowser);
     }
   }
 
@@ -130,13 +168,7 @@ class _ViewPageScreenState extends State<ViewPageScreen> {
 
           var open = resources.sessions;
           var items = pagesBarItems(onItemChanged, tab);
-
-          // A page opening for the first time takes the sidebar aside, so
-          // the reading measure is the page's -- see sidebarOpen.
-          if (!identical(session, _openSession)) {
-            _openSession = session;
-            sidebarOpen = false;
-          }
+          var sidebarOpen = pagesModel.sidebarOpen;
 
           // Below the collapse width -- or under the collapsed submenu
           // style -- the sidebar is the drawer's whatever this screen sets,
@@ -145,25 +177,21 @@ class _ViewPageScreenState extends State<ViewPageScreen> {
           // than offered and dead.
           var inDrawer = sidebarIsInDrawer(context, constraints.maxWidth);
 
-          // The Visit area is the browser: the contact list is what shows
-          // with nothing open, and it stays reachable through the strip's
-          // new-tab button once something is -- which is what a browser's
-          // new-tab page is. Keeping them in one place is what lets the
-          // sidebar go back to three plain destinations.
-          Widget visitArea = browsing
-              ? PageBrowser(
-                  session,
-                  widget.client,
-                  resources,
-                  sidebarOpen: sidebarOpen,
-                  onToggleSidebar: inDrawer ? null : toggleSidebar,
-                )
-              : VisitTab(widget.client, pages, resources, showBrowser);
+          // The chrome -- tab strip and browser bar -- sits above every
+          // section, not only above a page. Two reasons, and the second is
+          // the one that matters: an open page stays reachable from
+          // wherever you are, and the sidebar toggle is somewhere you can
+          // always find it. It lives in this bar, so a bar that appeared
+          // only while reading a page would leave the sidebar shut with no
+          // way to open it again.
+          var body = browsing
+              ? PageBrowser(session, widget.client, resources)
+              : activeTab(tab);
 
-          if (open.isNotEmpty) {
-            visitArea = Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
+          var content = Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (open.isNotEmpty) ...[
                 PageTabStrip(
                   tabs: [
                     for (var sess in open)
@@ -175,15 +203,29 @@ class _ViewPageScreenState extends State<ViewPageScreen> {
                       ),
                   ],
                   newTabSelected: !browsing,
-                  onNewTab: () => pages.browsing = false,
+                  onNewTab: () => pages
+                    ..browsing = false
+                    ..tab = pagesTabVisit,
                 ),
                 const Divider(height: 1),
-                Expanded(child: visitArea),
               ],
-            );
-          }
-
-          var content = activeTab(tab, visitArea);
+              PageBrowserBar(
+                session: browsing ? session : null,
+                sectionLabel: pagesTabLabels[tab],
+                nick: browsing ? sessionNick(session) : "",
+                path: browsing ? sessionPath(session) : "",
+                loading: browsing && session.loading,
+                sidebarOpen: sidebarOpen,
+                onToggleSidebar: inDrawer ? null : toggleSidebar,
+                onBack: () => session?.goBack(),
+                onForward: () => session?.goForward(),
+                onReload: reload,
+                onHome: goHome,
+              ),
+              const Divider(height: 1),
+              Expanded(child: body),
+            ],
+          );
 
           return SecondarySideMenuLayout(
             storageKey: "pages",
@@ -195,7 +237,9 @@ class _ViewPageScreenState extends State<ViewPageScreen> {
             // simply not drawing it: that registers the sidebar with
             // CollapsedSidebarModel, so re-tapping Pages in the main
             // navigation still slides it in.
-            collapseSidebar: browsing && !sidebarOpen,
+            // One setting, honoured on every section: see
+            // PagesModel.sidebarOpen.
+            collapseSidebar: !sidebarOpen,
             content: content,
           );
         },

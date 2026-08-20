@@ -121,6 +121,32 @@ void main() {
     });
   });
 
+  group('the sidebar setting', () {
+    test('starts open and stays where it is put', () async {
+      var m = PagesModel(ResourcesModel(runStream: false));
+      expect(m.sidebarOpen, isTrue);
+
+      m.sidebarOpen = false;
+      // Opening a page, moving between pages and changing section all used
+      // to reopen it. The setting is the reader's, not the screen's.
+      m.browsing = true;
+      m.tab = pagesTabStore;
+      m.browsing = true;
+      expect(m.sidebarOpen, isFalse);
+    });
+
+    test('survives a restart', () async {
+      SharedPreferences.setMockInitialValues({});
+      PagesModel(ResourcesModel(runStream: false)).sidebarOpen = false;
+      // Let the write land before reading it back.
+      await Future<void>.delayed(Duration.zero);
+
+      var next = PagesModel(ResourcesModel(runStream: false));
+      await Future<void>.delayed(Duration.zero);
+      expect(next.sidebarOpen, isFalse);
+    });
+  });
+
   group('closing a session', () {
     test('moves to the tab on the right', () {
       var r = ResourcesModel(runStream: false);

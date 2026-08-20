@@ -6,20 +6,28 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:provider/provider.dart';
 
+// byTooltip finds the Tooltip an IconButton builds, not the button itself,
+// so the button is reached through it.
+IconButton _button(WidgetTester tester, String tooltip) =>
+    tester.widget<IconButton>(find.ancestor(
+        of: find.byTooltip(tooltip), matching: find.byType(IconButton)));
+
 void main() {
   Future<void> pumpBar(
     WidgetTester tester, {
     required bool sidebarOpen,
     VoidCallback? onToggle,
     bool toggleable = true,
+    bool withPage = true,
   }) async {
-    var session = PagesSession(1);
+    var session = withPage ? PagesSession(1) : null;
     await tester.pumpWidget(ChangeNotifierProvider<ThemeNotifier>.value(
       value: ThemeNotifier(doLoad: false),
       child: MaterialApp(
           home: Scaffold(
               body: PageBrowserBar(
         session: session,
+        sectionLabel: "My Site",
         nick: "alice",
         path: "index.md",
         loading: false,
@@ -50,6 +58,31 @@ void main() {
     await pumpBar(tester, sidebarOpen: true);
     expect(find.byTooltip("Hide sidebar"), findsOneWidget);
     expect(find.byTooltip("Show sidebar"), findsNothing);
+  });
+
+  testWidgets('the bar is drawn on a section with no page open',
+      (tester) async {
+    // It carries the sidebar toggle, so a bar that appeared only while
+    // reading a page would leave the sidebar shut with no way to reopen it.
+    await pumpBar(tester, sidebarOpen: true, withPage: false);
+
+    expect(find.byTooltip("Hide sidebar"), findsOneWidget);
+    // The address area names the section instead of a page.
+    expect(find.text("My Site"), findsOneWidget);
+    expect(find.textContaining("alice"), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('navigation greys out with no page rather than moving',
+      (tester) async {
+    // The buttons keep their places across sections: controls that shift as
+    // you cross the section are harder to aim at than controls that grey.
+    await pumpBar(tester, sidebarOpen: true, withPage: false);
+
+    for (var t in ["Back", "Forward", "Front page", "Reload"]) {
+      expect(find.byTooltip(t), findsOneWidget, reason: t);
+      expect(_button(tester, t).onPressed, isNull, reason: t);
+    }
   });
 
   testWidgets('the toggle is left out where it could not work', (tester) async {
