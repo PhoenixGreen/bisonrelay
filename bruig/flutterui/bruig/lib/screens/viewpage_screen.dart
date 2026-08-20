@@ -59,6 +59,15 @@ class _ViewPageScreenState extends State<ViewPageScreen> {
   // set PagesModel.browsing; this is only to rebuild.
   void showBrowser() => setState(() {});
 
+  /// sessionLabel names an open page: whose it is, and which of theirs.
+  String sessionLabel(PagesSession sess) {
+    var uid = sess.currentPage?.uid ?? sess.pendingUid;
+    return openPageLabel(
+      pageOwnerName(uid, widget.client.publicID, widget.client.getNick(uid)),
+      sess.currentPage?.request.path ?? sess.pendingPath,
+    );
+  }
+
   void openSession(PagesSession sess) {
     resources.mostRecent = sess;
     pages.browsing = true;
@@ -105,30 +114,33 @@ class _ViewPageScreenState extends State<ViewPageScreen> {
           var browsing = pagesModel.browsing && session != null;
           var tab = pagesModel.tab.clamp(0, pagesTabLabels.length - 1);
 
-          // Every open page gets its own entry under the tabs, so a page can
-          // be left on screen while a tab is visited and come back to, and
-          // so more than one can be open at a time. Each visit already makes
-          // a session of its own; until now only the newest was reachable.
+          var open = resources.sessions;
+
+          // One tab per open page, above the address bar, the way a browser
+          // does it -- built here rather than in the browser because the
+          // sessions belong to the model, not to whichever page is showing.
+          var tabs = [
+            for (var sess in open)
+              PageTab(
+                label: sessionLabel(sess),
+                current: identical(sess, session),
+                onOpen: () => openSession(sess),
+                onClose: () => resources.closeSession(sess.id),
+              ),
+          ];
+
+          // The sidebar gets one entry rather than a list: choosing between
+          // open pages is the strip's job, and all the sidebar has to answer
+          // is that a page is still open after a tab was chosen.
           var items = pagesBarItems(
             onItemChanged,
             tab,
             browsing: browsing,
-            openPages: [
-              for (var sess in resources.sessions)
-                OpenPageItem(
-                  label: openPageLabel(
-                    pageOwnerName(
-                        sess.currentPage?.uid ?? sess.pendingUid,
-                        widget.client.publicID,
-                        widget.client.getNick(
-                            sess.currentPage?.uid ?? sess.pendingUid)),
-                    sess.currentPage?.request.path ?? sess.pendingPath,
-                  ),
-                  current: identical(sess, session),
-                  onOpen: () => openSession(sess),
-                  onClose: () => resources.closeSession(sess.id),
-                ),
-            ],
+            openPages: open.length,
+            openLabel: open.isEmpty ? "" : sessionLabel(open.first),
+            onResume: open.isEmpty
+                ? null
+                : () => openSession(session ?? open.first),
           );
 
         // A session that is open takes the content area: the tabs are how
@@ -155,6 +167,7 @@ class _ViewPageScreenState extends State<ViewPageScreen> {
               sidebarOpen: sidebarOpen,
               onToggleSidebar: inDrawer ? null : toggleSidebar,
               onClose: () => resources.closeSession(session.id),
+              tabs: tabs,
             );
           } else {
             content = activeTab(tab);

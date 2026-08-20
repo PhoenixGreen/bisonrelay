@@ -50,6 +50,11 @@ class PageBrowser extends StatefulWidget {
   /// that opens the drawer, and a button that cannot is only confusing.
   final VoidCallback? onToggleSidebar;
   final VoidCallback onClose;
+
+  /// tabs are every open page. One page draws no strip and keeps the close
+  /// button in the address bar; two or more draw the strip, which carries a
+  /// close of its own per tab and so takes the bar's place.
+  final List<PageTab> tabs;
   const PageBrowser(
     this.session,
     this.client,
@@ -57,6 +62,7 @@ class PageBrowser extends StatefulWidget {
     required this.sidebarOpen,
     required this.onToggleSidebar,
     required this.onClose,
+    this.tabs = const [],
     super.key,
   });
 
@@ -169,7 +175,12 @@ class _PageBrowserState extends State<PageBrowser> {
           status: page.response.status, nick: nick, path: path);
     }
 
+    var stripped = widget.tabs.length > 1;
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      if (stripped) ...[
+        PageTabStrip(tabs: widget.tabs),
+        const Divider(height: 1),
+      ],
       PageBrowserBar(
         session: session,
         nick: nick,
@@ -177,7 +188,9 @@ class _PageBrowserState extends State<PageBrowser> {
         loading: session.loading,
         sidebarOpen: widget.sidebarOpen,
         onToggleSidebar: widget.onToggleSidebar,
-        onClose: widget.onClose,
+        // Null once the strip is drawn: every tab there carries its own
+        // close, and two ways to shut the same page is one too many.
+        onClose: stripped ? null : widget.onClose,
         onBack: () => session.goBack(),
         onForward: () => session.goForward(),
         onReload: reload,
@@ -186,6 +199,98 @@ class _PageBrowserState extends State<PageBrowser> {
       const Divider(height: 1),
       Expanded(child: body),
     ]);
+  }
+}
+
+/// PageTab is one open page, for the strip above the address bar.
+class PageTab {
+  final String label;
+  final bool current;
+  final VoidCallback onOpen;
+  final VoidCallback onClose;
+  const PageTab({
+    required this.label,
+    required this.current,
+    required this.onOpen,
+    required this.onClose,
+  });
+}
+
+/// PageTabStrip is the row of open pages above the address bar.
+///
+/// Only drawn once there are two. A strip of one is a label for the thing
+/// already filling the screen, and the address bar underneath already says
+/// whose page it is -- so a single page keeps the plain close button in the
+/// bar instead, and gains no chrome for having been opened.
+class PageTabStrip extends StatelessWidget {
+  final List<PageTab> tabs;
+  const PageTabStrip({super.key, required this.tabs});
+
+  @override
+  Widget build(BuildContext context) {
+    var theme = ThemeNotifier.of(context);
+    return Container(
+      height: 34,
+      color: theme.colors.surfaceContainerHighest.withValues(alpha: 0.4),
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        itemCount: tabs.length,
+        itemBuilder: (context, i) => _Tab(tabs[i]),
+      ),
+    );
+  }
+}
+
+class _Tab extends StatelessWidget {
+  final PageTab tab;
+  const _Tab(this.tab);
+
+  @override
+  Widget build(BuildContext context) {
+    var theme = ThemeNotifier.of(context);
+    var selected = tab.current;
+    return InkWell(
+      onTap: tab.onOpen,
+      child: Container(
+        // Bounded so a long page name cannot push the other tabs off, and
+        // floored so a short one is still big enough to aim at.
+        constraints: const BoxConstraints(minWidth: 96, maxWidth: 200),
+        padding: const EdgeInsets.only(left: 10, right: 4),
+        decoration: BoxDecoration(
+          color: selected
+              ? theme.colors.surface
+              : theme.colors.surfaceContainerHighest.withValues(alpha: 0.4),
+          border: Border(
+            right: BorderSide(color: theme.colors.outlineVariant, width: 1),
+            // The current tab is marked along the top rather than by colour
+            // alone, so which page is open survives a theme whose two
+            // surfaces are close together.
+            top: BorderSide(
+              color: selected ? theme.colors.primary : Colors.transparent,
+              width: 2,
+            ),
+          ),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Flexible(
+            child: Txt.S(
+              tab.label,
+              overflow: TextOverflow.ellipsis,
+              color: selected ? TextColor.onSurface : TextColor.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(width: 2),
+          IconButton(
+            icon: const Icon(Icons.close, size: 13),
+            tooltip: "Close ${tab.label}",
+            onPressed: tab.onClose,
+            visualDensity: VisualDensity.compact,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 22, minHeight: 22),
+          ),
+        ]),
+      ),
+    );
   }
 }
 
@@ -269,7 +374,10 @@ class PageBrowserBar extends StatelessWidget {
   final bool loading;
   final bool sidebarOpen;
   final VoidCallback? onToggleSidebar;
-  final VoidCallback onClose;
+
+  /// onClose is null when the tab strip is showing, which closes pages
+  /// itself.
+  final VoidCallback? onClose;
   final VoidCallback onBack;
   final VoidCallback onForward;
   final VoidCallback onReload;
@@ -344,11 +452,12 @@ class PageBrowserBar extends StatelessWidget {
             ]),
           ),
         ),
-        IconButton(
-          icon: const Icon(Icons.close, size: 18),
-          tooltip: "Close page",
-          onPressed: onClose,
-        ),
+        if (onClose != null)
+          IconButton(
+            icon: const Icon(Icons.close, size: 18),
+            tooltip: "Close page",
+            onPressed: onClose,
+          ),
       ]),
     );
   }
