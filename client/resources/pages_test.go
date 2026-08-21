@@ -2,11 +2,10 @@ package resources
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"strings"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/companyzero/bisonrelay/client/clientintf"
@@ -43,11 +42,6 @@ func fulfillPage(t *testing.T, pr *PagesResource, path []string,
 	return res
 }
 
-func isBundle(reply *rpc.RMFetchResourceReply) bool {
-	return reply.Meta[rpc.ResourceMetaResponseIsBundle] ==
-		rpc.ResourceMetaResponseIsBundleValue
-}
-
 func TestPartialNames(t *testing.T) {
 	got := PartialNames("--include[nav]--\nhi\n--include[nav]--\n--include[foot]--")
 	if len(got) != 2 || got[0] != "nav" || got[1] != "foot" {
@@ -61,65 +55,6 @@ func TestPartialNames(t *testing.T) {
 	}
 }
 
-func TestPageWithNoPartialsIsNotBundled(t *testing.T) {
-	root := t.TempDir()
-	writePageFile(t, root, "index.md", "# Plain")
-	pr := NewPagesResource(root, nil)
-
-	reply := fulfillPage(t, pr, []string{"index.md"}, nil)
-	if isBundle(reply) {
-		t.Fatal("a page with nothing shared has nothing to bundle")
-	}
-	if string(reply.Data) != "# Plain" {
-		t.Fatalf("got %q", reply.Data)
-	}
-}
-
-func TestPartialsAreBundledWithThePage(t *testing.T) {
-	root := t.TempDir()
-	writePageFile(t, root, "index.md", "--include[nav]--\n# Home")
-	writePageFile(t, root, "partials/nav.md", "[Home](index.md)")
-	pr := NewPagesResource(root, nil)
-
-	reply := fulfillPage(t, pr, []string{"index.md"}, nil)
-	if !isBundle(reply) {
-		t.Fatal("a page that shares a fragment is sent as a bundle")
-	}
-
-	// The page itself has to be in it: the client looks the request path
-	// up in the bundle to find what it asked for, and without it the
-	// reader gets the bundle's own empty body.
-	bundle := decodeBundle(t, reply)
-	if _, ok := bundle.Resources["index.md"]; !ok {
-		t.Fatalf("the page is missing from its own bundle: %v", keys(bundle))
-	}
-	if _, ok := bundle.Resources["partials/nav.md"]; !ok {
-		t.Fatalf("the fragment is missing: %v", keys(bundle))
-	}
-	// Unexpanded: the marker survives, and the reader's client fills it.
-	if got := string(bundle.Resources["index.md"].Data); got != "--include[nav]--\n# Home" {
-		t.Fatalf("the page was expanded rather than left alone: %q", got)
-	}
-}
-
-func TestAFragmentAlreadyHeldIsNotSentAgain(t *testing.T) {
-	root := t.TempDir()
-	writePageFile(t, root, "about.md", "--include[nav]--\n# About")
-	writePageFile(t, root, "partials/nav.md", "[Home](index.md)")
-	pr := NewPagesResource(root, nil)
-
-	// This is the saving the whole feature is for: the second page of a
-	// site does not carry the navigation bar again.
-	reply := fulfillPage(t, pr, []string{"about.md"},
-		map[string]string{rpc.ResourceMetaHavePartials: "nav"})
-	if isBundle(reply) {
-		t.Fatal("nothing was missing, so there was nothing to bundle")
-	}
-	if string(reply.Data) != "--include[nav]--\n# About" {
-		t.Fatalf("got %q", reply.Data)
-	}
-}
-
 func TestAMissingFragmentDoesNotFailThePage(t *testing.T) {
 	root := t.TempDir()
 	writePageFile(t, root, "index.md", "--include[gone]--\n# Home")
@@ -129,8 +64,10 @@ func TestAMissingFragmentDoesNotFailThePage(t *testing.T) {
 	if reply.Status != rpc.ResourceStatusOk {
 		t.Fatalf("the page still serves, got status %v", reply.Status)
 	}
-	if isBundle(reply) {
-		t.Fatal("there was nothing to bundle")
+	// Shown as nothing where it would have gone, since the marker itself
+	// is not writing.
+	if got := string(reply.Data); got != "\n# Home" {
+		t.Fatalf("got %q", got)
 	}
 }
 
@@ -146,90 +83,6 @@ func TestAPathCannotWalkOutOfTheDirectory(t *testing.T) {
 	reply := fulfillPage(t, pr, []string{"..", "secret.md"}, nil)
 	if reply.Status != rpc.ResourceStatusNotFound {
 		t.Fatalf("expected not found, got %v with %q", reply.Status, reply.Data)
-	}
-}
-
-func decodeBundle(t *testing.T, reply *rpc.RMFetchResourceReply) rpc.RMResourceBundle {
-	t.Helper()
-	raw, err := rpc.ZLibDecode(reply.Data, 10_000_000)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var b rpc.RMResourceBundle
-	if err := json.Unmarshal(raw, &b); err != nil {
-		t.Fatal(err)
-	}
-	return b
-}
-
-func keys(b rpc.RMResourceBundle) []string {
-	var out []string
-	for k := range b.Resources {
-		out = append(out, k)
-	}
-	return out
-}
-
-func TestNestedFragmentsAreCollected(t *testing.T) {
-	root := t.TempDir()
-	writePageFile(t, root, "index.md", "--include[header]--")
-	writePageFile(t, root, "partials/header.md",
-		"# Site\n--include[navigation]--")
-	writePageFile(t, root, "partials/navigation.md", "[Home](index.md)")
-	pr := NewPagesResource(root, nil)
-
-	// A header holding a navigation bar is the ordinary case, and the page
-	// only names the header.
-	reply := fulfillPage(t, pr, []string{"index.md"}, nil)
-	b := decodeBundle(t, reply)
-	for _, want := range []string{"index.md", "partials/header.md",
-		"partials/navigation.md"} {
-		if _, ok := b.Resources[want]; !ok {
-			t.Fatalf("%q missing from %v", want, keys(b))
-		}
-	}
-}
-
-func TestAHeldFragmentStillYieldsWhatItReaches(t *testing.T) {
-	root := t.TempDir()
-	writePageFile(t, root, "index.md", "--include[header]--")
-	writePageFile(t, root, "partials/header.md", "--include[navigation]--")
-	writePageFile(t, root, "partials/navigation.md", "[Home](index.md)")
-	pr := NewPagesResource(root, nil)
-
-	// The client has the header but has never seen what the header refers
-	// to. Stopping at the header would leave that hole unfilled forever.
-	reply := fulfillPage(t, pr, []string{"index.md"},
-		map[string]string{rpc.ResourceMetaHavePartials: "header"})
-	b := decodeBundle(t, reply)
-
-	if _, ok := b.Resources["partials/header.md"]; ok {
-		t.Fatal("the header was already held and should not be sent again")
-	}
-	if _, ok := b.Resources["partials/navigation.md"]; !ok {
-		t.Fatalf("what the header reaches is missing: %v", keys(b))
-	}
-}
-
-func TestFragmentCyclesDoNotHang(t *testing.T) {
-	root := t.TempDir()
-	writePageFile(t, root, "index.md", "--include[a]--")
-	writePageFile(t, root, "partials/a.md", "--include[b]--")
-	writePageFile(t, root, "partials/b.md", "--include[a]--")
-	writePageFile(t, root, "partials/self.md", "--include[self]--")
-	pr := NewPagesResource(root, nil)
-
-	reply := fulfillPage(t, pr, []string{"index.md"}, nil)
-	b := decodeBundle(t, reply)
-	if len(b.Resources) != 3 { // the page, a, b
-		t.Fatalf("got %v", keys(b))
-	}
-
-	// And one that names itself.
-	writePageFile(t, root, "index.md", "--include[self]--")
-	reply = fulfillPage(t, pr, []string{"index.md"}, nil)
-	if b := decodeBundle(t, reply); len(b.Resources) != 2 {
-		t.Fatalf("got %v", keys(b))
 	}
 }
 
@@ -264,60 +117,6 @@ func TestAnIncludeCannotNameAFileOutsideThePartials(t *testing.T) {
 	}
 }
 
-func TestAPageCannotAskForMoreThanTheLimit(t *testing.T) {
-	root := t.TempDir()
-	var page string
-	for i := 0; i < 500; i++ {
-		page += fmt.Sprintf("--include[frag%d]--\n", i)
-		writePageFile(t, root, fmt.Sprintf("partials/frag%d.md", i), "x")
-	}
-	writePageFile(t, root, "index.md", page)
-
-	if n := len(PartialNames(page)); n != MaxPartialsPerPage {
-		t.Fatalf("a page reached %d fragments, want %d", n,
-			MaxPartialsPerPage)
-	}
-
-	reply := fulfillPage(t, NewPagesResource(root, nil), []string{"index.md"}, nil)
-	b := decodeBundle(t, reply)
-	// The page itself, and no more fragments than the limit.
-	if len(b.Resources) > MaxPartialsPerPage+1 {
-		t.Fatalf("bundled %d resources", len(b.Resources))
-	}
-}
-
-func TestABundleStaysWithinItsSize(t *testing.T) {
-	root := t.TempDir()
-	big := strings.Repeat("x", 300*1024)
-	writePageFile(t, root, "index.md",
-		"--include[one]--\n--include[two]--\n--include[three]--")
-	writePageFile(t, root, "partials/one.md", big)
-	writePageFile(t, root, "partials/two.md", big)
-	writePageFile(t, root, "partials/three.md", "small")
-
-	reply := fulfillPage(t, NewPagesResource(root, nil), []string{"index.md"}, nil)
-	b := decodeBundle(t, reply)
-
-	var total int
-	for _, item := range b.Resources {
-		total += len(item.Data)
-	}
-	if total > MaxBundleBytes+len("--include[one]----include[two]--") {
-		t.Fatalf("bundled %d bytes, past the %d limit", total, MaxBundleBytes)
-	}
-
-	// The page is always in it, whatever had to be left out: without it the
-	// reader has nothing to show, and the fragments they can ask for.
-	if _, ok := b.Resources["index.md"]; !ok {
-		t.Fatalf("the page is missing: %v", keys(b))
-	}
-	// The small one still went, rather than one large fragment costing
-	// every fragment after it.
-	if _, ok := b.Resources["partials/three.md"]; !ok {
-		t.Fatalf("a fragment that fit was left out: %v", keys(b))
-	}
-}
-
 func TestAPictureIsServedAndNotBundled(t *testing.T) {
 	root := t.TempDir()
 	writePageFile(t, root, "index.md", "![A banner](assets/banner.png)")
@@ -332,14 +131,108 @@ func TestAPictureIsServedAndNotBundled(t *testing.T) {
 	if string(reply.Data) != "not really a png" {
 		t.Fatalf("got %q", reply.Data)
 	}
-	if isBundle(reply) {
-		t.Fatal("a picture is not a bundle")
-	}
-
 	// And the page that shows it does not carry it: a picture behind every
-	// page of a site should cross the wire once, not once per page.
+	// page of a site crosses the wire once, not once per page.
 	page := fulfillPage(t, pr, []string{"index.md"}, nil)
-	if isBundle(page) {
-		t.Fatal("the page bundled something; only fragments are bundled")
+	if string(page.Data) != "![A banner](assets/banner.png)" {
+		t.Fatalf("the page was changed: %q", page.Data)
+	}
+}
+
+// The tests below are about what a reader receives: one page, with its
+// fragments already in it.
+
+func TestFragmentsArriveInThePage(t *testing.T) {
+	root := t.TempDir()
+	writePageFile(t, root, "index.md", "--include[nav]--\n# Home")
+	writePageFile(t, root, "partials/nav.md", "[Home](index.md)")
+
+	reply := fulfillPage(t, NewPagesResource(root, nil), []string{"index.md"}, nil)
+	want := "[Home](index.md)\n# Home"
+	if string(reply.Data) != want {
+		t.Fatalf("got %q, want %q", reply.Data, want)
+	}
+}
+
+func TestAFragmentInsideAFragmentArrivesToo(t *testing.T) {
+	root := t.TempDir()
+	writePageFile(t, root, "index.md", "--include[header]--")
+	writePageFile(t, root, "partials/header.md", "# Site\n--include[nav]--")
+	writePageFile(t, root, "partials/nav.md", "[Home](index.md)")
+
+	reply := fulfillPage(t, NewPagesResource(root, nil), []string{"index.md"}, nil)
+	want := "# Site\n[Home](index.md)"
+	if string(reply.Data) != want {
+		t.Fatalf("got %q, want %q", reply.Data, want)
+	}
+}
+
+func TestAFragmentUsedTwiceIsFilledInTwice(t *testing.T) {
+	root := t.TempDir()
+	writePageFile(t, root, "index.md", "--include[r]--\nmiddle\n--include[r]--")
+	writePageFile(t, root, "partials/r.md", "---")
+
+	reply := fulfillPage(t, NewPagesResource(root, nil), []string{"index.md"}, nil)
+	if n := strings.Count(string(reply.Data), "---"); n != 2 {
+		t.Fatalf("filled in %d times: %q", n, reply.Data)
+	}
+}
+
+func TestAFragmentThatReachesItselfIsLeftAsWritten(t *testing.T) {
+	root := t.TempDir()
+	writePageFile(t, root, "index.md", "--include[loop]--")
+	writePageFile(t, root, "partials/loop.md", "before --include[loop]-- after")
+
+	reply := fulfillPage(t, NewPagesResource(root, nil), []string{"index.md"}, nil)
+	got := string(reply.Data)
+	// Left visible, so the writer can see they have made a loop rather than
+	// wondering where it went.
+	if !strings.Contains(got, "before") || !strings.Contains(got, "after") ||
+		!strings.Contains(got, "--include[loop]--") {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestTwoFragmentsThatReachEachOtherDoNotHang(t *testing.T) {
+	root := t.TempDir()
+	writePageFile(t, root, "index.md", "--include[a]--")
+	writePageFile(t, root, "partials/a.md", "A --include[b]--")
+	writePageFile(t, root, "partials/b.md", "B --include[a]--")
+
+	reply := fulfillPage(t, NewPagesResource(root, nil), []string{"index.md"}, nil)
+	got := string(reply.Data)
+	if !strings.Contains(got, "A") || !strings.Contains(got, "B") {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestAPageCannotPullInMoreThanTheLimit(t *testing.T) {
+	root := t.TempDir()
+	var page string
+	for i := 0; i < 200; i++ {
+		page += fmt.Sprintf("--include[frag%d]--", i)
+		writePageFile(t, root, fmt.Sprintf("partials/frag%d.md", i), "x")
+	}
+	writePageFile(t, root, "index.md", page)
+
+	reply := fulfillPage(t, NewPagesResource(root, nil), []string{"index.md"}, nil)
+	// Past the limit the markers are shown as nothing rather than read, so
+	// what arrives holds no more than the limit allows.
+	if n := strings.Count(string(reply.Data), "x"); n > MaxPartialsPerPage {
+		t.Fatalf("filled in %d fragments, limit is %d", n, MaxPartialsPerPage)
+	}
+}
+
+func TestAPageTooLargeOnceFilledInIsSentAsWritten(t *testing.T) {
+	root := t.TempDir()
+	writePageFile(t, root, "index.md", "--include[big]--")
+	writePageFile(t, root, "partials/big.md", strings.Repeat("x", MaxExpandedBytes+1))
+
+	reply := fulfillPage(t, NewPagesResource(root, nil), []string{"index.md"}, nil)
+	// Visibly wrong in a way that says which page and which fragment, rather
+	// than an oversized reply the sending side refuses and a reader waiting
+	// for a page that never comes.
+	if string(reply.Data) != "--include[big]--" {
+		t.Fatalf("got %d bytes", len(reply.Data))
 	}
 }

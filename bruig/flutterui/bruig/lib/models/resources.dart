@@ -22,25 +22,11 @@ final includeRegexp = RegExp(r'--include\[([\w-]{1,64})\]--');
 
 /// maxPartialsPerPage is how many fragments one page may pull in.
 ///
-/// Must be at least what the serving side will bundle, or a page written in
-/// good faith would arrive with fragments this end refuses to ask for. See
-/// resources.MaxPartialsPerPage.
-///
-/// It is a cap on the reader rather than a courtesy to the writer. A page
-/// costs a message to fetch and so does a fragment, and both are paid for by
-/// whoever is reading: without this, a page of nothing but --include[a1]--,
-/// --include[a2]-- and so on -- and a page may be a megabyte, which is some
-/// seventy thousand of them -- would have this client send seventy thousand
-/// messages because somebody opened it.
+/// Kept in step with resources.MaxPartialsPerPage, which is what the serving
+/// side applies. Only the preview reads this now, and its files are on this
+/// machine -- but a preview that showed more than a reader will ever see
+/// would be a preview of a different page.
 const int maxPartialsPerPage = 32;
-
-/// maxPartialsPerSite is how many are kept for one site.
-///
-/// The per-page cap alone bounds nothing over time: thirty-two fresh names
-/// on each of a thousand pages is thirty-two thousand held. What is held is
-/// what this client has paid for, so it is worth keeping -- but not without
-/// end.
-const int maxPartialsPerSite = 128;
 
 /// partialNames returns the fragments a page refers to, without repeats and
 /// no more than [maxPartialsPerPage] of them.
@@ -66,6 +52,12 @@ const int maxPartialDepth = 8;
 /// expandPartials fills in --include[name]-- from what is held, including
 /// fragments that refer to other fragments.
 ///
+/// Only the Writing preview needs this now. A page fetched from a site
+/// arrives with its fragments already in it -- see resources.PagesResource --
+/// but a page being written is a document on this machine with the markers
+/// still in it, and a preview showing those as themselves would be showing
+/// something no reader will ever see.
+///
 /// [active] is what is being expanded right now, which is what stops a cycle:
 /// a header including itself, or two fragments including each other, would
 /// otherwise never finish. A marker that would loop is left as written --
@@ -85,8 +77,8 @@ String expandPartials(String text, Map<String, String> partials,
       // as the raw marker, which reads as something the writer typed wrong.
       if (body == null) return "";
       active.add(name);
-      var out = expandPartials(body, partials,
-          active: active, depth: depth + 1);
+      var out =
+          expandPartials(body, partials, active: active, depth: depth + 1);
       active.remove(name);
       return out;
     },
@@ -258,15 +250,8 @@ class PagesSession extends ChangeNotifier {
     super.dispose();
   }
 
-  /// partials are the shared fragments known for the page being shown,
-  /// by name. Filled in by ResourcesModel, which is what fetches them.
-  Map<String, String> partials = const {};
-
   String pageData() {
     var data = decodePage(currentPage?.response.data);
-
-    // Shared fragments, filled in from what this client has been given.
-    data = expandPartials(data, partials);
 
     // Remove --section-- strings (these are handled internally, not at the
     // markdown rendering level.
@@ -363,11 +348,6 @@ class PagesSession extends ChangeNotifier {
   }
 }
 
-/// _partialTarget marks a reply as a shared fragment rather than a page.
-/// Carried in the async target field, which is already how a reply that is
-/// not a navigation is told apart.
-const String _partialTarget = "partial:";
-
 /// _assetTarget marks a reply as a picture a page shows rather than a page.
 const String _assetTarget = "asset:";
 
@@ -417,8 +397,7 @@ class ResourcesModel extends ChangeNotifier {
       // neighbour down into that index, so it is the same subscript both
       // times; clamping is what turns it into the left-hand one at the end.
       var left = _sessions.values.toList();
-      _mostRecent =
-          left.isEmpty ? null : left[at.clamp(0, left.length - 1)];
+      _mostRecent = left.isEmpty ? null : left[at.clamp(0, left.length - 1)];
     }
     sess.dispose();
     notifyListeners();
@@ -459,18 +438,8 @@ class ResourcesModel extends ChangeNotifier {
       }
     }
 
-    // Tell the other side which shared fragments this client already has,
-    // so the ones it holds are left out of what comes back. Only the asking
-    // side knows, and without it a navigation bar would arrive with every
-    // page -- which is the whole thing partials exist to avoid.
-    Map<String, String>? meta;
-    var held = partialsFor(uid);
-    if (held.isNotEmpty) {
-      meta = {"HavePartials": held.keys.join(",")};
-    }
-
     sessionID = await Golib.fetchResource(
-        uid, path, meta, sessionID, parentPage, data, asyncTargetID);
+        uid, path, null, sessionID, parentPage, data, asyncTargetID);
 
     var sess = session(sessionID);
     if (asyncTargetID == "") {
@@ -482,24 +451,12 @@ class ResourcesModel extends ChangeNotifier {
     return sess;
   }
 
-  // _partials are the shared fragments held for each user, by name.
-  //
-  // Per user because they are one site's: two people's "navigation" are two
-  // different things. Kept for the run rather than the session -- a fragment
-  // is the part of a site least likely to change, and refetching it per tab
-  // would undo most of what it is for.
-  final Map<String, Map<String, String>> _partials = {};
-
-  /// partialsFor is what is held for a user, for the request to say so.
-  Map<String, String> partialsFor(String uid) => _partials[uid] ?? const {};
-
   // _assets are the pictures held for each site, by path.
   //
-  // Kept beside the fragments and for the same reason: a banner behind every
-  // page of a site is fetched once and shown on all of them. Bytes rather
-  // than text, and never bundled with a page -- a picture is asked for on
-  // its own, so a page arrives and draws while its pictures are still on
-  // their way.
+  // A picture is a file of its own and is asked for on its own, so a banner
+  // behind every page of a site is fetched once and shown on all of them.
+  // Never sent with the page that shows it: the page arrives and draws while
+  // its pictures are still on their way.
   final Map<String, Map<String, Uint8List>> _assets = {};
 
   /// assetFor is the picture held at [path] for [uid], or null if it has not
@@ -543,60 +500,8 @@ class ResourcesModel extends ChangeNotifier {
   /// header rewritten and republished went on showing the old one until the
   /// app was restarted.
   void forgetSite(String uid) {
-    _partials.remove(uid);
     _assets.remove(uid);
-    for (var sess in _sessions.values) {
-      sess.partials = const {};
-    }
     notifyListeners();
-  }
-
-  /// _fetchPartials asks for the fragments a page needs and does not have.
-  ///
-  /// Usually free: the server bundles them with the page that first refers
-  /// to them, and a bundled resource is served out of the client's own store
-  /// without another message. The request is what pulls it out of there.
-  void _fetchPartials(PagesSession sess, FetchedResource page) {
-    var data = page.response.data;
-    if (data == null) return;
-    _requestPartials(
-        sess, page.uid, page.pageID, partialNames(decodePage(data)));
-  }
-
-  /// _requestPartials asks for the fragments in [names] that are not held.
-  void _requestPartials(
-      PagesSession sess, String uid, int pageID, List<String> names) {
-    var held = _partials[uid] ??= {};
-    var missing = names.where((n) => !held.containsKey(n)).toList();
-    if (missing.isEmpty) return;
-
-    // Both caps are on the asking, not on the answer. A reply that never
-    // comes costs nothing; a request always costs a message.
-    if (missing.length > maxPartialsPerPage) {
-      missing = missing.sublist(0, maxPartialsPerPage);
-    }
-    var room = maxPartialsPerSite - held.length;
-    if (room <= 0) {
-      debugPrint("Not asking $uid for more fragments: already holding "
-          "${held.length}");
-      return;
-    }
-    if (missing.length > room) missing = missing.sublist(0, room);
-
-    for (var name in missing) {
-      // Marked as a partial rather than a page so the reply is filed as one
-      // -- it is not somewhere the reader navigated to, and putting it in
-      // the history would make Back step through the furniture.
-      // Marked as held before the reply arrives, so a cycle between two
-      // fragments cannot ask for the same pair forever.
-      (_partials[uid] ??= {})[name] = "";
-      Golib.fetchResource(uid, partialPath(name), null, sess.id, pageID, null,
-              "$_partialTarget$name")
-          .catchError((exception) {
-        debugPrint("Unable to fetch partial $name: $exception");
-        return 0;
-      });
-    }
   }
 
   // _fetchListeners are told about every reply that arrives, whichever
@@ -622,24 +527,6 @@ class ResourcesModel extends ChangeNotifier {
         // Notified either way: a picture that is not there should stop
         // whatever is waiting for it from waiting.
         notifyListeners();
-        continue;
-      }
-
-      // A shared fragment, not a page: stored for the site it came from and
-      // put into whatever is on screen, without disturbing the history.
-      if (fr.asyncTargetID.startsWith(_partialTarget)) {
-        var name = fr.asyncTargetID.substring(_partialTarget.length);
-        if (fr.response.status == 200 && fr.response.data != null) {
-          var body = decodePage(fr.response.data);
-          (_partials[fr.uid] ??= {})[name] = body;
-          var sess = session(fr.sessionID);
-          sess.partials = Map.of(_partials[fr.uid]!);
-          sess.redraw();
-          // What this one refers to in turn. Usually already in hand: the
-          // server sends everything a page reaches in one bundle, so these
-          // requests are answered locally.
-          _requestPartials(sess, fr.uid, fr.pageID, partialNames(body));
-        }
         continue;
       }
 
@@ -671,9 +558,7 @@ class ResourcesModel extends ChangeNotifier {
         sess.replaceAsyncTargets(targets);
       } else {
         // Full page reload.
-        sess.partials = Map.of(_partials[fr.uid] ?? const {});
         sess.currentPage = fr;
-        _fetchPartials(sess, fr);
       }
     }
   }

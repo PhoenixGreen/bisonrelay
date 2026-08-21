@@ -1,30 +1,14 @@
-import 'dart:convert';
-import 'dart:typed_data';
-
 import 'package:bruig/models/resources.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:golib_plugin/definitions.dart';
 
-// page_partials_test.dart covers the reader's half of shared fragments.
+// page_partials_test.dart covers the reader's remaining half of shared
+// fragments: the Writing preview.
 //
-// The Go side decides what to send (see client/resources/pages_test.go);
-// this is what happens to --include[name]-- once it arrives. It has to
-// survive the trip -- a fragment expanded before sending would cost the same
-// as having no fragments at all -- and be filled in here from what this
-// client already holds.
-
-FetchedResource _page(String body) => FetchedResource(
-      "alice",
-      1,
-      1,
-      0,
-      DateTime.now(),
-      DateTime.now(),
-      RMFetchResource(const ["index.md"], null, 0, null, 0, 0),
-      RMFetchResourceReply(
-          0, 200, null, Uint8List.fromList(utf8.encode(body)), 0, 0),
-      "",
-    );
+// A page fetched from a site arrives with its fragments already in it -- the
+// serving side fills them in, and client/resources/pages_test.go covers that.
+// What is left here is a page being written, which is a document on this
+// machine with the markers still in it: a preview showing those as themselves
+// would be showing something no reader will ever see.
 
 void main() {
   group('finding what a page shares', () {
@@ -33,139 +17,36 @@ void main() {
     });
 
     test('finds several', () {
-      var got = partialNames("--include[nav]--\n--include[footer]--");
-      expect(got.toSet(), {"nav", "footer"});
+      expect(partialNames("--include[nav]--\n--include[footer]--").toSet(),
+          {"nav", "footer"});
     });
 
     test('a store template is not a fragment', () {
-      // Go's {{...}} is expanded before anything is sent. Treating the two
-      // as one mechanism would mean neither could be relied on.
+      // Go's {{...}} is a store's, expanded where the store is served.
+      // Treating the two as one mechanism would mean neither could be
+      // relied on.
       expect(partialNames("{{range .Products}}{{.Title}}{{end}}"), isEmpty);
     });
 
     test('the path matches what the server serves them from', () {
       expect(partialPath("nav"), ["partials", "nav.md"]);
     });
-  });
 
-  group('filling a page in', () {
-    test('a held fragment is put in place of its marker', () {
-      var s = PagesSession(1)
-        ..partials = {"nav": "[Home](index.md)"}
-        ..currentPage = _page("--include[nav]--\n# Home");
-
-      expect(s.pageData(), contains("[Home](index.md)"));
-      expect(s.pageData(), contains("# Home"));
-      // The marker itself is consumed.
-      expect(s.pageData(), isNot(contains("--include[")));
-    });
-
-    test('the same fragment fills every place it appears', () {
-      var s = PagesSession(1)
-        ..partials = {"r": "---"}
-        ..currentPage = _page("--include[r]--\na\n--include[r]--");
-      expect("---".allMatches(s.pageData()).length, 2);
-    });
-
-    test('one not yet arrived leaves nothing, not the marker', () {
-      // The raw marker on screen reads as something the writer typed wrong.
-      var s = PagesSession(1)..currentPage = _page("--include[nav]--\n# Home");
-      expect(s.pageData(), isNot(contains("--include")));
-      expect(s.pageData(), contains("# Home"));
-    });
-
-    test('a fragment can hold another', () {
-      // A header holding a navigation bar is the ordinary case, and the
-      // page names only the header.
-      var s = PagesSession(1)
-        ..partials = {
-          "header": "# Site\n--include[navigation]--",
-          "navigation": "[Home](index.md)",
-        }
-        ..currentPage = _page("--include[header]--\n# Welcome");
-
-      expect(s.pageData(), contains("# Site"));
-      expect(s.pageData(), contains("[Home](index.md)"));
-      expect(s.pageData(), contains("# Welcome"));
-      expect(s.pageData(), isNot(contains("--include")));
-    });
-
-    test('a fragment naming itself is left as written, not looped', () {
-      var s = PagesSession(1)
-        ..partials = {"loop": "before --include[loop]-- after"}
-        ..currentPage = _page("--include[loop]--");
-      expect(s.pageData(), contains("before"));
-      expect(s.pageData(), contains("after"));
-      // Visible, which is what tells the writer they have made a cycle.
-      expect(s.pageData(), contains("--include[loop]--"));
-    });
-
-    test('two fragments naming each other do not loop', () {
-      var s = PagesSession(1)
-        ..partials = {
-          "a": "A --include[b]--",
-          "b": "B --include[a]--",
-        }
-        ..currentPage = _page("--include[a]--");
-      var out = s.pageData();
-      expect(out, contains("A"));
-      expect(out, contains("B"));
-      expect(out, contains("--include[a]--"));
-    });
-
-    test('nesting is bounded, however deep the chain', () {
-      // Each level is another pass over the text; a chain longer than
-      // anybody is tracking stops rather than running away.
-      var deep = {
-        for (var i = 0; i < 40; i++) "p$i": "x --include[p${i + 1}]--",
-      };
-      var s = PagesSession(1)
-        ..partials = deep
-        ..currentPage = _page("--include[p0]--");
-      expect(() => s.pageData(), returnsNormally);
-      expect("x".allMatches(s.pageData()).length,
-          lessThanOrEqualTo(maxPartialDepth));
-    });
-
-    test('a page with nothing shared is unchanged', () {
-      var s = PagesSession(1)..currentPage = _page("# Just a page");
-      expect(s.pageData().trim(), "# Just a page");
+    test('is capped, as the serving side caps it', () {
+      // A preview that showed more than a reader will ever see would be a
+      // preview of a different page.
+      var many = [
+        for (var i = 0; i < 5000; i++) "--include[frag" + "$i" + "]--",
+      ].join("\n");
+      expect(partialNames(many), hasLength(maxPartialsPerPage));
     });
   });
 
-  group('a reply that is not text', () {
-    test('does not take the viewer down', () {
-      // A reply is whatever the other end sent. This used to throw a
-      // FormatException out of the render and blank the screen; a page that
-      // looks wrong is better than no screen at all.
-      var s = PagesSession(1)
-        ..currentPage = FetchedResource(
-          "alice",
-          1,
-          1,
-          0,
-          DateTime.now(),
-          DateTime.now(),
-          RMFetchResource(const ["index.md"], null, 0, null, 0, 0),
-          RMFetchResourceReply(
-              0, 200, null, Uint8List.fromList([0x78, 0x9c, 0xff, 0xfe]), 0, 0),
-          "",
-        );
-
-      expect(() => s.pageData(), returnsNormally);
-    });
-
-    test('an empty body reads as empty rather than throwing', () {
-      var s = PagesSession(1);
-      expect(s.pageData().trim(), isEmpty);
-    });
-  });
-
-  group('a page that means harm', () {
-    test('cannot name a file outside the fragments', () {
-      // The pattern is the strictest of the three guards: a name with a dot
-      // or a slash in it is not an include at all, so it stays on the page
-      // as the text it is.
+  group('a name that is not a fragment', () {
+    test('is not read as one', () {
+      // The pattern is the strictest of the guards: a name with a dot or a
+      // slash in it is not an include at all, so it stays on the page as the
+      // text it is.
       for (var name in [
         "password.txt",
         "../../secret",
@@ -178,33 +59,73 @@ void main() {
       ]) {
         expect(partialNames("--include[$name]--"), isEmpty, reason: name);
       }
-      // And what does match can only ever reach one directory.
-      expect(partialPath("navigation"), ["partials", "navigation.md"]);
     });
 
-    test('cannot make this client ask for thousands of fragments', () {
-      // A page is a megabyte at most and an include is some fifteen bytes,
-      // so a page that is nothing else names seventy thousand of them --
-      // and each one asked for is a message the reader pays to send.
-      var hostile = [
-        for (var i = 0; i < 5000; i++) "--include[frag" + "$i" + "]--",
-      ].join("\n");
-      expect(partialNames(hostile), hasLength(maxPartialsPerPage));
+    test('and is left where it was written', () {
+      expect(expandPartials("--include[password.txt]-- and text", const {}),
+          contains("--include[password.txt]--"));
+    });
+  });
+
+  group('filling a preview in', () {
+    test('a held fragment is put in place of its marker', () {
+      var got = expandPartials(
+          "--include[nav]--\n# Home", {"nav": "[Home](index.md)"});
+      expect(got, contains("[Home](index.md)"));
+      expect(got, contains("# Home"));
+      expect(got, isNot(contains("--include[")));
     });
 
-    test('one that means no harm is unaffected', () {
-      // A banner, a bar and a footer is three.
-      expect(
-          partialNames("--include[header]--\nx\n--include[navigation]--\n"
-              "--include[footer]--"),
-          hasLength(3));
+    test('a fragment can hold another', () {
+      // A header holding a navigation bar is the ordinary case, and the page
+      // names only the header.
+      var got = expandPartials("--include[header]--", {
+        "header": "# Site\n--include[navigation]--",
+        "navigation": "[Home](index.md)",
+      });
+      expect(got, contains("# Site"));
+      expect(got, contains("[Home](index.md)"));
     });
 
-    test('a marker that is not a fragment is left on the page', () {
-      // Shown rather than swallowed, so a writer sees what they typed.
-      var s = PagesSession(1)
-        ..currentPage = _page("--include[password.txt]-- and text");
-      expect(s.pageData(), contains("--include[password.txt]--"));
+    test('the same fragment fills every place it appears', () {
+      var got = expandPartials("--include[r]--\na\n--include[r]--", {"r": "---"});
+      expect("---".allMatches(got).length, 2);
+    });
+
+    test('one that is not there leaves nothing, not the marker', () {
+      // The marker itself is not writing.
+      var got = expandPartials("--include[nav]--\n# Home", const {});
+      expect(got, isNot(contains("--include")));
+      expect(got, contains("# Home"));
+    });
+
+    test('a fragment naming itself is left as written, not looped', () {
+      var got = expandPartials(
+          "--include[loop]--", {"loop": "before --include[loop]-- after"});
+      expect(got, contains("before"));
+      expect(got, contains("after"));
+      // Visible, which is what tells the writer they have made a loop.
+      expect(got, contains("--include[loop]--"));
+    });
+
+    test('two naming each other do not loop', () {
+      var got = expandPartials("--include[a]--",
+          {"a": "A --include[b]--", "b": "B --include[a]--"});
+      expect(got, contains("A"));
+      expect(got, contains("B"));
+    });
+
+    test('nesting is bounded, however deep the chain', () {
+      var deep = {
+        for (var i = 0; i < 40; i++) "p$i": "x --include[p${i + 1}]--",
+      };
+      expect(() => expandPartials("--include[p0]--", deep), returnsNormally);
+      expect("x".allMatches(expandPartials("--include[p0]--", deep)).length,
+          lessThanOrEqualTo(maxPartialDepth));
+    });
+
+    test('a page with nothing shared is unchanged', () {
+      expect(expandPartials("# Just a page", const {}), "# Just a page");
     });
   });
 }
