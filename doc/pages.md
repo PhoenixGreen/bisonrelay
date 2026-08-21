@@ -128,7 +128,8 @@ A row can also be `flush`, which takes the banner's padding away from it:
 ```
 
 What is in it then runs edge to edge and, at the top or bottom, sits hard
-against that edge — which is what a bar of links along the top of a banner is.
+against that edge. The row beside it keeps the space between them, so it still
+has as much room below as above — which is what a bar of links along the top of a banner is.
 Give the bar a background in the theme and it reads as a strip across the
 whole banner rather than a patch behind the words.
 

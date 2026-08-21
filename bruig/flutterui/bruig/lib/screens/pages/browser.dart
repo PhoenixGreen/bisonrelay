@@ -1,3 +1,4 @@
+import 'package:bruig/components/feed/markdown_nav.dart';
 import 'package:bruig/components/md_elements.dart';
 import 'package:bruig/components/pages_bar.dart';
 import 'package:bruig/components/text.dart';
@@ -120,7 +121,14 @@ class _PageBrowserState extends State<PageBrowser> {
             key: pageKey,
             create: (context) =>
                 PagesSource(page.uid, page.sessionID, page.pageID),
-            builder: (context, child) => MarkdownArea(markdownData, false),
+            // Which page is being read, so a bar of links can mark the one
+            // that points at it. Given here because this is the only place
+            // that knows: the bar is markdown several layers down, and what
+            // it is inside of is not something the renderer carries.
+            builder: (context, child) => NavCurrentPage(
+              path: path,
+              child: MarkdownArea(markdownData, false),
+            ),
           ),
         ],
       );

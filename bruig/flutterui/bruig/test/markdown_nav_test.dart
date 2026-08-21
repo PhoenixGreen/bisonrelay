@@ -140,4 +140,44 @@ void main() {
       expect(guide.nav.background.isInherit, isTrue);
     });
   });
+
+  group('the page being read', () {
+    setUp(() => SharedPreferences.setMockInitialValues({}));
+
+    Future<TextStyle> styleOf(WidgetTester tester, String label,
+        {String? here}) async {
+      Widget bar = MarkdownArea("""
+--nav--
+[Home](index.md)
+[About](about.md)
+--/nav--
+""", false);
+      if (here != null) bar = NavCurrentPage(path: here, child: bar);
+      await tester.pumpWidget(drawHost(bar));
+      await tester.pump();
+      return tester.widget<Text>(find.text(label)).style!;
+    }
+
+    testWidgets('is marked, and the others are not', (tester) async {
+      var home = await styleOf(tester, "Home", here: "index.md");
+      var about = await styleOf(tester, "About", here: "index.md");
+      expect(home.fontWeight, FontWeight.bold);
+      expect(about.fontWeight, FontWeight.normal);
+    });
+
+    testWidgets('is matched however the page was reached', (tester) async {
+      // A bar written as "[Home](index.md)" is the same link whether the
+      // page was opened by that name or by a whole br:// address, and a
+      // writer should not have to write it twice.
+      var home = await styleOf(tester, "Home", here: "br://abc123/index.md");
+      expect(home.fontWeight, FontWeight.bold);
+    });
+
+    testWidgets('nothing is marked outside a page', (tester) async {
+      // A bar in a post has no page being read, and marks nothing.
+      var home = await styleOf(tester, "Home");
+      expect(home.fontWeight, FontWeight.normal);
+      expect(tester.takeException(), isNull);
+    });
+  });
 }

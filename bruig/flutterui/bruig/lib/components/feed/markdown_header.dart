@@ -244,6 +244,26 @@ const List<String> headerFields = [
   ...titleStyleFields,
 ];
 
+/// headerRowSpaces says where a banner puts a space, reading down: before
+/// each row, and one more for after the last.
+///
+/// A space goes at the banner's own edge unless the row there is flush, and
+/// between two rows when one of them is flush and the other is not. So a
+/// strip along an edge loses only its own inset, and the row beside it keeps
+/// as much room below as it has above -- which it did not when a flush row
+/// took the space between them with it.
+///
+/// Two ordinary rows have nothing between them, as before: rows are stacked
+/// and their heights are what a writer set.
+List<bool> headerRowSpaces(List<HeaderRow> rows) {
+  if (rows.isEmpty) return const [];
+  return [
+    !rows.first.flush,
+    for (var i = 1; i < rows.length; i++) rows[i].flush != rows[i - 1].flush,
+    !rows.last.flush,
+  ];
+}
+
 /// headerRowsOf reads the rows back out of a parsed element.
 List<HeaderRow> headerRowsOf(Map<String, String> a) {
   var count = int.tryParse(a["rows"] ?? "") ?? 0;
@@ -352,9 +372,14 @@ class _MarkdownHeader extends StatelessWidget {
       var scale = rule.scaleFor(constraints.maxWidth);
       var padding = rule.boundedPadding * scale;
       var gap = rule.boundedGap * scale;
+      // Where the vertical spaces go. A flush row gives up its own inset
+      // from the banner's edge and nothing else -- the row beside it keeps
+      // the space between them, so it still sits with as much room below as
+      // above. Taking that away as well was what left the writing crowded
+      // against a strip along the bottom.
+      var spaces = headerRowSpaces(rows);
       var total = rows.fold<double>(0, (t, r) => t + r.height * scale) +
-          (rows.first.flush ? 0 : padding) +
-          (rows.last.flush ? 0 : padding);
+          spaces.where((s) => s).length * padding;
 
       return Padding(
         padding: EdgeInsets.symmetric(vertical: rule.boundedGap),
@@ -394,19 +419,20 @@ class _MarkdownHeader extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  if (!rows.first.flush) SizedBox(height: padding),
-                  for (var row in rows)
+                  for (var i = 0; i < rows.length; i++) ...[
+                    if (spaces[i]) SizedBox(height: padding),
                     Padding(
                       padding: EdgeInsets.symmetric(
-                          horizontal: row.flush ? 0 : padding),
+                          horizontal: rows[i].flush ? 0 : padding),
                       child: _HeaderRow(
-                          row: row,
+                          row: rows[i],
                           style: titleStyle,
                           rule: rule,
                           scale: scale,
                           gap: gap),
                     ),
-                  if (!rows.last.flush) SizedBox(height: padding),
+                  ],
+                  if (spaces.last) SizedBox(height: padding),
                 ],
               ),
             ]),

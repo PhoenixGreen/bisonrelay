@@ -531,4 +531,73 @@ right: # Title
       expect(tester.takeException(), isNull);
     });
   });
+
+  group('where a banner puts its spaces', () {
+    HeaderRow row({bool flush = false}) =>
+        HeaderRow(height: 40, mode: HeaderRowMode.left, cells: const ["x"],
+            flush: flush);
+
+    test('two ordinary rows are inset from the edges and stacked', () {
+      // Before, between, after.
+      expect(headerRowSpaces([row(), row()]), [true, false, true]);
+    });
+
+    test('a strip at the bottom keeps the row above its own space', () {
+      // Which is the fault this fixes: the writing sat crowded against the
+      // strip because the flush row took the space between them with it.
+      expect(headerRowSpaces([row(), row(flush: true)]),
+          [true, true, false]);
+    });
+
+    test('and a strip at the top does the same', () {
+      expect(headerRowSpaces([row(flush: true), row()]),
+          [false, true, true]);
+    });
+
+    test('a strip at both ends leaves the middle row its room', () {
+      expect(headerRowSpaces([row(flush: true), row(), row(flush: true)]),
+          [false, true, true, false]);
+    });
+
+    test('two strips together have nothing between them', () {
+      expect(headerRowSpaces([row(flush: true), row(flush: true)]),
+          [false, false, false]);
+    });
+
+    test('one row on its own', () {
+      expect(headerRowSpaces([row()]), [true, true]);
+      expect(headerRowSpaces([row(flush: true)]), [false, false]);
+    });
+  });
+
+  group('a strip drawn at an edge', () {
+    setUp(() => SharedPreferences.setMockInitialValues({}));
+
+    testWidgets('leaves the row above as much room below as above',
+        (tester) async {
+      await tester.pumpWidget(drawHost(MarkdownArea("""
+--header--
+--row[80,left]--
+# Body
+--/row--
+--row[40,center,flush]--
+# Strip
+--/row--
+--/header--
+""", false)));
+      await tester.pump();
+
+      var banner = tester.getRect(find
+          .ancestor(of: find.text("Body"), matching: find.byType(ClipRRect))
+          .first);
+      var body = tester.getRect(find.text("Body"));
+      var strip = tester.getRect(find.text("Strip"));
+
+      // The strip is against the bottom, and the writing above it is not
+      // crowded against the strip.
+      expect(banner.bottom - strip.bottom, lessThan(banner.height / 4));
+      expect(strip.top - body.bottom, greaterThan(4));
+      expect(tester.takeException(), isNull);
+    });
+  });
 }
