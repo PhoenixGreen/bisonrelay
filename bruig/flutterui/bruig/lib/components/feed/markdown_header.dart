@@ -255,6 +255,14 @@ class HeaderTextStyle {
 
 /// _colour reads #rgb, #rrggbb or #rrggbbaa. Anything else is nothing, which
 /// leaves whatever it would have replaced in place.
+///
+/// Deliberately not colorFromHex from the theming system, which looks like
+/// the same function and is not: that one reads #AARRGGBB, the order Flutter
+/// stores a colour in, because it reads back what the app itself wrote, and
+/// it throws on anything it cannot parse. This reads what a person typed
+/// into a page, in the order CSS writes it, and treats a mistake as nothing
+/// said. Merging the two would either start throwing at a typo in a page or
+/// start misreading every saved theme.
 Color? _colour(String? raw) {
   var t = (raw ?? "").trim();
   if (!t.startsWith("#")) return null;

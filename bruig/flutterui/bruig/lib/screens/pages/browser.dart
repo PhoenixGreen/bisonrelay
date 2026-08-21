@@ -102,17 +102,15 @@ class _PageBrowserState extends State<PageBrowser> {
     // also what lets the wait name the contact.
     var uid = page?.uid ?? session.pendingUid;
     var path = (page?.request.path ?? session.pendingPath).join("/");
-    var nick = pageOwnerName(
-        uid, widget.client.publicID, widget.client.getNick(uid));
+    var nick =
+        pageOwnerName(uid, widget.client.publicID, widget.client.getNick(uid));
 
     Widget body;
     if (page == null) {
       body = BrowserMessage(
         icon: session.timedOut ? Icons.schedule : Icons.hourglass_empty,
         title: session.timedOut ? "No answer" : "Requesting page…",
-        detail: session.timedOut
-            ? noAnswerDetail(nick)
-            : "Waiting for $nick.",
+        detail: session.timedOut ? noAnswerDetail(nick) : "Waiting for $nick.",
       );
     } else if (page.response.status == 200) {
       body = ListView(
@@ -235,7 +233,8 @@ class _Tab extends StatelessWidget {
             child: Txt.S(
               tab.label,
               overflow: TextOverflow.ellipsis,
-              color: selected ? TextColor.onSurface : TextColor.onSurfaceVariant,
+              color:
+                  selected ? TextColor.onSurface : TextColor.onSurfaceVariant,
             ),
           ),
         ]),
@@ -333,6 +332,7 @@ class PageBrowserBar extends StatelessWidget {
   final VoidCallback onForward;
   final VoidCallback onReload;
   final VoidCallback onHome;
+
   /// sectionLabel is what the address area says when there is no page open
   /// -- the name of the section being looked at instead.
   final String sectionLabel;

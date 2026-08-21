@@ -121,7 +121,8 @@ class _StoreTabState extends State<StoreTab> {
             // Keyed on which product is being written, so switching from
             // one to another builds a fresh editor rather than reusing the
             // first one's boxes.
-            key: ValueKey("product-draft-${draft.original.file}/${draft.original.sku}"),
+            key: ValueKey(
+                "product-draft-${draft.original.file}/${draft.original.sku}"),
             pages: pages,
             onDone: pages.endProductDraft,
           );
@@ -236,8 +237,8 @@ class _StoreOverview extends StatelessWidget {
       if (pages.orders.isEmpty)
         const Txt.S("No orders yet.", color: TextColor.onSurfaceVariant)
       else
-        ...pages.orders.map((o) => _OrderRow(
-            order: o, onStatus: (status) => onStatus(o, status))),
+        ...pages.orders.map((o) =>
+            _OrderRow(order: o, onStatus: (status) => onStatus(o, status))),
 
       const SizedBox(height: 28),
       Row(children: [
@@ -339,8 +340,7 @@ class _OrderRow extends StatelessWidget {
 class _ProductEditor extends StatefulWidget {
   final PagesModel pages;
   final VoidCallback onDone;
-  const _ProductEditor(
-      {super.key, required this.pages, required this.onDone});
+  const _ProductEditor({super.key, required this.pages, required this.onDone});
 
   @override
   State<_ProductEditor> createState() => _ProductEditorState();
@@ -375,7 +375,14 @@ class _ProductEditorState extends State<_ProductEditor> {
     sendCtrl = TextEditingController(text: d.sendFilename);
     shipping = d.shipping;
     disabled = d.disabled;
-    for (var c in [titleCtrl, skuCtrl, descCtrl, priceCtrl, tagsCtrl, sendCtrl]) {
+    for (var c in [
+      titleCtrl,
+      skuCtrl,
+      descCtrl,
+      priceCtrl,
+      tagsCtrl,
+      sendCtrl
+    ]) {
       c.addListener(remember);
     }
   }
@@ -395,7 +402,14 @@ class _ProductEditorState extends State<_ProductEditor> {
 
   @override
   void dispose() {
-    for (var c in [titleCtrl, skuCtrl, descCtrl, priceCtrl, tagsCtrl, sendCtrl]) {
+    for (var c in [
+      titleCtrl,
+      skuCtrl,
+      descCtrl,
+      priceCtrl,
+      tagsCtrl,
+      sendCtrl
+    ]) {
       c.dispose();
     }
     super.dispose();
@@ -446,8 +460,7 @@ class _ProductEditorState extends State<_ProductEditor> {
           tooltip: "Back to the store",
           onPressed: widget.onDone,
         ),
-        Expanded(
-            child: Txt.L(isNew ? "New product" : draft.original.title)),
+        Expanded(child: Txt.L(isNew ? "New product" : draft.original.title)),
       ]),
       const SizedBox(height: 12),
       TextField(
@@ -520,7 +533,8 @@ class _ProductEditorState extends State<_ProductEditor> {
       SwitchListTile(
         contentPadding: EdgeInsets.zero,
         title: const Txt.M("Hidden"),
-        subtitle: const Txt.S("Kept in the catalogue, but not offered for sale.",
+        subtitle: const Txt.S(
+            "Kept in the catalogue, but not offered for sale.",
             color: TextColor.onSurfaceVariant),
         value: disabled,
         onChanged: (v) => setState(() {

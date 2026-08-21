@@ -3,6 +3,8 @@ import 'package:bruig/components/text.dart';
 import 'package:bruig/models/client.dart';
 import 'package:bruig/config.dart';
 import 'package:bruig/models/pages.dart';
+import 'package:bruig/screens/pages/page_editor.dart';
+import 'package:bruig/screens/pages/site_rows.dart';
 import 'package:bruig/models/menus.dart';
 import 'package:bruig/plugin_system/writing_tools/writing_tools.dart';
 import 'package:bruig/models/resources.dart';
@@ -81,8 +83,7 @@ class _MySiteTabState extends State<MySiteTab> {
     _refreshing = true;
     try {
       var docs = await PageDocuments.list(pages);
-      var frags =
-          await PageDocuments.list(pages, folder: partialsFolderName);
+      var frags = await PageDocuments.list(pages, folder: partialsFolderName);
       if (mounted) {
         setState(() {
           documents = docs;
@@ -122,9 +123,9 @@ class _MySiteTabState extends State<MySiteTab> {
   void previewPage(PageDocument page) async {
     var snackbar = SnackBarModel.of(context);
     try {
-      widget.resources.mostRecent = await widget.resources
-          .fetchPage(widget.client.publicID, [page.file], 0, 0, null, "",
-              reload: true);
+      widget.resources.mostRecent = await widget.resources.fetchPage(
+          widget.client.publicID, [page.file], 0, 0, null, "",
+          reload: true);
       widget.pages.browsing = true;
       widget.onOpenedOwnSite();
     } catch (exception) {
@@ -179,10 +180,12 @@ class _MySiteTabState extends State<MySiteTab> {
     if (mounted && pages.localPages.isEmpty) {
       try {
         await PostStorage.write(pagesFolderName, "index", starterIndex);
-        await PageDocuments.publish(pages, PageDocuments.forName(pages, "index"));
+        await PageDocuments.publish(
+            pages, PageDocuments.forName(pages, "index"));
       } catch (exception) {
         if (mounted) {
-          SnackBarModel.of(context).error("Unable to write front page: $exception");
+          SnackBarModel.of(context)
+              .error("Unable to write front page: $exception");
         }
       }
     }
@@ -190,15 +193,13 @@ class _MySiteTabState extends State<MySiteTab> {
 
   void chooseDir() async {
     var snackbar = SnackBarModel.of(context);
-    var dir = await FilePicker.platform.getDirectoryPath(
-        dialogTitle: "Directory to serve pages from");
+    var dir = await FilePicker.platform
+        .getDirectoryPath(dialogTitle: "Directory to serve pages from");
     if (dir == null) return;
     var cfg = pages.hostConfig;
     try {
       await pages.setHost(cfg.copyWith(
-          mode: cfg.hostsAnything
-              ? cfg.mode
-              : pagesHostModePages,
+          mode: cfg.hostsAnything ? cfg.mode : pagesHostModePages,
           pagesPath: dir));
     } catch (exception) {
       snackbar.error("Unable to change the pages directory: $exception");
@@ -208,9 +209,9 @@ class _MySiteTabState extends State<MySiteTab> {
   void viewOwnSite() async {
     var snackbar = SnackBarModel.of(context);
     try {
-      var sess = await widget.resources
-          .fetchPage(widget.client.publicID, ["index.md"], 0, 0, null, "",
-              reload: true);
+      var sess = await widget.resources.fetchPage(
+          widget.client.publicID, ["index.md"], 0, 0, null, "",
+          reload: true);
       widget.resources.mostRecent = sess;
       widget.pages.browsing = true;
       widget.onOpenedOwnSite();
@@ -227,8 +228,8 @@ class _MySiteTabState extends State<MySiteTab> {
   /// is left for everybody else, and is why it still exists.
   ///
   /// The same redirect the Feed's New Post link makes, for the same reason.
-  bool get hasWriting => hasWritingPage(
-      Provider.of<MainMenuModel>(context, listen: false));
+  bool get hasWriting =>
+      hasWritingPage(Provider.of<MainMenuModel>(context, listen: false));
 
   /// openInWriting makes sure there is a document, hands it to the library
   /// and goes there.
@@ -297,8 +298,8 @@ class _MySiteTabState extends State<MySiteTab> {
     if (!hasWriting) return;
     var library = Provider.of<PostLibraryModel>(context, listen: false);
     var navigator = Navigator.of(context);
-    await PageDocuments.adopt(pages,
-        PageDocuments.forName(pages, name, folder: partialsFolderName));
+    await PageDocuments.adopt(
+        pages, PageDocuments.forName(pages, name, folder: partialsFolderName));
     await library.requestOpen(partialsFolderName, name);
     navigator.pushReplacementNamed(WritingScreen.routeName);
   }
@@ -307,8 +308,8 @@ class _MySiteTabState extends State<MySiteTab> {
     var snackbar = SnackBarModel.of(context);
     try {
       await pages.deletePage(f.file);
-      await PostStorage.delete(PostEntry(
-          name: f.name, folder: partialsFolderName, isFolder: false));
+      await PostStorage.delete(
+          PostEntry(name: f.name, folder: partialsFolderName, isFolder: false));
       await refreshDocuments();
     } catch (exception) {
       snackbar.error("Unable to delete ${f.name}: $exception");
@@ -336,8 +337,8 @@ class _MySiteTabState extends State<MySiteTab> {
       // suggest -- a page published before the slug rule is served under a
       // name the document cannot reproduce.
       await pages.deletePage(page.file);
-      await PostStorage.delete(PostEntry(
-          name: page.name, folder: pagesFolderName, isFolder: false));
+      await PostStorage.delete(
+          PostEntry(name: page.name, folder: pagesFolderName, isFolder: false));
       await refreshDocuments();
     } catch (exception) {
       snackbar.error("Unable to delete ${page.name}: $exception");
@@ -351,7 +352,7 @@ class _MySiteTabState extends State<MySiteTab> {
       builder: (context, _) {
         var draft = pages.pageDraft;
         if (draft != null) {
-          return _PageEditor(
+          return PageEditor(
             // Keyed on which page is being written, so switching from one
             // to another builds a fresh editor rather than reusing the
             // first one's boxes.
@@ -395,7 +396,6 @@ class _SiteOverview extends StatelessWidget {
 
   /// onPreview fetches the page from the site: what a visitor would get.
   final void Function(PageDocument) onPreview;
-
 
   /// documents is every page of the site with where it stands -- see
   /// PageDocuments.list.
@@ -491,8 +491,8 @@ class _SiteOverview extends StatelessWidget {
       else if (documents.isEmpty)
         const Txt.S("No pages yet.", color: TextColor.onSurfaceVariant)
       else
-        ...documents.map((p) => _PageRow(
-              page: p,
+        ...documents.map((p) => SiteRow(
+              item: p,
               onEdit: () => onEdit(p.name),
               onDelete: () => onDelete(p),
               onPublish: () => onPublish(p),
@@ -501,7 +501,7 @@ class _SiteOverview extends StatelessWidget {
             )),
       if (cfg.hostsPages) ...[
         const SizedBox(height: 24),
-        const _FragmentsHelp(),
+        const FragmentsHelp(),
         Row(children: [
           const Expanded(child: Txt.L("Shared fragments")),
           if (onNewFragment != null)
@@ -515,8 +515,8 @@ class _SiteOverview extends StatelessWidget {
         if (fragments.isEmpty)
           const Txt.S("None yet.", color: TextColor.onSurfaceVariant)
         else
-          ...fragments.map((f) => _FragmentRow(
-                fragment: f,
+          ...fragments.map((f) => SiteRow(
+                item: f,
                 onEdit: () => onEditFragment(f.name),
                 onDelete: () => onDeleteFragment(f),
                 onPublish: () => onPublish(f),
@@ -529,263 +529,15 @@ class _SiteOverview extends StatelessWidget {
   }
 }
 
-class _PageRow extends StatelessWidget {
-  final PageDocument page;
-  final VoidCallback onEdit;
-  final VoidCallback onDelete;
-  final VoidCallback onPublish;
-  final VoidCallback onUnpublish;
-  final VoidCallback onPreview;
-  const _PageRow({
-    required this.page,
-    required this.onEdit,
-    required this.onDelete,
-    required this.onPublish,
-    required this.onUnpublish,
-    required this.onPreview,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    var theme = ThemeNotifier.of(context);
-
-    // A front page that is not published is worth saying plainly: it does
-    // not take one page down, it makes the whole site answer "no front
-    // page" to everyone who asks.
-    // Deliberately not the state, which the chip beside the name already
-    // says -- a row that said "Not published" twice was saying nothing
-    // twice.
-    var subtitle = page.isIndex
-        ? (page.state.live
-            ? "Front page — what visitors land on"
-            : "Front page — nobody can reach the site without it")
-        : null;
-
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      leading:
-          Icon(page.isIndex ? Icons.home_outlined : Icons.description_outlined),
-      title: Row(children: [
-        Flexible(child: Txt.M(page.name)),
-        const SizedBox(width: 8),
-        _StateChip(page.state, warn: page.isIndex && !page.state.live),
-      ]),
-      subtitle: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (subtitle != null)
-            Txt.S(subtitle,
-                color: page.state.live
-                    ? TextColor.onSurfaceVariant
-                    : TextColor.onErrorContainer),
-          // The link another page writes to reach this one. Shown because
-          // it is not the page's name -- a page called "Test Page" is
-          // linked as "test_page.md" -- so there is nowhere else to find
-          // out what to type.
-          _LinkChip(page.link, conflict: page.conflict),
-        ],
-      ),
-      trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-        IconButton(
-          icon: const Icon(Icons.visibility_outlined, size: 18),
-          // Preview fetches the page from the site, which is the point:
-          // it is what a visitor gets, not what the editor thinks. So a
-          // page that is not published has nothing to show, and says so
-          // rather than opening an empty browser.
-          tooltip: page.state.live
-              ? "Preview ${page.name}"
-              : "Publish ${page.name} to preview it",
-          onPressed: page.state.live ? onPreview : null,
-        ),
-        // Publish is offered whenever the served copy is not what the
-        // document says -- which is both "never published" and "written
-        // since", the two cases where a visitor is not reading this.
-        if (page.state != PagePublishState.published)
-          IconButton(
-            icon: const Icon(Icons.publish_outlined, size: 18),
-            tooltip: page.state == PagePublishState.draft
-                ? "Publish ${page.name}"
-                : "Publish update to ${page.name}",
-            color: theme.colors.primary,
-            onPressed: onPublish,
-          ),
-        if (page.state.live)
-          IconButton(
-            icon: const Icon(Icons.visibility_off_outlined, size: 18),
-            tooltip: "Unpublish ${page.name}",
-            onPressed: onUnpublish,
-          ),
-        IconButton(
-          icon: const Icon(Icons.edit_outlined, size: 18),
-          tooltip: "Edit ${page.name}",
-          onPressed: onEdit,
-        ),
-        // No delete for the front page: a site with no front page cannot
-        // be visited at all, so taking it down is Unpublish's job, where it
-        // can be put back.
-        if (!page.isIndex)
-          IconButton(
-            icon: const Icon(Icons.delete_outline, size: 18),
-            tooltip: "Delete ${page.name}",
-            onPressed: onDelete,
-          ),
-      ]),
-      onTap: onEdit,
-    );
-  }
-}
-
-/// _FragmentsHelp explains what a fragment is for, once, above the list.
-class _FragmentsHelp extends StatelessWidget {
-  const _FragmentsHelp();
-
-  @override
-  Widget build(BuildContext context) => const Padding(
-        padding: EdgeInsets.only(bottom: 8),
-        child: Txt.S(
-            "A piece several pages share — a header, a navigation bar. Put "
-            "--include[name]-- in a page and it appears there. It is sent "
-            "once and reused, so a bar on twenty pages costs what one page "
-            "costs.",
-            color: TextColor.onSurfaceVariant),
-      );
-}
+/// _SiteRow is one thing the site is made of: a page, or a fragment its
+/// pages share.
+///
 
 /// _FragmentRow is one shared fragment.
 ///
 /// Deliberately plainer than a page's row: a fragment has no front-page
 /// warning, and no preview -- a visitor never opens one, so there is nothing
 /// to look at on its own.
-class _FragmentRow extends StatelessWidget {
-  final PageDocument fragment;
-  final VoidCallback onEdit;
-  final VoidCallback onDelete;
-  final VoidCallback onPublish;
-  final VoidCallback onUnpublish;
-  const _FragmentRow({
-    required this.fragment,
-    required this.onEdit,
-    required this.onDelete,
-    required this.onPublish,
-    required this.onUnpublish,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    var theme = ThemeNotifier.of(context);
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      leading: const Icon(Icons.dashboard_customize_outlined),
-      title: Row(children: [
-        Flexible(child: Txt.M(fragment.name)),
-        const SizedBox(width: 8),
-        _StateChip(fragment.state),
-      ]),
-      // What to type to use it, which is the slug rather than the name.
-      subtitle: _LinkChip("--include[${pageSlug(fragment.name)}]--",
-          conflict: fragment.conflict),
-      trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-        if (fragment.state != PagePublishState.published)
-          IconButton(
-            icon: const Icon(Icons.publish_outlined, size: 18),
-            tooltip: fragment.state == PagePublishState.draft
-                ? "Publish ${fragment.name}"
-                : "Publish update to ${fragment.name}",
-            color: theme.colors.primary,
-            onPressed: onPublish,
-          ),
-        if (fragment.state.live)
-          IconButton(
-            icon: const Icon(Icons.visibility_off_outlined, size: 18),
-            tooltip: "Unpublish ${fragment.name}",
-            onPressed: onUnpublish,
-          ),
-        IconButton(
-          icon: const Icon(Icons.edit_outlined, size: 18),
-          tooltip: "Edit ${fragment.name}",
-          onPressed: onEdit,
-        ),
-        IconButton(
-          icon: const Icon(Icons.delete_outline, size: 18),
-          tooltip: "Delete ${fragment.name}",
-          onPressed: onDelete,
-        ),
-      ]),
-      onTap: onEdit,
-    );
-  }
-}
-
-/// _LinkChip shows the link a page is reached by, and warns when two pages
-/// want the same one.
-class _LinkChip extends StatelessWidget {
-  final String link;
-  final bool conflict;
-  const _LinkChip(this.link, {this.conflict = false});
-
-  @override
-  Widget build(BuildContext context) {
-    var theme = ThemeNotifier.of(context);
-    return Row(mainAxisSize: MainAxisSize.min, children: [
-      Flexible(
-        child: Text(link,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-                fontSize: 11,
-                fontFamily: "monospace",
-                color: theme.colors.onSurfaceVariant)),
-      ),
-      if (conflict) ...[
-        const SizedBox(width: 6),
-        Tooltip(
-          message: "Another page publishes to this same link, and would "
-              "replace this one",
-          child: Icon(Icons.warning_amber_rounded,
-              size: 13, color: theme.colors.error),
-        ),
-      ],
-    ]);
-  }
-}
-
-/// _StateChip says where a page stands. Deliberately drawn for every state
-/// including the settled one: a row with no marking would read as "no
-/// information" rather than "published and current".
-class _StateChip extends StatelessWidget {
-  final PagePublishState state;
-  final bool warn;
-  const _StateChip(this.state, {this.warn = false});
-
-  @override
-  Widget build(BuildContext context) {
-    var theme = ThemeNotifier.of(context);
-    Color color;
-    if (warn) {
-      color = theme.colors.error;
-    } else {
-      switch (state) {
-        case PagePublishState.published:
-          color = theme.extraColors.successOnSurface;
-          break;
-        case PagePublishState.edited:
-          color = theme.colors.primary;
-          break;
-        case PagePublishState.draft:
-          color = theme.colors.onSurfaceVariant;
-          break;
-      }
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Text(state.label, style: TextStyle(fontSize: 11, color: color)),
-    );
-  }
-}
 
 /// _ManagedElsewhere is shown when hosting is pointed at an http upstream or
 /// handed to a client over the RPC interface. The app is not the thing
@@ -838,178 +590,6 @@ class _LinkHelp extends StatelessWidget {
               "reader following it fetches that page from them."),
         ),
       ],
-    );
-  }
-}
-
-/// _PageEditor writes one markdown file. A name of "" is a new page.
-class _PageEditor extends StatefulWidget {
-  final PagesModel pages;
-  final VoidCallback onDone;
-  const _PageEditor(
-      {super.key, required this.pages, required this.onDone});
-
-  @override
-  State<_PageEditor> createState() => _PageEditorState();
-}
-
-class _PageEditorState extends State<_PageEditor> {
-  final nameCtrl = TextEditingController();
-  final bodyCtrl = TextEditingController();
-  bool saving = false;
-
-  PageDraft get draft => widget.pages.pageDraft ?? const PageDraft(editing: "");
-  bool get isNew => draft.isNew;
-
-  @override
-  void initState() {
-    super.initState();
-    // Whatever was typed before, which is there when coming back to a draft
-    // left open. The boxes are the draft's, not the file's.
-    nameCtrl.text = draft.name;
-    bodyCtrl.text = draft.body;
-    nameCtrl.addListener(remember);
-    bodyCtrl.addListener(remember);
-    if (!draft.loaded) load();
-  }
-
-  @override
-  void dispose() {
-    nameCtrl.dispose();
-    bodyCtrl.dispose();
-    super.dispose();
-  }
-
-  /// remember hands what is in the boxes to the model, which outlives this
-  /// screen. Deliberately not notifying -- see PagesModel's draft section.
-  void remember() => widget.pages
-      .updatePageDraft(draft.copyWith(name: nameCtrl.text, body: bodyCtrl.text));
-
-  void load() async {
-    var name = draft.editing;
-    try {
-      // The document is what is edited. A page that is only being served --
-      // written before any of this existed -- is brought into the library
-      // first, so there is always a document behind the editor.
-      await PageDocuments.adopt(
-          widget.pages, PageDocuments.forName(widget.pages, name));
-      var content =
-          await PostStorage.read(pagesFolderName, documentNameFor(name)) ?? "";
-      if (!mounted) return;
-      bodyCtrl.text = content;
-    } catch (exception) {
-      if (mounted) {
-        SnackBarModel.of(context).error("Unable to read page: $exception");
-      }
-    }
-    if (!mounted) return;
-    // Marked loaded either way: a page that could not be read is not going
-    // to read on the second attempt either, and retrying on every rebuild
-    // would overwrite whatever was typed in the meantime.
-    widget.pages.updatePageDraft(draft.copyWith(loaded: true));
-    setState(() {});
-  }
-
-  /// save writes the document. It does not publish: what visitors are
-  /// reading only changes when somebody says so.
-  ///
-  void save() async {
-    var snackbar = SnackBarModel.of(context);
-    var name = nameCtrl.text.trim();
-    if (name.isEmpty) {
-      snackbar.error("The page needs a name.");
-      return;
-    }
-    var doc = documentNameFor(name);
-
-    setState(() => saving = true);
-    try {
-      await PostStorage.write(pagesFolderName, doc, bodyCtrl.text);
-
-      // Renaming through the name field leaves the old one behind, so drop
-      // it -- both the document and anything published under it -- once the
-      // new one is safely written.
-      var wasPublished = false;
-      if (!isNew && doc != documentNameFor(draft.editing)) {
-        var old = PageDocuments.forName(widget.pages, draft.editing);
-        wasPublished = old.state.live;
-        if (wasPublished) {
-          await PageDocuments.unpublish(widget.pages, old);
-        }
-        var entry = PostEntry(
-            name: old.name, folder: pagesFolderName, isFolder: false);
-        await PostStorage.delete(entry);
-      }
-
-      // A rename of something that was published republishes under the new
-      // name, or renaming a live page would silently take it down.
-      if (wasPublished) {
-        await PageDocuments.publish(
-            widget.pages, PageDocuments.forName(widget.pages, doc));
-      }
-      widget.onDone();
-    } catch (exception) {
-      snackbar.error("Unable to save page: $exception");
-      if (mounted) setState(() => saving = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (!draft.loaded) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          IconButton(
-            icon: const Icon(Icons.arrow_back, size: 18),
-            tooltip: "Back to pages",
-            onPressed: widget.onDone,
-          ),
-          Expanded(child: Txt.L(isNew ? "New page" : draft.editing)),
-        ]),
-        const SizedBox(height: 12),
-        TextField(
-          controller: nameCtrl,
-          decoration: const InputDecoration(
-            isDense: true,
-            labelText: "File name",
-            helperText: "index.md is the page visitors land on",
-            border: OutlineInputBorder(),
-          ),
-        ),
-        const SizedBox(height: 12),
-        Expanded(
-          child: TextField(
-            controller: bodyCtrl,
-            maxLines: null,
-            expands: true,
-            textAlignVertical: TextAlignVertical.top,
-            decoration: const InputDecoration(
-              alignLabelWithHint: true,
-              labelText: "Markdown",
-              border: OutlineInputBorder(),
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        // One button. Saving keeps the writing; publishing is done from the
-        // list this returns to, where the page's state is shown beside it --
-        // so there is one place a page is published from rather than two
-        // that have to agree.
-        Row(children: [
-          ElevatedButton(
-            style: raisedButtonStyle(ThemeNotifier.of(context)),
-            onPressed: saving ? null : () => save(),
-            child: Text(saving ? "Saving…" : "Save"),
-          ),
-          const SizedBox(width: 8),
-          OutlinedButton(onPressed: widget.onDone, child: const Text("Cancel")),
-        ]),
-      ]),
     );
   }
 }

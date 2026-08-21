@@ -6,15 +6,6 @@ import 'package:flutter/cupertino.dart';
 import 'package:golib_plugin/definitions.dart';
 import 'package:golib_plugin/golib_plugin.dart';
 
-class RequestedResource extends ChangeNotifier {
-  final String uid;
-  final ResourceTag tag;
-  RMFetchResource? request;
-  RMFetchResourceReply? reply;
-
-  RequestedResource(this.uid, this.tag);
-}
-
 final sectionStartRegexp = RegExp(r'--section id=([\w]+) --');
 final sectionEndRegexp = RegExp(r'--/section--');
 

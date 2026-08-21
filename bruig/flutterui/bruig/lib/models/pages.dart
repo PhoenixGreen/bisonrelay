@@ -702,15 +702,6 @@ class PagesModel extends ChangeNotifier {
     }
   }
 
-  Future<void> refreshLocalPages() async {
-    var pages = await Golib.listLocalPages();
-    var h = _host;
-    if (h == null) return;
-    _host = PagesHostStatus(
-        h.config, h.editable, h.defaultPath, h.defaultStorePath, pages);
-    notifyListeners();
-  }
-
   Future<void> savePage(String name, String content) async {
     var pages = await Golib.writeLocalPage(name, content);
     _replacePages(pages);
@@ -799,11 +790,6 @@ class PagesModel extends ChangeNotifier {
 
   Future<void> setOrderStatus(String user, int order, String status) async {
     _orders = await Golib.setStoreOrderStatus(user, order, status);
-    notifyListeners();
-  }
-
-  Future<void> addOrderComment(String user, int order, String comment) async {
-    _orders = await Golib.addStoreOrderComment(user, order, comment);
     notifyListeners();
   }
 
