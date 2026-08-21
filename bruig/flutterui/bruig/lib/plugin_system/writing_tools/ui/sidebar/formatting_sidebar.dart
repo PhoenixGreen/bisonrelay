@@ -220,7 +220,7 @@ const _pages = [
     Icons.branding_watermark_outlined,
     "Header",
     "--header--\nbackground: \n--row[96,split]--\nleft: ",
-    after: "\nright: # My site\n--/row--\n--row[44,center]--\n"
+    after: "\nright: # My site\n--/row--\n--row[44,center,flush]--\n"
         "--include[navigation]--\n--/row--\n--/header--",
     placeholder: "![](logo)",
     block: true,

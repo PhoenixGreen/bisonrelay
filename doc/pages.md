@@ -119,6 +119,19 @@ A title too long for its row is **condensed rather than shrunk**: the letters
 squeeze and the cap height stays, so the row still looks its height. Past
 about two-thirds it stops being readable and is cut with an ellipsis instead.
 
+A row can also be `flush`, which takes the banner's padding away from it:
+
+```
+--row[44,center,flush]--
+--include[navigation]--
+--/row--
+```
+
+What is in it then runs edge to edge and, at the top or bottom, sits hard
+against that edge — which is what a bar of links along the top of a banner is.
+Give the bar a background in the theme and it reads as a strip across the
+whole banner rather than a patch behind the words.
+
 A bar of links is a fragment in a row, with nothing special about it — which
 is what the `--include[navigation]--` above is.
 
@@ -157,8 +170,9 @@ A bar of links, one link a line:
 ```
 
 `plain`, `pills`, `underline` or `boxed`. The writer picks the shape, because
-it is part of how the page is laid out; what each shape looks like is the
-reader's, through Settings > Appearance > Markdown > Header and navigation and
+it is part of how the page is laid out; the colours — the links, what they
+become under the pointer, the link to the page being read, and the bar's own
+background — are the reader's, through Settings > Appearance > Markdown > Header and navigation and
 the colours they read in.
 
 ### Other markup

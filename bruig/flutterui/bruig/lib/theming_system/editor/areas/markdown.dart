@@ -1127,6 +1127,23 @@ class _MarkdownEditorState extends State<_MarkdownEditor> {
                   (g) => g.copyWith(nav: g.nav.copyWith(borderWidth: v)))),
           _inkPick(ctx, "Link colour", guide.nav.ink,
               (i) => edit((g) => g.copyWith(nav: g.nav.copyWith(ink: i)))),
+          _inkPick(ctx, "Under the pointer", guide.nav.hover,
+              (i) => edit((g) => g.copyWith(nav: g.nav.copyWith(hover: i)))),
+          _inkPick(ctx, "The page being read", guide.nav.active,
+              (i) => edit((g) => g.copyWith(nav: g.nav.copyWith(active: i)))),
+          ctx.note("Left at the theme default, a bar takes the guide's own "
+              "link colour and marks neither."),
+          const SizedBox(height: 16),
+          const Txt.M("The bar itself"),
+          _inkPick(ctx, "Background", guide.nav.background,
+              (i) => edit((g) => g.copyWith(nav: g.nav.copyWith(background: i)))),
+          ctx.toggle("Run the background the whole width",
+              value: guide.nav.fullWidth,
+              onChanged: (v) => edit(
+                  (g) => g.copyWith(nav: g.nav.copyWith(fullWidth: v)))),
+          ctx.note("Which is what makes a bar in a row written --row[44,"
+              "flush]-- read as a strip along the top or bottom of a banner "
+              "rather than a patch behind the words."),
         ];
 
       case _Element.gallery:

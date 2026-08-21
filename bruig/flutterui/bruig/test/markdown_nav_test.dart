@@ -94,4 +94,50 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   });
+
+  group('a link in a bar', () {
+    test('is split into its label and where it goes', () {
+      var got = navLink("[Home](index.md)");
+      expect(got!.label, "Home");
+      expect(got.target, "index.md");
+    });
+
+    test('handles a br:// address, which has a colon in it', () {
+      expect(navLink("[Theirs](br://abc123/index.md)")!.target,
+          "br://abc123/index.md");
+    });
+
+    test('anything that is not a link is left alone', () {
+      // Shown as written rather than dropped, so a typo is visible instead
+      // of silently costing an entry.
+      expect(navLink("Home"), isNull);
+      expect(navLink("[Home]"), isNull);
+      expect(navLink(""), isNull);
+    });
+  });
+
+  group('the rules survive being saved', () {
+    test('a bar round-trips, colours and all', () {
+      const r = NavRule(
+        gap: 20,
+        padding: 10,
+        ink: MarkdownInk.of(MarkdownRole.accent),
+        hover: MarkdownInk.of(MarkdownRole.link),
+        active: MarkdownInk.of(MarkdownRole.quote),
+        background: MarkdownInk.of(MarkdownRole.raised),
+        fullWidth: false,
+      );
+      expect(NavRule.fromJson(r.toJson()), r);
+    });
+
+    test('a guide written before any of them still loads', () {
+      var guide = MarkdownStyleGuide.fromJson({"id": "x", "name": "X"});
+      // Inherit, so a bar looks like the rest of the writing and the
+      // setting reads "Theme default" rather than a colour nobody chose.
+      expect(guide.nav.ink.isInherit, isTrue);
+      expect(guide.nav.hover.isInherit, isTrue);
+      expect(guide.nav.active.isInherit, isTrue);
+      expect(guide.nav.background.isInherit, isTrue);
+    });
+  });
 }

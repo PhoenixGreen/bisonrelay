@@ -628,14 +628,38 @@ class NavRule {
   /// borderWidth is the line around a boxed link, or under an underlined
   /// one.
   final double borderWidth;
+
+  /// ink is the colour of a link in the bar.
+  ///
+  /// Inherit by default, which means the guide's own link colour -- so a bar
+  /// looks like the rest of the writing until somebody says otherwise, and
+  /// the setting reads "Theme default" rather than a colour nobody chose.
   final MarkdownInk ink;
+
+  /// hover is what a link becomes under the pointer, and [active] what the
+  /// link to the page already being read looks like. Both inherit by
+  /// default, which leaves a bar that does neither.
+  final MarkdownInk hover;
+  final MarkdownInk active;
+
+  /// background fills the bar itself, behind the links.
+  final MarkdownInk background;
+
+  /// fullWidth runs that background the whole width of the banner rather
+  /// than only under the links. Only meaningful in a row flush to an edge,
+  /// where a bar is being used as a strip across the top or bottom.
+  final bool fullWidth;
 
   const NavRule({
     this.gap = 14,
     this.padding = 8,
     this.radius = 6,
     this.borderWidth = 1,
-    this.ink = const MarkdownInk.of(MarkdownRole.link),
+    this.ink = MarkdownInk.inherit,
+    this.hover = MarkdownInk.inherit,
+    this.active = MarkdownInk.inherit,
+    this.background = MarkdownInk.inherit,
+    this.fullWidth = true,
   });
 
   double get boundedGap => gap.clamp(0, 48);
@@ -649,6 +673,10 @@ class NavRule {
     double? radius,
     double? borderWidth,
     MarkdownInk? ink,
+    MarkdownInk? hover,
+    MarkdownInk? active,
+    MarkdownInk? background,
+    bool? fullWidth,
   }) =>
       NavRule(
         gap: gap ?? this.gap,
@@ -656,6 +684,10 @@ class NavRule {
         radius: radius ?? this.radius,
         borderWidth: borderWidth ?? this.borderWidth,
         ink: ink ?? this.ink,
+        hover: hover ?? this.hover,
+        active: active ?? this.active,
+        background: background ?? this.background,
+        fullWidth: fullWidth ?? this.fullWidth,
       );
 
   Map<String, Object?> toJson() => {
@@ -664,6 +696,10 @@ class NavRule {
         "radius": radius,
         "borderWidth": borderWidth,
         "ink": ink.toJson(),
+        "hover": hover.toJson(),
+        "active": active.toJson(),
+        "background": background.toJson(),
+        "fullWidth": fullWidth,
       };
 
   static NavRule fromJson(Map<String, Object?> json) => NavRule(
@@ -671,13 +707,26 @@ class NavRule {
         padding: (json["padding"] as num?)?.toDouble() ?? 8,
         radius: (json["radius"] as num?)?.toDouble() ?? 6,
         borderWidth: (json["borderWidth"] as num?)?.toDouble() ?? 1,
-        ink: json["ink"] is Map<String, Object?>
-            ? MarkdownInk.fromJson(json["ink"] as Map<String, Object?>)
-            : const MarkdownInk.of(MarkdownRole.link),
+        ink: _ink(json["ink"]),
+        hover: _ink(json["hover"]),
+        active: _ink(json["active"]),
+        background: _ink(json["background"]),
+        fullWidth: json["fullWidth"] as bool? ?? true,
       );
 
+  /// _ink reads one saved colour.
+  ///
+  /// Handed straight to MarkdownInk, which knows all three shapes it takes:
+  /// a map for a colour picked out of the palette, a string for one of the
+  /// guide's own roles, and nothing at all for inherit. Guarding on the map
+  /// alone -- which is what this did -- threw away every role, so a bar
+  /// whose colour was a role came back as though nothing had been set.
+  static MarkdownInk _ink(Object? v) => MarkdownInk.fromJson(v);
+
   @override
-  int get hashCode => Object.hash(gap, padding, radius, borderWidth, ink);
+  int get hashCode => Object.hash(
+      gap, padding, radius, borderWidth, ink, hover, active, background,
+      fullWidth);
 
   @override
   bool operator ==(Object other) =>

@@ -64,10 +64,19 @@ class HeaderRow {
   /// cells is one cell, or two in [HeaderRowMode.split].
   final List<String> cells;
 
+  /// flush takes the banner's padding away from this row, so what is in it
+  /// runs edge to edge and, at the top or bottom, sits hard against that
+  /// edge.
+  ///
+  /// Which is what a bar of links along the top of a banner is: a strip the
+  /// full width of it, not a row of words inset from it like the rest.
+  final bool flush;
+
   const HeaderRow({
     required this.height,
     required this.mode,
     required this.cells,
+    this.flush = false,
   });
 
   /// maxHeight is the tallest a single row may be. Past this it is not a
@@ -159,6 +168,7 @@ class HeaderBlockSyntax extends md.BlockSyntax {
     for (var i = 0; i < rows.length; i++) {
       element.attributes["r${i}h"] = "${rows[i].height}";
       element.attributes["r${i}m"] = rows[i].mode.name;
+      if (rows[i].flush) element.attributes["r${i}f"] = "1";
       for (var c = 0; c < rows[i].cells.length; c++) {
         element.attributes["r${i}c$c"] = rows[i].cells[c];
       }
@@ -173,11 +183,14 @@ class HeaderBlockSyntax extends md.BlockSyntax {
   HeaderRow _parseRow(md.BlockParser parser, String? args) {
     var height = HeaderRow.defaultHeight;
     var mode = HeaderRowMode.left;
+    var flush = false;
     for (var arg in (args ?? "").split(",")) {
       var t = arg.trim();
       var n = double.tryParse(t);
       if (n != null) {
         height = n.clamp(16, HeaderRow.maxHeight);
+      } else if (t.toLowerCase() == "flush") {
+        flush = true;
       } else if (t.isNotEmpty) {
         mode = HeaderRowMode.parse(t);
       }
@@ -219,7 +232,7 @@ class HeaderBlockSyntax extends md.BlockSyntax {
       ].where((c) => c.isNotEmpty).toList();
       if (out.length > maxRowCells) out = out.sublist(0, maxRowCells);
     }
-    return HeaderRow(height: height, mode: mode, cells: out);
+    return HeaderRow(height: height, mode: mode, cells: out, flush: flush);
   }
 }
 
@@ -239,6 +252,7 @@ List<HeaderRow> headerRowsOf(Map<String, String> a) {
       HeaderRow(
         height: double.tryParse(a["r${i}h"] ?? "") ?? HeaderRow.defaultHeight,
         mode: HeaderRowMode.parse(a["r${i}m"]),
+        flush: a["r${i}f"] == "1",
         cells: [
           for (var c = 0; c < maxRowCells; c++)
             if (a["r${i}c$c"] != null) a["r${i}c$c"]!,
@@ -338,8 +352,9 @@ class _MarkdownHeader extends StatelessWidget {
       var scale = rule.scaleFor(constraints.maxWidth);
       var padding = rule.boundedPadding * scale;
       var gap = rule.boundedGap * scale;
-      var total =
-          rows.fold<double>(0, (t, r) => t + r.height * scale) + padding * 2;
+      var total = rows.fold<double>(0, (t, r) => t + r.height * scale) +
+          (rows.first.flush ? 0 : padding) +
+          (rows.last.flush ? 0 : padding);
 
       return Padding(
         padding: EdgeInsets.symmetric(vertical: rule.boundedGap),
@@ -371,23 +386,28 @@ class _MarkdownHeader extends StatelessWidget {
                         .withValues(alpha: rule.scrim.clamp(0, 1)),
                   ),
                 ),
-              Padding(
-                padding: EdgeInsets.symmetric(horizontal: padding),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    SizedBox(height: padding),
-                    for (var row in rows)
-                      _HeaderRow(
+              // The padding goes on each row rather than round the lot, so
+              // a flush row can go without it and run edge to edge. The
+              // space above the first row and below the last goes the same
+              // way: a strip along the top of a banner has nothing above it.
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (!rows.first.flush) SizedBox(height: padding),
+                  for (var row in rows)
+                    Padding(
+                      padding: EdgeInsets.symmetric(
+                          horizontal: row.flush ? 0 : padding),
+                      child: _HeaderRow(
                           row: row,
                           style: titleStyle,
                           rule: rule,
                           scale: scale,
                           gap: gap),
-                    SizedBox(height: padding),
-                  ],
-                ),
+                    ),
+                  if (!rows.last.flush) SizedBox(height: padding),
+                ],
               ),
             ]),
           ),

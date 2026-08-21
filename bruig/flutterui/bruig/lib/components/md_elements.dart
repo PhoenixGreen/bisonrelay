@@ -655,6 +655,45 @@ class MarkdownGuideScope extends InheritedWidget {
       old.image != image || old.columns != columns || old.cards != cards;
 }
 
+/// followMarkdownLink opens what a link in rendered markdown points at.
+///
+/// Top-level rather than a method, because a bar of links draws its own
+/// and still has to follow them the same way -- br:// and relative page
+/// paths included. Two copies of this would be two behaviours.
+Future<void> followMarkdownLink(BuildContext context, String url) async {
+  var parsed = Uri.parse(url);
+  var downSource = Provider.of<DownloadSource?>(context, listen: false);
+  var pageSource = Provider.of<PagesSource?>(context, listen: false);
+  var uid = downSource?.uid ?? pageSource?.uid ?? "";
+  var snackbar = SnackBarModel.of(context);
+
+  if (parsed.scheme != "" && parsed.scheme != "br") {
+    if (!await launchUrl(Uri.parse(url))) {
+      snackbar.error("Could not launch $url");
+    }
+    return;
+  }
+
+  // Handle absolute br:// link.
+  if (parsed.host != "") {
+    uid = parsed.host;
+  }
+
+  if (uid == "") {
+    throw "Cannot follow br:// link without target UID";
+  }
+
+  var resources = Provider.of<ResourcesModel>(context, listen: false);
+  var sessionID = pageSource?.sessionID ?? 0;
+  var parentPageID = pageSource?.pageID ?? 0;
+  try {
+    await resources.fetchPage(
+        uid, parsed.pathSegments, sessionID, parentPageID, null, "");
+  } catch (exception) {
+    snackbar.error("Unable to fetch page: $exception");
+  }
+}
+
 class MarkdownArea extends StatelessWidget {
   static final _startTagBugRe = RegExp(r'^\s*(<[^>\s]+\s*>)$');
 
@@ -698,40 +737,6 @@ class MarkdownArea extends StatelessWidget {
       this.guide,
       super.key})
       : text = MarkdownArea._cleanupSrcText(srcText);
-
-  Future<void> launchUrlAwait(context, url) async {
-    var parsed = Uri.parse(url);
-    var downSource = Provider.of<DownloadSource?>(context, listen: false);
-    var pageSource = Provider.of<PagesSource?>(context, listen: false);
-    var uid = downSource?.uid ?? pageSource?.uid ?? "";
-    var snackbar = SnackBarModel.of(context);
-
-    if (parsed.scheme != "" && parsed.scheme != "br") {
-      if (!await launchUrl(Uri.parse(url))) {
-        snackbar.error("Could not launch $url");
-      }
-      return;
-    }
-
-    // Handle absolute br:// link.
-    if (parsed.host != "") {
-      uid = parsed.host;
-    }
-
-    if (uid == "") {
-      throw "Cannot follow br:// link without target UID";
-    }
-
-    var resources = Provider.of<ResourcesModel>(context, listen: false);
-    var sessionID = pageSource?.sessionID ?? 0;
-    var parentPageID = pageSource?.pageID ?? 0;
-    try {
-      await resources.fetchPage(
-          uid, parsed.pathSegments, sessionID, parentPageID, null, "");
-    } catch (exception) {
-      snackbar.error("Unable to fetch page: $exception");
-    }
-  }
 
   // Flattens header/bold/italic/strikethrough styles down to plain body
   // text, leaving everything else (code, blockquote, links, etc) alone.
@@ -1029,7 +1034,7 @@ class MarkdownArea extends StatelessWidget {
           builders: mk.builders,
           onTapLink: (text, url, _) {
             if (disableLinks) return;
-            launchUrlAwait(context, url);
+            followMarkdownLink(context, url ?? "");
           },
           inlineSyntaxes: mk.inlineSyntaxes,
           blockSyntaxes: mk.blockSyntaxes,

@@ -490,4 +490,45 @@ right: # Title
       expect(tester.takeException(), isNull);
     });
   });
+
+  group('a flush row', () {
+    test('is read from the marker, alongside the rest', () {
+      var rows = rowsOf(
+          "--header--\n--row[44,center,flush]--\nx\n--/row--\n--/header--");
+      expect(rows.first.flush, isTrue);
+      expect(rows.first.height, 44);
+      expect(rows.first.mode, HeaderRowMode.center);
+    });
+
+    test('an ordinary row is not flush', () {
+      expect(rowsOf("--header--\n--row[44]--\nx\n--/row--\n--/header--")
+          .first.flush, isFalse);
+    });
+
+    testWidgets('sits hard against the edge it is at', (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      await tester.pumpWidget(drawHost(MarkdownArea("""
+--header--
+--row[40,center,flush]--
+# Strip
+--/row--
+--row[80,left]--
+# Body
+--/row--
+--/header--
+""", false)));
+      await tester.pump();
+
+      var banner = tester.getRect(find
+          .ancestor(of: find.text("Strip"), matching: find.byType(ClipRRect))
+          .first);
+      var strip = tester.getRect(find.text("Strip"));
+      var body = tester.getRect(find.text("Body"));
+
+      // Nothing above the strip; the row below keeps its inset.
+      expect(strip.top - banner.top, lessThan(banner.height / 4));
+      expect(body.left - banner.left, greaterThan(4));
+      expect(tester.takeException(), isNull);
+    });
+  });
 }
