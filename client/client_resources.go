@@ -91,8 +91,7 @@ func unbundleLocal(res *rpc.RMFetchResourceReply, wantPath string) (*rpc.RMFetch
 		return res, nil
 	}
 
-	const maxBundleSize = 100000000 // 100MB, as in clientdb.
-	raw, err := rpc.ZLibDecode(res.Data, maxBundleSize)
+	raw, err := rpc.ZLibDecode(res.Data, rpc.MaxDecompressedBundleSize())
 	if err != nil {
 		return nil, fmt.Errorf("unable to uncompress local bundle: %v", err)
 	}

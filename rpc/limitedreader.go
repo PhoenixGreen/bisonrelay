@@ -32,6 +32,21 @@ func (l *limitedReader) Read(p []byte) (n int, err error) {
 	return
 }
 
+// MaxDecompressedBundleSize returns the largest a resource bundle may be once
+// uncompressed.
+//
+// A bundle is a batching convenience: every resource in it could have been
+// sent as a reply of its own, and each of those is bounded by the max payload
+// size. So the bundle is allowed a few messages' worth of content -- enough to
+// batch several large resources, or many ordinary pages -- and no more.
+//
+// The bound matters because the sender chooses the compression ratio. Without
+// one, a reply of a few MiB can be made to decompress into an allocation
+// hundreds of times its size, which the receiver then has to hold and decode.
+func MaxDecompressedBundleSize() uint {
+	return 4 * MaxPayloadSizeForVersion(MaxMsgSizeV1)
+}
+
 // ZLibDecode decodes the given (zlib-encoded) input byte slice into an output
 // slice with the max number of bytes.
 func ZLibDecode(in []byte, maxDecompressSize uint) ([]byte, error) {

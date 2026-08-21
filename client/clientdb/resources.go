@@ -165,8 +165,8 @@ func (db *DB) StoreFetchedResource(tx ReadWriteTx, uid UserID, tag rpc.ResourceT
 	// bundled pages.
 	if reply.Meta[rpc.ResourceMetaResponseIsBundle] == rpc.ResourceMetaResponseIsBundleValue {
 		// Decode bundle.
-		const maxBundleSize = 100000000 // 100MB
-		rawBundle, err := rpc.ZLibDecode(reply.Data, maxBundleSize)
+		rawBundle, err := rpc.ZLibDecode(reply.Data,
+			rpc.MaxDecompressedBundleSize())
 		if err != nil {
 			return fr, sess, fmt.Errorf("unable to uncompress raw bundle: %v", err)
 		}
