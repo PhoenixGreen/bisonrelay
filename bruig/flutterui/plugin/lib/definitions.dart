@@ -5064,9 +5064,6 @@ abstract class PluginPlatform {
   Future<List<LocalAsset>> listLocalAssets() async =>
       _localAssets(await asyncCall(CTListLocalAssets, null));
 
-  Future<List<LocalAsset>> addLocalAsset(String srcPath) async =>
-      _localAssets(await asyncCall(CTAddLocalAsset, srcPath));
-
   Future<List<LocalAsset>> deleteLocalAsset(String path) async =>
       _localAssets(await asyncCall(CTDeleteLocalAsset, path));
 
@@ -5581,7 +5578,6 @@ const int CTReadLocalPage = 0xc3;
 const int CTWriteLocalPage = 0xc4;
 const int CTDeleteLocalPage = 0xc5;
 const int CTListLocalAssets = 0xd6;
-const int CTAddLocalAsset = 0xd7;
 const int CTDeleteLocalAsset = 0xd8;
 const int CTReadLocalAsset = 0xd9;
 const int CTAddLocalAssetBytes = 0xda;

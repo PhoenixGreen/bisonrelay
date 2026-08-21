@@ -42,6 +42,30 @@ Future<String?> showAddPictureDialog(
       builder: (context) => _AddPictureDialog(pages, sourcePath),
     );
 
+/// slugFileName makes a name a page can actually link to.
+///
+/// A picture is reached by writing ![](assets/name.jpg), and a Markdown link
+/// stops at the first space. A file straight off a camera or a download is
+/// routinely called "Decred - Open Source in the AI Era.jpg", which would be
+/// written and served perfectly and then not show, because the link ends at
+/// "Decred". So the name is fixed here, where it can be shown before the
+/// picture is added rather than discovered afterwards.
+///
+/// Lowercased as well, because two files differing only in capitals are the
+/// same file on a Mac and different ones on Linux, and a site whose pictures
+/// appear only for the author is a hard thing to work out.
+String slugFileName(String stem) {
+  var out = stem
+      .toLowerCase()
+      .replaceAll(RegExp(r"[^a-z0-9._-]+"), "-")
+      .replaceAll(RegExp(r"-{2,}"), "-")
+      .replaceAll(RegExp(r"^[-.]+|[-.]+$"), "");
+  // Everything can be stripped -- a name of nothing but punctuation, or a
+  // name in a script with no ASCII in it at all. Both are real, and neither
+  // is a reason to refuse the picture.
+  return out.isEmpty ? "picture" : out;
+}
+
 /// pickAndAddPicture asks for a file and then adds it.
 ///
 /// The whole gesture in one place, because it is offered from two: the site's
@@ -158,7 +182,7 @@ class _AddPictureDialogState extends State<_AddPictureDialog> {
       "image/webp" => "webp",
       _ => "png",
     };
-    return "$stem.$ext";
+    return "${slugFileName(stem)}.$ext";
   }
 
   void _add() async {

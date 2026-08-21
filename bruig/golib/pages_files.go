@@ -75,6 +75,17 @@ func pageFileName(root, name string) (string, error) {
 			return "", fmt.Errorf("%q is not a kind of file a page "+
 				"can show", name)
 		}
+		// A page reaches a picture by writing ![](assets/name.jpg), and a
+		// Markdown link stops at the first space. A file called "my
+		// banner.jpg" would be written, listed, and served, and the only
+		// thing that would not work is the one thing it is for -- so the
+		// name is refused here rather than a page silently showing
+		// nothing. The caller names the file, so it is the caller's job
+		// to hand over one that works; see slugFileName in the UI.
+		if strings.ContainsAny(name, " \t()<>\"'\\") {
+			return "", fmt.Errorf("picture name %q cannot be written in "+
+				"a page link", name)
+		}
 	} else if ext != ".md" {
 		return "", fmt.Errorf("page name %q must end in .md", name)
 	}
@@ -251,30 +262,6 @@ func listLocalAssets(root string) ([]localAsset, error) {
 		return strings.ToLower(out[i].Name) < strings.ToLower(out[j].Name)
 	})
 	return out, nil
-}
-
-// addLocalAsset copies a file into the site's assets directory.
-//
-// Copied rather than referenced: the site is a directory that is served, and
-// a picture that lived anywhere else would be a page that stopped working
-// when its author tidied their downloads.
-func addLocalAsset(root, srcPath string) (string, error) {
-	name := filepath.Base(srcPath)
-	fname, err := pageFileName(root, assetsDir+"/"+name)
-	if err != nil {
-		return "", err
-	}
-	data, err := os.ReadFile(srcPath)
-	if err != nil {
-		return "", err
-	}
-	if err := os.MkdirAll(filepath.Dir(fname), 0o700); err != nil {
-		return "", err
-	}
-	if err := os.WriteFile(fname, data, 0o600); err != nil {
-		return "", err
-	}
-	return assetsDir + "/" + filepath.Base(fname), nil
 }
 
 // readLocalAsset returns the bytes of one picture the site keeps.

@@ -749,18 +749,6 @@ class PagesModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// addAsset copies a file into the site and returns what a page writes to
-  /// show it.
-  Future<String> addAsset(String srcPath) async {
-    _assets = await Golib.addLocalAsset(srcPath);
-    notifyListeners();
-    _ownSiteChanged();
-    var name = srcPath.split(Platform.pathSeparator).last;
-    return _assets
-        .firstWhere((a) => a.name == name, orElse: () => _assets.last)
-        .path;
-  }
-
   Future<void> deleteAsset(String path) async {
     _assets = await Golib.deleteLocalAsset(path);
     forgetLocalAsset(path);
@@ -773,8 +761,15 @@ class PagesModel extends ChangeNotifier {
   /// The path the page writes to show it, as [addAsset] returns.
   Future<String> addAssetBytes(String name, Uint8List data) async {
     _assets = await Golib.addLocalAssetBytes(name, data);
-    var added = _assets
-        .firstWhere((a) => a.name == name, orElse: () => _assets.last);
+    // Named rather than "the last one added", because there is no such
+    // thing: the list comes back sorted. An empty list means the write did
+    // not happen, and saying so beats the "Bad state: No element" that
+    // reaching into it produced.
+    var added = _assets.where((a) => a.name == name).firstOrNull;
+    if (added == null) {
+      throw "the site has no picture called $name after adding it -- "
+          "is the app running against an older golib?";
+    }
     forgetLocalAsset(added.path);
     notifyListeners();
     _ownSiteChanged();

@@ -321,12 +321,8 @@ func TestAssetsAreTheirOwnDirectoryAndKind(t *testing.T) {
 
 func TestAddAndListAssets(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "pages")
-	src := filepath.Join(t.TempDir(), "banner.png")
-	if err := os.WriteFile(src, []byte("pretend png"), 0o600); err != nil {
-		t.Fatal(err)
-	}
 
-	path, err := addLocalAsset(root, src)
+	path, err := addLocalAssetBytes(root, "banner.png", []byte("pretend png"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -353,11 +349,41 @@ func TestAddAndListAssets(t *testing.T) {
 
 func TestAddingSomethingThatIsNotAPictureIsRefused(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "pages")
-	src := filepath.Join(t.TempDir(), "secrets.txt")
-	if err := os.WriteFile(src, []byte("no"), 0o600); err != nil {
-		t.Fatal(err)
+	if _, err := addLocalAssetBytes(root, "secrets.txt", []byte("no")); err == nil {
+		t.Fatal("a text file was written into the site")
 	}
-	if _, err := addLocalAsset(root, src); err == nil {
-		t.Fatal("a text file was copied into the site")
+}
+
+// A page reaches a picture by writing ![](assets/name.jpg), and a Markdown
+// link stops at the first space. A file called "my banner.jpg" would be
+// written, listed and served perfectly, and the only thing that would not
+// work is the one thing it is for.
+func TestAPictureNameAPageCannotLinkToIsRefused(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "pages")
+	for _, bad := range []string{
+		"my banner.png",
+		"banner (1).png",
+		"it's mine.png",
+		"a\tb.png",
+		`say "hi".png`,
+		"<banner>.png",
+	} {
+		if _, err := addLocalAssetBytes(root, bad, []byte("x")); err == nil {
+			t.Errorf("%q should not be allowed", bad)
+		}
+	}
+}
+
+func TestAnOrdinaryPictureNameIsStillAllowed(t *testing.T) {
+	// The guard above is easy to write too widely, and a site that cannot
+	// hold a file called banner-2.png is worse than one that can hold a
+	// file with a space in it.
+	root := filepath.Join(t.TempDir(), "pages")
+	for _, ok := range []string{
+		"banner.png", "banner-2.png", "banner_2.png", "a.b.png", "BANNER.PNG",
+	} {
+		if _, err := addLocalAssetBytes(root, ok, []byte("x")); err != nil {
+			t.Errorf("%q should be allowed: %v", ok, err)
+		}
 	}
 }

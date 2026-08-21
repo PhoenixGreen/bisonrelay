@@ -2340,17 +2340,6 @@ func handleClientCmd(cc *clientCtx, cmd *cmd) (interface{}, error) {
 	case CTListLocalAssets:
 		return listLocalAssets(cc.pagesHost.config().PagesPath)
 
-	case CTAddLocalAsset:
-		var srcPath string
-		if err := cmd.decode(&srcPath); err != nil {
-			return nil, err
-		}
-		root := cc.pagesHost.config().PagesPath
-		if _, err := addLocalAsset(root, srcPath); err != nil {
-			return nil, err
-		}
-		return listLocalAssets(root)
-
 	case CTDeleteLocalAsset:
 		var name string
 		if err := cmd.decode(&name); err != nil {
