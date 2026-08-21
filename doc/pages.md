@@ -101,9 +101,10 @@ it is one that has to be made to work at a width its author never saw.
 A row's marker carries its height and how it divides. `split` puts two cells
 at opposite edges with the slack between them. `left`, `center` and `right`
 place one cell, or two sitting together a fixed gap apart — which is a logo
-and the title beside it, the one shape `split` cannot make. In `left` the
-second cell takes whatever the first leaves, so a title runs to the far edge
-rather than stopping halfway. **The height is
+and the title beside it, the one shape `split` cannot make. The second cell takes
+whatever the first leaves, whichever way the row runs, so a title has the room
+of the banner rather than half of it. The mode says where that writing sits in
+the room, not how much of it there is. **The height is
 fixed and everything in the row is sized to it** — a logo is as tall as its
 row, a title is set to its row — so a banner resizes without anything in it
 changing height.

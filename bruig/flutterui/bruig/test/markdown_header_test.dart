@@ -600,4 +600,54 @@ right: # Title
       expect(tester.takeException(), isNull);
     });
   });
+
+  group('room for the second cell, whichever way the row runs', () {
+    setUp(() => SharedPreferences.setMockInitialValues({}));
+
+    Future<double> widthIn(WidgetTester tester, String mode) async {
+      const title = "A title that wants a good deal more than half the room";
+      await tester.pumpWidget(drawHost(MarkdownArea("""
+--header--
+--row[30,$mode]--
+left: # Logo
+right: # $title
+--/row--
+--/header--
+""", false), width: 1200));
+      await tester.pump();
+      return tester.getRect(find.text(title)).width;
+    }
+
+    testWidgets('centre and right get what left gets', (tester) async {
+      // Holding each cell to half meant a title in a centred row was
+      // cropped while the room it needed sat empty beside it. A row's
+      // alignment says where its writing sits, not how much of the banner
+      // it may use.
+      var left = await widthIn(tester, "left");
+      expect(await widthIn(tester, "center"), moreOrLessEquals(left, epsilon: 1));
+      expect(await widthIn(tester, "right"), moreOrLessEquals(left, epsilon: 1));
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('and the alignment still says where it sits', (tester) async {
+      Future<Rect> rectIn(String mode) async {
+        await tester.pumpWidget(drawHost(MarkdownArea("""
+--header--
+--row[30,$mode]--
+left: # Logo
+right: # Short
+--/row--
+--/header--
+""", false), width: 1200));
+        await tester.pump();
+        return tester.getRect(find.text("Short"));
+      }
+
+      var l = await rectIn("left");
+      var c = await rectIn("center");
+      var r = await rectIn("right");
+      expect(c.left, greaterThan(l.left));
+      expect(r.left, greaterThan(c.left));
+    });
+  });
 }
