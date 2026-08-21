@@ -324,56 +324,76 @@ class _MarkdownHeader extends StatelessWidget {
 
     var titleStyle = HeaderTextStyle.parse(fields);
     var background = embedImage(fields["background"]);
-    var total =
-        rows.fold<double>(0, (t, r) => t + r.height) + rule.boundedPadding * 2;
+    // The whole banner scales together in a narrow window, rather than each
+    // thing in it coping alone.
+    //
+    // Everything is sized from the rows, so scaling the rows scales the
+    // writing and the pictures with them and the proportions hold. Left to
+    // themselves the rows stayed the height they were written at whatever
+    // room there was, and the title absorbed the entire difference by
+    // condensing -- which is why a logo and a title looked too big for the
+    // banner on a small screen, and why the writing was cut on a smaller
+    // one.
+    return LayoutBuilder(builder: (context, constraints) {
+      var scale = rule.scaleFor(constraints.maxWidth);
+      var padding = rule.boundedPadding * scale;
+      var gap = rule.boundedGap * scale;
+      var total =
+          rows.fold<double>(0, (t, r) => t + r.height * scale) + padding * 2;
 
-    return Padding(
-      padding: EdgeInsets.symmetric(vertical: rule.boundedGap),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(rule.boundedRadius),
-        // As tall as its rows and no taller. The rows are what a writer
-        // sets, so the banner follows them rather than the other way about.
-        child: SizedBox(
-          height: total,
-          child: Stack(fit: StackFit.expand, children: [
-            if (background != null)
-              Positioned.fill(
-                // Cover, not contain: a banner fills its space and is
-                // cropped to it, which is what a background is.
-                child: isSvgMime(background.mime)
-                    ? SvgPicture.memory(background.bytes, fit: BoxFit.cover)
-                    : Image.memory(background.bytes,
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stack) =>
-                            const SizedBox.shrink()),
-              ),
-            // A wash over the picture, so writing stays readable on top of
-            // whatever was chosen. Skipped where there is no picture, since
-            // it would only mute the page's own background.
-            if (background != null && rule.scrim > 0)
-              Positioned.fill(
-                child: ColoredBox(
-                  color: theme.colors.surface
-                      .withValues(alpha: rule.scrim.clamp(0, 1)),
+      return Padding(
+        padding: EdgeInsets.symmetric(vertical: rule.boundedGap),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(rule.boundedRadius),
+          // As tall as its rows and no taller. The rows are what a writer
+          // sets, so the banner follows them rather than the other way about.
+          child: SizedBox(
+            height: total,
+            child: Stack(fit: StackFit.expand, children: [
+              if (background != null)
+                Positioned.fill(
+                  // Cover, not contain: a banner fills its space and is
+                  // cropped to it, which is what a background is.
+                  child: isSvgMime(background.mime)
+                      ? SvgPicture.memory(background.bytes, fit: BoxFit.cover)
+                      : Image.memory(background.bytes,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stack) =>
+                              const SizedBox.shrink()),
+                ),
+              // A wash over the picture, so writing stays readable on top of
+              // whatever was chosen. Skipped where there is no picture, since
+              // it would only mute the page's own background.
+              if (background != null && rule.scrim > 0)
+                Positioned.fill(
+                  child: ColoredBox(
+                    color: theme.colors.surface
+                        .withValues(alpha: rule.scrim.clamp(0, 1)),
+                  ),
+                ),
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: padding),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    SizedBox(height: padding),
+                    for (var row in rows)
+                      _HeaderRow(
+                          row: row,
+                          style: titleStyle,
+                          rule: rule,
+                          scale: scale,
+                          gap: gap),
+                    SizedBox(height: padding),
+                  ],
                 ),
               ),
-            Padding(
-              padding: EdgeInsets.symmetric(horizontal: rule.boundedPadding),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  SizedBox(height: rule.boundedPadding),
-                  for (var row in rows)
-                    _HeaderRow(row: row, style: titleStyle, rule: rule),
-                  SizedBox(height: rule.boundedPadding),
-                ],
-              ),
-            ),
-          ]),
+            ]),
+          ),
         ),
-      ),
-    );
+      );
+    });
   }
 }
 
@@ -382,8 +402,22 @@ class _HeaderRow extends StatelessWidget {
   final HeaderRow row;
   final HeaderTextStyle style;
   final HeaderRule rule;
-  const _HeaderRow(
-      {required this.row, required this.style, required this.rule});
+
+  /// scale is how much of its written size the banner is being drawn at.
+  final double scale;
+
+  /// gap is the space between two cells, already scaled.
+  final double gap;
+
+  const _HeaderRow({
+    required this.row,
+    required this.style,
+    required this.rule,
+    required this.scale,
+    required this.gap,
+  });
+
+  double get height => row.height * scale;
 
   /// _isMarkdown is whether a cell holds a block rather than a title.
   ///
@@ -422,7 +456,7 @@ class _HeaderRow extends StatelessWidget {
       // The row's height is what the writing is set to, which is what makes
       // a title sit level with the logo beside it without either being told
       // about the other.
-      fitTo: row.height,
+      fitTo: height,
       within: within,
     );
   }
@@ -441,7 +475,7 @@ class _HeaderRow extends StatelessWidget {
             child: Align(
                 alignment: Alignment.centerLeft,
                 child: _cell(context, row.cells[0], Alignment.centerLeft))),
-        SizedBox(width: rule.boundedGap),
+        SizedBox(width: gap),
         Expanded(
             child: Align(
                 alignment: Alignment.centerRight,
@@ -456,7 +490,7 @@ class _HeaderRow extends StatelessWidget {
       var second = _cell(context, row.cells[1], Alignment.centerLeft);
 
       content = LayoutBuilder(builder: (context, constraints) {
-        var room = constraints.maxWidth - rule.boundedGap;
+        var room = constraints.maxWidth - gap;
         if (row.mode == HeaderRowMode.left) {
           // The second cell takes whatever the first leaves. A title beside
           // a logo is the long half, and holding it to a share of the row
@@ -470,7 +504,7 @@ class _HeaderRow extends StatelessWidget {
               constraints: BoxConstraints(maxWidth: room / 2),
               child: first,
             ),
-            SizedBox(width: rule.boundedGap),
+            SizedBox(width: gap),
             Expanded(child: second),
           ]);
         }
@@ -485,7 +519,7 @@ class _HeaderRow extends StatelessWidget {
           children: [
             ConstrainedBox(
                 constraints: BoxConstraints(maxWidth: half), child: first),
-            SizedBox(width: rule.boundedGap),
+            SizedBox(width: gap),
             ConstrainedBox(
                 constraints: BoxConstraints(maxWidth: half), child: second),
           ],
@@ -498,6 +532,6 @@ class _HeaderRow extends StatelessWidget {
       );
     }
 
-    return SizedBox(height: row.height, child: content);
+    return SizedBox(height: height, child: content);
   }
 }

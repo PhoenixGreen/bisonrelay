@@ -1055,6 +1055,25 @@ class _MarkdownEditorState extends State<_MarkdownEditor> {
               "what goes in it, is written into the page; these say what it "
               "looks like here."),
           const Txt.M("Banner"),
+          ctx.slider("md-hdrfull", guide.header.fullSizeAt,
+              label: (v) => "Full size at ${v.round()}px wide",
+              min: 300,
+              max: 1600,
+              divisions: 26,
+              onCommit: (v) => edit((g) =>
+                  g.copyWith(header: g.header.copyWith(fullSizeAt: v)))),
+          ctx.note("Narrower than this and the whole banner scales down "
+              "together -- its rows, and the writing and pictures sized from "
+              "them. Left to themselves the rows keep the height they were "
+              "written at however little room there is, and a title has to "
+              "absorb the whole difference on its own."),
+          ctx.slider("md-hdrmin", guide.header.smallestScale * 100,
+              label: (v) => "Never smaller than ${v.round()}%",
+              min: 20,
+              max: 100,
+              divisions: 16,
+              onCommit: (v) => edit((g) => g.copyWith(
+                  header: g.header.copyWith(smallestScale: v / 100)))),
           ctx.slider("md-hdrpad", guide.header.padding,
               label: (v) => "Space inside: ${v.round()}px",
               max: 64,

@@ -108,6 +108,13 @@ fixed and everything in the row is sized to it** — a logo is as tall as its
 row, a title is set to its row — so a banner resizes without anything in it
 changing height.
 
+The heights are what the banner is drawn at in a window wide enough for it.
+In a narrower one **the whole banner scales down together** — its rows, and
+the writing and pictures sized from them — so it keeps its proportions instead
+of the title absorbing the whole difference on its own. Only ever down, and
+only so far; both limits are in Settings > Appearance > Markdown > Header and
+navigation.
+
 A title too long for its row is **condensed rather than shrunk**: the letters
 squeeze and the cap height stays, so the row still looks its height. Past
 about two-thirds it stops being readable and is cut with an ellipsis instead.

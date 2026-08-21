@@ -145,15 +145,16 @@ titlebordercolor: #ffffff
   group('a title too long for its row', () {
     setUp(() => SharedPreferences.setMockInitialValues({}));
 
-    Future<Rect> titleIn(WidgetTester tester, String words,
-        {double width = 1000}) async {
+    Future<Rect> titleIn(WidgetTester tester, String words) async {
+      // One width throughout: a banner scales with the room it has, so
+      // measuring two widths would be measuring that instead of this.
       await tester.pumpWidget(drawHost(MarkdownArea("""
 --header--
 --row[60,left]--
 # $words
 --/row--
 --/header--
-""", false), width: width));
+""", false), width: 900));
       await tester.pump();
       return tester.getRect(find.text(words));
     }
@@ -162,19 +163,19 @@ titlebordercolor: #ffffff
       // The whole point of fixing a row's height: shrinking the letters
       // would change how tall the writing looks and undo it. Squeezing them
       // keeps the cap height and loses only the width.
-      var roomy = await titleIn(tester, "Short");
-      var cramped = await titleIn(
-          tester, "A very much longer title than will ever fit across here",
-          width: 300);
+      var short = await titleIn(tester, "Short");
+      var long = await titleIn(tester,
+          "A very much longer title than will ever fit across this banner");
 
-      expect(cramped.height, moreOrLessEquals(roomy.height, epsilon: 2));
+      expect(long.height, moreOrLessEquals(short.height, epsilon: 2));
+      expect(long.width, greaterThan(short.width));
       expect(tester.takeException(), isNull);
     });
 
     testWidgets('a short one is not stretched to fill the row', (tester) async {
-      var narrow = await titleIn(tester, "Hi", width: 400);
-      var wide = await titleIn(tester, "Hi", width: 1200);
-      expect(wide.width, moreOrLessEquals(narrow.width, epsilon: 1));
+      var once = await titleIn(tester, "Hi");
+      var again = await titleIn(tester, "Hi");
+      expect(again.width, moreOrLessEquals(once.width, epsilon: 1));
     });
   });
 

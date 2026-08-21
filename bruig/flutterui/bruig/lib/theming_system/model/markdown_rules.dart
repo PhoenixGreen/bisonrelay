@@ -526,8 +526,28 @@ class HeaderRule {
   /// reads in. This is the reader's answer to that.
   final double scrim;
 
+  /// fullSizeAt is the width a banner is drawn at the sizes it was written
+  /// with. Narrower than this and the whole banner scales down together.
+  ///
+  /// Everything in a banner is sized from its rows, so scaling the rows
+  /// scales the writing and the pictures with them -- which is what keeps a
+  /// logo and a title looking the size they were meant to be. Without it the
+  /// rows stayed the height they were asked for however little room there
+  /// was, and a title had to absorb the whole difference by condensing until
+  /// it was cut.
+  ///
+  /// Only ever down. A banner on a wide screen is the size it was written,
+  /// not a bigger one.
+  final double fullSizeAt;
+
+  /// smallestScale is as far down as that goes. Past it a banner has stopped
+  /// being legible rather than being smaller.
+  final double smallestScale;
+
   const HeaderRule({
     this.height = 220,
+    this.fullSizeAt = 800,
+    this.smallestScale = 0.5,
     this.padding = 20,
     this.radius = 8,
     this.gap = 12,
@@ -538,9 +558,18 @@ class HeaderRule {
   double get boundedPadding => padding.clamp(0, 64);
   double get boundedRadius => radius.clamp(0, 48);
   double get boundedGap => gap.clamp(0, 48);
+  double get boundedFullSizeAt => fullSizeAt.clamp(200, 2000);
+  double get boundedSmallestScale => smallestScale.clamp(0.2, 1);
+
+  /// scaleFor is how much of its written size a banner is drawn at, in the
+  /// room it has.
+  double scaleFor(double available) =>
+      (available / boundedFullSizeAt).clamp(boundedSmallestScale, 1.0);
 
   HeaderRule copyWith({
     double? height,
+    double? fullSizeAt,
+    double? smallestScale,
     double? padding,
     double? radius,
     double? gap,
@@ -548,6 +577,8 @@ class HeaderRule {
   }) =>
       HeaderRule(
         height: height ?? this.height,
+        fullSizeAt: fullSizeAt ?? this.fullSizeAt,
+        smallestScale: smallestScale ?? this.smallestScale,
         padding: padding ?? this.padding,
         radius: radius ?? this.radius,
         gap: gap ?? this.gap,
@@ -556,6 +587,8 @@ class HeaderRule {
 
   Map<String, Object?> toJson() => {
         "height": height,
+        "fullSizeAt": fullSizeAt,
+        "smallestScale": smallestScale,
         "padding": padding,
         "radius": radius,
         "gap": gap,
@@ -571,7 +604,9 @@ class HeaderRule {
       );
 
   @override
-  int get hashCode => Object.hash(height, padding, radius, gap, scrim);
+  int get hashCode =>
+      Object.hash(height, padding, radius, gap, scrim, fullSizeAt,
+          smallestScale);
 
   @override
   bool operator ==(Object other) =>

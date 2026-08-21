@@ -324,12 +324,34 @@ right: # Title
           tester.getRect(find.text("Logo")).right;
     }
 
-    testWidgets('stay a fixed distance apart, whatever the width',
+    testWidgets('sit together rather than sharing out the width',
         (tester) async {
-      // The whole reason this is not split: sharing the width out is what
-      // made a logo and its title drift apart on a wide window.
-      expect(await gapAt(tester, 1200),
-          moreOrLessEquals(await gapAt(tester, 600), epsilon: 1));
+      // Sharing the width out is what made a logo and its title drift apart
+      // on a wide window. Measured as a share of the banner rather than in
+      // pixels, since a banner scales with the room it has -- an absolute
+      // figure would be measuring that instead.
+      Future<double> shareAt(double width) async {
+        await tester.pumpWidget(drawHost(MarkdownArea("""
+--header--
+--row[60,left]--
+left: # Logo
+right: # Title
+--/row--
+--/header--
+""", false), width: width));
+        await tester.pump();
+        var banner = tester.getRect(find
+            .ancestor(of: find.text("Logo"), matching: find.byType(ClipRRect))
+            .first);
+        var gap = tester.getRect(find.text("Title")).left -
+            tester.getRect(find.text("Logo")).right;
+        return gap / banner.width;
+      }
+
+      // A small share of the banner at either width -- not the half that
+      // splitting it would give.
+      expect(await shareAt(1200), lessThan(0.15));
+      expect(await shareAt(600), lessThan(0.15));
     });
 
     testWidgets('and split still pushes them to the edges', (tester) async {
@@ -407,6 +429,64 @@ right: # Second
           .first);
       var first = tester.getRect(find.textContaining("A very long first"));
       expect(first.width, lessThanOrEqualTo(banner.width / 2 + 2));
+      expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('a banner in a smaller window', () {
+    setUp(() => SharedPreferences.setMockInitialValues({}));
+
+    Future<({double banner, double logo})> at(
+        WidgetTester tester, double width) async {
+      await tester.pumpWidget(drawHost(MarkdownArea("""
+--header--
+--row[120,left]--
+left: # Logo
+right: # Title
+--/row--
+--/header--
+""", false), width: width));
+      await tester.pump();
+      return (
+        banner: tester.getRect(find
+            .ancestor(of: find.text("Logo"), matching: find.byType(ClipRRect))
+            .first)
+            .height,
+        logo: tester.getRect(find.text("Logo")).height,
+      );
+    }
+
+    testWidgets('scales as a whole, keeping its proportions', (tester) async {
+      var wide = await at(tester, 900);
+      var narrow = await at(tester, 400);
+
+      // Shorter overall, and the writing shorter with it -- which is the
+      // point. Left alone the rows kept their written height whatever room
+      // there was, and the title absorbed the whole difference by
+      // condensing until it was cut.
+      expect(narrow.banner, lessThan(wide.banner));
+      expect(narrow.logo, lessThan(wide.logo));
+
+      // The same shape at both: the writing is the same share of the
+      // banner, which is what "disproportionate on a small screen" was.
+      expect(narrow.logo / narrow.banner,
+          moreOrLessEquals(wide.logo / wide.banner, epsilon: 0.02));
+    });
+
+    testWidgets('never larger than it was written', (tester) async {
+      // Only ever down. A banner on a wide screen is the size it was
+      // written, not a bigger one.
+      var wide = await at(tester, 2000);
+      var atFull = await at(tester, 900);
+      expect(wide.banner, moreOrLessEquals(atFull.banner, epsilon: 1));
+    });
+
+    testWidgets('stops shrinking before it stops being legible',
+        (tester) async {
+      var tiny = await at(tester, 120);
+      var wide = await at(tester, 900);
+      // HeaderRule.smallestScale is half by default.
+      expect(tiny.banner / wide.banner, greaterThanOrEqualTo(0.49));
       expect(tester.takeException(), isNull);
     });
   });

@@ -353,14 +353,45 @@ class _HeaderTextState extends State<HeaderText> {
             overflow: clipped ? TextOverflow.ellipsis : TextOverflow.visible,
           );
 
-      Widget out = words(painted);
+      /// squeezed applies the condensing to one layer.
+      ///
+      /// Each layer separately, rather than the two of them together, so
+      /// that what fills the letters is handed the bounds it is painted
+      /// into. Filling the pair as one meant the picture covered the
+      /// outline as well and the outline stopped being one; filling before
+      /// the squeeze meant the shader was measured against a box the
+      /// squeeze then changed. This is the arrangement that is neither.
+      Widget squeezed(Widget layer) {
+        if (squeeze >= 1) return layer;
+        // Clipped as well as sized: a Transform does not clip, and the box
+        // inside it is deliberately wider than the room.
+        return ClipRect(
+          child: SizedBox(
+            width: available,
+            child: Transform(
+              alignment: within,
+              transform: Matrix4.diagonal3Values(squeeze, 1, 1),
+              child: SizedBox(width: available / squeeze, child: layer),
+            ),
+          ),
+        );
+      }
+
+      var shader = _shaderFor(style, _fill);
+      Widget fill = squeezed(words(painted));
+      if (shader != null) {
+        fill = ShaderMask(
+            blendMode: BlendMode.srcIn, shaderCallback: shader, child: fill);
+      }
+
+      Widget out = fill;
 
       if (style.outline > 0) {
         // Drawn underneath rather than over: a stroke sits half inside the
         // letter, so painting it on top would eat into the fill and thin
         // everything out. Underneath, only the outer half shows, which is
         // what an outline is.
-        var stroke = painted.copyWith(
+        var strokeStyle = painted.copyWith(
           color: null,
           foreground: Paint()
             ..style = PaintingStyle.stroke
@@ -370,52 +401,17 @@ class _HeaderTextState extends State<HeaderText> {
                 ? Colors.white
                 : (style.outlineColor ?? theme.colors.onSurface),
         );
-        out = Stack(children: [
-          if (style.outlineGradient.isEmpty)
-            words(stroke)
-          else
-            ShaderMask(
-              blendMode: BlendMode.srcIn,
-              shaderCallback: (bounds) =>
-                  LinearGradient(colors: style.outlineGradient).createShader(
-                      Rect.fromLTWH(0, 0, bounds.width, bounds.height)),
-              child: words(stroke),
-            ),
-          words(painted),
-        ]);
-      }
-
-      if (squeeze < 1) {
-        // Only the width. Scaling both would change how tall the writing
-        // looks, which is what fixing the row's height prevents.
-        //
-        // Clipped as well as sized. A Transform does not clip, and the box
-        // inside it is deliberately wider than the room -- so anything the
-        // scale does not bring back inside would paint over the rest of the
-        // banner rather than stopping at the cell.
-        out = ClipRect(
-          child: SizedBox(
-            width: available,
-            child: Transform(
-              alignment: within,
-              transform: Matrix4.diagonal3Values(squeeze, 1, 1),
-              child: SizedBox(width: available / squeeze, child: out),
-            ),
-          ),
-        );
-      }
-
-      // The fill goes on last, over the finished shape.
-      //
-      // It used to be poured into the words before they were squeezed, so
-      // the shader was measured against a box wider than the one that ended
-      // up on screen -- and the letters past where it reached were left in
-      // the plain colour, which is white under a fill. Putting it here means
-      // the bounds it is handed are the bounds it is painted into.
-      var shader = _shaderFor(style, _fill);
-      if (shader != null) {
-        out = ShaderMask(
-            blendMode: BlendMode.srcIn, shaderCallback: shader, child: out);
+        Widget stroke = words(strokeStyle);
+        if (style.outlineGradient.isNotEmpty) {
+          stroke = ShaderMask(
+            blendMode: BlendMode.srcIn,
+            shaderCallback: (bounds) => LinearGradient(
+                    colors: style.outlineGradient)
+                .createShader(Rect.fromLTWH(0, 0, bounds.width, bounds.height)),
+            child: stroke,
+          );
+        }
+        out = Stack(children: [squeezed(stroke), fill]);
       }
 
       if (style.background != null ||
