@@ -124,6 +124,32 @@ left: [Home](br://abc/index.md)
     });
   });
 
+  group('two cells together', () {
+    test('any mode but split takes two, side by side', () {
+      // A logo and the title beside it, which is the commonest thing a
+      // banner holds and the one shape split cannot make.
+      var rows = rowsOf('''
+--header--
+--row[96,left]--
+left: ![](logo)
+right: # My site
+--/row--
+--/header--
+''');
+      expect(rows.first.mode, HeaderRowMode.left);
+      expect(rows.first.cells, hasLength(2));
+    });
+
+    test('and both are kept, rather than one being dropped', () {
+      for (var mode in ["left", "center", "right"]) {
+        var rows = rowsOf(
+            "--header--\n--row[60,$mode]--\nleft: A\nright: B\n"
+            "--/row--\n--/header--");
+        expect(rows.first.cells, ["A", "B"], reason: mode);
+      }
+    });
+  });
+
   group('the banner itself', () {
     test('keeps its own fields apart from its rows', () {
       var e = parseBlock('''
@@ -278,6 +304,57 @@ right: # And another on the right
 ''', false), width: 320));
       await tester.pump();
       expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('two cells drawn together', () {
+    setUp(() => SharedPreferences.setMockInitialValues({}));
+
+    Future<double> gapAt(WidgetTester tester, double width) async {
+      await tester.pumpWidget(drawHost(MarkdownArea("""
+--header--
+--row[60,left]--
+left: # Logo
+right: # Title
+--/row--
+--/header--
+""", false), width: width));
+      await tester.pump();
+      return tester.getRect(find.text("Title")).left -
+          tester.getRect(find.text("Logo")).right;
+    }
+
+    testWidgets('stay a fixed distance apart, whatever the width',
+        (tester) async {
+      // The whole reason this is not split: sharing the width out is what
+      // made a logo and its title drift apart on a wide window.
+      expect(await gapAt(tester, 1200),
+          moreOrLessEquals(await gapAt(tester, 600), epsilon: 1));
+    });
+
+    testWidgets('and split still pushes them to the edges', (tester) async {
+      await tester.pumpWidget(drawHost(MarkdownArea("""
+--header--
+--row[60,split]--
+left: # Logo
+right: # Title
+--/row--
+--/header--
+""", false), width: 1000));
+      await tester.pump();
+
+      // Measured against the banner rather than the window: the markdown
+      // area has gutters of its own, so an absolute figure here would be
+      // measuring those.
+      var banner = tester.getRect(find
+          .ancestor(of: find.text("Logo"), matching: find.byType(ClipRRect))
+          .first);
+      var gap = tester.getRect(find.text("Title")).left -
+          tester.getRect(find.text("Logo")).right;
+      // A third of the banner rather than a half: the writing is set to the
+      // row's height, so at 60px the two words are wide themselves and the
+      // slack between them is what is left over.
+      expect(gap, greaterThan(banner.width / 3));
     });
   });
 }

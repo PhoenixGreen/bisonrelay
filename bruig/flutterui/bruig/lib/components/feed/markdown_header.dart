@@ -25,9 +25,14 @@ import 'package:markdown/markdown.dart' as md;
 /// HeaderRowMode is how a row divides its width.
 ///
 /// split is a different layout from the rest rather than a setting on it:
-/// two cells pushed to opposite edges, against one cell placed somewhere.
-/// Trying to express both as alignments of one row is what made the old
-/// header's gaps grow with the window.
+/// two cells pushed to opposite edges, against cells sitting together
+/// somewhere. Trying to express both as alignments of one row is what made
+/// the old header's gaps grow with the window.
+///
+/// The other three take one cell or two. Two sit together in the order they
+/// were written, a fixed gap apart -- which is a logo and the title beside
+/// it, the commonest thing a banner holds and the one shape split cannot
+/// make.
 enum HeaderRowMode {
   split,
   center,
@@ -442,6 +447,23 @@ class _HeaderRow extends StatelessWidget {
                 alignment: Alignment.centerRight,
                 child: _cell(context, row.cells[1], Alignment.centerRight))),
       ]);
+    } else if (row.cells.length > 1) {
+      // Two cells together, in the order they were written, a fixed gap
+      // apart. The gap is fixed rather than shared out, or a logo and the
+      // title beside it would drift apart as the window widened -- which is
+      // what split is for when that is wanted.
+      content = Row(
+        mainAxisAlignment: switch (row.mode) {
+          HeaderRowMode.center => MainAxisAlignment.center,
+          HeaderRowMode.right => MainAxisAlignment.end,
+          _ => MainAxisAlignment.start,
+        },
+        children: [
+          Flexible(child: _cell(context, row.cells[0], Alignment.centerLeft)),
+          SizedBox(width: rule.boundedGap),
+          Flexible(child: _cell(context, row.cells[1], row.mode.alignment)),
+        ],
+      );
     } else {
       content = Align(
         alignment: row.mode.alignment,

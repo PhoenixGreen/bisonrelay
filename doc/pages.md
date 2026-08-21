@@ -98,8 +98,10 @@ At most two rows of at most two cells. Every shape people build — a logo
 beside a title, a bar of links under them — fits in that, and every shape past
 it is one that has to be made to work at a width its author never saw.
 
-A row's marker carries its height and how it divides: `split` puts two cells
-at opposite edges, `center`, `left` and `right` place one. **The height is
+A row's marker carries its height and how it divides. `split` puts two cells
+at opposite edges with the slack between them. `left`, `center` and `right`
+place one cell, or two sitting together a fixed gap apart — which is a logo
+and the title beside it, the one shape `split` cannot make. **The height is
 fixed and everything in the row is sized to it** — a logo is as tall as its
 row, a title is set to its row — so a banner resizes without anything in it
 changing height.
@@ -123,8 +125,11 @@ titletracking: 3       letter spacing
 titlecolor: #ffcc00
 titlegradient: #f00,#00f       colours across the words
 titleimage: --embed[...]--     a picture inside the words
+titleoutline: 2                a line round the letters
+titleoutlinecolor: #ffffff
+titleoutlinegradient: #f00,#00f
 titlebackground: #00000080     #rrggbbaa, so it can be see-through
-titleborder: 2
+titleborder: 2                 a box round the whole title, not the letters
 titlebordercolor: #ffffff
 titleradius: 8
 titlepadding: 12

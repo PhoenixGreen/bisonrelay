@@ -177,4 +177,72 @@ titlebordercolor: #ffffff
       expect(wide.width, moreOrLessEquals(narrow.width, epsilon: 1));
     });
   });
+
+  group('an outline round the letters', () {
+    test('reads a width and a colour, bounded', () {
+      var st = HeaderTextStyle.parse({
+        "titleoutline": "3",
+        "titleoutlinecolor": "#ffffff",
+      });
+      expect(st.outline, 3);
+      expect(st.outlineColor, const Color(0xffffffff));
+      expect(HeaderTextStyle.parse({"titleoutline": "99"}).outline, 12);
+    });
+
+    test('and takes a gradient, as the fill does', () {
+      var st = HeaderTextStyle.parse({"titleoutlinegradient": "#f00,#00f"});
+      expect(st.outlineGradient, hasLength(2));
+      // One colour is a colour, not a gradient -- the same rule the fill
+      // follows, so the two read alike.
+      var one = HeaderTextStyle.parse({"titleoutlinegradient": "#f00"});
+      expect(one.outlineGradient, isEmpty);
+      expect(one.outlineColor, const Color(0xffff0000));
+    });
+
+    test('is distinct from the box round the whole title', () {
+      // titleborder draws a box; titleoutline draws round the letters.
+      var st = HeaderTextStyle.parse(
+          {"titleoutline": "2", "titleborder": "4"});
+      expect(st.outline, 2);
+      expect(st.borderWidth, 4);
+    });
+
+    test('counts as something said about the title', () {
+      expect(HeaderTextStyle.parse({"titleoutline": "2"}).plain, isFalse);
+    });
+  });
+
+  group('an outlined title is drawn', () {
+    setUp(() => SharedPreferences.setMockInitialValues({}));
+
+    testWidgets('as the words twice, stroke under fill', (tester) async {
+      // A stroke sits half inside the letter, so painting it over the fill
+      // would eat into it. Underneath, only the outer half shows.
+      await tester.pumpWidget(drawHost(MarkdownArea("""
+--header--
+titleoutline: 2
+titleoutlinecolor: #ffffff
+--row[60,left]--
+# My site
+--/row--
+--/header--
+""", false)));
+      await tester.pump();
+
+      expect(find.text("My site"), findsNWidgets(2));
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('and once when there is no outline', (tester) async {
+      await tester.pumpWidget(drawHost(MarkdownArea("""
+--header--
+--row[60,left]--
+# My site
+--/row--
+--/header--
+""", false)));
+      await tester.pump();
+      expect(find.text("My site"), findsOneWidget);
+    });
+  });
 }

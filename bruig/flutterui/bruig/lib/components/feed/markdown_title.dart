@@ -27,6 +27,9 @@ const List<String> titleStyleFields = [
   "titlecolor",
   "titlegradient",
   "titleimage",
+  "titleoutline",
+  "titleoutlinecolor",
+  "titleoutlinegradient",
   "titlebackground",
   "titleborder",
   "titlebordercolor",
@@ -63,6 +66,13 @@ class HeaderTextStyle {
   final String? image;
   final Color? color;
   final Color? background;
+
+  /// outline is a line drawn round the letters themselves, as opposed to
+  /// [border], which is a box drawn round the whole title.
+  final double outline;
+  final Color? outlineColor;
+  final List<Color> outlineGradient;
+
   final Color? border;
   final double borderWidth;
   final double radius;
@@ -78,6 +88,9 @@ class HeaderTextStyle {
     this.image,
     this.color,
     this.background,
+    this.outline = 0,
+    this.outlineColor,
+    this.outlineGradient = const [],
     this.border,
     this.borderWidth = 0,
     this.radius = 0,
@@ -94,6 +107,7 @@ class HeaderTextStyle {
       tracking == 0 &&
       gradient.isEmpty &&
       image == null &&
+      outline == 0 &&
       color == null &&
       background == null &&
       border == null;
@@ -114,6 +128,7 @@ class HeaderTextStyle {
   factory HeaderTextStyle.parse(Map<String, String> fields) {
     var rawSize = (fields["titlesize"] ?? "").trim().toLowerCase();
     var colours = _colourList(fields["titlegradient"]);
+    var outlineColours = _colourList(fields["titleoutlinegradient"]);
     return HeaderTextStyle(
       size: double.tryParse(rawSize)?.clamp(8, 200),
       bold: (fields["titleweight"] ?? "").trim().toLowerCase() == "bold",
@@ -126,6 +141,11 @@ class HeaderTextStyle {
       color: _colour(fields["titlecolor"]) ??
           (colours.length == 1 ? colours.first : null),
       background: _colour(fields["titlebackground"]),
+      outline:
+          (double.tryParse(fields["titleoutline"] ?? "") ?? 0).clamp(0, 12),
+      outlineColor: _colour(fields["titleoutlinecolor"]) ??
+          (outlineColours.length == 1 ? outlineColours.first : null),
+      outlineGradient: outlineColours.length > 1 ? outlineColours : const [],
       border: _colour(fields["titlebordercolor"]),
       borderWidth:
           (double.tryParse(fields["titleborder"] ?? "") ?? 0).clamp(0, 16),
@@ -313,18 +333,54 @@ class _HeaderTextState extends State<HeaderText> {
       var clipped = squeeze < minCondense;
       if (clipped) squeeze = minCondense;
 
-      Widget out = Text(
-        _stripped,
-        style: painted,
-        maxLines: 1,
-        softWrap: false,
-        overflow: clipped ? TextOverflow.ellipsis : TextOverflow.visible,
-      );
+      Widget words(TextStyle style) => Text(
+            _stripped,
+            style: style,
+            maxLines: 1,
+            softWrap: false,
+            overflow: clipped ? TextOverflow.ellipsis : TextOverflow.visible,
+          );
 
-      var shader = _shaderFor(style, _fill);
-      if (shader != null) {
-        out = ShaderMask(
-            blendMode: BlendMode.srcIn, shaderCallback: shader, child: out);
+      // filled pours something into the letters, if anything is to be.
+      Widget filled(Widget child, Shader Function(Rect)? shader) =>
+          shader == null
+              ? child
+              : ShaderMask(
+                  blendMode: BlendMode.srcIn,
+                  shaderCallback: shader,
+                  child: child);
+
+      Widget out = filled(words(painted), _shaderFor(style, _fill));
+
+      if (style.outline > 0) {
+        // Drawn underneath rather than over: a stroke sits half inside the
+        // letter, so painting it on top would eat into the fill and thin
+        // everything out. Underneath, only the outer half shows, which is
+        // what an outline is.
+        //
+        // The same words twice, at the same size, so the two land on each
+        // other without either being told where the other is.
+        var stroke = painted.copyWith(
+          color: null,
+          foreground: Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = style.outline
+            ..strokeJoin = StrokeJoin.round
+            ..color = style.outlineGradient.isNotEmpty
+                ? Colors.white
+                : (style.outlineColor ?? theme.colors.onSurface),
+        );
+        out = Stack(children: [
+          filled(
+            words(stroke),
+            style.outlineGradient.isEmpty
+                ? null
+                : (bounds) => LinearGradient(colors: style.outlineGradient)
+                    .createShader(
+                        Rect.fromLTWH(0, 0, bounds.width, bounds.height)),
+          ),
+          out,
+        ]);
       }
 
       if (squeeze < 1) {
@@ -357,7 +413,12 @@ class _HeaderTextState extends State<HeaderText> {
         );
       }
 
-      return Align(alignment: within, child: out);
+      // Deliberately not wrapped in an Align: an Align fills the room it is
+      // given, and a cell that did that took the whole of its half of the
+      // row -- which put the gap after it wherever the half ended rather
+      // than beside the words. Where a title sits is the row's business;
+      // this only decides how wide the words are.
+      return out;
     });
   }
 }
