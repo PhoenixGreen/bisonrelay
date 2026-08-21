@@ -2844,6 +2844,23 @@ class PagesHostConfig {
 }
 
 @JsonSerializable()
+class LocalAsset {
+  final String name;
+  @JsonKey(defaultValue: 0)
+  final int size;
+  final DateTime modified;
+
+  /// path is what a page writes to show it -- "assets/banner.png". Sent by
+  /// the client rather than rebuilt here, so the two cannot drift.
+  @JsonKey(defaultValue: "")
+  final String path;
+
+  LocalAsset(this.name, this.size, this.modified, this.path);
+  factory LocalAsset.fromJson(Map<String, dynamic> json) =>
+      _$LocalAssetFromJson(json);
+}
+
+@JsonSerializable()
 class LocalPage {
   final String name;
   @JsonKey(defaultValue: 0)
@@ -5042,6 +5059,21 @@ abstract class PluginPlatform {
   Future<List<LocalPage>> deleteLocalPage(String name) async =>
       _localPages(await asyncCall(CTDeleteLocalPage, name));
 
+  // Pictures a site shows, kept as files of their own so one behind every
+  // page crosses the wire once.
+  Future<List<LocalAsset>> listLocalAssets() async =>
+      _localAssets(await asyncCall(CTListLocalAssets, null));
+
+  Future<List<LocalAsset>> addLocalAsset(String srcPath) async =>
+      _localAssets(await asyncCall(CTAddLocalAsset, srcPath));
+
+  Future<List<LocalAsset>> deleteLocalAsset(String path) async =>
+      _localAssets(await asyncCall(CTDeleteLocalAsset, path));
+
+  List<LocalAsset> _localAssets(dynamic res) => res == null
+      ? List.empty()
+      : (res as List).map<LocalAsset>((v) => LocalAsset.fromJson(v)).toList();
+
   List<LocalPage> _localPages(dynamic res) => res == null
       ? List.empty()
       : (res as List).map<LocalPage>((v) => LocalPage.fromJson(v)).toList();
@@ -5528,6 +5560,9 @@ const int CTListLocalPages = 0xc2;
 const int CTReadLocalPage = 0xc3;
 const int CTWriteLocalPage = 0xc4;
 const int CTDeleteLocalPage = 0xc5;
+const int CTListLocalAssets = 0xd6;
+const int CTAddLocalAsset = 0xd7;
+const int CTDeleteLocalAsset = 0xd8;
 const int CTListStoreProducts = 0xc6;
 const int CTSaveStoreProduct = 0xc7;
 const int CTDeleteStoreProduct = 0xc8;

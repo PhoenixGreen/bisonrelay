@@ -13,8 +13,10 @@ import (
 	"github.com/decred/slog"
 )
 
-// PartialsDir is where a site keeps the fragments its pages share.
+// PartialsDir is where a site keeps the fragments its pages share, and
+// AssetsDir the pictures they show.
 const PartialsDir = "partials"
+const AssetsDir = "assets"
 
 // MaxPartialsPerPage bounds how many fragments one page may reach through
 // others. A page needing more than this has stopped being a page with shared
@@ -151,6 +153,11 @@ func (pr *PagesResource) Fulfill(ctx context.Context, uid clientintf.UserID,
 
 	// Only Markdown carries fragments, and only a page the client is
 	// missing something for needs a bundle.
+	//
+	// A picture is deliberately never bundled with the page that shows it.
+	// It is asked for on its own and kept, so a banner behind every page of
+	// a site crosses the wire once -- which is the whole reason a picture
+	// is a file here rather than something written into the page.
 	if filepath.Ext(pr.filename(req.Path)) != ".md" {
 		return page, nil
 	}

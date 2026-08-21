@@ -2533,6 +2533,21 @@ Map<String, dynamic> _$PagesHostConfigToJson(PagesHostConfig instance) =>
       'http_upstream': instance.httpUpstream,
     };
 
+LocalAsset _$LocalAssetFromJson(Map<String, dynamic> json) => LocalAsset(
+      json['name'] as String,
+      (json['size'] as num?)?.toInt() ?? 0,
+      DateTime.parse(json['modified'] as String),
+      json['path'] as String? ?? '',
+    );
+
+Map<String, dynamic> _$LocalAssetToJson(LocalAsset instance) =>
+    <String, dynamic>{
+      'name': instance.name,
+      'size': instance.size,
+      'modified': instance.modified.toIso8601String(),
+      'path': instance.path,
+    };
+
 LocalPage _$LocalPageFromJson(Map<String, dynamic> json) => LocalPage(
       json['name'] as String,
       (json['size'] as num?)?.toInt() ?? 0,

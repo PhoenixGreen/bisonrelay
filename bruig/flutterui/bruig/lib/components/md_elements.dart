@@ -7,6 +7,7 @@ import 'package:bruig/components/feed/feed_image.dart';
 import 'package:bruig/components/feed/feed_render_scope.dart';
 import 'package:bruig/components/feed/markdown_blocks.dart';
 import 'package:bruig/components/feed/markdown_header.dart';
+import 'package:bruig/components/feed/page_image.dart';
 import 'package:bruig/components/feed/markdown_nav.dart';
 import 'package:bruig/components/pages/forms.dart';
 import 'package:bruig/components/snackbars.dart';
@@ -1032,6 +1033,13 @@ class MarkdownArea extends StatelessWidget {
           data: mk.isolate(text.trim()),
           extensionSet: mk.extensionSet,
           builders: mk.builders,
+          // A Markdown image with a path -- ![A banner](assets/banner.png)
+          // -- is a file of the site's own, fetched on its own and kept. See
+          // page_image.dart. Anything with a scheme is somebody else's and
+          // is left to the default.
+          imageBuilder: (uri, title, alt) => isPageAssetPath(uri.toString())
+              ? PageImage(path: uri.toString(), alt: alt ?? title)
+              : const SizedBox.shrink(),
           onTapLink: (text, url, _) {
             if (disableLinks) return;
             followMarkdownLink(context, url ?? "");

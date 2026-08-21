@@ -368,6 +368,17 @@ class PagesSession extends ChangeNotifier {
 /// not a navigation is told apart.
 const String _partialTarget = "partial:";
 
+/// _assetTarget marks a reply as a picture a page shows rather than a page.
+const String _assetTarget = "asset:";
+
+/// maxAssetsPerSite is how many pictures are kept for one site.
+///
+/// Pictures are the largest thing a site sends, so this is a memory bound
+/// rather than a message one -- what is held has already been paid for. A
+/// site with more pictures than this in one session refetches the oldest,
+/// which costs a message and is better than holding everything for ever.
+const int maxAssetsPerSite = 48;
+
 class ResourcesModel extends ChangeNotifier {
   /// [runStream] is false in tests, which have no golib to listen to.
   /// Everything else about the model works without it -- the stream only
@@ -482,6 +493,48 @@ class ResourcesModel extends ChangeNotifier {
   /// partialsFor is what is held for a user, for the request to say so.
   Map<String, String> partialsFor(String uid) => _partials[uid] ?? const {};
 
+  // _assets are the pictures held for each site, by path.
+  //
+  // Kept beside the fragments and for the same reason: a banner behind every
+  // page of a site is fetched once and shown on all of them. Bytes rather
+  // than text, and never bundled with a page -- a picture is asked for on
+  // its own, so a page arrives and draws while its pictures are still on
+  // their way.
+  final Map<String, Map<String, Uint8List>> _assets = {};
+
+  /// assetFor is the picture held at [path] for [uid], or null if it has not
+  /// arrived. Asking for one that is missing starts fetching it.
+  Uint8List? assetFor(String uid, String path, {PagesSession? session}) {
+    var held = _assets[uid];
+    var got = held?[path];
+    if (got != null) return got.isEmpty ? null : got;
+    if (held != null && held.containsKey(path)) {
+      // Asked for already, still on its way.
+      return null;
+    }
+    _requestAsset(uid, path, session);
+    return null;
+  }
+
+  void _requestAsset(String uid, String path, PagesSession? session) {
+    var held = _assets[uid] ??= {};
+    if (held.length >= maxAssetsPerSite) {
+      // Oldest first, which for a map is insertion order.
+      held.remove(held.keys.first);
+    }
+    // Marked as asked before the reply arrives, so a page drawn twice while
+    // it is in flight does not ask twice.
+    held[path] = Uint8List(0);
+
+    var segments = path.split("/").where((p) => p.isNotEmpty).toList();
+    Golib.fetchResource(uid, segments, null, session?.id ?? 0,
+            session?.currentPage?.pageID ?? 0, null, "$_assetTarget$path")
+        .catchError((exception) {
+      debugPrint("Unable to fetch picture $path: $exception");
+      return 0;
+    });
+  }
+
   /// forgetSite drops what is held for one site.
   ///
   /// Called when this client publishes: fragments are kept for the whole run
@@ -491,6 +544,7 @@ class ResourcesModel extends ChangeNotifier {
   /// app was restarted.
   void forgetSite(String uid) {
     _partials.remove(uid);
+    _assets.remove(uid);
     for (var sess in _sessions.values) {
       sess.partials = const {};
     }
@@ -558,6 +612,19 @@ class ResourcesModel extends ChangeNotifier {
   void _handleFetchedResources() async {
     var stream = Golib.fetchedResources();
     await for (var fr in stream) {
+      // A picture, not a page: kept for the site it came from and drawn
+      // wherever it is shown, without disturbing the history.
+      if (fr.asyncTargetID.startsWith(_assetTarget)) {
+        var path = fr.asyncTargetID.substring(_assetTarget.length);
+        if (fr.response.status == 200 && fr.response.data != null) {
+          (_assets[fr.uid] ??= {})[path] = fr.response.data!;
+        }
+        // Notified either way: a picture that is not there should stop
+        // whatever is waiting for it from waiting.
+        notifyListeners();
+        continue;
+      }
+
       // A shared fragment, not a page: stored for the site it came from and
       // put into whatever is on screen, without disturbing the history.
       if (fr.asyncTargetID.startsWith(_partialTarget)) {

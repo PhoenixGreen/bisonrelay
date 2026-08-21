@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:async';
 
 import 'package:bruig/config.dart';
@@ -732,6 +733,39 @@ class PagesModel extends ChangeNotifier {
   set ownUid(String v) => _ownUid = v;
 
   Future<String> readPage(String name) => Golib.readLocalPage(name);
+
+  // ---- the pictures a site shows ----
+  //
+  // Files of their own rather than written into a page. A banner behind
+  // every page of a site, written into every page, is that banner sent every
+  // time; asked for on its own it crosses the wire once. See
+  // resources.AssetsDir.
+
+  List<LocalAsset> _assets = const [];
+  List<LocalAsset> get assets => _assets;
+
+  Future<void> loadAssets() async {
+    _assets = await Golib.listLocalAssets();
+    notifyListeners();
+  }
+
+  /// addAsset copies a file into the site and returns what a page writes to
+  /// show it.
+  Future<String> addAsset(String srcPath) async {
+    _assets = await Golib.addLocalAsset(srcPath);
+    notifyListeners();
+    _ownSiteChanged();
+    var name = srcPath.split(Platform.pathSeparator).last;
+    return _assets
+        .firstWhere((a) => a.name == name, orElse: () => _assets.last)
+        .path;
+  }
+
+  Future<void> deleteAsset(String path) async {
+    _assets = await Golib.deleteLocalAsset(path);
+    notifyListeners();
+    _ownSiteChanged();
+  }
 
   // ---- the store ----
   //

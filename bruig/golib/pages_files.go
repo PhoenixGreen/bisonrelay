@@ -21,10 +21,26 @@ type localPage struct {
 // when someone opens another user's site.
 const indexPageName = "index.md"
 
-// partialsDir is the one subdirectory of a site, holding the fragments its
-// pages share. Kept in step with resources.PartialsDir, which is what serves
-// them.
+// partialsDir and assetsDir are the two subdirectories of a site: the
+// fragments its pages share, and the pictures they show. Kept in step with
+// resources.PartialsDir and resources.AssetsDir, which are what serve them.
 const partialsDir = "partials"
+const assetsDir = "assets"
+
+// assetExts are the kinds of file a page may show.
+//
+// A closed list rather than "whatever was dropped in". The directory is
+// served to anyone who asks, so what may be put in it is what a page has a
+// use for -- and a list of extensions is a great deal easier to reason about
+// than a list of what must not go in.
+var assetExts = map[string]string{
+	".png":  "image/png",
+	".jpg":  "image/jpeg",
+	".jpeg": "image/jpeg",
+	".gif":  "image/gif",
+	".webp": "image/webp",
+	".svg":  "image/svg+xml",
+}
 
 // pageFileName validates a page name and returns the file it maps to inside
 // root.
@@ -46,11 +62,20 @@ func pageFileName(root, name string) (string, error) {
 	dir := ""
 	if rest, ok := strings.CutPrefix(name, partialsDir+"/"); ok {
 		dir, name = partialsDir, rest
+	} else if rest, ok := strings.CutPrefix(name, assetsDir+"/"); ok {
+		dir, name = assetsDir, rest
 	}
 	if name != filepath.Base(name) || strings.HasPrefix(name, ".") {
 		return "", fmt.Errorf("page name %q must be a plain file name", name)
 	}
-	if filepath.Ext(name) != ".md" {
+
+	ext := strings.ToLower(filepath.Ext(name))
+	if dir == assetsDir {
+		if _, ok := assetExts[ext]; !ok {
+			return "", fmt.Errorf("%q is not a kind of file a page "+
+				"can show", name)
+		}
+	} else if ext != ".md" {
 		return "", fmt.Errorf("page name %q must end in .md", name)
 	}
 	return filepath.Join(root, dir, name), nil
@@ -174,4 +199,80 @@ func deleteLocalPage(root, name string) error {
 		return nil
 	}
 	return err
+}
+
+// localAsset is one picture a site can show.
+type localAsset struct {
+	Name     string    `json:"name"`
+	Size     int64     `json:"size"`
+	Modified time.Time `json:"modified"`
+
+	// Path is what a page writes to show it, which is the name with the
+	// directory in front. Sent rather than rebuilt at the other end, so the
+	// two cannot drift.
+	Path string `json:"path"`
+}
+
+// listLocalAssets returns the pictures in the site's assets directory.
+//
+// A missing directory is not an error: a site has none until the first
+// picture is added.
+func listLocalAssets(root string) ([]localAsset, error) {
+	if root == "" {
+		return []localAsset{}, nil
+	}
+	entries, err := os.ReadDir(filepath.Join(root, assetsDir))
+	if os.IsNotExist(err) {
+		return []localAsset{}, nil
+	} else if err != nil {
+		return nil, err
+	}
+
+	out := make([]localAsset, 0, len(entries))
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		if _, ok := assetExts[strings.ToLower(filepath.Ext(e.Name()))]; !ok {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+		out = append(out, localAsset{
+			Name:     e.Name(),
+			Size:     info.Size(),
+			Modified: info.ModTime(),
+			Path:     assetsDir + "/" + e.Name(),
+		})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return strings.ToLower(out[i].Name) < strings.ToLower(out[j].Name)
+	})
+	return out, nil
+}
+
+// addLocalAsset copies a file into the site's assets directory.
+//
+// Copied rather than referenced: the site is a directory that is served, and
+// a picture that lived anywhere else would be a page that stopped working
+// when its author tidied their downloads.
+func addLocalAsset(root, srcPath string) (string, error) {
+	name := filepath.Base(srcPath)
+	fname, err := pageFileName(root, assetsDir+"/"+name)
+	if err != nil {
+		return "", err
+	}
+	data, err := os.ReadFile(srcPath)
+	if err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(filepath.Dir(fname), 0o700); err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(fname, data, 0o600); err != nil {
+		return "", err
+	}
+	return assetsDir + "/" + filepath.Base(fname), nil
 }

@@ -217,6 +217,9 @@ const (
 	CTReadLocalPage      CmdType = 0xc3
 	CTWriteLocalPage     CmdType = 0xc4
 	CTDeleteLocalPage    CmdType = 0xc5
+	CTListLocalAssets    CmdType = 0xd6
+	CTAddLocalAsset      CmdType = 0xd7
+	CTDeleteLocalAsset   CmdType = 0xd8
 
 	// Store management: the catalogue and the order book, for the seller's
 	// own UI rather than the markdown pages a buyer sees.

@@ -12,6 +12,7 @@ import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:golib_plugin/definitions.dart';
 
@@ -62,7 +63,10 @@ class _MySiteTabState extends State<MySiteTab> {
   void initState() {
     super.initState();
     pages.ownUid = widget.client.publicID;
-    pages.loadHost().then((_) => refreshDocuments());
+    pages.loadHost().then((_) {
+      refreshDocuments();
+      pages.loadAssets();
+    });
     pages.addListener(refreshDocuments);
   }
 
@@ -276,6 +280,40 @@ class _MySiteTabState extends State<MySiteTab> {
   /// newFragment makes a shared piece and opens it. Only offered with the
   /// writing tools on: the fallback editor below writes pages, and a second
   /// one for fragments would be the same editor twice.
+  /// addImage copies a picture into the site and puts what a page writes to
+  /// show it on the clipboard.
+  ///
+  /// The markdown rather than the file name, because the file name is not
+  /// what goes in a page -- "assets/banner.png" is, wrapped in an image --
+  /// and having to work that out from a list is the sort of thing that gets
+  /// typed wrong once and then puzzled over.
+  void addImage() async {
+    var snackbar = SnackBarModel.of(context);
+    try {
+      var picked = await FilePicker.platform.pickFiles(
+        type: FileType.image,
+        dialogTitle: "Picture to add to the site",
+      );
+      var path = picked?.files.single.path;
+      if (path == null) return;
+
+      var used = await pages.addAsset(path);
+      await Clipboard.setData(ClipboardData(text: "![]($used)"));
+      snackbar.success("Added $used, and copied the markdown to paste in.");
+    } catch (exception) {
+      snackbar.error("Unable to add the picture: $exception");
+    }
+  }
+
+  void deleteImage(LocalAsset asset) async {
+    var snackbar = SnackBarModel.of(context);
+    try {
+      await pages.deleteAsset(asset.path);
+    } catch (exception) {
+      snackbar.error("Unable to delete ${asset.name}: $exception");
+    }
+  }
+
   void newFragment() async {
     var snackbar = SnackBarModel.of(context);
     var library = Provider.of<PostLibraryModel>(context, listen: false);
@@ -368,6 +406,8 @@ class _MySiteTabState extends State<MySiteTab> {
           onNewFragment: hasWriting ? newFragment : null,
           onEditFragment: editFragment,
           onDeleteFragment: deleteFragment,
+          onAddImage: addImage,
+          onDeleteImage: deleteImage,
           onPublish: publishPage,
           onUnpublish: unpublishPage,
           onPreview: previewPage,
@@ -409,6 +449,8 @@ class _SiteOverview extends StatelessWidget {
   final VoidCallback? onNewFragment;
   final void Function(String) onEditFragment;
   final void Function(PageDocument) onDeleteFragment;
+  final VoidCallback onAddImage;
+  final void Function(LocalAsset) onDeleteImage;
   const _SiteOverview({
     required this.pages,
     required this.documents,
@@ -416,6 +458,8 @@ class _SiteOverview extends StatelessWidget {
     required this.onNewFragment,
     required this.onEditFragment,
     required this.onDeleteFragment,
+    required this.onAddImage,
+    required this.onDeleteImage,
     required this.onToggle,
     required this.onChooseDir,
     required this.onView,
@@ -521,6 +565,30 @@ class _SiteOverview extends StatelessWidget {
                 onDelete: () => onDeleteFragment(f),
                 onPublish: () => onPublish(f),
                 onUnpublish: () => onUnpublish(f),
+              )),
+        const SizedBox(height: 24),
+        Row(children: [
+          const Expanded(child: Txt.L("Pictures")),
+          OutlinedButton.icon(
+            onPressed: onAddImage,
+            icon: const Icon(Icons.add_photo_alternate_outlined, size: 16),
+            label: const Text("Add picture"),
+          ),
+        ]),
+        const Padding(
+          padding: EdgeInsets.only(top: 4, bottom: 8),
+          child: Txt.S(
+              "Kept as files of their own rather than written into a page, so "
+              "one behind every page of the site is sent once. Adding a "
+              "picture copies the markdown to paste in.",
+              color: TextColor.onSurfaceVariant),
+        ),
+        if (pages.assets.isEmpty)
+          const Txt.S("None yet.", color: TextColor.onSurfaceVariant)
+        else
+          ...pages.assets.map((a) => AssetRow(
+                asset: a,
+                onDelete: () => onDeleteImage(a),
               )),
         const SizedBox(height: 24),
         const _LinkHelp(),

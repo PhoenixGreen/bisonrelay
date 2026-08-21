@@ -287,3 +287,77 @@ func TestWriteCreatesThePartialsDirectory(t *testing.T) {
 		t.Fatalf("deleting it: %v", err)
 	}
 }
+
+// TestAssetsAreTheirOwnDirectoryAndKind covers the second subdirectory a
+// site has. It is served to whoever asks, so what may be written into it is
+// a closed list of what a page has a use for.
+func TestAssetsAreTheirOwnDirectoryAndKind(t *testing.T) {
+	root := t.TempDir()
+
+	for _, good := range []string{
+		"assets/banner.png", "assets/logo.SVG", "assets/photo.jpeg",
+		"assets/a.gif", "assets/b.webp",
+	} {
+		if _, err := pageFileName(root, good); err != nil {
+			t.Errorf("%q should be allowed: %v", good, err)
+		}
+	}
+
+	for _, bad := range []string{
+		"assets/notes.md",
+		"assets/script.sh",
+		"assets/passwd",
+		"assets/../escape.png",
+		"assets/sub/deep.png",
+		"assets/.hidden.png",
+		"other/banner.png",
+		"banner.png", // the root is for pages
+	} {
+		if _, err := pageFileName(root, bad); err == nil {
+			t.Errorf("%q should not be allowed", bad)
+		}
+	}
+}
+
+func TestAddAndListAssets(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "pages")
+	src := filepath.Join(t.TempDir(), "banner.png")
+	if err := os.WriteFile(src, []byte("pretend png"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	path, err := addLocalAsset(root, src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The path is what a page writes, which is not the name it was given.
+	if path != "assets/banner.png" {
+		t.Fatalf("got %q", path)
+	}
+
+	got, err := listLocalAssets(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Path != "assets/banner.png" ||
+		got[0].Size != int64(len("pretend png")) {
+		t.Fatalf("got %+v", got)
+	}
+
+	// A site with no pictures is not an error.
+	if empty, err := listLocalAssets(filepath.Join(t.TempDir(), "none")); err != nil ||
+		len(empty) != 0 {
+		t.Fatalf("got %v, %v", empty, err)
+	}
+}
+
+func TestAddingSomethingThatIsNotAPictureIsRefused(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "pages")
+	src := filepath.Join(t.TempDir(), "secrets.txt")
+	if err := os.WriteFile(src, []byte("no"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := addLocalAsset(root, src); err == nil {
+		t.Fatal("a text file was copied into the site")
+	}
+}

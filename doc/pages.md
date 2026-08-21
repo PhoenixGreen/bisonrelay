@@ -34,6 +34,31 @@ Page names should avoid spaces. A space ends a Markdown link, so
 `[x](Test Page.md)` links to `Test` and leaves `Page.md)` as text — bruig
 publishes pages under a lowercased, underscored name for this reason.
 
+### Pictures
+
+A picture is a file of the site's own, in `assets/`, shown by an ordinary
+Markdown image:
+
+```
+assets/banner.png           the file
+![A banner](assets/banner.png)   in any page
+```
+
+In bruig, Pages > My Site > Pictures copies one in and hands back the markdown
+to paste.
+
+Kept as a file rather than written into the page. A banner behind every page
+of a site, written into every page, is that banner sent every time; asked for
+on its own it crosses the wire once and is kept for the rest of the session.
+It is never sent with the page that shows it — the page arrives and draws
+while its pictures are still on their way, and a reader whose client does not
+fetch them sees the alt text, which is what a Markdown image has always
+degraded to.
+
+Only pictures may go in there — `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`,
+`.svg` — and only at the top of it. The directory is served to whoever asks,
+so what may be put in it is what a page has a use for.
+
 ### Shared fragments
 
 A fragment several pages share — a header, a navigation bar — is written once

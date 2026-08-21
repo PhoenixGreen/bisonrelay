@@ -317,3 +317,29 @@ func TestABundleStaysWithinItsSize(t *testing.T) {
 		t.Fatalf("a fragment that fit was left out: %v", keys(b))
 	}
 }
+
+func TestAPictureIsServedAndNotBundled(t *testing.T) {
+	root := t.TempDir()
+	writePageFile(t, root, "index.md", "![A banner](assets/banner.png)")
+	writePageFile(t, root, "assets/banner.png", "not really a png")
+	pr := NewPagesResource(root, nil)
+
+	// Asked for on its own, the way the reader will ask.
+	reply := fulfillPage(t, pr, []string{"assets", "banner.png"}, nil)
+	if reply.Status != rpc.ResourceStatusOk {
+		t.Fatalf("status %v", reply.Status)
+	}
+	if string(reply.Data) != "not really a png" {
+		t.Fatalf("got %q", reply.Data)
+	}
+	if isBundle(reply) {
+		t.Fatal("a picture is not a bundle")
+	}
+
+	// And the page that shows it does not carry it: a picture behind every
+	// page of a site should cross the wire once, not once per page.
+	page := fulfillPage(t, pr, []string{"index.md"}, nil)
+	if isBundle(page) {
+		t.Fatal("the page bundled something; only fragments are bundled")
+	}
+}

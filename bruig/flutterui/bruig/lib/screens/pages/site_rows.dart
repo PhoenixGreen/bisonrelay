@@ -2,6 +2,8 @@ import 'package:bruig/components/text.dart';
 import 'package:bruig/plugin_system/writing_tools/writing_tools.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
+import 'package:golib_plugin/definitions.dart';
+import 'package:flutter/services.dart';
 
 // site_rows.dart is how one piece of a site is listed: a page, or a fragment
 // its pages share.
@@ -211,5 +213,48 @@ class FragmentsHelp extends StatelessWidget {
             "once and reused, so a bar on twenty pages costs what one page "
             "costs.",
             color: TextColor.onSurfaceVariant),
+      );
+}
+
+/// AssetRow is one picture the site keeps.
+///
+/// Shows what a page writes to reach it rather than the file's name: those
+/// are not the same -- "assets/banner.png" is what goes in a page -- and
+/// working that out from a file name is the sort of thing that gets typed
+/// wrong once and then puzzled over.
+class AssetRow extends StatelessWidget {
+  final LocalAsset asset;
+  final VoidCallback onDelete;
+  const AssetRow({required this.asset, required this.onDelete, super.key});
+
+  /// _size in the units a person thinks in. A picture is the largest thing a
+  /// site sends, so its size is worth showing.
+  String get _size => asset.size >= 1024 * 1024
+      ? "${(asset.size / (1024 * 1024)).toStringAsFixed(1)} MB"
+      : "${(asset.size / 1024).round()} KB";
+
+  @override
+  Widget build(BuildContext context) => ListTile(
+        contentPadding: EdgeInsets.zero,
+        leading: const Icon(Icons.image_outlined),
+        title: Row(children: [
+          Flexible(child: Txt.M(asset.name)),
+          const SizedBox(width: 8),
+          Txt.S(_size, color: TextColor.onSurfaceVariant),
+        ]),
+        subtitle: _LinkChip("![](${asset.path})"),
+        trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+          IconButton(
+            icon: const Icon(Icons.copy_outlined, size: 18),
+            tooltip: "Copy the markdown for ${asset.name}",
+            onPressed: () =>
+                Clipboard.setData(ClipboardData(text: "![](${asset.path})")),
+          ),
+          IconButton(
+            icon: const Icon(Icons.delete_outline, size: 18),
+            tooltip: "Delete ${asset.name}",
+            onPressed: onDelete,
+          ),
+        ]),
       );
 }
