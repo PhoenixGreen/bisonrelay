@@ -452,18 +452,45 @@ class _HeaderRow extends StatelessWidget {
       // apart. The gap is fixed rather than shared out, or a logo and the
       // title beside it would drift apart as the window widened -- which is
       // what split is for when that is wanted.
-      content = Row(
-        mainAxisAlignment: switch (row.mode) {
-          HeaderRowMode.center => MainAxisAlignment.center,
-          HeaderRowMode.right => MainAxisAlignment.end,
-          _ => MainAxisAlignment.start,
-        },
-        children: [
-          Flexible(child: _cell(context, row.cells[0], Alignment.centerLeft)),
-          SizedBox(width: rule.boundedGap),
-          Flexible(child: _cell(context, row.cells[1], row.mode.alignment)),
-        ],
-      );
+      var first = _cell(context, row.cells[0], Alignment.centerLeft);
+      var second = _cell(context, row.cells[1], Alignment.centerLeft);
+
+      content = LayoutBuilder(builder: (context, constraints) {
+        var room = constraints.maxWidth - rule.boundedGap;
+        if (row.mode == HeaderRowMode.left) {
+          // The second cell takes whatever the first leaves. A title beside
+          // a logo is the long half, and holding it to a share of the row
+          // meant condensing and then cutting writing while most of the
+          // banner stood empty beside it.
+          //
+          // The first is still bounded, or a wide logo would leave the
+          // title nothing.
+          return Row(children: [
+            ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: room / 2),
+              child: first,
+            ),
+            SizedBox(width: rule.boundedGap),
+            Expanded(child: second),
+          ]);
+        }
+
+        // Centred or right, the pair is placed as one thing, so both keep
+        // their own width and neither may take more than half.
+        var half = (room / 2).clamp(0.0, double.infinity);
+        return Row(
+          mainAxisAlignment: row.mode == HeaderRowMode.center
+              ? MainAxisAlignment.center
+              : MainAxisAlignment.end,
+          children: [
+            ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: half), child: first),
+            SizedBox(width: rule.boundedGap),
+            ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: half), child: second),
+          ],
+        );
+      });
     } else {
       content = Align(
         alignment: row.mode.alignment,

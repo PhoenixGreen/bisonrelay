@@ -357,4 +357,57 @@ right: # Title
       expect(gap, greaterThan(banner.width / 3));
     });
   });
+
+  group('room for the second cell', () {
+    setUp(() => SharedPreferences.setMockInitialValues({}));
+
+    testWidgets('a title beside a logo gets what the logo leaves',
+        (tester) async {
+      // Holding the second cell to a share of the row meant condensing and
+      // then cutting writing while most of the banner stood empty beside
+      // it. It takes what the first leaves now.
+      //
+      // Compared against split, where a cell is held to half on purpose,
+      // rather than against a figure: the widths a test font reports are
+      // its own, and what matters here is that one shape gives more room
+      // than the other.
+      const title = "A title that wants a good deal more than half the room";
+
+      Future<double> widthIn(String mode) async {
+        await tester.pumpWidget(drawHost(MarkdownArea("""
+--header--
+--row[30,$mode]--
+left: # Logo
+right: # $title
+--/row--
+--/header--
+""", false), width: 1200));
+        await tester.pump();
+        return tester.getRect(find.text(title)).width;
+      }
+
+      expect(await widthIn("left"), greaterThan(await widthIn("split")));
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('a wide first cell still leaves the second half',
+        (tester) async {
+      await tester.pumpWidget(drawHost(MarkdownArea("""
+--header--
+--row[60,left]--
+left: # A very long first cell that would take the whole row given the chance
+right: # Second
+--/row--
+--/header--
+""", false), width: 800));
+      await tester.pump();
+
+      var banner = tester.getRect(find
+          .ancestor(of: find.text("Second"), matching: find.byType(ClipRRect))
+          .first);
+      var first = tester.getRect(find.textContaining("A very long first"));
+      expect(first.width, lessThanOrEqualTo(banner.width / 2 + 2));
+      expect(tester.takeException(), isNull);
+    });
+  });
 }
