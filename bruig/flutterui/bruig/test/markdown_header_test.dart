@@ -650,4 +650,74 @@ right: # Short
       expect(r.left, greaterThan(c.left));
     });
   });
+
+  group('a grouped pair', () {
+    test('is read from the marker, alongside the rest', () {
+      var rows = rowsOf("--header--\n--row[96,center,group]--\n"
+          "left: A\nright: B\n--/row--\n--/header--");
+      expect(rows.first.group, isTrue);
+      expect(rows.first.mode, HeaderRowMode.center);
+      expect(rows.first.height, 96);
+    });
+
+    test('an ordinary row is not grouped', () {
+      expect(rowsOf("--header--\n--row[96,center]--\nx\n--/row--\n--/header--")
+          .first.group, isFalse);
+    });
+
+    test('reads alongside flush, in either order', () {
+      var rows = rowsOf("--header--\n--row[40,group,flush,center]--\n"
+          "left: A\nright: B\n--/row--\n--/header--");
+      expect(rows.first.group, isTrue);
+      expect(rows.first.flush, isTrue);
+      expect(rows.first.mode, HeaderRowMode.center);
+    });
+
+    group('drawn', () {
+      setUp(() => SharedPreferences.setMockInitialValues({}));
+
+      Future<({Rect logo, Rect title, Rect banner})> pairIn(
+          WidgetTester tester, String args) async {
+        await tester.pumpWidget(drawHost(MarkdownArea("""
+--header--
+--row[$args]--
+left: # Logo
+right: # Title
+--/row--
+--/header--
+""", false), width: 1200));
+        await tester.pump();
+        return (
+          logo: tester.getRect(find.text("Logo")),
+          title: tester.getRect(find.text("Title")),
+          banner: tester.getRect(find
+              .ancestor(of: find.text("Logo"), matching: find.byType(ClipRRect))
+              .first),
+        );
+      }
+
+      testWidgets('sits together in the middle', (tester) async {
+        var g = await pairIn(tester, "60,center,group");
+
+        // The pair straddles the middle, rather than the logo staying at
+        // the left with the title beside it.
+        var pairMiddle = (g.logo.left + g.title.right) / 2;
+        expect(pairMiddle, moreOrLessEquals(g.banner.center.dx, epsilon: 8));
+        expect(tester.takeException(), isNull);
+      });
+
+      testWidgets('and ungrouped still leaves the logo at the left',
+          (tester) async {
+        var plain = await pairIn(tester, "60,center");
+        expect(plain.logo.left - plain.banner.left, lessThan(40));
+      });
+
+      testWidgets('goes where the mode says', (tester) async {
+        var left = await pairIn(tester, "60,left,group");
+        var right = await pairIn(tester, "60,right,group");
+        expect(left.logo.left, lessThan(right.logo.left));
+        expect(right.banner.right - right.title.right, lessThan(40));
+      });
+    });
+  });
 }

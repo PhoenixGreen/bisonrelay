@@ -104,7 +104,20 @@ place one cell, or two sitting together a fixed gap apart — which is a logo
 and the title beside it, the one shape `split` cannot make. The second cell takes
 whatever the first leaves, whichever way the row runs, so a title has the room
 of the banner rather than half of it. The mode says where that writing sits in
-the room, not how much of it there is. **The height is
+the room, not how much of it there is.
+
+`group` keeps the two together and places the pair instead:
+
+```
+--row[96,center,group]--
+left: ![](logo)
+right: # My site
+--/row--
+```
+
+Which is what centring a logo and its title means — without it the logo stays
+at the left and the title fills the rest, and there is no way to have the two
+sit together in the middle. `group` reads alongside `flush`, in any order. **The height is
 fixed and everything in the row is sized to it** — a logo is as tall as its
 row, a title is set to its row — so a banner resizes without anything in it
 changing height.

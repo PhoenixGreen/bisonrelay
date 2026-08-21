@@ -72,11 +72,22 @@ class HeaderRow {
   /// full width of it, not a row of words inset from it like the rest.
   final bool flush;
 
+  /// group keeps two cells together as one thing and places the pair, in
+  /// place of the second taking whatever the first leaves.
+  ///
+  /// Two different layouts, not a setting on one. Without it a row is a
+  /// logo and a title that runs on to the far edge; with it the two sit
+  /// beside each other and the pair goes where the mode says -- which is
+  /// what centring a logo and its title means, and cannot be had from a
+  /// second cell that fills the rest of the row.
+  final bool group;
+
   const HeaderRow({
     required this.height,
     required this.mode,
     required this.cells,
     this.flush = false,
+    this.group = false,
   });
 
   /// maxHeight is the tallest a single row may be. Past this it is not a
@@ -169,6 +180,7 @@ class HeaderBlockSyntax extends md.BlockSyntax {
       element.attributes["r${i}h"] = "${rows[i].height}";
       element.attributes["r${i}m"] = rows[i].mode.name;
       if (rows[i].flush) element.attributes["r${i}f"] = "1";
+      if (rows[i].group) element.attributes["r${i}g"] = "1";
       for (var c = 0; c < rows[i].cells.length; c++) {
         element.attributes["r${i}c$c"] = rows[i].cells[c];
       }
@@ -184,6 +196,7 @@ class HeaderBlockSyntax extends md.BlockSyntax {
     var height = HeaderRow.defaultHeight;
     var mode = HeaderRowMode.left;
     var flush = false;
+    var group = false;
     for (var arg in (args ?? "").split(",")) {
       var t = arg.trim();
       var n = double.tryParse(t);
@@ -191,6 +204,8 @@ class HeaderBlockSyntax extends md.BlockSyntax {
         height = n.clamp(16, HeaderRow.maxHeight);
       } else if (t.toLowerCase() == "flush") {
         flush = true;
+      } else if (t.toLowerCase() == "group") {
+        group = true;
       } else if (t.isNotEmpty) {
         mode = HeaderRowMode.parse(t);
       }
@@ -232,7 +247,8 @@ class HeaderBlockSyntax extends md.BlockSyntax {
       ].where((c) => c.isNotEmpty).toList();
       if (out.length > maxRowCells) out = out.sublist(0, maxRowCells);
     }
-    return HeaderRow(height: height, mode: mode, cells: out, flush: flush);
+    return HeaderRow(
+        height: height, mode: mode, cells: out, flush: flush, group: group);
   }
 }
 
@@ -273,6 +289,7 @@ List<HeaderRow> headerRowsOf(Map<String, String> a) {
         height: double.tryParse(a["r${i}h"] ?? "") ?? HeaderRow.defaultHeight,
         mode: HeaderRowMode.parse(a["r${i}m"]),
         flush: a["r${i}f"] == "1",
+        group: a["r${i}g"] == "1",
         cells: [
           for (var c = 0; c < maxRowCells; c++)
             if (a["r${i}c$c"] != null) a["r${i}c$c"]!,
@@ -543,6 +560,31 @@ class _HeaderRow extends StatelessWidget {
 
       content = LayoutBuilder(builder: (context, constraints) {
         var room = constraints.maxWidth - gap;
+
+        if (row.group) {
+          // Sized to what is in them and placed as one thing, so a logo and
+          // its title can sit together in the middle of a banner.
+          //
+          // The room is divided rather than one taking what the other
+          // leaves: a pair meant to be seen together has neither of them
+          // running off to an edge, and a third to the first keeps a logo a
+          // logo.
+          return Align(
+            alignment: row.mode.alignment,
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: room / 3),
+                child: first,
+              ),
+              SizedBox(width: gap),
+              ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: room * 2 / 3),
+                child: second,
+              ),
+            ]),
+          );
+        }
+
         return Row(children: [
           // The first is still bounded, or a wide logo would leave the
           // second nothing.
