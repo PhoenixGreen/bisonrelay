@@ -261,7 +261,9 @@ func (s *Store) handlePlaceOrder(ctx context.Context, uid clientintf.UserID,
 
 			// TODO: proper address validation, optional phone
 			// number validation.
-			shipAddr = &formData
+			// Made safe where it arrives, so everything that renders
+			// it later is safe without having to remember.
+			shipAddr = escapeAddress(&formData)
 		}
 	}
 
@@ -534,7 +536,7 @@ func (s *Store) handleOrderAddComment(ctx context.Context, uid clientintf.UserID
 	if err := json.Unmarshal(request.Data, &formData); err != nil {
 		return nil, err
 	}
-	comment := formData
+	comment := EscapeUntrusted(formData)
 
 	id, err := strconv.ParseUint(request.Path[1], 10, 64)
 	if err != nil {

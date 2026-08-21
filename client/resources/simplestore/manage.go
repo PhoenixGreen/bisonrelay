@@ -125,10 +125,17 @@ func (s *Store) AddOrderComment(uid clientintf.UserID, oid OrderID,
 		return nil, err
 	}
 
+	// Escaped whoever wrote it. A customer's comment is read by the seller
+	// on their own order page, and the seller's is read by the customer on
+	// theirs -- so it is untrusted in both directions, and trusting either
+	// end because it is "ours" gets it wrong for the other.
+	//
+	// Idempotent, so escaping again what a caller already escaped costs
+	// nothing and forgetting costs the guarantee.
 	order.Comments = append(order.Comments, OrderComment{
 		Timestamp: time.Now(),
 		FromAdmin: fromAdmin,
-		Comment:   comment,
+		Comment:   EscapeUntrusted(comment),
 	})
 	if err := jsonfile.Write(fname, order, s.log); err != nil {
 		return nil, err

@@ -79,3 +79,17 @@ To see your store within `brclient`, run the command `/pages local`.
 Within the app, use Pages > My Site > View my site. The seller's own view of
 the order book is also served as pages, at `/admin/orders`.
 
+### A note on what customers write
+
+A store's pages are Go `text/template`, which does not escape, and what comes
+out of them is Markdown read by the other party in their own client. So the
+names, addresses and comments a customer types are stripped of Bison Relay's
+page markup as they arrive: runs of hyphens collapse to one, which disarms
+`--embed[…]--`, `--form--`, `--include[…]--` and every other marker, since all
+of them open with two.
+
+Nothing there could ever execute — the renderer draws, it does not run. What
+it prevents is a customer putting a form, or a file download, in front of the
+seller on the seller's own order page, where it reads as the store's own
+because it is. Comments are escaped in both directions, since a seller's
+comment is read by the customer on theirs.
