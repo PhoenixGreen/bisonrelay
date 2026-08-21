@@ -58,75 +58,39 @@ void main() {
     });
   });
 
-  group('where the bar sits', () {
-    test('reads both words, in either order', () {
-      expect(NavPlacement.parse("bottom middle"),
-          const NavPlacement(atTop: false, across: Alignment.center));
-      expect(NavPlacement.parse("middle bottom"),
-          const NavPlacement(atTop: false, across: Alignment.center));
-      expect(NavPlacement.parse("top right"),
-          const NavPlacement(atTop: true, across: Alignment.centerRight));
-    });
 
-    test('either word may be left out', () {
-      // "top" on its own was the whole of this field before, and still
-      // means what it did.
-      expect(NavPlacement.parse("top").atTop, isTrue);
-      expect(NavPlacement.parse("top").across, Alignment.centerLeft);
-      expect(NavPlacement.parse("middle").atTop, isFalse);
-      expect(NavPlacement.parse("middle").across, Alignment.center);
-    });
 
-    test('nothing at all is the bottom left', () {
-      expect(NavPlacement.parse(null),
-          const NavPlacement(atTop: false, across: Alignment.centerLeft));
-      expect(NavPlacement.parse(""), NavPlacement.parse(null));
-    });
-
-    test('spelt either way', () {
-      expect(NavPlacement.parse("center"), NavPlacement.parse("centre"));
-      expect(
-          NavPlacement.parse("TOP MIDDLE"), NavPlacement.parse("top middle"));
-    });
-
-    test('a word it does not know is ignored, not fatal', () {
-      expect(NavPlacement.parse("top sideways").atTop, isTrue);
-    });
-  });
-
-  group('the bar is drawn where it was put', () {
+  group('a bar in a banner', () {
     setUp(() => SharedPreferences.setMockInitialValues({}));
 
-    Future<Rect> barRect(WidgetTester tester, String navat) async {
+    testWidgets('is a row like any other, placed the way a row is',
+        (tester) async {
+      // What used to be a "nav" field with a "navat" beside it. A bar has
+      // nothing special about it now: it is a fragment in a row, and where
+      // it sits is the row's business.
       await tester.pumpWidget(drawHost(MarkdownArea("""
---header[200]--
-left: # Logo
-nav: [Home](index.md)
-navat: $navat
+--header--
+--row[60,left]--
+# Site
+--/row--
+--row[40,center]--
+--nav[pills]--
+[Home](index.md)
+--/nav--
+--/row--
 --/header--
-""", false)));
+""", false), width: 1000));
       await tester.pump();
-      return tester.getRect(find.text("Home"));
-    }
 
-    testWidgets('top puts it above the slots, bottom below', (tester) async {
-      var logo = () => tester.getRect(find.text("Logo"));
+      var site = tester.getRect(find.text("Site"));
+      var home = tester.getRect(find.text("Home"));
 
-      var top = await barRect(tester, "top");
-      expect(top.top, lessThan(logo().top),
-          reason: "asked for the top and drawn below the logo");
-
-      var bottom = await barRect(tester, "bottom");
-      expect(bottom.top, greaterThan(logo().top));
-    });
-
-    testWidgets('and across where it was asked for', (tester) async {
-      var left = await barRect(tester, "bottom left");
-      var middle = await barRect(tester, "bottom middle");
-      var right = await barRect(tester, "bottom right");
-
-      expect(middle.left, greaterThan(left.left));
-      expect(right.left, greaterThan(middle.left));
+      // The second row is under the first, and centred across it.
+      expect(home.top, greaterThan(site.top));
+      var banner = tester.getRect(find
+          .ancestor(of: find.text("Home"), matching: find.byType(ClipRRect))
+          .first);
+      expect(home.center.dx, moreOrLessEquals(banner.center.dx, epsilon: 4));
       expect(tester.takeException(), isNull);
     });
   });

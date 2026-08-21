@@ -158,17 +158,18 @@ A closing paragraph, which is the last block the run has to place.
 Body text below them.
 """,
       _Element.header => """
---header[200]--
+--header--
+--row[72,split]--
 left: ### My site
 right: A line about it
-nav: --include[navigation]--
---/header--
-
+--/row--
+--row[40,center]--
 --nav[pills]--
 [Home](index.md)
 [About](about.md)
-[Contact](contact.md)
 --/nav--
+--/row--
+--/header--
 
 Body text below the header, set the way the rest of a page is.
 """,
@@ -1050,18 +1051,10 @@ class _MarkdownEditorState extends State<_MarkdownEditor> {
       case _Element.header:
         return [
           ctx.note("A banner across the top of a page, and the bar of links "
-              "that usually sits in it. The writer says what goes in them; "
-              "these say what they look like here."),
+              "that usually sits in a row of it. How tall each row is, and "
+              "what goes in it, is written into the page; these say what it "
+              "looks like here."),
           const Txt.M("Banner"),
-          ctx.slider("md-hdrheight", guide.header.height,
-              label: (v) => "Tallest: ${v.round()}px",
-              min: 80,
-              max: 480,
-              divisions: 20,
-              onCommit: (v) => edit(
-                  (g) => g.copyWith(header: g.header.copyWith(height: v)))),
-          ctx.note("What a plain --header-- uses. A writer who asks for a "
-              "height with --header[300]-- gets that instead."),
           ctx.slider("md-hdrpad", guide.header.padding,
               label: (v) => "Space inside: ${v.round()}px",
               max: 64,

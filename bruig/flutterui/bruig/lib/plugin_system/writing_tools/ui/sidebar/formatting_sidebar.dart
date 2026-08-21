@@ -213,16 +213,15 @@ const _pages = [
   // A fragment shared by several pages -- a header, a navigation bar. Sent
   // once and filled in by the reader's client, so a bar on twenty pages
   // crosses the wire once rather than twenty times.
-  // A banner across the top of a page. Every field is optional -- one with
-  // only a background is a banner, one with only a title is a masthead --
-  // so the snippet puts in the shape somebody would keep rather than the
-  // whole of it.
+  // A banner across the top of a page: rows of one or two cells, each row a
+  // fixed height that everything in it is sized to. The snippet writes the
+  // shape most banners are -- a logo and a title, a bar under them.
   _Snippet(
     Icons.branding_watermark_outlined,
     "Header",
-    "--header[220]--\nbackground: \nleft: ",
-    after: "\nlogosize: 64\nright: # My site\ntitlesize: 40\n"
-        "nav: --include[navigation]--\nnavat: bottom middle\n--/header--",
+    "--header--\nbackground: \n--row[96,split]--\nleft: ",
+    after: "\nright: # My site\n--/row--\n--row[44,center]--\n"
+        "--include[navigation]--\n--/row--\n--/header--",
     placeholder: "![](logo)",
     block: true,
   ),

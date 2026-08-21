@@ -1,5 +1,9 @@
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:bruig/theming_system/theme_preset.dart';
+import 'dart:ui' as ui;
+
+import 'package:bruig/components/feed/markdown_header.dart';
+import 'package:bruig/components/md_elements.dart';
 import 'package:flutter/material.dart';
 
 // markdown_title.dart is how a banner's words are set.
@@ -9,6 +13,27 @@ import 'package:flutter/material.dart';
 // it has fields of its own, and enough of them to be worth a file -- this is
 // the half of the header most likely to grow.
 
+/// titleStyleFields is every field that says how a banner's writing is set.
+///
+/// Listed here rather than in the header, beside the code that reads them:
+/// the header only needs to know they are fields so a line with a colon in
+/// it is not mistaken for one.
+const List<String> titleStyleFields = [
+  "titlesize",
+  "titleweight",
+  "titleitalic",
+  "titlecase",
+  "titletracking",
+  "titlecolor",
+  "titlegradient",
+  "titleimage",
+  "titlebackground",
+  "titleborder",
+  "titlebordercolor",
+  "titleradius",
+  "titlepadding",
+];
+
 /// HeaderTextStyle is how a banner's writing is set.
 ///
 /// A banner's title is branding rather than reading: it is the one piece of
@@ -16,11 +41,13 @@ import 'package:flutter/material.dart';
 /// So these are fields on the block, unlike everything else about a page.
 @immutable
 class HeaderTextStyle {
-  /// size in pixels, or null to match the banner -- "titlesize: fill" sets a
-  /// title as tall as the space it is in, which is what makes it sit level
-  /// with a logo and grow and shrink with it.
+  /// size in pixels, or null to be set to the height of the row it is in.
+  ///
+  /// Null is the usual case now. A row is a fixed height and everything in
+  /// it is sized to that, so a title comes out level with the logo beside it
+  /// without either being told about the other -- which is what the old
+  /// "titlesize: fill" was for, and why it is no longer a thing to write.
   final double? size;
-  final bool fill;
   final bool bold;
   final bool italic;
 
@@ -29,6 +56,11 @@ class HeaderTextStyle {
   final String caps;
   final double tracking;
   final List<Color> gradient;
+
+  /// image fills the letters with a picture, the way a gradient fills them
+  /// with colours. Held as the raw embed and decoded where it is drawn,
+  /// which is the only place that has anything to build a shader with.
+  final String? image;
   final Color? color;
   final Color? background;
   final Color? border;
@@ -38,12 +70,12 @@ class HeaderTextStyle {
 
   const HeaderTextStyle({
     this.size,
-    this.fill = false,
     this.bold = false,
     this.italic = false,
     this.caps = "",
     this.tracking = 0,
     this.gradient = const [],
+    this.image,
     this.color,
     this.background,
     this.border,
@@ -56,12 +88,12 @@ class HeaderTextStyle {
   /// rest of the page is.
   bool get plain =>
       size == null &&
-      !fill &&
       !bold &&
       !italic &&
       caps.isEmpty &&
       tracking == 0 &&
       gradient.isEmpty &&
+      image == null &&
       color == null &&
       background == null &&
       border == null;
@@ -84,13 +116,13 @@ class HeaderTextStyle {
     var colours = _colourList(fields["titlegradient"]);
     return HeaderTextStyle(
       size: double.tryParse(rawSize)?.clamp(8, 200),
-      fill: rawSize == "fill",
       bold: (fields["titleweight"] ?? "").trim().toLowerCase() == "bold",
       italic: (fields["titleitalic"] ?? "").trim().toLowerCase() == "yes",
       caps: (fields["titlecase"] ?? "").trim().toLowerCase(),
       tracking:
           (double.tryParse(fields["titletracking"] ?? "") ?? 0).clamp(-5, 40),
       gradient: colours.length > 1 ? colours : const [],
+      image: (fields["titleimage"] ?? "").isEmpty ? null : fields["titleimage"],
       color: _colour(fields["titlecolor"]) ??
           (colours.length == 1 ? colours.first : null),
       background: _colour(fields["titlebackground"]),
@@ -143,96 +175,211 @@ List<Color> _colourList(String? raw) => [
         if (_colour(part) != null) _colour(part)!,
     ];
 
-/// _HeaderText draws a title.
-class HeaderText extends StatelessWidget {
+/// HeaderText draws a title.
+///
+/// Set to the height of the row it is in, and condensed rather than shrunk
+/// when it is too wide for the room. Those are the same decision: a row is a
+/// fixed height, so anything that changed the size of the letters would
+/// change how tall the writing looks and undo the point of fixing it.
+/// Squeezing the letters keeps the cap height and loses only the width.
+class HeaderText extends StatefulWidget {
   final String text;
   final HeaderTextStyle style;
-  final HeaderRule rule;
 
-  /// within is where the words sit in the room the slot was given, which is
-  /// what puts a right-hand title against the right edge rather than
-  /// centred in its half of the banner.
+  /// fitTo is the height to set the writing to -- the row's.
+  final double fitTo;
+
+  /// within is which way it runs out of room, so a right-hand title
+  /// condenses towards the edge it is against.
   final Alignment within;
 
-  /// fillTo is the height "titlesize: fill" fills, when there is a figure to
-  /// fill: the logo's, so the two come out level. Null when the logo has no
-  /// height of its own either, where filling means taking the row's -- see
-  /// the stretch in slots().
-  final double? fillTo;
-  const HeaderText(
-      {required this.text,
-      required this.style,
-      required this.rule,
-      required this.within,
-      this.fillTo});
+  const HeaderText({
+    super.key,
+    required this.text,
+    required this.style,
+    required this.fitTo,
+    required this.within,
+  });
+
+  @override
+  State<HeaderText> createState() => _HeaderTextState();
+}
+
+class _HeaderTextState extends State<HeaderText> {
+  String get text => widget.text;
+  HeaderTextStyle get style => widget.style;
+  double get fitTo => widget.fitTo;
+  Alignment get within => widget.within;
+
+  /// _fill is the picture the letters are filled with, once it has been
+  /// decoded. A shader has to be built in a paint callback, which cannot
+  /// wait for anything -- so the decoding happens here and the letters are
+  /// drawn in their plain colour until it lands.
+  ui.Image? _fill;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadFill();
+  }
+
+  @override
+  void didUpdateWidget(HeaderText old) {
+    super.didUpdateWidget(old);
+    if (old.style.image != style.image) {
+      _fill?.dispose();
+      _fill = null;
+      _loadFill();
+    }
+  }
+
+  @override
+  void dispose() {
+    _fill?.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadFill() async {
+    var raw = style.image;
+    if (raw == null) return;
+    var image = embedImage(raw);
+    if (image == null || isSvgMime(image.mime)) {
+      // A vector has no pixels to pour into the letters. Left unfilled
+      // rather than failing: the title still reads.
+      return;
+    }
+    try {
+      var codec = await ui.instantiateImageCodec(image.bytes);
+      var frame = await codec.getNextFrame();
+      codec.dispose();
+      if (!mounted) {
+        frame.image.dispose();
+        return;
+      }
+      setState(() => _fill = frame.image);
+    } catch (_) {
+      // Not a picture this machine can read; the title is drawn plainly.
+    }
+  }
 
   /// _stripped removes the heading marks a writer puts in out of habit. How
-  /// large a title is set is [HeaderTextStyle.size], not how many hashes
-  /// were typed -- three of them in a banner would otherwise be small.
+  /// large a title is set is the row's height, not how many hashes were
+  /// typed -- three of them in a banner would otherwise be small.
   String get _stripped =>
       style.apply(text.replaceFirst(RegExp(r'^\s*#{1,6}\s*'), "").trim());
+
+  /// minCondense is as narrow as the letters may be squeezed.
+  ///
+  /// Past this it stops being condensed type and starts being unreadable, so
+  /// what is still too long is cut with an ellipsis instead. Losing the end
+  /// of a title beats keeping all of it illegibly.
+  static const double minCondense = 0.6;
 
   @override
   Widget build(BuildContext context) {
     var theme = ThemeNotifier.of(context);
-    var base = Theme.of(context).textTheme.headlineSmall ??
-        const TextStyle(fontSize: 22);
+    var inset = style.padding * 2;
+    var lineHeight = (fitTo - inset).clamp(8.0, 400.0);
+    var fontSize = style.size ?? lineHeight * 0.72;
 
-    var painted = base.copyWith(
-      fontSize: style.size,
-      fontWeight: style.bold ? FontWeight.bold : base.fontWeight,
-      fontStyle: style.italic ? FontStyle.italic : base.fontStyle,
-      letterSpacing: style.tracking == 0 ? base.letterSpacing : style.tracking,
-      // White under a gradient: the shader replaces it, and anything else
+    var painted = TextStyle(
+      fontSize: fontSize,
+      height: 1.0,
+      fontWeight: style.bold ? FontWeight.bold : FontWeight.w500,
+      fontStyle: style.italic ? FontStyle.italic : FontStyle.normal,
+      letterSpacing: style.tracking == 0 ? null : style.tracking,
+      // White under a shader: it replaces the colour, and anything else
       // tints what the shader paints.
-      color: style.gradient.isNotEmpty
+      color: style.gradient.isNotEmpty || style.image != null
           ? Colors.white
           : (style.color ?? theme.colors.onSurface),
     );
 
-    Widget out = Text(_stripped, style: painted, softWrap: false);
+    return LayoutBuilder(builder: (context, constraints) {
+      var available = constraints.maxWidth - inset;
+      var painter = TextPainter(
+        text: TextSpan(text: _stripped, style: painted),
+        textDirection: TextDirection.ltr,
+        maxLines: 1,
+      )..layout();
+      var natural = painter.width;
+      painter.dispose();
 
-    if (style.gradient.isNotEmpty) {
-      out = ShaderMask(
-        blendMode: BlendMode.srcIn,
-        shaderCallback: (bounds) => LinearGradient(colors: style.gradient)
-            .createShader(Rect.fromLTWH(0, 0, bounds.width, bounds.height)),
-        child: out,
+      // How far the letters have to be squeezed to fit. Never widened: a
+      // short title stays the size it was set rather than being stretched.
+      var squeeze = natural <= 0 || available <= 0 || natural <= available
+          ? 1.0
+          : available / natural;
+      var clipped = squeeze < minCondense;
+      if (clipped) squeeze = minCondense;
+
+      Widget out = Text(
+        _stripped,
+        style: painted,
+        maxLines: 1,
+        softWrap: false,
+        overflow: clipped ? TextOverflow.ellipsis : TextOverflow.visible,
       );
-    }
 
-    if (style.background != null ||
-        (style.border != null && style.borderWidth > 0) ||
-        style.padding > 0) {
-      out = Container(
-        padding: EdgeInsets.symmetric(
-            horizontal: style.padding, vertical: style.padding / 2),
-        decoration: BoxDecoration(
-          color: style.background,
-          borderRadius: BorderRadius.circular(style.radius),
-          border: style.border != null && style.borderWidth > 0
-              ? Border.all(color: style.border!, width: style.borderWidth)
-              : null,
-        ),
-        child: out,
-      );
-    }
+      var shader = _shaderFor(style, _fill);
+      if (shader != null) {
+        out = ShaderMask(
+            blendMode: BlendMode.srcIn, shaderCallback: shader, child: out);
+      }
 
-    // "fill" sets a title as tall as the room it has, which is what makes it
-    // sit level with a logo and grow and shrink with it.
-    if (!style.fill) {
-      return FittedBox(fit: BoxFit.scaleDown, alignment: within, child: out);
-    }
+      if (squeeze < 1) {
+        // Only the width. Scaling both would change how tall the writing
+        // looks, which is what fixing the row's height prevents.
+        out = SizedBox(
+          width: available,
+          child: Transform(
+            alignment: within,
+            transform: Matrix4.diagonal3Values(squeeze, 1, 1),
+            child: SizedBox(width: available / squeeze, child: out),
+          ),
+        );
+      }
 
-    // Filling needs a height to fill. A FittedBox only ever scales a child
-    // down into a box larger than it, and under the loose constraints a slot
-    // gets there is no such box -- it simply sized itself to the words,
-    // which is why "fill" did nothing at all.
-    var filled = FittedBox(fit: BoxFit.contain, alignment: within, child: out);
-    return fillTo == null
-        // No figure to match: the row is stretched instead, so this is
-        // handed a tight height and fills that.
-        ? filled
-        : SizedBox(height: fillTo, child: filled);
+      if (style.background != null ||
+          (style.border != null && style.borderWidth > 0) ||
+          style.padding > 0) {
+        out = Container(
+          padding: EdgeInsets.symmetric(
+              horizontal: style.padding, vertical: style.padding / 2),
+          decoration: BoxDecoration(
+            color: style.background,
+            borderRadius: BorderRadius.circular(style.radius),
+            border: style.border != null && style.borderWidth > 0
+                ? Border.all(color: style.border!, width: style.borderWidth)
+                : null,
+          ),
+          child: out,
+        );
+      }
+
+      return Align(alignment: within, child: out);
+    });
   }
+}
+
+/// _shaderFor is what fills the letters: a run of colours, a picture, or
+/// nothing, in that order of preference.
+Shader Function(Rect)? _shaderFor(HeaderTextStyle style, ui.Image? fill) {
+  if (style.gradient.isNotEmpty) {
+    return (bounds) => LinearGradient(colors: style.gradient)
+        .createShader(Rect.fromLTWH(0, 0, bounds.width, bounds.height));
+  }
+  var picture = fill;
+  if (picture == null) return null;
+  return (bounds) => ImageShader(
+        picture,
+        TileMode.clamp,
+        TileMode.clamp,
+        // Scaled so the picture covers the words rather than tiling across
+        // them: a logo repeated eight times inside a title is not a fill.
+        (Matrix4.identity()
+              ..scaleByDouble(bounds.width / picture.width,
+                  bounds.height / picture.height, 1, 1))
+            .storage,
+      );
 }

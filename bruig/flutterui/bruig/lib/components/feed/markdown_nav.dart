@@ -1,3 +1,4 @@
+import 'package:bruig/components/feed/markdown_header.dart';
 import 'package:bruig/components/md_elements.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:bruig/theming_system/theme_preset.dart';
@@ -10,48 +11,6 @@ import 'package:markdown/markdown.dart' as md;
 // Its own file rather than the header's: a bar is a block in its own right,
 // written anywhere on a page, and only happens to be what most headers put
 // in their nav field. Split out when the header outgrew them sharing one.
-
-/// NavPlacement is where the bar sits in a banner: which edge, and how far
-/// across.
-///
-/// Written as one field -- "navat: bottom middle" -- because it is one
-/// decision. Either word may be left out and either order works, so "top",
-/// "middle" and "middle top" all mean something sensible.
-@immutable
-class NavPlacement {
-  final bool atTop;
-  final Alignment across;
-  const NavPlacement({required this.atTop, required this.across});
-
-  static const _across = {
-    "left": Alignment.centerLeft,
-    "middle": Alignment.center,
-    "centre": Alignment.center,
-    "center": Alignment.center,
-    "right": Alignment.centerRight,
-  };
-
-  /// parse reads the field. The default is the bottom left, which is where a
-  /// bar goes when nobody has said otherwise.
-  factory NavPlacement.parse(String? raw) {
-    var atTop = false;
-    var across = Alignment.centerLeft;
-    for (var word in (raw ?? "").toLowerCase().split(RegExp(r'\s+'))) {
-      if (word == "top") atTop = true;
-      if (word == "bottom") atTop = false;
-      var a = _across[word];
-      if (a != null) across = a;
-    }
-    return NavPlacement(atTop: atTop, across: across);
-  }
-
-  @override
-  int get hashCode => Object.hash(atTop, across);
-
-  @override
-  bool operator ==(Object other) =>
-      other is NavPlacement && other.atTop == atTop && other.across == across;
-}
 
 /// NavStyle is the shape of a bar of links. The writer picks one, because it
 /// is part of how the page is laid out; what each looks like is the reader's,
@@ -193,6 +152,16 @@ class _MarkdownNav extends StatelessWidget {
       }
     }
 
+    // Which way the bar runs, when it is in a banner's row. A block fills
+    // the width it is given, so a bar in a centred row would otherwise
+    // start at the left of it and look nothing like centred.
+    var within = HeaderCellAlign.of(context);
+    var across = switch (within) {
+      Alignment.center => WrapAlignment.center,
+      Alignment.centerRight => WrapAlignment.end,
+      _ => WrapAlignment.start,
+    };
+
     // Wrapped rather than a Row: a bar of six links in a narrow window is
     // two rows of three, not six squeezed columns.
     return Padding(
@@ -200,6 +169,7 @@ class _MarkdownNav extends StatelessWidget {
       child: Wrap(
         spacing: rule.boundedGap,
         runSpacing: rule.boundedGap / 2,
+        alignment: across,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [for (var l in links) item(l)],
       ),

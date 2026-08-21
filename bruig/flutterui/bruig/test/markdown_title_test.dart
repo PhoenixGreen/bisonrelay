@@ -64,11 +64,19 @@ void main() {
       expect(st.border, const Color(0xffffffff));
     });
 
-    test('"fill" makes a title as tall as the room it has', () {
-      // Which is what makes it sit level with a logo and scale with it.
-      var st = HeaderTextStyle.parse({"titlesize": "fill"});
-      expect(st.fill, isTrue);
-      expect(st.size, isNull);
+    test('no size given leaves it to the row', () {
+      // A row is a fixed height and everything in it is set to that, so a
+      // title comes out level with the logo beside it without either being
+      // told about the other.
+      expect(HeaderTextStyle.parse({}).size, isNull);
+      expect(HeaderTextStyle.parse({"titlesize": "40"}).size, 40);
+    });
+
+    test('a picture can fill the letters, as colours can', () {
+      var st = HeaderTextStyle.parse(
+          {"titleimage": "--embed[type=image/png,data=AAAA]--"});
+      expect(st.image, isNotNull);
+      expect(st.plain, isFalse);
     });
 
     test('case changes the words, not how they are drawn', () {
@@ -111,63 +119,62 @@ void main() {
     testWidgets('with the case applied and the heading marks dropped',
         (tester) async {
       await tester.pumpWidget(drawHost(MarkdownArea("""
---header[200]--
-middle: ## My site
+--header--
 titlecase: upper
-titlesize: 40
 titleweight: bold
 titlegradient: #ff0000,#0000ff
 titlebackground: #00000040
 titleborder: 2
 titlebordercolor: #ffffff
+--row[80,center]--
+## My site
+--/row--
 --/header--
 """, false)));
       await tester.pump();
 
-      // How large a title is set is titlesize, not how many hashes were
-      // typed -- two of them in a banner would otherwise be small.
+      // How large a title is set is the row's height, not how many hashes
+      // were typed -- two of them in a banner would otherwise be small.
       expect(find.text("MY SITE"), findsOneWidget);
       expect(find.textContaining("##"), findsNothing);
       expect(tester.takeException(), isNull);
     });
   });
 
-  group('a title told to fill', () {
+
+  group('a title too long for its row', () {
     setUp(() => SharedPreferences.setMockInitialValues({}));
 
-    Future<Rect> titleRect(WidgetTester tester, String extra) async {
+    Future<Rect> titleIn(WidgetTester tester, String words,
+        {double width = 1000}) async {
       await tester.pumpWidget(drawHost(MarkdownArea("""
---header[200]--
-left: # Logo
-right: # Title
-$extra
+--header--
+--row[60,left]--
+# $words
+--/row--
 --/header--
-""", false)));
+""", false), width: width));
       await tester.pump();
-      return tester.getRect(find.text("Title"));
+      return tester.getRect(find.text(words));
     }
 
-    testWidgets('is taller than one left alone', (tester) async {
-      // A FittedBox only scales a child down into a box larger than it, and
-      // a slot's constraints are loose -- so "fill" used to size itself to
-      // the words and do nothing at all.
-      var plain = await titleRect(tester, "");
-      var filled = await titleRect(tester, "titlesize: fill");
-      expect(filled.height, greaterThan(plain.height));
-    });
+    testWidgets('keeps its height, and loses width instead', (tester) async {
+      // The whole point of fixing a row's height: shrinking the letters
+      // would change how tall the writing looks and undo it. Squeezing them
+      // keeps the cap height and loses only the width.
+      var roomy = await titleIn(tester, "Short");
+      var cramped = await titleIn(
+          tester, "A very much longer title than will ever fit across here",
+          width: 300);
 
-    testWidgets('matches the logo when the logo has a height', (tester) async {
-      var filled = await titleRect(tester, "logosize: 80\ntitlesize: fill");
-      // The point of the pair: set both and they come out level.
-      expect(filled.height, moreOrLessEquals(80, epsilon: 2));
-    });
-
-    testWidgets('takes the row when the logo has none', (tester) async {
-      var filled = await titleRect(tester, "titlesize: fill");
-      // The banner is 200 less its padding, which is what a logo without a
-      // height of its own also takes.
-      expect(filled.height, greaterThan(100));
+      expect(cramped.height, moreOrLessEquals(roomy.height, epsilon: 2));
       expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('a short one is not stretched to fill the row', (tester) async {
+      var narrow = await titleIn(tester, "Hi", width: 400);
+      var wide = await titleIn(tester, "Hi", width: 1200);
+      expect(wide.width, moreOrLessEquals(narrow.width, epsilon: 1));
     });
   });
 }

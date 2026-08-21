@@ -79,79 +79,59 @@ may appear in one site.
 
 ### Headers and navigation
 
-A banner across the top of a page:
+A banner across the top of a page is rows, and a row is one or two cells:
 
 ```
---header[220]--
+--header--
 background: --embed[type=image/png,data=...]--
+--row[96,split]--
 left: ![](logo)
 right: # My site
-description: What the site is for.
-nav: --include[navigation]--
-navat: bottom middle
+--/row--
+--row[44,center]--
+--include[navigation]--
+--/row--
 --/header--
 ```
 
-Every field is optional — one with only a background is a banner, one with
-only a title is a masthead. The number is how tall it is; without one the
-reader's theme decides.
+At most two rows of at most two cells. Every shape people build — a logo
+beside a title, a bar of links under them — fits in that, and every shape past
+it is one that has to be made to work at a width its author never saw.
 
-A field's value runs until the next field, so it can be several lines. That
-matters for `nav:`, since `--include[navigation]--` is replaced with the whole
-of that fragment before the header is read. Only the names above start a new
-field, so a colon inside a value — which every `br://` link has — belongs to
-the value.
+A row's marker carries its height and how it divides: `split` puts two cells
+at opposite edges, `center`, `left` and `right` place one. **The height is
+fixed and everything in the row is sized to it** — a logo is as tall as its
+row, a title is set to its row — so a banner resizes without anything in it
+changing height.
 
-The three slots run left, middle and right. A slot on its own takes the whole
-width and sits where its name says. Otherwise each takes a column and the last
-one absorbs whatever is left at the end — so a logo on the left and a title in
-the middle gives the title the right-hand space too, while a logo left and a
-title right keeps the gap between them.
+A title too long for its row is **condensed rather than shrunk**: the letters
+squeeze and the cap height stays, so the row still looks its height. Past
+about two-thirds it stops being readable and is cut with an ellipsis instead.
 
-The three give three distances from the logo: `middle` sits beside it,
-`right` against the far edge, and a `middle` with nothing to its left is
-centred in the banner.
-
-The gap between slots that sit together is fixed, so a logo and the title
-beside it stay the same distance apart however wide the window is. A `right`
-slot instead goes to the far edge, with the slack between the two.
-
-A logo fills the banner's height unless given one of its own:
-
-```
-logosize: 64           a height in pixels, or "fill"
-```
-
-Which is usually what you want as soon as there is a title beside it: set
-`logosize` and `titlesize` to the same number and the two sit level.
+A bar of links is a fragment in a row, with nothing special about it — which
+is what the `--include[navigation]--` above is.
 
 A title can be set apart from the rest of the page — it is the one piece of a
 site whose look belongs to whoever wrote it:
 
 ```
-titlesize: 48          a number, or "fill" to match the height beside it
+titlesize: 48          leave it out and the row's height decides
 titleweight: bold
 titleitalic: yes
 titlecase: upper       changes the words, so what is copied is what is shown
 titletracking: 3       letter spacing
 titlecolor: #ffcc00
-titlegradient: #f00,#00f    two or more colours, across the words
-titlebackground: #00000080  #rrggbbaa, so it can be see-through
+titlegradient: #f00,#00f       colours across the words
+titleimage: --embed[...]--     a picture inside the words
+titlebackground: #00000080     #rrggbbaa, so it can be see-through
 titleborder: 2
 titlebordercolor: #ffffff
 titleradius: 8
 titlepadding: 12
 ```
 
-`titlesize: fill` sets the title as tall as the logo beside it — the logo's
-`logosize` when it has one, and the banner's height when it does not, which is
-what the logo takes then too. Heading marks in a slot are dropped: how large a title is set
-is `titlesize`, not how many hashes were typed.
-
-`navat` says where the bar goes: `top` or `bottom`, and `left`, `middle` or
-`right` across. Either word may be left out and either order works, so `top`,
-`middle` and `middle top` all mean something. Without it a bar sits at the
-bottom left.
+Heading marks in a cell are dropped: how large a title is set is its row, not
+how many hashes were typed.
 
 A bar of links, one link a line:
 
@@ -166,9 +146,6 @@ A bar of links, one link a line:
 it is part of how the page is laid out; what each shape looks like is the
 reader's, through Settings > Appearance > Markdown > Header and navigation and
 the colours they read in.
-
-A bar is usually written once as a fragment and included wherever it is
-wanted, which is what `nav:` above is doing.
 
 ### Other markup
 
