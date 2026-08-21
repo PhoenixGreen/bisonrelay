@@ -8,6 +8,7 @@ import 'package:bruig/components/feed/reading_selection.dart';
 import 'package:bruig/models/feed.dart';
 import 'package:bruig/plugin_system/writing_tools/post_library/embed_store.dart';
 import 'package:bruig/models/pages.dart';
+import 'package:bruig/models/resources.dart';
 import 'package:bruig/plugin_system/writing_tools/post_library/page_documents.dart';
 import 'package:bruig/plugin_system/writing_tools/post_library/post_library_model.dart';
 import 'package:bruig/plugin_system/writing_tools/post_library/post_storage.dart';
@@ -60,11 +61,33 @@ class _WritingComposerState extends State<WritingComposer> {
   /// nothing behind it yet is left as it stands rather than stopping the
   /// preview, because a post being written is allowed to be half finished.
   String get previewContent {
+    String out;
     try {
-      return post.getFullContent();
+      out = post.getFullContent();
     } catch (_) {
-      return post.content;
+      out = post.content;
     }
+    // Shared fragments filled in too, from this client's own. A page being
+    // written here is one of its author's own pages, so its fragments are
+    // on this machine -- and a preview that showed --include[navigation]--
+    // as itself was showing something no reader will ever see.
+    return expandPartials(out, _partials);
+  }
+
+  /// _partials are this client's own shared fragments, for the preview. Read
+  /// from the library rather than fetched: they belong to whoever is
+  /// writing, so there is nothing to ask anyone for.
+  Map<String, String> _partials = const {};
+
+  Future<void> _loadPartials() async {
+    var out = <String, String>{};
+    for (var entry in await PostStorage.list(partialsFolderName)) {
+      if (entry.isFolder) continue;
+      var body = await PostStorage.read(partialsFolderName, entry.name);
+      if (body != null) out[pageSlug(entry.name)] = body;
+    }
+    if (!mounted) return;
+    setState(() => _partials = out);
   }
 
   /// previewing is read from the sidebar the composer is sitting beside.
@@ -477,6 +500,7 @@ class _WritingComposerState extends State<WritingComposer> {
     contentCtrl.selection = TextSelection.collapsed(
         offset: post.caret.clamp(0, contentCtrl.text.length));
     contentCtrl.addListener(contentChanged);
+    _loadPartials();
     // Typing is what moves a published page to "edited", so the menu has to
     // follow the text as well as the document.
     contentCtrl.addListener(refreshPageStateSoon);
