@@ -2362,6 +2362,24 @@ func handleClientCmd(cc *clientCtx, cmd *cmd) (interface{}, error) {
 		}
 		return listLocalAssets(root)
 
+	case CTReadLocalAsset:
+		var assetPath string
+		if err := cmd.decode(&assetPath); err != nil {
+			return nil, err
+		}
+		return readLocalAsset(cc.pagesHost.config().PagesPath, assetPath)
+
+	case CTAddLocalAssetBytes:
+		var args addAssetArgs
+		if err := cmd.decode(&args); err != nil {
+			return nil, err
+		}
+		root := cc.pagesHost.config().PagesPath
+		if _, err := addLocalAssetBytes(root, args.Name, args.Data); err != nil {
+			return nil, err
+		}
+		return listLocalAssets(root)
+
 	case CTListStoreProducts:
 		store, err := cc.pagesHost.runningStore()
 		if err != nil {

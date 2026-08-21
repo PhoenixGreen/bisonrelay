@@ -276,3 +276,38 @@ func addLocalAsset(root, srcPath string) (string, error) {
 	}
 	return assetsDir + "/" + filepath.Base(fname), nil
 }
+
+// readLocalAsset returns the bytes of one picture the site keeps.
+//
+// The site's own pictures, read from disk rather than fetched. A reader gets
+// these over the wire because they are somebody else's; the person writing
+// the page already has them, and a preview that had to fetch its author's own
+// files would be waiting on a round trip to itself.
+func readLocalAsset(root, assetPath string) ([]byte, error) {
+	fname, err := pageFileName(root, assetPath)
+	if err != nil {
+		return nil, err
+	}
+	return os.ReadFile(fname)
+}
+
+// addLocalAssetBytes writes a picture into the site's assets directory under
+// [name].
+//
+// Bytes rather than a path to copy, because what gets added is usually not
+// what was picked: a picture is resized and re-encoded first, and the result
+// exists only in memory. The name carries the extension the encoding chose,
+// which is why it is passed rather than taken from the source.
+func addLocalAssetBytes(root, name string, data []byte) (string, error) {
+	fname, err := pageFileName(root, assetsDir+"/"+filepath.Base(name))
+	if err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(filepath.Dir(fname), 0o700); err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(fname, data, 0o600); err != nil {
+		return "", err
+	}
+	return assetsDir + "/" + filepath.Base(fname), nil
+}

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:bruig/components/feed/embed_options.dart';
+import 'package:bruig/components/feed/picture_options_controls.dart';
 import 'package:bruig/components/text.dart';
 import 'package:bruig/models/feed.dart';
 import 'package:bruig/plugin_system/writing_tools/post_library/embed_store.dart';
@@ -159,44 +160,13 @@ class _AddAltTextState extends State<AddAltText> {
       padding: const EdgeInsets.all(30),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         if (isImage) ...[
-          Row(children: [
-            const Text("Maximum width: "),
-            const SizedBox(width: 5),
-            DropdownButton<int?>(
-              value: _options.maxWidth,
-              items: const [
-                DropdownMenuItem(value: null, child: Text("Original")),
-                DropdownMenuItem(value: 2000, child: Text("2000 px")),
-                DropdownMenuItem(value: 1600, child: Text("1600 px")),
-                DropdownMenuItem(value: 1200, child: Text("1200 px")),
-                DropdownMenuItem(value: 1000, child: Text("1000 px")),
-                DropdownMenuItem(value: 800, child: Text("800 px")),
-                DropdownMenuItem(value: 600, child: Text("600 px")),
-              ],
-              onChanged: (v) => _setOptions(
-                  _options.copyWith(maxWidth: v, clearMaxWidth: v == null)),
-            ),
-            const SizedBox(width: 20),
-            const Text("Quality: "),
-            Expanded(
-              child: Slider(
-                value: _options.quality.toDouble(),
-                min: 10,
-                max: 100,
-                divisions: 18,
-                // 100 is not a quality setting but a decision to leave the
-                // original encoding alone, so it is labelled as one.
-                label: _options.quality == 100
-                    ? "Original"
-                    : "${_options.quality}",
-                onChanged: (v) => setState(
-                    () => _options = _options.copyWith(quality: v.round())),
-                onChangeEnd: (v) =>
-                    _setOptions(_options.copyWith(quality: v.round())),
-              ),
-            ),
-          ]),
-          Align(alignment: Alignment.centerLeft, child: _sizeLine()),
+          PictureOptionsControls(
+            options: _options,
+            onChanged: _setOptions,
+            onSliding: (next) => setState(() => _options = next),
+            sizeLine:
+                Align(alignment: Alignment.centerLeft, child: _sizeLine()),
+          ),
           const SizedBox(height: 10),
         ],
         Row(

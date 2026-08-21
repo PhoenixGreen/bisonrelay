@@ -763,9 +763,70 @@ class PagesModel extends ChangeNotifier {
 
   Future<void> deleteAsset(String path) async {
     _assets = await Golib.deleteLocalAsset(path);
+    forgetLocalAsset(path);
     notifyListeners();
     _ownSiteChanged();
   }
+
+  /// addAssetBytes writes an already-encoded picture into the site.
+  ///
+  /// The path the page writes to show it, as [addAsset] returns.
+  Future<String> addAssetBytes(String name, Uint8List data) async {
+    _assets = await Golib.addLocalAssetBytes(name, data);
+    var added = _assets
+        .firstWhere((a) => a.name == name, orElse: () => _assets.last);
+    forgetLocalAsset(added.path);
+    notifyListeners();
+    _ownSiteChanged();
+    return added.path;
+  }
+
+  // ---- reading this site's own pictures ----
+  //
+  // So a page can be seen as it is written. Shaped like the remote side on
+  // purpose -- ask, get null, get told when it arrives -- because the widget
+  // that draws a picture should not have to know which of the two it is
+  // looking at.
+
+  final Map<String, Uint8List> _localBytes = {};
+  final Set<String> _localAsking = {};
+
+  /// localAssetBytes returns a picture of this site's, or null while it is
+  /// being read. Listeners are notified when it arrives.
+  Uint8List? localAssetBytes(String path) {
+    var have = _localBytes[path];
+    if (have != null) return have;
+    if (_localAsking.add(path)) unawaited(_readLocalAsset(path));
+    return null;
+  }
+
+  /// forgetLocalAsset drops what was read for [path].
+  ///
+  /// Called whenever the file behind it changes. Replacing a banner and
+  /// still seeing the old one is worse than seeing nothing: it reads as the
+  /// add having quietly failed, and the usual response is to do it again.
+  void forgetLocalAsset(String path) {
+    _localBytes.remove(path);
+    notifyListeners();
+  }
+
+  Future<void> _readLocalAsset(String path) async {
+    try {
+      var data = await readAsset(path);
+      // A file that is not there reads as nothing. Kept anyway: without it
+      // the next build asks again, and a page naming a picture that was
+      // deleted would read the disk on every frame.
+      _localBytes[path] = data;
+      notifyListeners();
+    } catch (exception) {
+      _localBytes[path] = Uint8List(0);
+    } finally {
+      _localAsking.remove(path);
+    }
+  }
+
+  @visibleForTesting
+  Future<Uint8List> readAsset(String path) => Golib.readLocalAsset(path);
 
   // ---- the store ----
   //

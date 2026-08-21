@@ -145,6 +145,73 @@ void main() {
     });
   });
 
+  group("choosing a format", () {
+    final logo = pngWithAlphaOf(400, 300);
+    final opaque = pngWithAlphaOf(400, 300, transparent: false);
+
+    test("automatic is what it always did", () async {
+      // The default, so every caller that does not care is unaffected.
+      var out = await prepareEmbed(
+          wide, "image/png", const EmbedOptions(quality: 40));
+      expect(out.mime, "image/jpeg");
+    });
+
+    test("PNG comes back as PNG, however low the quality", () async {
+      // Lossless: quality changes how hard it packs, never how it looks.
+      var out = await prepareEmbed(wide, "image/png",
+          const EmbedOptions(quality: 20, format: EmbedFormat.png));
+      expect(out.mime, "image/png");
+    });
+
+    test("PNG keeps a see-through picture see-through", () async {
+      // The reason to ask for PNG at all.
+      var out = await prepareEmbed(logo, "image/png",
+          const EmbedOptions(quality: 40, format: EmbedFormat.png));
+      expect(out.mime, "image/png");
+      expect(await hasTransparency(out.data), isTrue);
+    });
+
+    test("asking for JPEG still will not flatten transparency", () async {
+      // Being overruled by an explicit choice would make this worse, not
+      // better: choosing JPEG is choosing a size, not asking for a logo to
+      // come back with black behind it -- and nothing would say it had.
+      var out = await prepareEmbed(logo, "image/png",
+          const EmbedOptions(quality: 40, format: EmbedFormat.jpeg));
+      expect(out.mime, "image/png");
+    });
+
+    test("asking for JPEG re-encodes even at full quality", () async {
+      // Naming a format is asking for that format. Quality 100 only means
+      // "leave it alone" when no format was named.
+      var out = await prepareEmbed(opaque, "image/png",
+          const EmbedOptions(quality: 100, format: EmbedFormat.jpeg));
+      expect(out.mime, "image/jpeg");
+      expect(out.data, isNot(same(opaque)));
+    });
+
+    test("naming nothing at full quality still leaves it alone", () async {
+      var out = await prepareEmbed(
+          wide, "image/png", const EmbedOptions(quality: 100));
+      expect(out.data, same(wide));
+    });
+
+    test("the bytes really are the format claimed", () async {
+      // The mime is what names the file, and a name that disagrees with the
+      // contents is a page pointing at something no decoder will open. The
+      // magic numbers rather than the string, because the string is what
+      // would be wrong.
+      var asJpeg = await prepareEmbed(opaque, "image/png",
+          const EmbedOptions(quality: 60, format: EmbedFormat.jpeg));
+      expect(asJpeg.mime, "image/jpeg");
+      expect(asJpeg.data.take(3), [0xFF, 0xD8, 0xFF]);
+
+      var asPng = await prepareEmbed(opaque, "image/png",
+          const EmbedOptions(quality: 60, format: EmbedFormat.png));
+      expect(asPng.mime, "image/png");
+      expect(asPng.data.take(4), [0x89, 0x50, 0x4E, 0x47]);
+    });
+  });
+
   group("vectors", () {
     test("are passed through untouched", () async {
       // No pixels to scale and no quality to trade away -- and decoding one

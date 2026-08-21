@@ -1,4 +1,7 @@
 import 'package:bruig/components/md_elements.dart';
+import 'dart:typed_data';
+
+import 'package:bruig/models/pages.dart';
 import 'package:bruig/models/resources.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
@@ -37,31 +40,54 @@ class PageImage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     var source = Provider.of<PagesSource?>(context, listen: false);
-    if (source == null) {
-      // Not inside a page: a picture by path means nothing here, so the alt
-      // text is all there is to show.
-      return _placeholder(context);
+    if (source != null) {
+      // Somebody else's site. Listened to, not read: the picture arrives
+      // later and this is what draws it when it does.
+      return Consumer<ResourcesModel>(
+          builder: (context, resources, _) =>
+              _drawn(context, resources.assetFor(source.uid, path)));
     }
 
-    // Listened to, not read: the picture arrives later and this is what
-    // draws it when it does.
-    return Consumer<ResourcesModel>(builder: (context, resources, _) {
-      var bytes = resources.assetFor(source.uid, path);
-      if (bytes == null) return _placeholder(context);
+    // No site being read, so this is a page being written -- the preview in
+    // Writing, and the picture is one of this site's own files. Read from
+    // disk rather than fetched: the author has it already, and a preview
+    // that went over the wire to reach its own files would be waiting on a
+    // round trip to itself.
+    //
+    // Falling back rather than being told which it is, because a page does
+    // not change between being written and being read. The same markdown
+    // draws the same picture, and only where the bytes come from differs.
+    var pages = Provider.of<PagesModel?>(context, listen: false);
+    if (pages == null) {
+      // Neither: a picture by path means nothing here, so the alt text is
+      // all there is to show.
+      return _placeholder(context);
+    }
+    return Consumer<PagesModel>(
+        builder: (context, model, _) =>
+            _drawn(context, model.localAssetBytes(path)));
+  }
 
-      var image = path.toLowerCase().endsWith(".svg")
-          ? SvgPicture.memory(bytes, fit: BoxFit.contain)
-          : Image.memory(bytes,
-              fit: BoxFit.contain,
-              errorBuilder: (context, error, stack) => _placeholder(context));
+  /// _drawn is the picture itself, or the alt text while there is none.
+  ///
+  /// One method for both sources: whether the bytes came off the wire or off
+  /// the disk changes nothing about how they are shown, and two copies of
+  /// this is how a preview comes to look unlike the page it previews.
+  Widget _drawn(BuildContext context, Uint8List? bytes) {
+    if (bytes == null || bytes.isEmpty) return _placeholder(context);
 
-      var rule = MarkdownGuideScope.of(context);
-      return ClipRRect(
-        borderRadius:
-            BorderRadius.circular(rule == null ? 8 : rule.boundedRadius),
-        child: image,
-      );
-    });
+    var image = path.toLowerCase().endsWith(".svg")
+        ? SvgPicture.memory(bytes, fit: BoxFit.contain)
+        : Image.memory(bytes,
+            fit: BoxFit.contain,
+            errorBuilder: (context, error, stack) => _placeholder(context));
+
+    var rule = MarkdownGuideScope.of(context);
+    return ClipRRect(
+      borderRadius:
+          BorderRadius.circular(rule == null ? 8 : rule.boundedRadius),
+      child: image,
+    );
   }
 
   /// _placeholder is what stands in while a picture is on its way, and what

@@ -539,6 +539,16 @@ type pagesHostStatus struct {
 	Pages            []localPage     `json:"pages"`
 }
 
+// addAssetArgs is a picture to write into the site under a chosen name.
+//
+// The name is sent rather than derived because re-encoding changes the
+// extension: a PNG saved as JPEG is not "logo.png" any more, and a page
+// pointing at the old name would show nothing.
+type addAssetArgs struct {
+	Name string `json:"name"`
+	Data []byte `json:"data"`
+}
+
 type saveProductArgs struct {
 	Product simplestore.Product `json:"product"`
 	File    string              `json:"file"`

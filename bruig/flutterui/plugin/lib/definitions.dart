@@ -5070,6 +5070,26 @@ abstract class PluginPlatform {
   Future<List<LocalAsset>> deleteLocalAsset(String path) async =>
       _localAssets(await asyncCall(CTDeleteLocalAsset, path));
 
+  /// readLocalAsset returns the bytes of one of this site's own pictures.
+  ///
+  /// For showing a page as it is being written. A reader fetches these; their
+  /// author already has them on disk, and a preview that went over the wire
+  /// to reach its own files would be slower than the thing it previews.
+  Future<Uint8List> readLocalAsset(String path) async {
+    var res = await asyncCall(CTReadLocalAsset, path);
+    return res == null ? Uint8List(0) : base64Decode(res as String);
+  }
+
+  /// addLocalAssetBytes writes a picture into the site under [name].
+  ///
+  /// Bytes rather than a path, because a picture is resized and re-encoded
+  /// before it is added: what gets written exists only in memory, and the
+  /// name carries whatever extension the encoding chose.
+  Future<List<LocalAsset>> addLocalAssetBytes(
+          String name, Uint8List data) async =>
+      _localAssets(await asyncCall(CTAddLocalAssetBytes,
+          {"name": name, "data": base64Encode(data)}));
+
   List<LocalAsset> _localAssets(dynamic res) => res == null
       ? List.empty()
       : (res as List).map<LocalAsset>((v) => LocalAsset.fromJson(v)).toList();
@@ -5563,6 +5583,8 @@ const int CTDeleteLocalPage = 0xc5;
 const int CTListLocalAssets = 0xd6;
 const int CTAddLocalAsset = 0xd7;
 const int CTDeleteLocalAsset = 0xd8;
+const int CTReadLocalAsset = 0xd9;
+const int CTAddLocalAssetBytes = 0xda;
 const int CTListStoreProducts = 0xc6;
 const int CTSaveStoreProduct = 0xc7;
 const int CTDeleteStoreProduct = 0xc8;

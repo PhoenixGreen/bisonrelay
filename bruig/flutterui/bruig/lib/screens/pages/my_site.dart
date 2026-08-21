@@ -3,6 +3,7 @@ import 'package:bruig/components/text.dart';
 import 'package:bruig/models/client.dart';
 import 'package:bruig/config.dart';
 import 'package:bruig/models/pages.dart';
+import 'package:bruig/components/pages/add_picture_dialog.dart';
 import 'package:bruig/screens/pages/page_editor.dart';
 import 'package:bruig/screens/pages/site_rows.dart';
 import 'package:bruig/models/menus.dart';
@@ -290,14 +291,8 @@ class _MySiteTabState extends State<MySiteTab> {
   void addImage() async {
     var snackbar = SnackBarModel.of(context);
     try {
-      var picked = await FilePicker.platform.pickFiles(
-        type: FileType.image,
-        dialogTitle: "Picture to add to the site",
-      );
-      var path = picked?.files.single.path;
-      if (path == null) return;
-
-      var used = await pages.addAsset(path);
+      var used = await pickAndAddPicture(context, pages);
+      if (used == null) return;
       await Clipboard.setData(ClipboardData(text: "![]($used)"));
       snackbar.success("Added $used, and copied the markdown to paste in.");
     } catch (exception) {

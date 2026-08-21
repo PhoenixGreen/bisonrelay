@@ -15,6 +15,30 @@ import 'package:image_compression_flutter/image_compression_flutter.dart';
 // afterwards spends effort on detail that is about to be discarded, and
 // leaves the quality figure describing an image nobody will look at.
 
+/// EmbedFormat is what to encode a picture as.
+///
+/// Two entries, not three: WebP would be a quarter smaller again, and every
+/// client can already display one -- but nothing here can produce one. The
+/// compression package falls back to JPEG off Android and iOS, and the pure
+/// Dart image package ships a WebP decoder and no encoder. A .webp file that
+/// arrives already encoded is added and served untouched; what cannot be
+/// done is making one.
+enum EmbedFormat {
+  /// keep is JPEG unless the picture uses transparency, which is the
+  /// judgement described at [prepareEmbed]. Right for almost everything.
+  keep,
+
+  /// jpeg for photographs: much smaller, and loses no detail anyone looks
+  /// for. Still declined for a picture with transparency in it, which JPEG
+  /// cannot carry.
+  jpeg,
+
+  /// png for line art, screenshots of text, and anything see-through.
+  /// Lossless, so quality only changes how hard it packs, never how it
+  /// looks -- and larger than JPEG for a photograph, often much larger.
+  png,
+}
+
 /// EmbedOptions is how much of a picture to keep.
 class EmbedOptions {
   /// maxWidth is the widest the picture may be, or null to leave it alone.
@@ -27,7 +51,12 @@ class EmbedOptions {
   /// quality runs from 1 to 100. 100 means leave the encoding alone.
   final int quality;
 
-  const EmbedOptions({this.maxWidth, this.quality = 100});
+  /// format is what to encode as. [EmbedFormat.keep] is the old behaviour
+  /// and the default, so a caller that does not care is unaffected.
+  final EmbedFormat format;
+
+  const EmbedOptions(
+      {this.maxWidth, this.quality = 100, this.format = EmbedFormat.keep});
 
   /// none is the original bytes, unchanged.
   static const none = EmbedOptions();
@@ -35,10 +64,14 @@ class EmbedOptions {
   bool get changesAnything => maxWidth != null || quality < 100;
 
   EmbedOptions copyWith(
-          {int? maxWidth, bool clearMaxWidth = false, int? quality}) =>
+          {int? maxWidth,
+          bool clearMaxWidth = false,
+          int? quality,
+          EmbedFormat? format}) =>
       EmbedOptions(
         maxWidth: clearMaxWidth ? null : (maxWidth ?? this.maxWidth),
         quality: quality ?? this.quality,
+        format: format ?? this.format,
       );
 }
 
@@ -103,11 +136,25 @@ Future<PreparedEmbed> prepareEmbed(
   // refusing to compress every PNG would give that up for the few that
   // need it.
   var transparent = await hasTransparency(data);
-  if (options.quality < 100 && !transparent) {
-    var compressed = await _compress(data, options.quality);
+  var wantPng = options.format == EmbedFormat.png;
+
+  // Naming a format is asking for that format, whatever the quality says:
+  // converting a PNG screenshot to JPEG at 100 is a real request, and PNG
+  // is lossless so there is no quality below which it stops being worth
+  // encoding. Quality 100 is only "leave the encoding alone" when no format
+  // was asked for.
+  var encode = options.format != EmbedFormat.keep || options.quality < 100;
+
+  // The transparency guard holds whichever format was asked for. JPEG has
+  // no alpha channel, so a logo with a clear background comes back with
+  // black behind it -- and the writer is not told. Being overruled by an
+  // explicit choice would make that worse, not better: somebody choosing
+  // JPEG is choosing a size, not asking for their logo to be ruined.
+  if (encode && !(transparent && !wantPng)) {
+    var compressed = await _compress(data, options.quality, wantPng);
     if (compressed != null) {
       data = compressed;
-      out = "image/jpeg";
+      out = wantPng ? "image/png" : "image/jpeg";
     }
   }
 
@@ -168,7 +215,7 @@ Future<Uint8List?> _scaleToWidth(Uint8List bytes, int width) async {
   }
 }
 
-Future<Uint8List?> _compress(Uint8List bytes, int quality) async {
+Future<Uint8List?> _compress(Uint8List bytes, int quality, bool png) async {
   try {
     var output = await compressor.compress(ImageFileConfiguration(
       // The name is only what the compressor calls the thing; nothing is
@@ -176,7 +223,7 @@ Future<Uint8List?> _compress(Uint8List bytes, int quality) async {
       input: ImageFile(filePath: "embed", rawBytes: bytes),
       config: Configuration(
         useJpgPngNativeCompressor: false,
-        outputType: ImageOutputType.jpg,
+        outputType: png ? ImageOutputType.png : ImageOutputType.jpg,
         quality: quality,
       ),
     ));

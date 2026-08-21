@@ -220,6 +220,8 @@ const (
 	CTListLocalAssets    CmdType = 0xd6
 	CTAddLocalAsset      CmdType = 0xd7
 	CTDeleteLocalAsset   CmdType = 0xd8
+	CTReadLocalAsset     CmdType = 0xd9
+	CTAddLocalAssetBytes CmdType = 0xda
 
 	// Store management: the catalogue and the order book, for the seller's
 	// own UI rather than the markdown pages a buyer sees.

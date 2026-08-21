@@ -1,6 +1,10 @@
+import 'package:bruig/components/pages/add_picture_dialog.dart';
+import 'package:bruig/models/snackbar.dart';
+import 'package:bruig/models/pages.dart';
 import 'package:bruig/plugin_system/writing_tools/composer_sidebar.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 // formatting_sidebar.dart is the composer's formatting and content panel:
 // the things that put something into the post rather than say something
@@ -285,9 +289,56 @@ class FormattingSidebar extends StatelessWidget {
             _grid(theme, editor, _blocks),
             _section(theme, "Pages and store"),
             _grid(theme, editor, _pages),
+            const SizedBox(height: 6),
+            // Its own button rather than a snippet, because it is not one:
+            // the others wrap what is selected, and this one asks for a
+            // file, re-encodes it, writes it into the site and then puts a
+            // link to it at the caret.
+            //
+            // Here as well as in the site's own Pictures list because this
+            // is where the page is being written. Going to another section
+            // to add a picture and coming back to write the link is the
+            // sort of round trip that ends with people pasting base64 in.
+            _wide(
+              theme,
+              Icons.image_outlined,
+              "Add Picture",
+              editor == null ? null : () => _addPicture(context, editor),
+            ),
           ],
         );
       },
+    );
+  }
+
+  /// _addPicture adds a picture to the site and links it from the page.
+  ///
+  /// A site picture rather than an embed: an embed is written into the text,
+  /// and a banner written into every page of a site is that banner sent
+  /// again with every page. As a file it crosses once and is kept.
+  static void _addPicture(
+      BuildContext context, TextEditingController editor) async {
+    var pages = Provider.of<PagesModel>(context, listen: false);
+    var snackbar = SnackBarModel.of(context);
+    try {
+      var used = await pickAndAddPicture(context, pages);
+      if (used == null) return;
+      _insert(editor, "![]($used)");
+    } catch (exception) {
+      snackbar.error("Unable to add the picture: $exception");
+    }
+  }
+
+  /// _insert puts [text] in at the caret, leaving it after what was put in.
+  static void _insert(TextEditingController editor, String text) {
+    var value = editor.value;
+    var selection = value.selection;
+    var start = selection.isValid ? selection.start : value.text.length;
+    var end = selection.isValid ? selection.end : value.text.length;
+    editor.value = value.copyWith(
+      text: value.text.replaceRange(start, end, text),
+      selection: TextSelection.collapsed(offset: start + text.length),
+      composing: TextRange.empty,
     );
   }
 
