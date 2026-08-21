@@ -94,8 +94,7 @@ void main() {
 
     test("an embed line is not padded, nor the line before one", () {
       const embed = "--embed[type=image/png,data=[content abcdef123456]]--";
-      expect(hardenSoftLineBreaks("text\n$embed\nmore"),
-          "text\n$embed\nmore");
+      expect(hardenSoftLineBreaks("text\n$embed\nmore"), "text\n$embed\nmore");
     });
   });
 

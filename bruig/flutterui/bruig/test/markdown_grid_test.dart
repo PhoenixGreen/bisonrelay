@@ -45,18 +45,16 @@ void main() {
 
   group('splitCells', () {
     test('each picture starts a cell and keeps the writing after it', () {
-      expect(
-          cells('''
+      expect(cells('''
 $img
 ### One
 first caption
 $img
 ### Two
-'''),
-          [
-            "$img\n### One\nfirst caption",
-            "$img\n### Two",
-          ]);
+'''), [
+        "$img\n### One\nfirst caption",
+        "$img\n### Two",
+      ]);
     });
 
     test('a leading picture does not emit an empty cell before itself', () {
@@ -103,14 +101,18 @@ one
     });
 
     test('--grid[n]-- sets the width, clamped to something usable', () {
-      expect(parse("--grid[3]--\n$img\na\n--/grid--").attributes["columns"], "3");
+      expect(
+          parse("--grid[3]--\n$img\na\n--/grid--").attributes["columns"], "3");
       // Past four a cell in a chat-width window is a word wide.
-      expect(parse("--grid[9]--\n$img\na\n--/grid--").attributes["columns"], "4");
-      expect(parse("--grid[0]--\n$img\na\n--/grid--").attributes["columns"], "1");
+      expect(
+          parse("--grid[9]--\n$img\na\n--/grid--").attributes["columns"], "4");
+      expect(
+          parse("--grid[0]--\n$img\na\n--/grid--").attributes["columns"], "1");
     });
 
     test('--grid[1]-- is what Decred Pulse spells --grid2--', () {
-      expect(parse("--grid[1]--\n$img\na\n--/grid--").attributes["columns"], "1");
+      expect(
+          parse("--grid[1]--\n$img\na\n--/grid--").attributes["columns"], "1");
     });
 
     test('--grid2-- itself is read, so imported pages lay out as written', () {
@@ -173,13 +175,15 @@ $img
 
     testWidgets('cells sit side by side across, and stacked at one across',
         (tester) async {
-      await pump(tester, "--grid--\n$img\n### left\n$img\n### right\n--/grid--");
+      await pump(
+          tester, "--grid--\n$img\n### left\n$img\n### right\n--/grid--");
       var acrossLeft = tester.getTopLeft(find.text("left"));
       var acrossRight = tester.getTopLeft(find.text("right"));
       expect(acrossRight.dx, greaterThan(acrossLeft.dx));
       expect(acrossRight.dy, acrossLeft.dy);
 
-      await pump(tester, "--grid[1]--\n$img\n### left\n$img\n### right\n--/grid--");
+      await pump(
+          tester, "--grid[1]--\n$img\n### left\n$img\n### right\n--/grid--");
       var downLeft = tester.getTopLeft(find.text("left"));
       var downRight = tester.getTopLeft(find.text("right"));
       expect(downRight.dy, greaterThan(downLeft.dy));
@@ -190,18 +194,21 @@ $img
         (tester) async {
       // Three cells two across: the lone one on the second row must not
       // stretch to the full width, or the grid stops looking like one.
-      await pump(tester,
-          "--grid--\n$img\n### a\n$img\n### b\n$img\n### c\n--/grid--");
-      var first = tester.getSize(find.ancestor(
-          of: find.text("a"), matching: find.byType(MarkdownArea)).first);
-      var last = tester.getSize(find.ancestor(
-          of: find.text("c"), matching: find.byType(MarkdownArea)).first);
+      await pump(
+          tester, "--grid--\n$img\n### a\n$img\n### b\n$img\n### c\n--/grid--");
+      var first = tester.getSize(find
+          .ancestor(of: find.text("a"), matching: find.byType(MarkdownArea))
+          .first);
+      var last = tester.getSize(find
+          .ancestor(of: find.text("c"), matching: find.byType(MarkdownArea))
+          .first);
       expect(last.width, moreOrLessEquals(first.width, epsilon: 1));
       expect(tester.takeException(), isNull);
     });
 
     testWidgets('a narrow window does not overflow', (tester) async {
-      await pump(tester, "--grid[4]--\n$img\n### a\n$img\n### b\n$img\n### c\n$img\n### d\n--/grid--",
+      await pump(tester,
+          "--grid[4]--\n$img\n### a\n$img\n### b\n$img\n### c\n$img\n### d\n--/grid--",
           width: 320);
       expect(tester.takeException(), isNull);
     });

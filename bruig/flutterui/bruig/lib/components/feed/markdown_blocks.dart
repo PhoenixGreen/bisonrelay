@@ -236,7 +236,6 @@ class _ColumnDepth extends InheritedWidget {
   bool updateShouldNotify(_ColumnDepth old) => old.depth != depth;
 }
 
-
 /// GridBlockSyntax reads a picture gallery.
 ///
 /// Imported from Decred Pulse, which added it to the page format Bison Relay
@@ -276,8 +275,7 @@ class GridBlockSyntax extends md.BlockSyntax {
   /// _picture is what starts a new cell: an image embed, or a markdown
   /// image. A download embed of something that is not a picture does not --
   /// it belongs in the caption of the cell it is written in.
-  static final _picture = RegExp(
-      r'--embed\[[^\]]*type=image/|!\[[^\]]*\]\(');
+  static final _picture = RegExp(r'--embed\[[^\]]*type=image/|!\[[^\]]*\]\(');
 
   /// The most a grid may hold across, matching ColumnsBlockSyntax. Past four
   /// a cell in a chat-width window is a word wide.
@@ -407,7 +405,6 @@ class _MarkdownGrid extends StatelessWidget {
   }
 
   Widget _rows(BuildContext context, int across, double gap, int depth) {
-
     // One across is a stack of blocks, not a layout -- drawing it as a Row
     // of one would stretch a child where a plain block belongs. This is also
     // Decred Pulse's --grid2--.

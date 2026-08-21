@@ -811,8 +811,8 @@ void _multiBlockWeighing() {
 
     test("a column weighs what its blocks weigh", () {
       var heading = "# A flowed run";
-      expect(weigh("$heading\n\n$para"),
-          closeTo(weigh(heading) + weigh(para), 1));
+      expect(
+          weigh("$heading\n\n$para"), closeTo(weigh(heading) + weigh(para), 1));
     });
 
     test("a heading does not set the whole column at heading size", () {

@@ -1,46 +1,19 @@
 import 'package:bruig/components/feed/markdown_header.dart';
-import 'package:flutter_test/flutter_test.dart';
 import 'package:bruig/components/md_elements.dart';
 import 'package:bruig/models/payments.dart';
 import 'package:bruig/models/snackbar.dart';
+import 'package:bruig/theming_system/model/markdown_style.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:markdown/markdown.dart' as md;
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:bruig/theming_system/model/markdown_style.dart';
-import 'package:markdown/markdown.dart' as md;
+import 'header_harness.dart';
 
-// markdown_header_test.dart covers a site's furniture: the banner at the top
-// of a page and the bar of links usually in it.
-//
-// Both are fielded, so what is tested here is how the fields are read and
-// how the slots across a header are shared out -- which is the part with a
-// rule in it rather than a layout.
-
-md.Element _parse(String src, md.BlockSyntax syntax) {
-  var doc = md.Document(blockSyntaxes: [syntax]);
-  var nodes = doc.parseLines(src.trim().split("\n"));
-  return (nodes.first as md.Element).children!.first as md.Element;
-}
-
-Widget _drawHost(Widget child, {double width = 900}) => MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<PaymentsModel>(create: (c) => PaymentsModel()),
-        ChangeNotifierProvider<MarkdownAreaModel>(
-            create: (c) => MarkdownAreaModel("/tmp")),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-      ],
-      child: MaterialApp(
-        home: Scaffold(
-          body: SingleChildScrollView(
-            child: SizedBox(width: width, child: child),
-          ),
-        ),
-      ),
-    );
+// markdown_header_test.dart covers the banner itself: its fields, the
+// slots across it, and the room they are given.
 
 void main() {
   group('headerSpans', () {
@@ -101,7 +74,7 @@ void main() {
 
   group('HeaderBlockSyntax', () {
     test('reads its fields and its height', () {
-      var e = _parse('''
+      var e = parseBlock('''
 --header[300]--
 background: --embed[type=image/png,data=AAAA]--
 left: ![](logo)
@@ -120,17 +93,19 @@ navat: top
     });
 
     test('without a height the reader\'s theme decides', () {
-      var e = _parse("--header--\nleft: hi\n--/header--", HeaderBlockSyntax());
+      var e =
+          parseBlock("--header--\nleft: hi\n--/header--", HeaderBlockSyntax());
       expect(e.attributes["height"], isNull);
     });
 
     test('a height is bounded to something that is still a banner', () {
       expect(
-          _parse("--header[5000]--\nleft: a\n--/header--", HeaderBlockSyntax())
+          parseBlock(
+                  "--header[5000]--\nleft: a\n--/header--", HeaderBlockSyntax())
               .attributes["height"],
           "${HeaderBlockSyntax.maxHeight}");
       expect(
-          _parse("--header[1]--\nleft: a\n--/header--", HeaderBlockSyntax())
+          parseBlock("--header[1]--\nleft: a\n--/header--", HeaderBlockSyntax())
               .attributes["height"],
           "40");
     });
@@ -139,7 +114,7 @@ navat: top
       // "nav: --include[bar]--" is replaced with the whole of that fragment
       // before this is parsed, so a field that stopped at one line kept the
       // first line of a navigation bar and threw the links away.
-      var e = _parse('''
+      var e = parseBlock('''
 --header--
 nav: --nav[pills]--
 [Home](index.md)
@@ -158,7 +133,7 @@ right: # My site
 
     test('a colon in a value does not start a new field', () {
       // Which is most lines of a bar: "[Home](br://...)" has one.
-      var e = _parse('''
+      var e = parseBlock('''
 --header--
 nav: [Home](br://abc123/index.md)
 [Notes](notes.md)
@@ -170,14 +145,14 @@ nav: [Home](br://abc123/index.md)
     });
 
     test('a line before any field is not kept', () {
-      var e = _parse(
+      var e = parseBlock(
           "--header--\nstray text\nleft: hi\n--/header--", HeaderBlockSyntax());
       expect(e.attributes["left"], "hi");
       expect(e.attributes.values, isNot(contains("stray text")));
     });
 
     test('an unterminated header still renders what was written', () {
-      var e = _parse("--header--\nleft: hi", HeaderBlockSyntax());
+      var e = parseBlock("--header--\nleft: hi", HeaderBlockSyntax());
       expect(e.attributes["left"], "hi");
     });
   });
@@ -225,72 +200,6 @@ nav: [Home](br://abc123/index.md)
     });
   });
 
-  group('NavBlockSyntax', () {
-    test('one link a line, in order', () {
-      var e = _parse('''
---nav--
-[Home](index.md)
-[About](about.md)
---/nav--
-''', NavBlockSyntax());
-
-      expect(e.attributes["count"], "2");
-      expect(e.attributes["l0"], "[Home](index.md)");
-      expect(e.attributes["l1"], "[About](about.md)");
-      expect(e.attributes["style"], "plain");
-    });
-
-    test('the writer picks the shape', () {
-      for (var s in NavStyle.values) {
-        var e =
-            _parse("--nav[${s.name}]--\n[a](a.md)\n--/nav--", NavBlockSyntax());
-        expect(e.attributes["style"], s.name);
-      }
-    });
-
-    test('an unknown shape falls back rather than failing', () {
-      var e = _parse("--nav[sparkly]--\n[a](a.md)\n--/nav--", NavBlockSyntax());
-      expect(e.attributes["style"], "plain");
-    });
-
-    test('blank lines are not links', () {
-      var e = _parse(
-          "--nav--\n[a](a.md)\n\n\n[b](b.md)\n--/nav--", NavBlockSyntax());
-      expect(e.attributes["count"], "2");
-    });
-
-    test('a bar stops being navigation past a point', () {
-      var many = List.generate(40, (i) => "[$i]($i.md)").join("\n");
-      var e = _parse("--nav--\n$many\n--/nav--", NavBlockSyntax());
-      expect(int.parse(e.attributes["count"]!), NavBlockSyntax.maxLinks);
-    });
-  });
-
-  group('the rules survive being saved', () {
-    test('a header round-trips', () {
-      const r =
-          HeaderRule(height: 300, padding: 24, radius: 12, gap: 16, scrim: 0.5);
-      expect(HeaderRule.fromJson(r.toJson()), r);
-    });
-
-    test('a bar round-trips', () {
-      const r = NavRule(gap: 20, padding: 10, radius: 99, borderWidth: 2);
-      expect(NavRule.fromJson(r.toJson()), r);
-    });
-
-    test('a guide written before either existed still loads', () {
-      var guide = MarkdownStyleGuide.fromJson({"id": "x", "name": "X"});
-      expect(guide.header, const HeaderRule());
-      expect(guide.nav, const NavRule());
-    });
-
-    test('bounds keep a guide from setting something unusable', () {
-      expect(const HeaderRule(height: 5000).boundedHeight, 600);
-      expect(const HeaderRule(height: 1).boundedHeight, 40);
-      expect(const NavRule(radius: 999).boundedRadius, 32);
-    });
-  });
-
   group('where a slot sits in itself', () {
     test('a middle beside a logo hugs the logo', () {
       // Centring it in the space it grew into would put the title further
@@ -324,7 +233,7 @@ nav: [Home](br://abc123/index.md)
     setUp(() => SharedPreferences.setMockInitialValues({}));
 
     Widget host(Widget child, {double width = 900}) =>
-        _drawHost(child, width: width);
+        drawHost(child, width: width);
 
     // Note on what these can and cannot catch: a picture does not decode in
     // a widget test, so an embed lays out as nothing and a banner holding
@@ -362,84 +271,11 @@ right: [Contact](contact.md)
     });
   });
 
-  group('where the bar sits', () {
-    test('reads both words, in either order', () {
-      expect(NavPlacement.parse("bottom middle"),
-          const NavPlacement(atTop: false, across: Alignment.center));
-      expect(NavPlacement.parse("middle bottom"),
-          const NavPlacement(atTop: false, across: Alignment.center));
-      expect(NavPlacement.parse("top right"),
-          const NavPlacement(atTop: true, across: Alignment.centerRight));
-    });
-
-    test('either word may be left out', () {
-      // "top" on its own was the whole of this field before, and still
-      // means what it did.
-      expect(NavPlacement.parse("top").atTop, isTrue);
-      expect(NavPlacement.parse("top").across, Alignment.centerLeft);
-      expect(NavPlacement.parse("middle").atTop, isFalse);
-      expect(NavPlacement.parse("middle").across, Alignment.center);
-    });
-
-    test('nothing at all is the bottom left', () {
-      expect(NavPlacement.parse(null),
-          const NavPlacement(atTop: false, across: Alignment.centerLeft));
-      expect(NavPlacement.parse(""), NavPlacement.parse(null));
-    });
-
-    test('spelt either way', () {
-      expect(NavPlacement.parse("center"), NavPlacement.parse("centre"));
-      expect(
-          NavPlacement.parse("TOP MIDDLE"), NavPlacement.parse("top middle"));
-    });
-
-    test('a word it does not know is ignored, not fatal', () {
-      expect(NavPlacement.parse("top sideways").atTop, isTrue);
-    });
-  });
-
-  group('the bar is drawn where it was put', () {
-    setUp(() => SharedPreferences.setMockInitialValues({}));
-
-    Future<Rect> barRect(WidgetTester tester, String navat) async {
-      await tester.pumpWidget(_drawHost(MarkdownArea("""
---header[200]--
-left: # Logo
-nav: [Home](index.md)
-navat: $navat
---/header--
-""", false)));
-      await tester.pump();
-      return tester.getRect(find.text("Home"));
-    }
-
-    testWidgets('top puts it above the slots, bottom below', (tester) async {
-      var logo = () => tester.getRect(find.text("Logo"));
-
-      var top = await barRect(tester, "top");
-      expect(top.top, lessThan(logo().top),
-          reason: "asked for the top and drawn below the logo");
-
-      var bottom = await barRect(tester, "bottom");
-      expect(bottom.top, greaterThan(logo().top));
-    });
-
-    testWidgets('and across where it was asked for', (tester) async {
-      var left = await barRect(tester, "bottom left");
-      var middle = await barRect(tester, "bottom middle");
-      var right = await barRect(tester, "bottom right");
-
-      expect(middle.left, greaterThan(left.left));
-      expect(right.left, greaterThan(middle.left));
-      expect(tester.takeException(), isNull);
-    });
-  });
-
   group('the gap between slots', () {
     setUp(() => SharedPreferences.setMockInitialValues({}));
 
     Future<double> gapAt(WidgetTester tester, double width) async {
-      await tester.pumpWidget(_drawHost(MarkdownArea("""
+      await tester.pumpWidget(drawHost(MarkdownArea("""
 --header[200]--
 left: # Logo
 middle: # Title
@@ -461,7 +297,7 @@ middle: # Title
 
     testWidgets('a right-hand slot still goes to the right edge',
         (tester) async {
-      await tester.pumpWidget(_drawHost(MarkdownArea("""
+      await tester.pumpWidget(drawHost(MarkdownArea("""
 --header[200]--
 left: # Logo
 right: # Title
@@ -474,9 +310,9 @@ right: # Title
       // banner rather than the window: the markdown area has gutters of its
       // own, so the banner is narrower than the page and an absolute figure
       // here would be measuring those.
-      var banner = tester.getRect(
-          find.ancestor(of: find.text("Title"), matching: find.byType(ClipRRect))
-              .first);
+      var banner = tester.getRect(find
+          .ancestor(of: find.text("Title"), matching: find.byType(ClipRRect))
+          .first);
       var title = tester.getRect(find.text("Title"));
       var logo = tester.getRect(find.text("Logo"));
 
@@ -484,96 +320,6 @@ right: # Title
           reason: "a right-hand slot should reach the banner's right edge");
       expect(title.left - logo.right, greaterThan(banner.width / 2),
           reason: "the slack belongs between them");
-    });
-  });
-
-  group('how a title is set', () {
-    test('reads the fields, and bounds what it reads', () {
-      var st = HeaderTextStyle.parse({
-        "titlesize": "48",
-        "titleweight": "bold",
-        "titleitalic": "yes",
-        "titlecase": "upper",
-        "titletracking": "3",
-        "titlebackground": "#00000080",
-        "titleborder": "2",
-        "titlebordercolor": "#fff",
-      });
-      expect(st.size, 48);
-      expect(st.bold, isTrue);
-      expect(st.italic, isTrue);
-      expect(st.tracking, 3);
-      expect(st.borderWidth, 2);
-      expect(st.background?.a, closeTo(0.5, 0.01),
-          reason: "#rrggbbaa, so a background can be see-through");
-      expect(st.border, const Color(0xffffffff));
-    });
-
-    test('"fill" makes a title as tall as the room it has', () {
-      // Which is what makes it sit level with a logo and scale with it.
-      var st = HeaderTextStyle.parse({"titlesize": "fill"});
-      expect(st.fill, isTrue);
-      expect(st.size, isNull);
-    });
-
-    test('case changes the words, not how they are drawn', () {
-      // So what is copied out of the page is what was written.
-      expect(HeaderTextStyle.parse({"titlecase": "upper"}).apply("My site"),
-          "MY SITE");
-      expect(HeaderTextStyle.parse({"titlecase": "lower"}).apply("My Site"),
-          "my site");
-      expect(HeaderTextStyle.parse({}).apply("My Site"), "My Site");
-    });
-
-    test('a gradient needs two colours; one is just a colour', () {
-      expect(HeaderTextStyle.parse({"titlegradient": "#f00,#00f"}).gradient,
-          hasLength(2));
-      var one = HeaderTextStyle.parse({"titlegradient": "#f00"});
-      expect(one.gradient, isEmpty);
-      expect(one.color, const Color(0xffff0000));
-    });
-
-    test('a colour it cannot read leaves what it would have replaced', () {
-      var st = HeaderTextStyle.parse({"titlecolor": "reddish"});
-      expect(st.color, isNull);
-    });
-
-    test('nothing said means nothing done', () {
-      expect(HeaderTextStyle.parse({}).plain, isTrue);
-      expect(HeaderTextStyle.parse({"titlecase": "upper"}).plain, isFalse);
-    });
-
-    test('sizes and spacing are bounded', () {
-      expect(HeaderTextStyle.parse({"titlesize": "9999"}).size, 200);
-      expect(HeaderTextStyle.parse({"titletracking": "500"}).tracking, 40);
-      expect(HeaderTextStyle.parse({"titleborder": "99"}).borderWidth, 16);
-    });
-  });
-
-  group('a styled title is drawn', () {
-    setUp(() => SharedPreferences.setMockInitialValues({}));
-
-    testWidgets('with the case applied and the heading marks dropped',
-        (tester) async {
-      await tester.pumpWidget(_drawHost(MarkdownArea("""
---header[200]--
-middle: ## My site
-titlecase: upper
-titlesize: 40
-titleweight: bold
-titlegradient: #ff0000,#0000ff
-titlebackground: #00000040
-titleborder: 2
-titlebordercolor: #ffffff
---/header--
-""", false)));
-      await tester.pump();
-
-      // How large a title is set is titlesize, not how many hashes were
-      // typed -- two of them in a banner would otherwise be small.
-      expect(find.text("MY SITE"), findsOneWidget);
-      expect(find.textContaining("##"), findsNothing);
-      expect(tester.takeException(), isNull);
     });
   });
 
@@ -609,7 +355,7 @@ titlebordercolor: #ffffff
       // The picture cannot decode in a test, so this checks the box it is
       // put in rather than the picture -- which is the part being decided
       // here anyway.
-      await tester.pumpWidget(_drawHost(MarkdownArea("""
+      await tester.pumpWidget(drawHost(MarkdownArea("""
 --header[200]--
 left: --embed[type=image/png,data=AAAA]--
 right: # My site
@@ -623,45 +369,6 @@ logosize: 48
           .where((b) => b.height == 48);
       expect(boxes, isNotEmpty,
           reason: "the logo should be boxed to the height it was given");
-      expect(tester.takeException(), isNull);
-    });
-  });
-
-  group('a title told to fill', () {
-    setUp(() => SharedPreferences.setMockInitialValues({}));
-
-    Future<Rect> titleRect(WidgetTester tester, String extra) async {
-      await tester.pumpWidget(_drawHost(MarkdownArea("""
---header[200]--
-left: # Logo
-right: # Title
-$extra
---/header--
-""", false)));
-      await tester.pump();
-      return tester.getRect(find.text("Title"));
-    }
-
-    testWidgets('is taller than one left alone', (tester) async {
-      // A FittedBox only scales a child down into a box larger than it, and
-      // a slot's constraints are loose -- so "fill" used to size itself to
-      // the words and do nothing at all.
-      var plain = await titleRect(tester, "");
-      var filled = await titleRect(tester, "titlesize: fill");
-      expect(filled.height, greaterThan(plain.height));
-    });
-
-    testWidgets('matches the logo when the logo has a height', (tester) async {
-      var filled = await titleRect(tester, "logosize: 80\ntitlesize: fill");
-      // The point of the pair: set both and they come out level.
-      expect(filled.height, moreOrLessEquals(80, epsilon: 2));
-    });
-
-    testWidgets('takes the row when the logo has none', (tester) async {
-      var filled = await titleRect(tester, "titlesize: fill");
-      // The banner is 200 less its padding, which is what a logo without a
-      // height of its own also takes.
-      expect(filled.height, greaterThan(100));
       expect(tester.takeException(), isNull);
     });
   });

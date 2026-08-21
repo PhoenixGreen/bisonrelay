@@ -87,7 +87,8 @@ void main() {
     await _pump(tester, _numbered(1, 9));
     await tester.pump();
 
-    expect(_markers(tester), ["1.", "2.", "3.", "4.", "5.", "6.", "7.", "8.", "9."]);
+    expect(_markers(tester),
+        ["1.", "2.", "3.", "4.", "5.", "6.", "7.", "8.", "9."]);
   });
 
   // The marker column is widened to fit the widest number actually written,
@@ -97,8 +98,7 @@ void main() {
   // Measured as the width of the box the package puts the marker in, which
   // is the thing that was too small. Kept to twelve items because a list
   // long enough to overflow the test viewport fails for that reason instead.
-  testWidgets("the marker column grows with the widest number",
-      (tester) async {
+  testWidgets("the marker column grows with the widest number", (tester) async {
     double markerWidth(WidgetTester t) => t
         .widgetList<SizedBox>(find.byType(SizedBox))
         .map((b) => b.width ?? 0)
