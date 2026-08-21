@@ -73,8 +73,15 @@ String slugFileName(String stem) {
 /// Two copies would be two file pickers with slightly different titles and,
 /// in time, two different sets of size choices.
 Future<String?> pickAndAddPicture(BuildContext context, PagesModel pages) async {
+  // The extensions rather than FileType.image, which is the platform's idea
+  // of a picture and does not include SVG on macOS -- so the one format that
+  // is always the smallest thing on the page could not be chosen at all.
+  // This list is golib's assetExts, which decides what may actually be put
+  // in the directory; offering anything it would refuse is offering a file
+  // that fails after it has been picked.
   var picked = await FilePicker.platform.pickFiles(
-    type: FileType.image,
+    type: FileType.custom,
+    allowedExtensions: const ["png", "jpg", "jpeg", "gif", "webp", "svg"],
     dialogTitle: "Picture to add to the site",
   );
   var path = picked?.files.single.path;

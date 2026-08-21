@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:bruig/components/feed/markdown_header.dart';
 import 'package:bruig/components/feed/page_image.dart';
 import 'package:bruig/models/pages.dart';
 import 'package:bruig/models/resources.dart';
@@ -114,6 +116,25 @@ void main() {
     });
   });
 
+  group('a banner picture', () {
+    // A site keeps its pictures as files, so a page names one by path --
+    // which is exactly what the Pictures list hands over to paste in. The
+    // banner understood only --embed[...]--, so a background set from the
+    // site's own pictures drew nothing at all: the file was there, served,
+    // and named correctly, and the banner behaved as though the line were
+    // blank.
+    test('an embed still works', () {
+      // The old way has to keep working: a banner in a post carries its own
+      // bytes, and there is nowhere to fetch a file from.
+      var png = base64Encode(pngOf(4, 4));
+      expect(embedImage("--embed[type=image/png,data=$png]--"), isNotNull);
+    });
+
+    test('a line naming no picture is not one', () {
+      expect(embedImage("Just some words"), isNull);
+    });
+  });
+
   group('the preview', () {
     Widget wrap(PagesModel pages, Widget child) => ChangeNotifierProvider<
             ThemeNotifier>(
@@ -149,6 +170,45 @@ void main() {
 
       expect(find.text("A banner"), findsOneWidget);
       pages.hold!.complete();
+    });
+
+    testWidgets('draws a banner background named by path', (tester) async {
+      // The case that was broken. The whole banner is rendered rather than
+      // headerPicture called directly, because the bug was not in reading
+      // the path -- it was that nothing ever asked.
+      var pages = _FakePages()..files["assets/banner.png"] = banner;
+
+      await tester.pumpWidget(wrap(
+          pages,
+          Builder(
+              builder: (context) =>
+                  headerPicture(context, "![](assets/banner.png)") == null
+                      ? const Text("nothing")
+                      : const Text("drew it"))));
+      await tester.pumpAndSettle();
+
+      expect(find.text("drew it"), findsOneWidget);
+      expect(pages.asked, ["assets/banner.png"]);
+    });
+
+    testWidgets('a banner still takes an embed', (tester) async {
+      // A banner in a post carries its own bytes; there is nowhere to fetch
+      // a file from. Both ways have to keep working.
+      var pages = _FakePages();
+      var png = base64Encode(pngOf(4, 4));
+
+      await tester.pumpWidget(wrap(
+          pages,
+          Builder(
+              builder: (context) => headerPicture(context,
+                          "--embed[type=image/png,data=$png]--") ==
+                      null
+                  ? const Text("nothing")
+                  : const Text("drew it"))));
+      await tester.pumpAndSettle();
+
+      expect(find.text("drew it"), findsOneWidget);
+      expect(pages.asked, isEmpty, reason: "an embed needs nothing fetched");
     });
 
     testWidgets('shows the alt text for a picture that is not there',

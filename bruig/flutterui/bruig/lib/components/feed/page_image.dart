@@ -31,6 +31,54 @@ bool isPageAssetPath(String url) {
   return parsed != null && !parsed.hasScheme && url.isNotEmpty;
 }
 
+/// pageAssetBytes is the bytes of the picture at [path], or null while it is
+/// on its way or if there are none.
+///
+/// The one place that knows where a site's pictures come from, because there
+/// are two answers and the difference must not spread. Reading somebody
+/// else's site, they arrive over the wire; writing your own, they are files
+/// on this disk. Everything that draws one -- an ordinary Markdown image, a
+/// banner background, a logo, the picture poured into a title -- asks here.
+///
+/// Watched rather than read, so whatever called this rebuilds when the
+/// picture lands. That is what makes a page draw immediately and fill in as
+/// its pictures arrive, rather than waiting for all of them.
+Uint8List? pageAssetBytes(BuildContext context, String path) {
+  if (!isPageAssetPath(path)) return null;
+
+  var source = Provider.of<PagesSource?>(context, listen: false);
+  if (source != null) {
+    var bytes = context.watch<ResourcesModel>().assetFor(source.uid, path);
+    return (bytes == null || bytes.isEmpty) ? null : bytes;
+  }
+
+  // No site being read, so this is a page being written and the picture is
+  // one of this site's own files. Read from disk rather than fetched: the
+  // author has it already, and going over the wire to reach your own files
+  // would be waiting on a round trip to yourself.
+  var pages = Provider.of<PagesModel?>(context, listen: false);
+  if (pages == null) return null;
+  var bytes = context.watch<PagesModel>().localAssetBytes(path);
+  return (bytes == null || bytes.isEmpty) ? null : bytes;
+}
+
+/// pageAssetMime is the type of a picture, from its name.
+///
+/// The name is all there is: nothing declares a type for a file a page
+/// points at. Only the vector case actually matters -- an SVG is drawn by a
+/// different widget from everything else -- so the rest resolve to something
+/// harmless.
+String pageAssetMime(String path) {
+  var ext = path.toLowerCase().split(".").last;
+  return switch (ext) {
+    "svg" => "image/svg+xml",
+    "jpg" || "jpeg" => "image/jpeg",
+    "gif" => "image/gif",
+    "webp" => "image/webp",
+    _ => "image/png",
+  };
+}
+
 /// PageImage shows one picture from the site being read.
 class PageImage extends StatelessWidget {
   final String path;
@@ -39,42 +87,8 @@ class PageImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    var source = Provider.of<PagesSource?>(context, listen: false);
-    if (source != null) {
-      // Somebody else's site. Listened to, not read: the picture arrives
-      // later and this is what draws it when it does.
-      return Consumer<ResourcesModel>(
-          builder: (context, resources, _) =>
-              _drawn(context, resources.assetFor(source.uid, path)));
-    }
-
-    // No site being read, so this is a page being written -- the preview in
-    // Writing, and the picture is one of this site's own files. Read from
-    // disk rather than fetched: the author has it already, and a preview
-    // that went over the wire to reach its own files would be waiting on a
-    // round trip to itself.
-    //
-    // Falling back rather than being told which it is, because a page does
-    // not change between being written and being read. The same markdown
-    // draws the same picture, and only where the bytes come from differs.
-    var pages = Provider.of<PagesModel?>(context, listen: false);
-    if (pages == null) {
-      // Neither: a picture by path means nothing here, so the alt text is
-      // all there is to show.
-      return _placeholder(context);
-    }
-    return Consumer<PagesModel>(
-        builder: (context, model, _) =>
-            _drawn(context, model.localAssetBytes(path)));
-  }
-
-  /// _drawn is the picture itself, or the alt text while there is none.
-  ///
-  /// One method for both sources: whether the bytes came off the wire or off
-  /// the disk changes nothing about how they are shown, and two copies of
-  /// this is how a preview comes to look unlike the page it previews.
-  Widget _drawn(BuildContext context, Uint8List? bytes) {
-    if (bytes == null || bytes.isEmpty) return _placeholder(context);
+    var bytes = pageAssetBytes(context, path);
+    if (bytes == null) return _placeholder(context);
 
     var image = path.toLowerCase().endsWith(".svg")
         ? SvgPicture.memory(bytes, fit: BoxFit.contain)

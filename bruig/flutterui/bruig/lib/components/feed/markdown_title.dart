@@ -254,6 +254,17 @@ class _HeaderTextState extends State<HeaderText> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // A picture named by path is not here yet the first time this runs: it
+    // is being read off the disk or fetched from whoever is being read.
+    // This fires again when it lands, which is what fills the letters in.
+    // An embed carries its own bytes and is loaded once, so asking again
+    // costs nothing and finds the same answer.
+    if (_fill == null) _loadFill();
+  }
+
+  @override
   void dispose() {
     _fill?.dispose();
     super.dispose();
@@ -262,7 +273,7 @@ class _HeaderTextState extends State<HeaderText> {
   Future<void> _loadFill() async {
     var raw = style.image;
     if (raw == null) return;
-    var image = embedImage(raw);
+    var image = headerPicture(context, raw);
     if (image == null || isSvgMime(image.mime)) {
       // A vector has no pixels to pour into the letters. Left unfilled
       // rather than failing: the title still reads.

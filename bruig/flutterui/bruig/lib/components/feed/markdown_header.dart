@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:bruig/components/feed/markdown_title.dart';
+import 'package:bruig/components/feed/page_image.dart';
 import 'package:bruig/components/md_elements.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:bruig/theming_system/theme_preset.dart';
@@ -348,6 +349,33 @@ class HeaderCellAlign extends InheritedWidget {
   bool updateShouldNotify(HeaderCellAlign old) => old.alignment != alignment;
 }
 
+/// headerPicture is the picture a banner field names, whichever way it names
+/// one.
+///
+/// Two ways, because a banner takes its pictures from wherever the page took
+/// them. An --embed[...]-- carries its own bytes and is what a post uses. A
+/// site keeps its pictures as files instead, so a page names one by path --
+/// ![](assets/banner.jpg) -- and that is what the Pictures list hands over
+/// to paste in. Understanding only the first meant a background set from the
+/// site's own pictures silently drew nothing: the file was there, served,
+/// and named correctly, and the banner behaved as though the line were
+/// blank.
+({Uint8List bytes, String mime})? headerPicture(
+    BuildContext context, String? value) {
+  if (value == null) return null;
+
+  var embedded = embedImage(value);
+  if (embedded != null) return embedded;
+
+  var m = RegExp(r'!\[[^\]]*\]\(([^)\s]+)\)').firstMatch(value);
+  var path = m?.group(1);
+  if (path == null || !isPageAssetPath(path)) return null;
+
+  var bytes = pageAssetBytes(context, path);
+  if (bytes == null) return null;
+  return (bytes: bytes, mime: pageAssetMime(path));
+}
+
 /// headerImage draws a picture sized to the room it has.
 Widget headerImage(({Uint8List bytes, String mime}) image) =>
     isSvgMime(image.mime)
@@ -374,7 +402,7 @@ class _MarkdownHeader extends StatelessWidget {
     if (rows.isEmpty) return const SizedBox.shrink();
 
     var titleStyle = HeaderTextStyle.parse(fields);
-    var background = embedImage(fields["background"]);
+    var background = headerPicture(context, fields["background"]);
     // The whole banner scales together in a narrow window, rather than each
     // thing in it coping alone.
     //
@@ -493,7 +521,7 @@ class _HeaderRow extends StatelessWidget {
       value.contains("\n") || RegExp(r'^\s*--\w').hasMatch(value);
 
   Widget _cell(BuildContext context, String value, Alignment within) {
-    var image = embedImage(value);
+    var image = headerPicture(context, value);
     if (image != null) return headerImage(image);
 
     if (_isMarkdown(value)) {
