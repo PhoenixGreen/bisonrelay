@@ -3,6 +3,8 @@ package resources
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"strings"
 	"os"
 	"path/filepath"
 	"testing"
@@ -228,5 +230,90 @@ func TestFragmentCyclesDoNotHang(t *testing.T) {
 	reply = fulfillPage(t, pr, []string{"index.md"}, nil)
 	if b := decodeBundle(t, reply); len(b.Resources) != 2 {
 		t.Fatalf("got %v", keys(b))
+	}
+}
+
+// The tests below are the adversarial ones: what a page can be made to do to
+// whoever opens it.
+
+func TestAnIncludeCannotNameAFileOutsideThePartials(t *testing.T) {
+	// The pattern is the first of three guards, and the strictest: a name
+	// with a dot or a slash in it is not an include at all, so it is drawn
+	// as the text it is rather than being resolved to anything.
+	for _, name := range []string{
+		"password.txt",
+		"../../secret",
+		"../secret",
+		"a/b",
+		"..",
+		".",
+		"nav.md",
+		"~/.ssh/id_rsa",
+		"/etc/passwd",
+	} {
+		if got := PartialNames("--include[" + name + "]--"); len(got) != 0 {
+			t.Errorf("%q was read as a fragment: %v", name, got)
+		}
+	}
+
+	// And what does match is forced under partials/ with an extension of
+	// this side's choosing, so the name can only ever reach one directory.
+	if got := PartialPath("navigation"); len(got) != 2 ||
+		got[0] != PartialsDir || got[1] != "navigation.md" {
+		t.Fatalf("got %v", got)
+	}
+}
+
+func TestAPageCannotAskForMoreThanTheLimit(t *testing.T) {
+	root := t.TempDir()
+	var page string
+	for i := 0; i < 500; i++ {
+		page += fmt.Sprintf("--include[frag%d]--\n", i)
+		writePageFile(t, root, fmt.Sprintf("partials/frag%d.md", i), "x")
+	}
+	writePageFile(t, root, "index.md", page)
+
+	if n := len(PartialNames(page)); n != MaxPartialsPerPage {
+		t.Fatalf("a page reached %d fragments, want %d", n,
+			MaxPartialsPerPage)
+	}
+
+	reply := fulfillPage(t, NewPagesResource(root, nil), []string{"index.md"}, nil)
+	b := decodeBundle(t, reply)
+	// The page itself, and no more fragments than the limit.
+	if len(b.Resources) > MaxPartialsPerPage+1 {
+		t.Fatalf("bundled %d resources", len(b.Resources))
+	}
+}
+
+func TestABundleStaysWithinItsSize(t *testing.T) {
+	root := t.TempDir()
+	big := strings.Repeat("x", 300*1024)
+	writePageFile(t, root, "index.md",
+		"--include[one]--\n--include[two]--\n--include[three]--")
+	writePageFile(t, root, "partials/one.md", big)
+	writePageFile(t, root, "partials/two.md", big)
+	writePageFile(t, root, "partials/three.md", "small")
+
+	reply := fulfillPage(t, NewPagesResource(root, nil), []string{"index.md"}, nil)
+	b := decodeBundle(t, reply)
+
+	var total int
+	for _, item := range b.Resources {
+		total += len(item.Data)
+	}
+	if total > MaxBundleBytes+len("--include[one]----include[two]--") {
+		t.Fatalf("bundled %d bytes, past the %d limit", total, MaxBundleBytes)
+	}
+
+	// The page is always in it, whatever had to be left out: without it the
+	// reader has nothing to show, and the fragments they can ask for.
+	if _, ok := b.Resources["index.md"]; !ok {
+		t.Fatalf("the page is missing: %v", keys(b))
+	}
+	// The small one still went, rather than one large fragment costing
+	// every fragment after it.
+	if _, ok := b.Resources["partials/three.md"]; !ok {
+		t.Fatalf("a fragment that fit was left out: %v", keys(b))
 	}
 }

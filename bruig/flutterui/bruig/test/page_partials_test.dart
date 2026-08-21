@@ -160,4 +160,51 @@ void main() {
       expect(s.pageData().trim(), isEmpty);
     });
   });
+
+  group('a page that means harm', () {
+    test('cannot name a file outside the fragments', () {
+      // The pattern is the strictest of the three guards: a name with a dot
+      // or a slash in it is not an include at all, so it stays on the page
+      // as the text it is.
+      for (var name in [
+        "password.txt",
+        "../../secret",
+        "../secret",
+        "a/b",
+        "..",
+        "nav.md",
+        "/etc/passwd",
+        "~/.ssh/id_rsa",
+      ]) {
+        expect(partialNames("--include[$name]--"), isEmpty, reason: name);
+      }
+      // And what does match can only ever reach one directory.
+      expect(partialPath("navigation"), ["partials", "navigation.md"]);
+    });
+
+    test('cannot make this client ask for thousands of fragments', () {
+      // A page is a megabyte at most and an include is some fifteen bytes,
+      // so a page that is nothing else names seventy thousand of them --
+      // and each one asked for is a message the reader pays to send.
+      var hostile = [
+        for (var i = 0; i < 5000; i++) "--include[frag" + "$i" + "]--",
+      ].join("\n");
+      expect(partialNames(hostile), hasLength(maxPartialsPerPage));
+    });
+
+    test('one that means no harm is unaffected', () {
+      // A banner, a bar and a footer is three.
+      expect(
+          partialNames("--include[header]--\nx\n--include[navigation]--\n"
+              "--include[footer]--"),
+          hasLength(3));
+    });
+
+    test('a marker that is not a fragment is left on the page', () {
+      // Shown rather than swallowed, so a writer sees what they typed.
+      var s = PagesSession(1)
+        ..currentPage = _page("--include[password.txt]-- and text");
+      expect(s.pageData(), contains("--include[password.txt]--"));
+    });
+  });
 }

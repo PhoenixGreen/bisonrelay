@@ -22,6 +22,16 @@ const PartialsDir = "partials"
 // one go.
 const MaxPartialsPerPage = 32
 
+// MaxBundleBytes bounds what is sent with a page.
+//
+// A reply has to fit one message, and a fragment can be large -- a banner
+// with a picture in it is most of a megabyte before anything else. Past this
+// the fragments are left out rather than the page failing: the client asks
+// for what is missing and gets it in replies of its own, which is slower and
+// works, where an oversized reply is refused by the sending side and the
+// reader is left waiting for a page that will never come.
+const MaxBundleBytes = 512 * 1024
+
 // includeRegexp matches a reference to a shared fragment: --include[name]--.
 //
 // Deliberately not Go's {{...}}, which a store's templates already use and
@@ -32,7 +42,12 @@ const MaxPartialsPerPage = 32
 var includeRegexp = regexp.MustCompile(`--include\[([\w-]{1,64})\]--`)
 
 // PartialNames returns the fragments a page refers to, in the order they
-// first appear and without repeats.
+// first appear, without repeats and no more than MaxPartialsPerPage of them.
+//
+// Capped here as well as in the walk below, so that the cap holds wherever
+// the question is asked. A page is a megabyte at most and an include is some
+// fifteen bytes, so a page that is nothing else names seventy thousand of
+// them -- and on the reading side each one is a message somebody pays for.
 func PartialNames(page string) []string {
 	var names []string
 	seen := make(map[string]struct{})
@@ -43,6 +58,9 @@ func PartialNames(page string) []string {
 		}
 		seen[name] = struct{}{}
 		names = append(names, name)
+		if len(names) >= MaxPartialsPerPage {
+			break
+		}
 	}
 	return names
 }
@@ -143,6 +161,7 @@ func (pr *PagesResource) Fulfill(ctx context.Context, uid clientintf.UserID,
 
 	have := haveSet(req.Meta)
 	requestPath := strescape.ResourcesPath(req.Path)
+	bundled := len(data)
 	bundle := rpc.RMResourceBundle{
 		Resources: map[string]rpc.RMFetchResourceReply{},
 	}
@@ -192,6 +211,16 @@ func (pr *PagesResource) Fulfill(ctx context.Context, uid clientintf.UserID,
 		if _, ok := have[name]; ok {
 			continue
 		}
+		if bundled+len(pdata) > MaxBundleBytes {
+			// Left for the client to ask for. Not break: a later
+			// fragment may be small enough to fit, and sending it
+			// saves a round trip that leaving it would cost.
+			pr.log.Debugf("Not bundling %s with %s: %d bytes would "+
+				"pass the bundle limit", name, requestPath,
+				len(pdata))
+			continue
+		}
+		bundled += len(pdata)
 		bundle.Resources[strescape.ResourcesPath(path)] =
 			rpc.RMFetchResourceReply{
 				Data:   pdata,

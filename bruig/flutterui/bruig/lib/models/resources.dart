@@ -20,11 +20,35 @@ final sectionEndRegexp = RegExp(r'--/section--');
 /// pages crosses the wire once instead of twenty times.
 final includeRegexp = RegExp(r'--include\[([\w-]{1,64})\]--');
 
-/// partialNames returns the fragments a page refers to, without repeats.
+/// maxPartialsPerPage is how many fragments one page may pull in.
+///
+/// Must be at least what the serving side will bundle, or a page written in
+/// good faith would arrive with fragments this end refuses to ask for. See
+/// resources.MaxPartialsPerPage.
+///
+/// It is a cap on the reader rather than a courtesy to the writer. A page
+/// costs a message to fetch and so does a fragment, and both are paid for by
+/// whoever is reading: without this, a page of nothing but --include[a1]--,
+/// --include[a2]-- and so on -- and a page may be a megabyte, which is some
+/// seventy thousand of them -- would have this client send seventy thousand
+/// messages because somebody opened it.
+const int maxPartialsPerPage = 32;
+
+/// maxPartialsPerSite is how many are kept for one site.
+///
+/// The per-page cap alone bounds nothing over time: thirty-two fresh names
+/// on each of a thousand pages is thirty-two thousand held. What is held is
+/// what this client has paid for, so it is worth keeping -- but not without
+/// end.
+const int maxPartialsPerSite = 128;
+
+/// partialNames returns the fragments a page refers to, without repeats and
+/// no more than [maxPartialsPerPage] of them.
 List<String> partialNames(String page) {
   var seen = <String>{};
   for (var m in includeRegexp.allMatches(page)) {
     seen.add(m.group(1)!);
+    if (seen.length >= maxPartialsPerPage) break;
   }
   return seen.toList();
 }
@@ -488,9 +512,22 @@ class ResourcesModel extends ChangeNotifier {
   /// _requestPartials asks for the fragments in [names] that are not held.
   void _requestPartials(
       PagesSession sess, String uid, int pageID, List<String> names) {
-    var held = _partials[uid] ?? {};
+    var held = _partials[uid] ??= {};
     var missing = names.where((n) => !held.containsKey(n)).toList();
     if (missing.isEmpty) return;
+
+    // Both caps are on the asking, not on the answer. A reply that never
+    // comes costs nothing; a request always costs a message.
+    if (missing.length > maxPartialsPerPage) {
+      missing = missing.sublist(0, maxPartialsPerPage);
+    }
+    var room = maxPartialsPerSite - held.length;
+    if (room <= 0) {
+      debugPrint("Not asking $uid for more fragments: already holding "
+          "${held.length}");
+      return;
+    }
+    if (missing.length > room) missing = missing.sublist(0, room);
 
     for (var name in missing) {
       // Marked as a partial rather than a page so the reply is filed as one

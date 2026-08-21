@@ -71,6 +71,17 @@ round trips. A fragment that refers to itself, or two that refer to each
 other, are left as written rather than expanded — the marker stays visible,
 which is what says a cycle has been made.
 
+A fragment's name is letters, digits, underscores and hyphens, up to 64 of
+them — nothing else is read as an include at all, so `--include[../secret]--`
+and `--include[password.txt]--` stay on the page as the text they are. What
+does match is always served as `partials/<name>.md` and can reach no other
+directory.
+
+One page may pull in at most 32 fragments, and what is sent with it is
+bounded — anything past that the reader asks for separately. Both caps are on
+the asking rather than the answer: a page costs a message to fetch and so does
+a fragment, and both are paid for by whoever is reading.
+
 Note that this is a different mechanism from the `{{...}}` templates a
 [simple store](simplestore.md) uses. Those are Go templates, expanded by the
 serving side before anything is sent, and have access to the store's data;
