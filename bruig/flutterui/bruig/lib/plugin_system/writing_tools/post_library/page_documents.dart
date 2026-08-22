@@ -139,6 +139,28 @@ Future<({String text, int missing})> resolveEmbeds(String text) async {
   return (text: out, missing: missing);
 }
 
+/// picturesNamedIn is the total size of the site pictures [text] shows,
+/// counting each distinct one once however often it appears.
+///
+/// Once, because that is what a reader pays: a banner shown at the top and
+/// again at the foot is one file, fetched one time. Counting it twice would
+/// overstate the page in exactly the case the writer was being careful.
+///
+/// A name with no size behind it counts nothing rather than guessing --
+/// that is a picture pointing at a file the site does not have, which is a
+/// broken link and not a cost.
+int picturesNamedIn(String text, Map<String, int> sizes) {
+  var named = <String>{
+    for (var m in RegExp(r'!\[[^\]]*\]\(([^)\s]+)\)').allMatches(text))
+      m.group(1)!
+  };
+  var total = 0;
+  for (var path in named) {
+    total += sizes[path] ?? 0;
+  }
+  return total;
+}
+
 /// isSiteFolder is whether documents in [folder] belong to the site -- the
 /// pages themselves, and the fragments those pages share.
 ///

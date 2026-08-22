@@ -301,6 +301,21 @@ class _WritingComposerState extends State<WritingComposer> {
     }
   }
 
+  /// _pictureBytes is what the pictures this page names cost a reader.
+  ///
+  /// Not part of the page's own size, and deliberately so: a site keeps its
+  /// pictures as files, so the page arrives and draws while they are still
+  /// on their way, and a banner shown on twenty pages is fetched once rather
+  /// than twenty times. But "814 B" on a page holding a 90 KB photograph
+  /// reads as though the photograph were free, which is the opposite of what
+  /// the writer needs to know. Both numbers, side by side.
+  ///
+  /// Counted over the expanded text, so a fragment's pictures are counted
+  /// for the page that includes it, and each distinct picture once however
+  /// often it appears.
+  int get _pictureBytes => picturesNamedIn(
+      previewContent, {for (var a in _pages.assets) a.path: a.size});
+
   void recalcEstimatedSize() async {
     var snackbar = SnackBarModel.of(context);
     if (_debounceSizeCalc?.isActive ?? false) _debounceSizeCalc!.cancel();
@@ -687,10 +702,25 @@ class _WritingComposerState extends State<WritingComposer> {
             child: Divider(thickness: 2),
           ),
           Txt.S(
-            "Estimated Size: ${humanReadableSize(estimatedSize)}",
+            _sizeLine(),
             color: validSize ? TextColor.onSurfaceVariant : TextColor.error,
           ),
         ]));
+  }
+
+  /// _sizeLine is what this costs to send, and for a page what it costs to
+  /// read.
+  ///
+  /// A post carries its pictures inside it, so one number says everything. A
+  /// page does not, so one number says half of it -- and the half it leaves
+  /// out is the larger one.
+  String _sizeLine() {
+    var text = "Estimated Size: ${humanReadableSize(estimatedSize)}";
+    if (!isPage) return text;
+    var pictures = _pictureBytes;
+    if (pictures == 0) return text;
+    return "$text  +  ${humanReadableSize(pictures)} of pictures, "
+        "fetched once each";
   }
 
   /// _topBar is the post's title, with the sidebar's way back on one side
