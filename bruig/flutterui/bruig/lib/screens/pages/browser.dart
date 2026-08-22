@@ -407,8 +407,13 @@ class PageBrowserBar extends StatelessWidget {
         // with it rather than out past the address, where they sat among
         // nothing and read as actions on the page rather than as a way to
         // somewhere else.
+        // My Site and Store beside the toggle, because that is what they
+        // are: another way to the places the sidebar lists, for when it is
+        // shut. Visit is not with them -- it is where a page is started
+        // from rather than a place a page lives, and it sits on the right
+        // with the controls that act on what is open.
         if (onSection != null)
-          for (var i in const [pagesTabVisit, pagesTabMySite, pagesTabStore])
+          for (var i in const [pagesTabMySite, pagesTabStore])
             IconButton(
               icon: Icon(sectionIcon(i), size: 18),
               tooltip: pagesTabLabels[i],
@@ -430,16 +435,6 @@ class PageBrowserBar extends StatelessWidget {
           icon: const Icon(Icons.arrow_forward, size: 18),
           tooltip: "Forward",
           onPressed: session?.canGoForward == true ? onForward : null,
-        ),
-        IconButton(
-          icon: const Icon(Icons.home_outlined, size: 18),
-          tooltip: "Front page",
-          onPressed: session == null ? null : onHome,
-        ),
-        IconButton(
-          icon: const Icon(Icons.refresh, size: 18),
-          tooltip: "Reload",
-          onPressed: loading || session == null ? null : onReload,
         ),
         const SizedBox(width: 8),
         Expanded(
@@ -473,6 +468,28 @@ class PageBrowserBar extends StatelessWidget {
             ]),
           ),
         ),
+        // On the right, the three that act on what the address names rather
+        // than on where you are: go to its front page, fetch it again, or
+        // go and find another one.
+        const SizedBox(width: 4),
+        IconButton(
+          icon: const Icon(Icons.home_outlined, size: 18),
+          tooltip: "Front page",
+          onPressed: session == null ? null : onHome,
+        ),
+        IconButton(
+          icon: const Icon(Icons.refresh, size: 18),
+          tooltip: "Reload",
+          onPressed: loading || session == null ? null : onReload,
+        ),
+        if (onSection != null)
+          IconButton(
+            icon: Icon(sectionIcon(pagesTabVisit), size: 18),
+            tooltip: pagesTabLabels[pagesTabVisit],
+            isSelected: section == pagesTabVisit,
+            color: section == pagesTabVisit ? theme.colors.primary : null,
+            onPressed: () => onSection!(pagesTabVisit),
+          ),
       ]),
     );
   }

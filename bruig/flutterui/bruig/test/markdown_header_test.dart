@@ -18,6 +18,47 @@ List<HeaderRow> rowsOf(String src) =>
     headerRowsOf(parseBlock(src, HeaderBlockSyntax()).attributes);
 
 void main() {
+  group('a banner keeps no room of its own', () {
+    // The gap is what separates the rows inside a banner -- that is what it
+    // says it is, and what it does at the rows. It was also used as an outer
+    // margin, which gave the banner a second one nothing documented. Nothing
+    // showed until a page took a background, at which point it read as a
+    // band above the banner that no padding or margin on the page could
+    // reach, because it was inside the page and outside the banner.
+    Finder banner() => find.byWidgetPredicate(
+        (w) => w.runtimeType.toString() == "_MarkdownHeader");
+
+    testWidgets('what is drawn starts where the banner does', (tester) async {
+      // The banner's own top, not the page's: the second margin was inside
+      // the banner widget, so the widget sat where it always had and only
+      // what it drew moved down.
+      await tester.pumpWidget(drawHost(
+          MarkdownArea("--header--\n--row[96]--\n# Site\n--/row--\n--/header--", false)));
+      await tester.pumpAndSettle();
+
+      var drawn = find
+          .descendant(of: banner(), matching: find.byType(SizedBox))
+          .first;
+      expect(tester.getTopLeft(drawn).dy, tester.getTopLeft(banner()).dy);
+    });
+
+    testWidgets('and takes no room below it either', (tester) async {
+      // What separates a banner from what follows is what separates any two
+      // blocks, and the renderer puts that between them already. A margin of
+      // its own on top of that is the banner counted twice.
+      await tester.pumpWidget(drawHost(MarkdownArea(
+          "--header--\n--row[96]--\n# Site\n--/row--\n--/header--\n\nBody", false)));
+      await tester.pumpAndSettle();
+
+      var bannerBottom = tester.getBottomLeft(banner()).dy;
+      var bodyTop = tester
+          .getTopLeft(find.textContaining("Body", findRichText: true).first)
+          .dy;
+      // One block's worth, not two.
+      expect(bodyTop - bannerBottom, lessThanOrEqualTo(12.0));
+    });
+  });
+
   group('rows', () {
     test('a row carries its height and how it divides', () {
       var rows = rowsOf('''

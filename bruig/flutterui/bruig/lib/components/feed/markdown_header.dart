@@ -426,9 +426,16 @@ class _MarkdownHeader extends StatelessWidget {
       var total = rows.fold<double>(0, (t, r) => t + r.height * scale) +
           spaces.where((s) => s).length * padding;
 
-      return Padding(
-        padding: EdgeInsets.symmetric(vertical: rule.boundedGap),
-        child: ClipRRect(
+      // No room of its own above or below. The gap separates the rows
+      // inside a banner -- that is what it says it is, and it is what it
+      // does at the rows below -- and using it out here as well gave the
+      // banner a second, undocumented margin. Nothing showed until a page
+      // took a background, at which point it read as a band above the
+      // banner that no padding or margin on the page could reach.
+      //
+      // What separates a banner from what follows it is what separates any
+      // two blocks: the renderer puts that between them already.
+      return ClipRRect(
           borderRadius: BorderRadius.circular(rule.boundedRadius),
           // As tall as its rows and no taller. The rows are what a writer
           // sets, so the banner follows them rather than the other way about.
@@ -482,7 +489,6 @@ class _MarkdownHeader extends StatelessWidget {
               ),
             ]),
           ),
-        ),
       );
     });
   }
