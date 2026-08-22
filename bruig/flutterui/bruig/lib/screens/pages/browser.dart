@@ -1,10 +1,12 @@
 import 'package:bruig/components/feed/markdown_nav.dart';
+import 'package:bruig/components/feed/markdown_page.dart';
 import 'package:bruig/components/md_elements.dart';
 import 'package:bruig/components/pages_bar.dart';
 import 'package:bruig/components/text.dart';
 import 'package:bruig/models/client.dart';
 import 'package:bruig/models/resources.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
+import 'package:bruig/theming_system/theme_preset.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -97,6 +99,9 @@ class _PageBrowserState extends State<PageBrowser> {
   @override
   Widget build(BuildContext context) {
     var page = session.currentPage;
+    // The reader's half of a page's setup: how wide they will let one be,
+    // and whether it may choose its own background. See markdown_page.dart.
+    var pagesStyle = ThemeNotifier.of(context).areaStyle(ThemeArea.pages);
 
     // Where the bar points. Before anything has come back there is no page
     // to read it off, so it falls back to what was asked for -- which is
@@ -127,7 +132,15 @@ class _PageBrowserState extends State<PageBrowser> {
             // it is inside of is not something the renderer carries.
             builder: (context, child) => NavCurrentPage(
               path: path,
-              child: MarkdownArea(markdownData, false),
+              // What the page asked for, inside what this reader allows.
+              child: PageFrame(
+                setup: PageSetup.parse(markdownData),
+                cap: pagesStyle.pagesWidthCap > 0
+                    ? pagesStyle.pagesWidthCap
+                    : null,
+                honourBackground: pagesStyle.pagesHonourBackground,
+                child: MarkdownArea(markdownData, false),
+              ),
             ),
           ),
         ],

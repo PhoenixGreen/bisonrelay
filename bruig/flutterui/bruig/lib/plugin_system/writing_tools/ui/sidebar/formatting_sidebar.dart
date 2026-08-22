@@ -166,6 +166,23 @@ const _blocks = [
 // this section is trying to do, and Manage Content is where the id comes
 // from.
 const _pages = [
+  // First, because it belongs at the top of the page it describes and
+  // because it is the one thing here that is about the page rather than
+  // about a place in it.
+  //
+  // The values written in are the ones worth starting from rather than the
+  // ones that change nothing: a page that inserts "--page--" and no settings
+  // has been given a puzzle, not a starting point. 800 is a readable column
+  // and "raised" is the surface a card sits on, both of which can be seen
+  // straight away in the preview and then argued with.
+  _Snippet(
+    Icons.web_outlined,
+    "Page setup",
+    "--page--\nwidth: ",
+    after: "\nbackground: raised\npadding: 24\n--/page--",
+    placeholder: "800",
+    block: true,
+  ),
   // Deliberately not Icons.link, which the inline Link button already has.
   // Two buttons in one panel wearing the same icon are two buttons nobody
   // can tell apart -- and a test that taps one of them by icon cannot

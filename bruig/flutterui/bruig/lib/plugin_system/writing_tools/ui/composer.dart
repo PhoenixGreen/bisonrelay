@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:async';
 
+import 'package:bruig/components/feed/markdown_page.dart';
 import 'package:bruig/components/md_elements.dart';
 import 'package:bruig/components/text.dart';
 import 'package:bruig/components/feed/post_column.dart';
@@ -631,12 +632,22 @@ class _WritingComposerState extends State<WritingComposer> {
   /// side, and a block background can only be painted behind the letters
   /// rather than across the block. Rendering it properly costs the ability
   /// to type while looking at it, which is what the Raw view is for.
-  Widget _preview(BuildContext context) => Align(
-        alignment: Alignment.topLeft,
-        child: ReadingSelectionArea(
-          child: MarkdownArea(previewContent, false),
-        ),
-      );
+  Widget _preview(BuildContext context) {
+    var content = previewContent;
+    // A page is drawn inside what it asked for, exactly as a reader will see
+    // it. Without this the preview showed a page at whatever width the pane
+    // happened to be, which is the one measurement the author had already
+    // decided for themselves.
+    //
+    // The reader's cap is deliberately not applied: this reader is the
+    // author, and their own ceiling has nothing to say about how the page
+    // will look to anyone else.
+    Widget out = ReadingSelectionArea(child: MarkdownArea(content, false));
+    if (isPage) {
+      out = PageFrame(setup: PageSetup.parse(content), child: out);
+    }
+    return Align(alignment: Alignment.topLeft, child: out);
+  }
 
   @override
   Widget build(BuildContext context) {

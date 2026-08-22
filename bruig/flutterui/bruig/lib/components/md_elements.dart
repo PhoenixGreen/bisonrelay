@@ -9,6 +9,7 @@ import 'package:bruig/components/feed/markdown_blocks.dart';
 import 'package:bruig/components/feed/markdown_header.dart';
 import 'package:bruig/components/feed/page_image.dart';
 import 'package:bruig/components/feed/markdown_nav.dart';
+import 'package:bruig/components/feed/markdown_page.dart';
 import 'package:bruig/components/pages/forms.dart';
 import 'package:bruig/components/snackbars.dart';
 import 'package:bruig/components/text_dialog.dart';
@@ -453,6 +454,7 @@ class MarkdownAreaModel extends ChangeNotifier {
     GridBlockSyntax(),
     HeaderBlockSyntax(),
     NavBlockSyntax(),
+    PageBlockSyntax(),
   ];
 
   // _pluginExtensions is whatever the last setPluginExtensions call added,

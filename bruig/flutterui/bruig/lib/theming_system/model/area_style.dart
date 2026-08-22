@@ -538,6 +538,25 @@ class AreaStyle {
   // headers/bold/italic/strikethrough all render as normal body text.
 
   // -------------------------------------------------------------------------
+  // Pages -- see editor/areas/pages.dart.
+  //
+  // A page states its own width and background, in the page, because that is
+  // the only thing that reaches a reader (markdown_page.dart). These two are
+  // the reader's half of that: the page knows its design, the reader knows
+  // their screen, and neither can answer for the other.
+  // -------------------------------------------------------------------------
+
+  // pagesWidthCap is the widest any page may draw itself, whatever it asked
+  // for; 0 (the default) means whatever it asked for. A ceiling rather than
+  // a measurement -- it never widens a page that wanted to be narrow.
+  final double pagesWidthCap;
+
+  // pagesHonourBackground is whether a page may sit on a surface of its own
+  // choosing. Off means every page uses this area's background, which is
+  // what a reader who has themed Pages to their liking wants.
+  final bool pagesHonourBackground;
+
+  // -------------------------------------------------------------------------
   // Mobile -- see editor/areas/mobile.dart.
   // -------------------------------------------------------------------------
 
@@ -729,6 +748,8 @@ class AreaStyle {
     this.feedLinksMode = FeedLinksMode.standard,
     this.feedTextLimit = 0,
     this.feedStripMarkdown = false,
+    this.pagesWidthCap = 0,
+    this.pagesHonourBackground = true,
     this.mobileTapOpensSidebar = false,
     this.mobileNavHideLabels = false,
     this.mobileSidebarAvatarCloses = false,
@@ -919,6 +940,8 @@ class AreaStyle {
     FeedLinksMode? feedLinksMode,
     double? feedTextLimit,
     bool? feedStripMarkdown,
+    double? pagesWidthCap,
+    bool? pagesHonourBackground,
     bool? mobileTapOpensSidebar,
     bool? mobileNavHideLabels,
     bool? mobileSidebarAvatarCloses,
@@ -1158,6 +1181,9 @@ class AreaStyle {
         feedLinksMode: feedLinksMode ?? this.feedLinksMode,
         feedTextLimit: feedTextLimit ?? this.feedTextLimit,
         feedStripMarkdown: feedStripMarkdown ?? this.feedStripMarkdown,
+        pagesWidthCap: pagesWidthCap ?? this.pagesWidthCap,
+        pagesHonourBackground:
+            pagesHonourBackground ?? this.pagesHonourBackground,
         mobileTapOpensSidebar:
             mobileTapOpensSidebar ?? this.mobileTapOpensSidebar,
         mobileNavHideLabels: mobileNavHideLabels ?? this.mobileNavHideLabels,
@@ -1377,6 +1403,9 @@ class AreaStyle {
           "feedLinksMode": feedLinksMode.name,
         if (feedTextLimit != 0) "feedTextLimit": feedTextLimit,
         if (feedStripMarkdown) "feedStripMarkdown": feedStripMarkdown,
+        if (pagesWidthCap != 0) "pagesWidthCap": pagesWidthCap,
+        if (!pagesHonourBackground)
+          "pagesHonourBackground": pagesHonourBackground,
         if (mobileTapOpensSidebar)
           "mobileTapOpensSidebar": mobileTapOpensSidebar,
         if (mobileNavHideLabels) "mobileNavHideLabels": mobileNavHideLabels,
@@ -1606,6 +1635,10 @@ class AreaStyle {
           FeedLinksMode.values, j["feedLinksMode"], FeedLinksMode.standard),
       feedTextLimit: number("feedTextLimit") ?? 0,
       feedStripMarkdown: flag("feedStripMarkdown"),
+      pagesWidthCap: number("pagesWidthCap") ?? 0,
+      // Defaults to on, so its absence cannot be read as off: every style
+      // saved before this existed has no key here at all.
+      pagesHonourBackground: flag("pagesHonourBackground", fallback: true),
       mobileTapOpensSidebar: flag("mobileTapOpensSidebar"),
       mobileNavHideLabels: flag("mobileNavHideLabels"),
       mobileSidebarAvatarCloses: flag("mobileSidebarAvatarCloses"),
