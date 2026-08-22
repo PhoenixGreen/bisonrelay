@@ -2,6 +2,7 @@ import 'package:bruig/components/md_elements.dart';
 import 'package:bruig/models/payments.dart';
 import 'package:bruig/theming_system/editor/area_editor_context.dart';
 import 'package:bruig/theming_system/editor/areas/buttons.dart';
+import 'package:bruig/theming_system/editor/areas_section.dart';
 import 'package:bruig/theming_system/editor/areas/markdown.dart';
 import 'package:bruig/theming_system/editor/areas/realtimechat.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
@@ -111,6 +112,40 @@ Future<_FakeHost> _pumpArea(
   return host;
 }
 
+// An area's editor is only ever reached through the picker at the top of the
+// page, so an area with settings of its own that is not listed there has
+// settings nobody can open. That is not a visible failure: everything
+// compiles, the tests for the settings themselves pass, and the page simply
+// is not there. It happened -- Pages was given a width cap and a background
+// switch and left off the list.
+void _unreachableAreaEditors() {
+  test('every area with settings of its own is in the picker', () {
+    var host = _FakeHost();
+    var theme = ThemeNotifier();
+    var missing = <ThemeArea>[];
+    for (var area in ThemeArea.values) {
+      if (editableAreas.contains(area)) continue;
+      var controls = areaEditorFor(AreaEditorContext(
+        host,
+        theme: theme,
+        preset: ThemePreset.seedFor(Brightness.dark),
+        area: area,
+        style: host.style,
+      ));
+      if (controls.isNotEmpty) missing.add(area);
+    }
+    expect(missing, isEmpty,
+        reason: "these areas have settings but no way to open them");
+  });
+
+  test('Pages is one of them', () {
+    // Named rather than left to the sweep above, because the sweep only
+    // catches an area that has an editor at all. Deleting the editor would
+    // satisfy it.
+    expect(editableAreas, contains(ThemeArea.pages));
+  });
+}
+
 /// _choose opens the picker labelled [label] and taps the entry [value].
 ///
 /// Found through its label rather than by type: these pages carry several
@@ -136,6 +171,8 @@ Future<void> _choose(WidgetTester tester, String label, String value) async {
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  group('reaching an area\'s settings', _unreachableAreaEditors);
 
   // Reported: choosing an element, going to another page and coming back put
   // the editor on Text and headings again, so the place had to be found

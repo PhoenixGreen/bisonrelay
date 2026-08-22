@@ -28,11 +28,12 @@ import 'package:provider/provider.dart';
 // to that area's own editor/areas/<name>.dart file for its specific
 // settings, via the AreaEditorContext handed to it.
 
-// _editableAreas is every ThemeArea whose rendering has been wired to
+// editableAreas is every ThemeArea whose rendering has been wired to
 // consult per-area styling (see ThemedArea usages across overview.dart,
 // sidebar.dart, startupscreen.dart, containers.dart and the MainMenuItem
 // area tags in models/menus.dart), in the order the picker lists them.
-const List<ThemeArea> _editableAreas = [
+@visibleForTesting
+const List<ThemeArea> editableAreas = [
   ThemeArea.masterBackground,
   ThemeArea.header,
   ThemeArea.loginScreen,
@@ -45,6 +46,7 @@ const List<ThemeArea> _editableAreas = [
   ThemeArea.chat,
   ThemeArea.feed,
   ThemeArea.markdown,
+  ThemeArea.pages,
   ThemeArea.realtimeChat,
   ThemeArea.manageContent,
   ThemeArea.settingsPages,
@@ -58,9 +60,12 @@ const List<ThemeArea> _editableAreas = [
 // of nine pages each with an identical-looking copy of the same four
 // settings that only ever applied to one of them.
 //
-// That's also why LN Management and Pages are no longer listed at all: the
-// frame was the only thing they had. Manage Content is back as "File
-// Manager", but for settings of its own rather than a frame.
+// That's also why LN Management is no longer listed at all: the frame was
+// the only thing it had. Manage Content is back as "File Manager", and Pages
+// is back too -- both for settings of their own rather than a frame. Pages
+// answers what this reader allows of somebody else's page, which is the half
+// of a page's setup the page itself cannot state; see
+// components/feed/markdown_page.dart.
 const Set<ThemeArea> _framedAreas = {
   ThemeArea.masterBackground,
   ThemeArea.header,
@@ -88,7 +93,8 @@ const Set<ThemeArea> _imageAreas = {
 // _areaEditor returns the settings specific to one area, or nothing for the
 // areas whose only settings are the shared background/border/spacing ones
 // (Login Screen, Dual Panel, Content Area).
-List<Widget> _areaEditor(AreaEditorContext ctx) => switch (ctx.area) {
+@visibleForTesting
+List<Widget> areaEditorFor(AreaEditorContext ctx) => switch (ctx.area) {
       ThemeArea.masterBackground => masterAreaEditor(ctx),
       ThemeArea.header => headerAreaEditor(ctx),
       ThemeArea.navBar => navBarAreaEditor(ctx),
@@ -119,7 +125,7 @@ class AreasSection extends StatefulWidget {
 }
 
 class _AreasSectionState extends State<AreasSection> implements AreaEditorHost {
-  late ThemeArea selected = widget.initialArea ?? _editableAreas.first;
+  late ThemeArea selected = widget.initialArea ?? editableAreas.first;
 
   @override
   void setAreaStyle(ThemeNotifier theme, AreaStyle Function(AreaStyle) update) =>
@@ -624,7 +630,7 @@ class _AreasSectionState extends State<AreasSection> implements AreaEditorHost {
         DropdownButton<ThemeArea>(
           value: selected,
           isExpanded: true,
-          items: _editableAreas
+          items: editableAreas
               .map((a) =>
                   DropdownMenuItem(value: a, child: Text(themeAreaLabel(a))))
               .toList(),
@@ -833,7 +839,7 @@ class _AreasSectionState extends State<AreasSection> implements AreaEditorHost {
                     })),
           ],
         ],
-        ..._areaEditor(ctx),
+        ...areaEditorFor(ctx),
       ]);
     });
   }
