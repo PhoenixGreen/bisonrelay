@@ -92,6 +92,31 @@ void main() {
     });
   });
 
+  group('a border on one side only', () {
+    test('is what four numbers mean, clockwise from the top', () {
+      // border=0 0 0 5 is a rule down the left, written the way padding is.
+      expect(PanelRule.parse("border=0 0 0 5").border,
+          const EdgeInsets.only(left: 5));
+      expect(PanelRule.parse("border=5 0 0 0").border,
+          const EdgeInsets.only(top: 5));
+    });
+
+    testWidgets('draws, dashed as well as solid', (tester) async {
+      // Dashed borders read a thickness to draw at. Reading one number for
+      // all four sides, a panel asking for a rule down its left asked for a
+      // line 0 thick and got nothing -- which looked like dashed borders
+      // being broken rather than like this.
+      for (var style in ["solid", "dashed", "dotted"]) {
+        await tester.pumpWidget(wrap(
+            "--panel[border=0 0 0 5, style=$style]--\nInside\n--/panel--"));
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull, reason: style);
+        expect(find.textContaining("Inside", findRichText: true), findsWidgets,
+            reason: style);
+      }
+    });
+  });
+
   group('drawing one', () {
     testWidgets('the content inside it is rendered', (tester) async {
       await tester.pumpWidget(wrap("--panel[padding=8]--\n# Inside\n--/panel--"));

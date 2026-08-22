@@ -260,7 +260,7 @@ class MarkdownPanel extends StatelessWidget {
           : CustomPaint(
               foregroundPainter: _PanelBorderPainter(
                 color: color,
-                width: border.top,
+                width: border,
                 radius: rule.radius ?? 0,
                 dotted: rule.stroke == PanelStroke.dotted,
               ),
@@ -277,12 +277,18 @@ class MarkdownPanel extends StatelessWidget {
 
 /// _PanelBorderPainter draws a broken line, which Border cannot.
 ///
-/// All four sides at one thickness, unlike the solid case: a dashed line
-/// thicker down one side than another has no natural way to turn the corner,
-/// and the shapes it makes there look like a mistake rather than a choice.
+/// Each side is drawn from its own thickness, so a panel asking for one
+/// dashed rule down its left -- border=0 0 0 5 -- gets one. Reading a single
+/// thickness for all four meant that panel asked for a line 0 thick and got
+/// nothing at all, which looked like dashed borders being broken.
+///
+/// The corners are rounded only when all four sides are there and the same
+/// thickness. A radius joins two sides; with one of them missing there is
+/// nothing to join, and with the two different thicknesses the join is a
+/// shape nobody asked for.
 class _PanelBorderPainter extends CustomPainter {
   final Color color;
-  final double width;
+  final EdgeInsets width;
   final double radius;
   final bool dotted;
 
@@ -293,27 +299,60 @@ class _PanelBorderPainter extends CustomPainter {
     required this.dotted,
   });
 
+  bool get _uniform =>
+      width.top > 0 &&
+      width.top == width.right &&
+      width.top == width.bottom &&
+      width.top == width.left;
+
   @override
   void paint(Canvas canvas, Size size) {
-    if (width <= 0) return;
+    if (_uniform) {
+      var inset = width.top / 2;
+      _dash(
+        canvas,
+        Path()
+          ..addRRect(RRect.fromRectAndRadius(
+            Rect.fromLTWH(inset, inset, size.width - width.top,
+                size.height - width.top),
+            Radius.circular(radius),
+          )),
+        width.top,
+      );
+      return;
+    }
+
+    // Each side on its own. Drawn down the middle of the thickness it was
+    // given, the way a border is drawn everywhere else, so a 5 thick rule
+    // sits inside the space the padding already left for it.
+    void side(double thickness, Offset from, Offset to) {
+      if (thickness <= 0) return;
+      _dash(canvas, Path()..moveTo(from.dx, from.dy)..lineTo(to.dx, to.dy),
+          thickness);
+    }
+
+    side(width.top, Offset(0, width.top / 2),
+        Offset(size.width, width.top / 2));
+    side(width.bottom, Offset(0, size.height - width.bottom / 2),
+        Offset(size.width, size.height - width.bottom / 2));
+    side(width.left, Offset(width.left / 2, 0),
+        Offset(width.left / 2, size.height));
+    side(width.right, Offset(size.width - width.right / 2, 0),
+        Offset(size.width - width.right / 2, size.height));
+  }
+
+  void _dash(Canvas canvas, Path path, double thickness) {
     var paint = Paint()
       ..color = color
-      ..strokeWidth = width
+      ..strokeWidth = thickness
       ..strokeCap = dotted ? StrokeCap.round : StrokeCap.butt
       ..style = PaintingStyle.stroke;
-
-    var path = Path()
-      ..addRRect(RRect.fromRectAndRadius(
-        Rect.fromLTWH(width / 2, width / 2, size.width - width,
-            size.height - width),
-        Radius.circular(radius),
-      ));
 
     // A dot is as long as the line is thick, so it comes out round; a dash is
     // several times that, so it reads as a line with gaps rather than as a
     // row of marks.
-    var on = dotted ? 0.1 : width * 3;
-    var off = dotted ? width * 2 : width * 3;
+    var on = dotted ? 0.1 : thickness * 3;
+    var off = dotted ? thickness * 2 : thickness * 3;
 
     for (var metric in path.computeMetrics()) {
       var at = 0.0;

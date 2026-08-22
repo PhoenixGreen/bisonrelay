@@ -128,17 +128,52 @@ class _ViewPageScreenState extends State<ViewPageScreen> {
 
 
 
-  /// closeSession shuts a page and decides what to show instead.
+  /// openTabs is what is open, in the order the strip shows it: the sections
+  /// first, then the pages.
   ///
-  /// With pages left, ResourcesModel has already moved to a neighbour.
-  /// With none, there is nothing to browse: the area falls back to the
-  /// contact list, which is where a page is started from.
-  void closeSession(PagesSession sess) {
-    resources.closeSession(sess.id);
-    if (resources.mostRecent == null) {
+  /// One list, because a tab is a tab. A section and a page are different
+  /// things behind the strip -- one is a view of this client, the other a
+  /// fetched document -- and that difference used to reach the reader:
+  /// closing a section dropped the whole area back to Visit while its
+  /// neighbours sat there untouched, and closing a page did not.
+  List<Object> get openTabs => [
+        for (var i in const [pagesTabMySite, pagesTabStore])
+          if (pages.openSections.contains(i)) i,
+        ...resources.sessions,
+      ];
+
+  /// closeTab shuts one and moves to whatever is still open.
+  ///
+  /// Closing a tab that is not the one being looked at moves nothing: what
+  /// is on screen is still open, and jumping away from it because something
+  /// else was shut is the behaviour this replaced.
+  void closeTab(Object tab) {
+    var was = openTabs;
+    var at = was.indexOf(tab);
+    if (at == -1) return;
+
+    var current = tab is int
+        ? (!pages.browsing && pages.tab == tab)
+        : (pages.browsing && identical(resources.mostRecent, tab));
+
+    if (tab is int) {
+      pages.closeSection(tab);
+    } else {
+      resources.closeSession((tab as PagesSession).id);
+    }
+    if (!current) return;
+
+    var next = nextTabAfterClosing(was, at);
+    if (next == null) {
       pages
         ..browsing = false
         ..tab = pagesTabVisit;
+      return;
+    }
+    if (next is int) {
+      onItemChanged(next);
+    } else {
+      openSession(next as PagesSession);
     }
   }
 
@@ -203,7 +238,7 @@ class _ViewPageScreenState extends State<ViewPageScreen> {
                   icon: sectionIcon(i),
                   current: !browsing && tab == i,
                   onOpen: () => onItemChanged(i),
-                  onClose: () => pagesModel.closeSection(i),
+                  onClose: () => closeTab(i),
                 ),
           ];
 
@@ -214,7 +249,7 @@ class _ViewPageScreenState extends State<ViewPageScreen> {
                 label: sessionLabel(sess),
                 current: browsing && identical(sess, session),
                 onOpen: () => openSession(sess),
-                onClose: () => closeSession(sess),
+                onClose: () => closeTab(sess),
               ),
           ];
 

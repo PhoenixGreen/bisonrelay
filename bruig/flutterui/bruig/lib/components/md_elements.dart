@@ -700,6 +700,50 @@ Future<void> followMarkdownLink(BuildContext context, String url) async {
   }
 }
 
+/// blockBuilderTags are the builders that draw a whole block of a page
+/// rather than something inside a line.
+///
+/// Named because the parser wraps each of them in a paragraph -- they are
+/// tags it does not know, and an unknown tag is inline as far as it is
+/// concerned -- and a paragraph carries the space that goes between
+/// paragraphs. A banner or a panel sitting a paragraph's worth of space away
+/// from the top of the page is not what anyone wrote, and it is invisible
+/// until the block takes a background, at which point it reads as a band
+/// above it.
+const Set<String> blockBuilderTags = {
+  "header",
+  "nav",
+  "panel",
+  "grid",
+  "cards",
+  "columns",
+  "form",
+};
+
+/// _BlockParagraphPadding takes the paragraph spacing off a paragraph whose
+/// only content is one of those blocks.
+///
+/// Only when that is all it holds: a paragraph with writing in it as well is
+/// a real paragraph and keeps its spacing.
+class _BlockParagraphPadding extends MarkdownPaddingBuilder {
+  final EdgeInsets normal;
+  _BlockParagraphPadding(this.normal);
+
+  bool _wrapsBlockOnly = false;
+
+  @override
+  void visitElementBefore(md.Element element) {
+    var kids = element.children ?? const <md.Node>[];
+    var only = kids.where((k) => !(k is md.Text && k.text.trim().isEmpty));
+    _wrapsBlockOnly = only.length == 1 &&
+        only.first is md.Element &&
+        blockBuilderTags.contains((only.first as md.Element).tag);
+  }
+
+  @override
+  EdgeInsets getPadding() => _wrapsBlockOnly ? EdgeInsets.zero : normal;
+}
+
 class MarkdownArea extends StatelessWidget {
   static final _startTagBugRe = RegExp(r'^\s*(<[^>\s]+\s*>)$');
 
@@ -1015,6 +1059,9 @@ class MarkdownArea extends StatelessWidget {
         context,
         theme,
         MarkdownBody(
+          paddingBuilders: {
+            "p": _BlockParagraphPadding(sheet.pPadding ?? EdgeInsets.zero),
+          },
           // Keyed by the checkbox settings, so changing one redraws the list.
           //
           // MarkdownBody parses its markdown into widgets once and re-parses

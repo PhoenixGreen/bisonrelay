@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:async';
 
 import 'package:bruig/config.dart';
@@ -359,12 +358,14 @@ class PagesModel extends ChangeNotifier {
 
   /// closeSection takes a section's tab away. What was in it is not lost:
   /// a section is a view of what is on disk, not a document.
+  ///
+  /// Where to go next is not decided here. It used to be -- straight to
+  /// Visit -- which made closing one of three open tabs leave the other two
+  /// sitting there while the area jumped somewhere else entirely. Only the
+  /// screen knows what else is open, because the other tabs are pages and
+  /// those belong to ResourcesModel. See ViewPageScreen.closeTab.
   void closeSection(int v) {
     if (!_openSections.remove(v)) return;
-    if (_tab == v) {
-      _tab = pagesTabVisit;
-      _browsing = false;
-    }
     notifyListeners();
   }
 

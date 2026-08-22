@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:bruig/components/pages_bar.dart';
 import 'package:bruig/models/pages.dart';
+import 'package:bruig/screens/pages/browser.dart';
 import 'package:bruig/models/resources.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:golib_plugin/definitions.dart';
@@ -219,12 +220,13 @@ void main() {
       expect(m.tab, pagesTabStore);
     });
 
-    test('closing the one being looked at falls back to Visit', () {
+    test('closing one only takes its tab away', () {
+      // Where to go next is not this model's to decide: the other tabs may
+      // be pages, which belong to ResourcesModel. See nextTabAfterClosing.
       var m = PagesModel(ResourcesModel(runStream: false))
         ..tab = pagesTabStore;
       m.closeSection(pagesTabStore);
       expect(m.openSections, isEmpty);
-      expect(m.tab, pagesTabVisit);
     });
 
     test('closing one being left alone does not move the reader', () {
@@ -233,6 +235,36 @@ void main() {
         ..tab = pagesTabStore;
       m.closeSection(pagesTabMySite);
       expect(m.tab, pagesTabStore);
+    });
+
+    group('which tab takes its place', () {
+      // Closing one of several used to drop the whole area back to Visit
+      // while its neighbours sat there untouched -- and only if it was a
+      // section. A page did not do that, so the two kinds of tab behaved
+      // differently for no reason a reader could see.
+      test('the one now in its position', () {
+        expect(nextTabAfterClosing(["a", "b", "c"], 0), "b");
+        expect(nextTabAfterClosing(["a", "b", "c"], 1), "c");
+      });
+
+      test('the last, when the last was closed', () {
+        expect(nextTabAfterClosing(["a", "b", "c"], 2), "b");
+      });
+
+      test('nothing, only when it was the only one', () {
+        expect(nextTabAfterClosing(["a"], 0), isNull);
+      });
+
+      test('a tab that is not there closes nothing', () {
+        expect(nextTabAfterClosing(["a", "b"], -1), isNull);
+        expect(nextTabAfterClosing(["a", "b"], 5), isNull);
+      });
+
+      test('sections and pages are not told apart', () {
+        // The strip shows one list, so the rule has to be one rule.
+        expect(nextTabAfterClosing([pagesTabMySite, "page"], 0), "page");
+        expect(nextTabAfterClosing(["page", pagesTabStore], 0), pagesTabStore);
+      });
     });
 
     test('reopening a section already open still selects it', () {

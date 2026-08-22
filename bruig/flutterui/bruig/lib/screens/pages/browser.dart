@@ -402,6 +402,21 @@ class PageBrowserBar extends StatelessWidget {
             tooltip: sidebarOpen ? "Hide sidebar" : "Show sidebar",
             onPressed: onToggleSidebar,
           ),
+        // Beside the sidebar toggle, because that is what they are: another
+        // way to the places the sidebar lists, for when it is shut. Kept
+        // with it rather than out past the address, where they sat among
+        // nothing and read as actions on the page rather than as a way to
+        // somewhere else.
+        if (onSection != null)
+          for (var i in const [pagesTabVisit, pagesTabMySite, pagesTabStore])
+            IconButton(
+              icon: Icon(sectionIcon(i), size: 18),
+              tooltip: pagesTabLabels[i],
+              isSelected: section == i,
+              color: section == i ? theme.colors.primary : null,
+              onPressed: () => onSection!(i),
+            ),
+        if (onSection != null) const SizedBox(width: 4),
         // The navigation buttons stay in place with nothing open rather
         // than the row rearranging itself: the bar is the same bar on every
         // section, and controls that move as you cross the section are
@@ -458,20 +473,28 @@ class PageBrowserBar extends StatelessWidget {
             ]),
           ),
         ),
-        if (onSection != null) ...[
-          const SizedBox(width: 4),
-          for (var i in const [pagesTabVisit, pagesTabMySite, pagesTabStore])
-            IconButton(
-              icon: Icon(sectionIcon(i), size: 18),
-              tooltip: pagesTabLabels[i],
-              isSelected: section == i,
-              color: section == i ? theme.colors.primary : null,
-              onPressed: () => onSection!(i),
-            ),
-        ],
       ]),
     );
   }
+}
+
+/// nextTabAfterClosing is which tab takes the place of the one just shut, or
+/// null when that was the last one.
+///
+/// The one now at the same position, or the last if the closed tab was the
+/// last -- which is what every other tab strip does, and so what a reader
+/// expects without having to learn it.
+///
+/// [open] is the tabs as the strip shows them, before the close. Null back
+/// means nothing is left, and only then does the area fall back to Visit:
+/// that is where a page is started from, and so the right place to be with
+/// none open. Falling back to it while other tabs sat there untouched was
+/// the behaviour this replaced.
+Object? nextTabAfterClosing(List<Object> open, int at) {
+  if (at < 0 || at >= open.length) return null;
+  var left = [...open]..removeAt(at);
+  if (left.isEmpty) return null;
+  return left[at.clamp(0, left.length - 1)];
 }
 
 /// sectionIcon is the icon for a Pages section, matching the sidebar's, so
