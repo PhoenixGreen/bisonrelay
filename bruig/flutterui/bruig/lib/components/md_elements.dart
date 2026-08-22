@@ -10,6 +10,7 @@ import 'package:bruig/components/feed/markdown_header.dart';
 import 'package:bruig/components/feed/page_image.dart';
 import 'package:bruig/components/feed/markdown_nav.dart';
 import 'package:bruig/components/feed/markdown_page.dart';
+import 'package:bruig/components/feed/markdown_panel.dart';
 import 'package:bruig/components/pages/forms.dart';
 import 'package:bruig/components/snackbars.dart';
 import 'package:bruig/components/text_dialog.dart';
@@ -442,6 +443,7 @@ class MarkdownAreaModel extends ChangeNotifier {
     "grid": GridMarkdownElementBuilder(),
     "header": HeaderMarkdownElementBuilder(),
     "nav": NavMarkdownElementBuilder(),
+    "panel": PanelMarkdownElementBuilder(),
   };
 
   final List<md.InlineSyntax> inlineSyntaxes = [
@@ -455,6 +457,7 @@ class MarkdownAreaModel extends ChangeNotifier {
     HeaderBlockSyntax(),
     NavBlockSyntax(),
     PageBlockSyntax(),
+    PanelBlockSyntax(),
   ];
 
   // _pluginExtensions is whatever the last setPluginExtensions call added,

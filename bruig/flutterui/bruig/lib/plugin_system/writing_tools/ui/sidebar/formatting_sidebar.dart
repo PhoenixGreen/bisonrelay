@@ -183,6 +183,17 @@ const _pages = [
     placeholder: "800",
     block: true,
   ),
+  // A box round a piece of a page. Named panel, not section: a page's reply
+  // regions are already written --section id=x -- ... --/section--, and
+  // every --/section-- in a page is stripped before it is drawn.
+  _Snippet(
+    Icons.crop_square,
+    "Panel",
+    "--panel[padding=16, border=1, color=outline, radius=8]--\n",
+    after: "\n--/panel--",
+    placeholder: "Anything at all, including other blocks.",
+    block: true,
+  ),
   // Deliberately not Icons.link, which the inline Link button already has.
   // Two buttons in one panel wearing the same icon are two buttons nobody
   // can tell apart -- and a test that taps one of them by icon cannot

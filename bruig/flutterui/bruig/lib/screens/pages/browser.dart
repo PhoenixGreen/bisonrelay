@@ -120,7 +120,10 @@ class _PageBrowserState extends State<PageBrowser> {
       );
     } else if (page.response.status == 200) {
       body = ListView(
-        padding: const EdgeInsets.all(16),
+        // None of its own: the page's own margin is this space, so that
+        // writing "margin: 0" can actually take it away. See
+        // defaultPageMargin, which is what a page that says nothing gets.
+        padding: EdgeInsets.zero,
         children: [
           Provider<PagesSource>(
             key: pageKey,
@@ -139,6 +142,7 @@ class _PageBrowserState extends State<PageBrowser> {
                     ? pagesStyle.pagesWidthCap
                     : null,
                 honourBackground: pagesStyle.pagesHonourBackground,
+                backgroundColor: pagesStyle.pagesBackgroundColor,
                 child: MarkdownArea(markdownData, false),
               ),
             ),

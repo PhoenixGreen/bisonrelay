@@ -556,6 +556,16 @@ class AreaStyle {
   // what a reader who has themed Pages to their liking wants.
   final bool pagesHonourBackground;
 
+  // pagesBackgroundColor is the colour a page sits on when it asks for one.
+  // Null leaves that to the role the page named -- raised or quiet, resolved
+  // from this theme -- which is what a reader who has not chosen gets.
+  //
+  // A reader's choice rather than the page's: the page says *that* it wants
+  // to sit on something, in a word that means the same in a dark theme and
+  // a light one, and this says what that comes out as here.
+  final Color? pagesBackgroundColor;
+  final int? pagesBackgroundColorIndex;
+
   // -------------------------------------------------------------------------
   // Mobile -- see editor/areas/mobile.dart.
   // -------------------------------------------------------------------------
@@ -750,6 +760,8 @@ class AreaStyle {
     this.feedStripMarkdown = false,
     this.pagesWidthCap = 0,
     this.pagesHonourBackground = true,
+    this.pagesBackgroundColor,
+    this.pagesBackgroundColorIndex,
     this.mobileTapOpensSidebar = false,
     this.mobileNavHideLabels = false,
     this.mobileSidebarAvatarCloses = false,
@@ -942,6 +954,10 @@ class AreaStyle {
     bool? feedStripMarkdown,
     double? pagesWidthCap,
     bool? pagesHonourBackground,
+    Color? pagesBackgroundColor,
+    bool clearPagesBackgroundColor = false,
+    int? pagesBackgroundColorIndex,
+    bool clearPagesBackgroundColorIndex = false,
     bool? mobileTapOpensSidebar,
     bool? mobileNavHideLabels,
     bool? mobileSidebarAvatarCloses,
@@ -1184,6 +1200,12 @@ class AreaStyle {
         pagesWidthCap: pagesWidthCap ?? this.pagesWidthCap,
         pagesHonourBackground:
             pagesHonourBackground ?? this.pagesHonourBackground,
+        pagesBackgroundColor: clearPagesBackgroundColor
+            ? null
+            : (pagesBackgroundColor ?? this.pagesBackgroundColor),
+        pagesBackgroundColorIndex: clearPagesBackgroundColorIndex
+            ? null
+            : (pagesBackgroundColorIndex ?? this.pagesBackgroundColorIndex),
         mobileTapOpensSidebar:
             mobileTapOpensSidebar ?? this.mobileTapOpensSidebar,
         mobileNavHideLabels: mobileNavHideLabels ?? this.mobileNavHideLabels,
@@ -1404,6 +1426,10 @@ class AreaStyle {
         if (feedTextLimit != 0) "feedTextLimit": feedTextLimit,
         if (feedStripMarkdown) "feedStripMarkdown": feedStripMarkdown,
         if (pagesWidthCap != 0) "pagesWidthCap": pagesWidthCap,
+        if (pagesBackgroundColor != null)
+          "pagesBackgroundColor": colorToHex(pagesBackgroundColor!),
+        if (pagesBackgroundColorIndex != null)
+          "pagesBackgroundColorIndex": pagesBackgroundColorIndex,
         if (!pagesHonourBackground)
           "pagesHonourBackground": pagesHonourBackground,
         if (mobileTapOpensSidebar)
@@ -1636,6 +1662,8 @@ class AreaStyle {
       feedTextLimit: number("feedTextLimit") ?? 0,
       feedStripMarkdown: flag("feedStripMarkdown"),
       pagesWidthCap: number("pagesWidthCap") ?? 0,
+      pagesBackgroundColor: color("pagesBackgroundColor"),
+      pagesBackgroundColorIndex: (j["pagesBackgroundColorIndex"] as num?)?.toInt(),
       // Defaults to on, so its absence cannot be read as off: every style
       // saved before this existed has no key here at all.
       pagesHonourBackground: flag("pagesHonourBackground", fallback: true),

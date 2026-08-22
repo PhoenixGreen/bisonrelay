@@ -94,6 +94,20 @@ void main() {
           const EdgeInsets.symmetric(vertical: 12, horizontal: 24));
     });
 
+    test('nought is an answer, not a blank', () {
+      // The one somebody writes when they want the space gone. Read as
+      // "said nothing" it fell back to the default and the space stayed,
+      // however firmly the page asked for none.
+      expect(space("0"), EdgeInsets.zero);
+      expect(space("0 0"), EdgeInsets.zero);
+    });
+
+    test('a width of nought is still not an answer', () {
+      // A page nobody can read. The two numbers are written the same way and
+      // mean different things.
+      expect(PageSetup.parse("--page--\nwidth: 0\n--/page--").width, isNull);
+    });
+
     test('one bad number spoils the set rather than half-applying', () {
       // Half a margin is worse than none: it is a page that looks wrong in
       // one direction only, which is the hardest kind to work out.
@@ -131,6 +145,46 @@ void main() {
       expect(shown, isNot(contains("--page--")));
       expect(shown, isNot(contains("width")));
       expect(shown, isNot(contains("background")));
+    });
+  });
+
+  group('room around the page itself', () {
+    test('a page that says nothing keeps the usual room', () {
+      expect(defaultPageMargin, isNot(EdgeInsets.zero));
+    });
+
+    testWidgets('margin: 0 really leaves none', (tester) async {
+      // Measured rather than read off the setup, because the bug was not in
+      // the number: the space was added outside the frame, where no margin
+      // could reach it.
+      SharedPreferences.setMockInitialValues({});
+      Future<double> topOf(String md) async {
+        await tester.pumpWidget(MultiProvider(providers: [
+          ChangeNotifierProvider<ThemeNotifier>(create: (_) => ThemeNotifier()),
+        ], child: MaterialApp(
+            home: Scaffold(
+                body: Align(
+                    alignment: Alignment.topLeft,
+                    child: PageFrame(
+                        setup: PageSetup.parse(md),
+                        child: const SizedBox(
+                            key: ValueKey("body"), width: 10, height: 10)))))));
+        await tester.pumpAndSettle();
+        return tester.getTopLeft(find.byKey(const ValueKey("body"))).dy;
+      }
+
+      expect(await topOf("# nothing said"), defaultPageMargin.top);
+      expect(await topOf("--page--\nmargin: 0\n--/page--"), 0);
+      expect(await topOf("--page--\nmargin: 40\n--/page--"), 40);
+    });
+
+    test('margin: 0 leaves none', () {
+      // The margin has to be the outermost thing the page controls. Space
+      // added outside it is space the page cannot reach -- which is what the
+      // browser's own list padding was, invisible until a page took a
+      // background and it read as a band above the banner.
+      var setup = PageSetup.parse("--page--\nmargin: 0\n--/page--");
+      expect(setup.margin, EdgeInsets.zero);
     });
   });
 

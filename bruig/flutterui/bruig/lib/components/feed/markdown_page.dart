@@ -35,6 +35,17 @@ const double maxPageWidth = 4000;
 /// maxPageSpace is the most room a page may keep around itself, per side.
 const double maxPageSpace = 400;
 
+/// defaultPageMargin is the room a page keeps around itself when it has not
+/// said.
+///
+/// Kept here rather than by whatever is showing the page, because a page
+/// writing "margin: 0" means the space to go, and space added outside the
+/// frame is space the page cannot reach. It was: the browser padded its list
+/// and the page's own margin sat inside that, so the gap stayed however
+/// firmly a page asked for none. Invisible until a page took a background,
+/// at which point it read as a band above the banner.
+const EdgeInsets defaultPageMargin = EdgeInsets.all(16);
+
 /// PageBackground is what a page sits on.
 ///
 /// A role, not a colour. A page cannot know what its reader's theme looks
@@ -138,38 +149,45 @@ class PageSetup {
     if (fields.isEmpty) return none;
 
     return PageSetup(
-      width: _length(fields["width"], maxPageWidth),
+      width: parseLength(fields["width"], maxPageWidth),
       background: PageBackground.parse(fields["background"] ?? "") ??
           PageBackground.none,
-      padding: _space(fields["padding"]),
-      margin: _space(fields["margin"]),
+      padding: parseSpace(fields["padding"]),
+      margin: parseSpace(fields["margin"]),
     );
   }
 
-  /// _length reads one number, ignoring a unit if one was written.
+  /// parseLength reads one number, ignoring a unit if one was written.
   ///
   /// "800" and "800px" both mean the same thing to anyone typing them, and a
   /// page that rendered full width because of a "px" would be a puzzle.
-  static double? _length(String? value, double most) {
+  /// [allowZero] because nought means different things in the two places a
+  /// number is written. A width of 0 is a page nobody can read, so it is
+  /// taken as not having said anything; a padding of 0 is a real answer, and
+  /// the one somebody writes when they want the space gone.
+  static double? parseLength(String? value, double most,
+      {bool allowZero = false}) {
     if (value == null) return null;
     var m = RegExp(r'^(\d+(?:\.\d+)?)').firstMatch(value.trim());
     if (m == null) return null;
     var n = double.tryParse(m.group(1)!);
-    if (n == null || n <= 0) return null;
+    if (n == null || n < 0 || (n == 0 && !allowZero)) return null;
     return n > most ? most : n;
   }
 
-  /// _space reads room around something, the way it is written everywhere
+  /// parseSpace reads room around something, the way it is written everywhere
   /// else it is written: one number for all four sides, two for down-and-up
   /// then across, four for each side from the top going clockwise.
-  static EdgeInsets? _space(String? value) {
+  static EdgeInsets? parseSpace(String? value) {
     if (value == null) return null;
     var parts = value
         .trim()
         .split(RegExp(r'[\s,]+'))
         .where((p) => p.isNotEmpty)
         .toList();
-    var got = [for (var p in parts) _length(p, maxPageSpace)];
+    var got = [
+      for (var p in parts) parseLength(p, maxPageSpace, allowZero: true)
+    ];
     if (got.isEmpty || got.any((v) => v == null)) return null;
     var n = got.cast<double>();
     return switch (n.length) {
@@ -233,6 +251,12 @@ class PageFrame extends StatelessWidget {
   final PageSetup setup;
   final double? cap;
   final bool honourBackground;
+
+  /// backgroundColor is what a page that asks for a background gets, or null
+  /// to let the role it named answer. The reader's choice; see
+  /// AreaStyle.pagesBackgroundColor.
+  final Color? backgroundColor;
+
   final Widget child;
 
   const PageFrame({
@@ -240,6 +264,7 @@ class PageFrame extends StatelessWidget {
     required this.child,
     this.cap,
     this.honourBackground = true,
+    this.backgroundColor,
     super.key,
   });
 
@@ -266,7 +291,8 @@ class PageFrame extends StatelessWidget {
     }
     if (background != PageBackground.none) {
       out = DecoratedBox(
-        decoration: BoxDecoration(color: _colorFor(theme, background)),
+        decoration: BoxDecoration(
+            color: backgroundColor ?? _colorFor(theme, background)),
         child: out,
       );
     }
@@ -279,10 +305,7 @@ class PageFrame extends StatelessWidget {
         ),
       );
     }
-    if (setup.margin != null) {
-      out = Padding(padding: setup.margin!, child: out);
-    }
-    return out;
+    return Padding(padding: setup.margin ?? defaultPageMargin, child: out);
   }
 
   /// _colorFor asks the reader's theme, which is the only thing that knows.
