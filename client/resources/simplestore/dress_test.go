@@ -1,6 +1,7 @@
 package simplestore
 
 import (
+	"github.com/companyzero/bisonrelay/client/clientintf"
 	"os"
 	"path/filepath"
 	"strings"
@@ -40,7 +41,7 @@ func dress(s *Store, path string, body string) string {
 		Data:   []byte(body),
 		Status: rpc.ResourceStatusOk,
 	}
-	return string(s.dressed(req, res).Data)
+	return string(s.dressed(clientintf.UserID{}, req, res).Data)
 }
 
 func shopIn(root, header, footer string) *Store {
@@ -154,7 +155,7 @@ func TestAReplyThatIsNotOkIsNotDressed(t *testing.T) {
 		Data:   []byte("not found"),
 		Status: rpc.ResourceStatusNotFound,
 	}
-	got := s.dressed(&rpc.RMFetchResource{Path: []string{"nope"}}, res)
+	got := s.dressed(clientintf.UserID{}, &rpc.RMFetchResource{Path: []string{"nope"}}, res)
 	if string(got.Data) != "not found" {
 		t.Fatalf("got %q", got.Data)
 	}

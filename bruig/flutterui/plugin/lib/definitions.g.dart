@@ -25,6 +25,8 @@ InitClient _$InitClientFromJson(Map<String, dynamic> json) => InitClient(
       (json['simplestore_ship_charge'] as num).toDouble(),
       json['simplestore_header'] as String? ?? '',
       json['simplestore_footer'] as String? ?? '',
+      json['simplestore_name'] as String? ?? '',
+      json['simplestore_tagline'] as String? ?? '',
       json['proxyaddr'] as String,
       json['torisolation'] as bool,
       json['proxy_username'] as String,
@@ -75,6 +77,8 @@ Map<String, dynamic> _$InitClientToJson(InitClient instance) =>
       'simplestore_ship_charge': instance.simpleStoreShipCharge,
       'simplestore_header': instance.simpleStoreHeader,
       'simplestore_footer': instance.simpleStoreFooter,
+      'simplestore_name': instance.simpleStoreName,
+      'simplestore_tagline': instance.simpleStoreTagline,
       'proxyaddr': instance.proxyaddr,
       'proxy_username': instance.proxyUsername,
       'proxy_password': instance.proxyPassword,
@@ -2526,6 +2530,8 @@ PagesHostConfig _$PagesHostConfigFromJson(Map<String, dynamic> json) =>
       json['http_upstream'] as String? ?? '',
       json['store_header'] as String? ?? '',
       json['store_footer'] as String? ?? '',
+      json['store_name'] as String? ?? '',
+      json['store_tagline'] as String? ?? '',
     );
 
 Map<String, dynamic> _$PagesHostConfigToJson(PagesHostConfig instance) =>
@@ -2539,6 +2545,8 @@ Map<String, dynamic> _$PagesHostConfigToJson(PagesHostConfig instance) =>
       'http_upstream': instance.httpUpstream,
       'store_header': instance.storeHeader,
       'store_footer': instance.storeFooter,
+      'store_name': instance.storeName,
+      'store_tagline': instance.storeTagline,
     };
 
 LocalAsset _$LocalAssetFromJson(Map<String, dynamic> json) => LocalAsset(

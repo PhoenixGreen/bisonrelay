@@ -1,18 +1,14 @@
-# My Shop
+{{with shopName}}# {{.}}
+{{end}}
+{{- with shopTagline}}{{.}}
 
-{{ if .IsAdmin -}}
-[Admin Area](/admin)
-
-{{ end -}}
-
+{{end}}
 --grid[3]--
 {{range .Products -}}
 {{ with productImage .Image }}![]({{.}})
 {{ else }}![](shopassets/placeholder.png)
 {{ end -}}
 **[{{.Title}}](product/{{.SKU}})**
-{{.Price}}
+{{ money .Price }}{{ with dcr .Price }} · ≈ {{.}}{{ end }}
 {{end}}
 --/grid--
-
-[Cart](/cart)   [Orders](/orders)

@@ -1,0 +1,8 @@
+--nav[pills]--
+[Shop]({{.ShopIndex}})
+[Cart{{if .CartItems}} ({{.CartItems}}){{end}}](/cart)
+[Orders](/orders)
+{{- if .IsAdmin}}
+[Admin](/admin)
+{{- end}}
+--/nav--

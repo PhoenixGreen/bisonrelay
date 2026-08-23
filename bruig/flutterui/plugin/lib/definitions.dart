@@ -103,6 +103,10 @@ class InitClient {
   final String simpleStoreHeader;
   @JsonKey(name: 'simplestore_footer', defaultValue: "")
   final String simpleStoreFooter;
+  @JsonKey(name: 'simplestore_name', defaultValue: "")
+  final String simpleStoreName;
+  @JsonKey(name: 'simplestore_tagline', defaultValue: "")
+  final String simpleStoreTagline;
   @JsonKey(name: 'proxyaddr')
   final String proxyaddr;
   @JsonKey(name: 'proxy_username')
@@ -172,6 +176,8 @@ class InitClient {
       this.simpleStoreShipCharge,
       this.simpleStoreHeader,
       this.simpleStoreFooter,
+      this.simpleStoreName,
+      this.simpleStoreTagline,
       this.proxyaddr,
       this.torisolation,
       this.proxyUsername,
@@ -2826,9 +2832,20 @@ class PagesHostConfig {
   @JsonKey(name: "store_footer", defaultValue: "")
   final String storeFooter;
 
+  /// storeName and storeTagline are what the shop calls itself, or are empty
+  /// for a shop that would rather not say. Settings rather than lines in a
+  /// template: naming your own shop should not mean editing one.
+  @JsonKey(name: "store_name", defaultValue: "")
+  final String storeName;
+  @JsonKey(name: "store_tagline", defaultValue: "")
+  final String storeTagline;
+
   PagesHostConfig(this.mode, this.pagesPath, this.storePath, this.storePayType,
       this.storeAccount, this.storeShipCharge, this.httpUpstream,
-      [this.storeHeader = "", this.storeFooter = ""]);
+      [this.storeHeader = "",
+      this.storeFooter = "",
+      this.storeName = "",
+      this.storeTagline = ""]);
   factory PagesHostConfig.off() =>
       PagesHostConfig(pagesHostModeOff, "", "", "", "", 0, "");
   factory PagesHostConfig.fromJson(Map<String, dynamic> json) =>
@@ -2850,6 +2867,8 @@ class PagesHostConfig {
     double? storeShipCharge,
     String? storeHeader,
     String? storeFooter,
+    String? storeName,
+    String? storeTagline,
   }) =>
       PagesHostConfig(
           mode ?? this.mode,
@@ -2860,7 +2879,9 @@ class PagesHostConfig {
           storeShipCharge ?? this.storeShipCharge,
           httpUpstream,
           storeHeader ?? this.storeHeader,
-          storeFooter ?? this.storeFooter);
+          storeFooter ?? this.storeFooter,
+          storeName ?? this.storeName,
+          storeTagline ?? this.storeTagline);
 }
 
 @JsonSerializable()

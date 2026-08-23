@@ -57,6 +57,15 @@ func (cart *Cart) HasCharges() bool {
 }
 
 // Total returns the total amount, with 2 decimal places accuracy.
+// Total is what one line of a cart comes to: the price times how many.
+//
+// On the item rather than worked out in a template, because a template
+// cannot multiply without saying so awkwardly, and a cart that shows a unit
+// price and a quantity but no line total leaves the buyer doing the sum.
+func (item *CartItem) Total() float64 {
+	return item.Product.Price * float64(item.Quantity)
+}
+
 func (cart *Cart) TotalCents() int64 {
 	var totalUSDCents int64
 	for _, item := range cart.Items {

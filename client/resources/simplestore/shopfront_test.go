@@ -22,8 +22,11 @@ import (
 // cell, and its writing joins the one before it.
 
 func renderIndex(t *testing.T, products []*Product) string {
+	return renderIndexAs(t, &Store{indexPath: "/", log: slog.Disabled}, products)
+}
+
+func renderIndexAs(t *testing.T, s *Store, products []*Product) string {
 	t.Helper()
-	s := &Store{indexPath: "/", log: slog.Disabled}
 	raw, err := storeTemplate.ReadFile("template/index.tmpl")
 	if err != nil {
 		t.Fatal(err)
@@ -134,5 +137,64 @@ func TestAShopWillNotServeAnythingElse(t *testing.T) {
 		if _, err := s.assetPath(bad); err == nil {
 			t.Errorf("%v would have been served", bad)
 		}
+	}
+}
+
+// TestTheShopFrontNamesItselfOnlyWhenAsked covers the setting that replaced a
+// line in a template.
+//
+// "My Shop" was written into index.tmpl, so naming your own shop meant
+// editing one -- and a shop whose owner never did would be called My Shop
+// for ever.
+func TestTheShopFrontNamesItselfOnlyWhenAsked(t *testing.T) {
+	named := &Store{indexPath: "/", log: slog.Disabled,
+		shopName: "Leeds Records", shopTagline: "Vinyl since 1919"}
+	got := renderIndexAs(t, named, []*Product{{Title: "A record", SKU: "r1"}})
+	for _, want := range []string{"# Leeds Records", "Vinyl since 1919"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("%q missing from:\n%s", want, got)
+		}
+	}
+
+	// Both empty: the front page opens with the products, which is right
+	// when the site's own banner already says whose shop this is.
+	quiet := renderIndexAs(t, &Store{indexPath: "/", log: slog.Disabled},
+		[]*Product{{Title: "A record", SKU: "r1"}})
+	if strings.Contains(quiet, "My Shop") {
+		t.Errorf("a shop that said nothing is still called My Shop:\n%s", quiet)
+	}
+	if strings.HasPrefix(strings.TrimSpace(quiet), "#") {
+		t.Errorf("a shop that said nothing still has a heading:\n%s", quiet)
+	}
+}
+
+// TestAPriceIsShownInBothCurrencies covers the two figures a shop can stand
+// behind.
+func TestAPriceIsShownInBothCurrencies(t *testing.T) {
+	s := &Store{indexPath: "/", log: slog.Disabled}
+	s.cfg.ExchangeRateProvider = func() float64 { return 25 }
+	got := renderIndexAs(t, s, []*Product{{Title: "A record", SKU: "r1",
+		Price: 50}})
+
+	if !strings.Contains(got, "$50.00") {
+		t.Errorf("no price:\n%s", got)
+	}
+	if !strings.Contains(got, "2.0000 DCR") {
+		t.Errorf("no DCR figure:\n%s", got)
+	}
+	if !strings.Contains(got, "≈") {
+		t.Error("the DCR figure is not marked approximate, and it is: the " +
+			"rate moves and the binding amount is struck at checkout")
+	}
+}
+
+func TestWithNoRateTheShopShowsOnlyThePrice(t *testing.T) {
+	// Not "0 DCR", which is a price and a wrong one.
+	got := renderIndex(t, []*Product{{Title: "A record", SKU: "r1", Price: 50}})
+	if !strings.Contains(got, "$50.00") {
+		t.Errorf("no price:\n%s", got)
+	}
+	if strings.Contains(got, "DCR") {
+		t.Errorf("a DCR figure with no rate behind it:\n%s", got)
 	}
 }

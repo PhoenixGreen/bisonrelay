@@ -45,6 +45,7 @@ const (
 	orderPlacedTmplFile = "orderplaced.tmpl"
 	adminOrdersTmplFile = "admin_orders.tmpl"
 	adminOrderTmplFile  = "admin_order.tmpl"
+	navTmplFile         = "shopnav.tmpl"
 )
 
 type PayType string
@@ -68,6 +69,12 @@ type Config struct {
 	LNPayClient   *client.DcrlnPaymentClient
 
 	ExchangeRateProvider func() float64
+
+	// ShopName and ShopTagline are what the shop calls itself, or empty for
+	// a shop that would rather not say. Settings rather than lines in a
+	// template: naming your own shop should not mean editing one.
+	ShopName    string
+	ShopTagline string
 
 	// SiteRoot is the directory of the pages site hosted beside this store,
 	// or empty when there is none. It is where the header and footer below
@@ -115,6 +122,10 @@ type Store struct {
 	// once by BindRoutes, before anything is served.
 	indexPath string
 
+	// shopName and shopTagline are what the shop calls itself.
+	shopName    string
+	shopTagline string
+
 	// siteRoot, header and footer are the wrapper: see Config.
 	siteRoot string
 	header   string
@@ -134,19 +145,21 @@ func New(cfg Config) (*Store, error) {
 	runCtx, runCancel := context.WithCancel(context.Background())
 
 	s := &Store{
-		cfg:       cfg,
-		c:         cfg.Client,
-		log:       log,
-		root:      cfg.Root,
-		products:  make(map[string]*Product),
-		tmpl:      template.New("*root"),
-		indexPath: "/",
-		siteRoot:  cfg.SiteRoot,
-		header:    cfg.Header,
-		footer:    cfg.Footer,
-		lnpc:      cfg.LNPayClient,
-		runCtx:    runCtx,
-		runCancel: runCancel,
+		cfg:         cfg,
+		c:           cfg.Client,
+		log:         log,
+		root:        cfg.Root,
+		products:    make(map[string]*Product),
+		tmpl:        template.New("*root"),
+		indexPath:   "/",
+		shopName:    cfg.ShopName,
+		shopTagline: cfg.ShopTagline,
+		siteRoot:    cfg.SiteRoot,
+		header:      cfg.Header,
+		footer:      cfg.Footer,
+		lnpc:        cfg.LNPayClient,
+		runCtx:      runCtx,
+		runCancel:   runCancel,
 
 		invoiceSettledChan:  make(chan string),
 		invoiceCanceledChan: make(chan string),
@@ -265,6 +278,21 @@ func (s *Store) templateFuncs() template.FuncMap {
 		// directory is named in one place and a template cannot spell it
 		// differently.
 		"productImage": ProductImagePath,
+
+		// money and dcr are the two ways a price is written, and both are
+		// true. A shop quotes in USD and is paid in DCR, and there is no
+		// rate in this app for anything else -- so a price shown in a
+		// buyer's own currency would be a number nobody can stand behind,
+		// while the amount they actually commit to is worked out from the
+		// USD one regardless of what the label said.
+		"money": Money,
+		"dcr":   s.approxDCR,
+
+		// shopName is what the shop calls itself, or empty for a shop that
+		// would rather not say. A setting rather than a line in a template,
+		// because naming your own shop should not mean editing one.
+		"shopName":    func() string { return s.shopName },
+		"shopTagline": func() string { return s.shopTagline },
 	}
 }
 
@@ -280,7 +308,7 @@ func (s *Store) Fulfill(ctx context.Context, uid clientintf.UserID,
 	if err != nil {
 		return nil, err
 	}
-	return s.dressed(request, res), nil
+	return s.dressed(uid, request, res), nil
 }
 
 func (s *Store) fulfill(ctx context.Context, uid clientintf.UserID,

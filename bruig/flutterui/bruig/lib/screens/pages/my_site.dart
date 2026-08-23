@@ -630,11 +630,17 @@ class _ShopFrameFieldsState extends State<ShopFrameFields> {
       TextEditingController(text: widget.pages.hostConfig.storeHeader);
   late final _footer =
       TextEditingController(text: widget.pages.hostConfig.storeFooter);
+  late final _name =
+      TextEditingController(text: widget.pages.hostConfig.storeName);
+  late final _tagline =
+      TextEditingController(text: widget.pages.hostConfig.storeTagline);
 
   @override
   void dispose() {
     _header.dispose();
     _footer.dispose();
+    _name.dispose();
+    _tagline.dispose();
     super.dispose();
   }
 
@@ -644,6 +650,8 @@ class _ShopFrameFieldsState extends State<ShopFrameFields> {
       await widget.pages.setHost(widget.pages.hostConfig.copyWith(
         storeHeader: _header.text.trim(),
         storeFooter: _footer.text.trim(),
+        storeName: _name.text.trim(),
+        storeTagline: _tagline.text.trim(),
       ));
     } catch (exception) {
       snackbar.error("Unable to save the shop's frame: $exception");
@@ -668,6 +676,18 @@ class _ShopFrameFieldsState extends State<ShopFrameFields> {
   Widget build(BuildContext context) => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          const Txt.L("What the shop is called"),
+          const SizedBox(height: 6),
+          const Txt.S(
+              "Shown at the top of the shop's front page. Leave both empty "
+              "and the front page starts with your products -- which is the "
+              "right answer when the site's own banner already says whose "
+              "shop this is.",
+              color: TextColor.onSurfaceVariant),
+          const SizedBox(height: 10),
+          _field("Shop name", _name),
+          _field("Tagline", _tagline),
+          const SizedBox(height: 20),
           const Txt.L("The shop's frame"),
           const SizedBox(height: 6),
           const Txt.S(

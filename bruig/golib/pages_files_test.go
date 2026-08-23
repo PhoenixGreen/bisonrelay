@@ -122,7 +122,7 @@ func TestParseUpstream(t *testing.T) {
 		{"https://example.com", hostModeHTTP, ""},
 		{"clientrpc", hostModeClientRPC, ""},
 	} {
-		cfg := parseUpstream(tc.upstream, "", "ln", "", 0, "", "")
+		cfg := parseUpstream(tc.upstream, "", "ln", "", 0, "", "", "", "")
 		if cfg.Mode != tc.wantMode {
 			t.Errorf("%q: mode %q, want %q", tc.upstream, cfg.Mode, tc.wantMode)
 		}
@@ -137,7 +137,7 @@ func TestParseUpstream(t *testing.T) {
 
 	// A store path beside a pages upstream is a site with a shop in it,
 	// which the legacy single-line form cannot express.
-	both := parseUpstream("pages:/tmp/site", "/tmp/shop", "ln", "", 0, "", "")
+	both := parseUpstream("pages:/tmp/site", "/tmp/shop", "ln", "", 0, "", "", "", "")
 	if both.Mode != hostModePagesAndStore {
 		t.Errorf("mode %q, want %q", both.Mode, hostModePagesAndStore)
 	}
@@ -146,20 +146,20 @@ func TestParseUpstream(t *testing.T) {
 	}
 
 	// A store path alone is a store, same as the legacy form.
-	if m := parseUpstream("", "/tmp/shop", "", "", 0, "", "").Mode; m != hostModeStore {
+	if m := parseUpstream("", "/tmp/shop", "", "", 0, "", "", "", "").Mode; m != hostModeStore {
 		t.Errorf("store-path-only mode %q, want %q", m, hostModeStore)
 	}
 
 	// It must not override a mode the app does not own.
-	if m := parseUpstream("clientrpc", "/tmp/shop", "", "", 0, "", "").Mode; m != hostModeClientRPC {
+	if m := parseUpstream("clientrpc", "/tmp/shop", "", "", 0, "", "", "", "").Mode; m != hostModeClientRPC {
 		t.Errorf("clientrpc with store path became %q", m)
 	}
 
 	// The upstream modes are not the UI's to change.
-	if parseUpstream("clientrpc", "", "", "", 0, "", "").editable() {
+	if parseUpstream("clientrpc", "", "", "", 0, "", "", "", "").editable() {
 		t.Error("clientrpc reported as editable")
 	}
-	if !parseUpstream("pages:/tmp/site", "", "", "", 0, "", "").editable() {
+	if !parseUpstream("pages:/tmp/site", "", "", "", 0, "", "", "", "").editable() {
 		t.Error("pages reported as not editable")
 	}
 }
@@ -396,12 +396,12 @@ func TestAnOrdinaryPictureNameIsStillAllowed(t *testing.T) {
 // frame, because the reader sees the marker.
 func TestAShopOnlyWearsAFrameWhenThereIsASite(t *testing.T) {
 	both := parseUpstream("pages:/tmp/site", "/tmp/shop", "ln", "", 0,
-		"header", "footer")
+		"header", "footer", "", "")
 	if got := siteRootFor(both); got != "/tmp/site" {
 		t.Errorf("a shop beside a site reads from %q", got)
 	}
 
-	alone := parseUpstream("", "/tmp/shop", "ln", "", 0, "header", "footer")
+	alone := parseUpstream("", "/tmp/shop", "ln", "", 0, "header", "footer", "", "")
 	if got := siteRootFor(alone); got != "" {
 		t.Errorf("a shop on its own reads from %q", got)
 	}

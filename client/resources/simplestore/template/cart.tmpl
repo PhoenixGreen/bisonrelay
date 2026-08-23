@@ -4,6 +4,8 @@ Last Updated: {{.Updated.Format "2006-01-02 15:04:05" }}
 
 {{template "cart-listing.tmpl" .}}
 
+**Total: {{ money .Total }}**{{ with dcr .Total }} · ≈ {{.}}{{ end }}
+
 ---
 ## Place Order
 {{- $shipping := false -}}
@@ -33,5 +35,3 @@ type="submit" label="Place Order"
 {{end}}
 
 [Clear cart](/clearCart)
-
-[Back to the shop]({{storeIndex}})

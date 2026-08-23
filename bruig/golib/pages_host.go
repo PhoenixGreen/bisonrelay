@@ -58,6 +58,13 @@ type pagesHostConfig struct {
 	StoreHeader string `json:"store_header"`
 	StoreFooter string `json:"store_footer"`
 
+	// StoreName and StoreTagline are what the shop calls itself, or are
+	// empty for a shop that would rather not say. Settings rather than
+	// lines in a template: naming your own shop should not mean editing
+	// one, and a shop that had to would be called "My Shop" for ever.
+	StoreName    string `json:"store_name"`
+	StoreTagline string `json:"store_tagline"`
+
 	// HTTPUpstream is the base URL served in hostModeHTTP.
 	HTTPUpstream string `json:"http_upstream"`
 }
@@ -147,7 +154,7 @@ func (ph *pagesHost) config() pagesHostConfig {
 // keep behaving exactly as they did. A separate storePath alongside a pages
 // upstream is the one thing they could not express: a site with a shop in it.
 func parseUpstream(upstream, storePath, payType, account string,
-	shipCharge float64, header, footer string) pagesHostConfig {
+	shipCharge float64, header, footer, name, tagline string) pagesHostConfig {
 	cfg := pagesHostConfig{
 		Mode:            hostModeOff,
 		StorePayType:    payType,
@@ -155,6 +162,8 @@ func parseUpstream(upstream, storePath, payType, account string,
 		StoreShipCharge: shipCharge,
 		StoreHeader:     header,
 		StoreFooter:     footer,
+		StoreName:       name,
+		StoreTagline:    tagline,
 	}
 	switch {
 	case strings.HasPrefix(upstream, "pages:"):
@@ -297,9 +306,11 @@ func (ph *pagesHost) startStoreLocked(cfg pagesHostConfig) (*simplestore.Store, 
 		// The site the shop sits in, and the two fragments it wears. Only
 		// when a site is actually being hosted: a store on its own has no
 		// fragments to read and would put empty markers round every page.
-		SiteRoot: siteRootFor(cfg),
-		Header:   cfg.StoreHeader,
-		Footer:   cfg.StoreFooter,
+		SiteRoot:    siteRootFor(cfg),
+		ShopName:    cfg.StoreName,
+		ShopTagline: cfg.StoreTagline,
+		Header:      cfg.StoreHeader,
+		Footer:      cfg.StoreFooter,
 	}
 	store, err := simplestore.New(scfg)
 	if err != nil {

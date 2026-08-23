@@ -876,7 +876,8 @@ func handleInitClient(handle uint32, args initClient) error {
 	hostCfg := parseUpstream(args.ResourcesUpstream, args.SimpleStorePath,
 		args.SimpleStorePayType, args.SimpleStoreAccount,
 		args.SimpleStoreShipCharge, args.SimpleStoreHeader,
-		args.SimpleStoreFooter)
+		args.SimpleStoreFooter, args.SimpleStoreName,
+		args.SimpleStoreTagline)
 	if err := pagesHost.apply(hostCfg); err != nil {
 		// Bad hosting config must not stop the client from starting:
 		// the user needs to be able to get in and fix it.

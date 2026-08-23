@@ -7,7 +7,8 @@ Tags: {{ .Tags }}
 
 {{ .Description }}
 
-Price: {{ .Price }}
+**{{ money .Price }}**{{ with dcr .Price }}
+≈ {{.}} at today's rate. The amount you pay is set when you order.{{ end }}
 
 ---
 ## Add to Cart

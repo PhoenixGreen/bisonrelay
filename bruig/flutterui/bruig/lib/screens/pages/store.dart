@@ -522,7 +522,11 @@ class _ProductEditorState extends State<_ProductEditor> {
         controller: priceCtrl,
         decoration: const InputDecoration(
           isDense: true,
-          labelText: "Price",
+          // Which currency, because nothing else says. Somebody entering
+          // 20 meaning 20 DCR would price their goods at a fraction of what
+          // they meant and have no way to notice: the shop quotes in USD
+          // and works the DCR amount out from it at checkout.
+          labelText: "Price (USD)",
           helperText: "In USD; converted to DCR at checkout.",
           border: OutlineInputBorder(),
         ),

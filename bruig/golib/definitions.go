@@ -41,6 +41,8 @@ type initClient struct {
 	SimpleStoreShipCharge float64 `json:"simplestore_ship_charge"`
 	SimpleStoreHeader     string  `json:"simplestore_header"`
 	SimpleStoreFooter     string  `json:"simplestore_footer"`
+	SimpleStoreName       string  `json:"simplestore_name"`
+	SimpleStoreTagline    string  `json:"simplestore_tagline"`
 
 	ProxyAddr     string `json:"proxyaddr"`
 	ProxyUsername string `json:"proxy_username"`

@@ -117,6 +117,11 @@ class Config {
   /// restart, like everything else about hosting.
   late final String simpleStoreHeader;
   late final String simpleStoreFooter;
+
+  /// simpleStoreName and simpleStoreTagline are what the shop calls itself.
+  /// Kept here so a shop is still called that after a restart.
+  late final String simpleStoreName;
+  late final String simpleStoreTagline;
   late final String proxyaddr;
   late final bool torIsolation;
   late final String proxyUsername;
@@ -169,6 +174,8 @@ class Config {
       this.simpleStoreShipCharge = 0,
       this.simpleStoreHeader = "",
       this.simpleStoreFooter = "",
+      this.simpleStoreName = "",
+      this.simpleStoreTagline = "",
       this.proxyaddr = "",
       this.torIsolation = false,
       this.proxyUsername = "",
@@ -221,6 +228,8 @@ class Config {
         simpleStoreShipCharge: cfg.simpleStoreShipCharge,
         simpleStoreHeader: cfg.simpleStoreHeader,
         simpleStoreFooter: cfg.simpleStoreFooter,
+        simpleStoreName: cfg.simpleStoreName,
+        simpleStoreTagline: cfg.simpleStoreTagline,
         proxyaddr: cfg.proxyaddr,
         torIsolation: cfg.torIsolation,
         proxyUsername: cfg.proxyUsername,
@@ -312,6 +321,8 @@ Future<void> replaceConfig(
   double? simpleStoreShipCharge,
   String? simpleStoreHeader,
   String? simpleStoreFooter,
+  String? simpleStoreName,
+  String? simpleStoreTagline,
 }) async {
   var f = ini.Config.fromStrings(File(filepath).readAsLinesSync());
 
@@ -358,6 +369,8 @@ Future<void> replaceConfig(
   setDouble("resources", "shipcharge", simpleStoreShipCharge);
   set("resources", "storeheader", simpleStoreHeader);
   set("resources", "storefooter", simpleStoreFooter);
+  set("resources", "storename", simpleStoreName);
+  set("resources", "storetagline", simpleStoreTagline);
   set("simplestore", "paytype", simpleStorePayType);
 
   set("clientrpc", "jsonrpclisten", jsonRPCListen);
@@ -542,6 +555,8 @@ Future<Config> loadConfig(String filepath) async {
       double.tryParse(f.get("resources", "shipcharge") ?? "0") ?? 0;
   c.simpleStoreHeader = f.get("resources", "storeheader") ?? "";
   c.simpleStoreFooter = f.get("resources", "storefooter") ?? "";
+  c.simpleStoreName = f.get("resources", "storename") ?? "";
+  c.simpleStoreTagline = f.get("resources", "storetagline") ?? "";
 
   c.jsonRPCListen = getCommaList("clientrpc", "jsonrpclisten") ?? [];
   c.rpcCertPath = f.get("clientrpc", "rpccertpath") ?? "";
