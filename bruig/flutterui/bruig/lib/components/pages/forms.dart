@@ -153,7 +153,15 @@ class CustomFormState extends State<CustomForm> {
               hintText: field.hint,
             ),
             onChanged: (String val) {
-              field.value = val;
+              // A number, not the text of one. This field is built with an
+              // int in it and was putting a String back the moment anybody
+              // typed, so a form whose number was left alone worked and the
+              // same form with the number changed came back "bad request".
+              //
+              // Adding to a cart hid it: nobody changes the quantity from 1,
+              // so the int survived to the wire. Changing a quantity in a
+              // cart is nothing but that change, so it failed every time.
+              field.value = int.tryParse(val) ?? 0;
             },
             validator: (String? value) {
               if (value != null && field.regexp != "") {
