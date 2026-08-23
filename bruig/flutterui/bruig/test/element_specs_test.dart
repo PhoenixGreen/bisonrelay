@@ -1,4 +1,6 @@
+import 'package:bruig/components/feed/markdown_header.dart';
 import 'package:bruig/components/feed/markdown_nav.dart';
+import 'package:bruig/components/feed/markdown_title.dart';
 import 'package:bruig/components/feed/markdown_page.dart';
 import 'package:bruig/components/feed/markdown_panel.dart';
 import 'package:bruig/plugin_system/writing_tools/ui/sidebar/element_specs.dart';
@@ -88,6 +90,126 @@ void main() {
       var written = navSpec.write(const {});
       expect(written, contains("](index.md)"));
       expect(written, contains("--/nav--"));
+    });
+  });
+
+  group('every header setting', () {
+    // The gap that let two wrong settings ship: titlecolor was offered role
+    // names, which it does not take -- it reads hex -- and "titlesize: fill"
+    // was offered when it has not been a thing to write since a row became
+    // a fixed height. Both would have been picked, done nothing, and left
+    // the writer unable to tell a mistake from a bug.
+    Map<String, String> fieldsOf(String written) {
+      var el = parseBlock(
+          written.split("\n").skip(1).join("\n"), HeaderBlockSyntax());
+      return el.attributes;
+    }
+
+    test('reaches the banner, and says what it was told', () {
+      for (var setting in headerSpec.settings) {
+        for (var option in setting.options) {
+          if (option.value.isEmpty) continue;
+          var fields = fieldsOf(headerSpec.write({setting.key: option.value}));
+          expect(fields[setting.key], option.value,
+              reason: "${setting.key}=${option.value}");
+        }
+      }
+    });
+
+    test('is one the title style actually reads', () {
+      // Reaching the banner is not enough: a field it keeps but the style
+      // cannot read is a setting that still does nothing.
+      for (var setting in headerSpec.settings) {
+        if (!titleStyleFields.contains(setting.key)) continue;
+        for (var option in setting.options) {
+          if (option.value.isEmpty) continue;
+          var style = HeaderTextStyle.parse({setting.key: option.value});
+          var plain = HeaderTextStyle.parse(const {});
+          expect(style == plain, isFalse,
+              reason: "${setting.key}=${option.value} changes nothing");
+        }
+      }
+    });
+
+    test('a colour is read as a colour', () {
+      for (var key in [
+        "titlecolor",
+        "titleoutlinecolor",
+        "titlebackground",
+      ]) {
+        var setting =
+            headerSpec.settings.firstWhere((s) => s.key == key);
+        for (var option in setting.options) {
+          if (option.value.isEmpty) continue;
+          var style = HeaderTextStyle.parse({key: option.value});
+          var got = switch (key) {
+            "titlecolor" => style.color,
+            "titleoutlinecolor" => style.outlineColor,
+            _ => style.background,
+          };
+          expect(got, isNotNull, reason: "$key=${option.value}");
+        }
+      }
+    });
+  });
+
+  group('a banner row', () {
+    test('is written inside the banner, not as a field of it', () {
+      // Written as a field it would be a line with a colon in it, which is
+      // all the parser would see.
+      var written = headerSpec.write(const {});
+      expect(written, contains("--row["));
+      expect(written, contains("--/row--"));
+      expect(written, isNot(contains("height:")));
+      expect(written, isNot(contains("layout:")));
+    });
+
+    test('carries the height and layout it was given', () {
+      var el = parseBlock(
+          headerSpec
+              .write({"height": "200", "layout": "center"})
+              .split("\n")
+              .skip(1)
+              .join("\n"),
+          HeaderBlockSyntax());
+      var rows = headerRowsOf(el.attributes);
+      expect(rows, hasLength(1));
+      expect(rows.first.height, 200);
+      expect(rows.first.mode, HeaderRowMode.center);
+    });
+
+    test('flush and group are words, and only when asked for', () {
+      var plain = headerRowsOf(parseBlock(
+              headerSpec.write(const {}).split("\n").skip(1).join("\n"),
+              HeaderBlockSyntax())
+          .attributes);
+      expect(plain.first.flush, isFalse);
+      expect(plain.first.group, isFalse);
+
+      var both = headerRowsOf(parseBlock(
+              headerSpec
+                  .write({"flush": "flush", "group": "group"})
+                  .split("\n")
+                  .skip(1)
+                  .join("\n"),
+              HeaderBlockSyntax())
+          .attributes);
+      expect(both.first.flush, isTrue);
+      expect(both.first.group, isTrue);
+    });
+
+    test('every layout is one the row understands', () {
+      var setting =
+          headerSpec.rows!.settings.firstWhere((s) => s.key == "layout");
+      for (var option in setting.options) {
+        expect(HeaderRowMode.parse(option.value).name, option.value,
+            reason: option.value);
+      }
+    });
+
+    test('the row has cells in it', () {
+      // A row with nothing in it is a fixed height of nothing.
+      expect(headerSpec.write(const {}), contains("left:"));
     });
   });
 

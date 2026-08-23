@@ -133,7 +133,7 @@ class _ElementPanelState extends State<ElementPanel> {
             Txt.S(spec.tip.replaceAll(" Delete this note.", ""),
                 color: TextColor.onSurfaceVariant),
             const SizedBox(height: 10),
-            for (var setting in spec.settings) ...[
+            for (var setting in spec.allSettings) ...[
               _settingRow(theme, spec, setting),
               if (identical(_setting, setting)) _optionsFor(spec, setting),
               const SizedBox(height: 2),

@@ -69,6 +69,28 @@ enum ElementShape {
   valueBlock,
 }
 
+/// RowSpec is a block written inside another one, whose settings go in
+/// brackets as bare words rather than as key=value.
+///
+/// A banner's rows are the only case. They are not fields of the banner --
+/// a banner may have two of them, each with its own height and layout --
+/// and writing them as though they were would produce something the parser
+/// reads as a line with a colon in it.
+@immutable
+class RowSpec {
+  final String tag;
+
+  /// cells is what goes inside one row. Named cells for a row that divides,
+  /// which is what left: and right: are.
+  final String cells;
+  final List<ElementSetting> settings;
+  const RowSpec({
+    required this.tag,
+    required this.cells,
+    required this.settings,
+  });
+}
+
 /// ElementSpec is one block the panel can write.
 @immutable
 class ElementSpec {
@@ -94,6 +116,10 @@ class ElementSpec {
 
   final List<ElementSetting> settings;
 
+  /// rows is the block written inside this one, or null for a block with
+  /// none. Only a banner has one.
+  final RowSpec? rows;
+
   const ElementSpec({
     required this.icon,
     required this.name,
@@ -102,12 +128,37 @@ class ElementSpec {
     required this.tip,
     required this.settings,
     this.body,
+    this.rows,
   });
+
+  /// allSettings is everything the panel lists: the block's own, then the
+  /// row's. One list, because to whoever is writing they are all just
+  /// things a banner can be told.
+  List<ElementSetting> get allSettings => [...settings, ...?rows?.settings];
 
   /// chosenOrDefault fills in whatever the writer has not picked.
   Map<String, String> chosenOrDefault(Map<String, String> chosen) => {
-        for (var s in settings) s.key: chosen[s.key] ?? s.fallback.value,
+        for (var s in allSettings) s.key: chosen[s.key] ?? s.fallback.value,
       };
+
+  /// _rowBlock is the row, written from what was picked for it.
+  ///
+  /// Bare words in brackets and in no particular order: the parser reads a
+  /// number as the height and each remaining word for what it is, so
+  /// --row[200,center,group]-- and --row[group,center,200]-- are the same
+  /// row.
+  String? _rowBlock(Map<String, String> values) {
+    var spec = rows;
+    if (spec == null) return null;
+    var words = [
+      for (var s in spec.settings)
+        if ((values[s.key] ?? "").isNotEmpty) values[s.key]!
+    ];
+    var open = words.isEmpty
+        ? "--${spec.tag}--"
+        : "--${spec.tag}[${words.join(",")}]--";
+    return "$open\n${spec.cells}\n--/${spec.tag}--";
+  }
 
   /// write builds the block, with its note above it.
   ///
@@ -117,7 +168,7 @@ class ElementSpec {
   String write(Map<String, String> chosen) {
     var values = chosenOrDefault(chosen);
     var set = [
-      for (var s in settings)
+      for (var s in allSettings)
         if ((values[s.key] ?? "").isNotEmpty) (key: s.key, value: values[s.key]!)
     ];
 
@@ -133,11 +184,17 @@ class ElementSpec {
         var open = attrs.isEmpty ? "--$tag--" : "--$tag[$attrs]--";
         return "$note\n$open\n${body ?? ""}\n--/$tag--";
       case ElementShape.lines:
-        var lines = set.map((e) => "${e.key}: ${e.value}").join("\n");
+        var own = {for (var s in settings) s.key};
+        var lines = set
+            .where((e) => own.contains(e.key))
+            .map((e) => "${e.key}: ${e.value}")
+            .join("\n");
+        var row = _rowBlock(values);
         return [
           note,
           "--$tag--",
           if (lines.isNotEmpty) lines,
+          if (row != null) row,
           if (body != null) body!,
           "--/$tag--",
         ].join("\n");
@@ -289,22 +346,91 @@ const ElementSpec panelSpec = ElementSpec(
   ],
 );
 
+/// _hexColours are the colours a banner's writing takes.
+///
+/// Hex, not a role name. The rest of a page names colours from the reader's
+/// palette, and a banner deliberately does not: its writing sits on a
+/// picture the writer chose, and only they can know what will read against
+/// it. The parser takes #rgb, #rrggbb and #rrggbbaa -- the last being
+/// see-through, which is what a panel behind the letters wants.
+const List<ElementOption> _hexColours = [
+  ElementOption("Theme default", ""),
+  ElementOption("White", "#ffffff"),
+  ElementOption("Black", "#000000"),
+  ElementOption("Half-black", "#00000080", note: "See-through"),
+];
+
 const ElementSpec headerSpec = ElementSpec(
   icon: Icons.view_day_outlined,
   name: "Header",
   tag: "header",
   shape: ElementShape.lines,
-  body: "--row[96,split]--\n# My Site\n--/row--",
   tip: "Header: the banner at the top of a page. At most two rows, at most "
-      "two cells each. A row is --row[height,layout]-- and may add flush "
-      "to run to the edge, or group to keep its two cells together. "
+      "two cells each -- copy the row block for a second. A row's settings "
+      "go in its brackets in any order: a number is the height, flush runs "
+      "it to the banner's edge, and group keeps its two cells together. "
       "Delete this note.",
+  rows: RowSpec(
+    tag: "row",
+    cells: "left: ![](assets/logo.svg)\nright: # My Site",
+    settings: [
+      ElementSetting(
+        key: "height",
+        label: "Row height",
+        description: "How tall the row is. Everything in it is sized to "
+            "this, so a title comes out level with the logo beside it "
+            "without either being told about the other.",
+        options: [
+          ElementOption("Short (44)", "44", note: "A bar of links"),
+          ElementOption("Medium (96)", "96"),
+          ElementOption("Tall (200)", "200", note: "A logo and a title"),
+        ],
+        defaultIndex: 1,
+      ),
+      ElementSetting(
+        key: "layout",
+        label: "Row layout",
+        description: "Where the row's cells sit. Split pushes them to "
+            "either end; left, centre and right hold them together at that "
+            "side.",
+        options: [
+          ElementOption("Left", "left"),
+          ElementOption("Centre", "center"),
+          ElementOption("Right", "right"),
+          ElementOption("Split", "split", note: "One at each end"),
+        ],
+      ),
+      ElementSetting(
+        key: "flush",
+        label: "Flush",
+        description: "Runs the row to the banner's edge, giving up the "
+            "inset it would otherwise keep. What a strip along the top or "
+            "bottom of a banner wants.",
+        options: [
+          ElementOption("No", ""),
+          ElementOption("Yes", "flush"),
+        ],
+      ),
+      ElementSetting(
+        key: "group",
+        label: "Group",
+        description: "Keeps the row's two cells together as a pair rather "
+            "than letting the second have the rest of the row -- a logo "
+            "and a title beside it, sitting as one thing.",
+        options: [
+          ElementOption("No", ""),
+          ElementOption("Yes", "group"),
+        ],
+      ),
+    ],
+  ),
   settings: [
     ElementSetting(
       key: "background",
       label: "Background picture",
-      description: "A picture from the site's own Pictures, behind the whole "
-          "banner. Add one with Add Picture and paste what it gives you.",
+      description: "A picture from the site's own Pictures, behind the "
+          "whole banner. Add one with Add Picture and paste what it gives "
+          "you in place of the name here.",
       options: [
         ElementOption("None", ""),
         ElementOption("A site picture", "![](assets/banner.jpg)",
@@ -314,32 +440,29 @@ const ElementSpec headerSpec = ElementSpec(
     ElementSetting(
       key: "titlesize",
       label: "Title size",
-      description: "How big the writing in the banner is set. Fill grows it "
-          "to the height of the row.",
+      description: "In pixels. Left alone, the writing is set to the height "
+          "of the row it is in, which is usually what you want.",
       options: [
-        ElementOption("As written", ""),
-        ElementOption("Fill the row", "fill"),
-      ],
-    ),
-    ElementSetting(
-      key: "titlecase",
-      label: "Title case",
-      description: "How the writing is cased, whatever was typed.",
-      options: [
-        ElementOption("As written", ""),
-        ElementOption("UPPER", "upper"),
-        ElementOption("lower", "lower"),
+        ElementOption("Row height", ""),
+        ElementOption("32", "32"),
+        ElementOption("48", "48"),
+        ElementOption("72", "72"),
       ],
     ),
     ElementSetting(
       key: "titlecolor",
       label: "Title colour",
-      description: "From the reader's palette.",
+      description: "The colour of the writing.",
+      options: _hexColours,
+    ),
+    ElementSetting(
+      key: "titlegradient",
+      label: "Title gradient",
+      description: "Two or more colours, separated by commas, poured "
+          "through the letters. Used instead of the colour above.",
       options: [
-        ElementOption("Theme default", ""),
-        ElementOption("Accent", "accent"),
-        ElementOption("Muted", "muted"),
-        ElementOption("Text", "text"),
+        ElementOption("None", ""),
+        ElementOption("Two colours", "#f00,#00f"),
       ],
     ),
     ElementSetting(
@@ -348,9 +471,82 @@ const ElementSpec headerSpec = ElementSpec(
       description: "A line round each letter, which is what makes writing "
           "readable over a picture.",
       options: [
-        ElementOption("None", ""),
-        ElementOption("Thin", "1"),
-        ElementOption("Thick", "3"),
+        ElementOption("None", "0"),
+        ElementOption("Thin", "2"),
+        ElementOption("Medium", "5"),
+        ElementOption("Thick", "10"),
+      ],
+    ),
+    ElementSetting(
+      key: "titleoutlinecolor",
+      label: "Outline colour",
+      description: "The colour of that line.",
+      options: _hexColours,
+    ),
+    ElementSetting(
+      key: "titlebackground",
+      label: "Title background",
+      description: "A panel behind the writing. A see-through colour keeps "
+          "the picture visible while making the words readable.",
+      options: _hexColours,
+    ),
+    ElementSetting(
+      key: "titlepadding",
+      label: "Title padding",
+      description: "Room between the writing and the edge of that panel.",
+      options: [
+        ElementOption("None", "0"),
+        ElementOption("Tight", "8"),
+        ElementOption("Roomy", "16"),
+      ],
+    ),
+    ElementSetting(
+      key: "titleradius",
+      label: "Title corners",
+      description: "How rounded that panel's corners are.",
+      options: [
+        ElementOption("Square", "0"),
+        ElementOption("Rounded", "8"),
+        ElementOption("Very round", "24"),
+      ],
+    ),
+    ElementSetting(
+      key: "titleweight",
+      label: "Title weight",
+      description: "Bold, or as the theme sets it.",
+      options: [
+        ElementOption("Regular", "regular"),
+        ElementOption("Bold", "bold"),
+      ],
+    ),
+    ElementSetting(
+      key: "titleitalic",
+      label: "Title italic",
+      description: "Slanted or upright.",
+      options: [
+        ElementOption("No", "no"),
+        ElementOption("Yes", "yes"),
+      ],
+    ),
+    ElementSetting(
+      key: "titlecase",
+      label: "Title case",
+      description: "Changes the words themselves rather than drawing them "
+          "differently, so what a reader copies out is what they see.",
+      options: [
+        ElementOption("As written", ""),
+        ElementOption("UPPER", "upper"),
+        ElementOption("lower", "lower"),
+      ],
+    ),
+    ElementSetting(
+      key: "titletracking",
+      label: "Title tracking",
+      description: "Space between the letters.",
+      options: [
+        ElementOption("Normal", "0"),
+        ElementOption("Open", "0.5"),
+        ElementOption("Wide", "2"),
       ],
     ),
   ],
