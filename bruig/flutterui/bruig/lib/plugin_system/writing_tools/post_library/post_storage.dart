@@ -72,6 +72,24 @@ const storeFolderName = "Store";
 /// visitor never lands on one, and it would never want a link of its own.
 const partialsFolderName = "Partials";
 
+/// folderLabel is what a folder is called on screen.
+///
+/// The stored name and the shown name are allowed to differ, and here they
+/// do for exactly one folder. "Partials" is what the directory has always
+/// been called, on disk and in the resources the pages provider serves --
+/// and it is templating jargon that means nothing to somebody writing a
+/// page. Everywhere else in the app these are fragments: the Pages section
+/// lists "Shared fragments" and offers "New fragment", and the block that
+/// pulls one into a page is "Shared fragment".
+///
+/// So the label moves and the directory does not. Renaming the directory
+/// would mean moving a writer's own documents on startup, which is a real
+/// risk to their work in exchange for a word -- and the serving side has
+/// kept the same split from the beginning, with a partials/ directory that
+/// nobody is ever shown.
+String folderLabel(String folder) =>
+    folder == partialsFolderName ? "Fragments" : folder;
+
 /// reservedFolderNames are the folders the app keeps for itself, in the
 /// order they are pinned at the bottom of the top-level listing.
 ///

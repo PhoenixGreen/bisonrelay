@@ -118,7 +118,7 @@ class _PostSidebarState extends State<PostSidebar> {
         ),
         Expanded(
           child: Text(
-            library.folder,
+            folderLabel(library.folder),
             style: const TextStyle(fontWeight: FontWeight.w600),
             overflow: TextOverflow.ellipsis,
           ),
@@ -205,7 +205,7 @@ class _PostSidebarState extends State<PostSidebar> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  entry.name,
+                  entry.isFolder ? folderLabel(entry.name) : entry.name,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: 13,
@@ -512,7 +512,8 @@ class _PostSidebarState extends State<PostSidebar> {
     var choice = await showDialog<String>(
       context: context,
       builder: (context) => SimpleDialog(
-        title: Text("Move \"${entry.name}\" to"),
+        title: Text(
+            "Move \"${entry.isFolder ? folderLabel(entry.name) : entry.name}\" to"),
         children: [
           for (var folder in destinations)
             SimpleDialogOption(
@@ -524,7 +525,7 @@ class _PostSidebarState extends State<PostSidebar> {
                         : Icons.folder_outlined,
                     size: 16),
                 const SizedBox(width: 8),
-                Text(folder.isEmpty ? "My Posts" : folder),
+                Text(folder.isEmpty ? "My Posts" : folderLabel(folder)),
               ]),
             ),
         ],
@@ -561,7 +562,8 @@ class _PostSidebarState extends State<PostSidebar> {
       await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
-          title: Text("Delete \"${entry.name}\"?"),
+          title: Text(
+              "Delete \"${entry.isFolder ? folderLabel(entry.name) : entry.name}\"?"),
           content: Text(entry.isFolder
               ? "The folder and everything in it will be deleted."
               : "The file will be deleted."),
