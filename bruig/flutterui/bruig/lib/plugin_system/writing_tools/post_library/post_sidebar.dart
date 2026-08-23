@@ -381,10 +381,18 @@ class _PostSidebarState extends State<PostSidebar> {
         // site's entrance away and leaves an ordinary page behind.
         if (!entry.isReservedFolder && !_isFrontPage(entry))
           const PopupMenuItem(value: "rename", child: Text("Rename")),
-        // A folder has nowhere to go: the library is one level deep. Neither
-        // does a page -- the Pages folder is what makes a document a page of
-        // the site, so moving one out is not filing, it is unmaking it.
-        if (!entry.isFolder && entry.folder != pagesFolderName)
+        // A folder has nowhere to go: the library is one level deep.
+        // Neither has anything belonging to the site -- the folder is what
+        // makes a document what it is. A page is a page because it is in
+        // Pages; a fragment is one because it is in Fragments, and that is
+        // where --include[name]-- looks for it. Moving either out is not
+        // filing, it is unmaking it.
+        //
+        // isSiteFolder rather than naming Pages here, because naming one of
+        // the two is the mistake that has already been made once: the
+        // publish menu asked about the Pages folder alone and left every
+        // fragment offering Create Post.
+        if (!entry.isFolder && !isSiteFolder(entry.folder))
           const PopupMenuItem(value: "move", child: Text("Move to...")),
         if (!entry.isReservedFolder && !_isFrontPage(entry))
           const PopupMenuItem(value: "delete", child: Text("Delete")),
