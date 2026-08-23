@@ -26,6 +26,22 @@ class ElementOption {
   const ElementOption(this.label, this.value, {this.note});
 }
 
+/// SettingKind is what sort of answer a setting takes, which is what the
+/// panel needs to know to offer it.
+enum SettingKind {
+  /// One of the listed options and nothing else.
+  choice,
+
+  /// A colour: the listed ones, or any other, picked.
+  colour,
+
+  /// Two or more colours, written comma separated.
+  colours,
+
+  /// Free text -- a picture's path, which only the writer knows.
+  text,
+}
+
 /// ElementSetting is one thing a block can be told.
 @immutable
 class ElementSetting {
@@ -33,6 +49,8 @@ class ElementSetting {
   final String label;
   final String description;
   final List<ElementOption> options;
+
+  final SettingKind kind;
 
   /// defaultIndex is the option that is already true of a block that says
   /// nothing -- shown as the active one, so the panel opens describing what
@@ -44,10 +62,37 @@ class ElementSetting {
     required this.label,
     required this.description,
     required this.options,
+    this.kind = SettingKind.choice,
     this.defaultIndex = 0,
   });
 
   ElementOption get fallback => options[defaultIndex];
+}
+
+/// SettingGroup is several settings shown as one thing to open.
+///
+/// A banner has fourteen settings, and a list of fourteen is a list nobody
+/// reads. Grouped, it is five: what fills the writing, what outlines it,
+/// the panel behind it, how the words are set, and the row they sit in.
+///
+/// [exclusive] marks a group where the settings are alternatives rather than
+/// additions -- a title is filled with a colour, or a gradient, or a
+/// picture, and picking one means the others are not what is happening.
+/// Choosing in an exclusive group clears the rest, so a banner never carries
+/// two answers to one question.
+@immutable
+class SettingGroup {
+  final String label;
+  final String description;
+  final List<ElementSetting> settings;
+  final bool exclusive;
+
+  const SettingGroup({
+    required this.label,
+    required this.description,
+    required this.settings,
+    this.exclusive = false,
+  });
 }
 
 /// ElementShape is how a block's settings are written down.
@@ -120,6 +165,14 @@ class ElementSpec {
   /// none. Only a banner has one.
   final RowSpec? rows;
 
+  /// groups is how the panel lists the settings, for a block with enough of
+  /// them that a flat list is unreadable. Empty means one item each.
+  ///
+  /// Display only: what gets written comes from [settings], and a test holds
+  /// the two together so a setting cannot be grouped out of existence or
+  /// left out of every group.
+  final List<SettingGroup> groups;
+
   const ElementSpec({
     required this.icon,
     required this.name,
@@ -129,12 +182,33 @@ class ElementSpec {
     required this.settings,
     this.body,
     this.rows,
+    this.groups = const [],
   });
 
-  /// allSettings is everything the panel lists: the block's own, then the
-  /// row's. One list, because to whoever is writing they are all just
-  /// things a banner can be told.
-  List<ElementSetting> get allSettings => [...settings, ...?rows?.settings];
+  /// rowGroup is the row shown as a group like any other, because to
+  /// whoever is writing that is what it is.
+  SettingGroup? get rowGroup => rows == null
+      ? null
+      : SettingGroup(
+          label: "Row",
+          description: "The row's own settings, written in its brackets. A "
+              "banner may have two rows; copy the block for a second.",
+          settings: rows!.settings,
+        );
+
+  /// allSettings is every setting this block has, however the panel
+  /// happens to arrange them: the ungrouped ones, the grouped ones, then
+  /// the row's.
+  ///
+  /// One list and one definition. A setting belongs to exactly one place --
+  /// [settings] if it stands alone, a group if it is shown with others --
+  /// so there is nothing to keep in step and no way to define one twice
+  /// with different answers.
+  List<ElementSetting> get allSettings => [
+        ...settings,
+        for (var g in groups) ...g.settings,
+        ...?rows?.settings,
+      ];
 
   /// chosenOrDefault fills in whatever the writer has not picked.
   Map<String, String> chosenOrDefault(Map<String, String> chosen) => {
@@ -184,9 +258,11 @@ class ElementSpec {
         var open = attrs.isEmpty ? "--$tag--" : "--$tag[$attrs]--";
         return "$note\n$open\n${body ?? ""}\n--/$tag--";
       case ElementShape.lines:
-        var own = {for (var s in settings) s.key};
+        // The block's own fields, which is everything but the row's -- a
+        // row's settings are words in its brackets, not lines in the block.
+        var rowKeys = {for (var s in rows?.settings ?? const []) s.key};
         var lines = set
-            .where((e) => own.contains(e.key))
+            .where((e) => !rowKeys.contains(e.key))
             .map((e) => "${e.key}: ${e.value}")
             .join("\n");
         var row = _rowBlock(values);
@@ -424,6 +500,146 @@ const ElementSpec headerSpec = ElementSpec(
       ),
     ],
   ),
+  groups: [
+    SettingGroup(
+      label: "Title fill",
+      description: "What the writing is filled with. One of these at a time: "
+          "a picture is poured through the letters if there is one, then a "
+          "gradient, and the colour is what is used otherwise.",
+      exclusive: true,
+      settings: [
+        ElementSetting(
+          key: "titlecolor",
+          label: "Colour",
+          description: "One colour for the writing.",
+          kind: SettingKind.colour,
+          options: _hexColours,
+        ),
+        ElementSetting(
+          key: "titlegradient",
+          label: "Gradient",
+          description: "Two or more colours, poured through the letters.",
+          kind: SettingKind.colours,
+          options: [
+            ElementOption("None", ""),
+            ElementOption("Two colours", "#f00,#00f"),
+          ],
+        ),
+        ElementSetting(
+          key: "titleimage",
+          label: "Picture",
+          description: "A picture poured through the letters, so the writing "
+              "is cut out of it. Name one of the site's own pictures.",
+          kind: SettingKind.text,
+          options: [
+            ElementOption("None", ""),
+            ElementOption("A site picture", "![](assets/banner.jpg)",
+                note: "Change the name to one of yours"),
+          ],
+        ),
+      ],
+    ),
+    SettingGroup(
+      label: "Title outline",
+      description: "A line round each letter, which is what makes writing "
+          "readable over a picture.",
+      settings: [
+        ElementSetting(
+          key: "titleoutline",
+          label: "Width",
+          description: "How thick the line is.",
+          options: [
+            ElementOption("None", "0"),
+            ElementOption("Thin", "2"),
+            ElementOption("Medium", "5"),
+            ElementOption("Thick", "10"),
+          ],
+        ),
+        ElementSetting(
+          key: "titleoutlinecolor",
+          label: "Colour",
+          description: "The colour of that line.",
+          kind: SettingKind.colour,
+          options: _hexColours,
+        ),
+      ],
+    ),
+    SettingGroup(
+      label: "Title panel and lettering",
+      description: "The panel behind the writing, and how the words "
+          "themselves are set.",
+      settings: [
+        ElementSetting(
+          key: "titlebackground",
+          label: "Panel colour",
+          description: "A see-through colour keeps the picture visible while "
+              "making the words readable.",
+          kind: SettingKind.colour,
+          options: _hexColours,
+        ),
+        ElementSetting(
+          key: "titlepadding",
+          label: "Panel padding",
+          description: "Room between the writing and the panel's edge.",
+          options: [
+            ElementOption("None", "0"),
+            ElementOption("Tight", "8"),
+            ElementOption("Roomy", "16"),
+          ],
+        ),
+        ElementSetting(
+          key: "titleradius",
+          label: "Panel corners",
+          description: "How rounded the panel's corners are.",
+          options: [
+            ElementOption("Square", "0"),
+            ElementOption("Rounded", "8"),
+            ElementOption("Very round", "24"),
+          ],
+        ),
+        ElementSetting(
+          key: "titleweight",
+          label: "Weight",
+          description: "Bold, or as the theme sets it.",
+          options: [
+            ElementOption("Regular", "regular"),
+            ElementOption("Bold", "bold"),
+          ],
+        ),
+        ElementSetting(
+          key: "titleitalic",
+          label: "Italic",
+          description: "Slanted or upright.",
+          options: [
+            ElementOption("No", "no"),
+            ElementOption("Yes", "yes"),
+          ],
+        ),
+        ElementSetting(
+          key: "titlecase",
+          label: "Case",
+          description: "Changes the words themselves rather than drawing "
+              "them differently, so what a reader copies out is what they "
+              "see.",
+          options: [
+            ElementOption("As written", ""),
+            ElementOption("UPPER", "upper"),
+            ElementOption("lower", "lower"),
+          ],
+        ),
+        ElementSetting(
+          key: "titletracking",
+          label: "Tracking",
+          description: "Space between the letters.",
+          options: [
+            ElementOption("Normal", "0"),
+            ElementOption("Open", "0.5"),
+            ElementOption("Wide", "2"),
+          ],
+        ),
+      ],
+    ),
+  ],
   settings: [
     ElementSetting(
       key: "background",
@@ -431,6 +647,7 @@ const ElementSpec headerSpec = ElementSpec(
       description: "A picture from the site's own Pictures, behind the "
           "whole banner. Add one with Add Picture and paste what it gives "
           "you in place of the name here.",
+      kind: SettingKind.text,
       options: [
         ElementOption("None", ""),
         ElementOption("A site picture", "![](assets/banner.jpg)",
@@ -447,106 +664,6 @@ const ElementSpec headerSpec = ElementSpec(
         ElementOption("32", "32"),
         ElementOption("48", "48"),
         ElementOption("72", "72"),
-      ],
-    ),
-    ElementSetting(
-      key: "titlecolor",
-      label: "Title colour",
-      description: "The colour of the writing.",
-      options: _hexColours,
-    ),
-    ElementSetting(
-      key: "titlegradient",
-      label: "Title gradient",
-      description: "Two or more colours, separated by commas, poured "
-          "through the letters. Used instead of the colour above.",
-      options: [
-        ElementOption("None", ""),
-        ElementOption("Two colours", "#f00,#00f"),
-      ],
-    ),
-    ElementSetting(
-      key: "titleoutline",
-      label: "Title outline",
-      description: "A line round each letter, which is what makes writing "
-          "readable over a picture.",
-      options: [
-        ElementOption("None", "0"),
-        ElementOption("Thin", "2"),
-        ElementOption("Medium", "5"),
-        ElementOption("Thick", "10"),
-      ],
-    ),
-    ElementSetting(
-      key: "titleoutlinecolor",
-      label: "Outline colour",
-      description: "The colour of that line.",
-      options: _hexColours,
-    ),
-    ElementSetting(
-      key: "titlebackground",
-      label: "Title background",
-      description: "A panel behind the writing. A see-through colour keeps "
-          "the picture visible while making the words readable.",
-      options: _hexColours,
-    ),
-    ElementSetting(
-      key: "titlepadding",
-      label: "Title padding",
-      description: "Room between the writing and the edge of that panel.",
-      options: [
-        ElementOption("None", "0"),
-        ElementOption("Tight", "8"),
-        ElementOption("Roomy", "16"),
-      ],
-    ),
-    ElementSetting(
-      key: "titleradius",
-      label: "Title corners",
-      description: "How rounded that panel's corners are.",
-      options: [
-        ElementOption("Square", "0"),
-        ElementOption("Rounded", "8"),
-        ElementOption("Very round", "24"),
-      ],
-    ),
-    ElementSetting(
-      key: "titleweight",
-      label: "Title weight",
-      description: "Bold, or as the theme sets it.",
-      options: [
-        ElementOption("Regular", "regular"),
-        ElementOption("Bold", "bold"),
-      ],
-    ),
-    ElementSetting(
-      key: "titleitalic",
-      label: "Title italic",
-      description: "Slanted or upright.",
-      options: [
-        ElementOption("No", "no"),
-        ElementOption("Yes", "yes"),
-      ],
-    ),
-    ElementSetting(
-      key: "titlecase",
-      label: "Title case",
-      description: "Changes the words themselves rather than drawing them "
-          "differently, so what a reader copies out is what they see.",
-      options: [
-        ElementOption("As written", ""),
-        ElementOption("UPPER", "upper"),
-        ElementOption("lower", "lower"),
-      ],
-    ),
-    ElementSetting(
-      key: "titletracking",
-      label: "Title tracking",
-      description: "Space between the letters.",
-      options: [
-        ElementOption("Normal", "0"),
-        ElementOption("Open", "0.5"),
-        ElementOption("Wide", "2"),
       ],
     ),
   ],

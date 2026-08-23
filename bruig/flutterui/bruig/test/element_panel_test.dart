@@ -123,4 +123,149 @@ void main() {
     expect(editor.text, contains("width: 1000"));
     expect(editor.text, isNot(contains("600")));
   });
+
+  group('a group of settings', () {
+    testWidgets('opens to its settings rather than listing them all',
+        (tester) async {
+      // A banner has eighteen settings. Eighteen rows is a list nobody
+      // reads, so they are five things to open.
+      await pump(tester);
+      await tester.tap(find.text("Header"));
+      await tester.pumpAndSettle();
+
+      expect(find.text("Title fill"), findsOneWidget);
+      expect(find.text("Title outline"), findsOneWidget);
+      expect(find.text("Row"), findsOneWidget);
+      // Inside the group, not on the face of the panel.
+      expect(find.text("Tracking"), findsNothing);
+    });
+
+    testWidgets('shows its settings side by side when opened',
+        (tester) async {
+      await pump(tester);
+      await tester.tap(find.text("Header"));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text("Row"));
+      await tester.pumpAndSettle();
+
+      // findsWidgets, not one: "Row height" is also what the Title size
+      // setting says when it is left alone, and both are on screen.
+      for (var label in ["Row height", "Row layout", "Flush", "Group"]) {
+        expect(find.text(label), findsWidgets, reason: label);
+      }
+      expect(find.text("Split"), findsOneWidget);
+    });
+
+    testWidgets('a row setting reaches the row it is written in',
+        (tester) async {
+      await pump(tester);
+      await tester.tap(find.text("Header"));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text("Row"));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text("Tall (200)"));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text("Yes").first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text("Insert header"));
+      await tester.pumpAndSettle();
+
+      expect(editor.text, contains("--row["));
+      expect(editor.text, contains("200"));
+      expect(editor.text, isNot(contains("height:")));
+    });
+  });
+
+  group('an exclusive group', () {
+    testWidgets('asks which one before offering its answers', (tester) async {
+      await pump(tester);
+      await tester.tap(find.text("Header"));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text("Title fill"));
+      await tester.pumpAndSettle();
+
+      // The three alternatives, and nothing chosen.
+      for (var label in ["Colour", "Gradient", "Picture"]) {
+        expect(find.text(label), findsWidgets, reason: label);
+      }
+    });
+
+    testWidgets('picking one clears the others', (tester) async {
+      // A title is filled with a colour, or a gradient, or a picture.
+      // Two of them set is a banner asked two things, and only one can win
+      // -- so the panel must not be able to write both.
+      await pump(tester);
+      await tester.tap(find.text("Header"));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text("Title fill"));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text("Colour"));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text("Gradient"));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text("Insert header"));
+      await tester.pumpAndSettle();
+
+      expect(editor.text, contains("titlegradient:"));
+      expect(editor.text, isNot(contains("titlecolor:")));
+    });
+
+    testWidgets('None clears all of them', (tester) async {
+      await pump(tester);
+      await tester.tap(find.text("Header"));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text("Title fill"));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text("Picture"));
+      await tester.pumpAndSettle();
+      // The group's own None, which is the first chip in the chooser --
+      // not one of the several Nones the settings below it also offer.
+      await tester.tap(find.descendant(
+          of: find.ancestor(
+              of: find.text("Gradient"), matching: find.byType(Wrap)).first,
+          matching: find.text("None")));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text("Insert header"));
+      await tester.pumpAndSettle();
+
+      expect(editor.text, isNot(contains("titleimage:")));
+      expect(editor.text, isNot(contains("titlegradient:")));
+    });
+  });
+
+  group('a colour', () {
+    test('is written the way a banner reads one', () {
+      expect(hexOf(const Color(0xffffffff)), "#ffffff");
+      expect(hexOf(const Color(0xff000000)), "#000000");
+      // Alpha kept only when there is some to keep: #00000080 is the
+      // see-through panel a banner wants behind its writing.
+      expect(hexOf(const Color(0x80000000)), "#00000080");
+    });
+
+    test('is read back from what was written', () {
+      expect(parseHexColour("#ffffff"), const Color(0xffffffff));
+      expect(parseHexColour("#fff"), const Color(0xffffffff));
+      expect(parseHexColour("#00000080"), const Color(0x80000000));
+    });
+
+    test('round trips', () {
+      for (var c in [
+        const Color(0xffff0000),
+        const Color(0x8012ab34),
+        const Color(0xff123456),
+      ]) {
+        expect(parseHexColour(hexOf(c)), c);
+      }
+    });
+
+    test('anything that is not one is nothing', () {
+      // What the banner itself does with it: an unreadable colour leaves
+      // that setting unset rather than the banner broken.
+      for (var raw in ["", "red", "ffffff", "#ggg", "#12345"]) {
+        expect(parseHexColour(raw), isNull, reason: raw);
+      }
+    });
+  });
 }

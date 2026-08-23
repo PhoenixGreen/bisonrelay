@@ -20,7 +20,7 @@ import 'header_harness.dart';
 void main() {
   group('what the panel writes can be read back', () {
     test('every page setting', () {
-      for (var setting in pageSpec.settings) {
+      for (var setting in pageSpec.allSettings) {
         for (var option in setting.options) {
           var written = pageSpec.write({setting.key: option.value});
           var got = PageSetup.parse(written);
@@ -44,7 +44,7 @@ void main() {
     });
 
     test('every panel setting', () {
-      for (var setting in panelSpec.settings) {
+      for (var setting in panelSpec.allSettings) {
         for (var option in setting.options) {
           if (option.value.isEmpty) continue;
           var written = panelSpec.write({setting.key: option.value});
@@ -105,8 +105,18 @@ void main() {
       return el.attributes;
     }
 
+    /// bannerFields are the settings written as lines of the banner --
+    /// everything but the row's, whose settings are words in its brackets.
+    List<ElementSetting> bannerFields() {
+      var rowKeys = {for (var s in headerSpec.rows!.settings) s.key};
+      return [
+        for (var s in headerSpec.allSettings)
+          if (!rowKeys.contains(s.key)) s
+      ];
+    }
+
     test('reaches the banner, and says what it was told', () {
-      for (var setting in headerSpec.settings) {
+      for (var setting in bannerFields()) {
         for (var option in setting.options) {
           if (option.value.isEmpty) continue;
           var fields = fieldsOf(headerSpec.write({setting.key: option.value}));
@@ -119,7 +129,7 @@ void main() {
     test('is one the title style actually reads', () {
       // Reaching the banner is not enough: a field it keeps but the style
       // cannot read is a setting that still does nothing.
-      for (var setting in headerSpec.settings) {
+      for (var setting in bannerFields()) {
         if (!titleStyleFields.contains(setting.key)) continue;
         for (var option in setting.options) {
           if (option.value.isEmpty) continue;
@@ -138,7 +148,7 @@ void main() {
         "titlebackground",
       ]) {
         var setting =
-            headerSpec.settings.firstWhere((s) => s.key == key);
+            headerSpec.allSettings.firstWhere((s) => s.key == key);
         for (var option in setting.options) {
           if (option.value.isEmpty) continue;
           var style = HeaderTextStyle.parse({key: option.value});
@@ -210,6 +220,55 @@ void main() {
     test('the row has cells in it', () {
       // A row with nothing in it is a fixed height of nothing.
       expect(headerSpec.write(const {}), contains("left:"));
+    });
+  });
+
+  group('a setting is defined once', () {
+    // allSettings is what the tests above walk and what write() uses, so a
+    // setting that fell out of it would stop being checked and stop being
+    // written, quietly and together. Grouping the banner's settings moved
+    // eleven of them out of spec.settings, and every test that walked that
+    // list went from covering thirteen to covering two without failing.
+    test('and appears in allSettings whichever way it is listed', () {
+      for (var spec in pageElementSpecs) {
+        var keys = [for (var s in spec.allSettings) s.key];
+        expect(keys.toSet().length, keys.length,
+            reason: "${spec.name} defines a setting twice");
+
+        for (var group in spec.groups) {
+          for (var setting in group.settings) {
+            expect(keys, contains(setting.key),
+                reason: "${spec.name}: ${setting.key} is grouped but lost");
+          }
+        }
+        for (var setting in spec.rows?.settings ?? const []) {
+          expect(keys, contains(setting.key), reason: setting.key);
+        }
+      }
+    });
+
+    test('the banner still offers all of them', () {
+      // Named rather than counted, so grouping cannot quietly drop one.
+      expect(
+        {for (var s in headerSpec.allSettings) s.key},
+        {
+          "background", "titlesize",
+          "titlecolor", "titlegradient", "titleimage",
+          "titleoutline", "titleoutlinecolor",
+          "titlebackground", "titlepadding", "titleradius",
+          "titleweight", "titleitalic", "titlecase", "titletracking",
+          "height", "layout", "flush", "group",
+        },
+      );
+    });
+
+    test('an exclusive group holds alternatives, not additions', () {
+      // A title is filled with a colour, or a gradient, or a picture. The
+      // panel clears the others when one is picked, so a banner never
+      // carries two answers to one question.
+      var fill = headerSpec.groups.firstWhere((g) => g.exclusive);
+      expect({for (var s in fill.settings) s.key},
+          {"titlecolor", "titlegradient", "titleimage"});
     });
   });
 
