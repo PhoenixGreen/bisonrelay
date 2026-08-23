@@ -827,6 +827,43 @@ const ElementSpec navSpec = ElementSpec(
   ],
   groups: [
     SettingGroup(
+      label: "Background",
+      description: "What the bar itself sits on, behind the links, and how "
+          "tall that is.",
+      settings: [
+        ElementSetting(
+          key: "background",
+          label: "Colour",
+          description: "A colour from the reader's palette, or one of your "
+              "own. A bar on a page belongs to the reader's theme like "
+              "everything else; one in a banner sits over a picture you "
+              "chose, and only you know what will read against it -- which "
+              "is why both are offered. A see-through colour keeps the "
+              "picture visible.",
+          kind: SettingKind.colour,
+          options: [
+            ElementOption("Theme default", ""),
+            ElementOption("None", "none", note: "No background at all"),
+            ElementOption("Raised surface", "raised", note: "From the palette"),
+            ElementOption("Half-black", "#00000080", note: "See-through"),
+            ElementOption("White", "#ffffff"),
+          ],
+        ),
+        ElementSetting(
+          key: "height",
+          label: "Height",
+          description: "How tall the bar is, with the links held in the "
+              "middle of it. Left alone, it is as tall as the links need.",
+          options: [
+            ElementOption("As tall as the links", ""),
+            ElementOption("Short (36)", "36"),
+            ElementOption("Medium (44)", "44"),
+            ElementOption("Tall (64)", "64"),
+          ],
+        ),
+      ],
+    ),
+    SettingGroup(
       label: "Placement",
       description: "Where the bar sits and how much room it keeps. Left "
           "alone, a bar follows the row it is in and the reader's theme.",
@@ -865,6 +902,19 @@ const ElementSpec navSpec = ElementSpec(
             ElementOption("Tight", "6"),
             ElementOption("Normal", "12"),
             ElementOption("Wide", "24"),
+          ],
+        ),
+        ElementSetting(
+          key: "radius",
+          label: "Corners on each link",
+          description: "How rounded a pill or a box is. Nothing to see on a "
+              "plain bar, where the links are just words.",
+          options: [
+            ElementOption("Theme default", ""),
+            ElementOption("Square", "0"),
+            ElementOption("Slight", "4"),
+            ElementOption("Rounded", "10"),
+            ElementOption("Fully round", "40"),
           ],
         ),
         ElementSetting(

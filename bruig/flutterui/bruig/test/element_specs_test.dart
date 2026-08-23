@@ -1,5 +1,6 @@
 import 'package:bruig/components/feed/markdown_header.dart';
 import 'package:bruig/components/feed/markdown_nav.dart';
+import 'package:bruig/theming_system/model/markdown_style.dart';
 import 'package:bruig/components/feed/markdown_title.dart';
 import 'package:bruig/components/feed/markdown_page.dart';
 import 'package:bruig/components/feed/markdown_panel.dart';
@@ -81,13 +82,15 @@ void main() {
       }
     });
 
+
     test('every navigation shape, through the block that reads one', () {
       // Through the real block syntax, not just NavStyle.parse: a bar
       // written --nav[style=pills]-- matches nothing and is drawn as the
       // words it is made of, and parsing the value alone would not have
       // noticed. The first version of this spec did exactly that, and left
       // the bar with no closing marker as well.
-      for (var option in navSpec.settings.first.options) {
+      var style = navSpec.allSettings.firstWhere((s) => s.key == "style");
+      for (var option in style.options) {
         var written = navSpec.write({"style": option.value});
         var el = parseBlock(
             blockOnly(written), NavBlockSyntax());
@@ -96,12 +99,17 @@ void main() {
       }
     });
 
-    test('every placement setting reaches the bar', () {
+    test('every setting a bar takes reaches the bar', () {
       // A bar takes only a bare word before this: --nav[pills]--. The
       // settings added beside it have to survive the trip, or they are
       // options that do nothing when picked.
-      var group = navSpec.groups.first;
-      for (var setting in group.settings) {
+      //
+      // Every group, not the first one: walking groups.first covered the
+      // placement settings until a Background group was added above them,
+      // at which point it covered those instead and said nothing about
+      // placement -- without failing.
+      for (var setting in navSpec.allSettings) {
+        if (setting.key == "style") continue;
         for (var option in setting.options) {
           if (option.value.isEmpty) continue;
           var written = navSpec.write({setting.key: option.value});
@@ -121,9 +129,33 @@ void main() {
               expect(got.padding, double.parse(option.value));
             case "margin":
               expect(got.margin, isNotNull, reason: option.value);
+            case "radius":
+              expect(got.radius, double.parse(option.value));
+            case "height":
+              expect(got.height, double.parse(option.value));
+            case "background":
+              // "none" is an answer -- no background -- and not the same as
+              // saying nothing, which leaves it to the theme.
+              expect(got.background, isNotNull, reason: option.value);
+              expect(got.background!.isInherit, option.value == "none",
+                  reason: option.value);
           }
         }
       }
+    });
+
+    test('a bar background takes a palette role or a colour of your own', () {
+      // A bar lives in two places and they want different answers: on a
+      // page it belongs to the reader's palette, in a banner it sits over a
+      // picture only the writer has seen.
+      expect(NavWritten.parse("pills, background=raised").background?.role,
+          MarkdownRole.raised);
+      expect(NavWritten.parse("pills, background=#00000080").background?.literal,
+          isNotNull);
+      expect(NavWritten.parse("pills, background=none").background?.isInherit,
+          isTrue);
+      // Not a colour and not a role: left to the theme rather than guessed.
+      expect(NavWritten.parse("pills, background=puce").background, isNull);
     });
 
     test('the style is still the bare word it has always been', () {
@@ -269,7 +301,7 @@ void main() {
 
     test('every layout is one the row understands', () {
       var setting =
-          headerSpec.rows.first.settings.firstWhere((s) => s.key == "layout1");
+          headerSpec.allSettings.firstWhere((s) => s.key == "layout1");
       for (var option in setting.options) {
         expect(HeaderRowMode.parse(option.value).name, option.value,
             reason: option.value);
@@ -378,7 +410,8 @@ void main() {
     });
 
     test('a navigation bar with nothing picked is still plain', () {
-      expect(navSpec.settings.first.fallback.value, "plain");
+      expect(navSpec.allSettings.firstWhere((s) => s.key == "style").fallback.value,
+          "plain");
       expect(NavStyle.parse(null), NavStyle.plain);
     });
   });

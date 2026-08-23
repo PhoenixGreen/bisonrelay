@@ -110,8 +110,11 @@ void main() {
     testWidgets('every margin the panel offers can be seen', (tester) async {
       // The point of the change: an option that does nothing when picked
       // leaves the writer unable to tell a mistake from a bug.
-      var setting = navSpec.groups.first.settings
-          .firstWhere((s) => s.key == "margin");
+      // allSettings, not groups.first: which group a setting is in is a
+      // decision about how the panel reads, and reaching for one by
+      // position breaks the moment another group is added above it.
+      var setting =
+          navSpec.allSettings.firstWhere((s) => s.key == "margin");
 
       Future<Offset> drawnAt(String value) async {
         var attrs = value.isEmpty ? "" : ", margin=$value";
@@ -146,6 +149,60 @@ void main() {
             reason: "${option.label} (${option.value}) did not move the bar "
                 "the way it says it does");
       }
+    });
+
+    testWidgets('a background of none is not the theme\'s', (tester) async {
+      // "none" is an answer. Read as a blank it would fall through to the
+      // theme, which is the opposite of what was asked for.
+      Future<bool> hasFill(String attrs) async {
+        await tester.pumpWidget(drawHost(MarkdownArea(
+            "--nav[$attrs]--\n[Home](index.md)\n--/nav--", false)));
+        await tester.pumpAndSettle();
+        return tester
+            .widgetList<Container>(
+                find.descendant(of: navBar(), matching: find.byType(Container)))
+            .any((c) => c.color != null);
+      }
+
+      expect(await hasFill("pills, background=#ff0000"), isTrue);
+      expect(await hasFill("pills, background=none"), isFalse);
+    });
+
+    testWidgets('height is the height of the coloured strip', (tester) async {
+      // Sized outside the colour, the colour stayed the height of the words
+      // and the rest was a gap -- which is not a strip.
+      await tester.pumpWidget(drawHost(MarkdownArea(
+          "--nav[pills, background=#ff0000, height=64]--\n"
+          "[Home](index.md)\n--/nav--",
+          false)));
+      await tester.pumpAndSettle();
+
+      var filled = find
+          .descendant(of: navBar(), matching: find.byType(Container))
+          .evaluate()
+          .where((e) => (e.widget as Container).color != null)
+          .first;
+      expect(tester.getSize(find.byWidget(filled.widget)).height, 64);
+    });
+
+    testWidgets('corners round each link', (tester) async {
+      Future<double> radiusOf(String attrs) async {
+        await tester.pumpWidget(drawHost(MarkdownArea(
+            "--nav[$attrs]--\n[Home](index.md)\n--/nav--", false)));
+        await tester.pumpAndSettle();
+        var pill = tester
+            .widgetList<Container>(
+                find.descendant(of: navBar(), matching: find.byType(Container)))
+            .firstWhere((c) => c.decoration is BoxDecoration &&
+                (c.decoration as BoxDecoration).borderRadius != null);
+        return ((pill.decoration as BoxDecoration).borderRadius
+                as BorderRadius)
+            .topLeft
+            .x;
+      }
+
+      expect(await radiusOf("pills, radius=0"), 0);
+      expect(await radiusOf("pills, radius=10"), 10);
     });
 
     testWidgets('margin moves the bar rather than growing it',

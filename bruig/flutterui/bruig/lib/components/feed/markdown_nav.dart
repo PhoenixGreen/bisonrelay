@@ -102,6 +102,32 @@ class NavMarkdownElementBuilder extends MarkdownElementBuilder {
   }
 }
 
+/// parseNavHex reads #rgb, #rrggbb or #rrggbbaa, the way a banner's colours
+/// are written. Anything else is nothing.
+Color? parseNavHex(String? raw) {
+  var t = (raw ?? "").trim();
+  if (!t.startsWith("#")) return null;
+  var hex = t.substring(1);
+  if (hex.length == 3) hex = hex.split("").map((c) => "$c$c").join();
+  var argb = switch (hex.length) {
+    6 => "ff$hex",
+    8 => hex.substring(6) + hex.substring(0, 6),
+    _ => null,
+  };
+  if (argb == null) return null;
+  var n = int.tryParse(argb, radix: 16);
+  return n == null ? null : Color(n);
+}
+
+/// hexOfColour writes one back out, keeping the alpha only when there is
+/// some to keep.
+String hexOfColour(Color c) {
+  String two(double v) =>
+      (v * 255).round().clamp(0, 255).toRadixString(16).padLeft(2, "0");
+  var rgb = "#${two(c.r)}${two(c.g)}${two(c.b)}";
+  return c.a >= 1.0 ? rgb : "$rgb${two(c.a)}";
+}
+
 /// NavAlign is which way a bar of links runs.
 enum NavAlign {
   left,
@@ -138,6 +164,21 @@ class NavWritten {
   final double? gap;
   final double? padding;
   final EdgeInsets? margin;
+  final double? radius;
+
+  /// background is what the bar sits on, or null to leave it to the theme.
+  ///
+  /// A colour or a role, because a bar lives in two places and they want
+  /// different answers. On a page it belongs to the reader's palette like
+  /// everything else, so a role is right. In a banner it sits over a
+  /// picture the writer chose, and only they can know what will read
+  /// against it -- which is the same bargain a banner's own writing makes.
+  final MarkdownInk? background;
+
+  /// height is how tall the bar is, whatever is in it. A strip along the
+  /// edge of a banner has a height the row gives it; one on a page has
+  /// none unless it is asked for.
+  final double? height;
 
   /// fullWidth runs the bar's background the whole way across, or null to
   /// leave it to the theme.
@@ -149,6 +190,9 @@ class NavWritten {
     this.gap,
     this.padding,
     this.margin,
+    this.radius,
+    this.background,
+    this.height,
     this.fullWidth,
   });
 
@@ -185,6 +229,22 @@ class NavWritten {
   /// A setting it does not know is ignored rather than guessed at, and one
   /// whose value will not read leaves that setting to the theme rather than
   /// the whole bar. A bar with a typo in its gap is still a bar.
+  /// _colour reads either a role from the reader's palette or a hex colour.
+  ///
+  /// "none" is neither, and means no background at all rather than the
+  /// theme's -- a bar that says none has said something, and falling
+  /// through to the theme would be ignoring it.
+  static MarkdownInk? _colour(String? raw) {
+    var t = (raw ?? "").trim();
+    if (t.isEmpty) return null;
+    if (t.toLowerCase() == "none") return MarkdownInk.inherit;
+    for (var r in MarkdownRole.values) {
+      if (r.name.toLowerCase() == t.toLowerCase()) return MarkdownInk.of(r);
+    }
+    var hex = parseNavHex(t);
+    return hex == null ? null : MarkdownInk.literal(hex);
+  }
+
   static NavWritten parse(String? attributes) {
     if (attributes == null || attributes.trim().isEmpty) return none;
 
@@ -210,6 +270,9 @@ class NavWritten {
       gap: _number(fields["gap"], 64),
       padding: _number(fields["padding"], 64),
       margin: _space(fields["margin"]),
+      radius: _number(fields["radius"], 64),
+      background: _colour(fields["background"]),
+      height: _number(fields["height"], 400),
       fullWidth: width.isEmpty ? null : (width == "full"),
     );
   }
@@ -223,6 +286,12 @@ class NavWritten {
         if (margin != null)
           "margin": "${margin!.top} ${margin!.right} "
               "${margin!.bottom} ${margin!.left}",
+        if (radius != null) "radius": "$radius",
+        if (background != null)
+          "background": background!.isInherit
+              ? "none"
+              : (background!.role?.name ?? hexOfColour(background!.literal!)),
+        if (height != null) "height": "$height",
         if (fullWidth != null) "width": fullWidth! ? "full" : "fit",
       };
 
@@ -234,6 +303,9 @@ class NavWritten {
         gap: double.tryParse(a["gap"] ?? ""),
         padding: double.tryParse(a["padding"] ?? ""),
         margin: _space(a["margin"]),
+        radius: double.tryParse(a["radius"] ?? ""),
+        background: _colour(a["background"]),
+        height: double.tryParse(a["height"] ?? ""),
         fullWidth: a["width"] == null ? null : a["width"] == "full",
       );
 }
@@ -315,12 +387,15 @@ class _MarkdownNavState extends State<_MarkdownNav> {
     var base = inkOf(rule.ink) ?? theme.markdownRoleColor(MarkdownRole.link);
     var hover = inkOf(rule.hover) ?? base;
     var current = inkOf(rule.active) ?? base;
-    var background = inkOf(rule.background);
-
     // What the page said about this bar, over what the theme says about
-    // every bar. Read here, above the links, because the links are sized
-    // with it.
+    // every bar. A background of "none" is an answer, not a blank: it means
+    // no background rather than the theme's.
     var written = widget.written;
+    var background = written.background == null
+        ? inkOf(rule.background)
+        : (written.background!.isInherit ? null : inkOf(written.background!));
+    var radius = written.radius ?? rule.boundedRadius;
+
     var pad = written.padding ?? rule.boundedPadding;
 
     Widget item(int index, String raw) {
@@ -355,7 +430,7 @@ class _MarkdownNavState extends State<_MarkdownNav> {
                 horizontal: pad, vertical: pad / 2),
             decoration: BoxDecoration(
               color: colour.withValues(alpha: _under == index ? 0.26 : 0.12),
-              borderRadius: BorderRadius.circular(rule.boundedRadius),
+              borderRadius: BorderRadius.circular(radius),
             ),
             child: label,
           );
@@ -366,7 +441,7 @@ class _MarkdownNavState extends State<_MarkdownNav> {
                 horizontal: pad, vertical: pad / 2),
             decoration: BoxDecoration(
               border: Border.all(color: colour, width: rule.boundedBorder),
-              borderRadius: BorderRadius.circular(rule.boundedRadius),
+              borderRadius: BorderRadius.circular(radius),
             ),
             child: label,
           );
@@ -431,17 +506,22 @@ class _MarkdownNavState extends State<_MarkdownNav> {
       ),
     );
 
-    if (background != null) {
+    if (background != null || written.height != null) {
       // Across the whole width when asked, which is what makes a bar in a
       // row flush to an edge read as a strip along it rather than a patch
       // behind the words.
       bar = Container(
         width: fullWidth ? double.infinity : null,
+        // The height belongs to the coloured part, not to something around
+        // it: a strip asked to be 44 tall is 44 tall in its colour, with
+        // the links held in the middle of it. Sized outside the colour, the
+        // colour stayed the height of the words and the rest was a gap.
+        height: written.height,
         // Centred only when nobody said otherwise. Running the background
         // the whole way across used to centre the links with it, so a bar
         // asked for as a strip along an edge could not also be a strip that
         // starts at the left.
-        alignment: fullWidth
+        alignment: fullWidth || written.height != null
             ? switch (across) {
                 WrapAlignment.start => Alignment.centerLeft,
                 WrapAlignment.end => Alignment.centerRight,
