@@ -149,6 +149,18 @@ class PagesSession extends ChangeNotifier {
   set currentPage(FetchedResource? v) {
     _current = v;
     if (v != null) {
+      // The same page arriving again is the same page, not a second visit
+      // to it. Appending it left Back moving from a page to itself, which
+      // looks exactly like Back not working -- one press did nothing you
+      // could see and the next did the move. A page can arrive twice
+      // running for several reasons: reloading it, previewing it again, or
+      // a reply for one of its sections landing when the page itself is no
+      // longer held.
+      if (_cursor >= 0 && _cursor < _history.length && _sameVisit(v)) {
+        _history[_cursor] = v;
+        _finishLoad();
+        return;
+      }
       if (_cursor < _history.length - 1) {
         _history.removeRange(_cursor + 1, _history.length);
       }
@@ -156,6 +168,21 @@ class PagesSession extends ChangeNotifier {
       _cursor = _history.length - 1;
     }
     _finishLoad();
+  }
+
+  /// _sameVisit is whether [v] is the page already being shown.
+  ///
+  /// Who is serving it and what was asked for, which is all a request is
+  /// when it carries no data. One that carries data is a form being
+  /// submitted, and two submissions of the same form are two different
+  /// things happening however alike they look -- the same reasoning as
+  /// findInHistory, and it has to be the same or the two disagree about
+  /// what counts as the same page.
+  bool _sameVisit(FetchedResource v) {
+    var at = _history[_cursor];
+    if (at.request.data != null || v.request.data != null) return false;
+    return at.uid == v.uid &&
+        at.request.path.join("/") == v.request.path.join("/");
   }
 
   /// replaceCurrentPage swaps the page being shown without touching history.

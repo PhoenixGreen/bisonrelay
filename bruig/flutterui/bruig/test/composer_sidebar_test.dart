@@ -229,6 +229,14 @@ void main() {
     late ComposerSidebarController controller;
 
     Future<void> pumpPanel(WidgetTester tester) async {
+      // Tall, so the whole panel is built. The section leads with the
+      // element panel now, and on a default-sized surface the buttons below
+      // it are never laid out at all -- a finder then reports nothing,
+      // which reads as the button having been removed rather than as being
+      // off the bottom of a 600-pixel window.
+      tester.view.physicalSize = const Size(400, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
       await tester.pumpWidget(MultiProvider(
         providers: [
           ChangeNotifierProvider<ThemeNotifier>(
@@ -279,6 +287,10 @@ void main() {
       // A download embed is the app's own syntax and works in a post too --
       // it is in this section because attaching a file to a page is what
       // somebody looking here is doing.
+      // Scrolled to first: the section leads with the element panel now,
+      // so these sit below the fold on a test-sized sidebar and a tap that
+      // does not reach them fails for a reason that has nothing to do with
+      // what is being tested.
       await tester.tap(find.byTooltip("Download"));
       await tester.pumpAndSettle();
       expect(editor.text, contains("--embed[download="));

@@ -2,6 +2,7 @@ import 'package:bruig/components/pages/add_picture_dialog.dart';
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/models/pages.dart';
 import 'package:bruig/plugin_system/writing_tools/composer_sidebar.dart';
+import 'package:bruig/plugin_system/writing_tools/ui/sidebar/element_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -166,34 +167,6 @@ const _blocks = [
 // this section is trying to do, and Manage Content is where the id comes
 // from.
 const _pages = [
-  // First, because it belongs at the top of the page it describes and
-  // because it is the one thing here that is about the page rather than
-  // about a place in it.
-  //
-  // The values written in are the ones worth starting from rather than the
-  // ones that change nothing: a page that inserts "--page--" and no settings
-  // has been given a puzzle, not a starting point. 800 is a readable column
-  // and "raised" is the surface a card sits on, both of which can be seen
-  // straight away in the preview and then argued with.
-  _Snippet(
-    Icons.web_outlined,
-    "Page setup",
-    "--page--\nwidth: ",
-    after: "\nbackground: raised\npadding: 24\n--/page--",
-    placeholder: "800",
-    block: true,
-  ),
-  // A box round a piece of a page. Named panel, not section: a page's reply
-  // regions are already written --section id=x -- ... --/section--, and
-  // every --/section-- in a page is stripped before it is drawn.
-  _Snippet(
-    Icons.crop_square,
-    "Panel",
-    "--panel[padding=16, border=1, color=outline, radius=8]--\n",
-    after: "\n--/panel--",
-    placeholder: "Anything at all, including other blocks.",
-    block: true,
-  ),
   // Deliberately not Icons.link, which the inline Link button already has.
   // Two buttons in one panel wearing the same icon are two buttons nobody
   // can tell apart -- and a test that taps one of them by icon cannot
@@ -242,37 +215,6 @@ const _pages = [
   ),
   // The cut between the part of a page an index shows and the rest of it.
   _Snippet(Icons.content_cut, "Read-more cut", "--endofpost--", block: true),
-  // A fragment shared by several pages -- a header, a navigation bar. Sent
-  // once and filled in by the reader's client, so a bar on twenty pages
-  // crosses the wire once rather than twenty times.
-  // A banner across the top of a page: rows of one or two cells, each row a
-  // fixed height that everything in it is sized to. The snippet writes the
-  // shape most banners are -- a logo and a title, a bar under them.
-  _Snippet(
-    Icons.branding_watermark_outlined,
-    "Header",
-    "--header--\nbackground: \n--row[96,split]--\nleft: ",
-    after: "\nright: # My site\n--/row--\n--row[44,center,flush]--\n"
-        "--include[navigation]--\n--/row--\n--/header--",
-    placeholder: "![](logo)",
-    block: true,
-  ),
-  _Snippet(
-    Icons.menu_outlined,
-    "Navigation bar",
-    "--nav[pills]--\n[",
-    after: "](index.md)\n[About](about.md)\n--/nav--",
-    placeholder: "Home",
-    block: true,
-  ),
-  _Snippet(
-    Icons.dashboard_customize_outlined,
-    "Shared fragment",
-    "--include[",
-    after: "]--",
-    placeholder: "navigation",
-    block: true,
-  ),
 ];
 
 /// FormattingSidebar offers embeds and Markdown, applied to the composer the
@@ -316,6 +258,11 @@ class FormattingSidebar extends StatelessWidget {
             _section(theme, "Blocks"),
             _grid(theme, editor, _blocks),
             _section(theme, "Pages and store"),
+            // The blocks a page is built from, each with what it can be
+            // told. A button that only wrote the block left every setting
+            // to be found out from the markdown -- see ElementPanel.
+            ElementPanel(editor: editor),
+            const SizedBox(height: 10),
             _grid(theme, editor, _pages),
             const SizedBox(height: 6),
             // Its own button rather than a snippet, because it is not one:

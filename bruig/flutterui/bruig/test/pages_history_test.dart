@@ -28,6 +28,63 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
+  group('the same page arriving twice', () {
+    // Appending it left Back moving from a page to itself, which looks
+    // exactly like Back not working: one press did nothing you could see
+    // and the next did the move. Reloading, previewing again, and a reply
+    // for one of a page's sections landing when the page is no longer held
+    // all deliver the same page a second time.
+    test('is one entry, not two', () {
+      var s = PagesSession(1)
+        ..currentPage = _page("u", ["index.md"], "a")
+        ..currentPage = _page("u", ["index.md"], "a again");
+      expect(s.history, hasLength(1));
+      expect(s.canGoBack, isFalse);
+    });
+
+    test('keeps the newer copy of it', () {
+      // It is a fresh fetch: the point of reloading is to see what changed.
+      var s = PagesSession(1)
+        ..currentPage = _page("u", ["index.md"], "old")
+        ..currentPage = _page("u", ["index.md"], "new");
+      expect(utf8.decode(s.currentPage!.response.data!), "new");
+    });
+
+    test('one press of Back moves, from a page reloaded on arrival', () {
+      var s = PagesSession(1)
+        ..currentPage = _page("u", ["index.md"], "a")
+        ..currentPage = _page("u", ["store"], "s")
+        ..currentPage = _page("u", ["store"], "s again");
+      s.goBack();
+      expect(s.currentPage!.request.path, ["index.md"]);
+    });
+
+    test('a different page is still a new entry', () {
+      var s = PagesSession(1)
+        ..currentPage = _page("u", ["index.md"], "a")
+        ..currentPage = _page("u", ["store"], "s");
+      expect(s.history, hasLength(2));
+      expect(s.canGoBack, isTrue);
+    });
+
+    test('the same path from someone else is a different page', () {
+      var s = PagesSession(1)
+        ..currentPage = _page("u", ["index.md"], "mine")
+        ..currentPage = _page("them", ["index.md"], "theirs");
+      expect(s.history, hasLength(2));
+    });
+
+    test('going back and forward is unaffected', () {
+      var s = PagesSession(1)
+        ..currentPage = _page("u", ["a.md"], "a")
+        ..currentPage = _page("u", ["b.md"], "b");
+      s.goBack();
+      expect(s.canGoForward, isTrue);
+      s.goForward();
+      expect(s.currentPage!.request.path, ["b.md"]);
+    });
+  });
+
   group('a session\'s history', () {
     test('finds a page it already holds, by who serves it and what', () {
       var s = PagesSession(1)
