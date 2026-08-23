@@ -96,16 +96,23 @@ func (s *Store) handleAddToCart(ctx context.Context, uid clientintf.UserID,
 	fname := filepath.Join(s.root, cartsDir, uid.String())
 	var cart Cart
 
+	// Unlocked by hand rather than deferred, because this answers with the
+	// cart and drawing the cart takes the lock again. A deferred unlock
+	// would still be holding it -- and a Go mutex is not reentrant, so the
+	// handler would stop there, keep the lock, and every later request to
+	// the shop would wait behind it. The shop would not fail, it would
+	// disappear.
 	s.mtx.Lock()
-	defer s.mtx.Unlock()
 
 	prod, ok := s.products[formData.SKU]
 	if !ok {
+		s.mtx.Unlock()
 		return nil, fmt.Errorf("product does not exist")
 	}
 
 	err := jsonfile.Read(fname, &cart)
 	if err != nil && !errors.Is(err, jsonfile.ErrNotFound) {
+		s.mtx.Unlock()
 		return nil, err
 	}
 
@@ -128,6 +135,7 @@ func (s *Store) handleAddToCart(ctx context.Context, uid clientintf.UserID,
 	cart.Updated = time.Now()
 
 	err = jsonfile.Write(fname, &cart, s.log)
+	s.mtx.Unlock()
 	if err != nil {
 		return nil, err
 	}
