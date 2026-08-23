@@ -85,6 +85,63 @@ void main() {
       }
     });
 
+    test('every placement setting reaches the bar', () {
+      // A bar takes only a bare word before this: --nav[pills]--. The
+      // settings added beside it have to survive the trip, or they are
+      // options that do nothing when picked.
+      var group = navSpec.groups.first;
+      for (var setting in group.settings) {
+        for (var option in setting.options) {
+          if (option.value.isEmpty) continue;
+          var written = navSpec.write({setting.key: option.value});
+          var attrs =
+              RegExp(r'--nav\[([^\]]*)\]--').firstMatch(written)?.group(1);
+          expect(attrs, isNotNull, reason: written);
+          var got = NavWritten.parse(attrs);
+
+          switch (setting.key) {
+            case "align":
+              expect(got.align?.name, option.value);
+            case "width":
+              expect(got.fullWidth, option.value == "full");
+            case "gap":
+              expect(got.gap, double.parse(option.value));
+            case "padding":
+              expect(got.padding, double.parse(option.value));
+            case "margin":
+              expect(got.margin, isNotNull, reason: option.value);
+          }
+        }
+      }
+    });
+
+    test('the style is still the bare word it has always been', () {
+      // --nav[pills]-- was the whole syntax. A bar written
+      // --nav[style=pills]-- matches nothing and is drawn as its own words.
+      var written = navSpec.write({"style": "pills", "align": "left"});
+      var attrs = RegExp(r'--nav\[([^\]]*)\]--').firstMatch(written)!.group(1);
+      expect(attrs, startsWith("pills"));
+      expect(NavWritten.parse(attrs).style, NavStyle.pills);
+      expect(NavWritten.parse(attrs).align, NavAlign.left);
+    });
+
+    test('a bar that says nothing leaves everything to the theme', () {
+      var got = NavWritten.parse("pills");
+      expect(got.align, isNull);
+      expect(got.gap, isNull);
+      expect(got.padding, isNull);
+      expect(got.margin, isNull);
+      expect(got.fullWidth, isNull);
+    });
+
+    test('a setting that will not read is left to the theme, not guessed', () {
+      // A bar with a typo in its gap is still a bar.
+      var got = NavWritten.parse("pills, gap=enormous, align=sideways");
+      expect(got.style, NavStyle.pills);
+      expect(got.gap, isNull);
+      expect(got.align, isNull);
+    });
+
     test('a navigation bar is written with links in it', () {
       // A bar with no links is markers round nothing, and nothing is drawn.
       var written = navSpec.write(const {});

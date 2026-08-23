@@ -274,7 +274,15 @@ class ElementSpec {
       case ElementShape.single:
         return "$note\n--$tag${set.isEmpty ? "" : "[${set.first.value}]"}--";
       case ElementShape.valueBlock:
-        var only = set.isEmpty ? "" : "[${set.first.value}]";
+        // The first setting bare, the rest as key=value. That is the shape
+        // a bar has always been written in -- --nav[pills]-- came first and
+        // still has to read -- so the settings added since sit beside the
+        // bare word rather than replacing it.
+        var written = [
+          if (set.isNotEmpty) set.first.value,
+          for (var e in set.skip(1)) "${e.key}=${e.value}",
+        ];
+        var only = written.isEmpty ? "" : "[${written.join(", ")}]";
         return "$note\n--$tag$only--\n${body ?? ""}\n--/$tag--";
       case ElementShape.attributes:
         var attrs = set.map((e) => "${e.key}=${e.value}").join(", ");
@@ -764,20 +772,90 @@ const ElementSpec navSpec = ElementSpec(
   shape: ElementShape.valueBlock,
   body: "[Home](index.md)\n[About](about.md)\n[Store](store)",
   tip: "Navigation bar: one link a line, between the markers. Link a page "
-      "with [About](about.md) and your store with [Store](store). Its "
-      "colours and position come from the reader's Markdown theme, not "
-      "from here. Delete this note.",
+      "with [About](about.md) and your store with [Store](store). What is "
+      "not set here comes from the reader's Markdown theme, which is where "
+      "the colours live. Delete this note.",
   settings: [
     ElementSetting(
       key: "style",
       label: "Shape",
-      description: "How each link is drawn. The colours come from the "
+      description: "How each link is drawn. Its colours come from the "
           "reader's Markdown theme.",
       options: [
         ElementOption("Plain", "plain", note: "Words with space between"),
         ElementOption("Pills", "pills"),
         ElementOption("Underline", "underline"),
         ElementOption("Boxed", "boxed"),
+      ],
+    ),
+  ],
+  groups: [
+    SettingGroup(
+      label: "Placement",
+      description: "Where the bar sits and how much room it keeps. Left "
+          "alone, a bar follows the row it is in and the reader's theme.",
+      settings: [
+        ElementSetting(
+          key: "align",
+          label: "Align",
+          description: "Which way the links run. Left alone, a bar in a "
+              "banner row follows that row, and a bar on the page runs "
+              "from the left.",
+          options: [
+            ElementOption("As the row", ""),
+            ElementOption("Left", "left"),
+            ElementOption("Middle", "center"),
+            ElementOption("Right", "right"),
+          ],
+        ),
+        ElementSetting(
+          key: "width",
+          label: "Width",
+          description: "Whether the bar's background runs the whole way "
+              "across or only under the links. Only visible once the bar "
+              "has a background, which the theme sets.",
+          options: [
+            ElementOption("Theme default", ""),
+            ElementOption("Under the links", "fit"),
+            ElementOption("Full width", "full"),
+          ],
+        ),
+        ElementSetting(
+          key: "gap",
+          label: "Space between links",
+          description: "How far apart the links are.",
+          options: [
+            ElementOption("Theme default", ""),
+            ElementOption("Tight", "6"),
+            ElementOption("Normal", "12"),
+            ElementOption("Wide", "24"),
+          ],
+        ),
+        ElementSetting(
+          key: "padding",
+          label: "Padding in each link",
+          description: "Room inside a link, which is what gives a pill or "
+              "a box its size. Nothing to see on a plain bar, where the "
+              "links are just words.",
+          options: [
+            ElementOption("Theme default", ""),
+            ElementOption("None", "0"),
+            ElementOption("Tight", "6"),
+            ElementOption("Roomy", "14"),
+          ],
+        ),
+        ElementSetting(
+          key: "margin",
+          label: "Margin",
+          description: "Room around the whole bar. One number for all four "
+              "sides, or four for each side from the top going clockwise.",
+          options: [
+            ElementOption("None", ""),
+            ElementOption("Tight", "8"),
+            ElementOption("Roomy", "16"),
+            ElementOption("Above and below", "12 0"),
+          ],
+        ),
       ],
     ),
   ],

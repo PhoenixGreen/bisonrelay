@@ -52,7 +52,7 @@ enum NavStyle {
 /// A reader whose client does not know it sees the links, one a line, in
 /// order -- which is still the navigation, just not drawn as a bar.
 class NavBlockSyntax extends md.BlockSyntax {
-  static final _open = RegExp(r'^\s*--nav(?:\[(\w+)\])?--\s*$');
+  static final _open = RegExp(r'^\s*--nav(?:\[([^\]]*)\])?--\s*$');
   static final _close = RegExp(r'^\s*--/nav--\s*$');
 
   /// The most links one bar may hold. Past this it is not navigation.
@@ -63,8 +63,8 @@ class NavBlockSyntax extends md.BlockSyntax {
 
   @override
   md.Node? parse(md.BlockParser parser) {
-    var style =
-        NavStyle.parse(_open.firstMatch(parser.current.content)?.group(1));
+    var written = NavWritten.parse(
+        _open.firstMatch(parser.current.content)?.group(1));
     parser.advance();
 
     var links = <String>[];
@@ -80,7 +80,8 @@ class NavBlockSyntax extends md.BlockSyntax {
     }
 
     var element = md.Element.text("nav", "");
-    element.attributes["style"] = style.name;
+    element.attributes["style"] = written.style.name;
+    written.attributes.forEach((k, v) => element.attributes[k] = v);
     element.attributes["count"] = "${links.length}";
     for (var i = 0; i < links.length; i++) {
       element.attributes["l$i"] = links[i];
@@ -96,8 +97,145 @@ class NavMarkdownElementBuilder extends MarkdownElementBuilder {
     return _MarkdownNav(
       links: [for (var i = 0; i < count; i++) element.attributes["l$i"] ?? ""],
       style: NavStyle.parse(element.attributes["style"]),
+      written: NavWritten.fromAttributes(element.attributes),
     );
   }
+}
+
+/// NavAlign is which way a bar of links runs.
+enum NavAlign {
+  left,
+  center,
+  right;
+
+  static NavAlign? parse(String? raw) {
+    var t = (raw ?? "").trim().toLowerCase();
+    if (t == "centre" || t == "middle") return NavAlign.center;
+    for (var a in NavAlign.values) {
+      if (a.name == t) return a;
+    }
+    return null;
+  }
+}
+
+/// NavWritten is what a page said about one bar, as opposed to what the
+/// reader's theme says about every bar.
+///
+/// The theme decides how bars look, which is where it belongs: a reader who
+/// has set their Markdown theme should see every page in it. But a bar is
+/// also a piece of a page's layout -- whether it sits left or centred, how
+/// far it is from what is above it -- and that is the page's business, not
+/// the reader's. So anything written here wins for this bar, and anything
+/// left out falls through to the theme, which is what every bar did before
+/// any of this could be written.
+///
+/// Written as --nav[pills, align=left, gap=12]--: the bare word is the
+/// style, as it always was, and the rest are settings.
+@immutable
+class NavWritten {
+  final NavStyle style;
+  final NavAlign? align;
+  final double? gap;
+  final double? padding;
+  final EdgeInsets? margin;
+
+  /// fullWidth runs the bar's background the whole way across, or null to
+  /// leave it to the theme.
+  final bool? fullWidth;
+
+  const NavWritten({
+    this.style = NavStyle.plain,
+    this.align,
+    this.gap,
+    this.padding,
+    this.margin,
+    this.fullWidth,
+  });
+
+  static const none = NavWritten();
+
+  static double? _number(String? raw, double most) {
+    var n = double.tryParse((raw ?? "").trim());
+    if (n == null || n < 0) return null;
+    return n > most ? most : n;
+  }
+
+  /// _space reads room around the bar the way it is written everywhere else:
+  /// one number for all four sides, two for down-and-up then across, four
+  /// for each side from the top going clockwise.
+  static EdgeInsets? _space(String? raw) {
+    var parts = (raw ?? "")
+        .trim()
+        .split(RegExp(r'[\s]+'))
+        .where((p) => p.isNotEmpty)
+        .toList();
+    var got = [for (var p in parts) _number(p, 200)];
+    if (got.isEmpty || got.any((v) => v == null)) return null;
+    var n = got.cast<double>();
+    return switch (n.length) {
+      1 => EdgeInsets.all(n[0]),
+      2 => EdgeInsets.symmetric(vertical: n[0], horizontal: n[1]),
+      3 => EdgeInsets.fromLTRB(n[1], n[0], n[1], n[2]),
+      _ => EdgeInsets.fromLTRB(n[3], n[0], n[1], n[2]),
+    };
+  }
+
+  /// parse reads what is between the brackets.
+  ///
+  /// A setting it does not know is ignored rather than guessed at, and one
+  /// whose value will not read leaves that setting to the theme rather than
+  /// the whole bar. A bar with a typo in its gap is still a bar.
+  static NavWritten parse(String? attributes) {
+    if (attributes == null || attributes.trim().isEmpty) return none;
+
+    var style = NavStyle.plain;
+    var fields = <String, String>{};
+    for (var part in attributes.split(",")) {
+      var at = part.indexOf("=");
+      if (at == -1) {
+        // The bare word, which is the style and has been since before any
+        // of the rest could be written.
+        var bare = part.trim();
+        if (bare.isNotEmpty) style = NavStyle.parse(bare);
+        continue;
+      }
+      fields[part.substring(0, at).trim().toLowerCase()] =
+          part.substring(at + 1).trim();
+    }
+
+    var width = (fields["width"] ?? "").toLowerCase();
+    return NavWritten(
+      style: style,
+      align: NavAlign.parse(fields["align"]),
+      gap: _number(fields["gap"], 64),
+      padding: _number(fields["padding"], 64),
+      margin: _space(fields["margin"]),
+      fullWidth: width.isEmpty ? null : (width == "full"),
+    );
+  }
+
+  /// asAttributes is what parse read, so it can be carried on the element
+  /// and read back on the other side. Only what was actually written.
+  Map<String, String> get asAttributes => {
+        if (align != null) "align": align!.name,
+        if (gap != null) "gap": "$gap",
+        if (padding != null) "padding": "$padding",
+        if (margin != null)
+          "margin": "${margin!.top} ${margin!.right} "
+              "${margin!.bottom} ${margin!.left}",
+        if (fullWidth != null) "width": fullWidth! ? "full" : "fit",
+      };
+
+  Map<String, String> get attributes => asAttributes;
+
+  static NavWritten fromAttributes(Map<String, String> a) => NavWritten(
+        style: NavStyle.parse(a["style"]),
+        align: NavAlign.parse(a["align"]),
+        gap: double.tryParse(a["gap"] ?? ""),
+        padding: double.tryParse(a["padding"] ?? ""),
+        margin: _space(a["margin"]),
+        fullWidth: a["width"] == null ? null : a["width"] == "full",
+      );
 }
 
 /// navLink splits "[label](target)" into its two halves.
@@ -133,7 +271,15 @@ class NavCurrentPage extends InheritedWidget {
 class _MarkdownNav extends StatefulWidget {
   final List<String> links;
   final NavStyle style;
-  const _MarkdownNav({required this.links, required this.style});
+
+  /// written is what the page said about this bar, over the theme's answer
+  /// for every bar.
+  final NavWritten written;
+  const _MarkdownNav({
+    required this.links,
+    required this.style,
+    this.written = NavWritten.none,
+  });
 
   @override
   State<_MarkdownNav> createState() => _MarkdownNavState();
@@ -171,6 +317,12 @@ class _MarkdownNavState extends State<_MarkdownNav> {
     var current = inkOf(rule.active) ?? base;
     var background = inkOf(rule.background);
 
+    // What the page said about this bar, over what the theme says about
+    // every bar. Read here, above the links, because the links are sized
+    // with it.
+    var written = widget.written;
+    var pad = written.padding ?? rule.boundedPadding;
+
     Widget item(int index, String raw) {
       var parsed = navLink(raw);
       // Not a link: shown as it was written rather than dropped, so a typo
@@ -200,8 +352,7 @@ class _MarkdownNavState extends State<_MarkdownNav> {
         case NavStyle.pills:
           body = Container(
             padding: EdgeInsets.symmetric(
-                horizontal: rule.boundedPadding,
-                vertical: rule.boundedPadding / 2),
+                horizontal: pad, vertical: pad / 2),
             decoration: BoxDecoration(
               color: colour.withValues(alpha: _under == index ? 0.26 : 0.12),
               borderRadius: BorderRadius.circular(rule.boundedRadius),
@@ -212,8 +363,7 @@ class _MarkdownNavState extends State<_MarkdownNav> {
         case NavStyle.boxed:
           body = Container(
             padding: EdgeInsets.symmetric(
-                horizontal: rule.boundedPadding,
-                vertical: rule.boundedPadding / 2),
+                horizontal: pad, vertical: pad / 2),
             decoration: BoxDecoration(
               border: Border.all(color: colour, width: rule.boundedBorder),
               borderRadius: BorderRadius.circular(rule.boundedRadius),
@@ -223,7 +373,7 @@ class _MarkdownNavState extends State<_MarkdownNav> {
           break;
         case NavStyle.underline:
           body = Container(
-            padding: EdgeInsets.only(bottom: rule.boundedPadding / 2),
+            padding: EdgeInsets.only(bottom: pad / 2),
             decoration: BoxDecoration(
               border: Border(
                   bottom: BorderSide(
@@ -251,20 +401,30 @@ class _MarkdownNavState extends State<_MarkdownNav> {
     // Which way the bar runs, when it is in a banner's row. A block fills
     // the width it is given, so a bar in a centred row would otherwise
     // start at the left of it and look nothing like centred.
+    // What the page said first, then the row it sits in. A bar written
+    // align=left in a centred row is a bar somebody has asked to be left,
+    // and the row is only the answer when nobody asked.
     var within = HeaderCellAlign.of(context);
-    var across = switch (within) {
-      Alignment.center => WrapAlignment.center,
-      Alignment.centerRight => WrapAlignment.end,
-      _ => WrapAlignment.start,
+    var across = switch (written.align) {
+      NavAlign.left => WrapAlignment.start,
+      NavAlign.center => WrapAlignment.center,
+      NavAlign.right => WrapAlignment.end,
+      null => switch (within) {
+          Alignment.center => WrapAlignment.center,
+          Alignment.centerRight => WrapAlignment.end,
+          _ => WrapAlignment.start,
+        },
     };
+    var gap = written.gap ?? rule.boundedGap;
+    var fullWidth = written.fullWidth ?? rule.fullWidth;
 
     // Wrapped rather than a Row: a bar of six links in a narrow window is
     // two rows of three, not six squeezed columns.
     Widget bar = Padding(
-      padding: EdgeInsets.symmetric(vertical: rule.boundedGap / 2),
+      padding: EdgeInsets.symmetric(vertical: gap / 2),
       child: Wrap(
-        spacing: rule.boundedGap,
-        runSpacing: rule.boundedGap / 2,
+        spacing: gap,
+        runSpacing: gap / 2,
         alignment: across,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [for (var i = 0; i < links.length; i++) item(i, links[i])],
@@ -276,11 +436,27 @@ class _MarkdownNavState extends State<_MarkdownNav> {
       // row flush to an edge read as a strip along it rather than a patch
       // behind the words.
       bar = Container(
-        width: rule.fullWidth ? double.infinity : null,
-        alignment: rule.fullWidth ? Alignment.center : null,
+        width: fullWidth ? double.infinity : null,
+        // Centred only when nobody said otherwise. Running the background
+        // the whole way across used to centre the links with it, so a bar
+        // asked for as a strip along an edge could not also be a strip that
+        // starts at the left.
+        alignment: fullWidth
+            ? switch (across) {
+                WrapAlignment.start => Alignment.centerLeft,
+                WrapAlignment.end => Alignment.centerRight,
+                _ => Alignment.center,
+              }
+            : null,
         color: background,
         child: bar,
       );
+    }
+
+    // Outside the background, so a bar kept away from what is above it is
+    // moved rather than padded -- padding would grow the strip instead.
+    if (written.margin != null) {
+      bar = Padding(padding: written.margin!, child: bar);
     }
 
     return bar;

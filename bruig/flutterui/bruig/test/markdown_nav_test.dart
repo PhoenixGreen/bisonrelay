@@ -16,6 +16,95 @@ import 'header_harness.dart';
 // in a banner it ends up.
 
 void main() {
+  group('what a page says about one bar', () {
+    // The theme decides how bars look, and that is where it belongs: a
+    // reader who has set their Markdown theme should see every page in it.
+    // But where a bar sits and how far it is from what is above it is the
+    // page's business. So what is written wins for that bar, and what is
+    // left out falls through to the theme.
+    /// barIn is the bar's own Wrap, not the paragraph's.
+    ///
+    /// The renderer puts every block in a paragraph and a paragraph draws
+    /// its contents in a Wrap of its own, so the first Wrap on the page
+    /// belongs to the paragraph and answers nothing about the bar.
+    Finder navBar() => find.byWidgetPredicate(
+        (w) => w.runtimeType.toString() == "_MarkdownNav");
+
+    Future<Wrap> barIn(WidgetTester tester, String src) async {
+      await tester.pumpWidget(drawHost(MarkdownArea(src, false)));
+      await tester.pumpAndSettle();
+      return tester.widget<Wrap>(
+          find.descendant(of: navBar(), matching: find.byType(Wrap)).first);
+    }
+
+    testWidgets('align runs the links that way', (tester) async {
+      var left = await barIn(tester,
+          "--nav[pills, align=left]--\n[Home](index.md)\n--/nav--");
+      expect(left.alignment, WrapAlignment.start);
+
+      var middle = await barIn(tester,
+          "--nav[pills, align=center]--\n[Home](index.md)\n--/nav--");
+      expect(middle.alignment, WrapAlignment.center);
+
+      var right = await barIn(tester,
+          "--nav[pills, align=right]--\n[Home](index.md)\n--/nav--");
+      expect(right.alignment, WrapAlignment.end);
+    });
+
+    testWidgets('middle is not the only answer any more', (tester) async {
+      // Running the background the whole way across used to centre the
+      // links with it, so a bar asked for as a strip along an edge could
+      // not also be a strip that starts at the left.
+      var bar = await barIn(tester,
+          "--nav[pills, width=full, align=left]--\n[Home](index.md)\n--/nav--");
+      expect(bar.alignment, WrapAlignment.start);
+    });
+
+    testWidgets('gap is the space between links', (tester) async {
+      var tight =
+          await barIn(tester, "--nav[gap=4]--\n[Home](index.md)\n--/nav--");
+      var wide =
+          await barIn(tester, "--nav[gap=30]--\n[Home](index.md)\n--/nav--");
+      expect(tight.spacing, 4);
+      expect(wide.spacing, 30);
+      expect(wide.spacing, greaterThan(tight.spacing));
+    });
+
+    testWidgets('a bar that says nothing is the bar it always was',
+        (tester) async {
+      // The whole bargain: settings left out fall through to the theme, so
+      // every page written before any of this could be said is unchanged.
+      var plain = await barIn(tester, "--nav--\n[Home](index.md)\n--/nav--");
+      var styled =
+          await barIn(tester, "--nav[pills]--\n[Home](index.md)\n--/nav--");
+      expect(plain.spacing, styled.spacing);
+      expect(plain.alignment, styled.alignment);
+    });
+
+    testWidgets('margin moves the bar rather than growing it',
+        (tester) async {
+      // Outside the background: padding would grow the strip instead of
+      // keeping it away from what is above.
+      //
+      // Measured from the bar's own top to what it draws, not from the page
+      // to the bar. The margin is applied inside the widget, so the widget
+      // sits where it always did and only its contents move -- the same
+      // thing that made a banner's margin impossible to catch.
+      Future<double> insetOf(String src) async {
+        await tester.pumpWidget(drawHost(MarkdownArea(src, false)));
+        await tester.pumpAndSettle();
+        var drawn =
+            find.descendant(of: navBar(), matching: find.byType(Wrap)).first;
+        return tester.getTopLeft(drawn).dy - tester.getTopLeft(navBar()).dy;
+      }
+
+      var without = await insetOf("--nav--\n[Home](index.md)\n--/nav--");
+      var withMargin =
+          await insetOf("--nav[margin=20]--\n[Home](index.md)\n--/nav--");
+      expect(withMargin - without, 20);
+    });
+  });
+
   group('NavBlockSyntax', () {
     test('one link a line, in order', () {
       var e = parseBlock('''
