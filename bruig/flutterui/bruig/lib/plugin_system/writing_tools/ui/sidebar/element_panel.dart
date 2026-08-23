@@ -110,6 +110,101 @@ Future<String?> pickHexColour(BuildContext context, Color start,
   return ok == true ? hexOf(chosen) : null;
 }
 
+/// pickGradient asks for both of a gradient's colours at once, with the
+/// gradient itself drawn above them.
+///
+/// Both together rather than one and then the other. A gradient is the two
+/// colours against each other -- neither is right or wrong on its own -- and
+/// picking them in turn meant choosing the second against a memory of the
+/// first, then reopening the whole thing to change it.
+Future<String?> pickGradient(
+    BuildContext context, Color startFrom, Color startTo) async {
+  var from = startFrom;
+  var to = startTo;
+  var editingFirst = true;
+
+  var ok = await showDialog<bool>(
+    context: context,
+    builder: (context) => StatefulBuilder(
+      builder: (context, setState) => AlertDialog(
+        title: const Text("Gradient"),
+        content: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            // What the two colours actually make, which is the thing being
+            // chosen and the only way to judge either of them.
+            Container(
+              height: 44,
+              width: 280,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(colors: [from, to]),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: Theme.of(context).dividerColor),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              for (var first in [true, false])
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: OutlinedButton(
+                    onPressed: () => setState(() => editingFirst = first),
+                    style: OutlinedButton.styleFrom(
+                      backgroundColor: editingFirst == first
+                          ? Theme.of(context).colorScheme.primaryContainer
+                          : null,
+                    ),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      Container(
+                        width: 14,
+                        height: 14,
+                        decoration: BoxDecoration(
+                          color: first ? from : to,
+                          border: Border.all(
+                              color: Theme.of(context).dividerColor),
+                          borderRadius: BorderRadius.circular(3),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(first ? "First" : "Second"),
+                    ]),
+                  ),
+                ),
+            ]),
+            const SizedBox(height: 8),
+            ColorPicker(
+              // Keyed on which one is being edited, so the picker resets to
+              // that colour when the other is chosen. Without it the wheel
+              // keeps the position it had and the swatch it shows is not
+              // the colour it is about to change.
+              key: ValueKey(editingFirst),
+              pickerColor: editingFirst ? from : to,
+              enableAlpha: true,
+              displayThumbColor: true,
+              hexInputBar: true,
+              onColorChanged: (c) => setState(() {
+                if (editingFirst) {
+                  from = c;
+                } else {
+                  to = c;
+                }
+              }),
+            ),
+          ]),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text("Cancel")),
+          TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text("Use this")),
+        ],
+      ),
+    ),
+  );
+  return ok == true ? "${hexOf(from)},${hexOf(to)}" : null;
+}
+
 /// ElementPanel lists the blocks and what each of them takes.
 class ElementPanel extends StatefulWidget {
   final TextEditingController? editor;
@@ -226,7 +321,7 @@ class _ElementPanelState extends State<ElementPanel> {
             ],
             for (var group in [
               ...spec.groups,
-              if (spec.rowGroup != null) spec.rowGroup!,
+              ...spec.rowGroups,
             ]) ...[
               _row(theme, group.label, _summaryOf(spec, group), group.label),
               if (_showing == group.label) _groupBody(theme, spec, group),
@@ -377,7 +472,7 @@ class _ElementPanelState extends State<ElementPanel> {
                 swatch: _swatchOf(setting, option.value)),
           if (setting.kind == SettingKind.colour ||
               setting.kind == SettingKind.colours)
-            _chip(theme, setting.kind == SettingKind.colours ? "Pick two…" : "Pick…",
+            _chip(theme, setting.kind == SettingKind.colours ? "Pick colours…" : "Pick…",
                 false, () => _pickColour(spec, setting)),
         ],
       );
@@ -419,23 +514,21 @@ class _ElementPanelState extends State<ElementPanel> {
 
   /// _pickColour asks for a colour and writes it as the hex a banner reads.
   Future<void> _pickColour(ElementSpec spec, ElementSetting setting) async {
-    var many = setting.kind == SettingKind.colours;
     var start = (_chosen[spec.tag]?[setting.key] ?? "").split(",");
-    var first = await pickHexColour(
-        context, parseHexColour(start.first) ?? const Color(0xffffffff),
-        title: many ? "First colour" : setting.label);
-    if (first == null || !mounted) return;
-
-    if (!many) {
-      setState(() => _forOpen()[setting.key] = first);
+    if (setting.kind == SettingKind.colours) {
+      var pair = await pickGradient(
+          context,
+          parseHexColour(start.first) ?? const Color(0xffff0000),
+          parseHexColour(start.length > 1 ? start[1] : "") ??
+              const Color(0xff0000ff));
+      if (pair == null || !mounted) return;
+      setState(() => _forOpen()[setting.key] = pair);
       return;
     }
-    var second = await pickHexColour(
-        context,
-        parseHexColour(start.length > 1 ? start[1] : "") ??
-            const Color(0xff000000),
-        title: "Second colour");
-    if (second == null || !mounted) return;
-    setState(() => _forOpen()[setting.key] = "$first,$second");
+    var one = await pickHexColour(
+        context, parseHexColour(start.first) ?? const Color(0xffffffff),
+        title: setting.label);
+    if (one == null || !mounted) return;
+    setState(() => _forOpen()[setting.key] = one);
   }
 }

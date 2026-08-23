@@ -108,7 +108,7 @@ void main() {
     /// bannerFields are the settings written as lines of the banner --
     /// everything but the row's, whose settings are words in its brackets.
     List<ElementSetting> bannerFields() {
-      var rowKeys = {for (var s in headerSpec.rows!.settings) s.key};
+      var rowKeys = {for (var s in [for (var r in headerSpec.rows) ...r.settings]) s.key};
       return [
         for (var s in headerSpec.allSettings)
           if (!rowKeys.contains(s.key)) s
@@ -177,7 +177,7 @@ void main() {
     test('carries the height and layout it was given', () {
       var el = parseBlock(
           headerSpec
-              .write({"height": "200", "layout": "center"})
+              .write({"height1": "200", "layout1": "center"})
               .split("\n")
               .skip(1)
               .join("\n"),
@@ -198,7 +198,7 @@ void main() {
 
       var both = headerRowsOf(parseBlock(
               headerSpec
-                  .write({"flush": "flush", "group": "group"})
+                  .write({"flush1": "flush", "group1": "group"})
                   .split("\n")
                   .skip(1)
                   .join("\n"),
@@ -210,11 +210,46 @@ void main() {
 
     test('every layout is one the row understands', () {
       var setting =
-          headerSpec.rows!.settings.firstWhere((s) => s.key == "layout");
+          headerSpec.rows.first.settings.firstWhere((s) => s.key == "layout1");
       for (var option in setting.options) {
         expect(HeaderRowMode.parse(option.value).name, option.value,
             reason: option.value);
       }
+    });
+
+    test('a second row is left out unless it was asked for', () {
+      // An empty second row is a fixed height of nothing, which reads as a
+      // gap the writer cannot account for.
+      expect("--row[".allMatches(headerSpec.write(const {})).length, 1);
+    });
+
+    test('and is written when it was', () {
+      var written = headerSpec.write({"height2": "44", "flush2": "flush"});
+      expect("--row[".allMatches(written).length, 2);
+      expect(written, contains("44"));
+      expect(written, contains("flush"));
+    });
+
+    test('a banner never writes more rows than one may have', () {
+      // At most two, which the parser enforces by ignoring the rest -- so a
+      // third would be written, sent, and silently not drawn.
+      var written = headerSpec.write({
+        for (var r in headerSpec.rows)
+          for (var s in r.settings) s.key: s.options.last.value
+      });
+      expect("--row[".allMatches(written).length,
+          lessThanOrEqualTo(maxHeaderRows));
+    });
+
+    test('each row says how to fill it, as a comment', () {
+      // A row's cells are the one part the panel cannot choose for anybody:
+      // what goes in them is the writer's own. So it says what may go there
+      // instead, where they are about to type.
+      var written = headerSpec.write({"height2": "44"});
+      expect("<!--".allMatches(written).length, greaterThanOrEqualTo(3),
+          reason: "the block's note, and one in each row");
+      expect(written, contains("left:"));
+      expect(written, contains("--include["));
     });
 
     test('the row has cells in it', () {
@@ -241,8 +276,10 @@ void main() {
                 reason: "${spec.name}: ${setting.key} is grouped but lost");
           }
         }
-        for (var setting in spec.rows?.settings ?? const []) {
-          expect(keys, contains(setting.key), reason: setting.key);
+        for (var r in spec.rows) {
+          for (var setting in r.settings) {
+            expect(keys, contains(setting.key), reason: setting.key);
+          }
         }
       }
     });
@@ -257,7 +294,8 @@ void main() {
           "titleoutline", "titleoutlinecolor",
           "titlebackground", "titlepadding", "titleradius",
           "titleweight", "titleitalic", "titlecase", "titletracking",
-          "height", "layout", "flush", "group",
+          "height1", "layout1", "flush1", "group1",
+          "height2", "layout2", "flush2", "group2",
         },
       );
     });

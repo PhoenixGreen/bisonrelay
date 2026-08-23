@@ -125,15 +125,29 @@ enum ElementShape {
 class RowSpec {
   final String tag;
 
+  /// number is which row this is, and what keeps two rows' settings apart:
+  /// row 1's height is "height1", row 2's is "height2". Without it both
+  /// rows would answer to one key and setting either would set both.
+  final int number;
+
   /// cells is what goes inside one row. Named cells for a row that divides,
   /// which is what left: and right: are.
   final String cells;
   final List<ElementSetting> settings;
   const RowSpec({
     required this.tag,
+    required this.number,
     required this.cells,
     required this.settings,
   });
+
+  /// isSet is whether this row was asked for at all.
+  ///
+  /// A banner may have one row or two, so the second is written only when
+  /// something has been chosen for it -- an empty second row is a fixed
+  /// height of nothing, which reads as a gap the writer cannot account for.
+  bool isSet(Map<String, String> values) => settings
+      .any((s) => (values[s.key] ?? "").isNotEmpty);
 }
 
 /// ElementSpec is one block the panel can write.
@@ -161,9 +175,9 @@ class ElementSpec {
 
   final List<ElementSetting> settings;
 
-  /// rows is the block written inside this one, or null for a block with
-  /// none. Only a banner has one.
-  final RowSpec? rows;
+  /// rows are the blocks written inside this one. Only a banner has any,
+  /// and it may have two.
+  final List<RowSpec> rows;
 
   /// groups is how the panel lists the settings, for a block with enough of
   /// them that a flat list is unreadable. Empty means one item each.
@@ -181,20 +195,25 @@ class ElementSpec {
     required this.tip,
     required this.settings,
     this.body,
-    this.rows,
+    this.rows = const [],
     this.groups = const [],
   });
 
-  /// rowGroup is the row shown as a group like any other, because to
-  /// whoever is writing that is what it is.
-  SettingGroup? get rowGroup => rows == null
-      ? null
-      : SettingGroup(
-          label: "Row",
-          description: "The row's own settings, written in its brackets. A "
-              "banner may have two rows; copy the block for a second.",
-          settings: rows!.settings,
-        );
+  /// rowGroups are the rows shown as groups like any other, because to
+  /// whoever is writing that is what they are.
+  List<SettingGroup> get rowGroups => [
+        for (var r in rows)
+          SettingGroup(
+            label: "Row ${r.number}",
+            description: r.number == 1
+                ? "The first row, written in its own brackets. A banner is "
+                    "at most two rows and each is at most two cells."
+                : "A second row, left out entirely unless something here is "
+                    "chosen. A short flush row under a tall one is the "
+                    "usual shape: a banner with a bar of links beneath it.",
+            settings: r.settings,
+          ),
+      ];
 
   /// allSettings is every setting this block has, however the panel
   /// happens to arrange them: the ungrouped ones, the grouped ones, then
@@ -207,7 +226,7 @@ class ElementSpec {
   List<ElementSetting> get allSettings => [
         ...settings,
         for (var g in groups) ...g.settings,
-        ...?rows?.settings,
+        for (var r in rows) ...r.settings,
       ];
 
   /// chosenOrDefault fills in whatever the writer has not picked.
@@ -221,17 +240,21 @@ class ElementSpec {
   /// number as the height and each remaining word for what it is, so
   /// --row[200,center,group]-- and --row[group,center,200]-- are the same
   /// row.
-  String? _rowBlock(Map<String, String> values) {
-    var spec = rows;
-    if (spec == null) return null;
-    var words = [
-      for (var s in spec.settings)
-        if ((values[s.key] ?? "").isNotEmpty) values[s.key]!
-    ];
-    var open = words.isEmpty
-        ? "--${spec.tag}--"
-        : "--${spec.tag}[${words.join(",")}]--";
-    return "$open\n${spec.cells}\n--/${spec.tag}--";
+  List<String> _rowBlocks(Map<String, String> values, Map<String, String> chosen) {
+    var out = <String>[];
+    for (var spec in rows) {
+      // The first row always, a later one only when it was asked for.
+      if (spec.number > 1 && !spec.isSet(chosen)) continue;
+      var words = [
+        for (var s in spec.settings)
+          if ((values[s.key] ?? "").isNotEmpty) values[s.key]!
+      ];
+      var open = words.isEmpty
+          ? "--${spec.tag}--"
+          : "--${spec.tag}[${words.join(",")}]--";
+      out.add("$open\n${spec.cells}\n--/${spec.tag}--");
+    }
+    return out;
   }
 
   /// write builds the block, with its note above it.
@@ -260,17 +283,17 @@ class ElementSpec {
       case ElementShape.lines:
         // The block's own fields, which is everything but the row's -- a
         // row's settings are words in its brackets, not lines in the block.
-        var rowKeys = {for (var s in rows?.settings ?? const []) s.key};
+        var rowKeys = {for (var r in rows) for (var s in r.settings) s.key};
         var lines = set
             .where((e) => !rowKeys.contains(e.key))
             .map((e) => "${e.key}: ${e.value}")
             .join("\n");
-        var row = _rowBlock(values);
+        var rowBlocks = _rowBlocks(values, chosen);
         return [
           note,
           "--$tag--",
           if (lines.isNotEmpty) lines,
-          if (row != null) row,
+          ...rowBlocks,
           if (body != null) body!,
           "--/$tag--",
         ].join("\n");
@@ -446,60 +469,125 @@ const ElementSpec headerSpec = ElementSpec(
       "go in its brackets in any order: a number is the height, flush runs "
       "it to the banner's edge, and group keeps its two cells together. "
       "Delete this note.",
-  rows: RowSpec(
-    tag: "row",
-    cells: "left: ![](assets/logo.svg)\nright: # My Site",
-    settings: [
-      ElementSetting(
-        key: "height",
-        label: "Row height",
-        description: "How tall the row is. Everything in it is sized to "
-            "this, so a title comes out level with the logo beside it "
-            "without either being told about the other.",
-        options: [
-          ElementOption("Short (44)", "44", note: "A bar of links"),
-          ElementOption("Medium (96)", "96"),
-          ElementOption("Tall (200)", "200", note: "A logo and a title"),
-        ],
-        defaultIndex: 1,
-      ),
-      ElementSetting(
-        key: "layout",
-        label: "Row layout",
-        description: "Where the row's cells sit. Split pushes them to "
-            "either end; left, centre and right hold them together at that "
-            "side.",
-        options: [
-          ElementOption("Left", "left"),
-          ElementOption("Centre", "center"),
-          ElementOption("Right", "right"),
-          ElementOption("Split", "split", note: "One at each end"),
-        ],
-      ),
-      ElementSetting(
-        key: "flush",
-        label: "Flush",
-        description: "Runs the row to the banner's edge, giving up the "
-            "inset it would otherwise keep. What a strip along the top or "
-            "bottom of a banner wants.",
-        options: [
-          ElementOption("No", ""),
-          ElementOption("Yes", "flush"),
-        ],
-      ),
-      ElementSetting(
-        key: "group",
-        label: "Group",
-        description: "Keeps the row's two cells together as a pair rather "
-            "than letting the second have the rest of the row -- a logo "
-            "and a title beside it, sitting as one thing.",
-        options: [
-          ElementOption("No", ""),
-          ElementOption("Yes", "group"),
-        ],
-      ),
-    ],
-  ),
+  rows: [
+    RowSpec(
+      tag: "row",
+      number: 1,
+      cells: "<!-- One or two cells. A cell is anything: writing, a picture, or a\n"
+          "     fragment. Two need naming with left: and right:.\n"
+          "     left: ![](assets/logo.svg)\n"
+          "     right: # My Site -->\n"
+          "left: ![](assets/logo.svg)\nright: # My Site",
+      settings: [
+        ElementSetting(
+          key: "height1",
+          label: "Height",
+          description: "How tall the row is. Everything in it is sized to "
+              "this, so a title comes out level with the logo beside it "
+              "without either being told about the other.",
+          options: [
+            ElementOption("Short (44)", "44", note: "A bar of links"),
+            ElementOption("Medium (96)", "96"),
+            ElementOption("Tall (200)", "200", note: "A logo and a title"),
+          ],
+          defaultIndex: 1,
+        ),
+        ElementSetting(
+          key: "layout1",
+          label: "Layout",
+          description: "Where the row's cells sit. Split pushes them to "
+              "either end; left, centre and right hold them together at "
+              "that side.",
+          options: [
+            ElementOption("Left", "left"),
+            ElementOption("Centre", "center"),
+            ElementOption("Right", "right"),
+            ElementOption("Split", "split", note: "One at each end"),
+          ],
+        ),
+        ElementSetting(
+          key: "flush1",
+          label: "Flush",
+          description: "Runs the row to the banner's edge, giving up the "
+              "inset it would otherwise keep. What a strip along the top "
+              "or bottom of a banner wants.",
+          options: [
+            ElementOption("No", ""),
+            ElementOption("Yes", "flush"),
+          ],
+        ),
+        ElementSetting(
+          key: "group1",
+          label: "Group",
+          description: "Keeps the row's two cells together as a pair "
+              "rather than letting the second have the rest of the row -- "
+              "a logo and a title beside it, sitting as one thing.",
+          options: [
+            ElementOption("No", ""),
+            ElementOption("Yes", "group"),
+          ],
+        ),
+      ],
+    ),
+    RowSpec(
+      tag: "row",
+      number: 2,
+      cells: "<!-- The same again: one thing, or left: and right:. A bar of\n"
+          "     links is the usual second row.\n"
+          "     --include[navigation]-- -->\n"
+          "--include[navigation]--",
+      settings: [
+        ElementSetting(
+          key: "height2",
+          label: "Height",
+          description: "How tall the row is. Everything in it is sized to "
+              "this, so a title comes out level with the logo beside it "
+              "without either being told about the other.",
+          options: [
+            ElementOption("Short (44)", "44", note: "A bar of links"),
+            ElementOption("Medium (96)", "96"),
+            ElementOption("Tall (200)", "200", note: "A logo and a title"),
+          ],
+          defaultIndex: 0,
+        ),
+        ElementSetting(
+          key: "layout2",
+          label: "Layout",
+          description: "Where the row's cells sit. Split pushes them to "
+              "either end; left, centre and right hold them together at "
+              "that side.",
+          options: [
+            ElementOption("Left", "left"),
+            ElementOption("Centre", "center"),
+            ElementOption("Right", "right"),
+            ElementOption("Split", "split", note: "One at each end"),
+          ],
+        ),
+        ElementSetting(
+          key: "flush2",
+          label: "Flush",
+          description: "Runs the row to the banner's edge, giving up the "
+              "inset it would otherwise keep. What a strip along the top "
+              "or bottom of a banner wants.",
+          options: [
+            ElementOption("No", ""),
+            ElementOption("Yes", "flush"),
+          ],
+        ),
+        ElementSetting(
+          key: "group2",
+          label: "Group",
+          description: "Keeps the row's two cells together as a pair "
+              "rather than letting the second have the rest of the row -- "
+              "a logo and a title beside it, sitting as one thing.",
+          options: [
+            ElementOption("No", ""),
+            ElementOption("Yes", "group"),
+          ],
+        ),
+      ],
+    ),
+  ],
   groups: [
     SettingGroup(
       label: "Title fill",

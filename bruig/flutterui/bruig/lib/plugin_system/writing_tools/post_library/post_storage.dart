@@ -70,25 +70,21 @@ const storeFolderName = "Store";
 /// a navigation bar. Its own folder rather than a naming convention inside
 /// Pages, because the library is one level deep and these are not pages: a
 /// visitor never lands on one, and it would never want a link of its own.
-const partialsFolderName = "Partials";
+const partialsFolderName = "Fragments";
+
+/// _oldPartialsFolderName is what the folder was called before, and is only
+/// ever used to find one left over and move it. See
+/// PostStorage._renameOldPartialsFolder.
+const _oldPartialsFolderName = "Partials";
 
 /// folderLabel is what a folder is called on screen.
 ///
-/// The stored name and the shown name are allowed to differ, and here they
-/// do for exactly one folder. "Partials" is what the directory has always
-/// been called, on disk and in the resources the pages provider serves --
-/// and it is templating jargon that means nothing to somebody writing a
-/// page. Everywhere else in the app these are fragments: the Pages section
-/// lists "Shared fragments" and offers "New fragment", and the block that
-/// pulls one into a page is "Shared fragment".
-///
-/// So the label moves and the directory does not. Renaming the directory
-/// would mean moving a writer's own documents on startup, which is a real
-/// risk to their work in exchange for a word -- and the serving side has
-/// kept the same split from the beginning, with a partials/ directory that
-/// nobody is ever shown.
-String folderLabel(String folder) =>
-    folder == partialsFolderName ? "Fragments" : folder;
+/// The same as its name now: the folder is a real directory a writer can
+/// see, so a shown name that differed from the one on disk was something
+/// somebody would find while looking for a file and be unable to explain.
+/// Kept as a function because every display site already goes through it,
+/// and a folder wanting a different label later has somewhere to say so.
+String folderLabel(String folder) => folder;
 
 /// reservedFolderNames are the folders the app keeps for itself, in the
 /// order they are pinned at the bottom of the top-level listing.
@@ -165,7 +161,43 @@ class PostStorage {
     var root = rootOverride ?? await defaultAppDataDir();
     var dir = path.join(root, _libraryDirName);
     await Directory(dir).create(recursive: true);
+    await _renameOldPartialsFolder(dir);
     return dir;
+  }
+
+  /// _renameOldPartialsFolder moves a library made before these were called
+  /// fragments.
+  ///
+  /// The folder is a real directory a writer can see, so the name in the app
+  /// and the name on disk have to agree -- one saying Fragments while the
+  /// other said Partials is the sort of thing somebody finds while looking
+  /// for a file and cannot explain.
+  ///
+  /// Careful rather than clever, because this touches documents nobody else
+  /// has a copy of:
+  ///
+  ///  - nothing to move, nothing happens;
+  ///  - both present, nothing happens either. That is a library in a state
+  ///    this cannot reason about, and refusing to guess leaves both folders
+  ///    where the writer can see them and sort out. Merging them silently
+  ///    could overwrite a fragment with another of the same name.
+  ///  - the move itself is a rename, which is atomic within a directory: it
+  ///    either happened or it did not, and there is no state where half the
+  ///    fragments are in each.
+  ///
+  /// A failure is logged and swallowed. A library that cannot be renamed is
+  /// still a library, and the alternative is refusing to open Writing at all
+  /// over a word.
+  static Future<void> _renameOldPartialsFolder(String libraryDir) async {
+    try {
+      var old = Directory(path.join(libraryDir, _oldPartialsFolderName));
+      if (!await old.exists()) return;
+      var wanted = Directory(path.join(libraryDir, partialsFolderName));
+      if (await wanted.exists()) return;
+      await old.rename(wanted.path);
+    } catch (exception) {
+      debugPrint("Unable to rename the Partials folder: $exception");
+    }
   }
 
   /// sanitizeName reduces what the user typed to something that is safe as a

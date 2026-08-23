@@ -135,7 +135,8 @@ void main() {
 
       expect(find.text("Title fill"), findsOneWidget);
       expect(find.text("Title outline"), findsOneWidget);
-      expect(find.text("Row"), findsOneWidget);
+      expect(find.text("Row 1"), findsOneWidget);
+      expect(find.text("Row 2"), findsOneWidget);
       // Inside the group, not on the face of the panel.
       expect(find.text("Tracking"), findsNothing);
     });
@@ -145,12 +146,12 @@ void main() {
       await pump(tester);
       await tester.tap(find.text("Header"));
       await tester.pumpAndSettle();
-      await tester.tap(find.text("Row"));
+      await tester.tap(find.text("Row 1"));
       await tester.pumpAndSettle();
 
       // findsWidgets, not one: "Row height" is also what the Title size
       // setting says when it is left alone, and both are on screen.
-      for (var label in ["Row height", "Row layout", "Flush", "Group"]) {
+      for (var label in ["Height", "Layout", "Flush", "Group"]) {
         expect(find.text(label), findsWidgets, reason: label);
       }
       expect(find.text("Split"), findsOneWidget);
@@ -161,7 +162,7 @@ void main() {
       await pump(tester);
       await tester.tap(find.text("Header"));
       await tester.pumpAndSettle();
-      await tester.tap(find.text("Row"));
+      await tester.tap(find.text("Row 1"));
       await tester.pumpAndSettle();
       await tester.tap(find.text("Tall (200)"));
       await tester.pumpAndSettle();
@@ -266,6 +267,72 @@ void main() {
       for (var raw in ["", "red", "ffffff", "#ggg", "#12345"]) {
         expect(parseHexColour(raw), isNull, reason: raw);
       }
+    });
+  });
+
+  group('picking a gradient', () {
+    testWidgets('shows both colours and what they make', (tester) async {
+      // A gradient is the two colours against each other -- neither is
+      // right or wrong on its own -- so picking them in turn meant judging
+      // the second against a memory of the first.
+      tester.view.physicalSize = const Size(900, 1600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      String? got;
+      await tester.pumpWidget(MaterialApp(
+          home: Scaffold(
+              body: Builder(
+                  builder: (context) => TextButton(
+                        onPressed: () async => got = await pickGradient(
+                            context,
+                            const Color(0xffff0000),
+                            const Color(0xff0000ff)),
+                        child: const Text("open"),
+                      )))));
+      await tester.tap(find.text("open"));
+      await tester.pumpAndSettle();
+
+      expect(find.text("First"), findsOneWidget);
+      expect(find.text("Second"), findsOneWidget);
+
+      // The gradient itself is on screen, drawn from both colours.
+      var painted = tester
+          .widgetList<Container>(find.byType(Container))
+          .where((c) => (c.decoration as BoxDecoration?)?.gradient != null);
+      expect(painted, isNotEmpty);
+      expect(
+          ((painted.first.decoration as BoxDecoration).gradient
+                  as LinearGradient)
+              .colors,
+          [const Color(0xffff0000), const Color(0xff0000ff)]);
+
+      await tester.tap(find.text("Use this"));
+      await tester.pumpAndSettle();
+      expect(got, "#ff0000,#0000ff");
+    });
+
+    testWidgets('cancelling changes nothing', (tester) async {
+      tester.view.physicalSize = const Size(900, 1600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      String? got = "untouched";
+      await tester.pumpWidget(MaterialApp(
+          home: Scaffold(
+              body: Builder(
+                  builder: (context) => TextButton(
+                        onPressed: () async => got = await pickGradient(
+                            context,
+                            const Color(0xffff0000),
+                            const Color(0xff0000ff)),
+                        child: const Text("open"),
+                      )))));
+      await tester.tap(find.text("open"));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text("Cancel"));
+      await tester.pumpAndSettle();
+      expect(got, isNull);
     });
   });
 }
