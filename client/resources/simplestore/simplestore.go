@@ -86,6 +86,16 @@ type Store struct {
 	products map[string]*Product
 	tmpl     *template.Template
 
+	// indexPath is where this store's front page answers, as a template
+	// writes it in a link.
+	//
+	// Not always "/": a client hosting a pages site keeps the root for it,
+	// and the store's front page moves aside to /store. Templates have to
+	// be told, because a template that writes "/" is right in one
+	// arrangement and sends the reader out of the shop in the other. Set
+	// once by BindRoutes, before anything is served.
+	indexPath string
+
 	invoiceSettledChan  chan string
 	invoiceCanceledChan chan string
 	invoiceCreatedChan  chan *Order
@@ -106,6 +116,7 @@ func New(cfg Config) (*Store, error) {
 		root:      cfg.Root,
 		products:  make(map[string]*Product),
 		tmpl:      template.New("*root"),
+		indexPath: "/",
 		lnpc:      cfg.LNPayClient,
 		runCtx:    runCtx,
 		runCancel: runCancel,
@@ -124,7 +135,7 @@ func New(cfg Config) (*Store, error) {
 func (s *Store) reloadStore() error {
 	// Reset.
 	products := make(map[string]*Product, len(s.products))
-	tmpl := template.New("*root")
+	tmpl := template.New("*root").Funcs(s.templateFuncs())
 
 	// Parse templates.
 	dirs := []string{s.root, filepath.Join(s.root, "static")}
@@ -200,6 +211,21 @@ func (s *Store) reloadStore() error {
 	s.mtx.Unlock()
 
 	return nil
+}
+
+// templateFuncs are what a template may call as well as read.
+//
+// A function rather than a field on every context: there are seven of those
+// and they have nothing in common, so a field would have to be added to each
+// and remembered for the next one. A function is there for all of them,
+// including the partials, which have no context of their own at all.
+func (s *Store) templateFuncs() template.FuncMap {
+	return template.FuncMap{
+		// storeIndex is where the shop's front page is, which is not
+		// always "/". Read when the template runs rather than when it is
+		// parsed, because binding decides it and that happens after.
+		"storeIndex": func() string { return s.indexPath },
+	}
 }
 
 func (s *Store) Fulfill(ctx context.Context, uid clientintf.UserID,
@@ -695,6 +721,10 @@ func (s *Store) BindRoutes(r *resources.Router, withIndex bool) {
 		r.BindExactPath(nil, s)
 		r.BindExactPath([]string{"index.md"}, s)
 	} else {
+		// The front page has moved, so a template writing "/" would send
+		// the reader out of the shop and onto the site's own front page.
+		s.indexPath = "/" + StoreIndexPath
+
 		// Rewrite the mount path to the index the handlers expect,
 		// rather than teaching every template a prefix.
 		r.BindExactPath([]string{StoreIndexPath}, resources.ProviderFunc(
