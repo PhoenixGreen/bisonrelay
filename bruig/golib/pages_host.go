@@ -30,6 +30,18 @@ const (
 	hostModeClientRPC = "clientrpc"
 )
 
+// siteRootFor is the pages directory a store should read its header and
+// footer from, or empty when no site is being hosted beside it.
+//
+// A store hosted alone has nothing to wear: there is no site, so naming a
+// fragment would only put markers round every page that expand to nothing.
+func siteRootFor(cfg pagesHostConfig) string {
+	if cfg.Mode != hostModePages && cfg.Mode != hostModePagesAndStore {
+		return ""
+	}
+	return cfg.PagesPath
+}
+
 // pagesHostConfig is what the UI can change about hosting. It round-trips to
 // Dart, and is also what the legacy `[resources] upstream = ...` config line
 // is parsed into at startup.
@@ -40,6 +52,11 @@ type pagesHostConfig struct {
 	StorePayType    string  `json:"store_pay_type"`
 	StoreAccount    string  `json:"store_account"`
 	StoreShipCharge float64 `json:"store_ship_charge"`
+
+	// StoreHeader and StoreFooter name the fragments the store wears, or
+	// are empty for a shop that keeps its own look.
+	StoreHeader string `json:"store_header"`
+	StoreFooter string `json:"store_footer"`
 
 	// HTTPUpstream is the base URL served in hostModeHTTP.
 	HTTPUpstream string `json:"http_upstream"`
@@ -130,12 +147,14 @@ func (ph *pagesHost) config() pagesHostConfig {
 // keep behaving exactly as they did. A separate storePath alongside a pages
 // upstream is the one thing they could not express: a site with a shop in it.
 func parseUpstream(upstream, storePath, payType, account string,
-	shipCharge float64) pagesHostConfig {
+	shipCharge float64, header, footer string) pagesHostConfig {
 	cfg := pagesHostConfig{
 		Mode:            hostModeOff,
 		StorePayType:    payType,
 		StoreAccount:    account,
 		StoreShipCharge: shipCharge,
+		StoreHeader:     header,
+		StoreFooter:     footer,
 	}
 	switch {
 	case strings.HasPrefix(upstream, "pages:"):
@@ -274,6 +293,13 @@ func (ph *pagesHost) startStoreLocked(cfg pagesHostConfig) (*simplestore.Store, 
 		ExchangeRateProvider: ph.ratesFn,
 		OrderPlaced:          ph.orderNtfn,
 		StatusChanged:        ph.orderNtfn,
+
+		// The site the shop sits in, and the two fragments it wears. Only
+		// when a site is actually being hosted: a store on its own has no
+		// fragments to read and would put empty markers round every page.
+		SiteRoot: siteRootFor(cfg),
+		Header:   cfg.StoreHeader,
+		Footer:   cfg.StoreFooter,
 	}
 	store, err := simplestore.New(scfg)
 	if err != nil {

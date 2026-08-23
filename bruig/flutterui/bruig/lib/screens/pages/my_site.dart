@@ -512,6 +512,10 @@ class _SiteOverview extends StatelessWidget {
             label: const Text("View my site"),
           ),
       ]),
+      if (cfg.hostsStore && cfg.hostsPages) ...[
+        const SizedBox(height: 24),
+        ShopFrameFields(pages: pages),
+      ],
       const SizedBox(height: 24),
       Row(children: [
         const Expanded(child: Txt.L("Pages")),
@@ -601,6 +605,82 @@ class _SiteOverview extends StatelessWidget {
 /// Deliberately plainer than a page's row: a fragment has no front-page
 /// warning, and no preview -- a visitor never opens one, so there is nothing
 /// to look at on its own.
+
+/// ShopFrameFields names the two fragments the shop wears.
+///
+/// Two names rather than a switch, because a shop and a site are framed the
+/// same way and a writer already has both fragments: the banner at the top
+/// and whatever runs along the bottom. Naming them here means changing the
+/// banner changes the shop with it -- a shop restyled separately is a shop
+/// that ends up looking like a different website.
+///
+/// Only shown with both hosted. A shop on its own has no site to take them
+/// from, and offering the fields would be offering something that could not
+/// work.
+class ShopFrameFields extends StatefulWidget {
+  final PagesModel pages;
+  const ShopFrameFields({super.key, required this.pages});
+
+  @override
+  State<ShopFrameFields> createState() => _ShopFrameFieldsState();
+}
+
+class _ShopFrameFieldsState extends State<ShopFrameFields> {
+  late final _header =
+      TextEditingController(text: widget.pages.hostConfig.storeHeader);
+  late final _footer =
+      TextEditingController(text: widget.pages.hostConfig.storeFooter);
+
+  @override
+  void dispose() {
+    _header.dispose();
+    _footer.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    var snackbar = SnackBarModel.of(context);
+    try {
+      await widget.pages.setHost(widget.pages.hostConfig.copyWith(
+        storeHeader: _header.text.trim(),
+        storeFooter: _footer.text.trim(),
+      ));
+    } catch (exception) {
+      snackbar.error("Unable to save the shop's frame: $exception");
+    }
+  }
+
+  Widget _field(String label, TextEditingController c) => Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: TextField(
+          controller: c,
+          decoration: InputDecoration(
+            labelText: label,
+            isDense: true,
+            border: const OutlineInputBorder(),
+          ),
+          onSubmitted: (_) => _save(),
+          onTapOutside: (_) => _save(),
+        ),
+      );
+
+  @override
+  Widget build(BuildContext context) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Txt.L("The shop's frame"),
+          const SizedBox(height: 6),
+          const Txt.S(
+              "Fragments wrapped round every page of the shop -- the front, "
+              "a product, the cart, the order list and the rest. Name one of "
+              "your own fragments, or leave a field empty for none.",
+              color: TextColor.onSurfaceVariant),
+          const SizedBox(height: 10),
+          _field("Header fragment", _header),
+          _field("Footer fragment", _footer),
+        ],
+      );
+}
 
 /// _ManagedElsewhere is shown when hosting is pointed at an http upstream or
 /// handed to a client over the RPC interface. The app is not the thing

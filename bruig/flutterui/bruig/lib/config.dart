@@ -111,6 +111,12 @@ class Config {
   late final String simpleStorePayType;
   late final String simpleStoreAccount;
   late final double simpleStoreShipCharge;
+
+  /// simpleStoreHeader and simpleStoreFooter name the fragments the shop
+  /// wears. Kept in the config file so a shop is still wearing them after a
+  /// restart, like everything else about hosting.
+  late final String simpleStoreHeader;
+  late final String simpleStoreFooter;
   late final String proxyaddr;
   late final bool torIsolation;
   late final String proxyUsername;
@@ -161,6 +167,8 @@ class Config {
       this.simpleStorePayType = "",
       this.simpleStoreAccount = "",
       this.simpleStoreShipCharge = 0,
+      this.simpleStoreHeader = "",
+      this.simpleStoreFooter = "",
       this.proxyaddr = "",
       this.torIsolation = false,
       this.proxyUsername = "",
@@ -211,6 +219,8 @@ class Config {
         simpleStorePayType: cfg.simpleStorePayType,
         simpleStoreAccount: cfg.simpleStoreAccount,
         simpleStoreShipCharge: cfg.simpleStoreShipCharge,
+        simpleStoreHeader: cfg.simpleStoreHeader,
+        simpleStoreFooter: cfg.simpleStoreFooter,
         proxyaddr: cfg.proxyaddr,
         torIsolation: cfg.torIsolation,
         proxyUsername: cfg.proxyUsername,
@@ -300,6 +310,8 @@ Future<void> replaceConfig(
   String? simpleStorePayType,
   String? simpleStoreAccount,
   double? simpleStoreShipCharge,
+  String? simpleStoreHeader,
+  String? simpleStoreFooter,
 }) async {
   var f = ini.Config.fromStrings(File(filepath).readAsLinesSync());
 
@@ -344,6 +356,8 @@ Future<void> replaceConfig(
   set("resources", "storepath", simpleStorePath);
   set("resources", "account", simpleStoreAccount);
   setDouble("resources", "shipcharge", simpleStoreShipCharge);
+  set("resources", "storeheader", simpleStoreHeader);
+  set("resources", "storefooter", simpleStoreFooter);
   set("simplestore", "paytype", simpleStorePayType);
 
   set("clientrpc", "jsonrpclisten", jsonRPCListen);
@@ -526,6 +540,8 @@ Future<Config> loadConfig(String filepath) async {
   c.simpleStoreAccount = f.get("resources", "account") ?? "";
   c.simpleStoreShipCharge =
       double.tryParse(f.get("resources", "shipcharge") ?? "0") ?? 0;
+  c.simpleStoreHeader = f.get("resources", "storeheader") ?? "";
+  c.simpleStoreFooter = f.get("resources", "storefooter") ?? "";
 
   c.jsonRPCListen = getCommaList("clientrpc", "jsonrpclisten") ?? [];
   c.rpcCertPath = f.get("clientrpc", "rpccertpath") ?? "";

@@ -167,20 +167,36 @@ func (pr *PagesResource) Fulfill(ctx context.Context, uid clientintf.UserID,
 // the reader do work chosen by whoever wrote the page. One request, one
 // reply, is worth more than the bytes -- the more so now that a picture is a
 // file of its own, which is where the bytes actually were.
-func (pr *PagesResource) expand(page string) (string, error) {
+// ReadFragment is how ExpandIncludes gets at one fragment: its body, whether
+// there is one, and any trouble reading it.
+type ReadFragment func(name string) ([]byte, bool, error)
+
+// ExpandIncludes fills a page's --include[name]-- markers in from [read].
+//
+// Shared, because two things serve pages made of fragments now: a site, and
+// a store wearing that site's header and footer. Two copies of this would be
+// two sets of limits to keep in step, and the limits are the whole of what
+// makes it safe.
+//
+// A fragment is read once however often it is named. A fragment that reaches
+// itself is left as written, so the writer can see the loop rather than
+// wonder where it went. One that is not there leaves nothing, since the
+// marker itself is not writing. Past MaxExpandedBytes the page is sent as it
+// was written: a page too large to fill in is still a page.
+func ExpandIncludes(page string, read ReadFragment, log slog.Logger) (string, error) {
 	// held is what has been read already, so a fragment used twice is read
 	// once and a cycle is answered from what is in hand rather than by
 	// walking round again.
 	held := make(map[string]string)
-	var read func(name string) (string, bool, error)
-	read = func(name string) (string, bool, error) {
+	var readOnce func(name string) (string, bool, error)
+	readOnce = func(name string) (string, bool, error) {
 		if body, ok := held[name]; ok {
 			return body, true, nil
 		}
 		if len(held) >= MaxPartialsPerPage {
 			return "", false, nil
 		}
-		data, found, err := pr.read(PartialPath(name))
+		data, found, err := read(name)
 		if err != nil {
 			return "", false, err
 		}
@@ -209,7 +225,7 @@ func (pr *PagesResource) expand(page string) (string, error) {
 				// wondering where it went.
 				return marker
 			}
-			body, ok, err := read(name)
+			body, ok, err := readOnce(name)
 			if err != nil {
 				failed = err
 				return ""
@@ -231,9 +247,17 @@ func (pr *PagesResource) expand(page string) (string, error) {
 		return "", failed
 	}
 	if len(out) > MaxExpandedBytes {
-		pr.log.Warnf("A page expanded to %d bytes, past the %d a page may "+
-			"be; sending it unexpanded", len(out), MaxExpandedBytes)
+		if log != nil {
+			log.Warnf("A page expanded to %d bytes, past the %d a page may "+
+				"be; sending it unexpanded", len(out), MaxExpandedBytes)
+		}
 		return page, nil
 	}
 	return out, nil
+}
+
+func (pr *PagesResource) expand(page string) (string, error) {
+	return ExpandIncludes(page, func(name string) ([]byte, bool, error) {
+		return pr.read(PartialPath(name))
+	}, pr.log)
 }

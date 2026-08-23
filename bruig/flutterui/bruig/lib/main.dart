@@ -459,6 +459,8 @@ class _AppState extends State<App> with WindowListener {
           cfg.simpleStorePayType,
           cfg.simpleStoreAccount,
           cfg.simpleStoreShipCharge,
+          cfg.simpleStoreHeader,
+          cfg.simpleStoreFooter,
           cfg.proxyaddr,
           cfg.torIsolation,
           cfg.proxyUsername,

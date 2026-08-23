@@ -696,6 +696,8 @@ class PagesModel extends ChangeNotifier {
         simpleStorePayType: cfg.storePayType,
         simpleStoreAccount: cfg.storeAccount,
         simpleStoreShipCharge: cfg.storeShipCharge,
+        simpleStoreHeader: cfg.storeHeader,
+        simpleStoreFooter: cfg.storeFooter,
       );
     } catch (exception) {
       _hostError = "Hosting is running, but could not be saved to the "

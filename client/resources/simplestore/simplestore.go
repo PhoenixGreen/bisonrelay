@@ -68,6 +68,25 @@ type Config struct {
 	LNPayClient   *client.DcrlnPaymentClient
 
 	ExchangeRateProvider func() float64
+
+	// SiteRoot is the directory of the pages site hosted beside this store,
+	// or empty when there is none. It is where the header and footer below
+	// are read from, so a shop and the site it sits in share one banner
+	// rather than each keeping its own copy.
+	SiteRoot string
+
+	// Header and Footer name the fragments wrapped round every page the
+	// store renders. Empty means none, which is what a store hosted on its
+	// own gets.
+	//
+	// Named rather than written out, because a shop is seven pages -- the
+	// front, a product, the cart, the order list, an order, adding to the
+	// cart, and the confirmation -- and a seller pasting a banner into
+	// seven templates has seven places to keep in step. Naming a fragment
+	// once means changing the banner changes all of them, and the pages of
+	// the site along with them.
+	Header string
+	Footer string
 }
 
 // Store is a simple store instance. A simple store can render a front page
@@ -96,6 +115,11 @@ type Store struct {
 	// once by BindRoutes, before anything is served.
 	indexPath string
 
+	// siteRoot, header and footer are the wrapper: see Config.
+	siteRoot string
+	header   string
+	footer   string
+
 	invoiceSettledChan  chan string
 	invoiceCanceledChan chan string
 	invoiceCreatedChan  chan *Order
@@ -117,6 +141,9 @@ func New(cfg Config) (*Store, error) {
 		products:  make(map[string]*Product),
 		tmpl:      template.New("*root"),
 		indexPath: "/",
+		siteRoot:  cfg.SiteRoot,
+		header:    cfg.Header,
+		footer:    cfg.Footer,
 		lnpc:      cfg.LNPayClient,
 		runCtx:    runCtx,
 		runCancel: runCancel,
@@ -228,7 +255,22 @@ func (s *Store) templateFuncs() template.FuncMap {
 	}
 }
 
+// Fulfill answers one request, with the site's frame round it.
+//
+// The frame is put on here rather than in each handler: there are a dozen of
+// them and they have one thing in common, which is that what they return is
+// read as a page. See dress.go.
 func (s *Store) Fulfill(ctx context.Context, uid clientintf.UserID,
+	request *rpc.RMFetchResource) (*rpc.RMFetchResourceReply, error) {
+
+	res, err := s.fulfill(ctx, uid, request)
+	if err != nil {
+		return nil, err
+	}
+	return s.dressed(request, res), nil
+}
+
+func (s *Store) fulfill(ctx context.Context, uid clientintf.UserID,
 	request *rpc.RMFetchResource) (*rpc.RMFetchResourceReply, error) {
 
 	// Admin handlers.

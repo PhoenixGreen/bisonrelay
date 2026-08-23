@@ -97,6 +97,12 @@ class InitClient {
   final String simpleStoreAccount;
   @JsonKey(name: 'simplestore_ship_charge')
   final double simpleStoreShipCharge;
+
+  /// The fragments the shop wears. See simplestore's dress.go.
+  @JsonKey(name: 'simplestore_header', defaultValue: "")
+  final String simpleStoreHeader;
+  @JsonKey(name: 'simplestore_footer', defaultValue: "")
+  final String simpleStoreFooter;
   @JsonKey(name: 'proxyaddr')
   final String proxyaddr;
   @JsonKey(name: 'proxy_username')
@@ -164,6 +170,8 @@ class InitClient {
       this.simpleStorePayType,
       this.simpleStoreAccount,
       this.simpleStoreShipCharge,
+      this.simpleStoreHeader,
+      this.simpleStoreFooter,
       this.proxyaddr,
       this.torisolation,
       this.proxyUsername,
@@ -2811,8 +2819,16 @@ class PagesHostConfig {
   @JsonKey(name: "http_upstream", defaultValue: "")
   final String httpUpstream;
 
+  /// storeHeader and storeFooter name the fragments the store wears, or are
+  /// empty for a shop that keeps its own look. See simplestore's dress.go.
+  @JsonKey(name: "store_header", defaultValue: "")
+  final String storeHeader;
+  @JsonKey(name: "store_footer", defaultValue: "")
+  final String storeFooter;
+
   PagesHostConfig(this.mode, this.pagesPath, this.storePath, this.storePayType,
-      this.storeAccount, this.storeShipCharge, this.httpUpstream);
+      this.storeAccount, this.storeShipCharge, this.httpUpstream,
+      [this.storeHeader = "", this.storeFooter = ""]);
   factory PagesHostConfig.off() =>
       PagesHostConfig(pagesHostModeOff, "", "", "", "", 0, "");
   factory PagesHostConfig.fromJson(Map<String, dynamic> json) =>
@@ -2832,6 +2848,8 @@ class PagesHostConfig {
     String? storePayType,
     String? storeAccount,
     double? storeShipCharge,
+    String? storeHeader,
+    String? storeFooter,
   }) =>
       PagesHostConfig(
           mode ?? this.mode,
@@ -2840,7 +2858,9 @@ class PagesHostConfig {
           storePayType ?? this.storePayType,
           storeAccount ?? this.storeAccount,
           storeShipCharge ?? this.storeShipCharge,
-          httpUpstream);
+          httpUpstream,
+          storeHeader ?? this.storeHeader,
+          storeFooter ?? this.storeFooter);
 }
 
 @JsonSerializable()
