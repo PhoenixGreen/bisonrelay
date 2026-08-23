@@ -17,6 +17,17 @@ import 'header_harness.dart';
 // tell whether they have made a mistake or found a bug. So every option is
 // written out and read back by the real parser here.
 
+/// blockOnly drops the note a block may be written with, so what is left is
+/// markdown a parser can be handed.
+///
+/// Only when there is one: a banner goes in without any, and skipping a
+/// line regardless took its opening marker instead.
+String blockOnly(String written) {
+  var lines = written.split("\n");
+  return (lines.first.trimLeft().startsWith("<!--") ? lines.skip(1) : lines)
+      .join("\n");
+}
+
 void main() {
   group('what the panel writes can be read back', () {
     test('every page setting', () {
@@ -79,7 +90,7 @@ void main() {
       for (var option in navSpec.settings.first.options) {
         var written = navSpec.write({"style": option.value});
         var el = parseBlock(
-            written.split("\n").skip(1).join("\n"), NavBlockSyntax());
+            blockOnly(written), NavBlockSyntax());
         expect(el.attributes["style"], option.value, reason: option.value);
         expect(int.parse(el.attributes["count"]!), 3, reason: option.value);
       }
@@ -158,7 +169,7 @@ void main() {
     // the writer unable to tell a mistake from a bug.
     Map<String, String> fieldsOf(String written) {
       var el = parseBlock(
-          written.split("\n").skip(1).join("\n"), HeaderBlockSyntax());
+          blockOnly(written), HeaderBlockSyntax());
       return el.attributes;
     }
 
@@ -233,11 +244,7 @@ void main() {
 
     test('carries the height and layout it was given', () {
       var el = parseBlock(
-          headerSpec
-              .write({"height1": "200", "layout1": "center"})
-              .split("\n")
-              .skip(1)
-              .join("\n"),
+          blockOnly(headerSpec.write({"height1": "200", "layout1": "center"})),
           HeaderBlockSyntax());
       var rows = headerRowsOf(el.attributes);
       expect(rows, hasLength(1));
@@ -246,19 +253,14 @@ void main() {
     });
 
     test('flush and group are words, and only when asked for', () {
-      var plain = headerRowsOf(parseBlock(
-              headerSpec.write(const {}).split("\n").skip(1).join("\n"),
-              HeaderBlockSyntax())
-          .attributes);
+      var plain = headerRowsOf(
+          parseBlock(blockOnly(headerSpec.write(const {})), HeaderBlockSyntax())
+              .attributes);
       expect(plain.first.flush, isFalse);
       expect(plain.first.group, isFalse);
 
       var both = headerRowsOf(parseBlock(
-              headerSpec
-                  .write({"flush1": "flush", "group1": "group"})
-                  .split("\n")
-                  .skip(1)
-                  .join("\n"),
+              blockOnly(headerSpec.write({"flush1": "flush", "group1": "group"})),
               HeaderBlockSyntax())
           .attributes);
       expect(both.first.flush, isTrue);
@@ -298,13 +300,11 @@ void main() {
           lessThanOrEqualTo(maxHeaderRows));
     });
 
-    test('each row says how to fill it, as a comment', () {
-      // A row's cells are the one part the panel cannot choose for anybody:
-      // what goes in them is the writer's own. So it says what may go there
-      // instead, where they are about to type.
+    test('each row goes in with something in it', () {
+      // A row's cells are the one part the panel cannot choose for anybody,
+      // so it puts an example there rather than an empty row -- which is a
+      // fixed height of nothing.
       var written = headerSpec.write({"height2": "44"});
-      expect("<!--".allMatches(written).length, greaterThanOrEqualTo(3),
-          reason: "the block's note, and one in each row");
       expect(written, contains("left:"));
       expect(written, contains("--include["));
     });
@@ -383,9 +383,67 @@ void main() {
     });
   });
 
+  group('how a banner is laid out', () {
+    // A banner is fifteen lines. Written as one run they are a wall, and
+    // the rows -- the part anybody scrolling is looking for -- are lost in
+    // the middle of it.
+    List<String> banner() => headerSpec.write({
+          "background": "![](assets/banner.jpg)",
+          "height2": "44",
+        }).split("\n");
+
+    test('the settings and each row are separated by a blank line', () {
+      var lines = banner();
+      expect(lines.first, "--header--");
+      expect(lines[1], isEmpty, reason: "a blank after the opening marker");
+      expect(lines.last, "--/header--");
+      expect(lines[lines.length - 2], isEmpty,
+          reason: "a blank before the closing marker");
+
+      for (var i = 0; i < lines.length; i++) {
+        if (lines[i].startsWith("--row[")) {
+          expect(lines[i - 1], isEmpty, reason: "a blank before each row");
+        }
+      }
+    });
+
+    test('nothing is indented', () {
+      // A cell's contents are markdown, and markdown reads four spaces as
+      // a code block.
+      for (var line in banner()) {
+        expect(line, equals(line.trimLeft()), reason: line);
+      }
+    });
+
+    test('a block with only settings gets no blank lines', () {
+      // There is nothing to separate it from, and a page block spaced out
+      // like a banner would be four lines of air round two settings.
+      var lines = pageSpec.write(const {}).split("\n");
+      expect(lines.where((l) => l.isEmpty), isEmpty);
+    });
+
+    test('the banner goes in without notes in it', () {
+      // Three notes -- one for the block and one in each row -- were more
+      // of what was on screen than the settings were. A note earns its
+      // place on a short block; on a long one it is the thing you delete
+      // before you can read what you wrote.
+      var written = headerSpec.write({"height2": "44"});
+      expect(written, isNot(contains("<!--")));
+      expect(headerSpec.tip, isEmpty);
+    });
+
+    test('the panel still says what a banner is', () {
+      // The explanation costs the document nothing when it stays in the
+      // panel, so dropping the note does not mean dropping the help.
+      expect(headerSpec.about, isNotEmpty);
+      expect(headerSpec.about.toLowerCase(), contains("banner"));
+    });
+  });
+
   group('the note beside a block', () {
     test('is a comment, which the renderer draws as nothing', () {
       for (var spec in pageElementSpecs) {
+        if (spec.tip.isEmpty) continue;
         var written = spec.write(const {});
         expect(written, startsWith("<!--"), reason: spec.name);
         expect(written, contains("-->"), reason: spec.name);
@@ -394,6 +452,7 @@ void main() {
 
     test('says how to delete it, because it is for the writer only', () {
       for (var spec in pageElementSpecs) {
+        if (spec.tip.isEmpty) continue;
         expect(spec.tip.toLowerCase(), contains("delete this note"),
             reason: spec.name);
       }
@@ -401,8 +460,17 @@ void main() {
 
     test('sits on its own line, so deleting it is one line', () {
       for (var spec in pageElementSpecs) {
+        if (spec.tip.isEmpty) continue;
         var first = spec.write(const {}).split("\n").first;
         expect(first.trim(), endsWith("-->"), reason: spec.name);
+      }
+    });
+  });
+
+  group('every block explains itself', () {
+    test('in the panel, whether or not it leaves a note behind', () {
+      for (var spec in pageElementSpecs) {
+        expect(spec.about, isNotEmpty, reason: spec.name);
       }
     });
   });

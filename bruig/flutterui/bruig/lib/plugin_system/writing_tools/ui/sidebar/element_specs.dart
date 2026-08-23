@@ -160,7 +160,21 @@ class ElementSpec {
   final String tag;
   final ElementShape shape;
 
-  /// tip is the note written in beside the block, explaining what it is for.
+  /// about is what the block is for, shown at the top of the panel when it
+  /// is opened. Always -- it is the panel's own explanation, and costs the
+  /// document nothing.
+  final String about;
+
+  /// tip is the note written into the document beside the block, or empty
+  /// for a block that goes in with none.
+  ///
+  /// Empty for the banner. A banner is already fifteen lines, and three
+  /// notes in among them -- one for the block and one in each row -- were
+  /// more of what was on screen than the settings were. A note earns its
+  /// place on a short block where there is something surprising to say; on
+  /// a long one it is the thing you delete before you can read what you
+  /// wrote.
+  ///
   ///
   /// Written as an HTML comment, which the renderer draws as nothing -- so
   /// it is a note to whoever is writing and not something a reader ever
@@ -192,7 +206,8 @@ class ElementSpec {
     required this.name,
     required this.tag,
     required this.shape,
-    required this.tip,
+    required this.about,
+    this.tip = "",
     required this.settings,
     this.body,
     this.rows = const [],
@@ -269,10 +284,13 @@ class ElementSpec {
         if ((values[s.key] ?? "").isNotEmpty) (key: s.key, value: values[s.key]!)
     ];
 
-    var note = "<!-- $tip -->";
+    var note = tip.isEmpty ? null : "<!-- $tip -->";
     switch (shape) {
       case ElementShape.single:
-        return "$note\n--$tag${set.isEmpty ? "" : "[${set.first.value}]"}--";
+        return [
+          if (note != null) note,
+          "--$tag${set.isEmpty ? "" : "[${set.first.value}]"}--",
+        ].join("\n");
       case ElementShape.valueBlock:
         // The first setting bare, the rest as key=value. That is the shape
         // a bar has always been written in -- --nav[pills]-- came first and
@@ -283,7 +301,12 @@ class ElementSpec {
           for (var e in set.skip(1)) "${e.key}=${e.value}",
         ];
         var only = written.isEmpty ? "" : "[${written.join(", ")}]";
-        return "$note\n--$tag$only--\n${body ?? ""}\n--/$tag--";
+        return [
+          if (note != null) note,
+          "--$tag$only--",
+          body ?? "",
+          "--/$tag--",
+        ].join("\n");
       case ElementShape.attributes:
         var attrs = set.map((e) => "${e.key}=${e.value}").join(", ");
         var open = attrs.isEmpty ? "--$tag--" : "--$tag[$attrs]--";
@@ -297,13 +320,24 @@ class ElementSpec {
             .map((e) => "${e.key}: ${e.value}")
             .join("\n");
         var rowBlocks = _rowBlocks(values, chosen);
-        return [
-          note,
-          "--$tag--",
+
+        // The parts of the block, each a run of lines that belongs
+        // together: the settings, then each row. Separated by a blank line
+        // when there is more than one, and the markers given one too --
+        // fifteen lines with no break in them is a wall, and the rows are
+        // the part anybody scrolling is looking for.
+        //
+        // A block with only settings gets none of that, because there is
+        // nothing to separate it from.
+        var parts = [
           if (lines.isNotEmpty) lines,
           ...rowBlocks,
           if (body != null) body!,
-          "--/$tag--",
+        ];
+        var between = parts.length > 1 ? "\n\n" : "\n";
+        return [
+          if (note != null) note,
+          "--$tag--$between${parts.join("\n\n")}$between--/$tag--",
         ].join("\n");
     }
   }
@@ -338,6 +372,8 @@ const ElementSpec pageSpec = ElementSpec(
   name: "Page setup",
   tag: "page",
   shape: ElementShape.lines,
+  about: "Page setup: how wide this page is, what it sits on, and the room "
+      "it keeps around itself. Put it at the top. Delete this note.",
   tip: "Page setup: how wide this page is, what it sits on, and the room "
       "it keeps around itself. Put it at the top. Delete this note.",
   settings: [
@@ -388,6 +424,9 @@ const ElementSpec panelSpec = ElementSpec(
   tag: "panel",
   shape: ElementShape.attributes,
   body: "Anything at all, including other blocks.",
+  about: "Panel: a box round a piece of the page. Borders take one number for "
+      "all four sides, or four -- top, right, bottom, left -- so "
+      "border=0 0 0 4 is a rule down the left. Delete this note.",
   tip: "Panel: a box round a piece of the page. Borders take one number for "
       "all four sides, or four -- top, right, bottom, left -- so "
       "border=0 0 0 4 is a rule down the left. Delete this note.",
@@ -472,7 +511,7 @@ const ElementSpec headerSpec = ElementSpec(
   name: "Header",
   tag: "header",
   shape: ElementShape.lines,
-  tip: "Header: the banner at the top of a page. At most two rows, at most "
+  about: "Header: the banner at the top of a page. At most two rows, at most "
       "two cells each -- copy the row block for a second. A row's settings "
       "go in its brackets in any order: a number is the height, flush runs "
       "it to the banner's edge, and group keeps its two cells together. "
@@ -481,11 +520,7 @@ const ElementSpec headerSpec = ElementSpec(
     RowSpec(
       tag: "row",
       number: 1,
-      cells: "<!-- One or two cells. A cell is anything: writing, a picture, or a\n"
-          "     fragment. Two need naming with left: and right:.\n"
-          "     left: ![](assets/logo.svg)\n"
-          "     right: # My Site -->\n"
-          "left: ![](assets/logo.svg)\nright: # My Site",
+      cells: "left: ![](assets/logo.svg)\nright: # My Site",
       settings: [
         ElementSetting(
           key: "height1",
@@ -540,10 +575,7 @@ const ElementSpec headerSpec = ElementSpec(
     RowSpec(
       tag: "row",
       number: 2,
-      cells: "<!-- The same again: one thing, or left: and right:. A bar of\n"
-          "     links is the usual second row.\n"
-          "     --include[navigation]-- -->\n"
-          "--include[navigation]--",
+      cells: "--include[navigation]--",
       settings: [
         ElementSetting(
           key: "height2",
@@ -771,6 +803,10 @@ const ElementSpec navSpec = ElementSpec(
   tag: "nav",
   shape: ElementShape.valueBlock,
   body: "[Home](index.md)\n[About](about.md)\n[Store](store)",
+  about: "Navigation bar: one link a line, between the markers. Link a page "
+      "with [About](about.md) and your store with [Store](store). What is "
+      "not set here comes from the reader's Markdown theme, which is where "
+      "the colours live. Delete this note.",
   tip: "Navigation bar: one link a line, between the markers. Link a page "
       "with [About](about.md) and your store with [Store](store). What is "
       "not set here comes from the reader's Markdown theme, which is where "
@@ -866,6 +902,11 @@ const ElementSpec fragmentSpec = ElementSpec(
   name: "Shared fragment",
   tag: "include",
   shape: ElementShape.single,
+  about: "Shared fragment: a piece several pages share -- a banner, a "
+      "navigation bar, a footer. Write it once in Writing > My Posts > "
+      "Fragments, then name it here and it appears in its place. It is "
+      "filled in before the page is sent, so a reader gets one page. "
+      "Delete this note.",
   tip: "Shared fragment: a piece several pages share -- a banner, a "
       "navigation bar, a footer. Write it once in Writing > My Posts > "
       "Fragments, then name it here and it appears in its place. It is "

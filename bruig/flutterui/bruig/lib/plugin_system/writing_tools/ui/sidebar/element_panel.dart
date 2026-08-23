@@ -296,7 +296,7 @@ class _ElementPanelState extends State<ElementPanel> {
           children: [
             // What the block is for, before what it can be told. It is the
             // same note that goes in beside it.
-            Txt.S(spec.tip.replaceAll(" Delete this note.", ""),
+            Txt.S(spec.about.replaceAll(" Delete this note.", ""),
                 color: TextColor.onSurfaceVariant),
             const SizedBox(height: 10),
             // Grouped where a block has more settings than a list can
