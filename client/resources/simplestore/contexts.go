@@ -11,11 +11,6 @@ type indexContext struct {
 	IsAdmin  bool
 }
 
-type addToCartContext struct {
-	Product *Product
-	Cart    *Cart
-}
-
 type orderContext struct {
 	Order
 }

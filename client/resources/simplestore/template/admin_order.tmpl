@@ -6,7 +6,7 @@ By    : {{ .UserNick }} - {{ .Order.User }}
 Status: {{ .Order.Status }}  
 
 ## Cart
-{{- template "cart-listing.tmpl" .Order.Cart }}
+{{- template "cart-listing-plain.tmpl" .Order.Cart }}
 
 Cart Total   : ${{ .Order.Cart.Total }}  
 Shipping     : ${{ .Order.ShipCharge }}  

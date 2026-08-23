@@ -101,3 +101,17 @@ func TestSettingAQuantityOnSomethingNotInTheCartAddsNothing(t *testing.T) {
 		t.Fatalf("got %v", cartSKUs(cart))
 	}
 }
+
+// TestAddingToTheCartAnswersWithTheCart covers the page that is no longer
+// there.
+//
+// Every page of this shop is a round trip to somebody else's client, which
+// may be slow or off. "Adding To Cart" cost a whole one to say four words
+// and then show the cart underneath anyway, so a buyer waited twice to reach
+// the same place.
+func TestAddingToTheCartAnswersWithTheCart(t *testing.T) {
+	if _, err := storeTemplate.ReadFile("template/addtocart.tmpl"); err == nil {
+		t.Error("the interstitial is back: adding to a cart should answer " +
+			"with the cart, which is what the buyer asks next anyway")
+	}
+}

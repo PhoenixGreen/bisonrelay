@@ -14,7 +14,7 @@ This amount holds for the next 60 minutes, after which the rate is worked
 out again.
 
 --panel[padding=16, border=1, color=outline, radius=8]--
-{{template "cart-listing.tmpl" .Cart}}
+{{template "cart-listing-plain.tmpl" .Cart}}
 
 Items: {{ money .Cart.Total }}
 Shipping: {{ money .ShipCharge }}

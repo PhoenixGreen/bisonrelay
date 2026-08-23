@@ -1,8 +1,13 @@
-# List of Orders
+# Orders
 
-[back to admin index](/admin)
+{{if eq (len .Orders) 0 -}}
+Nobody has ordered anything yet.
+{{- else -}}
+{{range .Orders}}
+--panel[padding=12, margin=0 0 8 0, border=1, color=outline, radius=8]--
+**[Order #{{.ID}}](/admin/order/{{.User}}/{{.ID}})** — {{.Status}}
 
-{{ range .Orders }}
-  - [{{ .User.ShortLogID }}/{{ .ID }}](/admin/order/{{.User}}/{{.ID}}) - {{ .PlacedTS.Format "2006-01-02 15:04:05" }} - {{ .UserNick }}
-{{- end }}
-
+{{ if .UserNick }}{{ .UserNick }}{{ else }}{{ .User.ShortLogID }}{{ end }} · {{ .PlacedTS.Format "2 Jan 2006, 15:04" }}
+--/panel--
+{{- end}}
+{{- end}}

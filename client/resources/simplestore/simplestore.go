@@ -38,7 +38,6 @@ const (
 	pendingInvoicesDir  = "pendinginvoices"
 	indexTmplFile       = "index.tmpl"
 	prodTmplFile        = "product.tmpl"
-	addToCartTmplFile   = "addtocart.tmpl"
 	cartTmplFile        = "cart.tmpl"
 	orderTmplFile       = "order.tmpl"
 	ordersTmplFile      = "orders.tmpl"

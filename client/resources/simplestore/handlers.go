@@ -132,20 +132,18 @@ func (s *Store) handleAddToCart(ctx context.Context, uid clientintf.UserID,
 		return nil, err
 	}
 
-	tmplCtx := addToCartContext{
-		Product: prod,
-		Cart:    &cart,
-	}
-	w := &bytes.Buffer{}
-	err = s.tmpl.ExecuteTemplate(w, addToCartTmplFile, tmplCtx)
-	if err != nil {
-		return nil, fmt.Errorf("unable to execute product template: %v", err)
-	}
-
-	return &rpc.RMFetchResourceReply{
-		Data:   w.Bytes(),
-		Status: rpc.ResourceStatusOk,
-	}, nil
+	// Straight to the cart, rather than a page saying it worked.
+	//
+	// Every page of this shop is a round trip to somebody else's client,
+	// which may be slow or off. "Adding To Cart" cost a whole one to say
+	// four words and then show the cart underneath anyway -- so the buyer
+	// waited twice to reach the same place, and the first wait bought them
+	// nothing they could not see from the second.
+	//
+	// The cart is also the honest answer to what they just did: it says
+	// what is in it now, which is the question somebody has after adding
+	// something to it.
+	return s.handleCart(ctx, uid, request)
 }
 
 func (s *Store) handleClearCart(ctx context.Context, uid clientintf.UserID) (*rpc.RMFetchResourceReply, error) {

@@ -1,38 +1,41 @@
-Order ID: {{.ID}}
-Order Date: {{.PlacedTS}}
-Order Status: {{.Status}}
-Exchange Rate: {{.ExchangeRate}}
+# Order #{{.ID}}
 
-{{if .ShipAddr }}
-Shipping Address:
+{{.Status}} · placed {{ .PlacedTS.Format "2 Jan 2006, 15:04" }}
+
+--panel[padding=12, border=1, color=outline, radius=8]--
+{{template "cart-listing-plain.tmpl" .Cart}}
+
+**Total: {{ money .Total }}**
+--/panel--
+
+{{if .ShipAddr -}}
+## Shipping to
+
 {{.ShipAddr.Name}}
-{{.ShipAddr.Address}}
-  {{if .ShipAddr.Address2 ne "" }}
+{{.ShipAddr.Address1}}
+{{- if .ShipAddr.Address2}}
 {{.ShipAddr.Address2}}
-  {{end}}
+{{- end}}
 {{.ShipAddr.City}}, {{.ShipAddr.State}}, {{.ShipAddr.PostalCode}}
-  {{if .ShipAddr.Phone ne "" }}
+{{- if .ShipAddr.Phone}}
 {{.ShipAddr.Phone}}
-  {{end}}
-{{end}}
-
-{{range .Cart.Items}}
-  - {{.Product.SKU}} - {{.Product.Title}} - {{.Quantity}} units - {{.Product.Price}}/unit
 {{- end}}
 
-{{range .Comments}}
-{{if .FromAdmin}}
-<- {{.Timestamp}} - {{.Comment}}
-{{else}}
--> {{.Timestamp}} - {{.Comment}}
-{{end}}
-{{end}}
+{{end -}}
+## Messages
 
-## Add Comment
+{{if eq (len .Comments) 0 -}}
+Nothing has been said about this order.
+{{- else -}}
+{{range .Comments}}
+**{{ if .FromAdmin }}The seller{{ else }}You{{ end }}** · {{ .Timestamp.Format "2 Jan, 15:04" }}
+
+{{ .Comment }}
+{{end}}
+{{- end}}
+
 --form--
 type="action" value="/orderaddcomment/{{.ID}}"
-type="txtinput" label="New comment" name="comment" value=""
-type="submit" label="Add Comment"
+type="txtinput" label="Ask the seller something" name="comment" value=""
+type="submit" label="Send"
 --/form--
-
-[Back to Orders](/orders)

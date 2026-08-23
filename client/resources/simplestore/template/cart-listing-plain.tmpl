@@ -1,0 +1,3 @@
+{{range .Items}}
+  - **{{.Product.Title}}** — {{.Quantity}} × {{ money .Product.Price }} = {{ money .Total }}
+{{- end}}

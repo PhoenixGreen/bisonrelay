@@ -1,11 +1,13 @@
-# Order Listing
+# Your orders
 
-{{if eq (len .Orders) 0 }}
-User has not placed any orders!
-{{end}}
-
+{{if eq (len .Orders) 0 -}}
+You have not ordered anything yet.
+{{- else -}}
 {{range .Orders}}
-  -  {{.PlacedTS}} - [{{.ID}}](/order/{{.ID}}) - {{.Status}}
-{{end}}
+--panel[padding=12, margin=0 0 8 0, border=1, color=outline, radius=8]--
+**[Order #{{.ID}}](/order/{{.ID}})** — {{.Status}}
 
-[Back to the shop]({{storeIndex}})
+{{ .PlacedTS.Format "2 Jan 2006" }} · {{ len .Cart.Items }} line{{ if ne (len .Cart.Items) 1 }}s{{ end }} · {{ money .Total }}
+--/panel--
+{{- end}}
+{{- end}}
