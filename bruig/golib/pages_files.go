@@ -7,6 +7,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/companyzero/bisonrelay/client/resources"
 )
 
 // localPage is one markdown file in the hosted pages directory.
@@ -24,7 +26,11 @@ const indexPageName = "index.md"
 // partialsDir and assetsDir are the two subdirectories of a site: the
 // fragments its pages share, and the pictures they show. Kept in step with
 // resources.PartialsDir and resources.AssetsDir, which are what serve them.
-const partialsDir = "partials"
+const partialsDir = resources.PartialsDir
+
+// oldPartialsDir is what it used to be called. A site made before the rename
+// has one, and renameOldPartialsDir moves it.
+const oldPartialsDir = resources.OldPartialsDir
 const assetsDir = "assets"
 
 // assetExts are the kinds of file a page may show.
@@ -297,4 +303,38 @@ func addLocalAssetBytes(root, name string, data []byte) (string, error) {
 		return "", err
 	}
 	return assetsDir + "/" + filepath.Base(fname), nil
+}
+
+// renameOldPartialsDir moves a served site made before these were called
+// fragments.
+//
+// The library folder was renamed first, on the reasoning that the served
+// directory is never shown to anybody. It is: it sits in the same window as
+// the library, one folder along, and the two disagreeing is exactly the sort
+// of thing somebody finds while looking for a file and cannot explain.
+//
+// Careful in the same way the library's rename is, because this is a
+// writer's own work and nothing else has a copy of it:
+//
+//   - nothing to move, nothing happens;
+//   - both present, nothing happens either. That is a site in a state this
+//     cannot reason about, and merging could overwrite a fragment with
+//     another of the same name, so both are left where they can be seen.
+//   - the move is a rename within one directory, so it either happened or
+//     it did not.
+//
+// A failure is returned rather than swallowed: unlike the library, this
+// decides what visitors are served. A site serving half its fragments from a
+// directory nothing looks in would answer 404 for every page that includes
+// one, and doing that quietly is worse than not starting.
+func renameOldPartialsDir(root string) error {
+	old := filepath.Join(root, oldPartialsDir)
+	if _, err := os.Stat(old); err != nil {
+		return nil
+	}
+	wanted := filepath.Join(root, partialsDir)
+	if _, err := os.Stat(wanted); err == nil {
+		return nil
+	}
+	return os.Rename(old, wanted)
 }

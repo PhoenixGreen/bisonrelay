@@ -145,7 +145,7 @@ func TestAPictureIsServedAndNotBundled(t *testing.T) {
 func TestFragmentsArriveInThePage(t *testing.T) {
 	root := t.TempDir()
 	writePageFile(t, root, "index.md", "--include[nav]--\n# Home")
-	writePageFile(t, root, "partials/nav.md", "[Home](index.md)")
+	writePageFile(t, root, PartialsDir+"/nav.md", "[Home](index.md)")
 
 	reply := fulfillPage(t, NewPagesResource(root, nil), []string{"index.md"}, nil)
 	want := "[Home](index.md)\n# Home"
@@ -157,8 +157,8 @@ func TestFragmentsArriveInThePage(t *testing.T) {
 func TestAFragmentInsideAFragmentArrivesToo(t *testing.T) {
 	root := t.TempDir()
 	writePageFile(t, root, "index.md", "--include[header]--")
-	writePageFile(t, root, "partials/header.md", "# Site\n--include[nav]--")
-	writePageFile(t, root, "partials/nav.md", "[Home](index.md)")
+	writePageFile(t, root, PartialsDir+"/header.md", "# Site\n--include[nav]--")
+	writePageFile(t, root, PartialsDir+"/nav.md", "[Home](index.md)")
 
 	reply := fulfillPage(t, NewPagesResource(root, nil), []string{"index.md"}, nil)
 	want := "# Site\n[Home](index.md)"
@@ -170,7 +170,7 @@ func TestAFragmentInsideAFragmentArrivesToo(t *testing.T) {
 func TestAFragmentUsedTwiceIsFilledInTwice(t *testing.T) {
 	root := t.TempDir()
 	writePageFile(t, root, "index.md", "--include[r]--\nmiddle\n--include[r]--")
-	writePageFile(t, root, "partials/r.md", "---")
+	writePageFile(t, root, PartialsDir+"/r.md", "---")
 
 	reply := fulfillPage(t, NewPagesResource(root, nil), []string{"index.md"}, nil)
 	if n := strings.Count(string(reply.Data), "---"); n != 2 {
@@ -181,7 +181,7 @@ func TestAFragmentUsedTwiceIsFilledInTwice(t *testing.T) {
 func TestAFragmentThatReachesItselfIsLeftAsWritten(t *testing.T) {
 	root := t.TempDir()
 	writePageFile(t, root, "index.md", "--include[loop]--")
-	writePageFile(t, root, "partials/loop.md", "before --include[loop]-- after")
+	writePageFile(t, root, PartialsDir+"/loop.md", "before --include[loop]-- after")
 
 	reply := fulfillPage(t, NewPagesResource(root, nil), []string{"index.md"}, nil)
 	got := string(reply.Data)
@@ -196,8 +196,8 @@ func TestAFragmentThatReachesItselfIsLeftAsWritten(t *testing.T) {
 func TestTwoFragmentsThatReachEachOtherDoNotHang(t *testing.T) {
 	root := t.TempDir()
 	writePageFile(t, root, "index.md", "--include[a]--")
-	writePageFile(t, root, "partials/a.md", "A --include[b]--")
-	writePageFile(t, root, "partials/b.md", "B --include[a]--")
+	writePageFile(t, root, PartialsDir+"/a.md", "A --include[b]--")
+	writePageFile(t, root, PartialsDir+"/b.md", "B --include[a]--")
 
 	reply := fulfillPage(t, NewPagesResource(root, nil), []string{"index.md"}, nil)
 	got := string(reply.Data)
@@ -211,7 +211,7 @@ func TestAPageCannotPullInMoreThanTheLimit(t *testing.T) {
 	var page string
 	for i := 0; i < 200; i++ {
 		page += fmt.Sprintf("--include[frag%d]--", i)
-		writePageFile(t, root, fmt.Sprintf("partials/frag%d.md", i), "x")
+		writePageFile(t, root, fmt.Sprintf("%s/frag%d.md", PartialsDir, i), "x")
 	}
 	writePageFile(t, root, "index.md", page)
 
@@ -226,7 +226,7 @@ func TestAPageCannotPullInMoreThanTheLimit(t *testing.T) {
 func TestAPageTooLargeOnceFilledInIsSentAsWritten(t *testing.T) {
 	root := t.TempDir()
 	writePageFile(t, root, "index.md", "--include[big]--")
-	writePageFile(t, root, "partials/big.md", strings.Repeat("x", MaxExpandedBytes+1))
+	writePageFile(t, root, PartialsDir+"/big.md", strings.Repeat("x", MaxExpandedBytes+1))
 
 	reply := fulfillPage(t, NewPagesResource(root, nil), []string{"index.md"}, nil)
 	// Visibly wrong in a way that says which page and which fragment, rather

@@ -188,22 +188,22 @@ func TestDefaultPathsFollowTheApp(t *testing.T) {
 func TestPartialsLiveInTheirOwnDirectory(t *testing.T) {
 	root := t.TempDir()
 
-	fname, err := pageFileName(root, "partials/nav.md")
+	fname, err := pageFileName(root, partialsDir+"/nav.md")
 	if err != nil {
 		t.Fatalf("a fragment is a valid name: %v", err)
 	}
-	if want := filepath.Join(root, "partials", "nav.md"); fname != want {
+	if want := filepath.Join(root, partialsDir, "nav.md"); fname != want {
 		t.Fatalf("got %q, want %q", fname, want)
 	}
 
 	// Everything else is still refused.
 	for _, bad := range []string{
 		"../escape.md",
-		"partials/../escape.md",
-		"partials/sub/deep.md",
+		partialsDir + "/../escape.md",
+		partialsDir + "/sub/deep.md",
 		"other/nav.md",
-		"partials/nav.txt",
-		"partials/.hidden.md",
+		partialsDir + "/nav.txt",
+		partialsDir + "/.hidden.md",
 	} {
 		if _, err := pageFileName(root, bad); err == nil {
 			t.Fatalf("%q should not be a valid page name", bad)
@@ -213,7 +213,7 @@ func TestPartialsLiveInTheirOwnDirectory(t *testing.T) {
 
 func TestListIncludesPartialsByPath(t *testing.T) {
 	root := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(root, "partials"), 0o700); err != nil {
+	if err := os.MkdirAll(filepath.Join(root, partialsDir), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	write := func(rel, body string) {
@@ -222,7 +222,7 @@ func TestListIncludesPartialsByPath(t *testing.T) {
 		}
 	}
 	write("index.md", "# Home")
-	write(filepath.Join("partials", "nav.md"), "[Home](index.md)")
+	write(filepath.Join(partialsDir, "nav.md"), "[Home](index.md)")
 
 	pages, err := listLocalPages(root)
 	if err != nil {
@@ -240,7 +240,7 @@ func TestListIncludesPartialsByPath(t *testing.T) {
 	}
 	found := false
 	for _, n := range names {
-		if n == "partials/nav.md" {
+		if n == partialsDir+"/nav.md" {
 			found = true
 		}
 	}
@@ -257,11 +257,11 @@ func TestListIncludesPartialsByPath(t *testing.T) {
 func TestWriteCreatesThePartialsDirectory(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "pages")
 
-	if err := writeLocalPage(root, "partials/nav.md", "[Home](index.md)"); err != nil {
+	if err := writeLocalPage(root, partialsDir+"/nav.md", "[Home](index.md)"); err != nil {
 		t.Fatalf("writing the first fragment: %v", err)
 	}
 
-	got, err := readLocalPage(root, "partials/nav.md")
+	got, err := readLocalPage(root, partialsDir+"/nav.md")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -271,7 +271,7 @@ func TestWriteCreatesThePartialsDirectory(t *testing.T) {
 
 	// And the temp file it was written through is not left behind next to
 	// it, which a rename across directories would have done.
-	entries, err := os.ReadDir(filepath.Join(root, "partials"))
+	entries, err := os.ReadDir(filepath.Join(root, partialsDir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -283,7 +283,7 @@ func TestWriteCreatesThePartialsDirectory(t *testing.T) {
 		t.Fatalf("partials/ holds %v", names)
 	}
 
-	if err := deleteLocalPage(root, "partials/nav.md"); err != nil {
+	if err := deleteLocalPage(root, partialsDir+"/nav.md"); err != nil {
 		t.Fatalf("deleting it: %v", err)
 	}
 }

@@ -230,6 +230,10 @@ func (ph *pagesHost) apply(cfg pagesHostConfig) error {
 			ph.stopStoreLocked()
 			return fmt.Errorf("unable to create pages dir: %v", err)
 		}
+		if err := renameOldPartialsDir(cfg.PagesPath); err != nil {
+			ph.stopStoreLocked()
+			return fmt.Errorf("unable to rename the partials dir: %v", err)
+		}
 		// PagesResource rather than a plain filesystem one: it serves
 		// the same files, and bundles the shared fragments a page
 		// refers to so they cross the wire once rather than once per

@@ -120,10 +120,14 @@ void main() {
   group('shared fragments', () {
     test('publish into the one subdirectory a site has', () {
       expect(fileNameFor(partialsFolderName, "Navigation"),
-          "partials/navigation.md");
+          "$partialsSubdir/navigation.md");
       // Which is what --include[navigation]-- resolves to, or the page
       // would refer to a file nothing serves.
-      expect(partialFileNameFor("Navigation"), "partials/navigation.md");
+      expect(partialFileNameFor("Navigation"), "$partialsSubdir/navigation.md");
+      // Named through the constant, and the constant pinned once: two
+      // spellings of one directory is a page pointing at a file nothing
+      // serves.
+      expect(partialsSubdir, "fragments");
     });
 
     test('a page still publishes to the root', () {

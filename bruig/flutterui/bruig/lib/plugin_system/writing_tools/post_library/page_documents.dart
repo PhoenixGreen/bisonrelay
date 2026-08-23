@@ -107,7 +107,7 @@ String partialFileNameFor(String documentName) =>
 
 /// partialsSubdir is where fragments are served from. Kept in step with
 /// resources.PartialsDir on the Go side.
-const String partialsSubdir = "partials";
+const String partialsSubdir = "fragments";
 
 /// _embedReference matches a picture a document refers to rather than
 /// carries. Must match what the composer writes -- see EmbedStore.

@@ -1,4 +1,5 @@
 import 'package:bruig/models/resources.dart';
+import 'package:bruig/plugin_system/writing_tools/post_library/page_documents.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 // page_partials_test.dart covers the reader's remaining half of shared
@@ -29,7 +30,10 @@ void main() {
     });
 
     test('the path matches what the server serves them from', () {
-      expect(partialPath("nav"), ["partials", "nav.md"]);
+      // The name the serving side actually uses, not a copy of it: two
+      // spellings of one directory is what this test exists to stop.
+      expect(partialPath("nav"), [partialsSubdir, "nav.md"]);
+      expect(partialsSubdir, "fragments");
     });
 
     test('is capped, as the serving side caps it', () {

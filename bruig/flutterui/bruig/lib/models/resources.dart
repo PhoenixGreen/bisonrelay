@@ -40,7 +40,7 @@ List<String> partialNames(String page) {
 }
 
 /// partialPath is where a fragment lives, as a request path.
-List<String> partialPath(String name) => ["partials", "$name.md"];
+List<String> partialPath(String name) => ["fragments", "$name.md"];
 
 /// maxPartialDepth is how far a fragment may reach through others.
 ///

@@ -14,7 +14,11 @@ import (
 
 // PartialsDir is where a site keeps the fragments its pages share, and
 // AssetsDir the pictures they show.
-const PartialsDir = "partials"
+const PartialsDir = "fragments"
+
+// OldPartialsDir is what that directory used to be called, and is only ever
+// used to find one left over and move it. See golib's renameOldPartialsDir.
+const OldPartialsDir = "partials"
 const AssetsDir = "assets"
 
 // MaxPartialsPerPage bounds how many fragments one page may reach through
