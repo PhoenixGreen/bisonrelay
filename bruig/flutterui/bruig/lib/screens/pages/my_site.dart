@@ -475,7 +475,7 @@ class _SiteOverview extends StatelessWidget {
     }
 
     return ListView(padding: const EdgeInsets.all(16), children: [
-      const Txt.L("My Site"),
+      const Txt.L("Site Settings"),
       const SizedBox(height: 4),
       const Txt.S(
           "Your site is served from this client, to people you are already "
@@ -614,7 +614,7 @@ class _ManagedElsewhere extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Txt.L("My Site"),
+        const Txt.L("Site Settings"),
         const SizedBox(height: 8),
         Txt.M("Hosting is set to \"$mode\" in the config file."),
         const SizedBox(height: 6),

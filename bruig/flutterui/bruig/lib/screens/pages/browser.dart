@@ -186,7 +186,10 @@ class PageTab {
 class PageTabStrip extends StatelessWidget {
   final List<PageTab> tabs;
 
-  const PageTabStrip({super.key, required this.tabs});
+  /// onReorder moves the tab at one position to another, after a drag.
+  final void Function(int oldIndex, int newIndex)? onReorder;
+
+  const PageTabStrip({super.key, required this.tabs, this.onReorder});
 
   @override
   Widget build(BuildContext context) {
@@ -197,18 +200,54 @@ class PageTabStrip extends StatelessWidget {
       // No new-tab button of its own: Visit is in the bar below, always,
       // and that is where another site is started from. Two controls for
       // one destination is one to work out rather than one to use.
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        itemCount: tabs.length,
-        itemBuilder: (context, i) => _Tab(tabs[i]),
-      ),
+      child: onReorder == null
+          ? ListView.builder(
+              scrollDirection: Axis.horizontal,
+              itemCount: tabs.length,
+              itemBuilder: (context, i) => _Tab(tabs[i]),
+            )
+          : ReorderableListView.builder(
+              scrollDirection: Axis.horizontal,
+              // Its own handles, because the whole tab is the handle: there
+              // is nowhere on a tab this size to put a grip that would not
+              // be in the way of the label or the close button.
+              buildDefaultDragHandles: false,
+              itemCount: tabs.length,
+              // onReorderItem rather than onReorder: it hands over the
+              // index the tab actually lands at, having already accounted
+              // for the one being lifted out. onReorder does not, and the
+              // adjustment for it is the off-by-one every reorder list gets
+              // wrong at least once.
+              onReorderItem: onReorder!,
+              // Nothing lifted off the strip: the default is a Material
+              // shadow sized to the list's cross axis, which on a
+              // horizontal strip 34 high is a slab the width of the tab and
+              // the height of nothing. The tab itself is enough to see.
+              proxyDecorator: (child, index, animation) => child,
+              itemBuilder: (context, i) => ReorderableDelayedDragStartListener(
+                key: ValueKey("${tabs[i].label}#$i"),
+                index: i,
+                // Delayed, so a tap still opens the tab. An immediate drag
+                // recogniser takes the pointer on the way down and every
+                // click became a very short drag that opened nothing.
+                child: _Tab(tabs[i], reorderable: true),
+              ),
+            ),
     );
   }
 }
 
 class _Tab extends StatelessWidget {
   final PageTab tab;
-  const _Tab(this.tab);
+
+  /// reorderable drops the close button's tooltip.
+  ///
+  /// A tooltip is an overlay, and an overlay inside a row being dragged is
+  /// the thing that brings the app down: the row is taken out of the tree
+  /// mid-drag and the tooltip it owns outlives it. The label is right there
+  /// beside the button, so what it says is on screen anyway.
+  final bool reorderable;
+  const _Tab(this.tab, {this.reorderable = false});
 
   @override
   Widget build(BuildContext context) {
@@ -243,7 +282,7 @@ class _Tab extends StatelessWidget {
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           IconButton(
             icon: const Icon(Icons.close, size: 13),
-            tooltip: "Close ${tab.label}",
+            tooltip: reorderable ? null : "Close ${tab.label}",
             onPressed: tab.onClose,
             visualDensity: VisualDensity.compact,
             padding: EdgeInsets.zero,
@@ -463,7 +502,8 @@ class PageBrowserBar extends StatelessWidget {
                     ? Txt.S(sectionLabel,
                         overflow: TextOverflow.ellipsis,
                         color: TextColor.onSurfaceVariant)
-                    : Txt.S("$nick / $path", overflow: TextOverflow.ellipsis),
+                    : Txt.S(pageAddress(nick, path),
+                        overflow: TextOverflow.ellipsis),
               ),
             ]),
           ),
@@ -493,6 +533,45 @@ class PageBrowserBar extends StatelessWidget {
       ]),
     );
   }
+}
+
+/// reorderTabs keeps the order a reader put their tabs in.
+///
+/// [remembered] is the order last seen, [open] what is open now. Tabs the
+/// reader has arranged stay where they were put; anything newly opened goes
+/// on the end, which is where a new tab appears everywhere else; anything
+/// closed drops out.
+///
+/// Kept as an order rather than as positions on the tabs themselves because
+/// a tab is either a section of this client or a fetched page, and neither
+/// of those has anywhere to keep one.
+List<Object> reorderTabs(List<Object> remembered, List<Object> open) {
+  var still = {for (var t in open) t};
+  var out = [
+    for (var t in remembered)
+      if (still.contains(t)) t
+  ];
+  var have = {for (var t in out) t};
+  for (var t in open) {
+    if (!have.contains(t)) out.add(t);
+  }
+  return out;
+}
+
+/// pageAddress is what the bar shows for a page: whose site, then the path
+/// inside it.
+///
+/// Written as an address rather than as a sentence. A nick is somebody's
+/// name and may well have spaces in it, and "Your site / about.md" read as
+/// three words and a file rather than as somewhere you are -- so the spaces
+/// inside the name become underscores and the separator loses the ones round
+/// it, giving your_site/about.md.
+///
+/// Lower case for the same reason: an address is not a name, and every
+/// address anybody has ever typed is lower case.
+String pageAddress(String nick, String path) {
+  var host = nick.trim().toLowerCase().replaceAll(RegExp(r'\s+'), "_");
+  return path.isEmpty ? host : "$host/$path";
 }
 
 /// nextTabAfterClosing is which tab takes the place of the one just shut, or

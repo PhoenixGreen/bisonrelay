@@ -12,7 +12,11 @@ const int pagesTabStore = 2;
 // pagesTabLabels are the tab names by index. Kept beside the items below so
 // the heading can name the open tab without needing PagesModel -- the
 // heading is built in places that have no running client.
-const List<String> pagesTabLabels = ["Visit", "My Site", "Store"];
+// "Site Settings" rather than "My Site": with a preview of your own site
+// open beside it, two tabs called some arrangement of "site" is one tab too
+// many to tell apart. This one is where the site is set up; the other is the
+// site itself.
+const List<String> pagesTabLabels = ["Visit", "Site Settings", "Store"];
 
 // pagesBarItems returns the Pages submenu's tabs, for use with
 // SecondarySideMenuLayout (see containers.dart).

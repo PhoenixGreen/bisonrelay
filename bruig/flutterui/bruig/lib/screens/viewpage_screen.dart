@@ -33,6 +33,12 @@ class ViewPagesScreenTitle extends StatelessWidget {
   }
 }
 
+/// _neverChanges stands in for a session on the sections that have none.
+///
+/// ListenableBuilder wants something to listen to either way, and a bar on
+/// the Store has no page behind it to change.
+final Listenable _neverChanges = ChangeNotifier();
+
 class ViewPageScreen extends StatefulWidget {
   static String routeName = "/pages";
   final ResourcesModel resources;
@@ -136,6 +142,10 @@ class _ViewPageScreenState extends State<ViewPageScreen> {
   /// fetched document -- and that difference used to reach the reader:
   /// closing a section dropped the whole area back to Visit while its
   /// neighbours sat there untouched, and closing a page did not.
+  /// _tabOrder is the order the reader has put their tabs in, which is not
+  /// the order they were opened once one has been dragged.
+  List<Object> _tabOrder = const [];
+
   List<Object> get openTabs => [
         for (var i in const [pagesTabMySite, pagesTabStore])
           if (pages.openSections.contains(i)) i,
@@ -194,7 +204,6 @@ class _ViewPageScreenState extends State<ViewPageScreen> {
           var browsing = pagesModel.browsing && session != null;
           var tab = pagesModel.tab.clamp(0, pagesTabLabels.length - 1);
 
-          var open = resources.sessions;
           var items = pagesBarItems(onItemChanged, tab);
           var sidebarOpen = pagesModel.sidebarOpen;
 
@@ -227,56 +236,72 @@ class _ViewPageScreenState extends State<ViewPageScreen> {
 
           // Sections open as tabs too, beside the pages -- so what is open
           // is visible, and moving between a page and the store is one
-          // click rather than a trip through the sidebar. Kept in the tab
-          // order rather than the order they were opened, so they do not
-          // swap places under the pointer.
-          var sectionTabs = [
-            for (var i in const [pagesTabMySite, pagesTabStore])
-              if (pagesModel.openSections.contains(i))
-                PageTab(
-                  label: pagesTabLabels[i],
-                  icon: sectionIcon(i),
-                  current: !browsing && tab == i,
-                  onOpen: () => onItemChanged(i),
-                  onClose: () => closeTab(i),
-                ),
-          ];
-
+          // click rather than a trip through the sidebar.
+          //
+          // In the reader's order, not the order they happened to open in.
+          _tabOrder = reorderTabs(_tabOrder, openTabs);
           var tabs = [
-            ...sectionTabs,
-            for (var sess in open)
-              PageTab(
-                label: sessionLabel(sess),
-                current: browsing && identical(sess, session),
-                onOpen: () => openSession(sess),
-                onClose: () => closeTab(sess),
-              ),
+            for (var t in _tabOrder)
+              if (t is int)
+                PageTab(
+                  label: pagesTabLabels[t],
+                  icon: sectionIcon(t),
+                  current: !browsing && tab == t,
+                  onOpen: () => onItemChanged(t),
+                  onClose: () => closeTab(t),
+                )
+              else
+                PageTab(
+                  label: sessionLabel(t as PagesSession),
+                  current: browsing && identical(t, session),
+                  onOpen: () => openSession(t),
+                  onClose: () => closeTab(t),
+                ),
           ];
 
           var content = Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               if (tabs.isNotEmpty) ...[
-                PageTabStrip(tabs: tabs),
+                PageTabStrip(
+                  tabs: tabs,
+                  onReorder: (oldIndex, newIndex) => setState(() {
+                    var moved = [..._tabOrder];
+                    moved.insert(newIndex, moved.removeAt(oldIndex));
+                    _tabOrder = moved;
+                  }),
+                ),
                 const Divider(height: 1),
               ],
-              PageBrowserBar(
-                session: browsing ? session : null,
-                sectionLabel: pagesTabLabels[tab],
-                nick: browsing ? sessionNick(session) : "",
-                path: browsing ? sessionPath(session) : "",
-                loading: browsing && session.loading,
-                sidebarOpen: sidebarOpen,
-                onToggleSidebar: inDrawer ? null : toggleSidebar,
-                // The sidebar is the usual way to these two, and it can be
-                // shut -- so the bar carries them as well, or hiding the
-                // sidebar would put them out of reach entirely.
-                section: browsing ? -1 : tab,
-                onSection: (i) => onItemChanged(i),
-                onBack: () => session?.goBack(),
-                onForward: () => session?.goForward(),
-                onReload: reload,
-                onHome: goHome,
+              // Listening to the session, not only to the models around it.
+              // Going back and forward moves a cursor inside the session and
+              // tells the session; ResourcesModel hears nothing, and this
+              // bar was built under a listener on ResourcesModel alone. So
+              // the page changed underneath a bar that did not: the address
+              // went on naming the page you had just left, Forward stayed
+              // greyed out because it was still reading the answer from
+              // before you went back, and the spinner was whatever it had
+              // last been told.
+              ListenableBuilder(
+                listenable: session ?? _neverChanges,
+                builder: (context, _) => PageBrowserBar(
+                  session: browsing ? session : null,
+                  sectionLabel: pagesTabLabels[tab],
+                  nick: browsing ? sessionNick(session) : "",
+                  path: browsing ? sessionPath(session) : "",
+                  loading: browsing && session.loading,
+                  sidebarOpen: sidebarOpen,
+                  onToggleSidebar: inDrawer ? null : toggleSidebar,
+                  // The sidebar is the usual way to these two, and it can be
+                  // shut -- so the bar carries them as well, or hiding the
+                  // sidebar would put them out of reach entirely.
+                  section: browsing ? -1 : tab,
+                  onSection: (i) => onItemChanged(i),
+                  onBack: () => session?.goBack(),
+                  onForward: () => session?.goForward(),
+                  onReload: reload,
+                  onHome: goHome,
+                ),
               ),
               const Divider(height: 1),
               Expanded(child: body),

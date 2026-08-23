@@ -30,7 +30,7 @@ void main() {
           home: Scaffold(
               body: PageBrowserBar(
         session: session,
-        sectionLabel: "My Site",
+        sectionLabel: "Site Settings",
         section: section,
         onSection: onSection,
         nick: "alice",
@@ -73,7 +73,7 @@ void main() {
 
     expect(find.byTooltip("Hide sidebar"), findsOneWidget);
     // The address area names the section instead of a page.
-    expect(find.text("My Site"), findsOneWidget);
+    expect(find.text("Site Settings"), findsOneWidget);
     expect(find.textContaining("alice"), findsNothing);
     expect(tester.takeException(), isNull);
   });
@@ -100,7 +100,7 @@ void main() {
     await pumpBar(tester,
         sidebarOpen: false, withPage: false, onSection: went.add);
 
-    for (var t in ["Visit", "My Site", "Store"]) {
+    for (var t in ["Visit", "Site Settings", "Store"]) {
       expect(find.byTooltip(t), findsOneWidget, reason: t);
     }
 
