@@ -5,6 +5,7 @@ import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/theming_system/model/markdown_style.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
+import 'package:bruig/plugin_system/writing_tools/ui/sidebar/element_specs.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:markdown/markdown.dart' as md;
 import 'package:provider/provider.dart';
@@ -79,6 +80,72 @@ void main() {
           await barIn(tester, "--nav[pills]--\n[Home](index.md)\n--/nav--");
       expect(plain.spacing, styled.spacing);
       expect(plain.alignment, styled.alignment);
+    });
+
+    testWidgets('an even margin in a banner row moves nothing, and says so',
+        (tester) async {
+      // A row holds its cell in the middle, so room added evenly on both
+      // sides makes the bar taller and leaves the middle where it was.
+      // Every margin the panel offered was even, so setting one appeared to
+      // do nothing at all.
+      Future<double> drawnAt(String margin) async {
+        var src = "--header--\n\n--row[44,left,flush]--\n"
+            "--nav[pills$margin]--\n[Home](index.md)\n--/nav--\n"
+            "--/row--\n\n--/header--";
+        await tester.pumpWidget(drawHost(MarkdownArea(src, false)));
+        await tester.pumpAndSettle();
+        return tester
+            .getTopLeft(
+                find.descendant(of: navBar(), matching: find.byType(Wrap)).first)
+            .dy;
+      }
+
+      var none = await drawnAt("");
+      expect(await drawnAt(", margin=16"), none,
+          reason: "even margins cannot move a centred bar");
+      expect(await drawnAt(", margin=16 0 0 0"), greaterThan(none),
+          reason: "one-sided room does move it");
+    });
+
+    testWidgets('every margin the panel offers can be seen', (tester) async {
+      // The point of the change: an option that does nothing when picked
+      // leaves the writer unable to tell a mistake from a bug.
+      var setting = navSpec.groups.first.settings
+          .firstWhere((s) => s.key == "margin");
+
+      Future<Offset> drawnAt(String value) async {
+        var attrs = value.isEmpty ? "" : ", margin=$value";
+        var src = "--header--\n\n--row[44,left,flush]--\n"
+            "--nav[pills$attrs]--\n[Home](index.md)\n--/nav--\n"
+            "--/row--\n\n--/header--";
+        await tester.pumpWidget(drawHost(MarkdownArea(src, false)));
+        await tester.pumpAndSettle();
+        return tester.getTopLeft(
+            find.descendant(of: navBar(), matching: find.byType(Wrap)).first);
+      }
+
+      var none = await drawnAt("");
+
+      // Checked in the direction each one promises, not merely that
+      // something changed. An even margin shifts the bar sideways as well,
+      // so "did the offset change at all" passes for an option whose whole
+      // claim is that it moves the bar down.
+      var expected = <String, Matcher Function(Offset)>{
+        "Push down": (o) => greaterThan(o.dy),
+        "Push up": (o) => lessThan(o.dy),
+        "Indent": (o) => greaterThan(o.dx),
+      };
+
+      for (var option in setting.options) {
+        if (option.value.isEmpty) continue;
+        var check = expected[option.label];
+        // "All round" says on its face that it does nothing in a row.
+        if (check == null) continue;
+        var got = await drawnAt(option.value);
+        expect(option.label == "Indent" ? got.dx : got.dy, check(none),
+            reason: "${option.label} (${option.value}) did not move the bar "
+                "the way it says it does");
+      }
     });
 
     testWidgets('margin moves the bar rather than growing it',

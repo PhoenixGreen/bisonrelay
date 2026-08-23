@@ -883,13 +883,18 @@ const ElementSpec navSpec = ElementSpec(
         ElementSetting(
           key: "margin",
           label: "Margin",
-          description: "Room around the whole bar. One number for all four "
-              "sides, or four for each side from the top going clockwise.",
+          description: "Room around the bar. One number for all four sides, "
+              "or four for each side from the top going clockwise.\n\n"
+              "In a banner row the row holds the bar in its middle, so room "
+              "added evenly on both sides moves nothing -- it makes the bar "
+              "taller and the middle is still the middle. Use one of the "
+              "one-sided answers to shift it.",
           options: [
             ElementOption("None", ""),
-            ElementOption("Tight", "8"),
-            ElementOption("Roomy", "16"),
-            ElementOption("Above and below", "12 0"),
+            ElementOption("Push down", "16 0 0 0", note: "Room above only"),
+            ElementOption("Push up", "0 0 16 0", note: "Room below only"),
+            ElementOption("Indent", "0 0 0 24", note: "Room at the left only"),
+            ElementOption("All round", "16", note: "Not in a banner row"),
           ],
         ),
       ],
