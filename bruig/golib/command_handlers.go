@@ -2370,6 +2370,14 @@ func handleClientCmd(cc *clientCtx, cmd *cmd) (interface{}, error) {
 		}
 		return listLocalAssets(root)
 
+	case CTAddStoreAsset:
+		var args addAssetArgs
+		if err := cmd.decode(&args); err != nil {
+			return nil, err
+		}
+		return addStoreAssetBytes(cc.pagesHost.config().StorePath,
+			args.Name, args.Data)
+
 	case CTListStoreProducts:
 		store, err := cc.pagesHost.runningStore()
 		if err != nil {

@@ -1,3 +1,4 @@
+import 'package:bruig/components/pages/add_picture_dialog.dart';
 import 'package:bruig/components/buttons.dart';
 import 'package:bruig/components/text.dart';
 import 'package:bruig/config.dart';
@@ -415,6 +416,26 @@ class _ProductEditorState extends State<_ProductEditor> {
     super.dispose();
   }
 
+  /// chooseImage adds a picture to the shop and records its name.
+  ///
+  /// The shop's own pictures, not the site's: a product's picture is served
+  /// by the store, and a shop hosted without a site would otherwise have
+  /// nowhere to keep one.
+  void chooseImage() async {
+    var snackbar = SnackBarModel.of(context);
+    try {
+      var path = await pickAndAddShopPicture(context, widget.pages);
+      if (path == null || !mounted) return;
+      // The name alone. A product records "guitar.jpg" and the template
+      // builds the rest, so the directory is named in one place.
+      var name = path.split("/").last;
+      setState(() =>
+          widget.pages.updateProductDraft(draft.copyWith(image: name)));
+    } catch (exception) {
+      snackbar.error("Unable to add the picture: $exception");
+    }
+  }
+
   void save() async {
     var snackbar = SnackBarModel.of(context);
     var price = double.tryParse(priceCtrl.text.trim());
@@ -441,6 +462,7 @@ class _ProductEditorState extends State<_ProductEditor> {
           sendFilename: sendCtrl.text.trim(),
           shipping: shipping,
           disabled: disabled,
+          image: draft.image,
         ),
         draft.original.file,
       );
@@ -467,6 +489,12 @@ class _ProductEditorState extends State<_ProductEditor> {
         controller: titleCtrl,
         decoration: const InputDecoration(
             isDense: true, labelText: "Title", border: OutlineInputBorder()),
+      ),
+      const SizedBox(height: 12),
+      _ProductPicture(
+        image: draft.image,
+        onChoose: chooseImage,
+        onClear: () => widget.pages.updateProductDraft(draft.copyWith(image: "")),
       ),
       const SizedBox(height: 12),
       TextField(
@@ -554,4 +582,44 @@ class _ProductEditorState extends State<_ProductEditor> {
       ]),
     ]);
   }
+}
+
+/// _ProductPicture is the product's picture, and the way to change it.
+///
+/// Named rather than shown: the picture is served by the shop, and this
+/// screen is the seller's own -- it has no session to fetch one through. The
+/// name is what a product records, so seeing it is seeing what was saved.
+class _ProductPicture extends StatelessWidget {
+  final String image;
+  final VoidCallback onChoose;
+  final VoidCallback onClear;
+  const _ProductPicture({
+    required this.image,
+    required this.onChoose,
+    required this.onClear,
+  });
+
+  @override
+  Widget build(BuildContext context) => Row(children: [
+        const Icon(Icons.image_outlined, size: 18),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Txt.S(
+            image.isEmpty ? "No picture" : image,
+            overflow: TextOverflow.ellipsis,
+            color: image.isEmpty ? TextColor.onSurfaceVariant : null,
+          ),
+        ),
+        if (image.isNotEmpty)
+          IconButton(
+            icon: const Icon(Icons.close, size: 16),
+            tooltip: "Use no picture",
+            onPressed: onClear,
+          ),
+        OutlinedButton.icon(
+          onPressed: onChoose,
+          icon: const Icon(Icons.add_photo_alternate_outlined, size: 16),
+          label: Text(image.isEmpty ? "Add a picture" : "Change"),
+        ),
+      ]);
 }

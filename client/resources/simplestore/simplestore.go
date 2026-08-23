@@ -252,6 +252,12 @@ func (s *Store) templateFuncs() template.FuncMap {
 		// always "/". Read when the template runs rather than when it is
 		// parsed, because binding decides it and that happens after.
 		"storeIndex": func() string { return s.indexPath },
+
+		// productImage is what a template writes to show a product's
+		// picture, or empty for one with none. Built here so the assets
+		// directory is named in one place and a template cannot spell it
+		// differently.
+		"productImage": ProductImagePath,
 	}
 }
 
@@ -313,6 +319,8 @@ func (s *Store) fulfill(ctx context.Context, uid clientintf.UserID,
 		return s.handleOrderStatus(ctx, uid, request)
 	case len(request.Path) == 2 && request.Path[0] == "orderaddcomment":
 		return s.handleOrderAddComment(ctx, uid, request)
+	case len(request.Path) == 2 && request.Path[0] == AssetsDir:
+		return s.handleAsset(ctx, uid, request)
 	case len(request.Path) == 2 && request.Path[0] == "static":
 		return s.handleStaticRequest(ctx, uid, request)
 	default:
@@ -743,6 +751,7 @@ var storeRoutePrefixes = [][]string{
 	{"order"},
 	{"orderaddcomment"},
 	{"static"},
+	{AssetsDir},
 	{"admin"},
 }
 

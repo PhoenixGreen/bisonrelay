@@ -32,15 +32,35 @@ import 'package:flutter_svg/flutter_svg.dart';
 ///
 /// Returns what a page writes to show the picture -- "assets/banner.png" --
 /// or null if it was cancelled.
+/// [write] decides where the picture goes and what a page writes to show
+/// it. It defaults to the site's own pictures; a shop passes its own, so a
+/// product's picture is served by the store rather than by a site that may
+/// not be there at all.
 Future<String?> showAddPictureDialog(
   BuildContext context,
   PagesModel pages,
-  String sourcePath,
-) =>
+  String sourcePath, {
+  Future<String> Function(String name, Uint8List data)? write,
+}) =>
     showDialog<String?>(
       context: context,
-      builder: (context) => _AddPictureDialog(pages, sourcePath),
+      builder: (context) => _AddPictureDialog(pages, sourcePath, write),
     );
+
+/// pickAndAddShopPicture is the same gesture for a product's picture.
+Future<String?> pickAndAddShopPicture(
+    BuildContext context, PagesModel pages) async {
+  var picked = await FilePicker.platform.pickFiles(
+    type: FileType.custom,
+    allowedExtensions: const ["png", "jpg", "jpeg", "gif", "webp", "svg"],
+    dialogTitle: "Picture for this product",
+  );
+  var path = picked?.files.single.path;
+  if (path == null) return null;
+  if (!context.mounted) return null;
+  return showAddPictureDialog(context, pages, path,
+      write: pages.addStoreAssetBytes);
+}
 
 /// slugFileName makes a name a page can actually link to.
 ///
@@ -91,9 +111,10 @@ Future<String?> pickAndAddPicture(BuildContext context, PagesModel pages) async 
 }
 
 class _AddPictureDialog extends StatefulWidget {
+  final Future<String> Function(String name, Uint8List data)? write;
   final PagesModel pages;
   final String sourcePath;
-  const _AddPictureDialog(this.pages, this.sourcePath);
+  const _AddPictureDialog(this.pages, this.sourcePath, this.write);
 
   @override
   State<_AddPictureDialog> createState() => _AddPictureDialogState();
@@ -201,7 +222,8 @@ class _AddPictureDialogState extends State<_AddPictureDialog> {
     // wait, and the original is always valid.
     var ready = _prepared ?? PreparedEmbed(original, _mime);
     try {
-      var path = await widget.pages.addAssetBytes(_fileName, ready.data);
+      var write = widget.write ?? widget.pages.addAssetBytes;
+      var path = await write(_fileName, ready.data);
       navigator.pop(path);
     } catch (exception) {
       if (!mounted) return;

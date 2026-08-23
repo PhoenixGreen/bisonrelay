@@ -37,9 +37,11 @@ func (s *Store) dressed(request *rpc.RMFetchResource,
 	if s.siteRoot == "" || (s.header == "" && s.footer == "") {
 		return res
 	}
-	// static/ is served for things a template wants rather than for
-	// somebody to read, so it is left as it is.
-	if len(request.Path) > 0 && request.Path[0] == "static" {
+	// static/ and assets/ are served for things a page wants rather than
+	// for somebody to read. A banner wrapped round a picture would be a
+	// picture nothing can draw.
+	if len(request.Path) > 0 &&
+		(request.Path[0] == "static" || request.Path[0] == AssetsDir) {
 		return res
 	}
 

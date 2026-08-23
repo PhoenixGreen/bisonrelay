@@ -10,14 +10,25 @@ import (
 )
 
 type Product struct {
-	Title        string   `json:"title"`
-	SKU          string   `json:"sku"`
-	Description  string   `json:"description"`
-	Tags         []string `json:"tags"`
-	Price        float64  `json:"price"`
-	Disabled     bool     `json:"disabled,omitempty"`
-	Shipping     bool     `json:"shipping"`
-	SendFilename string   `json:"send_filename"`
+	Title       string   `json:"title"`
+	SKU         string   `json:"sku"`
+	Description string   `json:"description"`
+	Tags        []string `json:"tags"`
+	Price       float64  `json:"price"`
+	Disabled    bool     `json:"disabled,omitempty"`
+	Shipping    bool     `json:"shipping"`
+
+	// Image names a picture in the store's assets directory -- "banner.jpg",
+	// not a path -- or is empty for a product with none.
+	//
+	// A file rather than something written into the page. A shop front
+	// showing a dozen products with their pictures inlined would be a dozen
+	// pictures in one message, and a message may carry 1 MiB: the front page
+	// of a shop with anything in it would simply not fit. Asked for on its
+	// own, a picture crosses the wire once and the page draws while they are
+	// still on their way. See assets.go.
+	Image        string `json:"image"`
+	SendFilename string `json:"send_filename"`
 }
 
 type productsFile struct {

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/companyzero/bisonrelay/client/resources"
+	"github.com/companyzero/bisonrelay/client/resources/simplestore"
 )
 
 // localPage is one markdown file in the hosted pages directory.
@@ -337,4 +338,49 @@ func renameOldPartialsDir(root string) error {
 		return nil
 	}
 	return os.Rename(old, wanted)
+}
+
+// storeAssetName is a picture's file name inside a store's assets
+// directory, or an error for one that would not be served.
+//
+// The same closed list of extensions a site uses, and the same refusal of
+// anything that is not a plain file name. A store's assets are served to
+// anyone who can reach the shop, so what may be written there is decided
+// here rather than trusted from the other end.
+func storeAssetName(name string) (string, error) {
+	name = filepath.Base(strings.TrimSpace(name))
+	if name == "" || name == "." || strings.HasPrefix(name, ".") {
+		return "", fmt.Errorf("picture name %q is not a file name", name)
+	}
+	if _, ok := assetExts[strings.ToLower(filepath.Ext(name))]; !ok {
+		return "", fmt.Errorf("%q is not a kind of file a shop can show", name)
+	}
+	if strings.ContainsAny(name, " \t()<>\"'\\") {
+		return "", fmt.Errorf("picture name %q cannot be written in a page "+
+			"link", name)
+	}
+	return name, nil
+}
+
+// addStoreAssetBytes writes a picture into the store's assets directory and
+// returns the name a product records.
+//
+// The name alone, not a path: a product says "guitar.jpg" and the template
+// builds the rest, so the directory is named in one place.
+func addStoreAssetBytes(storeRoot, name string, data []byte) (string, error) {
+	if storeRoot == "" {
+		return "", fmt.Errorf("no store is being hosted")
+	}
+	safe, err := storeAssetName(name)
+	if err != nil {
+		return "", err
+	}
+	dir := filepath.Join(storeRoot, simplestore.AssetsDir)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(filepath.Join(dir, safe), data, 0o600); err != nil {
+		return "", err
+	}
+	return safe, nil
 }

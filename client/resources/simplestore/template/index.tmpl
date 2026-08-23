@@ -1,25 +1,18 @@
-# My Simple Store
+# My Shop
 
 {{ if .IsAdmin -}}
-	[Admin Area](/admin)
+[Admin Area](/admin)
 
 {{ end -}}
 
-This is my simple store. See all the stuff I have.
-
-Here's an example of an embedded file.
-
---embed[alt=some+alt,type=image/png,localfilename=test.png]--
-
-Following this, a download link.
-
---embed[download=8741e9e6367668ee50ab4019ed2294fe5f55c1e401fac46d755fa637851817bb,type=image/png,localfilename=test.png]--
-
-## And now, my product list.
-
+--grid[3]--
 {{range .Products -}}
-  - [{{.Title}}](product/{{.SKU}})
+{{ with productImage .Image }}![]({{.}})
+{{ else }}![](assets/placeholder.png)
+{{ end -}}
+**[{{.Title}}](product/{{.SKU}})**
+{{.Price}}
 {{end}}
+--/grid--
 
 [Cart](/cart)   [Orders](/orders)
-

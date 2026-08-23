@@ -2679,6 +2679,7 @@ ManagedProduct _$ManagedProductFromJson(Map<String, dynamic> json) =>
       json['shipping'] as bool? ?? false,
       json['send_filename'] as String? ?? '',
       json['file'] as String? ?? '',
+      json['image'] as String? ?? '',
     );
 
 Map<String, dynamic> _$ManagedProductToJson(ManagedProduct instance) =>
@@ -2692,6 +2693,7 @@ Map<String, dynamic> _$ManagedProductToJson(ManagedProduct instance) =>
       'shipping': instance.shipping,
       'send_filename': instance.sendFilename,
       'file': instance.file,
+      'image': instance.image,
     };
 
 SaveProductArgs _$SaveProductArgsFromJson(Map<String, dynamic> json) =>

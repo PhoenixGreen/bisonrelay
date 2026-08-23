@@ -258,6 +258,10 @@ class ProductDraft {
   final bool shipping;
   final bool disabled;
 
+  /// image names a picture in the shop's assets, or is empty for a product
+  /// with none.
+  final String image;
+
   const ProductDraft({
     required this.original,
     this.title = "",
@@ -268,6 +272,7 @@ class ProductDraft {
     this.sendFilename = "",
     this.shipping = false,
     this.disabled = false,
+    this.image = "",
   });
 
   factory ProductDraft.of(ManagedProduct p) => ProductDraft(
@@ -280,6 +285,7 @@ class ProductDraft {
         sendFilename: p.sendFilename,
         shipping: p.shipping,
         disabled: p.disabled,
+        image: p.image,
       );
 
   bool get isNew => original.sku.isEmpty;
@@ -293,6 +299,7 @@ class ProductDraft {
     String? sendFilename,
     bool? shipping,
     bool? disabled,
+    String? image,
   }) =>
       ProductDraft(
         original: original,
@@ -304,6 +311,7 @@ class ProductDraft {
         sendFilename: sendFilename ?? this.sendFilename,
         shipping: shipping ?? this.shipping,
         disabled: disabled ?? this.disabled,
+        image: image ?? this.image,
       );
 }
 
@@ -758,6 +766,15 @@ class PagesModel extends ChangeNotifier {
     notifyListeners();
     _ownSiteChanged();
   }
+
+  /// addStoreAssetBytes writes an already-encoded picture into the shop and
+  /// gives back the name a product records.
+  ///
+  /// The shop's own directory, not the site's: a product's picture is served
+  /// by the store, and a shop hosted without a site would otherwise have
+  /// nowhere to keep one.
+  Future<String> addStoreAssetBytes(String name, Uint8List data) =>
+      Golib.addStoreAsset(name, data);
 
   /// addAssetBytes writes an already-encoded picture into the site.
   ///

@@ -1,5 +1,8 @@
 # {{ .Title }}
 
+{{ with productImage .Image }}![]({{.}})
+
+{{ end -}}
 Tags: {{ .Tags }}
 
 {{ .Description }}

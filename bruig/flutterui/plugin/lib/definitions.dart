@@ -3011,8 +3011,15 @@ class ManagedProduct {
   @JsonKey(defaultValue: "")
   final String file;
 
+  /// image names a picture in the shop's assets -- "guitar.jpg", not a path.
+  /// The name alone, so the directory is named in one place: see
+  /// simplestore's ProductImagePath.
+  @JsonKey(defaultValue: "")
+  final String image;
+
   ManagedProduct(this.title, this.sku, this.description, this.tags, this.price,
-      this.disabled, this.shipping, this.sendFilename, this.file);
+      this.disabled, this.shipping, this.sendFilename, this.file,
+      [this.image = ""]);
   factory ManagedProduct.empty() =>
       ManagedProduct("", "", "", [], 0, false, false, "", "");
   factory ManagedProduct.fromJson(Map<String, dynamic> json) =>
@@ -3029,6 +3036,7 @@ class ManagedProduct {
     bool? shipping,
     String? sendFilename,
     String? file,
+    String? image,
   }) =>
       ManagedProduct(
           title ?? this.title,
@@ -3039,7 +3047,8 @@ class ManagedProduct {
           disabled ?? this.disabled,
           shipping ?? this.shipping,
           sendFilename ?? this.sendFilename,
-          file ?? this.file);
+          file ?? this.file,
+          image ?? this.image);
 }
 
 @JsonSerializable()
@@ -5102,6 +5111,14 @@ abstract class PluginPlatform {
   /// Bytes rather than a path, because a picture is resized and re-encoded
   /// before it is added: what gets written exists only in memory, and the
   /// name carries whatever extension the encoding chose.
+  /// addStoreAsset writes a picture into the shop's assets and gives back
+  /// the name a product records.
+  Future<String> addStoreAsset(String name, Uint8List data) async =>
+      (await asyncCall(CTAddStoreAsset, {
+        "name": name,
+        "data": base64Encode(data),
+      })) as String;
+
   Future<List<LocalAsset>> addLocalAssetBytes(
           String name, Uint8List data) async =>
       _localAssets(await asyncCall(CTAddLocalAssetBytes,
@@ -5601,6 +5618,7 @@ const int CTListLocalAssets = 0xd6;
 const int CTDeleteLocalAsset = 0xd8;
 const int CTReadLocalAsset = 0xd9;
 const int CTAddLocalAssetBytes = 0xda;
+const int CTAddStoreAsset = 0xdb;
 const int CTListStoreProducts = 0xc6;
 const int CTSaveStoreProduct = 0xc7;
 const int CTDeleteStoreProduct = 0xc8;
