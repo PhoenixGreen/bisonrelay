@@ -2378,6 +2378,24 @@ func handleClientCmd(cc *clientCtx, cmd *cmd) (interface{}, error) {
 		return addStoreAssetBytes(cc.pagesHost.config().StorePath,
 			args.Name, args.Data)
 
+	case CTRestoreStoreTemplates:
+		root := cc.pagesHost.config().StorePath
+		if root == "" {
+			return nil, fmt.Errorf("no store is being hosted")
+		}
+		if err := simplestore.RestoreTemplates(root); err != nil {
+			return nil, err
+		}
+		// The store reads its templates from disk, so it has to be told
+		// they have changed -- otherwise the shop goes on serving what it
+		// parsed at start-up and the restore looks like it did nothing.
+		if store, err := cc.pagesHost.runningStore(); err == nil {
+			if err := store.ReloadStore(); err != nil {
+				return nil, err
+			}
+		}
+		return nil, nil
+
 	case CTListStoreProducts:
 		store, err := cc.pagesHost.runningStore()
 		if err != nil {

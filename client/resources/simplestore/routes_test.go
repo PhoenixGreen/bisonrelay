@@ -98,3 +98,39 @@ func TestAPageOfTheSitesOwnIsStillTheSites(t *testing.T) {
 		t.Error("an ordinary page no longer reaches the site")
 	}
 }
+
+// TestASitesPicturesAreStillTheSites covers the one path both a site and a
+// shop want to call their own.
+//
+// A site keeps its pictures in assets/ and has since they stopped being
+// written into pages. When the shop claimed the same word for its own
+// pictures it took that path with it -- the store binds its names before the
+// site takes what is left -- and every banner, logo and picture on the
+// site's own pages started answering 404.
+func TestASitesPicturesAreStillTheSites(t *testing.T) {
+	r, site := boundTogether()
+	for _, path := range [][]string{
+		{"assets", "banner.jpg"},
+		{"assets", "logo.svg"},
+	} {
+		if provides(r, path...) != resources.Provider(site) {
+			t.Errorf("%v is served by the shop, not the site", path)
+		}
+	}
+}
+
+func TestAShopsPicturesAreTheShops(t *testing.T) {
+	r, site := boundTogether()
+	got := provides(r, AssetsDir, "guitar.jpg")
+	if got == nil || got == resources.Provider(site) {
+		t.Errorf("%s/guitar.jpg does not reach the shop", AssetsDir)
+	}
+}
+
+func TestTheShopDoesNotCallItsPicturesWhatTheSiteCallsIts(t *testing.T) {
+	// The names are in one path space once both are hosted, so one of them
+	// has to give -- and the site had it first.
+	if AssetsDir == "assets" {
+		t.Fatalf("the shop and the site both want %q", AssetsDir)
+	}
+}

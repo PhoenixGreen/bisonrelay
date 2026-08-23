@@ -767,6 +767,16 @@ class PagesModel extends ChangeNotifier {
     _ownSiteChanged();
   }
 
+  /// restoreStoreTemplates puts the shipped shop templates back.
+  ///
+  /// The shop reads its templates from disk and parses them once, so this
+  /// reloads as well -- otherwise the shop goes on serving what it read at
+  /// start-up and the restore looks like it did nothing.
+  Future<void> restoreStoreTemplates() async {
+    await Golib.restoreStoreTemplates();
+    await loadStore();
+  }
+
   /// addStoreAssetBytes writes an already-encoded picture into the shop and
   /// gives back the name a product records.
   ///

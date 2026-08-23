@@ -211,17 +211,18 @@ const (
 
 	// Pages hosting: what this client serves to others, and the markdown
 	// files behind it.
-	CTGetPagesHostConfig CmdType = 0xc0
-	CTSetPagesHostConfig CmdType = 0xc1
-	CTListLocalPages     CmdType = 0xc2
-	CTReadLocalPage      CmdType = 0xc3
-	CTWriteLocalPage     CmdType = 0xc4
-	CTDeleteLocalPage    CmdType = 0xc5
-	CTListLocalAssets    CmdType = 0xd6
-	CTDeleteLocalAsset   CmdType = 0xd8
-	CTReadLocalAsset     CmdType = 0xd9
-	CTAddLocalAssetBytes CmdType = 0xda
-	CTAddStoreAsset      CmdType = 0xdb
+	CTGetPagesHostConfig    CmdType = 0xc0
+	CTSetPagesHostConfig    CmdType = 0xc1
+	CTListLocalPages        CmdType = 0xc2
+	CTReadLocalPage         CmdType = 0xc3
+	CTWriteLocalPage        CmdType = 0xc4
+	CTDeleteLocalPage       CmdType = 0xc5
+	CTListLocalAssets       CmdType = 0xd6
+	CTDeleteLocalAsset      CmdType = 0xd8
+	CTReadLocalAsset        CmdType = 0xd9
+	CTAddLocalAssetBytes    CmdType = 0xda
+	CTAddStoreAsset         CmdType = 0xdb
+	CTRestoreStoreTemplates CmdType = 0xdc
 
 	// Store management: the catalogue and the order book, for the seller's
 	// own UI rather than the markdown pages a buyer sees.

@@ -159,6 +159,13 @@ func New(cfg Config) (*Store, error) {
 	return s, nil
 }
 
+// ReloadStore reads the templates and the catalogue again.
+//
+// The store parses its templates once at start-up, so anything that changes
+// them on disk has to say so -- otherwise the shop goes on serving what it
+// read then, and the change looks like it did nothing.
+func (s *Store) ReloadStore() error { return s.reloadStore() }
+
 func (s *Store) reloadStore() error {
 	// Reset.
 	products := make(map[string]*Product, len(s.products))

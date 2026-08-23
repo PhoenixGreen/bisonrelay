@@ -5111,6 +5111,10 @@ abstract class PluginPlatform {
   /// Bytes rather than a path, because a picture is resized and re-encoded
   /// before it is added: what gets written exists only in memory, and the
   /// name carries whatever extension the encoding chose.
+  /// restoreStoreTemplates writes the shipped templates over the shop's.
+  Future<void> restoreStoreTemplates() async =>
+      await asyncCall(CTRestoreStoreTemplates, null);
+
   /// addStoreAsset writes a picture into the shop's assets and gives back
   /// the name a product records.
   Future<String> addStoreAsset(String name, Uint8List data) async =>
@@ -5619,6 +5623,7 @@ const int CTDeleteLocalAsset = 0xd8;
 const int CTReadLocalAsset = 0xd9;
 const int CTAddLocalAssetBytes = 0xda;
 const int CTAddStoreAsset = 0xdb;
+const int CTRestoreStoreTemplates = 0xdc;
 const int CTListStoreProducts = 0xc6;
 const int CTSaveStoreProduct = 0xc7;
 const int CTDeleteStoreProduct = 0xc8;

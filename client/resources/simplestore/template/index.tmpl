@@ -8,7 +8,7 @@
 --grid[3]--
 {{range .Products -}}
 {{ with productImage .Image }}![]({{.}})
-{{ else }}![](assets/placeholder.png)
+{{ else }}![](shopassets/placeholder.png)
 {{ end -}}
 **[{{.Title}}](product/{{.SKU}})**
 {{.Price}}

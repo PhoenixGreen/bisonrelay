@@ -22,9 +22,20 @@ import (
 // fetched from whoever served that page, so ![](assets/thing.jpg) in a store
 // page is resolved against the store exactly as it is against a site.
 
-// AssetsDir is where a store keeps its pictures, inside the store's own
-// directory.
-const AssetsDir = "assets"
+// AssetsDir is where a store keeps its pictures: the directory inside the
+// store, and the path it answers on.
+//
+// Not "assets", which is the site's. Once a site and a shop are hosted
+// together their paths are one space, the store claims its names before the
+// site takes what is left, and a shop calling its pictures assets/ took
+// every banner and logo on the site's own pages with it. The site had that
+// word first, so the shop uses another.
+//
+// One name for the directory and the path, because two would drift: the
+// template writes the path, golib writes the directory, and a shop whose
+// pictures are written to one place and served from another shows nothing
+// with nothing to see wrong.
+const AssetsDir = "shopassets"
 
 // assetExts are the kinds of file a shop may show.
 //

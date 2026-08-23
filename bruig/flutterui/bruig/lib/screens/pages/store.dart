@@ -217,6 +217,17 @@ class _StoreOverview extends StatelessWidget {
         ),
         const SizedBox(width: 8),
         OutlinedButton(onPressed: onDisable, child: const Text("Turn off")),
+        const SizedBox(width: 8),
+        // A shop's templates are copied in when the shop is made and are
+        // the seller's own from then on, so a template shipped or changed
+        // later never reaches a shop that already exists. Offered rather
+        // than done on start-up: these are files somebody may have spent an
+        // afternoon on, and there is no undo.
+        OutlinedButton.icon(
+          onPressed: () => _restoreTemplates(context, pages),
+          icon: const Icon(Icons.restart_alt, size: 16),
+          label: const Text("Restore default pages"),
+        ),
       ]),
       const SizedBox(height: 4),
       Txt.S("Serving from ${displayPath(cfg.storePath)}",
@@ -622,4 +633,39 @@ class _ProductPicture extends StatelessWidget {
           label: Text(image.isEmpty ? "Add a picture" : "Change"),
         ),
       ]);
+}
+
+/// _restoreTemplates asks before writing over a seller's own work.
+///
+/// The confirmation says which files go and which stay, because "restore
+/// defaults" on its own does not say whether the products are about to go
+/// with them -- and somebody who has to guess will not press it.
+Future<void> _restoreTemplates(BuildContext context, PagesModel pages) async {
+  var snackbar = SnackBarModel.of(context);
+  var ok = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text("Restore the shop's default pages?"),
+      content: const Txt.M(
+          "The shop's pages -- its front, a product, the cart, the order "
+          "list -- are written back as they ship, and anything you have "
+          "changed in them is lost.\n\n"
+          "Your products and orders are not touched."),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text("Cancel")),
+        TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text("Restore")),
+      ],
+    ),
+  );
+  if (ok != true) return;
+  try {
+    await pages.restoreStoreTemplates();
+    snackbar.success("The shop's pages are back to their defaults.");
+  } catch (exception) {
+    snackbar.error("Unable to restore the shop's pages: $exception");
+  }
 }

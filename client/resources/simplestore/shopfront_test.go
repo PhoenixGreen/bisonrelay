@@ -54,10 +54,10 @@ func TestEveryProductLeadsWithAPicture(t *testing.T) {
 	if n := len(cellStart.FindAllString(got, -1)); n != 2 {
 		t.Fatalf("two products gave %d cells:\n%s", n, got)
 	}
-	if !strings.Contains(got, "![](assets/guitar.jpg)") {
+	if !strings.Contains(got, "![]("+ProductImagePath("guitar.jpg")+")") {
 		t.Errorf("the product's own picture is missing:\n%s", got)
 	}
-	if !strings.Contains(got, "![](assets/placeholder.png)") {
+	if !strings.Contains(got, "![]("+ProductImagePath("placeholder.png")+")") {
 		t.Errorf("a product without one gets no placeholder:\n%s", got)
 	}
 }
