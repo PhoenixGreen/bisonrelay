@@ -769,6 +769,18 @@ class PagesModel extends ChangeNotifier {
     _ownSiteChanged();
   }
 
+  /// addOrderComment answers a buyer on one order.
+  ///
+  /// The buyer has been able to write on an order since the shop was built,
+  /// and the store has always been able to record a reply -- there was
+  /// simply nowhere in the app to read one or write one back, so a buyer
+  /// asking when something ships got silence.
+  Future<void> addOrderComment(
+      String user, int order, String comment) async {
+    _orders = await Golib.addStoreOrderComment(user, order, comment);
+    notifyListeners();
+  }
+
   /// restoreStoreTemplates puts the shipped shop templates back.
   ///
   /// The shop reads its templates from disk and parses them once, so this
