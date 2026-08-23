@@ -91,7 +91,7 @@ void main() {
   // destination and the navigation is the way out of it), but the second
   // half still holds: the panel outlives the composer.
   group("where a composer opens", () {
-    test("the first composer opens on My Posts", () {
+    test("the first composer opens on the Library", () {
       var controller = ComposerSidebarController();
       var editor = TextEditingController();
       addTearDown(editor.dispose);
@@ -146,7 +146,7 @@ void main() {
   });
 
   group("the panel nav", () {
-    testWidgets("starts on My Posts", (tester) async {
+    testWidgets("starts on the Library", (tester) async {
       var controller = ComposerSidebarController();
       await _pump(tester, controller);
       expect(find.text("PANEL: posts"), findsOneWidget);

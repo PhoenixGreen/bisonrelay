@@ -32,7 +32,7 @@ import 'package:flutter/scheduler.dart';
 /// of any page, and an icon here offering a second one only competed with it.
 enum ComposerPanel {
   /// The saved-post library: folders and documents on disk.
-  posts(Icons.folder_outlined, "My Posts"),
+  posts(Icons.folder_outlined, "Library"),
 
   /// The writing tools: spelling, grammar, phrasing, reference.
   writing(Icons.spellcheck, "Writing Tools"),
@@ -50,7 +50,7 @@ enum ComposerPanel {
 class ComposerSidebarController extends ChangeNotifier {
   /// _panel is which panel has the slot.
   ///
-  /// My Posts to begin with, because the first thing anyone does with a new
+  /// the Library to begin with, because the first thing anyone does with a new
   /// post is find or name the document it belongs to. After that it is
   /// wherever they were: going to Chat and coming back should not lose the
   /// panel they had set up any more than switching pages does.

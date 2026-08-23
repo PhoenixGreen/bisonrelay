@@ -822,7 +822,7 @@ class _WritingComposerState extends State<WritingComposer> {
   /// menu of ways to publish is the wrong place to keep the one action that
   /// destroys the draft, and the mismatch only gets worse as more publish
   /// options arrive beside it and push it under the reader's thumb. A draft
-  /// is autosaved to the post library regardless, and My Posts is where a
+  /// is autosaved to the post library regardless, and the Library is where a
   /// document is deleted.
   Widget _publishMenu(bool validSize) => PopupMenuButton<String>(
         icon: const Icon(Icons.ios_share, size: 20),

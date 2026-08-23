@@ -958,12 +958,12 @@ const ElementSpec fragmentSpec = ElementSpec(
   tag: "include",
   shape: ElementShape.single,
   about: "Shared fragment: a piece several pages share -- a banner, a "
-      "navigation bar, a footer. Write it once in Writing > My Posts > "
+      "navigation bar, a footer. Write it once in Writing > Library > "
       "Fragments, then name it here and it appears in its place. It is "
       "filled in before the page is sent, so a reader gets one page. "
       "Delete this note.",
   tip: "Shared fragment: a piece several pages share -- a banner, a "
-      "navigation bar, a footer. Write it once in Writing > My Posts > "
+      "navigation bar, a footer. Write it once in Writing > Library > "
       "Fragments, then name it here and it appears in its place. It is "
       "filled in before the page is sent, so a reader gets one page. "
       "Delete this note.",

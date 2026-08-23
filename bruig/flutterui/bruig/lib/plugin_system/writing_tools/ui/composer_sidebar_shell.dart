@@ -8,7 +8,7 @@ import 'package:flutter/material.dart';
 //
 // The nav lives in the sidebar rather than on the page because that is where
 // what it switches lives, and because a composer wants its page for writing.
-// The buttons that used to sit under the editor -- Writing Tools, My Posts,
+// The buttons that used to sit under the editor -- Writing Tools, Library,
 // Add Embed -- were three things competing with the text for the reader's
 // attention, all of them about the tools rather than about the post.
 

@@ -92,8 +92,8 @@ class _PostSidebarState extends State<PostSidebar> {
   /// _header is the folder you are in, and nothing when you are not in one.
   ///
   /// At the top level there is no title: the nav icon above already says
-  /// which panel this is, and a line reading "My Posts" under an icon
-  /// meaning "My Posts" is a line of a narrow column spent twice on the same
+  /// which panel this is, and a line reading "Library" under an icon
+  /// meaning "Library" is a line of a narrow column spent twice on the same
   /// word. Inside a folder the name is the only thing saying where you are,
   /// so it stays, with the way back beside it.
   ///
@@ -112,7 +112,7 @@ class _PostSidebarState extends State<PostSidebar> {
       child: Row(children: [
         IconButton(
           icon: const Icon(Icons.arrow_back, size: 18),
-          tooltip: "Back to My Posts",
+          tooltip: "Back to the Library",
           visualDensity: VisualDensity.compact,
           onPressed: () => library.openFolderNamed(""),
         ),
@@ -533,7 +533,7 @@ class _PostSidebarState extends State<PostSidebar> {
                         : Icons.folder_outlined,
                     size: 16),
                 const SizedBox(width: 8),
-                Text(folder.isEmpty ? "My Posts" : folderLabel(folder)),
+                Text(folder.isEmpty ? "Library" : folderLabel(folder)),
               ]),
             ),
         ],
