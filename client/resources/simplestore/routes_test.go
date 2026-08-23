@@ -81,6 +81,9 @@ func TestTheStoresOwnPathsStayItsOwn(t *testing.T) {
 	r, site := boundTogether()
 	for _, path := range [][]string{
 		{"cart"}, {"orders"}, {"product", "x"}, {"placeOrder"},
+		// The two that let a buyer change their mind. A cart that can
+		// only be added to and emptied is where somebody stops buying.
+		{"removeFromCart"}, {"setCartQty"},
 	} {
 		got := provides(r, path...)
 		if got == nil || got == resources.Provider(site) {

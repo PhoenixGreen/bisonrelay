@@ -342,6 +342,10 @@ func (s *Store) fulfill(ctx context.Context, uid clientintf.UserID,
 		return s.handleProduct(ctx, uid, request)
 	case pathEquals(request.Path, "addToCart"):
 		return s.handleAddToCart(ctx, uid, request)
+	case pathEquals(request.Path, "removeFromCart"):
+		return s.handleRemoveFromCart(ctx, uid, request)
+	case pathEquals(request.Path, "setCartQty"):
+		return s.handleSetCartQuantity(ctx, uid, request)
 	case len(request.Path) == 1 && request.Path[0] == "clearCart":
 		return s.handleClearCart(ctx, uid)
 	case len(request.Path) == 1 && request.Path[0] == "cart":
@@ -780,6 +784,8 @@ var storeRoutePrefixes = [][]string{
 	{"product"},
 	{"addToCart"},
 	{"clearCart"},
+	{"removeFromCart"},
+	{"setCartQty"},
 	{"cart"},
 	{"placeOrder"},
 	{"orders"},
