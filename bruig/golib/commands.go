@@ -223,6 +223,9 @@ const (
 	CTAddLocalAssetBytes    CmdType = 0xda
 	CTAddStoreAsset         CmdType = 0xdb
 	CTRestoreStoreTemplates CmdType = 0xdc
+	CTPublishStoreGood      CmdType = 0xdd
+	CTRemoveStoreGood       CmdType = 0xde
+	CTReadStoreGood         CmdType = 0xdf
 
 	// Store management: the catalogue and the order book, for the seller's
 	// own UI rather than the markdown pages a buyer sees.

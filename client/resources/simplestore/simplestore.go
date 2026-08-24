@@ -588,10 +588,28 @@ func (s *Store) invoiceSettled(ctx context.Context, order *Order) {
 			continue
 		}
 
-		// Relative paths are set to be from the root of the simplestore.
-		if !filepath.IsAbs(fname) {
-			fname = filepath.Join(s.root, fname)
+		path, err := s.checkGood(fname)
+		if err != nil {
+			// Saved before the goods directory existed, or edited by hand.
+			// Said rather than sent: the alternative is sending whatever
+			// that name happens to reach.
+			s.log.Errorf("Order %s/%s names a file this shop will not send "+
+				"(%v); telling the buyer instead", order.User.ShortLogID(),
+				order.ID, err)
+			wpm("\nThe file for %q could not be sent. Ask the seller for it.",
+				item.Product.Title)
+			continue
 		}
+		if _, err := os.Stat(path); err != nil {
+			// Promising a file and then not sending one is worse than
+			// saying so: the buyer has paid and is waiting for something.
+			s.log.Errorf("Order %s/%s names %q, which is not there: %v",
+				order.User.ShortLogID(), order.ID, fname, err)
+			wpm("\nThe file for %q could not be sent. Ask the seller for it.",
+				item.Product.Title)
+			continue
+		}
+		fname = path
 		wpm("\nSending you the file %s included in your order",
 			filepath.Base(fname))
 		go func() {

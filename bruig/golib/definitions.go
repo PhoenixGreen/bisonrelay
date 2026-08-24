@@ -548,6 +548,17 @@ type pagesHostStatus struct {
 // The name is sent rather than derived because re-encoding changes the
 // extension: a PNG saved as JPEG is not "logo.png" any more, and a page
 // pointing at the old name would show nothing.
+// storeGoodArgs is a file being published into the shop's goods: what to
+// call it, and what is in it.
+//
+// The bytes rather than a path, because what gets published is a document
+// from the writing library with its pictures put back into it -- which
+// exists in memory and nowhere else at that moment.
+type storeGoodArgs struct {
+	Name string `json:"name"`
+	Data []byte `json:"data"`
+}
+
 type addAssetArgs struct {
 	Name string `json:"name"`
 	Data []byte `json:"data"`

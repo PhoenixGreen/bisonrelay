@@ -305,6 +305,21 @@ func (s *Store) SaveProduct(p Product, file string) error {
 		return fmt.Errorf("product price cannot be negative")
 	}
 
+	// The file a buyer is sent, if there is one. Checked here because this
+	// is the last moment anybody is watching: after this it is sent when
+	// payment lands, unattended, and a wrong name is discovered by the
+	// buyer receiving nothing.
+	if p.SendFilename != "" {
+		path, err := s.checkGood(p.SendFilename)
+		if err != nil {
+			return err
+		}
+		if _, err := os.Stat(path); err != nil {
+			return fmt.Errorf("the file for this product is not in %s/: %v",
+				GoodsDir, err)
+		}
+	}
+
 	if file == "" {
 		file = productFileNameRe.ReplaceAllString(p.SKU, "-") + ".toml"
 	}
