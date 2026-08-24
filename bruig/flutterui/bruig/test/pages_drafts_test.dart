@@ -1,4 +1,5 @@
 import 'package:bruig/models/pages.dart';
+import 'package:bruig/models/store.dart';
 import 'package:bruig/models/resources.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:golib_plugin/definitions.dart';
@@ -17,6 +18,11 @@ void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
   PagesModel model() => PagesModel(ResourcesModel(runStream: false));
+
+  /// shop is the product half. A page draft and a product draft outlive the
+  /// screen for the same reason, and now live on the two models that own
+  /// what is being written.
+  StoreModel shop() => StoreModel(model());
 
   group('a page draft', () {
     test('is kept as it is typed, and is there on the way back', () {
@@ -81,7 +87,7 @@ void main() {
         ["tag"], 1.5, false, true, "file.zip", "products.toml");
 
     test('is seeded from the product and kept as it is typed', () {
-      var m = model();
+      var m = shop();
       m.startProductDraft(product());
       expect(m.productDraft?.title, "A thing");
       expect(m.productDraft?.price, "1.5");
@@ -97,21 +103,21 @@ void main() {
     test('a half-typed price is still just text', () {
       // Parsing on every keystroke would eat a decimal point as it is
       // typed, so the draft holds what is in the box.
-      var m = model();
+      var m = shop();
       m.startProductDraft(ManagedProduct.empty());
       m.updateProductDraft(m.productDraft!.copyWith(price: "1."));
       expect(m.productDraft?.price, "1.");
     });
 
     test('an empty product is a new one, and shows no zero price', () {
-      var m = model();
+      var m = shop();
       m.startProductDraft(ManagedProduct.empty());
       expect(m.productDraft?.isNew, isTrue);
       expect(m.productDraft?.price, "");
     });
 
     test('typing does not notify, opening and closing do', () {
-      var m = model();
+      var m = shop();
       var notes = 0;
       m.addListener(() => notes++);
 

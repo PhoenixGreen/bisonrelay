@@ -7,6 +7,7 @@ import 'package:bruig/components/text.dart';
 import 'package:bruig/models/client.dart';
 import 'package:bruig/models/menus.dart';
 import 'package:bruig/models/pages.dart';
+import 'package:bruig/models/store.dart';
 import 'package:bruig/models/resources.dart';
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/screens/overview.dart';
@@ -53,6 +54,7 @@ class _ViewPageScreenState extends State<ViewPageScreen> {
   ResourcesModel get resources => widget.resources;
 
   PagesModel get pages => Provider.of<PagesModel>(context, listen: false);
+  StoreModel get store => Provider.of<StoreModel>(context, listen: false);
   MainMenuModel get menu => Provider.of<MainMenuModel>(context, listen: false);
 
   void onItemChanged(int index) {
@@ -228,7 +230,7 @@ class _ViewPageScreenState extends State<ViewPageScreen> {
             index: browsing ? PagesSections.browserIndex : tab,
             visit: VisitTab(widget.client, pages, resources, showBrowser),
             mySite: MySiteTab(pages, widget.client, resources, showBrowser),
-            store: StoreTab(pages),
+            store: StoreTab(pages, store),
             browser: session == null
                 ? const Empty()
                 : PageBrowser(session, widget.client, resources),

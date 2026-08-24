@@ -3,6 +3,7 @@ import 'package:bruig/components/buttons.dart';
 import 'package:bruig/components/text.dart';
 import 'package:bruig/config.dart';
 import 'package:bruig/models/pages.dart';
+import 'package:bruig/models/store.dart';
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:file_picker/file_picker.dart';
@@ -19,7 +20,12 @@ import 'package:golib_plugin/definitions.dart';
 /// watches its own directory and reloads.
 class StoreTab extends StatefulWidget {
   final PagesModel pages;
-  const StoreTab(this.pages, {super.key});
+
+  /// store is the catalogue and the order book. Separate from [pages],
+  /// which answers only where the shop is served from and whether one is
+  /// being hosted -- see StoreModel.
+  final StoreModel store;
+  const StoreTab(this.pages, this.store, {super.key});
 
   @override
   State<StoreTab> createState() => _StoreTabState();
@@ -27,6 +33,7 @@ class StoreTab extends StatefulWidget {
 
 class _StoreTabState extends State<StoreTab> {
   PagesModel get pages => widget.pages;
+  StoreModel get store => widget.store;
 
   // The product being edited, or null when the lists are showing. An empty
   // ManagedProduct is a new one.
@@ -34,7 +41,7 @@ class _StoreTabState extends State<StoreTab> {
   @override
   void initState() {
     super.initState();
-    pages.loadStore();
+    store.loadStore();
   }
 
   void enableStore() async {
@@ -53,7 +60,7 @@ class _StoreTabState extends State<StoreTab> {
         mode: cfg.hostsPages ? pagesHostModeBoth : pagesHostModeStore,
         storePath: path,
       ));
-      await pages.loadStore();
+      await store.loadStore();
     } catch (exception) {
       snackbar.error("Unable to start the store: $exception");
     }
@@ -65,7 +72,7 @@ class _StoreTabState extends State<StoreTab> {
     try {
       await pages.setHost(cfg.copyWith(
           mode: cfg.hostsPages ? pagesHostModePages : pagesHostModeOff));
-      await pages.loadStore();
+      await store.loadStore();
     } catch (exception) {
       snackbar.error("Unable to stop the store: $exception");
     }
@@ -82,7 +89,7 @@ class _StoreTabState extends State<StoreTab> {
         mode: cfg.hostsPages ? pagesHostModeBoth : pagesHostModeStore,
         storePath: dir,
       ));
-      await pages.loadStore();
+      await store.loadStore();
     } catch (exception) {
       snackbar.error("Unable to change the store directory: $exception");
     }
@@ -91,7 +98,7 @@ class _StoreTabState extends State<StoreTab> {
   void deleteProduct(String sku) async {
     var snackbar = SnackBarModel.of(context);
     try {
-      await pages.deleteProduct(sku);
+      await store.deleteProduct(sku);
     } catch (exception) {
       snackbar.error("Unable to delete product: $exception");
     }
@@ -105,7 +112,7 @@ class _StoreTabState extends State<StoreTab> {
   Future<void> replyToOrder(ManagedOrder order, String text) async {
     var snackbar = SnackBarModel.of(context);
     try {
-      await pages.addOrderComment(order.user, order.id, text);
+      await store.addOrderComment(order.user, order.id, text);
     } catch (exception) {
       snackbar.error("Unable to reply to the buyer: $exception");
       rethrow;
@@ -115,7 +122,7 @@ class _StoreTabState extends State<StoreTab> {
   void setStatus(ManagedOrder order, String status) async {
     var snackbar = SnackBarModel.of(context);
     try {
-      await pages.setOrderStatus(order.user, order.id, status);
+      await store.setOrderStatus(order.user, order.id, status);
     } catch (exception) {
       snackbar.error("Unable to change order status: $exception");
     }
@@ -132,7 +139,7 @@ class _StoreTabState extends State<StoreTab> {
               editable: pages.hostEditable,
               mode: pages.hostConfig.mode);
         }
-        var draft = pages.productDraft;
+        var draft = store.productDraft;
         if (draft != null) {
           return _ProductEditor(
             // Keyed on which product is being written, so switching from
@@ -141,15 +148,17 @@ class _StoreTabState extends State<StoreTab> {
             key: ValueKey(
                 "product-draft-${draft.original.file}/${draft.original.sku}"),
             pages: pages,
-            onDone: pages.endProductDraft,
+            store: store,
+            onDone: store.endProductDraft,
           );
         }
         return _StoreOverview(
           pages: pages,
+          store: store,
           onDisable: disableStore,
           onChooseDir: chooseDir,
-          onNew: () => pages.startProductDraft(ManagedProduct.empty()),
-          onEdit: pages.startProductDraft,
+          onNew: () => store.startProductDraft(ManagedProduct.empty()),
+          onEdit: store.startProductDraft,
           onDelete: deleteProduct,
           onStatus: setStatus,
           onReply: replyToOrder,
@@ -201,6 +210,7 @@ class _StoreOff extends StatelessWidget {
 
 class _StoreOverview extends StatelessWidget {
   final PagesModel pages;
+  final StoreModel store;
   final VoidCallback onDisable;
   final VoidCallback onChooseDir;
   final VoidCallback onNew;
@@ -210,6 +220,7 @@ class _StoreOverview extends StatelessWidget {
   final Future<void> Function(ManagedOrder, String) onReply;
   const _StoreOverview({
     required this.pages,
+    required this.store,
     required this.onDisable,
     required this.onChooseDir,
     required this.onNew,
@@ -222,7 +233,7 @@ class _StoreOverview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     var cfg = pages.hostConfig;
-    var open = pages.orders
+    var open = store.orders
         .where((o) => o.status != "completed" && o.status != "canceled")
         .toList();
 
@@ -243,7 +254,7 @@ class _StoreOverview extends StatelessWidget {
         // than done on start-up: these are files somebody may have spent an
         // afternoon on, and there is no undo.
         OutlinedButton.icon(
-          onPressed: () => _restoreTemplates(context, pages),
+          onPressed: () => _restoreTemplates(context, store),
           icon: const Icon(Icons.restart_alt, size: 16),
           label: const Text("Restore default pages"),
         ),
@@ -251,9 +262,9 @@ class _StoreOverview extends StatelessWidget {
       const SizedBox(height: 4),
       Txt.S("Serving from ${displayPath(cfg.storePath)}",
           color: TextColor.onSurfaceVariant),
-      if (pages.storeError != null) ...[
+      if (store.storeError != null) ...[
         const SizedBox(height: 8),
-        Txt.S(pages.storeError!, color: TextColor.onErrorContainer),
+        Txt.S(store.storeError!, color: TextColor.onErrorContainer),
       ],
       const SizedBox(height: 20),
 
@@ -265,11 +276,10 @@ class _StoreOverview extends StatelessWidget {
           Txt.S("${open.length} open", color: TextColor.onSurfaceVariant),
       ]),
       const SizedBox(height: 8),
-      if (pages.orders.isEmpty)
+      if (store.orders.isEmpty)
         const Txt.S("No orders yet.", color: TextColor.onSurfaceVariant)
       else
-        ...pages.orders.map((o) =>
-            _OrderRow(
+        ...store.orders.map((o) => _OrderRow(
               order: o,
               onStatus: (status) => onStatus(o, status),
               onReply: (text) => onReply(o, text),
@@ -286,10 +296,10 @@ class _StoreOverview extends StatelessWidget {
         ),
       ]),
       const SizedBox(height: 8),
-      if (pages.products.isEmpty)
+      if (store.products.isEmpty)
         const Txt.S("Nothing on sale yet.", color: TextColor.onSurfaceVariant)
       else
-        ...pages.products.map((p) => _ProductRow(
+        ...store.products.map((p) => _ProductRow(
               product: p,
               onEdit: () => onEdit(p),
               onDelete: () => onDelete(p.sku),
@@ -353,7 +363,8 @@ class _OrderRow extends StatelessWidget {
   Widget build(BuildContext context) {
     var who = order.userNick.isNotEmpty ? order.userNick : order.user;
     var items = order.cart.items.fold<int>(0, (n, i) => n + i.quantity);
-    var unanswered = order.comments.isNotEmpty && !order.comments.last.fromAdmin;
+    var unanswered =
+        order.comments.isNotEmpty && !order.comments.last.fromAdmin;
 
     // An order that has been written on and not answered says so on its
     // face. A seller should not have to open every order to find the one
@@ -447,9 +458,7 @@ class _OrderThreadState extends State<OrderThread> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Txt.S(
-                    "${c.fromAdmin ? "You" : (widget.order.userNick.isNotEmpty
-                        ? widget.order.userNick
-                        : "The buyer")} · "
+                    "${c.fromAdmin ? "You" : (widget.order.userNick.isNotEmpty ? widget.order.userNick : "The buyer")} · "
                     "${DateFormat("d MMM, HH:mm").format(c.timestamp)}",
                     color: TextColor.onSurfaceVariant),
                 const SizedBox(height: 2),
@@ -494,14 +503,22 @@ class _OrderThreadState extends State<OrderThread> {
 /// a new one.
 class _ProductEditor extends StatefulWidget {
   final PagesModel pages;
+  final StoreModel store;
   final VoidCallback onDone;
-  const _ProductEditor({super.key, required this.pages, required this.onDone});
+  const _ProductEditor({
+    super.key,
+    required this.pages,
+    required this.store,
+    required this.onDone,
+  });
 
   @override
   State<_ProductEditor> createState() => _ProductEditorState();
 }
 
 class _ProductEditorState extends State<_ProductEditor> {
+  StoreModel get store => widget.store;
+
   late final TextEditingController titleCtrl;
   late final TextEditingController skuCtrl;
   late final TextEditingController descCtrl;
@@ -513,7 +530,7 @@ class _ProductEditorState extends State<_ProductEditor> {
   bool saving = false;
 
   ProductDraft get draft =>
-      widget.pages.productDraft ?? ProductDraft.of(ManagedProduct.empty());
+      widget.store.productDraft ?? ProductDraft.of(ManagedProduct.empty());
   bool get isNew => draft.isNew;
 
   @override
@@ -544,7 +561,7 @@ class _ProductEditorState extends State<_ProductEditor> {
 
   /// remember hands the boxes to the model, which outlives this screen.
   /// Deliberately not notifying -- see PagesModel's draft section.
-  void remember() => widget.pages.updateProductDraft(draft.copyWith(
+  void remember() => widget.store.updateProductDraft(draft.copyWith(
         title: titleCtrl.text,
         sku: skuCtrl.text,
         description: descCtrl.text,
@@ -578,13 +595,14 @@ class _ProductEditorState extends State<_ProductEditor> {
   void chooseImage() async {
     var snackbar = SnackBarModel.of(context);
     try {
-      var path = await pickAndAddShopPicture(context, widget.pages);
+      var path =
+          await pickAndAddShopPicture(context, widget.pages, widget.store);
       if (path == null || !mounted) return;
       // The name alone. A product records "guitar.jpg" and the template
       // builds the rest, so the directory is named in one place.
       var name = path.split("/").last;
-      setState(() =>
-          widget.pages.updateProductDraft(draft.copyWith(image: name)));
+      setState(
+          () => widget.store.updateProductDraft(draft.copyWith(image: name)));
     } catch (exception) {
       snackbar.error("Unable to add the picture: $exception");
     }
@@ -606,7 +624,7 @@ class _ProductEditorState extends State<_ProductEditor> {
 
     setState(() => saving = true);
     try {
-      await widget.pages.saveProduct(
+      await widget.store.saveProduct(
         draft.original.copyWith(
           title: titleCtrl.text.trim(),
           sku: skuCtrl.text.trim(),
@@ -648,7 +666,8 @@ class _ProductEditorState extends State<_ProductEditor> {
       _ProductPicture(
         image: draft.image,
         onChoose: chooseImage,
-        onClear: () => widget.pages.updateProductDraft(draft.copyWith(image: "")),
+        onClear: () =>
+            widget.store.updateProductDraft(draft.copyWith(image: "")),
       ),
       const SizedBox(height: 12),
       TextField(
@@ -787,7 +806,7 @@ class _ProductPicture extends StatelessWidget {
 /// The confirmation says which files go and which stay, because "restore
 /// defaults" on its own does not say whether the products are about to go
 /// with them -- and somebody who has to guess will not press it.
-Future<void> _restoreTemplates(BuildContext context, PagesModel pages) async {
+Future<void> _restoreTemplates(BuildContext context, StoreModel store) async {
   var snackbar = SnackBarModel.of(context);
   var ok = await showDialog<bool>(
     context: context,
@@ -810,7 +829,7 @@ Future<void> _restoreTemplates(BuildContext context, PagesModel pages) async {
   );
   if (ok != true) return;
   try {
-    await pages.restoreStoreTemplates();
+    await store.restoreStoreTemplates();
     snackbar.success("The shop's pages are back to their defaults.");
   } catch (exception) {
     snackbar.error("Unable to restore the shop's pages: $exception");

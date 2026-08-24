@@ -7,6 +7,7 @@ import 'package:bruig/components/feed/picture_options_controls.dart';
 import 'package:bruig/components/md_elements.dart';
 import 'package:bruig/components/text.dart';
 import 'package:bruig/models/pages.dart';
+import 'package:bruig/models/store.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -49,7 +50,7 @@ Future<String?> showAddPictureDialog(
 
 /// pickAndAddShopPicture is the same gesture for a product's picture.
 Future<String?> pickAndAddShopPicture(
-    BuildContext context, PagesModel pages) async {
+    BuildContext context, PagesModel pages, StoreModel store) async {
   var picked = await FilePicker.platform.pickFiles(
     type: FileType.custom,
     allowedExtensions: const ["png", "jpg", "jpeg", "gif", "webp", "svg"],
@@ -58,8 +59,11 @@ Future<String?> pickAndAddShopPicture(
   var path = picked?.files.single.path;
   if (path == null) return null;
   if (!context.mounted) return null;
+  // Written into the shop, not the site: a product's picture is served by
+  // the store. The dialog still takes [pages] because what it shows -- the
+  // size, the preview -- is the same either way.
   return showAddPictureDialog(context, pages, path,
-      write: pages.addStoreAssetBytes);
+      write: store.addStoreAssetBytes);
 }
 
 /// slugFileName makes a name a page can actually link to.

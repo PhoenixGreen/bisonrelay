@@ -1,4 +1,4 @@
-import 'package:bruig/models/pages.dart';
+import 'package:bruig/models/store.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:golib_plugin/definitions.dart';
 

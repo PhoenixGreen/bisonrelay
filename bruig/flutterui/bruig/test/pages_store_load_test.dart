@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:bruig/models/pages.dart';
+import 'package:bruig/models/store.dart';
 import 'package:bruig/models/resources.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:golib_plugin/definitions.dart';
@@ -20,13 +21,21 @@ class _FakePages extends PagesModel {
   _FakePages() : super(ResourcesModel(runStream: false));
 
   final hostArrived = Completer<PagesHostStatus>();
-  int productFetches = 0;
 
   static final storeConfig = PagesHostConfig(
       pagesHostModeStore, "", "/store", "ln", "", 0, "");
 
   @override
   Future<PagesHostStatus> fetchHost() => hostArrived.future;
+}
+
+/// _FakeStore is the shop half. The catalogue and the order book moved to
+/// StoreModel, and the race this file is about did not: the shop still asks
+/// hosting whether there is one before it reads anything.
+class _FakeStore extends StoreModel {
+  _FakeStore(super.pages);
+
+  int productFetches = 0;
 
   @override
   Future<List<ManagedProduct>> fetchProducts() async {
@@ -47,37 +56,40 @@ void main() {
 
   test('the catalogue waits for the hosting config rather than emptying', () async {
     var m = _FakePages();
+    var shop = _FakeStore(m);
 
     // The Store section is built before the config has arrived.
-    var loading = m.loadStore();
+    var loading = shop.loadStore();
     await Future<void>.delayed(Duration.zero);
-    expect(m.productFetches, 0, reason: "nothing to ask for yet");
+    expect(shop.productFetches, 0, reason: "nothing to ask for yet");
 
     m.hostArrived.complete(PagesHostStatus(
         _FakePages.storeConfig, true, "", "/store", const []));
     await loading;
 
-    expect(m.products, hasLength(1));
-    expect(m.products.first.sku, "SKU1");
+    expect(shop.products, hasLength(1));
+    expect(shop.products.first.sku, "SKU1");
   });
 
   test('a client hosting no store still ends up with an empty catalogue',
       () async {
     var m = _FakePages();
-    var loading = m.loadStore();
+    var shop = _FakeStore(m);
+    var loading = shop.loadStore();
     m.hostArrived.complete(
         PagesHostStatus(PagesHostConfig.off(), true, "", "", const []));
     await loading;
 
-    expect(m.products, isEmpty);
-    expect(m.productFetches, 0);
-    expect(m.storeError, isNull, reason: "not hosting is not an error");
+    expect(shop.products, isEmpty);
+    expect(shop.productFetches, 0);
+    expect(shop.storeError, isNull, reason: "not hosting is not an error");
   });
 
   test('the hosting config is read once, however many things want it',
       () async {
     var m = _FakePages();
-    var a = m.loadStore(), b = m.loadStore();
+    var shop = _FakeStore(m);
+    var a = shop.loadStore(), b = shop.loadStore();
     var ready = m.hostReady;
     m.hostArrived.complete(PagesHostStatus(
         _FakePages.storeConfig, true, "", "/store", const []));

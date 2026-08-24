@@ -16,6 +16,7 @@ import 'package:bruig/plugin_system/plugin_system.dart';
 import 'package:bruig/plugin_system/writing_tools/writing_tools.dart';
 import 'package:bruig/models/realtimechat.dart';
 import 'package:bruig/models/pages.dart';
+import 'package:bruig/models/store.dart';
 import 'package:bruig/models/resources.dart';
 import 'package:bruig/models/uploads.dart';
 import 'package:bruig/models/wallet.dart';
@@ -212,6 +213,13 @@ Future<void> runMainApp(Config cfg) async {
             Provider.of<ResourcesModel>(c, listen: false))
           ..loadHost(),
         update: (c, resources, pages) => pages!,
+      ),
+      // The shop, built from hosting rather than beside it: what it needs
+      // from PagesModel is where the shop is served from and whether one is
+      // being hosted at all, which is hosting's answer to give.
+      ChangeNotifierProxyProvider<PagesModel, StoreModel>(
+        create: (c) => StoreModel(Provider.of<PagesModel>(c, listen: false)),
+        update: (c, pages, store) => store!,
       ),
       ChangeNotifierProvider.value(value: snackbar),
       ChangeNotifierProvider(create: (c) => PaymentsModel()),
