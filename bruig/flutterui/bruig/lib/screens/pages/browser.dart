@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:bruig/components/feed/markdown_nav.dart';
 import 'package:bruig/components/feed/markdown_page.dart';
 import 'package:bruig/components/md_elements.dart';
@@ -151,7 +154,14 @@ class _PageBrowserState extends State<PageBrowser> {
       );
     } else {
       body = PageStatusMessage(
-          status: page.response.status, nick: nick, path: path);
+        status: page.response.status,
+        nick: nick,
+        path: path,
+        // Whatever the other side wrote with the refusal. Short and plain
+        // or it is not worth showing: a page of markup where a sentence
+        // belongs is worse than the sentence we would have written.
+        said: refusalText(page.response.data),
+      );
     }
 
     return body;
@@ -307,17 +317,46 @@ class _Tab extends StatelessWidget {
   }
 }
 
+/// refusalText is what a refusing client said, if it is fit to show.
+///
+/// Bounded and single-line. A refusal carries whatever the other side felt
+/// like sending, and it is not a page: a long or many-lined body is more
+/// likely a stack trace or a template than a sentence meant for a reader,
+/// and showing one where an explanation belongs is worse than the plain
+/// wording this replaces.
+String refusalText(Uint8List? data) {
+  if (data == null || data.isEmpty) return "";
+  String text;
+  try {
+    text = utf8.decode(data);
+  } catch (_) {
+    return "";
+  }
+  text = text.trim();
+  if (text.isEmpty || text.length > 200 || text.contains("\n")) return "";
+  return text;
+}
+
 /// PageStatusMessage explains a non-ok reply in the reader's terms. The numbers
 /// come from the page protocol -- see SiteStatus, which maps the same set.
 class PageStatusMessage extends StatelessWidget {
   final int status;
   final String nick;
   final String path;
+
+  /// said is what the other side wrote with the refusal, or empty.
+  ///
+  /// Shown when there is any, because a client that troubles to say why is
+  /// saying something the reader can act on -- "you have something in your
+  /// cart the shop no longer sells" is a thing to go and fix, and "could
+  /// not make sense of the request" is not.
+  final String said;
   const PageStatusMessage(
       {super.key,
       required this.status,
       required this.nick,
-      required this.path});
+      required this.path,
+      this.said = ""});
 
   @override
   Widget build(BuildContext context) {
@@ -338,7 +377,9 @@ class PageStatusMessage extends StatelessWidget {
         return BrowserMessage(
           icon: Icons.error_outline,
           title: "Bad request",
-          detail: "$nick could not make sense of the request for \"$path\".",
+          detail: said.isNotEmpty
+              ? said
+              : "$nick could not make sense of the request for \"$path\".",
         );
       default:
         return BrowserMessage(

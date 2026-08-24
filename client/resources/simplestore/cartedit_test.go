@@ -194,3 +194,43 @@ func TestACommentIsRecordedEvenWithNobodyToTell(t *testing.T) {
 		t.Fatalf("got %d comments", len(order.Comments))
 	}
 }
+
+// TestACartWithSomethingUnsoldSaysSo covers a cart holding a product the
+// shop has stopped selling.
+//
+// A product can be disabled or deleted while it sits in somebody's cart, and
+// nothing told them. Placing the order was where it surfaced: the whole
+// order refused, naming a SKU the buyer has never seen, with nothing on the
+// page to act on.
+func TestACartWithSomethingUnsoldSaysSo(t *testing.T) {
+	s := testStore(t)
+	s.products = map[string]*Product{
+		"sold": {SKU: "sold", Title: "On sale", Price: 1},
+	}
+	cart := &Cart{Items: []*CartItem{
+		{Product: &Product{SKU: "sold", Title: "On sale", Price: 1}, Quantity: 1},
+		{Product: &Product{SKU: "gone", Title: "Withdrawn", Price: 1}, Quantity: 1},
+	}}
+
+	got := s.cartWithAvailability(cart)
+	if !got.HasUnavailable() {
+		t.Fatal("a cart holding a withdrawn product says it is fine")
+	}
+	if !got.Unavailable["gone"] {
+		t.Error("the withdrawn product is not named")
+	}
+	if got.Unavailable["sold"] {
+		t.Error("a product still on sale was marked unavailable")
+	}
+}
+
+func TestACartOfThingsStillSoldIsFine(t *testing.T) {
+	s := testStore(t)
+	s.products = map[string]*Product{"sold": {SKU: "sold", Price: 1}}
+	got := s.cartWithAvailability(&Cart{Items: []*CartItem{
+		{Product: &Product{SKU: "sold", Price: 1}, Quantity: 1},
+	}})
+	if got.HasUnavailable() {
+		t.Error("a cart of things on sale was marked as having a problem")
+	}
+}

@@ -122,3 +122,23 @@ func (s *Store) handleSetCartQuantity(ctx context.Context, uid clientintf.UserID
 
 	return s.editCart(ctx, uid, request, setCartQuantity)
 }
+
+// cartWithAvailability is the cart together with the lines that can no
+// longer be bought.
+//
+// A product can be disabled or deleted while it sits in somebody's cart, and
+// nothing tells them. Placing the order was where it surfaced -- the whole
+// order refused, naming a SKU the buyer has never seen -- so the cart page
+// says it instead, where there is a Remove button next to the thing that is
+// wrong.
+func (s *Store) cartWithAvailability(cart *Cart) cartContext {
+	unavailable := make(map[string]bool)
+	s.mtx.Lock()
+	for _, item := range cart.Items {
+		if _, ok := s.products[item.Product.SKU]; !ok {
+			unavailable[item.Product.SKU] = true
+		}
+	}
+	s.mtx.Unlock()
+	return cartContext{Cart: cart, Unavailable: unavailable}
+}

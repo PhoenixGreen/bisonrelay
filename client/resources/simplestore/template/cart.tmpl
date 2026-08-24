@@ -6,6 +6,11 @@ Last Updated: {{.Updated.Format "2006-01-02 15:04:05" }}
 
 **Total: {{ money .Total }}**{{ with dcr .Total }} · ≈ {{.}}{{ end }}
 
+{{if .HasUnavailable}}
+Something in your cart is no longer sold. Remove it and you can order the
+rest.
+{{end}}
+
 ---
 ## Place Order
 {{- $shipping := false -}}
@@ -16,7 +21,8 @@ Last Updated: {{.Updated.Format "2006-01-02 15:04:05" }}
   {{- end -}}
 {{- end -}}
 
-{{- if $shipping}}
+{{- if .HasUnavailable}}
+{{else if $shipping}}
 ### Shipping Information
 --form--
 type="action" value="/placeOrder"

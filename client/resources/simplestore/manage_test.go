@@ -170,3 +170,36 @@ func TestValidOrderStatus(t *testing.T) {
 		}
 	}
 }
+
+// TestASKUAPageCannotLinkToIsRefused covers the identifier a shop links by.
+//
+// A shop writes [Title](product/SKU), and a Markdown link stops at the first
+// space. A SKU of "this is a test" is written, loaded and served perfectly,
+// and the shop front then shows the raw text of the link instead of the
+// product -- because the link ended at "this".
+func TestASKUAPageCannotLinkToIsRefused(t *testing.T) {
+	s := testStore(t)
+	for _, bad := range []string{
+		"this is a test",
+		"a(b)",
+		"a/b",
+		`say "hi"`,
+		"a\tb",
+	} {
+		err := s.SaveProduct(Product{Title: "T", SKU: bad, Price: 1}, "")
+		if err == nil {
+			t.Errorf("SKU %q was accepted", bad)
+		}
+	}
+}
+
+func TestAnOrdinarySKUIsStillAccepted(t *testing.T) {
+	// The guard is easy to write too widely, and a shop that cannot hold
+	// SKU-001 is worse than one that can hold a SKU with a space in it.
+	s := testStore(t)
+	for _, ok := range []string{"1209391282", "SKU-001", "a_b.c", "Widget2"} {
+		if err := s.SaveProduct(Product{Title: "T", SKU: ok, Price: 1}, ""); err != nil {
+			t.Errorf("SKU %q was refused: %v", ok, err)
+		}
+	}
+}

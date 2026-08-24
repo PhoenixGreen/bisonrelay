@@ -1,5 +1,11 @@
+{{$unavailable := .Unavailable}}
 {{range .Items}}
 --panel[padding=12, margin=0 0 8 0, border=1, color=outline, radius=8]--
+{{if index $unavailable .Product.SKU -}}
+**{{.Product.Title}}** — no longer sold
+
+The shop has stopped selling this. Remove it to place your order.
+{{- else -}}
 **{{.Product.Title}}** — {{ money .Product.Price }} each
 
 {{ .Quantity }} × {{ money .Product.Price }} = **{{ money .Total }}**
@@ -10,6 +16,7 @@ type="hidden" name="sku" value="{{.Product.SKU}}"
 type="intinput" label="Quantity" name="qty" value="{{.Quantity}}"
 type="submit" label="Update"
 --/form--
+{{- end}}
 
 --form--
 type="action" value="/removeFromCart"

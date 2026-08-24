@@ -281,6 +281,23 @@ func (s *Store) SaveProduct(p Product, file string) error {
 	if p.SKU == "" {
 		return fmt.Errorf("product needs a SKU")
 	}
+	// A shop links a product by writing [Title](product/SKU), and a Markdown
+	// link stops at the first space. A SKU of "this is a test" is written to
+	// the file, loaded into the catalogue and served perfectly -- and the
+	// shop front then shows the raw text of the link instead of the
+	// product, because the link ended at "this". The path would need
+	// escaping too, for the same characters.
+	//
+	// So the SKU is what it has always looked like everywhere else: an
+	// identifier. Refused here rather than repaired, because a SKU is what
+	// a cart and an order already placed refer to, and quietly changing one
+	// would strand them.
+	if bad := strings.IndexFunc(p.SKU, func(r rune) bool {
+		return r == ' ' || r == '\t' || strings.ContainsRune(`()<>"'\/`, r)
+	}); bad != -1 {
+		return fmt.Errorf("a SKU cannot contain %q: it is what a page links "+
+			"the product by", string(p.SKU[bad]))
+	}
 	if strings.TrimSpace(p.Title) == "" {
 		return fmt.Errorf("product needs a title")
 	}

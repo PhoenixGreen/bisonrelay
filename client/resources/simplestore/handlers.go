@@ -164,7 +164,7 @@ func (s *Store) handleClearCart(ctx context.Context, uid clientintf.UserID) (*rp
 
 	var cart Cart
 	w := &bytes.Buffer{}
-	err = s.tmpl.ExecuteTemplate(w, cartTmplFile, &cart)
+	err = s.tmpl.ExecuteTemplate(w, cartTmplFile, s.cartWithAvailability(&cart))
 	if err != nil {
 		return nil, fmt.Errorf("unable to execute product template: %v", err)
 	}
@@ -190,7 +190,7 @@ func (s *Store) handleCart(ctx context.Context, uid clientintf.UserID,
 	}
 
 	w := &bytes.Buffer{}
-	err = s.tmpl.ExecuteTemplate(w, cartTmplFile, &cart)
+	err = s.tmpl.ExecuteTemplate(w, cartTmplFile, s.cartWithAvailability(&cart))
 	if err != nil {
 		return nil, fmt.Errorf("unable to execute product template: %v", err)
 	}
