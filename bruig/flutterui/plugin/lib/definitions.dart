@@ -5140,6 +5140,11 @@ abstract class PluginPlatform {
         "data": base64Encode(data),
       })) as String;
 
+  /// sendOrderGoods sends an order's files again.
+  Future<void> sendOrderGoods(String user, int order) async =>
+      await asyncCall(CTSendOrderGoods,
+          OrderStatusArgs(user, order, ""));
+
   /// readStoreGood is what the shop is currently sending for a product, or
   /// null when there is nothing there.
   Future<String?> readStoreGood(String recorded) async {
@@ -5667,6 +5672,7 @@ const int CTRestoreStoreTemplates = 0xdc;
 const int CTPublishStoreGood = 0xdd;
 const int CTRemoveStoreGood = 0xde;
 const int CTReadStoreGood = 0xdf;
+const int CTSendOrderGoods = 0xe0;
 const int CTListStoreProducts = 0xc6;
 const int CTSaveStoreProduct = 0xc7;
 const int CTDeleteStoreProduct = 0xc8;

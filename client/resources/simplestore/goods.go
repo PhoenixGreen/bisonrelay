@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/companyzero/bisonrelay/client/clientintf"
 )
 
 // goods.go is where a shop keeps what it sells.
@@ -155,4 +157,79 @@ func goodAttributes(order *Order, item *CartItem) map[string]string {
 		AttrProductSKU:   item.Product.SKU,
 		AttrProductTitle: item.Product.Title,
 	}
+}
+
+// sendOrderGoods sends the file for every line of an order that has one, and
+// gives back what to tell the buyer.
+//
+// One path, used by payment landing and by a seller sending again. Two
+// copies of this would be two sets of answers to the awkward cases -- a name
+// the shop will not send, a file that is not there -- and the awkward cases
+// are the whole of it: the happy path is one line.
+func (s *Store) sendOrderGoods(order *Order) string {
+	var b strings.Builder
+	for _, item := range order.Cart.Items {
+		if item.Product.SendFilename == "" {
+			continue
+		}
+		name := item.Product.SendFilename
+
+		path, err := s.checkGood(name)
+		if err != nil {
+			// Saved before the goods directory existed, or edited by hand.
+			// Said rather than sent: the alternative is sending whatever
+			// that name happens to reach.
+			s.log.Errorf("Order %s/%s names a file this shop will not send "+
+				"(%v); telling the buyer instead", order.User.ShortLogID(),
+				order.ID, err)
+			fmt.Fprintf(&b, "\nThe file for %q could not be sent. Ask the "+
+				"seller for it.", item.Product.Title)
+			continue
+		}
+		if _, err := os.Stat(path); err != nil {
+			// Promising a file and then not sending one is worse than
+			// saying so: the buyer has paid and is waiting for something.
+			s.log.Errorf("Order %s/%s names %q, which is not there: %v",
+				order.User.ShortLogID(), order.ID, name, err)
+			fmt.Fprintf(&b, "\nThe file for %q could not be sent. Ask the "+
+				"seller for it.", item.Product.Title)
+			continue
+		}
+
+		fmt.Fprintf(&b, "\nSending you the file %s included in your order",
+			filepath.Base(path))
+		attrs := goodAttributes(order, item)
+		user, id := order.User, order.ID
+		go func() {
+			err := s.c.SendFileWithAttributes(user, 0, path, attrs, nil)
+			if err != nil {
+				s.log.Errorf("Unable to send %s for order %s/%s: %v",
+					path, user.ShortLogID(), id, err)
+			} else {
+				s.log.Infof("Sent %s for order %s/%s", path,
+					user.ShortLogID(), id)
+			}
+		}()
+	}
+	return b.String()
+}
+
+// SendOrderGoods sends an order's files again.
+//
+// A seller's own action, for when a buyer says nothing arrived. The files
+// are sent on payment already; this is the same send, asked for deliberately
+// -- which also makes the whole path testable without a payment, since
+// paying yourself is not a thing Lightning will do.
+func (s *Store) SendOrderGoods(uid clientintf.UserID, oid OrderID) error {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+
+	order, _, err := s.loadOrderLocked(uid, oid)
+	if err != nil {
+		return err
+	}
+	if s.sendOrderGoods(order) == "" {
+		return fmt.Errorf("nothing in order #%d has a file to send", oid)
+	}
+	return nil
 }

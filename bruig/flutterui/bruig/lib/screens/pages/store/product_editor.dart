@@ -5,14 +5,12 @@ import 'package:golib_plugin/golib_plugin.dart';
 import 'package:bruig/components/pages/add_picture_dialog.dart';
 import 'package:bruig/components/buttons.dart';
 import 'package:bruig/components/text.dart';
-import 'package:bruig/config.dart';
 import 'package:bruig/models/pages.dart';
 import 'package:bruig/models/store.dart';
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:golib_plugin/definitions.dart';
 
 // product_editor.dart writes one catalogue entry.

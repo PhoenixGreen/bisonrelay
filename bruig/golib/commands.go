@@ -226,6 +226,7 @@ const (
 	CTPublishStoreGood      CmdType = 0xdd
 	CTRemoveStoreGood       CmdType = 0xde
 	CTReadStoreGood         CmdType = 0xdf
+	CTSendOrderGoods        CmdType = 0xe0
 
 	// Store management: the catalogue and the order book, for the seller's
 	// own UI rather than the markdown pages a buyer sees.

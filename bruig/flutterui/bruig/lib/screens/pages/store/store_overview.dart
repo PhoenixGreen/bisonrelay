@@ -1,4 +1,3 @@
-import 'package:bruig/components/pages/add_picture_dialog.dart';
 import 'package:bruig/components/buttons.dart';
 import 'package:bruig/components/text.dart';
 import 'package:bruig/config.dart';
@@ -7,9 +6,7 @@ import 'package:bruig/models/store.dart';
 import 'package:bruig/screens/pages/store/store_orders.dart';
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:golib_plugin/definitions.dart';
 
 // store_overview.dart is the shop as its seller opens it: whether a shop is
@@ -20,7 +17,7 @@ class StoreOff extends StatelessWidget {
   final bool editable;
   final String mode;
   const StoreOff(
-      {required this.onEnable, required this.editable, required this.mode});
+      {super.key, required this.onEnable, required this.editable, required this.mode});
 
   @override
   Widget build(BuildContext context) {
@@ -65,7 +62,8 @@ class StoreOverview extends StatelessWidget {
   final void Function(String) onDelete;
   final void Function(ManagedOrder, String) onStatus;
   final Future<void> Function(ManagedOrder, String) onReply;
-  const StoreOverview({
+  final Future<void> Function(ManagedOrder) onSendGoods;
+  const StoreOverview({super.key, 
     required this.pages,
     required this.store,
     required this.onDisable,
@@ -75,6 +73,7 @@ class StoreOverview extends StatelessWidget {
     required this.onDelete,
     required this.onStatus,
     required this.onReply,
+    required this.onSendGoods,
   });
 
   @override
@@ -130,6 +129,7 @@ class StoreOverview extends StatelessWidget {
               order: o,
               onStatus: (status) => onStatus(o, status),
               onReply: (text) => onReply(o, text),
+              onSendGoods: () => onSendGoods(o),
             )),
 
       const SizedBox(height: 28),

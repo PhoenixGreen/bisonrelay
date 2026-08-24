@@ -2430,6 +2430,17 @@ func handleClientCmd(cc *clientCtx, cmd *cmd) (interface{}, error) {
 		}
 		return store.ReadGood(recorded)
 
+	case CTSendOrderGoods:
+		var args orderStatusArgs
+		if err := cmd.decode(&args); err != nil {
+			return nil, err
+		}
+		store, err := cc.pagesHost.runningStore()
+		if err != nil {
+			return nil, err
+		}
+		return nil, store.SendOrderGoods(args.User, args.Order)
+
 	case CTListStoreProducts:
 		store, err := cc.pagesHost.runningStore()
 		if err != nil {

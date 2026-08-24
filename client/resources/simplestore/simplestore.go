@@ -582,50 +582,7 @@ func (s *Store) invoiceSettled(ctx context.Context, order *Order) {
 		order.User.ShortLogID(), order.ID)
 
 	// If the order has files attached to it, send them to the user.
-	for _, item := range order.Cart.Items {
-		fname := item.Product.SendFilename
-		if item.Product.SendFilename == "" {
-			continue
-		}
-
-		path, err := s.checkGood(fname)
-		if err != nil {
-			// Saved before the goods directory existed, or edited by hand.
-			// Said rather than sent: the alternative is sending whatever
-			// that name happens to reach.
-			s.log.Errorf("Order %s/%s names a file this shop will not send "+
-				"(%v); telling the buyer instead", order.User.ShortLogID(),
-				order.ID, err)
-			wpm("\nThe file for %q could not be sent. Ask the seller for it.",
-				item.Product.Title)
-			continue
-		}
-		if _, err := os.Stat(path); err != nil {
-			// Promising a file and then not sending one is worse than
-			// saying so: the buyer has paid and is waiting for something.
-			s.log.Errorf("Order %s/%s names %q, which is not there: %v",
-				order.User.ShortLogID(), order.ID, fname, err)
-			wpm("\nThe file for %q could not be sent. Ask the seller for it.",
-				item.Product.Title)
-			continue
-		}
-		fname = path
-		wpm("\nSending you the file %s included in your order",
-			filepath.Base(fname))
-		attrs := goodAttributes(order, item)
-		go func() {
-			err := s.c.SendFileWithAttributes(order.User, 0, fname, attrs, nil)
-			if err != nil {
-				s.log.Errorf("Unable to send file %s to user %s due to order %s/%s: %v",
-					fname, strescape.Nick(ru.Nick()),
-					order.User.ShortLogID(), order.ID, err)
-			} else {
-				s.log.Infof("Successfully sent file %v to user %s due to order %s/%s",
-					fname, strescape.Nick(ru.Nick()),
-					order.User.ShortLogID(), order.ID)
-			}
-		}()
-	}
+	wpm("%s", s.sendOrderGoods(order))
 
 	if s.cfg.StatusChanged != nil {
 		s.cfg.StatusChanged(order, b.String())

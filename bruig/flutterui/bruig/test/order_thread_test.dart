@@ -30,7 +30,8 @@ SSOrderComment from(String who, String text) =>
 
 void main() {
   Future<void> pump(WidgetTester tester, ManagedOrder order,
-      Future<void> Function(String) onReply) async {
+      Future<void> Function(String) onReply,
+      {Future<void> Function()? onSendGoods}) async {
     tester.view.physicalSize = const Size(800, 1200);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
@@ -39,7 +40,10 @@ void main() {
           create: (c) => ThemeNotifier(doLoad: false)),
     ], child: MaterialApp(
         home: Scaffold(
-            body: OrderThread(order: order, onReply: onReply)))));
+            body: OrderThread(
+                order: order,
+                onReply: onReply,
+                onSendGoods: onSendGoods ?? () async {})))));
     await tester.pumpAndSettle();
   }
 
@@ -100,5 +104,35 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(sent, 0);
+  });
+
+  testWidgets('the seller can send the files again', (tester) async {
+    // The files go out when payment lands, so this is for when a buyer says
+    // nothing arrived -- and it is the only way to try the whole path
+    // without a payment, since paying yourself is not a thing Lightning
+    // will do.
+    var sent = 0;
+    await pump(tester, orderWith(const []), (_) async {},
+        onSendGoods: () async => sent++);
+
+    await tester.tap(find.text("Send the files now"));
+    await tester.pumpAndSettle();
+    expect(sent, 1);
+  });
+
+  testWidgets('sending files does not tie up the reply box', (tester) async {
+    // Two different things to be doing. Sharing one busy flag greyed out
+    // the reply while a file went out.
+    var replied = 0;
+    await pump(tester, orderWith(const []), (_) async => replied++,
+        onSendGoods: () async => throw "the other end is offline");
+
+    await tester.tap(find.text("Send the files now"));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField), "It is on its way");
+    await tester.tap(find.text("Send"));
+    await tester.pumpAndSettle();
+    expect(replied, 1, reason: "the reply box was tied up by the file send");
   });
 }

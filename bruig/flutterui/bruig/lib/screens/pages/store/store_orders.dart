@@ -1,12 +1,5 @@
-import 'package:bruig/components/pages/add_picture_dialog.dart';
-import 'package:bruig/components/buttons.dart';
 import 'package:bruig/components/text.dart';
-import 'package:bruig/config.dart';
-import 'package:bruig/models/pages.dart';
-import 'package:bruig/models/store.dart';
-import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:golib_plugin/definitions.dart';
@@ -22,10 +15,12 @@ class OrderRow extends StatelessWidget {
   final ManagedOrder order;
   final void Function(String) onStatus;
   final Future<void> Function(String) onReply;
-  const OrderRow({
+  final Future<void> Function() onSendGoods;
+  const OrderRow({super.key, 
     required this.order,
     required this.onStatus,
     required this.onReply,
+    required this.onSendGoods,
   });
 
   @override
@@ -65,7 +60,10 @@ class OrderRow extends StatelessWidget {
             .toList(),
         onChanged: (v) => v == null ? null : onStatus(v),
       ),
-      children: [OrderThread(order: order, onReply: onReply)],
+      children: [
+        OrderThread(
+            order: order, onReply: onReply, onSendGoods: onSendGoods)
+      ],
     );
   }
 }
@@ -80,7 +78,13 @@ class OrderRow extends StatelessWidget {
 class OrderThread extends StatefulWidget {
   final ManagedOrder order;
   final Future<void> Function(String) onReply;
-  const OrderThread({super.key, required this.order, required this.onReply});
+  final Future<void> Function() onSendGoods;
+  const OrderThread({
+    super.key,
+    required this.order,
+    required this.onReply,
+    required this.onSendGoods,
+  });
 
   @override
   State<OrderThread> createState() => _OrderThreadState();
@@ -89,11 +93,30 @@ class OrderThread extends StatefulWidget {
 class _OrderThreadState extends State<OrderThread> {
   final _reply = TextEditingController();
   bool _sending = false;
+  bool _sendingGoods = false;
 
   @override
   void dispose() {
     _reply.dispose();
     super.dispose();
+  }
+
+  /// _sendGoods sends this order's files again.
+  Future<void> _sendGoods() async {
+    // Its own flag, not the reply's: they are two different things to be
+    // doing, and sharing one would grey out the reply box while a file went
+    // out.
+    if (_sendingGoods) return;
+    setState(() => _sendingGoods = true);
+    try {
+      await widget.onSendGoods();
+    } catch (_) {
+      // Said by whoever asked us to send, the same way a reply's failure
+      // is. Reporting it here as well would show the seller two of the
+      // same message.
+    } finally {
+      if (mounted) setState(() => _sendingGoods = false);
+    }
   }
 
   Future<void> _send() async {
@@ -145,7 +168,20 @@ class _OrderThreadState extends State<OrderThread> {
               ],
             ),
           ),
-      const SizedBox(height: 4),
+      const SizedBox(height: 8),
+      // The seller's own action. The files go out when payment lands, so
+      // this is for when a buyer says nothing arrived -- and it is the only
+      // way to try the whole path without a payment, since paying yourself
+      // is not a thing Lightning will do.
+      Align(
+        alignment: Alignment.centerLeft,
+        child: OutlinedButton.icon(
+          onPressed: _sendingGoods ? null : _sendGoods,
+          icon: const Icon(Icons.send_outlined, size: 16),
+          label: Txt.S(_sendingGoods ? "Sending…" : "Send the files now"),
+        ),
+      ),
+      const SizedBox(height: 8),
       Row(children: [
         Expanded(
           child: TextField(

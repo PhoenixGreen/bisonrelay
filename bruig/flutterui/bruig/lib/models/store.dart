@@ -141,6 +141,14 @@ class StoreModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// sendOrderGoods sends an order's files again.
+  ///
+  /// The files go out when payment lands; this is the same send, asked for
+  /// deliberately -- for when a buyer says nothing arrived, and because it
+  /// is the only way to exercise the whole path without a payment.
+  Future<void> sendOrderGoods(String user, int order) =>
+      Golib.sendOrderGoods(user, order);
+
   /// restoreStoreTemplates puts the shipped shop templates back.
   ///
   /// The shop reads its templates from disk and parses them once, so this

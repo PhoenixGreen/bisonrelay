@@ -126,6 +126,20 @@ class _StoreTabState extends State<StoreTab> {
     }
   }
 
+  /// sendOrderGoods sends an order's files again.
+  ///
+  /// Rethrows after saying so, so the button can put itself back and the
+  /// seller is not told it worked.
+  Future<void> sendOrderGoods(ManagedOrder order) async {
+    var snackbar = SnackBarModel.of(context);
+    try {
+      await store.sendOrderGoods(order.user, order.id);
+    } catch (exception) {
+      snackbar.error("Unable to send the files: $exception");
+      rethrow;
+    }
+  }
+
   void setStatus(ManagedOrder order, String status) async {
     var snackbar = SnackBarModel.of(context);
     try {
@@ -177,6 +191,7 @@ class _StoreTabState extends State<StoreTab> {
           onDelete: deleteProduct,
           onStatus: setStatus,
           onReply: replyToOrder,
+          onSendGoods: sendOrderGoods,
         );
       },
     );
