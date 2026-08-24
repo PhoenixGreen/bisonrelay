@@ -69,10 +69,17 @@ func TestRestoreLeavesTheShopsOwnRecordsAlone(t *testing.T) {
 		if err := os.MkdirAll(filepath.Join(root, dir), 0o700); err != nil {
 			t.Fatal(err)
 		}
-		err := os.WriteFile(filepath.Join(root, dir, "mine.toml"),
-			[]byte("kept"), 0o600)
-		if err != nil {
-			t.Fatal(err)
+		// Named as the shipped files are, which is the whole point: a
+		// name of its own would be left alone by a restore that copies
+		// the template directory over wholesale, and this passed while
+		// exactly that was happening.
+		for _, name := range []string{"mine.toml", "first-type.toml",
+			"second-type.toml"} {
+			err := os.WriteFile(filepath.Join(root, dir, name),
+				[]byte("kept"), 0o600)
+			if err != nil {
+				t.Fatal(err)
+			}
 		}
 	}
 
@@ -80,9 +87,12 @@ func TestRestoreLeavesTheShopsOwnRecordsAlone(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, dir := range []string{"products", "carts"} {
-		got, err := os.ReadFile(filepath.Join(root, dir, "mine.toml"))
-		if err != nil || string(got) != "kept" {
-			t.Errorf("%s/mine.toml is %q, %v", dir, got, err)
+		for _, name := range []string{"mine.toml", "first-type.toml",
+			"second-type.toml"} {
+			got, err := os.ReadFile(filepath.Join(root, dir, name))
+			if err != nil || string(got) != "kept" {
+				t.Errorf("%s/%s is %q, %v", dir, name, got, err)
+			}
 		}
 	}
 }

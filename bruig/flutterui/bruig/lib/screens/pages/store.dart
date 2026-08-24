@@ -137,8 +137,16 @@ class _StoreTabState extends State<StoreTab> {
 
   @override
   Widget build(BuildContext context) {
+    // Both, because this screen is drawn from both. Hosting says whether
+    // there is a shop at all and where it is served from; the shop says what
+    // is in it and what is being written.
+    //
+    // Listening to hosting alone is what splitting the model quietly broke:
+    // the catalogue, the orders and the product being edited all moved, so
+    // pressing Edit changed the shop and nothing on screen, and the editor
+    // appeared only once something else happened to rebuild the page.
     return ListenableBuilder(
-      listenable: pages,
+      listenable: Listenable.merge([pages, store]),
       builder: (context, _) {
         if (!pages.hostConfig.hostsStore) {
           return StoreOff(

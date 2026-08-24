@@ -203,3 +203,38 @@ func TestAnOrdinarySKUIsStillAccepted(t *testing.T) {
 		}
 	}
 }
+
+// TestADuplicateSKUCostsOneProductNotTheShop covers a catalogue with the same
+// SKU in two files.
+//
+// It used to refuse the whole catalogue, which takes every product off the
+// shop front at once -- and silently, because the seller's own product list
+// reads the files directly and goes on showing all of them. A healthy list
+// beside an empty shop is the hardest possible thing to work out from the
+// outside, and it is what a seller actually got.
+func TestADuplicateSKUCostsOneProductNotTheShop(t *testing.T) {
+	s := testStore(t)
+	write := func(file, body string) {
+		t.Helper()
+		path := filepath.Join(s.root, productsDir, file)
+		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("a.toml", "[[products]]\ntitle = \"Kept\"\nsku = \"dup\"\nprice = 1.0\n")
+	write("b.toml", "[[products]]\ntitle = \"Ignored\"\nsku = \"dup\"\nprice = 2.0\n"+
+		"\n[[products]]\ntitle = \"Also kept\"\nsku = \"other\"\nprice = 3.0\n")
+
+	if err := s.reloadStore(); err != nil {
+		t.Fatalf("a duplicate SKU stopped the catalogue loading: %v", err)
+	}
+	if len(s.products) != 2 {
+		t.Fatalf("catalogue holds %d products, want 2", len(s.products))
+	}
+	if s.products["dup"].Title != "Kept" {
+		t.Errorf("the second claim on the SKU won: %q", s.products["dup"].Title)
+	}
+	if _, ok := s.products["other"]; !ok {
+		t.Error("a product sharing a file with a duplicate was lost with it")
+	}
+}

@@ -253,8 +253,19 @@ func (s *Store) reloadStore() error {
 			}
 
 			if _, ok := products[prod.SKU]; ok {
-				return fmt.Errorf("product with duplicated SKU %s in %s",
-					prod.SKU, fname)
+				// Kept out, not fatal. Refusing the whole catalogue over
+				// one duplicate takes every product off the shop front at
+				// once -- and silently, because the seller's own product
+				// list reads the files directly and goes on showing all of
+				// them. A healthy list beside an empty shop is the hardest
+				// possible thing to work out from the outside.
+				//
+				// The first one wins, which is a decision rather than a
+				// guess: a cart holding that SKU has to mean something, and
+				// the alternative is it meaning nothing.
+				s.log.Warnf("Two products in %s claim SKU %q; keeping the "+
+					"first and ignoring the rest", productsDir, prod.SKU)
+				continue
 			}
 
 			products[prod.SKU] = prod
