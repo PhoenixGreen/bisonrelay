@@ -1,6 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
+import 'package:bruig/components/md_elements.dart';
+import 'package:bruig/theming_system/model/theme_area.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:bruig/components/text.dart';
 import 'package:bruig/models/uistate.dart';
 import 'package:bruig/plugin_system/writing_tools/writing_tools.dart';
@@ -14,13 +18,17 @@ import 'package:video_player/video_player.dart';
 // Decided by extension: the alternative is sniffing the contents, which
 // costs a read of every row in the list to decide whether to offer a
 // button.
-enum FileKind { image, text, pdf, video, other }
+enum FileKind { image, text, markdown, pdf, video, other }
 
 const _imageExts = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp"};
 const _videoExts = {".mp4", ".mov", ".m4v", ".webm", ".mkv"};
+/// _markdownExts are read rather than inspected. A document somebody bought
+/// or was sent is something to read, and showing it as its own source is the
+/// same as handing somebody a PDF as a hex dump.
+const _markdownExts = {".md", ".markdown"};
+
 const _textExts = {
   ".txt",
-  ".md",
   ".json",
   ".yaml",
   ".yml",
@@ -42,6 +50,7 @@ FileKind fileKindOf(String filePath) {
   if (_imageExts.contains(ext)) return FileKind.image;
   if (_videoExts.contains(ext)) return FileKind.video;
   if (ext == ".pdf") return FileKind.pdf;
+  if (_markdownExts.contains(ext)) return FileKind.markdown;
   if (_textExts.contains(ext)) return FileKind.text;
   return FileKind.other;
 }
@@ -157,7 +166,7 @@ class _FilePreviewState extends State<FilePreview> {
     return switch (fileKindOf(widget.filePath)) {
       FileKind.pdf => "Continue from page ${at.round()}",
       FileKind.video => "Continue from ${_clock(at)}",
-      FileKind.text => "Continue where you left off",
+      FileKind.text || FileKind.markdown => "Continue where you left off",
       _ => null,
     };
   }
@@ -269,6 +278,24 @@ class _FilePreviewState extends State<FilePreview> {
               setState(() => pageCount = count);
             }
           },
+        );
+      case FileKind.markdown:
+        // Read, not inspected -- unless the reader would rather see the
+        // source, which is a setting rather than an argument. The source is
+        // a keystroke away either way; see _MarkdownPreview.
+        if (!ThemeNotifier.of(context)
+            .areaStyle(ThemeArea.manageContent)
+            .readMarkdown) {
+          return _TextPreview(
+            file: file,
+            resumeToOffset: resumeTo,
+            onOffset: _recordPosition,
+          );
+        }
+        return _MarkdownPreview(
+          file: file,
+          resumeToOffset: resumeTo,
+          onOffset: _recordPosition,
         );
       case FileKind.video:
         return _VideoPreview(
@@ -576,7 +603,11 @@ class _TextPreviewState extends State<_TextPreview> {
       setState(() {
         // A file that isn't really text (or is cut mid-character by the
         // cap) decodes with replacement characters rather than throwing.
-        content = String.fromCharCodes(bytes);
+        //
+        // utf8, not fromCharCodes: that reads each byte as a code unit, so
+        // every accented letter, dash and quotation mark written by anything
+        // but an American keyboard came out as two wrong characters.
+        content = utf8.decode(bytes, allowMalformed: true);
         truncated = length > _maxBytes;
       });
     } catch (exception) {
@@ -716,6 +747,142 @@ class _VideoPreviewState extends State<_VideoPreview> {
           onPressed: () => ctrl.seekTo(Duration.zero),
         ),
       ]),
+    ]);
+  }
+}
+
+/// _MarkdownPreview reads a Markdown document rather than showing its source.
+///
+/// A document somebody bought, or was sent, is a thing to read: headings,
+/// pictures and panels, the way its author set it. Shown as its own source
+/// it is the same as handing somebody a PDF as a hex dump -- and .md was
+/// filed with .go and .sh, which is right for a file you are inspecting and
+/// wrong for one you are reading.
+///
+/// The source is still one press away. The file is on this machine and
+/// belongs to whoever has it: hiding the text would not protect anything,
+/// it would only make the plain-text case awkward.
+class _MarkdownPreview extends StatefulWidget {
+  final File file;
+  final double? resumeToOffset;
+  final ValueChanged<double> onOffset;
+  const _MarkdownPreview({
+    required this.file,
+    required this.resumeToOffset,
+    required this.onOffset,
+  });
+
+  @override
+  State<_MarkdownPreview> createState() => _MarkdownPreviewState();
+}
+
+class _MarkdownPreviewState extends State<_MarkdownPreview> {
+  /// The same cap the source view uses. A document past it is almost
+  /// certainly not one somebody is reading.
+  static const _maxBytes = 512 * 1024;
+
+  String? content;
+  String? error;
+  bool truncated = false;
+  bool showSource = false;
+  final scrollCtrl = ScrollController();
+  Timer? _record;
+
+  @override
+  void initState() {
+    super.initState();
+    scrollCtrl.addListener(_scrolled);
+    load();
+  }
+
+  void _scrolled() {
+    if (_record?.isActive ?? false) return;
+    _record = Timer(const Duration(milliseconds: 400), () {
+      if (mounted && scrollCtrl.hasClients) widget.onOffset(scrollCtrl.offset);
+    });
+  }
+
+  @override
+  void didUpdateWidget(_MarkdownPreview old) {
+    super.didUpdateWidget(old);
+    if (old.file.path != widget.file.path) {
+      setState(() {
+        content = null;
+        error = null;
+        showSource = false;
+      });
+      load();
+    } else if (widget.resumeToOffset != null &&
+        widget.resumeToOffset != old.resumeToOffset &&
+        scrollCtrl.hasClients) {
+      scrollCtrl.jumpTo(widget.resumeToOffset!);
+    }
+  }
+
+  @override
+  void dispose() {
+    _record?.cancel();
+    scrollCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> load() async {
+    try {
+      var length = await widget.file.length();
+      var bytes = length > _maxBytes
+          ? await widget.file.openRead(0, _maxBytes).expand((c) => c).toList()
+          : await widget.file.readAsBytes();
+      if (!mounted) return;
+      setState(() {
+        content = utf8.decode(bytes, allowMalformed: true);
+        truncated = length > _maxBytes;
+      });
+    } catch (exception) {
+      if (mounted) setState(() => error = "$exception");
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (error != null) {
+      return Center(child: Text("Unable to read file: $error"));
+    }
+    if (content == null) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Align(
+        alignment: Alignment.centerRight,
+        child: TextButton.icon(
+          onPressed: () => setState(() => showSource = !showSource),
+          icon: Icon(showSource ? Icons.article_outlined : Icons.code, size: 16),
+          label: Txt.S(showSource ? "Read it" : "Show the source"),
+        ),
+      ),
+      Expanded(
+        child: SingleChildScrollView(
+          controller: scrollCtrl,
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (truncated)
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 8),
+                  child: Text("Showing the first 512 KB",
+                      style:
+                          TextStyle(fontStyle: FontStyle.italic, fontSize: 12)),
+                ),
+              if (showSource)
+                SelectableText(content!,
+                    style:
+                        const TextStyle(fontFamily: "monospace", fontSize: 13))
+              else
+                MarkdownArea(content!, false),
+            ],
+          ),
+        ),
+      ),
     ]);
   }
 }

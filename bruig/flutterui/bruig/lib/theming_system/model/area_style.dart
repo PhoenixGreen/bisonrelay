@@ -208,6 +208,16 @@ class AreaStyle {
   // sender.
   final bool hideFilePaths;
 
+  // File Manager: a Markdown document opens in the reader rather than as its
+  // own source.
+  //
+  // A display choice and nothing more. The file is on this machine and
+  // belongs to whoever has it -- the source is a press away in the reader,
+  // and Open externally sits beside every preview. Turning this on does not
+  // stop anybody reading, copying or keeping the text, and a seller reading
+  // it as protection would be reading it wrong.
+  final bool readMarkdown;
+
   // -------------------------------------------------------------------------
   // Navigation bar -- see editor/areas/navbar.dart.
   // -------------------------------------------------------------------------
@@ -670,6 +680,7 @@ class AreaStyle {
     this.hideTooltips = false,
     this.hideHelpTooltips = false,
     this.hideFilePaths = false,
+    this.readMarkdown = true,
     this.messageAreaColor,
     this.messageAreaColorIndex,
     this.collapseComposerIcons = false,
@@ -827,6 +838,7 @@ class AreaStyle {
     bool? hideTooltips,
     bool? hideHelpTooltips,
     bool? hideFilePaths,
+    bool? readMarkdown,
     Color? messageAreaColor,
     int? messageAreaColorIndex,
     bool clearMessageAreaColor = false,
@@ -1022,6 +1034,7 @@ class AreaStyle {
         hideTooltips: hideTooltips ?? this.hideTooltips,
         hideHelpTooltips: hideHelpTooltips ?? this.hideHelpTooltips,
         hideFilePaths: hideFilePaths ?? this.hideFilePaths,
+        readMarkdown: readMarkdown ?? this.readMarkdown,
         messageAreaColor: clearMessageAreaColor
             ? null
             : (messageAreaColor ?? this.messageAreaColor),
@@ -1280,6 +1293,10 @@ class AreaStyle {
         if (hideTooltips) "hideTooltips": hideTooltips,
         if (hideHelpTooltips) "hideHelpTooltips": hideHelpTooltips,
         if (hideFilePaths) "hideFilePaths": hideFilePaths,
+        // Written when it is off, because this one is on by default: the
+        // usual "write it when true" would save nothing and read back as
+        // on again.
+        if (!readMarkdown) "readMarkdown": readMarkdown,
         if (messageAreaColor != null)
           "messageAreaColor": colorToHex(messageAreaColor!),
         if (messageAreaColorIndex != null)
@@ -1514,6 +1531,7 @@ class AreaStyle {
       hideTooltips: flag("hideTooltips"),
       hideHelpTooltips: flag("hideHelpTooltips"),
       hideFilePaths: flag("hideFilePaths"),
+      readMarkdown: flag("readMarkdown", fallback: true),
       messageAreaColor: color("messageAreaColor"),
       messageAreaColorIndex: (j["messageAreaColorIndex"] as num?)?.toInt(),
       collapseComposerIcons: flag("collapseComposerIcons"),

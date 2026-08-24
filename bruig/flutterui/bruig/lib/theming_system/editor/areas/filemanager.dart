@@ -11,4 +11,12 @@ List<Widget> fileManagerAreaEditor(AreaEditorContext ctx) => [
         value: ctx.style.hideFilePaths,
         onChanged: (v) => ctx.setStyle((s) => s.copyWith(hideFilePaths: v)),
       ),
+      ctx.toggle(
+        "Open Markdown in the reader",
+        subtitle: "Shows a .md file set the way it was written, rather than "
+            "as its own source. The source is still a press away, and this "
+            "does not stop anyone reading or keeping the file",
+        value: ctx.style.readMarkdown,
+        onChanged: (v) => ctx.setStyle((s) => s.copyWith(readMarkdown: v)),
+      ),
     ];
