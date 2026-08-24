@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:bruig/models/pages.dart';
@@ -107,7 +108,27 @@ class StoreModel extends ChangeNotifier {
   /// _pages answers where the shop is and whether one is being hosted at
   /// all. Nothing else is read from it.
   final PagesModel _pages;
-  StoreModel(this._pages);
+
+  /// _orderNtfns is the shop telling this client somebody has ordered.
+  ///
+  /// Listened to because the order book is read once and then sits there:
+  /// an order placed while the seller has the shop open did not appear
+  /// until something else happened to reload it, which in practice meant
+  /// pressing an unrelated button and noticing.
+  StreamSubscription<SSPlacedOrder>? _orderNtfns;
+
+  /// [listen] is false in tests, which have no golib to hear from.
+  StoreModel(this._pages, {bool listen = true}) {
+    if (listen) {
+      _orderNtfns = Golib.simpleStoreOrders().listen((_) => loadStore());
+    }
+  }
+
+  @override
+  void dispose() {
+    _orderNtfns?.cancel();
+    super.dispose();
+  }
 
   ProductDraft? _productDraft;
   ProductDraft? get productDraft => _productDraft;

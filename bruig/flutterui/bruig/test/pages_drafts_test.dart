@@ -22,7 +22,7 @@ void main() {
   /// shop is the product half. A page draft and a product draft outlive the
   /// screen for the same reason, and now live on the two models that own
   /// what is being written.
-  StoreModel shop() => StoreModel(model());
+  StoreModel shop() => StoreModel(model(), listen: false);
 
   group('a page draft', () {
     test('is kept as it is typed, and is there on the way back', () {

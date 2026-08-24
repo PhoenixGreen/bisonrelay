@@ -24,11 +24,13 @@ class OrderRow extends StatelessWidget {
   final void Function(String) onStatus;
   final Future<void> Function(String) onReply;
   final Future<void> Function() onSendGoods;
+  final bool isOwn;
   const OrderRow({super.key, 
     required this.order,
     required this.onStatus,
     required this.onReply,
     required this.onSendGoods,
+    this.isOwn = false,
   });
 
   @override
@@ -73,7 +75,10 @@ class OrderRow extends StatelessWidget {
       ),
       children: [
         OrderThread(
-            order: order, onReply: onReply, onSendGoods: onSendGoods)
+            order: order,
+            onReply: onReply,
+            onSendGoods: onSendGoods,
+            isOwn: isOwn)
       ],
     );
   }
@@ -90,11 +95,21 @@ class OrderThread extends StatefulWidget {
   final ManagedOrder order;
   final Future<void> Function(String) onReply;
   final Future<void> Function() onSendGoods;
+
+  /// isOwn is whether this order was placed with your own shop.
+  ///
+  /// Everything about such an order works except delivery: sending is
+  /// between two clients, and your own identity is not a remote user. The
+  /// button is offered greyed rather than hidden, because its absence would
+  /// read as this order being unlike the others rather than as the one
+  /// thing it cannot do.
+  final bool isOwn;
   const OrderThread({
     super.key,
     required this.order,
     required this.onReply,
     required this.onSendGoods,
+    this.isOwn = false,
   });
 
   @override
@@ -186,11 +201,21 @@ class _OrderThreadState extends State<OrderThread> {
       // is not a thing Lightning will do.
       Align(
         alignment: Alignment.centerLeft,
-        child: OutlinedButton.icon(
-          onPressed: _sendingGoods ? null : _sendGoods,
-          icon: const Icon(Icons.send_outlined, size: 16),
-          label: Txt.S(_sendingGoods ? "Sending…" : "Send the files now"),
-        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          OutlinedButton.icon(
+            onPressed: widget.isOwn || _sendingGoods ? null : _sendGoods,
+            icon: const Icon(Icons.send_outlined, size: 16),
+            label: Txt.S(_sendingGoods ? "Sending…" : "Send the files now"),
+          ),
+          if (widget.isOwn)
+            const Padding(
+              padding: EdgeInsets.only(top: 4),
+              child: Txt.S(
+                  "Your own order. A file cannot be sent to yourself -- "
+                  "delivery needs a second client.",
+                  color: TextColor.onSurfaceVariant),
+            ),
+        ]),
       ),
       const SizedBox(height: 8),
       Row(children: [

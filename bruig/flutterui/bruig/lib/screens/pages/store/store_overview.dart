@@ -63,6 +63,10 @@ class StoreOverview extends StatelessWidget {
   final void Function(ManagedOrder, String) onStatus;
   final Future<void> Function(ManagedOrder, String) onReply;
   final Future<void> Function(ManagedOrder) onSendGoods;
+
+  /// ownID is this client's identity, so an order placed with your own shop
+  /// can be told apart from a buyer's.
+  final String ownID;
   const StoreOverview({super.key, 
     required this.pages,
     required this.store,
@@ -74,6 +78,7 @@ class StoreOverview extends StatelessWidget {
     required this.onStatus,
     required this.onReply,
     required this.onSendGoods,
+    required this.ownID,
   });
 
   @override
@@ -130,6 +135,7 @@ class StoreOverview extends StatelessWidget {
               onStatus: (status) => onStatus(o, status),
               onReply: (text) => onReply(o, text),
               onSendGoods: () => onSendGoods(o),
+              isOwn: o.user == ownID,
             )),
 
       const SizedBox(height: 28),

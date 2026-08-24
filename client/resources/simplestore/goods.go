@@ -1,6 +1,7 @@
 package simplestore
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -242,6 +243,20 @@ func (s *Store) sendOrderGoods(order *Order, wait bool) (string, error) {
 	return b.String(), failed
 }
 
+// ErrCannotSendToSelf is an order somebody placed with their own shop.
+var ErrCannotSendToSelf = errors.New("this order is your own, and a file " +
+	"cannot be sent to yourself -- delivery needs a second client")
+
+// isSelf is whether a user is this client.
+//
+// Nil-safe because a Store without a client is a real state -- it is what
+// one looks like in a test, and what one is briefly before it is running --
+// and asking a nil client who it is brings the shop down rather than
+// answering.
+func (s *Store) isSelf(uid clientintf.UserID) bool {
+	return s.c != nil && uid == s.c.PublicID()
+}
+
 // SendOrderGoods sends an order's files again.
 //
 // A seller's own action, for when a buyer says nothing arrived. The files
@@ -255,6 +270,16 @@ func (s *Store) SendOrderGoods(uid clientintf.UserID, oid OrderID) error {
 	order, _, err := s.loadOrderLocked(uid, oid)
 	if err != nil {
 		return err
+	}
+
+	// Sending is between two clients: the file goes to a remote user, and
+	// your own identity is not one. So an order placed with your own shop
+	// can be browsed, carted, placed, answered and marked paid, and the one
+	// thing it can never do is deliver -- which is worth saying here rather
+	// than letting the transfer fail with "user not found", a sentence
+	// about somebody who is standing right there.
+	if s.isSelf(uid) {
+		return ErrCannotSendToSelf
 	}
 	said, err := s.sendOrderGoods(order, true)
 	if err != nil {

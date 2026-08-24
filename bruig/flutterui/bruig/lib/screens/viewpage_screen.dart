@@ -230,7 +230,7 @@ class _ViewPageScreenState extends State<ViewPageScreen> {
             index: browsing ? PagesSections.browserIndex : tab,
             visit: VisitTab(widget.client, pages, resources, showBrowser),
             mySite: MySiteTab(pages, widget.client, resources, showBrowser),
-            store: StoreTab(pages, store),
+            store: StoreTab(pages, store, widget.client.publicID),
             browser: session == null
                 ? const Empty()
                 : PageBrowser(session, widget.client, resources),

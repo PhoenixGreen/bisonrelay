@@ -2,6 +2,8 @@ package simplestore
 
 import (
 	"os"
+
+	"github.com/companyzero/bisonrelay/client/clientintf"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -175,5 +177,35 @@ func TestNoShippedProductPromisesAFileThatIsNotThere(t *testing.T) {
 					e.Name(), named)
 			}
 		}
+	}
+}
+
+// TestAnOrderWithYourselfCannotDeliver covers the shop a seller orders from
+// themselves.
+//
+// Everything else about such an order works -- browsing, the cart, placing
+// it, the messages, the status -- so it is a good way to try the shop. The
+// one thing it cannot do is deliver, because sending is between two clients
+// and your own identity is not a remote user. Better said here than left to
+// surface as "user not found", which is a sentence about somebody who is
+// standing right there.
+func TestAnOrderWithYourselfCannotDeliver(t *testing.T) {
+	if !strings.Contains(ErrCannotSendToSelf.Error(), "second client") {
+		t.Errorf("the reason a seller needs is not in %q", ErrCannotSendToSelf)
+	}
+	// Said in the seller's terms rather than the transfer's. "user not
+	// found" is a sentence about somebody who is standing right there.
+	if strings.Contains(ErrCannotSendToSelf.Error(), "not found") {
+		t.Error("the message reads as somebody being missing")
+	}
+}
+
+func TestAShopWithNoClientDoesNotFallOver(t *testing.T) {
+	// A Store without a client is a real state: it is what one looks like
+	// in a test, and what one is briefly before it is running. Asking a nil
+	// client who it is brought the shop down rather than answering.
+	s := testStore(t)
+	if s.isSelf(clientintf.UserID{}) {
+		t.Error("a shop with no client thinks it is everybody")
 	}
 }

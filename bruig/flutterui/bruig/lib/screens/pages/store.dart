@@ -32,7 +32,15 @@ class StoreTab extends StatefulWidget {
   /// which answers only where the shop is served from and whether one is
   /// being hosted -- see StoreModel.
   final StoreModel store;
-  const StoreTab(this.pages, this.store, {super.key});
+
+  /// ownID is this client's identity, so an order somebody placed with
+  /// their own shop can be told from a buyer's.
+  ///
+  /// Handed in rather than looked up here: the only thing this needs from
+  /// the client is one string, and reaching for the whole model in a build
+  /// makes this screen impossible to draw in a test without a golib to load.
+  final String ownID;
+  const StoreTab(this.pages, this.store, this.ownID, {super.key});
 
   @override
   State<StoreTab> createState() => _StoreTabState();
@@ -192,6 +200,7 @@ class _StoreTabState extends State<StoreTab> {
           onStatus: setStatus,
           onReply: replyToOrder,
           onSendGoods: sendOrderGoods,
+          ownID: widget.ownID,
         );
       },
     );
