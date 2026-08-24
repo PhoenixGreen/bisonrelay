@@ -21,5 +21,10 @@ List<SidebarNavItem> manageContentBarItems(
         selected: selectedIndex == 2,
         label: "Downloads",
         onTap: () => tabChange(2)),
+    SidebarNavItem(
+        icon: Icons.inventory_2_outlined,
+        selected: selectedIndex == 3,
+        label: "Purchases",
+        onTap: () => tabChange(3)),
   ];
 }

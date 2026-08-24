@@ -550,6 +550,16 @@ class ResourcesModel extends ChangeNotifier {
         var path = fr.asyncTargetID.substring(_assetTarget.length);
         if (fr.response.status == 200 && fr.response.data != null) {
           (_assets[fr.uid] ??= {})[path] = fr.response.data!;
+        } else {
+          // Said out loud, because the alternative is a picture that is
+          // simply not there. The path stays marked as asked -- retrying on
+          // every rebuild would be a request per frame -- so without this
+          // line a picture that did not arrive leaves nothing at all to go
+          // on: no error, no retry, and a page that looks like the markup
+          // was wrong.
+          debugPrint("Picture $path from ${fr.uid} came back "
+              "${fr.response.status}; it will not be asked for again until "
+              "this site is opened afresh");
         }
         // Notified either way: a picture that is not there should stop
         // whatever is waiting for it from waiting.

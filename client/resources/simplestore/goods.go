@@ -166,8 +166,21 @@ func goodAttributes(order *Order, item *CartItem) map[string]string {
 // copies of this would be two sets of answers to the awkward cases -- a name
 // the shop will not send, a file that is not there -- and the awkward cases
 // are the whole of it: the happy path is one line.
-func (s *Store) sendOrderGoods(order *Order) string {
+// Anything that stops a file going out is returned as well as told to the
+// buyer. A seller pressing Send and being shown nothing learns only that
+// something happened; the reason was going to the log, which is the one
+// place they were not looking.
+//
+// [wait] decides whether to see the sending through before returning.
+//
+// Payment does not wait: it is a notification arriving, and a file that
+// takes a minute to push should not hold that up. A seller pressing Send
+// does wait, because they are standing there and the answer they need is
+// whether it went -- reporting success and logging the failure somewhere
+// they will not look is worse than saying nothing.
+func (s *Store) sendOrderGoods(order *Order, wait bool) (string, error) {
 	var b strings.Builder
+	var failed error
 	for _, item := range order.Cart.Items {
 		if item.Product.SendFilename == "" {
 			continue
@@ -184,6 +197,9 @@ func (s *Store) sendOrderGoods(order *Order) string {
 				order.ID, err)
 			fmt.Fprintf(&b, "\nThe file for %q could not be sent. Ask the "+
 				"seller for it.", item.Product.Title)
+			if failed == nil {
+				failed = fmt.Errorf("%q: %v", item.Product.Title, err)
+			}
 			continue
 		}
 		if _, err := os.Stat(path); err != nil {
@@ -193,6 +209,10 @@ func (s *Store) sendOrderGoods(order *Order) string {
 				order.User.ShortLogID(), order.ID, name, err)
 			fmt.Fprintf(&b, "\nThe file for %q could not be sent. Ask the "+
 				"seller for it.", item.Product.Title)
+			if failed == nil {
+				failed = fmt.Errorf("the file for %q is not in %s/",
+					item.Product.Title, GoodsDir)
+			}
 			continue
 		}
 
@@ -200,7 +220,7 @@ func (s *Store) sendOrderGoods(order *Order) string {
 			filepath.Base(path))
 		attrs := goodAttributes(order, item)
 		user, id := order.User, order.ID
-		go func() {
+		send := func() error {
 			err := s.c.SendFileWithAttributes(user, 0, path, attrs, nil)
 			if err != nil {
 				s.log.Errorf("Unable to send %s for order %s/%s: %v",
@@ -209,9 +229,17 @@ func (s *Store) sendOrderGoods(order *Order) string {
 				s.log.Infof("Sent %s for order %s/%s", path,
 					user.ShortLogID(), id)
 			}
-		}()
+			return err
+		}
+		if !wait {
+			go func() { _ = send() }()
+			continue
+		}
+		if err := send(); err != nil && failed == nil {
+			failed = err
+		}
 	}
-	return b.String()
+	return b.String(), failed
 }
 
 // SendOrderGoods sends an order's files again.
@@ -228,7 +256,11 @@ func (s *Store) SendOrderGoods(uid clientintf.UserID, oid OrderID) error {
 	if err != nil {
 		return err
 	}
-	if s.sendOrderGoods(order) == "" {
+	said, err := s.sendOrderGoods(order, true)
+	if err != nil {
+		return err
+	}
+	if said == "" {
 		return fmt.Errorf("nothing in order #%d has a file to send", oid)
 	}
 	return nil

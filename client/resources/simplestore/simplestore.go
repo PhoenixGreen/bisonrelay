@@ -582,7 +582,8 @@ func (s *Store) invoiceSettled(ctx context.Context, order *Order) {
 		order.User.ShortLogID(), order.ID)
 
 	// If the order has files attached to it, send them to the user.
-	wpm("%s", s.sendOrderGoods(order))
+	sent, _ := s.sendOrderGoods(order, false)
+	wpm("%s", sent)
 
 	if s.cfg.StatusChanged != nil {
 		s.cfg.StatusChanged(order, b.String())

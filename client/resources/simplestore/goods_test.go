@@ -138,3 +138,42 @@ func TestThereIsNoVersionAttribute(t *testing.T) {
 		}
 	}
 }
+
+// TestNoShippedProductPromisesAFileThatIsNotThere covers the demo catalogue.
+//
+// One of them said sendfilename = "test.png" long after test.png stopped
+// being shipped, so every shop restored from the defaults had a product
+// that could not send what it promised -- and the seller found out from a
+// buyer, because the refusal went to a log.
+func TestNoShippedProductPromisesAFileThatIsNotThere(t *testing.T) {
+	entries, err := storeTemplate.ReadDir("template/products")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		body, err := storeTemplate.ReadFile("template/products/" + e.Name())
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, line := range strings.Split(string(body), "\n") {
+			if !strings.HasPrefix(strings.TrimSpace(line), "sendfilename") {
+				continue
+			}
+			named := strings.Trim(strings.SplitN(line, "=", 2)[1], ` "`)
+			if named == "" {
+				continue
+			}
+			rest, ok := strings.CutPrefix(named, GoodsDir+"/")
+			if !ok {
+				t.Errorf("%s promises %q, which is not in %s/",
+					e.Name(), named, GoodsDir)
+				continue
+			}
+			if _, err := storeTemplate.ReadFile(
+				"template/" + GoodsDir + "/" + rest); err != nil {
+				t.Errorf("%s promises %q, which is not shipped",
+					e.Name(), named)
+			}
+		}
+	}
+}
