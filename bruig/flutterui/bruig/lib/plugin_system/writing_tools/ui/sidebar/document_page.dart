@@ -50,7 +50,9 @@ class DocumentPage extends StatelessWidget {
                     "Pages assume $wordsPerPage words; reading time assumes "
                     "$wordsPerMinute words a minute.",
             style: TextStyle(
-                fontSize: 10, height: 1.4, color: theme.colors.onSurfaceVariant),
+                fontSize: 10,
+                height: 1.4,
+                color: theme.colors.onSurfaceVariant),
           ),
         ),
       ],

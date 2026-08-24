@@ -38,8 +38,8 @@ void insertBlock(TextEditingController editor, String text) {
 
   editor.value = TextEditingValue(
     text: "$before$lead$text$tail$after",
-    selection:
-        TextSelection.collapsed(offset: before.length + lead.length + text.length),
+    selection: TextSelection.collapsed(
+        offset: before.length + lead.length + text.length),
   );
 }
 
@@ -159,8 +159,8 @@ Future<String?> pickGradient(
                         height: 14,
                         decoration: BoxDecoration(
                           color: first ? from : to,
-                          border: Border.all(
-                              color: Theme.of(context).dividerColor),
+                          border:
+                              Border.all(color: Theme.of(context).dividerColor),
                           borderRadius: BorderRadius.circular(3),
                         ),
                       ),
@@ -303,8 +303,8 @@ class _ElementPanelState extends State<ElementPanel> {
             // carry: a banner has eighteen, and eighteen rows is a list
             // nobody reads.
             for (var setting in spec.settings) ...[
-              _row(theme, setting.label, _labelOf(setting, _valueOf(spec, setting)),
-                  setting.key),
+              _row(theme, setting.label,
+                  _labelOf(setting, _valueOf(spec, setting)), setting.key),
               if (_showing == setting.key)
                 Padding(
                   padding: const EdgeInsets.only(left: 20, bottom: 8),
@@ -427,11 +427,15 @@ class _ElementPanelState extends State<ElementPanel> {
 
     return [
       Wrap(spacing: 6, runSpacing: 6, children: [
-        _chip(theme, "None", picked == null, () => setState(() {
-              for (var s in group.settings) {
-                _forOpen().remove(s.key);
-              }
-            })),
+        _chip(
+            theme,
+            "None",
+            picked == null,
+            () => setState(() {
+                  for (var s in group.settings) {
+                    _forOpen().remove(s.key);
+                  }
+                })),
         for (var setting in group.settings)
           _chip(theme, setting.label, identical(picked, setting), () {
             setState(() {
@@ -440,9 +444,8 @@ class _ElementPanelState extends State<ElementPanel> {
               for (var s in group.settings) {
                 _forOpen().remove(s.key);
               }
-              _forOpen()[setting.key] = setting.options
-                  .firstWhere((o) => o.value.isNotEmpty)
-                  .value;
+              _forOpen()[setting.key] =
+                  setting.options.firstWhere((o) => o.value.isNotEmpty).value;
             });
           }),
       ]),
@@ -472,8 +475,11 @@ class _ElementPanelState extends State<ElementPanel> {
                 swatch: _swatchOf(setting, option.value)),
           if (setting.kind == SettingKind.colour ||
               setting.kind == SettingKind.colours)
-            _chip(theme, setting.kind == SettingKind.colours ? "Pick colours…" : "Pick…",
-                false, () => _pickColour(spec, setting)),
+            _chip(
+                theme,
+                setting.kind == SettingKind.colours ? "Pick colours…" : "Pick…",
+                false,
+                () => _pickColour(spec, setting)),
         ],
       );
 

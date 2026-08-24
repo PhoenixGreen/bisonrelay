@@ -176,9 +176,8 @@ class _WritingSidebarState extends State<WritingSidebar> {
     var theme = ThemeNotifier.of(context);
     var edits = ComposerEdits(_editor);
 
-    var issues = prefs.enabled
-        ? spellcheck.review(edits.text)
-        : const <WritingIssue>[];
+    var issues =
+        prefs.enabled ? spellcheck.review(edits.text) : const <WritingIssue>[];
     var mistakes = issues.where((i) => i.kind.isMistake).toList();
     var phrasing = issues.where((i) => !i.kind.isMistake).toList();
 

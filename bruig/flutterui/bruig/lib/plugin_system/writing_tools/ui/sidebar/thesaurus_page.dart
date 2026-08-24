@@ -85,8 +85,8 @@ class _ThesaurusPageState extends State<ThesaurusPage> {
       return Text('Nothing found for "$word".', style: muted);
     }
 
-    void replace(String replacement) => widget.edits.replaceRange(
-        selection.start, selection.end, replacement);
+    void replace(String replacement) =>
+        widget.edits.replaceRange(selection.start, selection.end, replacement);
 
     var base = lookedUpAs(word, entry);
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

@@ -1,4 +1,4 @@
-import 'package:bruig/screens/pages/store.dart';
+import 'package:bruig/screens/pages/store/store_orders.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';

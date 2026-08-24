@@ -41,7 +41,8 @@ class IssueListPage extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
       children: [
         if (issues.isEmpty) sidebarNote(theme, empty),
-        for (var issue in issues) _IssueRow(issue: issue, edits: edits, prefs: prefs),
+        for (var issue in issues)
+          _IssueRow(issue: issue, edits: edits, prefs: prefs),
       ],
     );
   }
@@ -80,8 +81,8 @@ class _IssueRow extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.only(left: 20, top: 2),
           child: Text(issue.message,
-              style:
-                  TextStyle(fontSize: 11, color: theme.colors.onSurfaceVariant)),
+              style: TextStyle(
+                  fontSize: 11, color: theme.colors.onSurfaceVariant)),
         ),
         Padding(
           padding: const EdgeInsets.only(left: 20, top: 6),
@@ -127,9 +128,7 @@ class _IssueRow extends StatelessWidget {
       return [
         dismissChip(theme, "Correct Usage",
             () => prefs.acceptUsage(checkId, issue.text)),
-        dismissChip(
-            theme,
-            "Turn off",
+        dismissChip(theme, "Turn off",
             () => prefs.disableCheck(checkId, description: issue.ruleMessage)),
       ];
     }
@@ -147,11 +146,8 @@ class _IssueRow extends StatelessWidget {
           theme, "Ignore once", () => prefs.ignoreMatch(checkId, issue.text)),
       // The description is what names the rule in Settings. Without it the
       // list there reads "check 1, check 2".
-      dismissChip(
-          theme,
-          "Turn off",
-          () =>
-              prefs.disableCheck(checkId, description: issue.ruleMessage)),
+      dismissChip(theme, "Turn off",
+          () => prefs.disableCheck(checkId, description: issue.ruleMessage)),
     ];
   }
 }
@@ -206,8 +202,7 @@ class _SynonymChips extends StatelessWidget {
                 synonym,
                 // Case carried over, so replacing a word that opens a sentence
                 // does not lower-case it.
-                () =>
-                    edits.applyToIssue(issue, matchCase(issue.text, synonym)),
+                () => edits.applyToIssue(issue, matchCase(issue.text, synonym)),
               ),
           ],
         );
