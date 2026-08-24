@@ -81,6 +81,9 @@ final List<SubMenuInfo> manageContentScreenSub = [
   SubMenuInfo(0, "Add"),
   SubMenuInfo(1, "Shared"),
   SubMenuInfo(2, "Downloads"),
+  // Apart from Downloads because it answers a different question: everything
+  // anybody has sent you, against the handful of things you paid for.
+  SubMenuInfo(3, "Purchases"),
 ];
 
 final List<SubMenuInfo> lnScreenSub = [

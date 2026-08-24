@@ -13,6 +13,7 @@ import 'package:bruig/screens/overview.dart';
 import 'package:bruig/models/menus.dart';
 import 'package:bruig/models/uistate.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
+import 'package:bruig/screens/manage_content/purchases.dart';
 
 class ManageContentScreenTitle extends StatelessWidget {
   const ManageContentScreenTitle({super.key});
@@ -62,8 +63,12 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
         return Consumer2<DownloadsModel, ClientModel>(
             builder: (context, downloads, client, child) => DownloadsScreen(
                 downloads, client,
-                previewing: previewing,
-                onPreviewing: nav.open));
+                previewing: previewing, onPreviewing: nav.open));
+      case 3:
+        return Consumer2<DownloadsModel, ClientModel>(
+            builder: (context, downloads, client, child) => PurchasesScreen(
+                downloads, client,
+                nav: nav, previewing: previewing, onPreviewing: nav.open));
     }
     return Text("Active is $tabIndex");
   }
