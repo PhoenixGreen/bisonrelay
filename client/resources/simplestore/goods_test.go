@@ -3,6 +3,7 @@ package simplestore
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -86,6 +87,54 @@ func TestWritingAGoodCannotEscapeTheDirectory(t *testing.T) {
 	if _, err := s.writeGood("../escape.md", []byte("x")); err == nil {
 		if _, statErr := os.Stat(filepath.Join(s.root, "..", "escape.md")); statErr == nil {
 			t.Fatal("a file was written outside the store")
+		}
+	}
+}
+
+// TestASentGoodSaysWhereItCameFrom covers what travels with a file a shop
+// sends.
+//
+// Without it a bought file is another file from somebody: the buyer's client
+// keeps the sender and the name and nothing else, so there is no way to
+// gather what somebody has bought, or to notice that one of them has been
+// sent again.
+func TestASentGoodSaysWhereItCameFrom(t *testing.T) {
+	order := &Order{ID: OrderID(7)}
+	item := &CartItem{Product: &Product{SKU: "g1", Title: "A guide"}}
+
+	attrs := goodAttributes(order, item)
+	if attrs[AttrProductSKU] != "g1" {
+		t.Errorf("SKU is %q", attrs[AttrProductSKU])
+	}
+	if attrs[AttrProductTitle] != "A guide" {
+		t.Errorf("title is %q", attrs[AttrProductTitle])
+	}
+	if attrs[AttrOrderID] == "" {
+		t.Error("the order is not named")
+	}
+}
+
+func TestTheAttributesAreNamespaced(t *testing.T) {
+	// The bag is shared with anything else that wants to say something
+	// about a file, so a bare "order" or "sku" would be a collision waiting
+	// to happen.
+	for _, key := range []string{AttrOrderID, AttrProductSKU, AttrProductTitle} {
+		if !strings.HasPrefix(key, "simplestore.") {
+			t.Errorf("%q is not namespaced", key)
+		}
+	}
+}
+
+func TestThereIsNoVersionAttribute(t *testing.T) {
+	// The metadata already carries a hash of the contents, so the same SKU
+	// arriving with a different hash is a new version of that product. A
+	// version field beside it would be a second answer to one question, and
+	// the two would drift.
+	attrs := goodAttributes(&Order{ID: OrderID(1)},
+		&CartItem{Product: &Product{SKU: "g1"}})
+	for key := range attrs {
+		if strings.Contains(strings.ToLower(key), "version") {
+			t.Errorf("%q duplicates what the file hash already says", key)
 		}
 	}
 }

@@ -1003,6 +1003,23 @@ func (c *Client) EstimateSendFileChunkCount(filepath string, chunkSize uint64) (
 func (c *Client) SendFile(uid UserID, chunkSize uint64, filepath string,
 	progressChan chan SendProgress) error {
 
+	return c.SendFileWithAttributes(uid, chunkSize, filepath, nil, progressChan)
+}
+
+// SendFileWithAttributes sends a file with metadata attributes attached.
+//
+// The attributes travel with the file and are kept by the receiver alongside
+// it, which is what lets a file arrive knowing where it came from -- a
+// download that is a thing somebody bought can say so, instead of being
+// another file from somebody.
+//
+// They are not part of the metadata hash, so a file sent with them has the
+// same id as the same file sent without: they say something about this
+// sending, not about the file.
+func (c *Client) SendFileWithAttributes(uid UserID, chunkSize uint64,
+	filepath string, attributes map[string]string,
+	progressChan chan SendProgress) error {
+
 	// Automatically determine chunk size.
 	if chunkSize == 0 {
 		serverSess := c.ServerSession()
@@ -1038,6 +1055,10 @@ func (c *Client) SendFile(uid UserID, chunkSize uint64, filepath string,
 	})
 	if err != nil {
 		return err
+	}
+
+	if len(attributes) > 0 {
+		fm.Attributes = attributes
 	}
 
 	ru.log.Infof("Sending file %s in %d chunks to user (total size %d)",

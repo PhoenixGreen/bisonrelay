@@ -130,3 +130,29 @@ func (s *Store) ReadGood(recorded string) ([]byte, error) {
 	}
 	return data, err
 }
+
+// The attributes a file carries when a shop sends it.
+//
+// They travel with the file and are kept beside it by whoever receives it,
+// so a download that is a thing somebody bought can say so rather than being
+// another file from somebody. Prefixed, because the bag is shared with
+// anything else that ever wants to say something about a file.
+//
+// There is no version among them on purpose. The metadata already carries a
+// hash of the contents, so the same SKU arriving with a different hash is a
+// new version of that product -- a version field beside it would be a second
+// answer to the same question, and the two would drift.
+const (
+	AttrOrderID      = "simplestore.order"
+	AttrProductSKU   = "simplestore.sku"
+	AttrProductTitle = "simplestore.product"
+)
+
+// goodAttributes is what to send with the file for one line of an order.
+func goodAttributes(order *Order, item *CartItem) map[string]string {
+	return map[string]string{
+		AttrOrderID:      order.ID.String(),
+		AttrProductSKU:   item.Product.SKU,
+		AttrProductTitle: item.Product.Title,
+	}
+}
