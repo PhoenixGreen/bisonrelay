@@ -1,5 +1,6 @@
 import 'package:bruig/models/store_goods.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:golib_plugin/definitions.dart';
 
 // store_goods_test.dart covers the name a library document takes when it
 // becomes the file a product sends.
@@ -33,6 +34,47 @@ void main() {
       // Slugging collapses characters, so it is worth knowing it does not
       // collapse two real documents onto one file.
       expect(goodNameFor("Part One"), isNot(goodNameFor("Part Two")));
+    });
+  });
+
+  group('which product a document is sold as', () {
+    ManagedProduct product(String sendFilename) => ManagedProduct(
+          "A guide",
+          "g1",
+          "",
+          const [],
+          1,
+          false,
+          false,
+          sendFilename,
+          "products.toml",
+        );
+
+    test('is the one whose file this document was published as', () {
+      var p = product("goods/my_guide.md");
+      expect(StoreGoods.productFor([p], "My Guide"), same(p));
+    });
+
+    test('is nothing when no product sends it', () {
+      expect(StoreGoods.productFor([product("goods/other.md")], "My Guide"),
+          isNull);
+      expect(StoreGoods.productFor(const [], "My Guide"), isNull);
+    });
+
+    test('a product sending a file from elsewhere is not a match', () {
+      // Worked out from the name, so a product whose file was uploaded
+      // rather than published from a document must not claim one.
+      expect(StoreGoods.productFor([product("goods/manual.pdf")], "Manual"),
+          isNull);
+    });
+
+    test('the pairing uses the name the shop published it under', () {
+      // Not the document's name as typed: the two differ, and pairing on
+      // the wrong one is a document that looks unsold while its product
+      // sends it.
+      expect(goodNameFor("My Guide"), "my_guide.md");
+      expect(StoreGoods.productFor([product("goods/My Guide.md")], "My Guide"),
+          isNull);
     });
   });
 }

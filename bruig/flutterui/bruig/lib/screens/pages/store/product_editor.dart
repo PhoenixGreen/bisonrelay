@@ -1,3 +1,7 @@
+import 'dart:io';
+
+import 'package:bruig/screens/pages/store/pick_document.dart';
+import 'package:golib_plugin/golib_plugin.dart';
 import 'package:bruig/components/pages/add_picture_dialog.dart';
 import 'package:bruig/components/buttons.dart';
 import 'package:bruig/components/text.dart';
@@ -124,6 +128,47 @@ class ProductEditorState extends State<ProductEditor> {
     }
   }
 
+  /// chooseDocument sells something written in the writing library.
+  ///
+  /// Published rather than pointed at: the document goes on being edited,
+  /// and what buyers are sent changes when somebody says so. See StoreGoods.
+  void chooseDocument() async {
+    var snackbar = SnackBarModel.of(context);
+    try {
+      var recorded = await pickLibraryDocument(context);
+      if (recorded == null || !mounted) return;
+      setState(() => sendCtrl.text = recorded);
+      widget.store.updateProductDraft(draft.copyWith(sendFilename: recorded));
+      snackbar.success("Published $recorded for this product.");
+    } catch (exception) {
+      snackbar.error("Unable to use that document: $exception");
+    }
+  }
+
+  /// chooseSendFile copies a file from this computer into the shop's goods.
+  void chooseSendFile() async {
+    var snackbar = SnackBarModel.of(context);
+    try {
+      var picked = await FilePicker.platform
+          .pickFiles(dialogTitle: "File to send when this product is paid for");
+      var path = picked?.files.single.path;
+      if (path == null || !mounted) return;
+      var data = await File(path).readAsBytes();
+      var recorded = await Golib.publishStoreGood(
+          path.split(Platform.pathSeparator).last, data);
+      if (!mounted) return;
+      setState(() => sendCtrl.text = recorded);
+      widget.store.updateProductDraft(draft.copyWith(sendFilename: recorded));
+    } catch (exception) {
+      snackbar.error("Unable to use that file: $exception");
+    }
+  }
+
+  void clearSendFile() {
+    setState(() => sendCtrl.text = "");
+    widget.store.updateProductDraft(draft.copyWith(sendFilename: ""));
+  }
+
   void save() async {
     var snackbar = SnackBarModel.of(context);
     var price = double.tryParse(priceCtrl.text.trim());
@@ -231,12 +276,37 @@ class ProductEditorState extends State<ProductEditor> {
       const SizedBox(height: 12),
       TextField(
         controller: sendCtrl,
-        decoration: const InputDecoration(
+        readOnly: true,
+        decoration: InputDecoration(
           isDense: true,
           labelText: "File to send on payment",
-          helperText: "For a digital product. A file in the store folder; "
-              "it is sent automatically once the order is paid.",
-          border: OutlineInputBorder(),
+          hintText: "Nothing to send",
+          helperText: "For a digital product. Sent automatically once the "
+              "order is paid.",
+          border: const OutlineInputBorder(),
+          // Read-only with buttons rather than a box to type a path in. The
+          // file is sent unattended when payment lands, so what can be sent
+          // is what has been deliberately put in the shop's goods -- and a
+          // typed path was discovered to be wrong by the buyer receiving
+          // the wrong thing.
+          suffixIcon: Row(mainAxisSize: MainAxisSize.min, children: [
+            if (sendCtrl.text.trim().isNotEmpty)
+              IconButton(
+                icon: const Icon(Icons.close, size: 18),
+                tooltip: "Send nothing",
+                onPressed: clearSendFile,
+              ),
+            IconButton(
+              icon: const Icon(Icons.description_outlined, size: 18),
+              tooltip: "Use a document from Writing",
+              onPressed: chooseDocument,
+            ),
+            IconButton(
+              icon: const Icon(Icons.upload_file, size: 18),
+              tooltip: "Use a file from this computer",
+              onPressed: chooseSendFile,
+            ),
+          ]),
         ),
       ),
       const SizedBox(height: 4),

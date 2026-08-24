@@ -15,6 +15,10 @@ import 'package:golib_plugin/golib_plugin.dart';
 // not quietly change what buyers are being sent -- that is a thing to mean,
 // the way publishing a page is.
 
+/// goodsDir is the directory a shop keeps what it sells in. The same name
+/// the serving side uses -- see simplestore's goods.go.
+const String goodsDir = "goods";
+
 /// goodNameFor is what a document is called once it is a product's file.
 ///
 /// The document's own name, slugged, because it becomes a file on a buyer's
@@ -45,6 +49,22 @@ class StoreGoods {
   /// unpublish takes the copy out of the shop, keeping the document.
   static Future<void> unpublish(String recorded) =>
       Golib.removeStoreGood(recorded);
+
+  /// productFor is the product a document is sold as, or null.
+  ///
+  /// Worked out from the name rather than recorded anywhere, the way a page
+  /// is paired with the file it is served as. A second record of which
+  /// document belongs to which product is a second thing to keep in step,
+  /// and the pairing is already implied by the name the shop publishes it
+  /// under.
+  static ManagedProduct? productFor(
+      List<ManagedProduct> products, String documentName) {
+    var recorded = "$goodsDir/${goodNameFor(documentName)}";
+    for (var p in products) {
+      if (p.sendFilename == recorded) return p;
+    }
+    return null;
+  }
 
   /// stateOf is what a product's file is, as the library sees it.
   ///

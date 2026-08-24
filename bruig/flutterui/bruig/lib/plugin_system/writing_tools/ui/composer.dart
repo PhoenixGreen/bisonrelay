@@ -28,6 +28,8 @@ import 'package:golib_plugin/golib_plugin.dart';
 import 'package:bruig/components/snackbars.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:provider/provider.dart';
+import 'package:bruig/models/store_goods.dart';
+import 'package:bruig/models/store.dart';
 
 // composer.dart is the writing area of the Writing section: the post being
 // written, its title, the choice between its source and its rendering, and
@@ -153,6 +155,10 @@ class _WritingComposerState extends State<WritingComposer> {
   PagesModel get _pages =>
       _pagesModel ?? Provider.of<PagesModel>(context, listen: false);
 
+  StoreModel? _storeModel;
+  StoreModel get _store =>
+      _storeModel ?? Provider.of<StoreModel>(context, listen: false);
+
   /// isPage is whether the open document belongs to the site -- a page, or
   /// one of the fragments its pages share.
   ///
@@ -184,6 +190,15 @@ class _WritingComposerState extends State<WritingComposer> {
   /// computed in build.
   PagePublishState pageState = PagePublishState.draft;
 
+  /// _soldAs is the product that sends this document, or null.
+  ///
+  /// Kept beside the page state rather than folded into it: a document can
+  /// be a published page and a product at once, and the two say different
+  /// things about it. A guide on the site that is also sold has two
+  /// audiences and can be out of date with either.
+  ManagedProduct? _soldAs;
+  PagePublishState _productState = PagePublishState.draft;
+
   Timer? _stateDebounce;
 
   /// refreshPageStateSoon batches the typing case: the answer only changes
@@ -191,11 +206,57 @@ class _WritingComposerState extends State<WritingComposer> {
   /// on every keystroke would read a file per character.
   void refreshPageStateSoon() {
     _stateDebounce?.cancel();
-    _stateDebounce =
-        Timer(const Duration(milliseconds: 400), refreshPageState);
+    _stateDebounce = Timer(const Duration(milliseconds: 400), refreshPageState);
+  }
+
+  /// refreshProductState works out whether a product sends this document,
+  /// and whether buyers have what it currently says.
+  Future<void> refreshProductState() async {
+    var name = _library.openName;
+    if (name == null) return;
+    var sold = StoreGoods.productFor(_store.products, name);
+    var next = PagePublishState.draft;
+    if (sold != null) {
+      var published = await Golib.readStoreGood(sold.sendFilename);
+      var mine = (await resolveEmbeds(contentCtrl.text)).text;
+      next = published == null
+          ? PagePublishState.draft
+          : (published == mine
+              ? PagePublishState.published
+              : PagePublishState.edited);
+    }
+    if (!mounted) return;
+    if (sold != _soldAs || next != _productState) {
+      setState(() {
+        _soldAs = sold;
+        _productState = next;
+      });
+    }
+  }
+
+  /// updateProductFile republishes this document as what its product sends.
+  void updateProductFile() async {
+    var snackbar = SnackBarModel.of(context);
+    var name = _library.openName;
+    if (name == null) return;
+    try {
+      var published = await StoreGoods.publish(_library.openFolder, name);
+      if (published.missing > 0) {
+        // The buyer would be the only one who could see the holes: the
+        // author's own copy fills the references in from memory.
+        snackbar.error("Published, but ${published.missing} picture"
+            "${published.missing == 1 ? "" : "s"} could not be found.");
+      } else {
+        snackbar.success("Buyers now get what this says.");
+      }
+      await refreshProductState();
+    } catch (exception) {
+      snackbar.error("Unable to update the shop's copy: $exception");
+    }
   }
 
   Future<void> refreshPageState() async {
+    unawaited(refreshProductState());
     if (!isPage) {
       if (pageState != PagePublishState.draft && mounted) {
         setState(() => pageState = PagePublishState.draft);
@@ -206,8 +267,7 @@ class _WritingComposerState extends State<WritingComposer> {
     if (name == null) return;
     // The file it is actually served as, which is not always the slug of
     // its name -- see PageDocument.file.
-    var page =
-        PageDocuments.forName(_pages, name, folder: _library.openFolder);
+    var page = PageDocuments.forName(_pages, name, folder: _library.openFolder);
     var served = page.state.live ? await _pages.readPage(page.file) : null;
     var mine = served == null
         ? contentCtrl.text
@@ -838,6 +898,9 @@ class _WritingComposerState extends State<WritingComposer> {
             case "unpublish":
               unpublishPage();
               break;
+            case "updateProduct":
+              updateProductFile();
+              break;
           }
         },
         itemBuilder: (context) => [
@@ -876,22 +939,43 @@ class _WritingComposerState extends State<WritingComposer> {
                     : "Takes it down, keeps the writing"),
               ),
             ),
-          ] else
-          PopupMenuItem(
-            value: "create",
-            // Disabled rather than absent when the post is too large: that
-            // is something the writer needs to be told, and a missing entry
-            // says nothing at all.
-            enabled: !loading && validSize,
-            child: ListTile(
-              dense: true,
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.send, size: 18),
-              title: const Text("Create Post"),
-              subtitle:
-                  validSize ? null : const Text("Larger than the maximum size"),
+          ],
+          // Offered wherever the document lives, because a thing being sold
+          // is not filed anywhere in particular: a guide may sit in Pages,
+          // in a folder of its own, or loose. What decides is whether a
+          // product sends it.
+          if (_soldAs != null)
+            PopupMenuItem(
+              value: "updateProduct",
+              enabled: !loading && _productState != PagePublishState.published,
+              child: ListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.storefront_outlined, size: 18),
+                title: const Text("Publish update to the shop"),
+                subtitle: Text(_productState == PagePublishState.published
+                    ? "Buyers are getting what this says"
+                    : "Buyers are getting the version from before your "
+                        "changes"),
+              ),
             ),
-          ),
+          if (!isPage)
+            PopupMenuItem(
+              value: "create",
+              // Disabled rather than absent when the post is too large: that
+              // is something the writer needs to be told, and a missing entry
+              // says nothing at all.
+              enabled: !loading && validSize,
+              child: ListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.send, size: 18),
+                title: const Text("Create Post"),
+                subtitle: validSize
+                    ? null
+                    : const Text("Larger than the maximum size"),
+              ),
+            ),
         ],
       );
 }
