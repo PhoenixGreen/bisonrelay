@@ -11,6 +11,14 @@ import 'package:golib_plugin/definitions.dart';
 // write on an order and the store could record a reply, but there was
 // nowhere in the app to read one or write one back.
 
+/// shortUID is enough of an identity to tell two people apart.
+///
+/// The whole thing is sixty-four characters: it fills the row it is in, and
+/// every order from one buyer carries the same one -- so a list of somebody's
+/// orders reads as the same order four times. The first sixteen are what the
+/// serving side puts in its own logs for the same reason.
+String shortUID(String uid) => uid.length <= 16 ? uid : uid.substring(0, 16);
+
 class OrderRow extends StatelessWidget {
   final ManagedOrder order;
   final void Function(String) onStatus;
@@ -25,7 +33,10 @@ class OrderRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    var who = order.userNick.isNotEmpty ? order.userNick : order.user;
+    // A short identity when there is no nick. The full one is sixty-four
+    // characters, which fills the row and, being the same for every order
+    // from one buyer, reads as every order being the same order.
+    var who = order.userNick.isNotEmpty ? order.userNick : shortUID(order.user);
     var items = order.cart.items.fold<int>(0, (n, i) => n + i.quantity);
     var unanswered =
         order.comments.isNotEmpty && !order.comments.last.fromAdmin;

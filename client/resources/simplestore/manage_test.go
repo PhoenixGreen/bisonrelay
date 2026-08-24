@@ -3,6 +3,7 @@ package simplestore
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/decred/slog"
@@ -236,5 +237,20 @@ func TestADuplicateSKUCostsOneProductNotTheShop(t *testing.T) {
 	}
 	if _, ok := s.products["other"]; !ok {
 		t.Error("a product sharing a file with a duplicate was lost with it")
+	}
+}
+
+// TestASellersOwnOrderIsNamed covers an order somebody placed with their own
+// shop.
+//
+// There is no remote user to ask for a nick, so the seller's own orders
+// showed a bare sixty-four character identity -- the same one on every row,
+// which reads as every order being the same order rather than as four
+// orders from the same person.
+func TestASellersOwnOrderIsNamed(t *testing.T) {
+	// handlePlaceOrder already calls this case "(local client)"; the order
+	// book has to know it too, or the two disagree about the same order.
+	if !strings.Contains(sellerOwnOrderNick, "you") {
+		t.Fatalf("a seller's own order is called %q", sellerOwnOrderNick)
 	}
 }

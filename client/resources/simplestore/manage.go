@@ -48,6 +48,14 @@ func (s *Store) listOrdersLocked() ([]ManagedOrder, error) {
 			continue
 		}
 		nick, _ := s.c.UserNick(order.User)
+		if nick == "" && order.User == s.c.PublicID() {
+			// An order the seller placed with their own shop. There is no
+			// remote user to ask for a nick, so without this the seller's
+			// own orders show a bare sixty-four character identity -- the
+			// same one on every row, which reads as every order being the
+			// same order.
+			nick = sellerOwnOrderNick
+		}
 		orders = append(orders, ManagedOrder{Order: order, UserNick: nick})
 	}
 
@@ -159,6 +167,11 @@ type ManagedProduct struct {
 	Product
 	File string `json:"file"`
 }
+
+// sellerOwnOrderNick is what an order somebody placed with their own shop is
+// listed as. handlePlaceOrder calls the same case "(local client)"; this is
+// the order book's shorter way of saying it.
+const sellerOwnOrderNick = "you"
 
 var productFileNameRe = regexp.MustCompile(`[^a-zA-Z0-9._-]+`)
 

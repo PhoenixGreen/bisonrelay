@@ -135,4 +135,25 @@ void main() {
     await tester.pumpAndSettle();
     expect(replied, 1, reason: "the reply box was tied up by the file send");
   });
+
+  group('who an order is from', () {
+    // Four orders from one buyer showed the same sixty-four character
+    // identity on every row, which reads as the same order four times
+    // rather than as four orders from the same person.
+    test('a short identity is short enough to sit beside the number', () {
+      var full = "f15c0977bdef7bac55dcfad476aa9303f152d27832c847122f15dc252b1bd1bf";
+      expect(shortUID(full), hasLength(16));
+      expect(full, startsWith(shortUID(full)));
+    });
+
+    test('two people are still told apart', () {
+      // Shortening is only worth doing if it keeps the thing it is for.
+      expect(shortUID("aaaa1111bbbb2222cccc"),
+          isNot(shortUID("aaaa1111bbbb3333cccc")));
+    });
+
+    test('something already short is left alone', () {
+      expect(shortUID("short"), "short");
+    });
+  });
 }
