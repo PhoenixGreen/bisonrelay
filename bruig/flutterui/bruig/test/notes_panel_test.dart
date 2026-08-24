@@ -39,15 +39,32 @@ import 'plugin_test_support.dart';
 /// nothing: the panel is left on its loading spinner, the spinner animates
 /// forever, and pumpAndSettle hangs the whole suite with no error.
 ///
-/// The count is generous rather than tuned. Writing a note is the deepest
-/// chain here -- the index, the listing, a name, the file, the index again --
-/// and a helper that is a few turns short fails as a missing file rather than
-/// as anything that points here.
+/// The count was generous rather than tuned, and generous is not a property
+/// a wait can have: it is a fixed budget of turns, so whether it is enough
+/// depends on how busy the machine is. That is the shape of a test that
+/// passes on its own and fails once in a while in a full run, which is what
+/// this file did twice -- in two different tests, neither reproducible
+/// afterwards.
+///
+/// So the floor stays exactly what it was, and the wait now keeps going past
+/// it while the panel is visibly still working. Never fewer turns than
+/// before, more when there is something to wait for.
+///
+/// The spinner is the condition because it is the documented symptom: the
+/// panel left on its loading spinner is what a wait that ended too early
+/// looks like from the outside.
+const _idleFloor = 40;
+const _idleCeiling = 400;
+
 Future<void> _idle(WidgetTester tester) async {
-  for (var i = 0; i < 40; i++) {
+  for (var i = 0; i < _idleCeiling; i++) {
     await tester
         .runAsync(() => Future<void>.delayed(const Duration(milliseconds: 4)));
     await tester.pump();
+    if (i >= _idleFloor &&
+        find.byType(CircularProgressIndicator).evaluate().isEmpty) {
+      break;
+    }
   }
   await tester.pumpAndSettle();
 }
