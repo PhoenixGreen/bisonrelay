@@ -1,6 +1,7 @@
 package simplestore
 
 import (
+	"github.com/decred/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -92,5 +93,50 @@ func TestRestoreTwiceIsNotAProblem(t *testing.T) {
 		if err := RestoreTemplates(root); err != nil {
 			t.Fatal(err)
 		}
+	}
+}
+
+// TestANewShopHasNothingForSale covers what a shop opens with.
+//
+// The templates ship with example products, and they were on sale: no
+// disabled flag, and a price of $659.99. So a seller set a shop up, a
+// contact browsed it, and could place a real order for "First product" --
+// a thing that does not exist, which the seller then cannot send and may
+// already have been paid for.
+//
+// They stay in the file, because a worked example of the format is worth
+// having. They are simply not for sale.
+func TestANewShopHasNothingForSale(t *testing.T) {
+	root := t.TempDir()
+	if err := WriteTemplate(root); err != nil {
+		t.Fatal(err)
+	}
+
+	s := &Store{root: root, log: slog.Disabled, tmpl: nil,
+		products: map[string]*Product{}}
+	if err := s.reloadStore(); err != nil {
+		t.Fatal(err)
+	}
+	if len(s.products) != 0 {
+		for sku, p := range s.products {
+			t.Errorf("a new shop is selling %q (%s) at %v",
+				p.Title, sku, p.Price)
+		}
+	}
+}
+
+func TestTheExampleProductsAreStillThereToRead(t *testing.T) {
+	// Disabled, not deleted: somebody writing their first product file
+	// needs to see what one looks like.
+	root := t.TempDir()
+	if err := WriteTemplate(root); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(filepath.Join(root, productsDir, "first-type.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(got), "First product") {
+		t.Error("the example products are gone from the file too")
 	}
 }

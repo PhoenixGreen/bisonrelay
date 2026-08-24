@@ -302,6 +302,7 @@ func (ph *pagesHost) startStoreLocked(cfg pagesHostConfig) (*simplestore.Store, 
 		ExchangeRateProvider: ph.ratesFn,
 		OrderPlaced:          ph.orderNtfn,
 		StatusChanged:        ph.orderNtfn,
+		CommentAdded:         ph.orderNtfn,
 
 		// The site the shop sits in, and the two fragments it wears. Only
 		// when a site is actually being hosted: a store on its own has no

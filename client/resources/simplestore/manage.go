@@ -140,6 +140,15 @@ func (s *Store) AddOrderComment(uid clientintf.UserID, oid OrderID,
 	if err := jsonfile.Write(fname, order, s.log); err != nil {
 		return nil, err
 	}
+
+	// The buyer is told when the answer is the seller's. Their own comment
+	// needs no message: it lands on the seller's client, which is the one
+	// running this, and their order list marks it.
+	if fromAdmin && s.cfg.CommentAdded != nil {
+		msg := fmt.Sprintf("About your order %s/%s: %s",
+			order.User.ShortLogID(), order.ID, comment)
+		s.cfg.CommentAdded(order, msg)
+	}
 	return order, nil
 }
 

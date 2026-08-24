@@ -1,6 +1,14 @@
 package simplestore
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/companyzero/bisonrelay/client/clientintf"
+	"github.com/companyzero/bisonrelay/internal/jsonfile"
+)
 
 // cartedit_test.go covers changing your mind about a cart.
 //
@@ -113,5 +121,76 @@ func TestAddingToTheCartAnswersWithTheCart(t *testing.T) {
 	if _, err := storeTemplate.ReadFile("template/addtocart.tmpl"); err == nil {
 		t.Error("the interstitial is back: adding to a cart should answer " +
 			"with the cart, which is what the buyer asks next anyway")
+	}
+}
+
+var orderUID = clientintf.UserID{0xab}
+
+const orderID = OrderID(1)
+
+// storeWithAnOrder is a shop with one order already placed, which is what
+// there has to be before anybody can say anything about it.
+func storeWithAnOrder(t *testing.T) *Store {
+	t.Helper()
+	s := testStore(t)
+	order := &Order{ID: orderID, User: orderUID, Status: StatusPlaced}
+	fname := s.orderFilename(orderUID, orderID)
+	if err := os.MkdirAll(filepath.Dir(fname), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := jsonfile.Write(fname, order, s.log); err != nil {
+		t.Fatal(err)
+	}
+	return s
+}
+
+// TestTheBuyerIsToldWhenTheSellerAnswers covers the message that goes with a
+// reply.
+//
+// The seller's answer has nobody watching for it: a buyer is not sitting on
+// the order page waiting, so without a message a reply is written into a
+// file they never open. A buyer's own comment needs none -- it arrives on
+// the seller's client, which is the one running this, and their order list
+// marks it.
+func TestTheBuyerIsToldWhenTheSellerAnswers(t *testing.T) {
+	s := storeWithAnOrder(t)
+	var told []string
+	s.cfg.CommentAdded = func(_ *Order, msg string) { told = append(told, msg) }
+
+	if _, err := s.AddOrderComment(orderUID, orderID, "Ships tomorrow", true); err != nil {
+		t.Fatal(err)
+	}
+	if len(told) != 1 {
+		t.Fatalf("the buyer was told %d times", len(told))
+	}
+	if !strings.Contains(told[0], "Ships tomorrow") {
+		t.Errorf("the message does not carry the answer: %q", told[0])
+	}
+}
+
+func TestTheBuyersOwnCommentSendsNoMessage(t *testing.T) {
+	s := storeWithAnOrder(t)
+	var told int
+	s.cfg.CommentAdded = func(_ *Order, _ string) { told++ }
+
+	if _, err := s.AddOrderComment(orderUID, orderID, "When does this ship?", false); err != nil {
+		t.Fatal(err)
+	}
+	if told != 0 {
+		t.Errorf("the buyer was sent their own comment back")
+	}
+}
+
+func TestACommentIsRecordedEvenWithNobodyToTell(t *testing.T) {
+	// The callback is optional, and a shop whose comment is lost because
+	// nothing was listening would be worse than one that cannot send.
+	s := storeWithAnOrder(t)
+	s.cfg.CommentAdded = nil
+	order, err := s.AddOrderComment(orderUID, orderID, "Ships tomorrow", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(order.Comments) != 1 {
+		t.Fatalf("got %d comments", len(order.Comments))
 	}
 }

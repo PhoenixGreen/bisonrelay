@@ -9,6 +9,7 @@ A longish product description. Features:
 """
 tags = ["first-type", "othertag"]
 price = 659.99
+disabled = true
 
 
 [[products]]
@@ -22,4 +23,5 @@ A longish product description. Features:
 """
 tags = ["first-type", "secondtag"]
 price = 399.00
+disabled = true
 shipping = true

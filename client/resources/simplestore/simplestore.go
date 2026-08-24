@@ -61,11 +61,21 @@ type Config struct {
 	LiveReload    bool
 	OrderPlaced   func(order *Order, msg string)
 	StatusChanged func(order *Order, msg string)
-	PayType       PayType
-	Account       string
-	ShipCharge    float64
-	Client        *client.Client
-	LNPayClient   *client.DcrlnPaymentClient
+
+	// CommentAdded is called when the seller answers a buyer about an
+	// order, and carries a message to send them.
+	//
+	// Only that direction. A buyer's own comment needs no message: it
+	// arrives on the seller's client, which is the one running this, and
+	// their order list marks it. The seller's answer has nobody watching
+	// for it -- the buyer is not sitting on the order page waiting -- so
+	// without this a reply is written into a file the buyer never opens.
+	CommentAdded func(order *Order, msg string)
+	PayType      PayType
+	Account      string
+	ShipCharge   float64
+	Client       *client.Client
+	LNPayClient  *client.DcrlnPaymentClient
 
 	ExchangeRateProvider func() float64
 

@@ -129,7 +129,9 @@ func (s *Store) handleAdminAddOrderComment(ctx context.Context, _ clientintf.Use
 		return nil, err
 	}
 
-	// TODO - notify user of new comment?
+	// The buyer is told by AddOrderComment, which is where every way of
+	// answering one goes through -- this page, and the seller's own order
+	// list in the app.
 	if _, err := s.AddOrderComment(uid, oid, comment, true); err != nil {
 		return nil, err
 	}
