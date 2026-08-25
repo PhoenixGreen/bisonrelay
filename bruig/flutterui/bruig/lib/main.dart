@@ -218,7 +218,8 @@ Future<void> runMainApp(Config cfg) async {
       // from PagesModel is where the shop is served from and whether one is
       // being hosted at all, which is hosting's answer to give.
       ChangeNotifierProxyProvider<PagesModel, StoreModel>(
-        create: (c) => StoreModel(Provider.of<PagesModel>(c, listen: false)),
+        create: (c) => StoreModel(Provider.of<PagesModel>(c, listen: false),
+            ordersPlaced: client.ordersPlaced),
         update: (c, pages, store) => store!,
       ),
       ChangeNotifierProvider.value(value: snackbar),

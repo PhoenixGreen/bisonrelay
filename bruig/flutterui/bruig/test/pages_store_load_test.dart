@@ -33,8 +33,7 @@ class _FakePages extends PagesModel {
 /// StoreModel, and the race this file is about did not: the shop still asks
 /// hosting whether there is one before it reads anything.
 class _FakeStore extends StoreModel {
-  // listen: false -- there is no golib here to hear an order from.
-  _FakeStore(PagesModel pages) : super(pages, listen: false);
+  _FakeStore(super.pages);
 
   int productFetches = 0;
 

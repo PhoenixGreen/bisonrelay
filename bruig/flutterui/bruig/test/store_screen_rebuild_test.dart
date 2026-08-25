@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:bruig/models/pages.dart';
 import 'package:bruig/models/resources.dart';
 import 'package:bruig/models/snackbar.dart';
@@ -36,8 +37,7 @@ class _Pages extends PagesModel {
 }
 
 class _Store extends StoreModel {
-  // listen: false -- there is no golib here to hear an order from.
-  _Store(PagesModel pages) : super(pages, listen: false);
+  _Store(super.pages);
 
   @override
   Future<void> loadStore() async {}
@@ -109,4 +109,38 @@ void main() {
         isNull);
     expect(find.textContaining("second client"), findsOneWidget);
   });
+
+  test('a shop told about an order reads its book again', () async {
+    // The stream from golib takes one listener and keeps it, even after a
+    // cancel, and ClientModel has been that listener since before the shop
+    // had a seller's screen. Taking it here threw on the second listen and
+    // brought the whole Pages area down -- so the shop is told by whoever
+    // already holds it, and this is that wiring.
+    var orders = StreamController<SSPlacedOrder>.broadcast();
+    addTearDown(orders.close);
+
+    var loads = 0;
+    var shop = _CountingStore(_Pages(), orders.stream, () => loads++);
+    expect(loads, 0);
+
+    orders.add(SSPlacedOrder(
+        SSOrder(1, "uid", SSCart(const [], DateTime.now())), ""));
+    await Future<void>.delayed(Duration.zero);
+    expect(loads, 1, reason: "the order book was not read again");
+
+    shop.dispose();
+    orders.add(SSPlacedOrder(
+        SSOrder(2, "uid", SSCart(const [], DateTime.now())), ""));
+    await Future<void>.delayed(Duration.zero);
+    expect(loads, 1, reason: "a disposed shop is still listening");
+  });
+}
+
+class _CountingStore extends StoreModel {
+  final void Function() onLoad;
+  _CountingStore(PagesModel pages, Stream<SSPlacedOrder> orders, this.onLoad)
+      : super(pages, ordersPlaced: orders);
+
+  @override
+  Future<void> loadStore() async => onLoad();
 }

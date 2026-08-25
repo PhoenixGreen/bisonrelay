@@ -117,11 +117,17 @@ class StoreModel extends ChangeNotifier {
   /// pressing an unrelated button and noticing.
   StreamSubscription<SSPlacedOrder>? _orderNtfns;
 
-  /// [listen] is false in tests, which have no golib to hear from.
-  StoreModel(this._pages, {bool listen = true}) {
-    if (listen) {
-      _orderNtfns = Golib.simpleStoreOrders().listen((_) => loadStore());
-    }
+  /// [ordersPlaced] is the shop saying somebody has ordered, or null for a
+  /// shop that will not be told -- which is every test, and anything built
+  /// before there is a client to hear it from.
+  ///
+  /// Handed in rather than taken from golib. That stream allows one
+  /// listener and keeps it even after a cancel, and ClientModel has been
+  /// that listener since before the shop had a seller's screen -- so taking
+  /// it here threw on the second listen and brought the whole Pages area
+  /// down with it.
+  StoreModel(this._pages, {Stream<SSPlacedOrder>? ordersPlaced}) {
+    _orderNtfns = ordersPlaced?.listen((_) => loadStore());
   }
 
   @override

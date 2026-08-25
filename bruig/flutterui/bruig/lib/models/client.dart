@@ -1574,10 +1574,27 @@ class ClientModel extends ChangeNotifier {
     }
   }
 
+  /// _ordersPlaced passes on what the shop says, to whoever else wants it.
+  ///
+  /// The stream from golib takes one listener and keeps it: a second call
+  /// to listen throws, even after the first has been cancelled. This client
+  /// is that listener -- it has been since before the shop had a seller's
+  /// screen -- so anything else that wants to know has to be told from
+  /// here rather than by asking golib itself.
+  final StreamController<SSPlacedOrder> _ordersPlaced =
+      StreamController<SSPlacedOrder>.broadcast();
+
+  /// ordersPlaced fires when somebody orders from this client's shop.
+  Stream<SSPlacedOrder> get ordersPlaced => _ordersPlaced.stream;
+
   void _handleSSOrders() async {
     var stream = Golib.simpleStoreOrders();
     await for (var order in stream) {
       _handleSSOrderPlaced(order);
+      // After the buyer has been answered, not before: this wakes the
+      // seller's order book, and a shop that reloads before the order is
+      // recorded reads the book as it was.
+      if (!_ordersPlaced.isClosed) _ordersPlaced.add(order);
     }
   }
 
