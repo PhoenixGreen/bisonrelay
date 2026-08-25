@@ -2,9 +2,11 @@ package resources
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"regexp"
+	"syscall"
 
 	"github.com/companyzero/bisonrelay/client/clientintf"
 	"github.com/companyzero/bisonrelay/internal/strescape"
@@ -78,6 +80,15 @@ func PartialPath(name string) []string {
 	return []string{PartialsDir, name + ".md"}
 }
 
+// IndexPage is the file a site serves when nothing in particular is asked
+// for.
+//
+// A request with no path is the site's front page, which is what a link
+// written "/" means and what opening a site with no page named means. It has
+// to be spelled the same everywhere, because a site whose root and whose
+// index.md are different pages is one where half the links go somewhere else.
+const IndexPage = "index.md"
+
 // PagesResource serves a directory of Markdown pages.
 //
 // The same as FilesystemResource, and one thing more: a page that refers to
@@ -111,6 +122,12 @@ func (pr *PagesResource) read(path []string) ([]byte, bool, error) {
 	data, err := os.ReadFile(fname)
 	if os.IsNotExist(err) {
 		return nil, false, nil
+	} else if errors.Is(err, syscall.EISDIR) {
+		// A directory is not a page. Answered as "no such page" rather than
+		// as an error, because the error is about this client's disk and the
+		// reader asked about a page: what they can act on is that it is not
+		// there.
+		return nil, false, nil
 	} else if err != nil {
 		return nil, false, err
 	}
@@ -124,7 +141,17 @@ func (pr *PagesResource) read(path []string) ([]byte, bool, error) {
 func (pr *PagesResource) Fulfill(ctx context.Context, uid clientintf.UserID,
 	req *rpc.RMFetchResource) (*rpc.RMFetchResourceReply, error) {
 
-	data, found, err := pr.read(req.Path)
+	// Nothing asked for is the front page. Without this the root resolved to
+	// the directory being served, and a reader following a link written "/"
+	// was shown the error from trying to read a directory as a file --
+	// "read /path/to/pages: is a directory", which names this client's own
+	// filesystem and says nothing about the page they wanted.
+	path := req.Path
+	if len(path) == 0 {
+		path = []string{IndexPage}
+	}
+
+	data, found, err := pr.read(path)
 	if err != nil {
 		return nil, err
 	}
@@ -145,7 +172,7 @@ func (pr *PagesResource) Fulfill(ctx context.Context, uid clientintf.UserID,
 	// and is asked for on its own, so a banner behind every page of a site
 	// crosses the wire once -- which is the whole reason a picture is a file
 	// rather than something written into the page.
-	if filepath.Ext(pr.filename(req.Path)) != ".md" {
+	if filepath.Ext(pr.filename(path)) != ".md" {
 		return page, nil
 	}
 

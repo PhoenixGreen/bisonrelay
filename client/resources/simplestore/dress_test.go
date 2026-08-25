@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"text/template"
 
 	"github.com/companyzero/bisonrelay/client/resources"
 	"github.com/companyzero/bisonrelay/rpc"
@@ -159,4 +160,50 @@ func TestAReplyThatIsNotOkIsNotDressed(t *testing.T) {
 	if string(got.Data) != "not found" {
 		t.Fatalf("got %q", got.Data)
 	}
+}
+
+// TestAShopOnItsOwnStillHasItsBar covers the shop hosted without a site.
+//
+// The bar of links was put on inside the same guard as the site's frame, so a
+// shop with no site got neither: no banner, which is right, and no way to
+// reach the cart or the orders, which is not. It survived only because each
+// template ended with a couple of bare links -- and those were taken out on
+// the grounds that the bar had replaced them.
+func TestAShopOnItsOwnStillHasItsBar(t *testing.T) {
+	s := &Store{log: slog.Disabled, indexPath: "/"}
+	s.tmpl = mustParseNav(t, s)
+
+	got := dress(s, "cart", "# Current Cart")
+	if !strings.Contains(got, "[Cart") {
+		t.Errorf("a shop with no site has no bar:\n%s", got)
+	}
+	if !strings.Contains(got, "# Current Cart") {
+		t.Errorf("the page itself is missing:\n%s", got)
+	}
+	if strings.Contains(got, "--include[") {
+		t.Errorf("a shop with no site was given a frame to wear:\n%s", got)
+	}
+}
+
+func TestAShopWithNeitherIsLeftAlone(t *testing.T) {
+	// No site and no bar -- a store whose templates have not been read yet.
+	// The page goes out exactly as it was rendered.
+	s := &Store{log: slog.Disabled, indexPath: "/"}
+	if got := dress(s, "cart", "# Current Cart"); got != "# Current Cart" {
+		t.Errorf("got %q", got)
+	}
+}
+
+// mustParseNav gives a store the one template the bar is drawn from.
+func mustParseNav(t *testing.T, s *Store) *template.Template {
+	t.Helper()
+	raw, err := storeTemplate.ReadFile("template/" + navTmplFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmpl := template.New("*root").Funcs(s.templateFuncs())
+	if _, err := tmpl.New(navTmplFile).Parse(string(raw)); err != nil {
+		t.Fatal(err)
+	}
+	return tmpl
 }

@@ -16,10 +16,15 @@ import (
 func (s *Store) handleAdminIndex(ctx context.Context, uid clientintf.UserID,
 	request *rpc.RMFetchResource) (*rpc.RMFetchResourceReply, error) {
 
+	// No "back" link of its own. The shop's bar of links is above every
+	// page -- see dress.go -- and one written here could only guess where
+	// back is: it said "/", which is the shop's front page for a shop hosted
+	// on its own and the *site's* front page for a shop hosted inside one.
+	// In the second arrangement it left the shop entirely, and it did it by
+	// asking for a path the pages provider read as a directory.
 	w := &bytes.Buffer{}
 	w.WriteString("# Admin Section\n\n")
 	w.WriteString("[Recent Orders](/admin/orders)\n\n")
-	w.WriteString("[Back to Index](/)\n\n")
 	return &rpc.RMFetchResourceReply{
 		Data:   w.Bytes(),
 		Status: rpc.ResourceStatusOk,

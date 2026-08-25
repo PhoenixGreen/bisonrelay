@@ -34,7 +34,7 @@ func (s *Store) handleIndex(ctx context.Context, uid clientintf.UserID,
 	s.mtx.Lock()
 	tmplCtx := &indexContext{
 		Products: s.products,
-		IsAdmin:  uid == s.c.PublicID(),
+		IsAdmin:  s.isSelf(uid),
 	}
 	w := &bytes.Buffer{}
 	err := s.tmpl.ExecuteTemplate(w, indexTmplFile, tmplCtx)
@@ -228,8 +228,13 @@ func (s *Store) handlePlaceOrder(ctx context.Context, uid clientintf.UserID,
 	}
 
 	if len(cart.Items) == 0 {
+		// The shop's own front page, not the site's. This named index.md,
+		// which is the site's front page whenever a shop is hosted inside
+		// one -- so a buyer who reached an empty cart was offered a way out
+		// of the shop rather than back into it.
 		return &rpc.RMFetchResourceReply{
-			Data:   []byte("No items in order.\n\n[Back to Index](/index.md)"),
+			Data: []byte("No items in order.\n\n[Back to the shop](" +
+				s.indexPath + ")"),
 			Status: rpc.ResourceStatusOk,
 		}, nil
 	}

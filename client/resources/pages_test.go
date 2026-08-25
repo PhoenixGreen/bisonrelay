@@ -236,3 +236,48 @@ func TestAPageTooLargeOnceFilledInIsSentAsWritten(t *testing.T) {
 		t.Fatalf("got %d bytes", len(reply.Data))
 	}
 }
+
+// TestTheRootOfASiteIsItsFrontPage covers a link written "/".
+//
+// A request with no path resolved to the directory being served, so reading
+// it failed with "is a directory" -- an error about this client's disk,
+// handed to a reader who asked for a page. Every link written "/" on any
+// site hit it, and the store's admin page had one.
+func TestTheRootOfASiteIsItsFrontPage(t *testing.T) {
+	root := t.TempDir()
+	writePageFile(t, root, IndexPage, "--include[nav]--\n# Home")
+	writePageFile(t, root, PartialsDir+"/nav.md", "[Home](/)")
+
+	res, err := NewPagesResource(root, nil).Fulfill(context.Background(),
+		clientintf.UserID{}, &rpc.RMFetchResource{})
+	if err != nil {
+		t.Fatalf("the root of a site would not read: %v", err)
+	}
+	if res.Status != rpc.ResourceStatusOk {
+		t.Fatalf("the root of a site answered %v", res.Status)
+	}
+	if !strings.Contains(string(res.Data), "# Home") {
+		t.Errorf("the root is not the front page:\n%s", res.Data)
+	}
+	// The front page's own fragments are in it. Asked for by the name it
+	// resolves to rather than by the empty path, or a page reached by "/"
+	// would arrive with its markers unexpanded and a page reached by
+	// "index.md" would not.
+	if !strings.Contains(string(res.Data), "[Home](/)") {
+		t.Errorf("the front page's fragments were not filled in:\n%s", res.Data)
+	}
+}
+
+func TestADirectoryIsNotAPage(t *testing.T) {
+	// Not an error either. What the reader can act on is that it is not
+	// there; the rest is about this client's filesystem.
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "assets"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	res := fulfillPage(t, NewPagesResource(root, nil), []string{"assets"}, nil)
+	if res.Status != rpc.ResourceStatusNotFound {
+		t.Fatalf("a directory answered %v", res.Status)
+	}
+}

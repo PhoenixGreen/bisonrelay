@@ -37,9 +37,6 @@ func (s *Store) dressed(uid clientintf.UserID, request *rpc.RMFetchResource,
 	if res == nil || res.Status != rpc.ResourceStatusOk {
 		return res
 	}
-	if s.siteRoot == "" || (s.header == "" && s.footer == "") {
-		return res
-	}
 	// static/ and assets/ are served for things a page wants rather than
 	// for somebody to read. A banner wrapped round a picture would be a
 	// picture nothing can draw.
@@ -48,18 +45,34 @@ func (s *Store) dressed(uid clientintf.UserID, request *rpc.RMFetchResource,
 		return res
 	}
 
+	// The site's frame is only for a shop that sits in a site. The shop's own
+	// bar of links is for every shop.
+	//
+	// It was inside the same guard until a shop hosted on its own turned out
+	// to have no navigation at all: no banner, which is right, and no way to
+	// reach the cart or the orders either, which is not. That was survivable
+	// only because each template ended with a couple of bare links -- and
+	// those went when the bar was supposed to have replaced them.
+	framed := s.siteRoot != "" && (s.header != "" || s.footer != "")
+
 	var out string
-	if s.header != "" {
+	if framed && s.header != "" {
 		out += "--include[" + s.header + "]--\n\n"
 	}
 	// The shop's own bar, under the site's banner and above the page. Its
 	// links are the shop's -- the front, the cart, the orders -- which the
 	// site's own bar has no reason to carry.
-	if nav := s.shopNav(uid); nav != "" {
+	nav := s.shopNav(uid)
+	if nav != "" {
 		out += nav + "\n\n"
 	}
+	if nav == "" && !framed {
+		// Nothing to add: no frame, and no bar to put on either.
+		return res
+	}
+
 	out += string(res.Data)
-	if s.footer != "" {
+	if framed && s.footer != "" {
 		out += "\n\n--include[" + s.footer + "]--"
 	}
 
@@ -140,7 +153,7 @@ func (s *Store) shopNav(uid clientintf.UserID) string {
 	err = s.tmpl.ExecuteTemplate(w, navTmplFile, &navContext{
 		ShopIndex: s.indexPath,
 		CartItems: items,
-		IsAdmin:   uid == s.c.PublicID(),
+		IsAdmin:   s.isSelf(uid),
 	})
 	if err != nil {
 		// The bar is chrome. A shop with no bar can still be bought from,
