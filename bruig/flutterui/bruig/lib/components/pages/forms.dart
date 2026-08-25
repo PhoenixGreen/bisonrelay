@@ -1,4 +1,6 @@
 import 'package:bruig/components/empty_widget.dart';
+import 'package:bruig/theming_system/model/button_style.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:bruig/components/md_elements.dart';
 import 'package:bruig/components/inputs.dart';
 import 'package:bruig/models/resources.dart';
@@ -56,13 +58,65 @@ class _FormSubmitButton extends StatelessWidget {
     }
   }
 
+  /// _role is the button this submit is drawn as, or null for the ordinary
+  /// one.
+  ///
+  /// Named by the page and resolved against the reader's own theme, so a
+  /// shop's Place Order button is the same primary button as every other
+  /// primary button in the app rather than a colour a page picked.
+  ButtonRole? get _role {
+    for (var role in ButtonRole.values) {
+      if (role.name == submit.style.trim().toLowerCase()) return role;
+    }
+    return null;
+  }
+
+  /// _ask puts the submit's question, and is true if the answer was yes.
+  ///
+  /// Only where the page asked for one. A form that acts on a tap is right
+  /// for most of them -- adding something to a cart, changing a quantity --
+  /// and a dialog in front of every one of those is a page nobody can use.
+  Future<bool> _ask(BuildContext context) async {
+    var question = submit.confirm.trim();
+    if (question.isEmpty) return true;
+
+    var answered = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(submit.label),
+        content: Text(question),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text("Cancel")),
+          TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: Text(submit.label)),
+        ],
+      ),
+    );
+    return answered == true;
+  }
+
   @override
   Widget build(BuildContext context) {
+    var role = _role;
+    var theme = ThemeNotifier.of(context);
     return ElevatedButton(
-        onPressed: () {
-          if (formKey.currentState!.validate()) {
-            doSubmit(context, form);
-          }
+        style: role == null
+            ? null
+            // A button the page has picked out is given the room to be
+            // picked out in: the same fill the app's own primary and danger
+            // buttons have, and a larger tap target than the plain one.
+            : theme.buttonStyle(role).copyWith(
+                  padding: const WidgetStatePropertyAll(
+                      EdgeInsets.symmetric(horizontal: 24, vertical: 8)),
+                  minimumSize: const WidgetStatePropertyAll(Size(0, 44)),
+                ),
+        onPressed: () async {
+          if (!formKey.currentState!.validate()) return;
+          if (!await _ask(context)) return;
+          if (context.mounted) doSubmit(context, form);
         },
         child: Text(submit.label));
   }
@@ -186,11 +240,27 @@ class CustomFormState extends State<CustomForm> {
     }
 
     // Build a Form widget using the _formKey created above.
+    //
+    // The button sits where the page put it. A form is often the only thing
+    // on a page and belongs on the left; two forms side by side -- update
+    // and remove, on one line of a cart -- belong at the end of the row they
+    // are in, next to each other rather than at opposite ends.
+    var side = switch (form.align) {
+      "right" => CrossAxisAlignment.end,
+      "center" || "centre" => CrossAxisAlignment.center,
+      _ => CrossAxisAlignment.stretch,
+    };
+
     return Form(
       key: _formKey,
       child: Column(
+        crossAxisAlignment: side,
         children: <Widget>[
-          ...fieldWidgets,
+          // The fields keep the full width whatever the button does: a text
+          // box as wide as its own label is not a text box anybody can type
+          // an address into.
+          ...fieldWidgets.map(
+              (w) => side == CrossAxisAlignment.stretch ? w : _fullWidth(w)),
           const SizedBox(height: 10),
           submit != null
               ? _FormSubmitButton(form, submit, _formKey)
@@ -202,6 +272,10 @@ class CustomFormState extends State<CustomForm> {
   }
 }
 
+/// _fullWidth keeps a field the width of the form when the form's own
+/// children are no longer stretched to it.
+Widget _fullWidth(Widget child) => Row(children: [Expanded(child: child)]);
+
 class FormField {
   final String type;
   final String name;
@@ -211,25 +285,55 @@ class FormField {
   final String regexpstr;
   final String hint;
 
+  /// style is which of the app's buttons a submit is drawn as: the name of
+  /// one of the theme's button roles -- primary, danger, tonal, outlined,
+  /// plain -- or empty for the ordinary one.
+  ///
+  /// What a button does is what decides how prominent it should be, and only
+  /// the page knows that. Placing an order and emptying a cart are not the
+  /// same weight of act as changing a quantity, and before this all three
+  /// were the same button in a column.
+  final String style;
+
+  /// confirm is what a submit asks before it does anything, or empty for one
+  /// that just does it.
+  ///
+  /// The whole question, so a page asks in its own words -- with the order's
+  /// total in it, or the name of the thing being removed -- rather than
+  /// through a dialog that can only say "are you sure".
+  final String confirm;
+
   FormField(this.type,
       {this.name = "",
       this.label = "",
       this.regexp = "",
       this.regexpstr = "",
       this.hint = "",
+      this.style = "",
+      this.confirm = "",
       this.value});
 }
 
 class FormElement extends md.Element {
   final List<FormField> fields;
 
-  FormElement(this.fields) : super("form", [md.Text("")]);
+  /// align is which side its button sits on: "left", "center" or "right".
+  /// Empty is the left, which is where every form's button was before this.
+  final String align;
+
+  FormElement(this.fields, {this.align = ""}) : super("form", [md.Text("")]);
 }
 
 class FormBlockSyntax extends md.BlockSyntax {
   static String closeTag = r'--/form--';
-  static RegExp tagPattern = RegExp(r'^--form--$');
+
+  /// tagPattern opens a form, with the form's own settings in brackets the
+  /// way --panel[...]-- and --grid[3]-- carry theirs.
+  static RegExp tagPattern = RegExp(r'^\s*--form(?:\[([^\]]*)\])?--\s*$');
   static RegExp fieldPattern = RegExp(r'([\w]+)="([^"]*)"');
+
+  /// _setting reads one of the settings in the brackets.
+  static final RegExp _setting = RegExp(r'(\w+)\s*=\s*([^,]*)');
 
   @override
   RegExp get pattern => tagPattern;
@@ -240,6 +344,7 @@ class FormBlockSyntax extends md.BlockSyntax {
 
   @override
   md.Node? parse(md.BlockParser parser) {
+    var attributes = tagPattern.firstMatch(parser.current.content)?.group(1);
     parser.advance();
     List<FormField> children = [];
 
@@ -267,6 +372,8 @@ class FormBlockSyntax extends md.BlockSyntax {
           case "name":
           case "regexp":
           case "regexpstr":
+          case "style":
+          case "confirm":
             args[Symbol(name)] = value;
             break;
         }
@@ -277,7 +384,14 @@ class FormBlockSyntax extends md.BlockSyntax {
       parser.advance();
     }
 
-    var res = md.Element("p", [FormElement(children)]);
+    var align = "";
+    for (var setting in _setting.allMatches(attributes ?? "")) {
+      if (setting.group(1)?.trim().toLowerCase() == "align") {
+        align = setting.group(2)?.trim().toLowerCase() ?? "";
+      }
+    }
+
+    var res = md.Element("p", [FormElement(children, align: align)]);
     return res;
   }
 }

@@ -277,6 +277,19 @@ class GridBlockSyntax extends md.BlockSyntax {
   /// it belongs in the caption of the cell it is written in.
   static final _picture = RegExp(r'--embed\[[^\]]*type=image/|!\[[^\]]*\]\(');
 
+  /// _cell is a cell said out loud: --cell-- starts one, whatever is in it.
+  ///
+  /// Dividing at each picture is right for a gallery, which is what this
+  /// block was written for: the pictures are the cells and the writing under
+  /// one is its caption. It is wrong for anything where the picture is not
+  /// first -- a shop front whose cards put the picture under the writing, or
+  /// behind all of it -- because there the writing of one cell runs into the
+  /// end of the last.
+  ///
+  /// So a writer can say where a cell starts instead. The marker is consumed
+  /// rather than drawn, the way --col-- is in a run of columns.
+  static final _cell = RegExp(r'^\s*--cell--\s*$');
+
   /// The most a grid may hold across, matching ColumnsBlockSyntax. Past four
   /// a cell in a chat-width window is a word wide.
   static const maxColumns = 4;
@@ -299,7 +312,22 @@ class GridBlockSyntax extends md.BlockSyntax {
       current = [];
     }
 
+    // A run holding any marker at all is divided by the markers alone.
+    // Mixing the two would divide a card that has a picture in it in half,
+    // and a writer who has said where the cells are has answered the
+    // question this was guessing at.
+    var said = lines.any(_cell.hasMatch);
+
     for (var line in lines) {
+      if (said) {
+        if (_cell.hasMatch(line)) {
+          flush();
+          continue;
+        }
+        current.add(line);
+        continue;
+      }
+
       // A picture opens a cell, but only once there is something to close:
       // a leading picture would otherwise emit an empty cell before itself.
       if (startsCell(line) && current.any((l) => l.trim().isNotEmpty)) {

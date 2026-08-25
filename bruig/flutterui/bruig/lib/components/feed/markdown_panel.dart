@@ -1,4 +1,5 @@
 import 'package:bruig/components/feed/markdown_page.dart';
+import 'package:bruig/components/feed/page_image.dart';
 import 'package:bruig/components/md_elements.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:bruig/theming_system/model/markdown_style.dart';
@@ -22,6 +23,19 @@ import 'package:markdown/markdown.dart' as md;
 // Settings are written in the brackets, the way --grid[3]-- and
 // --nav[pills]-- already are, so that everything between the two lines is
 // content and there is no question about where the settings stop.
+//
+// A panel also draws a picture behind itself, at a shape it is told, cropped
+// from a corner it is told, and follows a link when it is tapped:
+//
+//   --panel[image=shopassets/guitar.jpg, ratio=400x400, crop=top,
+//           link=product/gtr, align=bottom, fill=raised]--
+//
+// That is one card of a shop front -- a picture at the same shape as every
+// other card's, the writing over it or under it, and the whole of it a link
+// to the thing it is selling. Written here rather than as a block of its own
+// called --product--, because none of it is about selling: it is a box with a
+// picture behind it, which is what a page's banner, a link card and a
+// gallery tile are as well.
 
 /// maxBorderWidth is as thick as a line may be drawn.
 const double maxBorderWidth = 24;
@@ -73,6 +87,46 @@ class PanelRule {
 
   final double? radius;
 
+  /// fill is what the panel is filled with behind its content.
+  ///
+  /// A named colour or a written one, unlike [color]: a fill is what a
+  /// seller's own shop front is coloured with, and a shop with a brand
+  /// colour has one particular colour rather than one of eight roles. A role
+  /// is still the better answer where there is one, because it follows the
+  /// reader's theme -- see MarkdownInk.
+  final MarkdownInk? fill;
+
+  /// image is a picture of the site's own drawn behind the panel, written as
+  /// the path a Markdown image would be: shopassets/guitar.jpg.
+  final String? image;
+
+  /// ratio is the shape the panel is drawn at -- width over height -- or
+  /// null to be as tall as what is in it.
+  ///
+  /// What makes a row of cards line up. Without it a shop front of
+  /// photographs at six different shapes is a ragged page, and there is
+  /// nothing a seller can do about it short of re-cropping every photograph
+  /// they own.
+  final double? ratio;
+
+  /// crop is which part of [image] survives being fitted to [ratio].
+  ///
+  /// A picture cropped to a shape loses something, and which part it loses
+  /// is the difference between a photograph of a person and a photograph of
+  /// their shoulders.
+  final Alignment crop;
+
+  /// align is where the panel's content sits in it, top to bottom, or null
+  /// for wherever it falls.
+  ///
+  /// Read only by a panel that has a height of its own to place anything in
+  /// -- one with a [ratio], or one sized by the picture behind it.
+  final Alignment? align;
+
+  /// link is what the whole panel opens when it is tapped, or null for one
+  /// that is not a link.
+  final String? link;
+
   const PanelRule({
     this.padding,
     this.margin,
@@ -80,6 +134,12 @@ class PanelRule {
     this.stroke = PanelStroke.solid,
     this.color,
     this.radius,
+    this.fill,
+    this.image,
+    this.ratio,
+    this.crop = Alignment.center,
+    this.align,
+    this.link,
   });
 
   static const none = PanelRule();
@@ -101,6 +161,7 @@ class PanelRule {
     }
     if (fields.isEmpty) return none;
 
+    var fill = MarkdownInk.fromJson(fields["fill"]);
     return PanelRule(
       padding: PageSetup.parseSpace(fields["padding"]),
       margin: PageSetup.parseSpace(fields["margin"]),
@@ -109,7 +170,80 @@ class PanelRule {
       color: _role(fields["color"]),
       radius: PageSetup.parseLength(fields["radius"], maxPanelRadius,
           allowZero: true),
+      fill: fill.isInherit ? null : fill,
+      image: _image(fields["image"]),
+      ratio: _ratio(fields["ratio"]),
+      crop: _crop(fields["crop"]),
+      align: _align(fields["align"]),
+      link: _link(fields["link"]),
     );
+  }
+
+  /// _image is the picture behind a panel, or null for anything that is not
+  /// one of this site's own files.
+  ///
+  /// A path with no scheme and nothing else. What is drawn behind a panel is
+  /// fetched from whoever served the page, exactly as a Markdown image on it
+  /// is, and a background that could name a URL would be every page able to
+  /// ask its reader's client to fetch from anywhere.
+  static String? _image(String? value) {
+    var path = value?.trim() ?? "";
+    return path.isNotEmpty && isPageAssetPath(path) ? path : null;
+  }
+
+  /// _ratio reads a shape, written either as two lengths -- 400x400, 600x400
+  /// -- or as the number one divided by the other.
+  ///
+  /// Two lengths because that is how a seller thinks about it: a picture is
+  /// 600 wide and 400 tall. Nothing is drawn at that size -- a card is as
+  /// wide as its share of the row -- so it is the shape that is kept.
+  static double? _ratio(String? value) {
+    var text = value?.trim().toLowerCase() ?? "";
+    if (text.isEmpty) return null;
+
+    var at = text.indexOf("x");
+    if (at != -1) {
+      var w = double.tryParse(text.substring(0, at).trim());
+      var h = double.tryParse(text.substring(at + 1).trim());
+      if (w == null || h == null || w <= 0 || h <= 0) return null;
+      return _boundedRatio(w / h);
+    }
+    var direct = double.tryParse(text);
+    return direct == null || direct <= 0 ? null : _boundedRatio(direct);
+  }
+
+  /// _boundedRatio keeps a shape to one a card can be drawn at.
+  ///
+  /// A panel a hundred times wider than it is tall is a hairline, and one a
+  /// hundred times taller is a column the length of the page -- both from a
+  /// number somebody typed into a settings field. Clamped rather than
+  /// refused, so an extreme shape is drawn as far as it goes.
+  static double _boundedRatio(double ratio) => ratio.clamp(1 / 8, 8);
+
+  static Alignment _crop(String? value) =>
+      switch (value?.trim().toLowerCase()) {
+        "topleft" || "lefttop" => Alignment.topLeft,
+        "top" || "topcenter" || "topcentre" => Alignment.topCenter,
+        "topright" || "righttop" => Alignment.topRight,
+        "left" => Alignment.centerLeft,
+        "right" => Alignment.centerRight,
+        "bottomleft" => Alignment.bottomLeft,
+        "bottom" || "bottomcenter" || "bottomcentre" => Alignment.bottomCenter,
+        "bottomright" => Alignment.bottomRight,
+        _ => Alignment.center,
+      };
+
+  static Alignment? _align(String? value) =>
+      switch (value?.trim().toLowerCase()) {
+        "top" => Alignment.topCenter,
+        "center" || "centre" || "middle" => Alignment.center,
+        "bottom" => Alignment.bottomCenter,
+        _ => null,
+      };
+
+  static String? _link(String? value) {
+    var link = value?.trim() ?? "";
+    return link.isEmpty ? null : link;
   }
 
   /// _border reads a line's thickness the same way room around something is
@@ -125,7 +259,8 @@ class PanelRule {
         .where((p) => p.isNotEmpty)
         .toList();
     var got = [
-      for (var p in parts) PageSetup.parseLength(p, maxBorderWidth, allowZero: true)
+      for (var p in parts)
+        PageSetup.parseLength(p, maxBorderWidth, allowZero: true)
     ];
     if (got.isEmpty || got.any((v) => v == null)) return null;
     var n = got.cast<double>();
@@ -149,7 +284,12 @@ class PanelRule {
       margin != null ||
       border != null ||
       color != null ||
-      radius != null;
+      radius != null ||
+      fill != null ||
+      image != null ||
+      ratio != null ||
+      align != null ||
+      link != null;
 
   @override
   bool operator ==(Object other) =>
@@ -159,11 +299,17 @@ class PanelRule {
       other.border == border &&
       other.stroke == stroke &&
       other.color == color &&
-      other.radius == radius;
+      other.radius == radius &&
+      other.fill == fill &&
+      other.image == image &&
+      other.ratio == ratio &&
+      other.crop == crop &&
+      other.align == align &&
+      other.link == link;
 
   @override
-  int get hashCode =>
-      Object.hash(padding, margin, border, stroke, color, radius);
+  int get hashCode => Object.hash(padding, margin, border, stroke, color,
+      radius, fill, image, ratio, crop, align, link);
 }
 
 class PanelBlockSyntax extends md.BlockSyntax {
@@ -218,11 +364,20 @@ class PanelBlockSyntax extends md.BlockSyntax {
 
 class PanelMarkdownElementBuilder extends MarkdownElementBuilder {
   @override
-  Widget visitElementAfter(md.Element element, TextStyle? preferredStyle) =>
-      MarkdownPanel(
-        rule: PanelRule.parse(element.attributes["attrs"]),
-        child: MarkdownArea(element.attributes["body"] ?? "", false),
-      );
+  Widget visitElementAfter(md.Element element, TextStyle? preferredStyle) {
+    var body = element.attributes["body"] ?? "";
+    return MarkdownPanel(
+      rule: PanelRule.parse(element.attributes["attrs"]),
+      // A panel with nothing between its two lines is a panel drawn for what
+      // it is rather than for what it holds -- a picture at a fixed shape,
+      // which is the picture half of a shop front's card. Rendering the
+      // empty string as markdown would be a renderer, and a line of its
+      // spacing, drawn for nothing.
+      child: body.trim().isEmpty
+          ? const SizedBox.shrink()
+          : MarkdownArea(body, false),
+    );
+  }
 }
 
 /// MarkdownPanel draws the box.
@@ -241,6 +396,8 @@ class MarkdownPanel extends StatelessWidget {
     if (rule.padding != null) {
       out = Padding(padding: rule.padding!, child: out);
     }
+
+    out = _surface(context, theme, out, radius);
 
     var border = rule.border;
     if (border != null && rule.stroke != PanelStroke.none) {
@@ -268,11 +425,110 @@ class MarkdownPanel extends StatelessWidget {
             );
     }
 
+    if (rule.link != null) {
+      out = _linked(context, out);
+    }
+
     if (rule.margin != null) {
       out = Padding(padding: rule.margin!, child: out);
     }
     return out;
   }
+
+  /// _surface is the panel's own face: the colour it is filled with, the
+  /// picture behind it, the shape it is drawn at, and where its content sits
+  /// in that shape.
+  ///
+  /// Inside the border rather than outside it, so a filled panel's line is
+  /// drawn round the fill rather than through it, and the corners clip the
+  /// picture rather than the picture squaring them off.
+  Widget _surface(BuildContext context, ThemeNotifier theme, Widget content,
+      BorderRadius radius) {
+    var fill = rule.fill == null ? null : theme.markdownInk(rule.fill!);
+    var picture = rule.image == null
+        ? null
+        : pageAssetPicture(context, rule.image!,
+            // Cropped only where there is a shape to crop to. Without one
+            // the panel is as tall as the picture, so the whole picture is
+            // what it is: cover would be a crop with nothing gained.
+            fit: rule.ratio != null ? BoxFit.cover : BoxFit.contain,
+            alignment: rule.crop);
+
+    // Nothing behind it and no shape asked for leaves the plain block a
+    // panel was before any of this: no Stack, no clip, nothing measured.
+    if (fill == null && picture == null && rule.ratio == null) return content;
+
+    // Placed by a Column rather than an Align, so the content keeps the full
+    // width of the panel. Aligned, a line of writing on a card would sit in
+    // the middle of it and wrap at its own length rather than the card's.
+    Widget placed = rule.align == null
+        ? content
+        : Column(
+            mainAxisAlignment: switch (rule.align!.y) {
+              < 0 => MainAxisAlignment.start,
+              > 0 => MainAxisAlignment.end,
+              _ => MainAxisAlignment.center,
+            },
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [content],
+          );
+
+    Widget out;
+    if (rule.ratio != null) {
+      // A shape given is the panel's own: as wide as it is allowed to be and
+      // as tall as the shape makes it, with the picture filling that and the
+      // content laid over it.
+      out = AspectRatio(
+        aspectRatio: rule.ratio!,
+        child: Stack(fit: StackFit.expand, children: [
+          if (picture != null) picture,
+          placed,
+        ]),
+      );
+    } else if (picture != null) {
+      // No shape, so the picture is what says how tall the panel is: it is
+      // the one child of the stack that is measured, and the content is laid
+      // over whatever that comes to.
+      out = Stack(children: [
+        picture,
+        Positioned.fill(child: placed),
+      ]);
+    } else {
+      out = placed;
+    }
+
+    if (fill != null) {
+      out = DecoratedBox(
+        decoration: BoxDecoration(
+            color: fill, borderRadius: rule.radius != null ? radius : null),
+        child: out,
+      );
+    }
+
+    // Clipped last, so both the fill and the picture are cut to the corners
+    // the panel asked for.
+    return rule.radius == null
+        ? out
+        : ClipRRect(borderRadius: radius, child: out);
+  }
+
+  /// _linked makes the whole panel the link.
+  ///
+  /// A GestureDetector rather than an InkWell: a panel is drawn wherever a
+  /// page is, including places with no Material above it, and an InkWell
+  /// without one throws rather than drawing without its ripple.
+  Widget _linked(BuildContext context, Widget out) => MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: GestureDetector(
+          // Opaque, so the whole of the panel answers rather than only the
+          // parts of it something is drawn on. A card whose picture is a
+          // link and whose margins are not is a card that ignores half the
+          // taps aimed at it.
+          behavior: HitTestBehavior.opaque,
+          onTap: () => followMarkdownLink(context, rule.link!),
+          child: out,
+        ),
+      );
 }
 
 /// _PanelBorderPainter draws a broken line, which Border cannot.
@@ -313,8 +569,8 @@ class _PanelBorderPainter extends CustomPainter {
         canvas,
         Path()
           ..addRRect(RRect.fromRectAndRadius(
-            Rect.fromLTWH(inset, inset, size.width - width.top,
-                size.height - width.top),
+            Rect.fromLTWH(
+                inset, inset, size.width - width.top, size.height - width.top),
             Radius.circular(radius),
           )),
         width.top,
@@ -327,12 +583,16 @@ class _PanelBorderPainter extends CustomPainter {
     // sits inside the space the padding already left for it.
     void side(double thickness, Offset from, Offset to) {
       if (thickness <= 0) return;
-      _dash(canvas, Path()..moveTo(from.dx, from.dy)..lineTo(to.dx, to.dy),
+      _dash(
+          canvas,
+          Path()
+            ..moveTo(from.dx, from.dy)
+            ..lineTo(to.dx, to.dy),
           thickness);
     }
 
-    side(width.top, Offset(0, width.top / 2),
-        Offset(size.width, width.top / 2));
+    side(
+        width.top, Offset(0, width.top / 2), Offset(size.width, width.top / 2));
     side(width.bottom, Offset(0, size.height - width.bottom / 2),
         Offset(size.width, size.height - width.bottom / 2));
     side(width.left, Offset(width.left / 2, 0),

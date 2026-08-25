@@ -79,6 +79,29 @@ String pageAssetMime(String path) {
   };
 }
 
+/// pageAssetPicture is one of the site's own pictures drawn to fill whatever
+/// it is put in, or null while it is on its way and if there are none.
+///
+/// Separate from PageImage, which draws a picture as a block of a page at its
+/// own shape. This is a picture used as a surface -- the one behind a panel,
+/// which is what a shop front's product cards are made of -- so the caller
+/// says how it is fitted and which part of it survives being cropped.
+///
+/// Null rather than a placeholder: what is behind a panel is behind it, and a
+/// panel that draws its alt text as a background while the picture is on its
+/// way is a card with a word written across it.
+Widget? pageAssetPicture(BuildContext context, String path,
+    {BoxFit fit = BoxFit.cover, Alignment alignment = Alignment.center}) {
+  var bytes = pageAssetBytes(context, path);
+  if (bytes == null) return null;
+  return path.toLowerCase().endsWith(".svg")
+      ? SvgPicture.memory(bytes, fit: fit, alignment: alignment)
+      : Image.memory(bytes,
+          fit: fit,
+          alignment: alignment,
+          errorBuilder: (context, error, stack) => const SizedBox.shrink());
+}
+
 /// PageImage shows one picture from the site being read.
 class PageImage extends StatelessWidget {
   final String path;
