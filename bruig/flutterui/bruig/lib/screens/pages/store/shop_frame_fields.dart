@@ -37,7 +37,29 @@ class _ShopFrameFieldsState extends State<ShopFrameFields> {
     super.dispose();
   }
 
+  /// _save writes the four fields back, and does nothing at all when none of
+  /// them has changed.
+  ///
+  /// That guard is the whole of this method's difficulty. Saving means
+  /// setHost, and setHost stops the shop and stands a new one up -- so an
+  /// unconditional save is a shop restarted, and the screen rebuilt, on every
+  /// tap that lands outside these four boxes.
+  ///
+  /// It is onTapOutside that makes that fatal rather than merely wasteful. It
+  /// fires on pointer *down*, so tapping any other control on this page --
+  /// the switches and dropdowns that decide what the shop front looks like --
+  /// rebuilt the subtree before the pointer came up, and the tap those
+  /// controls never finished receiving did nothing. A switch that refuses to
+  /// move is a dead control, and nothing on screen says why.
   Future<void> _save() async {
+    var cfg = widget.pages.hostConfig;
+    if (_header.text.trim() == cfg.storeHeader &&
+        _footer.text.trim() == cfg.storeFooter &&
+        _name.text.trim() == cfg.storeName &&
+        _tagline.text.trim() == cfg.storeTagline) {
+      return;
+    }
+
     var snackbar = SnackBarModel.of(context);
     try {
       await widget.pages.setHost(widget.pages.hostConfig.copyWith(
