@@ -12,6 +12,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:golib_plugin/definitions.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:bruig/screens/pages/store/store_tabs.dart';
 
 // store_screen_rebuild_test.dart is about the screen noticing.
 //
@@ -161,6 +162,32 @@ void main() {
     // The editor stands in front of the tabs, so what is being written is
     // not something a tab can navigate away from by accident.
     expect(find.text("Orders"), findsNothing);
+  });
+
+  testWidgets('the shop is drawn with its tabs', (tester) async {
+    // Checked by pumping the screen, not by the analyser: the tabs were
+    // written, the parameters were wired, everything compiled, and the
+    // switch that draws them never reached the file -- so the shop went on
+    // being one long page and nothing said otherwise.
+    tester.view.physicalSize = const Size(1000, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    var pages = _Pages();
+    var shop = _Store(pages);
+
+    await tester.pumpWidget(MultiProvider(providers: [
+      ChangeNotifierProvider<ThemeNotifier>(
+          create: (c) => ThemeNotifier(doLoad: false)),
+      ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+    ], child: MaterialApp(home: Scaffold(body: StoreTab(pages, shop, "me")))));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(StoreTabs), findsOneWidget,
+        reason: "the shop is still one long page");
+    for (var kind in StoreTabKind.values) {
+      expect(find.text(kind.label), findsWidgets, reason: kind.name);
+    }
   });
 }
 

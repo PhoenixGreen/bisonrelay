@@ -9,6 +9,8 @@ import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:golib_plugin/definitions.dart';
 import 'package:bruig/screens/pages/store/store_tabs.dart';
+import 'package:bruig/screens/pages/store/store_templates.dart';
+import 'package:bruig/screens/pages/store/store_assets.dart';
 
 // store_overview.dart is the shop as its seller opens it: whether a shop is
 // being hosted at all, the catalogue, and the order book beneath it.
@@ -133,45 +135,68 @@ class StoreOverview extends StatelessWidget {
         Txt.S(store.storeError!, color: TextColor.onErrorContainer),
       ],
       const SizedBox(height: 20),
-
-      // Orders first: they are the part with someone waiting on the other
-      // end of it.
-      Row(children: [
-        const Expanded(child: Txt.L("Orders")),
-        if (open.isNotEmpty)
-          Txt.S("${open.length} open", color: TextColor.onSurfaceVariant),
-      ]),
-      const SizedBox(height: 8),
-      if (store.orders.isEmpty)
-        const Txt.S("No orders yet.", color: TextColor.onSurfaceVariant)
-      else
-        ...store.orders.map((o) => OrderRow(
-              order: o,
-              onStatus: (status) => onStatus(o, status),
-              onReply: (text) => onReply(o, text),
-              onSendGoods: () => onSendGoods(o),
-              isOwn: o.user == ownID,
-            )),
-
-      const SizedBox(height: 28),
-      Row(children: [
-        const Expanded(child: Txt.L("Products")),
-        ElevatedButton.icon(
-          style: raisedButtonStyle(ThemeNotifier.of(context)),
-          onPressed: onNew,
-          icon: const Icon(Icons.add, size: 16),
-          label: const Text("New product"),
-        ),
-      ]),
-      const SizedBox(height: 8),
-      if (store.products.isEmpty)
-        const Txt.S("Nothing on sale yet.", color: TextColor.onSurfaceVariant)
-      else
-        ...store.products.map((p) => _ProductRow(
-              product: p,
-              onEdit: () => onEdit(p),
-              onDelete: () => onDelete(p.sku),
-            )),
+      StoreTabs(
+        current: tab,
+        onChanged: onTab,
+        // Counted here rather than inside the tabs: what makes an order want
+        // answering is that the last word was the buyer's, and only the
+        // order book knows that.
+        needsAnswer: store.orders
+            .where((o) => o.comments.isNotEmpty && !o.comments.last.fromAdmin)
+            .length,
+      ),
+      const SizedBox(height: 16),
+      switch (tab) {
+        StoreTabKind.orders => Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(children: [
+                const Expanded(child: Txt.L("Orders")),
+                if (open.isNotEmpty)
+                  Txt.S("${open.length} open",
+                      color: TextColor.onSurfaceVariant),
+              ]),
+              const SizedBox(height: 8),
+              if (store.orders.isEmpty)
+                const Txt.S("No orders yet.", color: TextColor.onSurfaceVariant)
+              else
+                ...store.orders.map((o) => OrderRow(
+                      order: o,
+                      onStatus: (status) => onStatus(o, status),
+                      onReply: (text) => onReply(o, text),
+                      onSendGoods: () => onSendGoods(o),
+                      isOwn: o.user == ownID,
+                    )),
+            ],
+          ),
+        StoreTabKind.products => Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(children: [
+                const Expanded(child: Txt.L("Products")),
+                ElevatedButton.icon(
+                  style: raisedButtonStyle(ThemeNotifier.of(context)),
+                  onPressed: onNew,
+                  icon: const Icon(Icons.add, size: 16),
+                  label: const Text("New product"),
+                ),
+              ]),
+              const SizedBox(height: 8),
+              if (store.products.isEmpty)
+                const Txt.S("Nothing on sale yet.",
+                    color: TextColor.onSurfaceVariant)
+              else
+                ...store.products.map((p) => _ProductRow(
+                      product: p,
+                      onEdit: () => onEdit(p),
+                      onDelete: () => onDelete(p.sku),
+                    )),
+            ],
+          ),
+        StoreTabKind.assets =>
+          StoreAssets(pages: pages, store: store, storeDir: cfg.storePath),
+        StoreTabKind.templates => StoreTemplates(store: store),
+      },
     ]);
   }
 }
