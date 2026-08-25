@@ -191,6 +191,15 @@ func (s *Store) handleAsset(_ context.Context, _ clientintf.UserID,
 	}, nil
 }
 
+// placeholderImage is the picture a product with none of its own is shown
+// with.
+//
+// Load-bearing rather than decorative. A card is a picture and the writing
+// that goes with it, and a card with no picture is a hole in the row -- so
+// every product contributes one, and this is what a product that has not
+// been given one contributes. It ships with a new store; see WriteTemplate.
+const placeholderImage = "placeholder.png"
+
 // ProductImagePath is what a template writes to show a product's picture, or
 // empty for a product with none.
 //

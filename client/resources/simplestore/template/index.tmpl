@@ -5,10 +5,7 @@
 {{end}}
 --grid[3]--
 {{range .Products -}}
-{{ with productImage .Image }}![]({{.}})
-{{ else }}![](shopassets/placeholder.png)
-{{ end -}}
-**[{{.Title}}](product/{{.SKU}})**
-{{ money .Price }}{{ with dcr .Price }} · ≈ {{.}}{{ end }}
+--cell--
+{{ productCard . }}
 {{end}}
 --/grid--

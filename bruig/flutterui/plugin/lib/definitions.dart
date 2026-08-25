@@ -2800,7 +2800,6 @@ class RMFetchResourceReply {
       RMFetchResourceReply(tag, status, meta, data ?? this.data, index, count);
 }
 
-
 // Hosting modes, mirroring golib's pagesHost. "http" and "clientrpc" hand
 // serving to something outside the app and are config-file only, which is
 // what PagesHostStatus.editable reports.
@@ -2918,6 +2917,171 @@ class StoreTemplate {
   StoreTemplate(this.name, this.size, this.shipped);
   factory StoreTemplate.fromJson(Map<String, dynamic> json) =>
       _$StoreTemplateFromJson(json);
+}
+
+/// StoreIndexLayout is what one product looks like on the shop front.
+///
+/// Written out by hand rather than generated, because it is a settings record
+/// with a default for every field: what a shop that has never had one gets is
+/// part of what this means, and the generator's defaults would be spread
+/// between the annotation and the constructor.
+///
+/// The names are the store's own -- see simplestore/storefront.go -- and the
+/// two must stay spelled the same: this is one record travelling between
+/// them, not two records that happen to match.
+class StoreIndexLayout {
+  /// fixedImage is whether every picture on the shop front is drawn at the
+  /// same shape, cropping the ones that are not that shape to fit.
+  final bool fixedImage;
+  final int imageWidth;
+  final int imageHeight;
+
+  /// crop is which part of a picture is kept when one is cropped:
+  /// "topleft", "top", "topright", "left", "center", "right", "bottom".
+  final String crop;
+
+  /// imagePosition is where the picture sits on a card: "top", "full" --
+  /// behind the whole card -- or "bottom".
+  final String imagePosition;
+
+  /// The plate behind the writing: whether there is one, what colour, and
+  /// the room around and inside it.
+  final bool textBackground;
+  final String textColor;
+  final int textPadding;
+  final int textMargin;
+  final int textRadius;
+
+  /// textPosition is where the writing sits on a card whose picture fills
+  /// it: "top", "center" or "bottom". Read only for the "full" position.
+  final String textPosition;
+
+  /// showDCR is whether a card shows what its price comes to in DCR as well
+  /// as in dollars. The product's own page always shows both.
+  final bool showDCR;
+
+  const StoreIndexLayout({
+    this.fixedImage = false,
+    this.imageWidth = 400,
+    this.imageHeight = 400,
+    this.crop = "center",
+    this.imagePosition = "top",
+    this.textBackground = false,
+    this.textColor = "raised",
+    this.textPadding = 10,
+    this.textMargin = 0,
+    this.textRadius = 8,
+    this.textPosition = "bottom",
+    this.showDCR = true,
+  });
+
+  factory StoreIndexLayout.fromJson(Map<String, dynamic> json) {
+    const fallback = StoreIndexLayout();
+    int number(String key, int or) {
+      var v = json[key];
+      return v is num ? v.toInt() : or;
+    }
+
+    String word(String key, String or) {
+      var v = json[key];
+      return v is String && v.isNotEmpty ? v : or;
+    }
+
+    bool flag(String key, bool or) {
+      var v = json[key];
+      return v is bool ? v : or;
+    }
+
+    return StoreIndexLayout(
+      fixedImage: flag("fixed_image", fallback.fixedImage),
+      imageWidth: number("image_width", fallback.imageWidth),
+      imageHeight: number("image_height", fallback.imageHeight),
+      crop: word("crop", fallback.crop),
+      imagePosition: word("image_position", fallback.imagePosition),
+      textBackground: flag("text_background", fallback.textBackground),
+      textColor: word("text_color", fallback.textColor),
+      textPadding: number("text_padding", fallback.textPadding),
+      textMargin: number("text_margin", fallback.textMargin),
+      textRadius: number("text_radius", fallback.textRadius),
+      textPosition: word("text_position", fallback.textPosition),
+      showDCR: flag("show_dcr", fallback.showDCR),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        "fixed_image": fixedImage,
+        "image_width": imageWidth,
+        "image_height": imageHeight,
+        "crop": crop,
+        "image_position": imagePosition,
+        "text_background": textBackground,
+        "text_color": textColor,
+        "text_padding": textPadding,
+        "text_margin": textMargin,
+        "text_radius": textRadius,
+        "text_position": textPosition,
+        "show_dcr": showDCR,
+      };
+
+  StoreIndexLayout copyWith({
+    bool? fixedImage,
+    int? imageWidth,
+    int? imageHeight,
+    String? crop,
+    String? imagePosition,
+    bool? textBackground,
+    String? textColor,
+    int? textPadding,
+    int? textMargin,
+    int? textRadius,
+    String? textPosition,
+    bool? showDCR,
+  }) =>
+      StoreIndexLayout(
+        fixedImage: fixedImage ?? this.fixedImage,
+        imageWidth: imageWidth ?? this.imageWidth,
+        imageHeight: imageHeight ?? this.imageHeight,
+        crop: crop ?? this.crop,
+        imagePosition: imagePosition ?? this.imagePosition,
+        textBackground: textBackground ?? this.textBackground,
+        textColor: textColor ?? this.textColor,
+        textPadding: textPadding ?? this.textPadding,
+        textMargin: textMargin ?? this.textMargin,
+        textRadius: textRadius ?? this.textRadius,
+        textPosition: textPosition ?? this.textPosition,
+        showDCR: showDCR ?? this.showDCR,
+      );
+
+  @override
+  bool operator ==(Object other) =>
+      other is StoreIndexLayout &&
+      other.fixedImage == fixedImage &&
+      other.imageWidth == imageWidth &&
+      other.imageHeight == imageHeight &&
+      other.crop == crop &&
+      other.imagePosition == imagePosition &&
+      other.textBackground == textBackground &&
+      other.textColor == textColor &&
+      other.textPadding == textPadding &&
+      other.textMargin == textMargin &&
+      other.textRadius == textRadius &&
+      other.textPosition == textPosition &&
+      other.showDCR == showDCR;
+
+  @override
+  int get hashCode => Object.hash(
+      fixedImage,
+      imageWidth,
+      imageHeight,
+      crop,
+      imagePosition,
+      textBackground,
+      textColor,
+      textPadding,
+      textMargin,
+      textRadius,
+      textPosition,
+      showDCR);
 }
 
 @JsonSerializable()
@@ -3152,8 +3316,16 @@ class ManagedOrder {
   @JsonKey(defaultValue: [])
   final List<SSOrderComment> comments;
 
-  ManagedOrder(this.id, this.user, this.userNick, this.cart, this.status,
-      this.placedTS, this.shipCharge, this.exchangeRate, this.payType,
+  ManagedOrder(
+      this.id,
+      this.user,
+      this.userNick,
+      this.cart,
+      this.status,
+      this.placedTS,
+      this.shipCharge,
+      this.exchangeRate,
+      this.payType,
       this.comments);
   factory ManagedOrder.fromJson(Map<String, dynamic> json) =>
       _$ManagedOrderFromJson(json);
@@ -5140,7 +5312,8 @@ abstract class PluginPlatform {
       (await asyncCall(CTReadLocalPage, name)) as String? ?? "";
 
   Future<List<LocalPage>> writeLocalPage(String name, String content) async =>
-      _localPages(await asyncCall(CTWriteLocalPage, LocalPageArgs(name, content)));
+      _localPages(
+          await asyncCall(CTWriteLocalPage, LocalPageArgs(name, content)));
 
   Future<List<LocalPage>> deleteLocalPage(String name) async =>
       _localPages(await asyncCall(CTDeleteLocalPage, name));
@@ -5178,8 +5351,7 @@ abstract class PluginPlatform {
 
   /// sendOrderGoods sends an order's files again.
   Future<void> sendOrderGoods(String user, int order) async =>
-      await asyncCall(CTSendOrderGoods,
-          OrderStatusArgs(user, order, ""));
+      await asyncCall(CTSendOrderGoods, OrderStatusArgs(user, order, ""));
 
   /// listStoreAssets returns the pictures a shop keeps.
   Future<List<StoreAsset>> listStoreAssets() async =>
@@ -5209,6 +5381,27 @@ abstract class PluginPlatform {
   Future<void> writeStoreTemplate(String name, String body) async =>
       await asyncCall(CTWriteStoreTemplate, {"name": name, "body": body});
 
+  /// storeIndexLayout is how the shop front currently lays a product out.
+  Future<StoreIndexLayout> storeIndexLayout() async {
+    var res = await asyncCall(CTGetStoreLayout, null);
+    return res == null
+        ? const StoreIndexLayout()
+        : StoreIndexLayout.fromJson(res as Map<String, dynamic>);
+  }
+
+  /// setStoreIndexLayout changes how the shop front lays a product out and
+  /// gives back what the store made of it.
+  ///
+  /// What comes back rather than what went in: the store decides what a
+  /// setting may be, and a screen showing what it asked for beside a shop
+  /// doing something else is the hardest kind of thing to work out.
+  Future<StoreIndexLayout> setStoreIndexLayout(StoreIndexLayout layout) async {
+    var res = await asyncCall(CTSetStoreLayout, layout.toJson());
+    return res == null
+        ? layout
+        : StoreIndexLayout.fromJson(res as Map<String, dynamic>);
+  }
+
   /// readStoreGood is what the shop is currently sending for a product, or
   /// null when there is nothing there.
   Future<String?> readStoreGood(String recorded) async {
@@ -5236,8 +5429,8 @@ abstract class PluginPlatform {
 
   Future<List<LocalAsset>> addLocalAssetBytes(
           String name, Uint8List data) async =>
-      _localAssets(await asyncCall(CTAddLocalAssetBytes,
-          {"name": name, "data": base64Encode(data)}));
+      _localAssets(await asyncCall(
+          CTAddLocalAssetBytes, {"name": name, "data": base64Encode(data)}));
 
   List<LocalAsset> _localAssets(dynamic res) => res == null
       ? List.empty()
@@ -5281,7 +5474,9 @@ abstract class PluginPlatform {
 
   List<ManagedOrder> _orders(dynamic res) => res == null
       ? List.empty()
-      : (res as List).map<ManagedOrder>((v) => ManagedOrder.fromJson(v)).toList();
+      : (res as List)
+          .map<ManagedOrder>((v) => ManagedOrder.fromJson(v))
+          .toList();
 
   Future<void> handshake(String uid) async => await asyncCall(CTHandshake, uid);
 
@@ -5744,6 +5939,8 @@ const int CTDeleteStoreAsset = 0xe2;
 const int CTListStoreTemplates = 0xe3;
 const int CTReadStoreTemplate = 0xe4;
 const int CTWriteStoreTemplate = 0xe5;
+const int CTGetStoreLayout = 0xe6;
+const int CTSetStoreLayout = 0xe7;
 const int CTListStoreProducts = 0xc6;
 const int CTSaveStoreProduct = 0xc7;
 const int CTDeleteStoreProduct = 0xc8;

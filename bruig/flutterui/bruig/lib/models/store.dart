@@ -157,6 +157,9 @@ class StoreModel extends ChangeNotifier {
   @visibleForTesting
   Future<List<ManagedOrder>> fetchOrders() => Golib.listStoreOrders();
 
+  @visibleForTesting
+  Future<StoreIndexLayout> fetchIndexLayout() => Golib.storeIndexLayout();
+
   /// addOrderComment answers a buyer on one order.
   ///
   /// The buyer has been able to write on an order since the shop was built,
@@ -188,6 +191,31 @@ class StoreModel extends ChangeNotifier {
 
   Future<void> deleteAsset(String name) async {
     _assets = await Golib.deleteStoreAsset(name);
+    notifyListeners();
+  }
+
+  // ---- how the shop front lays a product out ----
+  //
+  // Kept in the store's own directory rather than in this client's config,
+  // because it is a fact about this shop: a seller who copies the shop's
+  // folder to another machine takes their front page with them. See
+  // simplestore/storefront.go.
+
+  StoreIndexLayout _indexLayout = const StoreIndexLayout();
+  StoreIndexLayout get indexLayout => _indexLayout;
+
+  Future<void> loadIndexLayout() async {
+    _indexLayout = await Golib.storeIndexLayout();
+    notifyListeners();
+  }
+
+  /// setIndexLayout changes what one product looks like on the shop front.
+  ///
+  /// What the store made of it is kept rather than what was asked for: the
+  /// store decides what a setting may be, and a screen showing one thing
+  /// beside a shop doing another is the hardest kind of thing to work out.
+  Future<void> setIndexLayout(StoreIndexLayout layout) async {
+    _indexLayout = await Golib.setStoreIndexLayout(layout);
     notifyListeners();
   }
 
@@ -274,6 +302,7 @@ class StoreModel extends ChangeNotifier {
     try {
       _products = await fetchProducts();
       _orders = await fetchOrders();
+      _indexLayout = await fetchIndexLayout();
       _storeError = null;
     } catch (exception) {
       _storeError = "$exception";

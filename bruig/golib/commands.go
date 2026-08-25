@@ -232,6 +232,8 @@ const (
 	CTListStoreTemplates    CmdType = 0xe3
 	CTReadStoreTemplate     CmdType = 0xe4
 	CTWriteStoreTemplate    CmdType = 0xe5
+	CTGetStoreLayout        CmdType = 0xe6
+	CTSetStoreLayout        CmdType = 0xe7
 
 	// Store management: the catalogue and the order book, for the seller's
 	// own UI rather than the markdown pages a buyer sees.

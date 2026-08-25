@@ -2491,6 +2491,28 @@ func handleClientCmd(cc *clientCtx, cmd *cmd) (interface{}, error) {
 		}
 		return nil, store.WriteTemplateFile(args.Name, args.Body)
 
+	case CTGetStoreLayout:
+		store, err := cc.pagesHost.runningStore()
+		if err != nil {
+			return nil, err
+		}
+		return store.IndexLayout(), nil
+
+	case CTSetStoreLayout:
+		var layout simplestore.IndexLayout
+		if err := cmd.decode(&layout); err != nil {
+			return nil, err
+		}
+		store, err := cc.pagesHost.runningStore()
+		if err != nil {
+			return nil, err
+		}
+		// The corrected settings go back rather than what was sent: the
+		// store decides what a setting may be, and a UI showing what it
+		// asked for beside a shop doing something else is the hardest kind
+		// of thing to work out.
+		return store.SetIndexLayout(layout)
+
 	case CTListStoreProducts:
 		store, err := cc.pagesHost.runningStore()
 		if err != nil {

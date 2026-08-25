@@ -135,6 +135,20 @@ type Store struct {
 	shopName    string
 	shopTagline string
 
+	// layout is what one product looks like on the shop front. Read from
+	// the store's own directory, and changed from the seller's Store setup
+	// tab rather than by editing a template. See storefront.go.
+	//
+	// Under a lock of its own rather than mtx, and that is load-bearing
+	// rather than tidiness. A template is executed with mtx held -- see
+	// handleIndex -- and the template calls productCard, which reads this.
+	// A sync.Mutex is not reentrant, so reading it under mtx wedged the
+	// shop on its own front page: the request never returned, every later
+	// request queued behind it, and there was nothing logged and no error
+	// to show for it.
+	layoutMtx sync.Mutex
+	layout    IndexLayout
+
 	// siteRoot, header and footer are the wrapper: see Config.
 	siteRoot string
 	header   string
@@ -169,6 +183,8 @@ func New(cfg Config) (*Store, error) {
 		lnpc:        cfg.LNPayClient,
 		runCtx:      runCtx,
 		runCancel:   runCancel,
+
+		layout: DefaultIndexLayout(),
 
 		invoiceSettledChan:  make(chan string),
 		invoiceCanceledChan: make(chan string),
@@ -220,6 +236,18 @@ func (s *Store) reloadStore() error {
 					filename, err)
 			}
 		}
+	}
+
+	// How the shop front lays a product out. A file the seller's own
+	// settings write, so a shop that has never had one gets the defaults --
+	// which are the shop front as it was before this was a setting.
+	layout, err := readIndexLayout(s.root)
+	if err != nil {
+		// Not fatal: a shop that will not serve anything because one line
+		// of its front-page settings will not read is a worse answer than
+		// a shop that draws its front page the ordinary way.
+		s.log.Warnf("Ignoring the shop front settings: %v", err)
+		layout = DefaultIndexLayout()
 	}
 
 	// Load Products.
@@ -277,6 +305,10 @@ func (s *Store) reloadStore() error {
 	s.tmpl = tmpl
 	s.mtx.Unlock()
 
+	s.layoutMtx.Lock()
+	s.layout = layout
+	s.layoutMtx.Unlock()
+
 	return nil
 }
 
@@ -313,6 +345,13 @@ func (s *Store) templateFuncs() template.FuncMap {
 		// because naming your own shop should not mean editing one.
 		"shopName":    func() string { return s.shopName },
 		"shopTagline": func() string { return s.shopTagline },
+
+		// productCard is one product as it appears on the shop front: the
+		// picture, the link and the price, laid out however the seller's
+		// Store setup asks for. A function rather than markup in the
+		// template, because a card's shape is a setting now -- see
+		// storefront.go.
+		"productCard": s.productCard,
 	}
 }
 

@@ -12,6 +12,7 @@ import 'package:bruig/screens/pages/store/store_tabs.dart';
 import 'package:bruig/screens/pages/store/store_templates.dart';
 import 'package:bruig/screens/pages/store/store_assets.dart';
 import 'package:bruig/screens/pages/store/shop_frame_fields.dart';
+import 'package:bruig/screens/pages/store/store_front_fields.dart';
 
 // store_overview.dart is the shop as its seller opens it: whether a shop is
 // being hosted at all, the catalogue, and the order book beneath it.
@@ -197,7 +198,19 @@ class StoreOverview extends StatelessWidget {
         StoreTabKind.assets =>
           StoreAssets(pages: pages, store: store, storeDir: cfg.storePath),
         StoreTabKind.templates => StoreTemplates(store: store),
-        StoreTabKind.setup => ShopFrameFields(pages: pages),
+        // The setup tab is one page rather than tabs of its own: naming the
+        // shop and deciding what a card on its front page looks like are the
+        // same sitting, and both are what a seller does once.
+        StoreTabKind.setup => Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              ShopFrameFields(pages: pages),
+              const SizedBox(height: 24),
+              const Divider(height: 1),
+              const SizedBox(height: 20),
+              StoreFrontFields(store: store),
+            ],
+          ),
       },
     ]);
   }

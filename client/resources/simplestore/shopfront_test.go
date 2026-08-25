@@ -13,13 +13,17 @@ import (
 	"github.com/decred/slog"
 )
 
-// shopfront_test.go covers the shop front: a grid of products, each cell led
-// by a picture.
+// shopfront_test.go covers the shop front: a grid of products, one cell each.
 //
-// The grid reads a cell as starting at a picture, so every product must
-// contribute one. A product with none gets the placeholder -- not for
-// decoration, but because a cell that does not start with a picture is not a
-// cell, and its writing joins the one before it.
+// Each cell is opened by a --cell-- marker, so a product whose card does not
+// start with a picture -- the seller can put the picture under the writing,
+// or behind all of it -- is still a cell of its own. Before the marker
+// existed the grid divided itself at each picture, which made the picture's
+// position load-bearing: writing that came before one joined the cell above.
+//
+// Every product still contributes a picture, and a product with none gets the
+// placeholder. That is what makes a row of cards line up rather than one of
+// them being writing with a hole where the others have a picture.
 
 func renderIndex(t *testing.T, products []*Product) string {
 	return renderIndexAs(t, &Store{indexPath: "/", log: slog.Disabled}, products)
@@ -46,9 +50,9 @@ func renderIndexAs(t *testing.T, s *Store, products []*Product) string {
 	return out.String()
 }
 
-var cellStart = regexp.MustCompile(`(?m)^!\[\]\(`)
+var cellStart = regexp.MustCompile(`(?m)^--cell--`)
 
-func TestEveryProductLeadsWithAPicture(t *testing.T) {
+func TestEveryProductIsACellOfItsOwn(t *testing.T) {
 	got := renderIndex(t, []*Product{
 		{Title: "A guitar", SKU: "gtr", Image: "guitar.jpg"},
 		{Title: "A drum", SKU: "drm"}, // no picture of its own
@@ -57,11 +61,23 @@ func TestEveryProductLeadsWithAPicture(t *testing.T) {
 	if n := len(cellStart.FindAllString(got, -1)); n != 2 {
 		t.Fatalf("two products gave %d cells:\n%s", n, got)
 	}
-	if !strings.Contains(got, "![]("+ProductImagePath("guitar.jpg")+")") {
+	if !strings.Contains(got, "image="+ProductImagePath("guitar.jpg")) {
 		t.Errorf("the product's own picture is missing:\n%s", got)
 	}
-	if !strings.Contains(got, "![]("+ProductImagePath("placeholder.png")+")") {
+	if !strings.Contains(got, "image="+ProductImagePath(placeholderImage)) {
 		t.Errorf("a product without one gets no placeholder:\n%s", got)
+	}
+}
+
+// TestTheWholeCardIsALink covers tapping the picture of the thing you want.
+//
+// The picture used to be a plain Markdown image with the title linked
+// underneath it, so the largest part of a card -- the part somebody is
+// actually looking at -- did nothing when it was tapped.
+func TestTheWholeCardIsALink(t *testing.T) {
+	got := renderIndex(t, []*Product{{Title: "A guitar", SKU: "gtr"}})
+	if !strings.Contains(got, "link=product/gtr") {
+		t.Errorf("the picture does not open the product:\n%s", got)
 	}
 }
 
@@ -71,7 +87,7 @@ func TestTheCellsAreInsideTheGrid(t *testing.T) {
 	if open == -1 || close == -1 || open > close {
 		t.Fatalf("no grid round the products:\n%s", got)
 	}
-	if at := strings.Index(got, "![]("); at < open || at > close {
+	if at := strings.Index(got, "--cell--"); at < open || at > close {
 		t.Errorf("a product is outside the grid:\n%s", got)
 	}
 }
