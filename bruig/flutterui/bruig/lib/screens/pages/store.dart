@@ -13,6 +13,7 @@ import 'package:golib_plugin/definitions.dart';
 import 'package:bruig/screens/pages/store/product_editor.dart';
 import 'package:bruig/screens/pages/store/store_overview.dart';
 import 'package:bruig/screens/pages/store/store_orders.dart';
+import 'package:bruig/screens/pages/store/store_tabs.dart';
 
 // store.dart is the Store section. What is in it is split by what a seller
 // is doing: looking at the shop, writing a product, or answering somebody
@@ -134,6 +135,13 @@ class _StoreTabState extends State<StoreTab> {
     }
   }
 
+  /// tab is which of the shop's four jobs is showing.
+  ///
+  /// Kept here rather than in the tab row, so what is being edited survives
+  /// a trip to the orders and back: opening Orders to answer somebody must
+  /// not throw away a half-written product.
+  StoreTabKind tab = StoreTabKind.products;
+
   /// sendOrderGoods sends an order's files again.
   ///
   /// Rethrows after saying so, so the button can put itself back and the
@@ -190,6 +198,8 @@ class _StoreTabState extends State<StoreTab> {
           );
         }
         return StoreOverview(
+          tab: tab,
+          onTab: (StoreTabKind t) => setState(() => tab = t),
           pages: pages,
           store: store,
           onDisable: disableStore,

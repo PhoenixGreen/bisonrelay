@@ -559,6 +559,12 @@ type storeGoodArgs struct {
 	Data []byte `json:"data"`
 }
 
+// storeTemplateArgs is one of a shop's pages being saved.
+type storeTemplateArgs struct {
+	Name string `json:"name"`
+	Body string `json:"body"`
+}
+
 type addAssetArgs struct {
 	Name string `json:"name"`
 	Data []byte `json:"data"`

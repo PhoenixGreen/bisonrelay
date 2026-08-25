@@ -2884,6 +2884,42 @@ class PagesHostConfig {
           storeTagline ?? this.storeTagline);
 }
 
+/// StoreAsset is one picture a shop keeps.
+@JsonSerializable()
+class StoreAsset {
+  /// name is what a page writes to show it, without the directory the shop
+  /// serves them from: "banner.jpg", or "covers/guitar.jpg".
+  final String name;
+  final int size;
+
+  /// type is what the file is, taken from its name, so a listing can decide
+  /// whether it can draw a thumbnail without opening it.
+  @JsonKey(defaultValue: "")
+  final String type;
+  @JsonKey(fromJson: _parseDateTime)
+  final DateTime modified;
+
+  StoreAsset(this.name, this.size, this.type, this.modified);
+  factory StoreAsset.fromJson(Map<String, dynamic> json) =>
+      _$StoreAssetFromJson(json);
+}
+
+/// StoreTemplate is one of the pages a shop renders.
+@JsonSerializable()
+class StoreTemplate {
+  final String name;
+  final int size;
+
+  /// shipped is whether a page of this name comes with the app, which is
+  /// what decides whether restoring would put something back over it.
+  @JsonKey(defaultValue: false)
+  final bool shipped;
+
+  StoreTemplate(this.name, this.size, this.shipped);
+  factory StoreTemplate.fromJson(Map<String, dynamic> json) =>
+      _$StoreTemplateFromJson(json);
+}
+
 @JsonSerializable()
 class LocalAsset {
   final String name;
@@ -5145,6 +5181,34 @@ abstract class PluginPlatform {
       await asyncCall(CTSendOrderGoods,
           OrderStatusArgs(user, order, ""));
 
+  /// listStoreAssets returns the pictures a shop keeps.
+  Future<List<StoreAsset>> listStoreAssets() async =>
+      _storeAssets(await asyncCall(CTListStoreAssets, null));
+
+  /// deleteStoreAsset removes one, and returns what is left.
+  Future<List<StoreAsset>> deleteStoreAsset(String name) async =>
+      _storeAssets(await asyncCall(CTDeleteStoreAsset, name));
+
+  List<StoreAsset> _storeAssets(dynamic res) => res == null
+      ? List<StoreAsset>.empty()
+      : (res as List).map((e) => StoreAsset.fromJson(e)).toList();
+
+  /// listStoreTemplates returns the pages a shop renders.
+  Future<List<StoreTemplate>> listStoreTemplates() async {
+    var res = await asyncCall(CTListStoreTemplates, null);
+    return res == null
+        ? List<StoreTemplate>.empty()
+        : (res as List).map((e) => StoreTemplate.fromJson(e)).toList();
+  }
+
+  /// readStoreTemplate returns one page's text.
+  Future<String> readStoreTemplate(String name) async =>
+      (await asyncCall(CTReadStoreTemplate, name)) as String? ?? "";
+
+  /// writeStoreTemplate saves one page. It is refused if it will not render.
+  Future<void> writeStoreTemplate(String name, String body) async =>
+      await asyncCall(CTWriteStoreTemplate, {"name": name, "body": body});
+
   /// readStoreGood is what the shop is currently sending for a product, or
   /// null when there is nothing there.
   Future<String?> readStoreGood(String recorded) async {
@@ -5673,6 +5737,11 @@ const int CTPublishStoreGood = 0xdd;
 const int CTRemoveStoreGood = 0xde;
 const int CTReadStoreGood = 0xdf;
 const int CTSendOrderGoods = 0xe0;
+const int CTListStoreAssets = 0xe1;
+const int CTDeleteStoreAsset = 0xe2;
+const int CTListStoreTemplates = 0xe3;
+const int CTReadStoreTemplate = 0xe4;
+const int CTWriteStoreTemplate = 0xe5;
 const int CTListStoreProducts = 0xc6;
 const int CTSaveStoreProduct = 0xc7;
 const int CTDeleteStoreProduct = 0xc8;

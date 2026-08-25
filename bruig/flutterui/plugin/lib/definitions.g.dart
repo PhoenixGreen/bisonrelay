@@ -2549,6 +2549,35 @@ Map<String, dynamic> _$PagesHostConfigToJson(PagesHostConfig instance) =>
       'store_tagline': instance.storeTagline,
     };
 
+StoreAsset _$StoreAssetFromJson(Map<String, dynamic> json) => StoreAsset(
+      json['name'] as String,
+      (json['size'] as num).toInt(),
+      json['type'] as String? ?? '',
+      _parseDateTime(json['modified']),
+    );
+
+Map<String, dynamic> _$StoreAssetToJson(StoreAsset instance) =>
+    <String, dynamic>{
+      'name': instance.name,
+      'size': instance.size,
+      'type': instance.type,
+      'modified': instance.modified.toIso8601String(),
+    };
+
+StoreTemplate _$StoreTemplateFromJson(Map<String, dynamic> json) =>
+    StoreTemplate(
+      json['name'] as String,
+      (json['size'] as num).toInt(),
+      json['shipped'] as bool? ?? false,
+    );
+
+Map<String, dynamic> _$StoreTemplateToJson(StoreTemplate instance) =>
+    <String, dynamic>{
+      'name': instance.name,
+      'size': instance.size,
+      'shipped': instance.shipped,
+    };
+
 LocalAsset _$LocalAssetFromJson(Map<String, dynamic> json) => LocalAsset(
       json['name'] as String,
       (json['size'] as num?)?.toInt() ?? 0,

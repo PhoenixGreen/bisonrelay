@@ -176,6 +176,43 @@ class StoreModel extends ChangeNotifier {
   Future<void> sendOrderGoods(String user, int order) =>
       Golib.sendOrderGoods(user, order);
 
+  // ---- the shop's pictures ----
+
+  List<StoreAsset> _assets = const [];
+  List<StoreAsset> get assets => _assets;
+
+  Future<void> loadAssets() async {
+    _assets = await Golib.listStoreAssets();
+    notifyListeners();
+  }
+
+  Future<void> deleteAsset(String name) async {
+    _assets = await Golib.deleteStoreAsset(name);
+    notifyListeners();
+  }
+
+  // ---- the pages the shop renders ----
+
+  List<StoreTemplate> _templates = const [];
+  List<StoreTemplate> get templates => _templates;
+
+  Future<void> loadTemplates() async {
+    _templates = await Golib.listStoreTemplates();
+    notifyListeners();
+  }
+
+  Future<String> readTemplate(String name) => Golib.readStoreTemplate(name);
+
+  /// writeTemplate saves one of the shop's pages.
+  ///
+  /// Refused by the shop if it will not render, which is the point of doing
+  /// it here rather than letting somebody edit the file directly: a page
+  /// with a typo in it is that page down for every visitor.
+  Future<void> writeTemplate(String name, String body) async {
+    await Golib.writeStoreTemplate(name, body);
+    await loadTemplates();
+  }
+
   /// restoreStoreTemplates puts the shipped shop templates back.
   ///
   /// The shop reads its templates from disk and parses them once, so this

@@ -2441,6 +2441,56 @@ func handleClientCmd(cc *clientCtx, cmd *cmd) (interface{}, error) {
 		}
 		return nil, store.SendOrderGoods(args.User, args.Order)
 
+	case CTListStoreAssets:
+		store, err := cc.pagesHost.runningStore()
+		if err != nil {
+			return nil, err
+		}
+		return store.ListAssets()
+
+	case CTDeleteStoreAsset:
+		var name string
+		if err := cmd.decode(&name); err != nil {
+			return nil, err
+		}
+		store, err := cc.pagesHost.runningStore()
+		if err != nil {
+			return nil, err
+		}
+		if err := store.DeleteAsset(name); err != nil {
+			return nil, err
+		}
+		return store.ListAssets()
+
+	case CTListStoreTemplates:
+		store, err := cc.pagesHost.runningStore()
+		if err != nil {
+			return nil, err
+		}
+		return store.ListTemplates()
+
+	case CTReadStoreTemplate:
+		var name string
+		if err := cmd.decode(&name); err != nil {
+			return nil, err
+		}
+		store, err := cc.pagesHost.runningStore()
+		if err != nil {
+			return nil, err
+		}
+		return store.ReadTemplate(name)
+
+	case CTWriteStoreTemplate:
+		var args storeTemplateArgs
+		if err := cmd.decode(&args); err != nil {
+			return nil, err
+		}
+		store, err := cc.pagesHost.runningStore()
+		if err != nil {
+			return nil, err
+		}
+		return nil, store.WriteTemplateFile(args.Name, args.Body)
+
 	case CTListStoreProducts:
 		store, err := cc.pagesHost.runningStore()
 		if err != nil {

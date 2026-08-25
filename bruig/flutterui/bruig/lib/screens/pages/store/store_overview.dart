@@ -8,6 +8,7 @@ import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:golib_plugin/definitions.dart';
+import 'package:bruig/screens/pages/store/store_tabs.dart';
 
 // store_overview.dart is the shop as its seller opens it: whether a shop is
 // being hosted at all, the catalogue, and the order book beneath it.
@@ -17,7 +18,10 @@ class StoreOff extends StatelessWidget {
   final bool editable;
   final String mode;
   const StoreOff(
-      {super.key, required this.onEnable, required this.editable, required this.mode});
+      {super.key,
+      required this.onEnable,
+      required this.editable,
+      required this.mode});
 
   @override
   Widget build(BuildContext context) {
@@ -67,7 +71,16 @@ class StoreOverview extends StatelessWidget {
   /// ownID is this client's identity, so an order placed with your own shop
   /// can be told apart from a buyer's.
   final String ownID;
-  const StoreOverview({super.key, 
+
+  /// tab is which of the shop's jobs is showing, and onTab moves to
+  /// another. Held by the screen above so what is being edited survives the
+  /// trip -- opening Orders to answer somebody must not throw away a
+  /// half-written product.
+  final StoreTabKind tab;
+  final ValueChanged<StoreTabKind> onTab;
+
+  const StoreOverview({
+    super.key,
     required this.pages,
     required this.store,
     required this.onDisable,
@@ -79,6 +92,8 @@ class StoreOverview extends StatelessWidget {
     required this.onReply,
     required this.onSendGoods,
     required this.ownID,
+    required this.tab,
+    required this.onTab,
   });
 
   @override

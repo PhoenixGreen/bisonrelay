@@ -6,7 +6,9 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
+	"text/template"
 )
 
 //go:embed template
@@ -140,4 +142,91 @@ func RestoreTemplates(rootDestPath string) error {
 			}
 			return nil
 		})
+}
+
+// StoreTemplate is one of the pages a shop renders.
+type StoreTemplate struct {
+	Name string `json:"name"`
+	Size int64  `json:"size"`
+
+	// Shipped is whether a template of this name comes with the app, which
+	// is what decides whether restoring would put something back over it.
+	Shipped bool `json:"shipped"`
+}
+
+// templateName is the check on what may be read or written as a template.
+//
+// A plain .tmpl file in the store's own directory and nothing else. These
+// decide what every visitor is served, so the set of files this can reach is
+// a closed question rather than whatever a name happens to resolve to.
+func (s *Store) templatePath(name string) (string, error) {
+	name = strings.TrimSpace(name)
+	if name == "" || name != filepath.Base(name) ||
+		strings.HasPrefix(name, ".") || filepath.Ext(name) != ".tmpl" {
+		return "", fmt.Errorf("%q is not one of this shop's pages", name)
+	}
+	return filepath.Join(s.root, name), nil
+}
+
+// ListTemplates returns the pages a shop renders.
+func (s *Store) ListTemplates() ([]StoreTemplate, error) {
+	entries, err := os.ReadDir(s.root)
+	if os.IsNotExist(err) {
+		return []StoreTemplate{}, nil
+	} else if err != nil {
+		return nil, err
+	}
+
+	out := []StoreTemplate{}
+	for _, e := range entries {
+		if e.IsDir() || filepath.Ext(e.Name()) != ".tmpl" {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+		_, shippedErr := storeTemplate.ReadFile("template/" + e.Name())
+		out = append(out, StoreTemplate{
+			Name:    e.Name(),
+			Size:    info.Size(),
+			Shipped: shippedErr == nil,
+		})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out, nil
+}
+
+// ReadTemplate returns one template's text.
+func (s *Store) ReadTemplate(name string) (string, error) {
+	path, err := s.templatePath(name)
+	if err != nil {
+		return "", err
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+// WriteTemplateFile saves one template and reloads the shop.
+//
+// Parsed before it is written, and refused if it will not parse. A shop
+// serves these to everybody who visits, and a template with a typo in it
+// takes the page down for all of them -- so the moment to find out is while
+// the person who wrote it is still looking at it, not when somebody cannot
+// buy anything.
+func (s *Store) WriteTemplateFile(name, body string) error {
+	path, err := s.templatePath(name)
+	if err != nil {
+		return err
+	}
+	if _, err := template.New(name).Funcs(s.templateFuncs()).Parse(body); err != nil {
+		return fmt.Errorf("this page will not render: %v", err)
+	}
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		return err
+	}
+	return s.ReloadStore()
 }

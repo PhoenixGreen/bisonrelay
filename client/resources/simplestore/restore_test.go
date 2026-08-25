@@ -150,3 +150,69 @@ func TestTheExampleProductsAreStillThereToRead(t *testing.T) {
 		t.Error("the example products are gone from the file too")
 	}
 }
+
+// TestATemplateThatWillNotRenderIsRefused covers editing a shop's pages.
+//
+// A shop serves these to everybody who visits, and a template with a typo in
+// it takes that page down for all of them. The moment to find out is while
+// the person who wrote it is still looking at it, not when somebody cannot
+// buy anything.
+func TestATemplateThatWillNotRenderIsRefused(t *testing.T) {
+	s := testStore(t)
+	if err := os.WriteFile(filepath.Join(s.root, "index.tmpl"),
+		[]byte("# Shop\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	err := s.WriteTemplateFile("index.tmpl", "# Shop\n{{range .Products}}\n")
+	if err == nil {
+		t.Fatal("a template with no end was saved")
+	}
+
+	// And the old one is still there: a refused save must not take the
+	// working page with it.
+	got, readErr := os.ReadFile(filepath.Join(s.root, "index.tmpl"))
+	if readErr != nil || string(got) != "# Shop\n" {
+		t.Fatalf("the page was damaged: %q, %v", got, readErr)
+	}
+}
+
+func TestOnlyAShopsOwnPagesCanBeEdited(t *testing.T) {
+	s := testStore(t)
+	for _, name := range []string{
+		"../../.ssh/id_rsa", "products/first-type.toml", "index.md",
+		".hidden.tmpl", "",
+	} {
+		if _, err := s.templatePath(name); err == nil {
+			t.Errorf("%q was accepted as a page", name)
+		}
+	}
+	if _, err := s.templatePath("index.tmpl"); err != nil {
+		t.Errorf("index.tmpl was refused: %v", err)
+	}
+}
+
+func TestAListingSaysWhichPagesAreShipped(t *testing.T) {
+	// Which decides whether restoring would put something back over it.
+	s := testStore(t)
+	for _, name := range []string{"index.tmpl", "mine.tmpl"} {
+		if err := os.WriteFile(filepath.Join(s.root, name),
+			[]byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := s.ListTemplates()
+	if err != nil {
+		t.Fatal(err)
+	}
+	byName := map[string]StoreTemplate{}
+	for _, tm := range got {
+		byName[tm.Name] = tm
+	}
+	if !byName["index.tmpl"].Shipped {
+		t.Error("index.tmpl is shipped and does not say so")
+	}
+	if byName["mine.tmpl"].Shipped {
+		t.Error("mine.tmpl is the seller's own and claims to be shipped")
+	}
+}

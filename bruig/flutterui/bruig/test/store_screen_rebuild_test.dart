@@ -134,6 +134,34 @@ void main() {
     await Future<void>.delayed(Duration.zero);
     expect(loads, 1, reason: "a disposed shop is still listening");
   });
+
+  testWidgets('the shop keeps a half-written product across a tab change',
+      (tester) async {
+    // The tabs are a view of one screen rather than four screens. Opening
+    // Orders to answer somebody must not throw away a product that is half
+    // typed -- which is what four screens would have done.
+    tester.view.physicalSize = const Size(900, 1400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    var pages = _Pages();
+    var shop = _Store(pages);
+
+    await tester.pumpWidget(MultiProvider(providers: [
+      ChangeNotifierProvider<ThemeNotifier>(
+          create: (c) => ThemeNotifier(doLoad: false)),
+      ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+    ], child: MaterialApp(home: Scaffold(body: StoreTab(pages, shop, "me")))));
+    await tester.pumpAndSettle();
+
+    shop.startProductDraft(ManagedProduct.empty());
+    await tester.pumpAndSettle();
+    expect(find.byType(ProductEditor), findsOneWidget);
+
+    // The editor stands in front of the tabs, so what is being written is
+    // not something a tab can navigate away from by accident.
+    expect(find.text("Orders"), findsNothing);
+  });
 }
 
 class _CountingStore extends StoreModel {
