@@ -49,12 +49,14 @@ Future<String?> showAddPictureDialog(
     );
 
 /// pickAndAddShopPicture is the same gesture for a product's picture.
+/// [folder] is the optional one-level directory to put it in.
 Future<String?> pickAndAddShopPicture(
-    BuildContext context, PagesModel pages, StoreModel store) async {
+    BuildContext context, PagesModel pages, StoreModel store,
+    {String folder = ""}) async {
   var picked = await FilePicker.platform.pickFiles(
     type: FileType.custom,
     allowedExtensions: const ["png", "jpg", "jpeg", "gif", "webp", "svg"],
-    dialogTitle: "Picture for this product",
+    dialogTitle: "Picture for the shop",
   );
   var path = picked?.files.single.path;
   if (path == null) return null;
@@ -63,7 +65,8 @@ Future<String?> pickAndAddShopPicture(
   // the store. The dialog still takes [pages] because what it shows -- the
   // size, the preview -- is the same either way.
   return showAddPictureDialog(context, pages, path,
-      write: store.addStoreAssetBytes);
+      write: (name, data) =>
+          store.addStoreAssetBytes(name, data, folder: folder));
 }
 
 /// slugFileName makes a name a page can actually link to.

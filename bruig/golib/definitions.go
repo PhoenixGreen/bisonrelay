@@ -568,6 +568,10 @@ type storeTemplateArgs struct {
 type addAssetArgs struct {
 	Name string `json:"name"`
 	Data []byte `json:"data"`
+
+	// Folder is the optional one-level directory a shop picture goes in,
+	// empty for the top. Ignored by a site's pictures, which have none.
+	Folder string `json:"folder"`
 }
 
 type saveProductArgs struct {

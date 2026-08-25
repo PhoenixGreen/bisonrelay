@@ -8,6 +8,8 @@ import 'package:bruig/util.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:golib_plugin/definitions.dart';
+import 'package:bruig/models/pages.dart';
+import 'package:bruig/components/pages/add_picture_dialog.dart';
 
 // store_assets.dart is the shop's pictures: what it has, and what a page
 // writes to show one.
@@ -17,22 +19,58 @@ import 'package:golib_plugin/definitions.dart';
 // cover for that product", and the answer is the picture.
 
 class StoreAssets extends StatefulWidget {
+  final PagesModel pages;
   final StoreModel store;
 
   /// storeDir is where the shop is served from, so a thumbnail can be read
   /// off the disk rather than fetched from ourselves.
   final String storeDir;
-  const StoreAssets({super.key, required this.store, required this.storeDir});
+  const StoreAssets({
+    super.key,
+    required this.pages,
+    required this.store,
+    required this.storeDir,
+  });
 
   @override
   State<StoreAssets> createState() => _StoreAssetsState();
 }
 
 class _StoreAssetsState extends State<StoreAssets> {
+  final _folder = TextEditingController();
+  bool _uploading = false;
+
   @override
   void initState() {
     super.initState();
     widget.store.loadAssets();
+  }
+
+  @override
+  void dispose() {
+    _folder.dispose();
+    super.dispose();
+  }
+
+  /// _upload copies a picture into the shop.
+  ///
+  /// Through the same encoder a product's cover goes through, so a picture
+  /// added here is the same size and shape as one added from a product --
+  /// two ways in that produced different files would be two ways in.
+  Future<void> _upload() async {
+    if (_uploading) return;
+    var snackbar = SnackBarModel.of(context);
+    setState(() => _uploading = true);
+    try {
+      var added = await pickAndAddShopPicture(
+          context, widget.pages, widget.store,
+          folder: _folder.text.trim());
+      if (added != null) snackbar.success("Added $added.");
+    } catch (exception) {
+      snackbar.error("Unable to add the picture: $exception");
+    } finally {
+      if (mounted) setState(() => _uploading = false);
+    }
   }
 
   Future<void> _delete(StoreAsset asset) async {
@@ -73,9 +111,10 @@ class _StoreAssetsState extends State<StoreAssets> {
         ? SvgPicture.file(file, fit: BoxFit.cover)
         : Image.file(file,
             fit: BoxFit.cover,
-            errorBuilder: (context, error, stack) =>
-                Icon(Icons.broken_image_outlined,
-                    size: 18, color: theme.colors.onSurfaceVariant));
+            errorBuilder: (context, error, stack) => Icon(
+                Icons.broken_image_outlined,
+                size: 18,
+                color: theme.colors.onSurfaceVariant));
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(4),
@@ -101,6 +140,27 @@ class _StoreAssetsState extends State<StoreAssets> {
           "product, or paste what a picture gives you into a page.",
           color: TextColor.onSurfaceVariant),
       const SizedBox(height: 12),
+      Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Expanded(
+          child: TextField(
+            controller: _folder,
+            decoration: const InputDecoration(
+              isDense: true,
+              labelText: "Folder (optional)",
+              hintText: "covers, screenshots, …",
+              helperText: "One level. Left empty, the picture sits at the top.",
+              border: OutlineInputBorder(),
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        OutlinedButton.icon(
+          onPressed: _uploading ? null : _upload,
+          icon: const Icon(Icons.upload_file, size: 16),
+          label: Txt.S(_uploading ? "Adding…" : "Add a picture"),
+        ),
+      ]),
+      const SizedBox(height: 16),
       if (assets.isEmpty)
         const Txt.S("No pictures yet.", color: TextColor.onSurfaceVariant)
       else

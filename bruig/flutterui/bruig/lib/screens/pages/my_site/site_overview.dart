@@ -18,6 +18,7 @@ import 'package:provider/provider.dart';
 import 'package:golib_plugin/definitions.dart';
 import 'package:bruig/screens/pages/my_site/shop_frame_fields.dart';
 import 'package:bruig/screens/pages/my_site/site_help.dart';
+import 'package:bruig/screens/pages/my_site/site_tabs.dart';
 
 // site_overview.dart is the site as its author opens it: where it is
 // served from, the pages in it, the pictures it shows and the fragments its
@@ -51,6 +52,11 @@ class SiteOverview extends StatelessWidget {
   final void Function(PageDocument) onDeleteFragment;
   final VoidCallback onAddImage;
   final void Function(LocalAsset) onDeleteImage;
+  /// tab is which of the site's jobs is showing, and onTab moves to
+  /// another. Held above so a half-written page survives the trip.
+  final SiteTabKind tab;
+  final ValueChanged<SiteTabKind> onTab;
+
   const SiteOverview({
     required this.pages,
     required this.documents,
@@ -69,6 +75,8 @@ class SiteOverview extends StatelessWidget {
     required this.onPublish,
     required this.onUnpublish,
     required this.onPreview,
+    required this.tab,
+    required this.onTab,
   });
 
   @override
@@ -122,81 +130,116 @@ class SiteOverview extends StatelessWidget {
         ShopFrameFields(pages: pages),
       ],
       const SizedBox(height: 24),
-      Row(children: [
-        const Expanded(child: Txt.L("Pages")),
-        if (cfg.hostsPages)
-          ElevatedButton.icon(
-            style: raisedButtonStyle(ThemeNotifier.of(context)),
-            onPressed: onNew,
-            icon: const Icon(Icons.add, size: 16),
-            label: const Text("New page"),
-          ),
-      ]),
-      const SizedBox(height: 8),
+
+      SiteTabs(
+        current: tab,
+        onChanged: onTab,
+        // Counted here because only the page list knows: a page is behind
+        // when what a visitor reads is older than what has been written.
+        unpublished: documents
+            .where((d) => d.state == PagePublishState.edited)
+            .length,
+      ),
+      const SizedBox(height: 16),
+
       if (!cfg.hostsPages)
-        const Txt.S("Switch hosting on to write pages.",
+        const Txt.S(
+            "This client is hosting a shop and no pages. Switch hosting to "
+            "pages, or to both, and they appear here.",
             color: TextColor.onSurfaceVariant)
-      else if (documents.isEmpty)
-        const Txt.S("No pages yet.", color: TextColor.onSurfaceVariant)
       else
-        ...documents.map((p) => SiteRow(
-              item: p,
-              onEdit: () => onEdit(p.name),
-              onDelete: () => onDelete(p),
-              onPublish: () => onPublish(p),
-              onUnpublish: () => onUnpublish(p),
-              onPreview: () => onPreview(p),
-            )),
-      if (cfg.hostsPages) ...[
-        const SizedBox(height: 24),
-        const FragmentsHelp(),
-        Row(children: [
-          const Expanded(child: Txt.L("Shared fragments")),
-          if (onNewFragment != null)
-            OutlinedButton.icon(
-              onPressed: onNewFragment,
-              icon: const Icon(Icons.add, size: 16),
-              label: const Text("New fragment"),
+        switch (tab) {
+          SiteTabKind.pages => Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+              Row(children: [
+                const Expanded(child: Txt.L("Pages")),
+                if (cfg.hostsPages)
+                  ElevatedButton.icon(
+                    style: raisedButtonStyle(ThemeNotifier.of(context)),
+                    onPressed: onNew,
+                    icon: const Icon(Icons.add, size: 16),
+                    label: const Text("New page"),
+                  ),
+              ]),
+              const SizedBox(height: 8),
+              if (!cfg.hostsPages)
+                const Txt.S("Switch hosting on to write pages.",
+                    color: TextColor.onSurfaceVariant)
+              else if (documents.isEmpty)
+                const Txt.S("No pages yet.", color: TextColor.onSurfaceVariant)
+              else
+                ...documents.map((p) => SiteRow(
+                      item: p,
+                      onEdit: () => onEdit(p.name),
+                      onDelete: () => onDelete(p),
+                      onPublish: () => onPublish(p),
+                      onUnpublish: () => onUnpublish(p),
+                      onPreview: () => onPreview(p),
+                    )),
+
+              ],
             ),
-        ]),
-        const SizedBox(height: 8),
-        if (fragments.isEmpty)
-          const Txt.S("None yet.", color: TextColor.onSurfaceVariant)
-        else
-          ...fragments.map((f) => SiteRow(
-                item: f,
-                onEdit: () => onEditFragment(f.name),
-                onDelete: () => onDeleteFragment(f),
-                onPublish: () => onPublish(f),
-                onUnpublish: () => onUnpublish(f),
-              )),
-        const SizedBox(height: 24),
-        Row(children: [
-          const Expanded(child: Txt.L("Pictures")),
-          OutlinedButton.icon(
-            onPressed: onAddImage,
-            icon: const Icon(Icons.add_photo_alternate_outlined, size: 16),
-            label: const Text("Add picture"),
+          SiteTabKind.fragments => Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+              const SizedBox(height: 24),
+              const FragmentsHelp(),
+              Row(children: [
+                const Expanded(child: Txt.L("Shared fragments")),
+                if (onNewFragment != null)
+                  OutlinedButton.icon(
+                    onPressed: onNewFragment,
+                    icon: const Icon(Icons.add, size: 16),
+                    label: const Text("New fragment"),
+                  ),
+              ]),
+              const SizedBox(height: 8),
+              if (fragments.isEmpty)
+                const Txt.S("None yet.", color: TextColor.onSurfaceVariant)
+              else
+                ...fragments.map((f) => SiteRow(
+                      item: f,
+                      onEdit: () => onEditFragment(f.name),
+                      onDelete: () => onDeleteFragment(f),
+                      onPublish: () => onPublish(f),
+                      onUnpublish: () => onUnpublish(f),
+                    )),
+
+              ],
+            ),
+          SiteTabKind.pictures => Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+              const SizedBox(height: 24),
+              Row(children: [
+                const Expanded(child: Txt.L("Pictures")),
+                OutlinedButton.icon(
+                  onPressed: onAddImage,
+                  icon: const Icon(Icons.add_photo_alternate_outlined, size: 16),
+                  label: const Text("Add picture"),
+                ),
+              ]),
+              const Padding(
+                padding: EdgeInsets.only(top: 4, bottom: 8),
+                child: Txt.S(
+                    "Kept as files of their own rather than written into a page, so "
+                    "one behind every page of the site is sent once. Adding a "
+                    "picture copies the markdown to paste in.",
+                    color: TextColor.onSurfaceVariant),
+              ),
+              if (pages.assets.isEmpty)
+                const Txt.S("None yet.", color: TextColor.onSurfaceVariant)
+              else
+                ...pages.assets.map((a) => AssetRow(
+                      asset: a,
+                      onDelete: () => onDeleteImage(a),
+                    )),
+              const SizedBox(height: 24),
+              const LinkHelp(),
+            ],
           ),
-        ]),
-        const Padding(
-          padding: EdgeInsets.only(top: 4, bottom: 8),
-          child: Txt.S(
-              "Kept as files of their own rather than written into a page, so "
-              "one behind every page of the site is sent once. Adding a "
-              "picture copies the markdown to paste in.",
-              color: TextColor.onSurfaceVariant),
-        ),
-        if (pages.assets.isEmpty)
-          const Txt.S("None yet.", color: TextColor.onSurfaceVariant)
-        else
-          ...pages.assets.map((a) => AssetRow(
-                asset: a,
-                onDelete: () => onDeleteImage(a),
-              )),
-        const SizedBox(height: 24),
-        const LinkHelp(),
-      ],
+        },
     ]);
   }
 }

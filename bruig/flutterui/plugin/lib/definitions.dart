@@ -5226,9 +5226,11 @@ abstract class PluginPlatform {
 
   /// addStoreAsset writes a picture into the shop's assets and gives back
   /// the name a product records.
-  Future<String> addStoreAsset(String name, Uint8List data) async =>
+  Future<String> addStoreAsset(String name, Uint8List data,
+          {String folder = ""}) async =>
       (await asyncCall(CTAddStoreAsset, {
         "name": name,
+        "folder": folder,
         "data": base64Encode(data),
       })) as String;
 

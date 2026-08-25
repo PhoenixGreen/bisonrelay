@@ -19,6 +19,7 @@ import 'package:golib_plugin/definitions.dart';
 import 'package:bruig/screens/pages/my_site/shop_frame_fields.dart';
 import 'package:bruig/screens/pages/my_site/site_help.dart';
 import 'package:bruig/screens/pages/my_site/site_overview.dart';
+import 'package:bruig/screens/pages/my_site/site_tabs.dart';
 
 /// starterIndex is what a brand new site says before its owner writes
 /// anything. It is deliberately a real page rather than an empty file: the
@@ -51,6 +52,12 @@ class MySiteTab extends StatefulWidget {
 }
 
 class _MySiteTabState extends State<MySiteTab> {
+  /// tab is which of the site's jobs is showing.
+  ///
+  /// Kept here rather than in the tab row, so a half-written page survives a
+  /// trip to the pictures and back.
+  SiteTabKind tab = SiteTabKind.pages;
+
   PagesModel get pages => widget.pages;
 
   /// documents is every page of the site with where it stands. Derived from
@@ -399,6 +406,8 @@ class _MySiteTabState extends State<MySiteTab> {
           );
         }
         return SiteOverview(
+          tab: tab,
+          onTab: (SiteTabKind t) => setState(() => tab = t),
           pages: pages,
           documents: documents,
           fragments: fragments,

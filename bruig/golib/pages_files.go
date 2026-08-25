@@ -367,7 +367,27 @@ func storeAssetName(name string) (string, error) {
 //
 // The name alone, not a path: a product says "guitar.jpg" and the template
 // builds the rest, so the directory is named in one place.
-func addStoreAssetBytes(storeRoot, name string, data []byte) (string, error) {
+// storeAssetFolder is the one optional directory a picture may go in.
+//
+// One level, because that is what a shop will serve: covers/ and
+// screenshots/ is somebody organising their pictures, and anything deeper
+// would be written where nothing could ask for it.
+func storeAssetFolder(folder string) (string, error) {
+	folder = strings.Trim(strings.TrimSpace(folder), "/")
+	if folder == "" {
+		return "", nil
+	}
+	if folder != filepath.Base(folder) || strings.HasPrefix(folder, ".") {
+		return "", fmt.Errorf("%q is not a folder name", folder)
+	}
+	if strings.ContainsAny(folder, " \t()<>\"'\\") {
+		return "", fmt.Errorf("folder %q cannot be written in a page link",
+			folder)
+	}
+	return folder, nil
+}
+
+func addStoreAssetBytes(storeRoot, folder, name string, data []byte) (string, error) {
 	if storeRoot == "" {
 		return "", fmt.Errorf("no store is being hosted")
 	}
@@ -375,12 +395,20 @@ func addStoreAssetBytes(storeRoot, name string, data []byte) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	dir := filepath.Join(storeRoot, simplestore.AssetsDir)
+	safeFolder, err := storeAssetFolder(folder)
+	if err != nil {
+		return "", err
+	}
+
+	dir := filepath.Join(storeRoot, simplestore.AssetsDir, safeFolder)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", err
 	}
 	if err := os.WriteFile(filepath.Join(dir, safe), data, 0o600); err != nil {
 		return "", err
 	}
-	return safe, nil
+	if safeFolder == "" {
+		return safe, nil
+	}
+	return safeFolder + "/" + safe, nil
 }

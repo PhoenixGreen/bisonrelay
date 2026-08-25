@@ -2377,7 +2377,7 @@ func handleClientCmd(cc *clientCtx, cmd *cmd) (interface{}, error) {
 			return nil, err
 		}
 		return addStoreAssetBytes(cc.pagesHost.config().StorePath,
-			args.Name, args.Data)
+			args.Folder, args.Name, args.Data)
 
 	case CTRestoreStoreTemplates:
 		root := cc.pagesHost.config().StorePath

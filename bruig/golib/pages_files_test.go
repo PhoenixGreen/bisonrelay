@@ -1,6 +1,7 @@
 package golib
 
 import (
+	"github.com/companyzero/bisonrelay/client/resources/simplestore"
 	"os"
 	"path/filepath"
 	"testing"
@@ -410,5 +411,61 @@ func TestAShopOnlyWearsAFrameWhenThereIsASite(t *testing.T) {
 	// are used is whether there is a site to read them from.
 	if both.StoreHeader != "header" || both.StoreFooter != "footer" {
 		t.Errorf("got %q and %q", both.StoreHeader, both.StoreFooter)
+	}
+}
+
+// TestAShopPictureCanGoInAFolder covers organising a shop's pictures.
+//
+// One level, matching what the shop will serve: covers/ and screenshots/ is
+// somebody organising, and anything deeper would be written where nothing
+// can ask for it.
+func TestAShopPictureCanGoInAFolder(t *testing.T) {
+	root := t.TempDir()
+	got, err := addStoreAssetBytes(root, "covers", "dm0004.jpg", []byte("x"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "covers/dm0004.jpg" {
+		t.Fatalf("recorded as %q", got)
+	}
+	if _, err := os.Stat(filepath.Join(root, simplestore.AssetsDir,
+		"covers", "dm0004.jpg")); err != nil {
+		t.Fatalf("not written where it says: %v", err)
+	}
+}
+
+func TestAShopPictureWithNoFolderGoesAtTheTop(t *testing.T) {
+	root := t.TempDir()
+	got, err := addStoreAssetBytes(root, "", "banner.jpg", []byte("x"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "banner.jpg" {
+		t.Fatalf("recorded as %q", got)
+	}
+}
+
+func TestAFolderCannotReachOutOfTheShop(t *testing.T) {
+	root := t.TempDir()
+	for _, folder := range []string{
+		"..", "../..", "a/b", ".hidden", "my covers", "co(vers)",
+	} {
+		if _, err := addStoreAssetBytes(root, folder, "x.jpg", []byte("x")); err == nil {
+			t.Errorf("folder %q was accepted", folder)
+		}
+	}
+}
+
+func TestAFolderIsWrittenTheWayAPageWouldLinkIt(t *testing.T) {
+	// A picture is reached by writing ![](shopassets/covers/x.jpg), and a
+	// Markdown link stops at the first space -- the same reason a picture's
+	// own name cannot have one.
+	root := t.TempDir()
+	got, err := addStoreAssetBytes(root, "/covers/", "dm0004.jpg", []byte("x"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "covers/dm0004.jpg" {
+		t.Fatalf("recorded as %q", got)
 	}
 }

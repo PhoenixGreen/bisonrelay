@@ -229,8 +229,14 @@ class StoreModel extends ChangeNotifier {
   /// The shop's own directory, not the site's: a product's picture is served
   /// by the store, and a shop hosted without a site would otherwise have
   /// nowhere to keep one.
-  Future<String> addStoreAssetBytes(String name, Uint8List data) =>
-      Golib.addStoreAsset(name, data);
+  Future<String> addStoreAssetBytes(String name, Uint8List data,
+      {String folder = ""}) async {
+    var recorded = await Golib.addStoreAsset(name, data, folder: folder);
+    // The listing is what the Pictures tab draws, so a picture added from
+    // anywhere -- a product's cover, or the tab itself -- has to reach it.
+    await loadAssets();
+    return recorded;
+  }
 
   // ---- the store ----
   //
