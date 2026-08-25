@@ -5,23 +5,31 @@
 **{{.Product.Title}}** — no longer sold
 
 The shop has stopped selling this. Remove it to place your order.
+
+--form[align=right]--
+type="action" value="/removeFromCart"
+type="hidden" name="sku" value="{{.Product.SKU}}"
+type="submit" label="Remove" style="danger" confirm="Take {{.Product.Title}} out of your cart?"
+--/form--
 {{- else -}}
 **{{.Product.Title}}** — {{ money .Product.Price }} each
 
 {{ .Quantity }} × {{ money .Product.Price }} = **{{ money .Total }}**
 
---form--
+--columns[2]--
+--form[align=right]--
 type="action" value="/setCartQty"
 type="hidden" name="sku" value="{{.Product.SKU}}"
 type="intinput" label="Quantity" name="qty" value="{{.Quantity}}"
 type="submit" label="Update"
 --/form--
-{{- end}}
-
---form--
+--col--
+--form[align=right]--
 type="action" value="/removeFromCart"
 type="hidden" name="sku" value="{{.Product.SKU}}"
-type="submit" label="Remove"
+type="submit" label="Remove" style="danger" confirm="Take {{.Product.Title}} out of your cart?"
 --/form--
+--/columns--
+{{- end}}
 --/panel--
 {{- end}}

@@ -33,11 +33,17 @@ type="txtinput" label="City" name="city"
 type="txtinput" label="State" name="state"
 type="txtinput" label="PostalCode" name="postalCode"
 type="txtinput" label="Phone" name="phone"
-type="submit" label="Place Order"
+type="submit" label="Place Order" style="primary" confirm="Place this order for {{ money .Total }}? The shop is told what you have ordered and sends you an invoice."
 --/form--
 
 {{else}}
-[Place order](/placeOrder)
+--form--
+type="action" value="/placeOrder"
+type="submit" label="Place Order" style="primary" confirm="Place this order for {{ money .Total }}? The shop is told what you have ordered and sends you an invoice."
+--/form--
 {{end}}
 
-[Clear cart](/clearCart)
+--form[align=right]--
+type="action" value="/clearCart"
+type="submit" label="Clear Cart" style="danger" confirm="Take everything out of your cart? Nothing is ordered and there is no undo."
+--/form--
