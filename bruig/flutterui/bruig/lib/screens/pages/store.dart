@@ -1,18 +1,11 @@
-import 'package:bruig/components/pages/add_picture_dialog.dart';
-import 'package:bruig/components/buttons.dart';
-import 'package:bruig/components/text.dart';
-import 'package:bruig/config.dart';
 import 'package:bruig/models/pages.dart';
 import 'package:bruig/models/store.dart';
 import 'package:bruig/models/snackbar.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:golib_plugin/definitions.dart';
 import 'package:bruig/screens/pages/store/product_editor.dart';
 import 'package:bruig/screens/pages/store/store_overview.dart';
-import 'package:bruig/screens/pages/store/store_orders.dart';
 import 'package:bruig/screens/pages/store/store_tabs.dart';
 
 // store.dart is the Store section. What is in it is split by what a seller

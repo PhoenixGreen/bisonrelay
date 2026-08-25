@@ -17,7 +17,10 @@ enum StoreTabKind {
   products("Products", Icons.sell_outlined),
   orders("Orders", Icons.receipt_long_outlined),
   assets("Pictures", Icons.image_outlined),
-  templates("Pages", Icons.description_outlined);
+  templates("Templates", Icons.description_outlined),
+  // Last, because it is the tab a seller visits once. Naming the shop and
+  // picking its frame is setup, not the daily work of selling.
+  setup("Store setup", Icons.tune);
 
   final String label;
   final IconData icon;
@@ -57,8 +60,9 @@ class StoreTabs extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 12),
                 minimumSize: const Size(0, 36),
                 visualDensity: VisualDensity.compact,
-                backgroundColor:
-                    kind == current ? theme.colors.surfaceContainerHighest : null,
+                backgroundColor: kind == current
+                    ? theme.colors.surfaceContainerHighest
+                    : null,
               ),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
                 Icon(kind.icon, size: 15),
@@ -76,8 +80,7 @@ class StoreTabs extends StatelessWidget {
                       color: theme.colors.primary,
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: Txt.S("$needsAnswer",
-                        color: TextColor.onPrimary),
+                    child: Txt.S("$needsAnswer", color: TextColor.onPrimary),
                   ),
                 ],
               ]),

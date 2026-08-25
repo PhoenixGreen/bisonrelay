@@ -11,6 +11,7 @@ import 'package:golib_plugin/definitions.dart';
 import 'package:bruig/screens/pages/store/store_tabs.dart';
 import 'package:bruig/screens/pages/store/store_templates.dart';
 import 'package:bruig/screens/pages/store/store_assets.dart';
+import 'package:bruig/screens/pages/store/shop_frame_fields.dart';
 
 // store_overview.dart is the shop as its seller opens it: whether a shop is
 // being hosted at all, the catalogue, and the order book beneath it.
@@ -196,6 +197,7 @@ class StoreOverview extends StatelessWidget {
         StoreTabKind.assets =>
           StoreAssets(pages: pages, store: store, storeDir: cfg.storePath),
         StoreTabKind.templates => StoreTemplates(store: store),
+        StoreTabKind.setup => ShopFrameFields(pages: pages),
       },
     ]);
   }

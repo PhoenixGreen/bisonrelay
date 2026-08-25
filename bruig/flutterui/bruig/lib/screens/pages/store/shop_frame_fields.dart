@@ -1,27 +1,14 @@
-import 'package:bruig/components/buttons.dart';
 import 'package:bruig/components/text.dart';
-import 'package:bruig/models/client.dart';
-import 'package:bruig/config.dart';
 import 'package:bruig/models/pages.dart';
-import 'package:bruig/components/pages/add_picture_dialog.dart';
-import 'package:bruig/screens/pages/page_editor.dart';
-import 'package:bruig/screens/pages/site_rows.dart';
-import 'package:bruig/models/menus.dart';
-import 'package:bruig/plugin_system/writing_tools/writing_tools.dart';
-import 'package:bruig/models/resources.dart';
+import 'package:bruig/theming_system/runtime/theme_tokens.dart';
 import 'package:bruig/models/snackbar.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:provider/provider.dart';
-import 'package:golib_plugin/definitions.dart';
 
 // shop_frame_fields.dart is what the shop is called and what it wears.
 //
-// Here rather than with the shop because it is hosting: the shop wears the
-// site's own fragments, and this is the screen where what this client serves
-// is set.
+// A tab of the Store section rather than of the site's: naming the shop is
+// the shop's own setup, and a seller looking for it looks at the shop. The
+// fragments it names are still the site's own, so the two stay in step.
 
 class ShopFrameFields extends StatefulWidget {
   final PagesModel pages;
@@ -107,7 +94,3 @@ class _ShopFrameFieldsState extends State<ShopFrameFields> {
         ],
       );
 }
-
-/// ManagedElsewhere is shown when hosting is pointed at an http upstream or
-/// handed to a client over the RPC interface. The app is not the thing
-/// serving in those modes, so there is nothing here to change.

@@ -13,6 +13,7 @@ import 'package:golib_plugin/definitions.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:bruig/screens/pages/store/store_tabs.dart';
+import 'package:bruig/screens/pages/store/shop_frame_fields.dart';
 
 // store_screen_rebuild_test.dart is about the screen noticing.
 //
@@ -84,19 +85,21 @@ void main() {
     var pages = _Pages();
     var shop = _Store(pages);
 
-    await tester.pumpWidget(MultiProvider(providers: [
-      ChangeNotifierProvider<ThemeNotifier>(
-          create: (c) => ThemeNotifier(doLoad: false)),
-      ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-    ], child: MaterialApp(
-        home: Scaffold(
-            body: OrderThread(
-      order: ManagedOrder(1, "me", "", SSCart(const [], DateTime.now()),
-          "placed", DateTime.now(), 0, 0, "ln", const []),
-      onReply: (_) async {},
-      onSendGoods: () async {},
-      isOwn: true,
-    )))));
+    await tester.pumpWidget(MultiProvider(
+        providers: [
+          ChangeNotifierProvider<ThemeNotifier>(
+              create: (c) => ThemeNotifier(doLoad: false)),
+          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+        ],
+        child: MaterialApp(
+            home: Scaffold(
+                body: OrderThread(
+          order: ManagedOrder(1, "me", "", SSCart(const [], DateTime.now()),
+              "placed", DateTime.now(), 0, 0, "ln", const []),
+          onReply: (_) async {},
+          onSendGoods: () async {},
+          isOwn: true,
+        )))));
     await tester.pumpAndSettle();
 
     expect(
@@ -124,14 +127,14 @@ void main() {
     var shop = _CountingStore(_Pages(), orders.stream, () => loads++);
     expect(loads, 0);
 
-    orders.add(SSPlacedOrder(
-        SSOrder(1, "uid", SSCart(const [], DateTime.now())), ""));
+    orders.add(
+        SSPlacedOrder(SSOrder(1, "uid", SSCart(const [], DateTime.now())), ""));
     await Future<void>.delayed(Duration.zero);
     expect(loads, 1, reason: "the order book was not read again");
 
     shop.dispose();
-    orders.add(SSPlacedOrder(
-        SSOrder(2, "uid", SSCart(const [], DateTime.now())), ""));
+    orders.add(
+        SSPlacedOrder(SSOrder(2, "uid", SSCart(const [], DateTime.now())), ""));
     await Future<void>.delayed(Duration.zero);
     expect(loads, 1, reason: "a disposed shop is still listening");
   });
@@ -164,6 +167,8 @@ void main() {
     expect(find.text("Orders"), findsNothing);
   });
 
+  _mainSetupTab();
+
   testWidgets('the shop is drawn with its tabs', (tester) async {
     // Checked by pumping the screen, not by the analyser: the tabs were
     // written, the parameters were wired, everything compiled, and the
@@ -188,6 +193,47 @@ void main() {
     for (var kind in StoreTabKind.values) {
       expect(find.text(kind.label), findsWidgets, reason: kind.name);
     }
+  });
+}
+
+void _mainSetupTab() {
+  testWidgets('naming the shop is a tab of the shop', (tester) async {
+    // These two fields used to sit on the site's hosting screen, under the
+    // page list, because the fragments they name are the site's. A seller
+    // looking for what their shop is called looked at the shop, so that is
+    // where they are now -- and this pumps the tab rather than trusting the
+    // switch to have been wired.
+    tester.view.physicalSize = const Size(1000, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    var pages = _Pages();
+    var shop = _Store(pages);
+
+    await tester.pumpWidget(MultiProvider(providers: [
+      ChangeNotifierProvider<ThemeNotifier>(
+          create: (c) => ThemeNotifier(doLoad: false)),
+      ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+    ], child: MaterialApp(home: Scaffold(body: StoreTab(pages, shop, "me")))));
+    await tester.pumpAndSettle();
+
+    expect(find.text("What the shop is called"), findsNothing,
+        reason: "setup is a tab, not something on every tab");
+
+    await tester.tap(find.text(StoreTabKind.setup.label));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(ShopFrameFields), findsOneWidget);
+    expect(find.text("What the shop is called"), findsOneWidget);
+    expect(find.text("The shop's frame"), findsOneWidget);
+  });
+
+  test('the tab a seller visits once is named for setup', () {
+    // The templates tab said "Pages", which is the site's word for the
+    // things a visitor reads. In the shop they are the templates it renders
+    // through, and two tabs called Pages in one app is one too many.
+    expect(StoreTabKind.templates.label, "Templates");
+    expect(StoreTabKind.setup.label, "Store setup");
   });
 }
 

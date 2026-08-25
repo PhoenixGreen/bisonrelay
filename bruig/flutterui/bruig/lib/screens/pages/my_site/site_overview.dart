@@ -1,22 +1,13 @@
 import 'package:bruig/components/buttons.dart';
 import 'package:bruig/components/text.dart';
-import 'package:bruig/models/client.dart';
 import 'package:bruig/config.dart';
 import 'package:bruig/models/pages.dart';
-import 'package:bruig/components/pages/add_picture_dialog.dart';
-import 'package:bruig/screens/pages/page_editor.dart';
 import 'package:bruig/screens/pages/site_rows.dart';
-import 'package:bruig/models/menus.dart';
 import 'package:bruig/plugin_system/writing_tools/writing_tools.dart';
-import 'package:bruig/models/resources.dart';
-import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:provider/provider.dart';
 import 'package:golib_plugin/definitions.dart';
-import 'package:bruig/screens/pages/my_site/shop_frame_fields.dart';
 import 'package:bruig/screens/pages/my_site/site_help.dart';
 import 'package:bruig/screens/pages/my_site/site_tabs.dart';
 
@@ -52,6 +43,7 @@ class SiteOverview extends StatelessWidget {
   final void Function(PageDocument) onDeleteFragment;
   final VoidCallback onAddImage;
   final void Function(LocalAsset) onDeleteImage;
+
   /// tab is which of the site's jobs is showing, and onTab moves to
   /// another. Held above so a half-written page survives the trip.
   final SiteTabKind tab;
@@ -88,60 +80,54 @@ class SiteOverview extends StatelessWidget {
     }
 
     return ListView(padding: const EdgeInsets.all(16), children: [
-      const Txt.L("Site Settings"),
-      const SizedBox(height: 4),
-      const Txt.S(
-          "Your site is served from this client, to people you are already "
-          "connected to, while you are online. Nothing is uploaded anywhere.",
-          color: TextColor.onSurfaceVariant),
-      const SizedBox(height: 16),
-      SwitchListTile(
-        contentPadding: EdgeInsets.zero,
-        title: const Txt.M("Host a site"),
-        subtitle: Txt.S(
-            cfg.hostsPages
-                ? "Serving from ${displayPath(cfg.pagesPath)}"
-                : "Not serving anything",
-            color: TextColor.onSurfaceVariant),
-        value: cfg.hostsPages,
-        onChanged: pages.loadingHost ? null : onToggle,
-      ),
-      if (pages.hostError != null) ...[
-        const SizedBox(height: 8),
-        Txt.S(pages.hostError!, color: TextColor.onErrorContainer),
-      ],
-      const SizedBox(height: 8),
+      // One row, the way the shop's is: the title, what it is doing, and the
+      // two things to do about it. This was a heading, a paragraph, a switch
+      // and a row of buttons -- four rows of chrome above the thing somebody
+      // came here to work on.
       Row(children: [
+        const Expanded(child: Txt.L("Site Settings")),
         OutlinedButton.icon(
           onPressed: onChooseDir,
           icon: const Icon(Icons.folder_open, size: 16),
           label: const Text("Change folder"),
         ),
-        const SizedBox(width: 8),
-        if (cfg.hostsPages)
+        if (cfg.hostsPages) ...[
+          const SizedBox(width: 8),
           OutlinedButton.icon(
             onPressed: onView,
             icon: const Icon(Icons.visibility_outlined, size: 16),
             label: const Text("View my site"),
           ),
+        ],
+        const SizedBox(width: 8),
+        OutlinedButton(
+          onPressed: pages.loadingHost ? null : () => onToggle(!cfg.hostsPages),
+          child: Text(cfg.hostsPages ? "Turn off" : "Turn on"),
+        ),
       ]),
-      if (cfg.hostsStore && cfg.hostsPages) ...[
-        const SizedBox(height: 24),
-        ShopFrameFields(pages: pages),
+      const SizedBox(height: 4),
+      Txt.S(
+          cfg.hostsPages
+              ? "Serving from ${displayPath(cfg.pagesPath)}"
+              : "Not serving anything. Turn it on and the people you are "
+                  "connected to can read your pages while you are online.",
+          color: TextColor.onSurfaceVariant),
+      if (pages.hostError != null) ...[
+        const SizedBox(height: 8),
+        Txt.S(pages.hostError!, color: TextColor.onErrorContainer),
       ],
-      const SizedBox(height: 24),
+      const SizedBox(height: 20),
 
+      const SizedBox(height: 24),
       SiteTabs(
         current: tab,
         onChanged: onTab,
         // Counted here because only the page list knows: a page is behind
         // when what a visitor reads is older than what has been written.
-        unpublished: documents
-            .where((d) => d.state == PagePublishState.edited)
-            .length,
+        unpublished:
+            documents.where((d) => d.state == PagePublishState.edited).length,
       ),
       const SizedBox(height: 16),
-
       if (!cfg.hostsPages)
         const Txt.S(
             "This client is hosting a shop and no pages. Switch hosting to "
@@ -152,116 +138,94 @@ class SiteOverview extends StatelessWidget {
           SiteTabKind.pages => Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-              Row(children: [
-                const Expanded(child: Txt.L("Pages")),
-                if (cfg.hostsPages)
-                  ElevatedButton.icon(
-                    style: raisedButtonStyle(ThemeNotifier.of(context)),
-                    onPressed: onNew,
-                    icon: const Icon(Icons.add, size: 16),
-                    label: const Text("New page"),
-                  ),
-              ]),
-              const SizedBox(height: 8),
-              if (!cfg.hostsPages)
-                const Txt.S("Switch hosting on to write pages.",
-                    color: TextColor.onSurfaceVariant)
-              else if (documents.isEmpty)
-                const Txt.S("No pages yet.", color: TextColor.onSurfaceVariant)
-              else
-                ...documents.map((p) => SiteRow(
-                      item: p,
-                      onEdit: () => onEdit(p.name),
-                      onDelete: () => onDelete(p),
-                      onPublish: () => onPublish(p),
-                      onUnpublish: () => onUnpublish(p),
-                      onPreview: () => onPreview(p),
-                    )),
-
+                Row(children: [
+                  const Expanded(child: Txt.L("Pages")),
+                  if (cfg.hostsPages)
+                    ElevatedButton.icon(
+                      style: raisedButtonStyle(ThemeNotifier.of(context)),
+                      onPressed: onNew,
+                      icon: const Icon(Icons.add, size: 16),
+                      label: const Text("New page"),
+                    ),
+                ]),
+                const SizedBox(height: 8),
+                if (!cfg.hostsPages)
+                  const Txt.S("Switch hosting on to write pages.",
+                      color: TextColor.onSurfaceVariant)
+                else if (documents.isEmpty)
+                  const Txt.S("No pages yet.",
+                      color: TextColor.onSurfaceVariant)
+                else
+                  ...documents.map((p) => SiteRow(
+                        item: p,
+                        onEdit: () => onEdit(p.name),
+                        onDelete: () => onDelete(p),
+                        onPublish: () => onPublish(p),
+                        onUnpublish: () => onUnpublish(p),
+                        onPreview: () => onPreview(p),
+                      )),
               ],
             ),
           SiteTabKind.fragments => Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-              const SizedBox(height: 24),
-              const FragmentsHelp(),
-              Row(children: [
-                const Expanded(child: Txt.L("Shared fragments")),
-                if (onNewFragment != null)
-                  OutlinedButton.icon(
-                    onPressed: onNewFragment,
-                    icon: const Icon(Icons.add, size: 16),
-                    label: const Text("New fragment"),
-                  ),
-              ]),
-              const SizedBox(height: 8),
-              if (fragments.isEmpty)
-                const Txt.S("None yet.", color: TextColor.onSurfaceVariant)
-              else
-                ...fragments.map((f) => SiteRow(
-                      item: f,
-                      onEdit: () => onEditFragment(f.name),
-                      onDelete: () => onDeleteFragment(f),
-                      onPublish: () => onPublish(f),
-                      onUnpublish: () => onUnpublish(f),
-                    )),
-
+                const SizedBox(height: 24),
+                const FragmentsHelp(),
+                Row(children: [
+                  const Expanded(child: Txt.L("Shared fragments")),
+                  if (onNewFragment != null)
+                    OutlinedButton.icon(
+                      onPressed: onNewFragment,
+                      icon: const Icon(Icons.add, size: 16),
+                      label: const Text("New fragment"),
+                    ),
+                ]),
+                const SizedBox(height: 8),
+                if (fragments.isEmpty)
+                  const Txt.S("None yet.", color: TextColor.onSurfaceVariant)
+                else
+                  ...fragments.map((f) => SiteRow(
+                        item: f,
+                        onEdit: () => onEditFragment(f.name),
+                        onDelete: () => onDeleteFragment(f),
+                        onPublish: () => onPublish(f),
+                        onUnpublish: () => onUnpublish(f),
+                      )),
               ],
             ),
           SiteTabKind.pictures => Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-              const SizedBox(height: 24),
-              Row(children: [
-                const Expanded(child: Txt.L("Pictures")),
-                OutlinedButton.icon(
-                  onPressed: onAddImage,
-                  icon: const Icon(Icons.add_photo_alternate_outlined, size: 16),
-                  label: const Text("Add picture"),
+                const SizedBox(height: 24),
+                Row(children: [
+                  const Expanded(child: Txt.L("Pictures")),
+                  OutlinedButton.icon(
+                    onPressed: onAddImage,
+                    icon: const Icon(Icons.add_photo_alternate_outlined,
+                        size: 16),
+                    label: const Text("Add picture"),
+                  ),
+                ]),
+                const Padding(
+                  padding: EdgeInsets.only(top: 4, bottom: 8),
+                  child: Txt.S(
+                      "Kept as files of their own rather than written into a page, so "
+                      "one behind every page of the site is sent once. Adding a "
+                      "picture copies the markdown to paste in.",
+                      color: TextColor.onSurfaceVariant),
                 ),
-              ]),
-              const Padding(
-                padding: EdgeInsets.only(top: 4, bottom: 8),
-                child: Txt.S(
-                    "Kept as files of their own rather than written into a page, so "
-                    "one behind every page of the site is sent once. Adding a "
-                    "picture copies the markdown to paste in.",
-                    color: TextColor.onSurfaceVariant),
-              ),
-              if (pages.assets.isEmpty)
-                const Txt.S("None yet.", color: TextColor.onSurfaceVariant)
-              else
-                ...pages.assets.map((a) => AssetRow(
-                      asset: a,
-                      onDelete: () => onDeleteImage(a),
-                    )),
-              const SizedBox(height: 24),
-              const LinkHelp(),
-            ],
-          ),
+                if (pages.assets.isEmpty)
+                  const Txt.S("None yet.", color: TextColor.onSurfaceVariant)
+                else
+                  ...pages.assets.map((a) => AssetRow(
+                        asset: a,
+                        onDelete: () => onDeleteImage(a),
+                      )),
+                const SizedBox(height: 24),
+                const LinkHelp(),
+              ],
+            ),
         },
     ]);
   }
 }
-
-/// _SiteRow is one thing the site is made of: a page, or a fragment its
-/// pages share.
-///
-
-/// _FragmentRow is one shared fragment.
-///
-/// Deliberately plainer than a page's row: a fragment has no front-page
-/// warning, and no preview -- a visitor never opens one, so there is nothing
-/// to look at on its own.
-
-/// ShopFrameFields names the two fragments the shop wears.
-///
-/// Two names rather than a switch, because a shop and a site are framed the
-/// same way and a writer already has both fragments: the banner at the top
-/// and whatever runs along the bottom. Naming them here means changing the
-/// banner changes the shop with it -- a shop restyled separately is a shop
-/// that ends up looking like a different website.
-///
-/// Only shown with both hosted. A shop on its own has no site to take them
-/// from, and offering the fields would be offering something that could not
-/// work.

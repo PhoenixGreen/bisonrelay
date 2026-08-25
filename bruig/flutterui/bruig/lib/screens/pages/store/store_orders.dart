@@ -25,7 +25,8 @@ class OrderRow extends StatelessWidget {
   final Future<void> Function(String) onReply;
   final Future<void> Function() onSendGoods;
   final bool isOwn;
-  const OrderRow({super.key, 
+  const OrderRow({
+    super.key,
     required this.order,
     required this.onStatus,
     required this.onReply,

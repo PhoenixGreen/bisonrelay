@@ -20,8 +20,8 @@ Widget host(Widget child) => MultiProvider(providers: [
 void main() {
   group("the shop's tabs", () {
     testWidgets('offer every job the shop has', (tester) async {
-      await tester.pumpWidget(host(StoreTabs(
-          current: StoreTabKind.products, onChanged: (_) {})));
+      await tester.pumpWidget(
+          host(StoreTabs(current: StoreTabKind.products, onChanged: (_) {})));
       await tester.pumpAndSettle();
 
       for (var kind in StoreTabKind.values) {
@@ -29,20 +29,17 @@ void main() {
       }
     });
 
-    testWidgets('say how many orders are waiting on an answer',
-        (tester) async {
+    testWidgets('say how many orders are waiting on an answer', (tester) async {
       await tester.pumpWidget(host(StoreTabs(
-          current: StoreTabKind.products,
-          onChanged: (_) {},
-          needsAnswer: 3)));
+          current: StoreTabKind.products, onChanged: (_) {}, needsAnswer: 3)));
       await tester.pumpAndSettle();
       expect(find.text("3"), findsOneWidget);
     });
 
     testWidgets('say nothing when nobody is waiting', (tester) async {
       // A nought beside Orders is a thing to read and dismiss every time.
-      await tester.pumpWidget(host(StoreTabs(
-          current: StoreTabKind.products, onChanged: (_) {})));
+      await tester.pumpWidget(
+          host(StoreTabs(current: StoreTabKind.products, onChanged: (_) {})));
       await tester.pumpAndSettle();
       expect(find.text("0"), findsNothing);
     });
@@ -53,7 +50,9 @@ void main() {
           current: StoreTabKind.products, onChanged: (k) => went = k)));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text("Pages"));
+      // Named through the enum: the label is the thing under test elsewhere,
+      // and a tap test should not fail again the next time it is reworded.
+      await tester.tap(find.text(StoreTabKind.templates.label));
       expect(went, StoreTabKind.templates);
     });
   });
@@ -71,9 +70,7 @@ void main() {
 
     testWidgets('say how many pages a visitor is behind on', (tester) async {
       await tester.pumpWidget(host(SiteTabs(
-          current: SiteTabKind.pictures,
-          onChanged: (_) {},
-          unpublished: 2)));
+          current: SiteTabKind.pictures, onChanged: (_) {}, unpublished: 2)));
       await tester.pumpAndSettle();
       expect(find.text("2"), findsOneWidget);
     });
