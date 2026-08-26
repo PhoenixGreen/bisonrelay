@@ -167,6 +167,36 @@ void main() {
     });
   });
 
+  group('a grid the page can space itself', () {
+    testWidgets('the gap between cells is the page\'s to set', (tester) async {
+      // How far apart a gallery of photographs should be is a decision about
+      // reading, and the reader's guide makes it. How far apart a row of
+      // cards should be is a decision about the page they are on.
+      tester.view.physicalSize = const Size(1200, 900);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(wrap(MarkdownArea(
+          "--grid[2, gap=40]--\n--cell--\nOne\n--cell--\nTwo\n--/grid--\n",
+          false)));
+      await tester.pump();
+
+      var one = tester.getRect(find.textContaining("One", findRichText: true));
+      var two = tester.getRect(find.textContaining("Two", findRichText: true));
+      expect(two.left - one.right, greaterThan(30),
+          reason: "the gap the page asked for did not reach the grid");
+    });
+
+    test('a bare count still means what it always did', () {
+      // Every gallery written before the settings existed says --grid[3]--.
+      var doc = md.Document(blockSyntaxes: [GridBlockSyntax()]);
+      var nodes = doc.parse("--grid[3]--\n![](a.png)\n--/grid--");
+      var grid = (nodes.first as md.Element).children!.first as md.Element;
+      expect(grid.attributes["columns"], "3");
+      expect(grid.attributes["gap"], isNull);
+    });
+  });
+
   group('a grid divided where the writer said', () {
     test('--cell-- opens a cell whatever is in it', () {
       var cells = GridBlockSyntax.splitCells([
@@ -298,6 +328,44 @@ void main() {
       expect(title.style!.color, theme.markdownLinkStyle(body).color);
     });
 
+    testWidgets('the two gaps can differ', (tester) async {
+      // They are different joins: the description belongs to the title above
+      // it, while the price row is the end of the card.
+      await tester.pumpWidget(wrap(MarkdownArea(
+          rows.replaceFirst(
+              "align: left\n", "align: left\ngap: 2\nmetagap: 16\n"),
+          false)));
+      await tester.pump();
+
+      var heights = tester
+          .widgetList<SizedBox>(find.descendant(
+              of: find.byType(MarkdownListing),
+              matching: find.byType(SizedBox)))
+          .map((b) => b.height)
+          .toList();
+      expect(heights, containsAll([2.0, 16.0]));
+    });
+
+    testWidgets('a title can be held to one line', (tester) async {
+      await tester.pumpWidget(wrap(MarkdownArea(
+          rows.replaceFirst("align: left\n", "align: left\ntitlelines: 1\n"),
+          false)));
+      await tester.pump();
+
+      var title = tester.widget<Text>(find.text("First product"));
+      expect(title.maxLines, 1);
+      expect(title.overflow, TextOverflow.ellipsis);
+    });
+
+    testWidgets('a title wraps unless it is told not to', (tester) async {
+      // Losing the end of a name is worse than a card an extra line tall,
+      // unless the seller says otherwise.
+      await tester.pumpWidget(wrap(MarkdownArea(rows, false)));
+      await tester.pump();
+
+      expect(tester.widget<Text>(find.text("First product")).maxLines, isNull);
+    });
+
     testWidgets('the rows keep the gap they were given', (tester) async {
       await tester.pumpWidget(wrap(MarkdownArea(
           rows.replaceFirst("align: left\n", "align: left\ngap: 20\n"),
@@ -344,6 +412,34 @@ void main() {
           find.text("A longish product description. Features: - One - Two"));
       expect(title.style!.fontSize!, greaterThan(summary.style!.fontSize!));
       expect(title.style!.fontWeight, FontWeight.bold);
+    });
+  });
+
+  group('two blocks with nothing between them', () {
+    testWidgets('a panel can close the gap between what is inside it',
+        (tester) async {
+      // The one piece of spacing a block cannot state for itself: a margin of
+      // nought on two neighbours still leaves the renderer's own spacing, so
+      // a plate told to sit flush against the picture above it sat a fixed
+      // gap away however firmly it asked not to.
+      Future<double> gapWith(String attrs) async {
+        await tester.pumpWidget(wrap(MarkdownArea(
+            "--panel[$attrs]--\n"
+            "--panel[fill=raised]--\nOne\n--/panel--\n"
+            "--panel[fill=raised]--\nTwo\n--/panel--\n"
+            "--/panel--\n",
+            false)));
+        await tester.pump();
+        var one =
+            tester.getRect(find.textContaining("One", findRichText: true));
+        var two =
+            tester.getRect(find.textContaining("Two", findRichText: true));
+        return two.top - one.bottom;
+      }
+
+      var flush = await gapWith("gap=0");
+      var apart = await gapWith("gap=20");
+      expect(apart - flush, closeTo(20, 1));
     });
   });
 

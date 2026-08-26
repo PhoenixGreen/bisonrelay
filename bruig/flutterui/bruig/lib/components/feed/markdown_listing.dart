@@ -58,11 +58,24 @@ class ListingRule {
   /// align is which side the writing sits on.
   final CrossAxisAlignment align;
 
-  /// lines is how much of the summary is shown before it is cut.
+  /// lines is how much of the summary is shown before it is cut, and
+  /// titleLines the same for the title.
+  ///
+  /// A title is one line by default here, unlike the summary, because a
+  /// title that wraps is usually a title that should be shorter -- but the
+  /// page says, because a shop selling things with long names would rather
+  /// wrap than lose the end of every one.
   final int lines;
+  final int titleLines;
 
-  /// gap is the room between one row and the next.
+  /// gap is the room between the title and the summary, and metaGap the room
+  /// above the last row.
+  ///
+  /// Two, because they are not the same join. The summary belongs to the
+  /// title above it and wants to sit close under it; the price and the
+  /// button are the end of the card and usually want air above them.
   final double gap;
+  final double metaGap;
 
   /// fill is what the button is coloured with, or null for whatever the
   /// app's own button of that role is.
@@ -82,7 +95,9 @@ class ListingRule {
     this.role,
     this.align = CrossAxisAlignment.start,
     this.lines = 1,
+    this.titleLines = 0,
     this.gap = 6,
+    this.metaGap = 6,
     this.fill,
     this.radius = 8,
     this.padding = 12,
@@ -107,7 +122,10 @@ class ListingRule {
         _ => CrossAxisAlignment.start,
       },
       lines: int.tryParse(fields["lines"] ?? "")?.clamp(1, 6) ?? 1,
+      // Nought is an answer: as many lines as the title takes.
+      titleLines: int.tryParse(fields["titlelines"] ?? "")?.clamp(0, 6) ?? 0,
       gap: _length(fields["gap"], 6, 60),
+      metaGap: _length(fields["metagap"], _length(fields["gap"], 6, 60), 60),
       fill: _ink(fields["color"]),
       radius: _length(fields["radius"], 8, 60),
       padding: _length(fields["padding"], 12, 40),
@@ -222,7 +240,13 @@ class MarkdownListing extends StatelessWidget {
 
     var rows = <Widget>[
       if (rule.title.isNotEmpty)
-        Text(rule.title, style: title, textAlign: textAlign),
+        Text(rule.title,
+            style: title,
+            textAlign: textAlign,
+            maxLines: rule.titleLines == 0 ? null : rule.titleLines,
+            overflow: rule.titleLines == 0
+                ? TextOverflow.clip
+                : TextOverflow.ellipsis),
       // The seller's own gap. Tight by default: the summary belongs to the
       // title above it, and a paragraph's worth of air between them is what
       // made three rows look like three separate things.
@@ -240,7 +264,7 @@ class MarkdownListing extends StatelessWidget {
           overflow: TextOverflow.ellipsis,
         ),
       if (rule.meta.isNotEmpty || rule.button.isNotEmpty) ...[
-        SizedBox(height: rule.gap),
+        SizedBox(height: rule.metaGap),
         _footer(context, theme, body),
       ],
     ];

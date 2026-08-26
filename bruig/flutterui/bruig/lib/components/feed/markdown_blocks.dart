@@ -269,7 +269,16 @@ class _ColumnDepth extends InheritedWidget {
 /// one. A reader whose client does not know the markers sees them as
 /// ordinary lines with the pictures and writing still in order underneath.
 class GridBlockSyntax extends md.BlockSyntax {
-  static final _open = RegExp(r'^\s*--grid(2)?(?:\[(\d+)\])?--\s*$');
+  /// The settings in the brackets: how many across, and anything written
+  /// key=value after it -- --grid[3, gap=6]--.
+  ///
+  /// The count is still a bare number, which is what every gallery written
+  /// before this says, and what a writer wanting three across should have to
+  /// type. The rest is for the one thing a page cannot otherwise reach: how
+  /// far apart the cells are, which the reader's guide decides. A shop front
+  /// is a grid of cards laid out by a page rather than a gallery of
+  /// photographs read by a person, and the two do not want the same gap.
+  static final _open = RegExp(r'^\s*--grid(2)?(?:\[([^\]]*)\])?--\s*$');
   static final _close = RegExp(r'^\s*--/grid2?--\s*$');
 
   /// _picture is what starts a new cell: an image embed, or a markdown
@@ -298,6 +307,26 @@ class GridBlockSyntax extends md.BlockSyntax {
   RegExp get pattern => _open;
 
   static bool startsCell(String line) => _picture.hasMatch(line);
+
+  /// _count is how many across was asked for: the bare number at the front
+  /// of the settings, if there is one.
+  static String _count(String settings) {
+    var first = settings.split(",").first.trim();
+    return int.tryParse(first) == null ? "" : first;
+  }
+
+  /// _gap is the room between cells, or null to take the reader's guide's.
+  static double? _gap(String settings) {
+    for (var part in settings.split(",")) {
+      var at = part.indexOf("=");
+      if (at == -1) continue;
+      if (part.substring(0, at).trim().toLowerCase() != "gap") continue;
+      var got = double.tryParse(part.substring(at + 1).trim());
+      if (got == null || got < 0 || got > 200) return null;
+      return got;
+    }
+    return null;
+  }
 
   /// splitCells divides a run into cells at each picture.
   ///
@@ -343,11 +372,14 @@ class GridBlockSyntax extends md.BlockSyntax {
   md.Node? parse(md.BlockParser parser) {
     var line = parser.current.content;
     var match = _open.firstMatch(line);
+    var settings = match?.group(2) ?? "";
+
     // --grid2-- is one across by definition, and takes no count of its own.
     // A bare --grid-- carries no count at all: it is left for the builder to
     // fill from the guide, since how many across a gallery should be is a
     // decision about the page rather than about the writing.
-    var count = match?.group(1) != null ? "1" : (match?.group(2) ?? "");
+    var count = match?.group(1) != null ? "1" : _count(settings);
+    var gap = _gap(settings);
     parser.advance();
 
     var lines = <String>[];
@@ -366,6 +398,7 @@ class GridBlockSyntax extends md.BlockSyntax {
       element.attributes["columns"] =
           "${(int.tryParse(count) ?? 2).clamp(1, maxColumns)}";
     }
+    if (gap != null) element.attributes["gap"] = "$gap";
     element.attributes["count"] = "${cells.length}";
     for (var i = 0; i < cells.length; i++) {
       element.attributes["cell$i"] = cells[i];
@@ -390,6 +423,7 @@ class GridMarkdownElementBuilder extends MarkdownElementBuilder {
       cells: cells,
       // Null when the writer wrote a bare --grid--, which the guide answers.
       columns: int.tryParse(element.attributes["columns"] ?? ""),
+      gap: double.tryParse(element.attributes["gap"] ?? ""),
     );
   }
 }
@@ -400,7 +434,11 @@ class _MarkdownGrid extends StatelessWidget {
 
   /// columns is what the writer asked for, or null to take the guide's.
   final int? columns;
-  const _MarkdownGrid({required this.cells, required this.columns});
+
+  /// gap is the room the writer asked for between cells, or null for the
+  /// guide's.
+  final double? gap;
+  const _MarkdownGrid({required this.cells, required this.columns, this.gap});
 
   @override
   Widget build(BuildContext context) {
@@ -414,7 +452,7 @@ class _MarkdownGrid extends StatelessWidget {
     }
 
     var rule = MarkdownGuideScope.gridOf(context) ?? const GridRule();
-    var gap = rule.boundedGap;
+    var gap = this.gap ?? rule.boundedGap;
     var asked = columns ?? rule.boundedColumns;
 
     return LayoutBuilder(builder: (context, constraints) {

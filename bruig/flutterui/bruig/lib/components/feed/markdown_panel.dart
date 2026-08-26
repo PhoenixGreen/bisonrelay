@@ -161,6 +161,16 @@ class PanelRule {
   /// wherever the reader's guide puts it.
   final WrapAlignment? text;
 
+  /// gap is the room between one block inside the panel and the next, or
+  /// null for whatever the reader's guide keeps.
+  ///
+  /// The one piece of spacing a block cannot state for itself: a margin of
+  /// nought on two neighbouring blocks still leaves the renderer's own
+  /// spacing between them. A picture sitting directly on the caption under
+  /// it is two blocks with nothing between them, and only the thing holding
+  /// both of them can say so.
+  final double? gap;
+
   const PanelRule({
     this.padding,
     this.margin,
@@ -176,6 +186,7 @@ class PanelRule {
     this.link,
     this.justify = PanelJustify.stretch,
     this.text,
+    this.gap,
   });
 
   static const none = PanelRule();
@@ -213,6 +224,8 @@ class PanelRule {
       link: _link(fields["link"]),
       justify: _justify(fields["justify"]),
       text: _text(fields["text"]),
+      gap:
+          PageSetup.parseLength(fields["gap"], maxPanelRadius, allowZero: true),
     );
   }
 
@@ -389,6 +402,7 @@ class PanelRule {
       border != null ||
       color != null ||
       radius != null ||
+      gap != null ||
       fill != null ||
       image != null ||
       ratio != null ||
@@ -411,11 +425,12 @@ class PanelRule {
       other.align == align &&
       other.link == link &&
       other.justify == justify &&
-      other.text == text;
+      other.text == text &&
+      other.gap == gap;
 
   @override
   int get hashCode => Object.hash(padding, margin, border, stroke, color,
-      radius, fill, image, ratio, crop, align, link, justify, text);
+      radius, fill, image, ratio, crop, align, link, justify, text, gap);
 }
 
 class PanelBlockSyntax extends md.BlockSyntax {
@@ -482,7 +497,7 @@ class PanelMarkdownElementBuilder extends MarkdownElementBuilder {
       // spacing, drawn for nothing.
       child: body.trim().isEmpty
           ? const SizedBox.shrink()
-          : MarkdownArea(body, false, align: rule.text),
+          : MarkdownArea(body, false, align: rule.text, blockSpacing: rule.gap),
     );
   }
 }

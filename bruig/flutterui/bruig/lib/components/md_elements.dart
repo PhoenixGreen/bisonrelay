@@ -798,11 +798,23 @@ class MarkdownArea extends StatelessWidget {
   /// have to see that decision spelled out on every line.
   final WrapAlignment? align;
 
+  /// blockSpacing is the room between one block of this markdown and the
+  /// next, or null for whatever the reader's guide keeps.
+  ///
+  /// Passed in for the same reason [align] is: it is a property of the box
+  /// the writing is in. A card whose picture sits directly on its caption
+  /// needs the gap between those two blocks gone, and there is nothing a
+  /// block can write about the space *between* itself and its neighbour --
+  /// a margin of nought still leaves the renderer's own paragraph spacing,
+  /// which is what made "sit flush" appear to do nothing.
+  final double? blockSpacing;
+
   MarkdownArea(srcText, this.hasNick,
       {this.disableLinks = false,
       this.plainText = false,
       this.guide,
       this.align,
+      this.blockSpacing,
       super.key})
       : text = MarkdownArea._cleanupSrcText(srcText);
 
@@ -1049,6 +1061,10 @@ class MarkdownArea extends StatelessWidget {
       // Every kind of line, not only paragraphs: a centred plate holding a
       // heading and a price with the heading left and the price centred is
       // not centred, it is broken.
+      if (blockSpacing != null) {
+        sheet = sheet.copyWith(blockSpacing: blockSpacing);
+      }
+
       if (align != null) {
         sheet = sheet.copyWith(
           textAlign: align,
