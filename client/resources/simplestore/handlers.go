@@ -595,6 +595,88 @@ func (s *Store) handleOrderAddComment(ctx context.Context, uid clientintf.UserID
 
 }
 
+// handleCancelOrder is a buyer calling off an order they have not paid for.
+//
+// Cancelled rather than deleted, and that is the whole design. The record
+// lives on the seller's disk and is the seller's book -- a buyer erasing an
+// entry from it is not the buyer's call, and the shop already has a state for
+// an order that is not going to happen. What the buyer gets is the ability to
+// say so, which is what was missing: an unpaid order they had thought better
+// of sat in the seller's order book indistinguishable from one about to be
+// paid, and only the seller could clear it.
+//
+// Unpaid only, and only their own. The order is found under the requesting
+// buyer's own identity, so there is no order of anybody else's to name, and a
+// paid order is a refund rather than a cancellation -- which is a
+// conversation, and the thread on the order page is where it belongs.
+func (s *Store) handleCancelOrder(ctx context.Context, uid clientintf.UserID,
+	request *rpc.RMFetchResource) (*rpc.RMFetchResourceReply, error) {
+
+	var oid OrderID
+	if err := oid.FromString(request.Path[1]); err != nil {
+		return &rpc.RMFetchResourceReply{
+			Data:   []byte("invalid order id"),
+			Status: rpc.ResourceStatusBadRequest,
+		}, nil
+	}
+
+	s.mtx.Lock()
+	order, _, err := s.loadOrderLocked(uid, oid)
+	s.mtx.Unlock()
+	if err != nil {
+		if errors.Is(err, jsonfile.ErrNotFound) {
+			return &rpc.RMFetchResourceReply{
+				Data:   []byte("order not found"),
+				Status: rpc.ResourceStatusBadRequest,
+			}, nil
+		}
+		return nil, err
+	}
+
+	if !order.AwaitingPayment() {
+		// Said rather than refused with a status code, and said about the
+		// state the order is actually in: a buyer who presses this twice, or
+		// who pressed it as the payment landed, wants to know what became of
+		// their order. "Bad request" is not that, and neither is telling
+		// somebody an order they called off has been paid for.
+		says := "This order has been paid for, so it cannot be called off " +
+			"here. Ask the seller on the order itself and they can sort it " +
+			"out with you."
+		switch order.Status {
+		case StatusCanceled:
+			says = "This order has already been called off. Nothing was charged."
+		case StatusCompleted:
+			says = "This order is finished. Ask the seller on the order " +
+				"itself if something is wrong with it."
+		}
+
+		w := &bytes.Buffer{}
+		fmt.Fprintf(w, "# Order #%d\n\n%s\n\n[Back to the order](/order/%s)\n",
+			order.ID.Num(), says, order.ID)
+		return &rpc.RMFetchResourceReply{
+			Data:   w.Bytes(),
+			Status: rpc.ResourceStatusOk,
+		}, nil
+	}
+
+	// Through SetOrderStatus rather than writing the file here, so that the
+	// seller's own client is told: their order book is open on the other
+	// side of this, and an order that changes underneath it without a word
+	// is one they go on chasing.
+	if _, err := s.SetOrderStatus(uid, oid, StatusCanceled); err != nil {
+		return nil, err
+	}
+
+	w := &bytes.Buffer{}
+	fmt.Fprintf(w, "# Order #%d called off\n\nThe seller has been told. "+
+		"Nothing has been charged.\n\n[Your orders](/orders)\n",
+		order.ID.Num())
+	return &rpc.RMFetchResourceReply{
+		Data:   w.Bytes(),
+		Status: rpc.ResourceStatusOk,
+	}, nil
+}
+
 func (s *Store) handleStaticRequest(ctx context.Context, uid clientintf.UserID,
 	request *rpc.RMFetchResource) (*rpc.RMFetchResourceReply, error) {
 
