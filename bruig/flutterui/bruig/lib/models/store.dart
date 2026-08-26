@@ -209,6 +209,44 @@ class StoreModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// _indexTemplate is the front page as it stands, or empty when it could
+  /// not be read.
+  ///
+  /// Held so the settings screen can say when a setting cannot reach the
+  /// page. A shop's templates are copied in when the shop is made and are
+  /// the seller's own from then on, so a front page written before a setting
+  /// existed goes on drawing what it always drew -- the setting saves, shows
+  /// what it saved, and changes nothing. Three rounds of "this does not
+  /// work" turned out to be that, which is why the screen asks rather than
+  /// stating what it assumes.
+  String _indexTemplate = "";
+  String get indexTemplate => _indexTemplate;
+
+  /// frontPageMissing names the calls the shipped front page makes that this
+  /// shop's front page does not, or empty for one that is up to date.
+  List<String> get frontPageMissing {
+    // Through the getter rather than the field, so a test can stand in a
+    // front page without a golib to read one from.
+    var page = indexTemplate;
+    if (page.isEmpty) return const [];
+    return [
+      for (var call in const ["productCard", "storeGrid", "storePage"])
+        if (!page.contains(call)) call
+    ];
+  }
+
+  @visibleForTesting
+  Future<String> fetchIndexTemplate() async {
+    try {
+      return await Golib.readStoreTemplate("index.tmpl");
+    } catch (_) {
+      // Not being able to read it is not worth an error on a screen about
+      // something else: what it buys is a warning, and no warning is the
+      // same as the warning not applying.
+      return "";
+    }
+  }
+
   /// setIndexLayout changes what one product looks like on the shop front.
   ///
   /// What the store made of it is kept rather than what was asked for: the
@@ -303,6 +341,7 @@ class StoreModel extends ChangeNotifier {
       _products = await fetchProducts();
       _orders = await fetchOrders();
       _indexLayout = await fetchIndexLayout();
+      _indexTemplate = await fetchIndexTemplate();
       _storeError = null;
     } catch (exception) {
       _storeError = "$exception";

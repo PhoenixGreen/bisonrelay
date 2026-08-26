@@ -133,12 +133,42 @@ class StoreFrontFields extends StatelessWidget {
     var rows = layout.textLayout == "rows";
 
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      const Txt.S(
-          "These settings are read by the shipped front page, which calls "
-          "productCard for each product. A shop whose index.tmpl has been "
-          "rewritten to draw its own cards is drawing those instead -- keep "
-          "the productCard line in it, or use Restore default pages above.",
-          color: TextColor.onSurfaceVariant),
+      if (store.frontPageMissing.isEmpty)
+        const Txt.S(
+            "These settings are read by your front page, which asks the shop "
+            "what a card looks like. A front page rewritten to draw its own "
+            "cards draws those instead.",
+            color: TextColor.onSurfaceVariant)
+      else
+        _Stale(missing: store.frontPageMissing),
+
+      // ---- the grid ----
+      _Group(title: "The grid", children: [
+        _note("How the cards are laid out on the page, rather than what one "
+            "of them looks like. Most of what looks like space between two "
+            "products is each card's own margin, which is in The border "
+            "round the card below -- try that first."),
+        responsiveRow([
+          labelled(
+            "Space between products",
+            ValueSlider(
+              key: const ValueKey("store-front/grid-gap"),
+              // Below nought is the reader's own, which is where this
+              // starts: a shop that has asked for nothing is laid out the
+              // way its reader lays out a gallery.
+              label: (v) => v < 0 ? "The reader's own" : v.round().toString(),
+              value: layout.gridGap.toDouble().clamp(-1, _maxRoom),
+              min: -1,
+              max: _maxRoom,
+              divisions: _maxRoom.round() + 1,
+              numberField: true,
+              onCommit: (v) => save(layout.copyWith(gridGap: v.round())),
+            ),
+          ),
+          _lengthCell("grid-margin", "Space at the sides", layout.gridMargin,
+              _maxRoom, (v) => save(layout.copyWith(gridMargin: v))),
+        ]),
+      ]),
 
       // ---- the picture ----
       _Group(title: "The picture", children: [
@@ -199,8 +229,14 @@ class StoreFrontFields extends StatelessWidget {
           _note("The three-row card carries the opening of the description on "
               "one line. The product's own page is where the whole of it "
               "belongs."),
-          _lengthCell("row-gap", "Space between rows", layout.rowGap, _maxRoom,
-              (v) => save(layout.copyWith(rowGap: v))),
+          _toggle(
+            "Keep a product's name to one line",
+            subtitle: "Cut with an ellipsis, the way the description is. Off, "
+                "a long name wraps and that card is taller than the rest",
+            value: layout.titleOneLine,
+            onChanged: (v) => save(layout.copyWith(titleOneLine: v)),
+          ),
+          _RowGaps(layout: layout, onChanged: save),
         ],
         if (full)
           _choice(
@@ -274,13 +310,29 @@ class StoreFrontFields extends StatelessWidget {
                     ? _standoff
                     : layout.textMargin)),
           ),
+          _SideLengths(
+            name: "plate-padding",
+            label: "Padding",
+            toggleLabel: "Set the plate's padding side by side",
+            base: layout.textPadding,
+            sides: [
+              layout.textPaddingTop,
+              layout.textPaddingRight,
+              layout.textPaddingBottom,
+              layout.textPaddingLeft,
+            ],
+            onBase: (v) => save(layout.copyWith(textPadding: v)),
+            onSides: (next) => save(layout.copyWith(
+                textPaddingTop: next[0],
+                textPaddingRight: next[1],
+                textPaddingBottom: next[2],
+                textPaddingLeft: next[3])),
+          ),
           responsiveRow([
-            _lengthCell("plate-padding", "Padding", layout.textPadding,
-                _maxRoom, (v) => save(layout.copyWith(textPadding: v))),
             if (!layout.textFlush)
               _lengthCell(
                   "plate-margin",
-                  full ? "Gap from the edge" : "Margin",
+                  "Gap from the picture",
                   layout.textMargin,
                   _maxRoom,
                   (v) => save(layout.copyWith(textMargin: v))),
@@ -288,12 +340,9 @@ class StoreFrontFields extends StatelessWidget {
                 _maxRadius, (v) => save(layout.copyWith(textRadius: v))),
           ]),
           if (layout.textFullWidth && !layout.textFlush)
-            _note(full
-                ? "A plate that runs the full width stands off the top and "
-                    "the bottom of the picture. Standing off at the sides as "
-                    "well is not being the full width."
-                : "Flush takes the gap off the side the picture is on and "
-                    "leaves the other three."),
+            _note("The gap is between the plate and the picture, never at "
+                "the plate's sides: room there is not the plate standing off "
+                "anything, it is the plate not being the full width."),
         ],
       ]),
 
@@ -322,11 +371,27 @@ class StoreFrontFields extends StatelessWidget {
                 layout.cardBorderRadius,
                 _maxRadius,
                 (v) => save(layout.copyWith(cardBorderRadius: v))),
-            _lengthCell("card-padding", "Padding", layout.cardPadding, _maxRoom,
-                (v) => save(layout.copyWith(cardPadding: v))),
             _lengthCell("card-margin", "Margin", layout.cardMargin, _maxRoom,
                 (v) => save(layout.copyWith(cardMargin: v))),
           ]),
+          _SideLengths(
+            name: "card-padding",
+            label: "Padding",
+            toggleLabel: "Set the card's padding side by side",
+            base: layout.cardPadding,
+            sides: [
+              layout.cardPaddingTop,
+              layout.cardPaddingRight,
+              layout.cardPaddingBottom,
+              layout.cardPaddingLeft,
+            ],
+            onBase: (v) => save(layout.copyWith(cardPadding: v)),
+            onSides: (next) => save(layout.copyWith(
+                cardPaddingTop: next[0],
+                cardPaddingRight: next[1],
+                cardPaddingBottom: next[2],
+                cardPaddingLeft: next[3])),
+          ),
         ],
       ]),
 
@@ -341,6 +406,53 @@ class StoreFrontFields extends StatelessWidget {
         ),
       ]),
     ]);
+  }
+}
+
+/// _Stale says that this shop's front page cannot see some of these
+/// settings, and what to do about it.
+///
+/// A shop's templates are copied in when the shop is made and are the
+/// seller's own from then on, so a front page written before a setting
+/// existed goes on drawing what it always drew: the setting saves, shows
+/// what it saved, and changes nothing on the page. That is indistinguishable
+/// from a broken setting, and it has been reported as one three times.
+class _Stale extends StatelessWidget {
+  final List<String> missing;
+  const _Stale({required this.missing});
+
+  /// _explains what each call is for, in the words the settings use.
+  static const _explains = {
+    "productCard": "what one product looks like",
+    "storeGrid": "the space between products",
+    "storePage": "the space at the sides",
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    var theme = ThemeNotifier.of(context);
+    var what = missing.map((c) => _explains[c] ?? c).join(", ");
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: theme.colors.surfaceContainerHighest,
+        border: Border.all(color: theme.colors.outlineVariant),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Icon(Icons.info_outline, size: 18),
+        const SizedBox(width: 10),
+        Expanded(
+          child:
+              Txt.S("Your front page was written before some of these settings "
+                  "existed, so they cannot reach it: $what. Everything else "
+                  "here works. Use Restore default pages above to bring it up "
+                  "to date -- your products, orders and pictures are not "
+                  "touched."),
+        ),
+      ]),
+    );
   }
 }
 
@@ -445,6 +557,147 @@ Widget _lengthCell(String name, String label, int value, double max,
         onCommit: (v) => onChanged(v.round()),
       ),
     );
+
+/// _SideLengths is one length that can be set all round or side by side.
+///
+/// The plate's padding and the card's, which are the same question asked
+/// twice. One slider while every side agrees, four when they do not: room
+/// inside a box is usually the same all round, and the side that wants a
+/// different answer is a caption having to clear the bottom of a photograph
+/// -- one side rather than four, so the four are there and out of the way.
+class _SideLengths extends StatefulWidget {
+  /// name keys the sliders, and label names the single one.
+  final String name;
+  final String label;
+  final String toggleLabel;
+
+  /// base is the length every side takes unless it has one of its own, and
+  /// sides are those answers -- top, right, bottom, left -- with anything
+  /// below nought meaning "the base".
+  final int base;
+  final List<int> sides;
+
+  final ValueChanged<int> onBase;
+
+  /// onSides is handed all four at once, so switching between the two states
+  /// is one save rather than four.
+  final ValueChanged<List<int>> onSides;
+
+  const _SideLengths({
+    required this.name,
+    required this.label,
+    required this.toggleLabel,
+    required this.base,
+    required this.sides,
+    required this.onBase,
+    required this.onSides,
+  });
+
+  @override
+  State<_SideLengths> createState() => _SideLengthsState();
+}
+
+class _SideLengthsState extends State<_SideLengths> {
+  static const _names = ["top", "right", "bottom", "left"];
+  static const _labels = ["Top", "Right", "Bottom", "Left"];
+
+  /// _apart is whether the sides are being set one at a time. Held here
+  /// rather than saved: it is which controls are showing, not anything about
+  /// the shop.
+  bool? _apart;
+
+  bool get apart => _apart ?? widget.sides.any((v) => v >= 0);
+
+  /// _at is what one side comes to now: its own answer, or the base.
+  int _at(int i) => widget.sides[i] >= 0 ? widget.sides[i] : widget.base;
+
+  @override
+  Widget build(BuildContext context) =>
+      Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        _toggle(
+          widget.toggleLabel,
+          value: apart,
+          onChanged: (v) {
+            setState(() => _apart = v);
+            // Going apart, each side starts where it already is, so nothing
+            // moves at the moment the controls change. Coming together, the
+            // sides give up their own answers -- otherwise one slider would
+            // be showing and four would be drawn.
+            widget.onSides(v
+                ? [for (var i = 0; i < 4; i++) _at(i)]
+                : const [-1, -1, -1, -1]);
+          },
+        ),
+        if (!apart)
+          _lengthCell(
+              widget.name, widget.label, widget.base, _maxRoom, widget.onBase)
+        else
+          responsiveRow([
+            for (var i = 0; i < 4; i++)
+              _lengthCell(
+                  "${widget.name}-${_names[i]}", _labels[i], _at(i), _maxRoom,
+                  (v) {
+                var next = [for (var j = 0; j < 4; j++) _at(j)];
+                next[i] = v;
+                widget.onSides(next);
+              }),
+          ], minWidth: 120),
+      ]);
+}
+
+/// _RowGaps is the room between the three-row card's rows.
+///
+/// One slider while both gaps are the same, two when they are not. They are
+/// different joins -- the description belongs to the title above it, while
+/// the price and the button are the end of the card -- but most cards want
+/// them alike, and nobody should have to set the same number twice to get
+/// that.
+class _RowGaps extends StatefulWidget {
+  final StoreIndexLayout layout;
+  final ValueChanged<StoreIndexLayout> onChanged;
+  const _RowGaps({required this.layout, required this.onChanged});
+
+  @override
+  State<_RowGaps> createState() => _RowGapsState();
+}
+
+class _RowGapsState extends State<_RowGaps> {
+  /// _apart is whether the two are being set one at a time. Held here rather
+  /// than saved: it is which controls are showing, not anything about the
+  /// shop.
+  bool? _apart;
+
+  bool get apart => _apart ?? widget.layout.rowGap != widget.layout.metaGap;
+
+  @override
+  Widget build(BuildContext context) {
+    var layout = widget.layout;
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      _toggle(
+        "Set the space above each row separately",
+        value: apart,
+        onChanged: (v) {
+          setState(() => _apart = v);
+          // Coming back together, both take the first: leaving them as they
+          // were would show one number and draw two.
+          if (!v) {
+            widget.onChanged(layout.copyWith(metaGap: layout.rowGap));
+          }
+        },
+      ),
+      if (!apart)
+        _lengthCell("row-gap", "Space between rows", layout.rowGap, _maxRoom,
+            (v) => widget.onChanged(layout.copyWith(rowGap: v, metaGap: v)))
+      else
+        responsiveRow([
+          _lengthCell("row-gap", "Above the description", layout.rowGap,
+              _maxRoom, (v) => widget.onChanged(layout.copyWith(rowGap: v))),
+          _lengthCell("meta-gap", "Above the price", layout.metaGap, _maxRoom,
+              (v) => widget.onChanged(layout.copyWith(metaGap: v))),
+        ]),
+    ]);
+  }
+}
 
 /// _Corners is how round the picture's corners are.
 ///

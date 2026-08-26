@@ -35,7 +35,15 @@ class _Pages extends PagesModel {
 /// _Store is a shop with no golib behind it: what is saved is kept here, and
 /// the corrections the store would make are not made.
 class _Store extends StoreModel {
-  _Store(super.pages);
+  _Store(super.pages, {this.template = _shipped});
+
+  /// template is the shop's front page. The shipped one by default: a shop
+  /// whose front page is up to date is the case every other test here is
+  /// about.
+  final String template;
+
+  @override
+  String get indexTemplate => template;
 
   StoreIndexLayout saved = const StoreIndexLayout();
   int saves = 0;
@@ -81,6 +89,9 @@ Future<void> drag(WidgetTester tester, String name, int value) async {
   widget.onChangeEnd!(value.toDouble());
   await tester.pumpAndSettle();
 }
+
+/// _shipped is enough of the shipped front page to be recognised as one.
+const _shipped = "{{ storePage }}\n{{ storeGrid }}\n{{ productCard . }}\n";
 
 void main() {
   group('the colours a plate may take', () {
@@ -329,10 +340,10 @@ void main() {
 
     expect(find.text("The button"), findsOneWidget);
     expect(find.text("Button colour: "), findsOneWidget);
-    expect(find.text("Space between rows"), findsOneWidget);
+    expect(find.text("Above the price"), findsOneWidget);
 
-    await drag(tester, "row-gap", 14);
-    expect(shop.saved.rowGap, 14);
+    await drag(tester, "meta-gap", 14);
+    expect(shop.saved.metaGap, 14);
 
     await drag(tester, "button-radius", 20);
     expect(shop.saved.buttonRadius, 20,
@@ -356,7 +367,7 @@ void main() {
     await tester.tap(find.text("Sit it flush with the picture's edge"));
     await tester.pumpAndSettle();
     expect(shop.saved.textFlush, isTrue);
-    expect(find.text("Gap from the edge"), findsNothing,
+    expect(find.text("Gap from the picture"), findsNothing,
         reason: "a plate sitting flush has no gap to set");
 
     await tester.tap(find.text("Sit it flush with the picture's edge"));
@@ -364,7 +375,112 @@ void main() {
     expect(shop.saved.textFlush, isFalse);
     expect(shop.saved.textMargin, greaterThan(0),
         reason: "off means standing off, and nought is not standing off");
-    expect(find.text("Gap from the edge"), findsOneWidget);
+    expect(find.text("Gap from the picture"), findsOneWidget);
+  });
+
+  testWidgets('the grid is set from the shop rather than the reader',
+      (tester) async {
+    // How far apart a gallery of photographs should be is the reader's own
+    // guide. How far apart a row of cards should be is the shop's, and on a
+    // phone it is the difference between three across and two.
+    var shop = await pump(tester);
+    expect(find.text("The grid"), findsOneWidget);
+
+    await drag(tester, "grid-gap", 12);
+    await drag(tester, "grid-margin", 8);
+    expect(shop.saved.gridGap, 12);
+    expect(shop.saved.gridMargin, 8);
+  });
+
+  testWidgets('the two row gaps are one control until they are two',
+      (tester) async {
+    var shop = await pump(tester);
+    await tester.tap(find.text("Title and price").last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text("Title, description, price and a button").last);
+    await tester.pumpAndSettle();
+
+    // Apart to begin with, because the defaults differ: the description sits
+    // closer under the title than the price row does under it.
+    expect(find.text("Above the description"), findsOneWidget);
+    await drag(tester, "meta-gap", 16);
+    expect(shop.saved.metaGap, 16);
+    expect(shop.saved.rowGap, isNot(16), reason: "one gap moved the other");
+
+    await tester.tap(find.text("Set the space above each row separately"));
+    await tester.pumpAndSettle();
+    expect(find.text("Space between rows"), findsOneWidget);
+    expect(shop.saved.metaGap, shop.saved.rowGap,
+        reason: "brought back together, one number must draw one gap");
+
+    await drag(tester, "row-gap", 10);
+    expect(shop.saved.rowGap, 10);
+    expect(shop.saved.metaGap, 10);
+  });
+
+  testWidgets('a product name can be held to one line', (tester) async {
+    var shop = await pump(tester);
+    await tester.tap(find.text("Title and price").last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text("Title, description, price and a button").last);
+    await tester.pumpAndSettle();
+
+    expect(shop.indexLayout.titleOneLine, isFalse);
+    await tester.tap(find.text("Keep a product's name to one line"));
+    await tester.pumpAndSettle();
+    expect(shop.saved.titleOneLine, isTrue);
+  });
+
+  testWidgets('the plate\'s padding is one number until it is four',
+      (tester) async {
+    var shop = await pump(tester);
+    await tester.tap(find.text("Draw a plate behind the writing"));
+    await tester.pumpAndSettle();
+
+    expect(find.text("Padding"), findsOneWidget);
+    expect(find.text("Top"), findsNothing);
+
+    await drag(tester, "plate-padding", 12);
+    expect(shop.saved.textPadding, 12);
+
+    await tester.tap(find.text("Set the plate's padding side by side"));
+    await tester.pumpAndSettle();
+
+    // Each side starts where it already was, so nothing moves at the moment
+    // the controls change.
+    expect(shop.saved.textPaddingTop, 12);
+    expect(shop.saved.textPaddingBottom, 12);
+
+    await drag(tester, "plate-padding-bottom", 24);
+    expect(shop.saved.textPaddingBottom, 24);
+    expect(shop.saved.textPaddingTop, 12, reason: "one side moved another");
+
+    // And back: the sides give up their own answers, or one slider would be
+    // showing and four would be drawn.
+    await tester.tap(find.text("Set the plate's padding side by side"));
+    await tester.pumpAndSettle();
+    expect(shop.saved.textPaddingBottom, lessThan(0));
+    expect(shop.saved.textPadding, 12);
+  });
+
+  testWidgets('the card\'s padding can be set side by side too',
+      (tester) async {
+    // The same control, asked twice: the plate's padding and the card's are
+    // the same question.
+    var shop = await pump(tester);
+    await tester.tap(find.text("Draw a border round each product"));
+    await tester.pumpAndSettle();
+
+    await drag(tester, "card-padding", 10);
+    expect(shop.saved.cardPadding, 10);
+
+    await tester.tap(find.text("Set the card's padding side by side"));
+    await tester.pumpAndSettle();
+    expect(shop.saved.cardPaddingTop, 10);
+
+    await drag(tester, "card-padding-bottom", 20);
+    expect(shop.saved.cardPaddingBottom, 20);
+    expect(shop.saved.cardPaddingTop, 10);
   });
 
   testWidgets('every length on the page can be shown at once', (tester) async {
@@ -394,6 +510,44 @@ void main() {
     expect(shop.saved.textRadius, 12);
     expect(shop.saved.cardBorderRadius, 20);
     expect(shop.saved.buttonRadius, 4);
+  });
+
+  testWidgets('a front page too old for a setting says so', (tester) async {
+    // A shop's templates are the seller's own from the day the shop is made,
+    // so a front page written before a setting existed goes on drawing what
+    // it always drew: the setting saves, shows what it saved, and changes
+    // nothing on the page. Told apart from a broken setting only by being
+    // said out loud -- it was reported as a broken setting three times.
+    tester.view.physicalSize = const Size(900, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    var shop = _Store(_Pages(), template: "--grid[3]--\n{{ productCard . }}\n");
+    await tester.pumpWidget(MultiProvider(
+        providers: [
+          ChangeNotifierProvider<ThemeNotifier>(
+              create: (c) => ThemeNotifier(doLoad: false)),
+          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+          ChangeNotifierProvider<StoreModel>.value(value: shop),
+        ],
+        child: MaterialApp(
+            home: Scaffold(
+                body: SingleChildScrollView(
+                    child: Consumer<StoreModel>(
+                        builder: (context, store, _) =>
+                            StoreFrontFields(store: store)))))));
+    await tester.pumpAndSettle();
+
+    // Named by what the seller would look for, not by the call.
+    expect(find.textContaining("the space between products"), findsOneWidget);
+    expect(find.textContaining("Restore default pages"), findsOneWidget);
+    // And it does not cry wolf about the settings that do reach it.
+    expect(find.textContaining("what one product looks like"), findsNothing);
+  });
+
+  testWidgets('a front page that is up to date says nothing', (tester) async {
+    await pump(tester);
+    expect(find.textContaining("Restore default pages"), findsNothing);
   });
 
   testWidgets('the DCR estimate can be taken off the shop front',
