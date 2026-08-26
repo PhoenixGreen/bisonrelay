@@ -5,9 +5,14 @@ You have not ordered anything yet.
 {{- else -}}
 {{range .Orders}}
 --panel[padding=12, margin=0 0 8 0, border=1, color=outline, radius=8]--
-**[Order #{{.ID}}](/order/{{.ID}})** — {{.Status}}
-
-{{ .PlacedTS.Format "2 Jan 2006" }} · {{ len .Cart.Items }} line{{ if ne (len .Cart.Items) 1 }}s{{ end }} · {{ money .Total }}
+--listing--
+title: Order #{{.ID.Num}} — {{ orderStatus .Status }}
+link: order/{{.ID}}
+summary: {{ .PlacedTS.Format "2 Jan 2006" }} · {{ .Lines }} line{{ if ne .Lines 1 }}s{{ end }}{{ if .SellerReplied }} · the seller has replied{{ end }}{{ if .Expired }} · the quoted amount has lapsed{{ end }}
+meta: {{ money .Total }}
+button: {{ if .AwaitingPayment }}Pay{{ else }}View{{ end }}
+style: {{ if .Open }}primary{{ else }}plain{{ end }}
+--/listing--
 --/panel--
 {{- end}}
 {{- end}}

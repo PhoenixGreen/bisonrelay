@@ -1,11 +1,5 @@
 package simplestore
 
-import (
-	"time"
-
-	"github.com/companyzero/bisonrelay/client/clientintf"
-)
-
 type indexContext struct {
 	Products map[string]*Product
 	IsAdmin  bool
@@ -35,16 +29,51 @@ type ordersContext struct {
 	Orders []*Order
 }
 
-type adminOrderSummary struct {
-	ID       OrderID
-	User     clientintf.UserID
-	UserNick string
-	Status   OrderStatus
-	PlacedTS time.Time
+// adminOrdersContext is the seller's order book.
+//
+// The whole order rather than a summary of it. A summary was five fields
+// copied out by hand, and every question the page learned to ask -- what it
+// came to, whose turn it is to say something, whether the amount it was
+// quoted at still holds -- meant copying out another. The order answers all
+// of them, and ManagedOrder is the order with the buyer's nick beside it.
+type adminOrdersContext struct {
+	Orders []ManagedOrder
 }
 
-type adminOrdersContext struct {
-	Orders []adminOrderSummary
+// adminIndexContext is the shop's front desk: what is waiting, what has been
+// taken, and the last few orders.
+//
+// Counted here rather than in the template, because a template counting
+// orders by status is four range loops and a set of variables, and what the
+// page is for is being read at a glance.
+type adminIndexContext struct {
+	// Waiting is what has somebody's attention on it: orders not yet paid,
+	// orders paid and not sent, and orders whose last word was the buyer's.
+	Unpaid     int
+	ToSend     int
+	NeedsReply int
+
+	// Lapsed is unpaid orders whose quoted amount no longer holds. They are
+	// not going to pay themselves, and the seller is the only one who can
+	// offer to place them again.
+	Lapsed int
+
+	// Counts by status, for the shop as a whole.
+	Placed    int
+	Paid      int
+	Shipped   int
+	Completed int
+	Canceled  int
+	Total     int
+
+	// Taken is what the orders that have been paid for come to, and Pending
+	// what the unpaid ones would come to.
+	Taken   float64
+	Pending float64
+
+	// Recent is the newest few orders, so the page is a page rather than a
+	// set of numbers.
+	Recent []ManagedOrder
 }
 
 type adminOrderContext struct {

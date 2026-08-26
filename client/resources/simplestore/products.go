@@ -86,6 +86,14 @@ func (id OrderID) String() string {
 	return fmt.Sprintf("%08d", id)
 }
 
+// Num is the order's number as somebody would say it.
+//
+// String pads to eight digits, which is what an order's file is called and
+// how it sorts in a directory. On a page it reads as a serial number from a
+// machine -- "Order #00000003" -- where what the buyer has is their third
+// order.
+func (id OrderID) Num() uint32 { return uint32(id) }
+
 func (id *OrderID) FromString(s string) error {
 	i, err := strconv.ParseUint(s, 10, 32)
 	if err != nil {
