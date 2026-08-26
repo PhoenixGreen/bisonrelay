@@ -62,6 +62,20 @@ class _Store extends StoreModel {
   Future<void> loadStore() async {}
 }
 
+/// tapText presses the control labelled [label], scrolling to it first.
+///
+/// Scrolling matters: this page grows a group at a time, and a tap aimed at
+/// something below the fold is a tap Flutter warns about and does not
+/// deliver -- so the setting stays as it was and the failure lands somewhere
+/// else entirely, on whatever the test did next.
+Future<void> tapText(WidgetTester tester, String label) async {
+  var at = find.text(label);
+  await tester.ensureVisible(at.first);
+  await tester.pumpAndSettle();
+  await tester.tap(at.first);
+  await tester.pumpAndSettle();
+}
+
 /// drag moves the slider named [name] to [value] and waits for the save.
 ///
 /// By its label rather than its position: these come and go as settings are
@@ -81,6 +95,8 @@ Future<void> drag(WidgetTester tester, String name, int value) async {
       of: find.byKey(ValueKey("store-front/$name")),
       matching: find.byType(Slider));
   expect(slider, findsOneWidget, reason: "no slider named $name");
+  await tester.ensureVisible(slider);
+  await tester.pumpAndSettle();
 
   var widget = tester.widget<Slider>(slider);
   widget.onChanged!(value.toDouble());
@@ -167,8 +183,7 @@ void main() {
     expect(find.text("Crop from: "), findsNothing,
         reason: "nothing to crop until every picture is one shape");
 
-    await tester.tap(find.text("Draw every picture at the same shape"));
-    await tester.pumpAndSettle();
+    await tapText(tester, "Draw every picture at the same shape");
 
     expect(shop.saved.fixedImage, isTrue);
     expect(find.text("Crop from: "), findsOneWidget);
@@ -178,15 +193,12 @@ void main() {
   testWidgets('the crop is chosen from a list rather than typed',
       (tester) async {
     var shop = await pump(tester);
-    await tester.tap(find.text("Draw every picture at the same shape"));
-    await tester.pumpAndSettle();
+    await tapText(tester, "Draw every picture at the same shape");
 
     // The dropdown is opened by its current answer, which is what a seller
     // sees and presses.
-    await tester.tap(find.text("Centre").last);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text("Top left").last);
-    await tester.pumpAndSettle();
+    await tapText(tester, "Centre");
+    await tapText(tester, "Top left");
 
     expect(shop.saved.crop, "topleft");
   });
@@ -199,10 +211,8 @@ void main() {
     var shop = await pump(tester);
     expect(find.text("Where the writing sits on it: "), findsNothing);
 
-    await tester.tap(find.text("Above the writing").last);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text("Behind the whole card").last);
-    await tester.pumpAndSettle();
+    await tapText(tester, "Above the writing");
+    await tapText(tester, "Behind the whole card");
 
     expect(shop.saved.imagePosition, "full");
     expect(find.text("Where the writing sits on it: "), findsOneWidget);
@@ -213,8 +223,7 @@ void main() {
     var shop = await pump(tester);
     expect(find.text("Plate colour"), findsNothing);
 
-    await tester.tap(find.text("Draw a plate behind the writing"));
-    await tester.pumpAndSettle();
+    await tapText(tester, "Draw a plate behind the writing");
 
     expect(shop.saved.textBackground, isTrue);
     for (var field in ["Plate colour: ", "Padding", "Corner radius"]) {
@@ -227,8 +236,7 @@ void main() {
     var shop = await pump(tester);
     expect(find.text("Border width"), findsNothing);
 
-    await tester.tap(find.text("Draw a border round each product"));
-    await tester.pumpAndSettle();
+    await tapText(tester, "Draw a border round each product");
 
     expect(shop.saved.cardBorder, isTrue);
     for (var field in [
@@ -255,8 +263,7 @@ void main() {
     expect(shop.saved.imageCornerBottomRight, 12,
         reason: "one number sets all four");
 
-    await tester.tap(find.text("Set the picture's corners one by one"));
-    await tester.pumpAndSettle();
+    await tapText(tester, "Set the picture's corners one by one");
     expect(find.text("Top left"), findsOneWidget);
 
     // Each corner on its own, and each one keeping what the last set. This
@@ -278,10 +285,8 @@ void main() {
     expect(
         find.widgetWithText(TextField, "What the button says"), findsNothing);
 
-    await tester.tap(find.text("Title and price").last);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text("Title, description, price and a button").last);
-    await tester.pumpAndSettle();
+    await tapText(tester, "Title and price");
+    await tapText(tester, "Title, description, price and a button");
 
     expect(shop.saved.textLayout, "rows");
     expect(
@@ -299,14 +304,11 @@ void main() {
     // It was offered only for a picture behind the whole card. A plate under
     // a picture touches its bottom edge just as much.
     var shop = await pump(tester);
-    await tester.tap(find.text("Draw a plate behind the writing"));
-    await tester.pumpAndSettle();
+    await tapText(tester, "Draw a plate behind the writing");
     expect(find.text("Sit it flush with the picture's edge"), findsOneWidget);
 
-    await tester.tap(find.text("Above the writing").last);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text("Below the writing").last);
-    await tester.pumpAndSettle();
+    await tapText(tester, "Above the writing");
+    await tapText(tester, "Below the writing");
 
     expect(shop.saved.imagePosition, "bottom");
     expect(find.text("Sit it flush with the picture's edge"), findsOneWidget);
@@ -319,10 +321,8 @@ void main() {
     var shop = await pump(tester);
     expect(find.text("Which side the writing sits on: "), findsOneWidget);
 
-    await tester.tap(find.text("Title and price").last);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text("Title, description, price and a button").last);
-    await tester.pumpAndSettle();
+    await tapText(tester, "Title and price");
+    await tapText(tester, "Title, description, price and a button");
 
     expect(shop.saved.textLayout, "rows");
     expect(find.text("Which side the writing sits on: "), findsOneWidget);
@@ -333,10 +333,8 @@ void main() {
     var shop = await pump(tester);
     expect(find.text("The button"), findsNothing);
 
-    await tester.tap(find.text("Title and price").last);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text("Title, description, price and a button").last);
-    await tester.pumpAndSettle();
+    await tapText(tester, "Title and price");
+    await tapText(tester, "Title, description, price and a button");
 
     expect(find.text("The button"), findsOneWidget);
     expect(find.text("Button colour: "), findsOneWidget);
@@ -355,27 +353,63 @@ void main() {
     // A shop whose margin is nought saw nothing happen: the setting saved,
     // and both states drew the same card.
     var shop = await pump(tester);
-    await tester.tap(find.text("Draw a plate behind the writing"));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text("Above the writing").last);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text("Behind the whole card").last);
-    await tester.pumpAndSettle();
+    await tapText(tester, "Draw a plate behind the writing");
+    await tapText(tester, "Above the writing");
+    await tapText(tester, "Behind the whole card");
 
     expect(shop.saved.textMargin, 0);
 
-    await tester.tap(find.text("Sit it flush with the picture's edge"));
-    await tester.pumpAndSettle();
+    await tapText(tester, "Sit it flush with the picture's edge");
     expect(shop.saved.textFlush, isTrue);
     expect(find.text("Gap from the picture"), findsNothing,
         reason: "a plate sitting flush has no gap to set");
 
-    await tester.tap(find.text("Sit it flush with the picture's edge"));
-    await tester.pumpAndSettle();
+    await tapText(tester, "Sit it flush with the picture's edge");
     expect(shop.saved.textFlush, isFalse);
     expect(shop.saved.textMargin, greaterThan(0),
         reason: "off means standing off, and nought is not standing off");
     expect(find.text("Gap from the picture"), findsOneWidget);
+  });
+
+  testWidgets('where the shop\'s links go is a setting', (tester) async {
+    var shop = await pump(tester);
+    expect(find.text("The shop's links"), findsOneWidget);
+
+    await tapText(tester, "A bar of the shop's own");
+    await tapText(tester, "In the site's bar, as icons");
+
+    expect(shop.saved.storeNav, "icons");
+    // The caveat only shows once it can apply.
+    expect(find.textContaining("keeps its own bar"), findsOneWidget);
+  });
+
+  testWidgets('the shop\'s half of the bar has settings of its own',
+      (tester) async {
+    var shop = await pump(tester);
+    expect(find.text("No background behind the shop's links"), findsNothing);
+
+    await tapText(tester, "A bar of the shop's own");
+    await tapText(tester, "In the site's bar, as icons");
+
+    await tapText(tester, "No background behind the shop's links");
+    expect(shop.saved.navPlain, isTrue);
+
+    await drag(tester, "nav-gap", 4);
+    expect(shop.saved.navGap, 4);
+
+    await drag(tester, "nav-size", 24);
+    expect(shop.saved.navIconSize, 24);
+
+    await drag(tester, "nav-inset", 16);
+    expect(shop.saved.navInset, 16);
+
+    expect(shop.saved.navShop, isTrue);
+    await tapText(tester, "Show the Shop link");
+    expect(shop.saved.navShop, isFalse);
+
+    expect(shop.saved.navAdmin, isTrue);
+    await tapText(tester, "Show the Admin link");
+    expect(shop.saved.navAdmin, isFalse);
   });
 
   testWidgets('the grid is set from the shop rather than the reader',
@@ -395,10 +429,8 @@ void main() {
   testWidgets('the two row gaps are one control until they are two',
       (tester) async {
     var shop = await pump(tester);
-    await tester.tap(find.text("Title and price").last);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text("Title, description, price and a button").last);
-    await tester.pumpAndSettle();
+    await tapText(tester, "Title and price");
+    await tapText(tester, "Title, description, price and a button");
 
     // Apart to begin with, because the defaults differ: the description sits
     // closer under the title than the price row does under it.
@@ -407,8 +439,7 @@ void main() {
     expect(shop.saved.metaGap, 16);
     expect(shop.saved.rowGap, isNot(16), reason: "one gap moved the other");
 
-    await tester.tap(find.text("Set the space above each row separately"));
-    await tester.pumpAndSettle();
+    await tapText(tester, "Set the space above each row separately");
     expect(find.text("Space between rows"), findsOneWidget);
     expect(shop.saved.metaGap, shop.saved.rowGap,
         reason: "brought back together, one number must draw one gap");
@@ -420,22 +451,18 @@ void main() {
 
   testWidgets('a product name can be held to one line', (tester) async {
     var shop = await pump(tester);
-    await tester.tap(find.text("Title and price").last);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text("Title, description, price and a button").last);
-    await tester.pumpAndSettle();
+    await tapText(tester, "Title and price");
+    await tapText(tester, "Title, description, price and a button");
 
     expect(shop.indexLayout.titleOneLine, isFalse);
-    await tester.tap(find.text("Keep a product's name to one line"));
-    await tester.pumpAndSettle();
+    await tapText(tester, "Keep a product's name to one line");
     expect(shop.saved.titleOneLine, isTrue);
   });
 
   testWidgets('the plate\'s padding is one number until it is four',
       (tester) async {
     var shop = await pump(tester);
-    await tester.tap(find.text("Draw a plate behind the writing"));
-    await tester.pumpAndSettle();
+    await tapText(tester, "Draw a plate behind the writing");
 
     expect(find.text("Padding"), findsOneWidget);
     expect(find.text("Top"), findsNothing);
@@ -443,8 +470,7 @@ void main() {
     await drag(tester, "plate-padding", 12);
     expect(shop.saved.textPadding, 12);
 
-    await tester.tap(find.text("Set the plate's padding side by side"));
-    await tester.pumpAndSettle();
+    await tapText(tester, "Set the plate's padding side by side");
 
     // Each side starts where it already was, so nothing moves at the moment
     // the controls change.
@@ -457,8 +483,7 @@ void main() {
 
     // And back: the sides give up their own answers, or one slider would be
     // showing and four would be drawn.
-    await tester.tap(find.text("Set the plate's padding side by side"));
-    await tester.pumpAndSettle();
+    await tapText(tester, "Set the plate's padding side by side");
     expect(shop.saved.textPaddingBottom, lessThan(0));
     expect(shop.saved.textPadding, 12);
   });
@@ -468,14 +493,12 @@ void main() {
     // The same control, asked twice: the plate's padding and the card's are
     // the same question.
     var shop = await pump(tester);
-    await tester.tap(find.text("Draw a border round each product"));
-    await tester.pumpAndSettle();
+    await tapText(tester, "Draw a border round each product");
 
     await drag(tester, "card-padding", 10);
     expect(shop.saved.cardPadding, 10);
 
-    await tester.tap(find.text("Set the card's padding side by side"));
-    await tester.pumpAndSettle();
+    await tapText(tester, "Set the card's padding side by side");
     expect(shop.saved.cardPaddingTop, 10);
 
     await drag(tester, "card-padding-bottom", 20);
@@ -490,16 +513,11 @@ void main() {
     // these settings is meant to be usable at the same time.
     var shop = await pump(tester);
 
-    await tester.tap(find.text("Draw a plate behind the writing"));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text("Draw a border round each product"));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text("Title and price").last);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text("Title, description, price and a button").last);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text("Set the picture's corners one by one"));
-    await tester.pumpAndSettle();
+    await tapText(tester, "Draw a plate behind the writing");
+    await tapText(tester, "Draw a border round each product");
+    await tapText(tester, "Title and price");
+    await tapText(tester, "Title, description, price and a button");
+    await tapText(tester, "Set the picture's corners one by one");
 
     expect(tester.takeException(), isNull);
 
@@ -555,8 +573,7 @@ void main() {
     var shop = await pump(tester);
     expect(shop.indexLayout.showDCR, isTrue);
 
-    await tester.tap(find.text("Show the DCR estimate on the shop front"));
-    await tester.pumpAndSettle();
+    await tapText(tester, "Show the DCR estimate on the shop front");
 
     expect(shop.saved.showDCR, isFalse);
     expect(shop.saves, 1);

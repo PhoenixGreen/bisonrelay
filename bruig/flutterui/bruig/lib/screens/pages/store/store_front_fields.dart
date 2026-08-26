@@ -85,6 +85,12 @@ const _textAligns = {
   "right": "Right",
 };
 
+const _storeNavs = {
+  "own": "A bar of the shop's own",
+  "links": "In the site's bar, as words",
+  "icons": "In the site's bar, as icons",
+};
+
 const _textLayouts = {
   "plain": "Title and price",
   "rows": "Title, description, price and a button",
@@ -141,6 +147,85 @@ class StoreFrontFields extends StatelessWidget {
             color: TextColor.onSurfaceVariant)
       else
         _Stale(missing: store.frontPageMissing),
+
+      // ---- where the shop's links go ----
+      _Group(title: "The shop's links", children: [
+        _choice(
+          "Where they go",
+          value: layout.storeNav,
+          items: _storeNavs,
+          onChanged: (v) => save(layout.copyWith(storeNav: v)),
+        ),
+        _note("A shop inside a site has two bars otherwise -- the site's "
+            "pages and the shop's -- one above the other, each saying half "
+            "of where you can go. In the site's bar they sit at the "
+            "right-hand end, the cart wears what is in it, and on a narrow "
+            "screen they fold into one menu."),
+        if (layout.storeNav != "own") ...[
+          _note("A shop hosted without a site, or one whose header has no "
+              "bar of links, keeps its own bar whatever this says."),
+          _toggle(
+            "No background behind the shop's links",
+            subtitle: "A row of icons in boxes is a row of buttons, which is "
+                "a different thing from a row of icons",
+            value: layout.navPlain,
+            onChanged: (v) => save(layout.copyWith(navPlain: v)),
+          ),
+          labelled(
+            "Space between the shop's links",
+            ValueSlider(
+              key: const ValueKey("store-front/nav-gap"),
+              // Below nought is the bar's own, which is where this starts:
+              // the shop's links sit like the site's until asked otherwise.
+              label: (v) => v < 0 ? "The bar's own" : v.round().toString(),
+              value: layout.navGap.toDouble().clamp(-1, _maxRoom),
+              min: -1,
+              max: _maxRoom,
+              divisions: _maxRoom.round() + 1,
+              numberField: true,
+              onCommit: (v) => save(layout.copyWith(navGap: v.round())),
+            ),
+          ),
+          _note("Icons want to sit closer together than words do."),
+          responsiveRow([
+            labelled(
+              "Icon size",
+              ValueSlider(
+                key: const ValueKey("store-front/nav-size"),
+                label: (v) =>
+                    v < 0 ? "The ordinary size" : v.round().toString(),
+                value: layout.navIconSize.toDouble().clamp(-1, 40),
+                min: -1,
+                max: 40,
+                divisions: 41,
+                numberField: true,
+                onCommit: (v) => save(layout.copyWith(navIconSize: v.round())),
+              ),
+            ),
+            _lengthCell(
+                "nav-inset",
+                "Room at the end of the bar",
+                layout.navInset,
+                _maxRoom,
+                (v) => save(layout.copyWith(navInset: v))),
+          ]),
+          _toggle(
+            "Show the Shop link",
+            subtitle: "Off suits a site whose own bar already has a link to "
+                "the shop -- which is how a visitor got here",
+            value: layout.navShop,
+            onChanged: (v) => save(layout.copyWith(navShop: v)),
+          ),
+          _toggle(
+            "Show the Admin link",
+            subtitle: "Yours alone -- a buyer is never shown it and cannot "
+                "reach those pages. The pages stay where they are either "
+                "way, so a bookmark keeps working",
+            value: layout.navAdmin,
+            onChanged: (v) => save(layout.copyWith(navAdmin: v)),
+          ),
+        ],
+      ]),
 
       // ---- the grid ----
       _Group(title: "The grid", children: [
