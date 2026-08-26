@@ -1,3 +1,4 @@
+import 'package:bruig/components/feed/page_image.dart';
 import 'package:bruig/components/md_elements.dart';
 import 'package:bruig/theming_system/model/button_style.dart';
 import 'package:bruig/theming_system/model/markdown_style.dart';
@@ -86,6 +87,15 @@ class ListingRule {
   final double radius;
   final double padding;
 
+  /// image is a picture of the site's own shown beside the rows, or empty
+  /// for none, and imageSize is how large a square it is drawn in.
+  ///
+  /// Beside rather than above: this is a thumbnail on a row of a list -- an
+  /// order line, a product in a basket -- where the picture is what somebody
+  /// recognises the row by and the rows still have to line up.
+  final String image;
+  final double imageSize;
+
   const ListingRule({
     this.title = "",
     this.link = "",
@@ -101,6 +111,8 @@ class ListingRule {
     this.fill,
     this.radius = 8,
     this.padding = 12,
+    this.image = "",
+    this.imageSize = 48,
   });
 
   static ListingRule of(Map<String, String> fields) {
@@ -129,6 +141,11 @@ class ListingRule {
       fill: _ink(fields["color"]),
       radius: _length(fields["radius"], 8, 60),
       padding: _length(fields["padding"], 12, 40),
+      // A path of this site's own and nothing else, the same bargain a
+      // panel's background makes: a picture that could name a URL is every
+      // page able to ask its reader's client to fetch from anywhere.
+      image: isPageAssetPath(fields["image"] ?? "") ? fields["image"]! : "",
+      imageSize: _length(fields["imagesize"], 48, 200),
     );
   }
 
@@ -269,11 +286,28 @@ class MarkdownListing extends StatelessWidget {
       ],
     ];
 
-    return Column(
+    var writing = Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: rule.align,
       children: rows,
     );
+
+    if (rule.image.isEmpty) return writing;
+
+    var picture = pageAssetPicture(context, rule.image,
+        fit: BoxFit.cover, alignment: Alignment.center);
+
+    return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      SizedBox(
+        width: rule.imageSize,
+        height: rule.imageSize,
+        child: picture == null
+            ? null
+            : ClipRRect(borderRadius: BorderRadius.circular(6), child: picture),
+      ),
+      SizedBox(width: rule.gap * 2),
+      Expanded(child: writing),
+    ]);
   }
 
   /// _footer is the last row: what it costs, and the thing to press.

@@ -443,6 +443,41 @@ void main() {
     });
   });
 
+  group('an order as the store writes it', () {
+    testWidgets('a line of an order draws its picture beside it',
+        (tester) async {
+      // A thumbnail on a row of a list -- an order line, a product in a
+      // basket -- where the picture is what somebody recognises the row by
+      // and the rows still have to line up.
+      await tester.pumpWidget(wrap(MarkdownArea(
+          "--listing--\n"
+          "title: A guitar\n"
+          "summary: 2 × \$20.00\n"
+          "meta: \$40.00\n"
+          "image: shopassets/g.jpg\n"
+          "--/listing--\n",
+          false)));
+      await tester.pump();
+
+      expect(find.text("A guitar"), findsOneWidget);
+      expect(find.byType(Image), findsOneWidget);
+
+      var picture = tester.getRect(find.byType(Image));
+      var title = tester.getRect(find.text("A guitar"));
+      expect(picture.right, lessThanOrEqualTo(title.left),
+          reason: "the picture is not beside the writing");
+    });
+
+    testWidgets('a line with no picture is just the writing', (tester) async {
+      await tester.pumpWidget(wrap(MarkdownArea(
+          "--listing--\ntitle: A drum\nmeta: \$5.00\n--/listing--\n", false)));
+      await tester.pump();
+
+      expect(find.byType(Image), findsNothing);
+      expect(find.text("A drum"), findsOneWidget);
+    });
+  });
+
   group('a shop front as the store writes it', () {
     // The markup below is what simplestore's productCard emits, pasted as it
     // comes out. The two are covered separately -- Go for what is written,
