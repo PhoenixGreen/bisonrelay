@@ -38,7 +38,10 @@ func TestRestoreReachesAStoreThatAlreadyExists(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(got), "--grid[") {
+	// The shipped front page calls the store for its grid rather than
+	// writing the marker itself, since how far apart the products are is a
+	// setting now. What tells the two apart is that call.
+	if !strings.Contains(string(got), "storeGrid") {
 		t.Fatalf("the shop front is still the old one:\n%s", got)
 	}
 }

@@ -119,6 +119,20 @@ type IndexLayout struct {
 	TextMargin     int    `json:"text_margin" toml:"text_margin"`
 	TextRadius     int    `json:"text_radius" toml:"text_radius"`
 
+	// The plate's padding per side, or below nought for whichever sides are
+	// content with TextPadding.
+	//
+	// A base and four exceptions rather than four numbers, so that a shop
+	// which has only ever set one padding keeps one padding -- in its file,
+	// in its markup and in the control it set it with. Writing on a plate is
+	// usually inset the same all round; the side that wants a different
+	// answer is a caption that has to clear the bottom of a photograph, and
+	// that is one side rather than four.
+	TextPaddingTop    int `json:"text_padding_top" toml:"text_padding_top"`
+	TextPaddingRight  int `json:"text_padding_right" toml:"text_padding_right"`
+	TextPaddingBottom int `json:"text_padding_bottom" toml:"text_padding_bottom"`
+	TextPaddingLeft   int `json:"text_padding_left" toml:"text_padding_left"`
+
 	// TextPosition is where the writing sits on a card whose picture fills
 	// it. Read only for ImageFull: on the other two the picture and the
 	// writing are stacked, and where the writing is is which of them.
@@ -160,14 +174,41 @@ type IndexLayout struct {
 	ButtonRadius  int    `json:"button_radius" toml:"button_radius"`
 	ButtonPadding int    `json:"button_padding" toml:"button_padding"`
 
-	// RowGap is the room between one row of the three-row card and the
-	// next.
+	// RowGap is the room between the title and the description, and
+	// MetaGap the room above the price-and-button row.
 	//
-	// One number for both gaps. They are the same kind of space -- what
-	// separates a row from the row under it -- and two settings for that is
-	// two things to keep in step for a difference nobody looking at a card
-	// an inch wide could name.
-	RowGap int `json:"row_gap" toml:"row_gap"`
+	// Two, because they are not the same join: the description belongs to
+	// the title above it and sits close under it, while the last row is the
+	// end of the card and usually wants air above it. The seller's UI offers
+	// to move them together, which is what most cards want.
+	RowGap  int `json:"row_gap" toml:"row_gap"`
+	MetaGap int `json:"meta_gap" toml:"meta_gap"`
+
+	// TitleOneLine keeps a product's name to one line, cutting it with an
+	// ellipsis the way the description is cut.
+	//
+	// Off by default: losing the end of a name is worse than a card an
+	// extra line tall, unless the seller says otherwise -- and a shop whose
+	// names are long is a shop that would rather they lined up.
+	TitleOneLine bool `json:"title_one_line" toml:"title_one_line"`
+
+	// GridGap is the room between one product and the next, or below nought
+	// to leave it to whatever the reader's own guide keeps.
+	//
+	// The reader's by default, and that default is the point: most of what
+	// looks like space between two products is the cards' own margins, and a
+	// shop that has not asked for anything here should be laid out the way
+	// its reader lays out a gallery.
+	GridGap int `json:"grid_gap" toml:"grid_gap"`
+
+	// GridMargin is the room down either side of the whole grid.
+	//
+	// The app's own to begin with. A page keeps a margin so its writing does
+	// not run into the edge of the window; a grid of cards is already a set
+	// of boxes with room of their own, so a shop front is somewhere a seller
+	// may reasonably want less of it -- on a phone it can be the difference
+	// between three cards across and two.
+	GridMargin int `json:"grid_margin" toml:"grid_margin"`
 
 	// CardBorder is whether a line is drawn round the whole card, and what
 	// that line and the room around it look like.
@@ -181,6 +222,14 @@ type IndexLayout struct {
 	CardBorderRadius int    `json:"card_border_radius" toml:"card_border_radius"`
 	CardPadding      int    `json:"card_padding" toml:"card_padding"`
 	CardMargin       int    `json:"card_margin" toml:"card_margin"`
+
+	// The card's padding per side, or below nought for whichever sides are
+	// content with CardPadding -- the same bargain the plate's padding
+	// makes, for the same reason.
+	CardPaddingTop    int `json:"card_padding_top" toml:"card_padding_top"`
+	CardPaddingRight  int `json:"card_padding_right" toml:"card_padding_right"`
+	CardPaddingBottom int `json:"card_padding_bottom" toml:"card_padding_bottom"`
+	CardPaddingLeft   int `json:"card_padding_left" toml:"card_padding_left"`
 
 	// The picture's own corners, one by one.
 	//
@@ -208,30 +257,41 @@ type IndexLayout struct {
 // DCR figure beside the dollar one.
 func DefaultIndexLayout() IndexLayout {
 	return IndexLayout{
-		FixedImage:    false,
-		ImageWidth:    400,
-		ImageHeight:   400,
-		Crop:          CropCenter,
-		ImagePosition: ImageTop,
-		TextColor:     "raised",
-		TextPadding:   10,
-		TextMargin:    0,
-		TextRadius:    8,
-		TextPosition:  TextBottom,
-		TextFullWidth: true,
-		TextAlign:     TextLeft,
-		TextLayout:    TextPlain,
-		ButtonLabel:   "Buy Now",
-		ButtonColor:   "",
-		ButtonRadius:  8,
-		ButtonPadding: 12,
-		RowGap:        6,
+		FixedImage:        false,
+		ImageWidth:        400,
+		ImageHeight:       400,
+		Crop:              CropCenter,
+		ImagePosition:     ImageTop,
+		TextColor:         "raised",
+		TextPadding:       10,
+		TextPaddingTop:    padSideUnset,
+		TextPaddingRight:  padSideUnset,
+		TextPaddingBottom: padSideUnset,
+		TextPaddingLeft:   padSideUnset,
+		TextMargin:        0,
+		TextRadius:        8,
+		TextPosition:      TextBottom,
+		TextFullWidth:     true,
+		TextAlign:         TextLeft,
+		TextLayout:        TextPlain,
+		ButtonLabel:       "Buy Now",
+		ButtonColor:       "",
+		ButtonRadius:      8,
+		ButtonPadding:     12,
+		RowGap:            4,
+		MetaGap:           8,
+		GridGap:           gridGapTheirs,
+		GridMargin:        defaultPageEdge,
 
-		CardBorderWidth:  1,
-		CardBorderColor:  "outline",
-		CardBorderRadius: 8,
-		CardPadding:      10,
-		CardMargin:       0,
+		CardBorderWidth:   1,
+		CardBorderColor:   "outline",
+		CardBorderRadius:  8,
+		CardPadding:       10,
+		CardMargin:        0,
+		CardPaddingTop:    padSideUnset,
+		CardPaddingRight:  padSideUnset,
+		CardPaddingBottom: padSideUnset,
+		CardPaddingLeft:   padSideUnset,
 
 		ShowDCR: true,
 	}
@@ -299,10 +359,23 @@ func (l IndexLayout) normalize() IndexLayout {
 	l.ButtonRadius = clampLength(l.ButtonRadius, def.ButtonRadius)
 	l.ButtonPadding = clampLength(l.ButtonPadding, def.ButtonPadding)
 	l.RowGap = clampLength(l.RowGap, def.RowGap)
+	l.MetaGap = clampLength(l.MetaGap, def.MetaGap)
+	// Anything below nought is "the reader's own", which is one answer
+	// however it is written.
+	if l.GridGap < 0 {
+		l.GridGap = gridGapTheirs
+	} else {
+		l.GridGap = clampLength(l.GridGap, 0)
+	}
+	l.GridMargin = clampLength(l.GridMargin, def.GridMargin)
 
 	l.CardBorderWidth = clampLength(l.CardBorderWidth, def.CardBorderWidth)
 	l.CardBorderRadius = clampLength(l.CardBorderRadius, def.CardBorderRadius)
 	l.CardPadding = clampLength(l.CardPadding, def.CardPadding)
+	l.CardPaddingTop = clampSide(l.CardPaddingTop)
+	l.CardPaddingRight = clampSide(l.CardPaddingRight)
+	l.CardPaddingBottom = clampSide(l.CardPaddingBottom)
+	l.CardPaddingLeft = clampSide(l.CardPaddingLeft)
 	l.CardMargin = clampLength(l.CardMargin, def.CardMargin)
 
 	l.ImageCornerTopLeft = clampLength(l.ImageCornerTopLeft, 0)
@@ -310,6 +383,10 @@ func (l IndexLayout) normalize() IndexLayout {
 	l.ImageCornerBottomRight = clampLength(l.ImageCornerBottomRight, 0)
 	l.ImageCornerBottomLeft = clampLength(l.ImageCornerBottomLeft, 0)
 	l.TextPadding = clampLength(l.TextPadding, def.TextPadding)
+	l.TextPaddingTop = clampSide(l.TextPaddingTop)
+	l.TextPaddingRight = clampSide(l.TextPaddingRight)
+	l.TextPaddingBottom = clampSide(l.TextPaddingBottom)
+	l.TextPaddingLeft = clampSide(l.TextPaddingLeft)
 	l.TextMargin = clampLength(l.TextMargin, 0)
 	l.TextRadius = clampLength(l.TextRadius, def.TextRadius)
 	return l
@@ -339,6 +416,53 @@ func oneOf(value string, allowed ...string) bool {
 		}
 	}
 	return false
+}
+
+// padSideUnset is the per-side padding meaning "whatever the plate's own
+// padding is".
+const padSideUnset = -1
+
+// clampSide keeps a per-side length to something drawable, or leaves it
+// unset. Anything below nought is one answer however it is written.
+func clampSide(value int) int {
+	if value < 0 {
+		return padSideUnset
+	}
+	return clampLength(value, padSideUnset)
+}
+
+// sidedLength is a length written as one number when every side agrees and
+// as four -- top, right, bottom, left -- when they do not.
+//
+// One number where one number will do, so that a shop which has never opened
+// the per-side controls renders the markup it always did, and its settings
+// file keeps the one line it had.
+func sidedLength(base, top, right, bottom, left int) string {
+	side := func(v int) int {
+		if v < 0 {
+			return base
+		}
+		return v
+	}
+	t, r := side(top), side(right)
+	b, l := side(bottom), side(left)
+
+	if t == r && t == b && t == l {
+		return fmt.Sprintf("%d", t)
+	}
+	return fmt.Sprintf("%d %d %d %d", t, r, b, l)
+}
+
+// platePadding is the room inside the plate.
+func platePadding(l IndexLayout) string {
+	return sidedLength(l.TextPadding, l.TextPaddingTop, l.TextPaddingRight,
+		l.TextPaddingBottom, l.TextPaddingLeft)
+}
+
+// cardPadding is the room between the card's border and what is inside it.
+func cardPadding(l IndexLayout) string {
+	return sidedLength(l.CardPadding, l.CardPaddingTop, l.CardPaddingRight,
+		l.CardPaddingBottom, l.CardPaddingLeft)
 }
 
 func clampLength(value, fallback int) int {
@@ -410,6 +534,41 @@ func (s *Store) SetIndexLayout(layout IndexLayout) (IndexLayout, error) {
 	return layout, nil
 }
 
+// storePage is what room the shop front keeps around itself.
+//
+// The room round a shop front is not the room round a page of writing. A page
+// keeps a margin so its text does not run into the edge of the window; a grid
+// of cards is already a set of boxes with room of their own, and on a phone
+// that margin is the difference between three cards across and two. So the
+// sides are the seller's, and the top and bottom keep what a page keeps.
+func (s *Store) storePage() string {
+	return fmt.Sprintf("--page--\nmargin: %d %d\n--/page--",
+		defaultPageEdge, s.IndexLayout().GridMargin)
+}
+
+// gridGapTheirs is the gap setting meaning "whatever the reader's own guide
+// keeps", which is what a shop that has not asked gets.
+const gridGapTheirs = -1
+
+// storeGrid opens the grid the products are laid out in.
+//
+// A bare grid unless the seller has asked for a gap of their own, so that a
+// shop nobody has touched is laid out the way its reader lays out a gallery
+// -- and so the markup is the markup this wrote before the gap was a
+// setting at all.
+func (s *Store) storeGrid() string {
+	gap := s.IndexLayout().GridGap
+	if gap < 0 {
+		return "--grid[3]--"
+	}
+	return fmt.Sprintf("--grid[3, gap=%d]--", gap)
+}
+
+// defaultPageEdge is the room above and below a page, which the shop front
+// leaves alone: it is the app's own, and a shop front pressed against the
+// bar of links above it is not what anybody asked for.
+const defaultPageEdge = 16
+
 // productCard is one product as it appears on the shop front.
 //
 // Markup rather than a widget, because the shop front is a page: it is
@@ -439,7 +598,7 @@ func (s *Store) productCard(p *Product) string {
 	var card string
 	switch layout.ImagePosition {
 	case ImageBottom:
-		card = writing + picture
+		card = cardStack(layout, writing+picture)
 	case ImageFull:
 		// One panel: the picture is the card, and the writing sits on it
 		// wherever the seller asked for.
@@ -449,10 +608,32 @@ func (s *Store) productCard(p *Product) string {
 			prefixed(cardCorners(layout)), link, layout.TextPosition,
 			s.cardJustify(layout), plateRoom(layout), writing)
 	default:
-		card = picture + writing
+		card = cardStack(layout, picture+writing)
 	}
 
 	return s.cardFrame(layout, card)
+}
+
+// cardStack is the picture and the writing held together, with the room
+// between them set.
+//
+// The one piece of spacing neither of them can state. A margin of nought on
+// both still leaves the renderer's own spacing between two blocks, so a plate
+// told to sit flush against the picture sat a fixed gap away from it however
+// firmly it was asked not to -- the setting saved, and both answers drew the
+// same card.
+//
+// Written only when the seller has asked for something. A shop that has
+// touched neither setting renders what it always did, down to the markup.
+func cardStack(layout IndexLayout, body string) string {
+	if !layout.TextFlush && layout.TextMargin == 0 {
+		return body
+	}
+	gap := layout.TextMargin
+	if layout.TextFlush {
+		gap = 0
+	}
+	return fmt.Sprintf("--panel[gap=%d]--\n%s--/panel--\n", gap, body)
 }
 
 // cardFrame is the line drawn round a whole card, and the room inside and
@@ -466,9 +647,9 @@ func (s *Store) cardFrame(layout IndexLayout, card string) string {
 	if !layout.CardBorder {
 		return card
 	}
-	return fmt.Sprintf("--panel[border=%d, color=%s, radius=%d, padding=%d, margin=%d]--\n%s--/panel--\n",
+	return fmt.Sprintf("--panel[border=%d, color=%s, radius=%d, padding=%s, margin=%d]--\n%s--/panel--\n",
 		layout.CardBorderWidth, layout.CardBorderColor,
-		layout.CardBorderRadius, layout.CardPadding, layout.CardMargin, card)
+		layout.CardBorderRadius, cardPadding(layout), layout.CardMargin, card)
 }
 
 // cardWriting is what a card says: the title and the price, or the three
@@ -502,10 +683,14 @@ func (s *Store) cardWriting(layout IndexLayout, p *Product, link string) string 
 		if summary := cardSummary(p.Description); summary != "" {
 			writing += "summary: " + summary + "\n"
 		}
+		if layout.TitleOneLine {
+			writing += "titlelines: 1\n"
+		}
 		writing += fmt.Sprintf("meta: %s\nbutton: %s\nstyle: primary\n"+
-			"align: %s\ngap: %d\nradius: %d\npadding: %d\n",
+			"align: %s\ngap: %d\nmetagap: %d\nradius: %d\npadding: %d\n",
 			price, oneLine(layout.ButtonLabel), layout.TextAlign,
-			layout.RowGap, layout.ButtonRadius, layout.ButtonPadding)
+			layout.RowGap, layout.MetaGap, layout.ButtonRadius,
+			layout.ButtonPadding)
 		if layout.ButtonColor != "" {
 			writing += "color: " + layout.ButtonColor + "\n"
 		}
@@ -528,12 +713,16 @@ func (s *Store) cardWriting(layout IndexLayout, p *Product, link string) string 
 			layout.TextAlign, s.cardJustify(layout), writing)
 	}
 
-	// The plate. Its margin is the room it keeps from whatever is next to
-	// it, which for a card whose picture fills it is the panel's padding
-	// instead -- so it is not written twice.
-	margin := plateMargin(layout)
-	plate := fmt.Sprintf("--panel[fill=%s, padding=%d, margin=%s, radius=%d, text=%s]--\n%s--/panel--\n",
-		layout.TextColor, layout.TextPadding, margin, layout.TextRadius,
+	// The plate keeps no margin of its own. The room between it and the
+	// picture belongs to whatever holds both of them -- the panel with the
+	// picture behind it, or the stack -- and room at the plate's sides is
+	// not the plate standing off anything, it is the plate not being the
+	// width it was told to be. Writing it here as well was what made "run it
+	// the full width" come out a few pixels short at each end, which reads
+	// as the setting not working.
+	margin := "0"
+	plate := fmt.Sprintf("--panel[fill=%s, padding=%s, margin=%s, radius=%d, text=%s]--\n%s--/panel--\n",
+		layout.TextColor, platePadding(layout), margin, layout.TextRadius,
 		layout.TextAlign, writing)
 
 	// A plate that is not the full width has to be told what to be instead,
@@ -621,28 +810,6 @@ func cardCorners(layout IndexLayout) string {
 	return fmt.Sprintf("radius=%d %d %d %d", layout.ImageCornerTopLeft,
 		layout.ImageCornerTopRight, layout.ImageCornerBottomRight,
 		layout.ImageCornerBottomLeft)
-}
-
-// plateMargin is the room the plate keeps from what is next to it, written
-// as the margin of the plate itself.
-//
-// Sitting flush means touching the picture, so it takes the room off the side
-// the picture is on and leaves the other three alone. On a card whose picture
-// fills it there is no side: the plate is on the picture, and the room comes
-// from the panel holding it -- see plateRoom.
-func plateMargin(layout IndexLayout) string {
-	if layout.ImagePosition == ImageFull {
-		return "0"
-	}
-	m := layout.TextMargin
-	if !layout.TextFlush {
-		return fmt.Sprintf("%d", m)
-	}
-	// Top, right, bottom, left.
-	if layout.ImagePosition == ImageBottom {
-		return fmt.Sprintf("%d %d 0 %d", m, m, m)
-	}
-	return fmt.Sprintf("0 %d %d %d", m, m, m)
 }
 
 // plateRoom is the room between the plate and the edge of the picture it

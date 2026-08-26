@@ -95,12 +95,34 @@ func TestEverySettingReachesTheCard(t *testing.T) {
 		},
 		wants: []string{"fill=#334455"},
 	}, {
-		name: "the room inside and around the plate",
+		name: "the room inside the plate, and between it and the picture",
 		set: func(l *IndexLayout) {
 			l.TextBackground = true
 			l.TextPadding, l.TextMargin, l.TextRadius = 12, 6, 16
 		},
-		wants: []string{"padding=12", "margin=6", "radius=16"},
+		// The gap between the plate and the picture belongs to the thing
+		// holding both of them: a margin on the plate itself would be room
+		// at its sides as well, which is the plate not being as wide as it
+		// was told to be.
+		wants: []string{"padding=12", "radius=16", "gap=6"},
+	}, {
+		name: "the plate's padding on one side alone",
+		set: func(l *IndexLayout) {
+			l.TextBackground = true
+			l.TextPadding = 10
+			l.TextPaddingBottom = 24
+		},
+		wants: []string{"padding=10 10 24 10"},
+	}, {
+		name: "a plate whose sides all agree",
+		set: func(l *IndexLayout) {
+			l.TextBackground = true
+			l.TextPadding = 12
+		},
+		// One number where one number will do: a shop that has never opened
+		// the per-side controls renders the markup it always did.
+		wants:    []string{"padding=12,"},
+		notWants: []string{"padding=12 12 12 12"},
 	}, {
 		name: "a plate that is not the full width",
 		set: func(l *IndexLayout) {
@@ -222,7 +244,7 @@ func TestEverySettingReachesTheCard(t *testing.T) {
 			l.TextFlush = true
 			l.TextMargin = 8
 		},
-		wants: []string{"margin=0 8 8 8"},
+		wants: []string{"gap=0"},
 	}, {
 		name: "a plate flush with a picture below it",
 		set: func(l *IndexLayout) {
@@ -231,7 +253,7 @@ func TestEverySettingReachesTheCard(t *testing.T) {
 			l.TextFlush = true
 			l.TextMargin = 8
 		},
-		wants: []string{"margin=8 8 0 8"},
+		wants: []string{"gap=0"},
 	}, {
 		name: "a plate standing off a picture above it",
 		set: func(l *IndexLayout) {
@@ -240,7 +262,37 @@ func TestEverySettingReachesTheCard(t *testing.T) {
 			l.TextFlush = false
 			l.TextMargin = 8
 		},
-		wants: []string{"margin=8,"},
+		wants: []string{"gap=8"},
+	}, {
+		name: "the card's padding on one side alone",
+		set: func(l *IndexLayout) {
+			l.CardBorder = true
+			l.CardPadding = 10
+			l.CardPaddingBottom = 20
+		},
+		wants: []string{"padding=10 10 20 10"},
+	}, {
+		name:  "a gap between products of the shop's own",
+		set:   func(l *IndexLayout) { l.GridGap = 12 },
+		wants: []string{"--grid[3, gap=12]--"},
+	}, {
+		name:  "less room down the sides of the grid",
+		set:   func(l *IndexLayout) { l.GridMargin = 0 },
+		wants: []string{"margin: 16 0"},
+	}, {
+		name: "a product's name held to one line",
+		set: func(l *IndexLayout) {
+			l.TextLayout = TextRows
+			l.TitleOneLine = true
+		},
+		wants: []string{"titlelines: 1"},
+	}, {
+		name: "the two row gaps apart",
+		set: func(l *IndexLayout) {
+			l.TextLayout = TextRows
+			l.RowGap, l.MetaGap = 2, 16
+		},
+		wants: []string{"gap: 2", "metagap: 16"},
 	}, {
 		name:     "the DCR figure left off",
 		set:      func(l *IndexLayout) { l.ShowDCR = false },
@@ -255,7 +307,12 @@ func TestEverySettingReachesTheCard(t *testing.T) {
 			s := &Store{indexPath: "/", log: slog.Disabled, layout: layout}
 			// A rate, so the DCR figure is there to be left off.
 			s.cfg.ExchangeRateProvider = func() float64 { return 25 }
-			got := s.productCard(product)
+
+			// The card, and the markup the front page opens with: two of
+			// these settings are about the grid the cards sit in rather than
+			// about a card, and both are written by the shop.
+			got := s.storePage() + "\n" + s.storeGrid() + "\n" +
+				s.productCard(product)
 
 			for _, want := range c.wants {
 				if !strings.Contains(got, want) {

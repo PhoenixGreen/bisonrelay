@@ -1,9 +1,10 @@
+{{ storePage }}
 {{with shopName}}# {{.}}
 {{end}}
 {{- with shopTagline}}{{.}}
 
 {{end}}
---grid[3]--
+{{ storeGrid }}
 {{range .Products -}}
 --cell--
 {{ productCard . }}

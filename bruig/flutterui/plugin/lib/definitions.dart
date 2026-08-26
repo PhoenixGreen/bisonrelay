@@ -2949,6 +2949,14 @@ class StoreIndexLayout {
   final bool textBackground;
   final String textColor;
   final int textPadding;
+
+  /// The plate's padding per side, or below nought for whichever sides are
+  /// content with [textPadding]. A base and four exceptions, so a shop that
+  /// has only ever set one padding keeps one padding.
+  final int textPaddingTop;
+  final int textPaddingRight;
+  final int textPaddingBottom;
+  final int textPaddingLeft;
   final int textMargin;
   final int textRadius;
 
@@ -2981,8 +2989,24 @@ class StoreIndexLayout {
   final int buttonRadius;
   final int buttonPadding;
 
-  /// rowGap is the room between one row of the three-row card and the next.
+  /// rowGap is the room between the title and the description, and metaGap
+  /// the room above the price-and-button row.
   final int rowGap;
+  final int metaGap;
+
+  /// titleOneLine keeps a product's name to one line, cut with an ellipsis
+  /// the way the description is.
+  final bool titleOneLine;
+
+  /// gridGap is the room between one product and the next, or below nought
+  /// for whatever the reader's own guide keeps -- which is the default,
+  /// because most of what looks like space between two products is the
+  /// cards' own margins.
+  final int gridGap;
+
+  /// gridMargin is the room down either side of the whole grid, starting at
+  /// the room the app keeps round any page.
+  final int gridMargin;
 
   /// The line round the whole card, and the room inside and outside it.
   final bool cardBorder;
@@ -2991,6 +3015,13 @@ class StoreIndexLayout {
   final int cardBorderRadius;
   final int cardPadding;
   final int cardMargin;
+
+  /// The card's padding per side, or below nought for whichever sides are
+  /// content with [cardPadding].
+  final int cardPaddingTop;
+  final int cardPaddingRight;
+  final int cardPaddingBottom;
+  final int cardPaddingLeft;
 
   /// The picture's own corners, one by one, clockwise from the top left.
   final int imageCornerTopLeft;
@@ -3011,6 +3042,10 @@ class StoreIndexLayout {
     this.textBackground = false,
     this.textColor = "raised",
     this.textPadding = 10,
+    this.textPaddingTop = -1,
+    this.textPaddingRight = -1,
+    this.textPaddingBottom = -1,
+    this.textPaddingLeft = -1,
     this.textMargin = 0,
     this.textRadius = 8,
     this.textPosition = "bottom",
@@ -3022,13 +3057,21 @@ class StoreIndexLayout {
     this.buttonColor = "",
     this.buttonRadius = 8,
     this.buttonPadding = 12,
-    this.rowGap = 6,
+    this.rowGap = 4,
+    this.metaGap = 8,
+    this.titleOneLine = false,
+    this.gridGap = -1,
+    this.gridMargin = 16,
     this.cardBorder = false,
     this.cardBorderWidth = 1,
     this.cardBorderColor = "outline",
     this.cardBorderRadius = 8,
     this.cardPadding = 10,
     this.cardMargin = 0,
+    this.cardPaddingTop = -1,
+    this.cardPaddingRight = -1,
+    this.cardPaddingBottom = -1,
+    this.cardPaddingLeft = -1,
     this.imageCornerTopLeft = 0,
     this.imageCornerTopRight = 0,
     this.imageCornerBottomRight = 0,
@@ -3062,6 +3105,11 @@ class StoreIndexLayout {
       textBackground: flag("text_background", fallback.textBackground),
       textColor: word("text_color", fallback.textColor),
       textPadding: number("text_padding", fallback.textPadding),
+      textPaddingTop: number("text_padding_top", fallback.textPaddingTop),
+      textPaddingRight: number("text_padding_right", fallback.textPaddingRight),
+      textPaddingBottom:
+          number("text_padding_bottom", fallback.textPaddingBottom),
+      textPaddingLeft: number("text_padding_left", fallback.textPaddingLeft),
       textMargin: number("text_margin", fallback.textMargin),
       textRadius: number("text_radius", fallback.textRadius),
       textPosition: word("text_position", fallback.textPosition),
@@ -3078,11 +3126,20 @@ class StoreIndexLayout {
       buttonRadius: number("button_radius", fallback.buttonRadius),
       buttonPadding: number("button_padding", fallback.buttonPadding),
       rowGap: number("row_gap", fallback.rowGap),
+      metaGap: number("meta_gap", fallback.metaGap),
+      titleOneLine: flag("title_one_line", fallback.titleOneLine),
+      gridGap: number("grid_gap", fallback.gridGap),
+      gridMargin: number("grid_margin", fallback.gridMargin),
       cardBorder: flag("card_border", fallback.cardBorder),
       cardBorderWidth: number("card_border_width", fallback.cardBorderWidth),
       cardBorderColor: word("card_border_color", fallback.cardBorderColor),
       cardBorderRadius: number("card_border_radius", fallback.cardBorderRadius),
       cardPadding: number("card_padding", fallback.cardPadding),
+      cardPaddingTop: number("card_padding_top", fallback.cardPaddingTop),
+      cardPaddingRight: number("card_padding_right", fallback.cardPaddingRight),
+      cardPaddingBottom:
+          number("card_padding_bottom", fallback.cardPaddingBottom),
+      cardPaddingLeft: number("card_padding_left", fallback.cardPaddingLeft),
       cardMargin: number("card_margin", fallback.cardMargin),
       imageCornerTopLeft:
           number("image_corner_top_left", fallback.imageCornerTopLeft),
@@ -3105,6 +3162,10 @@ class StoreIndexLayout {
         "text_background": textBackground,
         "text_color": textColor,
         "text_padding": textPadding,
+        "text_padding_top": textPaddingTop,
+        "text_padding_right": textPaddingRight,
+        "text_padding_bottom": textPaddingBottom,
+        "text_padding_left": textPaddingLeft,
         "text_margin": textMargin,
         "text_radius": textRadius,
         "text_position": textPosition,
@@ -3117,11 +3178,19 @@ class StoreIndexLayout {
         "button_radius": buttonRadius,
         "button_padding": buttonPadding,
         "row_gap": rowGap,
+        "meta_gap": metaGap,
+        "title_one_line": titleOneLine,
+        "grid_gap": gridGap,
+        "grid_margin": gridMargin,
         "card_border": cardBorder,
         "card_border_width": cardBorderWidth,
         "card_border_color": cardBorderColor,
         "card_border_radius": cardBorderRadius,
         "card_padding": cardPadding,
+        "card_padding_top": cardPaddingTop,
+        "card_padding_right": cardPaddingRight,
+        "card_padding_bottom": cardPaddingBottom,
+        "card_padding_left": cardPaddingLeft,
         "card_margin": cardMargin,
         "image_corner_top_left": imageCornerTopLeft,
         "image_corner_top_right": imageCornerTopRight,
@@ -3139,6 +3208,10 @@ class StoreIndexLayout {
     bool? textBackground,
     String? textColor,
     int? textPadding,
+    int? textPaddingTop,
+    int? textPaddingRight,
+    int? textPaddingBottom,
+    int? textPaddingLeft,
     int? textMargin,
     int? textRadius,
     String? textPosition,
@@ -3151,12 +3224,20 @@ class StoreIndexLayout {
     int? buttonRadius,
     int? buttonPadding,
     int? rowGap,
+    int? metaGap,
+    bool? titleOneLine,
+    int? gridGap,
+    int? gridMargin,
     bool? cardBorder,
     int? cardBorderWidth,
     String? cardBorderColor,
     int? cardBorderRadius,
     int? cardPadding,
     int? cardMargin,
+    int? cardPaddingTop,
+    int? cardPaddingRight,
+    int? cardPaddingBottom,
+    int? cardPaddingLeft,
     int? imageCornerTopLeft,
     int? imageCornerTopRight,
     int? imageCornerBottomRight,
@@ -3172,6 +3253,10 @@ class StoreIndexLayout {
         textBackground: textBackground ?? this.textBackground,
         textColor: textColor ?? this.textColor,
         textPadding: textPadding ?? this.textPadding,
+        textPaddingTop: textPaddingTop ?? this.textPaddingTop,
+        textPaddingRight: textPaddingRight ?? this.textPaddingRight,
+        textPaddingBottom: textPaddingBottom ?? this.textPaddingBottom,
+        textPaddingLeft: textPaddingLeft ?? this.textPaddingLeft,
         textMargin: textMargin ?? this.textMargin,
         textRadius: textRadius ?? this.textRadius,
         textPosition: textPosition ?? this.textPosition,
@@ -3184,11 +3269,19 @@ class StoreIndexLayout {
         buttonRadius: buttonRadius ?? this.buttonRadius,
         buttonPadding: buttonPadding ?? this.buttonPadding,
         rowGap: rowGap ?? this.rowGap,
+        metaGap: metaGap ?? this.metaGap,
+        titleOneLine: titleOneLine ?? this.titleOneLine,
+        gridGap: gridGap ?? this.gridGap,
+        gridMargin: gridMargin ?? this.gridMargin,
         cardBorder: cardBorder ?? this.cardBorder,
         cardBorderWidth: cardBorderWidth ?? this.cardBorderWidth,
         cardBorderColor: cardBorderColor ?? this.cardBorderColor,
         cardBorderRadius: cardBorderRadius ?? this.cardBorderRadius,
         cardPadding: cardPadding ?? this.cardPadding,
+        cardPaddingTop: cardPaddingTop ?? this.cardPaddingTop,
+        cardPaddingRight: cardPaddingRight ?? this.cardPaddingRight,
+        cardPaddingBottom: cardPaddingBottom ?? this.cardPaddingBottom,
+        cardPaddingLeft: cardPaddingLeft ?? this.cardPaddingLeft,
         cardMargin: cardMargin ?? this.cardMargin,
         imageCornerTopLeft: imageCornerTopLeft ?? this.imageCornerTopLeft,
         imageCornerTopRight: imageCornerTopRight ?? this.imageCornerTopRight,
@@ -3210,6 +3303,10 @@ class StoreIndexLayout {
       other.textBackground == textBackground &&
       other.textColor == textColor &&
       other.textPadding == textPadding &&
+      other.textPaddingTop == textPaddingTop &&
+      other.textPaddingRight == textPaddingRight &&
+      other.textPaddingBottom == textPaddingBottom &&
+      other.textPaddingLeft == textPaddingLeft &&
       other.textMargin == textMargin &&
       other.textRadius == textRadius &&
       other.textPosition == textPosition &&
@@ -3222,11 +3319,19 @@ class StoreIndexLayout {
       other.buttonRadius == buttonRadius &&
       other.buttonPadding == buttonPadding &&
       other.rowGap == rowGap &&
+      other.metaGap == metaGap &&
+      other.titleOneLine == titleOneLine &&
+      other.gridGap == gridGap &&
+      other.gridMargin == gridMargin &&
       other.cardBorder == cardBorder &&
       other.cardBorderWidth == cardBorderWidth &&
       other.cardBorderColor == cardBorderColor &&
       other.cardBorderRadius == cardBorderRadius &&
       other.cardPadding == cardPadding &&
+      other.cardPaddingTop == cardPaddingTop &&
+      other.cardPaddingRight == cardPaddingRight &&
+      other.cardPaddingBottom == cardPaddingBottom &&
+      other.cardPaddingLeft == cardPaddingLeft &&
       other.cardMargin == cardMargin &&
       other.imageCornerTopLeft == imageCornerTopLeft &&
       other.imageCornerTopRight == imageCornerTopRight &&
@@ -3244,7 +3349,8 @@ class StoreIndexLayout {
           imagePosition,
           textBackground,
           textColor,
-          textPadding,
+          Object.hash(textPadding, textPaddingTop, textPaddingRight,
+              textPaddingBottom, textPaddingLeft),
           textMargin,
           textRadius,
           textPosition,
@@ -3254,12 +3360,14 @@ class StoreIndexLayout {
       textAlign,
       textLayout,
       buttonLabel,
-      Object.hash(buttonColor, buttonRadius, buttonPadding, rowGap),
+      Object.hash(buttonColor, buttonRadius, buttonPadding, rowGap, metaGap,
+          titleOneLine, gridGap, gridMargin),
       cardBorder,
       cardBorderWidth,
       cardBorderColor,
       cardBorderRadius,
-      cardPadding,
+      Object.hash(cardPadding, cardPaddingTop, cardPaddingRight,
+          cardPaddingBottom, cardPaddingLeft),
       cardMargin,
       Object.hash(imageCornerTopLeft, imageCornerTopRight,
           imageCornerBottomRight, imageCornerBottomLeft));

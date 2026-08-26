@@ -346,6 +346,12 @@ func (s *Store) templateFuncs() template.FuncMap {
 		"shopName":    func() string { return s.shopName },
 		"shopTagline": func() string { return s.shopTagline },
 
+		// storeFront is what the shop front's grid is: how far apart the
+		// products are, and what room the page keeps at its sides. Both are
+		// settings, and neither is something a template can work out.
+		"storePage": s.storePage,
+		"storeGrid": s.storeGrid,
+
 		// productCard is one product as it appears on the shop front: the
 		// picture, the link and the price, laid out however the seller's
 		// Store setup asks for. A function rather than markup in the

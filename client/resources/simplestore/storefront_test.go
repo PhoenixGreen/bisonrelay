@@ -93,7 +93,8 @@ func TestThePlateBehindTheWritingIsASetting(t *testing.T) {
 
 	got := cardFor(t, layout, &Product{Title: "A guitar", SKU: "gtr"})
 	for _, want := range []string{
-		"fill=#101820", "padding=12", "margin=4", "radius=16",
+		// The margin is the stack's, not the plate's: see cardStack.
+		"fill=#101820", "padding=12", "gap=4", "radius=16",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("%q missing from:\n%s", want, got)
@@ -467,6 +468,25 @@ func TestTheShopFrontDoesNotWedgeItself(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("the shop front wedged itself: a card read the store's " +
 			"settings under the lock the render already holds")
+	}
+}
+
+// TestAShopThatHasAskedForNothingIsLaidOutAsItWas covers the two settings
+// that are about the page rather than the card.
+//
+// Both were first written with defaults of their own -- half the gap, no
+// margin -- on a diagnosis that turned out to be wrong: what looked like
+// space between two products was the cards' own margins. A setting whose
+// default changes every shop that never asked for it is a setting that
+// arrived as a bug.
+func TestAShopThatHasAskedForNothingIsLaidOutAsItWas(t *testing.T) {
+	s := &Store{indexPath: "/", log: slog.Disabled, layout: DefaultIndexLayout()}
+
+	if got := s.storeGrid(); got != "--grid[3]--" {
+		t.Errorf("got %q, want the bare grid every gallery has always been", got)
+	}
+	if got := s.storePage(); !strings.Contains(got, "margin: 16 16") {
+		t.Errorf("got %q, want the room the app keeps round any page", got)
 	}
 }
 
