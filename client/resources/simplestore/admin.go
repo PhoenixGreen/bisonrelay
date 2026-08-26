@@ -13,18 +13,68 @@ import (
 	"github.com/companyzero/bisonrelay/rpc"
 )
 
+// adminRecentOrders is how many of the newest orders the front desk shows.
+//
+// Few, deliberately: the whole order book is one link away, and a page that
+// lists everything is a page nobody reads the top of.
+const adminRecentOrders = 5
+
 func (s *Store) handleAdminIndex(ctx context.Context, uid clientintf.UserID,
 	request *rpc.RMFetchResource) (*rpc.RMFetchResourceReply, error) {
 
-	// No "back" link of its own. The shop's bar of links is above every
-	// page -- see dress.go -- and one written here could only guess where
-	// back is: it said "/", which is the shop's front page for a shop hosted
-	// on its own and the *site's* front page for a shop hosted inside one.
-	// In the second arrangement it left the shop entirely, and it did it by
-	// asking for a path the pages provider read as a directory.
+	orders, err := s.ListOrders()
+	if err != nil {
+		return nil, err
+	}
+
+	tctx := adminIndexContext{Total: len(orders)}
+	for i := range orders {
+		order := &orders[i]
+		orders[i].UserNick = strescape.Nick(order.UserNick)
+
+		switch order.Status {
+		case StatusPlaced:
+			tctx.Placed++
+			tctx.Unpaid++
+			tctx.Pending += order.Total()
+			if order.Expired() {
+				tctx.Lapsed++
+			}
+		case StatusPaid:
+			tctx.Paid++
+			tctx.ToSend++
+			tctx.Taken += order.Total()
+		case StatusShipped:
+			tctx.Shipped++
+			tctx.Taken += order.Total()
+		case StatusCompleted:
+			tctx.Completed++
+			tctx.Taken += order.Total()
+		case StatusCanceled:
+			tctx.Canceled++
+		}
+
+		// Whose turn it is to say something. Asked of every order rather
+		// than only the open ones: a question asked after an order was
+		// completed is still a question nobody has answered.
+		if order.AwaitingSeller() {
+			tctx.NeedsReply++
+		}
+	}
+
+	// The newest few, which ListOrders already sorts newest first.
+	tctx.Recent = orders
+	if len(tctx.Recent) > adminRecentOrders {
+		tctx.Recent = tctx.Recent[:adminRecentOrders]
+	}
+
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+
 	w := &bytes.Buffer{}
-	w.WriteString("# Admin Section\n\n")
-	w.WriteString("[Recent Orders](/admin/orders)\n\n")
+	if err := s.tmpl.ExecuteTemplate(w, adminTmplFile, &tctx); err != nil {
+		return nil, fmt.Errorf("unable to execute admin template: %v", err)
+	}
 	return &rpc.RMFetchResourceReply{
 		Data:   w.Bytes(),
 		Status: rpc.ResourceStatusOk,
@@ -39,17 +89,11 @@ func (s *Store) handleAdminOrders(ctx context.Context, uid clientintf.UserID,
 		return nil, err
 	}
 
-	tctx := adminOrdersContext{
-		Orders: make([]adminOrderSummary, 0, len(orders)),
-	}
-	for _, order := range orders {
-		tctx.Orders = append(tctx.Orders, adminOrderSummary{
-			ID:       order.ID,
-			User:     order.User,
-			UserNick: strescape.Nick(order.UserNick),
-			Status:   order.Status,
-			PlacedTS: order.PlacedTS,
-		})
+	tctx := adminOrdersContext{Orders: orders}
+	for i := range tctx.Orders {
+		// Made safe where it arrives, so everything that renders it later is
+		// safe without having to remember.
+		tctx.Orders[i].UserNick = strescape.Nick(tctx.Orders[i].UserNick)
 	}
 
 	s.mtx.Lock()

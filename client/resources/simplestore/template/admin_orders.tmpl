@@ -5,9 +5,14 @@ Nobody has ordered anything yet.
 {{- else -}}
 {{range .Orders}}
 --panel[padding=12, margin=0 0 8 0, border=1, color=outline, radius=8]--
-**[Order #{{.ID}}](/admin/order/{{.User}}/{{.ID}})** — {{.Status}}
-
-{{ if .UserNick }}{{ .UserNick }}{{ else }}{{ .User.ShortLogID }}{{ end }} · {{ .PlacedTS.Format "2 Jan 2006, 15:04" }}
+--listing--
+title: Order #{{ .ID.Num }} — {{ orderStatus .Status }}
+link: /admin/order/{{.User}}/{{.ID}}
+summary: {{ if .UserNick }}{{ .UserNick }}{{ else }}{{ .User.ShortLogID }}{{ end }} · {{ .PlacedTS.Format "2 Jan 2006, 15:04" }}{{ if .AwaitingSeller }} · waiting on you{{ end }}{{ if .Expired }} · quote lapsed{{ end }}
+meta: {{ money .Total }}
+button: Open
+style: primary
+--/listing--
 --/panel--
 {{- end}}
 {{- end}}

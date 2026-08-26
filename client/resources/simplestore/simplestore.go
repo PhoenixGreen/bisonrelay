@@ -42,6 +42,7 @@ const (
 	orderTmplFile       = "order.tmpl"
 	ordersTmplFile      = "orders.tmpl"
 	orderPlacedTmplFile = "orderplaced.tmpl"
+	adminTmplFile       = "admin.tmpl"
 	adminOrdersTmplFile = "admin_orders.tmpl"
 	adminOrderTmplFile  = "admin_order.tmpl"
 	navTmplFile         = "shopnav.tmpl"
@@ -352,6 +353,11 @@ func (s *Store) templateFuncs() template.FuncMap {
 		"storePage": s.storePage,
 		"storeGrid": s.storeGrid,
 
+		// orderStatus is what a status means in words. A buyer reading
+		// "paid" is being told a fact about the money when what they are
+		// asking is whether anything is expected of them.
+		"orderStatus": orderStatusSays,
+
 		// productCard is one product as it appears on the shop front: the
 		// picture, the link and the price, laid out however the seller's
 		// Store setup asks for. A function rather than markup in the
@@ -423,6 +429,8 @@ func (s *Store) fulfill(ctx context.Context, uid clientintf.UserID,
 		return s.handleOrderStatus(ctx, uid, request)
 	case len(request.Path) == 2 && request.Path[0] == "orderaddcomment":
 		return s.handleOrderAddComment(ctx, uid, request)
+	case len(request.Path) == 2 && request.Path[0] == "cancelOrder":
+		return s.handleCancelOrder(ctx, uid, request)
 	case len(request.Path) == 2 && request.Path[0] == AssetsDir:
 		return s.handleAsset(ctx, uid, request)
 	case len(request.Path) == 2 && request.Path[0] == "static":
@@ -833,6 +841,7 @@ var storeRoutePrefixes = [][]string{
 	{"orders"},
 	{"order"},
 	{"orderaddcomment"},
+	{"cancelOrder"},
 	{"static"},
 	{AssetsDir},
 	{"admin"},

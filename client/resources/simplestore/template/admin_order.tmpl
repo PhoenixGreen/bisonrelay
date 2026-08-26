@@ -1,49 +1,92 @@
-# Order Information
+# Order #{{ .Order.ID.Num }}
 
-Order : {{ .Order.User.ShortLogID }}/{{ .Order.ID }}  
-Placed: {{ .Order.PlacedTS.Format  "2006-01-02 15:04:05 MST" }}  
-By    : {{ .UserNick }} - {{ .Order.User }}  
-Status: {{ .Order.Status }}  
+--panel[padding=12, margin=0 0 12 0, border=1, color=outline, radius=8]--
+**{{ orderStatus .Order.Status }}**{{ if .Order.Expired }} · the quoted amount has lapsed{{ end }}{{ if .Order.ExpiresIn }} · holds for another {{ .Order.ExpiresIn }}{{ end }}
 
-## Cart
-{{- template "cart-listing-plain.tmpl" .Order.Cart }}
+{{ .UserNick }} · placed {{ .Order.PlacedTS.Format "2 Jan 2006, 15:04" }}
+{{ .Order.User }}
+--/panel--
 
-Cart Total   : ${{ .Order.Cart.Total }}  
-Shipping     : ${{ .Order.ShipCharge }}  
-Exchange Rate: {{ .Order.ExchangeRate }} DCR/USD  
-DCR Amount   : {{ .Order.TotalDCR.String }}  
-Invoice      : {{ .Order.Invoice }}  
-{{if .Order.ShipAddr ne nil }}
-Shipping Addr:
-  {{ .Order.ShipAddr.Name }}
-  {{ .Order.ShipAddr.Address1 }}
-  {{ .Order.ShipAddr.Address2 }}
-  {{ .Order.ShipAddr.City }} {{ .Order.ShipAddr.State }} {{ .Order.ShipAddr.PostalCode }}
-  {{ .Order.ShipAddr.CountryCode }}
-  {{ .Order.ShipAddr.Phone }}
+## What was ordered
+
+--panel[padding=12, margin=0 0 12 0, border=1, color=outline, radius=8]--
+{{range .Order.Cart.Items}}
+--listing--
+title: {{ .Product.Title }}
+summary: {{ .Quantity }} × {{ money .Product.Price }}{{ with .Product.SKU }} · {{.}}{{ end }}
+meta: {{ money .Total }}
+{{ with productImage .Product.Image }}image: {{.}}
+{{ end -}}
+--/listing--
 {{end}}
+Items: {{ money .Order.Cart.Total }}
+{{ if gt .Order.ShipCharge 0.0 }}Shipping: {{ money .Order.ShipCharge }}
+{{ end }}**Total: {{ money .Order.Total }}** — {{ .Order.TotalDCR }} at {{ .Order.ExchangeRate }} DCR/$
 
-{{range .Order.Comments}}
-{{if .FromAdmin}}
-<- {{.Timestamp}} - {{.Comment}}
-{{else}}
--> {{.Timestamp}} - {{.Comment}}
-{{end}}
-{{end}} 
+{{ with .Order.Invoice }}Invoice: {{ . }}{{ end }}
+--/panel--
 
-## Add Comment 
---form--
-type="action" value="/admin/orderaddcomment/{{.Order.User}}/{{.Order.ID}}"
-type="txtinput" label="New comment" name="comment" value=""
-type="submit" label="Add Comment"
---/form--
+{{if .Order.ShipAddr -}}
+## Where it goes
+
+--panel[padding=12, margin=0 0 12 0, border=1, color=outline, radius=8]--
+{{ .Order.ShipAddr.Name }}
+{{ .Order.ShipAddr.Address1 }}
+{{- if .Order.ShipAddr.Address2 }}
+{{ .Order.ShipAddr.Address2 }}
+{{- end }}
+{{ .Order.ShipAddr.City }}, {{ .Order.ShipAddr.State }}, {{ .Order.ShipAddr.PostalCode }}
+{{- with .Order.ShipAddr.CountryCode }}
+{{ . }}
+{{- end }}
+{{- with .Order.ShipAddr.Phone }}
+{{ . }}
+{{- end }}
+--/panel--
+
+{{end -}}
+{{ if .Order.Open -}}
+## Move it on
 
 {{ if eq .Order.Status "placed" }}
-Switch status to [shipped](/admin/orderstatusto/{{.Order.User}}/{{.Order.ID}}/shipped) [completed](/admin/orderstatusto/{{.Order.User}}/{{.Order.ID}}/completed) [canceled](/admin/orderstatusto/{{.Order.User}}/{{.Order.ID}}/canceled)
-{{ else if eq .Order.Status "shipped" }}
-Switch status to [completed](/admin/orderstatusto/{{.Order.User}}/{{.Order.ID}}/completed) [canceled](/admin/orderstatusto/{{.Order.User}}/{{.Order.ID}}/canceled)
+--form[align=left]--
+type="action" value="/admin/orderstatusto/{{.Order.User}}/{{.Order.ID}}/shipped"
+type="submit" label="Mark as shipped" style="primary" confirm="Mark order #{{ .Order.ID.Num }} as shipped? The buyer is told."
+--/form--
 {{ end }}
+{{ if eq .Order.Status "paid" }}
+--form[align=left]--
+type="action" value="/admin/orderstatusto/{{.Order.User}}/{{.Order.ID}}/shipped"
+type="submit" label="Mark as shipped" style="primary" confirm="Mark order #{{ .Order.ID.Num }} as shipped? The buyer is told."
+--/form--
+{{ end }}
+--form[align=left]--
+type="action" value="/admin/orderstatusto/{{.Order.User}}/{{.Order.ID}}/completed"
+type="submit" label="Mark as completed" confirm="Mark order #{{ .Order.ID.Num }} as completed? That is the end of it."
+--/form--
 
+--form[align=left]--
+type="action" value="/admin/orderstatusto/{{.Order.User}}/{{.Order.ID}}/canceled"
+type="submit" label="Cancel this order" style="danger" confirm="Cancel order #{{ .Order.ID.Num }}? The buyer is told, and there is no undo."
+--/form--
 
-[back to order listing](/admin/orders)
+{{ end -}}
+## Messages
 
+{{if eq (len .Order.Comments) 0 -}}
+Nothing has been said about this order.
+{{- else -}}
+{{range .Order.Comments}}
+--panel[padding=10, margin=0 0 6 0, radius=8, fill={{ if .FromAdmin }}quoteBar{{ else }}raised{{ end }}, justify={{ if .FromAdmin }}right{{ else }}left{{ end }}]--
+**{{ if .FromAdmin }}You{{ else }}The buyer{{ end }}** · {{ .Timestamp.Format "2 Jan, 15:04" }}
+
+{{ .Comment }}
+--/panel--
+{{end}}
+{{- end}}
+
+--form--
+type="action" value="/admin/orderaddcomment/{{.Order.User}}/{{.Order.ID}}"
+type="txtinput" label="Reply to the buyer" name="comment" value=""
+type="submit" label="Send" style="primary"
+--/form--
