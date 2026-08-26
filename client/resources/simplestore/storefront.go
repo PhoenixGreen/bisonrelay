@@ -74,6 +74,23 @@ const (
 	// card is in the middle whichever way you are reading it.
 )
 
+// Where the shop's links go.
+const (
+	// NavOwn is a bar of the shop's own, above every page it renders. What
+	// a shop hosted without a site has, since there is no other bar to be
+	// in.
+	NavOwn = "own"
+
+	// NavLinks puts them at the right-hand end of the site's own bar, as
+	// words, with what is waiting behind each -- the cart's count -- drawn
+	// over it.
+	NavLinks = "links"
+
+	// NavIcons is the same, as icons, with the words kept as what each is
+	// called when hovered.
+	NavIcons = "icons"
+)
+
 // What a card's writing is made of.
 const (
 	// TextPlain is the title and the price, which is what a shop front card
@@ -192,6 +209,54 @@ type IndexLayout struct {
 	// names are long is a shop that would rather they lined up.
 	TitleOneLine bool `json:"title_one_line" toml:"title_one_line"`
 
+	// StoreNav is where the shop's links go: a bar of its own, or the
+	// right-hand end of the site's.
+	//
+	// A shop inside a site has two bars otherwise -- the site's pages and
+	// the shop's -- stacked one above the other, which is two rows of chrome
+	// each saying half of where you can go. A shop hosted on its own has no
+	// site bar to join, so it keeps its own whatever this says.
+	StoreNav string `json:"store_nav" toml:"store_nav"`
+
+	// NavPlain drops the box the site's bar draws round each of its links,
+	// for the shop's links only.
+	//
+	// A row of icons in pills is a row of buttons, which is a different
+	// thing from a row of icons -- and a bar often wants the site's half as
+	// the first and the shop's as the second.
+	NavPlain bool `json:"nav_plain" toml:"nav_plain"`
+
+	// NavGap is the room between the shop's links, or below nought to keep
+	// whatever the bar keeps between the site's own.
+	//
+	// Its own setting because icons want to sit closer together than words
+	// do, and the shop's half of the bar is the half that is usually icons.
+	NavGap int `json:"nav_gap" toml:"nav_gap"`
+
+	// NavIconSize is how large the shop's icons are drawn, or below nought
+	// for the ordinary size. NavInset is the room kept at the end of the
+	// bar, so the last of them is not pressed against the edge -- which is
+	// also where a cart's count needs somewhere to sit.
+	NavIconSize int `json:"nav_icon_size" toml:"nav_icon_size"`
+	NavInset    int `json:"nav_inset" toml:"nav_inset"`
+
+	// NavShop is whether the shop's links include the one to its front page.
+	//
+	// Off is the ordinary answer for a site whose own bar already has a link
+	// to the shop -- which is how a visitor got there in the first place. Two
+	// links to one page in one bar is one of them wasted, and the room it
+	// takes is room the cart and the orders could have.
+	NavShop bool `json:"nav_shop" toml:"nav_shop"`
+
+	// NavAdmin is whether the shop's links include the one to the admin
+	// pages.
+	//
+	// The seller's own link and nobody else's -- a buyer is never shown it
+	// and cannot reach those pages -- so this is about the seller's own bar
+	// being tidy. The pages themselves stay where they are: a link that is
+	// not drawn is not a route that is gone, and a bookmark keeps working.
+	NavAdmin bool `json:"nav_admin" toml:"nav_admin"`
+
 	// GridGap is the room between one product and the next, or below nought
 	// to leave it to whatever the reader's own guide keeps.
 	//
@@ -280,6 +345,12 @@ func DefaultIndexLayout() IndexLayout {
 		ButtonPadding:     12,
 		RowGap:            4,
 		MetaGap:           8,
+		StoreNav:          NavOwn,
+		NavGap:            navGapTheirs,
+		NavIconSize:       navGapTheirs,
+		NavInset:          0,
+		NavShop:           true,
+		NavAdmin:          true,
 		GridGap:           gridGapTheirs,
 		GridMargin:        defaultPageEdge,
 
@@ -346,6 +417,20 @@ func (l IndexLayout) normalize() IndexLayout {
 	if !oneOf(l.TextLayout, TextPlain, TextRows) {
 		l.TextLayout = def.TextLayout
 	}
+	if !oneOf(l.StoreNav, NavOwn, NavLinks, NavIcons) {
+		l.StoreNav = def.StoreNav
+	}
+	if l.NavGap < 0 {
+		l.NavGap = navGapTheirs
+	} else {
+		l.NavGap = clampLength(l.NavGap, 0)
+	}
+	if l.NavIconSize < 0 {
+		l.NavIconSize = navGapTheirs
+	} else {
+		l.NavIconSize = clampLength(l.NavIconSize, 0)
+	}
+	l.NavInset = clampLength(l.NavInset, def.NavInset)
 	l.TextColor = safeSetting(l.TextColor, def.TextColor)
 	l.CardBorderColor = safeSetting(l.CardBorderColor, def.CardBorderColor)
 	l.ButtonLabel = safeSetting(l.ButtonLabel, def.ButtonLabel)
@@ -545,6 +630,10 @@ func (s *Store) storePage() string {
 	return fmt.Sprintf("--page--\nmargin: %d %d\n--/page--",
 		defaultPageEdge, s.IndexLayout().GridMargin)
 }
+
+// navGapTheirs is the gap setting meaning "whatever the bar keeps between
+// the site's own links", which is what a shop that has not asked gets.
+const navGapTheirs = -1
 
 // gridGapTheirs is the gap setting meaning "whatever the reader's own guide
 // keeps", which is what a shop that has not asked gets.

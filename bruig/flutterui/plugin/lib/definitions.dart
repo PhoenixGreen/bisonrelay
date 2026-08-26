@@ -2998,6 +2998,30 @@ class StoreIndexLayout {
   /// the way the description is.
   final bool titleOneLine;
 
+  /// storeNav is where the shop's links go: "own" is a bar of its own above
+  /// every page, "links" and "icons" put them at the right-hand end of the
+  /// site's own bar.
+  final String storeNav;
+
+  /// navPlain drops the box the site's bar draws round each link, for the
+  /// shop's links only. navGap is the room between them, or below nought to
+  /// keep whatever the bar keeps between the site's own.
+  final bool navPlain;
+  final int navGap;
+
+  /// navIconSize is how large the shop's icons are drawn, or below nought for
+  /// the ordinary size. navInset is the room kept at the end of the bar.
+  final int navIconSize;
+  final int navInset;
+
+  /// navShop is whether the shop's links include the one to its front page.
+  /// Off suits a site whose own bar already links to the shop.
+  final bool navShop;
+
+  /// navAdmin is whether the shop's links include the one to the admin
+  /// pages. The pages themselves stay where they are either way.
+  final bool navAdmin;
+
   /// gridGap is the room between one product and the next, or below nought
   /// for whatever the reader's own guide keeps -- which is the default,
   /// because most of what looks like space between two products is the
@@ -3060,6 +3084,13 @@ class StoreIndexLayout {
     this.rowGap = 4,
     this.metaGap = 8,
     this.titleOneLine = false,
+    this.storeNav = "own",
+    this.navPlain = false,
+    this.navGap = -1,
+    this.navIconSize = -1,
+    this.navInset = 0,
+    this.navShop = true,
+    this.navAdmin = true,
     this.gridGap = -1,
     this.gridMargin = 16,
     this.cardBorder = false,
@@ -3128,6 +3159,13 @@ class StoreIndexLayout {
       rowGap: number("row_gap", fallback.rowGap),
       metaGap: number("meta_gap", fallback.metaGap),
       titleOneLine: flag("title_one_line", fallback.titleOneLine),
+      storeNav: word("store_nav", fallback.storeNav),
+      navPlain: flag("nav_plain", fallback.navPlain),
+      navGap: number("nav_gap", fallback.navGap),
+      navIconSize: number("nav_icon_size", fallback.navIconSize),
+      navInset: number("nav_inset", fallback.navInset),
+      navShop: flag("nav_shop", fallback.navShop),
+      navAdmin: flag("nav_admin", fallback.navAdmin),
       gridGap: number("grid_gap", fallback.gridGap),
       gridMargin: number("grid_margin", fallback.gridMargin),
       cardBorder: flag("card_border", fallback.cardBorder),
@@ -3180,6 +3218,13 @@ class StoreIndexLayout {
         "row_gap": rowGap,
         "meta_gap": metaGap,
         "title_one_line": titleOneLine,
+        "store_nav": storeNav,
+        "nav_plain": navPlain,
+        "nav_gap": navGap,
+        "nav_icon_size": navIconSize,
+        "nav_inset": navInset,
+        "nav_shop": navShop,
+        "nav_admin": navAdmin,
         "grid_gap": gridGap,
         "grid_margin": gridMargin,
         "card_border": cardBorder,
@@ -3226,6 +3271,13 @@ class StoreIndexLayout {
     int? rowGap,
     int? metaGap,
     bool? titleOneLine,
+    String? storeNav,
+    bool? navPlain,
+    int? navGap,
+    int? navIconSize,
+    int? navInset,
+    bool? navShop,
+    bool? navAdmin,
     int? gridGap,
     int? gridMargin,
     bool? cardBorder,
@@ -3271,6 +3323,13 @@ class StoreIndexLayout {
         rowGap: rowGap ?? this.rowGap,
         metaGap: metaGap ?? this.metaGap,
         titleOneLine: titleOneLine ?? this.titleOneLine,
+        storeNav: storeNav ?? this.storeNav,
+        navPlain: navPlain ?? this.navPlain,
+        navGap: navGap ?? this.navGap,
+        navIconSize: navIconSize ?? this.navIconSize,
+        navInset: navInset ?? this.navInset,
+        navShop: navShop ?? this.navShop,
+        navAdmin: navAdmin ?? this.navAdmin,
         gridGap: gridGap ?? this.gridGap,
         gridMargin: gridMargin ?? this.gridMargin,
         cardBorder: cardBorder ?? this.cardBorder,
@@ -3321,6 +3380,13 @@ class StoreIndexLayout {
       other.rowGap == rowGap &&
       other.metaGap == metaGap &&
       other.titleOneLine == titleOneLine &&
+      other.storeNav == storeNav &&
+      other.navPlain == navPlain &&
+      other.navGap == navGap &&
+      other.navIconSize == navIconSize &&
+      other.navInset == navInset &&
+      other.navShop == navShop &&
+      other.navAdmin == navAdmin &&
       other.gridGap == gridGap &&
       other.gridMargin == gridMargin &&
       other.cardBorder == cardBorder &&
@@ -3360,8 +3426,19 @@ class StoreIndexLayout {
       textAlign,
       textLayout,
       buttonLabel,
-      Object.hash(buttonColor, buttonRadius, buttonPadding, rowGap, metaGap,
-          titleOneLine, gridGap, gridMargin),
+      Object.hash(
+          buttonColor,
+          buttonRadius,
+          buttonPadding,
+          rowGap,
+          metaGap,
+          titleOneLine,
+          storeNav,
+          navPlain,
+          navGap,
+          gridGap,
+          gridMargin,
+          Object.hash(navIconSize, navInset, navShop, navAdmin)),
       cardBorder,
       cardBorderWidth,
       cardBorderColor,

@@ -2,8 +2,12 @@ package simplestore
 
 import (
 	"bytes"
+	"fmt"
 	"os"
+	"path"
 	"path/filepath"
+	"regexp"
+	"strings"
 
 	"github.com/companyzero/bisonrelay/client/clientintf"
 	"github.com/companyzero/bisonrelay/client/resources"
@@ -62,11 +66,26 @@ func (s *Store) dressed(uid clientintf.UserID, request *rpc.RMFetchResource,
 	// The shop's own bar, under the site's banner and above the page. Its
 	// links are the shop's -- the front, the cart, the orders -- which the
 	// site's own bar has no reason to carry.
-	nav := s.shopNav(uid)
-	if nav != "" {
-		out += nav + "\n\n"
+	//
+	// Unless the seller would rather they went in the site's bar -- and
+	// only if there is one to go in.
+	//
+	// Which means expanding the header on its own first, because up here it
+	// is still a marker naming a fragment, and whether that fragment holds a
+	// bar is the whole question. A shop that meant to merge into a bar that
+	// is not there must still have its own: a setting about where the links
+	// go can never be allowed to mean "nowhere".
+	merging := framed && s.header != "" &&
+		s.IndexLayout().StoreNav != NavOwn && s.headerHasBar()
+
+	nav := ""
+	if !merging {
+		nav = s.shopNav(uid)
+		if nav != "" {
+			out += nav + "\n\n"
+		}
 	}
-	if nav == "" && !framed {
+	if nav == "" && !merging && !framed {
 		// Nothing to add: no frame, and no bar to put on either.
 		return res
 	}
@@ -88,9 +107,32 @@ func (s *Store) dressed(uid clientintf.UserID, request *rpc.RMFetchResource,
 		return res
 	}
 
+	// The shop's links into the site's own bar, now that there is a bar to
+	// put them in.
+	if merging {
+		if merged, ok := s.mergedNav(uid, expanded); ok {
+			expanded = merged
+		}
+	}
+
 	dressed := *res
 	dressed.Data = []byte(expanded)
 	return &dressed
+}
+
+// headerHasBar is whether the site's header holds a bar of links for the
+// shop's own to join.
+//
+// The header expanded on its own, because a header is a fragment and the bar
+// may be in a fragment it includes -- a banner that names a nav fragment is
+// how several of these are written.
+func (s *Store) headerHasBar() bool {
+	expanded, err := resources.ExpandIncludes("--include["+s.header+"]--",
+		s.readSiteFragment, s.log)
+	if err != nil {
+		return false
+	}
+	return navBarPattern.MatchString(expanded)
 }
 
 // readSiteFragment reads one of the site's fragments.
@@ -109,6 +151,178 @@ func (s *Store) readSiteFragment(name string) ([]byte, bool, error) {
 		return nil, false, err
 	}
 	return data, true, nil
+}
+
+// navBarPattern finds the bar of links in a site's header: the marker that
+// opens one, everything up to the marker that closes it.
+//
+// The first bar rather than any of them. A header holding two is a header
+// with a bar in its banner and another under it, and the one somebody means
+// by "the navigation" is the one they wrote first.
+var navBarPattern = regexp.MustCompile(`(?s)(--nav(?:\[[^\]]*\])?--
+)(.*?)(
+--/nav--)`)
+
+// mergedNav is the site's header with the shop's links added to the end of
+// its bar, or false for a shop that is not doing that.
+//
+// False rather than an empty header for three real cases: a seller who wants
+// the shop's own bar, a shop hosted without a site, and a site whose header
+// has no bar to join. In all three the shop draws its own bar, because the
+// alternative is a shop with no navigation at all -- and a setting about
+// where the links go should never be able to mean "nowhere".
+func (s *Store) mergedNav(uid clientintf.UserID, header string) (string, bool) {
+	layout := s.IndexLayout()
+	if layout.StoreNav == NavOwn || header == "" {
+		return "", false
+	}
+	where := navBarPattern.FindStringSubmatchIndex(header)
+	if where == nil {
+		return "", false
+	}
+
+	links := s.navLinks(uid, layout)
+	if links == "" {
+		return "", false
+	}
+
+	var said []string
+	if layout.NavGap >= 0 {
+		said = append(said, fmt.Sprintf("gap=%d", layout.NavGap))
+	}
+	if layout.NavIconSize >= 0 {
+		said = append(said, fmt.Sprintf("size=%d", layout.NavIconSize))
+	}
+	if layout.NavInset > 0 {
+		said = append(said, fmt.Sprintf("inset=%d", layout.NavInset))
+	}
+	marker := "--right--"
+	if len(said) > 0 {
+		marker = fmt.Sprintf("--right[%s]--", strings.Join(said, ", "))
+	}
+
+	// The site's own link to the shop, marked as the page being read.
+	//
+	// A bar marks the link to the page it is on by comparing paths, which
+	// cannot work for a section: a shop is a dozen paths -- the front, a
+	// product, the cart, an order -- and only one of them is what the link
+	// says. The shop is the one thing that knows, and it is dressing the
+	// page, so it says.
+	header = s.markShopLink(header[:where[6]]) + header[where[6]:]
+	where = navBarPattern.FindStringSubmatchIndex(header)
+	if where == nil {
+		return "", false
+	}
+
+	// Inside the bar, after what the site wrote and before the line that
+	// closes it, behind the marker that pushes what follows to the far end.
+	//
+	// where[6] is where the closing marker begins. Ending up one group later
+	// -- after the marker -- puts the shop's links outside the bar, where
+	// they are four ordinary lines of markdown under it.
+	var out strings.Builder
+	out.WriteString(header[:where[6]])
+	out.WriteString("\n" + marker + "\n")
+	out.WriteString(strings.TrimRight(links, "\n"))
+	out.WriteString(header[where[6]:])
+	return out.String(), true
+}
+
+// shopLinkPattern is a link in the site's own bar, with whatever it says
+// about itself after it.
+var shopLinkPattern = regexp.MustCompile(`(?m)^(\s*\[[^\]]*\]\(([^)]*)\))(\[([^\]]*)\])?\s*$`)
+
+// markShopLink marks the site's own link to the shop as the page being read.
+//
+// The site's, not the shop's: the seller wrote [Store](store) in their
+// navigation, and while a shop page is open that is the section being read
+// however deep into it the reader has gone.
+func (s *Store) markShopLink(bar string) string {
+	want := path.Base(strings.Trim(s.indexPath, "/"))
+	if want == "" || want == "." {
+		return bar
+	}
+
+	return shopLinkPattern.ReplaceAllStringFunc(bar, func(line string) string {
+		m := shopLinkPattern.FindStringSubmatch(line)
+		if path.Base(strings.Trim(m[2], "/")) != want {
+			return line
+		}
+		// Onto whatever it already said, rather than instead of it.
+		says := strings.TrimSpace(m[4])
+		if says == "" {
+			says = "active=on"
+		} else if !strings.Contains(says, "active=") {
+			says += ", active=on"
+		}
+		return m[1] + "[" + says + "]"
+	})
+}
+
+// navLinks are the shop's links, written for a bar the site owns.
+//
+// Written here rather than taken from shopnav.tmpl, because these carry what
+// that template has no way to say: the count over the cart, an icon, and
+// whether the words are drawn at all. The template is still what draws the
+// shop's own bar, so a seller who has rewritten it keeps their bar.
+func (s *Store) navLinks(uid clientintf.UserID, layout IndexLayout) string {
+	icons := layout.StoreNav == NavIcons
+	// Words or pictures, not both. Words beside the site's own words read as
+	// one bar; an icon next to each of them is a second alphabet in the same
+	// row, which is neither of the two things a seller asked for.
+	var out strings.Builder
+	link := func(label, target, icon string, badge int) {
+		var says []string
+		if badge > 0 {
+			says = append(says, fmt.Sprintf("badge=%d", badge))
+		}
+		if icons {
+			// The words stay as what the icon is called when hovered: an
+			// icon on its own is a guess until somebody hovers it.
+			says = append(says, "icon="+icon, "label=off")
+		}
+		if layout.NavPlain {
+			says = append(says, "plain=on")
+		}
+
+		fmt.Fprintf(&out, "[%s](%s)", label, target)
+		if len(says) > 0 {
+			fmt.Fprintf(&out, "[%s]", strings.Join(says, ", "))
+		}
+		out.WriteString("\n")
+	}
+
+	// The cart last, at the end of the bar. It is the one of these somebody
+	// is on their way to rather than browsing, and the end of a bar is where
+	// a cart is looked for -- which is also where its count has room to sit.
+	if layout.NavShop {
+		link("Shop", s.indexPath, "shop", 0)
+	}
+	link("Orders", "/orders", "orders", 0)
+	if s.isSelf(uid) && layout.NavAdmin {
+		link("Admin", "/admin", "admin", 0)
+	}
+	link("Cart", "/cart", "cart", s.cartCount(uid))
+	return out.String()
+}
+
+// cartCount is how many things this buyer has in their cart.
+//
+// A buyer who has to open the cart to find out whether anything is in it
+// opens it every time.
+func (s *Store) cartCount(uid clientintf.UserID) int {
+	var cart Cart
+	s.mtx.Lock()
+	err := jsonfile.Read(filepath.Join(s.root, cartsDir, uid.String()), &cart)
+	s.mtx.Unlock()
+	if err != nil {
+		return 0
+	}
+	items := 0
+	for _, item := range cart.Items {
+		items += int(item.Quantity)
+	}
+	return items
 }
 
 // navContext is what the shop's bar of links is drawn from.
@@ -136,23 +350,10 @@ func (s *Store) shopNav(uid clientintf.UserID) string {
 	if s.tmpl == nil || s.tmpl.Lookup(navTmplFile) == nil {
 		return ""
 	}
-	// How many things are in the cart, so the bar can say. A buyer who has
-	// to open the cart to find out whether anything is in it opens it every
-	// time.
-	items := 0
-	var cart Cart
-	s.mtx.Lock()
-	err := jsonfile.Read(filepath.Join(s.root, cartsDir, uid.String()), &cart)
-	s.mtx.Unlock()
-	if err == nil {
-		for _, item := range cart.Items {
-			items += int(item.Quantity)
-		}
-	}
 	w := &bytes.Buffer{}
-	err = s.tmpl.ExecuteTemplate(w, navTmplFile, &navContext{
+	err := s.tmpl.ExecuteTemplate(w, navTmplFile, &navContext{
 		ShopIndex: s.indexPath,
-		CartItems: items,
+		CartItems: s.cartCount(uid),
 		IsAdmin:   s.isSelf(uid),
 	})
 	if err != nil {
