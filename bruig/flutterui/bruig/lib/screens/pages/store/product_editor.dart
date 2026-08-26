@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:bruig/screens/pages/store/pick_document.dart';
 import 'package:golib_plugin/golib_plugin.dart';
 import 'package:bruig/components/pages/add_picture_dialog.dart';
+import 'package:bruig/screens/pages/store/pick_picture.dart';
 import 'package:bruig/components/buttons.dart';
 import 'package:bruig/components/text.dart';
 import 'package:bruig/models/pages.dart';
@@ -126,6 +127,24 @@ class ProductEditorState extends State<ProductEditor> {
     }
   }
 
+  /// pickImage uses one of the pictures the shop already has.
+  ///
+  /// The companion to chooseImage, which adds one. A seller with a
+  /// photograph used by three products was finding it on disk three times
+  /// and ending up with three copies of it in the shop under three names.
+  void pickImage() async {
+    var snackbar = SnackBarModel.of(context);
+    try {
+      var name = await pickShopPicture(
+          context, widget.store, widget.pages.hostConfig.storePath);
+      if (name == null || !mounted) return;
+      setState(
+          () => widget.store.updateProductDraft(draft.copyWith(image: name)));
+    } catch (exception) {
+      snackbar.error("Unable to read the shop's pictures: $exception");
+    }
+  }
+
   /// chooseDocument sells something written in the writing library.
   ///
   /// Published rather than pointed at: the document goes on being edited,
@@ -225,6 +244,7 @@ class ProductEditorState extends State<ProductEditor> {
       _ProductPicture(
         image: draft.image,
         onChoose: chooseImage,
+        onPick: pickImage,
         onClear: () =>
             widget.store.updateProductDraft(draft.copyWith(image: "")),
       ),
@@ -352,11 +372,15 @@ class ProductEditorState extends State<ProductEditor> {
 /// name is what a product records, so seeing it is seeing what was saved.
 class _ProductPicture extends StatelessWidget {
   final String image;
+
+  /// onChoose adds a picture to the shop; onPick uses one it already has.
   final VoidCallback onChoose;
+  final VoidCallback onPick;
   final VoidCallback onClear;
   const _ProductPicture({
     required this.image,
     required this.onChoose,
+    required this.onPick,
     required this.onClear,
   });
 
@@ -377,6 +401,14 @@ class _ProductPicture extends StatelessWidget {
             tooltip: "Use no picture",
             onPressed: onClear,
           ),
+        // Choosing one the shop has comes first: after the first product,
+        // it is the one a seller wants nearly every time.
+        OutlinedButton.icon(
+          onPressed: onPick,
+          icon: const Icon(Icons.photo_library_outlined, size: 16),
+          label: const Text("Pictures"),
+        ),
+        const SizedBox(width: 8),
         OutlinedButton.icon(
           onPressed: onChoose,
           icon: const Icon(Icons.add_photo_alternate_outlined, size: 16),
