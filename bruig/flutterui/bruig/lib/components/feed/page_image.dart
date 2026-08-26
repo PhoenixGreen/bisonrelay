@@ -91,14 +91,28 @@ String pageAssetMime(String path) {
 /// panel that draws its alt text as a background while the picture is on its
 /// way is a card with a word written across it.
 Widget? pageAssetPicture(BuildContext context, String path,
-    {BoxFit fit = BoxFit.cover, Alignment alignment = Alignment.center}) {
+    {BoxFit fit = BoxFit.cover,
+    Alignment alignment = Alignment.center,
+    bool fillWidth = false}) {
   var bytes = pageAssetBytes(context, path);
   if (bytes == null) return null;
+
+  // fillWidth is for a picture that is the box rather than something in it.
+  //
+  // A picture left to its own width is drawn at its own width: put in
+  // something wider -- a card in a grid, which is stretched to its share of
+  // the row -- it sits at one end with space beside it. Everything drawn
+  // from the box rather than from the picture then lands in the wrong place:
+  // rounded corners cut the empty space at the far end and looked like two
+  // of the four corners simply not working.
+  var width = fillWidth ? double.infinity : null;
+
   return path.toLowerCase().endsWith(".svg")
-      ? SvgPicture.memory(bytes, fit: fit, alignment: alignment)
+      ? SvgPicture.memory(bytes, fit: fit, alignment: alignment, width: width)
       : Image.memory(bytes,
           fit: fit,
           alignment: alignment,
+          width: width,
           errorBuilder: (context, error, stack) => const SizedBox.shrink());
 }
 

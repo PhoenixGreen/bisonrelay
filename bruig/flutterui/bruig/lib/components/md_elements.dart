@@ -11,6 +11,8 @@ import 'package:bruig/components/feed/page_image.dart';
 import 'package:bruig/components/feed/markdown_nav.dart';
 import 'package:bruig/components/feed/markdown_page.dart';
 import 'package:bruig/components/feed/markdown_panel.dart';
+import 'package:bruig/components/feed/markdown_button.dart';
+import 'package:bruig/components/feed/markdown_listing.dart';
 import 'package:bruig/components/pages/forms.dart';
 import 'package:bruig/components/snackbars.dart';
 import 'package:bruig/components/text_dialog.dart';
@@ -444,6 +446,8 @@ class MarkdownAreaModel extends ChangeNotifier {
     "header": HeaderMarkdownElementBuilder(),
     "nav": NavMarkdownElementBuilder(),
     "panel": PanelMarkdownElementBuilder(),
+    "button": ButtonMarkdownElementBuilder(),
+    "listing": ListingMarkdownElementBuilder(),
   };
 
   final List<md.InlineSyntax> inlineSyntaxes = [
@@ -458,6 +462,8 @@ class MarkdownAreaModel extends ChangeNotifier {
     NavBlockSyntax(),
     PageBlockSyntax(),
     PanelBlockSyntax(),
+    ButtonBlockSyntax(),
+    ListingBlockSyntax(),
   ];
 
   // _pluginExtensions is whatever the last setPluginExtensions call added,
@@ -712,6 +718,8 @@ Future<void> followMarkdownLink(BuildContext context, String url) async {
 /// above it.
 const Set<String> blockBuilderTags = {
   "header",
+  "button",
+  "listing",
   "nav",
   "panel",
   "grid",
@@ -781,10 +789,20 @@ class MarkdownArea extends StatelessWidget {
   /// post will carry rather than the one the reader happens to use.
   final MarkdownStyleGuide? guide;
 
+  /// align is which side the writing sits on, or null for wherever the
+  /// guide puts it -- which is the left.
+  ///
+  /// Passed in rather than written in the markdown, because it is a property
+  /// of the box the writing is in rather than of the writing: a card whose
+  /// plate is centred wants its title centred too, and a reader should not
+  /// have to see that decision spelled out on every line.
+  final WrapAlignment? align;
+
   MarkdownArea(srcText, this.hasNick,
       {this.disableLinks = false,
       this.plainText = false,
       this.guide,
+      this.align,
       super.key})
       : text = MarkdownArea._cleanupSrcText(srcText);
 
@@ -1027,6 +1045,21 @@ class MarkdownArea extends StatelessWidget {
           ? _plainStyleSheet(theme.mdStyleSheet, context)
           : _guidedStyleSheet(theme, context);
       var effectiveGuide = guide ?? theme.markdownGuide;
+
+      // Every kind of line, not only paragraphs: a centred plate holding a
+      // heading and a price with the heading left and the price centred is
+      // not centred, it is broken.
+      if (align != null) {
+        sheet = sheet.copyWith(
+          textAlign: align,
+          h1Align: align,
+          h2Align: align,
+          h3Align: align,
+          h4Align: align,
+          h5Align: align,
+          h6Align: align,
+        );
+      }
 
       // The gap every marker keeps from its text, worked out once from the
       // indent the guide actually asks for.

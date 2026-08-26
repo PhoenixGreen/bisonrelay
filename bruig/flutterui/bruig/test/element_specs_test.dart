@@ -68,9 +68,12 @@ void main() {
             case "style":
               expect(got.stroke.name, option.value);
             case "color":
-              expect(got.color?.name, option.value);
+              // A role or a written colour: the spec offers the roles, and
+              // what the rule holds for one is the role itself.
+              expect(got.color?.role?.name, option.value);
             case "radius":
-              expect(got.radius, double.parse(option.value));
+              expect(got.radius,
+                  BorderRadius.circular(double.parse(option.value)));
             case "border":
               expect(got.border, isNotNull, reason: option.value);
             case "padding":

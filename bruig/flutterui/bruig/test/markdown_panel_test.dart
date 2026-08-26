@@ -42,8 +42,8 @@ void main() {
       expect(got.margin, const EdgeInsets.all(8));
       expect(got.border, const EdgeInsets.all(2));
       expect(got.stroke, PanelStroke.dashed);
-      expect(got.color, MarkdownRole.accent);
-      expect(got.radius, 8);
+      expect(got.color?.role, MarkdownRole.accent);
+      expect(got.radius, BorderRadius.circular(8));
     });
 
     test('a border can be one side only', () {
@@ -63,12 +63,36 @@ void main() {
           const EdgeInsets.symmetric(vertical: 1, horizontal: 2));
     });
 
-    test('a colour is a role, never a colour', () {
-      // The same bargain the page background makes: a panel cannot know
-      // whether its reader is in a dark theme, so a line it names #000000
-      // is a line nobody in one can see.
-      expect(PanelRule.parse("color=#ff0000").color, isNull);
-      expect(PanelRule.parse("color=outline").color, MarkdownRole.outline);
+    test('a colour may be a role or a colour, and a role is the better one',
+        () {
+      // A role follows the reader's theme, which is the bargain the page
+      // background makes and the reason a line should name one: #000000 is a
+      // line nobody in a dark theme can see. A written colour is carried all
+      // the same -- somebody putting a border round their own shop's cards
+      // has a particular colour in mind, and refusing it only meant the
+      // border went unused.
+      expect(PanelRule.parse("color=outline").color?.role, MarkdownRole.outline);
+      expect(PanelRule.parse("color=#ff0000").color?.literal, isNotNull);
+      expect(PanelRule.parse("color=puce").color, isNull);
+    });
+
+    test('corners can be given one by one', () {
+      // A picture at the top of a card is rounded at the top and square
+      // where the writing meets it. One number for all four cannot draw
+      // that, and a card built out of two boxes to get it has a seam.
+      expect(PanelRule.parse("radius=8 8 0 0").radius,
+          const BorderRadius.only(
+              topLeft: Radius.circular(8), topRight: Radius.circular(8)));
+      expect(PanelRule.parse("radius=8").radius, BorderRadius.circular(8));
+    });
+
+    test('a panel says how wide its content is and which way it reads', () {
+      var got = PanelRule.parse("justify=right, text=center");
+      expect(got.justify, PanelJustify.right);
+      expect(got.text, WrapAlignment.center);
+      expect(PanelRule.parse("").justify, PanelJustify.stretch,
+          reason: "a block of a page has always been the full width of it");
+      expect(PanelRule.parse("").text, isNull);
     });
 
     test('a stroke it does not know is a solid line', () {
@@ -88,7 +112,7 @@ void main() {
 
     test('nought is an answer', () {
       expect(PanelRule.parse("padding=0").padding, EdgeInsets.zero);
-      expect(PanelRule.parse("radius=0").radius, 0);
+      expect(PanelRule.parse("radius=0").radius, BorderRadius.zero);
     });
   });
 

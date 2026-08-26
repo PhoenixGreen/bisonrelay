@@ -1,8 +1,14 @@
 import 'package:bruig/components/feed/markdown_blocks.dart';
+import 'package:bruig/components/feed/markdown_button.dart';
+import 'package:bruig/components/feed/markdown_listing.dart';
 import 'package:bruig/components/feed/markdown_panel.dart';
 import 'package:bruig/components/md_elements.dart';
 import 'package:bruig/components/pages/forms.dart' as pf;
+import 'dart:typed_data';
+
+import 'package:bruig/models/pages.dart';
 import 'package:bruig/models/payments.dart';
+import 'package:bruig/theming_system/model/button_style.dart';
 import 'package:bruig/models/resources.dart';
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/theming_system/model/markdown_style.dart';
@@ -22,6 +28,16 @@ import 'package:shared_preferences/shared_preferences.dart';
 // tile are too -- so the store writes markup any page may write, and this
 // covers the markup rather than the shop.
 
+/// _Pages hands back bytes for any picture, so a panel drawing one has
+/// something to draw. What is in them does not matter: nothing here looks at
+/// the picture, only at the box it is given.
+class _Pages extends PagesModel {
+  _Pages() : super(ResourcesModel(runStream: false));
+
+  @override
+  Uint8List? localAssetBytes(String path) => Uint8List.fromList([1, 2, 3, 4]);
+}
+
 Widget wrap(Widget child) => MultiProvider(providers: [
       ChangeNotifierProvider<ThemeNotifier>(
           create: (_) => ThemeNotifier(doLoad: false)),
@@ -29,6 +45,7 @@ Widget wrap(Widget child) => MultiProvider(providers: [
       ChangeNotifierProvider<SnackBarModel>(create: (_) => SnackBarModel()),
       ChangeNotifierProvider<ResourcesModel>(
           create: (_) => ResourcesModel(runStream: false)),
+      ChangeNotifierProvider<PagesModel>(create: (_) => _Pages()),
       ChangeNotifierProvider<MarkdownAreaModel>(
           create: (_) => MarkdownAreaModel("")),
     ], child: MaterialApp(home: Scaffold(body: child)));
@@ -48,13 +65,15 @@ void main() {
       expect(got.fill?.role, MarkdownRole.raised);
     });
 
-    test('a fill may be a colour, unlike a border', () {
-      // A border names a role and never a colour, because a line nobody in a
-      // dark theme can see is not a line. A fill is what a seller colours
-      // their own shop front with, so it takes either -- and the role is
-      // still the better answer, because it follows the reader's theme.
+    test('a fill and a border both take a role or a colour', () {
+      // A role follows the reader's theme, which is why a page should name
+      // one -- a line nobody in a dark theme can see is not a line. But the
+      // fill and the border of a shop's own cards are what that shop is
+      // coloured with, and a setting that cannot carry the colour somebody
+      // chose is a setting they cannot use.
       expect(PanelRule.parse("fill=#101820").fill?.literal, isNotNull);
-      expect(PanelRule.parse("color=#101820").color, isNull);
+      expect(PanelRule.parse("color=#101820").color?.literal, isNotNull);
+      expect(PanelRule.parse("fill=raised").fill?.role, MarkdownRole.raised);
     });
 
     test('a shape may be given either way round', () {
@@ -78,6 +97,28 @@ void main() {
       expect(PanelRule.parse("image=https://example.com/x.png").image, isNull);
       expect(
           PanelRule.parse("image=shopassets/x.png").image, "shopassets/x.png");
+    });
+
+    testWidgets('with no shape given, the picture is the width of the panel',
+        (tester) async {
+      // What made two of the four corners look broken. A picture left at its
+      // own width sits at one end of a card that is stretched to its share
+      // of the row, so the corners at the other end were cutting empty
+      // space -- the setting saved, the markup was right, and half of it
+      // did nothing anybody could see.
+      await tester.pumpWidget(wrap(Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          MarkdownPanel(
+            rule: PanelRule.parse("image=assets/g.png, radius=0 24 24 0"),
+            child: const SizedBox.shrink(),
+          ),
+        ],
+      )));
+      await tester.pump();
+
+      var picture = tester.widget<Image>(find.byType(Image));
+      expect(picture.width, double.infinity);
     });
 
     testWidgets('a shape asked for is the shape it is drawn at',
@@ -170,6 +211,142 @@ void main() {
     });
   });
 
+  group('a listing: three rows and the thing to press', () {
+    const rows = "--listing--\n"
+        "title: First product\n"
+        "link: product/1209391282\n"
+        "summary: A longish product description. Features: - One - Two\n"
+        "meta: \$659.99 · ≈ 26.3996 DCR\n"
+        "button: Buy Now\n"
+        "style: primary\n"
+        "align: left\n"
+        "--/listing--\n";
+
+    test('the fields it was written with', () {
+      var got = ListingRule.of(const {
+        "title": "A guitar",
+        "link": "product/gtr",
+        "summary": "A lovely guitar",
+        "meta": "\$20.00",
+        "button": "Buy Now",
+        "style": "primary",
+        "align": "center",
+      });
+      expect(got.title, "A guitar");
+      expect(got.summary, "A lovely guitar");
+      expect(got.meta, "\$20.00");
+      expect(got.role, ButtonRole.primary);
+      expect(got.align, CrossAxisAlignment.center);
+      expect(got.lines, 1);
+    });
+
+    testWidgets('the description is one line however narrow the card is',
+        (tester) async {
+      // The reason this is a block of its own. A paragraph wraps to whatever
+      // width it is given, so on a card a third of a page wide the
+      // description ran to four lines and pushed the price out of sight.
+      tester.view.physicalSize = const Size(360, 900);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(
+          wrap(SizedBox(width: 200, child: MarkdownArea(rows, false))));
+      await tester.pump();
+
+      var summary = tester.widget<Text>(
+          find.text("A longish product description. Features: - One - Two"));
+      expect(summary.maxLines, 1);
+      expect(summary.overflow, TextOverflow.ellipsis);
+    });
+
+    testWidgets('the price and the button stay on one row', (tester) async {
+      // They were a run of columns, which stacks below a width the reader's
+      // guide sets -- so on a card three across they stacked every time, and
+      // the divider a run of columns draws put a rule between them.
+      tester.view.physicalSize = const Size(360, 900);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(
+          wrap(SizedBox(width: 220, child: MarkdownArea(rows, false))));
+      await tester.pump();
+
+      var price = tester.getRect(find.textContaining("659.99"));
+      var button =
+          tester.getRect(find.widgetWithText(ElevatedButton, "Buy Now"));
+      expect(price.center.dy, closeTo(button.center.dy, 12),
+          reason: "the price and the button are not on one line");
+      expect(price.left, lessThan(button.left),
+          reason: "the price is not to the left of the button");
+    });
+
+    testWidgets('the title is set the way a link is set', (tester) async {
+      // The plain card's title is written as Markdown and goes through the
+      // reader's guide. This one does not, so colouring it by hand made
+      // switching between the two layouts change the colour of the title --
+      // the same thing, drawn twice, two ways.
+      await tester.pumpWidget(wrap(MarkdownArea(rows, false)));
+      await tester.pump();
+
+      var context = tester.element(find.byType(MarkdownListing));
+      // listen: false -- reading a model outside a build is what this is,
+      // and Provider asserts on the listening form there.
+      var theme = Provider.of<ThemeNotifier>(context, listen: false);
+      var body = Theme.of(context).textTheme.bodyMedium;
+      var title = tester.widget<Text>(find.text("First product"));
+
+      expect(title.style!.color, theme.markdownLinkStyle(body).color);
+    });
+
+    testWidgets('the rows keep the gap they were given', (tester) async {
+      await tester.pumpWidget(wrap(MarkdownArea(
+          rows.replaceFirst("align: left\n", "align: left\ngap: 20\n"),
+          false)));
+      await tester.pump();
+
+      var gaps = tester
+          .widgetList<SizedBox>(find.descendant(
+              of: find.byType(MarkdownListing),
+              matching: find.byType(SizedBox)))
+          .where((b) => b.height == 20);
+      expect(gaps.length, 2,
+          reason: "the gap goes between every row, not only the first two");
+    });
+
+    testWidgets('the button takes the colour and shape it was given',
+        (tester) async {
+      await tester.pumpWidget(wrap(MarkdownArea(
+          "$rows".replaceFirst("style: primary\n",
+              "style: primary\ncolor: #ffffffff\nradius: 20\npadding: 4\n"),
+          false)));
+      await tester.pump();
+
+      var button = tester.widget<ElevatedButton>(find.byType(ElevatedButton));
+      var states = <WidgetState>{};
+      expect(button.style!.backgroundColor!.resolve(states),
+          const Color(0xffffffff));
+      // A label that can be read on it: the roles carry a label colour that
+      // suits their own fill, and a written colour carries none.
+      expect(button.style!.foregroundColor!.resolve(states), Colors.black);
+
+      var shape =
+          button.style!.shape!.resolve(states) as RoundedRectangleBorder;
+      expect(shape.borderRadius, BorderRadius.circular(20));
+    });
+
+    testWidgets('the title is larger than the writing under it',
+        (tester) async {
+      await tester.pumpWidget(wrap(MarkdownArea(rows, false)));
+      await tester.pump();
+
+      var title = tester.widget<Text>(find.text("First product"));
+      var summary = tester.widget<Text>(
+          find.text("A longish product description. Features: - One - Two"));
+      expect(title.style!.fontSize!, greaterThan(summary.style!.fontSize!));
+      expect(title.style!.fontWeight, FontWeight.bold);
+    });
+  });
+
   group('a shop front as the store writes it', () {
     // The markup below is what simplestore's productCard emits, pasted as it
     // comes out. The two are covered separately -- Go for what is written,
@@ -192,6 +369,53 @@ void main() {
         "\n"
         "--/grid--\n";
 
+    // The fullest card the settings can ask for, pasted out of the Go side
+    // exactly as productCard emits it: a border round the whole thing, a
+    // picture filling it with its top corners rounded, a plate flush with
+    // the foot of the picture, and three rows on the plate ending in a
+    // button. Four panels deep with a run of columns inside them, which is
+    // the arrangement most likely to hit a depth guard or a layout that
+    // cannot measure itself.
+    const dressed = "--grid[3]--\n"
+        "--cell--\n"
+        "--panel[border=1, color=outline, radius=8, padding=10, margin=0]--\n"
+        "--panel[image=shopassets/g.jpg, ratio=400x400, crop=center, "
+        "radius=8 8 0 0, link=product/gtr, align=bottom, justify=stretch, "
+        "padding=0]--\n"
+        "--panel[fill=raised, padding=10, margin=0, radius=8, text=center]--\n"
+        "**[A guitar](product/gtr)**\n"
+        "\n"
+        "A lovely guitar with a spruce top.\n"
+        "\n"
+        "--columns[2]--\n"
+        "\$20.00\n"
+        "--col--\n"
+        "--button[label=Buy Now, link=product/gtr, style=primary, align=right]--\n"
+        "--/columns--\n"
+        "--/panel--\n"
+        "--/panel--\n"
+        "--/panel--\n"
+        "--/grid--\n";
+
+    testWidgets('the fullest card the settings can ask for draws',
+        (tester) async {
+      tester.view.physicalSize = const Size(1400, 1200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(wrap(MarkdownArea(dressed, false)));
+      await tester.pump();
+
+      expect(find.textContaining("A guitar", findRichText: true), findsWidgets);
+      expect(find.textContaining("spruce top", findRichText: true),
+          findsOneWidget);
+      expect(
+          find.textContaining("\$20.00", findRichText: true), findsOneWidget);
+      expect(find.widgetWithText(ElevatedButton, "Buy Now"), findsOneWidget);
+      expect(find.byType(MarkdownPanel), findsNWidgets(3));
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('every product is one card, and every card is a link',
         (tester) async {
       tester.view.physicalSize = const Size(1200, 900);
@@ -212,6 +436,34 @@ void main() {
       // which is what happens to a grid that divides itself at pictures when
       // a card puts its picture somewhere else.
       expect(find.byType(AspectRatio), findsNWidgets(2));
+    });
+  });
+
+  group('a link drawn as a button', () {
+    test('what it was written with', () {
+      var got = ButtonRule.parse(
+          "label=Buy Now, link=product/gtr, style=primary, align=right");
+      expect(got.label, "Buy Now");
+      expect(got.link, "product/gtr");
+      expect(got.role, ButtonRole.primary);
+      expect(got.align, Alignment.centerRight);
+      expect(got.draws, isTrue);
+    });
+
+    test('a button with nothing to press is not drawn', () {
+      // Going somewhere is the whole of what it does, so one with no link is
+      // not a button; one with no label is nothing anybody can read.
+      expect(ButtonRule.parse("label=Buy Now").draws, isFalse);
+      expect(ButtonRule.parse("link=product/gtr").draws, isFalse);
+    });
+
+    testWidgets('it is pressed rather than read', (tester) async {
+      await tester.pumpWidget(wrap(MarkdownArea(
+          "--button[label=Buy Now, link=product/gtr, style=primary]--",
+          false)));
+      await tester.pump();
+
+      expect(find.widgetWithText(ElevatedButton, "Buy Now"), findsOneWidget);
     });
   });
 

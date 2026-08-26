@@ -64,6 +64,16 @@ enum PanelStroke {
   }
 }
 
+/// PanelJustify is how wide a panel's content is drawn.
+enum PanelJustify {
+  /// stretch is the full width of the panel, which is what a block of a
+  /// page has always been.
+  stretch,
+  left,
+  center,
+  right,
+}
+
 /// PanelRule is what one panel asked for.
 @immutable
 class PanelRule {
@@ -80,12 +90,23 @@ class PanelRule {
 
   final PanelStroke stroke;
 
-  /// color is named, never given -- the same bargain the page background
-  /// makes. A panel cannot know whether its reader is in a dark theme, so a
-  /// line it names #000000 is a line nobody in one can see.
-  final MarkdownRole? color;
+  /// color is the line's colour: a named role, or a colour written out.
+  ///
+  /// A role is the better answer and is what the settings offer first, for
+  /// the reason the page background names one: a panel cannot know whether
+  /// its reader is in a dark theme, so a line it names #000000 is a line
+  /// nobody in one can see. But a shop putting its own border round its own
+  /// cards has a particular colour in mind, and refusing to carry it only
+  /// meant the border could not be used.
+  final MarkdownInk? color;
 
-  final double? radius;
+  /// radius is how round the corners are, per corner.
+  ///
+  /// Per corner because a picture at the top of a card is rounded at the top
+  /// and square at the bottom, where the writing meets it -- one number for
+  /// all four makes that impossible to draw, and a card built out of two
+  /// boxes to get it is a card with a seam down the middle.
+  final BorderRadius? radius;
 
   /// fill is what the panel is filled with behind its content.
   ///
@@ -127,6 +148,19 @@ class PanelRule {
   /// that is not a link.
   final String? link;
 
+  /// justify is how wide the panel's content is: the full width of the
+  /// panel, or only as wide as itself and sitting to one side.
+  ///
+  /// Read together with [align], which is the same question the other way
+  /// up. A plate on a card is the reason both exist: it either runs the
+  /// width of the picture or hugs the writing, and the second is only a
+  /// choice once it can also be told which side to hug.
+  final PanelJustify justify;
+
+  /// text is which side the writing inside the panel sits on, or null for
+  /// wherever the reader's guide puts it.
+  final WrapAlignment? text;
+
   const PanelRule({
     this.padding,
     this.margin,
@@ -140,6 +174,8 @@ class PanelRule {
     this.crop = Alignment.center,
     this.align,
     this.link,
+    this.justify = PanelJustify.stretch,
+    this.text,
   });
 
   static const none = PanelRule();
@@ -167,17 +203,71 @@ class PanelRule {
       margin: PageSetup.parseSpace(fields["margin"]),
       border: _border(fields["border"]),
       stroke: PanelStroke.parse(fields["style"]),
-      color: _role(fields["color"]),
-      radius: PageSetup.parseLength(fields["radius"], maxPanelRadius,
-          allowZero: true),
+      color: _ink(fields["color"]),
+      radius: _radius(fields["radius"]),
       fill: fill.isInherit ? null : fill,
       image: _image(fields["image"]),
       ratio: _ratio(fields["ratio"]),
       crop: _crop(fields["crop"]),
       align: _align(fields["align"]),
       link: _link(fields["link"]),
+      justify: _justify(fields["justify"]),
+      text: _text(fields["text"]),
     );
   }
+
+  /// _radius reads the corners, written the way room around something is:
+  /// one number for all four, or four for each corner from the top left
+  /// round to the bottom left -- the order CSS writes them in.
+  static BorderRadius? _radius(String? value) {
+    if (value == null) return null;
+    var parts = value
+        .trim()
+        .split(RegExp(r'[\s,]+'))
+        .where((p) => p.isNotEmpty)
+        .toList();
+    var got = [
+      for (var p in parts)
+        PageSetup.parseLength(p, maxPanelRadius, allowZero: true)
+    ];
+    if (got.isEmpty || got.any((v) => v == null)) return null;
+    var n = got.cast<double>();
+    Radius r(double v) => Radius.circular(v);
+    return switch (n.length) {
+      1 => BorderRadius.all(r(n[0])),
+      2 => BorderRadius.only(
+          topLeft: r(n[0]),
+          topRight: r(n[1]),
+          bottomRight: r(n[0]),
+          bottomLeft: r(n[1])),
+      3 => BorderRadius.only(
+          topLeft: r(n[0]),
+          topRight: r(n[1]),
+          bottomRight: r(n[2]),
+          bottomLeft: r(n[1])),
+      _ => BorderRadius.only(
+          topLeft: r(n[0]),
+          topRight: r(n[1]),
+          bottomRight: r(n[2]),
+          bottomLeft: r(n[3])),
+    };
+  }
+
+  static PanelJustify _justify(String? value) =>
+      switch (value?.trim().toLowerCase()) {
+        "left" || "start" => PanelJustify.left,
+        "center" || "centre" || "middle" => PanelJustify.center,
+        "right" || "end" => PanelJustify.right,
+        _ => PanelJustify.stretch,
+      };
+
+  static WrapAlignment? _text(String? value) =>
+      switch (value?.trim().toLowerCase()) {
+        "left" || "start" => WrapAlignment.start,
+        "center" || "centre" || "middle" => WrapAlignment.center,
+        "right" || "end" => WrapAlignment.end,
+        _ => null,
+      };
 
   /// _image is the picture behind a panel, or null for anything that is not
   /// one of this site's own files.
@@ -272,11 +362,25 @@ class PanelRule {
     };
   }
 
-  static MarkdownRole? _role(String? value) {
-    for (var r in MarkdownRole.values) {
-      if (r.name.toLowerCase() == value?.trim().toLowerCase()) return r;
+  /// _ink reads a colour written as a role's name or as #rrggbb.
+  ///
+  /// The name is matched without regard to case, which is what the roles
+  /// were matched by before they could also be colours. Half of them are
+  /// spelled with a capital in the middle -- quoteBar is one -- so lowering
+  /// the written value before looking it up silently lost those, and a
+  /// border colour that had always worked stopped being read.
+  static MarkdownInk? _ink(String? value) {
+    var written = value?.trim() ?? "";
+    if (written.isEmpty) return null;
+
+    for (var role in MarkdownRole.values) {
+      if (role.name.toLowerCase() == written.toLowerCase()) {
+        return MarkdownInk.of(role);
+      }
     }
-    return null;
+
+    var ink = MarkdownInk.fromJson(written);
+    return ink.isInherit ? null : ink;
   }
 
   bool get saysAnything =>
@@ -305,11 +409,13 @@ class PanelRule {
       other.ratio == ratio &&
       other.crop == crop &&
       other.align == align &&
-      other.link == link;
+      other.link == link &&
+      other.justify == justify &&
+      other.text == text;
 
   @override
   int get hashCode => Object.hash(padding, margin, border, stroke, color,
-      radius, fill, image, ratio, crop, align, link);
+      radius, fill, image, ratio, crop, align, link, justify, text);
 }
 
 class PanelBlockSyntax extends md.BlockSyntax {
@@ -366,8 +472,9 @@ class PanelMarkdownElementBuilder extends MarkdownElementBuilder {
   @override
   Widget visitElementAfter(md.Element element, TextStyle? preferredStyle) {
     var body = element.attributes["body"] ?? "";
+    var rule = PanelRule.parse(element.attributes["attrs"]);
     return MarkdownPanel(
-      rule: PanelRule.parse(element.attributes["attrs"]),
+      rule: rule,
       // A panel with nothing between its two lines is a panel drawn for what
       // it is rather than for what it holds -- a picture at a fixed shape,
       // which is the picture half of a shop front's card. Rendering the
@@ -375,7 +482,7 @@ class PanelMarkdownElementBuilder extends MarkdownElementBuilder {
       // spacing, drawn for nothing.
       child: body.trim().isEmpty
           ? const SizedBox.shrink()
-          : MarkdownArea(body, false),
+          : MarkdownArea(body, false, align: rule.text),
     );
   }
 }
@@ -389,8 +496,9 @@ class MarkdownPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     var theme = ThemeNotifier.of(context);
-    var color = theme.markdownRoleColor(rule.color ?? MarkdownRole.outline);
-    var radius = BorderRadius.circular(rule.radius ?? 0);
+    var color = (rule.color == null ? null : theme.markdownInk(rule.color!)) ??
+        theme.markdownRoleColor(MarkdownRole.outline);
+    var radius = rule.radius ?? BorderRadius.zero;
 
     Widget out = child;
     if (rule.padding != null) {
@@ -410,7 +518,7 @@ class MarkdownPanel extends StatelessWidget {
                   bottom: BorderSide(color: color, width: border.bottom),
                   left: BorderSide(color: color, width: border.left),
                 ),
-                borderRadius: rule.radius != null ? radius : null,
+                borderRadius: rule.radius,
               ),
               child: out,
             )
@@ -418,7 +526,11 @@ class MarkdownPanel extends StatelessWidget {
               foregroundPainter: _PanelBorderPainter(
                 color: color,
                 width: border,
-                radius: rule.radius ?? 0,
+                // A broken line takes the first corner it is given. Drawing
+                // dashes round four different curves is a different piece of
+                // geometry, and a border written with four numbers is
+                // overwhelmingly a solid one.
+                radius: radius.topLeft.x,
                 dotted: rule.stroke == PanelStroke.dotted,
               ),
               child: Padding(padding: border, child: out),
@@ -450,26 +562,47 @@ class MarkdownPanel extends StatelessWidget {
         : pageAssetPicture(context, rule.image!,
             // Cropped only where there is a shape to crop to. Without one
             // the panel is as tall as the picture, so the whole picture is
-            // what it is: cover would be a crop with nothing gained.
-            fit: rule.ratio != null ? BoxFit.cover : BoxFit.contain,
-            alignment: rule.crop);
+            // what it is: there is nothing to crop against.
+            fit: BoxFit.cover,
+            alignment: rule.crop,
+            // With no shape given, the picture is what says how large the
+            // panel is -- so it has to be the width of it. Left at its own
+            // width it sits at one end of a wider box, and the corners,
+            // border and fill are drawn round space the picture is not in.
+            fillWidth: rule.ratio == null);
 
-    // Nothing behind it and no shape asked for leaves the plain block a
-    // panel was before any of this: no Stack, no clip, nothing measured.
-    if (fill == null && picture == null && rule.ratio == null) return content;
+    // Nothing behind it, no shape asked for, and nothing to say about where
+    // its content sits leaves the plain block a panel was before any of
+    // this: no Stack, no clip, nothing measured.
+    //
+    // Placement is checked here as well as the rest, and that is the whole
+    // of one bug. A panel written only to hold its content to one side --
+    // which is how a plate that is not the full width of a card is written
+    // -- has no fill, no picture and no shape, so it returned before it
+    // reached the placing below and the setting did nothing at all.
+    var placing = rule.align != null || rule.justify != PanelJustify.stretch;
+    if (fill == null && picture == null && rule.ratio == null && !placing) {
+      return content;
+    }
 
-    // Placed by a Column rather than an Align, so the content keeps the full
-    // width of the panel. Aligned, a line of writing on a card would sit in
-    // the middle of it and wrap at its own length rather than the card's.
-    Widget placed = rule.align == null
+    // Placed by a Column rather than an Align, so that content asking for
+    // the full width gets it. Aligned, a line of writing on a card would sit
+    // in the middle of it and wrap at its own length rather than the card's.
+    Widget placed = !placing
         ? content
         : Column(
-            mainAxisAlignment: switch (rule.align!.y) {
+            mainAxisAlignment: switch (rule.align?.y) {
+              null => MainAxisAlignment.start,
               < 0 => MainAxisAlignment.start,
               > 0 => MainAxisAlignment.end,
               _ => MainAxisAlignment.center,
             },
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+            crossAxisAlignment: switch (rule.justify) {
+              PanelJustify.stretch => CrossAxisAlignment.stretch,
+              PanelJustify.left => CrossAxisAlignment.start,
+              PanelJustify.center => CrossAxisAlignment.center,
+              PanelJustify.right => CrossAxisAlignment.end,
+            },
             children: [content],
           );
 
@@ -499,8 +632,7 @@ class MarkdownPanel extends StatelessWidget {
 
     if (fill != null) {
       out = DecoratedBox(
-        decoration: BoxDecoration(
-            color: fill, borderRadius: rule.radius != null ? radius : null),
+        decoration: BoxDecoration(color: fill, borderRadius: rule.radius),
         child: out,
       );
     }
