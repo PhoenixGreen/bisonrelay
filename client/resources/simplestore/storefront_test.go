@@ -120,6 +120,233 @@ func TestTheDCRFigureCanBeLeftOffTheShopFront(t *testing.T) {
 	}
 }
 
+func TestABorderIsDrawnRoundTheWholeCard(t *testing.T) {
+	layout := DefaultIndexLayout()
+	got := cardFor(t, layout, &Product{Title: "A guitar", SKU: "gtr"})
+	if strings.Contains(got, "border=") {
+		t.Errorf("a shop that asked for no border got one:\n%s", got)
+	}
+
+	layout.CardBorder = true
+	layout.CardBorderWidth, layout.CardBorderRadius = 2, 16
+	layout.CardBorderColor = "#334455"
+	layout.CardPadding, layout.CardMargin = 12, 4
+	got = cardFor(t, layout, &Product{Title: "A guitar", SKU: "gtr"})
+
+	for _, want := range []string{
+		"border=2", "color=#334455", "radius=16", "padding=12", "margin=4",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("%q missing from:\n%s", want, got)
+		}
+	}
+	// Round the whole card: the picture and the writing are both inside it.
+	if !strings.HasPrefix(strings.TrimSpace(got), "--panel[border=") {
+		t.Errorf("the border is not the outermost part of the card:\n%s", got)
+	}
+}
+
+func TestThePicturesCornersAreSetOneByOne(t *testing.T) {
+	layout := DefaultIndexLayout()
+	if got := cardFor(t, layout, &Product{SKU: "gtr"}); strings.Contains(got, "radius=") {
+		t.Errorf("a picture nobody rounded came out rounded:\n%s", got)
+	}
+
+	// Rounded at the top, square where the writing meets it.
+	layout.ImageCornerTopLeft, layout.ImageCornerTopRight = 12, 12
+	got := cardFor(t, layout, &Product{SKU: "gtr"})
+	if !strings.Contains(got, "radius=12 12 0 0") {
+		t.Errorf("the corners are not as asked:\n%s", got)
+	}
+}
+
+func TestThePlateIsPlacedAndSized(t *testing.T) {
+	layout := DefaultIndexLayout()
+	layout.TextBackground = true
+	layout.ImagePosition = ImageFull
+	layout.TextAlign = TextRight
+	layout.TextMargin = 6
+
+	// Full width: the plate runs the width of the picture, and stands off
+	// its edge by the margin.
+	got := cardFor(t, layout, &Product{Title: "A guitar", SKU: "gtr"})
+	if !strings.Contains(got, "justify=stretch") {
+		t.Errorf("a full-width plate is not full width:\n%s", got)
+	}
+	if !strings.Contains(got, "padding=6") {
+		t.Errorf("the plate does not stand off the edge:\n%s", got)
+	}
+	if !strings.Contains(got, "text=right") {
+		t.Errorf("the writing is not on the side asked for:\n%s", got)
+	}
+
+	// Flush and hugging the writing: no room at the edge, and only as wide
+	// as what is on it.
+	layout.TextFullWidth = false
+	layout.TextFlush = true
+	got = cardFor(t, layout, &Product{Title: "A guitar", SKU: "gtr"})
+	if !strings.Contains(got, "justify=right") {
+		t.Errorf("the plate still runs the whole width:\n%s", got)
+	}
+	if !strings.Contains(got, "padding=0") {
+		t.Errorf("a plate asked to sit flush is still standing off:\n%s", got)
+	}
+}
+
+// TestWhichSideTheWritingSitsOnReachesTheCard covers the setting with no
+// plate behind it.
+//
+// Which side the writing sits on is a fact about the writing, but it was
+// written only into the plate -- so a shop that had not turned the plate on
+// had a setting that saved, showed the answer it had saved, and changed
+// nothing at all on the page.
+func TestWhichSideTheWritingSitsOnReachesTheCard(t *testing.T) {
+	layout := DefaultIndexLayout()
+	layout.TextAlign = TextCenter
+
+	got := cardFor(t, layout, &Product{Title: "A guitar", SKU: "gtr"})
+	if !strings.Contains(got, "text=center") {
+		t.Errorf("a card with no plate is not aligned:\n%s", got)
+	}
+
+	// The left is what a card has always been, so it writes nothing: a shop
+	// that never touched this setting renders the markup it did before it
+	// existed.
+	layout.TextAlign = TextLeft
+	if got := cardFor(t, layout, &Product{SKU: "gtr"}); strings.Contains(got, "text=") {
+		t.Errorf("the default writes a setting nobody asked for:\n%s", got)
+	}
+}
+
+// TestAPlateThatIsNotFullWidthIsToldWhatToBe covers the second half of the
+// same setting.
+//
+// A block of a page is the width of the page. A plate that is not the full
+// width has to be told what to be instead and where to sit -- and on a card
+// whose picture is above or below the writing there is no other panel to do
+// it, so turning the setting off did nothing.
+func TestAPlateThatIsNotFullWidthIsToldWhatToBe(t *testing.T) {
+	layout := DefaultIndexLayout()
+	layout.TextBackground = true
+	layout.TextFullWidth = false
+	layout.TextAlign = TextRight
+
+	got := cardFor(t, layout, &Product{Title: "A guitar", SKU: "gtr"})
+	if !strings.Contains(got, "justify=right") {
+		t.Errorf("the plate still runs the width of the card:\n%s", got)
+	}
+
+	// Full width is the plain block, and writes nothing extra.
+	layout.TextFullWidth = true
+	got = cardFor(t, layout, &Product{Title: "A guitar", SKU: "gtr"})
+	if strings.Contains(got, "justify=") {
+		t.Errorf("a full-width plate was wrapped in a panel for nothing:\n%s", got)
+	}
+}
+
+func TestTheThreeRowLayoutSaysWhatItSells(t *testing.T) {
+	layout := DefaultIndexLayout()
+	layout.TextLayout = TextRows
+	layout.ButtonLabel = "Buy Now"
+
+	got := cardFor(t, layout, &Product{Title: "A guitar", SKU: "gtr",
+		Price: 20, Description: "A lovely guitar with a spruce top."})
+
+	title := strings.Index(got, "title: A guitar")
+	summary := strings.Index(got, "summary: A lovely guitar")
+	price := strings.Index(got, "meta: $20.00")
+	button := strings.Index(got, "button: Buy Now")
+	if title == -1 || summary == -1 || price == -1 || button == -1 {
+		t.Fatalf("a row is missing:\n%s", got)
+	}
+	if !(title < summary && summary < price && price < button) {
+		t.Errorf("the rows are not title, description, price and button:\n%s", got)
+	}
+
+	// One block rather than three. Three blocks carry three blocks' worth of
+	// the reader's paragraph spacing, wrap the description to the card's
+	// width, and stack the last row when the card is narrow.
+	if !strings.Contains(got, "--listing--") {
+		t.Errorf("the rows are not one composition:\n%s", got)
+	}
+	if strings.Contains(got, "--columns[") {
+		t.Errorf("the price and the button are in a run of columns, which "+
+			"stacks on a narrow card and draws a rule between them:\n%s", got)
+	}
+	if !strings.Contains(got, "link: product/gtr") {
+		t.Errorf("the card does not open the product:\n%s", got)
+	}
+}
+
+// TestWhatASellerWroteCannotEndAField covers the block whose fields are one
+// per line.
+//
+// A title with a newline in it would end its own field, and the line after it
+// -- if it holds a colon -- would be read as another field entirely.
+func TestWhatASellerWroteCannotEndAField(t *testing.T) {
+	layout := DefaultIndexLayout()
+	layout.TextLayout = TextRows
+
+	got := cardFor(t, layout, &Product{
+		Title: "A guitar\nbutton: Free",
+		SKU:   "gtr",
+	})
+	// Not "does the text appear" -- it does, flattened into the title. What
+	// must not happen is a *line* of its own, which is what a field is.
+	for _, line := range strings.Split(got, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "button: Free") {
+			t.Errorf("a title wrote a field of its own:\n%s", got)
+		}
+	}
+	if !strings.Contains(got, "title: A guitar button: Free") {
+		t.Errorf("the title was lost rather than flattened:\n%s", got)
+	}
+}
+
+func TestACardCarriesTheOpeningOfADescription(t *testing.T) {
+	// A description is written for the product's own page, where there is
+	// room for a list of features. A card carrying all of it is as tall as
+	// the page, and a row of them is a page nothing can be compared on.
+	if got := cardSummary("First para.\n\n- One\n- Two"); got != "First para." {
+		t.Errorf("got %q, want the first paragraph alone", got)
+	}
+	if got := cardSummary("A line\nwrapped in the source"); got != "A line wrapped in the source" {
+		t.Errorf("got %q, want one line", got)
+	}
+	if got := cardSummary("   "); got != "" {
+		t.Errorf("got %q, want nothing at all", got)
+	}
+
+	long := cardSummary(strings.Repeat("word ", 100))
+	if len([]rune(long)) > 145 {
+		t.Errorf("a long description was not cut: %d runes", len([]rune(long)))
+	}
+	if !strings.HasSuffix(long, "…") {
+		t.Errorf("a description was cut without saying so: %q", long)
+	}
+	if strings.HasSuffix(strings.TrimSuffix(long, "…"), " ") {
+		t.Errorf("cut mid-space: %q", long)
+	}
+}
+
+func TestASettingHoldingACommaCannotBreakTheCard(t *testing.T) {
+	// A card is markup whose settings are separated by commas and closed by
+	// a bracket. Nothing here is a security boundary -- these are the
+	// seller's own settings -- but a shop front should not be breakable by
+	// typing a comma into a colour box.
+	layout := DefaultIndexLayout()
+	layout.TextColor = "red, padding=99"
+	layout.CardBorderColor = "blue]--"
+	layout.ButtonLabel = "Buy, now"
+	got := layout.normalize()
+
+	def := DefaultIndexLayout()
+	if got.TextColor != def.TextColor || got.CardBorderColor != def.CardBorderColor ||
+		got.ButtonLabel != def.ButtonLabel {
+		t.Errorf("a setting that would end the markup early was taken: %+v", got)
+	}
+}
+
 // TestASettingThatCannotMeanAnythingIsCorrected covers the file being one a
 // seller can open in an editor.
 //

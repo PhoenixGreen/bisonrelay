@@ -2956,6 +2956,48 @@ class StoreIndexLayout {
   /// it: "top", "center" or "bottom". Read only for the "full" position.
   final String textPosition;
 
+  /// textFullWidth is whether the plate runs the whole width of the card, or
+  /// only as wide as the writing on it.
+  final bool textFullWidth;
+
+  /// textFlush is whether the plate touches the edge of the picture it sits
+  /// against rather than standing off it. Only means anything at the top and
+  /// the bottom.
+  final bool textFlush;
+
+  /// textAlign is which side the writing sits on: "left", "center", "right".
+  final String textAlign;
+
+  /// textLayout is what the writing is made of: "plain" -- the title and the
+  /// price -- or "rows", which is the title, the description, and the price
+  /// beside a button.
+  final String textLayout;
+
+  /// buttonLabel is what the three-row layout's button says, and the rest is
+  /// what it looks like. An empty colour is whatever the app's own button of
+  /// that role is.
+  final String buttonLabel;
+  final String buttonColor;
+  final int buttonRadius;
+  final int buttonPadding;
+
+  /// rowGap is the room between one row of the three-row card and the next.
+  final int rowGap;
+
+  /// The line round the whole card, and the room inside and outside it.
+  final bool cardBorder;
+  final int cardBorderWidth;
+  final String cardBorderColor;
+  final int cardBorderRadius;
+  final int cardPadding;
+  final int cardMargin;
+
+  /// The picture's own corners, one by one, clockwise from the top left.
+  final int imageCornerTopLeft;
+  final int imageCornerTopRight;
+  final int imageCornerBottomRight;
+  final int imageCornerBottomLeft;
+
   /// showDCR is whether a card shows what its price comes to in DCR as well
   /// as in dollars. The product's own page always shows both.
   final bool showDCR;
@@ -2972,6 +3014,25 @@ class StoreIndexLayout {
     this.textMargin = 0,
     this.textRadius = 8,
     this.textPosition = "bottom",
+    this.textFullWidth = true,
+    this.textFlush = false,
+    this.textAlign = "left",
+    this.textLayout = "plain",
+    this.buttonLabel = "Buy Now",
+    this.buttonColor = "",
+    this.buttonRadius = 8,
+    this.buttonPadding = 12,
+    this.rowGap = 6,
+    this.cardBorder = false,
+    this.cardBorderWidth = 1,
+    this.cardBorderColor = "outline",
+    this.cardBorderRadius = 8,
+    this.cardPadding = 10,
+    this.cardMargin = 0,
+    this.imageCornerTopLeft = 0,
+    this.imageCornerTopRight = 0,
+    this.imageCornerBottomRight = 0,
+    this.imageCornerBottomLeft = 0,
     this.showDCR = true,
   });
 
@@ -3004,6 +3065,33 @@ class StoreIndexLayout {
       textMargin: number("text_margin", fallback.textMargin),
       textRadius: number("text_radius", fallback.textRadius),
       textPosition: word("text_position", fallback.textPosition),
+      textFullWidth: flag("text_full_width", fallback.textFullWidth),
+      textFlush: flag("text_flush", fallback.textFlush),
+      textAlign: word("text_align", fallback.textAlign),
+      textLayout: word("text_layout", fallback.textLayout),
+      buttonLabel: word("button_label", fallback.buttonLabel),
+      // Empty is an answer here -- it means the app's own button -- so this
+      // one is read as it is rather than falling back when blank.
+      buttonColor: json["button_color"] is String
+          ? json["button_color"] as String
+          : fallback.buttonColor,
+      buttonRadius: number("button_radius", fallback.buttonRadius),
+      buttonPadding: number("button_padding", fallback.buttonPadding),
+      rowGap: number("row_gap", fallback.rowGap),
+      cardBorder: flag("card_border", fallback.cardBorder),
+      cardBorderWidth: number("card_border_width", fallback.cardBorderWidth),
+      cardBorderColor: word("card_border_color", fallback.cardBorderColor),
+      cardBorderRadius: number("card_border_radius", fallback.cardBorderRadius),
+      cardPadding: number("card_padding", fallback.cardPadding),
+      cardMargin: number("card_margin", fallback.cardMargin),
+      imageCornerTopLeft:
+          number("image_corner_top_left", fallback.imageCornerTopLeft),
+      imageCornerTopRight:
+          number("image_corner_top_right", fallback.imageCornerTopRight),
+      imageCornerBottomRight:
+          number("image_corner_bottom_right", fallback.imageCornerBottomRight),
+      imageCornerBottomLeft:
+          number("image_corner_bottom_left", fallback.imageCornerBottomLeft),
       showDCR: flag("show_dcr", fallback.showDCR),
     );
   }
@@ -3020,6 +3108,25 @@ class StoreIndexLayout {
         "text_margin": textMargin,
         "text_radius": textRadius,
         "text_position": textPosition,
+        "text_full_width": textFullWidth,
+        "text_flush": textFlush,
+        "text_align": textAlign,
+        "text_layout": textLayout,
+        "button_label": buttonLabel,
+        "button_color": buttonColor,
+        "button_radius": buttonRadius,
+        "button_padding": buttonPadding,
+        "row_gap": rowGap,
+        "card_border": cardBorder,
+        "card_border_width": cardBorderWidth,
+        "card_border_color": cardBorderColor,
+        "card_border_radius": cardBorderRadius,
+        "card_padding": cardPadding,
+        "card_margin": cardMargin,
+        "image_corner_top_left": imageCornerTopLeft,
+        "image_corner_top_right": imageCornerTopRight,
+        "image_corner_bottom_right": imageCornerBottomRight,
+        "image_corner_bottom_left": imageCornerBottomLeft,
         "show_dcr": showDCR,
       };
 
@@ -3035,6 +3142,25 @@ class StoreIndexLayout {
     int? textMargin,
     int? textRadius,
     String? textPosition,
+    bool? textFullWidth,
+    bool? textFlush,
+    String? textAlign,
+    String? textLayout,
+    String? buttonLabel,
+    String? buttonColor,
+    int? buttonRadius,
+    int? buttonPadding,
+    int? rowGap,
+    bool? cardBorder,
+    int? cardBorderWidth,
+    String? cardBorderColor,
+    int? cardBorderRadius,
+    int? cardPadding,
+    int? cardMargin,
+    int? imageCornerTopLeft,
+    int? imageCornerTopRight,
+    int? imageCornerBottomRight,
+    int? imageCornerBottomLeft,
     bool? showDCR,
   }) =>
       StoreIndexLayout(
@@ -3049,6 +3175,27 @@ class StoreIndexLayout {
         textMargin: textMargin ?? this.textMargin,
         textRadius: textRadius ?? this.textRadius,
         textPosition: textPosition ?? this.textPosition,
+        textFullWidth: textFullWidth ?? this.textFullWidth,
+        textFlush: textFlush ?? this.textFlush,
+        textAlign: textAlign ?? this.textAlign,
+        textLayout: textLayout ?? this.textLayout,
+        buttonLabel: buttonLabel ?? this.buttonLabel,
+        buttonColor: buttonColor ?? this.buttonColor,
+        buttonRadius: buttonRadius ?? this.buttonRadius,
+        buttonPadding: buttonPadding ?? this.buttonPadding,
+        rowGap: rowGap ?? this.rowGap,
+        cardBorder: cardBorder ?? this.cardBorder,
+        cardBorderWidth: cardBorderWidth ?? this.cardBorderWidth,
+        cardBorderColor: cardBorderColor ?? this.cardBorderColor,
+        cardBorderRadius: cardBorderRadius ?? this.cardBorderRadius,
+        cardPadding: cardPadding ?? this.cardPadding,
+        cardMargin: cardMargin ?? this.cardMargin,
+        imageCornerTopLeft: imageCornerTopLeft ?? this.imageCornerTopLeft,
+        imageCornerTopRight: imageCornerTopRight ?? this.imageCornerTopRight,
+        imageCornerBottomRight:
+            imageCornerBottomRight ?? this.imageCornerBottomRight,
+        imageCornerBottomLeft:
+            imageCornerBottomLeft ?? this.imageCornerBottomLeft,
         showDCR: showDCR ?? this.showDCR,
       );
 
@@ -3066,22 +3213,56 @@ class StoreIndexLayout {
       other.textMargin == textMargin &&
       other.textRadius == textRadius &&
       other.textPosition == textPosition &&
+      other.textFullWidth == textFullWidth &&
+      other.textFlush == textFlush &&
+      other.textAlign == textAlign &&
+      other.textLayout == textLayout &&
+      other.buttonLabel == buttonLabel &&
+      other.buttonColor == buttonColor &&
+      other.buttonRadius == buttonRadius &&
+      other.buttonPadding == buttonPadding &&
+      other.rowGap == rowGap &&
+      other.cardBorder == cardBorder &&
+      other.cardBorderWidth == cardBorderWidth &&
+      other.cardBorderColor == cardBorderColor &&
+      other.cardBorderRadius == cardBorderRadius &&
+      other.cardPadding == cardPadding &&
+      other.cardMargin == cardMargin &&
+      other.imageCornerTopLeft == imageCornerTopLeft &&
+      other.imageCornerTopRight == imageCornerTopRight &&
+      other.imageCornerBottomRight == imageCornerBottomRight &&
+      other.imageCornerBottomLeft == imageCornerBottomLeft &&
       other.showDCR == showDCR;
 
   @override
   int get hashCode => Object.hash(
-      fixedImage,
-      imageWidth,
-      imageHeight,
-      crop,
-      imagePosition,
-      textBackground,
-      textColor,
-      textPadding,
-      textMargin,
-      textRadius,
-      textPosition,
-      showDCR);
+      Object.hash(
+          fixedImage,
+          imageWidth,
+          imageHeight,
+          crop,
+          imagePosition,
+          textBackground,
+          textColor,
+          textPadding,
+          textMargin,
+          textRadius,
+          textPosition,
+          showDCR),
+      textFullWidth,
+      textFlush,
+      textAlign,
+      textLayout,
+      buttonLabel,
+      Object.hash(buttonColor, buttonRadius, buttonPadding, rowGap),
+      cardBorder,
+      cardBorderWidth,
+      cardBorderColor,
+      cardBorderRadius,
+      cardPadding,
+      cardMargin,
+      Object.hash(imageCornerTopLeft, imageCornerTopRight,
+          imageCornerBottomRight, imageCornerBottomLeft));
 }
 
 @JsonSerializable()

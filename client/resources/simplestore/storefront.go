@@ -66,6 +66,25 @@ const (
 	TextBottom = "bottom"
 )
 
+// Which side the writing sits on.
+const (
+	TextLeft  = "left"
+	TextRight = "right"
+	// TextCenter is shared with the list above: a plate in the middle of a
+	// card is in the middle whichever way you are reading it.
+)
+
+// What a card's writing is made of.
+const (
+	// TextPlain is the title and the price, which is what a shop front card
+	// was before it was a setting.
+	TextPlain = "plain"
+
+	// TextRows is three rows: the title, the description, and the price
+	// beside a button.
+	TextRows = "rows"
+)
+
 // IndexLayout is what one product looks like on the shop front.
 //
 // Every field has a zero value that is either the old behaviour or is
@@ -105,6 +124,75 @@ type IndexLayout struct {
 	// writing are stacked, and where the writing is is which of them.
 	TextPosition string `json:"text_position" toml:"text_position"`
 
+	// TextFullWidth is whether the plate runs the whole width of the card
+	// or only as wide as the writing on it.
+	//
+	// Read whether or not there is a plate: it is where the writing sits as
+	// much as how wide its background is, and a card with no plate still
+	// puts its title somewhere.
+	TextFullWidth bool `json:"text_full_width" toml:"text_full_width"`
+
+	// TextFlush is whether the plate touches the edge of the picture it
+	// sits against, rather than standing off it by TextMargin.
+	//
+	// Only means anything at the top and the bottom. A band across the foot
+	// of a photograph is a common way to caption one, and a band a few
+	// pixels short of the foot is that with a mistake in it.
+	TextFlush bool `json:"text_flush" toml:"text_flush"`
+
+	// TextAlign is which side the writing sits on: left, center or right.
+	TextAlign string `json:"text_align" toml:"text_align"`
+
+	// TextLayout is what the writing is made of: the title and the price, or
+	// three rows with the description and a button.
+	TextLayout string `json:"text_layout" toml:"text_layout"`
+
+	// ButtonLabel is what the three-row layout's button says, and the rest
+	// is what it looks like.
+	//
+	// A colour of its own rather than only one of the theme's button roles.
+	// The roles are what the app's own buttons are, and they are the right
+	// answer for a page -- but the button on a shop's card is the one thing
+	// on that card somebody is meant to press, and a seller with a brand
+	// colour wants it in that colour.
+	ButtonLabel   string `json:"button_label" toml:"button_label"`
+	ButtonColor   string `json:"button_color" toml:"button_color"`
+	ButtonRadius  int    `json:"button_radius" toml:"button_radius"`
+	ButtonPadding int    `json:"button_padding" toml:"button_padding"`
+
+	// RowGap is the room between one row of the three-row card and the
+	// next.
+	//
+	// One number for both gaps. They are the same kind of space -- what
+	// separates a row from the row under it -- and two settings for that is
+	// two things to keep in step for a difference nobody looking at a card
+	// an inch wide could name.
+	RowGap int `json:"row_gap" toml:"row_gap"`
+
+	// CardBorder is whether a line is drawn round the whole card, and what
+	// that line and the room around it look like.
+	//
+	// Round the card rather than round the picture: a border is what makes a
+	// card a card on a page that has no other division between one product
+	// and the next.
+	CardBorder       bool   `json:"card_border" toml:"card_border"`
+	CardBorderWidth  int    `json:"card_border_width" toml:"card_border_width"`
+	CardBorderColor  string `json:"card_border_color" toml:"card_border_color"`
+	CardBorderRadius int    `json:"card_border_radius" toml:"card_border_radius"`
+	CardPadding      int    `json:"card_padding" toml:"card_padding"`
+	CardMargin       int    `json:"card_margin" toml:"card_margin"`
+
+	// The picture's own corners, one by one.
+	//
+	// One by one because a picture at the top of a card is rounded at the
+	// top and square where the writing meets it. The seller's UI offers to
+	// set all four together, which is what most shops want; the four numbers
+	// are what makes the other answer possible at all.
+	ImageCornerTopLeft     int `json:"image_corner_top_left" toml:"image_corner_top_left"`
+	ImageCornerTopRight    int `json:"image_corner_top_right" toml:"image_corner_top_right"`
+	ImageCornerBottomRight int `json:"image_corner_bottom_right" toml:"image_corner_bottom_right"`
+	ImageCornerBottomLeft  int `json:"image_corner_bottom_left" toml:"image_corner_bottom_left"`
+
 	// ShowDCR is whether a card shows what its price comes to in DCR as
 	// well as in dollars.
 	//
@@ -130,7 +218,22 @@ func DefaultIndexLayout() IndexLayout {
 		TextMargin:    0,
 		TextRadius:    8,
 		TextPosition:  TextBottom,
-		ShowDCR:       true,
+		TextFullWidth: true,
+		TextAlign:     TextLeft,
+		TextLayout:    TextPlain,
+		ButtonLabel:   "Buy Now",
+		ButtonColor:   "",
+		ButtonRadius:  8,
+		ButtonPadding: 12,
+		RowGap:        6,
+
+		CardBorderWidth:  1,
+		CardBorderColor:  "outline",
+		CardBorderRadius: 8,
+		CardPadding:      10,
+		CardMargin:       0,
+
+		ShowDCR: true,
 	}
 }
 
@@ -177,16 +280,56 @@ func (l IndexLayout) normalize() IndexLayout {
 	if !oneOf(l.TextPosition, TextTop, TextCenter, TextBottom) {
 		l.TextPosition = def.TextPosition
 	}
-	if l.TextColor == "" || strings.ContainsAny(l.TextColor, ",]=\n") {
-		// Anything with a comma or a bracket in it would end the setting
-		// early in the markup the card is written as, so it is not a colour
-		// this can pass on.
-		l.TextColor = def.TextColor
+	if !oneOf(l.TextAlign, TextLeft, TextCenter, TextRight) {
+		l.TextAlign = def.TextAlign
 	}
+	if !oneOf(l.TextLayout, TextPlain, TextRows) {
+		l.TextLayout = def.TextLayout
+	}
+	l.TextColor = safeSetting(l.TextColor, def.TextColor)
+	l.CardBorderColor = safeSetting(l.CardBorderColor, def.CardBorderColor)
+	l.ButtonLabel = safeSetting(l.ButtonLabel, def.ButtonLabel)
+
+	// The button's colour is the one setting allowed to be empty, which
+	// means "whatever the app's own button is". So it is only corrected
+	// when it holds something that cannot be passed on.
+	if l.ButtonColor != "" {
+		l.ButtonColor = safeSetting(l.ButtonColor, "")
+	}
+	l.ButtonRadius = clampLength(l.ButtonRadius, def.ButtonRadius)
+	l.ButtonPadding = clampLength(l.ButtonPadding, def.ButtonPadding)
+	l.RowGap = clampLength(l.RowGap, def.RowGap)
+
+	l.CardBorderWidth = clampLength(l.CardBorderWidth, def.CardBorderWidth)
+	l.CardBorderRadius = clampLength(l.CardBorderRadius, def.CardBorderRadius)
+	l.CardPadding = clampLength(l.CardPadding, def.CardPadding)
+	l.CardMargin = clampLength(l.CardMargin, def.CardMargin)
+
+	l.ImageCornerTopLeft = clampLength(l.ImageCornerTopLeft, 0)
+	l.ImageCornerTopRight = clampLength(l.ImageCornerTopRight, 0)
+	l.ImageCornerBottomRight = clampLength(l.ImageCornerBottomRight, 0)
+	l.ImageCornerBottomLeft = clampLength(l.ImageCornerBottomLeft, 0)
 	l.TextPadding = clampLength(l.TextPadding, def.TextPadding)
 	l.TextMargin = clampLength(l.TextMargin, 0)
 	l.TextRadius = clampLength(l.TextRadius, def.TextRadius)
 	return l
+}
+
+// safeSetting is a written setting that can be passed on as it is, or the
+// default in place of one that cannot.
+//
+// A card is written as markup whose settings are separated by commas and
+// closed by a bracket, so a value holding either ends the setting early and
+// takes the rest of the card's markup with it. Nothing here is a security
+// boundary -- these are the seller's own settings, written by the seller's
+// own UI -- it is that a shop front should not be breakable by typing a
+// comma into a colour box.
+func safeSetting(value, fallback string) string {
+	value = strings.TrimSpace(value)
+	if value == "" || strings.ContainsAny(value, ",[]=\n\r") {
+		return fallback
+	}
+	return value
 }
 
 func oneOf(value string, allowed ...string) bool {
@@ -272,9 +415,9 @@ func (s *Store) SetIndexLayout(layout IndexLayout) (IndexLayout, error) {
 // Markup rather than a widget, because the shop front is a page: it is
 // rendered by whoever is reading it, in their own theme, and the only thing
 // that crosses the wire is what is written here. The blocks it uses -- a
-// panel with a picture in it, a cell marker -- are the page markup any page
-// of a site may use, so nothing here is special to a store except the
-// decision about which of them to write.
+// panel with a picture in it, a cell marker, a link drawn as a button -- are
+// the page markup any page of a site may use, so nothing here is special to a
+// store except the decision about which of them to write.
 func (s *Store) productCard(p *Product) string {
 	if p == nil {
 		return ""
@@ -290,37 +433,159 @@ func (s *Store) productCard(p *Product) string {
 		image = ProductImagePath(placeholderImage)
 	}
 
-	var text strings.Builder
-	fmt.Fprintf(&text, "**[%s](%s)**\n", p.Title, link)
-	text.WriteString(Money(p.Price))
-	if layout.ShowDCR {
-		if approx := s.approxDCR(p.Price); approx != "" {
-			fmt.Fprintf(&text, " · ≈ %s", approx)
-		}
-	}
-	text.WriteString("\n")
-
-	writing := text.String()
-	if layout.TextBackground {
-		writing = fmt.Sprintf("--panel[fill=%s, padding=%d, margin=%d, radius=%d]--\n%s--/panel--\n",
-			layout.TextColor, layout.TextPadding, layout.TextMargin,
-			layout.TextRadius, writing)
-	}
-
+	writing := s.cardWriting(layout, p, link)
 	picture := s.cardPicture(layout, image, link)
 
+	var card string
 	switch layout.ImagePosition {
 	case ImageBottom:
-		return writing + picture
+		card = writing + picture
 	case ImageFull:
 		// One panel: the picture is the card, and the writing sits on it
 		// wherever the seller asked for.
-		return fmt.Sprintf("--panel[image=%s, %s, link=%s, align=%s, padding=%d]--\n%s--/panel--\n",
-			image, s.cardShape(layout), link, layout.TextPosition,
-			layout.TextPadding, writing)
+		//
+		card = fmt.Sprintf("--panel[image=%s%s%s, link=%s, align=%s, justify=%s, padding=%s]--\n%s--/panel--\n",
+			image, prefixed(s.cardShape(layout)),
+			prefixed(cardCorners(layout)), link, layout.TextPosition,
+			s.cardJustify(layout), plateRoom(layout), writing)
 	default:
-		return picture + writing
+		card = picture + writing
 	}
+
+	return s.cardFrame(layout, card)
+}
+
+// cardFrame is the line drawn round a whole card, and the room inside and
+// outside it.
+//
+// Nothing at all when the seller has not asked for one, rather than a panel
+// with every setting at nought: an empty panel is still a block, and a shop
+// front that never asked for borders should render exactly the markup it
+// rendered before borders existed.
+func (s *Store) cardFrame(layout IndexLayout, card string) string {
+	if !layout.CardBorder {
+		return card
+	}
+	return fmt.Sprintf("--panel[border=%d, color=%s, radius=%d, padding=%d, margin=%d]--\n%s--/panel--\n",
+		layout.CardBorderWidth, layout.CardBorderColor,
+		layout.CardBorderRadius, layout.CardPadding, layout.CardMargin, card)
+}
+
+// cardWriting is what a card says: the title and the price, or the three
+// rows -- title, description, and the price beside a button.
+func (s *Store) cardWriting(layout IndexLayout, p *Product, link string) string {
+	var text strings.Builder
+	fmt.Fprintf(&text, "**[%s](%s)**\n", oneLine(p.Title), link)
+
+	price := Money(p.Price)
+	if layout.ShowDCR {
+		if approx := s.approxDCR(p.Price); approx != "" {
+			price += " · ≈ " + approx
+		}
+	}
+
+	var writing string
+	if layout.TextLayout == TextRows {
+		// One block rather than three, and that is the whole reason the
+		// block exists. A title, a paragraph and a row of two written as
+		// ordinary blocks carry three blocks' worth of the reader's own
+		// paragraph spacing, wrap the description to whatever the card's
+		// width allows, and stack that last row when the card is narrow --
+		// each of which is right for a page and wrong for a card.
+		//
+		// The description is the seller's own writing, and the product's own
+		// page shows all of it. Here it is one line: a card as tall as
+		// however much somebody wrote is a row of cards nothing can be
+		// compared in.
+		writing = fmt.Sprintf("--listing--\ntitle: %s\nlink: %s\n",
+			oneLine(p.Title), link)
+		if summary := cardSummary(p.Description); summary != "" {
+			writing += "summary: " + summary + "\n"
+		}
+		writing += fmt.Sprintf("meta: %s\nbutton: %s\nstyle: primary\n"+
+			"align: %s\ngap: %d\nradius: %d\npadding: %d\n",
+			price, oneLine(layout.ButtonLabel), layout.TextAlign,
+			layout.RowGap, layout.ButtonRadius, layout.ButtonPadding)
+		if layout.ButtonColor != "" {
+			writing += "color: " + layout.ButtonColor + "\n"
+		}
+		writing += "--/listing--\n"
+	} else {
+		text.WriteString(price + "\n")
+		writing = text.String()
+	}
+
+	if !layout.TextBackground {
+		// No plate, and still a side to sit on: which side the writing sits
+		// on is a fact about the writing rather than about its background,
+		// so a card with no plate is aligned by a panel that does nothing
+		// else. The three-row block places its own writing and needs
+		// neither.
+		if layout.TextAlign == TextLeft || layout.TextLayout == TextRows {
+			return writing
+		}
+		return fmt.Sprintf("--panel[text=%s, justify=%s]--\n%s--/panel--\n",
+			layout.TextAlign, s.cardJustify(layout), writing)
+	}
+
+	// The plate. Its margin is the room it keeps from whatever is next to
+	// it, which for a card whose picture fills it is the panel's padding
+	// instead -- so it is not written twice.
+	margin := plateMargin(layout)
+	plate := fmt.Sprintf("--panel[fill=%s, padding=%d, margin=%s, radius=%d, text=%s]--\n%s--/panel--\n",
+		layout.TextColor, layout.TextPadding, margin, layout.TextRadius,
+		layout.TextAlign, writing)
+
+	// A plate that is not the full width has to be told what to be instead,
+	// and where to sit. On a card whose picture fills it, the panel holding
+	// the picture does that; on one where the picture is above or below, the
+	// plate is a block of its own and nothing else is going to.
+	if !layout.TextFullWidth && layout.ImagePosition != ImageFull {
+		plate = fmt.Sprintf("--panel[justify=%s]--\n%s--/panel--\n",
+			layout.TextAlign, plate)
+	}
+	return plate
+}
+
+// oneLine is a piece of the seller's own writing, safe to write as one field
+// of a block whose fields are one per line.
+//
+// A title with a newline in it would end its field, and the line after it --
+// if it holds a colon -- would be read as another field entirely.
+func oneLine(text string) string {
+	return strings.Join(strings.Fields(text), " ")
+}
+
+// cardSummary is as much of a product's description as belongs on a card.
+//
+// The first paragraph, and not much of it. A description is written for the
+// product's own page, where there is room for a list of features; a card
+// carrying all of that is a card as tall as the page, and a row of them is a
+// page nobody can compare anything on.
+func cardSummary(description string) string {
+	text := strings.TrimSpace(description)
+	if text == "" {
+		return ""
+	}
+
+	// The first paragraph only, and every line of it joined: a bullet list
+	// or a hard-wrapped line reaching a card as several lines would be
+	// several rows where the layout has one.
+	if at := strings.Index(text, "\n\n"); at != -1 {
+		text = text[:at]
+	}
+	text = strings.Join(strings.Fields(text), " ")
+
+	const most = 140
+	if len(text) <= most {
+		return text
+	}
+	// Cut at a word rather than through one, and say that it was cut.
+	cut := text[:most]
+	if at := strings.LastIndex(cut, " "); at > most/2 {
+		cut = cut[:at]
+	}
+	return strings.TrimRight(cut, " ,.;:-") + "…"
 }
 
 // cardPicture is the picture on a card that has the writing beside it rather
@@ -331,12 +596,9 @@ func (s *Store) productCard(p *Product) string {
 // picture of the thing they want has said what they want; before this that
 // tap did nothing and only the title underneath was a link.
 func (s *Store) cardPicture(layout IndexLayout, image, link string) string {
-	shape := s.cardShape(layout)
-	if shape != "" {
-		shape = ", " + shape
-	}
-	return fmt.Sprintf("--panel[image=%s%s, link=%s]--\n--/panel--\n",
-		image, shape, link)
+	return fmt.Sprintf("--panel[image=%s%s%s, link=%s]--\n--/panel--\n",
+		image, prefixed(s.cardShape(layout)),
+		prefixed(cardCorners(layout)), link)
 }
 
 // cardShape is the settings that say what shape a picture is drawn at, or
@@ -347,4 +609,80 @@ func (s *Store) cardShape(layout IndexLayout) string {
 	}
 	return fmt.Sprintf("ratio=%dx%d, crop=%s", layout.ImageWidth,
 		layout.ImageHeight, layout.Crop)
+}
+
+// cardCorners is how round the picture's corners are, or nothing at all when
+// all four are square -- which is what a picture on a page has always been.
+func cardCorners(layout IndexLayout) string {
+	if layout.ImageCornerTopLeft == 0 && layout.ImageCornerTopRight == 0 &&
+		layout.ImageCornerBottomRight == 0 && layout.ImageCornerBottomLeft == 0 {
+		return ""
+	}
+	return fmt.Sprintf("radius=%d %d %d %d", layout.ImageCornerTopLeft,
+		layout.ImageCornerTopRight, layout.ImageCornerBottomRight,
+		layout.ImageCornerBottomLeft)
+}
+
+// plateMargin is the room the plate keeps from what is next to it, written
+// as the margin of the plate itself.
+//
+// Sitting flush means touching the picture, so it takes the room off the side
+// the picture is on and leaves the other three alone. On a card whose picture
+// fills it there is no side: the plate is on the picture, and the room comes
+// from the panel holding it -- see plateRoom.
+func plateMargin(layout IndexLayout) string {
+	if layout.ImagePosition == ImageFull {
+		return "0"
+	}
+	m := layout.TextMargin
+	if !layout.TextFlush {
+		return fmt.Sprintf("%d", m)
+	}
+	// Top, right, bottom, left.
+	if layout.ImagePosition == ImageBottom {
+		return fmt.Sprintf("%d %d 0 %d", m, m, m)
+	}
+	return fmt.Sprintf("0 %d %d %d", m, m, m)
+}
+
+// plateRoom is the room between the plate and the edge of the picture it
+// sits on, written as the padding of the panel holding the picture: there is
+// nowhere else that room can come from once the plate itself is the thing
+// being placed.
+//
+// Nothing at all when the plate sits flush. Top and bottom only when it runs
+// the full width -- which is what full width means, and reading it any other
+// way is what made the two settings appear to fight. Turning off "sits flush"
+// inset the plate on all four sides, so a plate that was the full width of
+// the picture stopped touching either end of it, and the width setting looked
+// as though it had been turned off along with the flush one.
+func plateRoom(layout IndexLayout) string {
+	if layout.TextFlush {
+		return "0"
+	}
+	if layout.TextFullWidth {
+		return fmt.Sprintf("%d 0", layout.TextMargin)
+	}
+	return fmt.Sprintf("%d", layout.TextMargin)
+}
+
+// cardJustify is how wide the plate is drawn: the width of the card, or the
+// width of the writing on it and to one side.
+func (s *Store) cardJustify(layout IndexLayout) string {
+	if layout.TextFullWidth {
+		return "stretch"
+	}
+	return layout.TextAlign
+}
+
+// prefixed is a settings fragment ready to follow another one, or the empty
+// string unchanged.
+//
+// The markup is a comma-separated list, and a list with a stray comma in it
+// -- or two commas together -- is a setting nobody wrote.
+func prefixed(setting string) string {
+	if setting == "" {
+		return ""
+	}
+	return ", " + setting
 }
