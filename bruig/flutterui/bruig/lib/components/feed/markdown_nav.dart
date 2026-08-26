@@ -63,8 +63,8 @@ class NavBlockSyntax extends md.BlockSyntax {
 
   @override
   md.Node? parse(md.BlockParser parser) {
-    var written = NavWritten.parse(
-        _open.firstMatch(parser.current.content)?.group(1));
+    var written =
+        NavWritten.parse(_open.firstMatch(parser.current.content)?.group(1));
     parser.advance();
 
     var links = <String>[];
@@ -77,6 +77,9 @@ class NavBlockSyntax extends md.BlockSyntax {
       var text = at.trim();
       if (text.isNotEmpty && links.length < maxLinks) links.add(text);
       parser.advance();
+      // --right-- divides the bar: what follows it is pushed to the far end.
+      // A marker rather than a setting on each link, because it is one
+      // decision about the bar -- where the second group starts.
     }
 
     var element = md.Element.text("nav", "");
@@ -319,10 +322,138 @@ class NavWritten {
 /// only the pill drawn round them -- which is why setting it appeared to do
 /// nothing.
 ({String label, String target})? navLink(String raw) {
-  var m = RegExp(r'^\s*\[([^\]]*)\]\(([^)]*)\)\s*$').firstMatch(raw);
+  var m = _linkPattern.firstMatch(raw);
   if (m == null) return null;
   return (label: m.group(1)!.trim(), target: m.group(2)!.trim());
 }
+
+/// _linkPattern is one entry of a bar: a Markdown link, and settings of its
+/// own after it.
+///
+///     [Cart](/cart)[badge=2, icon=cart, label=off]
+///
+/// The settings are written the way every other block here writes its own,
+/// and a client that does not know them shows the link, which is what a bar
+/// degrades to anyway.
+final _linkPattern =
+    RegExp(r'^\s*\[([^\]]*)\]\(([^)]*)\)\s*(?:\[([^\]]*)\])?\s*$');
+
+/// NavEntry is one link of a bar, with whatever it said about itself.
+@immutable
+class NavEntry {
+  final String label;
+  final String target;
+
+  /// badge is the number drawn over the link -- what is waiting behind it --
+  /// or null for none. Nought is none: a cart with nothing in it should not
+  /// wear a nought.
+  final int? badge;
+
+  /// icon is what it is drawn as, or null for words.
+  final MarkdownCardIcon? icon;
+
+  /// labelled is whether the words are drawn. Off, the icon stands alone and
+  /// the words become what it is called when hovered -- which is the only
+  /// place they can go without taking the room the icon saved.
+  final bool labelled;
+
+  /// active is whether this link is the page being read, said outright.
+  ///
+  /// A bar marks the link to the page it is on by comparing paths, which
+  /// works for a site's own pages and cannot work for a section: a shop is a
+  /// dozen paths -- the front, a product, the cart, an order -- and only one
+  /// of them is what the link says. So whoever knows can say, and for a shop
+  /// that is the shop, which is dressing the page in the first place.
+  final bool active;
+
+  /// plain is whether the bar's style is drawn round this link.
+  ///
+  /// A row of icons in pills is a row of buttons, which is a different thing
+  /// from a row of icons -- and the shop's half of a bar is often wanted as
+  /// the second while the site's half stays the first.
+  final bool plain;
+
+  const NavEntry({
+    required this.label,
+    required this.target,
+    this.badge,
+    this.icon,
+    this.labelled = true,
+    this.plain = false,
+    this.active = false,
+  });
+
+  /// parse reads one line of a bar, or null for a line that is not a link.
+  static NavEntry? parse(String raw) {
+    var m = _linkPattern.firstMatch(raw);
+    if (m == null) return null;
+
+    var fields = <String, String>{};
+    for (var part in (m.group(3) ?? "").split(",")) {
+      var at = part.indexOf("=");
+      if (at == -1) continue;
+      fields.putIfAbsent(part.substring(0, at).trim().toLowerCase(),
+          () => part.substring(at + 1).trim());
+    }
+
+    var badge = int.tryParse(fields["badge"] ?? "");
+    return NavEntry(
+      label: m.group(1)!.trim(),
+      target: m.group(2)!.trim(),
+      badge: badge == null || badge <= 0 ? null : badge,
+      icon: MarkdownCardIcon.named(fields["icon"] ?? ""),
+      labelled: (fields["label"] ?? "").toLowerCase() != "off",
+      plain: (fields["plain"] ?? "").toLowerCase() == "on",
+      active: (fields["active"] ?? "").toLowerCase() == "on",
+    );
+  }
+}
+
+/// _rightMarker divides a bar: what follows it is pushed to the far end.
+///
+/// It carries settings for the group it opens -- --right[gap=4]-- -- because
+/// the two halves of a divided bar are not the same kind of thing. One is a
+/// site's pages, read as words; the other is a shop's cart and orders, often
+/// as icons, and icons want to sit closer together than words do.
+final _rightMarker = RegExp(r'^\s*--right(?:\[([^\]]*)\])?--\s*$');
+
+/// _rightSaid is what the marker said about the group it opens: the room
+/// between its links, how large its icons are, and how far in from the end of
+/// the bar it sits.
+({double? gap, double? size, double? inset}) _rightSaid(String marker) {
+  var fields = <String, String>{};
+  for (var part
+      in (_rightMarker.firstMatch(marker)?.group(1) ?? "").split(",")) {
+    var at = part.indexOf("=");
+    if (at == -1) continue;
+    fields.putIfAbsent(part.substring(0, at).trim().toLowerCase(),
+        () => part.substring(at + 1).trim());
+  }
+
+  double? read(String key, double most) {
+    var got = double.tryParse(fields[key] ?? "");
+    return got == null || got < 0 || got > most ? null : got;
+  }
+
+  return (
+    gap: read("gap", 64),
+    size: read("size", 64),
+    inset: read("inset", 64)
+  );
+}
+
+/// _menuWidth is roughly how much room a folded group takes: one icon, the
+/// padding round it, and the corner its count sits on.
+const double _menuWidth = 44;
+
+/// _collapseBelow is how narrow a bar has to be before its second group
+/// becomes a menu.
+///
+/// A width rather than a measurement of the links themselves. What is being
+/// asked is "is this a phone", and the answer that matters is the same for
+/// every bar -- a threshold is predictable, and a bar that collapses at a
+/// width somebody can find is a bar they can reason about.
+const double _collapseBelow = 560;
 
 /// NavCurrentPage is the page being read, so a bar can mark the link to it.
 ///
@@ -359,6 +490,288 @@ class _MarkdownNav extends StatefulWidget {
 
 class _MarkdownNavState extends State<_MarkdownNav> {
   int? _under;
+
+  /// _badged draws the count over a link: what is waiting behind it.
+  ///
+  /// Over rather than beside, and small. A cart holding one thing is a fact
+  /// somebody wants at a glance, and "(1)" written into the label is a
+  /// different label -- it changes width as things go into the cart, which
+  /// moves everything after it in the bar.
+  Widget _badged(Widget label, int count, ThemeNotifier theme,
+          {bool tight = false}) =>
+      Stack(
+        clipBehavior: Clip.none,
+        children: [
+          label,
+          Positioned(
+            // Tight is for a count on an icon that must not make its row
+            // taller: it overlaps rather than sitting above.
+            top: tight ? -2 : -6,
+            right: tight ? -4 : -10,
+            child: Container(
+              constraints: const BoxConstraints(minWidth: 16),
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+              decoration: BoxDecoration(
+                color: theme.colors.primary,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                count > 99 ? "99+" : "$count",
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                    fontSize: 10,
+                    height: 1.2,
+                    fontWeight: FontWeight.bold,
+                    color: theme.colors.onPrimary),
+              ),
+            ),
+          ),
+        ],
+      );
+
+  /// _twoGroups draws a bar divided by --right--: what was written before
+  /// the marker at one end, what came after it at the other.
+  ///
+  /// Narrow enough and the second group becomes one button with a menu
+  /// behind it. That group is the one that can be given up: it is a shop's
+  /// cart and orders beside a site's own pages, and on a phone a row of
+  /// nine links is not a bar, it is a wrap of three rows.
+  Widget _twoGroups(
+      BuildContext context,
+      ThemeNotifier theme,
+      List<String> links,
+      int divide,
+      Widget Function(int, String, {double? iconSize}) item,
+      double gap,
+      WrapAlignment across,
+      Color ink,
+      {required BoxConstraints constraints,
+      required double pad}) {
+    var left = [for (var i = 0; i < divide; i++) i];
+    var right = [
+      for (var i = divide + 1; i < links.length; i++)
+        if (NavEntry.parse(links[i]) != null) i
+    ];
+    var said = _rightSaid(links[divide]);
+    var rightGap = said.gap ?? gap;
+
+    // The style the labels are measured in, which is not the ink they are
+    // drawn in: one is how wide a word is, the other what colour it is.
+    var measured = DefaultTextStyle.of(context).style;
+
+    {
+      // Which group gives way, and when.
+      //
+      // Measured rather than compared against a width, and that is the whole
+      // of one bug. The second group took its natural width and the first
+      // took whatever was left, so on a middling window the site's own links
+      // -- the ones that must not go -- were squeezed to empty boxes while
+      // the shop's icons sat there at full size. The group added to a bar is
+      // the group that folds, so it folds as soon as keeping both would cost
+      // the first one room it needs.
+      var leftNeeds = _widthOf(left, links, measured, gap);
+      var rightNeeds = _widthOf(right, links, measured, rightGap, said.size);
+      var collapse = right.length > 1 &&
+          (leftNeeds + gap + rightNeeds > constraints.maxWidth ||
+              constraints.maxWidth < _collapseBelow ||
+              _tooShort(constraints, measured, pad));
+
+      // And when even that is not enough, the site's own links fold too.
+      //
+      // A bar cannot always answer by wrapping: this one is usually written
+      // into a row of a banner, and a row has a height. Wrapped inside one,
+      // the second line is simply cut off -- which is a bar showing whichever
+      // of its links happened to land on the first line, and no way to reach
+      // the rest. A menu holds all of them at any width.
+      var folded = collapse ? _menuWidth : rightNeeds;
+      var short = _tooShort(constraints, measured, pad);
+      var foldLeft = left.length > 1 &&
+          (leftNeeds + gap + folded > constraints.maxWidth || short);
+
+      // The vertical padding belongs to the caller, which wraps both kinds
+      // of bar in it: applied here as well it would be doubled, and the
+      // strip behind a divided bar would be taller than one behind an
+      // undivided one.
+      return Row(children: [
+        Expanded(
+          child: foldLeft
+              ? Align(
+                  alignment: Alignment.centerLeft,
+                  child: _menu(context, theme, ink, links, left,
+                      mark: Icons.menu, pad: pad),
+                )
+              : Wrap(
+                  spacing: gap,
+                  runSpacing: gap / 2,
+                  alignment: across,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [for (var i in left) item(i, links[i])],
+                ),
+        ),
+        SizedBox(width: gap),
+        if (collapse)
+          _menu(context, theme, ink, links, right, pad: pad)
+        else
+          Wrap(
+            spacing: rightGap,
+            runSpacing: rightGap / 2,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              for (var i in right) item(i, links[i], iconSize: said.size)
+            ],
+          ),
+        // Room at the end of the bar, so what is last in it is not pressed
+        // against the edge -- and so a count hung off the corner of the last
+        // icon has somewhere to be.
+        if (said.inset != null) SizedBox(width: said.inset),
+      ]);
+    }
+  }
+
+  /// _tooShort is whether the bar has been given less height than a row of
+  /// links needs.
+  ///
+  /// A bar is usually written into a row of a banner, and a banner drawn in a
+  /// narrow window scales itself down -- deliberately, so that a logo and a
+  /// title keep their proportions. The bar is scaled with it, and its links
+  /// are not: their words stay the size the reader reads at, so what happens
+  /// as the window narrows is that the row gets shorter and the links stay
+  /// the height they were, until what is left of them is a strip through the
+  /// middle of some words. That is the state this catches -- a bar collapsed
+  /// onto itself rather than folded.
+  ///
+  /// One icon in place of the words is both shorter and narrower, which is
+  /// the only thing that still reads at that size.
+  bool _tooShort(BoxConstraints constraints, TextStyle style, double pad) {
+    // The room the cell has, which for a banner's cell is not the room it
+    // was given: a block there is handed all the height it asks for and
+    // clipped to the row afterwards, so its own constraints say nothing.
+    var room = constraints.hasBoundedHeight
+        ? constraints.maxHeight
+        : HeaderCellRoom.of(context);
+    if (room == null) return false;
+
+    // What is being asked is whether the words themselves still fit, not
+    // whether the box around them does. A pill whose background is clipped by
+    // a pixel or two is a bar that looks right; a row shorter than the
+    // writing is a strip through the middle of some words.
+    //
+    // Measured rather than reckoned from the font size: a line is the font's
+    // own height, not a multiple somebody guessed, and guessing it high folds
+    // a bar that had room to spare -- which is a bar that is always a menu.
+    var painter = TextPainter(
+      text: TextSpan(text: "Ag", style: style),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    return room < painter.height + 4;
+  }
+
+  /// _widthOf is roughly how much room a group of links needs.
+  ///
+  /// Roughly is enough: what it decides is whether both groups fit, and a
+  /// few pixels either way moves the point at which the second one folds by
+  /// a few pixels. Measuring the words rather than counting the links is
+  /// what matters -- "Home About Store" and "Documentation Contributing
+  /// Downloads" are three links each and nothing like the same width.
+  double _widthOf(
+      List<int> group, List<String> links, TextStyle base, double gap,
+      [double? iconSize]) {
+    var rule = MarkdownGuideScope.navOf(context) ?? const NavRule();
+    var pad = widget.written.padding ?? rule.boundedPadding;
+
+    var total = 0.0;
+    for (var i in group) {
+      var entry = NavEntry.parse(links[i]);
+      if (entry == null) continue;
+
+      var wide = 0.0;
+      if (entry.icon != null) {
+        wide += (iconSize ?? 18) + (entry.labelled ? 6 : 0);
+      }
+      if (entry.labelled) {
+        var painter = TextPainter(
+          text: TextSpan(text: entry.label, style: base),
+          textDirection: TextDirection.ltr,
+        )..layout();
+        wide += painter.width;
+      }
+      // The box round it, when there is one.
+      if (!entry.plain && widget.style != NavStyle.plain) wide += pad * 2;
+      total += wide + gap;
+    }
+    return total;
+  }
+
+  /// _menu is the second group when there is no room for it.
+  Widget _menu(BuildContext context, ThemeNotifier theme, Color ink,
+      List<String> links, List<int> right,
+      {IconData? mark, double? pad}) {
+    // What is waiting behind the whole menu, so a cart with something in it
+    // is visible while the menu is shut.
+    var waiting = 0;
+    for (var i in right) {
+      waiting += NavEntry.parse(links[i])?.badge ?? 0;
+    }
+
+    // The group's own first icon rather than three dots: this menu is one
+    // thing -- the shop -- and a shop with a storefront on it says which menu
+    // it is, where three dots say only that there is one.
+    var own = NavEntry.parse(links[right.first])?.icon;
+    var drawn = mark ?? own?.icon ?? Icons.more_horiz;
+
+    // In the bar's own ink, which is what every link in it is drawn in. Set
+    // from the link role instead, a folded group changed colour when it
+    // folded -- the same links, the same bar, a different blue.
+    Widget button = Icon(drawn, size: 20, color: ink);
+    if (waiting > 0) {
+      // The count overlaps the icon rather than being hung off it.
+      //
+      // Hung off the corner it needed room, and room is what a bar at the end
+      // of a row has least of: given it above, the bar grew six pixels the
+      // moment it folded and moved the banner it is written into; given it at
+      // the side, the icon sat visibly further in than the links it replaced.
+      // Overlapping, it needs neither -- the button's own padding is already
+      // wider than the corner it hangs over.
+      button = _badged(button, waiting, theme, tight: true);
+    }
+
+    return PopupMenuButton<String>(
+      tooltip: "More",
+      // No room of its own: a button carries a link's own padding below, and
+      // this one's default eight on every side made a folded bar taller than
+      // the same bar drawn out -- which moves the banner it sits in.
+      padding: EdgeInsets.zero,
+      position: PopupMenuPosition.under,
+      itemBuilder: (context) => [
+        for (var i in right)
+          if (NavEntry.parse(links[i]) case var entry?)
+            PopupMenuItem(
+              value: entry.target,
+              child: Row(children: [
+                if (entry.icon != null) ...[
+                  Icon(entry.icon!.icon, size: 18),
+                  const SizedBox(width: 8),
+                ],
+                Expanded(child: Text(entry.label)),
+                if (entry.badge != null)
+                  Text("${entry.badge}",
+                      style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: theme.colors.primary)),
+              ]),
+            ),
+      ],
+      onSelected: (target) => followMarkdownLink(context, target),
+      // The same room a link keeps inside its own box, so a bar is the same
+      // height folded as it is drawn out. Sized differently, the banner it
+      // sits in changed height with the window.
+      child: Padding(
+        padding: EdgeInsets.symmetric(
+            horizontal: pad ?? 4, vertical: (pad ?? 8) / 2),
+        child: button,
+      ),
+    );
+  }
 
   /// _isCurrent is whether a link points at the page being read.
   ///
@@ -398,18 +811,18 @@ class _MarkdownNavState extends State<_MarkdownNav> {
 
     var pad = written.padding ?? rule.boundedPadding;
 
-    Widget item(int index, String raw) {
-      var parsed = navLink(raw);
+    Widget item(int index, String raw, {double? iconSize}) {
+      var parsed = NavEntry.parse(raw);
       // Not a link: shown as it was written rather than dropped, so a typo
       // is visible instead of silently costing an entry.
       if (parsed == null) {
         return Text(raw, style: TextStyle(color: base));
       }
 
-      var isHere = _isCurrent(parsed.target, here);
+      var isHere = parsed.active || _isCurrent(parsed.target, here);
       var colour = _under == index ? hover : (isHere ? current : base);
 
-      Widget label = Text(
+      var words = Text(
         parsed.label,
         style: TextStyle(
           color: colour,
@@ -419,15 +832,35 @@ class _MarkdownNavState extends State<_MarkdownNav> {
         ),
       );
 
+      // An icon, the words, or both. Words with no icon is what a bar has
+      // always been, and is what a link that named no icon still gets.
+      Widget label = parsed.icon == null
+          ? words
+          : Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(parsed.icon!.icon, size: iconSize ?? 18, color: colour),
+              if (parsed.labelled) ...[const SizedBox(width: 6), words],
+            ]);
+
+      if (parsed.badge != null) label = _badged(label, parsed.badge!, theme);
+
+      // The words become the tooltip when they are not drawn: an icon on its
+      // own is a guess until somebody hovers it, and a bar of guesses is not
+      // navigation.
+      if (!parsed.labelled && parsed.label.isNotEmpty) {
+        label = Tooltip(message: parsed.label, child: label);
+      }
+
+      // A link that asked to be plain is drawn as the words or the icon it
+      // is, whatever the bar's style: a row of icons in pills is a row of
+      // buttons, which is a different thing from a row of icons.
       Widget body;
-      switch (widget.style) {
+      switch (parsed.plain ? NavStyle.plain : widget.style) {
         case NavStyle.plain:
           body = label;
           break;
         case NavStyle.pills:
           body = Container(
-            padding: EdgeInsets.symmetric(
-                horizontal: pad, vertical: pad / 2),
+            padding: EdgeInsets.symmetric(horizontal: pad, vertical: pad / 2),
             decoration: BoxDecoration(
               color: colour.withValues(alpha: _under == index ? 0.26 : 0.12),
               borderRadius: BorderRadius.circular(radius),
@@ -437,8 +870,7 @@ class _MarkdownNavState extends State<_MarkdownNav> {
           break;
         case NavStyle.boxed:
           body = Container(
-            padding: EdgeInsets.symmetric(
-                horizontal: pad, vertical: pad / 2),
+            padding: EdgeInsets.symmetric(horizontal: pad, vertical: pad / 2),
             decoration: BoxDecoration(
               border: Border.all(color: colour, width: rule.boundedBorder),
               borderRadius: BorderRadius.circular(radius),
@@ -493,17 +925,62 @@ class _MarkdownNavState extends State<_MarkdownNav> {
     var gap = written.gap ?? rule.boundedGap;
     var fullWidth = written.fullWidth ?? rule.fullWidth;
 
+    // Where the second group starts, if the bar has one.
+    //
+    // Built into the same bar as the undivided case rather than returned
+    // from here, so that everything below applies to both. Returned early, a
+    // divided bar lost the bar's own background, its height and its margin
+    // -- and what that looks like is the strip behind the links stopping
+    // where the first group does, which reads as the links having lost their
+    // background rather than as the bar having lost its.
+    var divide = links.indexWhere((l) => _rightMarker.hasMatch(l));
+
     // Wrapped rather than a Row: a bar of six links in a narrow window is
     // two rows of three, not six squeezed columns.
+    // A bar that does not fit folds into a menu, divided or not.
+    //
+    // Wrapping is what a bar did before, and it is the wrong answer for a
+    // reason that has nothing to do with taste: a bar is usually written into
+    // a row of a banner, and a row has a height. The second line of a wrapped
+    // bar is cut off by it -- so a narrow window produced a bar showing
+    // whichever links happened to land on the first line, no way to reach the
+    // rest, and a bar whose height changed with the window besides.
     Widget bar = Padding(
       padding: EdgeInsets.symmetric(vertical: gap / 2),
-      child: Wrap(
-        spacing: gap,
-        runSpacing: gap / 2,
-        alignment: across,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        children: [for (var i = 0; i < links.length; i++) item(i, links[i])],
-      ),
+      child: LayoutBuilder(builder: (context, constraints) {
+        if (divide != -1) {
+          return _twoGroups(
+              context, theme, links, divide, item, gap, across, base,
+              constraints: constraints, pad: pad);
+        }
+
+        var all = [
+          for (var i = 0; i < links.length; i++)
+            if (NavEntry.parse(links[i]) != null) i
+        ];
+        var measured = DefaultTextStyle.of(context).style;
+        if (all.length > 1 &&
+            (_widthOf(all, links, measured, gap) > constraints.maxWidth ||
+                _tooShort(constraints, measured, pad))) {
+          return Align(
+            alignment: switch (across) {
+              WrapAlignment.center => Alignment.center,
+              WrapAlignment.end => Alignment.centerRight,
+              _ => Alignment.centerLeft,
+            },
+            child: _menu(context, theme, base, links, all,
+                mark: Icons.menu, pad: pad),
+          );
+        }
+
+        return Wrap(
+          spacing: gap,
+          runSpacing: gap / 2,
+          alignment: across,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [for (var i = 0; i < links.length; i++) item(i, links[i])],
+        );
+      }),
     );
 
     if (background != null || written.height != null) {

@@ -213,7 +213,14 @@ enum MarkdownCardIcon {
   clock("clock", Icons.schedule_outlined),
   link("link", Icons.link),
   download("download", Icons.download_outlined),
-  payment("payment", Icons.payments_outlined);
+  payment("payment", Icons.payments_outlined),
+  // A shop's own four. Here rather than in a list of the store's, because
+  // this is the closed list a page may name an icon from, and a shop's
+  // pages are pages.
+  shop("shop", Icons.storefront_outlined),
+  cart("cart", Icons.shopping_cart_outlined),
+  orders("orders", Icons.receipt_long_outlined),
+  admin("admin", Icons.tune);
 
   /// name is what a post writes, and [icon] what it is drawn as.
   final String label;

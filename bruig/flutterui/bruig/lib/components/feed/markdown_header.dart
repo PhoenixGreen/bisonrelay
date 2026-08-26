@@ -349,6 +349,30 @@ class HeaderCellAlign extends InheritedWidget {
   bool updateShouldNotify(HeaderCellAlign old) => old.alignment != alignment;
 }
 
+/// HeaderCellRoom tells whatever is drawn inside a banner's cell how much
+/// height that cell actually has.
+///
+/// A block in a cell is drawn at its own size and clipped to the row -- see
+/// _cell, where that is the deliberate choice: shrinking a bar of links to
+/// fit a short row would set its writing at a different size from everything
+/// else in the banner.
+///
+/// But a banner drawn in a narrow window scales its rows down, and a block
+/// that cannot know that goes on drawing itself full size into a row half its
+/// height. What is left is a strip through the middle of some words. So the
+/// room is told rather than implied: the cell's own constraints cannot carry
+/// it, because the block is deliberately given all the height it asks for.
+class HeaderCellRoom extends InheritedWidget {
+  final double height;
+  const HeaderCellRoom({required this.height, required super.child, super.key});
+
+  static double? of(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<HeaderCellRoom>()?.height;
+
+  @override
+  bool updateShouldNotify(HeaderCellRoom old) => old.height != height;
+}
+
 /// headerPicture is the picture a banner field names, whichever way it names
 /// one.
 ///
@@ -436,59 +460,59 @@ class _MarkdownHeader extends StatelessWidget {
       // What separates a banner from what follows it is what separates any
       // two blocks: the renderer puts that between them already.
       return ClipRRect(
-          borderRadius: BorderRadius.circular(rule.boundedRadius),
-          // As tall as its rows and no taller. The rows are what a writer
-          // sets, so the banner follows them rather than the other way about.
-          child: SizedBox(
-            height: total,
-            child: Stack(fit: StackFit.expand, children: [
-              if (background != null)
-                Positioned.fill(
-                  // Cover, not contain: a banner fills its space and is
-                  // cropped to it, which is what a background is.
-                  child: isSvgMime(background.mime)
-                      ? SvgPicture.memory(background.bytes, fit: BoxFit.cover)
-                      : Image.memory(background.bytes,
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stack) =>
-                              const SizedBox.shrink()),
-                ),
-              // A wash over the picture, so writing stays readable on top of
-              // whatever was chosen. Skipped where there is no picture, since
-              // it would only mute the page's own background.
-              if (background != null && rule.scrim > 0)
-                Positioned.fill(
-                  child: ColoredBox(
-                    color: theme.colors.surface
-                        .withValues(alpha: rule.scrim.clamp(0, 1)),
-                  ),
-                ),
-              // The padding goes on each row rather than round the lot, so
-              // a flush row can go without it and run edge to edge. The
-              // space above the first row and below the last goes the same
-              // way: a strip along the top of a banner has nothing above it.
-              Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  for (var i = 0; i < rows.length; i++) ...[
-                    if (spaces[i]) SizedBox(height: padding),
-                    Padding(
-                      padding: EdgeInsets.symmetric(
-                          horizontal: rows[i].flush ? 0 : padding),
-                      child: _HeaderRow(
-                          row: rows[i],
-                          style: titleStyle,
-                          rule: rule,
-                          scale: scale,
-                          gap: gap),
-                    ),
-                  ],
-                  if (spaces.last) SizedBox(height: padding),
-                ],
+        borderRadius: BorderRadius.circular(rule.boundedRadius),
+        // As tall as its rows and no taller. The rows are what a writer
+        // sets, so the banner follows them rather than the other way about.
+        child: SizedBox(
+          height: total,
+          child: Stack(fit: StackFit.expand, children: [
+            if (background != null)
+              Positioned.fill(
+                // Cover, not contain: a banner fills its space and is
+                // cropped to it, which is what a background is.
+                child: isSvgMime(background.mime)
+                    ? SvgPicture.memory(background.bytes, fit: BoxFit.cover)
+                    : Image.memory(background.bytes,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stack) =>
+                            const SizedBox.shrink()),
               ),
-            ]),
-          ),
+            // A wash over the picture, so writing stays readable on top of
+            // whatever was chosen. Skipped where there is no picture, since
+            // it would only mute the page's own background.
+            if (background != null && rule.scrim > 0)
+              Positioned.fill(
+                child: ColoredBox(
+                  color: theme.colors.surface
+                      .withValues(alpha: rule.scrim.clamp(0, 1)),
+                ),
+              ),
+            // The padding goes on each row rather than round the lot, so
+            // a flush row can go without it and run edge to edge. The
+            // space above the first row and below the last goes the same
+            // way: a strip along the top of a banner has nothing above it.
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (var i = 0; i < rows.length; i++) ...[
+                  if (spaces[i]) SizedBox(height: padding),
+                  Padding(
+                    padding: EdgeInsets.symmetric(
+                        horizontal: rows[i].flush ? 0 : padding),
+                    child: _HeaderRow(
+                        row: rows[i],
+                        style: titleStyle,
+                        rule: rule,
+                        scale: scale,
+                        gap: gap),
+                  ),
+                ],
+                if (spaces.last) SizedBox(height: padding),
+              ],
+            ),
+          ]),
+        ),
       );
     });
   }
@@ -535,13 +559,16 @@ class _HeaderRow extends StatelessWidget {
       // a bar of links to fit a short row would make its writing a different
       // size from everything else in the banner. The row's height wins, and
       // what does not fit is not shown.
-      return HeaderCellAlign(
-        alignment: within,
-        child: ClipRect(
-          child: OverflowBox(
-            alignment: within,
-            maxHeight: double.infinity,
-            child: MarkdownArea(value, false),
+      return HeaderCellRoom(
+        height: height,
+        child: HeaderCellAlign(
+          alignment: within,
+          child: ClipRect(
+            child: OverflowBox(
+              alignment: within,
+              maxHeight: double.infinity,
+              child: MarkdownArea(value, false),
+            ),
           ),
         ),
       );
