@@ -227,6 +227,41 @@ class CustomFormState extends State<CustomForm> {
             },
           ));
           break;
+        case "select":
+          // One of a few answers, chosen rather than typed. The first is
+          // what the page gets unless somebody picks another, so a select
+          // always has a value -- a form whose field is null until it is
+          // touched is a form that behaves differently for somebody who
+          // agreed with the default.
+          var choices = field.choices;
+          if (choices.isEmpty) break;
+          field.value ??= choices.first.value;
+          if (!choices.any((c) => c.value == field.value)) {
+            field.value = choices.first.value;
+          }
+          fieldWidgets.add(StatefulBuilder(
+            builder: (context, setInner) => DropdownButtonFormField<String>(
+              initialValue: field.value as String,
+              isExpanded: true,
+              decoration: InputDecoration(
+                labelText: field.label,
+                hintText: field.hint,
+              ),
+              items: [
+                for (var choice in choices)
+                  DropdownMenuItem(
+                      value: choice.value,
+                      child:
+                          Text(choice.label, overflow: TextOverflow.ellipsis)),
+              ],
+              onChanged: (v) {
+                if (v == null) return;
+                setInner(() => field.value = v);
+              },
+            ),
+          ));
+          break;
+
         case "submit":
           submit = field;
           break;
@@ -295,6 +330,16 @@ class FormField {
   /// were the same button in a column.
   final String style;
 
+  /// options is what a select offers: value|Label, separated by commas.
+  ///
+  ///     type="select" name="method" options="ln|Lightning, onchain|On-chain"
+  ///
+  /// The label is what the reader chooses between and the value is what the
+  /// page receives, because those are rarely the same thing: a shop asking
+  /// how somebody wants to pay wants "ln" and the buyer is choosing
+  /// "Lightning".
+  final String options;
+
   /// confirm is what a submit asks before it does anything, or empty for one
   /// that just does it.
   ///
@@ -311,7 +356,25 @@ class FormField {
       this.hint = "",
       this.style = "",
       this.confirm = "",
+      this.options = "",
       this.value});
+
+  /// choices are what a select offers, in the order they were written.
+  List<({String value, String label})> get choices {
+    var out = <({String value, String label})>[];
+    for (var part in options.split(",")) {
+      var text = part.trim();
+      if (text.isEmpty) continue;
+      var at = text.indexOf("|");
+      out.add(at == -1
+          ? (value: text, label: text)
+          : (
+              value: text.substring(0, at).trim(),
+              label: text.substring(at + 1).trim()
+            ));
+    }
+    return out;
+  }
 }
 
 class FormElement extends md.Element {
@@ -374,6 +437,7 @@ class FormBlockSyntax extends md.BlockSyntax {
           case "regexpstr":
           case "style":
           case "confirm":
+          case "options":
             args[Symbol(name)] = value;
             break;
         }

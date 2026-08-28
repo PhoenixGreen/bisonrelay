@@ -1,6 +1,8 @@
 import 'package:bruig/components/feed/markdown_blocks.dart';
 import 'package:bruig/components/feed/markdown_button.dart';
 import 'package:bruig/components/feed/markdown_listing.dart';
+import 'package:bruig/components/feed/markdown_qr.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 import 'package:bruig/components/feed/markdown_panel.dart';
 import 'package:bruig/components/md_elements.dart';
 import 'package:bruig/components/pages/forms.dart' as pf;
@@ -595,6 +597,90 @@ void main() {
       await tester.pump();
 
       expect(find.widgetWithText(ElevatedButton, "Buy Now"), findsOneWidget);
+    });
+  });
+
+  group('a square somebody points a phone at', () {
+    testWidgets('it carries exactly what it was given', (tester) async {
+      // It draws a square and does not know what an address looks like: a
+      // block that rewrote what it was handed would be a block that pays
+      // somebody else.
+      await tester.pumpWidget(wrap(MarkdownArea(
+          "--qr[size=120]--\ndecred:DsAddr?amount=1.60000000\n--/qr--\n",
+          false)));
+      await tester.pump();
+
+      // Read off the block rather than the code: qr_flutter keeps its data
+      // private, and what is being pinned here is that the block passes on
+      // what it was handed.
+      var qr = tester.widget<MarkdownQr>(find.byType(MarkdownQr));
+      expect(qr.data, "decred:DsAddr?amount=1.60000000");
+      expect(qr.rule.size, 120);
+      expect(find.byType(QrImageView), findsOneWidget);
+    });
+
+    testWidgets('it is drawn on white whatever the theme', (tester) async {
+      // A camera looks for dark on light. One drawn in a dark theme's own
+      // colours is a square a phone will not read, and nothing on screen
+      // would say why.
+      await tester.pumpWidget(
+          wrap(MarkdownArea("--qr--\ndecred:DsAddr\n--/qr--\n", false)));
+      await tester.pump();
+
+      var box = tester.widget<Container>(find.ancestor(
+          of: find.byType(QrImageView), matching: find.byType(Container)));
+      expect((box.decoration as BoxDecoration).color, Colors.white);
+    });
+
+    test('a size nothing can be drawn at is not taken', () {
+      expect(QrRule.parse("size=10000").size, 180);
+      expect(QrRule.parse("size=200").size, 200);
+      expect(QrRule.parse("align=center").align, Alignment.center);
+    });
+  });
+
+  group('a form that asks somebody to choose', () {
+    testWidgets('a select offers its labels and carries its values',
+        (tester) async {
+      // The label is what the reader chooses between and the value is what
+      // the page receives, because those are rarely the same: a shop asking
+      // how somebody wants to pay wants "ln" and the buyer is choosing
+      // "Lightning".
+      var form = pf.FormElement([
+        pf.FormField("action", value: "/placeOrder"),
+        pf.FormField("select",
+            name: "method",
+            label: "How would you like to pay?",
+            options: "ln|Lightning, onchain|On-chain"),
+        pf.FormField("submit", label: "Place Order"),
+      ]);
+      await tester.pumpWidget(wrap(pf.CustomForm(form)));
+      await tester.pumpAndSettle();
+
+      // The first is the answer until somebody picks another: a field that
+      // is null until it is touched behaves differently for somebody who
+      // agreed with the default.
+      var method = form.fields.firstWhere((f) => f.name == "method");
+      expect(method.value, "ln");
+      expect(find.text("Lightning"), findsOneWidget);
+
+      await tester.tap(find.text("Lightning").last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text("On-chain").last);
+      await tester.pumpAndSettle();
+
+      expect(method.value, "onchain");
+    });
+
+    test('the choices are read the way they are written', () {
+      var field = pf.FormField("select",
+          options: "ln|Lightning — settles now, onchain|On-chain");
+      expect(field.choices.length, 2);
+      expect(field.choices.first.value, "ln");
+      expect(field.choices.first.label, "Lightning — settles now");
+      // A choice with no label of its own is its own label.
+      expect(pf.FormField("select", options: "one, two").choices.last.label,
+          "two");
     });
   });
 

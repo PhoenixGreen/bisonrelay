@@ -13,12 +13,14 @@ import 'package:bruig/components/feed/markdown_page.dart';
 import 'package:bruig/components/feed/markdown_panel.dart';
 import 'package:bruig/components/feed/markdown_button.dart';
 import 'package:bruig/components/feed/markdown_listing.dart';
+import 'package:bruig/components/feed/markdown_qr.dart';
 import 'package:bruig/components/pages/forms.dart';
 import 'package:bruig/components/snackbars.dart';
 import 'package:bruig/components/text_dialog.dart';
 import 'package:bruig/components/audio_element.dart';
 import 'package:bruig/components/interactive_avatar.dart';
 import 'package:bruig/models/audio.dart';
+import 'package:golib_plugin/golib_plugin.dart';
 import 'package:bruig/models/client.dart';
 import 'package:bruig/models/downloads.dart';
 import 'package:bruig/models/feed.dart';
@@ -448,6 +450,7 @@ class MarkdownAreaModel extends ChangeNotifier {
     "panel": PanelMarkdownElementBuilder(),
     "button": ButtonMarkdownElementBuilder(),
     "listing": ListingMarkdownElementBuilder(),
+    "qr": QrMarkdownElementBuilder(),
   };
 
   final List<md.InlineSyntax> inlineSyntaxes = [
@@ -464,6 +467,7 @@ class MarkdownAreaModel extends ChangeNotifier {
     PanelBlockSyntax(),
     ButtonBlockSyntax(),
     ListingBlockSyntax(),
+    QrBlockSyntax(),
   ];
 
   // _pluginExtensions is whatever the last setPluginExtensions call added,
@@ -720,6 +724,7 @@ const Set<String> blockBuilderTags = {
   "header",
   "button",
   "listing",
+  "qr",
   "nav",
   "panel",
   "grid",
@@ -1960,6 +1965,15 @@ class _PayReqBtn extends StatefulWidget {
 class __PayReqBtnState extends State<_PayReqBtn> {
   late PaymentInfo info;
 
+  /// _outbound is the most this wallet can send over one channel, or null
+  /// while nobody has asked yet.
+  ///
+  /// Asked before the button is pressed rather than found out by pressing
+  /// it. A payment that cannot be routed fails with something about routing,
+  /// which tells a buyer nothing about whose end is short -- and the answer
+  /// is usually one number away.
+  int? _outbound;
+
   void payInfoChanged() {
     setState(() {});
   }
@@ -1968,11 +1982,26 @@ class __PayReqBtnState extends State<_PayReqBtn> {
     info.attemptPayment();
   }
 
+  Future<void> _readBalance() async {
+    try {
+      var balances = await Golib.lnGetBalances();
+      if (mounted) {
+        setState(() => _outbound = balances.channel.maxOutboundAmount);
+      }
+    } catch (exception) {
+      // A wallet that will not answer is not a wallet that cannot pay: the
+      // check is a courtesy, and without it the button behaves as it always
+      // did.
+      debugPrint("Unable to read channel balances: $exception");
+    }
+  }
+
   @override
   void initState() {
     super.initState();
     info = widget.payments.decodedInvoice(widget.invoice);
     info.addListener(payInfoChanged);
+    _readBalance();
   }
 
   @override
@@ -2009,7 +2038,32 @@ class __PayReqBtnState extends State<_PayReqBtn> {
           onPressed: null, child: Text("Invoice $amt expired"));
     }
 
-    return ElevatedButton(onPressed: attemptPayment, child: Text("Pay $amt"));
+    // Enough to pay it? Said beside the button rather than instead of it.
+    //
+    // The number is Max Sendable, the same one the wallet's own summary
+    // shows, so the two cannot disagree -- and it is in atoms, which is what
+    // that screen formats it as. It is what every channel can send between
+    // them once reserves are set aside, so a payment that cannot be split
+    // still has to fit down one of them, and it can be out of date by the
+    // time the button is pressed. So this warns, and the button stays.
+    var need = info.decoded?.numAtoms ?? 0;
+    if (need == 0) need = ((info.decoded?.numMAtoms ?? 0) / 1000).round();
+    var short = _outbound != null && need > 0 && _outbound! < need;
+
+    var button =
+        ElevatedButton(onPressed: attemptPayment, child: Text("Pay $amt"));
+    if (!short) return button;
+
+    return Column(mainAxisSize: MainAxisSize.min, children: [
+      button,
+      const SizedBox(height: 4),
+      Text(
+        "Your wallet's Max Sendable is ${formatDCR(atomsToDCR(_outbound!))}. "
+        "This needs $amt, so it may not get through.",
+        style: TextStyle(
+            fontSize: 12, color: ThemeNotifier.of(context).colors.error),
+      ),
+    ]);
   }
 }
 
