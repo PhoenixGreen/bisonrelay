@@ -25,6 +25,18 @@ func (order *Order) AwaitingPayment() bool {
 	return order.Status == StatusPlaced
 }
 
+// PaymentSeen is whether the shop has seen the payment for this order and is
+// waiting for the network to confirm it.
+//
+// On-chain only: a Lightning payment either settles or does not, and there is
+// no gap to be in.
+func (order *Order) PaymentSeen() bool {
+	return order.Status == StatusPlaced && order.SeenTS != nil
+}
+
+// OnChain is whether this order is being paid on-chain.
+func (order *Order) OnChain() bool { return order.PayType == PayTypeOnChain }
+
 // Open is whether this order is still going: not finished, not called off.
 func (order *Order) Open() bool {
 	return order.Status != StatusCompleted && order.Status != StatusCanceled
@@ -38,6 +50,12 @@ func (order *Order) Open() bool {
 // page had no way back to it: the order said "placed" and offered nothing to
 // act on, and the invoice was in a file only the shop reads.
 func (order *Order) PayURI() string {
+	// Nothing to offer once the money is on its way: an address shown beside
+	// "we have seen your payment" is an invitation to pay twice.
+	if order.PaymentSeen() {
+		return ""
+	}
+
 	// Nothing to offer once the quote has lapsed. The invoice is still
 	// there and still payable, and paying it would be paying yesterday's
 	// price for today's coin -- so the page says the amount no longer holds
@@ -51,15 +69,38 @@ func (order *Order) PayURI() string {
 	return order.Invoice
 }
 
+// PayQR is what a phone should be pointed at to pay this order, or empty when
+// there is nothing to point it at.
+//
+// A Decred URI rather than the bare address, because the amount matters here:
+// an order is paid by sending exactly what it was quoted, and an address on
+// its own leaves that to be typed in by hand. Decrediton and Cake Wallet both
+// read this form, and the address is written out beneath it for a wallet on
+// the same machine, which would rather be copied to.
+//
+// Lightning has its own button and needs no square: the invoice is paid by
+// the client that is already showing it.
+func (order *Order) PayQR() string {
+	if order.PayURI() == "" || !order.OnChain() {
+		return ""
+	}
+	return fmt.Sprintf("decred:%s?amount=%.8f", order.Invoice,
+		order.TotalDCR().ToCoin())
+}
+
 // Expired is whether the amount this order was quoted at no longer holds.
+//
+// A payment already seen is never expired, whatever the clock says: the buyer
+// paid the amount they were quoted, inside the hour they were given, and the
+// network is taking its own time about it.
 //
 // The rate is struck when the order is placed and held for an hour. After
 // that the invoice is stale, and a buyer paying it is paying yesterday's
 // price for today's coin -- which is why the shop says so rather than
 // quietly letting it lapse.
 func (order *Order) Expired() bool {
-	return order.AwaitingPayment() && !order.ExpiresTS.IsZero() &&
-		time.Now().After(order.ExpiresTS)
+	return order.AwaitingPayment() && !order.PaymentSeen() &&
+		!order.ExpiresTS.IsZero() && time.Now().After(order.ExpiresTS)
 }
 
 // ExpiresIn is how long the quoted amount holds for, in words, or empty when
@@ -113,6 +154,22 @@ func (order *Order) FirstImage() string {
 // and it answers a different question from the one a buyer is asking. "Paid"
 // is a fact about the money; what they want to know is whether anything is
 // expected of them, and the answer is in the sentence rather than the word.
+// orderSays is what is happening with one order, in words.
+//
+// The order rather than the status, because the middle of an on-chain payment
+// is not a status: the order is still "placed" while its money is in the
+// mempool, and "waiting for payment" is the one thing that is no longer true
+// of it.
+func orderSays(order Order) string {
+	if order.PaymentSeen() {
+		return "Payment seen — waiting for a confirmation"
+	}
+	if order.Expired() {
+		return "Waiting for payment — the quoted amount has lapsed"
+	}
+	return orderStatusSays(order.Status)
+}
+
 func orderStatusSays(status OrderStatus) string {
 	switch status {
 	case StatusPlaced:
@@ -145,6 +202,10 @@ func roughly(d time.Duration) string {
 		// ago has forty-one minutes and change left on it, and "41 minutes"
 		// is a worse answer than the one anybody would give.
 		minutes := int(d.Round(time.Minute).Minutes())
+		// Which rounds an hour to "60 minutes", and nobody says that.
+		if minutes >= 60 {
+			return "1 hour"
+		}
 		return fmt.Sprintf("%d minute%s", minutes, plural(minutes))
 	}
 	hours := int(d.Round(time.Minute).Hours())

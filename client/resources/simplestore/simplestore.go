@@ -155,6 +155,7 @@ type Store struct {
 	header   string
 	footer   string
 
+	invoiceSeenChan     chan string
 	invoiceSettledChan  chan string
 	invoiceCanceledChan chan string
 	invoiceCreatedChan  chan *Order
@@ -187,6 +188,7 @@ func New(cfg Config) (*Store, error) {
 
 		layout: DefaultIndexLayout(),
 
+		invoiceSeenChan:     make(chan string),
 		invoiceSettledChan:  make(chan string),
 		invoiceCanceledChan: make(chan string),
 		invoiceCreatedChan:  make(chan *Order),
@@ -357,6 +359,12 @@ func (s *Store) templateFuncs() template.FuncMap {
 		// "paid" is being told a fact about the money when what they are
 		// asking is whether anything is expected of them.
 		"orderStatus": orderStatusSays,
+
+		// orderSays is what is happening with one order, which is not always
+		// what its status is called: an on-chain payment sitting in the
+		// mempool leaves the order "placed" while the one thing that is no
+		// longer true of it is that it is waiting to be paid.
+		"orderSays": orderSays,
 
 		// productCard is one product as it appears on the shop front: the
 		// picture, the link and the price, laid out however the seller's
@@ -551,9 +559,13 @@ func (s *Store) runOnChainInvoiceWatcher(ctx context.Context) error {
 
 		// TODO: use different number of confirmations based on the
 		// the amount.
-		if tx.NumConfirmations < 1 {
-			continue
-		}
+		//
+		// An unconfirmed transaction is not payment, and it is not nothing
+		// either: it is the answer to the only question a buyer has in that
+		// gap. Both are read out of the same stream, which sends a
+		// transaction again as it confirms -- so the order hears "seen" once
+		// and "settled" once, in that order.
+		confirmed := tx.NumConfirmations >= 1
 
 		msgTx := wire.NewMsgTx()
 		if err := msgTx.Deserialize(hex.NewDecoder(bytes.NewBuffer([]byte(tx.RawTxHex)))); err != nil {
@@ -570,8 +582,12 @@ func (s *Store) runOnChainInvoiceWatcher(ctx context.Context) error {
 			}
 
 			discriminator := onChainInvoiceDiscriminator(addrs[0].String(), dcrutil.Amount(out.Value))
+			to := s.invoiceSeenChan
+			if confirmed {
+				to = s.invoiceSettledChan
+			}
 			select {
-			case s.invoiceSettledChan <- discriminator:
+			case to <- discriminator:
 			case <-ctx.Done():
 				return ctx.Err()
 			}
@@ -588,6 +604,50 @@ func (s *Store) removePendingInvoice(order *Order) {
 	if err != nil {
 		s.log.Warnf("Unable to remove pending order %s: %v",
 			fname, err)
+	}
+}
+
+// paymentSeen is called when a payment for an order has been seen but not yet
+// confirmed by the network.
+//
+// The gap between those two is the only part of paying on-chain where nothing
+// is happening that anybody can see, and it is the part where a buyer wonders
+// whether their money went somewhere. So the order records it, its pages say
+// so, and the buyer is told once -- once, because a transaction is reported
+// again on every block until it confirms, and a message per block is the shop
+// shouting.
+func (s *Store) paymentSeen(ctx context.Context, order *Order) {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+
+	orderDir := filepath.Join(s.root, ordersDir, order.User.String())
+	orderFname := filepath.Join(orderDir, orderFnamePattern.FilenameFor(uint64(order.ID)))
+
+	stored := new(Order)
+	if err := jsonfile.Read(orderFname, stored); err != nil {
+		s.log.Warnf("Unable to read order %s: %v", orderFname, err)
+		return
+	}
+	if stored.SeenTS != nil || stored.Status != StatusPlaced {
+		return
+	}
+
+	now := time.Now()
+	stored.SeenTS = &now
+	if err := jsonfile.Write(orderFname, stored, s.log); err != nil {
+		s.log.Warnf("Unable to write order %s: %v", orderFname, err)
+		return
+	}
+	order.SeenTS = &now
+
+	s.log.Infof("Saw unconfirmed payment for order %s/%s",
+		order.User.ShortLogID(), order.ID)
+
+	if s.cfg.StatusChanged != nil {
+		s.cfg.StatusChanged(stored, fmt.Sprintf("Your payment for order %s/%s "+
+			"has been seen and is waiting for a confirmation from the "+
+			"network. Nothing more is needed from you.",
+			order.User.ShortLogID(), order.ID))
 	}
 }
 
@@ -741,6 +801,11 @@ func (s *Store) runInvoiceWatcher(ctx context.Context) error {
 	}
 	s.mtx.Unlock()
 
+	// What was paid while the shop was not running. Both watchers below are
+	// subscriptions, and a subscription cannot tell you what happened before
+	// it started listening -- see catchup.go.
+	s.catchUpPayments(ctx, invoices)
+
 	// Timer that is triggered on the next time one of the invoices needs
 	// to be timed out.
 	nextExpiresTimer := time.NewTimer(time.Duration(math.MaxInt64))
@@ -765,6 +830,13 @@ func (s *Store) runInvoiceWatcher(ctx context.Context) error {
 		case order := <-s.invoiceCreatedChan:
 			invoices[order.invoiceDiscriminator()] = order
 
+		case inv := <-s.invoiceSeenChan:
+			// Kept in the map: what has been seen still has to settle, and
+			// the order is waiting for exactly that.
+			if order := invoices[inv]; order != nil {
+				go s.paymentSeen(ctx, order)
+			}
+
 		case inv := <-s.invoiceSettledChan:
 			if order := invoices[inv]; order != nil {
 				delete(invoices, inv)
@@ -778,6 +850,14 @@ func (s *Store) runInvoiceWatcher(ctx context.Context) error {
 			now := time.Now()
 			for _, order := range invoices {
 				if !order.ExpiresTS.Before(now) {
+					continue
+				}
+				// Not one whose payment is already in flight. The hour is
+				// there so a quoted amount does not go stale, and a
+				// transaction in the mempool is somebody who paid the quote
+				// they were given -- timing that out would take the money
+				// and cancel the order.
+				if order.SeenTS != nil {
 					continue
 				}
 				delete(invoices, order.invoiceDiscriminator())

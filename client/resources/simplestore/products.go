@@ -144,6 +144,16 @@ type Order struct {
 	ShipAddr     *ShippingAddress  `json:"shipping"`
 	Comments     []OrderComment    `json:"comments"`
 	ExpiresTS    time.Time         `json:"expires_ts"`
+
+	// SeenTS is when the shop first saw the payment for this order, before
+	// the network had confirmed it.
+	//
+	// Only on-chain has this middle state: a Lightning payment either
+	// settles or does not. Recorded because it is the answer to the question
+	// a buyer asks in that gap -- has it arrived? -- and because it is the
+	// reason not to let the order lapse while a transaction for it is
+	// already in the mempool.
+	SeenTS *time.Time `json:"seen_ts"`
 }
 
 // Total returns the total amount, with 2 decimal places accuracy.

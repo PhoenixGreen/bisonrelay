@@ -34,7 +34,7 @@ Called off: {{ .Canceled }}
 {{range .Recent}}
 --panel[padding=12, margin=0 0 8 0, border=1, color=outline, radius=8]--
 --listing--
-title: Order #{{ .ID.Num }} — {{ orderStatus .Status }}
+title: Order #{{ .ID.Num }} — {{ orderSays .Order }}
 link: /admin/order/{{.User}}/{{.ID}}
 summary: {{ if .UserNick }}{{ .UserNick }}{{ else }}{{ .User.ShortLogID }}{{ end }} · {{ .PlacedTS.Format "2 Jan 2006, 15:04" }}{{ if .AwaitingSeller }} · waiting on you{{ end }}{{ if .Expired }} · quote lapsed{{ end }}
 meta: {{ money .Total }}

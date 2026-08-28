@@ -1,14 +1,33 @@
 # Order #{{.ID.Num}}
 
-**{{ orderStatus .Status }}** · placed {{ .PlacedTS.Format "2 Jan 2006, 15:04" }}
+**{{ orderSays .Order }}** · placed {{ .PlacedTS.Format "2 Jan 2006, 15:04" }}
 
-{{if .PayURI -}}
+{{if .PaymentSeen -}}
+--panel[padding=16, margin=0 0 16 0, border=1, color=accent, radius=8]--
+## Your payment has been seen
+
+It is waiting for a confirmation from the network, which usually takes a few
+minutes. Nothing more is needed from you, and you do not have to stay on this
+page — the shop is watching for it and will mark the order when it arrives.
+--/panel--
+{{ else if .PayURI -}}
 --panel[padding=16, margin=0 0 16 0, border=1, color=accent, radius=8]--
 ## Pay {{ money .Total }}{{ with .TotalDCR }} — {{ . }}{{ end }}
 
 {{ .PayURI }}
 
-{{ if .ExpiresIn }}That amount holds for another {{ .ExpiresIn }}, after which the rate is worked out again.{{ else }}The quoted amount has lapsed. Ask the seller below and they can place it again at today's rate.{{ end }}
+{{if .OnChain -}}
+{{ with .PayQR }}--qr[size=200]--
+{{.}}
+--/qr--
+{{ end }}
+Scan that with a wallet, or send exactly {{ .TotalDCR }} to the address above.
+The shop watches for it and marks your order when the network confirms it.
+{{- else -}}
+That is a Lightning invoice: paying it settles straight away.
+{{- end}}
+
+{{ if .ExpiresIn }}The amount holds for another {{ .ExpiresIn }}, after which the rate is worked out again.{{ end }}
 --/panel--
 {{ else if .Expired -}}
 --panel[padding=16, margin=0 0 16 0, border=1, color=outline, radius=8]--
@@ -30,7 +49,7 @@ meta: {{ money .Total }}
 **Total: {{ money .Total }}**{{ if gt .ShipCharge 0.0 }} (including {{ money .ShipCharge }} shipping){{ end }}
 --/panel--
 
-{{if .AwaitingPayment -}}
+{{if and .AwaitingPayment (not .PaymentSeen) -}}
 --form[align=left]--
 type="action" value="/cancelOrder/{{.ID}}"
 type="submit" label="Call this order off" style="danger" confirm="Call off order #{{ .ID.Num }}? Nothing has been charged, and the seller is told. You would have to order again."

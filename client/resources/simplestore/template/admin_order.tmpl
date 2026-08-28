@@ -1,7 +1,7 @@
 # Order #{{ .Order.ID.Num }}
 
 --panel[padding=12, margin=0 0 12 0, border=1, color=outline, radius=8]--
-**{{ orderStatus .Order.Status }}**{{ if .Order.Expired }} · the quoted amount has lapsed{{ end }}{{ if .Order.ExpiresIn }} · holds for another {{ .Order.ExpiresIn }}{{ end }}
+**{{ orderSays .Order }}**{{ if .Order.ExpiresIn }} · holds for another {{ .Order.ExpiresIn }}{{ end }}
 
 {{ .UserNick }} · placed {{ .Order.PlacedTS.Format "2 Jan 2006, 15:04" }}
 {{ .Order.User }}
