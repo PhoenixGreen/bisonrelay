@@ -15,6 +15,12 @@ type indexContext struct {
 type cartContext struct {
 	*Cart
 	Unavailable map[string]bool
+
+	// Methods is what the shop will take, so the cart can offer the choice
+	// when there is one to offer -- and say what it costs in DCR, which is
+	// the number a buyer is actually about to part with.
+	Methods  PayMethods
+	TotalDCR string
 }
 
 // HasUnavailable is whether anything in the cart cannot be bought, which is

@@ -87,6 +87,27 @@ class _ShopFrameFieldsState extends State<ShopFrameFields> {
         ),
       );
 
+  /// _payMethods is what the shop will take, as the config records it.
+  ///
+  /// Empty is a real answer and the one a shop starts with: no automatic
+  /// payment at all, and the seller settles up with the buyer themselves.
+  static const _payMethods = {
+    "": "Nothing automatic — you arrange payment yourself",
+    "ln": "Lightning",
+    "onchain": "On-chain",
+    "both": "Both — the buyer chooses",
+  };
+
+  Future<void> _setPayType(String value) async {
+    var snackbar = SnackBarModel.of(context);
+    try {
+      await widget.pages
+          .setHost(widget.pages.hostConfig.copyWith(storePayType: value));
+    } catch (exception) {
+      snackbar.error("Unable to save how the shop takes payment: $exception");
+    }
+  }
+
   @override
   Widget build(BuildContext context) => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -113,6 +134,40 @@ class _ShopFrameFieldsState extends State<ShopFrameFields> {
           const SizedBox(height: 10),
           _field("Header fragment", _header),
           _field("Footer fragment", _footer),
+          const SizedBox(height: 20),
+          const Txt.L("How the shop takes payment"),
+          const SizedBox(height: 6),
+          const Txt.S(
+              "Lightning settles straight away; on-chain settles when the "
+              "network confirms it, which is a block or two. Offering both "
+              "lets the buyer choose -- and lets an order still go through "
+              "when one of them cannot, rather than not going at all.",
+              color: TextColor.onSurfaceVariant),
+          const SizedBox(height: 10),
+          Row(children: [
+            const Flexible(
+                child: Txt("Payment: ", overflow: TextOverflow.ellipsis)),
+            const SizedBox(width: 8),
+            Flexible(
+              child: DropdownButton<String>(
+                value: _payMethods
+                        .containsKey(widget.pages.hostConfig.storePayType)
+                    ? widget.pages.hostConfig.storePayType
+                    : "",
+                isExpanded: true,
+                items: [
+                  for (var entry in _payMethods.entries)
+                    DropdownMenuItem(
+                        value: entry.key,
+                        child:
+                            Text(entry.value, overflow: TextOverflow.ellipsis)),
+                ],
+                onChanged: (v) {
+                  if (v != null) _setPayType(v);
+                },
+              ),
+            ),
+          ]),
         ],
       );
 }

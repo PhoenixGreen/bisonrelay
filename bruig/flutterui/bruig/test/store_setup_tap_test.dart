@@ -84,21 +84,23 @@ void main() {
 
     // The setup tab as the screen builds it: both halves, and the whole thing
     // rebuilt whenever either model says something changed.
-    await tester.pumpWidget(MultiProvider(providers: [
-      ChangeNotifierProvider<ThemeNotifier>(
-          create: (c) => ThemeNotifier(doLoad: false)),
-      ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-    ], child: MaterialApp(
-        home: Scaffold(
-            body: ListenableBuilder(
-      listenable: Listenable.merge([pages, shop]),
-      builder: (context, _) => SingleChildScrollView(
-        child: Column(children: [
-          ShopFrameFields(pages: pages),
-          StoreFrontFields(store: shop),
-        ]),
-      ),
-    )))));
+    await tester.pumpWidget(MultiProvider(
+        providers: [
+          ChangeNotifierProvider<ThemeNotifier>(
+              create: (c) => ThemeNotifier(doLoad: false)),
+          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+        ],
+        child: MaterialApp(
+            home: Scaffold(
+                body: ListenableBuilder(
+          listenable: Listenable.merge([pages, shop]),
+          builder: (context, _) => SingleChildScrollView(
+            child: Column(children: [
+              ShopFrameFields(pages: pages),
+              StoreFrontFields(store: shop),
+            ]),
+          ),
+        )))));
     await tester.pumpAndSettle();
 
     // Put the cursor in one of the text boxes, which is what a seller does
@@ -108,7 +110,8 @@ void main() {
 
     // Pressed and held for a moment, which is what tapping is. A tap that
     // is down and up inside one frame never meets the rebuild.
-    var at = tester.getCenter(find.text("Show the DCR estimate on the shop front"));
+    var at =
+        tester.getCenter(find.text("Show the DCR estimate on the shop front"));
     var finger = await tester.startGesture(at);
     await tester.pump(const Duration(milliseconds: 120));
     await finger.up();
@@ -125,13 +128,24 @@ void main() {
       (tester) async {
     // The other half of the guard: saving only on a change must not mean
     // never saving.
+    // Room for the whole panel: it has grown a payment setting since, and a
+    // Column taller than the window overflows rather than scrolling.
+    tester.view.physicalSize = const Size(900, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
     var pages = _Pages();
 
-    await tester.pumpWidget(MultiProvider(providers: [
-      ChangeNotifierProvider<ThemeNotifier>(
-          create: (c) => ThemeNotifier(doLoad: false)),
-      ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-    ], child: MaterialApp(home: Scaffold(body: ShopFrameFields(pages: pages)))));
+    await tester.pumpWidget(MultiProvider(
+        providers: [
+          ChangeNotifierProvider<ThemeNotifier>(
+              create: (c) => ThemeNotifier(doLoad: false)),
+          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+        ],
+        child: MaterialApp(
+            home: Scaffold(
+                body: SingleChildScrollView(
+                    child: ShopFrameFields(pages: pages))))));
     await tester.pumpAndSettle();
 
     await tester.enterText(

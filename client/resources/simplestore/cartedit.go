@@ -140,5 +140,18 @@ func (s *Store) cartWithAvailability(cart *Cart) cartContext {
 		}
 	}
 	s.mtx.Unlock()
-	return cartContext{Cart: cart, Unavailable: unavailable}
+
+	// What the shop takes, and what the cart comes to in DCR at today's
+	// rate. The rate is struck again when the order is placed -- this is
+	// what it would be if that happened now, which is what somebody deciding
+	// whether to buy wants to see.
+	ctx := cartContext{
+		Cart:        cart,
+		Unavailable: unavailable,
+		Methods:     s.payMethods(),
+	}
+	if rate := s.approxDCR(cart.Total()); rate != "" {
+		ctx.TotalDCR = rate
+	}
+	return ctx
 }

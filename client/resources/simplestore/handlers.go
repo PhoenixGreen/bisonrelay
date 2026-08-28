@@ -354,57 +354,36 @@ func (s *Store) handlePlaceOrder(ctx context.Context, uid clientintf.UserID,
 			order.ExchangeRate, totalDCR, order.ExpiresTS.Format("Mon, 02 Jan 2006 15:04 MST"))
 	}
 
-	pt := s.cfg.PayType
-	switch {
-	case s.cfg.ExchangeRateProvider == nil:
-		s.log.Warnf("No exchange rate provider setup in simplestore config")
-	case order.ExchangeRate <= 0:
-		s.log.Warnf("Invalid exchange rate to charge user %s for order %s",
-			userNick, order.ID)
-	case totalDCR == 0:
-		s.log.Warnf("Order has zero total dcr amount")
-	case pt == PayTypeOnChain:
-		addr, err := s.c.OnchainRecvAddrForUser(order.User, s.cfg.Account)
-		if err != nil {
-			s.log.Errorf("Unable to generate on-chain addr for user %s: %v",
-				userNick, err)
-		} else {
-			wpm("On-chain Payment Address: %s\n", addr)
-			order.PayType = PayTypeOnChain
-			order.Invoice = addr
-		}
-
-	case pt == PayTypeLN:
-		if s.lnpc == nil {
-			s.log.Warnf("Unable to generate LN invoice for user %s "+
-				"for order %s: LN not setup", userNick,
-				order.ID)
-		} else {
-			invoice, err := s.lnpc.GetInvoice(ctx, int64(totalDCR*1000), nil)
-			if err != nil {
-				s.log.Errorf("Unable to generate LN invoice for user %s "+
-					"order %s: %v", userNick,
-					order.ID, err)
-
-				// Fallback to generating an onchain payment address.
-				addr, err := s.c.OnchainRecvAddrForUser(order.User, s.cfg.Account)
-				if err != nil {
-					s.log.Errorf("Unable to generate on-chain addr for user %s: %v",
-						userNick, err)
-				} else {
-					wpm("On-chain Payment Address: %s\n", addr)
-					order.PayType = PayTypeOnChain
-					order.Invoice = addr
-				}
-			} else {
-				urlInvoice := "lnpay://" + invoice
-				wpm("LN Invoice for payment: %s\n", urlInvoice)
-				order.PayType = PayTypeLN
-				order.Invoice = invoice
+	// How this order gets paid for, worked out before it is placed.
+	//
+	// Before it is placed, because a shop that cannot take the money should
+	// not be taking the order. Every failure here used to be a log line the
+	// code fell through -- no invoice, no address, nothing said -- and the
+	// buyer was handed an order with no way to pay it and no way to find out
+	// why. See payment.go.
+	if s.payMethods().Any() {
+		pay, err := s.preparePayment(ctx, order, wantPayType(request))
+		var cannot *cannotTakePayment
+		switch {
+		case errors.As(err, &cannot):
+			// The seller is told: their shop is turning away sales, and they
+			// are the only one who can do anything about it.
+			s.log.Errorf("Refused order for %s: %v", userNick, err)
+			if s.cfg.OrderPlaced != nil {
+				s.cfg.OrderPlaced(order, fmt.Sprintf("An order from %s could "+
+					"not be placed: %s", userNick, err))
 			}
-		}
+			return s.cannotPayPage(cannot)
 
-	default:
+		case err != nil:
+			return nil, err
+
+		case pay != nil:
+			order.PayType = pay.payType
+			order.Invoice = pay.invoice
+			wpm("%s\n", pay.says)
+		}
+	} else {
 		wpm("\nYou will be contacted with payment details shortly")
 	}
 
