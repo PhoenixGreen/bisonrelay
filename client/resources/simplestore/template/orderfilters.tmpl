@@ -1,0 +1,18 @@
+{{- /*
+orderfilters.tmpl is the row across the top of a list of orders.
+
+Each link keeps half of what is showing and changes the other, so pressing
+"Oldest first" does not also reset which orders are being shown. The two
+halves are built in contexts.go, where the current view is.
+
+Called with the list's own context.
+*/ -}}
+--nav[pills]--
+{{- range .Filters}}
+[{{.Label}}]({{.Link}}){{if .On}}[active=on]{{end}}
+{{- end}}
+--right--
+{{- range .Orderings}}
+[{{.Label}}]({{.Link}}){{if .On}}[active=on]{{end}}
+{{- end}}
+--/nav--

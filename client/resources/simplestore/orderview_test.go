@@ -2,6 +2,7 @@ package simplestore
 
 import (
 	"bytes"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -29,19 +30,26 @@ func renderOrderPage(t *testing.T, name string, data any) string {
 	s := &Store{indexPath: "/store", log: slog.Disabled,
 		layout: DefaultIndexLayout()}
 
-	raw, err := storeTemplate.ReadFile("template/" + name)
+	// The whole shipped set, not the one page being looked at. These
+	// templates include each other -- the pay area, the transaction
+	// reference, the cart listing -- and a helper that parses only what it
+	// was asked for fails on the next partial somebody adds rather than on
+	// anything to do with the test.
+	tmpl := template.New("*root").Funcs(s.templateFuncs())
+	err := fs.WalkDir(storeTemplate, "template",
+		func(path string, d fs.DirEntry, err error) error {
+			if err != nil || d.IsDir() || filepath.Ext(path) != ".tmpl" {
+				return err
+			}
+			raw, err := storeTemplate.ReadFile(path)
+			if err != nil {
+				return err
+			}
+			_, err = tmpl.New(filepath.Base(path)).Parse(string(raw))
+			return err
+		})
 	if err != nil {
 		t.Fatal(err)
-	}
-	tmpl := template.New(name).Funcs(s.templateFuncs())
-	// The order pages include the plain cart listing.
-	if plain, err := storeTemplate.ReadFile("template/cart-listing-plain.tmpl"); err == nil {
-		if _, err := tmpl.New("cart-listing-plain.tmpl").Parse(string(plain)); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if _, err := tmpl.Parse(string(raw)); err != nil {
-		t.Fatalf("%s: %v", name, err)
 	}
 
 	var out bytes.Buffer
@@ -70,10 +78,17 @@ func anOrder() Order {
 func TestAnUnpaidOrderSaysHowToPayIt(t *testing.T) {
 	got := renderOrderPage(t, "order.tmpl", &orderContext{Order: anOrder()})
 
-	for _, want := range []string{"lnpay://lnabc123", "$40.00", "42 minutes"} {
+	// How long the price holds is counted client-side rather than written
+	// into the page: a page is fetched once and nothing tells it the time,
+	// so a number written here would be right when it was drawn and wrong
+	// every minute after. See markdown_countdown.dart.
+	for _, want := range []string{"lnpay://lnabc123", "$40.00", "--countdown["} {
 		if !strings.Contains(got, want) {
 			t.Errorf("%q missing from the order's own page:\n%s", want, got)
 		}
+	}
+	if !strings.Contains(got, "seconds=25") {
+		t.Errorf("the clock does not start where the order does:\n%s", got)
 	}
 }
 

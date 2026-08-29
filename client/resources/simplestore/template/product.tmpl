@@ -1,5 +1,36 @@
-# {{ .Title }}
+{{- /*
+The title, with how many are left beside it.
 
+It was a row of its own under the price, which put a fact about whether you
+can have this thing three paragraphs away from the thing. Beside the title it
+is read in the same glance as the name, boxed like the unavailable panel
+below so the two read as the same kind of remark about the same product.
+
+Nothing at all when there are none left: the panel underneath is already
+saying that, and "0 left" beside "Currently unavailable" is the page saying
+it twice.
+*/ -}}
+{{ if stockLeft . }}--steps[chip={{ stockLeft . }}, chipink=quoteBar]--
+{{ .Title }}
+--/steps--
+{{ else }}# {{ .Title }}
+{{ end }}
+
+{{- /*
+Said once.
+
+This was a panel with the words written in it and the same words pinned to
+its corner as a ribbon, which drew them on top of each other. The ribbon is
+for a card on the shop front, where there is no room to explain: here there
+is room, so the panel says what it is and why.
+*/}}
+{{ if unavailable . }}
+--panel[padding=14, margin=0 0 12 0, border=1, color=quoteBar, radius=8]--
+**{{ soldOutLabel }}**
+
+{{ unavailableSays . }}
+--/panel--
+{{ end }}
 {{ with productImage .Image }}![]({{.}})
 
 {{ end -}}
@@ -11,6 +42,16 @@ Tags: {{ .Tags }}
 ≈ {{.}} at today's rate. The amount you pay is set when you order.{{ end }}
 
 ---
+{{ if unavailable . }}
+{{- /*
+No way to add it, rather than a button that refuses.
+
+The card said the shop could not sell this and the button was still here,
+which is the worst of both: somebody who presses it has been told no and
+shown a way round it.
+*/}}
+[Back to the shop]({{storeIndex}})
+{{ else }}
 ## Add to Cart
 --form--
 type="action" value="/addToCart"
@@ -18,3 +59,4 @@ type="hidden" name="sku" value="{{.SKU}}"
 type="intinput" label="Quantity" name="qty" value="1"
 type="submit" label="Add To Cart"
 --/form--
+{{ end }}

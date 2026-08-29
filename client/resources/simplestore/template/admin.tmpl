@@ -7,9 +7,17 @@ Nobody has ordered anything yet. When they do, this is where it shows up.
 --panel[padding=14, margin=0 0 14 0, border=1, color=accent, radius=8]--
 ## Waiting on you
 
-{{ if .ToSend }}**{{ .ToSend }}** paid and not sent yet · [open the order book](/admin/orders)
-{{ end }}{{ if .NeedsReply }}**{{ .NeedsReply }}** waiting on a reply from you
-{{ end }}{{ if .Lapsed }}**{{ .Lapsed }}** unpaid past the hour their amount was quoted for — they will not pay themselves
+{{- /*
+Each line goes to the orders it is about.
+
+It said "open the order book" and led to the whole book, unfiltered: a seller
+told fifteen orders are waiting was handed every order they have ever taken
+and left to find them. The book takes a filter in its path now, so the line
+can point at exactly the fifteen. See orderlist.go.
+*/}}
+{{ if .ToSend }}**[{{ .ToSend }} paid and not sent yet](/admin/orders/paid/newest)**
+{{ end }}{{ if .NeedsReply }}**[{{ .NeedsReply }} waiting on a reply from you](/admin/orders/open/newest)**
+{{ end }}{{ if .Lapsed }}**[{{ .Lapsed }} unpaid past the time their amount was quoted for](/admin/orders/waiting/oldest)** — they will not pay themselves
 {{ end }}
 --/panel--
 {{ else -}}
@@ -31,18 +39,31 @@ Called off: {{ .Canceled }}
 
 ## The newest orders
 
+{{- /*
+The same rows the order book draws, in the same clothes.
+
+They were a plainer copy: no ribbon on the ones waiting, and no way through
+to the filtered list. A dashboard that shows orders differently from the page
+they live on is a second order book somebody has to learn.
+*/}}
 {{range .Recent}}
---panel[padding=12, margin=0 0 8 0, border=1, color=outline, radius=8]--
+{{if .Wants true -}}
+--panel[full=on, padding=12, margin=0 0 8 0, border=2, color=accent, radius=8, badge=Needs you, badgeink=accent]--
+{{- else -}}
+--panel[full=on, padding=12, margin=0 0 8 0, border=1, color=outline, radius=8]--
+{{- end}}
 --listing--
 title: Order #{{ .ID.Num }} — {{ orderSays .Order }}
 link: /admin/order/{{.User}}/{{.ID}}
 summary: {{ if .UserNick }}{{ .UserNick }}{{ else }}{{ .User.ShortLogID }}{{ end }} · {{ .PlacedTS.Format "2 Jan 2006, 15:04" }}{{ if .AwaitingSeller }} · waiting on you{{ end }}{{ if .Expired }} · quote lapsed{{ end }}
 meta: {{ money .Total }}
 button: Open
-style: primary
+style: {{ if .Open }}primary{{ else }}plain{{ end }}
 --/listing--
 --/panel--
 {{- end}}
+
+[Open the order book](/admin/orders) — every order, with filters.
 
 [Every order](/admin/orders)
 {{- end}}

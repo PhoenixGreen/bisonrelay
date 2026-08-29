@@ -40,7 +40,26 @@ class AppTooltips extends StatelessWidget {
 class HelpTooltip extends StatelessWidget {
   final String message;
   final Widget child;
-  const HelpTooltip({required this.message, required this.child, super.key});
+
+  /// triggerMode and constraints are for the help icons a page draws rather
+  /// than the app's own.
+  ///
+  /// A shop's payment card carries a sentence, not a label, and it is read on
+  /// a touch screen as often as under a pointer -- so it opens on a tap, it
+  /// stays open long enough to finish, and it is given room to be a line of
+  /// prose rather than a column one word across.
+  final TooltipTriggerMode? triggerMode;
+  final BoxConstraints? constraints;
+  final Duration? showDuration;
+
+  const HelpTooltip({
+    required this.message,
+    required this.child,
+    this.triggerMode,
+    this.constraints,
+    this.showDuration,
+    super.key,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -48,7 +67,13 @@ class HelpTooltip extends StatelessWidget {
       var style = theme.areaStyle(ThemeArea.masterBackground);
       return TooltipVisibility(
         visible: !style.hideHelpTooltips,
-        child: Tooltip(message: message, child: child),
+        child: Tooltip(
+          message: message,
+          triggerMode: triggerMode,
+          constraints: constraints,
+          showDuration: showDuration,
+          child: child,
+        ),
       );
     });
   }

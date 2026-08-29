@@ -4,12 +4,51 @@ import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:bruig/components/md_elements.dart';
 import 'package:bruig/components/inputs.dart';
 import 'package:bruig/models/resources.dart';
+import 'package:bruig/components/tooltips.dart';
 import 'package:bruig/models/snackbar.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:markdown/markdown.dart' as md;
 import 'package:provider/provider.dart';
 import 'package:flutter/services.dart';
+
+/// postToPage sends [formData] to the shop's [action] and shows whatever it
+/// answers with, exactly as submitting a form on the page does.
+///
+/// Pulled out of the submit button because a form is not the only shape an
+/// action takes. A payment card the buyer presses to choose it, or a button
+/// that pays an order, is one field and one press -- wrapping either in a
+/// form to reach this would be putting a form on the page to hide it again.
+///
+/// Everything a page can act on goes through here, so the rules about where
+/// a press may lead are in one place: the action is a path on the site that
+/// served the page, and this is what resolves it against that site.
+Future<void> postToPage(
+  BuildContext context,
+  String action,
+  Map<String, dynamic> formData, {
+  String asyncTargetID = "",
+}) async {
+  if (action == "") return;
+  var snackbar = SnackBarModel.of(context);
+
+  var parsed = Uri.parse(action);
+
+  var downSource = Provider.of<DownloadSource?>(context, listen: false);
+  var pageSource = Provider.of<PagesSource?>(context, listen: false);
+  var uid = downSource?.uid ?? pageSource?.uid ?? "";
+
+  var resources = Provider.of<ResourcesModel>(context, listen: false);
+  var sessionID = pageSource?.sessionID ?? 0;
+  var parentPageID = pageSource?.pageID ?? 0;
+
+  try {
+    await resources.fetchPage(
+        uid, parsed.pathSegments, sessionID, parentPageID, formData, asyncTargetID);
+  } catch (exception) {
+    snackbar.error("Unable to fetch page: $exception");
+  }
+}
 
 class _FormSubmitButton extends StatelessWidget {
   final FormElement form;
@@ -18,7 +57,6 @@ class _FormSubmitButton extends StatelessWidget {
   const _FormSubmitButton(this.form, this.submit, this.formKey);
 
   void doSubmit(BuildContext context, FormElement form) async {
-    var snackbar = SnackBarModel.of(context);
     Map<String, dynamic> formData = {};
     String action = "";
     String asyncTargetID = "";
@@ -36,26 +74,7 @@ class _FormSubmitButton extends StatelessWidget {
       formData[field.name] = field.value;
     }
 
-    if (action == "") {
-      return;
-    }
-
-    var parsed = Uri.parse(action);
-
-    var downSource = Provider.of<DownloadSource?>(context, listen: false);
-    var pageSource = Provider.of<PagesSource?>(context, listen: false);
-    var uid = downSource?.uid ?? pageSource?.uid ?? "";
-
-    var resources = Provider.of<ResourcesModel>(context, listen: false);
-    var sessionID = pageSource?.sessionID ?? 0;
-    var parentPageID = pageSource?.pageID ?? 0;
-
-    try {
-      await resources.fetchPage(uid, parsed.pathSegments, sessionID,
-          parentPageID, formData, asyncTargetID);
-    } catch (exception) {
-      snackbar.error("Unable to fetch page: $exception");
-    }
+    await postToPage(context, action, formData, asyncTargetID: asyncTargetID);
   }
 
   /// _role is the button this submit is drawn as, or null for the ordinary
@@ -167,6 +186,23 @@ class CustomFormState extends State<CustomForm> {
               decoration: InputDecoration(
                 hintText: field.hint,
                 labelText: field.label,
+                // At the end of the box, which is where a question mark
+                // about a box belongs: the same corner the app's own help
+                // icons sit in, and inside the field's own outline so it is
+                // plainly about that field and not the one below it.
+                suffixIcon: field.help.isEmpty
+                    ? null
+                    : HelpTooltip(
+                        message: field.help,
+                        triggerMode: TooltipTriggerMode.tap,
+                        showDuration: const Duration(seconds: 8),
+                        constraints: const BoxConstraints(maxWidth: 260),
+                        child: Icon(Icons.help_outline,
+                            size: 18,
+                            color: ThemeNotifier.of(context)
+                                .colors
+                                .onSurfaceVariant),
+                      ),
               ),
               onSaved: (String? value) {
                 // This optional block of code can be used to run
@@ -340,6 +376,17 @@ class FormField {
   /// "Lightning".
   final String options;
 
+  /// help is a sentence kept behind a question mark at the end of a box, or
+  /// empty for a field that needs none.
+  ///
+  /// "A phone number is only for whoever delivers this" is worth knowing once
+  /// and read every time by everybody who already knows it -- and as a line
+  /// of prose above the boxes it is read before anybody knows which box it is
+  /// about. Beside the box, it is answering a question somebody is having.
+  ///
+  /// It follows Hide help text under Appearance, like the app's own.
+  final String help;
+
   /// confirm is what a submit asks before it does anything, or empty for one
   /// that just does it.
   ///
@@ -356,6 +403,7 @@ class FormField {
       this.hint = "",
       this.style = "",
       this.confirm = "",
+      this.help = "",
       this.options = "",
       this.value});
 
@@ -437,6 +485,7 @@ class FormBlockSyntax extends md.BlockSyntax {
           case "regexpstr":
           case "style":
           case "confirm":
+          case "help":
           case "options":
             args[Symbol(name)] = value;
             break;

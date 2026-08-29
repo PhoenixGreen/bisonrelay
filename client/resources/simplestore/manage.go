@@ -108,9 +108,21 @@ func (s *Store) SetOrderStatus(uid clientintf.UserID, oid OrderID,
 		return nil, err
 	}
 
+	// Stock an order is holding comes back when the order is called off
+	// before it was ever paid for.
+	//
+	// Before it was paid for, specifically. A paid order that a seller
+	// cancels may already have been packed, posted or sent as a file, and
+	// putting its stock back would be the shop counting something it no
+	// longer has. What is being undone here is a promise nobody took up.
+	unwind := status == StatusCanceled && order.Status == StatusPlaced
+
 	order.Status = status
 	if err := jsonfile.Write(fname, order, s.log); err != nil {
 		return nil, err
+	}
+	if unwind {
+		s.giveStock(order)
 	}
 
 	if s.cfg.StatusChanged != nil {

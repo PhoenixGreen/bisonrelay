@@ -57,7 +57,7 @@ func (s *Store) catchUpLN(ctx context.Context, pending map[string]*Order) {
 		s.log.Infof("Order %s/%s was paid over Lightning while the shop was "+
 			"not running", order.User.ShortLogID(), order.ID)
 		delete(pending, disc)
-		go s.invoiceSettled(ctx, order)
+		go s.invoiceSettled(ctx, order, "")
 	}
 }
 
@@ -108,11 +108,11 @@ func (s *Store) catchUpOnChain(ctx context.Context, pending map[string]*Order) {
 				s.log.Infof("Order %s/%s was paid on-chain while the shop "+
 					"was not running", order.User.ShortLogID(), order.ID)
 				delete(pending, disc)
-				go s.invoiceSettled(ctx, order)
+				go s.invoiceSettled(ctx, order, tx.TxHash)
 			} else {
 				// Seen and not confirmed: the order stays pending, because
 				// the live watcher still has to see it confirm.
-				go s.paymentSeen(ctx, order)
+				go s.paymentSeen(ctx, order, tx.TxHash)
 			}
 		}
 	}

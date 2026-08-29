@@ -13,9 +13,17 @@ import 'package:bruig/components/feed/markdown_page.dart';
 import 'package:bruig/components/feed/markdown_panel.dart';
 import 'package:bruig/components/feed/markdown_button.dart';
 import 'package:bruig/components/feed/markdown_listing.dart';
+import 'package:bruig/components/feed/markdown_copy.dart';
+import 'package:bruig/components/feed/markdown_countdown.dart';
+import 'package:bruig/components/feed/markdown_paynow.dart';
+import 'package:bruig/components/feed/markdown_paypick.dart';
+import 'package:bruig/components/feed/markdown_purchase.dart';
+import 'package:bruig/components/feed/markdown_steps.dart';
+import 'package:bruig/components/feed/markdown_wallet.dart';
 import 'package:bruig/components/feed/markdown_qr.dart';
 import 'package:bruig/components/pages/forms.dart';
 import 'package:bruig/components/snackbars.dart';
+import 'package:bruig/util.dart';
 import 'package:bruig/components/text_dialog.dart';
 import 'package:bruig/components/audio_element.dart';
 import 'package:bruig/components/interactive_avatar.dart';
@@ -451,6 +459,15 @@ class MarkdownAreaModel extends ChangeNotifier {
     "button": ButtonMarkdownElementBuilder(),
     "listing": ListingMarkdownElementBuilder(),
     "qr": QrMarkdownElementBuilder(),
+    "copy": CopyMarkdownElementBuilder(),
+    "steps": StepsMarkdownElementBuilder(),
+    "wallet": WalletMarkdownElementBuilder(),
+    "paypick": PayPickMarkdownElementBuilder(),
+    "paynow": PayNowMarkdownElementBuilder(),
+    "payways": PayWaysMarkdownElementBuilder(),
+    "paysummary": PaySummaryMarkdownElementBuilder(),
+    "purchase": PurchaseMarkdownElementBuilder(),
+    "countdown": CountdownMarkdownElementBuilder(),
   };
 
   final List<md.InlineSyntax> inlineSyntaxes = [
@@ -468,6 +485,15 @@ class MarkdownAreaModel extends ChangeNotifier {
     ButtonBlockSyntax(),
     ListingBlockSyntax(),
     QrBlockSyntax(),
+    CopyBlockSyntax(),
+    StepsBlockSyntax(),
+    WalletBlockSyntax(),
+    PayPickBlockSyntax(),
+    PayNowBlockSyntax(),
+    PayWaysBlockSyntax(),
+    PaySummaryBlockSyntax(),
+    PurchaseBlockSyntax(),
+    CountdownBlockSyntax(),
   ];
 
   // _pluginExtensions is whatever the last setPluginExtensions call added,
@@ -725,6 +751,15 @@ const Set<String> blockBuilderTags = {
   "button",
   "listing",
   "qr",
+  "copy",
+  "steps",
+  "wallet",
+  "paypick",
+  "paynow",
+  "payways",
+  "paysummary",
+  "purchase",
+  "countdown",
   "nav",
   "panel",
   "grid",
@@ -1132,6 +1167,15 @@ class MarkdownArea extends StatelessWidget {
             effectiveGuide.listCheckInk.toJson(),
           )),
           codeBlockMaxHeight: 200,
+          // Stretched only where the writer asked for an alignment.
+          //
+          // MarkdownBody sizes every block to its own content, so a
+          // paragraph is as wide as its longest line and sits at the left --
+          // and a textAlign of centre inside a box that is exactly as wide
+          // as the words has nothing to centre them in. Where nobody asked,
+          // this stays as it was: shrink-wrapping is right for a caption
+          // under a picture and for a plate behind a price.
+          fitContent: align == null,
           styleSheet: sheet,
           checkboxBuilder:
               _checkboxBuilder(context, effectiveGuide, theme, sheet, gap),
@@ -2017,25 +2061,32 @@ class __PayReqBtnState extends State<_PayReqBtn> {
           onPressed: null, child: Text("Decoding invoice..."));
     }
 
-    String amt = formatDCR(info.decoded?.amount ?? 0);
+    var amt = dcrLabel(info.decoded?.amount ?? 0);
+    var theme = ThemeNotifier.of(context);
 
+    // Done, and saying so where the button was.
+    //
+    // A button that goes on offering to pay something already paid is the
+    // worst thing this can do, and a disabled button with the same words on
+    // it is barely better -- what somebody needs to see is that it went
+    // through.
     if (info.status == PaymentStatus.succeeded) {
-      return ElevatedButton(
-          onPressed: null, child: Text("Succeeded paying $amt"));
+      return _said(context, Icons.check_circle_outline, "Paid $amt",
+          theme.colors.primary);
     }
 
     if (info.status == PaymentStatus.errored) {
-      return ElevatedButton(
-          onPressed: null, child: Text("Errored paying $amt: ${info.err}"));
+      return _said(context, Icons.error_outline, "Could not pay $amt",
+          theme.colors.error, info.err?.toString());
     }
 
     if (info.status == PaymentStatus.inflight) {
-      return ElevatedButton(onPressed: null, child: Text("Paying $amt"));
+      return _said(context, null, "Paying $amt…", theme.colors.onSurface);
     }
 
     if (info.decoded?.expired ?? false) {
-      return ElevatedButton(
-          onPressed: null, child: Text("Invoice $amt expired"));
+      return _said(context, Icons.schedule, "This invoice has expired",
+          theme.colors.onSurfaceVariant);
     }
 
     // Enough to pay it? Said beside the button rather than instead of it.
@@ -2050,20 +2101,98 @@ class __PayReqBtnState extends State<_PayReqBtn> {
     if (need == 0) need = ((info.decoded?.numMAtoms ?? 0) / 1000).round();
     var short = _outbound != null && need > 0 && _outbound! < need;
 
-    var button =
-        ElevatedButton(onPressed: attemptPayment, child: Text("Pay $amt"));
+    // The size of what it does.
+    //
+    // It was an ordinary button reading "Pay 0.31000000 DCR", set among
+    // ordinary text with a sentence under it explaining that pressing it
+    // paid. A press that spends money should not need explaining, and it
+    // should not look like the button next to it that goes to another page:
+    // this one is as wide as what it sits in, tall enough to be aimed at,
+    // and says the amount in figures anybody can take in at a glance.
+    var button = SizedBox(
+      width: double.infinity,
+      child: ElevatedButton.icon(
+        onPressed: attemptPayment,
+        // The app's primary button, not a plain one.
+        //
+        // A bare ElevatedButton is the "plain" role in this theme -- no fill
+        // and no border, just a hover background -- so the one press on the
+        // page that spends money was a line of coloured text among lines of
+        // coloured text. Which role a button is drawn as is what says how
+        // much it does, and this does the most on the page.
+        style: theme.buttonStyle(ButtonRole.primary).copyWith(
+              padding: const WidgetStatePropertyAll(
+                  EdgeInsets.symmetric(horizontal: 20, vertical: 16)),
+              textStyle: const WidgetStatePropertyAll(
+                  TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+            ),
+        icon: const Icon(Icons.bolt, size: 20),
+        label: Text("Pay $amt"),
+      ),
+    );
+
     if (!short) return button;
 
-    return Column(mainAxisSize: MainAxisSize.min, children: [
-      button,
-      const SizedBox(height: 4),
-      Text(
-        "Your wallet's Max Sendable is ${formatDCR(atomsToDCR(_outbound!))}. "
-        "This needs $amt, so it may not get through.",
-        style: TextStyle(
-            fontSize: 12, color: ThemeNotifier.of(context).colors.error),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        button,
+        const SizedBox(height: 6),
+        Text(
+          "Your wallet's Max Sendable is ${dcrLabel(atomsToDCR(_outbound!))}. "
+          "This needs $amt, so it may not get through.",
+          style: TextStyle(fontSize: 12, color: theme.colors.error),
+        ),
+      ],
+    );
+  }
+
+  /// _said is what stands where the button was once the button has been
+  /// pressed: a line saying what happened, in the shape the button had.
+  Widget _said(BuildContext context, IconData? icon, String what, Color ink,
+      [String? more]) {
+    var theme = ThemeNotifier.of(context);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: theme.colors.outlineVariant),
       ),
-    ]);
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              if (icon != null) ...[
+                Icon(icon, size: 20, color: ink),
+                const SizedBox(width: 8),
+              ] else ...[
+                SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: ink),
+                ),
+                const SizedBox(width: 10),
+              ],
+              Flexible(
+                child: Text(what,
+                    style: TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.w600, color: ink)),
+              ),
+            ],
+          ),
+          if (more != null && more.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(more,
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 12, color: theme.colors.error)),
+          ],
+        ],
+      ),
+    );
   }
 }
 

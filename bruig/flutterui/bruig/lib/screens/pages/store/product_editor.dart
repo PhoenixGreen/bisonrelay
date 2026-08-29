@@ -44,8 +44,10 @@ class ProductEditorState extends State<ProductEditor> {
   late final TextEditingController priceCtrl;
   late final TextEditingController tagsCtrl;
   late final TextEditingController sendCtrl;
+  late final TextEditingController availableCtrl;
   late bool shipping;
   late bool disabled;
+  late bool limited;
   bool saving = false;
 
   ProductDraft get draft =>
@@ -64,15 +66,19 @@ class ProductEditorState extends State<ProductEditor> {
     priceCtrl = TextEditingController(text: d.price);
     tagsCtrl = TextEditingController(text: d.tags);
     sendCtrl = TextEditingController(text: d.sendFilename);
+    availableCtrl = TextEditingController(text: d.available);
     shipping = d.shipping;
     disabled = d.disabled;
+    limited = d.limited;
     for (var c in [
       titleCtrl,
       skuCtrl,
       descCtrl,
       priceCtrl,
       tagsCtrl,
-      sendCtrl
+      availableCtrl,
+      sendCtrl,
+      availableCtrl
     ]) {
       c.addListener(remember);
     }
@@ -89,6 +95,8 @@ class ProductEditorState extends State<ProductEditor> {
         sendFilename: sendCtrl.text,
         shipping: shipping,
         disabled: disabled,
+        limited: limited,
+        available: availableCtrl.text,
       ));
 
   @override
@@ -212,6 +220,11 @@ class ProductEditorState extends State<ProductEditor> {
           sendFilename: sendCtrl.text.trim(),
           shipping: shipping,
           disabled: disabled,
+          limited: limited,
+          // Nought is a real answer -- sold out -- so an empty box on a
+          // product that counts means nought, not "do not count". The
+          // switch is the only thing that decides whether to count.
+          available: limited ? (int.tryParse(availableCtrl.text.trim()) ?? 0) : 0,
           image: draft.image,
         ),
         draft.original.file,
@@ -339,6 +352,32 @@ class ProductEditorState extends State<ProductEditor> {
           remember();
         }),
       ),
+      SwitchListTile(
+        contentPadding: EdgeInsets.zero,
+        title: const Txt.M("Limited number available"),
+        subtitle: const Txt.S(
+            "Counts down as orders are placed. At nought the shop front "
+            "shows the unavailable label and nobody can add it to a cart.",
+            color: TextColor.onSurfaceVariant),
+        value: limited,
+        onChanged: (v) => setState(() {
+          limited = v;
+          remember();
+        }),
+      ),
+      if (limited)
+        Padding(
+          padding: const EdgeInsets.only(left: 8, bottom: 8),
+          child: TextField(
+            controller: availableCtrl,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(
+              labelText: "How many are left",
+              helperText:
+                  "Goes back up if an order is called off or its price lapses.",
+            ),
+          ),
+        ),
       SwitchListTile(
         contentPadding: EdgeInsets.zero,
         title: const Txt.M("Hidden"),

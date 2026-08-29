@@ -29,6 +29,24 @@ type Product struct {
 	// still on their way. See assets.go.
 	Image        string `json:"image"`
 	SendFilename string `json:"send_filename"`
+
+	// Limited is whether this shop counts how many of this it has.
+	//
+	// A flag beside the count rather than a sentinel inside it, because the
+	// count has to default correctly for every product saved before any of
+	// this existed: nought is a real answer -- sold out -- and a missing
+	// field decodes as nought whatever it was meant to mean. Off is "we do
+	// not count", which is what a file, a service or anything made to order
+	// is, and what the whole catalogue was until now.
+	Limited bool `json:"limited"`
+
+	// Available is how many are left, when Limited says to count.
+	//
+	// Counted down as orders are placed and given back when one lapses or is
+	// called off -- placed rather than paid, because the moment a shop
+	// issues an invoice for the last of something is the moment it has
+	// promised it to somebody. See stock.go.
+	Available int `json:"available"`
 }
 
 type productsFile struct {
@@ -43,6 +61,35 @@ type CartItem struct {
 type Cart struct {
 	Items   []*CartItem `json:"items"`
 	Updated time.Time   `json:"updated"`
+
+	// Checkout is what the buyer has chosen on the way to placing the
+	// order.
+	//
+	// Kept on the cart because that is already the buyer's scratch space in
+	// this shop: it is theirs, it survives closing the page, and emptying
+	// the cart is exactly when these answers stop meaning anything. Carried
+	// through the steps as hidden fields instead, a buyer who went back a
+	// page to change one thing would lose the rest.
+	Checkout Checkout `json:"checkout"`
+}
+
+// Checkout is how a buyer wants this order handled.
+type Checkout struct {
+	// Method is which way they have chosen to pay, or empty for a shop that
+	// offers one way and never asked.
+	Method PayType `json:"method"`
+
+	// RefundAddr is where money should go back to if it has to, for an
+	// on-chain order.
+	//
+	// Optional, and on-chain only. A Lightning payment has no address to
+	// return to, so asking for one there is asking for something nobody can
+	// give; on-chain, a refund with nowhere to go is a conversation in the
+	// order's thread that could have been a field.
+	RefundAddr string `json:"refund_addr"`
+
+	// Ship is where it goes, for a cart holding anything that ships.
+	Ship *ShippingAddress `json:"ship"`
 }
 
 // HasCharges returns true if at least one item has a positive charge amount.
@@ -142,8 +189,27 @@ type Order struct {
 	PayType      PayType           `json:"pay_type"`
 	Invoice      string            `json:"invoice"`
 	ShipAddr     *ShippingAddress  `json:"shipping"`
-	Comments     []OrderComment    `json:"comments"`
-	ExpiresTS    time.Time         `json:"expires_ts"`
+
+	// RefundAddr is where money goes back to if it has to, as the buyer
+	// gave it at checkout. On-chain orders only.
+	RefundAddr string `json:"refund_addr"`
+
+	// PaymentTx is the on-chain transaction that paid this order, once the
+	// shop has seen one.
+	//
+	// Recorded because it is the only thing either side can check for
+	// themselves. Between "seen" and "confirmed" the shop is telling the
+	// buyer to wait and the buyer has nothing to look at; the seller
+	// chasing a payment has the same problem from the other end. A
+	// transaction id is what a block explorer takes.
+	PaymentTx string `json:"payment_tx"`
+
+	// Hidden is whether this order has been put away by whoever was reading
+	// it -- out of the list, still on the shelf. See orderlist.go for why it
+	// is not a delete.
+	Hidden    bool           `json:"hidden"`
+	Comments  []OrderComment `json:"comments"`
+	ExpiresTS time.Time      `json:"expires_ts"`
 
 	// SeenTS is when the shop first saw the payment for this order, before
 	// the network had confirmed it.

@@ -2,6 +2,7 @@ package simplestore
 
 import (
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -32,6 +33,30 @@ func (order *Order) AwaitingPayment() bool {
 // no gap to be in.
 func (order *Order) PaymentSeen() bool {
 	return order.Status == StatusPlaced && order.SeenTS != nil
+}
+
+// Paid is whether the money for this order has arrived and the seller has not
+// yet moved it on.
+//
+// The one moment worth a page of its own: everything before it is the buyer
+// being asked for something, and this is the shop saying it is done. After
+// the seller ships it the order is about delivery instead, so the panel goes.
+func (order *Order) Paid() bool { return order.Status == StatusPaid }
+
+// Fulfilled is whether this order has been paid for, whatever has happened to
+// it since.
+//
+// Paid, sent or finished -- as against waiting for payment or called off. The
+// question it answers is whether the shop owes the buyer the things in it,
+// which stays true after the seller marks an order shipped. Reading that off
+// Paid alone took the buyer's way into a file they had bought away from them
+// the moment the seller moved the order on.
+func (order *Order) Fulfilled() bool {
+	switch order.Status {
+	case StatusPaid, StatusShipped, StatusCompleted:
+		return true
+	}
+	return false
 }
 
 // OnChain is whether this order is being paid on-chain.
@@ -88,14 +113,28 @@ func (order *Order) PayQR() string {
 		order.TotalDCR().ToCoin())
 }
 
+// quoteHoldsFor is how long the DCR amount an order was quoted at stands for.
+//
+// The rate is struck when the order is placed, and this is how long the shop
+// will honour it. It is a promise about a price in a currency that moves, so
+// it is short on purpose: every minute of it is a minute the seller carries
+// the difference, and it only has to be long enough to open a wallet and
+// send. An hour was a long time to stand behind a number, and a lapsed quote
+// costs the buyer nothing but the press that asks for a new one.
+const quoteHoldsFor = 25 * time.Minute
+
+// QuoteHoldsFor is the same, in words, for a page that has to say it before
+// there is an order to say it about.
+func QuoteHoldsFor() string { return roughly(quoteHoldsFor) }
+
 // Expired is whether the amount this order was quoted at no longer holds.
 //
 // A payment already seen is never expired, whatever the clock says: the buyer
 // paid the amount they were quoted, inside the hour they were given, and the
 // network is taking its own time about it.
 //
-// The rate is struck when the order is placed and held for an hour. After
-// that the invoice is stale, and a buyer paying it is paying yesterday's
+// The rate is struck when the order is placed and held for [quoteHoldsFor].
+// After that the invoice is stale, and a buyer paying it is paying yesterday's
 // price for today's coin -- which is why the shop says so rather than
 // quietly letting it lapse.
 func (order *Order) Expired() bool {
@@ -217,4 +256,97 @@ func plural(n int) string {
 		return ""
 	}
 	return "s"
+}
+
+// PayAmount is what this order comes to in DCR, as a bare number, or empty
+// when there is nothing to pay.
+//
+// For the two blocks that have to act on the figure rather than show it:
+// --paynow-- sends exactly this, and --wallet-- measures a balance against
+// it. Eight places, which is what an atom is worth -- a figure rounded to
+// what the page happened to display is one that underpays.
+func (order *Order) PayAmount() string {
+	if order.PayURI() == "" {
+		return ""
+	}
+	return fmt.Sprintf("%.8f", order.TotalDCR().ToCoin())
+}
+
+// Explorer is where a transaction for this shop's network can be looked up.
+//
+// The host only, because what the page offers is something to copy rather
+// than something to press: a link that opens a browser from inside a shop
+// page is the shop deciding where its buyer goes next, and a transaction id
+// pasted into an explorer is the same answer without that.
+func explorerFor(net string) string {
+	switch net {
+	case "testnet3", "testnet":
+		return "testnet.dcrdata.org"
+	case "simnet", "regnet":
+		// No public explorer for a network only this machine can see. The
+		// page says the id and stops there.
+		return ""
+	default:
+		return "dcrdata.decred.org"
+	}
+}
+
+// AddressLines is a shipping address written the way an address is written:
+// one thing per line.
+//
+// Markdown joins consecutive lines into a paragraph, so a template that puts
+// a name, a street and a town on three lines gets "Ada Lovelace 1 Long Road
+// Kent" -- which is not an address, it is a sentence about one. Two trailing
+// spaces are Markdown's own hard break, and this is where they go: invisible
+// whitespace at the end of a template line is exactly the kind of thing that
+// gets tidied away by an editor nobody blames.
+func AddressLines(a *ShippingAddress) string {
+	if a == nil {
+		return ""
+	}
+	var lines []string
+	add := func(s string) {
+		if s = strings.TrimSpace(s); s != "" {
+			lines = append(lines, s)
+		}
+	}
+	add(a.Name)
+	add(a.Address1)
+	add(a.Address2)
+
+	// The town, the county and the postcode each on their own line.
+	//
+	// They were one line joined by commas, which is how an envelope is
+	// written and not how a form is read back: what a buyer is checking is
+	// each thing they typed, against the box they typed it into.
+	add(a.City)
+	add(a.State)
+	add(a.PostalCode)
+	add(a.CountryCode)
+
+	// Last, and only when it is there. A phone number is for whoever
+	// delivers the thing; the seller reaches the buyer in Bison Relay, in
+	// the order's own messages.
+	add(a.Phone)
+
+	return strings.Join(lines, "  \n")
+}
+
+// ExpiresInSeconds is how long the quoted amount holds for, in seconds, or
+// nought when nothing is waiting on a clock.
+//
+// Seconds remaining rather than the moment it runs out, because the page is
+// drawn by the shop and read by somebody else: an absolute time would be
+// compared against the reader's own clock, and two machines a few minutes
+// apart would disagree about an order neither of them is wrong about.
+func (order *Order) ExpiresInSeconds() int {
+	if !order.AwaitingPayment() || order.PaymentSeen() ||
+		order.ExpiresTS.IsZero() {
+		return 0
+	}
+	left := int(time.Until(order.ExpiresTS).Seconds())
+	if left < 0 {
+		return 0
+	}
+	return left
 }

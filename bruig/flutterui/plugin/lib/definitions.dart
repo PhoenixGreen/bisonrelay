@@ -2985,6 +2985,24 @@ class StoreIndexLayout {
   /// what it looks like. An empty colour is whatever the app's own button of
   /// that role is.
   final String buttonLabel;
+
+  /// soldOutLabel is the ribbon a card carries when a buyer cannot have what
+  /// is on it, and soldOutColor is what it is drawn in.
+  ///
+  /// One label for two reasons -- the shop has run out, or it cannot take the
+  /// money for it -- because from the buyer's side they are the same fact.
+  /// The product's own page says which. See simplestore's stock.go.
+  final String soldOutLabel;
+  final String soldOutColor;
+
+  /// lowStockAt is the count at or below which a card says how many are
+  /// left, or nought for a shop that would rather not, and lowStockColor is
+  /// what that one is drawn in.
+  ///
+  /// A different message from the ribbon above. One says you cannot have
+  /// this; the other says you can, and to get on with it.
+  final int lowStockAt;
+  final String lowStockColor;
   final String buttonColor;
   final int buttonRadius;
   final int buttonPadding;
@@ -3078,6 +3096,10 @@ class StoreIndexLayout {
     this.textAlign = "left",
     this.textLayout = "plain",
     this.buttonLabel = "Buy Now",
+    this.soldOutLabel = "Currently unavailable",
+    this.soldOutColor = "",
+    this.lowStockAt = 0,
+    this.lowStockColor = "text",
     this.buttonColor = "",
     this.buttonRadius = 8,
     this.buttonPadding = 12,
@@ -3122,6 +3144,19 @@ class StoreIndexLayout {
       return v is String && v.isNotEmpty ? v : or;
     }
 
+    /// anyWord is word for a setting whose empty answer means something.
+    ///
+    /// The ribbon colours are the two: empty is "the theme's own", which is
+    /// their default and the one a seller picks by choosing it. Read through
+    /// word, a seller who chose it would get the fallback back instead --
+    /// and for the sold-out ribbon those happen to be the same value, which
+    /// is exactly the kind of setting that looks fine until the default
+    /// changes.
+    String anyWord(String key, String or) {
+      var v = json[key];
+      return v is String ? v : or;
+    }
+
     bool flag(String key, bool or) {
       var v = json[key];
       return v is bool ? v : or;
@@ -3149,6 +3184,10 @@ class StoreIndexLayout {
       textAlign: word("text_align", fallback.textAlign),
       textLayout: word("text_layout", fallback.textLayout),
       buttonLabel: word("button_label", fallback.buttonLabel),
+      soldOutLabel: word("sold_out_label", fallback.soldOutLabel),
+      soldOutColor: anyWord("sold_out_color", fallback.soldOutColor),
+      lowStockAt: number("low_stock_at", fallback.lowStockAt),
+      lowStockColor: anyWord("low_stock_color", fallback.lowStockColor),
       // Empty is an answer here -- it means the app's own button -- so this
       // one is read as it is rather than falling back when blank.
       buttonColor: json["button_color"] is String
@@ -3212,6 +3251,10 @@ class StoreIndexLayout {
         "text_align": textAlign,
         "text_layout": textLayout,
         "button_label": buttonLabel,
+        "sold_out_label": soldOutLabel,
+        "sold_out_color": soldOutColor,
+        "low_stock_at": lowStockAt,
+        "low_stock_color": lowStockColor,
         "button_color": buttonColor,
         "button_radius": buttonRadius,
         "button_padding": buttonPadding,
@@ -3265,6 +3308,10 @@ class StoreIndexLayout {
     String? textAlign,
     String? textLayout,
     String? buttonLabel,
+    String? soldOutLabel,
+    String? soldOutColor,
+    int? lowStockAt,
+    String? lowStockColor,
     String? buttonColor,
     int? buttonRadius,
     int? buttonPadding,
@@ -3317,6 +3364,10 @@ class StoreIndexLayout {
         textAlign: textAlign ?? this.textAlign,
         textLayout: textLayout ?? this.textLayout,
         buttonLabel: buttonLabel ?? this.buttonLabel,
+        soldOutLabel: soldOutLabel ?? this.soldOutLabel,
+        soldOutColor: soldOutColor ?? this.soldOutColor,
+        lowStockAt: lowStockAt ?? this.lowStockAt,
+        lowStockColor: lowStockColor ?? this.lowStockColor,
         buttonColor: buttonColor ?? this.buttonColor,
         buttonRadius: buttonRadius ?? this.buttonRadius,
         buttonPadding: buttonPadding ?? this.buttonPadding,
@@ -3374,6 +3425,10 @@ class StoreIndexLayout {
       other.textAlign == textAlign &&
       other.textLayout == textLayout &&
       other.buttonLabel == buttonLabel &&
+      other.soldOutLabel == soldOutLabel &&
+      other.soldOutColor == soldOutColor &&
+      other.lowStockAt == lowStockAt &&
+      other.lowStockColor == lowStockColor &&
       other.buttonColor == buttonColor &&
       other.buttonRadius == buttonRadius &&
       other.buttonPadding == buttonPadding &&
@@ -3426,6 +3481,10 @@ class StoreIndexLayout {
       textAlign,
       textLayout,
       buttonLabel,
+      soldOutLabel,
+      soldOutColor,
+      lowStockAt,
+      lowStockColor,
       Object.hash(
           buttonColor,
           buttonRadius,
@@ -3598,6 +3657,17 @@ class ManagedProduct {
   @JsonKey(defaultValue: "")
   final String file;
 
+  /// limited is whether the shop counts how many of this it has, and
+  /// available is how many are left when it does.
+  ///
+  /// A flag beside the count rather than a sentinel inside it, because
+  /// nought is a real answer -- sold out -- and a missing field decodes as
+  /// nought whatever it was meant to mean. See simplestore's stock.go.
+  @JsonKey(defaultValue: false)
+  final bool limited;
+  @JsonKey(defaultValue: 0)
+  final int available;
+
   /// image names a picture in the shop's assets -- "guitar.jpg", not a path.
   /// The name alone, so the directory is named in one place: see
   /// simplestore's ProductImagePath.
@@ -3606,7 +3676,7 @@ class ManagedProduct {
 
   ManagedProduct(this.title, this.sku, this.description, this.tags, this.price,
       this.disabled, this.shipping, this.sendFilename, this.file,
-      [this.image = ""]);
+      [this.image = "", this.limited = false, this.available = 0]);
   factory ManagedProduct.empty() =>
       ManagedProduct("", "", "", [], 0, false, false, "", "");
   factory ManagedProduct.fromJson(Map<String, dynamic> json) =>
@@ -3624,6 +3694,8 @@ class ManagedProduct {
     String? sendFilename,
     String? file,
     String? image,
+    bool? limited,
+    int? available,
   }) =>
       ManagedProduct(
           title ?? this.title,
@@ -3635,7 +3707,9 @@ class ManagedProduct {
           shipping ?? this.shipping,
           sendFilename ?? this.sendFilename,
           file ?? this.file,
-          image ?? this.image);
+          image ?? this.image,
+          limited ?? this.limited,
+          available ?? this.available);
 }
 
 @JsonSerializable()
@@ -5623,10 +5697,18 @@ abstract class PluginPlatform {
   Future<void> createAccount(String name) async =>
       await asyncCall(CTCreateAccount, name);
 
-  Future<void> sendOnChain(
+  /// sendOnChain sends coins and returns the transaction id.
+  ///
+  /// The id was thrown away for as long as nothing needed it. A shop page
+  /// that pays an order does: between sending and the first confirmation
+  /// there is nothing else either the buyer or the seller can look at, and
+  /// the id is what a block explorer takes.
+  Future<String> sendOnChain(
       String addr, double dcrAmount, String fromAccount) async {
     var req = SendOnChain(addr, dcrToAtoms(dcrAmount), fromAccount);
-    await asyncCall(CTSendOnchain, req);
+    var res = await asyncCall(CTSendOnchain, req);
+    if (res is Map && res["txid"] is String) return res["txid"] as String;
+    return "";
   }
 
   Future<RedeemedInviteFunds> redeemInviteFunds(InviteFunds funds) async =>

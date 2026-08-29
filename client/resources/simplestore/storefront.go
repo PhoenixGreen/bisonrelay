@@ -186,7 +186,44 @@ type IndexLayout struct {
 	// answer for a page -- but the button on a shop's card is the one thing
 	// on that card somebody is meant to press, and a seller with a brand
 	// colour wants it in that colour.
-	ButtonLabel   string `json:"button_label" toml:"button_label"`
+	ButtonLabel string `json:"button_label" toml:"button_label"`
+
+	// SoldOutLabel is the ribbon a card carries when a buyer cannot have
+	// what is on it.
+	//
+	// One word for two reasons -- the shop has run out, or the shop cannot
+	// take the money for it -- because from the buyer's side they are the
+	// same fact, and a card is not the place to explain the difference. The
+	// product's own page says which.
+	//
+	// The seller's own words, because shops say this differently: "Sold
+	// out", "All gone", "Back soon".
+	SoldOutLabel string `json:"sold_out_label" toml:"sold_out_label"`
+
+	// SoldOutColor is what the ribbon is drawn in, or empty for the theme's
+	// own error colour.
+	//
+	// Empty by default, and that default is the point: a thing nobody can
+	// buy is the one state on a shop front that is genuinely bad news, and
+	// every theme already has a colour for that. A colour picked here is
+	// that colour for every reader, in whatever theme they are using.
+	SoldOutColor string `json:"sold_out_color" toml:"sold_out_color"`
+
+	// LowStockAt is the count at or below which a card says how many are
+	// left, or nought for a shop that would rather not.
+	//
+	// A different message from the ribbon above, and worth keeping apart.
+	// One says you cannot have this; the other says you can, and to get on
+	// with it. Off by default, because "2 left" is a nudge and a shop that
+	// has not asked for one should not be making it.
+	LowStockAt int `json:"low_stock_at" toml:"low_stock_at"`
+
+	// LowStockColor is what that one is drawn in.
+	//
+	// Its own setting rather than the sold-out colour, because they are not
+	// the same news. Plain by default: the count is information, and a
+	// warning colour on "2 left" is a shop shouting about its own stock.
+	LowStockColor string `json:"low_stock_color" toml:"low_stock_color"`
 	ButtonColor   string `json:"button_color" toml:"button_color"`
 	ButtonRadius  int    `json:"button_radius" toml:"button_radius"`
 	ButtonPadding int    `json:"button_padding" toml:"button_padding"`
@@ -340,6 +377,10 @@ func DefaultIndexLayout() IndexLayout {
 		TextAlign:         TextLeft,
 		TextLayout:        TextPlain,
 		ButtonLabel:       "Buy Now",
+		SoldOutLabel:      "Currently unavailable",
+		SoldOutColor:      "",
+		LowStockAt:        0,
+		LowStockColor:     "text",
 		ButtonColor:       "",
 		ButtonRadius:      8,
 		ButtonPadding:     12,
@@ -434,6 +475,17 @@ func (l IndexLayout) normalize() IndexLayout {
 	l.TextColor = safeSetting(l.TextColor, def.TextColor)
 	l.CardBorderColor = safeSetting(l.CardBorderColor, def.CardBorderColor)
 	l.ButtonLabel = safeSetting(l.ButtonLabel, def.ButtonLabel)
+	l.SoldOutLabel = safeSetting(l.SoldOutLabel, def.SoldOutLabel)
+	// Not through safeSetting: empty is a real answer for both of these --
+	// the theme's own colour -- and safeSetting exists to replace an empty
+	// setting with its default.
+	l.SoldOutColor = strings.TrimSpace(l.SoldOutColor)
+	l.LowStockColor = strings.TrimSpace(l.LowStockColor)
+	if l.LowStockAt < 0 {
+		l.LowStockAt = 0
+	} else if l.LowStockAt > 99 {
+		l.LowStockAt = 99
+	}
 
 	// The button's colour is the one setting allowed to be empty, which
 	// means "whatever the app's own button is". So it is only corrected
@@ -700,7 +752,45 @@ func (s *Store) productCard(p *Product) string {
 		card = cardStack(layout, picture+writing)
 	}
 
-	return s.cardFrame(layout, card)
+	return s.cardFrame(layout, s.cardRibbon(layout, p, card))
+}
+
+// cardRibbon is the word pinned to a card whose product cannot be bought.
+//
+// Wrapped round the card rather than written into it: it is a fact about the
+// whole card and not a line inside it, it has to sit over a picture as well
+// as over a background, and it must not push anything else about the card
+// around -- a shop front where the sold-out card is a different height from
+// the ones beside it is a shop front that looks broken rather than one that
+// looks out of stock.
+func (s *Store) cardRibbon(layout IndexLayout, p *Product, card string) string {
+	label, ink := s.ribbonFor(layout, p)
+	if label == "" {
+		return card
+	}
+	if ink == "" {
+		return fmt.Sprintf("--panel[badge=%s]--\n%s--/panel--\n",
+			oneLine(label), card)
+	}
+	return fmt.Sprintf("--panel[badge=%s, badgeink=%s]--\n%s--/panel--\n",
+		oneLine(label), ink, card)
+}
+
+// ribbonFor is what a card's ribbon says and what it is drawn in, or empty
+// for a card that does not carry one.
+//
+// Unavailable wins. A shop with one of something left that it cannot take
+// payment for should say so rather than urging somebody towards it -- "1
+// left" on a thing nobody can buy is the worst sentence on the page.
+func (s *Store) ribbonFor(layout IndexLayout, p *Product) (string, string) {
+	if s.Unavailable(p) {
+		return layout.SoldOutLabel, layout.SoldOutColor
+	}
+	if layout.LowStockAt > 0 && p.Counted() && p.Left() > 0 &&
+		p.Left() <= layout.LowStockAt {
+		return stockLeft(p), layout.LowStockColor
+	}
+	return "", ""
 }
 
 // cardStack is the picture and the writing held together, with the room

@@ -1,7 +1,7 @@
 --nav[pills]--
 [Shop]({{.ShopIndex}})
 [Cart{{if .CartItems}} ({{.CartItems}}){{end}}](/cart)
-[Orders](/orders)
+[Orders{{if .OrdersWanting}} ({{.OrdersWanting}}){{end}}](/orders)
 {{- if .IsAdmin}}
 [Admin](/admin)
 {{- end}}

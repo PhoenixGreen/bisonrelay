@@ -21,27 +21,33 @@ meta: {{ money .Total }}
 {{end}}
 Items: {{ money .Order.Cart.Total }}
 {{ if gt .Order.ShipCharge 0.0 }}Shipping: {{ money .Order.ShipCharge }}
-{{ end }}**Total: {{ money .Order.Total }}** — {{ .Order.TotalDCR }} at {{ .Order.ExchangeRate }} DCR/$
+{{ end }}**Total: {{ money .Order.Total }}** — {{ .Order.TotalDCR }} at {{ printf "%.2f" .Order.ExchangeRate }} USD/DCR
 
-{{ with .Order.Invoice }}Invoice: {{ . }}{{ end }}
+{{ $order := .Order }}
+{{ with $order.Invoice }}
+--copy[label={{ if $order.OnChain }}Payment address{{ else }}Invoice{{ end }} — press to copy]--
+{{ . }}
+--/copy--
+{{ end }}
+{{template "txref.tmpl" $order}}
 --/panel--
 
 {{if .Order.ShipAddr -}}
 ## Where it goes
 
+--panel[full=on, padding=12, margin=0 0 12 0, border=1, color=outline, radius=8, help=Any phone number here is for whoever delivers it. You reach the buyer in Bison Relay, in this order's own messages.]--
+{{ address .Order.ShipAddr }}
+--/panel--
+
+{{end -}}
+{{ with .Order.RefundAddr -}}
+## If it has to go back
+
+The buyer gave this address for a refund. It is theirs, not the shop's, and
+nothing is sent to it automatically.
+
 --panel[padding=12, margin=0 0 12 0, border=1, color=outline, radius=8]--
-{{ .Order.ShipAddr.Name }}
-{{ .Order.ShipAddr.Address1 }}
-{{- if .Order.ShipAddr.Address2 }}
-{{ .Order.ShipAddr.Address2 }}
-{{- end }}
-{{ .Order.ShipAddr.City }}, {{ .Order.ShipAddr.State }}, {{ .Order.ShipAddr.PostalCode }}
-{{- with .Order.ShipAddr.CountryCode }}
-{{ . }}
-{{- end }}
-{{- with .Order.ShipAddr.Phone }}
-{{ . }}
-{{- end }}
+`{{ . }}`
 --/panel--
 
 {{end -}}

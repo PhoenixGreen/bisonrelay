@@ -338,6 +338,46 @@ class StoreFrontFields extends StatelessWidget {
         ),
       ]),
 
+      // ---- the ribbon on a card nobody can buy ----
+      _Group(title: "When something cannot be bought", children: [
+        _ButtonLabel(
+          label: "What the ribbon says",
+          value: layout.soldOutLabel,
+          onChanged: (v) => save(layout.copyWith(soldOutLabel: v)),
+        ),
+        _ColorField(
+          label: "Ribbon colour",
+          value: layout.soldOutColor,
+          noneLabel: "The theme's own warning colour",
+          onChanged: (v) => save(layout.copyWith(soldOutColor: v)),
+        ),
+        _note("Pinned to the top right of a card when the shop has run out "
+            "of what is on it, or cannot take payment for it — which happens "
+            "to a Lightning-only shop whose channels cannot receive what the "
+            "thing costs. One label for both, because from the buyer's side "
+            "they are the same fact; the product's own page says which."),
+        _lengthCell(
+          "low-stock-at",
+          "Say how many are left at or below",
+          layout.lowStockAt,
+          20,
+          (v) => save(layout.copyWith(lowStockAt: v)),
+        ),
+        _ColorField(
+          label: "Count colour",
+          value: layout.lowStockColor,
+          noneLabel: "The theme's own warning colour",
+          onChanged: (v) => save(layout.copyWith(lowStockColor: v)),
+        ),
+        _note("At nought, nothing is said. Set to 2, a card with two or one "
+            "left carries a \"2 left\" ribbon in the same corner — a nudge "
+            "rather than bad news, which is why it has a colour of its own. "
+            "A product with plenty, or one the shop does not count, never "
+            "carries it."),
+        _note("How many of a product there are is set on the product itself, "
+            "under Limited number available."),
+      ]),
+
       // ---- the button on the three-row card ----
       if (rows)
         _Group(title: "The button", children: [
@@ -874,16 +914,22 @@ class _CornersState extends State<_Corners> {
       );
 }
 
-/// _ButtonLabel is what the three-row card's button says.
+/// _ButtonLabel is one of the two settings on this page that are actually a
+/// piece of writing: what the three-row card's button says, and what the
+/// ribbon on an unavailable card says.
 ///
-/// The one text box left on this page, because it is the one setting that is
-/// actually a piece of writing. It saves when it is submitted or left, and
-/// follows the shop when the shop changes underneath it -- which is what a
-/// box whose value can change elsewhere has to do.
+/// It saves when it is submitted or left, and follows the shop when the shop
+/// changes underneath it -- which is what a box whose value can change
+/// elsewhere has to do.
 class _ButtonLabel extends StatefulWidget {
   final String value;
+  final String label;
   final ValueChanged<String> onChanged;
-  const _ButtonLabel({required this.value, required this.onChanged});
+  const _ButtonLabel({
+    required this.value,
+    required this.onChanged,
+    this.label = "What the button says",
+  });
 
   @override
   State<_ButtonLabel> createState() => _ButtonLabelState();
@@ -925,8 +971,8 @@ class _ButtonLabelState extends State<_ButtonLabel> {
         child: TextField(
           controller: _ctrl,
           focusNode: _focus,
-          decoration: const InputDecoration(
-            labelText: "What the button says",
+          decoration: InputDecoration(
+            labelText: widget.label,
             isDense: true,
             border: OutlineInputBorder(),
           ),

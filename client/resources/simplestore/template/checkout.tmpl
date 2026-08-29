@@ -1,0 +1,90 @@
+{{ steps "Checkout" "checkout" }}
+
+{{with .Problem}}
+--panel[padding=12, margin=0 0 8 0, border=1, color=accent, radius=8]--
+{{.}}
+--/panel--
+{{end}}
+
+{{- /*
+One choice, two cards, and nothing else on the page until it is made.
+
+The description of each way to pay lives behind the question mark on its
+card. It is the reason to pick one and it is also four lines of prose in the
+middle of a decision that is really made on one word and one icon: somebody
+who knows what Lightning is should not have to read past it, and somebody who
+does not has a mark to press. See markdown_paypick.dart.
+*/}}
+{{if .Methods.Both}}
+--paypick[title=How would you like to pay?, action=/setCheckout, chosen={{.Checkout.Method}}]--
+--option[method=ln, icon=lightning, label=Lightning, note=Settles straight away]--
+Settles straight away. Paid from your Bison Relay wallet with one press, and
+the seller sees it immediately.
+--option[method=onchain, icon=onchain, label=On-chain, note=About five minutes]--
+Settles after one confirmation from the network — about five minutes. Pay
+from any Decred wallet by scanning a code, or from this one.
+--/paypick--
+{{else if .Methods.LN}}
+--paypick[title=How you will pay, chosen=ln]--
+--option[method=ln, icon=lightning, label=Lightning, note=Settles straight away]--
+This shop takes Lightning. It settles straight away and is paid from your
+Bison Relay wallet with one press.
+--/paypick--
+{{else if .Methods.OnChain}}
+--paypick[title=How you will pay, chosen=onchain]--
+--option[method=onchain, icon=onchain, label=On-chain, note=About five minutes]--
+This shop takes on-chain payments. They settle after one confirmation from
+the network — about five minutes — and can be paid from any Decred wallet.
+--/paypick--
+{{else}}
+--panel[padding=14, border=1, color=outline, radius=8]--
+The seller will be in touch with how to pay once the order is placed.
+--/panel--
+{{end}}
+
+{{if .Ready}}
+{{if .Ships}}
+## Where should it go?
+{{end}}
+
+--form--
+type="action" value="/setCheckout"
+type="hidden" name="doing" value="continue"
+type="hidden" name="method" value="{{.Checkout.Method}}"
+{{- if .Ships}}
+{{- with .Checkout.Ship}}
+type="txtinput" label="Name" name="name" value="{{.Name}}"
+type="txtinput" label="Address" name="address1" value="{{.Address1}}"
+type="txtinput" label="Address (optional)" name="address2" value="{{.Address2}}"
+type="txtinput" label="City" name="city" value="{{.City}}"
+type="txtinput" label="State" name="state" value="{{.State}}"
+type="txtinput" label="Postal code" name="postalCode" value="{{.PostalCode}}"
+type="txtinput" label="Phone (optional)" name="phone" value="{{.Phone}}" help="A phone number is only for whoever delivers this. The seller reaches you in Bison Relay - in this order's own messages."
+{{- else}}
+type="txtinput" label="Name" name="name"
+type="txtinput" label="Address" name="address1"
+type="txtinput" label="Address (optional)" name="address2"
+type="txtinput" label="City" name="city"
+type="txtinput" label="State" name="state"
+type="txtinput" label="Postal code" name="postalCode"
+type="txtinput" label="Phone (optional)" name="phone" help="A phone number is only for whoever delivers this. The seller reaches you in Bison Relay - in this order's own messages."
+{{- end}}
+{{- end}}
+type="submit" label="Continue to review" style="primary"
+--/form--
+{{end}}
+
+---
+
+**Total: {{ money .Total }}**{{ with .TotalDCR }} · ≈ {{.}}{{ end }}
+
+{{- /*
+What the reader's own wallet can do, put beside what the order comes to.
+
+The shop cannot know this and never learns it: the block reads the balance in
+the client that is drawing the page. It is here rather than in the payment
+cards because it is one fact about one order, and a buyer deciding between
+two ways to pay wants it in the same glance as the total.
+*/}}
+{{ with .TotalDCRAmount }}--wallet[need={{.}}, show={{ $.WalletShow }}]--
+{{ end }}

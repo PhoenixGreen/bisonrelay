@@ -31,6 +31,10 @@ func (s *Store) handleNotFound(ctx context.Context, uid clientintf.UserID,
 func (s *Store) handleIndex(ctx context.Context, uid clientintf.UserID,
 	request *rpc.RMFetchResource) (*rpc.RMFetchResourceReply, error) {
 
+	// What the shop can take right now, asked before the lock: it is a call
+	// to the node, and the whole shop would wait behind it. See stock.go.
+	s.refreshStockCheck(ctx)
+
 	s.mtx.Lock()
 	tmplCtx := &indexContext{
 		Products: s.products,
@@ -51,6 +55,8 @@ func (s *Store) handleIndex(ctx context.Context, uid clientintf.UserID,
 
 func (s *Store) handleProduct(ctx context.Context, uid clientintf.UserID,
 	request *rpc.RMFetchResource) (*rpc.RMFetchResourceReply, error) {
+
+	s.refreshStockCheck(ctx)
 
 	s.mtx.Lock()
 	prod := s.products[request.Path[1]]
@@ -108,6 +114,15 @@ func (s *Store) handleAddToCart(ctx context.Context, uid clientintf.UserID,
 	if !ok {
 		s.mtx.Unlock()
 		return nil, fmt.Errorf("product does not exist")
+	}
+
+	// Nothing goes into a cart that the shop has run out of.
+	//
+	// The card said so and the button was still there, which is the worst of
+	// both: a buyer who presses it has been told no and shown a way round it.
+	if !prod.InStock() {
+		s.mtx.Unlock()
+		return s.soldOutPage(prod)
 	}
 
 	err := jsonfile.Read(fname, &cart)
@@ -201,6 +216,30 @@ func (s *Store) handleCart(ctx context.Context, uid clientintf.UserID,
 	}, nil
 }
 
+// placedRefundAddr is where a refund should go for this order.
+//
+// Typed on the review page, in the same form as the button that places the
+// order, so it arrives on this request. What is on the cart is the fallback:
+// a buyer who gave one on an earlier pass and then came back does not have to
+// type it again.
+//
+// On-chain only. A Lightning payment has no address to return to, so an
+// address stored against one is a promise nobody can keep -- and the shop
+// would be showing the seller a refund route that does not exist.
+func placedRefundAddr(cart *Cart, request *rpc.RMFetchResource) string {
+	if cart.Checkout.Method == PayTypeLN {
+		return ""
+	}
+	var form struct {
+		RefundAddr *string `json:"refund_addr"`
+	}
+	if err := json.Unmarshal(request.Data, &form); err == nil &&
+		form.RefundAddr != nil {
+		return refundAddr(*form.RefundAddr)
+	}
+	return cart.Checkout.RefundAddr
+}
+
 func (s *Store) handlePlaceOrder(ctx context.Context, uid clientintf.UserID,
 	request *rpc.RMFetchResource) (*rpc.RMFetchResourceReply, error) {
 
@@ -251,31 +290,46 @@ func (s *Store) handlePlaceOrder(ctx context.Context, uid clientintf.UserID,
 		}
 		// If a product requires shipping, ensure a shipping address
 		// was sent.
+		//
+		// Asked for on the checkout page now and kept on the cart, so by the
+		// time an order is placed it has been answered and checked. What
+		// arrives on this request is still read, for a cart filled before the
+		// checkout existed and for anything posting straight here.
 		if shipAddr == nil && prod.Shipping {
-			// Process form data.
-			var formData ShippingAddress
-			if err := json.Unmarshal(request.Data, &formData); err != nil {
-				return &rpc.RMFetchResourceReply{
-					Status: rpc.ResourceStatusBadRequest,
-					Data:   []byte("request data not valid json"),
-				}, nil
+			shipAddr = cart.Checkout.Ship
+			if shipAddr == nil {
+				var formData ShippingAddress
+				if err := json.Unmarshal(request.Data, &formData); err != nil {
+					return &rpc.RMFetchResourceReply{
+						Status: rpc.ResourceStatusBadRequest,
+						Data:   []byte("request data not valid json"),
+					}, nil
+				}
+				// TODO: proper address validation, optional phone
+				// number validation.
+				// Made safe where it arrives, so everything that renders
+				// it later is safe without having to remember.
+				shipAddr = escapeAddress(&formData)
 			}
-
-			if formData.Name == "" || formData.Address1 == "" ||
-				formData.City == "" || formData.State == "" ||
-				formData.PostalCode == "" {
-				return &rpc.RMFetchResourceReply{
-					Status: rpc.ResourceStatusBadRequest,
-					Data:   []byte("incomplete shipping address"),
-				}, nil
+			if shipAddr.Name == "" || shipAddr.Address1 == "" ||
+				shipAddr.City == "" || shipAddr.State == "" ||
+				shipAddr.PostalCode == "" {
+				// Back to the page that asks, saying which lines are
+				// missing, rather than a status code with the words
+				// "incomplete shipping address" and no way back.
+				return s.checkoutPage(&cart, s.checkoutProblem(&cart))
 			}
-
-			// TODO: proper address validation, optional phone
-			// number validation.
-			// Made safe where it arrives, so everything that renders
-			// it later is safe without having to remember.
-			shipAddr = escapeAddress(&formData)
 		}
+	}
+
+	// The stock, taken before the order exists.
+	//
+	// Here rather than anywhere earlier because this is the only place that
+	// holds the lock across the decision and the write. A check made while
+	// the shop front was drawn, or while the cart was filled, was true then
+	// -- and the last one of something is sold in the seconds between.
+	if short := s.takeStock(&cart); len(short) > 0 {
+		return s.soldOutWhileOrderingPage(short)
 	}
 
 	// Create the order.
@@ -294,7 +348,8 @@ func (s *Store) handlePlaceOrder(ctx context.Context, uid clientintf.UserID,
 		PlacedTS:     time.Now(),
 		ShipCharge:   s.cfg.ShipCharge,
 		ShipAddr:     shipAddr,
-		ExpiresTS:    time.Now().Add(time.Hour),
+		RefundAddr:   placedRefundAddr(&cart, request),
+		ExpiresTS:    time.Now().Add(quoteHoldsFor),
 		ExchangeRate: exchangeRate,
 	}
 
@@ -328,7 +383,11 @@ func (s *Store) handlePlaceOrder(ctx context.Context, uid clientintf.UserID,
 		wpm("   City: %s\n", shipAddr.City)
 		wpm("  State: %s\n", shipAddr.State)
 		wpm("    Zip: %s\n", shipAddr.PostalCode)
-		wpm("  Phone: %s\n", shipAddr.Phone)
+		// Optional, so only when it is there: a line reading "Phone:" with
+		// nothing after it is a line about something nobody gave.
+		if shipAddr.Phone != "" {
+			wpm("  Phone: %s\n", shipAddr.Phone)
+		}
 	}
 	wpm("The following were the items in your order:\n")
 	for _, item := range order.Cart.Items {
@@ -350,8 +409,9 @@ func (s *Store) handlePlaceOrder(ctx context.Context, uid clientintf.UserID,
 	totalDCR := order.TotalDCR()
 	if totalDCR > 0 {
 		wpm("Using the current exchange rate of %.2f USD/DCR, your order is "+
-			"%s, valid for the next hour (expires %s)\n",
-			order.ExchangeRate, totalDCR, order.ExpiresTS.Format("Mon, 02 Jan 2006 15:04 MST"))
+			"%s, valid for the next %s (expires %s)\n",
+			order.ExchangeRate, totalDCR, roughly(quoteHoldsFor),
+			order.ExpiresTS.Format("Mon, 02 Jan 2006 15:04 MST"))
 	}
 
 	// How this order gets paid for, worked out before it is placed.
@@ -362,7 +422,14 @@ func (s *Store) handlePlaceOrder(ctx context.Context, uid clientintf.UserID,
 	// buyer was handed an order with no way to pay it and no way to find out
 	// why. See payment.go.
 	if s.payMethods().Any() {
-		pay, err := s.preparePayment(ctx, order, wantPayType(request))
+		// The buyer's choice, made on the checkout page and kept on the
+		// cart. A cart from before the checkout existed, or a post straight
+		// to this route, still says it on the request.
+		want := cart.Checkout.Method
+		if want == "" {
+			want = wantPayType(request)
+		}
+		pay, err := s.preparePayment(ctx, order, want)
 		var cannot *cannotTakePayment
 		switch {
 		case errors.As(err, &cannot):
@@ -435,39 +502,9 @@ func (s *Store) handleOrders(ctx context.Context, uid clientintf.UserID,
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
-	dir := filepath.Join(s.root, ordersDir, uid.String())
-	files, err := os.ReadDir(dir)
-	if err != nil && !os.IsNotExist(err) {
-		return nil, err
-	}
-
-	var orders []*Order
-	for _, file := range files {
-		order := &Order{}
-		fname := filepath.Join(dir, file.Name())
-		err := jsonfile.Read(fname, order)
-		if err != nil {
-			s.log.Warnf("Unable to read order %s: %v",
-				fname, err)
-			continue
-		}
-		orders = append(orders, order)
-	}
-
-	tmplCtx := &ordersContext{
-		Orders: orders,
-	}
-
-	w := &bytes.Buffer{}
-	err = s.tmpl.ExecuteTemplate(w, ordersTmplFile, tmplCtx)
-	if err != nil {
-		return nil, fmt.Errorf("unable to execute product template: %v", err)
-	}
-
-	return &rpc.RMFetchResourceReply{
-		Data:   w.Bytes(),
-		Status: rpc.ResourceStatusOk,
-	}, nil
+	// Whatever the path asked for, or the defaults: what is still going,
+	// newest first. See orderlist.go.
+	return s.ordersPage(uid, parseOrderView(request.Path[1:]))
 }
 
 func (s *Store) handleOrderStatus(ctx context.Context, uid clientintf.UserID,

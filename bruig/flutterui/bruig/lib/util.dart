@@ -209,3 +209,23 @@ String formatSmallDuration(Duration d) {
   var secs = (d.inSeconds - (d.inMinutes * 60)).toString().padLeft(2, '0');
   return "$res$mins:$secs";
 }
+
+/// dcrLabel is an amount of DCR written the way it would be said.
+///
+/// formatDCR gives all eight places, which is what an atom is worth and what
+/// a wallet's own ledger should show. On a button it is noise: "Pay
+/// 0.31000000 DCR" is the same number as "Pay 0.31 DCR" with six characters
+/// nobody reads, and a button is the one place a figure has to be taken in at
+/// a glance.
+///
+/// Nothing is rounded away. Trailing zeros are the only thing dropped, and
+/// never below two places -- "Pay 0.5 DCR" reads as a price and "Pay 0.50
+/// DCR" reads as an amount of money.
+String dcrLabel(double dcr) {
+  var written = dcr.toStringAsFixed(8);
+  while (written.endsWith("0") &&
+      written.length > written.indexOf(".") + 3) {
+    written = written.substring(0, written.length - 1);
+  }
+  return "$written DCR";
+}

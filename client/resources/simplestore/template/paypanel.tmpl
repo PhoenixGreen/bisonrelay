@@ -1,0 +1,16 @@
+{{- /*
+paypanel.tmpl is the two ways to pay one on-chain order.
+
+A square to point a phone at with the address under it, for a wallet
+somewhere else, and beside it the wallet in this app -- which already knows
+the address and the amount. Until that button existed, using it meant copying
+the address out of the page, opening the wallet screen, pasting it in and
+typing the amount by hand, inside an app that knew all three.
+
+One block rather than two panels in a run of columns, because the two halves
+have to be the same height and neither can say that about itself. See
+markdown_paynow.dart.
+
+Called with the order.
+*/ -}}
+--payways[addr={{ .Invoice }}, amount={{ .PayAmount }}, dcr={{ .TotalDCR }}, order=/order/{{ .ID }}, help=The shop watches for your payment and marks the order as soon as the network confirms it. You do not have to stay on this page and it goes through whether or not this app is running.]--

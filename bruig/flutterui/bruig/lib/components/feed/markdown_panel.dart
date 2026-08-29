@@ -3,6 +3,7 @@ import 'package:bruig/components/feed/page_image.dart';
 import 'package:bruig/components/md_elements.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:bruig/theming_system/model/markdown_style.dart';
+import 'package:bruig/components/tooltips.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:markdown/markdown.dart' as md;
@@ -108,6 +109,50 @@ class PanelRule {
   /// boxes to get it is a card with a seam down the middle.
   final BorderRadius? radius;
 
+  /// full is whether the panel takes the whole width it is offered.
+  ///
+  /// Off by default, which is what a panel has always done: the column a page
+  /// is built from lays its blocks out loosely, so a panel is as wide as what
+  /// is in it. Right for a card in a grid and for a plate behind a caption;
+  /// wrong for a panel that is a section of a page, which comes out as wide
+  /// as its longest line and reads as though the page were cut short.
+  final bool full;
+
+  /// colorIsError is a panel whose line is drawn in the theme's own error
+  /// colour, written as color=error.
+  ///
+  /// A word rather than a role, because the guide has no role for it: the
+  /// markdown roles are about a document -- text, quotes, links, lines -- and
+  /// this is about the reader's own theme, which does have a colour for bad
+  /// news. A page that picks one from the palette instead gets that colour
+  /// for every reader in whatever theme they are using, which is exactly what
+  /// a warning should not be.
+  final bool colorIsError;
+
+  /// help is a sentence kept behind a question mark in the panel's top right
+  /// corner, or empty for a panel with nothing to explain.
+  ///
+  /// A remark about the panel rather than a line inside it. "The seller
+  /// reaches you in Bison Relay" is true, worth knowing once, and read every
+  /// time by everybody who already knows it -- which is what the app's own
+  /// help icons are for, so this is one of those: it follows Hide help text
+  /// under Appearance, and hiding the app's ordinary tooltips leaves it
+  /// alone.
+  final String help;
+
+  /// badge is a word pinned to the panel's top right corner, over whatever
+  /// is behind it, or empty for a panel with nothing to declare.
+  ///
+  /// A shop's "Sold out" ribbon is what it is for. That is a fact about the
+  /// whole card and not a line inside it: put in the writing it competes with
+  /// the title, and it has to be readable over a picture as well as over a
+  /// plain background -- which is why it carries its own fill rather than
+  /// taking the panel's.
+  final String badge;
+
+  /// badgeInk is what the badge is drawn in, or null for the theme's accent.
+  final MarkdownInk? badgeInk;
+
   /// fill is what the panel is filled with behind its content.
   ///
   /// A named colour or a written one, unlike [color]: a fill is what a
@@ -178,6 +223,11 @@ class PanelRule {
     this.stroke = PanelStroke.solid,
     this.color,
     this.radius,
+    this.colorIsError = false,
+    this.full = false,
+    this.help = "",
+    this.badge = "",
+    this.badgeInk,
     this.fill,
     this.image,
     this.ratio,
@@ -199,12 +249,25 @@ class PanelRule {
   static PanelRule parse(String? attributes) {
     if (attributes == null || attributes.trim().isEmpty) return none;
 
+    // key=value pairs separated by commas, and a fragment with no key of its
+    // own carries on the value before it.
+    //
+    // Which is what lets a setting hold a sentence. Every other value here is
+    // a number or a word, so splitting on commas was enough until a panel
+    // could carry prose -- and prose has commas in it. Without this, "help=A
+    // phone number is for the courier, not the seller" ends at the comma and
+    // the rest of the sentence is read as a setting nobody wrote.
     var fields = <String, String>{};
+    String? last;
     for (var part in attributes.split(",")) {
       var at = part.indexOf("=");
-      if (at == -1) continue;
+      if (at == -1) {
+        if (last != null) fields[last] = "${fields[last]},$part";
+        continue;
+      }
       var key = part.substring(0, at).trim().toLowerCase();
       fields.putIfAbsent(key, () => part.substring(at + 1).trim());
+      last = key;
     }
     if (fields.isEmpty) return none;
 
@@ -215,7 +278,12 @@ class PanelRule {
       border: _border(fields["border"]),
       stroke: PanelStroke.parse(fields["style"]),
       color: _ink(fields["color"]),
+      colorIsError: _isError(fields["color"]),
       radius: _radius(fields["radius"]),
+      full: _on(fields["full"]),
+      help: fields["help"] ?? "",
+      badge: fields["badge"] ?? "",
+      badgeInk: _ink(fields["badgeink"]),
       fill: fill.isInherit ? null : fill,
       image: _image(fields["image"]),
       ratio: _ratio(fields["ratio"]),
@@ -272,6 +340,16 @@ class PanelRule {
         "center" || "centre" || "middle" => PanelJustify.center,
         "right" || "end" => PanelJustify.right,
         _ => PanelJustify.stretch,
+      };
+
+  /// _isError is whether a colour was written as the word "error".
+  static bool _isError(String? value) =>
+      (value ?? "").trim().toLowerCase() == "error";
+
+  /// _on reads a switch written as a word: on, yes, true, 1.
+  static bool _on(String? value) => switch (value?.trim().toLowerCase()) {
+        "on" || "yes" || "true" || "1" => true,
+        _ => false,
       };
 
   static WrapAlignment? _text(String? value) =>
@@ -403,6 +481,10 @@ class PanelRule {
       color != null ||
       radius != null ||
       gap != null ||
+      colorIsError ||
+      full ||
+      help.isNotEmpty ||
+      badge.isNotEmpty ||
       fill != null ||
       image != null ||
       ratio != null ||
@@ -418,6 +500,11 @@ class PanelRule {
       other.stroke == stroke &&
       other.color == color &&
       other.radius == radius &&
+      other.colorIsError == colorIsError &&
+      other.full == full &&
+      other.help == help &&
+      other.badge == badge &&
+      other.badgeInk == badgeInk &&
       other.fill == fill &&
       other.image == image &&
       other.ratio == ratio &&
@@ -429,8 +516,25 @@ class PanelRule {
       other.gap == gap;
 
   @override
-  int get hashCode => Object.hash(padding, margin, border, stroke, color,
-      radius, fill, image, ratio, crop, align, link, justify, text, gap);
+  int get hashCode => Object.hash(
+      padding,
+      margin,
+      border,
+      stroke,
+      color,
+      radius,
+      fill,
+      image,
+      ratio,
+      crop,
+      align,
+      link,
+      justify,
+      text,
+      gap,
+      badge,
+      badgeInk,
+      full);
 }
 
 class PanelBlockSyntax extends md.BlockSyntax {
@@ -511,11 +615,16 @@ class MarkdownPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     var theme = ThemeNotifier.of(context);
-    var color = (rule.color == null ? null : theme.markdownInk(rule.color!)) ??
-        theme.markdownRoleColor(MarkdownRole.outline);
+    var color = rule.colorIsError
+        ? theme.colors.error
+        : (rule.color == null ? null : theme.markdownInk(rule.color!)) ??
+            theme.markdownRoleColor(MarkdownRole.outline);
     var radius = rule.radius ?? BorderRadius.zero;
 
-    Widget out = child;
+    // The whole width before anything is drawn round it, so the line and the
+    // fill span the page rather than the writing.
+    Widget out =
+        rule.full ? SizedBox(width: double.infinity, child: child) : child;
     if (rule.padding != null) {
       out = Padding(padding: rule.padding!, child: out);
     }
@@ -552,6 +661,35 @@ class MarkdownPanel extends StatelessWidget {
             );
     }
 
+    // Over everything the panel draws, and inside its border.
+    //
+    // Above the link as well: a card whose picture is a link is still a card
+    // you can press, and a ribbon that swallowed the press would be a
+    // "Sold out" label that stopped you reading what was sold.
+    if (rule.badge.isNotEmpty || rule.help.isNotEmpty) {
+      out = Stack(
+        children: [
+          out,
+          Positioned(
+            top: 0,
+            right: 0,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // The question mark sits inside the ribbon when a panel
+                // carries both, because the ribbon is the louder of the two
+                // and belongs against the corner.
+                if (rule.help.isNotEmpty) _help(context, theme),
+                if (rule.badge.isNotEmpty)
+                  IgnorePointer(child: _badge(context, theme, radius)),
+              ],
+            ),
+          ),
+        ],
+      );
+    }
+
     if (rule.link != null) {
       out = _linked(context, out);
     }
@@ -560,6 +698,59 @@ class MarkdownPanel extends StatelessWidget {
       out = Padding(padding: rule.margin!, child: out);
     }
     return out;
+  }
+
+  /// _help is the question mark in the corner.
+  ///
+  /// It opens on a tap as well as under a pointer: a panel on a shop's page
+  /// is read on a phone as often as on a desk, and a mark that only answers
+  /// a hover is a mark that answers nobody there.
+  Widget _help(BuildContext context, ThemeNotifier theme) => HelpTooltip(
+        message: rule.help,
+        triggerMode: TooltipTriggerMode.tap,
+        showDuration: const Duration(seconds: 8),
+        // Wide enough for a sentence: the default wraps a line of prose into
+        // a column one word across.
+        constraints: const BoxConstraints(maxWidth: 260),
+        child: Padding(
+          padding: const EdgeInsets.all(10),
+          child: Icon(Icons.help_outline,
+              size: 16, color: theme.colors.onSurfaceVariant),
+        ),
+      );
+
+  /// _badge is the word in the corner.
+  ///
+  /// Its own fill, and a colour chosen against that fill rather than taken
+  /// from the theme's text: this sits over whatever the panel is showing --
+  /// a photograph as often as a background -- and a label the same colour as
+  /// something behind it is a label nobody reads.
+  Widget _badge(
+      BuildContext context, ThemeNotifier theme, BorderRadius radius) {
+    var fill =
+        (rule.badgeInk == null ? null : theme.markdownInk(rule.badgeInk!)) ??
+            theme.colors.error;
+    var on = fill.computeLuminance() > 0.5 ? Colors.black : Colors.white;
+
+    return Padding(
+      padding: const EdgeInsets.all(6),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: fill,
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Text(
+          rule.badge,
+          style: TextStyle(
+            color: on,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            height: 1.1,
+          ),
+        ),
+      ),
+    );
   }
 
   /// _surface is the panel's own face: the colour it is filled with, the

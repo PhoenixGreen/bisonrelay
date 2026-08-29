@@ -1,4 +1,4 @@
-# Current Cart
+{{ steps "Shopping Cart" "cart" }}
 
 Last Updated: {{.Updated.Format "2006-01-02 15:04:05" }}
 
@@ -12,32 +12,20 @@ rest.
 {{end}}
 
 ---
-## Place Order
-{{- $shipping := false -}}
-{{- range .Items -}}
-  {{- if .Product.Shipping -}}
-      {{- $shipping = true -}}
-      {{- break -}}
-  {{- end -}}
-{{- end -}}
 
-{{- if .HasUnavailable}}
+{{- /*
+One button out of the cart, and it does not place anything.
+
+The cart used to ask for an address, a way to pay and the order itself in one
+press, and everything wrong with any of it was found out afterwards. Those
+questions are the checkout's now: see checkout.go.
+*/ -}}
+
+{{if .HasUnavailable}}
 {{else}}
 --form--
-type="action" value="/placeOrder"
-{{- if $shipping}}
-type="txtinput" label="Name" name="name"
-type="txtinput" label="Address" name="address1"
-type="txtinput" label="Address (optional)" name="address2"
-type="txtinput" label="City" name="city"
-type="txtinput" label="State" name="state"
-type="txtinput" label="PostalCode" name="postalCode"
-type="txtinput" label="Phone" name="phone"
-{{- end}}
-{{- if .Methods.Both}}
-type="select" label="How would you like to pay?" name="method" options="ln|Lightning — settles straight away, onchain|On-chain — settles in a block or two"
-{{- end}}
-type="submit" label="Place Order" style="primary" confirm="Place this order for {{ money .Total }}{{ with .TotalDCR }} (about {{.}}){{ end }}? The shop is told what you have ordered and gives you a way to pay."
+type="action" value="/checkout"
+type="submit" label="Proceed to checkout" style="primary"
 --/form--
 {{end}}
 

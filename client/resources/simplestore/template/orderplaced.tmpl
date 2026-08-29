@@ -1,41 +1,86 @@
-# Order #{{.ID.Num}} placed
+{{ steps (printf "Order #%d" .ID.Num) "pay" }}
 
---panel[padding=16, margin=0 0 16 0, border=1, color=accent, radius=8]--
+{{- /*
+The pay area, and no box around it for an on-chain order.
+
+The two halves below are panels in their own right. Wrapped in a third they
+were a border inside a border inside a border, which is what a page looks
+like when every part of it was written separately.
+*/ -}}
+{{if and .PayURI .OnChain -}}
+## Pay {{ money .Total }} — {{.TotalDCR}}
+
+{{template "paypanel.tmpl" .}}
+
+{{- /*
+How long the amount is good for, in a box of its own.
+
+It was a sentence at the end of a paragraph, which is where a reader looking
+at a square to scan is not. A line in the theme's own warning colour is read
+before anything is decided -- and this is the one thing on the page that runs
+out.
+*/}}
+{{- /*
+The clock, counted where there is one.
+
+The page said "another 21 minutes" and went on saying it: a page is fetched
+once and nothing tells it the time. At nought it stops being a warning and
+becomes what happened, with one press to start again at today's rate. See
+markdown_countdown.dart.
+*/}}
+{{ with .ExpiresInSeconds }}
+--countdown[seconds={{.}}, link=/reorder/{{ $.ID }}, label=Order it again]--
+{{ end }}
+{{- else -}}
 {{if .PayURI -}}
 ## Pay {{ money .Total }} — {{.TotalDCR}}
 
+{{- /*
+The one press, in a card of its own.
+
+It was a bare invoice line inside the heading's panel with a sentence under
+it saying that pressing it paid. A press that spends money should not need
+explaining, and the reassurance about what Lightning is belongs where the
+rest of this page keeps its reassurance: behind the question mark.
+*/}}
+--panel[full=on, padding=16, margin=0 0 8 0, border=1, color=accent, radius=8, text=center, help=Paid from the Bison Relay wallet in this app. Lightning settles the moment it goes through, so the seller sees it immediately and there is nothing to wait for.]--
+**Pay with your Bison Relay wallet**
+
 {{ .PayURI }}
+--/panel--
 
-{{if eq .PayType "onchain" -}}
-{{ with .PayQR }}--qr[size=200]--
-{{.}}
---/qr--
+{{- /*
+The clock, counted where there is one.
+
+The page said "another 21 minutes" and went on saying it: a page is fetched
+once and nothing tells it the time. At nought it stops being a warning and
+becomes what happened, with one press to start again at today's rate. See
+markdown_countdown.dart.
+*/}}
+{{ with .ExpiresInSeconds }}
+--countdown[seconds={{.}}, link=/reorder/{{ $.ID }}, label=Order it again]--
 {{ end }}
-Scan that with a wallet, or send exactly {{.TotalDCR}} to the address above.
-The shop watches for it and marks your order as soon as the network confirms
-it — you do not have to stay on this page, and the payment goes through
-whether or not this app is running.
 {{- else -}}
-That is a Lightning invoice: paying it settles straight away.
-{{- end}}
-
-{{ with .ExpiresIn }}The amount holds for another {{.}}, after which the rate
-is worked out again.{{ end }}
-{{- else -}}
+--panel[full=on, padding=16, margin=0 0 16 0, border=1, color=accent, radius=8]--
 ## Order placed
 
 The seller will be in touch with how to pay.
-{{- end}}
 --/panel--
+{{- end}}
+{{- end}}
 
 --panel[padding=16, border=1, color=outline, radius=8]--
-{{template "cart-listing-plain.tmpl" .Cart}}
+{{range .Cart.Items}}
+--listing--
+title: {{ .Product.Title }}
+summary: {{ .Quantity }} × {{ money .Product.Price }}
+meta: {{ money .Total }}
+{{ with productImage .Product.Image }}image: {{.}}
+{{ end -}}
+--/listing--
+{{end}}
+{{ if gt .ShipCharge 0.0 }}Items: {{ money .Cart.Total }} · Shipping: {{ money .ShipCharge }}
+{{ end }}### Total: {{ money .Total }} — {{.TotalDCR}}
 
-Items: {{ money .Cart.Total }}
-{{ if gt .ShipCharge 0.0 }}Shipping: {{ money .ShipCharge }}
-{{ end }}Total: {{ money .Total }}
-
-At {{.ExchangeRate}} DCR/$ — {{.TotalDCR}}
+At {{ printf "%.2f" .ExchangeRate }} USD/DCR
 --/panel--
-
-[Your orders](/orders) · [Back to the shop]({{storeIndex}})

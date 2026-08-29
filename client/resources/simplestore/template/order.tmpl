@@ -2,39 +2,135 @@
 
 **{{ orderSays .Order }}** · placed {{ .PlacedTS.Format "2 Jan 2006, 15:04" }}
 
-{{if .PaymentSeen -}}
+{{if .Paid -}}
+--panel[padding=16, margin=0 0 16 0, border=2, color=accent, radius=8]--
+## Payment complete
+
+Your {{ money .Total }}{{ with .TotalDCR }} ({{ . }}){{ end }} has arrived and
+this order is paid for. Nothing more is needed from you.
+
+The seller is preparing it now, and you are told here when it goes out. If
+you need to say anything about it, the messages at the bottom of this page
+reach them.
+
+{{template "txref.tmpl" .}}
+--/panel--
+
+{{- /*
+What happens next, and the refund address.
+
+The address used to be asked for on the way in -- first under the payment
+cards, then on the review page -- and in both places it read as "this might
+go wrong" at the moment the buyer was deciding whether to trust the shop at
+all. Here it is what it actually is: a detail for the unlikely case, given by
+somebody who has already paid and is no longer deciding anything.
+*/}}
+
+## What happens next
+
+--panel[padding=14, margin=0 0 8 0, border=1, color=outline, radius=8]--
+**When does it arrive?**
+
+{{ if .ShipAddr }}The seller posts it to the address below. They mark the
+order as sent when it goes, and you see that on this page.
+{{- else }}The seller sends it to you here in Bison Relay. Anything they owe
+you as a file arrives on its own; anything else they arrange with you in the
+messages at the bottom of this page.
+{{- end }}
+--/panel--
+
+--panel[padding=14, margin=0 0 8 0, border=1, color=outline, radius=8]--
+**What if something is wrong with it?**
+
+Say so in the messages at the bottom of this page. They go to the seller and
+they stay attached to this order, so neither of you has to remember which one
+it was about.
+--/panel--
+
+{{if .OnChain}}
+--panel[padding=14, margin=0 0 8 0, border=1, color=outline, radius=8]--
+**What if it has to be sent back?**
+
+If money ever has to come back to you, an address here is where it goes. It
+is optional, and the seller can ask you for one in the messages instead.
+
+--form--
+type="action" value="/setRefund/{{.ID}}"
+type="txtinput" label="Refund address" name="refund_addr" value="{{.RefundAddr}}"
+type="submit" label="{{ if .RefundAddr }}Change it{{ else }}Save it{{ end }}"
+--/form--
+--/panel--
+{{end}}
+{{ else if .PaymentSeen -}}
 --panel[padding=16, margin=0 0 16 0, border=1, color=accent, radius=8]--
 ## Your payment has been seen
 
 It is waiting for a confirmation from the network, which usually takes a few
 minutes. Nothing more is needed from you, and you do not have to stay on this
 page — the shop is watching for it and will mark the order when it arrives.
+
+{{template "txref.tmpl" .}}
 --/panel--
-{{ else if .PayURI -}}
---panel[padding=16, margin=0 0 16 0, border=1, color=accent, radius=8]--
+{{ else if and .PayURI .OnChain -}}
 ## Pay {{ money .Total }}{{ with .TotalDCR }} — {{ . }}{{ end }}
 
-{{ .PayURI }}
+{{template "paypanel.tmpl" .}}
 
-{{if .OnChain -}}
-{{ with .PayQR }}--qr[size=200]--
-{{.}}
---/qr--
+{{- /*
+The clock, counted where there is one.
+
+The page said "another 21 minutes" and went on saying it: a page is fetched
+once and nothing tells it the time. At nought it stops being a warning and
+becomes what happened, with one press to start again at today's rate. See
+markdown_countdown.dart.
+*/}}
+{{ with .ExpiresInSeconds }}
+--countdown[seconds={{.}}, link=/reorder/{{ $.ID }}, label=Order it again]--
 {{ end }}
-Scan that with a wallet, or send exactly {{ .TotalDCR }} to the address above.
-The shop watches for it and marks your order when the network confirms it.
-{{- else -}}
-That is a Lightning invoice: paying it settles straight away.
-{{- end}}
 
-{{ if .ExpiresIn }}The amount holds for another {{ .ExpiresIn }}, after which the rate is worked out again.{{ end }}
+{{ else if .PayURI -}}
+## Pay {{ money .Total }}{{ with .TotalDCR }} — {{ . }}{{ end }}
+
+--panel[full=on, padding=16, margin=0 0 8 0, border=1, color=accent, radius=8, text=center, help=Paid from the Bison Relay wallet in this app. Lightning settles the moment it goes through, so the seller sees it immediately and there is nothing to wait for.]--
+**Pay with your Bison Relay wallet**
+
+{{ .PayURI }}
 --/panel--
+
+{{- /*
+The clock, counted where there is one.
+
+The page said "another 21 minutes" and went on saying it: a page is fetched
+once and nothing tells it the time. At nought it stops being a warning and
+becomes what happened, with one press to start again at today's rate. See
+markdown_countdown.dart.
+*/}}
+{{ with .ExpiresInSeconds }}
+--countdown[seconds={{.}}, link=/reorder/{{ $.ID }}, label=Order it again]--
+{{ end }}
 {{ else if .Expired -}}
 --panel[padding=16, margin=0 0 16 0, border=1, color=outline, radius=8]--
 The amount this order was quoted at no longer holds. Ask the seller below
 and they can place it again at today's rate.
 --/panel--
 {{ end -}}
+
+{{- /*
+The files this order bought, with a way into each of them.
+
+The shop sends them the moment payment lands and they arrive in Files >
+Purchases like anything else. Which left the buyer on a page that said a file
+was on its way and then said nothing else -- no way to know whether it came,
+and a section of the app to go and look in. Where a file landed is a fact
+about the buyer's own machine, so the page names what was bought and their
+client answers. See markdown_purchase.dart.
+*/}}
+{{ if .Fulfilled }}{{ with .Goods }}
+## Your files
+
+{{ range . }}--purchase[order={{ $.ID }}, sku={{ .Product.SKU }}, title={{ .Product.Title }}]--
+{{ end }}
+{{ end }}{{ end }}
 
 --panel[padding=12, border=1, color=outline, radius=8]--
 {{range .Cart.Items}}
@@ -59,17 +155,12 @@ type="submit" label="Call this order off" style="danger" confirm="Call off order
 {{if .ShipAddr -}}
 ## Shipping to
 
-{{.ShipAddr.Name}}
-{{.ShipAddr.Address1}}
-{{- if .ShipAddr.Address2}}
-{{.ShipAddr.Address2}}
-{{- end}}
-{{.ShipAddr.City}}, {{.ShipAddr.State}}, {{.ShipAddr.PostalCode}}
-{{- if .ShipAddr.Phone}}
-{{.ShipAddr.Phone}}
-{{- end}}
+--panel[full=on, padding=14, margin=0 0 8 0, border=1, color=outline, radius=8, help=A phone number is only for whoever delivers this. The seller reaches you in Bison Relay, in this order's own messages.]--
+{{ address .ShipAddr }}
+--/panel--
 
 {{end -}}
+
 ## Messages
 
 {{if eq (len .Comments) 0 -}}

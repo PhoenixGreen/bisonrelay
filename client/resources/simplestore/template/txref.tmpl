@@ -1,0 +1,23 @@
+{{- /*
+txref.tmpl is the transaction that paid an order, offered to be copied.
+
+Between "seen" and "confirmed" the shop tells the buyer to wait and the buyer
+has nothing to look at; a seller chasing a payment has the same problem from
+the other end. This is the one thing either of them can check without asking
+the other.
+
+Copied rather than followed. A link that opens a browser from inside a shop's
+page is the shop deciding where its reader goes next, and an id pasted into
+an explorer is the same answer without that.
+
+Called with the order.
+*/ -}}
+{{ with .PaymentTx }}
+--copy[label=Transaction — press to copy]--
+{{ . }}
+--/copy--
+
+{{ with explorer }}Paste that into {{ . }} to follow it on the network.
+{{ else }}That is the transaction that paid this order.
+{{ end }}
+{{- end }}

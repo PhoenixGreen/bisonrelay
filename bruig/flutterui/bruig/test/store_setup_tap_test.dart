@@ -108,10 +108,16 @@ void main() {
     await tester.tap(find.widgetWithText(TextField, "Shop name"));
     await tester.pumpAndSettle();
 
+    // Scrolled to first: this page grows as settings are added to it, and a
+    // gesture aimed at a widget below the fold lands on whatever is at those
+    // coordinates instead.
+    var target = find.text("Show the DCR estimate on the shop front");
+    await tester.ensureVisible(target);
+    await tester.pumpAndSettle();
+
     // Pressed and held for a moment, which is what tapping is. A tap that
     // is down and up inside one frame never meets the rebuild.
-    var at =
-        tester.getCenter(find.text("Show the DCR estimate on the shop front"));
+    var at = tester.getCenter(target);
     var finger = await tester.startGesture(at);
     await tester.pump(const Duration(milliseconds: 120));
     await finger.up();

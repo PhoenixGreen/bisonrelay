@@ -89,7 +89,40 @@ func (s *Store) handleAdminOrders(ctx context.Context, uid clientintf.UserID,
 		return nil, err
 	}
 
-	tctx := adminOrdersContext{Orders: orders}
+	// Whatever the path asked for, or the defaults: what is still going,
+	// with whatever wants the seller at the top. See orderlist.go.
+	view := parseOrderView(request.Path[2:])
+
+	kept := orders[:0]
+	for _, order := range orders {
+		if view.shows(&order.Order) {
+			kept = append(kept, order)
+		}
+	}
+
+	// Sorted through the same code the buyer's list uses, on pointers into
+	// the slice being shown.
+	pointers := make([]*Order, len(kept))
+	for i := range kept {
+		pointers[i] = &kept[i].Order
+	}
+	view.arrange(pointers, true)
+	sorted := make([]ManagedOrder, 0, len(kept))
+	for _, p := range pointers {
+		for i := range kept {
+			if &kept[i].Order == p {
+				sorted = append(sorted, kept[i])
+				break
+			}
+		}
+	}
+
+	tctx := adminOrdersContext{
+		Orders: sorted,
+		View:   view,
+		Prefix: "/admin/orders",
+		Seller: true,
+	}
 	for i := range tctx.Orders {
 		// Made safe where it arrives, so everything that renders it later is
 		// safe without having to remember.

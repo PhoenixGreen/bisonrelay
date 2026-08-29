@@ -135,7 +135,16 @@ func (s *Store) cartWithAvailability(cart *Cart) cartContext {
 	unavailable := make(map[string]bool)
 	s.mtx.Lock()
 	for _, item := range cart.Items {
-		if _, ok := s.products[item.Product.SKU]; !ok {
+		prod, ok := s.products[item.Product.SKU]
+		if !ok {
+			unavailable[item.Product.SKU] = true
+			continue
+		}
+		// And what the shop has run out of, or cannot take the money for,
+		// while it sat in this cart. The same question the shop front
+		// answers, asked again here because minutes pass between the two
+		// and the last one of something is sold in them.
+		if s.unavailableFor(prod) != "" {
 			unavailable[item.Product.SKU] = true
 		}
 	}

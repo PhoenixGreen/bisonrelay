@@ -298,12 +298,39 @@ func (s *Store) navLinks(uid clientintf.UserID, layout IndexLayout) string {
 	if layout.NavShop {
 		link("Shop", s.indexPath, "shop", 0)
 	}
-	link("Orders", "/orders", "orders", 0)
+	link("Orders", "/orders", "orders", s.ordersWanting(uid))
 	if s.isSelf(uid) && layout.NavAdmin {
 		link("Admin", "/admin", "admin", 0)
 	}
 	link("Cart", "/cart", "cart", s.cartCount(uid))
 	return out.String()
+}
+
+// ordersWanting is how many of this reader's orders are waiting on them.
+//
+// The same question the list answers at the top of the page, asked from the
+// bar so it can be answered before the page is opened. An order waiting to be
+// paid is the one thing in this shop with a clock on it -- a buyer who has to
+// open Orders to find out whether one is running out is a buyer who finds out
+// afterwards.
+//
+// Counted for whoever is reading: a seller looking at their own shop is
+// wanted by orders that have been paid and not sent. See Order.Wants.
+func (s *Store) ordersWanting(uid clientintf.UserID) int {
+	s.mtx.Lock()
+	orders, err := s.readOrders(filepath.Join(s.root, ordersDir, uid.String()))
+	s.mtx.Unlock()
+	if err != nil {
+		return 0
+	}
+
+	wanting := 0
+	for _, order := range orders {
+		if order.Wants(false) {
+			wanting++
+		}
+	}
+	return wanting
 }
 
 // cartCount is how many things this buyer has in their cart.
@@ -329,7 +356,12 @@ func (s *Store) cartCount(uid clientintf.UserID) int {
 type navContext struct {
 	ShopIndex string
 	CartItems int
-	IsAdmin   bool
+
+	// OrdersWanting is how many of this reader's orders are waiting on them
+	// -- see ordersWanting.
+	OrdersWanting int
+
+	IsAdmin bool
 }
 
 // shopNav is the bar of links put at the top of every page the shop renders.
@@ -352,9 +384,10 @@ func (s *Store) shopNav(uid clientintf.UserID) string {
 	}
 	w := &bytes.Buffer{}
 	err := s.tmpl.ExecuteTemplate(w, navTmplFile, &navContext{
-		ShopIndex: s.indexPath,
-		CartItems: s.cartCount(uid),
-		IsAdmin:   s.isSelf(uid),
+		ShopIndex:     s.indexPath,
+		CartItems:     s.cartCount(uid),
+		OrdersWanting: s.ordersWanting(uid),
+		IsAdmin:       s.isSelf(uid),
 	})
 	if err != nil {
 		// The bar is chrome. A shop with no bar can still be bought from,

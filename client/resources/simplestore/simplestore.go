@@ -37,6 +37,8 @@ const (
 	ordersDir           = "orders"
 	pendingInvoicesDir  = "pendinginvoices"
 	indexTmplFile       = "index.tmpl"
+	checkoutTmplFile    = "checkout.tmpl"
+	reviewTmplFile      = "review.tmpl"
 	prodTmplFile        = "product.tmpl"
 	cartTmplFile        = "cart.tmpl"
 	orderTmplFile       = "order.tmpl"
@@ -155,8 +157,15 @@ type Store struct {
 	header   string
 	footer   string
 
-	invoiceSeenChan     chan string
-	invoiceSettledChan  chan string
+	// check is what the shop last worked out about its own ability to take
+	// money, for the ribbons on the shop front. Its own lock, because it is
+	// written from outside the store's own lock and read from inside it --
+	// see refreshStockCheck.
+	checkMtx sync.Mutex
+	check    stockCheck
+
+	invoiceSeenChan     chan paymentSighting
+	invoiceSettledChan  chan paymentSighting
 	invoiceCanceledChan chan string
 	invoiceCreatedChan  chan *Order
 }
@@ -188,8 +197,8 @@ func New(cfg Config) (*Store, error) {
 
 		layout: DefaultIndexLayout(),
 
-		invoiceSeenChan:     make(chan string),
-		invoiceSettledChan:  make(chan string),
+		invoiceSeenChan:     make(chan paymentSighting),
+		invoiceSettledChan:  make(chan paymentSighting),
 		invoiceCanceledChan: make(chan string),
 		invoiceCreatedChan:  make(chan *Order),
 	}
@@ -343,6 +352,26 @@ func (s *Store) templateFuncs() template.FuncMap {
 		"money": Money,
 		"dcr":   s.approxDCR,
 
+		// steps is the trail across the top of a checkout page: the page's
+		// own title, and the sequence it sits in with the current one
+		// marked. See markdown_steps.dart, which draws it, and checkout.go,
+		// which is what the sequence is.
+		//
+		// A function rather than a partial template because the trail takes
+		// two things -- a title and a step -- and a template partial takes
+		// one. Written out here, every page in the sequence names the same
+		// four words, which is the whole use of a trail.
+		"steps": storeSteps,
+
+		// explorer is where a transaction id can be looked up on this
+		// shop's network, or empty for one nobody outside can see.
+		"explorer": func() string {
+			if s.chainParams == nil {
+				return ""
+			}
+			return explorerFor(s.chainParams.Name)
+		},
+
 		// shopName is what the shop calls itself, or empty for a shop that
 		// would rather not say. A setting rather than a line in a template,
 		// because naming your own shop should not mean editing one.
@@ -352,6 +381,21 @@ func (s *Store) templateFuncs() template.FuncMap {
 		// storeFront is what the shop front's grid is: how far apart the
 		// products are, and what room the page keeps at its sides. Both are
 		// settings, and neither is something a template can work out.
+		// unavailable is whether a buyer cannot have this product right
+		// now, and why. Two questions with one answer on a card and two
+		// different answers on the product's own page -- see stock.go.
+		"unavailable":     s.Unavailable,
+		"unavailableSays": s.UnavailableSays,
+		"stockLeft":       stockLeft,
+
+		// address is a shipping address written one thing per line, which
+		// Markdown will not do on its own -- see AddressLines.
+		"address":  AddressLines,
+		"lowStock": s.LowStock,
+
+		// soldOutLabel is what the seller calls it.
+		"soldOutLabel": func() string { return s.IndexLayout().SoldOutLabel },
+
 		"storePage": s.storePage,
 		"storeGrid": s.storeGrid,
 
@@ -401,7 +445,7 @@ func (s *Store) fulfill(ctx context.Context, uid clientintf.UserID,
 		switch {
 		case pathEquals(request.Path, "admin"):
 			return s.handleAdminIndex(ctx, uid, request)
-		case pathEquals(request.Path, "admin", "orders"):
+		case pathHasPrefix(request.Path, "admin", "orders"):
 			return s.handleAdminOrders(ctx, uid, request)
 		case pathHasPrefix(request.Path, "admin", "order"):
 			return s.handleAdminViewOrder(ctx, uid, request)
@@ -429,14 +473,26 @@ func (s *Store) fulfill(ctx context.Context, uid clientintf.UserID,
 		return s.handleClearCart(ctx, uid)
 	case len(request.Path) == 1 && request.Path[0] == "cart":
 		return s.handleCart(ctx, uid, request)
+	case len(request.Path) == 1 && request.Path[0] == "checkout":
+		return s.handleCheckout(ctx, uid, request)
+	case len(request.Path) == 1 && request.Path[0] == "setCheckout":
+		return s.handleSetCheckout(ctx, uid, request)
+	case len(request.Path) == 1 && request.Path[0] == "review":
+		return s.handleReview(ctx, uid, request)
 	case len(request.Path) == 1 && request.Path[0] == "placeOrder":
 		return s.handlePlaceOrder(ctx, uid, request)
-	case len(request.Path) == 1 && request.Path[0] == "orders":
+	case request.Path[0] == "orders" && len(request.Path) <= 3:
 		return s.handleOrders(ctx, uid, request)
+	case len(request.Path) == 2 && request.Path[0] == "hideOrder":
+		return s.handleHideOrder(ctx, uid, request)
 	case len(request.Path) == 2 && request.Path[0] == "order":
 		return s.handleOrderStatus(ctx, uid, request)
 	case len(request.Path) == 2 && request.Path[0] == "orderaddcomment":
 		return s.handleOrderAddComment(ctx, uid, request)
+	case len(request.Path) == 2 && request.Path[0] == "reorder":
+		return s.handleReorder(ctx, uid, request)
+	case len(request.Path) == 2 && request.Path[0] == "setRefund":
+		return s.handleSetRefund(ctx, uid, request)
 	case len(request.Path) == 2 && request.Path[0] == "cancelOrder":
 		return s.handleCancelOrder(ctx, uid, request)
 	case len(request.Path) == 2 && request.Path[0] == AssetsDir:
@@ -528,7 +584,7 @@ func (s *Store) runLNInvoiceWatcher(ctx context.Context) error {
 		switch inv.State {
 		case lnrpc.Invoice_SETTLED:
 			select {
-			case s.invoiceSettledChan <- inv.PaymentRequest:
+			case s.invoiceSettledChan <- paymentSighting{disc: inv.PaymentRequest}:
 			case <-ctx.Done():
 				return ctx.Err()
 			}
@@ -587,7 +643,7 @@ func (s *Store) runOnChainInvoiceWatcher(ctx context.Context) error {
 				to = s.invoiceSettledChan
 			}
 			select {
-			case to <- discriminator:
+			case to <- paymentSighting{disc: discriminator, tx: tx.TxHash}:
 			case <-ctx.Done():
 				return ctx.Err()
 			}
@@ -616,7 +672,21 @@ func (s *Store) removePendingInvoice(order *Order) {
 // so, and the buyer is told once -- once, because a transaction is reported
 // again on every block until it confirms, and a message per block is the shop
 // shouting.
-func (s *Store) paymentSeen(ctx context.Context, order *Order) {
+// paymentSighting is a payment the shop has been told about: which order it
+// is for, and -- on-chain -- the transaction that carried it.
+//
+// The discriminator alone used to travel down these channels, which was
+// everything the shop needed to mark the order and nothing either party
+// needed to check it for themselves.
+type paymentSighting struct {
+	disc string
+
+	// tx is the transaction id, or empty for a Lightning payment, which has
+	// nothing a block explorer can be pointed at.
+	tx string
+}
+
+func (s *Store) paymentSeen(ctx context.Context, order *Order, tx string) {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
@@ -634,6 +704,9 @@ func (s *Store) paymentSeen(ctx context.Context, order *Order) {
 
 	now := time.Now()
 	stored.SeenTS = &now
+	if tx != "" {
+		stored.PaymentTx = tx
+	}
 	if err := jsonfile.Write(orderFname, stored, s.log); err != nil {
 		s.log.Warnf("Unable to write order %s: %v", orderFname, err)
 		return
@@ -653,7 +726,7 @@ func (s *Store) paymentSeen(ctx context.Context, order *Order) {
 
 // invoiceSettled is called when an invoice for a given order was settled (paid)
 // by the user.
-func (s *Store) invoiceSettled(ctx context.Context, order *Order) {
+func (s *Store) invoiceSettled(ctx context.Context, order *Order, tx string) {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
@@ -671,6 +744,9 @@ func (s *Store) invoiceSettled(ctx context.Context, order *Order) {
 
 	// Now update status.
 	order.Status = StatusPaid
+	if tx != "" {
+		order.PaymentTx = tx
+	}
 	if err := jsonfile.Write(orderFname, order, s.log); err != nil {
 		s.log.Warnf("Unable to write order %s: %v", orderFname, err)
 		return
@@ -694,9 +770,23 @@ func (s *Store) invoiceSettled(ctx context.Context, order *Order) {
 	wpm("Your order %s/%s has been identified as paid",
 		order.User.ShortLogID(), order.ID)
 
-	// If the order has files attached to it, send them to the user.
-	sent, _ := s.sendOrderGoods(order, false)
-	wpm("%s", sent)
+	// An order that is nothing but files the shop sends itself finishes on
+	// its own.
+	//
+	// There is no packing, no address and nothing for the seller to decide,
+	// so asking them to mark it sent is asking them to confirm something
+	// that has already happened -- and a shop that asks that has a list of
+	// things "waiting on you" that nobody can ever clear. Sent and marked
+	// away from here, because it is a transfer that can take a minute and
+	// this is a notification arriving. See goods.go.
+	if digitalOnly(order) {
+		user, id := order.User, order.ID
+		go s.finishDigitalOrder(ctx, user, id)
+	} else {
+		// If the order has files attached to it, send them to the user.
+		sent, _ := s.sendOrderGoods(order, false)
+		wpm("%s", sent)
+	}
 
 	if s.cfg.StatusChanged != nil {
 		s.cfg.StatusChanged(order, b.String())
@@ -720,12 +810,22 @@ func (s *Store) invoiceExpired(ctx context.Context, order *Order) {
 		return
 	}
 
-	// Now update status.
-	order.Status = StatusPaid
+	// Called off, not paid.
+	//
+	// This said StatusPaid. An order whose quote lapsed with nobody paying
+	// it was marked as paid for, the buyer was told it had expired, and the
+	// seller was left with an order in their book that read as money
+	// received. Everything downstream believed it: the order was no longer
+	// awaiting payment, so its own page stopped offering a way to pay it,
+	// and the stock it held could never come back.
+	order.Status = StatusCanceled
 	if err := jsonfile.Write(orderFname, order, s.log); err != nil {
 		s.log.Warnf("Unable to write order %s: %v", orderFname, err)
 		return
 	}
+
+	// And the things in it were never sold.
+	s.giveStock(order)
 
 	ru, err := s.c.UserByID(order.User)
 	if err != nil {
@@ -830,17 +930,17 @@ func (s *Store) runInvoiceWatcher(ctx context.Context) error {
 		case order := <-s.invoiceCreatedChan:
 			invoices[order.invoiceDiscriminator()] = order
 
-		case inv := <-s.invoiceSeenChan:
+		case seen := <-s.invoiceSeenChan:
 			// Kept in the map: what has been seen still has to settle, and
 			// the order is waiting for exactly that.
-			if order := invoices[inv]; order != nil {
-				go s.paymentSeen(ctx, order)
+			if order := invoices[seen.disc]; order != nil {
+				go s.paymentSeen(ctx, order, seen.tx)
 			}
 
-		case inv := <-s.invoiceSettledChan:
-			if order := invoices[inv]; order != nil {
-				delete(invoices, inv)
-				go s.invoiceSettled(ctx, order)
+		case settled := <-s.invoiceSettledChan:
+			if order := invoices[settled.disc]; order != nil {
+				delete(invoices, settled.disc)
+				go s.invoiceSettled(ctx, order, settled.tx)
 			}
 
 		case inv := <-s.invoiceCanceledChan:
@@ -917,10 +1017,16 @@ var storeRoutePrefixes = [][]string{
 	{"removeFromCart"},
 	{"setCartQty"},
 	{"cart"},
+	{"checkout"},
+	{"setCheckout"},
+	{"review"},
 	{"placeOrder"},
 	{"orders"},
 	{"order"},
 	{"orderaddcomment"},
+	{"reorder"},
+	{"hideOrder"},
+	{"setRefund"},
 	{"cancelOrder"},
 	{"static"},
 	{AssetsDir},

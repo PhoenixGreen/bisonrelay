@@ -1,6 +1,7 @@
 package simplestore
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -8,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/companyzero/bisonrelay/client/clientintf"
+	"github.com/companyzero/bisonrelay/internal/jsonfile"
 )
 
 // goods.go is where a shop keeps what it sells.
@@ -182,6 +184,25 @@ func goodAttributes(order *Order, item *CartItem) map[string]string {
 func (s *Store) sendOrderGoods(order *Order, wait bool) (string, error) {
 	var b strings.Builder
 	var failed error
+
+	// An order placed with your own shop can do everything but deliver.
+	//
+	// Sending a file is a transfer between two clients, and your own
+	// identity is not a remote user -- so this send cannot work, and until
+	// now it was attempted anyway: the buyer was told "Sending you the file"
+	// and the failure went to the log. A seller testing their own shop saw a
+	// paid order, a promise, and nothing arriving, with the reason in the
+	// one place they were not looking.
+	//
+	// Checked here rather than only in SendOrderGoods, because payment
+	// landing is the path that actually runs in that situation.
+	if s.orderHasGoods(order) && s.isSelf(order.User) {
+		s.log.Warnf("Order %s/%s is the shop owner's own; its files cannot "+
+			"be delivered", order.User.ShortLogID(), order.ID)
+		fmt.Fprintf(&b, "\n%s", ErrCannotSendToSelf.Error())
+		return b.String(), ErrCannotSendToSelf
+	}
+
 	for _, item := range order.Cart.Items {
 		if item.Product.SendFilename == "" {
 			continue
@@ -243,6 +264,16 @@ func (s *Store) sendOrderGoods(order *Order, wait bool) (string, error) {
 	return b.String(), failed
 }
 
+// orderHasGoods is whether anything in this order is delivered as a file.
+func (s *Store) orderHasGoods(order *Order) bool {
+	for _, item := range order.Cart.Items {
+		if item.Product != nil && item.Product.SendFilename != "" {
+			return true
+		}
+	}
+	return false
+}
+
 // ErrCannotSendToSelf is an order somebody placed with their own shop.
 var ErrCannotSendToSelf = errors.New("this order is your own, and a file " +
 	"cannot be sent to yourself -- delivery needs a second client")
@@ -289,4 +320,87 @@ func (s *Store) SendOrderGoods(uid clientintf.UserID, oid OrderID) error {
 		return fmt.Errorf("nothing in order #%d has a file to send", oid)
 	}
 	return nil
+}
+
+// digitalOnly is whether everything in this order is a file the shop sends by
+// itself.
+//
+// Nothing posted, and every line with a file of its own. An order like that
+// is finished the moment the files land: there is no packing, no address and
+// nothing for the seller to decide, so asking them to mark it sent is asking
+// them to confirm something that has already happened.
+//
+// A line with neither a file nor an address is not this. That is the third
+// kind of delivery -- the seller arranges it in the order's messages -- and
+// it genuinely wants them.
+func digitalOnly(order *Order) bool {
+	if len(order.Cart.Items) == 0 {
+		return false
+	}
+	for _, item := range order.Cart.Items {
+		if item.Product == nil || item.Product.Shipping ||
+			item.Product.SendFilename == "" {
+			return false
+		}
+	}
+	return true
+}
+
+// finishDigitalOrder sends a file-only order's goods and marks it done.
+//
+// Waited on, unlike the send that happens beside a payment notification: the
+// point here is the answer. An order marked completed before its file went
+// would be a shop telling a buyer they have something they have not been
+// sent, and the seller would never hear about it -- the failure went to a log
+// nobody was reading.
+//
+// So a send that fails leaves the order paid, which is where the seller's own
+// list picks it up as needing them. That is the honest outcome: something did
+// not go, and a person has to look at it.
+func (s *Store) finishDigitalOrder(ctx context.Context, uid clientintf.UserID,
+	oid OrderID) {
+
+	s.mtx.Lock()
+	order, fname, err := s.loadOrderLocked(uid, oid)
+	s.mtx.Unlock()
+	if err != nil {
+		s.log.Warnf("Unable to read order %s/%s to finish it: %v",
+			uid.ShortLogID(), oid, err)
+		return
+	}
+
+	// Outside the lock. Pushing a file is a transfer that can take a minute,
+	// and the whole shop would be waiting behind it.
+	said, err := s.sendOrderGoods(order, true)
+	if err != nil {
+		s.log.Errorf("Order %s/%s was paid but its files did not go (%v); "+
+			"leaving it for the seller", uid.ShortLogID(), oid, err)
+		if s.cfg.StatusChanged != nil {
+			s.cfg.StatusChanged(order, said)
+		}
+		return
+	}
+
+	s.mtx.Lock()
+	// Read again: the seller may have moved it on in the time the file took.
+	order, fname, err = s.loadOrderLocked(uid, oid)
+	if err != nil || order.Status != StatusPaid {
+		s.mtx.Unlock()
+		return
+	}
+	order.Status = StatusCompleted
+	err = jsonfile.Write(fname, order, s.log)
+	s.mtx.Unlock()
+	if err != nil {
+		s.log.Warnf("Unable to write order %s/%s: %v", uid.ShortLogID(), oid, err)
+		return
+	}
+
+	s.log.Infof("Order %s/%s was paid for and delivered, and is finished",
+		uid.ShortLogID(), oid)
+
+	if s.cfg.StatusChanged != nil {
+		s.cfg.StatusChanged(order, said+
+			"\nThat is everything in this order, so it is complete.")
+	}
 }

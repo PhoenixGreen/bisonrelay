@@ -37,3 +37,23 @@ func (s *Store) approxDCR(amount float64) string {
 	}
 	return fmt.Sprintf("%.4f DCR", amount/rate)
 }
+
+// approxDCRAmount is the same figure as a bare number, or empty when no rate
+// is known.
+//
+// For the one reader that is not a person: --wallet[need=...]-- compares this
+// against the wallet of whoever is looking at the page, and "0.3100 DCR" is
+// not a number. Four places is what approxDCR shows and eight is what a
+// wallet holds, so this writes eight -- a comparison rounded to what the
+// page happened to display is one that can say a balance covers an order it
+// does not.
+func (s *Store) approxDCRAmount(amount float64) string {
+	if s.cfg.ExchangeRateProvider == nil {
+		return ""
+	}
+	rate := s.cfg.ExchangeRateProvider()
+	if rate <= 0 {
+		return ""
+	}
+	return fmt.Sprintf("%.8f", amount/rate)
+}

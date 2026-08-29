@@ -1,9 +1,12 @@
 package simplestore
 
 import (
+	"context"
+	"errors"
 	"os"
 
 	"github.com/companyzero/bisonrelay/client/clientintf"
+	"github.com/companyzero/bisonrelay/internal/jsonfile"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -207,5 +210,142 @@ func TestAShopWithNoClientDoesNotFallOver(t *testing.T) {
 	s := testStore(t)
 	if s.isSelf(clientintf.UserID{}) {
 		t.Error("a shop with no client thinks it is everybody")
+	}
+}
+
+// TestOrderHasGoodsIsAboutTheOrderNotTheProduct.
+//
+// The self-purchase refusal turns on it: an order of things nobody has to
+// deliver has nothing to refuse, and saying "this cannot be delivered" about
+// one would be a warning about something that was never going to happen.
+func TestOrderHasGoodsIsAboutTheOrderNotTheProduct(t *testing.T) {
+	s := testStore(t)
+
+	nothing := &Order{Cart: Cart{Items: []*CartItem{
+		{Product: &Product{SKU: "r1", Title: "A record"}},
+	}}}
+	if s.orderHasGoods(nothing) {
+		t.Error("an order of things with no files says it has some")
+	}
+
+	something := &Order{Cart: Cart{Items: []*CartItem{
+		{Product: &Product{SKU: "r1", Title: "A record"}},
+		{Product: &Product{SKU: "g1", Title: "A guide",
+			SendFilename: "goods/guide.md"}},
+	}}}
+	if !s.orderHasGoods(something) {
+		t.Error("an order with a file in it says it has none")
+	}
+}
+
+// TestSendingToNobodyInParticularIsStillFine.
+//
+// isSelf is false without a client, which is what a store looks like in a
+// test -- so this proves the self-purchase guard does not stand in the way of
+// an ordinary send. The guard's own branch needs two clients, which is the
+// whole of what it is about.
+func TestSendingToNobodyInParticularIsStillFine(t *testing.T) {
+	s := testStore(t)
+	order := &Order{Cart: Cart{Items: []*CartItem{
+		{Product: &Product{SKU: "g1", Title: "A guide",
+			SendFilename: "goods/missing.md"}},
+	}}}
+
+	said, err := s.sendOrderGoods(order, true)
+	if errors.Is(err, ErrCannotSendToSelf) {
+		t.Fatalf("an ordinary order was refused as the seller's own: %v", err)
+	}
+	// The file is not there, which is the failure this order does have.
+	if !strings.Contains(said, "could not be sent") {
+		t.Errorf("the buyer is not told what went wrong: %q", said)
+	}
+}
+
+// TestWhichOrdersFinishOnTheirOwn.
+//
+// An order that is nothing but files the shop sends itself has no packing, no
+// address and nothing for the seller to decide -- so asking them to mark it
+// sent is asking them to confirm something that has already happened, and a
+// shop that asks that has a "waiting on you" list nobody can ever clear.
+func TestWhichOrdersFinishOnTheirOwn(t *testing.T) {
+	file := &Product{SKU: "g1", Title: "A guide", SendFilename: "goods/guide.md"}
+	other := &Product{SKU: "g2", Title: "A manual", SendFilename: "goods/manual.md"}
+	posted := &Product{SKU: "r1", Title: "A record", Shipping: true}
+	arranged := &Product{SKU: "s1", Title: "An hour of my time"}
+
+	tests := []struct {
+		name  string
+		items []*Product
+		want  bool
+	}{
+		{"one file", []*Product{file}, true},
+		{"two files", []*Product{file, other}, true},
+		{"a file and something posted", []*Product{file, posted}, false},
+		// Neither a file nor an address is the third kind of delivery: the
+		// seller arranges it in the order's messages, and it wants them.
+		{"a file and something arranged", []*Product{file, arranged}, false},
+		{"nothing but postage", []*Product{posted}, false},
+		{"an empty order", nil, false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			order := &Order{}
+			for _, p := range tc.items {
+				order.Cart.Items = append(order.Cart.Items,
+					&CartItem{Product: p, Quantity: 1})
+			}
+			if got := digitalOnly(order); got != tc.want {
+				t.Errorf("got %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestAFileThatDidNotGoLeavesTheOrderForTheSeller.
+//
+// An order marked completed before its file went would be a shop telling a
+// buyer they have something they have not been sent, with the failure in a
+// log nobody reads.
+func TestAFileThatDidNotGoLeavesTheOrderForTheSeller(t *testing.T) {
+	s := storeForHandlers(t)
+	uid := clientintf.UserID{}
+
+	// A file the shop will not send, because it is not there.
+	order := &Order{
+		ID: 1, User: uid, Status: StatusPaid,
+		Cart: Cart{Items: []*CartItem{{
+			Product: &Product{SKU: "g1", Title: "A guide",
+				SendFilename: "goods/missing.md"},
+			Quantity: 1,
+		}}},
+	}
+	dir := filepath.Join(s.root, ordersDir, uid.String())
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	fname := filepath.Join(dir, orderFnamePattern.FilenameFor(1))
+	if err := jsonfile.Write(fname, order, s.log); err != nil {
+		t.Fatal(err)
+	}
+
+	var told string
+	s.cfg.StatusChanged = func(o *Order, msg string) { told = msg }
+
+	s.finishDigitalOrder(context.Background(), uid, order.ID)
+
+	var saved Order
+	if err := jsonfile.Read(fname, &saved); err != nil {
+		t.Fatal(err)
+	}
+	if saved.Status != StatusPaid {
+		t.Errorf("an order whose file did not go was marked %q", saved.Status)
+	}
+	if !strings.Contains(told, "could not be sent") {
+		t.Errorf("nobody was told what went wrong: %q", told)
+	}
+	// And it is the seller's to look at.
+	if !saved.Wants(true) {
+		t.Error("the order does not ask the seller for anything")
 	}
 }

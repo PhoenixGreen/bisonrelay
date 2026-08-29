@@ -37,6 +37,14 @@ class ProductDraft {
   final bool shipping;
   final bool disabled;
 
+  /// limited is whether the shop counts how many of this it has, and
+  /// available is how many are left when it does.
+  ///
+  /// Kept as text like the price, so a half-typed number is a half-typed
+  /// number rather than a nought the field silently corrected to.
+  final bool limited;
+  final String available;
+
   /// image names a picture in the shop's assets, or is empty for a product
   /// with none.
   final String image;
@@ -51,6 +59,8 @@ class ProductDraft {
     this.sendFilename = "",
     this.shipping = false,
     this.disabled = false,
+    this.limited = false,
+    this.available = "",
     this.image = "",
   });
 
@@ -64,6 +74,8 @@ class ProductDraft {
         sendFilename: p.sendFilename,
         shipping: p.shipping,
         disabled: p.disabled,
+        limited: p.limited,
+        available: p.limited ? p.available.toString() : "",
         image: p.image,
       );
 
@@ -78,6 +90,8 @@ class ProductDraft {
     String? sendFilename,
     bool? shipping,
     bool? disabled,
+    bool? limited,
+    String? available,
     String? image,
   }) =>
       ProductDraft(
@@ -90,6 +104,8 @@ class ProductDraft {
         sendFilename: sendFilename ?? this.sendFilename,
         shipping: shipping ?? this.shipping,
         disabled: disabled ?? this.disabled,
+        limited: limited ?? this.limited,
+        available: available ?? this.available,
         image: image ?? this.image,
       );
 }

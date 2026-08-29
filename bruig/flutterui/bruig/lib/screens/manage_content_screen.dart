@@ -13,6 +13,7 @@ import 'package:bruig/screens/overview.dart';
 import 'package:bruig/models/menus.dart';
 import 'package:bruig/models/uistate.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
+import 'package:bruig/components/feed/markdown_purchase.dart';
 import 'package:bruig/screens/manage_content/purchases.dart';
 
 class ManageContentScreenTitle extends StatelessWidget {
@@ -102,7 +103,11 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
     return ListenableBuilder(
       listenable: nav,
       builder: (context, _) {
-        var previewing = nav.tab == 2 ? nav.path : null;
+        // Downloads and Purchases both read a file in place; the other two
+        // tabs have nothing to preview. Only Downloads was allowed one, so
+        // pressing Read on a purchase set the path and drew the list again.
+        var previewing =
+            nav.tab == 2 || nav.tab == purchasesTabIndex ? nav.path : null;
         return SecondarySideMenuLayout(
           storageKey: "manageContent",
           items: manageContentBarItems(onItemChanged, nav.tab),

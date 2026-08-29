@@ -33,6 +33,66 @@ type orderContext struct {
 
 type ordersContext struct {
 	Orders []*Order
+
+	// View is what the list was asked for, so the filter row can mark the
+	// two words that are true of it and write links for the rest.
+	View orderView
+
+	// Prefix is the path the links are built on: a buyer's list and a
+	// seller's are the same rows on two different routes.
+	Prefix string
+
+	// Seller is whose list this is, which decides what "needs you" means --
+	// see Order.Wants.
+	Seller bool
+}
+
+// Filters is the row of links across the top of a list.
+//
+// Built here rather than written into the template because each of them keeps
+// half of what is showing and changes the other: pressing "Oldest first"
+// must not also reset which orders are being shown.
+func (c ordersContext) Filters() []orderFilter {
+	shows := []struct {
+		label string
+		show  OrderShow
+	}{
+		{"Open", ShowOpen},
+		{"Waiting to be paid", ShowWaiting},
+		{"Paid", ShowPaid},
+		{"Called off", ShowCancelled},
+		{"All", ShowAll},
+	}
+
+	out := make([]orderFilter, 0, len(shows)+2)
+	for _, s := range shows {
+		out = append(out, orderFilter{
+			Label: s.label,
+			Link:  c.View.path(c.Prefix, s.show, c.View.Sort),
+			On:    c.View.Show == s.show,
+		})
+	}
+	return out
+}
+
+// Orderings is the other half of the row: which end of the list is the top.
+func (c ordersContext) Orderings() []orderFilter {
+	return []orderFilter{{
+		Label: "Newest first",
+		Link:  c.View.path(c.Prefix, c.View.Show, SortNewest),
+		On:    c.View.Sort == SortNewest,
+	}, {
+		Label: "Oldest first",
+		Link:  c.View.path(c.Prefix, c.View.Show, SortOldest),
+		On:    c.View.Sort == SortOldest,
+	}}
+}
+
+// orderFilter is one word in that row.
+type orderFilter struct {
+	Label string
+	Link  string
+	On    bool
 }
 
 // adminOrdersContext is the seller's order book.
@@ -44,6 +104,21 @@ type ordersContext struct {
 // of them, and ManagedOrder is the order with the buyer's nick beside it.
 type adminOrdersContext struct {
 	Orders []ManagedOrder
+
+	// The same three the buyer's list carries -- see ordersContext, which
+	// this deliberately mirrors: two audiences, one set of questions.
+	View   orderView
+	Prefix string
+	Seller bool
+}
+
+// Filters and Orderings are the buyer's, read off the seller's own view.
+func (c adminOrdersContext) Filters() []orderFilter {
+	return ordersContext{View: c.View, Prefix: c.Prefix}.Filters()
+}
+
+func (c adminOrdersContext) Orderings() []orderFilter {
+	return ordersContext{View: c.View, Prefix: c.Prefix}.Orderings()
 }
 
 // adminIndexContext is the shop's front desk: what is waiting, what has been

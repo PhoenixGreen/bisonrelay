@@ -1,0 +1,93 @@
+{{ steps "Review your order" "review" }}
+
+Nothing has been ordered yet and nothing has left your wallet.
+
+{{- /*
+The order itself, full width.
+
+Rows with a picture rather than a bulleted list, matching the order page a
+buyer reaches next: the thing they are checking is that this is the right
+order, and a thumbnail answers that faster than a line of words.
+*/}}
+
+--panel[full=on, padding=14, margin=0 0 10 0, border=1, color=outline, radius=8]--
+{{range .Items}}
+--listing--
+title: {{ .Product.Title }}
+summary: {{ .Quantity }} × {{ money .Product.Price }}
+meta: {{ money .Total }}
+{{ with productImage .Product.Image }}image: {{.}}
+{{ end -}}
+--/listing--
+{{end}}
+### Total: {{ money .Total }}{{ with .TotalDCR }} · ≈ {{.}}{{ end }}
+--/panel--
+
+{{- /*
+The two settled facts, each the width of the order they are about.
+
+Side by side they were two half-width notes with no relationship to each
+other or to the order above them. In a row, with the mark on the right, the
+thing a buyer is checking and the way to change it sit at opposite ends of
+one line.
+*/}}
+
+--paysummary[icon={{if eq .Checkout.Method "onchain"}}onchain{{else}}lightning{{end}}, label=Paying with, value={{ with .MethodSays }}{{.}}{{ else }}The seller will be in touch{{ end }}, link=/checkout, linklabel=Change]--
+
+{{if eq .Delivery "post"}}
+{{- /*
+The note about how the seller reaches you lives behind the question mark.
+
+It is true, worth knowing once, and read every time by everybody who already
+knows it -- which is what a help icon is for. It follows Hide help text under
+Appearance, like the app's own.
+*/}}
+--panel[full=on, padding=14, margin=0 0 8 0, border=1, color=outline, radius=8, help=A phone number is only for whoever delivers this. The seller reaches you in Bison Relay, in this order's own messages.]--
+**Posted to**
+
+{{ address .Checkout.Ship }}
+
+[Change](/checkout)
+--/panel--
+{{else if eq .Delivery "file"}}
+--panel[full=on, padding=14, margin=0 0 8 0, border=1, color=outline, radius=8]--
+**Delivered here**
+
+{{if gt (len .Files) 1}}These arrive{{else}}This arrives{{end}} as a file from
+the seller, in Bison Relay, once your payment lands. Nothing is posted, so
+there is no address to give.
+--/panel--
+{{else}}
+--panel[full=on, padding=14, margin=0 0 8 0, border=1, color=outline, radius=8]--
+**How you get it**
+
+Nothing in this order is posted or sent as a file. The seller arranges it
+with you in the order's own messages, which are at the bottom of the order
+page once it is placed.
+--/panel--
+{{end}}
+
+{{if .TotalDCR}}
+--panel[full=on, padding=12, margin=0 0 8 0, border=1, color=outline, radius=8]--
+The {{ .TotalDCR }} is worked out at today's rate the moment you place the
+order, and holds for {{ .QuoteHoldsFor }}. If it lapses before you pay, the
+shop quotes it again — nothing is lost and nothing is charged.
+--/panel--
+{{end}}
+
+{{- /*
+One press, and it goes straight through to the pay page.
+
+There was a confirmation dialog on this, which asked the buyer to agree to
+the amount a second time on a page whose whole purpose is checking the
+amount. Two asks for one decision is not twice as careful; it is a step
+somebody has to read to find out it says nothing new. What this press does is
+reversible -- an unpaid order can be called off from the order itself, and
+nothing has been charged -- so the page it leads to is the answer, not a box
+in front of it.
+*/}}
+
+--form--
+type="action" value="/placeOrder"
+type="submit" label="Place order" style="primary"
+--/form--
