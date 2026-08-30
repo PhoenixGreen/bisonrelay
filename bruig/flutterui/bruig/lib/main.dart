@@ -12,6 +12,7 @@ import 'package:bruig/models/audio.dart';
 import 'package:bruig/models/menus.dart';
 import 'package:bruig/models/payments.dart';
 import 'package:bruig/plugin_system/link_previews/link_previews.dart';
+import 'package:bruig/plugin_system/canvas/canvas.dart';
 import 'package:bruig/plugin_system/plugin_system.dart';
 import 'package:bruig/plugin_system/writing_tools/writing_tools.dart';
 import 'package:bruig/models/realtimechat.dart';
@@ -184,6 +185,14 @@ Future<void> runMainApp(Config cfg) async {
   // to. Done from the feature's side of the boundary, so the plugin system
   // never learns what a dictionary is -- see plugin_system/plugin_settings.
   registerWritingTools();
+  registerCanvas();
+
+  // Awaited for the same reason the notes preferences above are: this one
+  // decides whether the Canvas nav item exists, and a destination that
+  // appeared a moment after the window did would shuffle the whole menu under
+  // whoever was already reaching for it.
+  final canvasPrefs = CanvasPreferences();
+  await canvasPrefs.load();
 
   runApp(MultiProvider(
     providers: [
@@ -293,6 +302,17 @@ Future<void> runMainApp(Config cfg) async {
         lazy: false,
         create: (c) => WritingNavModel(),
         update: (c, plugins, mainMenu, nav) => nav!..update(plugins, mainMenu),
+      ),
+      ChangeNotifierProvider.value(value: canvasPrefs),
+      // The Canvas section, which comes and goes with its own switch rather
+      // than with a plugin -- see plugin_system/canvas/canvas_preferences.
+      // Eager for the same reason as the two above: nothing reads it, it
+      // exists to register a nav item.
+      ChangeNotifierProxyProvider2<CanvasPreferences, MainMenuModel,
+          CanvasNavModel>(
+        lazy: false,
+        create: (c) => CanvasNavModel(),
+        update: (c, prefs, mainMenu, nav) => nav!..update(prefs, mainMenu),
       ),
       ChangeNotifierProvider.value(value: rtc),
       ChangeNotifierProvider.value(value: rtc.active),

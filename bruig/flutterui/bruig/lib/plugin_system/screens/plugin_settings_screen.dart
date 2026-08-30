@@ -198,6 +198,13 @@ class _PluginsSettingsScreenState extends State<PluginsSettingsScreen> {
               ],
             );
           }),
+          // Sections for the parts of the app that can be turned off without
+          // being plugins at all. They are listed after the plugins because
+          // that is what they are not: somebody scanning this page for what
+          // they installed should reach the end of that list before meeting
+          // anything else.
+          for (var section in PluginSettingsRegistry.features())
+            section(context, false),
           // A capability's settings live inside the panel of whichever plugin
           // provides them, but some of them outlive it: a word added to a
           // personal dictionary is a decision about this app, and removing the

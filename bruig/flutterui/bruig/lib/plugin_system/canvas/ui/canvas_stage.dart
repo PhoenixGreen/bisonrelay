@@ -1,0 +1,1091 @@
+import 'dart:math' as math;
+import 'dart:ui' as ui;
+
+import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
+import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
+import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:flutter/gestures.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+// canvas_stage.dart is the canvas you can touch: the document drawn, with
+// selection handles over it and every gesture that moves something.
+//
+// It draws through the same scene_renderer.dart the export uses, under one
+// transform -- so what is on screen is the document at the chosen zoom, and
+// nothing here has an opinion about how any element looks. What it owns is
+// entirely the other half: which element is under the pointer, what dragging a
+// handle means, and where the handles go.
+//
+// The one idea worth stating plainly is the two coordinate spaces. *Document
+// space* is where elements live and never changes with the view. *Stage space*
+// is pixels on screen. Everything the pointer says arrives in stage space and
+// is converted immediately, once, at the top of each gesture handler; nothing
+// below that line has to think about zoom. Handles are the exception and are
+// deliberately drawn and hit-tested in stage space, because a handle must stay
+// the same size on screen at every zoom or it becomes unusable at both ends.
+
+/// _handleSize is a resize handle's side, in screen pixels.
+const double _handleSize = 9;
+
+/// _handleHitSlop grows the target past what is drawn. A 9px square is a
+/// visible marker and an unreasonable thing to hit with a trackpad.
+const double _handleHitSlop = 7;
+
+/// _rotateHandleGap is how far above the selection the rotate ring sits.
+const double _rotateHandleGap = 26;
+
+/// _Handle names the eight resize grips and the rotate one.
+enum _Handle {
+  topLeft,
+  topCenter,
+  topRight,
+  centerLeft,
+  centerRight,
+  bottomLeft,
+  bottomCenter,
+  bottomRight,
+  rotate;
+
+  bool get movesLeft =>
+      this == topLeft || this == centerLeft || this == bottomLeft;
+  bool get movesRight =>
+      this == topRight || this == centerRight || this == bottomRight;
+  bool get movesTop =>
+      this == topLeft || this == topCenter || this == topRight;
+  bool get movesBottom =>
+      this == bottomLeft || this == bottomCenter || this == bottomRight;
+}
+
+/// _DragMode is what the pointer is currently doing.
+enum _DragMode { none, move, resize, rotate, pan, marquee, player }
+
+class CanvasStage extends StatefulWidget {
+  final CanvasController controller;
+
+  /// onButtonLink is called when a button element whose action is a link is
+  /// pressed in the editor. Handed up rather than opened here, because leaving
+  /// the app is not a decision a canvas widget should make on its own.
+  final void Function(String url)? onButtonLink;
+
+  const CanvasStage({required this.controller, this.onButtonLink, super.key});
+
+  @override
+  State<CanvasStage> createState() => CanvasStageState();
+}
+
+/// CanvasStageState is public for one reason: dropping an element onto the
+/// canvas from the sidebar needs to know where, in document coordinates, the
+/// pointer let go. Only the stage knows the transform, so the screen holds a
+/// key to it and asks. Everything else here is private.
+class CanvasStageState extends State<CanvasStage> {
+  CanvasController get controller => widget.controller;
+  CanvasDocument get document => controller.document;
+
+  _DragMode _mode = _DragMode.none;
+
+  /// _playerIndex is which player of the selected team is being dragged, in
+  /// [_DragMode.player].
+  ///
+  /// A team is one element holding eleven dots, so dragging a single player is
+  /// not selecting anything -- the team stays selected throughout, and what
+  /// moves is one row of its list. That is deliberately not a second selection
+  /// model: a player is not an element, has no handles and cannot be
+  /// keyframed on its own.
+  int _playerIndex = -1;
+
+  /// _playerGrab is where in the dot the pointer took hold, so a player does
+  /// not jump to centre itself under the cursor on the first pixel of a drag.
+  Offset _playerGrab = Offset.zero;
+  _Handle? _handle;
+
+  /// _dragStart is where the gesture began, in document space, and
+  /// _startBounds are the selected elements as they were then.
+  ///
+  /// The originals are kept rather than applying each delta to the current
+  /// state, because accumulating deltas accumulates rounding -- an element
+  /// dragged in a circle back to where it started would end up a pixel or two
+  /// off, every time.
+  Offset _dragStart = Offset.zero;
+  Map<String, Rect> _startBounds = {};
+  Map<String, double> _startRotation = {};
+  Offset _startPan = Offset.zero;
+  Rect? _marquee;
+
+  /// _visible is the room on screen: what the stage was laid out into.
+  Size _visible = Size.zero;
+
+  /// _viewport is the box the canvas is drawn into, which is [_visible] except
+  /// in [CanvasFit.width], where the canvas can be taller than the window and
+  /// the difference is scrolled.
+  ///
+  /// Everything else in this file works in this box's coordinates, and so do
+  /// the pointer events -- the Listener is inside the scroll view, so what it
+  /// reports is already scrolled. The one exception is [toDocumentPoint],
+  /// which is called from outside with widget coordinates; see there.
+  Size _viewport = Size.zero;
+
+  /// _scroll drives the vertical scroll in [CanvasFit.width].
+  final ScrollController _scroll = ScrollController();
+
+  /// _stageMargin is the gap kept around the canvas when it is showing whole,
+  /// so the page reads as a sheet with room around it rather than as a region
+  /// butted against the sidebar.
+  static const double _stageMargin = 24;
+
+  final FocusNode _focus = FocusNode(debugLabel: "canvas stage");
+
+  @override
+  void initState() {
+    super.initState();
+    controller.addListener(_onChanged);
+    controller.images.addListener(_onChanged);
+  }
+
+  @override
+  void didUpdateWidget(CanvasStage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != controller) {
+      oldWidget.controller.removeListener(_onChanged);
+      oldWidget.controller.images.removeListener(_onChanged);
+      controller.addListener(_onChanged);
+      controller.images.addListener(_onChanged);
+    }
+  }
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    controller.removeListener(_onChanged);
+    controller.images.removeListener(_onChanged);
+    _focus.dispose();
+    super.dispose();
+  }
+
+  void _onChanged() {
+    if (mounted) setState(() {});
+  }
+
+  // ------------------------------------------------------------------------
+  // Coordinates
+  // ------------------------------------------------------------------------
+
+  /// _fitScale is the scale at which the whole canvas fills the area, with
+  /// [_stageMargin] to spare.
+  ///
+  /// Recomputed from the viewport on every build rather than stored on the
+  /// controller. It is a fact about how much room there is, which changes when
+  /// the window is resized or the sidebar is collapsed, and the controller has
+  /// no business knowing either.
+  double get _fitScale {
+    var size = document.size.size;
+    if (size.width <= 0 || size.height <= 0) return 1;
+    var byWidth = (_visible.width - _stageMargin * 2) / size.width;
+    // Fit to width ignores the height entirely, which is the whole point: a
+    // 9:16 story fitted whole is a narrow strip down the middle of a wide
+    // window with most of the screen empty either side of it.
+    var fit = controller.fit == CanvasFit.width
+        ? byWidth
+        : math.min(byWidth, (_visible.height - _stageMargin * 2) / size.height);
+    return fit.isFinite && fit > 0 ? fit : 1;
+  }
+
+  /// _contentSize is how much room the canvas and its margins need.
+  ///
+  /// The same as the visible box whenever the canvas fits in it. In fit-width
+  /// it can be taller, and the excess is what scrolls.
+  Size _contentSize(Size visible) {
+    if (visible.width <= 0 || visible.height <= 0) return visible;
+    var wanted =
+        document.size.size.height * _fitScale + _stageMargin * 2;
+    return Size(visible.width, math.max(visible.height, wanted));
+  }
+
+  /// _pageRect is the canvas's frame on screen, and it does not move.
+  ///
+  /// This is the whole shape of the view. The frame is always the fitted size,
+  /// centred, whatever the zoom -- so the edge of the canvas is always visible
+  /// and zooming happens *inside* it, like moving a magnifier over a page
+  /// rather than making the page bigger. Zooming used to enlarge the frame
+  /// itself, which meant the borders went off screen and there was nothing
+  /// left to tell you where the canvas ended.
+  Rect get _pageRect {
+    var size = document.size.size * _fitScale;
+    return Rect.fromCenter(
+      center: Offset(_viewport.width / 2, _viewport.height / 2),
+      width: size.width,
+      height: size.height,
+    );
+  }
+
+  /// _scale is what one document unit measures on screen: the fitted size,
+  /// times however far the reader has zoomed in from it. See
+  /// CanvasController.zoom on why zoom is a multiple of the fit rather than of
+  /// the document's own pixels.
+  double get _scale => _fitScale * controller.zoom;
+
+  /// _scaledSize is the document as drawn, which at any zoom above 1 is larger
+  /// than the frame it is being drawn inside.
+  Size get _scaledSize => document.size.size * _scale;
+
+  /// _origin is where the document's top-left corner sits in stage space.
+  Offset get _origin {
+    var size = _scaledSize;
+    var pan = _clampedPan;
+    var page = _pageRect;
+    return Offset(
+      page.center.dx - size.width / 2 + pan.dx,
+      page.center.dy - size.height / 2 + pan.dy,
+    );
+  }
+
+  /// _clampPan keeps the frame full.
+  ///
+  /// The pan is bounded by exactly how much the zoomed document overhangs the
+  /// frame, so the far edge can be brought to the edge of the frame and no
+  /// further. At zoom 1 the overhang is nothing and the pan is pinned to zero,
+  /// which is what makes the whole canvas sit exactly in its border with no
+  /// way to knock it out of alignment.
+  ///
+  /// Without this it was possible to drag a zoomed canvas entirely out of the
+  /// frame and be left looking at an empty rectangle.
+  Offset _clampPan(Offset pan) {
+    var size = _scaledSize;
+    var page = _pageRect;
+    var slackX = math.max(0.0, (size.width - page.width) / 2);
+    var slackY = math.max(0.0, (size.height - page.height) / 2);
+    return Offset(
+      pan.dx.clamp(-slackX, slackX),
+      pan.dy.clamp(-slackY, slackY),
+    );
+  }
+
+  Offset get _clampedPan =>
+      _clampPan(Offset(controller.pan.dx, controller.pan.dy));
+
+  void _setPan(Offset pan) {
+    var clamped = _clampPan(pan);
+    controller.pan = Offset2(clamped.dx, clamped.dy);
+  }
+
+  Offset _toDocument(Offset stage) =>
+      (stage - _origin) / (_scale == 0 ? 1 : _scale);
+
+  Offset _toStage(Offset doc) => doc * _scale + _origin;
+
+  /// toDocumentPoint converts a position in this widget's own coordinates to a
+  /// point in the document, for a drop from the sidebar.
+  ///
+  /// The scroll offset is added on, because the caller measures against the
+  /// whole widget while everything in here works in the scrolled content's
+  /// coordinates. Without it, an element dropped on a scrolled fit-width canvas
+  /// lands as far up the page as the view had been scrolled down.
+  Offset toDocumentPoint(Offset local) => _toDocument(
+      local + Offset(0, _scroll.hasClients ? _scroll.offset : 0));
+
+  /// pageRect is the canvas's frame, in this widget's coordinates.
+  ///
+  /// Exposed for tests, which is the only way to ask the questions that matter
+  /// about the view: is the whole frame on screen, does it stay put when the
+  /// zoom changes, and can a zoomed canvas be dragged out of it. All of them
+  /// are invisible to a widget test otherwise -- the canvas is painted, not
+  /// laid out, so there is no render box to measure.
+  @visibleForTesting
+  Rect get pageRect => _pageRect;
+
+  /// contentRect is the document as drawn inside that frame.
+  @visibleForTesting
+  Rect get contentRect => _origin & _scaledSize;
+
+  /// viewportSize is the room the stage has, for the same tests.
+  @visibleForTesting
+  Size get viewportSize => _viewport;
+
+  /// _selectionBounds is the axis-aligned box around everything selected, in
+  /// document space.
+  ///
+  /// Rotation is deliberately ignored for a multiple selection: handles that
+  /// tried to follow several different rotations at once would have no
+  /// meaningful orientation, and the box is only being used to say "this much
+  /// is chosen".
+  Rect? get _selectionBounds {
+    var elements = controller.selectedElements;
+    if (elements.isEmpty) return null;
+    var box = elements.first.bounds;
+    for (var e in elements.skip(1)) {
+      box = box.expandToInclude(e.bounds);
+    }
+    return box;
+  }
+
+  /// _rotationOfSelection is the single selected element's rotation, or zero
+  /// when several are chosen.
+  double get _rotationOfSelection =>
+      controller.selectedElements.length == 1
+          ? controller.selectedElements.first.rotationRadians
+          : 0;
+
+  // ------------------------------------------------------------------------
+  // Hit testing
+  // ------------------------------------------------------------------------
+
+  /// _hitElement is the topmost element under a document-space point.
+  ///
+  /// Walked from the front backwards, because the last element in paint order
+  /// is the one on top and is the one a click should find.
+  CanvasElement? _hitElement(Offset point) {
+    for (var i = document.elements.length - 1; i >= 0; i--) {
+      var e = document.elements[i];
+      if (!e.visible || e.locked) continue;
+      if (_containsPoint(e, point)) return e;
+    }
+    return null;
+  }
+
+  /// _containsPoint asks whether a point is inside an element, undoing the
+  /// element's rotation first so a rotated element is hit where it looks
+  /// rather than where its unrotated box was.
+  bool _containsPoint(CanvasElement e, Offset point) {
+    var local = point;
+    if (e.rotation != 0) {
+      var c = e.center;
+      var d = point - c;
+      var a = -e.rotationRadians;
+      local = c +
+          Offset(d.dx * math.cos(a) - d.dy * math.sin(a),
+              d.dx * math.sin(a) + d.dy * math.cos(a));
+    }
+    if (!e.bounds.contains(local)) return false;
+
+    // A line is a stroke, not a rectangle: a diagonal line's bounding box is
+    // mostly empty, and clicking that empty space to select the line behind it
+    // is the reported "I can't click the thing under my arrow".
+    if (e is ShapeElement && e.shape == ShapeKind.circle) {
+      var r = e.bounds.shortestSide / 2;
+      return (local - e.bounds.center).distance <= r;
+    }
+    return true;
+  }
+
+  /// _hitHandle is which grip is under a stage-space point, if any.
+  _Handle? _hitHandle(Offset stage) {
+    var bounds = _selectionBounds;
+    if (bounds == null) return null;
+    var reach = _handleSize / 2 + _handleHitSlop;
+
+    // Hidden helpers are unreachable helpers -- see
+    // CanvasController.showHelpers.
+    if (!controller.showHelpers) return null;
+
+    for (var handle in _Handle.values) {
+      var at = _handlePosition(handle, bounds);
+      // Clipped out of sight means clipped out of reach. A handle that can be
+      // grabbed where nothing is drawn is a click that appears to do nothing
+      // and then moves something.
+      if (!_pageRect.inflate(reach).contains(at)) continue;
+      if ((stage - at).distance <= reach) return handle;
+    }
+    return null;
+  }
+
+  /// _handlePosition is where a grip is drawn, in stage space.
+  Offset _handlePosition(_Handle handle, Rect bounds) {
+    var centre = _toStage(bounds.center);
+    var half = Offset(bounds.width, bounds.height) * _scale / 2;
+
+    var local = switch (handle) {
+      _Handle.topLeft => Offset(-half.dx, -half.dy),
+      _Handle.topCenter => Offset(0, -half.dy),
+      _Handle.topRight => Offset(half.dx, -half.dy),
+      _Handle.centerLeft => Offset(-half.dx, 0),
+      _Handle.centerRight => Offset(half.dx, 0),
+      _Handle.bottomLeft => Offset(-half.dx, half.dy),
+      _Handle.bottomCenter => Offset(0, half.dy),
+      _Handle.bottomRight => Offset(half.dx, half.dy),
+      _Handle.rotate => Offset(0, -half.dy - _rotateHandleGap),
+    };
+
+    var a = _rotationOfSelection;
+    if (a == 0) return centre + local;
+    return centre +
+        Offset(local.dx * math.cos(a) - local.dy * math.sin(a),
+            local.dx * math.sin(a) + local.dy * math.cos(a));
+  }
+
+  // ------------------------------------------------------------------------
+  // Gestures
+  // ------------------------------------------------------------------------
+
+  bool get _shiftHeld => HardwareKeyboard.instance.isShiftPressed;
+
+  void _onPointerDown(PointerDownEvent event) {
+    _focus.requestFocus();
+    var stage = event.localPosition;
+    var doc = _toDocument(stage);
+    _dragStart = doc;
+
+    // The pan tool and the middle button pan. Space used to as well, and no
+    // longer does: it plays and stops now, which is worth more on a page for
+    // building animations, and the pan tool is the discoverable version of
+    // what space-drag was for.
+    if (controller.tool == CanvasTool.pan ||
+        event.buttons == kMiddleMouseButton) {
+      _mode = _DragMode.pan;
+      _startPan = _clampedPan;
+      _dragStart = stage;
+      return;
+    }
+
+    // Outside the frame there is nothing to hit. Clicking the margin clears
+    // the selection, which is the only thing it could sensibly mean.
+    if (!_pageRect.contains(stage) && _hitHandle(stage) == null) {
+      if (!_shiftHeld) controller.clearSelection();
+      _mode = _DragMode.none;
+      return;
+    }
+
+    var handle = _hitHandle(stage);
+    if (handle != null) {
+      _beginTransform(handle == _Handle.rotate ? _DragMode.rotate : _DragMode.resize,
+          handle);
+      return;
+    }
+
+    // A player inside the selected team, before anything else on the canvas:
+    // once a team is selected, dragging one of its dots moves that player, and
+    // dragging anywhere else moves the whole team.
+    var team = _selectedTeam();
+    if (team != null) {
+      var index = _hitPlayer(team, doc);
+      if (index != null) {
+        _mode = _DragMode.player;
+        _playerIndex = index;
+        _playerGrab = doc - team.centreAt(team.players[index], controller.frame);
+        // Clicking a player is also how the timeline is pointed at them: a
+        // player has no id and cannot be selected, so this is the only thing
+        // that says whose keyframes the controls are about.
+        controller.focusedPlayer = index;
+        controller.beginInteraction();
+        return;
+      }
+    }
+
+    var element = _hitElement(doc);
+    if (element == null) {
+      if (!_shiftHeld) controller.clearSelection();
+      _mode = _DragMode.marquee;
+      setState(() => _marquee = Rect.fromPoints(doc, doc));
+      return;
+    }
+
+    // A button is pressed rather than selected when it is already the
+    // selection -- so a button can be designed like anything else, and then
+    // tried by clicking it again.
+    if (element is ButtonElement &&
+        controller.selection.length == 1 &&
+        controller.selection.first == element.id) {
+      var url = controller.runButtonAction(element.action);
+      if (url != null && url.isNotEmpty) widget.onButtonLink?.call(url);
+      _mode = _DragMode.none;
+      return;
+    }
+
+    if (_shiftHeld) {
+      controller.toggleSelected(element.id);
+    } else if (!controller.selection.contains(element.id)) {
+      controller.selectOnly(element.id);
+    }
+    _beginTransform(_DragMode.move, null);
+  }
+
+  /// _selectedTeam is the one selected element, when it is a team.
+  TeamElement? _selectedTeam() {
+    var selected = controller.selected;
+    return selected is TeamElement ? selected : null;
+  }
+
+  /// _hitPlayer is which of [team]'s players is under [doc], or null.
+  ///
+  /// Searched back to front, so the player drawn on top is the one picked up
+  /// -- which is the same rule the element hit test uses, and the reason Bring
+  /// forward is worth having on a crowded midfield.
+  ///
+  /// A locked player is not hittable. That is what locking is for: pinning the
+  /// back four so a run can be dragged through them without knocking one out
+  /// of position.
+  int? _hitPlayer(TeamElement team, Offset doc) {
+    var rx = team.dotWidth / 2;
+    var ry = team.dotHeight / 2;
+    if (rx <= 0 || ry <= 0) return null;
+
+    for (var i = team.players.length - 1; i >= 0; i--) {
+      var spot = team.players[i];
+      if (spot.locked || spot.hidden) continue;
+      // Where they are on this frame, not where they rest: on frame 20 of a
+      // run, the dot the pointer is over is the one that has moved.
+      var d = doc - team.centreAt(spot, controller.frame);
+      // Against the ellipse rather than a square, so the gaps between dots in
+      // a tight back four stay gaps.
+      if ((d.dx * d.dx) / (rx * rx) + (d.dy * d.dy) / (ry * ry) <= 1) return i;
+    }
+    return null;
+  }
+
+  /// _applyPlayerMove drags one player of the selected team.
+  ///
+  /// The position is written back as the fraction of the team's box that it is
+  /// stored as, which is what keeps a player where they were put when the team
+  /// is later moved or resized.
+  void _applyPlayerMove(Offset doc) {
+    var team = _selectedTeam();
+    if (team == null ||
+        _playerIndex < 0 ||
+        _playerIndex >= team.players.length) {
+      return;
+    }
+    var spot = team.players[_playerIndex];
+    var at = doc - _playerGrab;
+
+    // A player animates like anything else: while the document is animated
+    // and either auto-keyframe is on or this player already moves, the drag
+    // writes a keyframe rather than changing where they line up. That is what
+    // makes a tactics diagram possible at all -- the winger's run is one
+    // player's keyframes, not the team's.
+    var animating = controller.document.isAnimated &&
+        (controller.autoKeyframe || (spot.track?.isEmpty == false));
+
+    if (animating) {
+      var rest = team.centreOf(spot);
+      // Seeded at the start, so a drag at frame 12 reads as a run from where
+      // he was rather than as having moved him for the whole document. See
+      // ElementTrack.seededFor.
+      var track = (spot.track ?? ElementTrack.empty)
+          .seededFor(controller.frame);
+      var pose = track.at(controller.frame);
+      controller.replaceElement(
+        team.withPlayer(
+          _playerIndex,
+          spot.copyWith(
+            track: track.withKey(pose.copyWith(
+              frame: controller.frame,
+              dx: at.dx - rest.dx,
+              dy: at.dy - rest.dy,
+            )),
+          ),
+        ),
+        transient: true,
+      );
+      return;
+    }
+
+    var w = team.width == 0 ? 1.0 : team.width;
+    var h = team.height == 0 ? 1.0 : team.height;
+    controller.replaceElement(
+      team.withPlayer(
+        _playerIndex,
+        spot.copyWith(dx: (at.dx - team.x) / w, dy: (at.dy - team.y) / h),
+      ),
+      transient: true,
+    );
+  }
+
+  void _beginTransform(_DragMode mode, _Handle? handle) {
+    _mode = mode;
+    _handle = handle;
+    _startBounds = {
+      for (var e in controller.selectedElements) e.id: e.bounds,
+    };
+    _startRotation = {
+      for (var e in controller.selectedElements) e.id: e.rotation,
+    };
+    controller.beginInteraction();
+  }
+
+  void _onPointerMove(PointerMoveEvent event) {
+    if (_mode == _DragMode.none) {
+      _updateHover(event.localPosition);
+      return;
+    }
+
+    if (_mode == _DragMode.pan) {
+      var delta = event.localPosition - _dragStart;
+      _setPan(Offset(_startPan.dx + delta.dx, _startPan.dy + delta.dy));
+      return;
+    }
+
+    var doc = _toDocument(event.localPosition);
+    var delta = doc - _dragStart;
+
+    switch (_mode) {
+      case _DragMode.move:
+        _applyMove(delta);
+      case _DragMode.resize:
+        _applyResize(delta);
+      case _DragMode.rotate:
+        _applyRotate(doc);
+      case _DragMode.marquee:
+        setState(() => _marquee = Rect.fromPoints(_dragStart, doc));
+      case _DragMode.player:
+        _applyPlayerMove(doc);
+      default:
+        break;
+    }
+  }
+
+  void _applyMove(Offset delta) {
+    // Shift constrains to one axis, which is how every editor behaves and is
+    // the only way to move something along a line without a grid.
+    if (_shiftHeld) {
+      delta = delta.dx.abs() > delta.dy.abs()
+          ? Offset(delta.dx, 0)
+          : Offset(0, delta.dy);
+    }
+    var next = document;
+    for (var entry in _startBounds.entries) {
+      var element = next.elementById(entry.key);
+      if (element == null || element.locked) continue;
+      // Through the controller rather than straight onto the base, because an
+      // element that is being animated is being posed rather than relocated --
+      // see CanvasController.posesRatherThanMoves, which is the whole reason
+      // dragging an animated element used to appear to do nothing.
+      next = next.withElement(controller.movedTo(
+          element, entry.value.topLeft + delta));
+    }
+    controller.apply(next, transient: true);
+  }
+
+  void _applyResize(Offset delta) {
+    var handle = _handle;
+    if (handle == null) return;
+
+    // The drag is rotated into the element's own frame, so pulling the right
+    // edge of a tilted element makes it wider rather than moving it sideways.
+    var a = -_rotationOfSelection;
+    if (a != 0) {
+      delta = Offset(delta.dx * math.cos(a) - delta.dy * math.sin(a),
+          delta.dx * math.sin(a) + delta.dy * math.cos(a));
+    }
+
+    var next = document;
+    for (var entry in _startBounds.entries) {
+      var element = next.elementById(entry.key);
+      if (element == null || element.locked) continue;
+      var start = entry.value;
+
+      var left = start.left + (handle.movesLeft ? delta.dx : 0);
+      var right = start.right + (handle.movesRight ? delta.dx : 0);
+      var top = start.top + (handle.movesTop ? delta.dy : 0);
+      var bottom = start.bottom + (handle.movesBottom ? delta.dy : 0);
+
+      // Shift keeps the proportions, driven by whichever axis moved further so
+      // that a corner drag feels like one gesture rather than two.
+      if (_shiftHeld && start.height > 0) {
+        var aspect = start.width / start.height;
+        if ((right - left).abs() > (bottom - top).abs() * aspect) {
+          var height = (right - left).abs() / aspect;
+          handle.movesTop ? top = bottom - height : bottom = top + height;
+        } else {
+          var width = (bottom - top).abs() * aspect;
+          handle.movesLeft ? left = right - width : right = left + width;
+        }
+      }
+
+      // Minimums rather than allowing an element to be dragged inside out.
+      // A negative width is a rectangle that draws nothing and cannot be
+      // grabbed again, which is a way to lose an element with no way back.
+      const minimum = 8.0;
+      if (right - left < minimum) {
+        handle.movesLeft ? left = right - minimum : right = left + minimum;
+      }
+      if (bottom - top < minimum) {
+        handle.movesTop ? top = bottom - minimum : bottom = top + minimum;
+      }
+
+      next = next.withElement(element.withBase(
+          x: left, y: top, width: right - left, height: bottom - top));
+    }
+    controller.apply(next, transient: true);
+  }
+
+  void _applyRotate(Offset doc) {
+    var bounds = _selectionBounds;
+    if (bounds == null) return;
+    var centre = bounds.center;
+
+    var from = math.atan2(_dragStart.dy - centre.dy, _dragStart.dx - centre.dx);
+    var to = math.atan2(doc.dy - centre.dy, doc.dx - centre.dx);
+    var degrees = (to - from) * 180 / math.pi;
+
+    var next = document;
+    for (var entry in _startRotation.entries) {
+      var element = next.elementById(entry.key);
+      if (element == null || element.locked) continue;
+      var rotation = entry.value + degrees;
+      // Shift snaps to fifteen degrees, which covers every angle anybody
+      // actually wants and makes "put it back to straight" reachable.
+      if (_shiftHeld) rotation = (rotation / 15).round() * 15;
+      next = next.withElement(element.withBase(rotation: rotation));
+    }
+    controller.apply(next, transient: true);
+  }
+
+  void _onPointerUp(PointerUpEvent event) {
+    _playerIndex = -1;
+    if (_mode == _DragMode.marquee) {
+      var box = _marquee;
+      if (box != null && box.width > 3 && box.height > 3) {
+        for (var e in document.elements) {
+          if (!e.locked && e.visible && box.overlaps(e.bounds)) {
+            controller.toggleSelected(e.id);
+          }
+        }
+      }
+      setState(() => _marquee = null);
+    }
+    if (_mode == _DragMode.move ||
+        _mode == _DragMode.resize ||
+        _mode == _DragMode.rotate) {
+      controller.endInteraction();
+    }
+    _mode = _DragMode.none;
+    _handle = null;
+  }
+
+  /// _updateHover keeps the renderer told which button is under the pointer.
+  void _updateHover(Offset stage) {
+    var element = _hitElement(_toDocument(stage));
+    var id = element is ButtonElement ? element.id : null;
+    if (id != controller.hoveredButton) {
+      controller.hoveredButton = id;
+      setState(() {});
+    }
+  }
+
+  void _onScroll(PointerScrollEvent event) {
+    // Zoom about the pointer rather than about the middle, so scrolling in on
+    // a corner of the pitch keeps that corner where it is instead of sending
+    // it off screen.
+    var before = _toDocument(event.localPosition);
+    controller.zoomBy(event.scrollDelta.dy > 0 ? 0.9 : 1.1);
+    var after = _toDocument(event.localPosition);
+    var shift = (after - before) * _scale;
+    _setPan(Offset(controller.pan.dx + shift.dx, controller.pan.dy + shift.dy));
+  }
+
+  // ------------------------------------------------------------------------
+
+  /// _onKey is the canvas's keyboard.
+  ///
+  /// The arrows scrub rather than nudge, and that is a deliberate swap. This
+  /// is a page for building animations, where stepping a frame at a time is
+  /// the thing done constantly and moving something by a pixel is the thing
+  /// done occasionally -- so the unmodified key is the frequent one. Nudging
+  /// moves to Alt, in all four directions rather than only the two the arrows
+  /// gave up, because a nudge that worked one way with a modifier and another
+  /// way without would be worse than either.
+  ///
+  /// Space plays and stops. It used to hold the view for panning, which the
+  /// pan tool now does visibly and discoverably -- see CanvasTool.
+  KeyEventResult _onKey(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+    var keys = HardwareKeyboard.instance;
+    var nudging = keys.isAltPressed;
+    var step = keys.isShiftPressed ? 10.0 : 1.0;
+
+    switch (event.logicalKey) {
+      case LogicalKeyboardKey.space:
+        controller.togglePlay();
+      case LogicalKeyboardKey.arrowLeft:
+        nudging ? controller.nudgeSelected(-step, 0) : controller.stepFrame(-1);
+      case LogicalKeyboardKey.arrowRight:
+        nudging ? controller.nudgeSelected(step, 0) : controller.stepFrame(1);
+      case LogicalKeyboardKey.arrowUp:
+        nudging ? controller.nudgeSelected(0, -step) : controller.stepFrame(-10);
+      case LogicalKeyboardKey.arrowDown:
+        nudging ? controller.nudgeSelected(0, step) : controller.stepFrame(10);
+      case LogicalKeyboardKey.delete:
+      case LogicalKeyboardKey.backspace:
+        controller.deleteSelected();
+      case LogicalKeyboardKey.escape:
+        controller.clearSelection();
+      default:
+        return KeyEventResult.ignored;
+    }
+    return KeyEventResult.handled;
+  }
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+        builder: (context, constraints) {
+          _visible = Size(constraints.maxWidth, constraints.maxHeight);
+          var content = _contentSize(_visible);
+          _viewport = content;
+
+          Widget painter = SizedBox(
+            width: content.width,
+            height: content.height,
+            child: Listener(
+              onPointerDown: _onPointerDown,
+              onPointerMove: _onPointerMove,
+              onPointerUp: _onPointerUp,
+              onPointerHover: (e) => _updateHover(e.localPosition),
+              onPointerSignal: _onPointerSignal,
+              child: MouseRegion(
+                cursor: _cursor(),
+                // Clipped to the stage's own box as well as to the frame
+                // inside it. A CustomPainter is free to draw outside the
+                // bounds it is given and nothing stops it, so without this a
+                // zoomed canvas painted straight over the sidebar, the
+                // settings band and the timeline -- and took the zoom control
+                // with them, leaving no way back out.
+                child: ClipRect(
+                  child: CustomPaint(
+                    painter: _StagePainter(
+                      page: _pageRect,
+                      document: document,
+                      frame: controller.frame,
+                      scale: _scale,
+                      origin: _origin,
+                      images: controller.images,
+                      hoveredButton: controller.hoveredButton,
+                      selection: controller.selection,
+                      showHelpers: controller.showHelpers,
+                      selectionBounds: _selectionBounds,
+                      selectionRotation: _rotationOfSelection,
+                      handleFor: _handlePosition,
+                      marquee: _marquee,
+                    ),
+                    size: Size.infinite,
+                  ),
+                ),
+              ),
+            ),
+          );
+
+          // Only scrollable when there is something to scroll. A scroll view
+          // that never scrolls still claims the wheel, and the wheel is how
+          // the pan tool zooms.
+          if (content.height > _visible.height) {
+            painter = Scrollbar(
+              controller: _scroll,
+              thumbVisibility: true,
+              child: SingleChildScrollView(
+                controller: _scroll,
+                child: painter,
+              ),
+            );
+          }
+
+          return Focus(focusNode: _focus, onKeyEvent: _onKey, child: painter);
+        },
+      );
+
+  /// _onPointerSignal decides whether the wheel belongs to this stage or to
+  /// the scroll view around it.
+  ///
+  /// The pan tool claims it, through the resolver, so zooming wins over
+  /// scrolling. The select tool does not claim it at all -- which is what lets
+  /// a tall fit-width canvas be scrolled with the wheel, and is still "the
+  /// select tool does not move the view", because scrolling a page that is
+  /// too long to fit is not the same as the view drifting under a careful
+  /// adjustment.
+  void _onPointerSignal(PointerSignalEvent signal) {
+    if (signal is! PointerScrollEvent) return;
+    if (controller.tool != CanvasTool.pan) return;
+    GestureBinding.instance.pointerSignalResolver.register(
+        signal, (event) => _onScroll(event as PointerScrollEvent));
+  }
+
+  MouseCursor _cursor() {
+    if (_mode == _DragMode.pan) return SystemMouseCursors.grabbing;
+    if (controller.tool == CanvasTool.pan) return SystemMouseCursors.grab;
+    if (_mode == _DragMode.rotate) return SystemMouseCursors.grabbing;
+    if (_mode == _DragMode.move) return SystemMouseCursors.move;
+    return SystemMouseCursors.basic;
+  }
+}
+
+/// _StagePainter draws the document, the page edge, the handles and the
+/// marquee.
+class _StagePainter extends CustomPainter {
+  final CanvasDocument document;
+  final int frame;
+
+  /// scale is document units to screen pixels -- the fitted size times the
+  /// reader's zoom, already combined by the stage.
+  final double scale;
+  final Offset origin;
+  final CanvasImageSource images;
+  final String? hoveredButton;
+  final Set<String> selection;
+  final Rect? selectionBounds;
+  final double selectionRotation;
+  final Offset Function(_Handle, Rect) handleFor;
+  final Rect? marquee;
+
+  /// page is the frame the canvas is drawn inside. Everything the document
+  /// contributes is clipped to it; the shadow and the border are drawn outside
+  /// the clip, which is what keeps the edge of the canvas visible at every
+  /// zoom.
+  final Rect page;
+
+  /// showHelpers draws the selection box, the handles and the rotation ring.
+  ///
+  /// Passed in rather than being faked by blanking the selection, which is how
+  /// this was first written and did nothing at all: _paintSelection reads
+  /// selectionBounds, not the selection, so emptying the set left every mark
+  /// exactly where it was.
+  final bool showHelpers;
+
+  const _StagePainter({
+    required this.page,
+    required this.showHelpers,
+    required this.document,
+    required this.frame,
+    required this.scale,
+    required this.origin,
+    required this.images,
+    required this.hoveredButton,
+    required this.selection,
+    required this.selectionBounds,
+    required this.selectionRotation,
+    required this.handleFor,
+    required this.marquee,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // A shadow under the frame, so the canvas reads as a sheet on a desk
+    // rather than as a region of the window -- which matters most when the
+    // document's own background happens to be the same colour as the editor's.
+    canvas.drawRect(
+        page.shift(const Offset(0, 6)),
+        Paint()
+          ..color = const Color(0x55000000)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12));
+
+    // Everything the document contributes goes inside the frame, at whatever
+    // zoom, including the selection handles. The frame itself never moves --
+    // see CanvasStage._pageRect.
+    canvas.save();
+    canvas.clipRect(page);
+
+    var docSize = document.size.size;
+    canvas.save();
+    canvas.translate(origin.dx, origin.dy);
+    canvas.scale(scale);
+    paintCanvasDocument(canvas, document,
+        frame: frame, images: images, hoveredButton: hoveredButton);
+    canvas.restore();
+
+    _paintSelection(canvas);
+
+    if (marquee != null) {
+      var box = Rect.fromPoints(marquee!.topLeft * scale + origin,
+          marquee!.bottomRight * scale + origin);
+      canvas.drawRect(box, Paint()..color = const Color(0x223D7EFF));
+      canvas.drawRect(
+          box,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1
+            ..color = const Color(0xAA3D7EFF));
+    }
+
+    canvas.restore();
+
+    // The border last and outside the clip, so it is a crisp full-width line
+    // rather than a half-width one sitting on the edge of the clip.
+    canvas.drawRect(
+        page,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1
+          ..color = const Color(0x55FFFFFF));
+
+    // A hint that there is more of the canvas outside the frame. Drawn only
+    // when there is: at zoom 1 the document exactly fills the frame and a
+    // shadow round the inside would be saying something untrue.
+    if (docSize.width * scale > page.width + 1) {
+      canvas.drawRect(
+        page,
+        Paint()
+          ..shader = ui.Gradient.radial(
+            page.center,
+            math.max(page.width, page.height) * 0.7,
+            [const Color(0x00000000), const Color(0x33000000)],
+            [0.7, 1.0],
+          ),
+      );
+    }
+  }
+
+  void _paintSelection(Canvas canvas) {
+    if (!showHelpers) return;
+    var bounds = selectionBounds;
+    if (bounds == null) return;
+
+    var centre = bounds.center * scale + origin;
+    var half = Offset(bounds.width, bounds.height) * scale / 2;
+
+    canvas.save();
+    canvas.translate(centre.dx, centre.dy);
+    if (selectionRotation != 0) canvas.rotate(selectionRotation);
+    var box = Rect.fromCenter(
+        center: Offset.zero, width: half.dx * 2, height: half.dy * 2);
+    canvas.drawRect(
+        box,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1
+          ..color = const Color(0xFF3D7EFF));
+    // The line out to the rotate ring, so it reads as attached to the
+    // selection rather than as a stray dot floating above it.
+    canvas.drawLine(
+        Offset(0, -half.dy),
+        Offset(0, -half.dy - _rotateHandleGap),
+        Paint()
+          ..strokeWidth = 1
+          ..color = const Color(0xFF3D7EFF));
+    canvas.restore();
+
+    var fill = Paint()..color = const Color(0xFFFFFFFF);
+    var edge = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5
+      ..color = const Color(0xFF3D7EFF);
+
+    for (var handle in _Handle.values) {
+      var at = handleFor(handle, bounds);
+      if (handle == _Handle.rotate) {
+        canvas.drawCircle(at, _handleSize / 2 + 1, fill);
+        canvas.drawCircle(at, _handleSize / 2 + 1, edge);
+        continue;
+      }
+      var square = Rect.fromCenter(
+          center: at, width: _handleSize, height: _handleSize);
+      canvas.drawRect(square, fill);
+      canvas.drawRect(square, edge);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_StagePainter old) =>
+      old.document != document ||
+      old.frame != frame ||
+      old.scale != scale ||
+      old.origin != origin ||
+      old.page != page ||
+      old.showHelpers != showHelpers ||
+      old.hoveredButton != hoveredButton ||
+      old.selection != selection ||
+      old.selectionBounds != selectionBounds ||
+      old.marquee != marquee;
+}

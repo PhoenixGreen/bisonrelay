@@ -42,6 +42,21 @@ class PluginSettingsRegistry {
 
   static final Map<PluginCapability, PluginSettingsBuilder> _sections = {};
 
+  /// _features holds sections that belong to no capability at all, keyed by a
+  /// name so registering twice replaces rather than duplicates.
+  ///
+  /// Some of what can be turned off is not a plugin and never will be. Canvas
+  /// is app code behind a switch: it provides no service and consumes none, so
+  /// there is no capability to hang its settings on -- but the page it belongs
+  /// on is still this one, because this is where "what parts of the app are
+  /// turned on" is answered.
+  ///
+  /// Kept separate from the capability sections rather than inventing a
+  /// capability for it. A fake capability would have to appear in the enum,
+  /// which is a statement about what the app consumes, and Canvas consumes
+  /// nothing.
+  static final Map<String, PluginSettingsBuilder> _features = {};
+
   /// register attaches [builder] to [capability]. Registering the same
   /// capability twice replaces the first, which is what a hot reload does and
   /// is harmless.
@@ -60,6 +75,18 @@ class PluginSettingsRegistry {
               _sections[capability] != null)
             _sections[capability]!,
       ];
+
+  /// registerFeature attaches a section that belongs to no capability.
+  ///
+  /// Called once at startup from the feature's own entry point, exactly as
+  /// [register] is, so the settings page still names nothing.
+  static void registerFeature(String name, PluginSettingsBuilder builder) =>
+      _features[name] = builder;
+
+  /// features returns the capability-free sections, in the order they were
+  /// registered -- which is the order main() sets them up in, and is therefore
+  /// stable across runs.
+  static List<PluginSettingsBuilder> features() => _features.values.toList();
 
   /// orphaned returns the sections whose capability nothing installed
   /// provides. These are the settings that have to appear somewhere else on

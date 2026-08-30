@@ -1,0 +1,1419 @@
+import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/background_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
+import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
+import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/controls.dart';
+import 'package:bruig/plugin_system/canvas/ui/procedural_settings.dart';
+import 'package:flutter/material.dart';
+
+// element_settings.dart is the controls for whichever element is selected.
+//
+// One function per element kind, each returning the groups that go into the
+// settings bar. They are grouped by what somebody is thinking about rather
+// than by which class the field is declared on -- so a text element's colour
+// sits with its outline and its shadow under "Colour", not with its font size
+// under "Type", even though all four are fields of the same TextSpec.
+//
+// Every control writes a transient edit and commits on release, so dragging a
+// slider updates the canvas continuously and lands as one undo step. That
+// pairing is why almost every control here passes both onChanged and
+// onCommit; a control that only did the first would make an undo history
+// forty steps long for one adjustment.
+
+/// elementSettings is the groups for [element].
+List<Widget> elementSettings(
+  BuildContext context,
+  CanvasController controller,
+  CanvasElement element,
+) {
+  // Opening the undo step here rather than leaving it to each control.
+  // beginInteraction is idempotent, and forgetting it is silent: a transient
+  // edit made outside an interaction is never pushed onto the history, so the
+  // control works and is simply not undoable. With forty controls in this
+  // file, doing it once is the only way it stays true.
+  void write(CanvasElement next) {
+    controller.beginInteraction();
+    controller.replaceElement(next, transient: true);
+  }
+  void commit() => controller.endInteraction();
+  void begin() => controller.beginInteraction();
+
+  return [
+    _positionGroup(controller, element, write, begin, commit),
+    ...switch (element) {
+      TextElement e => _textSettings(e, write, begin, commit),
+      ShapeElement e => _shapeSettings(e, write, begin, commit),
+      LineElement e => _lineSettings(e, write, begin, commit),
+      ImageElement e => _imageSettings(e, write, begin, commit),
+      ChartElement e => _chartSettings(e, write, begin, commit),
+      TableElement e => _tableSettings(e, write, begin, commit),
+      ButtonElement e =>
+        _buttonSettings(controller, e, write, begin, commit),
+      BackgroundElement e => [
+          ProceduralSettings(
+            spec: e.spec,
+            onChanged: (spec) => write(e.copyWith(spec: spec)),
+            onBegin: begin,
+            onCommit: commit,
+          ),
+          CanvasControlGroup(label: "Panel", children: [
+            CanvasNumberField(
+              label: "Radius",
+              value: e.cornerRadius,
+              min: 0,
+              max: 400,
+              onChanged: (v) => write(e.copyWith(cornerRadius: v)),
+              onCommit: commit,
+            ),
+          ]),
+        ],
+      TeamElement e => _teamSettings(e, write, begin, commit),
+      _ => const <Widget>[],
+    },
+  ];
+}
+
+typedef _Write = void Function(CanvasElement);
+
+/// _positionGroup is what every element has: where it is, how big, how turned,
+/// and whether it can be touched.
+Widget _positionGroup(CanvasController controller, CanvasElement e,
+    _Write write, VoidCallback begin, VoidCallback commit) {
+  return CanvasControlGroup(label: e.kind.label, children: [
+    CanvasNumberField(
+      label: "X",
+      value: e.x,
+      onChanged: (v) => write(e.withBase(x: v)),
+      onCommit: commit,
+    ),
+    CanvasNumberField(
+      label: "Y",
+      value: e.y,
+      onChanged: (v) => write(e.withBase(y: v)),
+      onCommit: commit,
+    ),
+    CanvasNumberField(
+      label: "W",
+      value: e.width,
+      min: 1,
+      onChanged: (v) => write(e.withBase(width: v)),
+      onCommit: commit,
+    ),
+    CanvasNumberField(
+      label: "H",
+      value: e.height,
+      min: 1,
+      onChanged: (v) => write(e.withBase(height: v)),
+      onCommit: commit,
+    ),
+    CanvasNumberField(
+      label: "Angle",
+      value: e.rotation,
+      min: -3600,
+      max: 3600,
+      width: 56,
+      suffix: "°",
+      onChanged: (v) => write(e.withBase(rotation: v)),
+      onCommit: commit,
+    ),
+    CanvasSlider(
+      label: "Opacity",
+      value: e.opacity,
+      onChanged: (v) {
+        begin();
+        write(e.withBase(opacity: v));
+      },
+      onCommit: commit,
+    ),
+    CanvasIconButton(
+      icon: e.locked ? Icons.lock_outline : Icons.lock_open_outlined,
+      tooltip: e.locked ? "Unlock" : "Lock in place",
+      active: e.locked,
+      onPressed: () {
+        begin();
+        write(e.withBase(locked: !e.locked));
+        commit();
+      },
+    ),
+    CanvasIconButton(
+      icon: e.visible ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+      tooltip: e.visible ? "Hide" : "Show",
+      onPressed: () {
+        begin();
+        write(e.withBase(visible: !e.visible));
+        commit();
+      },
+    ),
+    CanvasIconButton(
+      icon: Icons.flip_to_front,
+      tooltip: "Bring to front",
+      onPressed: () => controller.apply(controller.document.bringToFront(e.id)),
+    ),
+    CanvasIconButton(
+      icon: Icons.flip_to_back,
+      tooltip: "Send to back",
+      onPressed: () => controller.apply(controller.document.sendToBack(e.id)),
+    ),
+  ]);
+}
+
+/// _typeGroups is the shared type controls, used by every element that draws
+/// words.
+List<Widget> _typeGroups(
+  TextSpec spec,
+  ValueChanged<TextSpec> onChanged,
+  VoidCallback begin,
+  VoidCallback commit, {
+  String label = "Type",
+  bool includeCase = true,
+}) =>
+    [
+      CanvasControlGroup(label: label, children: [
+        CanvasDropdown<String>(
+          label: "Font",
+          value: spec.fontFamily,
+          width: 118,
+          options: [for (var f in canvasFonts) (f, f)],
+          onChanged: (v) {
+            begin();
+            onChanged(spec.copyWith(fontFamily: v));
+            commit();
+          },
+        ),
+        CanvasNumberField(
+          label: "Size",
+          value: spec.fontSize,
+          min: 1,
+          max: 800,
+          width: 54,
+          onChanged: (v) => onChanged(spec.copyWith(fontSize: v)),
+          onCommit: commit,
+        ),
+        CanvasDropdown<int>(
+          label: "Weight",
+          value: spec.weight,
+          width: 82,
+          options: const [
+            (100, "Thin"),
+            (300, "Light"),
+            (400, "Regular"),
+            (500, "Medium"),
+            (600, "Semibold"),
+            (700, "Bold"),
+            (800, "Extrabold"),
+            (900, "Black"),
+          ],
+          onChanged: (v) {
+            begin();
+            onChanged(spec.copyWith(weight: v));
+            commit();
+          },
+        ),
+        CanvasIconButton(
+          icon: Icons.format_italic,
+          tooltip: "Italic",
+          active: spec.italic,
+          onPressed: () {
+            begin();
+            onChanged(spec.copyWith(italic: !spec.italic));
+            commit();
+          },
+        ),
+        CanvasIconButton(
+          icon: Icons.format_underlined,
+          tooltip: "Underline",
+          active: spec.underline,
+          onPressed: () {
+            begin();
+            onChanged(spec.copyWith(underline: !spec.underline));
+            commit();
+          },
+        ),
+      ]),
+      CanvasControlGroup(label: "Spacing", children: [
+        CanvasNumberField(
+          label: "Letter",
+          value: spec.letterSpacing,
+          min: -50,
+          max: 200,
+          decimals: 1,
+          width: 54,
+          onChanged: (v) => onChanged(spec.copyWith(letterSpacing: v)),
+          onCommit: commit,
+        ),
+        CanvasNumberField(
+          label: "Line",
+          value: spec.lineHeight,
+          min: 0.5,
+          max: 5,
+          decimals: 2,
+          width: 54,
+          onChanged: (v) => onChanged(spec.copyWith(lineHeight: v)),
+          onCommit: commit,
+        ),
+        CanvasDropdown<TextAlignSpec>(
+          label: "Align",
+          value: spec.align,
+          width: 92,
+          options: [for (var a in TextAlignSpec.values) (a, a.label)],
+          onChanged: (v) {
+            begin();
+            onChanged(spec.copyWith(align: v));
+            commit();
+          },
+        ),
+        CanvasDropdown<VerticalAlignSpec>(
+          label: "Vertical",
+          value: spec.verticalAlign,
+          width: 86,
+          options: [for (var a in VerticalAlignSpec.values) (a, a.label)],
+          onChanged: (v) {
+            begin();
+            onChanged(spec.copyWith(verticalAlign: v));
+            commit();
+          },
+        ),
+        if (includeCase)
+          CanvasDropdown<TextCase>(
+            label: "Case",
+            value: spec.textCase,
+            width: 96,
+            options: [for (var c in TextCase.values) (c, c.label)],
+            onChanged: (v) {
+              begin();
+              onChanged(spec.copyWith(textCase: v));
+              commit();
+            },
+          ),
+      ]),
+      CanvasControlGroup(label: "Colour", children: [
+        CanvasColorButton(
+          label: "Text",
+          color: spec.color,
+          onChanged: (c) {
+            begin();
+            onChanged(spec.copyWith(color: c));
+            commit();
+          },
+        ),
+        CanvasNumberField(
+          label: "Outline",
+          value: spec.outlineWidth,
+          min: 0,
+          max: 60,
+          decimals: 1,
+          width: 54,
+          onChanged: (v) => onChanged(spec.copyWith(outlineWidth: v)),
+          onCommit: commit,
+        ),
+        CanvasColorButton(
+          label: "Line",
+          color: spec.outlineColor,
+          onChanged: (c) {
+            begin();
+            onChanged(spec.copyWith(outlineColor: c));
+            commit();
+          },
+        ),
+        CanvasNumberField(
+          label: "Shadow",
+          value: spec.shadowBlur,
+          min: 0,
+          max: 120,
+          width: 54,
+          onChanged: (v) => onChanged(spec.copyWith(shadowBlur: v)),
+          onCommit: commit,
+        ),
+        CanvasColorButton(
+          label: "Colour",
+          color: spec.shadowColor,
+          onChanged: (c) {
+            begin();
+            onChanged(spec.copyWith(shadowColor: c));
+            commit();
+          },
+        ),
+      ]),
+    ];
+
+/// _boxGroup is the shared frame controls: fill, border and padding.
+Widget _boxGroup(BoxSpec box, ValueChanged<BoxSpec> onChanged,
+        VoidCallback begin, VoidCallback commit,
+        {String label = "Box"}) =>
+    CanvasControlGroup(label: label, children: [
+      CanvasColorButton(
+        label: "Fill",
+        color: box.fill,
+        onChanged: (c) {
+          begin();
+          onChanged(box.copyWith(fill: c));
+          commit();
+        },
+      ),
+      CanvasNumberField(
+        label: "Border",
+        value: box.borderWidth,
+        min: 0,
+        max: 200,
+        decimals: 1,
+        width: 54,
+        onChanged: (v) => onChanged(box.copyWith(borderWidth: v)),
+        onCommit: commit,
+      ),
+      CanvasColorButton(
+        label: "Colour",
+        color: box.borderColor,
+        onChanged: (c) {
+          begin();
+          onChanged(box.copyWith(borderColor: c));
+          commit();
+        },
+      ),
+      CanvasNumberField(
+        label: "Radius",
+        value: box.borderRadius,
+        min: 0,
+        max: 400,
+        width: 54,
+        onChanged: (v) => onChanged(box.copyWith(borderRadius: v)),
+        onCommit: commit,
+      ),
+      CanvasNumberField(
+        label: "Padding",
+        value: box.padding,
+        min: 0,
+        max: 400,
+        width: 54,
+        onChanged: (v) => onChanged(box.copyWith(padding: v)),
+        onCommit: commit,
+      ),
+    ]);
+
+List<Widget> _textSettings(TextElement e, _Write write, VoidCallback begin,
+        VoidCallback commit) =>
+    [
+      CanvasControlGroup(label: "Text", children: [
+        CanvasTextField(
+          label: "Content",
+          value: e.text,
+          width: 220,
+          maxLines: 2,
+          onChanged: (v) => write(e.copyWith(text: v)),
+          onCommit: commit,
+        ),
+        CanvasToggle(
+          label: "Fit to box",
+          value: e.autoSize,
+          onChanged: (v) {
+            begin();
+            write(e.copyWith(autoSize: v));
+            commit();
+          },
+        ),
+      ]),
+      ..._typeGroups(e.textSpec, (spec) => write(e.copyWith(textSpec: spec)),
+          begin, commit),
+      _boxGroup(e.box, (box) => write(e.copyWith(box: box)), begin, commit),
+    ];
+
+List<Widget> _shapeSettings(ShapeElement e, _Write write, VoidCallback begin,
+        VoidCallback commit) =>
+    [
+      CanvasControlGroup(label: "Shape", children: [
+        CanvasDropdown<ShapeKind>(
+          label: "Shape",
+          value: e.shape,
+          width: 128,
+          options: [for (var s in ShapeKind.values) (s, s.label)],
+          onChanged: (v) {
+            begin();
+            write(e.copyWith(shape: v));
+            commit();
+          },
+        ),
+        CanvasColorButton(
+          label: "Fill",
+          color: e.fill,
+          onChanged: (c) {
+            begin();
+            write(e.copyWith(fill: c));
+            commit();
+          },
+        ),
+        CanvasNumberField(
+          label: "Stroke",
+          value: e.strokeWidth,
+          min: 0,
+          max: 200,
+          decimals: 1,
+          width: 54,
+          onChanged: (v) => write(e.copyWith(strokeWidth: v)),
+          onCommit: commit,
+        ),
+        CanvasColorButton(
+          label: "Colour",
+          color: e.strokeColor,
+          onChanged: (c) {
+            begin();
+            write(e.copyWith(strokeColor: c));
+            commit();
+          },
+        ),
+        CanvasNumberField(
+          label: "Radius",
+          value: e.cornerRadius,
+          min: 0,
+          max: 400,
+          width: 54,
+          onChanged: (v) => write(e.copyWith(cornerRadius: v)),
+          onCommit: commit,
+        ),
+        if (e.shape.hasPoints) ...[
+          CanvasNumberField(
+            label: "Points",
+            value: e.points.toDouble(),
+            min: 3,
+            max: 24,
+            width: 50,
+            onChanged: (v) => write(e.copyWith(points: v.round())),
+            onCommit: commit,
+          ),
+          CanvasSlider(
+            label: "Depth",
+            value: e.innerRatio,
+            min: 0.05,
+            max: 0.95,
+            onChanged: (v) {
+              begin();
+              write(e.copyWith(innerRatio: v));
+            },
+            onCommit: commit,
+          ),
+        ],
+      ]),
+      CanvasControlGroup(label: "Label", children: [
+        CanvasTextField(
+          label: "Text inside",
+          value: e.text,
+          width: 150,
+          onChanged: (v) => write(e.copyWith(text: v)),
+          onCommit: commit,
+        ),
+      ]),
+      if (e.text.isNotEmpty)
+        ..._typeGroups(e.textSpec, (spec) => write(e.copyWith(textSpec: spec)),
+            begin, commit,
+            label: "Label type"),
+    ];
+
+List<Widget> _lineSettings(LineElement e, _Write write, VoidCallback begin,
+        VoidCallback commit) =>
+    [
+      CanvasControlGroup(label: "Line", children: [
+        CanvasColorButton(
+          label: "Colour",
+          color: e.color,
+          onChanged: (c) {
+            begin();
+            write(e.copyWith(color: c));
+            commit();
+          },
+        ),
+        CanvasNumberField(
+          label: "Width",
+          value: e.strokeWidth,
+          min: 0.2,
+          max: 200,
+          decimals: 1,
+          width: 54,
+          onChanged: (v) => write(e.copyWith(strokeWidth: v)),
+          onCommit: commit,
+        ),
+        CanvasDropdown<LineCapStyle>(
+          label: "Ends",
+          value: e.cap,
+          width: 118,
+          options: [for (var c in LineCapStyle.values) (c, c.label)],
+          onChanged: (v) {
+            begin();
+            write(e.copyWith(cap: v));
+            commit();
+          },
+        ),
+        CanvasNumberField(
+          label: "Dash",
+          value: e.dash,
+          min: 0,
+          max: 400,
+          width: 50,
+          onChanged: (v) => write(e.copyWith(dash: v)),
+          onCommit: commit,
+        ),
+        CanvasSlider(
+          label: "Curve",
+          value: e.curvature,
+          min: -1,
+          max: 1,
+          onChanged: (v) {
+            begin();
+            write(e.copyWith(curvature: v));
+          },
+          onCommit: commit,
+        ),
+        CanvasIconButton(
+          icon: Icons.swap_vert,
+          tooltip: "Flip which way the line runs",
+          active: e.flipped,
+          onPressed: () {
+            begin();
+            write(e.copyWith(flipped: !e.flipped));
+            commit();
+          },
+        ),
+      ]),
+    ];
+
+List<Widget> _imageSettings(ImageElement e, _Write write, VoidCallback begin,
+        VoidCallback commit) =>
+    [
+      CanvasControlGroup(label: "Picture", children: [
+        CanvasDropdown<ImageFit>(
+          label: "Fit",
+          value: e.fit,
+          width: 106,
+          options: [for (var f in ImageFit.values) (f, f.label)],
+          onChanged: (v) {
+            begin();
+            write(e.copyWith(fit: v));
+            commit();
+          },
+        ),
+        CanvasSlider(
+          label: "Saturation",
+          value: e.saturation,
+          min: 0,
+          max: 3,
+          onChanged: (v) {
+            begin();
+            write(e.copyWith(saturation: v));
+          },
+          onCommit: commit,
+        ),
+        CanvasSlider(
+          label: "Brightness",
+          value: e.brightness,
+          min: 0,
+          max: 3,
+          onChanged: (v) {
+            begin();
+            write(e.copyWith(brightness: v));
+          },
+          onCommit: commit,
+        ),
+      ]),
+      CanvasControlGroup(label: "Remove background", children: [
+        CanvasDropdown<RemovalMode>(
+          label: "Method",
+          value: e.removal.mode,
+          width: 140,
+          options: [for (var m in RemovalMode.values) (m, m.label)],
+          onChanged: (v) {
+            begin();
+            write(e.copyWith(removal: e.removal.copyWith(mode: v)));
+            commit();
+          },
+        ),
+        if (e.removal.mode == RemovalMode.chromaKey)
+          CanvasColorButton(
+            label: "Key",
+            color: e.removal.keyColor,
+            allowAlpha: false,
+            onChanged: (c) {
+              begin();
+              write(e.copyWith(removal: e.removal.copyWith(keyColor: c)));
+              commit();
+            },
+          ),
+        if (e.removal.mode == RemovalMode.luminance)
+          CanvasSlider(
+            label: "Threshold",
+            value: e.removal.threshold,
+            onChanged: (v) {
+              begin();
+              write(e.copyWith(removal: e.removal.copyWith(threshold: v)));
+            },
+            onCommit: commit,
+          ),
+        if (e.removal.active) ...[
+          CanvasSlider(
+            label: "Tolerance",
+            value: e.removal.tolerance,
+            max: 0.7,
+            onChanged: (v) {
+              begin();
+              write(e.copyWith(removal: e.removal.copyWith(tolerance: v)));
+            },
+            onCommit: commit,
+          ),
+          CanvasSlider(
+            label: "Softness",
+            value: e.removal.softness,
+            max: 0.3,
+            onChanged: (v) {
+              begin();
+              write(e.copyWith(removal: e.removal.copyWith(softness: v)));
+            },
+            onCommit: commit,
+          ),
+          CanvasToggle(
+            label: "Invert",
+            value: e.removal.invert,
+            onChanged: (v) {
+              begin();
+              write(e.copyWith(removal: e.removal.copyWith(invert: v)));
+              commit();
+            },
+          ),
+        ],
+      ]),
+      _boxGroup(e.box, (box) => write(e.copyWith(box: box)), begin, commit,
+          label: "Frame"),
+    ];
+
+List<Widget> _chartSettings(ChartElement e, _Write write, VoidCallback begin,
+        VoidCallback commit) =>
+    [
+      CanvasControlGroup(label: "Chart", children: [
+        CanvasDropdown<ChartType>(
+          label: "Type",
+          value: e.type,
+          width: 132,
+          options: [for (var t in ChartType.values) (t, t.label)],
+          onChanged: (v) {
+            begin();
+            write(e.copyWith(type: v));
+            commit();
+          },
+        ),
+        CanvasTextField(
+          label: "Title",
+          value: e.title,
+          width: 160,
+          onChanged: (v) => write(e.copyWith(title: v)),
+          onCommit: commit,
+        ),
+        CanvasTextField(
+          label: "Description",
+          value: e.description,
+          width: 160,
+          onChanged: (v) => write(e.copyWith(description: v)),
+          onCommit: commit,
+        ),
+      ]),
+      CanvasControlGroup(label: "Data", children: [
+        // The whole table as one editable block, in the same tab or comma
+        // separated form a spreadsheet copies. Pasting a table in and having a
+        // chart is the fastest path there is, and it is the reason there is no
+        // row-by-row editor here.
+        CanvasTextField(
+          label: "Rows (paste a table)",
+          value: e.data.asText(),
+          width: 260,
+          maxLines: 2,
+          hint: "Name\tSeries\nWeek 1\t120",
+          onChanged: (v) => write(e.copyWith(data: ChartData.parse(v))),
+          onCommit: commit,
+        ),
+      ]),
+      CanvasControlGroup(label: "Axes", children: [
+        CanvasTextField(
+          label: "X label",
+          value: e.xAxisLabel,
+          width: 108,
+          onChanged: (v) => write(e.copyWith(xAxisLabel: v)),
+          onCommit: commit,
+        ),
+        CanvasTextField(
+          label: "Y label",
+          value: e.yAxisLabel,
+          width: 108,
+          onChanged: (v) => write(e.copyWith(yAxisLabel: v)),
+          onCommit: commit,
+        ),
+        CanvasToggle(
+          label: "Grid",
+          value: e.showGrid,
+          onChanged: (v) {
+            begin();
+            write(e.copyWith(showGrid: v));
+            commit();
+          },
+        ),
+        CanvasToggle(
+          label: "Axes",
+          value: e.showAxes,
+          onChanged: (v) {
+            begin();
+            write(e.copyWith(showAxes: v));
+            commit();
+          },
+        ),
+        CanvasToggle(
+          label: "Legend",
+          value: e.showLegend,
+          onChanged: (v) {
+            begin();
+            write(e.copyWith(showLegend: v));
+            commit();
+          },
+        ),
+        CanvasToggle(
+          label: "Values",
+          value: e.showValues,
+          onChanged: (v) {
+            begin();
+            write(e.copyWith(showValues: v));
+            commit();
+          },
+        ),
+      ]),
+      CanvasControlGroup(label: "Style", children: [
+        for (var i = 0; i < e.data.series.length && i < 6; i++)
+          CanvasColorButton(
+            label: e.data.series[i].name.isEmpty
+                ? "Series ${i + 1}"
+                : e.data.series[i].name,
+            color: e.data.series[i].color,
+            onChanged: (c) {
+              begin();
+              var series = [...e.data.series];
+              series[i] = series[i].copyWith(color: c);
+              write(e.copyWith(
+                  data: ChartData(
+                      categories: e.data.categories, series: series)));
+              commit();
+            },
+          ),
+        CanvasColorButton(
+          label: "Grid",
+          color: e.gridColor,
+          onChanged: (c) {
+            begin();
+            write(e.copyWith(gridColor: c));
+            commit();
+          },
+        ),
+        CanvasSlider(
+          label: "Bar gap",
+          value: e.barGap,
+          max: 0.9,
+          onChanged: (v) {
+            begin();
+            write(e.copyWith(barGap: v));
+          },
+          onCommit: commit,
+        ),
+        CanvasNumberField(
+          label: "Bar radius",
+          value: e.barRadius,
+          min: 0,
+          max: 100,
+          width: 54,
+          onChanged: (v) => write(e.copyWith(barRadius: v)),
+          onCommit: commit,
+        ),
+        CanvasNumberField(
+          label: "Stroke",
+          value: e.strokeWidth,
+          min: 0.5,
+          max: 40,
+          decimals: 1,
+          width: 54,
+          onChanged: (v) => write(e.copyWith(strokeWidth: v)),
+          onCommit: commit,
+        ),
+        CanvasToggle(
+          label: "Smooth",
+          value: e.smooth,
+          onChanged: (v) {
+            begin();
+            write(e.copyWith(smooth: v));
+            commit();
+          },
+        ),
+      ]),
+    ];
+
+List<Widget> _tableSettings(TableElement e, _Write write, VoidCallback begin,
+        VoidCallback commit) =>
+    [
+      CanvasControlGroup(label: "Table", children: [
+        CanvasTextField(
+          label: "Rows (paste a table)",
+          value: e.asText(),
+          width: 280,
+          maxLines: 2,
+          onChanged: (v) => write(e.copyWith(rows: TableElement.parseRows(v))),
+          onCommit: commit,
+        ),
+        CanvasToggle(
+          label: "Header row",
+          value: e.headerRow,
+          onChanged: (v) {
+            begin();
+            write(e.copyWith(headerRow: v));
+            commit();
+          },
+        ),
+        CanvasToggle(
+          label: "Header column",
+          value: e.headerColumn,
+          onChanged: (v) {
+            begin();
+            write(e.copyWith(headerColumn: v));
+            commit();
+          },
+        ),
+      ]),
+      CanvasControlGroup(label: "Look", children: [
+        CanvasDropdown<TableGrid>(
+          label: "Rules",
+          value: e.grid,
+          width: 108,
+          options: [for (var g in TableGrid.values) (g, g.label)],
+          onChanged: (v) {
+            begin();
+            write(e.copyWith(grid: v));
+            commit();
+          },
+        ),
+        CanvasColorButton(
+          label: "Rules",
+          color: e.gridColor,
+          onChanged: (c) {
+            begin();
+            write(e.copyWith(gridColor: c));
+            commit();
+          },
+        ),
+        CanvasColorButton(
+          label: "Header",
+          color: e.headerFill,
+          onChanged: (c) {
+            begin();
+            write(e.copyWith(headerFill: c));
+            commit();
+          },
+        ),
+        CanvasColorButton(
+          label: "Cells",
+          color: e.cellFill,
+          onChanged: (c) {
+            begin();
+            write(e.copyWith(cellFill: c));
+            commit();
+          },
+        ),
+        CanvasToggle(
+          label: "Zebra",
+          value: e.zebra,
+          onChanged: (v) {
+            begin();
+            write(e.copyWith(zebra: v));
+            commit();
+          },
+        ),
+        CanvasColorButton(
+          label: "Zebra",
+          color: e.zebraFill,
+          onChanged: (c) {
+            begin();
+            write(e.copyWith(zebraFill: c));
+            commit();
+          },
+        ),
+        CanvasNumberField(
+          label: "Padding",
+          value: e.cellPadding,
+          min: 0,
+          max: 120,
+          width: 54,
+          onChanged: (v) => write(e.copyWith(cellPadding: v)),
+          onCommit: commit,
+        ),
+        CanvasNumberField(
+          label: "Radius",
+          value: e.cornerRadius,
+          min: 0,
+          max: 120,
+          width: 54,
+          onChanged: (v) => write(e.copyWith(cornerRadius: v)),
+          onCommit: commit,
+        ),
+      ]),
+      ..._typeGroups(e.cellSpec, (spec) => write(e.copyWith(cellSpec: spec)),
+          begin, commit,
+          label: "Cell type"),
+      ..._typeGroups(
+          e.headerSpec, (spec) => write(e.copyWith(headerSpec: spec)), begin,
+          commit,
+          label: "Header type"),
+    ];
+
+List<Widget> _buttonSettings(CanvasController controller, ButtonElement e,
+    _Write write, VoidCallback begin, VoidCallback commit) {
+  var action = e.action;
+  return [
+    CanvasControlGroup(label: "Button", children: [
+      CanvasTextField(
+        label: "Label",
+        value: e.label,
+        width: 150,
+        onChanged: (v) => write(e.copyWith(label: v)),
+        onCommit: commit,
+      ),
+      CanvasColorButton(
+        label: "Hover fill",
+        color: e.hoverFill,
+        onChanged: (c) {
+          begin();
+          write(e.copyWith(hoverFill: c));
+          commit();
+        },
+      ),
+      CanvasColorButton(
+        label: "Hover text",
+        color: e.hoverTextColor,
+        onChanged: (c) {
+          begin();
+          write(e.copyWith(hoverTextColor: c));
+          commit();
+        },
+      ),
+    ]),
+    CanvasControlGroup(label: "Action", children: [
+      CanvasDropdown<ButtonActionKind>(
+        label: "Does",
+        value: action.kind,
+        width: 150,
+        options: [for (var k in ButtonActionKind.values) (k, k.label)],
+        onChanged: (v) {
+          begin();
+          write(e.copyWith(action: action.copyWith(kind: v)));
+          commit();
+        },
+      ),
+      if (action.kind.needsFrame)
+        CanvasNumberField(
+          label: "Frame",
+          value: action.frame.toDouble(),
+          min: 0,
+          max: (controller.document.frames - 1).toDouble(),
+          width: 54,
+          onChanged: (v) =>
+              write(e.copyWith(action: action.copyWith(frame: v.round()))),
+          onCommit: commit,
+        ),
+      if (action.kind.needsElement)
+        CanvasDropdown<String>(
+          label: "Element",
+          value: action.elementId,
+          width: 150,
+          options: [
+            ("", "Nothing"),
+            for (var other in controller.document.elements)
+              if (other.id != e.id) (other.id, other.name),
+          ],
+          onChanged: (v) {
+            begin();
+            write(e.copyWith(action: action.copyWith(elementId: v)));
+            commit();
+          },
+        ),
+      if (action.kind.needsUrl)
+        CanvasTextField(
+          label: "Link",
+          value: action.url,
+          width: 220,
+          hint: "https://",
+          onChanged: (v) => write(e.copyWith(action: action.copyWith(url: v))),
+          onCommit: commit,
+        ),
+    ]),
+    ..._typeGroups(
+        e.textSpec, (spec) => write(e.copyWith(textSpec: spec)), begin, commit,
+        label: "Label type"),
+    _boxGroup(e.box, (box) => write(e.copyWith(box: box)), begin, commit),
+  ];
+}
+
+/// _teamSettings is a whole team's controls.
+///
+/// Ordered the way a team is actually set up: which game, what shape, who is
+/// in it, what colour they are, and how big the dots are. The squad list is
+/// behind an expander because eleven rows of four fields is more than every
+/// other element's settings put together, and somebody opening a team is
+/// usually there for the formation or the kit.
+List<Widget> _teamSettings(TeamElement e, _Write write, VoidCallback begin,
+    VoidCallback commit) {
+  /// now is a change made in one go -- a dropdown, a colour, a switch -- which
+  /// is its own undo step.
+  void now(TeamElement next) {
+    begin();
+    write(next);
+    commit();
+  }
+
+  return [
+    CanvasControlGroup(label: "Team", children: [
+      CanvasDropdown<TeamSport>(
+        label: "Sport",
+        value: e.sport,
+        width: 104,
+        options: [for (var s in TeamSport.values) (s, s.label)],
+        // Changing the sport re-lays the squad out, since a formation belongs
+        // to one game and the squad size changes with it.
+        onChanged: (v) => now(e
+            .copyWith(sport: v)
+            .withFormation(v.formations.first)),
+      ),
+      CanvasDropdown<TeamFormation>(
+        label: "Formation",
+        value: e.sport.formations.contains(e.formation)
+            ? e.formation
+            : e.sport.formations.first,
+        width: 118,
+        options: [for (var f in e.sport.formations) (f, f.label)],
+        onChanged: (v) => now(e.withFormation(v)),
+      ),
+      CanvasDropdown<FormationSpread>(
+        label: "Spread",
+        value: e.spread,
+        width: 108,
+        options: [for (var v in FormationSpread.values) (v, v.label)],
+        // The same eleven positions, two pictures: the shape at kick-off sits
+        // inside its own half, the shape in possession has its forwards over
+        // the halfway line. See FormationSpread.
+        onChanged: (v) => now(e.withFormation(e.formation, spread: v)),
+      ),
+      CanvasToggle(
+        label: "Attack left",
+        value: e.mirrored,
+        // Turning the team round re-lays it out, which is how the away side
+        // faces the home side rather than both running at the same goal.
+        onChanged: (v) => now(e.withFormation(e.formation, mirror: v)),
+      ),
+      CanvasIconButton(
+        icon: Icons.refresh,
+        tooltip: "Put everybody back in formation",
+        onPressed: () => now(e.withFormation(e.formation)),
+      ),
+    ]),
+    _squadList(e, write, begin, commit, now),
+    CanvasControlGroup(label: "Colours", children: [
+      CanvasColorButton(
+        label: "Keeper",
+        color: e.keeperColor,
+        onChanged: (c) => now(e.copyWith(keeperColor: c)),
+      ),
+      CanvasColorButton(
+        label: "Players",
+        color: e.playerColor,
+        onChanged: (c) => now(e.copyWith(playerColor: c)),
+      ),
+      CanvasColorButton(
+        label: "Outline",
+        color: e.outlineColor,
+        onChanged: (c) => now(e.copyWith(outlineColor: c)),
+      ),
+      // The element's own opacity rather than a second one of the team's. Two
+      // opacities multiplying together is a control that appears not to work
+      // whenever the other one is down.
+      CanvasSlider(
+        label: "Opacity",
+        value: e.opacity,
+        min: 0,
+        max: 1,
+        onChanged: (v) {
+          begin();
+          write(e.withBase(opacity: v));
+        },
+        onCommit: commit,
+      ),
+    ]),
+    CanvasControlGroup(label: "Dots", children: [
+      CanvasNumberField(
+        key: const ValueKey("teamDotWidth"),
+        label: "Width",
+        value: e.dotWidth,
+        min: 4,
+        max: 400,
+        width: 56,
+        onChanged: (v) {
+          begin();
+          // Locked, the two move together, which is what keeps a player marker
+          // a circle. An oval is almost always somebody having dragged one
+          // field without meaning to.
+          write(e.copyWith(
+              dotWidth: v, dotHeight: e.lockDotAspect ? v : e.dotHeight));
+        },
+        onCommit: commit,
+      ),
+      CanvasNumberField(
+        key: const ValueKey("teamDotHeight"),
+        label: "Height",
+        value: e.dotHeight,
+        min: 4,
+        max: 400,
+        width: 56,
+        onChanged: (v) {
+          begin();
+          write(e.copyWith(
+              dotHeight: v, dotWidth: e.lockDotAspect ? v : e.dotWidth));
+        },
+        onCommit: commit,
+      ),
+      CanvasIconButton(
+        icon: e.lockDotAspect ? Icons.link : Icons.link_off,
+        tooltip: e.lockDotAspect
+            ? "Width and height move together"
+            : "Width and height are independent",
+        active: e.lockDotAspect,
+        onPressed: () => now(e.copyWith(
+            lockDotAspect: !e.lockDotAspect,
+            dotHeight: e.lockDotAspect ? e.dotHeight : e.dotWidth)),
+      ),
+      CanvasNumberField(
+        label: "Ring",
+        value: e.ringWidth,
+        min: 0,
+        max: 40,
+        decimals: 1,
+        width: 54,
+        onChanged: (v) {
+          begin();
+          write(e.copyWith(ringWidth: v));
+        },
+        onCommit: commit,
+      ),
+      CanvasNumberField(
+        label: "Angle",
+        value: e.rotation,
+        min: -180,
+        max: 180,
+        width: 56,
+        suffix: "°",
+        onChanged: (v) {
+          begin();
+          write(e.withBase(rotation: v));
+        },
+        onCommit: commit,
+      ),
+    ]),
+    // One set of type for the number and the name. They were two identical
+    // panels, and the two drifted -- a team's names ended up in a different
+    // face from its numbers without anybody having chosen that.
+    ..._typeGroups(
+      e.labelSpec,
+      (spec) {
+        begin();
+        write(e.copyWith(labelSpec: spec));
+      },
+      begin,
+      commit,
+      label: "Numbers and names",
+    ),
+    CanvasControlGroup(label: "Labels", children: [
+      CanvasToggle(
+        label: "Numbers",
+        value: e.showNumbers,
+        onChanged: (v) => now(e.copyWith(showNumbers: v)),
+      ),
+      CanvasToggle(
+        label: "Names",
+        value: e.showNames,
+        onChanged: (v) => now(e.copyWith(showNames: v)),
+      ),
+      CanvasDropdown<LabelPosition>(
+        label: "Name at",
+        value: e.namePosition,
+        width: 92,
+        options: [for (var p in LabelPosition.values) (p, p.label)],
+        onChanged: (v) => now(e.copyWith(namePosition: v)),
+      ),
+      CanvasNumberField(
+        label: "Gap",
+        value: e.nameGap,
+        min: 0,
+        max: 80,
+        decimals: 1,
+        width: 50,
+        onChanged: (v) {
+          begin();
+          write(e.copyWith(nameGap: v));
+        },
+        onCommit: commit,
+      ),
+      CanvasNumberField(
+        label: "Turn",
+        value: e.labelRotation,
+        min: -180,
+        max: 180,
+        width: 56,
+        suffix: "°",
+        onChanged: (v) {
+          begin();
+          write(e.copyWith(labelRotation: v));
+        },
+        onCommit: commit,
+      ),
+    ]),
+  ];
+}
+
+/// _squadList is the team sheet: one row per player, goalkeeper first.
+///
+/// The coordinates are shown and edited in canvas units rather than as the
+/// fractions they are stored as, because "where is he" is a question about the
+/// pitch, not about the element's box.
+Widget _squadList(TeamElement e, _Write write, VoidCallback begin,
+        VoidCallback commit, void Function(TeamElement) now) =>
+    CanvasExpander(
+      label: "Players",
+      trailing: "${e.players.length}",
+      children: [
+        for (var i = 0; i < e.players.length; i++)
+          _PlayerRow(
+            key: ValueKey("player-$i-${e.id}"),
+            team: e,
+            index: i,
+            write: write,
+            begin: begin,
+            commit: commit,
+            now: now,
+          ),
+      ],
+    );
+
+/// _PlayerRow is one line of the team sheet.
+///
+/// A widget rather than a function so each row's fields keep their own state
+/// across the rebuild that every keystroke causes; as plain builders, typing
+/// in one player's name rebuilt all eleven and moved the caret.
+class _PlayerRow extends StatelessWidget {
+  final TeamElement team;
+  final int index;
+  final _Write write;
+  final VoidCallback begin;
+  final VoidCallback commit;
+  final void Function(TeamElement) now;
+
+  const _PlayerRow({
+    required this.team,
+    required this.index,
+    required this.write,
+    required this.begin,
+    required this.commit,
+    required this.now,
+    super.key,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    var spot = team.players[index];
+    var centre = team.centreOf(spot);
+
+    void set(PlayerSpot next) {
+      begin();
+      write(team.withPlayer(index, next));
+    }
+
+    /// moveTo writes a canvas coordinate back as the fraction it is stored as.
+    void moveTo({double? x, double? y}) {
+      var w = team.width == 0 ? 1 : team.width;
+      var h = team.height == 0 ? 1 : team.height;
+      set(spot.copyWith(
+        dx: x == null ? spot.dx : (x - team.x) / w,
+        dy: y == null ? spot.dy : (y - team.y) / h,
+      ));
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 2),
+      child: Wrap(crossAxisAlignment: WrapCrossAlignment.center, children: [
+        CanvasTextField(
+          key: ValueKey("num-$index-${team.id}"),
+          label: index == 0 ? "GK" : "No.",
+          value: spot.number,
+          width: 42,
+          onChanged: (v) => set(spot.copyWith(number: v)),
+          onCommit: commit,
+        ),
+        CanvasTextField(
+          key: ValueKey("name-$index-${team.id}"),
+          label: "Name",
+          value: spot.name,
+          width: 104,
+          onChanged: (v) => set(spot.copyWith(name: v)),
+          onCommit: commit,
+        ),
+        CanvasNumberField(
+          key: ValueKey("x-$index-${team.id}"),
+          label: "X",
+          value: centre.dx,
+          min: -100000,
+          max: 100000,
+          width: 54,
+          onChanged: (v) => moveTo(x: v),
+          onCommit: commit,
+        ),
+        CanvasNumberField(
+          key: ValueKey("y-$index-${team.id}"),
+          label: "Y",
+          value: centre.dy,
+          min: -100000,
+          max: 100000,
+          width: 54,
+          onChanged: (v) => moveTo(y: v),
+          onCommit: commit,
+        ),
+        CanvasIconButton(
+          icon: spot.locked ? Icons.lock : Icons.lock_open,
+          tooltip: spot.locked ? "Unlock" : "Lock in place",
+          active: spot.locked,
+          onPressed: () => now(
+              team.withPlayer(index, spot.copyWith(locked: !spot.locked))),
+        ),
+        CanvasIconButton(
+          icon: spot.hidden ? Icons.visibility_off : Icons.visibility,
+          tooltip: spot.hidden ? "Show" : "Hide",
+          active: spot.hidden,
+          onPressed: () => now(
+              team.withPlayer(index, spot.copyWith(hidden: !spot.hidden))),
+        ),
+        CanvasIconButton(
+          icon: Icons.arrow_upward,
+          tooltip: "Bring forward",
+          onPressed: index >= team.players.length - 1
+              ? null
+              : () => now(team.movePlayer(index, index + 1)),
+        ),
+        CanvasIconButton(
+          icon: Icons.arrow_downward,
+          tooltip: "Send to back",
+          onPressed:
+              index <= 0 ? null : () => now(team.movePlayer(index, index - 1)),
+        ),
+      ]),
+    );
+  }
+}
+

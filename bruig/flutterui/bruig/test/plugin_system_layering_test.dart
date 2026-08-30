@@ -5,10 +5,17 @@ import 'package:flutter_test/flutter_test.dart';
 // plugin system's shape together.
 //
 // lib/plugin_system/ is the machinery: installation, the capability
-// vocabulary, nav items, the settings page. lib/plugin_system/writing_tools/
-// and lib/plugin_system/link_previews/ are the app's side of the two
-// built-in plugins. The features import the machinery; the machinery imports
-// neither.
+// vocabulary, nav items, the settings page. lib/plugin_system/writing_tools/,
+// lib/plugin_system/link_previews/ and lib/plugin_system/canvas/ are the
+// features that can be turned off. The features import the machinery; the
+// machinery imports none of them.
+//
+// Between the features the rule is weaker but still a rule: canvas may import
+// writing_tools and nothing may import canvas. Canvas publishes into the post
+// library -- which is where documents on disk live, and is no plugin's -- so
+// that one edge is real and is allowed. The reverse would mean the writing
+// tools could not be read without knowing what a keyframe is, and would make
+// the pair impossible to separate later.
 //
 // It is asserted here rather than left to review because it is broken by
 // accident, in one line, by anyone reaching for something convenient -- and
@@ -16,7 +23,12 @@ import 'package:flutter_test/flutter_test.dart';
 // wavy underline is, which was the whole reason for the split.
 
 const _root = "lib/plugin_system";
-const _features = ["writing_tools", "link_previews"];
+const _features = ["writing_tools", "link_previews", "canvas"];
+
+/// _canvasDependents are the features canvas is allowed to reach into. See the
+/// note above: the edge runs one way, into the post library, and nothing runs
+/// back.
+const _canvasMayImport = ["writing_tools"];
 
 List<File> _dartFilesIn(String dir) => Directory(dir)
     .listSync(recursive: true)
@@ -50,6 +62,39 @@ void main() {
     expect(offenders, isEmpty,
         reason: "plugin_system's machinery must not depend on a capability's "
             "implementation:\n${offenders.join("\n")}");
+  });
+
+  test("only canvas reaches across, and only one way", () {
+    var offenders = <String>[];
+    for (var file in _dartFilesIn(_root)) {
+      var inCanvas = file.path.contains("$_root/canvas/");
+      var inOtherFeature = _features
+          .where((f) => f != "canvas")
+          .any((f) => file.path.contains("$_root/$f/"));
+      if (!inCanvas && !inOtherFeature) continue;
+
+      for (var line in file.readAsStringSync().split("\n")) {
+        var trimmed = line.trimLeft();
+        if (!trimmed.startsWith("import ") && !trimmed.startsWith("export ")) {
+          continue;
+        }
+        if (inCanvas) {
+          for (var feature in _features) {
+            if (feature == "canvas" || _canvasMayImport.contains(feature)) {
+              continue;
+            }
+            if (line.contains("plugin_system/$feature/")) {
+              offenders.add("${file.path}: ${line.trim()}");
+            }
+          }
+        } else if (line.contains("plugin_system/canvas/")) {
+          offenders.add("${file.path}: ${line.trim()}");
+        }
+      }
+    }
+    expect(offenders, isEmpty,
+        reason: "canvas may import writing_tools; nothing may import "
+            "canvas:\n${offenders.join("\n")}");
   });
 
   test("the machinery is still there to be read", () {
