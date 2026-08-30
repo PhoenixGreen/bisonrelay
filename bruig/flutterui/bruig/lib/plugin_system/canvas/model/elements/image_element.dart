@@ -1,0 +1,229 @@
+import 'dart:ui';
+
+import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
+
+/// RemovalMode is how an image's background is taken out.
+///
+/// Three methods rather than one, because "remove the background" is three
+/// different problems wearing the same name and none of the three is right
+/// for the other two's pictures:
+///
+///  - a logo or a screenshot has one flat colour behind it, which is what
+///    [chromaKey] and [cornerFlood] are for;
+///  - a chart or a scan is dark on light, which is [luminance];
+///  - a photograph of a person is none of the above, and no amount of
+///    threshold tuning makes it one. There is deliberately no control here
+///    pretending otherwise.
+///
+/// All three run on the raw pixels in Dart. Nothing is uploaded anywhere, and
+/// nothing needs a model -- a canvas is edited offline like everything else in
+/// this app.
+enum RemovalMode {
+  none("None", "Leave the image as it is"),
+  chromaKey("Colour key", "Remove everything close to one chosen colour"),
+  cornerFlood("Flood from edges",
+      "Remove the connected region touching the picture's edges"),
+  luminance("By brightness", "Remove everything above or below a brightness");
+
+  final String label;
+  final String description;
+  const RemovalMode(this.label, this.description);
+
+  static RemovalMode fromName(String? name) => values.firstWhere(
+        (m) => m.name == name,
+        orElse: () => RemovalMode.none,
+      );
+}
+
+/// ImageFit is how the picture sits in its box.
+///
+/// Our own three values rather than Flutter's BoxFit, so that the model layer
+/// imports nothing from Flutter beyond dart:ui and stays testable without a
+/// binding. render/ maps them; there is no reason for a saved document to
+/// depend on somebody else's enum.
+enum ImageFit {
+  cover("Fill the box"),
+  contain("Fit inside"),
+  stretch("Stretch");
+
+  final String label;
+  const ImageFit(this.label);
+
+  static ImageFit fromName(String? name) =>
+      values.firstWhere((f) => f.name == name, orElse: () => ImageFit.cover);
+}
+
+/// BackgroundRemoval is the recipe, never the result.
+///
+/// Stored as settings rather than as a cut-out bitmap, for the same reason a
+/// procedural background is a seed: the original picture stays whole, the
+/// tolerance can be nudged a week later, and the document does not grow a
+/// second copy of every image. The cut-out is recomputed when the settings
+/// change and cached in memory for as long as they do not.
+class BackgroundRemoval {
+  final RemovalMode mode;
+
+  /// keyColor is what [RemovalMode.chromaKey] matches against.
+  final Color keyColor;
+
+  /// tolerance is how far from the key a pixel may be and still be removed,
+  /// 0..1 across the RGB cube's diagonal.
+  final double tolerance;
+
+  /// softness feathers the edge, so a cut-out does not have a hard jagged
+  /// boundary a pixel wide. In the same 0..1 units as the tolerance.
+  final double softness;
+
+  /// threshold is the brightness [RemovalMode.luminance] cuts at.
+  final double threshold;
+
+  /// invert keeps what would have been removed and removes what would have
+  /// been kept.
+  final bool invert;
+
+  const BackgroundRemoval({
+    this.mode = RemovalMode.none,
+    this.keyColor = const Color(0xFFFFFFFF),
+    this.tolerance = 0.12,
+    this.softness = 0.04,
+    this.threshold = 0.85,
+    this.invert = false,
+  });
+
+  bool get active => mode != RemovalMode.none;
+
+  BackgroundRemoval copyWith({
+    RemovalMode? mode,
+    Color? keyColor,
+    double? tolerance,
+    double? softness,
+    double? threshold,
+    bool? invert,
+  }) =>
+      BackgroundRemoval(
+        mode: mode ?? this.mode,
+        keyColor: keyColor ?? this.keyColor,
+        tolerance: tolerance ?? this.tolerance,
+        softness: softness ?? this.softness,
+        threshold: threshold ?? this.threshold,
+        invert: invert ?? this.invert,
+      );
+
+  /// cacheKey identifies a cut-out. Two elements with the same picture and
+  /// the same settings share one, which matters on a canvas built from a
+  /// dozen copies of the same badge.
+  String cacheKey(String assetId) => "$assetId|${mode.name}|"
+      "${colorToJson(keyColor)}|$tolerance|$softness|$threshold|$invert";
+
+  Map<String, dynamic> toJson() => {
+        "mode": mode.name,
+        "key": colorToJson(keyColor),
+        "tol": tolerance,
+        "soft": softness,
+        "thr": threshold,
+        if (invert) "invert": true,
+      };
+
+  factory BackgroundRemoval.fromJson(Map<String, dynamic> json) =>
+      BackgroundRemoval(
+        mode: RemovalMode.fromName(json["mode"] as String?),
+        keyColor: colorFromJson(json["key"]),
+        tolerance: jsonDouble(json["tol"], 0.12).clamp(0.0, 1.0),
+        softness: jsonDouble(json["soft"], 0.04).clamp(0.0, 1.0),
+        threshold: jsonDouble(json["thr"], 0.85).clamp(0.0, 1.0),
+        invert: jsonBool(json["invert"], false),
+      );
+}
+
+/// ImageElement is a picture on the canvas.
+///
+/// It holds an [assetId], not the bytes. The bytes live once in the canvas
+/// asset store beside the document (see storage/canvas_assets.dart), exactly
+/// as the post library keeps a draft's embeds beside the draft -- so a canvas
+/// with the same logo on it eight times is one copy of the logo, and a saved
+/// document stays a small readable file.
+class ImageElement extends CanvasElement {
+  final String assetId;
+  final ImageFit fit;
+  final BoxSpec box;
+  final BackgroundRemoval removal;
+
+  /// tint multiplies the image's colours. Transparent means no tint, which is
+  /// the normal case.
+  final Color tint;
+
+  /// saturation and brightness are 1 for "as it came in".
+  final double saturation;
+  final double brightness;
+
+  const ImageElement(
+    super.base, {
+    this.assetId = "",
+    this.fit = ImageFit.cover,
+    this.box = const BoxSpec(padding: 0),
+    this.removal = const BackgroundRemoval(),
+    this.tint = const Color(0x00000000),
+    this.saturation = 1,
+    this.brightness = 1,
+  });
+
+  @override
+  ElementKind get kind => ElementKind.image;
+
+  /// hasImage is whether there is anything to draw. An element with no
+  /// picture yet is drawn as a placeholder rather than as nothing, so it can
+  /// still be selected and given one.
+  bool get hasImage => assetId.isNotEmpty;
+
+  @override
+  CanvasElement rebase(ElementBase base) => ImageElement(base,
+      assetId: assetId,
+      fit: fit,
+      box: box,
+      removal: removal,
+      tint: tint,
+      saturation: saturation,
+      brightness: brightness);
+
+  ImageElement copyWith({
+    String? assetId,
+    ImageFit? fit,
+    BoxSpec? box,
+    BackgroundRemoval? removal,
+    Color? tint,
+    double? saturation,
+    double? brightness,
+  }) =>
+      ImageElement(base,
+          assetId: assetId ?? this.assetId,
+          fit: fit ?? this.fit,
+          box: box ?? this.box,
+          removal: removal ?? this.removal,
+          tint: tint ?? this.tint,
+          saturation: saturation ?? this.saturation,
+          brightness: brightness ?? this.brightness);
+
+  @override
+  Map<String, dynamic> props() => {
+        "asset": assetId,
+        "fit": fit.name,
+        "box": box.toJson(),
+        if (removal.active) "removal": removal.toJson(),
+        if (tint.a > 0) "tint": colorToJson(tint),
+        if (saturation != 1) "sat": saturation,
+        if (brightness != 1) "bri": brightness,
+      };
+
+  factory ImageElement.fromJson(Map<String, dynamic> json, ElementBase b) =>
+      ImageElement(b,
+          assetId: jsonString(json["asset"], ""),
+          fit: ImageFit.fromName(json["fit"] as String?),
+          box: jsonSpec(json["box"], BoxSpec.fromJson,
+              const BoxSpec(padding: 0)),
+          removal: jsonSpec(json["removal"], BackgroundRemoval.fromJson,
+              const BackgroundRemoval()),
+          tint: colorFromJson(json["tint"], const Color(0x00000000)),
+          saturation: jsonDouble(json["sat"], 1),
+          brightness: jsonDouble(json["bri"], 1));
+}
