@@ -225,6 +225,7 @@ class _CanvasNumberFieldState extends State<CanvasNumberField> {
         value: widget.value,
         min: widget.min,
         max: widget.max,
+        decimals: widget.decimals,
         onChanged: widget.onChanged,
         onCommit: widget.onCommit,
       ),
@@ -706,14 +707,27 @@ class CanvasIconButton extends StatelessWidget {
 /// else, is already beside the value it belongs to, and can show a
 /// left-and-right cursor to say so.
 ///
-/// The step comes from the field's own range, so a slider from 0 to 1 and a
-/// width in pixels both feel the same to drag: a hundred pixels of travel is a
-/// useful amount of change in either.
+/// One pixel of travel moves the number by one of its own last digits: a whole
+/// unit on a field showing whole numbers, a tenth on a field showing tenths.
+///
+/// Not derived from the field's range, which was the first attempt and was
+/// far too coarse. Most of these ranges are guard rails rather than scales --
+/// a player's X is bounded at a hundred thousand so that a typo cannot send
+/// them into the next county, not because the field is a hundred-thousand-wide
+/// dial -- so a step of a four-hundredth of the range was hundreds of pixels
+/// per pixel. The last digit is the increment the field itself says it cares
+/// about, and 1:1 with the pointer is the only ratio nobody has to learn.
+///
+/// Shift makes it ten times finer, for the last pixel of a nudge.
 class _ScrubLabel extends StatefulWidget {
   final String label;
   final double value;
   final double min;
   final double max;
+
+  /// decimals is how precise the field is, and so what one step means.
+  final int decimals;
+
   final ValueChanged<double> onChanged;
   final VoidCallback? onCommit;
 
@@ -722,6 +736,7 @@ class _ScrubLabel extends StatefulWidget {
     required this.value,
     required this.min,
     required this.max,
+    required this.decimals,
     required this.onChanged,
     this.onCommit,
   });
@@ -736,32 +751,38 @@ class _ScrubLabelState extends State<_ScrubLabel> {
   /// to whole pixels on the way makes a slow drag move less than a fast one
   /// over the same distance.
   double _from = 0;
+
+  /// _startX is where in the caption the drag began.
+  ///
+  /// The gesture reports the pointer's position within the widget, not how far
+  /// it has travelled -- so without this the value jumped by wherever in the
+  /// label it was grabbed, and a drag started at the right-hand end moved
+  /// further than the same drag started at the left.
+  double _startX = 0;
   bool _dragging = false;
 
   @override
   Widget build(BuildContext context) {
     var theme = ThemeNotifier.of(context);
 
-    // A hundred pixels covers a fortieth of the range, or one unit, whichever
-    // is more -- so a width in pixels still steps by whole pixels while an
-    // opacity from 0 to 1 is not stuck at its ends.
-    var span = (widget.max - widget.min).abs();
-    var perPixel = span.isFinite && span > 0
-        ? math.max(span / 400, 0.01)
-        : 1.0;
+    var step = math.pow(10, -widget.decimals).toDouble();
 
     return MouseRegion(
       cursor: SystemMouseCursors.resizeLeftRight,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onHorizontalDragStart: (_) {
+        onHorizontalDragStart: (details) {
           _from = widget.value;
+          _startX = details.localPosition.dx;
           _dragging = true;
         },
         onHorizontalDragUpdate: (details) {
           if (!_dragging) return;
-          var next = (_from + details.localPosition.dx * perPixel)
-              .clamp(widget.min, widget.max);
+          var fine =
+              HardwareKeyboard.instance.isShiftPressed ? 0.1 : 1.0;
+          var travelled = details.localPosition.dx - _startX;
+          var next =
+              (_from + travelled * step * fine).clamp(widget.min, widget.max);
           widget.onChanged(next.toDouble());
         },
         onHorizontalDragEnd: (_) {

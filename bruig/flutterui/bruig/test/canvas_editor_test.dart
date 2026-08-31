@@ -1803,6 +1803,25 @@ void main() {
   });
 
   group("scrubbing a number", () {
+    testWidgets("one pixel is one of the field's own last digits",
+        (tester) async {
+      // Not a fraction of the field's range, which was the first attempt and
+      // was hundreds per pixel: most of these ranges are guard rails rather
+      // than scales.
+      var controller = CanvasController(const CanvasDocument(frames: 200));
+      addTearDown(controller.dispose);
+      await pump(tester, CanvasTimeline(controller: controller));
+
+      var caption = find.descendant(
+          of: find.byKey(const ValueKey("canvasFrames")),
+          matching: find.text("Length"));
+      await tester.drag(caption, const Offset(40, 0));
+      await tester.pumpAndSettle();
+
+      // A whole-number field, so forty pixels is forty frames.
+      expect(controller.document.frames, 240);
+    });
+
     testWidgets("dragging the caption runs the value up and down",
         (tester) async {
       var controller = CanvasController(const CanvasDocument(frames: 40));
@@ -1845,6 +1864,31 @@ void main() {
       await tester.drag(caption, const Offset(8000, 0));
       await tester.pumpAndSettle();
       expect(controller.document.frameRate, 60);
+    });
+
+    testWidgets("where in the caption it is grabbed makes no difference",
+        (tester) async {
+      // The gesture reports the pointer's position within the widget rather
+      // than how far it has travelled, so an unadjusted read moved the value
+      // by wherever in the label it was taken hold of.
+      Future<int> dragFromFraction(double at) async {
+        var controller = CanvasController(const CanvasDocument(frames: 200));
+        addTearDown(controller.dispose);
+        await pump(tester, CanvasTimeline(controller: controller));
+
+        var caption = find.descendant(
+            of: find.byKey(const ValueKey("canvasFrames")),
+            matching: find.text("Length"));
+        var box = tester.getRect(caption);
+        await tester.dragFrom(
+            Offset(box.left + box.width * at, box.center.dy),
+            const Offset(30, 0));
+        await tester.pumpAndSettle();
+        return controller.document.frames;
+      }
+
+      expect(await dragFromFraction(0.1), await dragFromFraction(0.9));
+      expect(await dragFromFraction(0.5), 230);
     });
 
     testWidgets("typing into the field still works", (tester) async {
