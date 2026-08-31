@@ -405,12 +405,9 @@ List<Offset>? _curvePoints(CanvasElement? host) {
     // runs straight through the bend.
     var a = host.start, b = host.end;
     if (host.curvature == 0) return [a, b];
-    var mid = Offset((a.dx + b.dx) / 2, (a.dy + b.dy) / 2);
-    var normal = Offset(-(b.dy - a.dy), b.dx - a.dx);
-    var length = normal.distance;
-    var control = length == 0
-        ? mid
-        : mid + normal / length * (host.curvature * (b - a).distance);
+    // The same control point the painter uses, rather than the same formula
+    // written out again -- see lineControlPoint.
+    var control = lineControlPoint(host);
     return [
       for (var i = 0; i <= _curveSamplesPerSegment * 2; i++)
         _quadratic(a, control, b, i / (_curveSamplesPerSegment * 2)),
@@ -471,6 +468,49 @@ void _paintShape(ui.Canvas canvas, Rect bounds, ShapeElement e) {
   }
 }
 
+/// lineControlPoint is the control point of the quadratic a bowed line is
+/// drawn as, in the element's own unrotated coordinates.
+///
+/// One definition, because three things need it and any two of them disagreeing
+/// is a visible fault: the painter draws the curve from it, the hit test walks
+/// the same curve, and the arrowheads take their direction from it. It used to
+/// be written out twice and the arrowheads did not use it at all.
+///
+/// Pushed out perpendicular to the chord, so the bow is symmetrical whichever
+/// way round the line runs.
+Offset lineControlPoint(LineElement e) {
+  var a = e.start, b = e.end;
+  var mid = (a + b) / 2;
+  var d = b - a;
+  var length = d.distance;
+  if (length == 0 || e.curvature == 0) return mid;
+  return mid + Offset(-d.dy / length, d.dx / length) * (length * e.curvature);
+}
+
+/// lineTangents is the direction the curve is heading at each end, as
+/// (at the start, at the end).
+///
+/// For a quadratic that is the control point seen from the near end -- and it
+/// is not the chord unless the line is straight. Using the chord is what made
+/// an arrowhead on a bowed line sit askew, with its tail across the line
+/// rather than flat against the end of it.
+(double, double) lineTangents(LineElement e) {
+  var a = e.start, b = e.end;
+  var control = lineControlPoint(e);
+  var fromStart = control - a;
+  var toEnd = b - control;
+  // A degenerate control point -- a zero-length line -- leaves nothing to take
+  // a direction from, so the chord stands in.
+  if (fromStart.distance == 0 || toEnd.distance == 0) {
+    var chord = math.atan2(b.dy - a.dy, b.dx - a.dx);
+    return (chord, chord);
+  }
+  return (
+    math.atan2(fromStart.dy, fromStart.dx),
+    math.atan2(toEnd.dy, toEnd.dx),
+  );
+}
+
 void _paintLine(ui.Canvas canvas, LineElement e) {
   var a = e.start, b = e.end;
   var paint = Paint()
@@ -483,33 +523,25 @@ void _paintLine(ui.Canvas canvas, LineElement e) {
       _ => StrokeCap.butt,
     };
 
+  var control = lineControlPoint(e);
   var path = Path()..moveTo(a.dx, a.dy);
   if (e.curvature == 0) {
     path.lineTo(b.dx, b.dy);
   } else {
-    // The control point is pushed out perpendicular to the chord, so the bow
-    // is symmetrical whichever way round the line runs.
-    var mid = (a + b) / 2;
-    var d = b - a;
-    var len = d.distance;
-    if (len > 0) {
-      var normal = Offset(-d.dy / len, d.dx / len);
-      var control = mid + normal * (len * e.curvature);
-      path.quadraticBezierTo(control.dx, control.dy, b.dx, b.dy);
-    } else {
-      path.lineTo(b.dx, b.dy);
-    }
+    path.quadraticBezierTo(control.dx, control.dy, b.dx, b.dy);
   }
 
   canvas.drawPath(
       e.dash > 0 ? dashPath(path, e.dash, e.dash * 0.8) : path, paint);
 
-  var angle = math.atan2(b.dy - a.dy, b.dx - a.dx);
+  // Each arrowhead points the way the curve is actually going where it sits,
+  // not the way the chord goes -- see lineTangents.
+  var (atStart, atEnd) = lineTangents(e);
   if (e.cap.hasEndArrow) {
-    arrowHead(canvas, b, angle, e.strokeWidth * 3.5, paint);
+    arrowHead(canvas, b, atEnd, e.strokeWidth * 3.5, paint);
   }
   if (e.cap.hasStartArrow) {
-    arrowHead(canvas, a, angle + math.pi, e.strokeWidth * 3.5, paint);
+    arrowHead(canvas, a, atStart + math.pi, e.strokeWidth * 3.5, paint);
   }
   if (e.cap == LineCapStyle.dot) {
     var dot = Paint()..color = e.color;
