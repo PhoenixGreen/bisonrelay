@@ -810,4 +810,121 @@ void main() {
       }
     });
   });
+
+  group("the speech bubble", () {
+    const spec = SpeechBubbleSpec();
+    const box = Rect.fromLTWH(0, 0, 200, 120);
+
+    test("is one outline, not a body with a tail laid over it", () {
+      // The reported fault. Filled, two sub-paths merge; *stroked*, each draws
+      // its own boundary, so a line ran across the join and the tail read as a
+      // separate shape stuck on the side.
+      var path = bubblePath(box, spec, 0);
+      expect(path.computeMetrics().length, 1,
+          reason: "one closed contour means one boundary to stroke");
+    });
+
+    test("a thought tail is deliberately several contours", () {
+      // It is a trail of separate circles; unioning them into the body would
+      // weld the lot into a sausage.
+      var path = bubblePath(
+          box, spec.copyWith(tail: BubbleTail.thought), 0);
+      expect(path.computeMetrics().length, greaterThan(1));
+    });
+
+    test("the tail goes all the way round", () {
+      // It used to be nailed to the bottom-left corner.
+      Rect tailBox(double angle) {
+        var whole = bubblePath(box, spec.copyWith(tailAngle: angle), 0)
+            .getBounds();
+        return whole;
+      }
+
+      // Pointing right, the outline reaches further right than the body does;
+      // pointing left, further left.
+      var body = bubbleBodyRect(box, spec.copyWith(tailAngle: 0));
+      expect(tailBox(0).right, greaterThan(body.right));
+      expect(tailBox(180).left, lessThan(bubbleBodyRect(
+              box, spec.copyWith(tailAngle: 180))
+          .left));
+      expect(tailBox(90).bottom,
+          greaterThan(bubbleBodyRect(box, spec.copyWith(tailAngle: 90)).bottom));
+      expect(tailBox(270).top,
+          lessThan(bubbleBodyRect(box, spec.copyWith(tailAngle: 270)).top));
+    });
+
+    test("the body gives up room only on the side the tail points", () {
+      // Insetting all four sides equally would shrink the bubble by the tail's
+      // length however short a tail it had, and a bubble is mostly its body.
+      var right = bubbleBodyRect(box, spec.copyWith(tailAngle: 0));
+      expect(right.left, box.left, reason: "the far side is untouched");
+      expect(right.right, lessThan(box.right));
+
+      var down = bubbleBodyRect(box, spec.copyWith(tailAngle: 90));
+      expect(down.top, box.top);
+      expect(down.bottom, lessThan(box.bottom));
+    });
+
+    test("no tail leaves the whole box to the body", () {
+      expect(bubbleBodyRect(box, spec.copyWith(tail: BubbleTail.none)), box);
+    });
+
+    test("a longer tail takes its room from the body, not from the box", () {
+      // The whole bubble stays inside the element's rectangle whatever the
+      // tail does, which is what keeps the selection box honest.
+      var normal = spec.copyWith(tailAngle: 0);
+      var longer = spec.copyWith(tailAngle: 0, tailLength: 1.0);
+
+      expect(bubbleBodyRect(box, longer).width,
+          lessThan(bubbleBodyRect(box, normal).width),
+          reason: "the body gives way");
+      expect(bubblePath(box, longer, 0).getBounds().right,
+          closeTo(box.right, 1),
+          reason: "and the tip still finishes at the edge of the box");
+    });
+
+    test("every body and tail builds a usable path", () {
+      for (var body in BubbleBody.values) {
+        for (var tail in BubbleTail.values) {
+          var path = bubblePath(
+              box, spec.copyWith(body: body, tail: tail), 0);
+          expect(path.getBounds().isEmpty, isFalse,
+              reason: "${body.name} with ${tail.name}");
+        }
+      }
+    });
+
+    test("the bubble's settings survive a round trip", () {
+      var element = ShapeElement(
+        const ElementBase(id: "s", width: 200, height: 120),
+        shape: ShapeKind.speechBubble,
+        bubble: const SpeechBubbleSpec(
+          body: BubbleBody.cloud,
+          tail: BubbleTail.curved,
+          tailAngle: 240,
+          tailLength: 0.8,
+          tailWidth: 0.5,
+          curl: -1.1,
+        ),
+      );
+      var back = CanvasDocument.decode(
+              CanvasDocument(elements: [element]).encode())!.elements.single
+          as ShapeElement;
+
+      expect(back.bubble.body, BubbleBody.cloud);
+      expect(back.bubble.tail, BubbleTail.curved);
+      expect(back.bubble.tailAngle, 240);
+      expect(back.bubble.tailLength, 0.8);
+      expect(back.bubble.curl, -1.1);
+    });
+
+    test("a shape that is not a bubble carries none of it into the file", () {
+      var star = ShapeElement(
+        const ElementBase(id: "s", width: 100, height: 100),
+        shape: ShapeKind.star,
+      );
+      expect(CanvasDocument(elements: [star]).encode().contains("bubble"),
+          isFalse);
+    });
+  });
 }

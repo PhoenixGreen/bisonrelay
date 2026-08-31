@@ -445,7 +445,10 @@ void _paintShape(ui.Canvas canvas, Rect bounds, ShapeElement e) {
   }
 
   var path = shapePath(e.shape, rect,
-      points: e.points, inner: e.innerRatio, cornerRadius: e.cornerRadius);
+      points: e.points,
+      inner: e.innerRatio,
+      cornerRadius: e.cornerRadius,
+      bubble: e.bubble);
 
   if (e.fill.a > 0) canvas.drawPath(path, Paint()..color = e.fill);
   if (e.strokeWidth > 0 && e.strokeColor.a > 0) {
@@ -463,6 +466,16 @@ void _paintShape(ui.Canvas canvas, Rect bounds, ShapeElement e) {
     // to its bounds, so a label in a circle or a triangle does not run out
     // over the edge. A crude fraction is right here: the alternative is
     // solving for the inscribed rectangle of an arbitrary path.
+    // A bubble's words go in its body, which is the box less whatever the tail
+    // took -- so a tail on the left does not push the text off to the right.
+    if (e.shape == ShapeKind.speechBubble) {
+      var body = bubbleBodyRect(rect, e.bubble);
+      var margin = e.bubble.body == BubbleBody.burst ? 0.22 : 0.1;
+      paintTextInBox(canvas, e.textSpec.textCase.apply(e.text), e.textSpec,
+          body.deflate(body.shortestSide * margin));
+      return;
+    }
+
     var inset = switch (e.shape) {
       ShapeKind.circle || ShapeKind.ellipse => 0.15,
       ShapeKind.triangle => 0.24,

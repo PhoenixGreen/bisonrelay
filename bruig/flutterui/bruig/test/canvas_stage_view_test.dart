@@ -1622,4 +1622,68 @@ void main() {
           reason: "the box stayed exactly where it opened");
     });
   });
+
+  group("grabbing a resize handle", () {
+    testWidgets("a near miss still takes the handle, not the element",
+        (tester) async {
+      // The reported fault: aiming at a handle and landing a few pixels inside
+      // it fell through to the element underneath and *moved* it, which is a
+      // far worse outcome than doing nothing.
+      var document = const CanvasDocument();
+      var element = ShapeElement(
+        ElementBase(
+          id: "s",
+          x: document.size.width / 4,
+          y: document.size.height / 4,
+          width: document.size.width / 2,
+          height: document.size.height / 2,
+        ),
+        fill: const Color(0xFFCC2200),
+      );
+      var controller = CanvasController(document.addElement(element));
+      addTearDown(controller.dispose);
+      controller.selectOnly("s");
+      var stage = await pump(tester, controller);
+      var scale = stage.pageRect.width / document.size.width;
+
+      // Ten screen pixels inside the bottom-right corner: a miss, but the kind
+      // anybody makes.
+      var corner = stage.pageRect.topLeft + element.bounds.bottomRight * scale;
+      await tester.dragFrom(corner - const Offset(10, 10), const Offset(-40, 0));
+      await tester.pumpAndSettle();
+
+      var after = controller.document.elementById("s")!;
+      expect(after.x, element.x, reason: "it was not dragged about");
+      expect(after.width, lessThan(element.width),
+          reason: "it was resized, which is what was being aimed at");
+    });
+
+    testWidgets("but the middle of an element still moves it", (tester) async {
+      // The slop must not grow so far that the element itself is unreachable.
+      var document = const CanvasDocument();
+      var element = ShapeElement(
+        ElementBase(
+          id: "s",
+          x: document.size.width / 4,
+          y: document.size.height / 4,
+          width: document.size.width / 2,
+          height: document.size.height / 2,
+        ),
+        fill: const Color(0xFFCC2200),
+      );
+      var controller = CanvasController(document.addElement(element));
+      addTearDown(controller.dispose);
+      controller.selectOnly("s");
+      var stage = await pump(tester, controller);
+      var scale = stage.pageRect.width / document.size.width;
+
+      await tester.dragFrom(
+          stage.pageRect.topLeft + element.center * scale, const Offset(30, 0));
+      await tester.pumpAndSettle();
+
+      var after = controller.document.elementById("s")!;
+      expect(after.width, element.width, reason: "not resized");
+      expect(after.x, greaterThan(element.x), reason: "moved");
+    });
+  });
 }

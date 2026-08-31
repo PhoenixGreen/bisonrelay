@@ -41,6 +41,113 @@ enum ShapeKind {
   bool get hasPoints => this == ShapeKind.star;
 }
 
+/// BubbleBody is the outline of a speech bubble.
+enum BubbleBody {
+  rounded("Rounded"),
+  oval("Oval"),
+  cloud("Cloud"),
+  burst("Burst");
+
+  final String label;
+  const BubbleBody(this.label);
+
+  static BubbleBody fromName(String? name) => values.firstWhere(
+        (b) => b.name == name,
+        orElse: () => BubbleBody.rounded,
+      );
+}
+
+/// BubbleTail is what comes out of the bubble and points at whoever is
+/// talking.
+enum BubbleTail {
+  none("None"),
+  pointer("Pointer"),
+  curved("Curved"),
+  thought("Thought");
+
+  final String label;
+  const BubbleTail(this.label);
+
+  static BubbleTail fromName(String? name) => values.firstWhere(
+        (t) => t.name == name,
+        orElse: () => BubbleTail.pointer,
+      );
+}
+
+/// SpeechBubbleSpec is everything about a speech bubble that a rectangle is
+/// not.
+///
+/// Its own object rather than six more fields on the element, for the same
+/// reason a text element's columns are: every one of them is meaningless
+/// unless the shape is a bubble, and grouping them is what lets the settings
+/// show them only then.
+class SpeechBubbleSpec {
+  final BubbleBody body;
+  final BubbleTail tail;
+
+  /// tailAngle is where the tail leaves the bubble, in degrees clockwise from
+  /// the right-hand side -- so it travels all the way around rather than being
+  /// stuck at the bottom-left, which is where it used to be nailed.
+  final double tailAngle;
+
+  /// tailLength is how far the tail reaches past the bubble, as a fraction of
+  /// the bubble's own half-height.
+  final double tailLength;
+
+  /// tailWidth is how wide the tail is where it meets the bubble, as the same
+  /// kind of fraction. Long and thin or short and fat are both bubbles people
+  /// draw.
+  final double tailWidth;
+
+  /// curl bends a curved tail. Ignored by the others.
+  final double curl;
+
+  const SpeechBubbleSpec({
+    this.body = BubbleBody.rounded,
+    this.tail = BubbleTail.pointer,
+    this.tailAngle = 115,
+    this.tailLength = 0.45,
+    this.tailWidth = 0.32,
+    this.curl = 0.5,
+  });
+
+  SpeechBubbleSpec copyWith({
+    BubbleBody? body,
+    BubbleTail? tail,
+    double? tailAngle,
+    double? tailLength,
+    double? tailWidth,
+    double? curl,
+  }) =>
+      SpeechBubbleSpec(
+        body: body ?? this.body,
+        tail: tail ?? this.tail,
+        tailAngle: tailAngle ?? this.tailAngle,
+        tailLength: tailLength ?? this.tailLength,
+        tailWidth: tailWidth ?? this.tailWidth,
+        curl: curl ?? this.curl,
+      );
+
+  Map<String, dynamic> toJson() => {
+        "body": body.name,
+        "tail": tail.name,
+        "angle": tailAngle,
+        "length": tailLength,
+        "width": tailWidth,
+        if (tail == BubbleTail.curved) "curl": curl,
+      };
+
+  factory SpeechBubbleSpec.fromJson(Map<String, dynamic> json) =>
+      SpeechBubbleSpec(
+        body: BubbleBody.fromName(json["body"] as String?),
+        tail: BubbleTail.fromName(json["tail"] as String?),
+        tailAngle: jsonDouble(json["angle"], 115),
+        tailLength: jsonDouble(json["length"], 0.45).clamp(0.0, 2.0),
+        tailWidth: jsonDouble(json["width"], 0.32).clamp(0.02, 2.0),
+        curl: jsonDouble(json["curl"], 0.5),
+      );
+}
+
 /// ShapeElement is a filled and stroked outline, optionally with a label
 /// inside it.
 class ShapeElement extends CanvasElement {
@@ -63,6 +170,9 @@ class ShapeElement extends CanvasElement {
   final String text;
   final TextSpec textSpec;
 
+  /// bubble is read only when [shape] is a speech bubble.
+  final SpeechBubbleSpec bubble;
+
   const ShapeElement(
     super.base, {
     this.shape = ShapeKind.rectangle,
@@ -74,6 +184,7 @@ class ShapeElement extends CanvasElement {
     this.innerRatio = 0.42,
     this.text = "",
     this.textSpec = const TextSpec(fontSize: 24, weight: 700),
+    this.bubble = const SpeechBubbleSpec(),
   });
 
   @override
@@ -89,7 +200,8 @@ class ShapeElement extends CanvasElement {
       points: points,
       innerRatio: innerRatio,
       text: text,
-      textSpec: textSpec);
+      textSpec: textSpec,
+      bubble: bubble);
 
   ShapeElement copyWith({
     ShapeKind? shape,
@@ -101,6 +213,7 @@ class ShapeElement extends CanvasElement {
     double? innerRatio,
     String? text,
     TextSpec? textSpec,
+    SpeechBubbleSpec? bubble,
   }) =>
       ShapeElement(base,
           shape: shape ?? this.shape,
@@ -111,7 +224,8 @@ class ShapeElement extends CanvasElement {
           points: points ?? this.points,
           innerRatio: innerRatio ?? this.innerRatio,
           text: text ?? this.text,
-          textSpec: textSpec ?? this.textSpec);
+          textSpec: textSpec ?? this.textSpec,
+          bubble: bubble ?? this.bubble);
 
   @override
   Map<String, dynamic> props() => {
@@ -124,6 +238,7 @@ class ShapeElement extends CanvasElement {
         if (shape.hasPoints) "inner": innerRatio,
         if (text.isNotEmpty) "text": text,
         if (text.isNotEmpty) "textSpec": textSpec.toJson(),
+        if (shape == ShapeKind.speechBubble) "bubble": bubble.toJson(),
       };
 
   factory ShapeElement.fromJson(Map<String, dynamic> json, ElementBase b) =>
@@ -137,5 +252,7 @@ class ShapeElement extends CanvasElement {
           innerRatio: jsonDouble(json["inner"], 0.42),
           text: jsonString(json["text"], ""),
           textSpec: jsonSpec(json["textSpec"], TextSpec.fromJson,
-              const TextSpec(fontSize: 24, weight: 700)));
+              const TextSpec(fontSize: 24, weight: 700)),
+          bubble: jsonSpec(json["bubble"], SpeechBubbleSpec.fromJson,
+              const SpeechBubbleSpec()));
 }

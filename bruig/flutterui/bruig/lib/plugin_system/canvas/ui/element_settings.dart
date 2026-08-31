@@ -775,7 +775,85 @@ List<Widget> _shapeSettings(ShapeElement e, _Write write, VoidCallback begin,
         ),
       ]),
       if (e.text.isNotEmpty)
-        ..._typeGroups(e.textSpec, (spec) => write(e.copyWith(textSpec: spec)),
+        // Only when it is a bubble: every one of these is meaningless on a star.
+      if (e.shape == ShapeKind.speechBubble)
+        CanvasControlGroup(label: "Bubble", children: [
+          CanvasDropdown<BubbleBody>(
+            label: "Body",
+            value: e.bubble.body,
+            width: 104,
+            options: [for (var b in BubbleBody.values) (b, b.label)],
+            onChanged: (v) {
+              begin();
+              write(e.copyWith(bubble: e.bubble.copyWith(body: v)));
+              commit();
+            },
+          ),
+          CanvasDropdown<BubbleTail>(
+            label: "Tail",
+            value: e.bubble.tail,
+            width: 104,
+            options: [for (var t in BubbleTail.values) (t, t.label)],
+            onChanged: (v) {
+              begin();
+              write(e.copyWith(bubble: e.bubble.copyWith(tail: v)));
+              commit();
+            },
+          ),
+          if (e.bubble.tail != BubbleTail.none) ...[
+            // All the way round, rather than the bottom-left corner it used
+            // to be nailed to.
+            CanvasNumberField(
+              key: const ValueKey("bubbleTailAngle"),
+              label: "Points",
+              value: e.bubble.tailAngle,
+              min: -360,
+              max: 360,
+              width: 58,
+              suffix: "°",
+              onChanged: (v) {
+                begin();
+                write(e.copyWith(bubble: e.bubble.copyWith(tailAngle: v)));
+              },
+              onCommit: commit,
+            ),
+            CanvasSlider(
+              label: "Length",
+              value: e.bubble.tailLength,
+              min: 0.05,
+              max: 1.2,
+              onChanged: (v) {
+                begin();
+                write(e.copyWith(bubble: e.bubble.copyWith(tailLength: v)));
+              },
+              onCommit: commit,
+            ),
+            CanvasSlider(
+              label: "Width",
+              value: e.bubble.tailWidth,
+              min: 0.05,
+              max: 1,
+              onChanged: (v) {
+                begin();
+                write(e.copyWith(bubble: e.bubble.copyWith(tailWidth: v)));
+              },
+              onCommit: commit,
+            ),
+            if (e.bubble.tail == BubbleTail.curved)
+              CanvasSlider(
+                label: "Curl",
+                value: e.bubble.curl,
+                min: -1.5,
+                max: 1.5,
+                onChanged: (v) {
+                  begin();
+                  write(e.copyWith(bubble: e.bubble.copyWith(curl: v)));
+                },
+                onCommit: commit,
+              ),
+          ],
+        ]),
+      ..._typeGroups(e.textSpec, (spec) => write(e.copyWith(textSpec: spec)),
             begin, commit,
             label: "Label type"),
     ];

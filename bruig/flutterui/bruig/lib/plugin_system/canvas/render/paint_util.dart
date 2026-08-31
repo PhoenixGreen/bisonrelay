@@ -194,7 +194,11 @@ void paintBox(ui.Canvas canvas, Rect rect, BoxSpec box) {
 /// -- a 2px outline on a shape stretched to twice as wide comes out 2px on one
 /// axis and 4px on the other, which looks like a bug and is very hard to see
 /// as one.
-Path shapePath(ShapeKind kind, Rect rect, {int points = 5, double inner = 0.42, double cornerRadius = 0}) {
+Path shapePath(ShapeKind kind, Rect rect,
+    {int points = 5,
+    double inner = 0.42,
+    double cornerRadius = 0,
+    SpeechBubbleSpec bubble = const SpeechBubbleSpec()}) {
   var path = Path();
   var c = rect.center;
   var rx = rect.width / 2, ry = rect.height / 2;
@@ -271,18 +275,7 @@ Path shapePath(ShapeKind kind, Rect rect, {int points = 5, double inner = 0.42, 
       path.addRect(Rect.fromLTRB(rect.left, c.dy - t, rect.right, c.dy + t));
 
     case ShapeKind.speechBubble:
-      // The body keeps the bottom eighth clear for the tail, so the bubble's
-      // text box and its outline agree about where the bubble stops.
-      var bodyBottom = rect.bottom - rect.height * 0.16;
-      var r = math.min(cornerRadius > 0 ? cornerRadius : 16.0,
-          math.min(rect.width, bodyBottom - rect.top) / 2);
-      path.addRRect(RRect.fromLTRBR(
-          rect.left, rect.top, rect.right, bodyBottom, Radius.circular(r)));
-      var tailX = rect.left + rect.width * 0.24;
-      path.moveTo(tailX, bodyBottom - 1);
-      path.lineTo(tailX + rect.width * 0.10, rect.bottom);
-      path.lineTo(tailX + rect.width * 0.20, bodyBottom - 1);
-      path.close();
+      return bubblePath(rect, bubble, cornerRadius);
   }
   return path;
 }
@@ -668,4 +661,145 @@ void paintTextOnPath(
   }
   var last = curve.last - curve[curve.length - 2];
   return (curve.last, math.atan2(last.dy, last.dx));
+}
+
+/// bubbleBodyRect is the part of a speech bubble the words go in.
+///
+/// The bubble's box has to hold the tail as well, so the body gives up room on
+/// the side the tail points at -- and only that side. Insetting all four
+/// equally would shrink the bubble by the tail's length however short a tail
+/// it had, and a bubble is mostly its body.
+Rect bubbleBodyRect(Rect rect, SpeechBubbleSpec bubble) {
+  if (bubble.tail == BubbleTail.none) return rect;
+  var radians = bubble.tailAngle * math.pi / 180;
+  var dx = math.cos(radians);
+  var dy = math.sin(radians);
+  var reach = rect.shortestSide / 2 * bubble.tailLength;
+  return Rect.fromLTRB(
+    rect.left + (dx < 0 ? -dx * reach : 0),
+    rect.top + (dy < 0 ? -dy * reach : 0),
+    rect.right - (dx > 0 ? dx * reach : 0),
+    rect.bottom - (dy > 0 ? dy * reach : 0),
+  );
+}
+
+/// bubblePath is a speech bubble as one outline.
+///
+/// One outline is the whole point. The tail used to be a second closed
+/// sub-path laid over the body: filled they merged, but *stroked* each
+/// sub-path drew its own boundary, so a line ran across the join and the tail
+/// read as a separate shape stuck on the side. Path.combine unions them into a
+/// single boundary, which is what a drawn bubble is.
+Path bubblePath(Rect rect, SpeechBubbleSpec bubble, double cornerRadius) {
+  var body = bubbleBodyRect(rect, bubble);
+  var shape = _bubbleBody(body, bubble.body, cornerRadius);
+  if (bubble.tail == BubbleTail.none) return shape;
+
+  var radians = bubble.tailAngle * math.pi / 180;
+  var out = Offset(math.cos(radians), math.sin(radians));
+  // Where the tail leaves the body: the point on the body's own ellipse in
+  // that direction. An ellipse rather than the rectangle, so a tail at 45
+  // degrees comes out of the corner rather than off the end of a side.
+  var anchor = Offset(body.center.dx + out.dx * body.width / 2,
+      body.center.dy + out.dy * body.height / 2);
+  var reach = rect.shortestSide / 2 * bubble.tailLength;
+  var tip = anchor + out * reach;
+
+  // A thought bubble is not attached at all: it is a trail of shrinking
+  // circles, and unioning them would weld them into a sausage.
+  if (bubble.tail == BubbleTail.thought) {
+    var trail = Path();
+    var count = 3;
+    var unit = rect.shortestSide / 2 * bubble.tailWidth * 0.5;
+    // From the body's own edge, not from the ellipse the pointer uses. Every
+    // body except the oval reaches past that ellipse -- a rounded rectangle
+    // is outside it everywhere but the middle of each side -- so dots placed
+    // against the ellipse sat inside the bubble and welded to it, and a
+    // thought bubble welded to its body is a badly drawn pointer.
+    var edge = _rayToRect(body, out);
+    for (var i = 0; i < count; i++) {
+      var t = i / (count - 1);
+      var at = edge + out * (unit * 1.6 + reach * 0.9 * t);
+      trail.addOval(Rect.fromCircle(
+          center: at, radius: unit * (1 - t * 0.4)));
+    }
+    return Path.combine(PathOperation.union, shape, trail);
+  }
+
+  var across = Offset(-out.dy, out.dx) *
+      (rect.shortestSide / 2 * bubble.tailWidth / 2);
+  // Started from inside the body so the union has something to bite on: a
+  // triangle that merely touched the outline would leave a hairline where the
+  // two boundaries met.
+  var root = anchor - out * (reach * 0.35);
+  var tail = Path()..moveTo(root.dx + across.dx, root.dy + across.dy);
+
+  if (bubble.tail == BubbleTail.curved) {
+    // A hooked tail, which is what almost every drawn bubble has: it leaves
+    // the body square and bends as it narrows.
+    var bend = Offset(-out.dy, out.dx) * (reach * bubble.curl);
+    tail
+      ..quadraticBezierTo(anchor.dx + bend.dx, anchor.dy + bend.dy, tip.dx,
+          tip.dy)
+      ..quadraticBezierTo(anchor.dx + bend.dx * 0.35, anchor.dy + bend.dy * 0.35,
+          root.dx - across.dx, root.dy - across.dy);
+  } else {
+    tail
+      ..lineTo(tip.dx, tip.dy)
+      ..lineTo(root.dx - across.dx, root.dy - across.dy);
+  }
+  tail.close();
+
+  return Path.combine(PathOperation.union, shape, tail);
+}
+
+/// _rayToRect is where a ray from [rect]'s centre in direction [out] crosses
+/// its edge.
+Offset _rayToRect(Rect rect, Offset out) {
+  var half = Offset(rect.width / 2, rect.height / 2);
+  var scaleX = out.dx == 0 ? double.infinity : (half.dx / out.dx).abs();
+  var scaleY = out.dy == 0 ? double.infinity : (half.dy / out.dy).abs();
+  var scale = math.min(scaleX, scaleY);
+  if (!scale.isFinite) return rect.center;
+  return rect.center + out * scale;
+}
+
+Path _bubbleBody(Rect body, BubbleBody kind, double cornerRadius) {
+  var path = Path();
+  switch (kind) {
+    case BubbleBody.rounded:
+      var r = math.min(cornerRadius > 0 ? cornerRadius : body.shortestSide * 0.22,
+          body.shortestSide / 2);
+      path.addRRect(RRect.fromRectAndRadius(body, Radius.circular(r)));
+    case BubbleBody.oval:
+      path.addOval(body);
+    case BubbleBody.cloud:
+      // Overlapping circles round the rim, unioned into one puffy outline.
+      var lumps = Path()..addOval(body.deflate(body.shortestSide * 0.14));
+      const count = 11;
+      for (var i = 0; i < count; i++) {
+        var a = i * 2 * math.pi / count;
+        var at = Offset(body.center.dx + math.cos(a) * body.width * 0.36,
+            body.center.dy + math.sin(a) * body.height * 0.36);
+        lumps = Path.combine(
+            PathOperation.union,
+            lumps,
+            Path()
+              ..addOval(Rect.fromCircle(
+                  center: at, radius: body.shortestSide * 0.19)));
+      }
+      return lumps;
+    case BubbleBody.burst:
+      // A shout: alternating long and short points all the way round.
+      const spikes = 12;
+      for (var i = 0; i < spikes * 2; i++) {
+        var a = -math.pi / 2 + i * math.pi / spikes;
+        var far = i.isEven ? 1.0 : 0.74;
+        var p = Offset(body.center.dx + math.cos(a) * body.width / 2 * far,
+            body.center.dy + math.sin(a) * body.height / 2 * far);
+        i == 0 ? path.moveTo(p.dx, p.dy) : path.lineTo(p.dx, p.dy);
+      }
+      path.close();
+  }
+  return path;
 }

@@ -38,9 +38,25 @@ import 'package:flutter/services.dart';
 /// _handleSize is a resize handle's side, in screen pixels.
 const double _handleSize = 9;
 
-/// _handleHitSlop grows the target past what is drawn. A 9px square is a
-/// visible marker and an unreasonable thing to hit with a trackpad.
-const double _handleHitSlop = 7;
+/// _handleHitSlop grows the target past what is drawn.
+///
+/// A 9px square is a fifth of a fingertip and a tenth of the distance most
+/// people can hold a mouse still, and the whole target is on the edge of the
+/// selection -- so half of what this buys is outside the element, where there
+/// is nothing else to hit anyway. Undersized, the miss does not do nothing: it
+/// falls through to the element underneath and *moves* it, which is the
+/// reported "more often than not I end up moving the element".
+const double _handleHitSlop = 13;
+
+/// _strokeHitSlop is the same allowance for a *line*, and is deliberately not
+/// the same number.
+///
+/// A handle can afford to be generous because it sits on the edge of the
+/// selection with nothing else nearby. A line cannot: its tolerance decides
+/// how much empty canvas beside it counts as "on the line", and too much of
+/// that steals clicks meant for whatever is behind it. They were one constant
+/// until widening the handles quietly widened this too.
+const double _strokeHitSlop = 7;
 
 /// _rotateHandleGap is how far above the selection the rotate ring sits.
 const double _rotateHandleGap = 26;
@@ -472,7 +488,7 @@ class CanvasStageState extends State<CanvasStage> {
   /// it, in document units. Half the stroke plus a few pixels of slack, so a
   /// hairline is still catchable without a steady hand.
   double _strokeReach(double strokeWidth) =>
-      math.max(strokeWidth / 2, 0) + _handleHitSlop / _scale;
+      math.max(strokeWidth / 2, 0) + _strokeHitSlop / _scale;
 
   /// _nearPolyline is whether [point] is within [reach] of the polyline.
   bool _nearPolyline(List<Offset> points, Offset point, double reach) {
