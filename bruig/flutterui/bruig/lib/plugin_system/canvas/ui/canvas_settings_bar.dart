@@ -140,6 +140,20 @@ class _CanvasSettingsBarState extends State<CanvasSettingsBar> {
               active: controller.showHelpers,
               onPressed: () =>
                   controller.showHelpers = !controller.showHelpers),
+          // The world just outside the canvas, for building entrances and
+          // exits. Beside the helpers toggle because it is the same kind of
+          // thing: something shown while working that is never published.
+          _barButton(theme,
+              icon: controller.showOverspill
+                  ? Icons.select_all
+                  : Icons.filter_center_focus,
+              tooltip: controller.showOverspill
+                  ? "Hide the area outside the canvas"
+                  : "Show a margin outside the canvas, for animating things "
+                      "on and off",
+              active: controller.showOverspill,
+              onPressed: () =>
+                  controller.showOverspill = !controller.showOverspill),
           _divider(theme),
           _barButton(theme,
               icon: Icons.zoom_out,

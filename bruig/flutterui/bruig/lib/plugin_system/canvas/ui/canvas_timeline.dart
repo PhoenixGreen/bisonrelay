@@ -160,6 +160,10 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
     if (path != null) {
       return ElementTrack([for (var n in path.nodes) Keyframe(frame: n.frame)]);
     }
+    // And nothing at all for whatever a path is driving: those marks belong to
+    // the route, and showing them twice invited editing the copy that gets
+    // overwritten.
+    if (_drivingPath != null) return null;
     return controller.selected?.track;
   }
 
@@ -167,6 +171,24 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
   PathElement? get _selectedPath {
     var element = controller.selected;
     return element is PathElement ? element : null;
+  }
+
+  /// _drivingPath is the path that owns this row's keyframes, if one does.
+  ///
+  /// A followed element's track is written by the path and rewritten whenever
+  /// a point moves, so keyframes shown on its own row would be marks the
+  /// reader could drag and then watch disappear. The strip shows nothing for
+  /// it and says where the timing lives instead -- which is also the answer to
+  /// "why do I get keyframes on the player *and* on the path".
+  PathElement? get _drivingPath {
+    var team = controller.focusedTeam;
+    var index = controller.focusedPlayer;
+    if (team != null && index != null) {
+      return controller.pathDriving(team.id, playerIndex: index);
+    }
+    var element = controller.selected;
+    if (element == null || element is PathElement) return null;
+    return controller.pathDriving(element.id);
   }
 
   /// _retime moves a mark from one frame to another.
@@ -207,8 +229,9 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
   }
 
   bool get _hasTarget =>
-      (controller.focusedTeam != null && controller.focusedPlayer != null) ||
-      controller.selected != null;
+      _drivingPath == null &&
+      ((controller.focusedTeam != null && controller.focusedPlayer != null) ||
+          controller.selected != null);
 
   /// _pathKeyframe adds or removes a *point* when a path is selected.
   ///
@@ -279,7 +302,7 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
   /// timing, and a path with no points is not a path. Its own row buttons are
   /// where a point is removed.
   bool get _canClearChannel {
-    if (_selectedPath != null) return false;
+    if (_selectedPath != null || _drivingPath != null) return false;
     var track = _targetTrack;
     return track != null && !track.isEmpty;
   }
@@ -392,37 +415,40 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
             onPressed: () => controller.frame = controller.frame + 1,
           ),
           const SizedBox(width: 6),
-          SizedBox(
-            // Wide enough for the longest fraction this can ever show, which
-            // is both ends at the frame cap. Sized to the worst case rather
-            // than to the usual one because the box does not grow: at 56 it
-            // fitted "1/24" and wrapped "223/240" onto a second line, pushing
-            // the row's height out and the digits half out of sight.
-            width: 104,
-            child: Padding(
-              padding: const EdgeInsets.only(top: controlLabelHeight),
-              child: Text(
-                // A fraction rather than a sentence. It is read at a glance
-                // while scrubbing, and "Frame 1 of 100" is three words and
-                // ninety pixels to say what "1/100" says in five characters.
-                "${controller.frame + 1}/${document.frames}",
-                // One line whatever happens: a readout that reflows while
-                // scrubbing moves everything beside it.
-                maxLines: 1,
-                softWrap: false,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                    fontSize: 12, color: theme.colors.onSurfaceVariant),
+          // The playhead and the document's length, as one control reading
+          // "frame 288 of 600". They were a readout and a separate Frames
+          // field a few pixels apart, saying the same number twice -- and the
+          // field was too narrow for four digits, so a long document showed
+          // "10000" clipped to "1000".
+          CanvasNumberField(
+            key: const ValueKey("canvasFrame"),
+            label: "Frame",
+            // One-based on screen and zero-based underneath, because the first
+            // frame of an animation is frame 1 to everybody except a computer.
+            value: (controller.frame + 1).toDouble(),
+            min: 1,
+            max: document.frames.toDouble(),
+            width: 68,
+            onChanged: (v) => controller.stepFrame(v.round() - 1 - controller.frame),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(top: controlLabelHeight, right: 2),
+            child: SizedBox(
+              height: controlHeight,
+              child: Center(
+                child: Text("/",
+                    style: TextStyle(
+                        fontSize: 13, color: theme.colors.onSurfaceVariant)),
               ),
             ),
           ),
           CanvasNumberField(
             key: const ValueKey("canvasFrames"),
-            label: "Frames",
+            label: "Length",
             value: document.frames.toDouble(),
             min: 1,
             max: maxFrameCount.toDouble(),
-            width: 52,
+            width: 68,
             onChanged: (v) {
               controller.beginInteraction();
               controller.apply(document.copyWith(frames: v.round()),
@@ -436,7 +462,7 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
             value: document.frameRate.toDouble(),
             min: 1,
             max: 60,
-            width: 52,
+            width: 60,
             onChanged: (v) {
               controller.beginInteraction();
               controller.apply(document.copyWith(frameRate: v.round()),
@@ -445,13 +471,18 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
             onCommit: controller.endInteraction,
           ),
           SizedBox(
-            width: 44,
+            // Room for the longest duration a canvas can have: an hour of
+            // frames at one a second.
+            width: 62,
             child: Padding(
               padding: const EdgeInsets.only(top: controlLabelHeight),
               child: Text(
                 document.isAnimated
                     ? "${document.durationSeconds.toStringAsFixed(1)}s"
                     : "Still",
+                maxLines: 1,
+                softWrap: false,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                     fontSize: 11, color: theme.colors.onSurfaceVariant),
               ),
@@ -474,11 +505,15 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
           ),
           CanvasIconButton(
             icon: keyHere != null ? Icons.diamond : Icons.diamond_outlined,
-            tooltip: target == null
-                ? "Select an element, or click a player, to give it a keyframe"
-                : keyHere != null
-                    ? "Remove this keyframe from $target"
-                    : "Add a keyframe for $target here",
+            tooltip: _drivingPath != null
+                ? "$target is following ${_drivingPath!.name} — "
+                    "its timing is that path's points"
+                : target == null
+                    ? "Select an element, or click a player, to give it a "
+                        "keyframe"
+                    : keyHere != null
+                        ? "Remove this keyframe from $target"
+                        : "Add a keyframe for $target here",
             active: keyHere != null,
             onPressed: !_hasTarget
                 ? null
@@ -494,7 +529,10 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
             icon: Icons.layers_clear_outlined,
             tooltip: _selectedPath != null
                 ? "A path's marks are its points — remove them in its settings"
-                : target == null
+                : _drivingPath != null
+                    ? "$target is following ${_drivingPath!.name} — clear it "
+                        "by unlinking the path"
+                    : target == null
                     ? "Select an element, or click a player, to clear its "
                         "keyframes"
                     : "Clear every keyframe on $target",
@@ -643,6 +681,11 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
     if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
       return KeyEventResult.ignored;
     }
+    // Never while somebody is typing. See isTypingInAField: this handler runs
+    // before the app's text-editing shortcuts do, so without this the arrow
+    // keys scrubbed instead of moving the caret and the space bar started
+    // playback instead of typing a space.
+    if (isTypingInAField()) return KeyEventResult.ignored;
     switch (event.logicalKey) {
       case LogicalKeyboardKey.space:
         controller.togglePlay();
@@ -872,6 +915,19 @@ class _CanvasKeyframeBarState extends State<CanvasKeyframeBar> {
     return controller.selected?.name;
   }
 
+  /// _drivingPath is the path that owns this row's keyframes, if one does.
+  /// The same question the strip asks -- see _CanvasTimelineState._drivingPath.
+  PathElement? get _drivingPath {
+    var team = controller.focusedTeam;
+    var index = controller.focusedPlayer;
+    if (team != null && index != null) {
+      return controller.pathDriving(team.id, playerIndex: index);
+    }
+    var element = controller.selected;
+    if (element == null || element is PathElement) return null;
+    return controller.pathDriving(element.id);
+  }
+
   ElementTrack? get _trackHere {
     var team = controller.focusedTeam;
     var index = controller.focusedPlayer;
@@ -921,6 +977,17 @@ class _CanvasKeyframeBarState extends State<CanvasKeyframeBar> {
     var keyHere = _trackHere?.keyAt(controller.frame);
     var target = _target;
     var path = controller.selected;
+
+    // Whatever a path is driving has no poses of its own to show: they are the
+    // route's, rewritten every time a point moves.
+    var driver = _drivingPath;
+    if (driver != null) {
+      return _message(
+        theme,
+        "$target is following ${driver.name}. Its timing is that path's "
+        "points — select the path to change when it gets where.",
+      );
+    }
 
     // A path's marks are points on a route, not poses. Easing, fade, scale and
     // turn all belong to the follower rather than to the point, so offering

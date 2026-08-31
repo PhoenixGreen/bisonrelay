@@ -799,3 +799,23 @@ class _CanvasExpanderState extends State<CanvasExpander> {
     );
   }
 }
+
+/// isTypingInAField is whether the keyboard currently belongs to a text field.
+///
+/// The canvas and the timeline both claim the arrow keys and the space bar --
+/// one to nudge and scrub, the other to play. Both do it from a [Focus] that
+/// wraps their whole subtree, and that is *below* the app's own Shortcuts
+/// widget in the tree, so their handlers run first: a key pressed while typing
+/// in one of their own number fields was scrubbing the timeline instead of
+/// moving the caret, and the space bar was starting playback instead of
+/// typing a space.
+///
+/// Asking the focus manager rather than tracking it per field, because the
+/// field that has focus may belong to the settings band, the sidebar or a
+/// dialog, none of which the timeline knows about.
+bool isTypingInAField() {
+  var context = FocusManager.instance.primaryFocus?.context;
+  if (context == null) return false;
+  if (context.widget is EditableText) return true;
+  return context.findAncestorWidgetOfExactType<EditableText>() != null;
+}

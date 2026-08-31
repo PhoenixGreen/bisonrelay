@@ -350,4 +350,122 @@ void main() {
           reason: "one point is not a path");
     });
   });
+
+  group("a path owns its follower's timing", () {
+    (CanvasController, TeamElement, PathElement) followed() {
+      var team = TeamElement(
+        const ElementBase(id: "t", name: "Home", x: 0, y: 0, width: 400, height: 300),
+      ).withFormation(TeamFormation.f442);
+      var path = PathElement(
+        const ElementBase(id: "p", name: "Run", x: 0, y: 0, width: 400, height: 300),
+        nodes: const [
+          PathNode(x: 0, y: 0, frame: 0),
+          PathNode(x: 1, y: 1, frame: 12),
+        ],
+        follow: const PathFollow(elementId: "t", playerIndex: 0),
+      );
+      var controller = CanvasController(
+          const CanvasDocument(frames: 30).addElement(team).addElement(path));
+      controller.applyPathFollow(path);
+      return (controller, team, path);
+    }
+
+    test("the controller can say which path drives a follower", () {
+      var (controller, _, _) = followed();
+      addTearDown(controller.dispose);
+
+      expect(controller.pathDriving("t", playerIndex: 0)?.id, "p");
+      expect(controller.pathDriving("t", playerIndex: 1), isNull,
+          reason: "another player of the same team is not driven");
+      expect(controller.pathDriving("t"), isNull,
+          reason: "nor is the team itself");
+    });
+
+    test("dragging a driven element moves it rather than posing it", () {
+      // Its poses belong to the route, and one written by a drag would be
+      // overwritten the next time a point moved -- so the drag has to mean
+      // something that survives.
+      var shape = ShapeElement(
+          const ElementBase(id: "s", x: 0, y: 0, width: 20, height: 20));
+      var path = PathElement(
+        const ElementBase(id: "p", x: 0, y: 0, width: 200, height: 200),
+        nodes: const [
+          PathNode(x: 0, y: 0, frame: 0),
+          PathNode(x: 1, y: 0, frame: 10),
+        ],
+        follow: const PathFollow(elementId: "s"),
+      );
+      var controller = CanvasController(
+          const CanvasDocument(frames: 30).addElement(shape).addElement(path));
+      addTearDown(controller.dispose);
+      controller.applyPathFollow(path);
+
+      var driven = controller.document.elementById("s")!;
+      expect(driven.track, isNotNull, reason: "it does have keyframes");
+      expect(controller.posesRatherThanMoves(driven), isFalse,
+          reason: "but they are not its own to edit");
+    });
+
+    test("unlinking hands the timing back", () {
+      var (controller, _, path) = followed();
+      addTearDown(controller.dispose);
+
+      controller.clearPathFollow(path);
+      controller.replaceElement(path.copyWith(clearFollow: true));
+      expect(controller.pathDriving("t", playerIndex: 0), isNull);
+    });
+  });
+
+  group("giving a new point room", () {
+    test("appending at the end of the document still gets its own frame", () {
+      // The reported problem: the run already finishes on the last frame, so
+      // the new point was clamped on top of the old end and the button looked
+      // as though it had done nothing.
+      var path = PathElement(
+        const ElementBase(id: "p", width: 100, height: 100),
+        nodes: const [
+          PathNode(x: 0, y: 0, frame: 0),
+          PathNode(x: 1, y: 0, frame: 23),
+        ],
+      ).appendNode(maxFrame: 23);
+
+      expect(path.nodes.length, 3);
+      var frames = path.nodes.map((n) => n.frame).toList();
+      expect(frames.toSet().length, 3, reason: "three distinct frames");
+      expect(frames, orderedEquals([...frames]..sort()));
+      expect(frames.last, lessThanOrEqualTo(23));
+    });
+
+    test("inserting between two adjacent frames makes room", () {
+      var path = PathElement(
+        const ElementBase(id: "p", width: 100, height: 100),
+        nodes: const [
+          PathNode(x: 0, y: 0, frame: 4),
+          PathNode(x: 1, y: 0, frame: 5),
+        ],
+      ).insertAfter(0, maxFrame: 30);
+
+      var frames = path.nodes.map((n) => n.frame).toList();
+      expect(frames.length, 3);
+      expect(frames.toSet().length, 3);
+    });
+
+    test("a run with room keeps the timing it was given", () {
+      // The repair only runs when there is a collision; ordinary appending
+      // must not re-space a run somebody has tuned.
+      var path = PathElement(
+        const ElementBase(id: "p", width: 100, height: 100),
+        nodes: const [
+          PathNode(x: 0, y: 0, frame: 0),
+          PathNode(x: 0.3, y: 0, frame: 3),
+          PathNode(x: 1, y: 0, frame: 20),
+        ],
+      ).appendNode(maxFrame: 60);
+
+      expect(path.nodes[0].frame, 0);
+      expect(path.nodes[1].frame, 3, reason: "untouched");
+      expect(path.nodes[2].frame, 20);
+      expect(path.nodes[3].frame, greaterThan(20));
+    });
+  });
 }

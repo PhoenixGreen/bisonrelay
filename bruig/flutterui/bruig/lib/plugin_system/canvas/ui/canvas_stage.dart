@@ -10,6 +10,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -160,6 +161,16 @@ class CanvasStageState extends State<CanvasStage> {
   /// butted against the sidebar.
   static const double _stageMargin = 24;
 
+  /// _overspillFraction is how much of the world outside the canvas is shown
+  /// when CanvasController.showOverspill is on, as a fraction of the page.
+  ///
+  /// Twelve per cent each way. Enough to hold something that is about to come
+  /// on or has just gone off -- which is all it is for -- and little enough
+  /// that the page still dominates: turning it on shrinks the design by about
+  /// a fifth, and any more than this and the thing being worked on is a small
+  /// rectangle in the middle of a large grey one.
+  static const double _overspillFraction = 0.12;
+
   final FocusNode _focus = FocusNode(debugLabel: "canvas stage");
 
   @override
@@ -214,7 +225,26 @@ class CanvasStageState extends State<CanvasStage> {
     var fit = controller.fit == CanvasFit.width
         ? byWidth
         : math.min(byWidth, (_visible.height - _stageMargin * 2) / size.height);
+    // The overspill has to fit on screen too, so the page gives up the room
+    // for it rather than the margin being eaten into.
+    if (controller.showOverspill) fit /= 1 + _overspillFraction * 2;
     return fit.isFinite && fit > 0 ? fit : 1;
+  }
+
+  /// _viewRect is everything that is drawn: the page, plus the overspill
+  /// around it when that is showing.
+  ///
+  /// This is what the stage clips to and what the pointer is tested against,
+  /// so an element sitting off the page is visible and grabbable exactly when
+  /// the reader has asked to see out there.
+  Rect get _viewRect {
+    var page = _pageRect;
+    if (!controller.showOverspill) return page;
+    return Rect.fromCenter(
+      center: page.center,
+      width: page.width * (1 + _overspillFraction * 2),
+      height: page.height * (1 + _overspillFraction * 2),
+    );
   }
 
   /// _contentSize is how much room the canvas and its margins need.
@@ -223,8 +253,10 @@ class CanvasStageState extends State<CanvasStage> {
   /// it can be taller, and the excess is what scrolls.
   Size _contentSize(Size visible) {
     if (visible.width <= 0 || visible.height <= 0) return visible;
-    var wanted =
-        document.size.size.height * _fitScale + _stageMargin * 2;
+    var wanted = document.size.size.height *
+            _fitScale *
+            (controller.showOverspill ? 1 + _overspillFraction * 2 : 1) +
+        _stageMargin * 2;
     return Size(visible.width, math.max(visible.height, wanted));
   }
 
@@ -409,7 +441,7 @@ class CanvasStageState extends State<CanvasStage> {
       // Clipped out of sight means clipped out of reach. A handle that can be
       // grabbed where nothing is drawn is a click that appears to do nothing
       // and then moves something.
-      if (!_pageRect.inflate(reach).contains(at)) continue;
+      if (!_viewRect.inflate(reach).contains(at)) continue;
       if ((stage - at).distance <= reach) return handle;
     }
     return null;
@@ -482,7 +514,7 @@ class CanvasStageState extends State<CanvasStage> {
 
     // Outside the frame there is nothing to hit. Clicking the margin clears
     // the selection, which is the only thing it could sensibly mean.
-    if (!_pageRect.contains(stage) && _hitHandle(stage) == null) {
+    if (!_viewRect.contains(stage) && _hitHandle(stage) == null) {
       if (!_shiftHeld) controller.clearSelection();
       _mode = _DragMode.none;
       return;
@@ -972,6 +1004,11 @@ class CanvasStageState extends State<CanvasStage> {
     if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
       return KeyEventResult.ignored;
     }
+    // Never while somebody is typing. See isTypingInAField: this handler runs
+    // before the app's text-editing shortcuts do, so without this the arrow
+    // keys scrubbed instead of moving the caret and the space bar started
+    // playback instead of typing a space.
+    if (isTypingInAField()) return KeyEventResult.ignored;
     var keys = HardwareKeyboard.instance;
     var nudging = keys.isAltPressed;
     var step = keys.isShiftPressed ? 10.0 : 1.0;
@@ -1050,6 +1087,7 @@ class CanvasStageState extends State<CanvasStage> {
                   child: CustomPaint(
                     painter: _StagePainter(
                       page: _pageRect,
+                      view: _viewRect,
                       document: document,
                       frame: controller.frame,
                       scale: _scale,
@@ -1138,6 +1176,11 @@ class _StagePainter extends CustomPainter {
   /// zoom.
   final Rect page;
 
+  /// view is everything drawn: the page, plus the overspill around it when
+  /// that is showing. The clip is this rather than [page], so an element
+  /// waiting off the left of the canvas can be seen and taken hold of.
+  final Rect view;
+
   /// selectedPath is the selected element when it is a path, whose points and
   /// handles are drawn in place of a selection box.
   final PathElement? selectedPath;
@@ -1152,6 +1195,7 @@ class _StagePainter extends CustomPainter {
 
   const _StagePainter({
     required this.page,
+    required this.view,
     required this.showHelpers,
     required this.selectedPath,
     required this.document,
@@ -1173,7 +1217,7 @@ class _StagePainter extends CustomPainter {
     // rather than as a region of the window -- which matters most when the
     // document's own background happens to be the same colour as the editor's.
     canvas.drawRect(
-        page.shift(const Offset(0, 6)),
+        view.shift(const Offset(0, 6)),
         Paint()
           ..color = const Color(0x55000000)
           ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12));
@@ -1182,7 +1226,7 @@ class _StagePainter extends CustomPainter {
     // zoom, including the selection handles. The frame itself never moves --
     // see CanvasStage._pageRect.
     canvas.save();
-    canvas.clipRect(page);
+    canvas.clipRect(view);
 
     var docSize = document.size.size;
     canvas.save();
@@ -1213,6 +1257,22 @@ class _StagePainter extends CustomPainter {
     }
 
     canvas.restore();
+
+    // Everything outside the page dimmed, so the edge of what will actually be
+    // published stays obvious. Four bands rather than a stroked rectangle with
+    // a hole in it, which is what a Path.difference would be for one frame of
+    // shading.
+    if (view != page) {
+      var shade = Paint()..color = const Color(0x66000000);
+      canvas.drawRect(
+          Rect.fromLTRB(view.left, view.top, view.right, page.top), shade);
+      canvas.drawRect(
+          Rect.fromLTRB(view.left, page.bottom, view.right, view.bottom), shade);
+      canvas.drawRect(
+          Rect.fromLTRB(view.left, page.top, page.left, page.bottom), shade);
+      canvas.drawRect(
+          Rect.fromLTRB(page.right, page.top, view.right, page.bottom), shade);
+    }
 
     // The border last and outside the clip, so it is a crisp full-width line
     // rather than a half-width one sitting on the edge of the clip.
@@ -1342,6 +1402,7 @@ class _StagePainter extends CustomPainter {
       old.scale != scale ||
       old.origin != origin ||
       old.page != page ||
+      old.view != view ||
       old.showHelpers != showHelpers ||
       !identical(old.selectedPath, selectedPath) ||
       old.hoveredButton != hoveredButton ||

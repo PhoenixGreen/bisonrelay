@@ -1667,7 +1667,8 @@ Widget _pathNodeList(CanvasController controller, PathElement e,
                 // Follow row is for.
                 onPressed: i >= e.nodes.length - 1
                     ? null
-                    : () => relink(e.insertAfter(i)),
+                    : () => relink(e.insertAfter(i,
+                        maxFrame: controller.document.frames - 1)),
               ),
               CanvasIconButton(
                 icon: Icons.close,

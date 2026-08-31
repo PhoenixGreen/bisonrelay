@@ -999,4 +999,124 @@ void main() {
       expect((controller.document.elementById("away") as TeamElement).x, away.x);
     });
   });
+
+  group("the overspill", () {
+    testWidgets("shrinks the page to make room, and is centred on it",
+        (tester) async {
+      var controller = CanvasController(const CanvasDocument());
+      addTearDown(controller.dispose);
+      var stage = await pump(tester, controller);
+
+      var closed = stage.pageRect;
+      controller.showOverspill = true;
+      await tester.pumpAndSettle();
+      var open = stage.pageRect;
+
+      expect(open.width, lessThan(closed.width),
+          reason: "the page gives up the room rather than the margin");
+      expect(open.center.dx, closeTo(closed.center.dx, 1));
+      expect(open.center.dy, closeTo(closed.center.dy, 1));
+      // Twelve per cent each way, so the page keeps about four fifths.
+      expect(open.width / closed.width, closeTo(1 / 1.24, 0.02));
+    });
+
+    testWidgets("an element off the page can be selected once it is on",
+        (tester) async {
+      // The point of the whole thing. An element animated in from the left
+      // starts outside the page, where it is clipped away entirely -- so its
+      // first keyframe could not be seen, selected or dragged.
+      var document = const CanvasDocument();
+      var element = ShapeElement(
+        ElementBase(
+          id: "s",
+          x: -120,
+          y: document.size.height / 2 - 40,
+          width: 80,
+          height: 80,
+        ),
+        fill: const Color(0xFFCC2200),
+      );
+      var controller = CanvasController(document.addElement(element));
+      addTearDown(controller.dispose);
+      var stage = await pump(tester, controller);
+
+      Offset atElement() {
+        var scale = stage.pageRect.width / document.size.width;
+        return stage.pageRect.topLeft + element.center * scale;
+      }
+
+      await tester.tapAt(atElement());
+      await tester.pumpAndSettle();
+      expect(controller.selection, isEmpty,
+          reason: "off the page, there is nothing there to click");
+
+      controller.showOverspill = true;
+      await tester.pumpAndSettle();
+      await tester.tapAt(atElement());
+      await tester.pumpAndSettle();
+      expect(controller.selection, {"s"});
+    });
+
+    testWidgets("the page's own edge is still where it was", (tester) async {
+      // The border has to keep meaning "this is what gets published", which is
+      // the only thing stopping the margin being mistaken for more canvas.
+      var controller = CanvasController(const CanvasDocument());
+      addTearDown(controller.dispose);
+      var stage = await pump(tester, controller);
+
+      controller.showOverspill = true;
+      await tester.pumpAndSettle();
+
+      expect(stage.pageRect.width / stage.pageRect.height,
+          closeTo(16 / 9, 0.01),
+          reason: "the page is still the document's shape");
+    });
+  });
+
+  group("the canvas keyboard", () {
+    testWidgets("the arrows scrub and the space bar plays", (tester) async {
+      // The positive half of the typing guard: with focus on the canvas rather
+      // than in a field, the shortcuts are the canvas's own.
+      var controller = CanvasController(const CanvasDocument(frames: 40));
+      addTearDown(controller.dispose);
+      var stage = await pump(tester, controller);
+
+      // The stage takes focus on pointer down.
+      await tester.tapAt(stage.pageRect.center);
+      await tester.pumpAndSettle();
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pumpAndSettle();
+      expect(controller.frame, 1);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pumpAndSettle();
+      expect(controller.frame, 11, reason: "up and down move ten at a time");
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+      await tester.pumpAndSettle();
+      expect(controller.frame, 10);
+    });
+
+    testWidgets("alt and an arrow nudges the selection instead",
+        (tester) async {
+      var document = const CanvasDocument(frames: 40);
+      var element = (newElement(ElementKind.shape, document) as ShapeElement)
+          .copyWith(fill: const Color(0xFFCC2200));
+      var controller = CanvasController(document.addElement(element));
+      controller.selectOnly(element.id);
+      addTearDown(controller.dispose);
+      var stage = await pump(tester, controller);
+      await tester.tapAt(stage.pageRect.center);
+      await tester.pumpAndSettle();
+
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+      await tester.pumpAndSettle();
+
+      expect(controller.document.elements.single.x, element.x + 1);
+      expect(controller.frame, 0, reason: "and the playhead stayed put");
+    });
+  });
 }

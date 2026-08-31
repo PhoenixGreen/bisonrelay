@@ -9,6 +9,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
 import 'package:bruig/plugin_system/canvas/presets/builtin_presets.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_settings_bar.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_timeline.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
@@ -17,6 +18,7 @@ import 'package:bruig/plugin_system/canvas/ui/sidebar/canvas_sidebar.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/layers_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
@@ -727,21 +729,72 @@ void main() {
       expect(find.text("0.8s"), findsOneWidget);
     });
 
-    testWidgets("the frame readout fits its longest value on one line",
+    testWidgets("the playhead and the length are one editable control",
         (tester) async {
-      // At 56px it fitted "1/24" and wrapped "223/240", which pushed the
-      // transport row taller and cut the digits off.
-      var controller = CanvasController(
-          const CanvasDocument(frames: maxFrameCount));
+      // They were a readout and a separate Frames field a few pixels apart,
+      // saying the same number twice -- and the field was too narrow for four
+      // digits, so a long document showed "10000" clipped to "1000".
+      var controller = CanvasController(const CanvasDocument(frames: 40));
+      addTearDown(controller.dispose);
+      controller.frame = 12;
+      await pump(tester, CanvasTimeline(controller: controller));
+
+      var playhead = find.byKey(const ValueKey("canvasFrame"));
+      var length = find.byKey(const ValueKey("canvasFrames"));
+      // One-based on screen: the first frame is frame 1 to everybody except a
+      // computer.
+      expect(find.descendant(of: playhead, matching: find.text("13")),
+          findsOneWidget);
+      expect(find.descendant(of: length, matching: find.text("40")),
+          findsOneWidget);
+
+      await tester.enterText(playhead, "25");
+      await tester.pump();
+      expect(controller.frame, 24);
+
+      await tester.enterText(length, "600");
+      await tester.pump();
+      expect(controller.document.frames, 600);
+    });
+
+    testWidgets("a long document's numbers still fit", (tester) async {
+      var controller =
+          CanvasController(const CanvasDocument(frames: maxFrameCount));
       addTearDown(controller.dispose);
       controller.frame = maxFrameCount - 1;
       await pump(tester, CanvasTimeline(controller: controller));
 
-      var readout = find.text("$maxFrameCount/$maxFrameCount");
-      expect(readout, findsOneWidget);
       expect(tester.takeException(), isNull);
-      // One line: two would be about 28 logical pixels tall.
-      expect(tester.getSize(readout).height, lessThan(20));
+      var length = find.byKey(const ValueKey("canvasFrames"));
+      expect(find.descendant(of: length, matching: find.text("$maxFrameCount")),
+          findsOneWidget);
+      // One line: the control plus its caption. Two would be a caption and
+      // two rows of field.
+      expect(tester.getSize(length).height,
+          lessThan(controlHeight + controlLabelHeight + 4));
+    });
+
+    testWidgets("typing in a field keeps its own arrow keys and space bar",
+        (tester) async {
+      // The transport's Focus sits below the app's text-editing shortcuts, so
+      // its handler ran first: an arrow pressed while typing a frame number
+      // scrubbed the timeline instead of moving the caret, and a space started
+      // playback instead of typing.
+      var controller = CanvasController(const CanvasDocument(frames: 40));
+      addTearDown(controller.dispose);
+      controller.frame = 12;
+      await pump(tester, CanvasTimeline(controller: controller));
+
+      await tester.tap(find.byKey(const ValueKey("canvasFrameRate")));
+      await tester.pumpAndSettle();
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.sendKeyEvent(LogicalKeyboardKey.space);
+      await tester.pumpAndSettle();
+
+      expect(controller.frame, 12, reason: "the playhead did not move");
+      expect(controller.playing, isFalse, reason: "and nothing started");
     });
 
     testWidgets("steps the playhead", (tester) async {
@@ -749,13 +802,19 @@ void main() {
       addTearDown(controller.dispose);
       await pump(tester, CanvasTimeline(controller: controller));
 
-      // A fraction rather than a sentence: it is read at a glance while
-      // scrubbing.
-      expect(find.text("1/10"), findsOneWidget);
+      expect(
+          find.descendant(
+              of: find.byKey(const ValueKey("canvasFrame")),
+              matching: find.text("1")),
+          findsOneWidget);
       await tester.tap(find.byTooltip("Next frame"));
       await tester.pumpAndSettle();
       expect(controller.frame, 1);
-      expect(find.text("2/10"), findsOneWidget);
+      expect(
+          find.descendant(
+              of: find.byKey(const ValueKey("canvasFrame")),
+              matching: find.text("2")),
+          findsOneWidget);
 
       // Clamped rather than wrapping or running past the end.
       await tester.tap(find.byTooltip("Previous frame"));
@@ -1321,6 +1380,112 @@ void main() {
       expect(
           controller.document.elements.whereType<PathElement>().single.nodes.length,
           2);
+    });
+  });
+
+  group("a follower's row on the strip", () {
+    (CanvasController, TeamElement) followed() {
+      var team = TeamElement(
+        const ElementBase(
+            id: "t", name: "Home", x: 0, y: 0, width: 400, height: 300),
+      ).withFormation(TeamFormation.f442);
+      var path = PathElement(
+        const ElementBase(
+            id: "p", name: "Run", x: 0, y: 0, width: 400, height: 300),
+        nodes: const [
+          PathNode(x: 0, y: 0, frame: 0),
+          PathNode(x: 1, y: 1, frame: 12),
+        ],
+        follow: const PathFollow(elementId: "t", playerIndex: 0),
+      );
+      var controller = CanvasController(
+          const CanvasDocument(frames: 30).addElement(team).addElement(path));
+      controller.applyPathFollow(path);
+      return (controller, team);
+    }
+
+    testWidgets("shows no marks of its own", (tester) async {
+      // The reported problem: assigning the keeper to a path put keyframes on
+      // the player *and* on the path, and editing the copy on the player did
+      // nothing that survived the next re-bake.
+      var (controller, _) = followed();
+      addTearDown(controller.dispose);
+      controller.selectOnly("t");
+      controller.focusedPlayer = 0;
+      await pump(tester, CanvasTimeline(controller: controller));
+
+      expect(find.byTooltip("#1 (Home) is following Run — "
+          "its timing is that path's points"), findsOneWidget);
+      expect(find.byTooltip("Add a keyframe for #1 (Home) here"), findsNothing);
+      expect(find.byTooltip("Remove this keyframe from #1 (Home)"),
+          findsNothing);
+    });
+
+    testWidgets("cannot be cleared from the strip either", (tester) async {
+      var (controller, _) = followed();
+      addTearDown(controller.dispose);
+      controller.selectOnly("t");
+      controller.focusedPlayer = 0;
+      await pump(tester, CanvasTimeline(controller: controller));
+
+      var button = find.byTooltip("#1 (Home) is following Run — "
+          "clear it by unlinking the path");
+      expect(button, findsOneWidget);
+      expect(
+          tester
+              .widget<InkWell>(
+                  find.descendant(of: button, matching: find.byType(InkWell)))
+              .onTap,
+          isNull);
+    });
+
+    testWidgets("the pose bar says where the timing lives", (tester) async {
+      var (controller, _) = followed();
+      addTearDown(controller.dispose);
+      controller.selectOnly("t");
+      controller.focusedPlayer = 0;
+      await pump(tester, CanvasKeyframeBar(controller: controller));
+
+      expect(find.textContaining("is following Run"), findsOneWidget);
+      expect(find.text("Easing"), findsNothing);
+    });
+
+    testWidgets("another player of the same team keeps his own row",
+        (tester) async {
+      var (controller, _) = followed();
+      addTearDown(controller.dispose);
+      controller.selectOnly("t");
+      controller.focusedPlayer = 5;
+      await pump(tester, CanvasTimeline(controller: controller));
+
+      expect(find.byTooltip("Add a keyframe for #6 (Home) here"),
+          findsOneWidget);
+    });
+  });
+
+  group("the area outside the canvas", () {
+    testWidgets("is off by default and toggles from the band", (tester) async {
+      var controller = CanvasController(const CanvasDocument());
+      addTearDown(controller.dispose);
+      await pump(
+          tester,
+          CanvasSettingsBar(
+            controller: controller,
+            onPublish: () {},
+            canvasSettingsOpen: false,
+            onToggleCanvasSettings: () {},
+          ));
+
+      expect(controller.showOverspill, isFalse,
+          reason: "what the canvas shows is what gets published");
+      await tester.tap(find.byTooltip("Show a margin outside the canvas, "
+          "for animating things on and off"));
+      await tester.pumpAndSettle();
+      expect(controller.showOverspill, isTrue);
+
+      await tester.tap(find.byTooltip("Hide the area outside the canvas"));
+      await tester.pumpAndSettle();
+      expect(controller.showOverspill, isFalse);
     });
   });
 }

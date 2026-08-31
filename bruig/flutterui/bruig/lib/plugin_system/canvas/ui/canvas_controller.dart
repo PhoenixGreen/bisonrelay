@@ -200,6 +200,27 @@ class CanvasController extends ChangeNotifier {
     notifyListeners();
   }
 
+  bool _showOverspill = false;
+
+  /// showOverspill draws a margin of the world outside the canvas.
+  ///
+  /// Off by default, because what the canvas shows is what gets published and
+  /// a permanent border of not-the-design around it is a border around every
+  /// glance at the work.
+  ///
+  /// On, it is what makes an entrance possible to build. An element animated
+  /// in from off the left starts outside the page, where it is clipped away
+  /// entirely -- so its first keyframe cannot be seen, cannot be selected and
+  /// cannot be dragged, and the only way to place it was to type coordinates
+  /// and scrub until it appeared.
+  bool get showOverspill => _showOverspill;
+
+  set showOverspill(bool value) {
+    if (_showOverspill == value) return;
+    _showOverspill = value;
+    notifyListeners();
+  }
+
   bool _showHelpers = true;
 
   /// showHelpers is whether the editing furniture is drawn: the box around the
@@ -518,6 +539,11 @@ class CanvasController extends ChangeNotifier {
   /// resting position, and the whole animation travels with it.
   bool posesRatherThanMoves(CanvasElement element) =>
       _document.isAnimated &&
+      // Never for something a path is driving. Its poses belong to the route,
+      // and one written by a drag would be overwritten the next time a point
+      // moved -- so a drag moves where it starts from instead, and the whole
+      // run travels with it.
+      pathDriving(element.id) == null &&
       (_autoKeyframe || (element.track?.isEmpty == false));
 
   /// _moved is one element shifted, as either a pose or a relocation.
@@ -552,6 +578,24 @@ class CanvasController extends ChangeNotifier {
         dy: topLeft.dy - element.y,
       )),
     );
+  }
+
+  /// pathDriving is the path that owns [elementId]'s keyframes, if one does.
+  ///
+  /// A followed element's track is not its own: it is written by the path and
+  /// rewritten whenever the route or its timing changes, so anything the
+  /// reader put there by hand would vanish the next time a point moved. Rather
+  /// than let them make edits that quietly disappear, the timeline refuses --
+  /// it shows the path's points instead, and says where to go.
+  PathElement? pathDriving(String elementId, {int? playerIndex}) {
+    for (var element in _document.elements) {
+      if (element is! PathElement) continue;
+      var follow = element.follow;
+      if (follow == null || follow.elementId != elementId) continue;
+      if (follow.playerIndex != playerIndex) continue;
+      return element;
+    }
+    return null;
   }
 
   /// applyPathFollow writes [path]'s route into its follower's keyframes.

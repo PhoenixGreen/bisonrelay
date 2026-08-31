@@ -50,7 +50,7 @@ const int defaultFrameRate = 12;
 /// animation nobody asked for.
 const int defaultFrameCount = 1;
 
-const int maxFrameCount = 600;
+const int maxFrameCount = 3600;
 
 /// CanvasBackground is what is behind everything, covering the whole document.
 ///

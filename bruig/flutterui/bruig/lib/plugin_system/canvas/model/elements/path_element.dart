@@ -331,7 +331,7 @@ class PathElement extends CanvasElement {
   /// leaves the run alone. Guessing would move the curve every time somebody
   /// asked for somewhere to grab it, which is the opposite of what adding a
   /// control point is for.
-  PathElement insertAfter(int index) {
+  PathElement insertAfter(int index, {int maxFrame = 1 << 30}) {
     if (index < 0 || index >= nodes.length - 1) return this;
     var a = nodes[index];
     var b = nodes[index + 1];
@@ -366,7 +366,39 @@ class PathElement extends CanvasElement {
     next[index] = a.copyWith(outDx: q0.dx - a.x, outDy: q0.dy - a.y);
     next[index + 1] = b.copyWith(inDx: q2.dx - b.x, inDy: q2.dy - b.y);
     next.insert(index + 1, made);
-    return copyWith(nodes: next);
+    // Two neighbours a single frame apart leave no whole frame between them,
+    // so the halved frame lands on one of them.
+    return copyWith(nodes: next).withDistinctFrames(maxFrame: maxFrame);
+  }
+
+  /// withDistinctFrames gives every point a frame of its own.
+  ///
+  /// Two points sharing a frame is a zero-length segment: the follower is in
+  /// two places at once and the timeline draws one mark where there are two,
+  /// so one of them cannot be picked up. It happens whenever there is no room
+  /// left to put a new point -- the path already ends on the document's last
+  /// frame, or two neighbours are a single frame apart.
+  ///
+  /// The repair is to re-space the whole run rather than to nudge the newcomer
+  /// somewhere arbitrary. Spacing is what the reader can see and adjust; a
+  /// point silently landing a frame early is not.
+  PathElement withDistinctFrames({int maxFrame = 1 << 30}) {
+    if (nodes.length < 2) return this;
+
+    var collides = false;
+    for (var i = 1; i < nodes.length; i++) {
+      if (nodes[i].frame <= nodes[i - 1].frame) collides = true;
+    }
+    if (!collides) return this;
+
+    // The run keeps the span it already had wherever that is wide enough,
+    // and is only stretched -- backwards from the end if need be -- when it is
+    // not. A path that finishes on the document's last frame has to start
+    // earlier to fit another point in; there is nowhere else for it to go.
+    var needed = nodes.length - 1;
+    var to = math.min(maxFrame, math.max(lastFrame, firstFrame + needed));
+    var from = math.max(0, math.min(firstFrame, to - needed));
+    return spreadFrames(from, to);
   }
 
   /// appendNode carries the path on past its last point.
@@ -396,7 +428,10 @@ class PathElement extends CanvasElement {
         y: last.y + direction.dy,
         frame: math.min(maxFrame, last.frame + gap),
       ),
-    ]);
+      // Clamping to the document's last frame is what puts a new point on top
+      // of the old end when the run already finishes there, which reads as the
+      // button having done nothing.
+    ]).withDistinctFrames(maxFrame: maxFrame);
   }
 
   /// insertAtFrame adds a point at [frame], splitting whichever segment spans
