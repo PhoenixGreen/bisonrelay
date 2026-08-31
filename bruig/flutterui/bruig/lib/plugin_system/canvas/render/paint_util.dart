@@ -316,10 +316,17 @@ Path dashPath(Path source, double on, double off) {
 }
 
 /// arrowHead is a filled triangle at [tip], pointing along [angle].
+/// arrowSpread is the half-angle between an arrowhead's axis and each barb.
+///
+/// Shared, because the stroke has to be cut back to exactly where the barbs
+/// meet -- see _trimFor -- and a second copy of this number would put the cut
+/// somewhere the arrow is not.
+const double arrowSpread = 0.42;
+
 void arrowHead(ui.Canvas canvas, Offset tip, double angle, double size,
-    Paint paint) {
+    Paint paint, {bool filled = true}) {
   var back = angle + math.pi;
-  var spread = 0.42;
+  var spread = arrowSpread;
   var path = Path()
     ..moveTo(tip.dx, tip.dy)
     ..lineTo(tip.dx + math.cos(back - spread) * size,
@@ -327,9 +334,13 @@ void arrowHead(ui.Canvas canvas, Offset tip, double angle, double size,
     ..lineTo(tip.dx + math.cos(back + spread) * size,
         tip.dy + math.sin(back + spread) * size)
     ..close();
-  canvas.drawPath(path, Paint()
-    ..color = paint.color
-    ..style = PaintingStyle.fill);
+  canvas.drawPath(
+      path,
+      Paint()
+        ..color = paint.color
+        ..style = filled ? PaintingStyle.fill : PaintingStyle.stroke
+        ..strokeWidth = paint.strokeWidth
+        ..strokeJoin = StrokeJoin.miter);
 }
 
 /// _capHeightRatio is how much of a font's size the capitals and digits

@@ -462,58 +462,23 @@ void main() {
     }
   });
 
-  group("a line's arrowheads", () {
-    LineElement line({double curvature = 0}) => LineElement(
+  group("a line's ends", () {
+    LineElement line({
+      double curvature = 0,
+      LineEnd start = LineEnd.arrow,
+      LineEnd end = LineEnd.arrow,
+    }) =>
+        LineElement(
           const ElementBase(id: "l", x: 0, y: 0, width: 200, height: 0),
           curvature: curvature,
-          cap: LineCapStyle.arrowBoth,
+          startEnd: start,
+          endEnd: end,
           strokeWidth: 4,
         );
 
-    test("a straight line's arrows follow the chord", () {
-      var (atStart, atEnd) = lineTangents(line());
-      // Left to right along the x axis.
-      expect(atStart, closeTo(0, 0.0001));
-      expect(atEnd, closeTo(0, 0.0001));
-    });
-
-    test("a bowed line's arrows follow the curve, not the chord", () {
-      // The reported fault: the arrowheads took the chord's direction whatever
-      // the bow, so on a curve they sat askew with the tail across the line
-      // instead of flat against the end of it.
-      var bowed = line(curvature: 0.4);
-      var (atStart, atEnd) = lineTangents(bowed);
-      var chord = math.atan2(
-          bowed.end.dy - bowed.start.dy, bowed.end.dx - bowed.start.dx);
-
-      expect((atStart - chord).abs(), greaterThan(0.5),
-          reason: "the curve leaves the start at a very different angle");
-      expect((atEnd - chord).abs(), greaterThan(0.5));
-      // Symmetrical: it leaves as steeply as it arrives, the other way up.
-      expect(atStart + atEnd, closeTo(2 * chord, 0.0001));
-    });
-
-    test("the tangent turns with the bow", () {
-      var up = lineTangents(line(curvature: 0.3)).$1;
-      var down = lineTangents(line(curvature: -0.3)).$1;
-      expect(up, closeTo(-down, 0.0001),
-          reason: "bowing the other way points the arrow the other way");
-    });
-
-    test("a zero-length line falls back to the chord rather than nothing", () {
-      var degenerate = LineElement(
-        const ElementBase(id: "l", x: 10, y: 10, width: 0, height: 0),
-        curvature: 0.5,
-      );
-      var (atStart, atEnd) = lineTangents(degenerate);
-      expect(atStart.isFinite, isTrue);
-      expect(atEnd.isFinite, isTrue);
-    });
-
-    test("the painter, the hit test and the arrows share one control point",
-        () {
-      // They were written out twice and the arrowheads used neither, which is
-      // how the arrows ended up pointing somewhere the curve does not go.
+    test("the painter, the hit test and the ends share one control point", () {
+      // The bow was written out twice and the arrowheads used neither, which
+      // is how they ended up pointing somewhere the curve does not go.
       var bowed = line(curvature: 0.35);
       var control = lineControlPoint(bowed);
       var curve = curveOfElement(bowed)!;
@@ -526,6 +491,103 @@ void main() {
           (a, b) => (a - apex).distance < (b - apex).distance ? a : b);
       expect((nearest - apex).distance, lessThan(1),
           reason: "the walked curve passes through the painter's own apex");
+    });
+
+    test("a straight line's control point is its own midpoint", () {
+      var straight = line();
+      expect(lineControlPoint(straight),
+          (straight.start + straight.end) / 2);
+    });
+
+    test("the selection box leaves room for what is on the ends", () {
+      // An arrowhead reaches three and a half stroke widths past the point the
+      // line stops at, so a box sized for the stroke alone cut it in half.
+      var plain = line(start: LineEnd.none, end: LineEnd.none);
+      var arrowed = line();
+      var withArrows = visualBoundsOf(arrowed, null, 0);
+      var without = visualBoundsOf(plain, null, 0);
+      expect(withArrows.width, greaterThan(without.width));
+      expect(withArrows.height, greaterThan(without.height));
+    });
+
+    test("a bar reaches less far than an arrow", () {
+      expect(LineEnd.bar.reach, lessThan(LineEnd.arrow.reach));
+      expect(LineEnd.none.reach, 0);
+    });
+
+    test("only the pointed ends need the stroke cut back", () {
+      // The trim exists so a thick stroke does not run on underneath a barb
+      // and poke out of its sides. A dot or a bar sits on the end and needs
+      // no room made for it.
+      expect(LineEnd.arrow.isPointed, isTrue);
+      expect(LineEnd.openArrow.isPointed, isTrue);
+      expect(LineEnd.hollowArrow.isPointed, isTrue);
+      expect(LineEnd.circle.isPointed, isFalse);
+      expect(LineEnd.bar.isPointed, isFalse);
+      expect(LineEnd.none.isPointed, isFalse);
+    });
+
+    test("each end is its own setting and survives a round trip", () {
+      var element = line(start: LineEnd.circle, end: LineEnd.hollowDiamond)
+          .copyWith(cap: LineStrokeCap.round);
+      var back = CanvasDocument.decode(
+              CanvasDocument(elements: [element]).encode())!.elements.single
+          as LineElement;
+
+      expect(back.startEnd, LineEnd.circle);
+      expect(back.endEnd, LineEnd.hollowDiamond);
+      expect(back.cap, LineStrokeCap.round);
+    });
+
+    test("a document saved before the split still opens", () {
+      // One "cap" used to mean both the stroke's cap and its decoration. Each
+      // old value maps onto the pair it actually meant.
+      LineElement load(String cap) => LineElement.fromJson(
+            {"cap": cap, "sw": 4.0},
+            const ElementBase(id: "l"),
+          );
+
+      expect(load("arrow").endEnd, LineEnd.arrow);
+      expect(load("arrow").startEnd, LineEnd.none);
+      expect(load("arrow").cap, LineStrokeCap.flat);
+
+      expect(load("arrowBoth").startEnd, LineEnd.arrow);
+      expect(load("arrowBoth").endEnd, LineEnd.arrow);
+
+      expect(load("dot").startEnd, LineEnd.circle);
+      expect(load("dot").endEnd, LineEnd.circle);
+      expect(load("dot").cap, LineStrokeCap.round);
+
+      expect(load("round").cap, LineStrokeCap.round);
+      expect(load("round").endEnd, LineEnd.none,
+          reason: "a round cap was never a decoration");
+    });
+
+    test("a new document with no ends does not read as an old one", () {
+      // The migration keys off the absence of the new fields, so a line that
+      // deliberately has no decorations must still say so.
+      var plain = line(start: LineEnd.none, end: LineEnd.none);
+      var back = CanvasDocument.decode(
+              CanvasDocument(elements: [plain]).encode())!.elements.single
+          as LineElement;
+      expect(back.startEnd, LineEnd.none);
+      expect(back.endEnd, LineEnd.none);
+    });
+
+    test("every end draws without throwing, bowed and straight", () {
+      for (var end in LineEnd.values) {
+        for (var bow in [0.0, 0.5, -0.5]) {
+          var document = CanvasDocument(
+            size: const CanvasSize(width: 200),
+            elements: [line(curvature: bow, start: end, end: end)],
+          );
+          expect(
+              () => paintCanvasDocument(
+                  ui.Canvas(ui.PictureRecorder()), document),
+              returnsNormally,
+              reason: "${end.name} at bow $bow");
+        }
+      }
     });
   });
 }

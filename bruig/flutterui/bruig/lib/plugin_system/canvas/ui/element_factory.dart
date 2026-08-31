@@ -99,7 +99,7 @@ CanvasElement newElement(
 
     case ElementKind.line:
       return LineElement(base,
-          strokeWidth: unit * 0.18, cap: LineCapStyle.arrow);
+          strokeWidth: unit * 0.18, endEnd: LineEnd.arrow);
 
     case ElementKind.chart:
       return ChartElement(base,

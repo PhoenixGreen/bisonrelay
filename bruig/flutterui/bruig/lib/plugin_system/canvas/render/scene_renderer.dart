@@ -297,12 +297,18 @@ Rect visualBoundsOf(CanvasElement element, CanvasDocument? doc, int frame) {
     var curve = curveOfElement(host);
     var box = _boundsOfPoints(curve);
     if (box == null) return element.boundsAt(frame);
-    // Room for the stroke itself, which is centred on the path, and for an
-    // arrowhead if there is one.
+    // Room for the stroke itself, which is centred on the path, and for
+    // whatever is drawn at the ends -- an arrowhead reaches three and a half
+    // stroke widths past the point the line stops at, and a box that ignored
+    // it would cut the arrow in half.
     var width = element is LineElement
         ? element.strokeWidth
         : (element as PathElement).strokeWidth;
-    return box.inflate(math.max(width, 1) * 1.5);
+    var ends = element is LineElement
+        ? math.max(element.startEnd.reach, element.endEnd.reach)
+        : math.max((element as PathElement).startEnd.reach,
+            element.endEnd.reach);
+    return box.inflate(math.max(width, 1) * math.max(ends, 1.5));
   }
 
   return element.boundsAt(frame);
@@ -487,66 +493,128 @@ Offset lineControlPoint(LineElement e) {
   return mid + Offset(-d.dy / length, d.dx / length) * (length * e.curvature);
 }
 
-/// lineTangents is the direction the curve is heading at each end, as
-/// (at the start, at the end).
-///
-/// For a quadratic that is the control point seen from the near end -- and it
-/// is not the chord unless the line is straight. Using the chord is what made
-/// an arrowhead on a bowed line sit askew, with its tail across the line
-/// rather than flat against the end of it.
-(double, double) lineTangents(LineElement e) {
-  var a = e.start, b = e.end;
-  var control = lineControlPoint(e);
-  var fromStart = control - a;
-  var toEnd = b - control;
-  // A degenerate control point -- a zero-length line -- leaves nothing to take
-  // a direction from, so the chord stands in.
-  if (fromStart.distance == 0 || toEnd.distance == 0) {
-    var chord = math.atan2(b.dy - a.dy, b.dx - a.dx);
-    return (chord, chord);
-  }
-  return (
-    math.atan2(fromStart.dy, fromStart.dx),
-    math.atan2(toEnd.dy, toEnd.dx),
-  );
-}
-
 void _paintLine(ui.Canvas canvas, LineElement e) {
-  var a = e.start, b = e.end;
+  var control = lineControlPoint(e);
+  var path = Path()..moveTo(e.start.dx, e.start.dy);
+  if (e.curvature == 0) {
+    path.lineTo(e.end.dx, e.end.dy);
+  } else {
+    path.quadraticBezierTo(control.dx, control.dy, e.end.dx, e.end.dy);
+  }
+
   var paint = Paint()
     ..style = PaintingStyle.stroke
     ..strokeWidth = e.strokeWidth
     ..color = e.color
-    ..strokeCap = switch (e.cap) {
-      LineCapStyle.round || LineCapStyle.dot => StrokeCap.round,
-      LineCapStyle.square => StrokeCap.square,
-      _ => StrokeCap.butt,
-    };
+    ..strokeCap = e.cap.flutter;
 
-  var control = lineControlPoint(e);
-  var path = Path()..moveTo(a.dx, a.dy);
-  if (e.curvature == 0) {
-    path.lineTo(b.dx, b.dy);
-  } else {
-    path.quadraticBezierTo(control.dx, control.dy, b.dx, b.dy);
-  }
+  // Measured rather than worked out by hand. A path metric gives the exact
+  // position *and* direction at any distance along the curve, which is the one
+  // thing the arrowheads need and the one thing that was being guessed: they
+  // took the straight chord's angle whatever the bow, so on a curve they sat
+  // askew with the tail across the line instead of flat against the end.
+  var metrics = path.computeMetrics().toList();
+  if (metrics.isEmpty) return;
+  var metric = metrics.first;
+  var length = metric.length;
+
+  var startTangent = metric.getTangentForOffset(0);
+  var endTangent = metric.getTangentForOffset(length);
+  if (startTangent == null || endTangent == null) return;
+
+  // A pointed decoration is drawn with its tip on the line's end, so the
+  // stroke is cut back to the decoration's base. Without the trim, a thick
+  // stroke runs on underneath and pokes out of the sides of the barb -- and
+  // the whole point of an arrow is that it comes to a point.
+  var trimStart = _trimFor(e.startEnd, e.strokeWidth);
+  var trimEnd = _trimFor(e.endEnd, e.strokeWidth);
+  var from = math.min(trimStart, length * 0.45);
+  var to = math.max(length - trimEnd, from + 0.01);
+  var stroke = metric.extractPath(from, to);
 
   canvas.drawPath(
-      e.dash > 0 ? dashPath(path, e.dash, e.dash * 0.8) : path, paint);
+      e.dash > 0 ? dashPath(stroke, e.dash, e.dash * 0.8) : stroke, paint);
 
-  // Each arrowhead points the way the curve is actually going where it sits,
-  // not the way the chord goes -- see lineTangents.
-  var (atStart, atEnd) = lineTangents(e);
-  if (e.cap.hasEndArrow) {
-    arrowHead(canvas, b, atEnd, e.strokeWidth * 3.5, paint);
-  }
-  if (e.cap.hasStartArrow) {
-    arrowHead(canvas, a, atStart + math.pi, e.strokeWidth * 3.5, paint);
-  }
-  if (e.cap == LineCapStyle.dot) {
-    var dot = Paint()..color = e.color;
-    canvas.drawCircle(a, e.strokeWidth * 1.1, dot);
-    canvas.drawCircle(b, e.strokeWidth * 1.1, dot);
+  // The start decoration points back out of the line, so its heading is the
+  // curve's reversed.
+  _paintLineEnd(canvas, e.startEnd, startTangent.position,
+      startTangent.angle + math.pi, e);
+  _paintLineEnd(canvas, e.endEnd, endTangent.position, endTangent.angle, e);
+}
+
+/// _trimFor is how far back from a line's end its decoration begins.
+double _trimFor(LineEnd end, double strokeWidth) =>
+    end.isPointed ? strokeWidth * 3.5 * math.cos(arrowSpread) * 0.92 : 0;
+
+/// _paintLineEnd draws one decoration, pointing along [angle].
+///
+/// [angle] is where the line is going at that end, taken from the path metric,
+/// so every one of these sits square on the curve however hard it is bent.
+void _paintLineEnd(ui.Canvas canvas, LineEnd end, Offset at, double angle,
+    LineElement e) {
+  if (end == LineEnd.none) return;
+  var w = e.strokeWidth;
+  var fill = Paint()
+    ..style = PaintingStyle.fill
+    ..color = e.color;
+  var stroke = Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = w
+    ..strokeJoin = StrokeJoin.miter
+    ..color = e.color;
+
+  switch (end) {
+    case LineEnd.none:
+      return;
+    case LineEnd.arrow:
+      arrowHead(canvas, at, angle, w * 3.5, fill);
+    case LineEnd.hollowArrow:
+      arrowHead(canvas, at, angle, w * 3.5, stroke, filled: false);
+    case LineEnd.openArrow:
+      // Two strokes rather than a shape: a barb, which is what a hand-drawn
+      // arrow is and what reads best on a thin line.
+      var size = w * 3.5;
+      var back = angle + math.pi;
+      for (var side in [-arrowSpread, arrowSpread]) {
+        canvas.drawLine(
+            at,
+            at.translate(
+                math.cos(back + side) * size, math.sin(back + side) * size),
+            stroke);
+      }
+    case LineEnd.diamond:
+    case LineEnd.hollowDiamond:
+      var size = w * 1.9;
+      var along = Offset(math.cos(angle), math.sin(angle));
+      var across = Offset(-along.dy, along.dx);
+      var centre = at - along * size;
+      canvas.drawPath(
+        Path()
+          ..moveTo(centre.dx + along.dx * size, centre.dy + along.dy * size)
+          ..lineTo(centre.dx + across.dx * size * 0.6,
+              centre.dy + across.dy * size * 0.6)
+          ..lineTo(centre.dx - along.dx * size, centre.dy - along.dy * size)
+          ..lineTo(centre.dx - across.dx * size * 0.6,
+              centre.dy - across.dy * size * 0.6)
+          ..close(),
+        end == LineEnd.diamond ? fill : stroke,
+      );
+    case LineEnd.circle:
+      canvas.drawCircle(at, w * 1.2, fill);
+    case LineEnd.hollowCircle:
+      canvas.drawCircle(at, w * 1.2, stroke);
+    case LineEnd.square:
+      canvas.save();
+      canvas.translate(at.dx, at.dy);
+      canvas.rotate(angle);
+      canvas.drawRect(
+          Rect.fromCenter(center: Offset.zero, width: w * 2.2, height: w * 2.2),
+          fill);
+      canvas.restore();
+    case LineEnd.bar:
+      // A tick across the line, which is what a measurement wants at each end.
+      var across = Offset(-math.sin(angle), math.cos(angle)) * (w * 1.6);
+      canvas.drawLine(at - across, at + across, stroke);
   }
 }
 
@@ -825,26 +893,22 @@ void _paintPath(ui.Canvas canvas, Rect bounds, PathElement e, bool editing) {
   var paint = Paint()
     ..style = PaintingStyle.stroke
     ..strokeWidth = e.strokeWidth
-    ..strokeCap = switch (e.cap) {
-      LineCapStyle.round || LineCapStyle.dot => StrokeCap.round,
-      LineCapStyle.square => StrokeCap.square,
-      _ => StrokeCap.butt,
-    }
-    ..color = e.color;
+    ..color = e.color
+    ..strokeCap = e.cap.flutter;
 
   canvas.drawPath(e.dash > 0 ? dashPath(path, e.dash, e.dash) : path, paint);
 
   // The arrowhead points along the last segment's own direction rather than at
   // the straight line between the last two nodes, which on a curve that
   // doubles back would point roughly backwards.
-  if (e.cap.hasEndArrow && !e.closed) {
+  if (e.endEnd != LineEnd.none && !e.closed) {
     var last = e.segments - 1;
     var tip = e.pointOnSegment(last, 1);
     var just = e.pointOnSegment(last, 0.94);
     var shift = Offset(bounds.left - e.x, bounds.top - e.y);
     _paintArrowHead(canvas, just + shift, tip + shift, e.strokeWidth, e.color);
   }
-  if (e.cap.hasStartArrow && !e.closed) {
+  if (e.startEnd != LineEnd.none && !e.closed) {
     var tip = e.pointOnSegment(0, 0);
     var just = e.pointOnSegment(0, 0.06);
     var shift = Offset(bounds.left - e.x, bounds.top - e.y);

@@ -148,7 +148,12 @@ class PathElement extends CanvasElement {
 
   final Color color;
   final double strokeWidth;
-  final LineCapStyle cap;
+  /// cap is how the stroke finishes, and startEnd/endEnd are what is drawn at
+  /// each end -- the same three settings a line has, for the same reason: a
+  /// route usually wants a dot where it starts and an arrow where it stops.
+  final LineStrokeCap cap;
+  final LineEnd startEnd;
+  final LineEnd endEnd;
 
   /// dash is the on/off length in design units. Zero draws a solid line.
   final double dash;
@@ -171,7 +176,9 @@ class PathElement extends CanvasElement {
     this.nodes = const [],
     this.color = const Color(0xFFFFD166),
     this.strokeWidth = 3,
-    this.cap = LineCapStyle.arrow,
+    this.cap = LineStrokeCap.round,
+    this.startEnd = LineEnd.none,
+    this.endEnd = LineEnd.arrow,
     this.dash = 0,
     this.closed = false,
     this.guide = false,
@@ -474,6 +481,8 @@ class PathElement extends CanvasElement {
       color: color,
       strokeWidth: strokeWidth,
       cap: cap,
+      startEnd: startEnd,
+      endEnd: endEnd,
       dash: dash,
       closed: closed,
       guide: guide,
@@ -483,7 +492,9 @@ class PathElement extends CanvasElement {
     List<PathNode>? nodes,
     Color? color,
     double? strokeWidth,
-    LineCapStyle? cap,
+    LineStrokeCap? cap,
+    LineEnd? startEnd,
+    LineEnd? endEnd,
     double? dash,
     bool? closed,
     bool? guide,
@@ -495,6 +506,8 @@ class PathElement extends CanvasElement {
           color: color ?? this.color,
           strokeWidth: strokeWidth ?? this.strokeWidth,
           cap: cap ?? this.cap,
+          startEnd: startEnd ?? this.startEnd,
+          endEnd: endEnd ?? this.endEnd,
           dash: dash ?? this.dash,
           closed: closed ?? this.closed,
           guide: guide ?? this.guide,
@@ -505,7 +518,9 @@ class PathElement extends CanvasElement {
         "nodes": [for (var n in nodes) n.toJson()],
         "color": colorToJson(color),
         "sw": strokeWidth,
-        "cap": cap.name,
+        "strokeCap": cap.name,
+        if (startEnd != LineEnd.none) "startEnd": startEnd.name,
+        if (endEnd != LineEnd.arrow) "endEnd": endEnd.name,
         if (dash > 0) "dash": dash,
         if (closed) "closed": true,
         if (guide) "guide": true,
@@ -523,7 +538,16 @@ class PathElement extends CanvasElement {
         ],
         color: colorFromJson(json["color"], const Color(0xFFFFD166)),
         strokeWidth: jsonDouble(json["sw"], 3),
-        cap: LineCapStyle.fromName(json["cap"] as String?),
+        // Documents saved before the stroke's cap and the ends' decorations
+        // were separated carry one "cap" that meant both. See
+        // LineElement.fromJson, which does the same mapping.
+        cap: json["strokeCap"] is String
+            ? LineStrokeCap.fromName(json["strokeCap"] as String?)
+            : LineStrokeCap.round,
+        startEnd: LineEnd.fromName(json["startEnd"] as String?),
+        endEnd: json.containsKey("endEnd") || json.containsKey("strokeCap")
+            ? LineEnd.fromName(json["endEnd"] as String?)
+            : LineEnd.arrow,
         dash: jsonDouble(json["dash"], 0),
         closed: jsonBool(json["closed"], false),
         guide: jsonBool(json["guide"], false),

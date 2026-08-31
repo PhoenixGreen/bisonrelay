@@ -781,9 +781,14 @@ List<Widget> _shapeSettings(ShapeElement e, _Write write, VoidCallback begin,
     ];
 
 List<Widget> _lineSettings(CanvasController controller, LineElement e,
-    _Write write, VoidCallback begin,
-        VoidCallback commit) =>
-    [
+    _Write write, VoidCallback begin, VoidCallback commit) {
+  void now(LineElement next) {
+    begin();
+    write(next);
+    commit();
+  }
+
+  return [
       CanvasControlGroup(label: "Line", children: [
         CanvasColorButton(
           label: "Colour",
@@ -804,16 +809,26 @@ List<Widget> _lineSettings(CanvasController controller, LineElement e,
           onChanged: (v) => write(e.copyWith(strokeWidth: v)),
           onCommit: commit,
         ),
-        CanvasDropdown<LineCapStyle>(
-          label: "Ends",
+        CanvasDropdown<LineStrokeCap>(
+          label: "Stroke end",
           value: e.cap,
-          width: 118,
-          options: [for (var c in LineCapStyle.values) (c, c.label)],
-          onChanged: (v) {
-            begin();
-            write(e.copyWith(cap: v));
-            commit();
-          },
+          width: 92,
+          options: [for (var c in LineStrokeCap.values) (c, c.label)],
+          onChanged: (v) => now(e.copyWith(cap: v)),
+        ),
+        CanvasDropdown<LineEnd>(
+          label: "Start",
+          value: e.startEnd,
+          width: 124,
+          options: [for (var c in LineEnd.values) (c, c.label)],
+          onChanged: (v) => now(e.copyWith(startEnd: v)),
+        ),
+        CanvasDropdown<LineEnd>(
+          label: "End",
+          value: e.endEnd,
+          width: 124,
+          options: [for (var c in LineEnd.values) (c, c.label)],
+          onChanged: (v) => now(e.copyWith(endEnd: v)),
         ),
         CanvasNumberField(
           label: "Dash",
@@ -852,7 +867,8 @@ List<Widget> _lineSettings(CanvasController controller, LineElement e,
           },
         ),
       ]),
-    ];
+  ];
+}
 
 List<Widget> _imageSettings(ImageElement e, _Write write, VoidCallback begin,
         VoidCallback commit) =>
@@ -1740,12 +1756,26 @@ List<Widget> _pathSettings(CanvasController controller, PathElement e,
         },
         onCommit: commit,
       ),
-      CanvasDropdown<LineCapStyle>(
-        label: "Ends",
+      CanvasDropdown<LineStrokeCap>(
+        label: "Stroke end",
         value: e.cap,
-        width: 116,
-        options: [for (var c in LineCapStyle.values) (c, c.label)],
+        width: 92,
+        options: [for (var c in LineStrokeCap.values) (c, c.label)],
         onChanged: (v) => now(e.copyWith(cap: v)),
+      ),
+      CanvasDropdown<LineEnd>(
+        label: "Start",
+        value: e.startEnd,
+        width: 124,
+        options: [for (var c in LineEnd.values) (c, c.label)],
+        onChanged: (v) => now(e.copyWith(startEnd: v)),
+      ),
+      CanvasDropdown<LineEnd>(
+        label: "End",
+        value: e.endEnd,
+        width: 124,
+        options: [for (var c in LineEnd.values) (c, c.label)],
+        onChanged: (v) => now(e.copyWith(endEnd: v)),
       ),
       CanvasNumberField(
         label: "Dash",
