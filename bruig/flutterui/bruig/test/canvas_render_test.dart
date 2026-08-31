@@ -7,6 +7,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
@@ -925,6 +926,110 @@ void main() {
       );
       expect(CanvasDocument(elements: [star]).encode().contains("bubble"),
           isFalse);
+    });
+  });
+
+  group("image looks", () {
+    test("a filter and the sliders combine into one matrix", () {
+      // One matrix rather than a layer per effect: layers are the expensive
+      // part of drawing and a canvas may hold a dozen pictures.
+      var element = const ImageElement(
+        ElementBase(id: "i", width: 100, height: 100),
+        assetId: "abcdefghij123456",
+        filter: ImageFilterPreset.greyscale,
+        saturation: 0.5,
+      );
+      expect(element.filter, ImageFilterPreset.greyscale);
+      expect(element.saturation, 0.5);
+    });
+
+    test("crop, frame, filter and overlay survive a round trip", () {
+      var element = const ImageElement(
+        ElementBase(id: "i", width: 100, height: 100),
+        assetId: "abcdefghij123456",
+        crop: ImageCrop(left: 0.1, top: 0.2, right: 0.8, bottom: 0.9),
+        frame: ShapeKind.circle,
+        filter: ImageFilterPreset.sepia,
+        overlay: Color(0x8812AAFF),
+        blend: OverlayBlend.softLight,
+      );
+      var back = CanvasDocument.decode(
+              CanvasDocument(elements: [element]).encode())!.elements.single
+          as ImageElement;
+
+      expect(back.crop.left, 0.1);
+      expect(back.crop.bottom, 0.9);
+      expect(back.frame, ShapeKind.circle);
+      expect(back.filter, ImageFilterPreset.sepia);
+      expect(back.blend, OverlayBlend.softLight);
+      expect(back.overlay.toARGB32(), 0x8812AAFF);
+    });
+
+    test("an untouched picture carries none of it into the file", () {
+      // The defaults are the common case and should cost a saved document
+      // nothing at all.
+      var plain = const ImageElement(
+        ElementBase(id: "i", width: 100, height: 100),
+        assetId: "abcdefghij123456",
+      );
+      // The element's own keys, not the whole document's -- a document has a
+      // "frames" count in it, which contains the word this is looking for.
+      var json = plain.toJson();
+      expect(json.containsKey("crop"), isFalse);
+      expect(json.containsKey("frame"), isFalse);
+      expect(json.containsKey("filter"), isFalse);
+      expect(json.containsKey("blend"), isFalse);
+      expect(json.containsKey("overlay"), isFalse);
+    });
+
+    test("a crop is a fraction, and cannot be inside out", () {
+      var back = ImageCrop.fromJson({"l": 2.0, "t": -3.0, "r": 9.0, "b": 0.5});
+      expect(back.left, lessThanOrEqualTo(0.99));
+      expect(back.top, greaterThanOrEqualTo(0.0));
+      expect(back.right, lessThanOrEqualTo(1.0));
+      expect(const ImageCrop().isWhole, isTrue);
+    });
+
+    test("every filter and blend draws without throwing", () {
+      for (var filter in ImageFilterPreset.values) {
+        for (var blend in OverlayBlend.values) {
+          var document = CanvasDocument(
+            size: const CanvasSize(width: 120),
+            elements: [
+              ImageElement(
+                const ElementBase(id: "i", x: 10, y: 10, width: 80, height: 60),
+                filter: filter,
+                blend: blend,
+                overlay: const Color(0x8800FF00),
+              ),
+            ],
+          );
+          expect(
+              () => paintCanvasDocument(
+                  ui.Canvas(ui.PictureRecorder()), document),
+              returnsNormally,
+              reason: "${filter.name} with ${blend.name}");
+        }
+      }
+    });
+
+    test("every frame shape is a usable mask", () {
+      for (var shape in ShapeKind.values) {
+        var document = CanvasDocument(
+          size: const CanvasSize(width: 120),
+          elements: [
+            ImageElement(
+              const ElementBase(id: "i", x: 10, y: 10, width: 80, height: 60),
+              frame: shape,
+            ),
+          ],
+        );
+        expect(
+            () => paintCanvasDocument(
+                ui.Canvas(ui.PictureRecorder()), document),
+            returnsNormally,
+            reason: shape.name);
+      }
     });
   });
 }

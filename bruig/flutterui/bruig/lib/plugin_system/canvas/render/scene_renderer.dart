@@ -676,14 +676,33 @@ void _paintImage(ui.Canvas canvas, Rect bounds, ImageElement e,
   }
 
   canvas.save();
-  if (e.box.borderRadius > 0) {
+  // A frame cuts the picture to a shape -- the same shapes an element can be
+  // drawn as, so anything added there is a frame here for nothing.
+  if (e.frame != null) {
+    canvas.clipPath(shapePath(e.frame!, inner, bubble: const SpeechBubbleSpec()));
+  } else if (e.box.borderRadius > 0) {
     canvas.clipRRect(RRect.fromRectAndRadius(
         inner, Radius.circular(math.max(0, e.box.borderRadius - e.box.padding))));
   } else {
     canvas.clipRect(inner);
   }
+
   _drawImage(canvas, image, inner, e.fit,
-      tint: e.tint, saturation: e.saturation, brightness: e.brightness);
+      tint: e.tint,
+      saturation: e.saturation,
+      brightness: e.brightness,
+      crop: e.crop,
+      filter: e.filter);
+
+  // The overlay goes inside the same clip, so it is cut to the frame as the
+  // picture is rather than showing as a rectangle behind a circle.
+  if (e.blend != OverlayBlend.none && e.overlay.a > 0) {
+    canvas.drawRect(
+        inner,
+        Paint()
+          ..color = e.overlay
+          ..blendMode = e.blend.flutter);
+  }
   canvas.restore();
 }
 
@@ -715,9 +734,20 @@ void _imagePlaceholder(ui.Canvas canvas, Rect rect, ImageElement e) {
 void _drawImage(ui.Canvas canvas, ui.Image image, Rect rect, ImageFit fit,
     {Color tint = const Color(0x00000000),
     double saturation = 1,
-    double brightness = 1}) {
-  var src = Rect.fromLTWH(
+    double brightness = 1,
+    ImageCrop crop = const ImageCrop(),
+    ImageFilterPreset filter = ImageFilterPreset.none}) {
+  var whole = Rect.fromLTWH(
       0, 0, image.width.toDouble(), image.height.toDouble());
+  // The crop is applied first and everything after it works on what is left,
+  // so fitting, covering and framing all see the picture the reader chose
+  // rather than the one on disk.
+  var src = Rect.fromLTRB(
+    whole.width * crop.left,
+    whole.height * crop.top,
+    whole.width * crop.right,
+    whole.height * crop.bottom,
+  );
   Rect dst;
 
   switch (fit) {
@@ -740,9 +770,12 @@ void _drawImage(ui.Canvas canvas, ui.Image image, Rect rect, ImageFit fit,
   }
 
   var paint = Paint()..filterQuality = FilterQuality.high;
-  if (saturation != 1 || brightness != 1) {
-    paint.colorFilter = ColorFilter.matrix(_colorMatrix(saturation, brightness));
-  }
+  // One matrix for the lot: a preset and the two sliders multiplied together,
+  // rather than a saveLayer per effect. Layers are the expensive part of
+  // drawing and a canvas may hold a dozen pictures.
+  var matrix = _combineMatrices(
+      _presetMatrix(filter), _colorMatrix(saturation, brightness));
+  if (matrix != null) paint.colorFilter = ColorFilter.matrix(matrix);
   canvas.drawImageRect(image, src, dst, paint);
 
   if (tint.a > 0) {
@@ -755,7 +788,102 @@ void _drawImage(ui.Canvas canvas, ui.Image image, Rect rect, ImageFit fit,
 /// The luminance weights are the usual perceptual ones -- desaturating with
 /// equal thirds turns a red shirt and a blue shirt into the same grey, which
 /// on a tactics diagram is the whole point of the two colours gone.
-List<double> _colorMatrix(double sat, double bri) {
+/// _presetMatrix is a named look as a colour matrix, or null for none.
+///
+/// Matrices rather than layered draws: one 4x5 matrix is one uniform in the
+/// shader, where each extra effect drawn on top of the last is another
+/// off-screen layer, and a canvas may hold a dozen pictures.
+List<double>? _presetMatrix(ImageFilterPreset filter) {
+  const lr = 0.2126, lg = 0.7152, lb = 0.0722;
+  switch (filter) {
+    case ImageFilterPreset.none:
+      return null;
+    case ImageFilterPreset.greyscale:
+      return [
+        lr, lg, lb, 0, 0, //
+        lr, lg, lb, 0, 0, //
+        lr, lg, lb, 0, 0, //
+        0, 0, 0, 1, 0,
+      ];
+    case ImageFilterPreset.sepia:
+      return [
+        0.393, 0.769, 0.189, 0, 0, //
+        0.349, 0.686, 0.168, 0, 0, //
+        0.272, 0.534, 0.131, 0, 0, //
+        0, 0, 0, 1, 0,
+      ];
+    case ImageFilterPreset.noir:
+      // Grey, then pushed hard about the midpoint: contrast is a gain either
+      // side of 0.5, which as a matrix is a scale and an offset that undoes
+      // half of it.
+      const c = 1.7;
+      const o = (1 - c) * 0.5 * 255;
+      return [
+        lr * c, lg * c, lb * c, 0, o, //
+        lr * c, lg * c, lb * c, 0, o, //
+        lr * c, lg * c, lb * c, 0, o, //
+        0, 0, 0, 1, 0,
+      ];
+    case ImageFilterPreset.invert:
+      return [
+        -1, 0, 0, 0, 255, //
+        0, -1, 0, 0, 255, //
+        0, 0, -1, 0, 255, //
+        0, 0, 0, 1, 0,
+      ];
+    case ImageFilterPreset.cool:
+      return [
+        0.9, 0, 0, 0, 0, //
+        0, 0.98, 0, 0, 0, //
+        0, 0, 1.15, 0, 8, //
+        0, 0, 0, 1, 0,
+      ];
+    case ImageFilterPreset.warm:
+      return [
+        1.15, 0, 0, 0, 8, //
+        0, 1.0, 0, 0, 0, //
+        0, 0, 0.88, 0, 0, //
+        0, 0, 0, 1, 0,
+      ];
+    case ImageFilterPreset.faded:
+      // Lifted blacks and pulled-in whites, which is what a faded print is.
+      const g = 0.72;
+      const lift = 38.0;
+      return [
+        g, 0, 0, 0, lift, //
+        0, g, 0, 0, lift, //
+        0, 0, g, 0, lift, //
+        0, 0, 0, 1, 0,
+      ];
+  }
+}
+
+/// _combineMatrices multiplies two 4x5 colour matrices, [a] applied first.
+///
+/// Null in means "no change", and null out means neither did anything -- so a
+/// picture with no filter and no sliders touched gets no colour filter at all
+/// rather than an identity one, which is a shader either way but only one of
+/// them is free.
+List<double>? _combineMatrices(List<double>? a, List<double>? b) {
+  if (a == null) return b;
+  if (b == null) return a;
+  var out = List<double>.filled(20, 0);
+  for (var row = 0; row < 4; row++) {
+    for (var col = 0; col < 5; col++) {
+      var sum = 0.0;
+      for (var k = 0; k < 4; k++) {
+        sum += b[row * 5 + k] * a[k * 5 + col];
+      }
+      // The fifth column is a constant, so b's own offset carries through.
+      if (col == 4) sum += b[row * 5 + 4];
+      out[row * 5 + col] = sum;
+    }
+  }
+  return out;
+}
+
+List<double>? _colorMatrix(double sat, double bri) {
+  if (sat == 1 && bri == 1) return null;
   const lr = 0.2126, lg = 0.7152, lb = 0.0722;
   var s = sat.clamp(0.0, 4.0);
   var b = bri.clamp(0.0, 4.0);

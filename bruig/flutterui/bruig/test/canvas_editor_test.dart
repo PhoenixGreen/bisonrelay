@@ -4,6 +4,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
@@ -1798,6 +1799,137 @@ void main() {
       );
       await panel(tester, curved);
       expect(find.text("Curl"), findsOneWidget);
+    });
+  });
+
+  group("scrubbing a number", () {
+    testWidgets("dragging the caption runs the value up and down",
+        (tester) async {
+      var controller = CanvasController(const CanvasDocument(frames: 40));
+      addTearDown(controller.dispose);
+      controller.frame = 10;
+      await pump(tester, CanvasTimeline(controller: controller));
+
+      var before = controller.document.frames;
+      // The caption above the field is the handle -- a TextField owns its own
+      // drag, which is how text is selected, so the field itself cannot be it.
+      var caption = find.descendant(
+          of: find.byKey(const ValueKey("canvasFrames")),
+          matching: find.text("Length"));
+      expect(caption, findsOneWidget);
+
+      await tester.drag(caption, const Offset(60, 0));
+      await tester.pumpAndSettle();
+      expect(controller.document.frames, greaterThan(before));
+
+      var up = controller.document.frames;
+      await tester.drag(caption, const Offset(-60, 0));
+      await tester.pumpAndSettle();
+      expect(controller.document.frames, lessThan(up),
+          reason: "and back down again");
+    });
+
+    testWidgets("it stays inside the field's own limits", (tester) async {
+      var controller = CanvasController(const CanvasDocument(frames: 40));
+      addTearDown(controller.dispose);
+      await pump(tester, CanvasTimeline(controller: controller));
+
+      var caption = find.descendant(
+          of: find.byKey(const ValueKey("canvasFrameRate")),
+          matching: find.text("Per second"));
+      // Far past the bottom of a 1..60 field.
+      await tester.drag(caption, const Offset(-4000, 0));
+      await tester.pumpAndSettle();
+      expect(controller.document.frameRate, 1);
+
+      await tester.drag(caption, const Offset(8000, 0));
+      await tester.pumpAndSettle();
+      expect(controller.document.frameRate, 60);
+    });
+
+    testWidgets("typing into the field still works", (tester) async {
+      // The scrub must not have taken the field over.
+      var controller = CanvasController(const CanvasDocument(frames: 40));
+      addTearDown(controller.dispose);
+      await pump(tester, CanvasTimeline(controller: controller));
+
+      await tester.enterText(
+          find.byKey(const ValueKey("canvasFrames")), "125");
+      await tester.pump();
+      expect(controller.document.frames, 125);
+    });
+  });
+
+  group("the image settings", () {
+    Future<CanvasController> panel(
+        WidgetTester tester, ImageElement image) async {
+      var controller =
+          CanvasController(const CanvasDocument().addElement(image));
+      addTearDown(controller.dispose);
+      controller.selectOnly(image.id);
+      await pump(tester, CanvasLayersPanel(controller: controller));
+      return controller;
+    }
+
+    ImageElement empty() =>
+        const ImageElement(ElementBase(id: "i", width: 200, height: 200));
+    ImageElement filled() => const ImageElement(
+        ElementBase(id: "i", width: 200, height: 200),
+        assetId: "abcdefghij123456");
+
+    testWidgets("an empty one offers somewhere to put a picture",
+        (tester) async {
+      // The control the element did not have, and without which it does
+      // nothing at all.
+      await panel(tester, empty());
+      expect(find.byTooltip("Add a picture"), findsOneWidget);
+    });
+
+    testWidgets("a filled one offers to replace or remove it", (tester) async {
+      var controller = await panel(tester, filled());
+      expect(find.byTooltip("Replace this picture"), findsOneWidget);
+
+      await tester.tap(find.byTooltip("Take the picture out"));
+      await tester.pumpAndSettle();
+      expect((controller.document.elements.single as ImageElement).hasImage,
+          isFalse);
+    });
+
+    testWidgets("frame, crop and look appear only once there is a picture",
+        (tester) async {
+      await panel(tester, empty());
+      expect(find.text("FRAME"), findsNothing);
+      expect(find.text("CROP"), findsNothing);
+      expect(find.text("LOOK"), findsNothing);
+
+      await panel(tester, filled());
+      expect(find.text("FRAME"), findsOneWidget);
+      expect(find.text("CROP"), findsOneWidget);
+      expect(find.text("LOOK"), findsOneWidget);
+    });
+
+    testWidgets("the overlay colour appears only once a blend is chosen",
+        (tester) async {
+      // By key: several groups have a colour in them, and the border's is
+      // always there.
+      await panel(tester, filled());
+      expect(find.byKey(const ValueKey("imageOverlayColour")), findsNothing);
+
+      await panel(
+          tester, filled().copyWith(blend: OverlayBlend.multiply));
+      expect(
+          find.byKey(const ValueKey("imageOverlayColour")), findsOneWidget);
+    });
+
+    testWidgets("a frame can be chosen and cleared", (tester) async {
+      var controller = await panel(tester, filled());
+
+      await tester.tap(find.text("Rectangle").first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(ShapeKind.circle.label).last);
+      await tester.pumpAndSettle();
+      expect((controller.document.elements.single as ImageElement).frame,
+          ShapeKind.circle);
     });
   });
 }

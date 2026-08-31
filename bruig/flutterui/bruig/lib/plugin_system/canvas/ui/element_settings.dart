@@ -13,6 +13,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
+import 'package:bruig/plugin_system/canvas/ui/image_picking.dart';
 import 'package:bruig/plugin_system/canvas/ui/procedural_settings.dart';
 import 'package:bruig/components/text.dart';
 import 'package:flutter/material.dart';
@@ -55,7 +56,8 @@ List<Widget> elementSettings(
       TextElement e => _textSettings(controller, e, write, begin, commit),
       ShapeElement e => _shapeSettings(e, write, begin, commit),
       LineElement e => _lineSettings(controller, e, write, begin, commit),
-      ImageElement e => _imageSettings(e, write, begin, commit),
+      ImageElement e =>
+        _imageSettings(context, e, write, begin, commit),
       ChartElement e => _chartSettings(e, write, begin, commit),
       TableElement e => _tableSettings(e, write, begin, commit),
       ButtonElement e =>
@@ -962,10 +964,32 @@ List<Widget> _lineSettings(CanvasController controller, LineElement e,
   ];
 }
 
-List<Widget> _imageSettings(ImageElement e, _Write write, VoidCallback begin,
-        VoidCallback commit) =>
-    [
+List<Widget> _imageSettings(BuildContext context, ImageElement e, _Write write,
+    VoidCallback begin, VoidCallback commit) {
+  void now(ImageElement next) {
+    begin();
+    write(next);
+    commit();
+  }
+
+  return [
       CanvasControlGroup(label: "Picture", children: [
+        // The one control this element did not have, and without which it does
+        // nothing at all: somewhere to put a picture in it.
+        CanvasIconButton(
+          icon: e.hasImage ? Icons.image_outlined : Icons.add_photo_alternate,
+          tooltip: e.hasImage ? "Replace this picture" : "Add a picture",
+          onPressed: () async {
+            var id = await pickCanvasImage(context);
+            if (id != null) now(e.copyWith(assetId: id));
+          },
+        ),
+        if (e.hasImage)
+          CanvasIconButton(
+            icon: Icons.hide_image_outlined,
+            tooltip: "Take the picture out",
+            onPressed: () => now(e.copyWith(assetId: "")),
+          ),
         CanvasDropdown<ImageFit>(
           label: "Fit",
           value: e.fit,
@@ -1065,9 +1089,75 @@ List<Widget> _imageSettings(ImageElement e, _Write write, VoidCallback begin,
           ),
         ],
       ]),
+    if (e.hasImage)
+      CanvasControlGroup(label: "Frame", children: [
+        CanvasDropdown<String>(
+          label: "Cut to",
+          value: e.frame?.name ?? "",
+          width: 128,
+          options: [
+            ("", "Rectangle"),
+            for (var k in ShapeKind.values) (k.name, k.label),
+          ],
+          onChanged: (v) => now(v.isEmpty
+              ? e.copyWith(clearFrame: true)
+              : e.copyWith(frame: ShapeKind.fromName(v))),
+        ),
+      ]),
+    if (e.hasImage)
+      CanvasControlGroup(label: "Crop", children: [
+        for (var (label, value, apply) in <(String, double, ImageCrop Function(double))>[
+          ("Left", e.crop.left, (v) => e.crop.copyWith(left: v)),
+          ("Top", e.crop.top, (v) => e.crop.copyWith(top: v)),
+          ("Right", e.crop.right, (v) => e.crop.copyWith(right: v)),
+          ("Bottom", e.crop.bottom, (v) => e.crop.copyWith(bottom: v)),
+        ])
+          CanvasSlider(
+            label: label,
+            value: value,
+            onChanged: (v) {
+              begin();
+              write(e.copyWith(crop: apply(v)));
+            },
+            onCommit: commit,
+          ),
+        CanvasIconButton(
+          icon: Icons.crop_free,
+          tooltip: "Show the whole picture again",
+          onPressed: () => now(e.copyWith(crop: const ImageCrop())),
+        ),
+      ]),
+    if (e.hasImage)
+      CanvasControlGroup(label: "Look", children: [
+        CanvasDropdown<ImageFilterPreset>(
+          label: "Filter",
+          value: e.filter,
+          width: 116,
+          options: [for (var f in ImageFilterPreset.values) (f, f.label)],
+          onChanged: (v) => now(e.copyWith(filter: v)),
+        ),
+        CanvasDropdown<OverlayBlend>(
+          label: "Overlay",
+          value: e.blend,
+          width: 116,
+          options: [for (var b in OverlayBlend.values) (b, b.label)],
+          onChanged: (v) => now(e.copyWith(blend: v)),
+        ),
+        if (e.blend != OverlayBlend.none)
+          CanvasColorButton(
+            key: const ValueKey("imageOverlayColour"),
+            label: "Colour",
+            color: e.overlay,
+            onChanged: (c) => now(e.copyWith(overlay: c)),
+          ),
+      ]),
+      // "Border", not "Frame". Frame is now the shape the picture is cut to,
+      // and one word for the outline round a rectangle and for the rectangle
+      // being a circle is a word doing two jobs.
       _boxGroup(e.box, (box) => write(e.copyWith(box: box)), begin, commit,
-          label: "Frame"),
+          label: "Border"),
     ];
+}
 
 List<Widget> _chartSettings(ChartElement e, _Write write, VoidCallback begin,
         VoidCallback commit) =>

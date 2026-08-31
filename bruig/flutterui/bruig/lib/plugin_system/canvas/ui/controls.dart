@@ -220,6 +220,14 @@ class _CanvasNumberFieldState extends State<CanvasNumberField> {
     return _labelled(
       theme,
       widget.label,
+      scrub: _ScrubLabel(
+        label: widget.label,
+        value: widget.value,
+        min: widget.min,
+        max: widget.max,
+        onChanged: widget.onChanged,
+        onCommit: widget.onCommit,
+      ),
       SizedBox(
         width: CanvasControlScope.widthFor(context, widget.width),
         height: controlHeight,
@@ -688,12 +696,116 @@ class CanvasIconButton extends StatelessWidget {
 }
 
 /// _labelled puts a control's own small label above it.
-Widget _labelled(ThemeNotifier theme, String label, Widget child) => Padding(
+/// _ScrubLabel is a caption you can drag sideways to change the number under
+/// it.
+///
+/// The label rather than the field itself, and that is not a compromise. A
+/// TextField owns its own drag -- that is how text is selected -- so a scrub
+/// on the field would either fight the selection or take it away, and typing
+/// an exact number has to keep working. The caption above it is doing nothing
+/// else, is already beside the value it belongs to, and can show a
+/// left-and-right cursor to say so.
+///
+/// The step comes from the field's own range, so a slider from 0 to 1 and a
+/// width in pixels both feel the same to drag: a hundred pixels of travel is a
+/// useful amount of change in either.
+class _ScrubLabel extends StatefulWidget {
+  final String label;
+  final double value;
+  final double min;
+  final double max;
+  final ValueChanged<double> onChanged;
+  final VoidCallback? onCommit;
+
+  const _ScrubLabel({
+    required this.label,
+    required this.value,
+    required this.min,
+    required this.max,
+    required this.onChanged,
+    this.onCommit,
+  });
+
+  @override
+  State<_ScrubLabel> createState() => _ScrubLabelState();
+}
+
+class _ScrubLabelState extends State<_ScrubLabel> {
+  /// _from is the value the drag started at, so the whole gesture is measured
+  /// from one place. Accumulating each small delta instead drifts, and rounding
+  /// to whole pixels on the way makes a slow drag move less than a fast one
+  /// over the same distance.
+  double _from = 0;
+  bool _dragging = false;
+
+  @override
+  Widget build(BuildContext context) {
+    var theme = ThemeNotifier.of(context);
+
+    // A hundred pixels covers a fortieth of the range, or one unit, whichever
+    // is more -- so a width in pixels still steps by whole pixels while an
+    // opacity from 0 to 1 is not stuck at its ends.
+    var span = (widget.max - widget.min).abs();
+    var perPixel = span.isFinite && span > 0
+        ? math.max(span / 400, 0.01)
+        : 1.0;
+
+    return MouseRegion(
+      cursor: SystemMouseCursors.resizeLeftRight,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onHorizontalDragStart: (_) {
+          _from = widget.value;
+          _dragging = true;
+        },
+        onHorizontalDragUpdate: (details) {
+          if (!_dragging) return;
+          var next = (_from + details.localPosition.dx * perPixel)
+              .clamp(widget.min, widget.max);
+          widget.onChanged(next.toDouble());
+        },
+        onHorizontalDragEnd: (_) {
+          _dragging = false;
+          widget.onCommit?.call();
+        },
+        onHorizontalDragCancel: () => _dragging = false,
+        child: SizedBox(
+          height: controlLabelHeight,
+          child: Text(
+            widget.label,
+            style: TextStyle(
+              fontSize: 9,
+              height: 1.1,
+              color: theme.colors.onSurfaceVariant,
+              // Dotted, the way a draggable number is marked everywhere else.
+              decoration: TextDecoration.underline,
+              decorationStyle: TextDecorationStyle.dotted,
+              decorationColor:
+                  theme.colors.onSurfaceVariant.withValues(alpha: 0.4),
+            ),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// _labelled puts a caption above a control.
+///
+/// [scrub] makes that caption a handle: dragging it sideways runs the number
+/// up and down. See _ScrubLabel.
+Widget _labelled(ThemeNotifier theme, String label, Widget child,
+        {Widget? scrub}) =>
+    Padding(
       padding: const EdgeInsets.only(right: 5),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
+          if (scrub != null)
+            scrub
+          else
           SizedBox(
             height: controlLabelHeight,
             child: Text(

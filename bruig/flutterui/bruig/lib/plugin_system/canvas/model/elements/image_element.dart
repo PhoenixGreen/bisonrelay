@@ -1,6 +1,7 @@
 import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 
 /// RemovalMode is how an image's background is taken out.
@@ -136,6 +137,104 @@ class BackgroundRemoval {
       );
 }
 
+/// ImageFilter is a look applied to the whole picture.
+///
+/// Presets rather than a pile of sliders, because these are the handful of
+/// looks anybody actually reaches for and each is one colour matrix -- the
+/// sliders for hue, contrast and the rest are already there as tint,
+/// saturation and brightness for when a preset is not enough.
+enum ImageFilterPreset {
+  none("None"),
+  greyscale("Greyscale"),
+  sepia("Sepia"),
+  noir("Noir"),
+  invert("Invert"),
+  cool("Cool"),
+  warm("Warm"),
+  faded("Faded");
+
+  final String label;
+  const ImageFilterPreset(this.label);
+
+  static ImageFilterPreset fromName(String? name) => values.firstWhere(
+        (f) => f.name == name,
+        orElse: () => ImageFilterPreset.none,
+      );
+}
+
+/// OverlayBlend is how an overlay colour is laid over the picture.
+///
+/// Our own names rather than Flutter's BlendMode, for the reason every other
+/// enum here is: a saved document must not depend on the index or the spelling
+/// of a value in somebody else's library.
+enum OverlayBlend {
+  none("None", BlendMode.dstIn),
+  wash("Wash", BlendMode.srcOver),
+  multiply("Multiply", BlendMode.multiply),
+  screen("Screen", BlendMode.screen),
+  overlay("Overlay", BlendMode.overlay),
+  softLight("Soft light", BlendMode.softLight),
+  hardLight("Hard light", BlendMode.hardLight),
+  colour("Colour", BlendMode.color),
+  luminosity("Luminosity", BlendMode.luminosity);
+
+  final String label;
+  final BlendMode flutter;
+  const OverlayBlend(this.label, this.flutter);
+
+  static OverlayBlend fromName(String? name) => values.firstWhere(
+        (b) => b.name == name,
+        orElse: () => OverlayBlend.none,
+      );
+}
+
+/// ImageCrop is which part of the picture is shown, in fractions of it.
+///
+/// Fractions rather than pixels, so a crop survives the picture being swapped
+/// for a larger copy of the same thing -- and so the same crop means the same
+/// framing whatever the source happens to be.
+class ImageCrop {
+  final double left;
+  final double top;
+  final double right;
+  final double bottom;
+
+  const ImageCrop({
+    this.left = 0,
+    this.top = 0,
+    this.right = 1,
+    this.bottom = 1,
+  });
+
+  bool get isWhole => left == 0 && top == 0 && right == 1 && bottom == 1;
+
+  double get width => (right - left).clamp(0.01, 1);
+  double get height => (bottom - top).clamp(0.01, 1);
+
+  ImageCrop copyWith({
+    double? left,
+    double? top,
+    double? right,
+    double? bottom,
+  }) =>
+      ImageCrop(
+        left: left ?? this.left,
+        top: top ?? this.top,
+        right: right ?? this.right,
+        bottom: bottom ?? this.bottom,
+      );
+
+  Map<String, dynamic> toJson() =>
+      {"l": left, "t": top, "r": right, "b": bottom};
+
+  factory ImageCrop.fromJson(Map<String, dynamic> json) => ImageCrop(
+        left: jsonDouble(json["l"], 0).clamp(0.0, 0.99),
+        top: jsonDouble(json["t"], 0).clamp(0.0, 0.99),
+        right: jsonDouble(json["r"], 1).clamp(0.01, 1.0),
+        bottom: jsonDouble(json["b"], 1).clamp(0.01, 1.0),
+      );
+}
+
 /// ImageElement is a picture on the canvas.
 ///
 /// It holds an [assetId], not the bytes. The bytes live once in the canvas
@@ -157,6 +256,25 @@ class ImageElement extends CanvasElement {
   final double saturation;
   final double brightness;
 
+  /// crop is which part of the picture is shown. See [ImageCrop].
+  final ImageCrop crop;
+
+  /// frame is a shape the picture is cut to -- a circle, a star, a speech
+  /// bubble. Null leaves it rectangular.
+  ///
+  /// The shape is the one every other element draws, so a picture can be cut
+  /// to anything a shape element can be, and a shape added later is a frame
+  /// for free.
+  final ShapeKind? frame;
+
+  final ImageFilterPreset filter;
+
+  /// overlay is a colour laid over the picture, and blend is how. Together
+  /// they are the difference between a photograph and a photograph that goes
+  /// with the rest of the design.
+  final Color overlay;
+  final OverlayBlend blend;
+
   const ImageElement(
     super.base, {
     this.assetId = "",
@@ -166,6 +284,11 @@ class ImageElement extends CanvasElement {
     this.tint = const Color(0x00000000),
     this.saturation = 1,
     this.brightness = 1,
+    this.crop = const ImageCrop(),
+    this.frame,
+    this.filter = ImageFilterPreset.none,
+    this.overlay = const Color(0x00000000),
+    this.blend = OverlayBlend.none,
   });
 
   @override
@@ -184,7 +307,12 @@ class ImageElement extends CanvasElement {
       removal: removal,
       tint: tint,
       saturation: saturation,
-      brightness: brightness);
+      brightness: brightness,
+      crop: crop,
+      frame: frame,
+      filter: filter,
+      overlay: overlay,
+      blend: blend);
 
   ImageElement copyWith({
     String? assetId,
@@ -194,6 +322,12 @@ class ImageElement extends CanvasElement {
     Color? tint,
     double? saturation,
     double? brightness,
+    ImageCrop? crop,
+    ShapeKind? frame,
+    bool clearFrame = false,
+    ImageFilterPreset? filter,
+    Color? overlay,
+    OverlayBlend? blend,
   }) =>
       ImageElement(base,
           assetId: assetId ?? this.assetId,
@@ -202,7 +336,12 @@ class ImageElement extends CanvasElement {
           removal: removal ?? this.removal,
           tint: tint ?? this.tint,
           saturation: saturation ?? this.saturation,
-          brightness: brightness ?? this.brightness);
+          brightness: brightness ?? this.brightness,
+          crop: crop ?? this.crop,
+          frame: clearFrame ? null : (frame ?? this.frame),
+          filter: filter ?? this.filter,
+          overlay: overlay ?? this.overlay,
+          blend: blend ?? this.blend);
 
   @override
   Map<String, dynamic> props() => {
@@ -213,6 +352,11 @@ class ImageElement extends CanvasElement {
         if (tint.a > 0) "tint": colorToJson(tint),
         if (saturation != 1) "sat": saturation,
         if (brightness != 1) "bri": brightness,
+        if (!crop.isWhole) "crop": crop.toJson(),
+        if (frame != null) "frame": frame!.name,
+        if (filter != ImageFilterPreset.none) "filter": filter.name,
+        if (blend != OverlayBlend.none) "overlay": colorToJson(overlay),
+        if (blend != OverlayBlend.none) "blend": blend.name,
       };
 
   factory ImageElement.fromJson(Map<String, dynamic> json, ElementBase b) =>
@@ -225,5 +369,12 @@ class ImageElement extends CanvasElement {
               const BackgroundRemoval()),
           tint: colorFromJson(json["tint"], const Color(0x00000000)),
           saturation: jsonDouble(json["sat"], 1),
-          brightness: jsonDouble(json["bri"], 1));
+          brightness: jsonDouble(json["bri"], 1),
+          crop: jsonSpec(json["crop"], ImageCrop.fromJson, const ImageCrop()),
+          frame: json["frame"] is String
+              ? ShapeKind.fromName(json["frame"] as String?)
+              : null,
+          filter: ImageFilterPreset.fromName(json["filter"] as String?),
+          overlay: colorFromJson(json["overlay"], const Color(0x00000000)),
+          blend: OverlayBlend.fromName(json["blend"] as String?));
 }
