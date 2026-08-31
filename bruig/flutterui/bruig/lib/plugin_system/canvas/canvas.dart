@@ -73,6 +73,12 @@ export 'package:bruig/plugin_system/canvas/canvas_nav.dart';
 export 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 export 'package:bruig/plugin_system/canvas/canvas_settings.dart';
 export 'package:bruig/plugin_system/canvas/ui/canvas_screen.dart';
+// The editing session and the empty document, so main() can provide one that
+// outlives the page. Nothing else outside this directory should need either.
+export 'package:bruig/plugin_system/canvas/presets/builtin_presets.dart'
+    show emptyCanvas;
+export 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart'
+    show CanvasController;
 
 /// registerCanvas attaches this module to the plugin system.
 ///

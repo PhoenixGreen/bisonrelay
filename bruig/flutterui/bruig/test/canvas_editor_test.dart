@@ -926,4 +926,106 @@ void main() {
       expect(prefs.enabled, isFalse);
     });
   });
+
+  group("the clipboard", () {
+    test("copy and paste makes a separate element", () {
+      var document = const CanvasDocument();
+      var element = newElement(ElementKind.shape, document);
+      var controller = CanvasController(document.addElement(element));
+      addTearDown(controller.dispose);
+      controller.selectOnly(element.id);
+
+      controller.copySelected();
+      expect(controller.canPaste, isTrue);
+      controller.paste();
+
+      expect(controller.document.elements.length, 2);
+      var pasted = controller.document.elements.last;
+      expect(pasted.id, isNot(element.id), reason: "a new element, not an alias");
+      // Offset, because a copy landing exactly on its original is
+      // indistinguishable from nothing having happened.
+      expect(pasted.x, greaterThan(element.x));
+      expect(controller.selection, {pasted.id},
+          reason: "what was pasted is what is selected");
+    });
+
+    test("pasting twice makes two copies, each visible", () {
+      var document = const CanvasDocument();
+      var element = newElement(ElementKind.shape, document);
+      var controller = CanvasController(document.addElement(element));
+      addTearDown(controller.dispose);
+      controller.selectOnly(element.id);
+      controller.copySelected();
+      controller.paste();
+      controller.paste();
+
+      var xs = controller.document.elements.map((e) => e.x).toSet();
+      expect(controller.document.elements.length, 3);
+      expect(xs.length, 2,
+          reason: "both copies are off the original; they may share a place");
+    });
+
+    test("cut copies before it deletes", () {
+      var document = const CanvasDocument();
+      var element = newElement(ElementKind.text, document);
+      var controller = CanvasController(document.addElement(element));
+      addTearDown(controller.dispose);
+      controller.selectOnly(element.id);
+
+      controller.cutSelected();
+      expect(controller.document.elements, isEmpty);
+
+      controller.paste();
+      expect(controller.document.elements.length, 1);
+      expect(controller.document.elements.single.kind, ElementKind.text);
+    });
+
+    test("the clipboard survives the page being left", () {
+      // Static, for the same reason the session is a provider: leaving Canvas
+      // for a chat and coming back must not lose what was copied.
+      var document = const CanvasDocument();
+      var element = newElement(ElementKind.shape, document);
+      var first = CanvasController(document.addElement(element));
+      first.selectOnly(element.id);
+      first.copySelected();
+      first.dispose();
+
+      var second = CanvasController(const CanvasDocument());
+      addTearDown(second.dispose);
+      expect(second.canPaste, isTrue);
+      second.paste();
+      expect(second.document.elements.length, 1);
+    });
+  });
+
+  group("autosave", () {
+    test("does nothing until the document has been saved once", () {
+      // Otherwise there is nowhere to write to, and inventing a filename would
+      // leave documents in the library nobody asked to keep -- somebody who
+      // opens a preset, plays with it and walks away should find nothing new.
+      var controller = CanvasController(const CanvasDocument());
+      addTearDown(controller.dispose);
+      expect(controller.name, isNull);
+
+      controller.apply(controller.document.copyWith(frames: 12));
+      expect(controller.dirty, isTrue);
+      // scheduleAutosave is called by apply; with no name it must arm nothing.
+      controller.scheduleAutosave();
+      expect(controller.name, isNull,
+          reason: "and it certainly must not invent one");
+    });
+  });
+
+  group("the session", () {
+    test("outlives the page, and only restores on its first open", () {
+      var controller = CanvasController(const CanvasDocument());
+      addTearDown(controller.dispose);
+      expect(controller.opened, isFalse,
+          reason: "the first visit restores the last saved file");
+
+      controller.markOpened();
+      expect(controller.opened, isTrue,
+          reason: "every visit after that keeps the work in progress");
+    });
+  });
 }

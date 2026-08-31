@@ -6,6 +6,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
 import 'package:bruig/plugin_system/canvas/render/image_store.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
@@ -268,6 +269,19 @@ class CanvasController extends ChangeNotifier {
   /// with a repeat limit stops rather than running forever.
   final Map<int, int> _loopCounts = {};
 
+  bool _opened = false;
+
+  /// opened is whether this session has ever been shown.
+  ///
+  /// The session outlives the page now, so the page needs to tell its first
+  /// visit from its second: on the first it restores whatever was last saved,
+  /// and on every one after that the controller already holds the work in
+  /// progress and restoring would throw it away.
+  bool get opened => _opened;
+
+  /// markOpened is called by the page as it builds.
+  void markOpened() => _opened = true;
+
   /// folder and name are where this document is saved, or null when it has
   /// never been saved. Save writes back to them; Save As changes them.
   String? folder;
@@ -316,6 +330,7 @@ class CanvasController extends ChangeNotifier {
 
     _document = next;
     _dirty = true;
+    scheduleAutosave();
 
     // A selection can outlive the elements it names -- deleting, or loading a
     // different document -- and every reader of the selection would then have
@@ -405,6 +420,74 @@ class CanvasController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// _clipboard is what was last copied.
+  ///
+  /// Held on the controller rather than in the system clipboard, and only for
+  /// as long as the app runs. A canvas element is a tree of colours, specs and
+  /// keyframes with no sensible text form, and putting JSON on the system
+  /// clipboard would mean every Cmd-C in the editor quietly replacing whatever
+  /// the reader had copied from somewhere else.
+  ///
+  /// Static, so a copy survives the page being left and come back to -- which
+  /// is the same reason the session itself outlives the screen.
+  static List<CanvasElement> _clipboard = const [];
+
+  /// _pasteOffset is how far each paste is stepped down and right.
+  ///
+  /// Offset rather than placed exactly on top: an element pasted onto its
+  /// original is indistinguishable from nothing having happened, and the
+  /// second paste of the same thing has to be visibly a third copy.
+  static const double _pasteOffset = 16;
+
+  bool get canPaste => _clipboard.isNotEmpty;
+
+  /// copySelected puts the selection on the clipboard.
+  void copySelected() {
+    var chosen = selectedElements;
+    if (chosen.isEmpty) return;
+    _clipboard = List.unmodifiable(chosen);
+    notifyListeners();
+  }
+
+  /// cutSelected copies and then deletes.
+  void cutSelected() {
+    if (_selection.isEmpty) return;
+    copySelected();
+    deleteSelected();
+  }
+
+  /// paste drops the clipboard onto the canvas and selects what it added.
+  ///
+  /// New ids, always. Pasting keeps the elements' order relative to each
+  /// other and puts the whole lot on top, which is what pasting anywhere else
+  /// does and what makes a pasted group findable.
+  void paste() {
+    if (_clipboard.isEmpty) return;
+    var next = _document;
+    var made = <String>{};
+    for (var element in _clipboard) {
+      var copy = element
+          .withId(newElementId())
+          .withBase(x: element.x + _pasteOffset, y: element.y + _pasteOffset);
+      made.add(copy.id);
+      next = next.addElement(copy);
+    }
+    apply(next);
+    _backgroundSelected = false;
+    _focusedPlayer = null;
+    _selection = made;
+    notifyListeners();
+  }
+
+  /// copyElement and pasteInto are the layer list's buttons, which act on one
+  /// row rather than on the selection.
+  void copyElement(String id) {
+    var element = _document.elementById(id);
+    if (element == null) return;
+    _clipboard = List.unmodifiable([element]);
+    notifyListeners();
+  }
+
   /// nudgeSelected moves everything chosen, which is what the arrow keys do.
   void nudgeSelected(double dx, double dy, {bool transient = false}) {
     if (_selection.isEmpty) return;
@@ -469,6 +552,93 @@ class CanvasController extends ChangeNotifier {
         dy: topLeft.dy - element.y,
       )),
     );
+  }
+
+  /// applyPathFollow writes [path]'s route into its follower's keyframes.
+  ///
+  /// Baked rather than evaluated live, and that is the design. The renderer,
+  /// the GIF encoder and a published interactive canvas all already know how
+  /// to play a track; none of them needs to learn what a bezier is, and a
+  /// document exported on one machine cannot disagree with the same document
+  /// replayed on another. The cost is that the follower's own keyframes are
+  /// owned by the path and rewritten whenever it changes, which is why the
+  /// settings say so.
+  ///
+  /// One keyframe per frame between the first node and the last, sampled along
+  /// the curve by arc length -- see PathElement.positionOnSegment on why by
+  /// length rather than by the curve's parameter. Straight lines between the
+  /// nodes would be cheaper and would not be a curve.
+  void applyPathFollow(PathElement path) {
+    var follow = path.follow;
+    if (follow == null || path.nodes.length < 2) return;
+
+    var target = _document.elementById(follow.elementId);
+    if (target == null) return;
+
+    var from = path.firstFrame;
+    var to = path.lastFrame;
+    if (to <= from) return;
+
+    var index = follow.playerIndex;
+    if (target is TeamElement && index != null) {
+      if (index < 0 || index >= target.players.length) return;
+      var spot = target.players[index];
+      var rest = target.centreOf(spot);
+      replaceElement(target.withPlayer(
+          index, spot.copyWith(track: _bake(path, rest, from, to))));
+      return;
+    }
+
+    // An element is placed by its top-left, so the route -- which describes
+    // where the thing *is* -- is measured from its centre and the offset
+    // shifted back. Without that a player following a curve runs with the
+    // curve passing through his shoulder.
+    replaceElement(
+        target.withBase(track: _bake(path, target.center, from, to)));
+  }
+
+  /// _bake turns a path into a track of poses relative to [rest].
+  ElementTrack _bake(PathElement path, Offset rest, int from, int to) {
+    var keys = <Keyframe>[];
+    for (var f = from; f <= to; f++) {
+      var at = path.positionAtFrame(f);
+      if (at == null) continue;
+      keys.add(Keyframe(frame: f, dx: at.dx - rest.dx, dy: at.dy - rest.dy));
+    }
+    return ElementTrack(keys);
+  }
+
+  /// clearPathFollow takes the baked keyframes back off, which is what
+  /// unlinking a follower has to do -- leaving them would strand the element
+  /// on a route it is no longer attached to.
+  void clearPathFollow(PathElement path) {
+    var follow = path.follow;
+    if (follow == null) return;
+    var target = _document.elementById(follow.elementId);
+    if (target == null) return;
+
+    var index = follow.playerIndex;
+    if (target is TeamElement && index != null) {
+      if (index < 0 || index >= target.players.length) return;
+      replaceElement(target.withPlayer(
+          index, target.players[index].copyWith(clearTrack: true)));
+      return;
+    }
+    replaceElement(target.withBase(clearTrack: true));
+  }
+
+  /// followerLabel names what a path is attached to, for the settings.
+  String followerLabel(PathFollow? follow) {
+    if (follow == null) return "Nothing";
+    var target = _document.elementById(follow.elementId);
+    if (target == null) return "Missing";
+    var index = follow.playerIndex;
+    if (target is TeamElement && index != null && index < target.players.length) {
+      var spot = target.players[index];
+      var who = spot.name.isNotEmpty ? spot.name : "#${spot.number}";
+      return "$who (${target.name})";
+    }
+    return target.name;
   }
 
   /// setPlayerKeyframe writes one player's pose at the current frame.
@@ -745,9 +915,41 @@ class CanvasController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// _autosave is the pending write, if any.
+  Timer? _autosave;
+
+  /// _autosaveDelay is how long the editing has to stop for.
+  ///
+  /// Long enough that dragging a player across a pitch is one write rather
+  /// than sixty, short enough that walking away from the machine mid-thought
+  /// does not lose the thought.
+  static const Duration _autosaveDelay = Duration(seconds: 3);
+
+  /// scheduleAutosave writes the document out shortly, once the editing stops.
+  ///
+  /// Only for a document that has been saved at least once, which is the whole
+  /// rule: until then there is nowhere to write to, and inventing a filename
+  /// would put documents in the library that the reader never asked to keep.
+  /// Somebody who opens a preset, plays with it and navigates away should find
+  /// nothing new in their files.
+  ///
+  /// Debounced rather than throttled: each edit pushes the write further out,
+  /// so a burst of edits costs one write at the end instead of one every few
+  /// seconds throughout.
+  void scheduleAutosave() {
+    if (name == null || !_dirty) return;
+    _autosave?.cancel();
+    _autosave = Timer(_autosaveDelay, () {
+      _autosave = null;
+      if (name != null && _dirty) save();
+    });
+  }
+
   /// save writes back to where this document came from, or nowhere when it has
   /// never been saved.
   Future<bool> save() async {
+    _autosave?.cancel();
+    _autosave = null;
     var f = folder, n = name;
     if (n == null) return false;
     var ok = await CanvasStorage.save(f ?? "", n, _document);
@@ -772,6 +974,7 @@ class CanvasController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _autosave?.cancel();
     _playback?.cancel();
     images.dispose();
     super.dispose();

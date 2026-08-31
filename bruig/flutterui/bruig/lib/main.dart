@@ -304,6 +304,13 @@ Future<void> runMainApp(Config cfg) async {
         update: (c, plugins, mainMenu, nav) => nav!..update(plugins, mainMenu),
       ),
       ChangeNotifierProvider.value(value: canvasPrefs),
+      // The Canvas editing session, which outlives the Canvas page. Leaving
+      // for a chat and coming back has to find the same document, selection,
+      // zoom and undo history -- owned by the page, all of that went with the
+      // route. Lazy, so somebody who never opens Canvas never builds one.
+      ChangeNotifierProvider<CanvasController>(
+        create: (c) => CanvasController(emptyCanvas()),
+      ),
       // The Canvas section, which comes and goes with its own switch rather
       // than with a plugin -- see plugin_system/canvas/canvas_preferences.
       // Eager for the same reason as the two above: nothing reads it, it

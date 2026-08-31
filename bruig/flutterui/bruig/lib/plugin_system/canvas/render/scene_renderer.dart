@@ -9,6 +9,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
@@ -59,6 +60,7 @@ void paintCanvasDocument(
   int frame = 0,
   CanvasImageSource? images,
   String? hoveredButton,
+  bool editing = false,
 }) {
   var rect = doc.size.rect;
   var time = frame / (doc.frameRate <= 0 ? 1 : doc.frameRate);
@@ -70,6 +72,7 @@ void paintCanvasDocument(
     paintElement(canvas, element, frame,
         frameRate: doc.frameRate,
         images: images,
+        editing: editing,
         hovered: element.id == hoveredButton);
   }
 }
@@ -98,6 +101,10 @@ void paintElement(
   int frameRate = 12,
   CanvasImageSource? images,
   bool hovered = false,
+
+  /// editing is true on the stage and false everywhere a document is turned
+  /// into a file. Only a guide path reads it -- see _paintPath.
+  bool editing = false,
 }) {
   var pose = element.track?.at(frame) ?? Keyframe.rest;
   var alpha = (element.opacity * pose.opacity).clamp(0.0, 1.0);
@@ -151,6 +158,8 @@ void paintElement(
       _paintButton(canvas, bounds, e, hovered);
     case BackgroundElement e:
       _paintBackgroundElement(canvas, bounds, e, time);
+    case PathElement e:
+      _paintPath(canvas, bounds, e, editing);
     case TeamElement e:
       _paintTeam(canvas, bounds, e, frame);
     default:
@@ -505,3 +514,78 @@ void _paintPlayerLabels(
   canvas.restore();
 }
 
+/// _paintPath draws a bezier curve.
+///
+/// A path whose job is to describe a movement is scaffolding rather than
+/// artwork, so [PathElement.guide] leaves it out of anything published while
+/// keeping it on screen while the document is being worked on. That is what
+/// [editing] is for -- the exporter passes false, the stage passes true, and
+/// neither has to know why.
+void _paintPath(ui.Canvas canvas, Rect bounds, PathElement e, bool editing) {
+  if (e.nodes.length < 2) return;
+  if (e.guide && !editing) return;
+
+  var path = ui.Path();
+  Offset at(PathNode n) =>
+      Offset(bounds.left + n.x * bounds.width, bounds.top + n.y * bounds.height);
+  Offset handle(PathNode n, double dx, double dy) => Offset(
+      bounds.left + (n.x + dx) * bounds.width,
+      bounds.top + (n.y + dy) * bounds.height);
+
+  path.moveTo(at(e.nodes.first).dx, at(e.nodes.first).dy);
+  for (var i = 0; i < e.segments; i++) {
+    var a = e.nodes[i % e.nodes.length];
+    var b = e.nodes[(i + 1) % e.nodes.length];
+    var c1 = a.outDx == 0 && a.outDy == 0 ? at(a) : handle(a, a.outDx, a.outDy);
+    var c2 = b.inDx == 0 && b.inDy == 0 ? at(b) : handle(b, b.inDx, b.inDy);
+    var end = at(b);
+    path.cubicTo(c1.dx, c1.dy, c2.dx, c2.dy, end.dx, end.dy);
+  }
+  if (e.closed) path.close();
+
+  var paint = Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = e.strokeWidth
+    ..strokeCap = switch (e.cap) {
+      LineCapStyle.round || LineCapStyle.dot => StrokeCap.round,
+      LineCapStyle.square => StrokeCap.square,
+      _ => StrokeCap.butt,
+    }
+    ..color = e.color;
+
+  canvas.drawPath(e.dash > 0 ? dashPath(path, e.dash, e.dash) : path, paint);
+
+  // The arrowhead points along the last segment's own direction rather than at
+  // the straight line between the last two nodes, which on a curve that
+  // doubles back would point roughly backwards.
+  if (e.cap.hasEndArrow && !e.closed) {
+    var last = e.segments - 1;
+    var tip = e.pointOnSegment(last, 1);
+    var just = e.pointOnSegment(last, 0.94);
+    var shift = Offset(bounds.left - e.x, bounds.top - e.y);
+    _paintArrowHead(canvas, just + shift, tip + shift, e.strokeWidth, e.color);
+  }
+  if (e.cap.hasStartArrow && !e.closed) {
+    var tip = e.pointOnSegment(0, 0);
+    var just = e.pointOnSegment(0, 0.06);
+    var shift = Offset(bounds.left - e.x, bounds.top - e.y);
+    _paintArrowHead(canvas, just + shift, tip + shift, e.strokeWidth, e.color);
+  }
+}
+
+/// _paintArrowHead draws a solid head at [tip], pointing away from [from].
+void _paintArrowHead(
+    ui.Canvas canvas, Offset from, Offset tip, double width, Color color) {
+  var direction = tip - from;
+  if (direction.distance < 0.001) return;
+  var angle = math.atan2(direction.dy, direction.dx);
+  var size = math.max(6.0, width * 3);
+  var head = ui.Path()
+    ..moveTo(tip.dx, tip.dy)
+    ..lineTo(tip.dx - size * math.cos(angle - 0.4),
+        tip.dy - size * math.sin(angle - 0.4))
+    ..lineTo(tip.dx - size * math.cos(angle + 0.4),
+        tip.dy - size * math.sin(angle + 0.4))
+    ..close();
+  canvas.drawPath(head, Paint()..color = color);
+}

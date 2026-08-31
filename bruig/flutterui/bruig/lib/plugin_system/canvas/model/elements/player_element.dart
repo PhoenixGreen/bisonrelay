@@ -311,6 +311,16 @@ class TeamElement extends CanvasElement {
   /// the two pictures is being shown.
   final FormationSpread spread;
 
+  /// frameLocked pins the team's own box while leaving the players free.
+  ///
+  /// Separate from the layer lock, which stops everything. A pitch is set up
+  /// once and then worked on for an hour, and in that hour every drag is a
+  /// player -- but a drag that starts a few pixels off a dot takes hold of the
+  /// team instead and slides all eleven, which is both easy to do and easy not
+  /// to notice until the shape is wrong. Locking the frame makes that
+  /// impossible without giving up the ability to move anybody.
+  final bool frameLocked;
+
   /// players is the squad, goalkeeper first and then in the formation's own
   /// order. The list order is also the paint order, which is what Bring
   /// forward and Send to back move a player through.
@@ -363,6 +373,7 @@ class TeamElement extends CanvasElement {
     this.formation = TeamFormation.f442,
     this.mirrored = false,
     this.spread = FormationSpread.attacking,
+    this.frameLocked = false,
     this.players = const [],
     this.keeperColor = const Color(0xFFF2C230),
     this.playerColor = const Color(0xFFE8362F),
@@ -459,6 +470,7 @@ class TeamElement extends CanvasElement {
       formation: formation,
       mirrored: mirrored,
       spread: spread,
+      frameLocked: frameLocked,
       players: players,
       keeperColor: keeperColor,
       playerColor: playerColor,
@@ -479,6 +491,7 @@ class TeamElement extends CanvasElement {
     TeamFormation? formation,
     bool? mirrored,
     FormationSpread? spread,
+    bool? frameLocked,
     List<PlayerSpot>? players,
     Color? keeperColor,
     Color? playerColor,
@@ -499,6 +512,7 @@ class TeamElement extends CanvasElement {
           formation: formation ?? this.formation,
           mirrored: mirrored ?? this.mirrored,
           spread: spread ?? this.spread,
+          frameLocked: frameLocked ?? this.frameLocked,
           players: players ?? this.players,
           keeperColor: keeperColor ?? this.keeperColor,
           playerColor: playerColor ?? this.playerColor,
@@ -520,6 +534,7 @@ class TeamElement extends CanvasElement {
         "formation": formation.name,
         if (mirrored) "mirrored": true,
         "spread": spread.name,
+        if (frameLocked) "frameLocked": true,
         "players": [for (var p in players) p.toJson()],
         "keeper": colorToJson(keeperColor),
         "player": colorToJson(playerColor),
@@ -543,6 +558,7 @@ class TeamElement extends CanvasElement {
         formation: TeamFormation.fromName(json["formation"] as String?),
         mirrored: jsonBool(json["mirrored"], false),
         spread: FormationSpread.fromName(json["spread"] as String?),
+        frameLocked: jsonBool(json["frameLocked"], false),
         players: [
           if (raw is List)
             for (var p in raw)

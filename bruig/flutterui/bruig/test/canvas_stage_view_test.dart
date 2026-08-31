@@ -1,5 +1,6 @@
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
@@ -791,5 +792,112 @@ void main() {
         closeTo(controller.document.size.width / 2, 1));
     expect(stage.toDocumentPoint(centre).dy,
         closeTo(controller.document.size.height / 2, 1));
+  });
+
+  group("a button on the canvas", () {
+    (CanvasController, ButtonElement) withButton() {
+      var document = const CanvasDocument();
+      var element = newElement(ElementKind.button, document) as ButtonElement;
+      var controller = CanvasController(document.addElement(element));
+      controller.selectOnly(element.id);
+      return (controller, element);
+    }
+
+    testWidgets("a selected button can still be dragged", (tester) async {
+      // It could not: the press that would have started the drag ran the
+      // button's action instead, so a button was stuck where it was placed the
+      // moment it was selected once.
+      var (controller, element) = withButton();
+      addTearDown(controller.dispose);
+      var stage = await pump(tester, controller);
+
+      var at = stage.pageRect.topLeft +
+          element.center * stage.pageRect.width / controller.document.size.width.toDouble();
+      await tester.dragFrom(at, const Offset(60, 40));
+      await tester.pumpAndSettle();
+
+      var after = controller.document.elements.single;
+      expect(after.x, greaterThan(element.x));
+      expect(after.y, greaterThan(element.y));
+    });
+
+    testWidgets("clicking one without moving still runs it", (tester) async {
+      var (controller, element) = withButton();
+      addTearDown(controller.dispose);
+      var stage = await pump(tester, controller);
+
+      var at = stage.pageRect.topLeft +
+          element.center * stage.pageRect.width / controller.document.size.width.toDouble();
+      await tester.tapAt(at);
+      await tester.pumpAndSettle();
+
+      expect(controller.document.elements.single.x, element.x,
+          reason: "a click is not a drag");
+    });
+  });
+
+  group("a team's frame lock", () {
+    (CanvasController, TeamElement) withTeam({bool frameLocked = false}) {
+      var document = const CanvasDocument();
+      var team = TeamElement(
+        ElementBase(
+          id: newElementId(),
+          x: 0,
+          y: 0,
+          width: document.size.width.toDouble(),
+          height: document.size.height.toDouble(),
+        ),
+        dotWidth: 60,
+        dotHeight: 60,
+        frameLocked: frameLocked,
+      ).withFormation(TeamFormation.f442);
+      var controller = CanvasController(document.addElement(team));
+      controller.selectOnly(team.id);
+      return (controller, team);
+    }
+
+    testWidgets("pins the box while leaving the players free", (tester) async {
+      // A pitch is set up once and worked on for an hour, and in that hour a
+      // drag that starts a few pixels off a dot takes hold of the team and
+      // slides all eleven -- easy to do and easy not to notice.
+      var (controller, team) = withTeam(frameLocked: true);
+      addTearDown(controller.dispose);
+      var stage = await pump(tester, controller);
+
+      double toStage(double x) =>
+          stage.pageRect.left + x * stage.pageRect.width / team.width;
+
+      // Empty grass, between the lines.
+      await tester.dragFrom(
+          Offset(toStage(team.width * 0.5), stage.pageRect.center.dy),
+          const Offset(80, 0));
+      await tester.pumpAndSettle();
+      expect(controller.document.elements.single.x, team.x,
+          reason: "the team's box did not move");
+
+      var before = team.players[6];
+      await tester.dragFrom(
+          stage.pageRect.topLeft +
+              team.centreOf(before) * stage.pageRect.width / team.width,
+          const Offset(40, 0));
+      await tester.pumpAndSettle();
+
+      var after = controller.document.elements.whereType<TeamElement>().single;
+      expect(after.players[6].dx, greaterThan(before.dx),
+          reason: "but the player did");
+    });
+
+    testWidgets("unlocked, the box still moves", (tester) async {
+      var (controller, team) = withTeam();
+      addTearDown(controller.dispose);
+      var stage = await pump(tester, controller);
+
+      await tester.dragFrom(
+          Offset(stage.pageRect.left + stage.pageRect.width * 0.5,
+              stage.pageRect.center.dy),
+          const Offset(60, 0));
+      await tester.pumpAndSettle();
+      expect(controller.document.elements.single.x, isNot(team.x));
+    });
   });
 }

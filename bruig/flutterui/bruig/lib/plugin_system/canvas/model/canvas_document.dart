@@ -8,6 +8,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
@@ -318,5 +319,7 @@ CanvasElement elementFromJson(Map<String, dynamic> json) {
       return BackgroundElement.fromJson(json, base);
     case ElementKind.player:
       return TeamElement.fromJson(json, base);
+    case ElementKind.path:
+      return PathElement.fromJson(json, base);
   }
 }

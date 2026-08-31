@@ -378,6 +378,15 @@ class CanvasLayerRow extends StatelessWidget {
             () => controller
                 .replaceElement(element.withBase(locked: !element.locked)),
           ),
+          // Copy is on the row as well as on Cmd-C, because the row is where
+          // you already are when you have found the element you want -- and
+          // because a shortcut nobody is told about is a shortcut nobody uses.
+          _rowButton(
+            theme,
+            Icons.copy_outlined,
+            "Copy",
+            () => controller.copyElement(element.id),
+          ),
         ]),
       ),
     );

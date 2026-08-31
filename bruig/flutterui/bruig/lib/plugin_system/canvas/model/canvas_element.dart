@@ -31,6 +31,7 @@ enum ElementKind {
   // "Team", because one of these is a whole side rather than one dot -- see
   // TeamElement. The enum value keeps its old name so that documents saved
   // before the change still load.
+  path("Path"),
   player("Team");
 
   final String label;

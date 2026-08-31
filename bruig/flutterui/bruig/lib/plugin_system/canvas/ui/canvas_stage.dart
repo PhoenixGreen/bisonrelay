@@ -5,6 +5,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
@@ -63,7 +64,7 @@ enum _Handle {
 }
 
 /// _DragMode is what the pointer is currently doing.
-enum _DragMode { none, move, resize, rotate, pan, marquee, player }
+enum _DragMode { none, move, resize, rotate, marquee, pan, player, node, handle }
 
 class CanvasStage extends StatefulWidget {
   final CanvasController controller;
@@ -102,6 +103,27 @@ class CanvasStageState extends State<CanvasStage> {
   /// _playerGrab is where in the dot the pointer took hold, so a player does
   /// not jump to centre itself under the cursor on the first pixel of a drag.
   Offset _playerGrab = Offset.zero;
+
+  /// _pendingButton is a selected button that has been pressed but not yet
+  /// released. It runs its action on release, and only if the pointer has not
+  /// travelled far enough to have been a drag. See _onPointerDown.
+  ButtonElement? _pendingButton;
+
+  /// _buttonClickSlop is how far the pointer may move and still count as a
+  /// click rather than a drag. Most trackpad clicks move a pixel or two.
+  static const double _buttonClickSlop = 4;
+
+  /// _pressedAt is where the pointer went down, in stage coordinates.
+  Offset _pressedAt = Offset.zero;
+
+  /// _nodeIndex is which point of the selected path is being dragged, and
+  /// _nodeHandleOut says which of its two handles when the drag is a handle.
+  ///
+  /// Like a player, a path node is not an element: the path stays selected
+  /// throughout, and what moves is one entry in its list.
+  int _nodeIndex = -1;
+  bool _nodeHandleOut = false;
+
   _Handle? _handle;
 
   /// _dragStart is where the gesture began, in document space, and
@@ -426,6 +448,7 @@ class CanvasStageState extends State<CanvasStage> {
   void _onPointerDown(PointerDownEvent event) {
     _focus.requestFocus();
     var stage = event.localPosition;
+    _pressedAt = stage;
     var doc = _toDocument(stage);
     _dragStart = doc;
 
@@ -439,6 +462,22 @@ class CanvasStageState extends State<CanvasStage> {
       _startPan = _clampedPan;
       _dragStart = stage;
       return;
+    }
+
+    // A selected path's points and handles are grabbed before anything
+      // else, exactly as a team's players are: they are drawn on top of the
+      // curve and are the thing being aimed at.
+    var path = _selectedPath();
+    if (path != null) {
+      var grab = _hitPathControl(path, doc);
+      if (grab != null) {
+        var (index, isHandle, isOut) = grab;
+        _nodeIndex = index;
+        _nodeHandleOut = isOut;
+        _mode = isHandle ? _DragMode.handle : _DragMode.node;
+        controller.beginInteraction();
+        return;
+      }
     }
 
     // Outside the frame there is nothing to hit. Clicking the margin clears
@@ -483,15 +522,18 @@ class CanvasStageState extends State<CanvasStage> {
       return;
     }
 
-    // A button is pressed rather than selected when it is already the
-    // selection -- so a button can be designed like anything else, and then
-    // tried by clicking it again.
+    // A selected button is *tried* by clicking it and *moved* by dragging it.
+    //
+    // It used to run its action on pointer-down, which meant a button could
+    // never be moved again once it was selected: the press that would have
+    // started the drag fired the action instead, and the button stayed where
+    // it was. So the decision is deferred to pointer-up, where the distance
+    // travelled is known -- see _onPointerUp.
     if (element is ButtonElement &&
         controller.selection.length == 1 &&
         controller.selection.first == element.id) {
-      var url = controller.runButtonAction(element.action);
-      if (url != null && url.isNotEmpty) widget.onButtonLink?.call(url);
-      _mode = _DragMode.none;
+      _pendingButton = element;
+      _beginTransform(_DragMode.move, null);
       return;
     }
 
@@ -500,7 +542,82 @@ class CanvasStageState extends State<CanvasStage> {
     } else if (!controller.selection.contains(element.id)) {
       controller.selectOnly(element.id);
     }
+
+    // A team with its frame locked is still selectable -- its settings and its
+    // squad list are wanted -- but the box itself does not move. Any drag that
+    // was going to take hold of a player has already been dealt with above, so
+    // reaching here means the pointer was on the pitch rather than on a dot.
+    if (element is TeamElement && element.frameLocked) {
+      _mode = _DragMode.none;
+      return;
+    }
+
     _beginTransform(_DragMode.move, null);
+  }
+
+  /// _selectedPath is the one selected element, when it is a path.
+  PathElement? _selectedPath() {
+    var selected = controller.selected;
+    return selected is PathElement ? selected : null;
+  }
+
+  /// _hitPathControl finds the point or handle under [doc], as
+  /// (index, isHandle, isOutHandle).
+  ///
+  /// Handles are tested before points so that a handle sitting on top of its
+  /// own point -- which is where an unbent node's handles are -- can still be
+  /// pulled out to make a curve.
+  (int, bool, bool)? _hitPathControl(PathElement path, Offset doc) {
+    // In document units, so the grab area is the same size on screen however
+    // far the canvas is zoomed -- what is being allowed for is a pointer, not
+    // a distance on the page.
+    var reach = (_handleSize / 2 + _handleHitSlop) / _scale;
+    for (var i = 0; i < path.nodes.length; i++) {
+      var node = path.nodes[i];
+      if ((doc - path.outHandleOf(node)).distance <= reach &&
+          (node.outDx != 0 || node.outDy != 0)) {
+        return (i, true, true);
+      }
+      if ((doc - path.inHandleOf(node)).distance <= reach &&
+          (node.inDx != 0 || node.inDy != 0)) {
+        return (i, true, false);
+      }
+    }
+    for (var i = 0; i < path.nodes.length; i++) {
+      if ((doc - path.pointOf(path.nodes[i])).distance <= reach) {
+        return (i, false, false);
+      }
+    }
+    return null;
+  }
+
+  /// _applyNodeMove drags a point or one of its handles.
+  void _applyNodeMove(Offset doc, {required bool handle}) {
+    var path = _selectedPath();
+    if (path == null || _nodeIndex < 0 || _nodeIndex >= path.nodes.length) {
+      return;
+    }
+    var w = path.width == 0 ? 1.0 : path.width;
+    var h = path.height == 0 ? 1.0 : path.height;
+    var fraction =
+        Offset((doc.dx - path.x) / w, (doc.dy - path.y) / h);
+    var node = path.nodes[_nodeIndex];
+
+    // Alt breaks the handle pair, which is how a corner is made. Held down is
+    // the exception rather than the rule, because most of a run is smooth and
+    // a curve that kinked every time a handle moved would be unusable.
+    var next = handle
+        ? (HardwareKeyboard.instance.isAltPressed
+            ? (_nodeHandleOut
+                ? node.copyWith(
+                    outDx: fraction.dx - node.x, outDy: fraction.dy - node.y)
+                : node.copyWith(
+                    inDx: fraction.dx - node.x, inDy: fraction.dy - node.y))
+            : node.withMirroredHandle(out: _nodeHandleOut, to: fraction))
+        : node.copyWith(x: fraction.dx, y: fraction.dy);
+
+    controller.replaceElement(path.withNode(_nodeIndex, next),
+        transient: true);
   }
 
   /// _selectedTeam is the one selected element, when it is a team.
@@ -632,6 +749,10 @@ class CanvasStageState extends State<CanvasStage> {
         setState(() => _marquee = Rect.fromPoints(_dragStart, doc));
       case _DragMode.player:
         _applyPlayerMove(doc);
+      case _DragMode.node:
+        _applyNodeMove(doc, handle: false);
+      case _DragMode.handle:
+        _applyNodeMove(doc, handle: true);
       default:
         break;
     }
@@ -736,6 +857,24 @@ class CanvasStageState extends State<CanvasStage> {
 
   void _onPointerUp(PointerUpEvent event) {
     _playerIndex = -1;
+
+    // A press on an already-selected button that never became a drag is a
+    // click, and a click runs it. Measured in stage pixels rather than
+    // document units so the tolerance is the same however far in the canvas
+    // is zoomed -- what is being allowed for is an unsteady hand, not a
+    // distance on the page.
+    var button = _pendingButton;
+    _pendingButton = null;
+    if (button != null &&
+        (event.localPosition - _pressedAt).distance <= _buttonClickSlop) {
+      controller.endInteraction();
+      _mode = _DragMode.none;
+      _handle = null;
+      var url = controller.runButtonAction(button.action);
+      if (url != null && url.isNotEmpty) widget.onButtonLink?.call(url);
+      return;
+    }
+
     if (_mode == _DragMode.marquee) {
       var box = _marquee;
       if (box != null && box.width > 3 && box.height > 3) {
@@ -746,6 +885,15 @@ class CanvasStageState extends State<CanvasStage> {
         }
       }
       setState(() => _marquee = null);
+    }
+    if (_mode == _DragMode.node || _mode == _DragMode.handle) {
+      // Re-baked once, at the end of the drag rather than on every pixel of
+      // it: a route is dozens of keyframes and rewriting them all sixty times
+      // a second would make dragging a point crawl.
+      var path = _selectedPath();
+      if (path != null) controller.applyPathFollow(path);
+      controller.endInteraction();
+      _nodeIndex = -1;
     }
     if (_mode == _DragMode.move ||
         _mode == _DragMode.resize ||
@@ -798,6 +946,30 @@ class CanvasStageState extends State<CanvasStage> {
     var keys = HardwareKeyboard.instance;
     var nudging = keys.isAltPressed;
     var step = keys.isShiftPressed ? 10.0 : 1.0;
+
+    // Cmd on a Mac, Control everywhere else. HardwareKeyboard reports both,
+    // and accepting either means the shortcut works for somebody on a Mac with
+    // an external PC keyboard as well.
+    var command = keys.isMetaPressed || keys.isControlPressed;
+    if (command) {
+      switch (event.logicalKey) {
+        case LogicalKeyboardKey.keyC:
+          controller.copySelected();
+        case LogicalKeyboardKey.keyX:
+          controller.cutSelected();
+        case LogicalKeyboardKey.keyV:
+          controller.paste();
+        case LogicalKeyboardKey.keyD:
+          controller.duplicateSelected();
+        case LogicalKeyboardKey.keyA:
+          controller.selectAll();
+        case LogicalKeyboardKey.keyZ:
+          keys.isShiftPressed ? controller.redo() : controller.undo();
+        default:
+          return KeyEventResult.ignored;
+      }
+      return KeyEventResult.handled;
+    }
 
     switch (event.logicalKey) {
       case LogicalKeyboardKey.space:
@@ -857,6 +1029,7 @@ class CanvasStageState extends State<CanvasStage> {
                       hoveredButton: controller.hoveredButton,
                       selection: controller.selection,
                       showHelpers: controller.showHelpers,
+                      selectedPath: _selectedPath(),
                       selectionBounds: _selectionBounds,
                       selectionRotation: _rotationOfSelection,
                       handleFor: _handlePosition,
@@ -936,6 +1109,10 @@ class _StagePainter extends CustomPainter {
   /// zoom.
   final Rect page;
 
+  /// selectedPath is the selected element when it is a path, whose points and
+  /// handles are drawn in place of a selection box.
+  final PathElement? selectedPath;
+
   /// showHelpers draws the selection box, the handles and the rotation ring.
   ///
   /// Passed in rather than being faked by blanking the selection, which is how
@@ -947,6 +1124,7 @@ class _StagePainter extends CustomPainter {
   const _StagePainter({
     required this.page,
     required this.showHelpers,
+    required this.selectedPath,
     required this.document,
     required this.frame,
     required this.scale,
@@ -982,7 +1160,13 @@ class _StagePainter extends CustomPainter {
     canvas.translate(origin.dx, origin.dy);
     canvas.scale(scale);
     paintCanvasDocument(canvas, document,
-        frame: frame, images: images, hoveredButton: hoveredButton);
+        frame: frame,
+        images: images,
+        hoveredButton: hoveredButton,
+        // Guide paths show here and nowhere else: the line describing a run is
+        // scaffolding, and a published diagram with every run drawn on it is
+        // unreadable.
+        editing: true);
     canvas.restore();
 
     _paintSelection(canvas);
@@ -1029,6 +1213,16 @@ class _StagePainter extends CustomPainter {
 
   void _paintSelection(Canvas canvas) {
     if (!showHelpers) return;
+
+    // A selected path shows its points and handles instead of a box: the box
+    // round a curve is a rectangle nobody drew and cannot be usefully dragged,
+    // where the points are the whole of what there is to edit.
+    var path = selectedPath;
+    if (path != null) {
+      _paintPathControls(canvas, path);
+      return;
+    }
+
     var bounds = selectionBounds;
     if (bounds == null) return;
 
@@ -1076,6 +1270,42 @@ class _StagePainter extends CustomPainter {
     }
   }
 
+  /// _paintPathControls draws a path's points and its handles.
+  ///
+  /// Handles only where there are any: an unbent node's handles sit exactly on
+  /// top of it, and drawing them there would be three overlapping dots that
+  /// cannot be told apart or aimed at separately.
+  void _paintPathControls(Canvas canvas, PathElement path) {
+    Offset at(Offset doc) => doc * scale + origin;
+
+    var line = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1
+      ..color = const Color(0x883D7EFF);
+    var fill = Paint()..color = const Color(0xFF3D7EFF);
+    var knob = Paint()..color = const Color(0xFFFFFFFF);
+
+    for (var node in path.nodes) {
+      var point = at(path.pointOf(node));
+
+      for (var (dx, dy, handle) in [
+        (node.outDx, node.outDy, path.outHandleOf(node)),
+        (node.inDx, node.inDy, path.inHandleOf(node)),
+      ]) {
+        if (dx == 0 && dy == 0) continue;
+        var end = at(handle);
+        canvas.drawLine(point, end, line);
+        canvas.drawCircle(end, 4, knob);
+        canvas.drawCircle(end, 4, line);
+      }
+
+      // The point itself last, so it is on top of its own handle lines.
+      canvas.drawCircle(point, 5, knob);
+      canvas.drawCircle(point, 5, fill..style = PaintingStyle.stroke..strokeWidth = 2);
+      canvas.drawCircle(point, 2.5, fill..style = PaintingStyle.fill);
+    }
+  }
+
   @override
   bool shouldRepaint(_StagePainter old) =>
       old.document != document ||
@@ -1084,6 +1314,7 @@ class _StagePainter extends CustomPainter {
       old.origin != origin ||
       old.page != page ||
       old.showHelpers != showHelpers ||
+      !identical(old.selectedPath, selectedPath) ||
       old.hoveredButton != hoveredButton ||
       old.selection != selection ||
       old.selectionBounds != selectionBounds ||

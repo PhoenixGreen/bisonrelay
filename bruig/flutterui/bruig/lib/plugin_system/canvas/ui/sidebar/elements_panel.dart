@@ -34,6 +34,7 @@ const List<ElementKind> _addable = [
   ElementKind.button,
   ElementKind.background,
   ElementKind.player,
+  ElementKind.path,
 ];
 
 IconData iconForKind(ElementKind kind) => switch (kind) {
@@ -46,6 +47,7 @@ IconData iconForKind(ElementKind kind) => switch (kind) {
       ElementKind.button => Icons.smart_button_outlined,
       ElementKind.background => Icons.blur_on,
       ElementKind.player => Icons.person_pin_circle_outlined,
+      ElementKind.path => Icons.gesture,
     };
 
 String _hintForKind(ElementKind kind) => switch (kind) {
@@ -58,6 +60,8 @@ String _hintForKind(ElementKind kind) => switch (kind) {
       ElementKind.button => "Something to press in a published canvas",
       ElementKind.background => "A generated pattern in a panel",
       ElementKind.player => "A numbered dot with a name",
+      ElementKind.path =>
+          "A curve, and optionally the route something takes along it",
     };
 
 class CanvasElementsPanel extends StatelessWidget {

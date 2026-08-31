@@ -57,10 +57,17 @@ class CanvasScreen extends StatefulWidget {
 }
 
 class _CanvasScreenState extends State<CanvasScreen> {
-  /// _controller holds the editing session. Created here and disposed with the
-  /// page, so leaving Canvas and coming back is a fresh session -- which is
-  /// why the last-opened canvas is remembered and reopened below.
-  late final CanvasController _controller = CanvasController(emptyCanvas());
+  /// _controller holds the editing session, and it outlives this page.
+  ///
+  /// Read from the provider rather than created here, and deliberately not
+  /// disposed by this widget: leaving Canvas for a chat and coming back has to
+  /// find the canvas exactly as it was -- the same document, the same
+  /// selection, the same zoom, the same frame, the same undo history. Owned by
+  /// the page, all of that went when the route was popped, and reopening the
+  /// last *saved* file was not the same thing at all: it lost every unsaved
+  /// edit made since, which on a page where a document is often never saved is
+  /// most of the work.
+  late final CanvasController _controller = context.read<CanvasController>();
 
   final GlobalKey<CanvasStageState> _stageKey = GlobalKey<CanvasStageState>();
 
@@ -107,7 +114,12 @@ class _CanvasScreenState extends State<CanvasScreen> {
     _panel = at >= 0 && at < CanvasPanel.values.length
         ? CanvasPanel.values[at]
         : CanvasPanel.files;
-    _reopenLast(prefs);
+    // Only on the very first visit of the session. After that the controller
+    // already holds whatever was being worked on, and reopening the last saved
+    // file over the top would throw away the unsaved edits this whole
+    // arrangement exists to keep.
+    if (!_controller.opened) _reopenLast(prefs);
+    _controller.markOpened();
     _controller.addListener(_onSelectionChanged);
   }
 
@@ -142,7 +154,9 @@ class _CanvasScreenState extends State<CanvasScreen> {
   @override
   void dispose() {
     _controller.removeListener(_onSelectionChanged);
-    _controller.dispose();
+    // Not disposed: the session outlives this page. The provider owns it, and
+    // disposing it here would leave a dead controller behind for the next
+    // visit to read.
     super.dispose();
   }
 

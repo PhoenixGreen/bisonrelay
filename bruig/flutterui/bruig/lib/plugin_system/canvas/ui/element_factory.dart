@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
@@ -7,6 +8,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
@@ -49,6 +51,9 @@ Size defaultSizeFor(ElementKind kind, CanvasDocument document) {
     // A team, not a player: the box is the half of the pitch the formation is
     // laid out in, so it wants most of the canvas rather than a dot's worth.
     ElementKind.player => Size(wide * 0.46, short * 0.86),
+    // A path is a route across the design rather than an object on it, so it
+    // arrives large enough to be worth curving.
+    ElementKind.path => Size(wide * 0.5, short * 0.4),
   };
 }
 
@@ -155,6 +160,14 @@ CanvasElement newElement(
             vignette: 0.35,
           ),
           cornerRadius: unit * 0.4);
+
+    case ElementKind.path:
+      return PathElement(
+        base.copyWith(name: "Path"),
+        nodes: PathElement.defaultNodes(frames: document.frames),
+        strokeWidth: math.max(2, size.shortestSide * 0.012),
+        dash: size.shortestSide * 0.04,
+      );
 
     case ElementKind.player:
       // A team is dropped in at a size that would cover half a pitch, because
