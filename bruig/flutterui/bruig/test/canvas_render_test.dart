@@ -574,6 +574,100 @@ void main() {
       expect(back.endEnd, LineEnd.none);
     });
 
+    testWidgets("an arrowhead sits behind the tip, along the line",
+        (tester) async {
+      // The one that kept getting away. Tangent.angle is *minus* atan2(dy, dx)
+      // -- anticlockwise, the way a mathematician draws axes -- while the
+      // canvas has y growing downwards, so using it flipped every decoration
+      // about the horizontal. On a diagonal the arrowhead pointed into the
+      // wrong quadrant and sat off the end of the line.
+      //
+      // Diagonal deliberately: the flip is invisible on a horizontal line,
+      // which is exactly why it survived two attempts at this.
+      const size = 240;
+      var document = const CanvasDocument(
+        size: CanvasSize(ratio: CanvasRatio.square, width: size),
+        background: CanvasBackground(),
+        elements: [
+          LineElement(
+            ElementBase(id: "l", x: 20, y: 20, width: 200, height: 200),
+            strokeWidth: 5,
+            endEnd: LineEnd.arrow,
+          ),
+        ],
+      );
+
+      late List<Offset> ink;
+      await tester.runAsync(() async {
+        var recorder = ui.PictureRecorder();
+        paintCanvasDocument(ui.Canvas(recorder), document);
+        var image = await recorder.endRecording().toImage(size, size);
+        var data = await image.toByteData();
+        ink = [
+          for (var y = 0; y < size; y++)
+            for (var x = 0; x < size; x++)
+              if (data!.getUint8((y * size + x) * 4 + 3) > 60 &&
+                  data.getUint8((y * size + x) * 4) > 150)
+                Offset(x.toDouble(), y.toDouble()),
+        ];
+      });
+
+      expect(ink, isNotEmpty);
+
+      // The line runs from (20,20) to (220,220), so the tip is bottom-right
+      // and the barbs must lie back up the line, towards the top-left.
+      const tip = Offset(220, 220);
+      var near = ink.where((p) => (p - tip).distance < 26).toList();
+      expect(near.length, greaterThan(20), reason: "the head is drawn at all");
+
+      var centroid = near.reduce((a, b) => a + b) / near.length.toDouble();
+      var back = centroid - tip;
+      expect(back.dx, lessThan(-2), reason: "the head lies back along the line");
+      expect(back.dy, lessThan(-2));
+      // And squarely on the line rather than off to one side: for a 45-degree
+      // line the two components of the offset are equal.
+      expect(back.dx, closeTo(back.dy, 4),
+          reason: "it is seated on the line, not rotated off it");
+    });
+
+    testWidgets("a start arrow points the other way", (tester) async {
+      const size = 240;
+      var document = const CanvasDocument(
+        size: CanvasSize(ratio: CanvasRatio.square, width: size),
+        background: CanvasBackground(),
+        elements: [
+          LineElement(
+            ElementBase(id: "l", x: 20, y: 20, width: 200, height: 200),
+            strokeWidth: 5,
+            startEnd: LineEnd.arrow,
+          ),
+        ],
+      );
+
+      late List<Offset> ink;
+      await tester.runAsync(() async {
+        var recorder = ui.PictureRecorder();
+        paintCanvasDocument(ui.Canvas(recorder), document);
+        var image = await recorder.endRecording().toImage(size, size);
+        var data = await image.toByteData();
+        ink = [
+          for (var y = 0; y < size; y++)
+            for (var x = 0; x < size; x++)
+              if (data!.getUint8((y * size + x) * 4 + 3) > 60 &&
+                  data.getUint8((y * size + x) * 4) > 150)
+                Offset(x.toDouble(), y.toDouble()),
+        ];
+      });
+
+      const tip = Offset(20, 20);
+      var near = ink.where((p) => (p - tip).distance < 26).toList();
+      expect(near.length, greaterThan(20));
+      var back = (near.reduce((a, b) => a + b) / near.length.toDouble()) - tip;
+      expect(back.dx, greaterThan(2),
+          reason: "the head at the start lies back down the line");
+      expect(back.dy, greaterThan(2));
+    });
+
     test("every end draws without throwing, bowed and straight", () {
       for (var end in LineEnd.values) {
         for (var bow in [0.0, 0.5, -0.5]) {

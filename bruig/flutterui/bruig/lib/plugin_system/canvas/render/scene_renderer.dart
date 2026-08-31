@@ -535,11 +535,21 @@ void _paintLine(ui.Canvas canvas, LineElement e) {
   canvas.drawPath(
       e.dash > 0 ? dashPath(stroke, e.dash, e.dash * 0.8) : stroke, paint);
 
+  // From the vector, never from Tangent.angle. That getter is defined as
+  // *minus* atan2(dy, dx) -- an angle measured anticlockwise, the way a
+  // mathematician draws axes -- while everything drawn here is in canvas
+  // space, where y grows downwards. Using it flipped every decoration about
+  // the horizontal: on a diagonal line the arrowhead pointed into the wrong
+  // quadrant and sat off the end of the line entirely. It costs nothing to
+  // read and is invisible on a horizontal line, which is the worst kind of
+  // difference to have between two coordinate systems.
+  double heading(ui.Tangent t) => math.atan2(t.vector.dy, t.vector.dx);
+
   // The start decoration points back out of the line, so its heading is the
   // curve's reversed.
   _paintLineEnd(canvas, e.startEnd, startTangent.position,
-      startTangent.angle + math.pi, e);
-  _paintLineEnd(canvas, e.endEnd, endTangent.position, endTangent.angle, e);
+      heading(startTangent) + math.pi, e);
+  _paintLineEnd(canvas, e.endEnd, endTangent.position, heading(endTangent), e);
 }
 
 /// _trimFor is how far back from a line's end its decoration begins.
