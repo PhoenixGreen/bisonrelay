@@ -159,6 +159,9 @@ class CanvasStageState extends State<CanvasStage> {
   /// _startPosed is where each element was on screen when the gesture began.
   /// See _beginTransform.
   Map<String, Rect> _startPosed = {};
+
+  /// _startVisual is the box the handles were on. See _beginTransform.
+  Map<String, Rect> _startVisual = {};
   Map<String, double> _startRotation = {};
   Offset _startPan = Offset.zero;
   Rect? _marquee;
@@ -397,12 +400,27 @@ class CanvasStageState extends State<CanvasStage> {
     // CanvasElement.boundsAt. Using the resting bounds left the blue rectangle
     // standing still while the element inside it animated away, which reads as
     // the *contents* being animated rather than the element.
-    var frame = controller.frame;
-    var box = elements.first.boundsAt(frame);
+    var box = _visualBounds(elements.first);
     for (var e in elements.skip(1)) {
-      box = box.expandToInclude(e.boundsAt(frame));
+      box = box.expandToInclude(_visualBounds(e));
     }
     return box;
+  }
+
+  /// _visualBounds is where an element is actually drawn -- see
+  /// visualBoundsOf. A bowed line, a path and text riding a line are all drawn
+  /// somewhere other than their own rectangle, and a selection box on the
+  /// rectangle is a box around empty canvas.
+  Rect _visualBounds(CanvasElement e) =>
+      visualBoundsOf(e, document, controller.frame);
+
+  /// _selectionHasOwnGeometry is whether the handles and the rotate ring are
+  /// worth showing. See hasOwnGeometry.
+  bool get _selectionHasOwnGeometry {
+    var elements = controller.selectedElements;
+    if (elements.isEmpty) return false;
+    return elements
+        .every((e) => hasOwnGeometry(e, document, controller.frame));
   }
 
   /// _rotationOfSelection is the single selected element's rotation, or zero
@@ -515,6 +533,8 @@ class CanvasStageState extends State<CanvasStage> {
 
   /// _hitHandle is which grip is under a stage-space point, if any.
   _Handle? _hitHandle(Offset stage) {
+    // Nothing to grab on something whose size and angle are a line's.
+    if (!_selectionHasOwnGeometry) return null;
     var bounds = _selectionBounds;
     if (bounds == null) return null;
     var reach = _handleSize / 2 + _handleHitSlop;
@@ -901,6 +921,13 @@ class CanvasStageState extends State<CanvasStage> {
       for (var e in controller.selectedElements)
         e.id: e.boundsAt(controller.frame),
     };
+    // The box the handles are on, which for a line or a path is bigger than
+    // the element's own -- see _visualBounds. A resize is expressed against
+    // this and then applied to the real rectangle in the same proportion, so
+    // dragging a corner does what it looks like it does.
+    _startVisual = {
+      for (var e in controller.selectedElements) e.id: _visualBounds(e),
+    };
     _startRotation = {
       for (var e in controller.selectedElements) e.id: e.rotation,
     };
@@ -977,9 +1004,13 @@ class CanvasStageState extends State<CanvasStage> {
     }
 
     var next = document;
-    for (var entry in _startBounds.entries) {
+    for (var entry in _startVisual.entries) {
       var element = next.elementById(entry.key);
       if (element == null || element.locked) continue;
+      // Against the box the handles are actually on. For a line or a path that
+      // is larger than the element's own rectangle, and dragging a corner of a
+      // box while a different rectangle resized underneath is what made a
+      // curved line feel like it was fighting the pointer.
       var start = entry.value;
 
       var left = start.left + (handle.movesLeft ? delta.dx : 0);
@@ -1011,8 +1042,18 @@ class CanvasStageState extends State<CanvasStage> {
         handle.movesTop ? top = bottom - minimum : bottom = top + minimum;
       }
 
+      // The handle box has been resized; the element's own rectangle follows
+      // it in the same proportion. For everything except a line, a path and
+      // curved text the two boxes are identical and this is the identity.
+      var real = _startBounds[entry.key] ?? start;
+      var sx = start.width == 0 ? 1.0 : (right - left) / start.width;
+      var sy = start.height == 0 ? 1.0 : (bottom - top) / start.height;
       next = next.withElement(element.withBase(
-          x: left, y: top, width: right - left, height: bottom - top));
+        x: left + (real.left - start.left) * sx,
+        y: top + (real.top - start.top) * sy,
+        width: math.max(1, real.width * sx),
+        height: math.max(1, real.height * sy),
+      ));
     }
     controller.apply(next, transient: true);
   }
@@ -1223,6 +1264,7 @@ class CanvasStageState extends State<CanvasStage> {
                       selectedPath: _selectedPath(),
                       editingText: _editingText,
                       selectionBounds: _selectionBounds,
+                      showHandles: _selectionHasOwnGeometry,
                       selectionRotation: _rotationOfSelection,
                       handleFor: _handlePosition,
                       marquee: _marquee,
@@ -1265,7 +1307,10 @@ class CanvasStageState extends State<CanvasStage> {
     var element = document.elementById(id);
     if (element is! TextElement) return null;
 
-    var box = element.boundsAt(controller.frame);
+    // Over the words, wherever they are. Text riding a line is drawn along the
+    // line and not in its own rectangle, so an editor on the rectangle opened
+    // in an empty part of the canvas.
+    var box = _visualBounds(element);
     var topLeft = _toStage(box.topLeft);
     return CanvasTextEditor(
       key: ValueKey("edit-$id"),
@@ -1348,6 +1393,12 @@ class _StagePainter extends CustomPainter {
   /// at once is the same sentence twice, half a pixel apart.
   final String? editingText;
 
+  /// showHandles is false for something whose size and angle belong to
+  /// another element -- text riding a line. The outline is still drawn, so it
+  /// is clear what is selected; the eight squares and the rotate ring are not,
+  /// because they would be controls that appear to do nothing.
+  final bool showHandles;
+
   /// showHelpers draws the selection box, the handles and the rotation ring.
   ///
   /// Passed in rather than being faked by blanking the selection, which is how
@@ -1359,6 +1410,7 @@ class _StagePainter extends CustomPainter {
   const _StagePainter({
     required this.page,
     required this.view,
+    required this.showHandles,
     required this.showHelpers,
     required this.selectedPath,
     required this.editingText,
@@ -1496,13 +1548,19 @@ class _StagePainter extends CustomPainter {
           ..color = const Color(0xFF3D7EFF));
     // The line out to the rotate ring, so it reads as attached to the
     // selection rather than as a stray dot floating above it.
-    canvas.drawLine(
-        Offset(0, -half.dy),
-        Offset(0, -half.dy - _rotateHandleGap),
-        Paint()
-          ..strokeWidth = 1
-          ..color = const Color(0xFF3D7EFF));
+    if (showHandles) {
+      canvas.drawLine(
+          Offset(0, -half.dy),
+          Offset(0, -half.dy - _rotateHandleGap),
+          Paint()
+            ..strokeWidth = 1
+            ..color = const Color(0xFF3D7EFF));
+    }
     canvas.restore();
+
+    // The outline alone for something placed by another element: it says what
+    // is selected without offering eight squares that would do nothing.
+    if (!showHandles) return;
 
     var fill = Paint()..color = const Color(0xFFFFFFFF);
     var edge = Paint()
@@ -1569,6 +1627,7 @@ class _StagePainter extends CustomPainter {
       old.page != page ||
       old.view != view ||
       old.showHelpers != showHelpers ||
+      old.showHandles != showHandles ||
       !identical(old.selectedPath, selectedPath) ||
       old.editingText != editingText ||
       old.hoveredButton != hoveredButton ||

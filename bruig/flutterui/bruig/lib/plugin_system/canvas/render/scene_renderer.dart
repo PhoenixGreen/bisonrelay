@@ -262,6 +262,73 @@ LineElement _bowed(LineElement e, Keyframe pose) {
   return bow == null ? e : e.copyWith(curvature: bow);
 }
 
+/// visualBoundsOf is where [element] is actually drawn.
+///
+/// Different from its own rectangle for exactly three things, and for all
+/// three the rectangle is misleading rather than merely approximate:
+///
+///   a bowed line or a pulled-about path bulges outside its box, so the box
+///   covers the chord and not the curve;
+///   text riding a line is drawn wherever the line is, and its own box is
+///   wherever it happened to be dropped -- often nowhere near the words.
+///
+/// The selection outline, the handles and the on-canvas text editor all use
+/// this, because a box drawn somewhere other than the thing it belongs to is
+/// worse than no box: it invites dragging empty space.
+Rect visualBoundsOf(CanvasElement element, CanvasDocument? doc, int frame) {
+  if (element is TextElement) {
+    var curve = _curveFor(element, doc, frame);
+    if (curve != null) {
+      var glyphs = placeTextOnPath(
+          element.displayText, element.textSpec, curve, element.curve!);
+      var box = textOnPathBounds(glyphs, element.curve!);
+      // No letters placed -- an empty string, or a slide that has carried them
+      // off the end of the line -- so there is nothing to draw a box around
+      // except the line itself.
+      return box ?? _boundsOfPoints(curve) ?? element.boundsAt(frame);
+    }
+    return element.boundsAt(frame);
+  }
+
+  if (element is LineElement || element is PathElement) {
+    var host = element is LineElement
+        ? lineWithPose(element, frame)
+        : element;
+    var curve = curveOfElement(host);
+    var box = _boundsOfPoints(curve);
+    if (box == null) return element.boundsAt(frame);
+    // Room for the stroke itself, which is centred on the path, and for an
+    // arrowhead if there is one.
+    var width = element is LineElement
+        ? element.strokeWidth
+        : (element as PathElement).strokeWidth;
+    return box.inflate(math.max(width, 1) * 1.5);
+  }
+
+  return element.boundsAt(frame);
+}
+
+Rect? _boundsOfPoints(List<Offset>? points) {
+  if (points == null || points.isEmpty) return null;
+  var left = points.first.dx, right = points.first.dx;
+  var top = points.first.dy, bottom = points.first.dy;
+  for (var p in points) {
+    left = math.min(left, p.dx);
+    right = math.max(right, p.dx);
+    top = math.min(top, p.dy);
+    bottom = math.max(bottom, p.dy);
+  }
+  return Rect.fromLTRB(left, top, right, bottom);
+}
+
+/// hasOwnGeometry is whether an element's size and angle are its own to change.
+///
+/// False for text riding a line: where it is, how big and how turned are all
+/// the line's, so resize handles and a rotate ring on it would be controls
+/// that appear to do nothing.
+bool hasOwnGeometry(CanvasElement element, CanvasDocument? doc, int frame) =>
+    !(element is TextElement && _curveFor(element, doc, frame) != null);
+
 /// curveOfElement is [element]'s own line as a polyline in document space, or
 /// null when it has none.
 ///

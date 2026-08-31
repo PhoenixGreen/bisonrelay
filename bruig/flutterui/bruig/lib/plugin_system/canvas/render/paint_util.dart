@@ -508,15 +508,36 @@ void _paintColumnRules(
 /// [curve] is a polyline in document space, already sampled finely enough that
 /// walking it in straight steps is indistinguishable from following the curve
 /// -- see _curveSamplesPerSegment.
-void paintTextOnPath(
-  ui.Canvas canvas,
+class PlacedGlyph {
+  final String glyph;
+
+  /// at is where the glyph's baseline centre sits, and angle is the heading of
+  /// the curve there.
+  final Offset at;
+  final double angle;
+  final Size size;
+
+  const PlacedGlyph(this.glyph, this.at, this.angle, this.size);
+}
+
+/// placeTextOnPath works out where every letter of [text] goes along [curve].
+///
+/// Separated from the drawing so that the selection box and the painter cannot
+/// disagree about where the words are. They did: the box was drawn from the
+/// element's own rectangle, which for text riding a line is wherever the box
+/// happened to be dropped and nowhere near the letters -- so clicking the text
+/// put a selection box in an empty part of the canvas.
+///
+/// [curve] is a polyline in document space, already sampled finely enough that
+/// walking it in straight steps is indistinguishable from following the curve.
+List<PlacedGlyph> placeTextOnPath(
   String text,
   TextSpec spec,
   List<Offset> curve,
   TextOnCurve on, {
   double scale = 1,
 }) {
-  if (text.isEmpty || curve.length < 2) return;
+  if (text.isEmpty || curve.length < 2) return const [];
 
   // Cumulative distance along the polyline, so a position in length can be
   // turned into a point and a direction.
@@ -526,20 +547,18 @@ void paintTextOnPath(
     total += (curve[i] - curve[i - 1]).distance;
     lengths.add(total);
   }
-  if (total <= 0) return;
+  if (total <= 0) return const [];
 
-  var glyphs = [
-    for (var rune in text.runes) String.fromCharCode(rune),
-  ];
-  var widths = [
+  var glyphs = [for (var rune in text.runes) String.fromCharCode(rune)];
+  var painters = [
     for (var g in glyphs)
-      layoutText(g, spec, maxWidth: double.infinity, scale: scale).width +
-          on.spacing * scale,
+      layoutText(g, spec, maxWidth: double.infinity, scale: scale),
   ];
+  var widths = [for (var p in painters) p.width + on.spacing * scale];
   var runLength = widths.fold(0.0, (sum, w) => sum + w);
 
   // Where the run starts, from the spec's own alignment plus the slide.
-  var start = switch (spec.align) {
+  var at = switch (spec.align) {
         TextAlignSpec.left => 0.0,
         TextAlignSpec.center => (total - runLength) / 2,
         TextAlignSpec.right => total - runLength,
@@ -547,28 +566,77 @@ void paintTextOnPath(
       } +
       on.offset * total;
 
-  var at = start;
+  var out = <PlacedGlyph>[];
   for (var i = 0; i < glyphs.length; i++) {
     var centre = at + widths[i] / 2;
     at += widths[i];
     if (centre < 0 || centre > total) continue;
-
     var (point, angle) = _alongPolyline(curve, lengths, centre);
+    out.add(PlacedGlyph(glyphs[i], point, angle,
+        Size(painters[i].width, painters[i].height)));
+  }
+  return out;
+}
+
+/// textOnPathBounds is the rectangle the placed letters occupy.
+///
+/// A box around every glyph's four corners once it has been turned, rather
+/// than around the points they sit on -- a letter on a steep bend sticks well
+/// out from the line it is riding, and a box that ignored that would clip the
+/// thing it is supposed to be around.
+Rect? textOnPathBounds(List<PlacedGlyph> glyphs, TextOnCurve on) {
+  if (glyphs.isEmpty) return null;
+  double? left, top, right, bottom;
+
+  for (var g in glyphs) {
+    var dy = on.away ? 0.0 : -g.size.height;
+    var cos = math.cos(g.angle);
+    var sin = math.sin(g.angle);
+    for (var corner in [
+      Offset(-g.size.width / 2, dy),
+      Offset(g.size.width / 2, dy),
+      Offset(-g.size.width / 2, dy + g.size.height),
+      Offset(g.size.width / 2, dy + g.size.height),
+    ]) {
+      var x = g.at.dx + corner.dx * cos - corner.dy * sin;
+      var y = g.at.dy + corner.dx * sin + corner.dy * cos;
+      left = left == null ? x : math.min(left, x);
+      right = right == null ? x : math.max(right, x);
+      top = top == null ? y : math.min(top, y);
+      bottom = bottom == null ? y : math.max(bottom, y);
+    }
+  }
+  return Rect.fromLTRB(left!, top!, right!, bottom!);
+}
+
+/// paintTextOnPath lays [text] out along [curve], one glyph at a time.
+///
+/// Glyph by glyph because that is the only way letters can turn with the line:
+/// a paragraph is one rectangle of pixels and rotating it puts the whole
+/// sentence at an angle rather than bending it.
+void paintTextOnPath(
+  ui.Canvas canvas,
+  String text,
+  TextSpec spec,
+  List<Offset> curve,
+  TextOnCurve on, {
+  double scale = 1,
+}) {
+  for (var g in placeTextOnPath(text, spec, curve, on, scale: scale)) {
     canvas.save();
-    canvas.translate(point.dx, point.dy);
-    canvas.rotate(angle);
+    canvas.translate(g.at.dx, g.at.dy);
+    canvas.rotate(g.angle);
     // Sat on the line, or hung beneath it. The glyph is drawn from its own
     // top-left, so it is shifted by half its width and by a whole line height
     // to put the baseline where the curve is.
-    var painter = layoutText(glyphs[i], spec,
-        maxWidth: double.infinity, scale: scale);
-    var dy = on.away ? 0.0 : -painter.height;
+    var dy = on.away ? 0.0 : -g.size.height;
     if (spec.outlineWidth > 0) {
-      layoutText(glyphs[i], spec,
+      layoutText(g.glyph, spec,
               maxWidth: double.infinity, scale: scale, outline: true)
-          .paint(canvas, Offset(-painter.width / 2, dy));
+          .paint(canvas, Offset(-g.size.width / 2, dy));
     }
-    painter.paint(canvas, Offset(-painter.width / 2, dy));
+    layoutText(g.glyph, spec, maxWidth: double.infinity, scale: scale)
+        .paint(canvas, Offset(-g.size.width / 2, dy));
     canvas.restore();
   }
 }

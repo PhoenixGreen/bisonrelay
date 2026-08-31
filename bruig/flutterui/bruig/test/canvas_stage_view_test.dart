@@ -6,6 +6,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
+import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
@@ -1320,6 +1321,149 @@ void main() {
       await tester.pumpAndSettle();
       expect(controller.selection, {"t"},
           reason: "the words are on top of the line and win");
+    });
+  });
+
+  group("the selection box follows what is drawn", () {
+    /// bowed is a line curving well outside its own rectangle.
+    (CanvasController, LineElement) bowed() {
+      var document = const CanvasDocument();
+      var line = LineElement(
+        ElementBase(
+          id: "l",
+          x: 200,
+          y: document.size.height / 2,
+          width: 800,
+          height: 6,
+        ),
+        curvature: 0.4,
+        strokeWidth: 6,
+      );
+      var controller = CanvasController(document.addElement(line));
+      controller.selectOnly("l");
+      return (controller, line);
+    }
+
+    testWidgets("a bowed line's box covers the bow, not just the chord",
+        (tester) async {
+      var (controller, line) = bowed();
+      addTearDown(controller.dispose);
+      var stage = await pump(tester, controller);
+
+      var box = visualBoundsOf(line, controller.document, 0);
+      expect(box.height, greaterThan(line.height * 5),
+          reason: "the element's own rectangle is a thin strip");
+      // Every point of the curve is inside it.
+      for (var p in curveOfElement(line)!) {
+        expect(box.inflate(1).contains(p), isTrue);
+      }
+      expect(stage.pageRect.width, greaterThan(0));
+    });
+
+    testWidgets("dragging a corner of that box resizes the line",
+        (tester) async {
+      // The handles are on the visual box and the element's own rectangle
+      // follows it in proportion. Resizing one box while the handles sat on
+      // another is what made a curved line fight the pointer.
+      var (controller, line) = bowed();
+      addTearDown(controller.dispose);
+      var stage = await pump(tester, controller);
+      var scale = stage.pageRect.width / controller.document.size.width;
+
+      var box = visualBoundsOf(line, controller.document, 0);
+      await tester.dragFrom(
+          stage.pageRect.topLeft + box.bottomRight * scale,
+          const Offset(-60, 0));
+      await tester.pumpAndSettle();
+
+      var after = controller.document.elementById("l")!;
+      expect(after.width, lessThan(line.width));
+      expect(after.width, greaterThan(0));
+    });
+
+    testWidgets("text on a line is boxed around the words", (tester) async {
+      // The reported problem: clicking the text put a selection box in an
+      // empty part of the canvas, because the box came from the element's own
+      // rectangle and the words are wherever the line is.
+      var document = const CanvasDocument();
+      var line = LineElement(
+        ElementBase(
+            id: "l", x: 200, y: document.size.height * 0.7, width: 800, height: 6),
+      );
+      var text = TextElement(
+        // Far away from the line, up in the corner.
+        const ElementBase(id: "t", x: 0, y: 0, width: 300, height: 80),
+        text: "CAPTION",
+        textSpec: const TextSpec(fontSize: 40),
+        curve: const TextOnCurve(elementId: "l"),
+      );
+      var controller =
+          CanvasController(document.addElement(line).addElement(text));
+      addTearDown(controller.dispose);
+      controller.selectOnly("t");
+      await pump(tester, controller);
+
+      var box = visualBoundsOf(text, controller.document, 0);
+      expect(box.overlaps(text.bounds), isFalse,
+          reason: "the words are nowhere near the element's own rectangle");
+      // And they are on the line.
+      expect(box.center.dy, closeTo(document.size.height * 0.7, 60));
+      expect(box.center.dx, closeTo(600, 120));
+    });
+
+    testWidgets("placed text gets an outline but no handles", (tester) async {
+      // Its size and angle are the line's, so eight squares and a rotate ring
+      // would be controls that appear to do nothing.
+      var document = const CanvasDocument();
+      var line = LineElement(
+        ElementBase(
+            id: "l", x: 200, y: document.size.height / 2, width: 800, height: 6),
+      );
+      var text = TextElement(
+        const ElementBase(id: "t", x: 0, y: 0, width: 300, height: 80),
+        text: "CAPTION",
+        curve: const TextOnCurve(elementId: "l"),
+      );
+      var controller =
+          CanvasController(document.addElement(line).addElement(text));
+      addTearDown(controller.dispose);
+      controller.selectOnly("t");
+      await pump(tester, controller);
+
+      expect(hasOwnGeometry(text, controller.document, 0), isFalse);
+      expect(hasOwnGeometry(line, controller.document, 0), isTrue);
+    });
+
+    testWidgets("the text editor opens over the words", (tester) async {
+      var document = const CanvasDocument();
+      var line = LineElement(
+        ElementBase(
+            id: "l", x: 200, y: document.size.height * 0.7, width: 800, height: 6),
+      );
+      var text = TextElement(
+        const ElementBase(id: "t", x: 0, y: 0, width: 300, height: 80),
+        text: "CAPTION",
+        textSpec: const TextSpec(fontSize: 40),
+        curve: const TextOnCurve(elementId: "l"),
+      );
+      var controller =
+          CanvasController(document.addElement(line).addElement(text));
+      addTearDown(controller.dispose);
+      var stage = await pump(tester, controller);
+      var scale = stage.pageRect.width / document.size.width;
+
+      var words = visualBoundsOf(text, controller.document, 0);
+      var at = stage.pageRect.topLeft + words.center * scale;
+      await tester.tapAt(at);
+      await tester.pumpAndSettle();
+      await tester.tapAt(at);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(CanvasTextEditor), findsOneWidget);
+      var editor = tester.getRect(find.byType(CanvasTextEditor));
+      expect(editor.center.dx, closeTo(at.dx, 60),
+          reason: "it opened on the words, not on the stored rectangle");
+      expect(editor.center.dy, closeTo(at.dy, 60));
     });
   });
 }
