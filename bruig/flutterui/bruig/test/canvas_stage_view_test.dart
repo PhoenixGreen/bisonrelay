@@ -1,10 +1,13 @@
+import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
+import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_stage.dart';
@@ -1213,6 +1216,110 @@ void main() {
 
       expect(find.byType(CanvasTextEditor), findsNothing);
       expect((controller.document.elements.single as TextElement).text, "Kept");
+    });
+  });
+
+  group("dragging an element that already has a pose", () {
+    testWidgets("the third keyframe does not jump away from the pointer",
+        (tester) async {
+      // movedTo turns a target position into a pose offset by subtracting the
+      // resting position, so a drag that started from the *resting* top-left
+      // produced a pose of exactly the drag delta -- throwing away whatever
+      // pose the frame already had. On the first two keyframes that pose was
+      // usually zero; on the third it was not, and the element leapt.
+      var document = const CanvasDocument(frames: 40);
+      var element = ShapeElement(
+        ElementBase(
+          id: "s",
+          x: 100,
+          y: 100,
+          width: 80,
+          height: 80,
+        ),
+        fill: const Color(0xFFCC2200),
+      );
+      var controller = CanvasController(document.addElement(element));
+      addTearDown(controller.dispose);
+      controller.selectOnly("s");
+      controller.setKeyframe("s", const Keyframe(frame: 0));
+      controller.setKeyframe("s", const Keyframe(frame: 20, dx: 300, dy: 120));
+
+      controller.frame = 20;
+      var stage = await pump(tester, controller);
+      var scale = stage.pageRect.width / document.size.width;
+      var before = controller.document.elementById("s")!.boundsAt(20);
+
+      // Take hold of it where it actually is, and move it a little.
+      await tester.dragFrom(
+          stage.pageRect.topLeft + before.center * scale, const Offset(20, 10));
+      await tester.pumpAndSettle();
+
+      var after = controller.document.elementById("s")!.boundsAt(20);
+      expect(after.left, closeTo(before.left + 20 / scale, 1),
+          reason: "it followed the pointer rather than leaping");
+      expect(after.top, closeTo(before.top + 10 / scale, 1));
+      // And the other keyframe is untouched.
+      expect(controller.document.elementById("s")!.boundsAt(0).left, 100);
+    });
+  });
+
+  group("selecting a curve", () {
+    testWidgets("a bowed line is caught by its stroke, not its box",
+        (tester) async {
+      // A bowed line bulges outside its own bounding box, so the visible
+      // stroke was not clickable while an empty corner of the box was.
+      var document = const CanvasDocument();
+      var line = LineElement(
+        ElementBase(
+          id: "l",
+          x: 200,
+          y: document.size.height / 2,
+          width: 800,
+          height: 6,
+        ),
+        curvature: 0.35,
+        strokeWidth: 6,
+      );
+      var controller = CanvasController(document.addElement(line));
+      addTearDown(controller.dispose);
+      var stage = await pump(tester, controller);
+      var scale = stage.pageRect.width / document.size.width;
+
+      // The middle of the bow, which is well outside the element's box.
+      var curve = curveOfElement(line)!;
+      var apex = curve[curve.length ~/ 2];
+      expect(line.bounds.contains(apex), isFalse,
+          reason: "the test is only meaningful off the box");
+
+      await tester.tapAt(stage.pageRect.topLeft + apex * scale);
+      await tester.pumpAndSettle();
+      expect(controller.selection, {"l"});
+    });
+
+    testWidgets("text on a line is caught where the words are",
+        (tester) async {
+      var document = const CanvasDocument();
+      var line = LineElement(
+        ElementBase(
+            id: "l", x: 200, y: document.size.height / 2, width: 800, height: 6),
+      );
+      var text = TextElement(
+        // Its own box is nowhere near the line.
+        const ElementBase(id: "t", x: 0, y: 0, width: 100, height: 40),
+        text: "CAPTION",
+        curve: const TextOnCurve(elementId: "l"),
+      );
+      var controller =
+          CanvasController(document.addElement(line).addElement(text));
+      addTearDown(controller.dispose);
+      var stage = await pump(tester, controller);
+      var scale = stage.pageRect.width / document.size.width;
+
+      await tester.tapAt(
+          stage.pageRect.topLeft + Offset(260, document.size.height / 2) * scale);
+      await tester.pumpAndSettle();
+      expect(controller.selection, {"t"},
+          reason: "the words are on top of the line and win");
     });
   });
 }

@@ -137,6 +137,25 @@ void paintElement(
   var bounds = element.bounds;
   if (bounds.width <= 0 || bounds.height <= 0) return;
 
+  // Text riding a line has no transform of its own. Where it is, how it is
+  // turned and how big it is are all the line's to decide -- that is the whole
+  // point of attaching it -- so applying the element's own position and angle
+  // on top moved the words off the line they were supposed to be on, and
+  // turned them independently of it.
+  //
+  // The fade is kept: an entrance is a property of the text rather than of the
+  // line it happens to be sitting on.
+  if (element is TextElement && _curveFor(element, document, frame) != null) {
+    canvas.saveLayer(
+        null,
+        Paint()
+          ..color =
+              const Color(0xFF000000).withValues(alpha: alpha.toDouble()));
+    _paintText(canvas, bounds, element, document, pose: pose, frame: frame);
+    canvas.restore();
+    return;
+  }
+
   canvas.save();
 
   // The pose's shift is applied in document space, then the rotation and the
@@ -167,11 +186,11 @@ void paintElement(
   var time = frame / (frameRate <= 0 ? 1 : frameRate);
   switch (element) {
     case TextElement e:
-      _paintText(canvas, bounds, e, document);
+      _paintText(canvas, bounds, e, document, pose: pose, frame: frame);
     case ShapeElement e:
       _paintShape(canvas, bounds, e);
     case LineElement e:
-      _paintLine(canvas, e);
+      _paintLine(canvas, _bowed(e, pose));
     case ImageElement e:
       _paintImage(canvas, bounds, e, images);
     case ChartElement e:
@@ -196,14 +215,21 @@ void paintElement(
 
 // --------------------------------------------------------------------------
 
-void _paintText(
-    ui.Canvas canvas, Rect bounds, TextElement e, CanvasDocument? doc) {
+void _paintText(ui.Canvas canvas, Rect bounds, TextElement e,
+    CanvasDocument? doc,
+    {Keyframe pose = Keyframe.rest, int frame = 0}) {
   // Text on a curve has no box of its own to fill or frame: it belongs to the
   // line it is riding, and drawing its rectangle behind the line would be a
   // panel nobody asked for sitting across the design.
-  var curve = _curveFor(e, doc);
+  var curve = _curveFor(e, doc, frame);
   if (curve != null) {
-    paintTextOnPath(canvas, e.displayText, e.textSpec, curve, e.curve!);
+    // A keyframe may be sliding the words along the line -- see
+    // KeyframeChannel.slide. Absolute rather than an offset, because a
+    // position along a line has no resting value to be measured from.
+    var on = e.curve!;
+    var slide = pose.values[KeyframeChannel.slide];
+    paintTextOnPath(canvas, e.displayText, e.textSpec, curve,
+        slide == null ? on : on.copyWith(offset: slide));
     return;
   }
 
@@ -226,25 +252,38 @@ void _paintText(
   paintTextInColumns(canvas, e.displayText, spec, inner, e.columns);
 }
 
-/// _curveFor is the line a text element is riding, as a list of points in
-/// document space, or null when it is an ordinary paragraph.
-///
-/// Named rather than copied, so moving or reshaping the line carries its text
-/// with it. A curve that has been deleted since simply stops being found, and
-/// the text falls back to its own box -- which is visible and fixable, where
-/// vanishing would not be.
-List<Offset>? _curveFor(TextElement e, CanvasDocument? doc) {
-  var on = e.curve;
-  if (on == null || doc == null) return null;
-  var host = doc.elementById(on.elementId);
-  var points = _curvePoints(host);
-  if (points == null) return null;
+/// lineWithPose is [e] with whatever its keyframes say about its bow on
+/// [frame], so the hit test catches the curve where it is drawn.
+LineElement lineWithPose(LineElement e, int frame) => _bowed(e, e.poseAt(frame));
 
-  // Turned with the line, about the line's own centre -- the same transform
-  // the painter applies when it draws it. Without this, changing a line's
-  // angle moved the line and left its text lying flat where the line used to
-  // be, which is the one thing attaching text to a line is supposed to prevent.
-  if (host!.rotation == 0) return points;
+/// _bowed applies a keyed curvature to a line. See KeyframeChannel.bow.
+LineElement _bowed(LineElement e, Keyframe pose) {
+  var bow = pose.values[KeyframeChannel.bow];
+  return bow == null ? e : e.copyWith(curvature: bow);
+}
+
+/// curveOfElement is [element]'s own line as a polyline in document space, or
+/// null when it has none.
+///
+/// Public because the stage needs it to hit-test: a curved line or path bows
+/// *outside* its own bounding box, so clicking where the stroke visibly is
+/// missed the element and clicking a corner of the empty box selected it. The
+/// renderer already knows how to walk one, and two answers to "where is this
+/// curve" would be one answer too many.
+List<Offset>? curveOfElement(CanvasElement element) {
+  var points = _curvePoints(element);
+  if (points == null) return null;
+  return _rotatedWith(element, points);
+}
+
+/// curveUnderText is the line a text element is riding, in document space.
+List<Offset>? curveUnderText(TextElement e, CanvasDocument? doc, int frame) =>
+    _curveFor(e, doc, frame);
+
+/// _rotatedWith turns [points] about [host]'s centre, the way the painter
+/// turns the host itself.
+List<Offset> _rotatedWith(CanvasElement host, List<Offset> points) {
+  if (host.rotation == 0) return points;
   var centre = host.center;
   var cos = math.cos(host.rotationRadians);
   var sin = math.sin(host.rotationRadians);
@@ -255,6 +294,31 @@ List<Offset>? _curveFor(TextElement e, CanvasDocument? doc) {
         centre.dy + (p.dx - centre.dx) * sin + (p.dy - centre.dy) * cos,
       ),
   ];
+}
+
+/// _curveFor is the line a text element is riding, as a list of points in
+/// document space, or null when it is an ordinary paragraph.
+///
+/// Named rather than copied, so moving or reshaping the line carries its text
+/// with it. A curve that has been deleted since simply stops being found, and
+/// the text falls back to its own box -- which is visible and fixable, where
+/// vanishing would not be.
+List<Offset>? _curveFor(TextElement e, CanvasDocument? doc, int frame) {
+  var on = e.curve;
+  if (on == null || doc == null) return null;
+  var host = doc.elementById(on.elementId);
+  // The host's own keyframes count: a line whose bow is animated has to carry
+  // its text through the bend rather than leaving it on the shape the line had
+  // at frame zero.
+  if (host is LineElement) host = _bowed(host, host.poseAt(frame));
+  var points = _curvePoints(host);
+  if (points == null) return null;
+
+  // Turned with the line, about the line's own centre -- the same transform
+  // the painter applies when it draws it. Without this, changing a line's
+  // angle moved the line and left its text lying flat where the line used to
+  // be, which is the one thing attaching text to a line is supposed to prevent.
+  return _rotatedWith(host!, points);
 }
 
 /// _curvePoints is the host's line as a polyline in its own unrotated

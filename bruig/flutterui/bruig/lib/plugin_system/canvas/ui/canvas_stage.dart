@@ -5,6 +5,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
@@ -154,6 +155,10 @@ class CanvasStageState extends State<CanvasStage> {
   /// off, every time.
   Offset _dragStart = Offset.zero;
   Map<String, Rect> _startBounds = {};
+
+  /// _startPosed is where each element was on screen when the gesture began.
+  /// See _beginTransform.
+  Map<String, Rect> _startPosed = {};
   Map<String, double> _startRotation = {};
   Offset _startPan = Offset.zero;
   Rect? _marquee;
@@ -430,7 +435,58 @@ class CanvasStageState extends State<CanvasStage> {
   /// _containsPoint asks whether a point is inside an element, undoing the
   /// element's rotation first so a rotated element is hit where it looks
   /// rather than where its unrotated box was.
+  /// _strokeReach is how far from a line the pointer may be and still be on
+  /// it, in document units. Half the stroke plus a few pixels of slack, so a
+  /// hairline is still catchable without a steady hand.
+  double _strokeReach(double strokeWidth) =>
+      math.max(strokeWidth / 2, 0) + _handleHitSlop / _scale;
+
+  /// _nearPolyline is whether [point] is within [reach] of the polyline.
+  bool _nearPolyline(List<Offset> points, Offset point, double reach) {
+    for (var i = 1; i < points.length; i++) {
+      var a = points[i - 1], b = points[i];
+      var ab = b - a;
+      var lengthSquared = ab.dx * ab.dx + ab.dy * ab.dy;
+      var t = lengthSquared == 0
+          ? 0.0
+          : (((point.dx - a.dx) * ab.dx + (point.dy - a.dy) * ab.dy) /
+                  lengthSquared)
+              .clamp(0.0, 1.0);
+      var closest = Offset(a.dx + ab.dx * t, a.dy + ab.dy * t);
+      if ((point - closest).distance <= reach) return true;
+    }
+    return false;
+  }
+
   bool _containsPoint(CanvasElement e, Offset point) {
+    // A curve is caught by its stroke, not by its box.
+    //
+    // A bowed line or a path with its handles pulled out bulges *outside* its
+    // own bounding box, so the visible stroke was not clickable at all while
+    // an empty corner of the box was. Text riding a line is the same problem
+    // twice over: its box is wherever it was dropped, and the words are
+    // wherever the line is.
+    if (e is LineElement || e is PathElement) {
+      var curve = curveOfElement(e is LineElement
+          ? lineWithPose(e, controller.frame)
+          : e);
+      if (curve != null && curve.length >= 2) {
+        var width = e is LineElement
+            ? e.strokeWidth
+            : (e as PathElement).strokeWidth;
+        return _nearPolyline(curve, point, _strokeReach(width));
+      }
+    }
+    if (e is TextElement) {
+      var curve = curveUnderText(e, document, controller.frame);
+      if (curve != null && curve.length >= 2) {
+        // Generous, because what is being aimed at is a row of letters sitting
+        // on the line rather than the line itself.
+        return _nearPolyline(
+            curve, point, _strokeReach(e.textSpec.fontSize * 1.2));
+      }
+    }
+
     // Against where it is on this frame, for the same reason the selection box
     // is: an animated element clicked at frame 20 has to be hit where it is
     // drawn, not where it started.
@@ -828,6 +884,23 @@ class CanvasStageState extends State<CanvasStage> {
     _startBounds = {
       for (var e in controller.selectedElements) e.id: e.bounds,
     };
+    // Where each element *is* on this frame, which is what a move works from.
+    //
+    // Kept apart from the resting bounds above, which is what a resize works
+    // from: resizing writes the base width and height, and feeding it a posed
+    // size would bake a scale keyframe into the element itself.
+    //
+    // Using the resting bounds for the move was the third-keyframe jump.
+    // movedTo turns a target position into a pose offset by subtracting the
+    // resting position, so a drag that started from the resting top-left
+    // produced a pose of exactly the drag delta -- throwing away whatever
+    // pose the frame already had. On the first two keyframes that pose was
+    // usually zero and nothing was visibly wrong; on the third it was not, and
+    // the element leapt out from under the pointer the instant it moved.
+    _startPosed = {
+      for (var e in controller.selectedElements)
+        e.id: e.boundsAt(controller.frame),
+    };
     _startRotation = {
       for (var e in controller.selectedElements) e.id: e.rotation,
     };
@@ -878,7 +951,7 @@ class CanvasStageState extends State<CanvasStage> {
           : Offset(0, delta.dy);
     }
     var next = document;
-    for (var entry in _startBounds.entries) {
+    for (var entry in _startPosed.entries) {
       var element = next.elementById(entry.key);
       if (element == null || element.locked) continue;
       // Through the controller rather than straight onto the base, because an

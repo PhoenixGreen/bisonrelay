@@ -80,6 +80,19 @@ class Keyframe {
   /// easing is how to get *from* this keyframe to the next one.
   final KeyframeEasing easing;
 
+  /// values are the extra properties this keyframe pins, by name.
+  ///
+  /// The five fields above are the pose every element has -- where it is, how
+  /// big, how turned, how faded. This is for the ones only some elements have:
+  /// how far along a line a caption has slid, how far a line is bowed. They
+  /// are absolute values rather than offsets, because unlike a position they
+  /// have no meaningful "resting" state to be an offset from.
+  ///
+  /// A map rather than a field per property, so a new animatable setting is a
+  /// name and two call sites instead of a change to the file format. Keys are
+  /// the constants in [KeyframeChannel].
+  final Map<String, double> values;
+
   const Keyframe({
     required this.frame,
     this.dx = 0,
@@ -88,6 +101,7 @@ class Keyframe {
     this.rotate = 0,
     this.opacity = 1,
     this.easing = KeyframeEasing.linear,
+    this.values = const {},
   });
 
   /// rest is the pose that changes nothing, which is what a track with no
@@ -102,6 +116,7 @@ class Keyframe {
     double? rotate,
     double? opacity,
     KeyframeEasing? easing,
+    Map<String, double>? values,
   }) =>
       Keyframe(
         frame: frame ?? this.frame,
@@ -111,9 +126,17 @@ class Keyframe {
         rotate: rotate ?? this.rotate,
         opacity: opacity ?? this.opacity,
         easing: easing ?? this.easing,
+        values: values ?? this.values,
       );
 
   /// lerp is this pose blended towards [other] by [t], already eased.
+  /// withValue is this keyframe with one extra property pinned.
+  Keyframe withValue(String key, double value) =>
+      copyWith(values: {...values, key: value});
+
+  Keyframe withoutValue(String key) =>
+      copyWith(values: {...values}..remove(key));
+
   Keyframe lerp(Keyframe other, double t) => Keyframe(
         frame: frame,
         dx: dx + (other.dx - dx) * t,
@@ -122,9 +145,19 @@ class Keyframe {
         rotate: rotate + (other.rotate - rotate) * t,
         opacity: opacity + (other.opacity - opacity) * t,
         easing: easing,
+        // A property only one end pins is held rather than interpolated
+        // towards nothing: there is no second value to move to, and guessing
+        // one -- zero, say -- would send a slide back to the start of its line
+        // the moment it stopped being keyed.
+        values: {
+          for (var key in {...values.keys, ...other.values.keys})
+            key: values.containsKey(key) && other.values.containsKey(key)
+                ? values[key]! + (other.values[key]! - values[key]!) * t
+                : (values[key] ?? other.values[key]!),
+        },
       );
 
-  bool get isRest =>
+  bool get isRest => values.isEmpty &&
       dx == 0 && dy == 0 && scale == 1 && rotate == 0 && opacity == 1;
 
   Map<String, dynamic> toJson() => {
@@ -135,6 +168,7 @@ class Keyframe {
         if (rotate != 0) "r": rotate,
         if (opacity != 1) "o": opacity,
         if (easing != KeyframeEasing.linear) "e": easing.name,
+        if (values.isNotEmpty) "v": values,
       };
 
   factory Keyframe.fromJson(Map<String, dynamic> json) => Keyframe(
@@ -145,6 +179,11 @@ class Keyframe {
         rotate: (json["r"] as num?)?.toDouble() ?? 0,
         opacity: (json["o"] as num?)?.toDouble() ?? 1,
         easing: KeyframeEasing.fromName(json["e"] as String?),
+        values: {
+          if (json["v"] case Map<String, dynamic> raw)
+            for (var entry in raw.entries)
+              if (entry.value is num) entry.key: (entry.value as num).toDouble(),
+        },
       );
 }
 
@@ -171,7 +210,30 @@ class ElementTrack {
   /// does. Holding rather than extrapolating is the only behaviour that does
   /// not surprise: an element that fades in over frames 0-10 should stay
   /// visible for the rest of the document, not carry on getting brighter.
-  Keyframe at(int frame) {
+  Keyframe at(int frame) => _withHeldValues(frame, _poseAt(frame));
+
+  /// _withHeldValues fills in any extra channel this frame's pose does not
+  /// name itself, from the last keyframe that did.
+  ///
+  /// A channel is pinned only on the keyframes that mention it, so a caption
+  /// keyed to slide at frames 0 and 10 has nothing to say at frame 20 -- and
+  /// without this it would snap back to the element's own resting slide the
+  /// instant playback passed the last key that mentioned it. Held is what
+  /// every other property here does; this makes the extra ones agree.
+  Keyframe _withHeldValues(int frame, Keyframe pose) {
+    if (keys.isEmpty) return pose;
+    var held = <String, double>{};
+    for (var k in keys) {
+      if (k.frame > frame) break;
+      held.addAll(k.values);
+    }
+    if (held.isEmpty) held.addAll(keys.first.values);
+    if (held.isEmpty) return pose;
+    // The pose's own values win: those are the interpolated ones.
+    return pose.copyWith(values: {...held, ...pose.values});
+  }
+
+  Keyframe _poseAt(int frame) {
     if (keys.isEmpty) return Keyframe.rest;
     if (frame <= keys.first.frame) return keys.first;
     if (frame >= keys.last.frame) return keys.last;
@@ -311,4 +373,20 @@ class TimelineAction {
         repeats: (json["repeats"] as num?)?.toInt() ?? 0,
         holdFrames: (json["hold"] as num?)?.toInt() ?? 12,
       );
+}
+
+/// KeyframeChannel names the extra properties a keyframe can pin.
+///
+/// Constants rather than free strings, because the name is written in one
+/// place and read in another and a typo between the two is an animation that
+/// silently does nothing.
+class KeyframeChannel {
+  KeyframeChannel._();
+
+  /// slide is how far along its line a caption has travelled, as the fraction
+  /// TextOnCurve.offset holds.
+  static const String slide = "slide";
+
+  /// bow is how far a line element is curved, as LineElement.curvature holds.
+  static const String bow = "bow";
 }

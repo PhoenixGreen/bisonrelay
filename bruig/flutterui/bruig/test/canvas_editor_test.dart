@@ -1667,15 +1667,14 @@ void main() {
       await pump(tester, CanvasLayersPanel(controller: controller));
 
       expect(controller.document.elementById("s")!.track!.keyAt(7), isNull);
-      await tester.tap(
-          find.byTooltip("Add a keyframe here for this element's pose").first);
+      await tester.tap(find.byTooltip("Add a keyframe here for this element's "
+          "position, size, angle and fade"));
       await tester.pumpAndSettle();
       expect(controller.document.elementById("s")!.track!.keyAt(7), isNotNull);
 
-      await tester.tap(find
-          .byTooltip("Remove the keyframe here — it holds this element's "
-              "whole pose, not just its position")
-          .first);
+      await tester.tap(find.byTooltip(
+          "Remove this element's keyframe here — one keyframe holds its "
+          "position, size, angle and fade together"));
       await tester.pumpAndSettle();
       expect(controller.document.elementById("s")!.track!.keyAt(7), isNull);
     });
@@ -1688,10 +1687,12 @@ void main() {
       controller.selectOnly(element.id);
       await pump(tester, CanvasLayersPanel(controller: controller));
 
+      // One diamond for the group, not one per field: a keyframe here is a
+      // whole pose, so six of them lit up and went out in unison.
       var dot = find
-          .byTooltip("Give the canvas more than one frame to animate "
-              "its position")
-          .first;
+          .byTooltip("Give the canvas more than one frame to animate this "
+              "element");
+      expect(dot, findsOneWidget);
       expect(
           tester
               .widget<InkWell>(

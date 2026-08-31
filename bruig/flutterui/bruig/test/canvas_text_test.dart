@@ -1,5 +1,6 @@
 import 'dart:ui' as ui;
 
+import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
@@ -288,4 +289,118 @@ void main() {
       expect(hidden, isNotEmpty, reason: "the words are still there");
     });
   });
+
+  group("animatable channels", () {
+    test("a keyframe can pin a slide, and it interpolates", () {
+      var a = const Keyframe(frame: 0).withValue(KeyframeChannel.slide, 0);
+      var b = const Keyframe(frame: 10).withValue(KeyframeChannel.slide, 1);
+      var track = ElementTrack([a, b]);
+
+      expect(track.at(0).values[KeyframeChannel.slide], 0);
+      expect(track.at(10).values[KeyframeChannel.slide], 1);
+      expect(track.at(5).values[KeyframeChannel.slide], closeTo(0.5, 0.001));
+    });
+
+    test("a channel only one end pins is held, not faded to zero", () {
+      // Guessing a second value would send a caption back to the start of its
+      // line the moment it stopped being keyed.
+      var a = const Keyframe(frame: 0).withValue(KeyframeChannel.bow, 0.8);
+      var b = const Keyframe(frame: 10, dx: 50);
+      var track = ElementTrack([a, b]);
+
+      expect(track.at(5).values[KeyframeChannel.bow], 0.8);
+      expect(track.at(10).values[KeyframeChannel.bow], 0.8);
+    });
+
+    test("channels survive a round trip", () {
+      var element = TextElement(
+        ElementBase(
+          id: "t",
+          width: 100,
+          height: 40,
+          track: ElementTrack([
+            const Keyframe(frame: 0).withValue(KeyframeChannel.slide, -0.4),
+            const Keyframe(frame: 12).withValue(KeyframeChannel.slide, 0.6),
+          ]),
+        ),
+        curve: const TextOnCurve(elementId: "l"),
+      );
+      var back = CanvasDocument.decode(
+              CanvasDocument(elements: [element]).encode())!.elements.single;
+      expect(back.track!.keyAt(12)!.values[KeyframeChannel.slide], 0.6);
+    });
+
+    test("a keyframe holding only a channel is not a resting pose", () {
+      // isRest decides whether a track is worth keeping, so a keyframe that
+      // pins a slide and nothing else must not look empty.
+      var key = const Keyframe(frame: 4).withValue(KeyframeChannel.bow, 0.2);
+      expect(key.isRest, isFalse);
+      expect(const Keyframe(frame: 4).isRest, isTrue);
+    });
+
+    testWidgets("an animated slide moves the words along the line",
+        (tester) async {
+      late List<double> early, late_;
+      await tester.runAsync(() async {
+        CanvasDocument at(int frame) => CanvasDocument(
+              size: const CanvasSize(width: 400),
+              background: const CanvasBackground(),
+              frames: 20,
+              elements: [
+                const LineElement(ElementBase(
+                    id: "l", x: 20, y: 99, width: 360, height: 2)),
+                TextElement(
+                  ElementBase(
+                    id: "t",
+                    width: 400,
+                    height: 225,
+                    track: ElementTrack([
+                      const Keyframe(frame: 0)
+                          .withValue(KeyframeChannel.slide, -0.35),
+                      const Keyframe(frame: 10)
+                          .withValue(KeyframeChannel.slide, 0.35),
+                    ]),
+                  ),
+                  text: "GO",
+                  textSpec: const TextSpec(
+                      fontSize: 24, color: Color(0xFFFFFFFF)),
+                  box: const BoxSpec(padding: 0),
+                  curve: const TextOnCurve(elementId: "l", hideHost: true),
+                ),
+              ],
+            );
+
+        var recorder = ui.PictureRecorder();
+        paintCanvasDocument(ui.Canvas(recorder), at(0), frame: 0);
+        var image = await recorder.endRecording().toImage(400, 225);
+        early = await _inkOf(image);
+
+        recorder = ui.PictureRecorder();
+        paintCanvasDocument(ui.Canvas(recorder), at(10), frame: 10);
+        image = await recorder.endRecording().toImage(400, 225);
+        late_ = await _inkOf(image);
+      });
+
+      expect(early, isNotEmpty);
+      expect(late_, isNotEmpty);
+      expect(late_.first, greaterThan(early.first + 0.2),
+          reason: "the caption travelled along the line");
+    });
+  });
+}
+
+/// _inkOf is which columns of [image] have ink, as fractions of its width.
+Future<List<double>> _inkOf(ui.Image image) async {
+  var data = await image.toByteData();
+  var out = <double>[];
+  for (var x = 0; x < image.width; x++) {
+    for (var y = 0; y < image.height; y++) {
+      var i = (y * image.width + x) * 4;
+      if (data!.getUint8(i + 3) > 40 && data.getUint8(i) > 100) {
+        out.add(x / image.width);
+        break;
+      }
+    }
+  }
+  return out;
 }

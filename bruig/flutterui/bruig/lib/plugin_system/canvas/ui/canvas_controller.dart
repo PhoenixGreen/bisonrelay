@@ -698,6 +698,44 @@ class CanvasController extends ChangeNotifier {
             track: (spot.track ?? ElementTrack.empty).withKey(key))));
   }
 
+  /// valueAt reads an animatable extra channel at the current frame, falling
+  /// back to [orElse] when nothing has been keyed. See KeyframeChannel.
+  double valueAt(CanvasElement element, String channel, double orElse) =>
+      element.poseAt(_frame).values[channel] ?? orElse;
+
+  /// hasValueKey is whether [channel] is pinned on this exact frame, which is
+  /// what its little diamond shows.
+  bool hasValueKey(CanvasElement element, String channel) =>
+      element.track?.keyAt(_frame)?.values.containsKey(channel) ?? false;
+
+  /// setValueKey pins one extra property at the current frame.
+  ///
+  /// Seeded at the start like every other first keyframe, so one press makes a
+  /// movement rather than a value that holds for the whole document -- see
+  /// ElementTrack.seededFor.
+  void setValueKey(CanvasElement element, String channel, double value) {
+    var track = (element.track ?? ElementTrack.empty).seededFor(_frame);
+    var at = track.at(_frame);
+    replaceElement(element.withBase(
+        track: track.withKey(
+            at.copyWith(frame: _frame).withValue(channel, value))));
+  }
+
+  /// clearValueKey takes one property off this frame's keyframe, and the
+  /// keyframe with it when that was all it held.
+  void clearValueKey(CanvasElement element, String channel) {
+    var track = element.track;
+    var at = track?.keyAt(_frame);
+    if (track == null || at == null) return;
+    var without = at.withoutValue(channel);
+    var next = without.isRest && without.frame != 0
+        ? track.withoutFrame(_frame)
+        : track.withKey(without);
+    replaceElement(next.isEmpty
+        ? element.withBase(clearTrack: true)
+        : element.withBase(track: next));
+  }
+
   /// clearElementKeyframes takes every keyframe off one element.
   void clearElementKeyframes(String id) {
     var element = _document.elementById(id);

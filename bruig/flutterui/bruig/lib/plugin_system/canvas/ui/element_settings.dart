@@ -14,6 +14,7 @@ import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/procedural_settings.dart';
+import 'package:bruig/components/text.dart';
 import 'package:flutter/material.dart';
 
 // element_settings.dart is the controls for whichever element is selected.
@@ -53,7 +54,7 @@ List<Widget> elementSettings(
     ...switch (element) {
       TextElement e => _textSettings(controller, e, write, begin, commit),
       ShapeElement e => _shapeSettings(e, write, begin, commit),
-      LineElement e => _lineSettings(e, write, begin, commit),
+      LineElement e => _lineSettings(controller, e, write, begin, commit),
       ImageElement e => _imageSettings(e, write, begin, commit),
       ChartElement e => _chartSettings(e, write, begin, commit),
       TableElement e => _tableSettings(e, write, begin, commit),
@@ -121,17 +122,22 @@ Widget _positionGroup(CanvasController controller, CanvasElement e,
     commit();
   }
 
-  Widget dot(String what) => CanvasKeyframeDot(
-        on: hasKey,
-        enabled: animated,
-        tooltip: !animated
-            ? "Give the canvas more than one frame to animate its $what"
-            : hasKey
-                ? "Remove the keyframe here — it holds this element's whole "
-                    "pose, not just its $what"
-                : "Add a keyframe here for this element's pose",
-        onPressed: toggleKey,
-      );
+  // One diamond for the group, not one per field. A keyframe here is a whole
+  // pose -- position, size, angle and fade together -- so six of them lit up
+  // and went out in unison and pressing any one did the same thing. Six
+  // controls for one switch is six chances to think they are separate.
+  var poseDot = CanvasKeyframeDot(
+    on: hasKey,
+    enabled: animated,
+    tooltip: !animated
+        ? "Give the canvas more than one frame to animate this element"
+        : hasKey
+            ? "Remove this element's keyframe here — one keyframe holds its "
+                "position, size, angle and fade together"
+            : "Add a keyframe here for this element's position, size, angle "
+                "and fade",
+    onPressed: toggleKey,
+  );
 
   /// moveTo writes a position, as a pose while animating and as the resting
   /// position otherwise.
@@ -157,6 +163,34 @@ Widget _positionGroup(CanvasController controller, CanvasElement e,
     ));
   }
 
+  // Text riding a line has no position or angle of its own: where it is and
+  // how it is turned are the line's to decide. The fields were still there and
+  // still writable, so nudging them moved the words off the line they were
+  // attached to -- which is the one thing attaching them is meant to prevent.
+  if (e is TextElement && e.curve != null) {
+    return CanvasControlGroup(label: e.kind.label, children: [
+      Padding(
+        padding: const EdgeInsets.only(top: controlLabelHeight, right: 6),
+        child: SizedBox(
+          height: controlHeight,
+          child: Center(
+            child: const Txt.S("Placed by the line it follows"),
+          ),
+        ),
+      ),
+      CanvasSlider(
+        label: "Opacity",
+        value: e.opacityAt(frame),
+        onChanged: (v) {
+          begin();
+          write(e.withBase(opacity: v));
+        },
+        onCommit: commit,
+      ),
+      poseDot,
+    ]);
+  }
+
   return CanvasControlGroup(label: e.kind.label, children: [
     CanvasNumberField(
       key: const ValueKey("elementX"),
@@ -165,15 +199,13 @@ Widget _positionGroup(CanvasController controller, CanvasElement e,
       onChanged: (v) => moveTo(x: v),
       onCommit: commit,
     ),
-    dot("position"),
-    CanvasNumberField(
+CanvasNumberField(
       key: const ValueKey("elementY"),
       label: "Y",
       value: box.top,
       onChanged: (v) => moveTo(y: v),
       onCommit: commit,
     ),
-    dot("position"),
     // Width and height show what is on screen -- the resting size times the
     // pose's scale -- but always edit the resting size. A pose scales evenly,
     // so there is no keyframe that could hold a width without also holding a
@@ -194,8 +226,7 @@ Widget _positionGroup(CanvasController controller, CanvasElement e,
           write(e.withBase(height: pose.scale == 0 ? v : v / pose.scale)),
       onCommit: commit,
     ),
-    dot("size"),
-    CanvasNumberField(
+CanvasNumberField(
       key: const ValueKey("elementAngle"),
       label: "Angle",
       value: e.rotationAt(frame),
@@ -217,8 +248,7 @@ Widget _positionGroup(CanvasController controller, CanvasElement e,
       },
       onCommit: commit,
     ),
-    dot("angle"),
-    CanvasSlider(
+CanvasSlider(
       label: "Opacity",
       value: e.opacityAt(frame),
       onChanged: (v) {
@@ -235,7 +265,7 @@ Widget _positionGroup(CanvasController controller, CanvasElement e,
       },
       onCommit: commit,
     ),
-    dot("opacity"),
+    poseDot,
   ]);
 }
 
@@ -566,15 +596,25 @@ List<Widget> _textSettings(CanvasController controller, TextElement e,
       if (e.curve != null) ...[
         CanvasSlider(
           label: "Slide",
-          value: e.curve!.offset,
+          value: controller.valueAt(
+              e, KeyframeChannel.slide, e.curve!.offset),
           min: -1,
           max: 1,
           onChanged: (v) {
             begin();
+            // Written as a keyframe once this frame has one, so dragging the
+            // slider while animating retimes the caption's travel rather than
+            // moving the whole run.
+            if (controller.hasValueKey(e, KeyframeChannel.slide)) {
+              controller.setValueKey(e, KeyframeChannel.slide, v);
+              return;
+            }
             write(e.copyWith(curve: e.curve!.copyWith(offset: v)));
           },
           onCommit: commit,
         ),
+        _valueDot(controller, e, KeyframeChannel.slide, "the slide along the "
+            "line", e.curve!.offset),
         CanvasNumberField(
           label: "Spacing",
           value: e.curve!.spacing,
@@ -606,6 +646,35 @@ List<Widget> _textSettings(CanvasController controller, TextElement e,
     ]),
     _boxGroup(e.box, (box) => write(e.copyWith(box: box)), begin, commit),
   ];
+}
+
+/// _valueDot is the diamond beside one animatable property.
+///
+/// Its own control rather than part of the pose diamond, because these are
+/// real channels: a keyframe can pin a caption's slide without pinning where
+/// its box sits, and the two are asked for at different moments.
+Widget _valueDot(CanvasController controller, CanvasElement e, String channel,
+    String what, double value) {
+  var animated = controller.document.isAnimated;
+  var on = controller.hasValueKey(e, channel);
+  return CanvasKeyframeDot(
+    on: on,
+    enabled: animated,
+    tooltip: !animated
+        ? "Give the canvas more than one frame to animate $what"
+        : on
+            ? "Remove the keyframe for $what here"
+            : "Add a keyframe for $what here",
+    onPressed: () {
+      controller.beginInteraction();
+      if (on) {
+        controller.clearValueKey(e, channel);
+      } else {
+        controller.setValueKey(e, channel, value);
+      }
+      controller.endInteraction();
+    },
+  );
 }
 
 /// _curveOptions is every line and path on the canvas, for text to ride.
@@ -711,7 +780,8 @@ List<Widget> _shapeSettings(ShapeElement e, _Write write, VoidCallback begin,
             label: "Label type"),
     ];
 
-List<Widget> _lineSettings(LineElement e, _Write write, VoidCallback begin,
+List<Widget> _lineSettings(CanvasController controller, LineElement e,
+    _Write write, VoidCallback begin,
         VoidCallback commit) =>
     [
       CanvasControlGroup(label: "Line", children: [
@@ -756,15 +826,21 @@ List<Widget> _lineSettings(LineElement e, _Write write, VoidCallback begin,
         ),
         CanvasSlider(
           label: "Curve",
-          value: e.curvature,
+          value: controller.valueAt(e, KeyframeChannel.bow, e.curvature),
           min: -1,
           max: 1,
           onChanged: (v) {
             begin();
+            if (controller.hasValueKey(e, KeyframeChannel.bow)) {
+              controller.setValueKey(e, KeyframeChannel.bow, v);
+              return;
+            }
             write(e.copyWith(curvature: v));
           },
           onCommit: commit,
         ),
+        _valueDot(controller, e, KeyframeChannel.bow, "the line's curve",
+            e.curvature),
         CanvasIconButton(
           icon: Icons.swap_vert,
           tooltip: "Flip which way the line runs",
