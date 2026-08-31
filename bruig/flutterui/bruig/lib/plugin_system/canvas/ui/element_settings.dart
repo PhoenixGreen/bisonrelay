@@ -831,6 +831,19 @@ List<Widget> _lineSettings(CanvasController controller, LineElement e,
           onChanged: (v) => now(e.copyWith(endEnd: v)),
         ),
         CanvasNumberField(
+          label: "End size",
+          value: e.endSize,
+          min: 0.2,
+          max: 8,
+          decimals: 1,
+          width: 58,
+          onChanged: (v) {
+            begin();
+            write(e.copyWith(endSize: v));
+          },
+          onCommit: commit,
+        ),
+        CanvasNumberField(
           label: "Dash",
           value: e.dash,
           min: 0,
@@ -1776,6 +1789,19 @@ List<Widget> _pathSettings(CanvasController controller, PathElement e,
         width: 124,
         options: [for (var c in LineEnd.values) (c, c.label)],
         onChanged: (v) => now(e.copyWith(endEnd: v)),
+      ),
+      CanvasNumberField(
+        label: "End size",
+        value: e.endSize,
+        min: 0.2,
+        max: 8,
+        decimals: 1,
+        width: 58,
+        onChanged: (v) {
+          begin();
+          write(e.copyWith(endSize: v));
+        },
+        onCommit: commit,
       ),
       CanvasNumberField(
         label: "Dash",

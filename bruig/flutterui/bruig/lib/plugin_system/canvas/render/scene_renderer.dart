@@ -305,9 +305,11 @@ Rect visualBoundsOf(CanvasElement element, CanvasDocument? doc, int frame) {
         ? element.strokeWidth
         : (element as PathElement).strokeWidth;
     var ends = element is LineElement
-        ? math.max(element.startEnd.reach, element.endEnd.reach)
+        ? math.max(element.startEnd.reach, element.endEnd.reach) *
+            element.endSize
         : math.max((element as PathElement).startEnd.reach,
-            element.endEnd.reach);
+                element.endEnd.reach) *
+            element.endSize;
     return box.inflate(math.max(width, 1) * math.max(ends, 1.5));
   }
 
@@ -526,8 +528,8 @@ void _paintLine(ui.Canvas canvas, LineElement e) {
   // stroke is cut back to the decoration's base. Without the trim, a thick
   // stroke runs on underneath and pokes out of the sides of the barb -- and
   // the whole point of an arrow is that it comes to a point.
-  var trimStart = _trimFor(e.startEnd, e.strokeWidth);
-  var trimEnd = _trimFor(e.endEnd, e.strokeWidth);
+  var trimStart = _trimFor(e.startEnd, e.strokeWidth, e.endSize);
+  var trimEnd = _trimFor(e.endEnd, e.strokeWidth, e.endSize);
   var from = math.min(trimStart, length * 0.45);
   var to = math.max(length - trimEnd, from + 0.01);
   var stroke = metric.extractPath(from, to);
@@ -553,8 +555,12 @@ void _paintLine(ui.Canvas canvas, LineElement e) {
 }
 
 /// _trimFor is how far back from a line's end its decoration begins.
-double _trimFor(LineEnd end, double strokeWidth) =>
-    end.isPointed ? strokeWidth * 3.5 * math.cos(arrowSpread) * 0.92 : 0;
+///
+/// Every decoration, not only the pointed ones -- see LineEnd.cover. A hollow
+/// ring with the stroke running through the middle of it was the reported
+/// "you can see the end of the line through it".
+double _trimFor(LineEnd end, double strokeWidth, double endSize) =>
+    end.cover * strokeWidth * endSize;
 
 /// _paintLineEnd draws one decoration, pointing along [angle].
 ///
@@ -563,15 +569,19 @@ double _trimFor(LineEnd end, double strokeWidth) =>
 void _paintLineEnd(ui.Canvas canvas, LineEnd end, Offset at, double angle,
     LineElement e) {
   if (end == LineEnd.none) return;
-  var w = e.strokeWidth;
+  var w = e.strokeWidth * e.endSize;
   var fill = Paint()
     ..style = PaintingStyle.fill
     ..color = e.color;
   var stroke = Paint()
     ..style = PaintingStyle.stroke
-    ..strokeWidth = w
+    ..strokeWidth = e.strokeWidth
     ..strokeJoin = StrokeJoin.miter
     ..color = e.color;
+
+  // The line's own two directions at this end: along it, and across it.
+  var along = Offset(math.cos(angle), math.sin(angle));
+  var across = Offset(-along.dy, along.dx);
 
   switch (end) {
     case LineEnd.none:
@@ -581,31 +591,44 @@ void _paintLineEnd(ui.Canvas canvas, LineEnd end, Offset at, double angle,
     case LineEnd.hollowArrow:
       arrowHead(canvas, at, angle, w * 3.5, stroke, filled: false);
     case LineEnd.openArrow:
-      // Two strokes rather than a shape: a barb, which is what a hand-drawn
-      // arrow is and what reads best on a thin line.
-      var size = w * 3.5;
+      // A chevron rather than two strokes. Two strokes are the same thickness
+      // all the way along and finish square, so at any weight they read as a
+      // pair of blunt sticks; this is thickest where the barbs meet at the tip
+      // and comes to a point at each outer end, which is what an open arrow
+      // looks like when it is drawn by hand.
+      var size = w * 4.2;
       var back = angle + math.pi;
-      for (var side in [-arrowSpread, arrowSpread]) {
-        canvas.drawLine(
-            at,
-            at.translate(
-                math.cos(back + side) * size, math.sin(back + side) * size),
-            stroke);
-      }
-    case LineEnd.diamond:
-    case LineEnd.hollowDiamond:
-      var size = w * 1.9;
-      var along = Offset(math.cos(angle), math.sin(angle));
-      var across = Offset(-along.dy, along.dx);
-      var centre = at - along * size;
+      var b1 = at.translate(math.cos(back - arrowSpread) * size,
+          math.sin(back - arrowSpread) * size);
+      var b2 = at.translate(math.cos(back + arrowSpread) * size,
+          math.sin(back + arrowSpread) * size);
+      // The notch behind the tip is what gives the shape its thickness. A
+      // fraction of the barb rather than a fixed number, so the proportions
+      // hold when the end size changes.
+      var notch = at - along * (size * 0.58);
       canvas.drawPath(
         Path()
-          ..moveTo(centre.dx + along.dx * size, centre.dy + along.dy * size)
-          ..lineTo(centre.dx + across.dx * size * 0.6,
-              centre.dy + across.dy * size * 0.6)
-          ..lineTo(centre.dx - along.dx * size, centre.dy - along.dy * size)
-          ..lineTo(centre.dx - across.dx * size * 0.6,
-              centre.dy - across.dy * size * 0.6)
+          ..moveTo(at.dx, at.dy)
+          ..lineTo(b1.dx, b1.dy)
+          ..lineTo(notch.dx, notch.dy)
+          ..lineTo(b2.dx, b2.dy)
+          ..close(),
+        fill,
+      );
+    case LineEnd.diamond:
+    case LineEnd.hollowDiamond:
+      // Centred on the line's end, like the circle and the square, rather than
+      // hung off the back of it. Hung off, its forward point sat on the end
+      // and the whole shape trailed behind, which reads as a diamond that has
+      // slipped down the line.
+      var long = w * 1.7;
+      var wide = w * 1.0;
+      canvas.drawPath(
+        Path()
+          ..moveTo(at.dx + along.dx * long, at.dy + along.dy * long)
+          ..lineTo(at.dx + across.dx * wide, at.dy + across.dy * wide)
+          ..lineTo(at.dx - along.dx * long, at.dy - along.dy * long)
+          ..lineTo(at.dx - across.dx * wide, at.dy - across.dy * wide)
           ..close(),
         end == LineEnd.diamond ? fill : stroke,
       );
@@ -623,8 +646,7 @@ void _paintLineEnd(ui.Canvas canvas, LineEnd end, Offset at, double angle,
       canvas.restore();
     case LineEnd.bar:
       // A tick across the line, which is what a measurement wants at each end.
-      var across = Offset(-math.sin(angle), math.cos(angle)) * (w * 1.6);
-      canvas.drawLine(at - across, at + across, stroke);
+      canvas.drawLine(at - across * (w * 1.6), at + across * (w * 1.6), stroke);
   }
 }
 

@@ -155,6 +155,9 @@ class PathElement extends CanvasElement {
   final LineEnd startEnd;
   final LineEnd endEnd;
 
+  /// endSize scales whatever is drawn at the ends. See LineElement.endSize.
+  final double endSize;
+
   /// dash is the on/off length in design units. Zero draws a solid line.
   final double dash;
 
@@ -179,6 +182,7 @@ class PathElement extends CanvasElement {
     this.cap = LineStrokeCap.round,
     this.startEnd = LineEnd.none,
     this.endEnd = LineEnd.arrow,
+    this.endSize = 1,
     this.dash = 0,
     this.closed = false,
     this.guide = false,
@@ -483,6 +487,7 @@ class PathElement extends CanvasElement {
       cap: cap,
       startEnd: startEnd,
       endEnd: endEnd,
+      endSize: endSize,
       dash: dash,
       closed: closed,
       guide: guide,
@@ -495,6 +500,7 @@ class PathElement extends CanvasElement {
     LineStrokeCap? cap,
     LineEnd? startEnd,
     LineEnd? endEnd,
+    double? endSize,
     double? dash,
     bool? closed,
     bool? guide,
@@ -508,6 +514,7 @@ class PathElement extends CanvasElement {
           cap: cap ?? this.cap,
           startEnd: startEnd ?? this.startEnd,
           endEnd: endEnd ?? this.endEnd,
+          endSize: endSize ?? this.endSize,
           dash: dash ?? this.dash,
           closed: closed ?? this.closed,
           guide: guide ?? this.guide,
@@ -521,6 +528,7 @@ class PathElement extends CanvasElement {
         "strokeCap": cap.name,
         if (startEnd != LineEnd.none) "startEnd": startEnd.name,
         if (endEnd != LineEnd.arrow) "endEnd": endEnd.name,
+        if (endSize != 1) "endSize": endSize,
         if (dash > 0) "dash": dash,
         if (closed) "closed": true,
         if (guide) "guide": true,
@@ -545,6 +553,7 @@ class PathElement extends CanvasElement {
             ? LineStrokeCap.fromName(json["strokeCap"] as String?)
             : LineStrokeCap.round,
         startEnd: LineEnd.fromName(json["startEnd"] as String?),
+        endSize: jsonDouble(json["endSize"], 1),
         endEnd: json.containsKey("endEnd") || json.containsKey("strokeCap")
             ? LineEnd.fromName(json["endEnd"] as String?)
             : LineEnd.arrow,

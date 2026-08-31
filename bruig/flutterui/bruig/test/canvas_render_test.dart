@@ -668,6 +668,132 @@ void main() {
       expect(back.dy, greaterThan(2));
     });
 
+    /// inkNear is the drawn pixels within [radius] of [point].
+    Future<List<Offset>> inkNear(WidgetTester tester, CanvasDocument document,
+        Offset point, double radius) async {
+      var size = document.size.width;
+      late List<Offset> out;
+      await tester.runAsync(() async {
+        var recorder = ui.PictureRecorder();
+        paintCanvasDocument(ui.Canvas(recorder), document);
+        var image = await recorder.endRecording().toImage(size, size);
+        var data = await image.toByteData();
+        out = [
+          for (var y = 0; y < size; y++)
+            for (var x = 0; x < size; x++)
+              if (data!.getUint8((y * size + x) * 4 + 3) > 60 &&
+                  data.getUint8((y * size + x) * 4) > 150 &&
+                  (Offset(x.toDouble(), y.toDouble()) - point).distance < radius)
+                Offset(x.toDouble(), y.toDouble()),
+        ];
+      });
+      return out;
+    }
+
+    CanvasDocument withEnd(LineEnd end, {double endSize = 1}) => CanvasDocument(
+          size: const CanvasSize(ratio: CanvasRatio.square, width: 240),
+          background: const CanvasBackground(),
+          elements: [
+            LineElement(
+              // A height of its own: paintElement skips an element with an
+              // empty box, so a line whose two corners share a row draws
+              // nothing at all.
+              const ElementBase(id: "l", x: 20, y: 116, width: 180, height: 8),
+              strokeWidth: 6,
+              endEnd: end,
+              endSize: endSize,
+            ),
+          ],
+        );
+
+    testWidgets("a hollow end is not filled in by the line running through it",
+        (tester) async {
+      // The reported fault: a ring with the stroke visible through the middle
+      // of it. The stroke is cut back to where every decoration begins now,
+      // not only the pointed ones.
+      const tip = Offset(200, 124);
+      var hollow = await inkNear(tester, withEnd(LineEnd.hollowCircle), tip, 2);
+      var solid = await inkNear(tester, withEnd(LineEnd.circle), tip, 2);
+
+      expect(solid, isNotEmpty, reason: "a solid circle is filled");
+      // Not quite empty: the ring's inner edge is anti-aliased and its blur
+      // reaches a pixel or two inwards. What matters is that the middle is
+      // nothing like as covered as a filled one.
+      expect(hollow.length, lessThan(solid.length / 4),
+          reason: "the middle of a hollow one shows the canvas, not the line");
+    });
+
+    testWidgets("a hollow diamond is hollow too", (tester) async {
+      const tip = Offset(200, 124);
+      var hollow = await inkNear(tester, withEnd(LineEnd.hollowDiamond), tip, 2);
+      var solid = await inkNear(tester, withEnd(LineEnd.diamond), tip, 2);
+      expect(hollow.length, lessThan(solid.length / 4));
+    });
+
+    testWidgets("a diamond sits centred on the end, not behind it",
+        (tester) async {
+      // Hung off the back, its forward point sat on the end and the whole
+      // shape trailed down the line.
+      const tip = Offset(200, 124);
+      var plain = await inkNear(tester, withEnd(LineEnd.none), tip, 40);
+      var ink = await inkNear(tester, withEnd(LineEnd.diamond), tip, 40);
+      expect(ink, isNotEmpty);
+
+      // Ahead of the end only the decoration can be drawing, so its forward
+      // reach is measurable without the line confusing the count. Centred on
+      // the end, it should reach forward about as far as it reaches back --
+      // hung off the back, it reached forward not at all.
+      var forward = ink.map((p) => p.dx).reduce(math.max) - tip.dx;
+      var plainForward =
+          plain.isEmpty ? 0.0 : plain.map((p) => p.dx).reduce(math.max) - tip.dx;
+      expect(plainForward, lessThan(4),
+          reason: "with no decoration nothing is drawn past the end");
+      // long is strokeWidth * 1.7 = 10.2 at this weight.
+      expect(forward, closeTo(10.2, 3),
+          reason: "half the diamond stands past the line's end");
+    });
+
+    testWidgets("end size scales what is drawn", (tester) async {
+      const tip = Offset(200, 124);
+      var small = await inkNear(tester, withEnd(LineEnd.arrow), tip, 60);
+      var large =
+          await inkNear(tester, withEnd(LineEnd.arrow, endSize: 2), tip, 60);
+      // Not four times, even though the area is: the bigger head also cuts
+      // more of the stroke away behind it, and some of it falls outside the
+      // window being counted.
+      expect(large.length, greaterThan(small.length * 1.4),
+          reason: "twice the size is visibly more ink");
+    });
+
+    test("end size survives a round trip and scales the selection box", () {
+      var element = LineElement(
+        const ElementBase(id: "l", x: 0, y: 0, width: 200, height: 0),
+        strokeWidth: 4,
+        endEnd: LineEnd.arrow,
+        endSize: 3,
+      );
+      var back = CanvasDocument.decode(
+              CanvasDocument(elements: [element]).encode())!.elements.single
+          as LineElement;
+      expect(back.endSize, 3);
+
+      var big = visualBoundsOf(element, null, 0);
+      var normal = visualBoundsOf(element.copyWith(endSize: 1), null, 0);
+      expect(big.width, greaterThan(normal.width),
+          reason: "a bigger arrow needs a bigger box");
+    });
+
+    test("a bar is the one end the line should reach", () {
+      // It crosses the line rather than sitting on the end of it, so cutting
+      // the stroke back would leave a gap before it.
+      expect(LineEnd.bar.cover, 0);
+      expect(LineEnd.none.cover, 0);
+      for (var end in LineEnd.values) {
+        if (end == LineEnd.bar || end == LineEnd.none) continue;
+        expect(end.cover, greaterThan(0), reason: end.name);
+      }
+    });
+
     test("every end draws without throwing, bowed and straight", () {
       for (var end in LineEnd.values) {
         for (var bow in [0.0, 0.5, -0.5]) {
