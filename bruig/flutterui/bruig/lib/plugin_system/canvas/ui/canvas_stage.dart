@@ -130,6 +130,14 @@ class CanvasStageState extends State<CanvasStage> {
   /// _pressedAt is where the pointer went down, in stage coordinates.
   Offset _pressedAt = Offset.zero;
 
+  /// _editorRect is where the editor was opened, in document space.
+  ///
+  /// Frozen at the moment it opens rather than followed live. For text riding
+  /// a line the box comes from where the letters are, and the letters move on
+  /// every keystroke -- so a live box jumped about under the caret while it
+  /// was being typed into.
+  Rect? _editorRect;
+
   /// _editingText is the text element being typed into, or null.
   ///
   /// Held by id rather than by element, because the element is replaced on
@@ -407,6 +415,13 @@ class CanvasStageState extends State<CanvasStage> {
     return box;
   }
 
+  /// _boxIsNotTheShape marks the elements whose selection box is bigger than
+  /// what the pointer can actually land on -- see _onPointerDown.
+  bool _boxIsNotTheShape(CanvasElement e) =>
+      e is LineElement ||
+      e is PathElement ||
+      (e is TextElement && e.curve != null);
+
   /// _visualBounds is where an element is actually drawn -- see
   /// visualBoundsOf. A bowed line, a path and text riding a line are all drawn
   /// somewhere other than their own rectangle, and a selection box on the
@@ -619,6 +634,27 @@ class CanvasStageState extends State<CanvasStage> {
         _nodeHandleOut = isOut;
         _mode = isHandle ? _DragMode.handle : _DragMode.node;
         controller.beginInteraction();
+        return;
+      }
+    }
+
+    // Inside the box of something already selected whose box is not its shape
+    // -- a curved line, a path, text on a line -- takes hold of it.
+    //
+    // Two rules rather than one, deliberately. *Selecting* one of these still
+    // needs the stroke, or a bowed line's large empty box would steal every
+    // click meant for whatever is underneath it. Once it is selected the box
+    // is yours, which is what makes it draggable from anywhere inside rather
+    // than only from the few pixels of the line itself.
+    if (!_shiftHeld && controller.selection.length == 1) {
+      var chosen = document.elementById(controller.selection.first);
+      if (chosen != null &&
+          !chosen.locked &&
+          chosen.visible &&
+          _boxIsNotTheShape(chosen) &&
+          _visualBounds(chosen).contains(doc) &&
+          _hitElement(doc) == null) {
+        _beginTransform(_DragMode.move, null);
         return;
       }
     }
@@ -1233,7 +1269,9 @@ class CanvasStageState extends State<CanvasStage> {
           Widget painter = SizedBox(
             width: content.width,
             height: content.height,
-            child: Stack(children: [
+            // Not clipped: the text editor sits in here and a long caption
+            // grows past the box it opened in rather than being cut in half.
+            child: Stack(clipBehavior: Clip.none, children: [
               Positioned.fill(child: Listener(
               onPointerDown: _onPointerDown,
               onPointerMove: _onPointerMove,
@@ -1307,10 +1345,7 @@ class CanvasStageState extends State<CanvasStage> {
     var element = document.elementById(id);
     if (element is! TextElement) return null;
 
-    // Over the words, wherever they are. Text riding a line is drawn along the
-    // line and not in its own rectangle, so an editor on the rectangle opened
-    // in an empty part of the canvas.
-    var box = _visualBounds(element);
+    var box = _editorRect ??= _editorBoxFor(element);
     var topLeft = _toStage(box.topLeft);
     return CanvasTextEditor(
       key: ValueKey("edit-$id"),
@@ -1325,8 +1360,42 @@ class CanvasStageState extends State<CanvasStage> {
       },
       onDone: () {
         controller.endInteraction();
-        if (mounted) setState(() => _editingText = null);
+        if (mounted) {
+          setState(() {
+            _editingText = null;
+            _editorRect = null;
+          });
+        }
       },
+    );
+  }
+
+  /// _editorBoxFor is the rectangle the editor opens in.
+  ///
+  /// Over the words, wherever they are -- text riding a line is drawn along
+  /// the line and not in its own rectangle, so an editor on the rectangle
+  /// opened in an empty part of the canvas.
+  ///
+  /// But not *tight* around them. The box around the letters is exactly as
+  /// wide as the letters, which for a word or two is a slot too small to see
+  /// what is being typed and with nowhere for the next word to go. So a
+  /// minimum is imposed, generous enough to write a caption in, and the box is
+  /// grown about its own centre so what is already there stays put.
+  Rect _editorBoxFor(TextElement element) {
+    var box = _visualBounds(element);
+    if (element.curve == null) return box;
+
+    var line = element.textSpec.fontSize * element.textSpec.lineHeight;
+    var wanted = Size(
+      math.max(box.width, math.max(line * 8, document.size.width * 0.3)),
+      // Room for a few lines rather than exactly one, so a caption that runs
+      // on has somewhere to go before the box has to grow.
+      math.max(box.height, line * 3),
+    );
+    return Rect.fromCenter(
+      center: box.center,
+      width: wanted.width,
+      height: wanted.height,
     );
   }
 

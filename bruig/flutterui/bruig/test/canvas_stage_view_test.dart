@@ -1466,4 +1466,160 @@ void main() {
       expect(editor.center.dy, closeTo(at.dy, 60));
     });
   });
+
+  group("dragging a curve from inside its box", () {
+    (CanvasController, LineElement) bowedLine() {
+      var document = const CanvasDocument();
+      var line = LineElement(
+        ElementBase(
+          id: "l",
+          x: 200,
+          y: document.size.height / 2,
+          width: 800,
+          height: 6,
+        ),
+        curvature: 0.4,
+        strokeWidth: 6,
+      );
+      var controller = CanvasController(document.addElement(line));
+      return (controller, line);
+    }
+
+    /// emptyCorner is a point inside the line's box but well away from the
+    /// stroke, which is where clicking used to do nothing.
+    Offset emptyCorner(CanvasController controller, LineElement line) {
+      var box = visualBoundsOf(line, controller.document, 0);
+      return Offset(box.left + box.width * 0.08, box.top + box.height * 0.12);
+    }
+
+    testWidgets("a selected line moves from anywhere inside its box",
+        (tester) async {
+      var (controller, line) = bowedLine();
+      addTearDown(controller.dispose);
+      controller.selectOnly("l");
+      var stage = await pump(tester, controller);
+      var scale = stage.pageRect.width / controller.document.size.width;
+
+      var inside = emptyCorner(controller, line);
+      await tester.dragFrom(
+          stage.pageRect.topLeft + inside * scale, const Offset(40, 0));
+      await tester.pumpAndSettle();
+
+      expect(controller.document.elementById("l")!.x,
+          closeTo(line.x + 40 / scale, 1),
+          reason: "it followed the pointer from empty space in its own box");
+    });
+
+    testWidgets("but an unselected one is still only caught by its stroke",
+        (tester) async {
+      // Otherwise a bowed line's large empty box steals every click meant for
+      // whatever is underneath it.
+      var (controller, line) = bowedLine();
+      addTearDown(controller.dispose);
+      var stage = await pump(tester, controller);
+      var scale = stage.pageRect.width / controller.document.size.width;
+
+      await tester.tapAt(
+          stage.pageRect.topLeft + emptyCorner(controller, line) * scale);
+      await tester.pumpAndSettle();
+      expect(controller.selection, isEmpty);
+    });
+
+    testWidgets("something under the box still wins the click",
+        (tester) async {
+      var (controller, line) = bowedLine();
+      addTearDown(controller.dispose);
+      var under = ShapeElement(
+        ElementBase(
+          id: "s",
+          x: emptyCorner(controller, line).dx - 40,
+          y: emptyCorner(controller, line).dy - 40,
+          width: 80,
+          height: 80,
+        ),
+        fill: const Color(0xFFCC2200),
+      );
+      controller.apply(controller.document.addElement(under));
+      controller.selectOnly("l");
+      var stage = await pump(tester, controller);
+      var scale = stage.pageRect.width / controller.document.size.width;
+
+      await tester.tapAt(
+          stage.pageRect.topLeft + emptyCorner(controller, line) * scale);
+      await tester.pumpAndSettle();
+      expect(controller.selection, {"s"},
+          reason: "the shape is on top of that empty space and gets the click");
+    });
+  });
+
+  group("the on-canvas editor's box", () {
+    testWidgets("is wide enough to type a caption into", (tester) async {
+      // The box around the letters is exactly as wide as the letters, which
+      // for a word or two is a slot too small to see what is being typed.
+      var document = const CanvasDocument();
+      var line = LineElement(
+        ElementBase(
+            id: "l", x: 200, y: document.size.height / 2, width: 800, height: 6),
+      );
+      var text = TextElement(
+        const ElementBase(id: "t", x: 0, y: 0, width: 120, height: 40),
+        text: "Hi",
+        textSpec: const TextSpec(fontSize: 30),
+        curve: const TextOnCurve(elementId: "l"),
+      );
+      var controller =
+          CanvasController(document.addElement(line).addElement(text));
+      addTearDown(controller.dispose);
+      var stage = await pump(tester, controller);
+      var scale = stage.pageRect.width / document.size.width;
+
+      var words = visualBoundsOf(text, controller.document, 0);
+      var at = stage.pageRect.topLeft + words.center * scale;
+      await tester.tapAt(at);
+      await tester.pumpAndSettle();
+      await tester.tapAt(at);
+      await tester.pumpAndSettle();
+
+      var editor = tester.getRect(find.byType(CanvasTextEditor));
+      expect(editor.width, greaterThan(words.width * scale * 2),
+          reason: "far wider than the two letters it opened on");
+      expect(editor.center.dx, closeTo(at.dx, 4),
+          reason: "and grown about its own centre, so they stay put");
+    });
+
+    testWidgets("does not jump about as the words are typed", (tester) async {
+      // The letters move on every keystroke, so a box followed live jumped
+      // under the caret while it was being typed into.
+      var document = const CanvasDocument();
+      var line = LineElement(
+        ElementBase(
+            id: "l", x: 200, y: document.size.height / 2, width: 800, height: 6),
+      );
+      var text = TextElement(
+        const ElementBase(id: "t", x: 0, y: 0, width: 120, height: 40),
+        text: "Hi",
+        textSpec: const TextSpec(fontSize: 30),
+        curve: const TextOnCurve(elementId: "l"),
+      );
+      var controller =
+          CanvasController(document.addElement(line).addElement(text));
+      addTearDown(controller.dispose);
+      var stage = await pump(tester, controller);
+      var scale = stage.pageRect.width / document.size.width;
+
+      var at = stage.pageRect.topLeft +
+          visualBoundsOf(text, controller.document, 0).center * scale;
+      await tester.tapAt(at);
+      await tester.pumpAndSettle();
+      await tester.tapAt(at);
+      await tester.pumpAndSettle();
+
+      var before = tester.getRect(find.byType(CanvasTextEditor));
+      await tester.enterText(
+          find.byType(TextField), "A much longer caption than before");
+      await tester.pumpAndSettle();
+      expect(tester.getRect(find.byType(CanvasTextEditor)), before,
+          reason: "the box stayed exactly where it opened");
+    });
+  });
 }
