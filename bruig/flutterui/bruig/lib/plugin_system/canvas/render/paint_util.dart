@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:flutter/painting.dart';
 
@@ -34,6 +35,17 @@ TextPainter layoutText(
   double scale = 1,
   Color? colorOverride,
   bool outline = false,
+
+  /// fillWidth lays the paragraph out at exactly [maxWidth] rather than at the
+  /// width its longest line happens to need.
+  ///
+  /// This is what makes textAlign do anything. A TextPainter aligns within its
+  /// own width, and by default that width shrinks to the text -- so a centred
+  /// line was centred inside a box exactly its own size, drawn at the left
+  /// edge of the element, and every alignment looked like "left". Measuring
+  /// still wants the intrinsic width, which is why this is a flag and not the
+  /// only behaviour.
+  bool fillWidth = false,
 }) {
   var painter = TextPainter(
     text: TextSpan(
@@ -71,7 +83,8 @@ TextPainter layoutText(
     textDirection: TextDirection.ltr,
     maxLines: null,
   );
-  painter.layout(maxWidth: math.max(0, maxWidth));
+  var width = math.max(0.0, maxWidth);
+  painter.layout(minWidth: fillWidth && width.isFinite ? width : 0, maxWidth: width);
   return painter;
 }
 
@@ -92,7 +105,10 @@ double paintTextInBox(
   if (text.isEmpty || box.width <= 0) return 0;
 
   var painter = layoutText(text, spec,
-      maxWidth: box.width, scale: scale, colorOverride: colorOverride);
+      maxWidth: box.width,
+      scale: scale,
+      colorOverride: colorOverride,
+      fillWidth: true);
 
   var dy = switch (spec.verticalAlign) {
     VerticalAlignSpec.top => box.top,
@@ -112,7 +128,8 @@ double paintTextInBox(
   }
 
   if (spec.outlineWidth > 0) {
-    layoutText(text, spec, maxWidth: box.width, scale: scale, outline: true)
+    layoutText(text, spec,
+            maxWidth: box.width, scale: scale, outline: true, fillWidth: true)
         .paint(canvas, offset);
   }
   painter.paint(canvas, offset);
@@ -373,4 +390,203 @@ void paintCentredGlyphs(
         .paint(canvas, at);
   }
   painter.paint(canvas, at);
+}
+
+/// paintTextInColumns flows one paragraph across [columns] columns of [box].
+///
+/// The paragraph is laid out **once**, at a column's width, and then drawn once
+/// per column clipped to that column and shifted up by the lines already used.
+/// One layout rather than one per column, because splitting the text into
+/// pieces and laying each out separately would need the split to be decided
+/// before the lines are known -- which is the thing being worked out.
+///
+/// Lines are kept whole. A column break falls between two lines, never through
+/// one, which is what a column of text is; the alternative slices letters in
+/// half across the gutter.
+void paintTextInColumns(
+  ui.Canvas canvas,
+  String text,
+  TextSpec spec,
+  Rect box,
+  TextColumns columns, {
+  double scale = 1,
+}) {
+  if (text.isEmpty || box.width <= 0 || box.height <= 0) return;
+
+  var width = columns.columnWidth(box.width);
+  if (width <= 0) return;
+
+  var painter = layoutText(text, spec,
+      maxWidth: width, scale: scale, fillWidth: true);
+  var metrics = painter.computeLineMetrics();
+  if (metrics.isEmpty) return;
+
+  // How many whole lines fit in a column. At least one, or a box shorter than
+  // a single line would take no lines at all and draw nothing.
+  var lineHeight = metrics.first.height;
+  var perColumn = lineHeight <= 0
+      ? metrics.length
+      : math.max(1, (box.height / lineHeight).floor());
+
+  var outline = spec.outlineWidth > 0
+      ? layoutText(text, spec,
+          maxWidth: width, scale: scale, outline: true, fillWidth: true)
+      : null;
+
+  for (var i = 0; i < columns.count; i++) {
+    var used = perColumn * i;
+    if (used >= metrics.length) break;
+
+    var left = box.left + i * (width + columns.gap);
+    var column = Rect.fromLTWH(left, box.top, width, box.height);
+
+    // Vertical alignment applies to the column that is actually full, so a
+    // short last column sits under the others rather than floating in the
+    // middle of its own.
+    var lines = math.min(perColumn, metrics.length - used);
+    var height = lines * lineHeight;
+    var dy = switch (spec.verticalAlign) {
+      VerticalAlignSpec.top => 0.0,
+      VerticalAlignSpec.middle => (box.height - height) / 2,
+      VerticalAlignSpec.bottom => box.height - height,
+    };
+
+    canvas.save();
+    canvas.clipRect(column);
+    var at = Offset(left, box.top + dy - used * lineHeight);
+    outline?.paint(canvas, at);
+    painter.paint(canvas, at);
+    canvas.restore();
+  }
+
+  _paintColumnRules(canvas, box, columns, width);
+}
+
+/// _paintColumnRules draws the line down the middle of each gutter.
+void _paintColumnRules(
+    ui.Canvas canvas, Rect box, TextColumns columns, double width) {
+  if (columns.ruleStyle == ColumnRuleStyle.none ||
+      columns.ruleWidth <= 0 ||
+      columns.gap <= 0) {
+    return;
+  }
+
+  var paint = Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = columns.ruleWidth
+    ..strokeCap = columns.ruleStyle == ColumnRuleStyle.dotted
+        ? StrokeCap.round
+        : StrokeCap.butt
+    ..color = columns.ruleColor;
+
+  for (var i = 1; i < columns.count; i++) {
+    var x = box.left + i * (width + columns.gap) - columns.gap / 2;
+    var line = ui.Path()
+      ..moveTo(x, box.top)
+      ..lineTo(x, box.bottom);
+    canvas.drawPath(
+      switch (columns.ruleStyle) {
+        ColumnRuleStyle.dashed =>
+          dashPath(line, columns.ruleWidth * 4, columns.ruleWidth * 3),
+        // A dotted rule is a dashed one whose dashes are nothing and whose cap
+        // is round -- a zero-length stroke with a round cap is a dot.
+        ColumnRuleStyle.dotted =>
+          dashPath(line, 0.01, columns.ruleWidth * 3),
+        _ => line,
+      },
+      paint,
+    );
+  }
+}
+
+/// paintTextOnPath lays [text] out along [curve], one glyph at a time.
+///
+/// Glyph by glyph because that is the only way letters can turn with the line:
+/// a paragraph is one rectangle of pixels and rotating it puts the whole
+/// sentence at an angle rather than bending it.
+///
+/// [curve] is a polyline in document space, already sampled finely enough that
+/// walking it in straight steps is indistinguishable from following the curve
+/// -- see _curveSamplesPerSegment.
+void paintTextOnPath(
+  ui.Canvas canvas,
+  String text,
+  TextSpec spec,
+  List<Offset> curve,
+  TextOnCurve on, {
+  double scale = 1,
+}) {
+  if (text.isEmpty || curve.length < 2) return;
+
+  // Cumulative distance along the polyline, so a position in length can be
+  // turned into a point and a direction.
+  var lengths = <double>[0];
+  var total = 0.0;
+  for (var i = 1; i < curve.length; i++) {
+    total += (curve[i] - curve[i - 1]).distance;
+    lengths.add(total);
+  }
+  if (total <= 0) return;
+
+  var glyphs = [
+    for (var rune in text.runes) String.fromCharCode(rune),
+  ];
+  var widths = [
+    for (var g in glyphs)
+      layoutText(g, spec, maxWidth: double.infinity, scale: scale).width +
+          on.spacing * scale,
+  ];
+  var runLength = widths.fold(0.0, (sum, w) => sum + w);
+
+  // Where the run starts, from the spec's own alignment plus the slide.
+  var start = switch (spec.align) {
+        TextAlignSpec.left => 0.0,
+        TextAlignSpec.center => (total - runLength) / 2,
+        TextAlignSpec.right => total - runLength,
+        TextAlignSpec.justify => 0.0,
+      } +
+      on.offset * total;
+
+  var at = start;
+  for (var i = 0; i < glyphs.length; i++) {
+    var centre = at + widths[i] / 2;
+    at += widths[i];
+    if (centre < 0 || centre > total) continue;
+
+    var (point, angle) = _alongPolyline(curve, lengths, centre);
+    canvas.save();
+    canvas.translate(point.dx, point.dy);
+    canvas.rotate(angle);
+    // Sat on the line, or hung beneath it. The glyph is drawn from its own
+    // top-left, so it is shifted by half its width and by a whole line height
+    // to put the baseline where the curve is.
+    var painter = layoutText(glyphs[i], spec,
+        maxWidth: double.infinity, scale: scale);
+    var dy = on.away ? 0.0 : -painter.height;
+    if (spec.outlineWidth > 0) {
+      layoutText(glyphs[i], spec,
+              maxWidth: double.infinity, scale: scale, outline: true)
+          .paint(canvas, Offset(-painter.width / 2, dy));
+    }
+    painter.paint(canvas, Offset(-painter.width / 2, dy));
+    canvas.restore();
+  }
+}
+
+/// _alongPolyline is the point and heading at [distance] along [curve].
+(Offset, double) _alongPolyline(
+    List<Offset> curve, List<double> lengths, double distance) {
+  for (var i = 1; i < lengths.length; i++) {
+    if (lengths[i] < distance) continue;
+    var span = lengths[i] - lengths[i - 1];
+    var t = span <= 0 ? 0.0 : (distance - lengths[i - 1]) / span;
+    var a = curve[i - 1], b = curve[i];
+    var direction = b - a;
+    return (
+      Offset(a.dx + direction.dx * t, a.dy + direction.dy * t),
+      math.atan2(direction.dy, direction.dx),
+    );
+  }
+  var last = curve.last - curve[curve.length - 2];
+  return (curve.last, math.atan2(last.dy, last.dx));
 }

@@ -61,6 +61,11 @@ void paintCanvasDocument(
   CanvasImageSource? images,
   String? hoveredButton,
   bool editing = false,
+
+  /// skipElement is left out of the drawing. The editor exists for one case --
+  /// a text element being typed into has a real text field over it, and
+  /// painting the words underneath as well shows the sentence twice.
+  String? skipElement,
 }) {
   var rect = doc.size.rect;
   var time = frame / (doc.frameRate <= 0 ? 1 : doc.frameRate);
@@ -68,11 +73,12 @@ void paintCanvasDocument(
   _paintDocumentBackground(canvas, rect, doc, time, images);
 
   for (var element in doc.elements) {
-    if (!element.visible) continue;
+    if (!element.visible || element.id == skipElement) continue;
     paintElement(canvas, element, frame,
         frameRate: doc.frameRate,
         images: images,
         editing: editing,
+        document: doc,
         hovered: element.id == hoveredButton);
   }
 }
@@ -105,6 +111,12 @@ void paintElement(
   /// editing is true on the stage and false everywhere a document is turned
   /// into a file. Only a guide path reads it -- see _paintPath.
   bool editing = false,
+
+  /// document is needed only by text that has been attached to a line, which
+  /// has to go and find it. Null elsewhere -- a thumbnail of one element has
+  /// no document to look in, and text on a curve simply falls back to its own
+  /// box there.
+  CanvasDocument? document,
 }) {
   var pose = element.track?.at(frame) ?? Keyframe.rest;
   var alpha = (element.opacity * pose.opacity).clamp(0.0, 1.0);
@@ -143,7 +155,7 @@ void paintElement(
   var time = frame / (frameRate <= 0 ? 1 : frameRate);
   switch (element) {
     case TextElement e:
-      _paintText(canvas, bounds, e);
+      _paintText(canvas, bounds, e, document);
     case ShapeElement e:
       _paintShape(canvas, bounds, e);
     case LineElement e:
@@ -172,17 +184,86 @@ void paintElement(
 
 // --------------------------------------------------------------------------
 
-void _paintText(ui.Canvas canvas, Rect bounds, TextElement e) {
+void _paintText(
+    ui.Canvas canvas, Rect bounds, TextElement e, CanvasDocument? doc) {
+  // Text on a curve has no box of its own to fill or frame: it belongs to the
+  // line it is riding, and drawing its rectangle behind the line would be a
+  // panel nobody asked for sitting across the design.
+  var curve = _curveFor(e, doc);
+  if (curve != null) {
+    paintTextOnPath(canvas, e.displayText, e.textSpec, curve, e.curve!);
+    return;
+  }
+
   paintBox(canvas, bounds, e.box);
   var inner = bounds.deflate(e.box.padding);
   if (inner.width <= 0 || inner.height <= 0) return;
 
   var spec = e.textSpec;
   if (e.autoSize) {
-    spec = spec.copyWith(
-        fontSize: fitFontSize(e.displayText, spec, inner.size));
+    // Measured against one column rather than the whole box, or a headline set
+    // in two columns is sized to fill a width it will never be given.
+    var column = Size(e.columns.columnWidth(inner.width), inner.height);
+    spec = spec.copyWith(fontSize: fitFontSize(e.displayText, spec, column));
   }
-  paintTextInBox(canvas, e.displayText, spec, inner);
+
+  if (e.columns.isSingle) {
+    paintTextInBox(canvas, e.displayText, spec, inner);
+    return;
+  }
+  paintTextInColumns(canvas, e.displayText, spec, inner, e.columns);
+}
+
+/// _curveFor is the line a text element is riding, as a list of points in
+/// document space, or null when it is an ordinary paragraph.
+///
+/// Named rather than copied, so moving or reshaping the line carries its text
+/// with it. A curve that has been deleted since simply stops being found, and
+/// the text falls back to its own box -- which is visible and fixable, where
+/// vanishing would not be.
+List<Offset>? _curveFor(TextElement e, CanvasDocument? doc) {
+  var on = e.curve;
+  if (on == null || doc == null) return null;
+  var host = doc.elementById(on.elementId);
+  if (host is PathElement && host.nodes.length >= 2) {
+    return [
+      for (var i = 0; i < host.segments; i++)
+        for (var step = 0; step <= _curveSamplesPerSegment; step++)
+          if (i == 0 || step > 0)
+            host.pointOnSegment(i, step / _curveSamplesPerSegment),
+    ];
+  }
+  if (host is LineElement) {
+    // A line's own curvature is a quadratic bow between its ends, so it is
+    // sampled rather than taken as two points -- otherwise text on a bent line
+    // runs straight through the bend.
+    var a = host.start, b = host.end;
+    if (host.curvature == 0) return [a, b];
+    var mid = Offset((a.dx + b.dx) / 2, (a.dy + b.dy) / 2);
+    var normal = Offset(-(b.dy - a.dy), b.dx - a.dx);
+    var length = normal.distance;
+    var control = length == 0
+        ? mid
+        : mid + normal / length * (host.curvature * (b - a).distance);
+    return [
+      for (var i = 0; i <= _curveSamplesPerSegment * 2; i++)
+        _quadratic(a, control, b, i / (_curveSamplesPerSegment * 2)),
+    ];
+  }
+  return null;
+}
+
+/// _curveSamplesPerSegment is how finely a curve is walked when text is placed
+/// along it. Sixteen a segment keeps the letters on the line at any size a
+/// canvas is exported at, without turning a paragraph into thousands of points.
+const int _curveSamplesPerSegment = 16;
+
+Offset _quadratic(Offset a, Offset control, Offset b, double t) {
+  var u = 1 - t;
+  return Offset(
+    u * u * a.dx + 2 * u * t * control.dx + t * t * b.dx,
+    u * u * a.dy + 2 * u * t * control.dy + t * t * b.dy,
+  );
 }
 
 void _paintShape(ui.Canvas canvas, Rect bounds, ShapeElement e) {

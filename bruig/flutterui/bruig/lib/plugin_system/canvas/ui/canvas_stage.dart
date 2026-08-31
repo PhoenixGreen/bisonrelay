@@ -7,9 +7,11 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/canvas_text_editor.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -114,8 +116,24 @@ class CanvasStageState extends State<CanvasStage> {
   /// click rather than a drag. Most trackpad clicks move a pixel or two.
   static const double _buttonClickSlop = 4;
 
+  /// _lastClickAt and _doubleClickWindow spot the second click of a pair.
+  ///
+  /// Timed by hand rather than through a GestureDetector's onDoubleTap,
+  /// because this stage handles raw pointers -- a gesture recogniser here
+  /// would have to arbitrate with the drag, and a double tap recogniser delays
+  /// every single tap by its own timeout while it waits to see if a second one
+  /// is coming. Selecting something must not wait.
+  DateTime _lastClickAt = DateTime.fromMillisecondsSinceEpoch(0);
+  static const Duration _doubleClickWindow = Duration(milliseconds: 400);
+
   /// _pressedAt is where the pointer went down, in stage coordinates.
   Offset _pressedAt = Offset.zero;
+
+  /// _editingText is the text element being typed into, or null.
+  ///
+  /// Held by id rather than by element, because the element is replaced on
+  /// every keystroke and a held copy would be one character behind.
+  String? _editingText;
 
   /// _nodeIndex is which point of the selected path is being dragged, and
   /// _nodeHandleOut says which of its two handles when the drag is a handle.
@@ -478,6 +496,10 @@ class CanvasStageState extends State<CanvasStage> {
   bool get _shiftHeld => HardwareKeyboard.instance.isShiftPressed;
 
   void _onPointerDown(PointerDownEvent event) {
+    // Not while typing: the editor is a real text field sitting over the
+    // canvas, and it deals with its own pointers. Clicking off it moves the
+    // focus, which is what closes it -- see CanvasTextEditor._onFocus.
+    if (_editingText != null) return;
     _focus.requestFocus();
     var stage = event.localPosition;
     _pressedAt = stage;
@@ -578,6 +600,21 @@ class CanvasStageState extends State<CanvasStage> {
       _beginTransform(_DragMode.move, null);
       return;
     }
+
+    // A second click on a text element that is already selected opens it for
+    // typing -- the same gesture that renames a file everywhere else. The
+    // first click selects, so a text element is still moved by dragging it.
+    if (element is TextElement &&
+        !_shiftHeld &&
+        controller.selection.length == 1 &&
+        controller.selection.first == element.id &&
+        _pressedAt != Offset.zero &&
+        DateTime.now().difference(_lastClickAt) < _doubleClickWindow) {
+      setState(() => _editingText = element.id);
+      _mode = _DragMode.none;
+      return;
+    }
+    _lastClickAt = DateTime.now();
 
     if (_shiftHeld) {
       controller.toggleSelected(element.id);
@@ -1069,7 +1106,8 @@ class CanvasStageState extends State<CanvasStage> {
           Widget painter = SizedBox(
             width: content.width,
             height: content.height,
-            child: Listener(
+            child: Stack(children: [
+              Positioned.fill(child: Listener(
               onPointerDown: _onPointerDown,
               onPointerMove: _onPointerMove,
               onPointerUp: _onPointerUp,
@@ -1097,6 +1135,7 @@ class CanvasStageState extends State<CanvasStage> {
                       selection: controller.selection,
                       showHelpers: controller.showHelpers,
                       selectedPath: _selectedPath(),
+                      editingText: _editingText,
                       selectionBounds: _selectionBounds,
                       selectionRotation: _rotationOfSelection,
                       handleFor: _handlePosition,
@@ -1106,7 +1145,9 @@ class CanvasStageState extends State<CanvasStage> {
                   ),
                 ),
               ),
-            ),
+              )),
+              if (_editorFor() case var editor?) editor,
+            ]),
           );
 
           // Only scrollable when there is something to scroll. A scroll view
@@ -1126,6 +1167,36 @@ class CanvasStageState extends State<CanvasStage> {
           return Focus(focusNode: _focus, onKeyEvent: _onKey, child: painter);
         },
       );
+
+  /// _editorFor is the text editor overlay, when one is open.
+  ///
+  /// Built here rather than by the screen because it has to sit in the same
+  /// coordinates as the painting, and the stage is the only thing that knows
+  /// what those are.
+  Widget? _editorFor() {
+    var id = _editingText;
+    if (id == null) return null;
+    var element = document.elementById(id);
+    if (element is! TextElement) return null;
+
+    var topLeft = _toStage(element.bounds.topLeft);
+    return CanvasTextEditor(
+      key: ValueKey("edit-$id"),
+      element: element,
+      rect: Rect.fromLTWH(topLeft.dx, topLeft.dy, element.width * _scale,
+          element.height * _scale),
+      scale: _scale,
+      onChanged: (text) {
+        controller.beginInteraction();
+        controller.replaceElement(element.copyWith(text: text),
+            transient: true);
+      },
+      onDone: () {
+        controller.endInteraction();
+        if (mounted) setState(() => _editingText = null);
+      },
+    );
+  }
 
   /// _onPointerSignal decides whether the wheel belongs to this stage or to
   /// the scroll view around it.
@@ -1185,6 +1256,11 @@ class _StagePainter extends CustomPainter {
   /// handles are drawn in place of a selection box.
   final PathElement? selectedPath;
 
+  /// editingText is the id of a text element being typed into, whose own words
+  /// are left unpainted -- the editor over the top is drawing them, and both
+  /// at once is the same sentence twice, half a pixel apart.
+  final String? editingText;
+
   /// showHelpers draws the selection box, the handles and the rotation ring.
   ///
   /// Passed in rather than being faked by blanking the selection, which is how
@@ -1198,6 +1274,7 @@ class _StagePainter extends CustomPainter {
     required this.view,
     required this.showHelpers,
     required this.selectedPath,
+    required this.editingText,
     required this.document,
     required this.frame,
     required this.scale,
@@ -1236,6 +1313,7 @@ class _StagePainter extends CustomPainter {
         frame: frame,
         images: images,
         hoveredButton: hoveredButton,
+        skipElement: editingText,
         // Guide paths show here and nowhere else: the line describing a run is
         // scaffolding, and a published diagram with every run drawn on it is
         // unreadable.
@@ -1405,6 +1483,7 @@ class _StagePainter extends CustomPainter {
       old.view != view ||
       old.showHelpers != showHelpers ||
       !identical(old.selectedPath, selectedPath) ||
+      old.editingText != editingText ||
       old.hoveredButton != hoveredButton ||
       old.selection != selection ||
       old.selectionBounds != selectionBounds ||

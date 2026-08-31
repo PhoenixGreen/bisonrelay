@@ -50,7 +50,7 @@ List<Widget> elementSettings(
   return [
     _positionGroup(controller, element, write, begin, commit),
     ...switch (element) {
-      TextElement e => _textSettings(e, write, begin, commit),
+      TextElement e => _textSettings(controller, e, write, begin, commit),
       ShapeElement e => _shapeSettings(e, write, begin, commit),
       LineElement e => _lineSettings(e, write, begin, commit),
       ImageElement e => _imageSettings(e, write, begin, commit),
@@ -89,6 +89,12 @@ typedef _Write = void Function(CanvasElement);
 /// and whether it can be touched.
 Widget _positionGroup(CanvasController controller, CanvasElement e,
     _Write write, VoidCallback begin, VoidCallback commit) {
+  // No lock, hide, or bring-to-front here. Every one of them is a property of
+  // the *layer* rather than of the thing on it, and the layer list already
+  // shows all four on the row that names the element -- where they can be used
+  // without selecting it first, and where hiding something does not make the
+  // panel you are hiding it from disappear. Having them in both places meant
+  // two controls for one switch that could disagree about which icon meant on.
   return CanvasControlGroup(label: e.kind.label, children: [
     CanvasNumberField(
       label: "X",
@@ -134,35 +140,6 @@ Widget _positionGroup(CanvasController controller, CanvasElement e,
         write(e.withBase(opacity: v));
       },
       onCommit: commit,
-    ),
-    CanvasIconButton(
-      icon: e.locked ? Icons.lock_outline : Icons.lock_open_outlined,
-      tooltip: e.locked ? "Unlock" : "Lock in place",
-      active: e.locked,
-      onPressed: () {
-        begin();
-        write(e.withBase(locked: !e.locked));
-        commit();
-      },
-    ),
-    CanvasIconButton(
-      icon: e.visible ? Icons.visibility_outlined : Icons.visibility_off_outlined,
-      tooltip: e.visible ? "Hide" : "Show",
-      onPressed: () {
-        begin();
-        write(e.withBase(visible: !e.visible));
-        commit();
-      },
-    ),
-    CanvasIconButton(
-      icon: Icons.flip_to_front,
-      tooltip: "Bring to front",
-      onPressed: () => controller.apply(controller.document.bringToFront(e.id)),
-    ),
-    CanvasIconButton(
-      icon: Icons.flip_to_back,
-      tooltip: "Send to back",
-      onPressed: () => controller.apply(controller.document.sendToBack(e.id)),
     ),
   ]);
 }
@@ -399,31 +376,146 @@ Widget _boxGroup(BoxSpec box, ValueChanged<BoxSpec> onChanged,
       ),
     ]);
 
-List<Widget> _textSettings(TextElement e, _Write write, VoidCallback begin,
-        VoidCallback commit) =>
-    [
-      CanvasControlGroup(label: "Text", children: [
-        CanvasTextField(
-          label: "Content",
-          value: e.text,
-          width: 220,
-          maxLines: 2,
-          onChanged: (v) => write(e.copyWith(text: v)),
+List<Widget> _textSettings(CanvasController controller, TextElement e,
+    _Write write, VoidCallback begin, VoidCallback commit) {
+  void now(TextElement next) {
+    begin();
+    write(next);
+    commit();
+  }
+
+  return [
+    // No Content field. The words are typed on the canvas, in the box they
+    // will appear in, at the size and face they will appear at -- see
+    // CanvasTextEditor. A two-line box in a settings panel could show neither,
+    // so writing a headline meant typing it here and looking over there.
+    CanvasControlGroup(label: "Text", children: [
+      CanvasToggle(
+        label: "Fit to box",
+        value: e.autoSize,
+        onChanged: (v) => now(e.copyWith(autoSize: v)),
+      ),
+    ]),
+    ..._typeGroups(e.textSpec, (spec) => write(e.copyWith(textSpec: spec)),
+        begin, commit),
+    CanvasControlGroup(label: "Columns", children: [
+      CanvasNumberField(
+        key: const ValueKey("textColumns"),
+        label: "Columns",
+        value: e.columns.count.toDouble(),
+        min: 1,
+        max: 12,
+        width: 54,
+        onChanged: (v) {
+          begin();
+          write(e.copyWith(columns: e.columns.copyWith(count: v.round())));
+        },
+        onCommit: commit,
+      ),
+      // The rest only means something once there is a gutter to put it in.
+      if (!e.columns.isSingle) ...[
+        CanvasNumberField(
+          label: "Gap",
+          value: e.columns.gap,
+          min: 0,
+          max: 400,
+          width: 54,
+          onChanged: (v) {
+            begin();
+            write(e.copyWith(columns: e.columns.copyWith(gap: v)));
+          },
+          onCommit: commit,
+        ),
+        CanvasDropdown<ColumnRuleStyle>(
+          label: "Rule",
+          value: e.columns.ruleStyle,
+          width: 92,
+          options: [for (var v in ColumnRuleStyle.values) (v, v.label)],
+          onChanged: (v) =>
+              now(e.copyWith(columns: e.columns.copyWith(ruleStyle: v))),
+        ),
+        if (e.columns.ruleStyle != ColumnRuleStyle.none) ...[
+          CanvasNumberField(
+            label: "Width",
+            value: e.columns.ruleWidth,
+            min: 0,
+            max: 40,
+            decimals: 1,
+            width: 54,
+            onChanged: (v) {
+              begin();
+              write(e.copyWith(columns: e.columns.copyWith(ruleWidth: v)));
+            },
+            onCommit: commit,
+          ),
+          CanvasColorButton(
+            label: "Colour",
+            color: e.columns.ruleColor,
+            onChanged: (c) =>
+                now(e.copyWith(columns: e.columns.copyWith(ruleColor: c))),
+          ),
+        ],
+      ],
+    ]),
+    CanvasControlGroup(label: "On a line", children: [
+      CanvasDropdown<String>(
+        label: "Follow",
+        value: e.curve?.elementId ?? "",
+        width: 156,
+        options: _curveOptions(controller),
+        onChanged: (v) => now(v.isEmpty
+            ? e.copyWith(clearCurve: true)
+            : e.copyWith(curve: (e.curve ?? const TextOnCurve(elementId: ""))
+                .copyWith(elementId: v))),
+      ),
+      if (e.curve != null) ...[
+        CanvasSlider(
+          label: "Slide",
+          value: e.curve!.offset,
+          min: -1,
+          max: 1,
+          onChanged: (v) {
+            begin();
+            write(e.copyWith(curve: e.curve!.copyWith(offset: v)));
+          },
+          onCommit: commit,
+        ),
+        CanvasNumberField(
+          label: "Spacing",
+          value: e.curve!.spacing,
+          min: -20,
+          max: 60,
+          decimals: 1,
+          width: 58,
+          onChanged: (v) {
+            begin();
+            write(e.copyWith(curve: e.curve!.copyWith(spacing: v)));
+          },
           onCommit: commit,
         ),
         CanvasToggle(
-          label: "Fit to box",
-          value: e.autoSize,
-          onChanged: (v) {
-            begin();
-            write(e.copyWith(autoSize: v));
-            commit();
-          },
+          label: "Below",
+          value: e.curve!.away,
+          onChanged: (v) =>
+              now(e.copyWith(curve: e.curve!.copyWith(away: v))),
         ),
-      ]),
-      ..._typeGroups(e.textSpec, (spec) => write(e.copyWith(textSpec: spec)),
-          begin, commit),
-      _boxGroup(e.box, (box) => write(e.copyWith(box: box)), begin, commit),
+      ],
+    ]),
+    _boxGroup(e.box, (box) => write(e.copyWith(box: box)), begin, commit),
+  ];
+}
+
+/// _curveOptions is every line and path on the canvas, for text to ride.
+///
+/// Both kinds, because both are lines as far as a reader is concerned: a line
+/// element is the straight or gently bowed one and a path is the drawn one,
+/// and which of the two somebody reached for is not a distinction worth making
+/// them remember when attaching a label to it.
+List<(String, String)> _curveOptions(CanvasController controller) => [
+      ("", "Nothing"),
+      for (var element in controller.document.elements)
+        if (element is LineElement || element is PathElement)
+          (element.id, element.name),
     ];
 
 List<Widget> _shapeSettings(ShapeElement e, _Write write, VoidCallback begin,

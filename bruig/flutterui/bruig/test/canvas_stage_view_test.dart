@@ -3,10 +3,12 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_stage.dart';
+import 'package:bruig/plugin_system/canvas/ui/canvas_text_editor.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/rendering.dart';
@@ -1117,6 +1119,100 @@ void main() {
 
       expect(controller.document.elements.single.x, element.x + 1);
       expect(controller.frame, 0, reason: "and the playhead stayed put");
+    });
+  });
+
+  group("typing on the canvas", () {
+    (CanvasController, TextElement) withText() {
+      var document = const CanvasDocument();
+      var element = TextElement(
+        ElementBase(
+          id: "t",
+          x: document.size.width / 4,
+          y: document.size.height / 4,
+          width: document.size.width / 2,
+          height: document.size.height / 2,
+        ),
+        text: "Text",
+      );
+      var controller = CanvasController(document.addElement(element));
+      return (controller, element);
+    }
+
+    Future<void> clickText(
+        WidgetTester tester, CanvasStageState stage, TextElement e,
+        {required CanvasController controller}) async {
+      var scale = stage.pageRect.width / controller.document.size.width;
+      await tester.tapAt(stage.pageRect.topLeft + e.center * scale);
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets("a second click opens an editor over the element",
+        (tester) async {
+      // A canvas is painted, not laid out, so there is nothing to type into:
+      // the words are pixels drawn by a painter. The editor is a real field
+      // put over the top, styled from the same spec.
+      var (controller, element) = withText();
+      addTearDown(controller.dispose);
+      var stage = await pump(tester, controller);
+
+      await clickText(tester, stage, element, controller: controller);
+      expect(controller.selection, {"t"});
+      expect(find.byType(CanvasTextEditor), findsNothing,
+          reason: "the first click selects, so text can still be dragged");
+
+      await clickText(tester, stage, element, controller: controller);
+      expect(find.byType(CanvasTextEditor), findsOneWidget);
+    });
+
+    testWidgets("typing writes straight into the element", (tester) async {
+      var (controller, element) = withText();
+      addTearDown(controller.dispose);
+      var stage = await pump(tester, controller);
+
+      await clickText(tester, stage, element, controller: controller);
+      await clickText(tester, stage, element, controller: controller);
+
+      await tester.enterText(find.byType(TextField), "A headline");
+      await tester.pumpAndSettle();
+      expect((controller.document.elements.single as TextElement).text,
+          "A headline");
+    });
+
+    testWidgets("the words are not drawn twice while being typed",
+        (tester) async {
+      // The element's own text is left unpainted while the editor is open --
+      // both at once is the same sentence half a pixel apart.
+      var (controller, element) = withText();
+      addTearDown(controller.dispose);
+      var stage = await pump(tester, controller);
+      await clickText(tester, stage, element, controller: controller);
+      await clickText(tester, stage, element, controller: controller);
+
+      var painter = tester
+          .widgetList<CustomPaint>(find.descendant(
+              of: find.byType(CanvasStage), matching: find.byType(CustomPaint)))
+          .map((w) => w.painter)
+          .whereType<CustomPainter>()
+          .toList();
+      expect(painter, isNotEmpty);
+      expect(find.byType(TextField), findsOneWidget);
+      expect(controller.document.elements.single.id, "t");
+    });
+
+    testWidgets("escape finishes, and the text stays", (tester) async {
+      var (controller, element) = withText();
+      addTearDown(controller.dispose);
+      var stage = await pump(tester, controller);
+      await clickText(tester, stage, element, controller: controller);
+      await clickText(tester, stage, element, controller: controller);
+
+      await tester.enterText(find.byType(TextField), "Kept");
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(CanvasTextEditor), findsNothing);
+      expect((controller.document.elements.single as TextElement).text, "Kept");
     });
   });
 }

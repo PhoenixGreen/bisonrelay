@@ -96,6 +96,17 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
   /// drag was recognised. See onHorizontalDragDown.
   int? _pressedFrame;
 
+  /// _selectedKey is the frame of the mark that has been clicked, or null.
+  ///
+  /// Cleared whenever the row changes underneath it -- a frame number means
+  /// nothing once the strip is showing somebody else's keyframes, and a stale
+  /// one would put Delete on a mark that is not there.
+  int? _selectedKey;
+
+  /// _focus is what lets Delete reach this strip. Requested when a mark is
+  /// clicked, because a mark is not a widget and cannot take focus itself.
+  final FocusNode _focus = FocusNode();
+
 
   @override
   void initState() {
@@ -105,12 +116,19 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
 
   @override
   void dispose() {
+    _focus.dispose();
     controller.removeListener(_onChanged);
     super.dispose();
   }
 
   void _onChanged() {
-    if (mounted) setState(() {});
+    if (!mounted) return;
+    // A mark that is no longer on this row cannot stay selected: the frame
+    // number would still be a number, and Delete would take a keyframe the
+    // reader never picked.
+    var at = _selectedKey;
+    if (at != null && _targetTrack?.keyAt(at) == null) _selectedKey = null;
+    setState(() {});
   }
 
   /// _frameAt turns a horizontal position into a frame number.
@@ -374,6 +392,7 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
     var target = _targetName;
 
     return Focus(
+      focusNode: _focus,
       onKeyEvent: _onKey,
       child: Container(
       height: timelineHeight,
@@ -607,7 +626,14 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
               behavior: HitTestBehavior.opaque,
               onTapDown: (details) {
                 controller.pause();
-                controller.frame =
+                // A tap on a mark selects it *and* moves the playhead to it,
+                // which is the same thing anybody wants from clicking a
+                // keyframe: to be looking at the pose they are about to change.
+                var mark =
+                    _keyframeAt(details.localPosition, constraints.maxWidth);
+                setState(() => _selectedKey = mark);
+                if (mark != null) _focus.requestFocus();
+                controller.frame = mark ??
                     _frameAt(details.localPosition.dx, constraints.maxWidth);
               },
               // A drag that starts on a mark retimes that mark; anywhere else
@@ -657,6 +683,7 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
                   // strip shows one player's run while the button edits
                   // another's.
                   keyframes: _targetTrack?.keys ?? const [],
+                  selectedKeyframe: _selectedKey,
                   actions: document.actions,
                   colors: theme.colors,
                   xFor: (f) => _xFor(f, constraints.maxWidth),
@@ -686,6 +713,19 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
     // keys scrubbed instead of moving the caret and the space bar started
     // playback instead of typing a space.
     if (isTypingInAField()) return KeyEventResult.ignored;
+    // Delete on a selected mark removes the keyframe, not the element. The
+    // canvas's own Delete deletes what is selected there, and with a keyframe
+    // picked out on the strip that is the wrong thing by a long way: one is a
+    // pose, the other is the whole element and everything on it.
+    if (event.logicalKey == LogicalKeyboardKey.delete ||
+        event.logicalKey == LogicalKeyboardKey.backspace) {
+      var at = _selectedKey;
+      if (at == null) return KeyEventResult.ignored;
+      _removeTargetKey(at);
+      setState(() => _selectedKey = null);
+      return KeyEventResult.handled;
+    }
+
     switch (event.logicalKey) {
       case LogicalKeyboardKey.space:
         controller.togglePlay();
@@ -740,6 +780,10 @@ class _TimelinePainter extends CustomPainter {
   final int frame;
   final int frameRate;
   final List<Keyframe> keyframes;
+
+  /// selectedKeyframe is the frame of the mark that has been clicked, drawn
+  /// with a ring so it is obvious which one Delete will take.
+  final int? selectedKeyframe;
   final List<TimelineAction> actions;
   final ColorScheme colors;
   final double Function(int) xFor;
@@ -749,6 +793,7 @@ class _TimelinePainter extends CustomPainter {
     required this.frame,
     required this.frameRate,
     required this.keyframes,
+    required this.selectedKeyframe,
     required this.actions,
     required this.colors,
     required this.xFor,
@@ -791,6 +836,7 @@ class _TimelinePainter extends CustomPainter {
       frames: [for (var k in keyframes) k.frame],
       color: colors.primary,
       diamond: true,
+      selected: selectedKeyframe,
     );
     _paintMarks(
       canvas,
@@ -825,6 +871,10 @@ class _TimelinePainter extends CustomPainter {
     required List<int> frames,
     required Color color,
     required bool diamond,
+
+    /// selected is drawn with a ring around it, so the one Delete will take is
+    /// the one that looks picked out.
+    int? selected,
   }) {
     if (y > size.height) return;
     var paint = Paint()..color = color;
@@ -848,6 +898,20 @@ class _TimelinePainter extends CustomPainter {
           paint,
         );
       }
+
+      // A ring rather than a different fill, so the mark keeps the colour that
+      // says what kind of mark it is and gains something that says it is the
+      // one picked out.
+      if (f == selected) {
+        canvas.drawCircle(
+          Offset(x, y),
+          8,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.5
+            ..color = const Color(0xFFFFFFFF),
+        );
+      }
     }
   }
 
@@ -857,6 +921,7 @@ class _TimelinePainter extends CustomPainter {
       old.frame != frame ||
       old.frameRate != frameRate ||
       old.keyframes != keyframes ||
+      old.selectedKeyframe != selectedKeyframe ||
       old.actions != actions;
 }
 

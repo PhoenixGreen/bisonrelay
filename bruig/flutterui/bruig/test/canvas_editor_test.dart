@@ -1488,4 +1488,132 @@ void main() {
       expect(controller.showOverspill, isFalse);
     });
   });
+
+  group("selecting a keyframe", () {
+    (CanvasController, CanvasElement) animated() {
+      var document = const CanvasDocument(frames: 30);
+      var element = newElement(ElementKind.shape, document);
+      var controller = CanvasController(document.addElement(element));
+      controller.selectOnly(element.id);
+      controller.setKeyframe(element.id, const Keyframe(frame: 0));
+      controller.setKeyframe(element.id, const Keyframe(frame: 10, dx: 40));
+      controller.setKeyframe(element.id, const Keyframe(frame: 20, dx: 80));
+      return (controller, element);
+    }
+
+    /// tapMark clicks the mark at [frame] on the strip.
+    Future<void> tapMark(WidgetTester tester, int frame, int frames) async {
+      var ruler = find
+          .descendant(
+              of: find.byType(CanvasTimeline), matching: find.byType(CustomPaint))
+          .last;
+      var box = tester.getRect(ruler);
+      await tester.tapAt(Offset(
+          box.left + (frame + 0.5) / frames * box.width, box.top + 22 + 14));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets("delete takes the keyframe, not the element", (tester) async {
+      // The canvas's own Delete removes what is selected there, and with a
+      // keyframe picked out that is the wrong thing by a long way: one is a
+      // pose, the other is the whole element and everything on it.
+      var (controller, element) = animated();
+      addTearDown(controller.dispose);
+      await pump(tester, CanvasTimeline(controller: controller));
+
+      await tapMark(tester, 10, 30);
+      expect(controller.frame, 10, reason: "clicking a mark goes to it");
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.delete);
+      await tester.pumpAndSettle();
+
+      expect(controller.document.elements.length, 1,
+          reason: "the element is still there");
+      var track = controller.document.elementById(element.id)!.track!;
+      expect(track.keyAt(10), isNull, reason: "but that pose is gone");
+      expect(track.keyAt(0), isNotNull);
+      expect(track.keyAt(20), isNotNull);
+    });
+
+    testWidgets("delete does nothing with no mark picked out", (tester) async {
+      var (controller, element) = animated();
+      addTearDown(controller.dispose);
+      await pump(tester, CanvasTimeline(controller: controller));
+
+      // Focus the strip without landing on a mark.
+      await tapMark(tester, 5, 30);
+      await tester.sendKeyEvent(LogicalKeyboardKey.delete);
+      await tester.pumpAndSettle();
+
+      expect(controller.document.elementById(element.id)!.track!.keys.length, 3);
+    });
+
+    testWidgets("the selection is dropped when the row changes",
+        (tester) async {
+      // A frame number means nothing once the strip is showing somebody
+      // else's keyframes, and a stale one would put Delete on a mark the
+      // reader never picked.
+      var (controller, element) = animated();
+      addTearDown(controller.dispose);
+      var other = newElement(ElementKind.text, controller.document);
+      controller.apply(controller.document.addElement(other));
+      await pump(tester, CanvasTimeline(controller: controller));
+
+      await tapMark(tester, 10, 30);
+      controller.selectOnly(other.id);
+      await tester.pumpAndSettle();
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.delete);
+      await tester.pumpAndSettle();
+
+      expect(controller.document.elementById(element.id)!.track!.keys.length, 3,
+          reason: "the other element's keyframes were left alone");
+      expect(controller.document.elements.length, 2);
+    });
+  });
+
+  group("the element settings", () {
+    testWidgets("carry no lock, hide or reorder controls", (tester) async {
+      // All four are properties of the *layer* rather than of the thing on it,
+      // and the layer list already shows them on the row that names the
+      // element -- where hiding something does not make the panel you are
+      // hiding it from disappear.
+      var document = const CanvasDocument();
+      var element = newElement(ElementKind.shape, document);
+      var controller = CanvasController(document.addElement(element));
+      addTearDown(controller.dispose);
+      controller.selectOnly(element.id);
+
+      await pump(
+          tester,
+          CanvasLayersPanel(controller: controller));
+
+      // The layer row has them.
+      expect(find.byTooltip("Lock"), findsOneWidget);
+      expect(find.byTooltip("Hide"), findsOneWidget);
+      expect(find.byTooltip("Move forward"), findsOneWidget);
+      // The settings below it do not.
+      expect(find.byTooltip("Lock in place"), findsNothing);
+      expect(find.byTooltip("Bring to front"), findsNothing);
+      expect(find.byTooltip("Send to back"), findsNothing);
+    });
+
+    testWidgets("a player row keeps its own, since the layer list has none",
+        (tester) async {
+      var team = TeamElement(
+        const ElementBase(id: "t", name: "Home", width: 400, height: 300),
+      ).withFormation(TeamFormation.f442);
+      var controller =
+          CanvasController(const CanvasDocument().addElement(team));
+      addTearDown(controller.dispose);
+      controller.selectOnly("t");
+
+      await pump(tester, CanvasLayersPanel(controller: controller));
+      await tester.tap(find.text("PLAYERS"));
+      await tester.pumpAndSettle();
+
+      expect(find.byTooltip("Lock in place"), findsWidgets,
+          reason: "a player is not a layer and has nowhere else to be locked");
+    });
+  });
 }

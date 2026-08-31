@@ -1,0 +1,221 @@
+import 'dart:ui' as ui;
+
+import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
+import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
+import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
+import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+// canvas_text_test.dart is about words on the canvas: where they sit in their
+// box, how they flow across columns, and what happens when they are hung on a
+// line.
+//
+// Most of it is checked by rendering and reading pixels back, because that is
+// the only place the answers are. Alignment in particular passed every model
+// test there was while being visibly broken on screen: the value was stored
+// and read back correctly, and the painter ignored it.
+
+void main() {
+  /// render draws [document] and returns its pixels.
+  Future<ui.Image> render(CanvasDocument document) async {
+    var recorder = ui.PictureRecorder();
+    paintCanvasDocument(ui.Canvas(recorder), document);
+    return recorder
+        .endRecording()
+        .toImage(document.size.width, document.size.height);
+  }
+
+  /// inkColumns is which columns of the image have any ink in them, as a
+  /// fraction of the width. Enough to say where on the page something was
+  /// drawn without caring what it says.
+  Future<List<double>> inkColumns(CanvasDocument document) async {
+    var image = await render(document);
+    var data = await image.toByteData();
+    var out = <double>[];
+    for (var x = 0; x < image.width; x++) {
+      for (var y = 0; y < image.height; y++) {
+        var i = (y * image.width + x) * 4;
+        if (data!.getUint8(i + 3) > 40 && data.getUint8(i) > 100) {
+          out.add(x / image.width);
+          break;
+        }
+      }
+    }
+    return out;
+  }
+
+  CanvasDocument withText(TextElement text) => CanvasDocument(
+        size: const CanvasSize(width: 400),
+        background: const CanvasBackground(),
+        elements: [text],
+      );
+
+  TextElement text({
+    TextAlignSpec align = TextAlignSpec.left,
+    TextColumns columns = const TextColumns(),
+    String content = "Hi",
+    double size = 40,
+  }) =>
+      TextElement(
+        const ElementBase(id: "t", x: 0, y: 0, width: 400, height: 225),
+        text: content,
+        textSpec: TextSpec(
+            fontSize: size, align: align, color: const Color(0xFFFFFFFF)),
+        box: const BoxSpec(padding: 0),
+        columns: columns,
+      );
+
+  group("alignment", () {
+    // The reported bug: every alignment drew at the left. A TextPainter aligns
+    // within its own width, and by default that width shrinks to the text --
+    // so a centred line was centred inside a box exactly its own size and then
+    // drawn at the element's left edge.
+    testWidgets("left, centre and right put the words in different places",
+        (tester) async {
+      late List<double> left, centre, right;
+      await tester.runAsync(() async {
+        left = await inkColumns(withText(text(align: TextAlignSpec.left)));
+        centre = await inkColumns(withText(text(align: TextAlignSpec.center)));
+        right = await inkColumns(withText(text(align: TextAlignSpec.right)));
+      });
+
+      expect(left, isNotEmpty);
+      expect(left.first, lessThan(0.1));
+      expect(centre.first, greaterThan(0.3));
+      expect(centre.last, lessThan(0.7));
+      expect(right.last, greaterThan(0.9));
+    });
+
+    testWidgets("centred text is centred on the box", (tester) async {
+      late List<double> ink;
+      await tester.runAsync(() async {
+        ink = await inkColumns(withText(text(align: TextAlignSpec.center)));
+      });
+      var middle = (ink.first + ink.last) / 2;
+      expect(middle, closeTo(0.5, 0.03));
+    });
+  });
+
+  group("columns", () {
+    testWidgets("two columns put ink on both halves with a gutter between",
+        (tester) async {
+      late List<double> one, two;
+      await tester.runAsync(() async {
+        var body = List.filled(60, "word").join(" ");
+        one = await inkColumns(withText(text(content: body, size: 14)));
+        two = await inkColumns(withText(text(
+            content: body,
+            size: 14,
+            columns: const TextColumns(count: 2, gap: 40))));
+      });
+
+      // One column fills the width; two leave a clear band down the middle.
+      expect(one.where((x) => x > 0.45 && x < 0.55), isNotEmpty);
+      expect(two.where((x) => x > 0.47 && x < 0.53), isEmpty,
+          reason: "the gutter has no ink in it");
+      expect(two.where((x) => x < 0.4), isNotEmpty);
+      expect(two.where((x) => x > 0.6), isNotEmpty);
+    });
+
+    test("column width divides what is left after the gutters", () {
+      const columns = TextColumns(count: 3, gap: 20);
+      // 300 wide, two gutters of 20, leaves 260 over three columns.
+      expect(columns.columnWidth(300), closeTo(260 / 3, 0.001));
+      expect(const TextColumns().columnWidth(300), 300,
+          reason: "one column is the whole box and costs nothing");
+    });
+
+    test("columns survive a round trip, and one column stays out of the file",
+        () {
+      var single = withText(text());
+      expect(single.encode().contains("columns"), isFalse,
+          reason: "the ordinary case adds nothing to a saved document");
+
+      var many = withText(text(
+          columns: const TextColumns(
+              count: 3, gap: 12, ruleStyle: ColumnRuleStyle.dashed)));
+      var back = CanvasDocument.decode(many.encode())!.elements.single
+          as TextElement;
+      expect(back.columns.count, 3);
+      expect(back.columns.gap, 12);
+      expect(back.columns.ruleStyle, ColumnRuleStyle.dashed);
+    });
+  });
+
+  group("text on a line", () {
+    CanvasDocument onALine({double curvature = 0}) => CanvasDocument(
+          size: const CanvasSize(width: 400),
+          background: const CanvasBackground(),
+          elements: [
+            LineElement(
+              const ElementBase(id: "l", x: 40, y: 100, width: 320, height: 0),
+              curvature: curvature,
+            ),
+            TextElement(
+              const ElementBase(id: "t", x: 0, y: 0, width: 400, height: 225),
+              text: "ALONGTHELINE",
+              textSpec: const TextSpec(
+                  fontSize: 20,
+                  align: TextAlignSpec.left,
+                  color: Color(0xFFFFFFFF)),
+              box: const BoxSpec(padding: 0),
+              curve: const TextOnCurve(elementId: "l"),
+            ),
+          ],
+        );
+
+    testWidgets("the words follow the line rather than the box",
+        (tester) async {
+      late List<double> ink;
+      await tester.runAsync(() async {
+        ink = await inkColumns(onALine());
+      });
+      // The line starts at x=40 of 400, so nothing should be drawn before it.
+      expect(ink.first, greaterThan(0.08));
+      expect(ink.last, lessThan(0.95));
+    });
+
+    test("a curve pointing at nothing falls back to the box", () {
+      // The line may have been deleted since. Falling back is visible and
+      // fixable; vanishing is neither.
+      var document = withText(TextElement(
+        const ElementBase(id: "t", width: 400, height: 225),
+        text: "Hi",
+        curve: const TextOnCurve(elementId: "gone"),
+      ));
+      expect(() => paintCanvasDocument(
+          ui.Canvas(ui.PictureRecorder()), document), returnsNormally);
+    });
+
+    test("the attachment survives a round trip", () {
+      var document = withText(TextElement(
+        const ElementBase(id: "t", width: 400, height: 225),
+        text: "Hi",
+        curve: const TextOnCurve(elementId: "l", offset: 0.25, away: true),
+      ));
+      var back =
+          CanvasDocument.decode(document.encode())!.elements.single as TextElement;
+      expect(back.curve!.elementId, "l");
+      expect(back.curve!.offset, 0.25);
+      expect(back.curve!.away, isTrue);
+    });
+  });
+
+  group("layoutText", () {
+    test("only fills the width when it is asked to", () {
+      // Measuring wants the intrinsic width -- a player's name is placed by
+      // its own size -- so filling cannot be the only behaviour.
+      const spec = TextSpec(fontSize: 20);
+      var loose = layoutText("Hi", spec, maxWidth: 300);
+      var filled = layoutText("Hi", spec, maxWidth: 300, fillWidth: true);
+
+      expect(loose.width, lessThan(300));
+      expect(filled.width, 300);
+    });
+  });
+}
