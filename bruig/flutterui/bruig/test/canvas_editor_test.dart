@@ -5,6 +5,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
 import 'package:bruig/plugin_system/canvas/presets/builtin_presets.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
@@ -1162,5 +1163,164 @@ void main() {
           reason: "nothing was retimed");
     });
 
+  });
+
+  group("clearing keyframes", () {
+    /// pitch is a team with a run on one player, plus a shape with its own
+    /// animation -- two channels, so "this one" and "all of them" can be told
+    /// apart.
+    (CanvasController, TeamElement, CanvasElement) pitch() {
+      var team = TeamElement(
+        const ElementBase(id: "t", x: 0, y: 0, width: 400, height: 300),
+      ).withFormation(TeamFormation.f442);
+      var shape = ShapeElement(const ElementBase(id: "s", width: 40, height: 40));
+      var controller = CanvasController(
+          const CanvasDocument(frames: 30).addElement(team).addElement(shape));
+
+      controller.setPlayerKeyframe("t", 6, const Keyframe(frame: 0));
+      controller.setPlayerKeyframe("t", 6, const Keyframe(frame: 12, dx: 50));
+      controller.setPlayerKeyframe("t", 2, const Keyframe(frame: 4, dy: 20));
+      controller.setKeyframe("s", const Keyframe(frame: 8, dx: 30));
+      return (controller, team, shape);
+    }
+
+    TeamElement teamOf(CanvasController c) =>
+        c.document.elements.whereType<TeamElement>().single;
+
+    testWidgets("clear channel takes one player's run and nobody else's",
+        (tester) async {
+      var (controller, team, _) = pitch();
+      addTearDown(controller.dispose);
+      controller.selectOnly("t");
+      controller.focusedPlayer = 6;
+      await pump(tester, CanvasTimeline(controller: controller));
+
+      await tester.tap(find.byTooltip(
+          "Clear every keyframe on #7 (${team.name})"));
+      await tester.pumpAndSettle();
+
+      expect(teamOf(controller).players[6].track, isNull);
+      expect(teamOf(controller).players[2].track, isNotNull,
+          reason: "the other player kept his");
+      expect(controller.document.elementById("s")!.track, isNotNull,
+          reason: "and so did the shape");
+    });
+
+    testWidgets("clear channel works on a plain element too", (tester) async {
+      var (controller, _, shape) = pitch();
+      addTearDown(controller.dispose);
+      controller.selectOnly(shape.id);
+      await pump(tester, CanvasTimeline(controller: controller));
+
+      await tester.tap(find.byTooltip("Clear every keyframe on ${shape.name}"));
+      await tester.pumpAndSettle();
+
+      expect(controller.document.elementById("s")!.track, isNull);
+      expect(teamOf(controller).players[6].track, isNotNull);
+    });
+
+    testWidgets("clear all empties every channel at once", (tester) async {
+      var (controller, _, _) = pitch();
+      addTearDown(controller.dispose);
+      await pump(tester, CanvasTimeline(controller: controller));
+
+      expect(controller.document.hasKeyframes, isTrue);
+      await tester.tap(
+          find.byTooltip("Clear every keyframe in the whole canvas"));
+      await tester.pumpAndSettle();
+
+      expect(controller.document.hasKeyframes, isFalse);
+      expect(teamOf(controller).players[6].track, isNull);
+      expect(teamOf(controller).players[2].track, isNull);
+      expect(controller.document.elementById("s")!.track, isNull);
+    });
+
+    testWidgets("clear all is one undo step", (tester) async {
+      // A single decision, and unpicking it element by element is not
+      // something anybody would want to do twenty-two times.
+      var (controller, _, _) = pitch();
+      addTearDown(controller.dispose);
+      await pump(tester, CanvasTimeline(controller: controller));
+
+      await tester.tap(
+          find.byTooltip("Clear every keyframe in the whole canvas"));
+      await tester.pumpAndSettle();
+      controller.undo();
+
+      expect(controller.document.hasKeyframes, isTrue);
+      expect(teamOf(controller).players[6].track, isNotNull);
+      expect(controller.document.elementById("s")!.track, isNotNull);
+    });
+
+    testWidgets("both are off when there is nothing to clear", (tester) async {
+      var controller = CanvasController(const CanvasDocument(frames: 30));
+      addTearDown(controller.dispose);
+      await pump(tester, CanvasTimeline(controller: controller));
+
+      expect(
+          tester
+              .widget<InkWell>(find.descendant(
+                  of: find.byTooltip(
+                      "Clear every keyframe in the whole canvas"),
+                  matching: find.byType(InkWell)))
+              .onTap,
+          isNull);
+    });
+
+    testWidgets("a path's points are not clearable from the strip",
+        (tester) async {
+      // They are where the curve goes rather than a pose, so clearing them
+      // would delete the route instead of its timing -- and a path with no
+      // points is not a path.
+      var path = PathElement(
+        const ElementBase(id: "p", width: 200, height: 200),
+        nodes: const [
+          PathNode(x: 0, y: 0, frame: 0),
+          PathNode(x: 1, y: 1, frame: 10),
+        ],
+      );
+      var controller =
+          CanvasController(const CanvasDocument(frames: 30).addElement(path));
+      addTearDown(controller.dispose);
+      controller.selectOnly("p");
+      await pump(tester, CanvasTimeline(controller: controller));
+
+      var button = find.byTooltip(
+          "A path's marks are its points — remove them in its settings");
+      expect(button, findsOneWidget);
+      expect(
+          tester
+              .widget<InkWell>(find.descendant(
+                  of: button, matching: find.byType(InkWell)))
+              .onTap,
+          isNull);
+      expect((controller.document.elements.single as PathElement).nodes.length, 2);
+    });
+
+    test("clearing the whole document leaves paths their points", () {
+      // Re-applying a route is a button press; redrawing it is not.
+      var path = PathElement(
+        const ElementBase(id: "p", width: 200, height: 200),
+        nodes: const [
+          PathNode(x: 0, y: 0, frame: 0),
+          PathNode(x: 1, y: 1, frame: 10),
+        ],
+        follow: const PathFollow(elementId: "s"),
+      );
+      var shape = ShapeElement(const ElementBase(id: "s", width: 20, height: 20));
+      var controller = CanvasController(
+          const CanvasDocument(frames: 30).addElement(shape).addElement(path));
+      addTearDown(controller.dispose);
+
+      controller.applyPathFollow(
+          controller.document.elements.whereType<PathElement>().single);
+      expect(controller.document.hasKeyframes, isTrue);
+
+      controller.clearAllKeyframes();
+      expect(controller.document.hasKeyframes, isFalse);
+      expect(
+          controller.document.elements.whereType<PathElement>().single.nodes.length,
+          2);
+    });
   });
 }

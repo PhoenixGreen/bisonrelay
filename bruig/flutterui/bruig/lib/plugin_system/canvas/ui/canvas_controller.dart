@@ -654,6 +654,34 @@ class CanvasController extends ChangeNotifier {
             track: (spot.track ?? ElementTrack.empty).withKey(key))));
   }
 
+  /// clearElementKeyframes takes every keyframe off one element.
+  void clearElementKeyframes(String id) {
+    var element = _document.elementById(id);
+    if (element == null || element.track == null) return;
+    replaceElement(element.withBase(clearTrack: true));
+  }
+
+  /// clearPlayerKeyframes takes every keyframe off one player.
+  void clearPlayerKeyframes(String teamId, int index) {
+    var team = _document.elementById(teamId);
+    if (team is! TeamElement || index < 0 || index >= team.players.length) {
+      return;
+    }
+    if (team.players[index].track == null) return;
+    replaceElement(team.withPlayer(
+        index, team.players[index].copyWith(clearTrack: true)));
+  }
+
+  /// clearAllKeyframes takes the animation off the whole document.
+  ///
+  /// One undo step, deliberately: it is a single decision, and unpicking it
+  /// element by element is not something anybody would want to do twenty-two
+  /// times. See CanvasDocument.withoutKeyframes on what it leaves behind.
+  void clearAllKeyframes() {
+    if (!_document.hasKeyframes) return;
+    apply(_document.withoutKeyframes());
+  }
+
   /// removePlayerKeyframe drops one, and the track with it when it was the
   /// last -- so a player who no longer moves carries no empty track into the
   /// saved file.

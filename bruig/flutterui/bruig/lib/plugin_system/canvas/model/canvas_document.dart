@@ -135,6 +135,38 @@ class CanvasDocument {
   /// uses to work out its frame delays.
   double get durationSeconds => frames / (frameRate <= 0 ? 1 : frameRate);
 
+  /// hasKeyframes is whether anything in this document moves.
+  ///
+  /// Asks the players as well as the elements, for the same reason
+  /// [lastAnimatedFrame] does: a team's movement lives on its players, so a
+  /// pitch full of runs looks like a still from the outside.
+  bool get hasKeyframes {
+    for (var e in elements) {
+      if (e.track?.isEmpty == false) return true;
+      if (e is TeamElement) {
+        for (var p in e.players) {
+          if (p.track?.isEmpty == false) return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  /// withoutKeyframes is this document with every track taken off.
+  ///
+  /// Paths keep their points. A point is where the curve goes rather than a
+  /// pose, so clearing the animation should leave the routes drawn and empty
+  /// -- re-applying one is a button press, redrawing it is not.
+  CanvasDocument withoutKeyframes() => copyWith(elements: [
+        for (var e in elements)
+          if (e is TeamElement)
+            e.copyWith(players: [
+              for (var p in e.players) p.copyWith(clearTrack: true),
+            ]).withBase(clearTrack: true)
+          else
+            e.withBase(clearTrack: true),
+      ]);
+
   /// lastAnimatedFrame is the furthest frame any element has a keyframe on.
   ///
   /// Asked so the timeline can point out a document whose length is shorter

@@ -256,6 +256,34 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
     if (element != null) controller.removeKeyframe(element.id, frame);
   }
 
+  /// _clearChannel takes every keyframe off whatever the strip is showing.
+  ///
+  /// "Channel" rather than "element" because that is what the strip is: one
+  /// row of marks belonging to one thing, which may be an element or one
+  /// player of a team. It is the row you are looking at, cleared.
+  void _clearChannel() {
+    var team = controller.focusedTeam;
+    var index = controller.focusedPlayer;
+    if (team != null && index != null) {
+      controller.clearPlayerKeyframes(team.id, index);
+      return;
+    }
+    var element = controller.selected;
+    if (element != null) controller.clearElementKeyframes(element.id);
+  }
+
+  /// _canClearChannel is whether there is anything on this row to clear.
+  ///
+  /// Never for a path. A path's marks are its points -- where the curve goes,
+  /// not a pose -- so clearing them would delete the route rather than its
+  /// timing, and a path with no points is not a path. Its own row buttons are
+  /// where a point is removed.
+  bool get _canClearChannel {
+    if (_selectedPath != null) return false;
+    var track = _targetTrack;
+    return track != null && !track.isEmpty;
+  }
+
   /// _addKeyframe writes the selected element's current pose at the playhead.
   ///
   /// The pose it writes is whatever the element is showing *now*, which is the
@@ -457,6 +485,27 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
                 : keyHere != null
                     ? () => _removeTargetKey(controller.frame)
                     : _addKeyframe,
+          ),
+          // Clearing, beside the diamond that adds and removes one. The wider
+          // of the two is guarded by needing something to clear rather than by
+          // a dialog: both are one undo step, and a confirmation on every
+          // press is worse than an undo on the rare one.
+          CanvasIconButton(
+            icon: Icons.layers_clear_outlined,
+            tooltip: _selectedPath != null
+                ? "A path's marks are its points — remove them in its settings"
+                : target == null
+                    ? "Select an element, or click a player, to clear its "
+                        "keyframes"
+                    : "Clear every keyframe on $target",
+            onPressed: _canClearChannel ? _clearChannel : null,
+          ),
+          CanvasIconButton(
+            icon: Icons.delete_sweep_outlined,
+            tooltip: "Clear every keyframe in the whole canvas",
+            onPressed: document.hasKeyframes
+                ? controller.clearAllKeyframes
+                : null,
           ),
           _keyframeToggle(theme, target, keyHere != null),
           // A fixed gap rather than a Spacer: the row scrolls, so it has no
