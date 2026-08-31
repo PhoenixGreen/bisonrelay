@@ -388,9 +388,14 @@ class CanvasStageState extends State<CanvasStage> {
   Rect? get _selectionBounds {
     var elements = controller.selectedElements;
     if (elements.isEmpty) return null;
-    var box = elements.first.bounds;
+    // Where they are on this frame, not where they rest -- see
+    // CanvasElement.boundsAt. Using the resting bounds left the blue rectangle
+    // standing still while the element inside it animated away, which reads as
+    // the *contents* being animated rather than the element.
+    var frame = controller.frame;
+    var box = elements.first.boundsAt(frame);
     for (var e in elements.skip(1)) {
-      box = box.expandToInclude(e.bounds);
+      box = box.expandToInclude(e.boundsAt(frame));
     }
     return box;
   }
@@ -399,7 +404,10 @@ class CanvasStageState extends State<CanvasStage> {
   /// when several are chosen.
   double get _rotationOfSelection =>
       controller.selectedElements.length == 1
-          ? controller.selectedElements.first.rotationRadians
+          ? controller.selectedElements.first
+                  .rotationAt(controller.frame) *
+              math.pi /
+              180
           : 0;
 
   // ------------------------------------------------------------------------
@@ -423,23 +431,28 @@ class CanvasStageState extends State<CanvasStage> {
   /// element's rotation first so a rotated element is hit where it looks
   /// rather than where its unrotated box was.
   bool _containsPoint(CanvasElement e, Offset point) {
+    // Against where it is on this frame, for the same reason the selection box
+    // is: an animated element clicked at frame 20 has to be hit where it is
+    // drawn, not where it started.
+    var box = e.boundsAt(controller.frame);
+    var rotation = e.rotationAt(controller.frame);
     var local = point;
-    if (e.rotation != 0) {
-      var c = e.center;
+    if (rotation != 0) {
+      var c = box.center;
       var d = point - c;
-      var a = -e.rotationRadians;
+      var a = -rotation * math.pi / 180;
       local = c +
           Offset(d.dx * math.cos(a) - d.dy * math.sin(a),
               d.dx * math.sin(a) + d.dy * math.cos(a));
     }
-    if (!e.bounds.contains(local)) return false;
+    if (!box.contains(local)) return false;
 
     // A line is a stroke, not a rectangle: a diagonal line's bounding box is
     // mostly empty, and clicking that empty space to select the line behind it
     // is the reported "I can't click the thing under my arrow".
     if (e is ShapeElement && e.shape == ShapeKind.circle) {
-      var r = e.bounds.shortestSide / 2;
-      return (local - e.bounds.center).distance <= r;
+      var r = box.shortestSide / 2;
+      return (local - box.center).distance <= r;
     }
     return true;
   }
@@ -1179,12 +1192,13 @@ class CanvasStageState extends State<CanvasStage> {
     var element = document.elementById(id);
     if (element is! TextElement) return null;
 
-    var topLeft = _toStage(element.bounds.topLeft);
+    var box = element.boundsAt(controller.frame);
+    var topLeft = _toStage(box.topLeft);
     return CanvasTextEditor(
       key: ValueKey("edit-$id"),
       element: element,
-      rect: Rect.fromLTWH(topLeft.dx, topLeft.dy, element.width * _scale,
-          element.height * _scale),
+      rect: Rect.fromLTWH(topLeft.dx, topLeft.dy, box.width * _scale,
+          box.height * _scale),
       scale: _scale,
       onChanged: (text) {
         controller.beginInteraction();

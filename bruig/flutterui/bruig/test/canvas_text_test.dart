@@ -218,4 +218,74 @@ void main() {
       expect(filled.width, 300);
     });
   });
+
+  group("a line's angle", () {
+    CanvasDocument angled(double degrees, {bool hide = false}) => CanvasDocument(
+          size: const CanvasSize(width: 400),
+          background: const CanvasBackground(),
+          elements: [
+            LineElement(
+              // A real height: paintElement skips anything with a zero
+              // dimension, so a hairline drawn as height 0 never appears at
+              // all. The factory gives a new line four pixels for this reason.
+              ElementBase(
+                  id: "l", x: 40, y: 99, width: 320, height: 2,
+                  rotation: degrees),
+            ),
+            TextElement(
+              const ElementBase(id: "t", x: 0, y: 0, width: 400, height: 225),
+              text: "ALONGTHELINE",
+              textSpec: const TextSpec(
+                  fontSize: 20,
+                  align: TextAlignSpec.left,
+                  color: Color(0xFFFFFFFF)),
+              box: const BoxSpec(padding: 0),
+              curve: TextOnCurve(elementId: "l", hideHost: hide),
+            ),
+          ],
+        );
+
+    testWidgets("the text turns with it", (tester) async {
+      // Changing a line's angle moved the line and left its text lying flat
+      // where the line used to be -- the one thing attaching text to a line is
+      // supposed to prevent.
+      late List<double> flat, turned;
+      await tester.runAsync(() async {
+        flat = await inkColumns(angled(0));
+        turned = await inkColumns(angled(80));
+      });
+
+      expect(flat, isNotEmpty);
+      expect(turned, isNotEmpty);
+      // Turned almost upright, the words occupy a narrow band rather than the
+      // full width of the line.
+      var flatSpan = flat.last - flat.first;
+      var turnedSpan = turned.last - turned.first;
+      expect(turnedSpan, lessThan(flatSpan * 0.6));
+    });
+
+    test("hiding the line leaves the words", () {
+      // Not the line element's own Hide: a hidden element is skipped
+      // everywhere, this one included, so the text would go with it.
+      var document = angled(0, hide: true);
+      var back = CanvasDocument.decode(document.encode())!;
+      var text = back.elements.whereType<TextElement>().single;
+      expect(text.curve!.hideHost, isTrue);
+      expect(back.elements.whereType<LineElement>().length, 1,
+          reason: "the line is still in the document, just not drawn");
+    });
+
+    testWidgets("a hidden line draws nothing of itself", (tester) async {
+      late List<double> shown, hidden;
+      await tester.runAsync(() async {
+        shown = await inkColumns(angled(0));
+        hidden = await inkColumns(angled(0, hide: true));
+      });
+      // Both start at the line's own left edge, since the text is laid along
+      // it from there -- so what separates them is how much of the width has
+      // ink in it. A drawn line is continuous; letters have gaps between them.
+      expect(hidden.length, lessThan(shown.length * 0.9));
+      expect(hidden, isNotEmpty, reason: "the words are still there");
+    });
+  });
 }

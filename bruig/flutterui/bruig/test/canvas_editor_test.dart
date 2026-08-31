@@ -1616,4 +1616,103 @@ void main() {
           reason: "a player is not a layer and has nowhere else to be locked");
     });
   });
+
+  group("animated settings", () {
+    (CanvasController, CanvasElement) moving() {
+      var document = const CanvasDocument(frames: 30);
+      var element = ShapeElement(
+          const ElementBase(id: "s", x: 100, y: 50, width: 40, height: 40));
+      var controller = CanvasController(document.addElement(element));
+      controller.selectOnly("s");
+      controller.setKeyframe("s", const Keyframe(frame: 0));
+      controller.setKeyframe("s", const Keyframe(frame: 20, dx: 200, dy: 60));
+      return (controller, element);
+    }
+
+    testWidgets("X and Y show where the element is on this frame",
+        (tester) async {
+      // They showed where it *rests*, so scrubbing into the middle of a move
+      // left two numbers describing somewhere the element visibly was not.
+      var (controller, _) = moving();
+      addTearDown(controller.dispose);
+      controller.frame = 10;
+      await pump(tester, CanvasLayersPanel(controller: controller));
+
+      var x = find.byKey(const ValueKey("elementX"));
+      expect(find.descendant(of: x, matching: find.text("200")), findsOneWidget,
+          reason: "half way along a 100 to 300 move");
+    });
+
+    testWidgets("typing a position while animating writes a keyframe",
+        (tester) async {
+      var (controller, _) = moving();
+      addTearDown(controller.dispose);
+      controller.frame = 10;
+      await pump(tester, CanvasLayersPanel(controller: controller));
+
+      await tester.enterText(find.byKey(const ValueKey("elementX")), "500");
+      await tester.pumpAndSettle();
+
+      var element = controller.document.elementById("s")!;
+      expect(element.x, 100, reason: "the resting position is untouched");
+      expect(element.track!.keyAt(10)!.dx, 400);
+      expect(element.boundsAt(10).left, 500);
+      expect(element.boundsAt(0).left, 100, reason: "and frame 0 is unchanged");
+    });
+
+    testWidgets("the diamond adds and removes the pose here", (tester) async {
+      var (controller, _) = moving();
+      addTearDown(controller.dispose);
+      controller.frame = 7;
+      await pump(tester, CanvasLayersPanel(controller: controller));
+
+      expect(controller.document.elementById("s")!.track!.keyAt(7), isNull);
+      await tester.tap(
+          find.byTooltip("Add a keyframe here for this element's pose").first);
+      await tester.pumpAndSettle();
+      expect(controller.document.elementById("s")!.track!.keyAt(7), isNotNull);
+
+      await tester.tap(find
+          .byTooltip("Remove the keyframe here — it holds this element's "
+              "whole pose, not just its position")
+          .first);
+      await tester.pumpAndSettle();
+      expect(controller.document.elementById("s")!.track!.keyAt(7), isNull);
+    });
+
+    testWidgets("the diamonds are off on a still canvas", (tester) async {
+      var document = const CanvasDocument();
+      var element = newElement(ElementKind.shape, document);
+      var controller = CanvasController(document.addElement(element));
+      addTearDown(controller.dispose);
+      controller.selectOnly(element.id);
+      await pump(tester, CanvasLayersPanel(controller: controller));
+
+      var dot = find
+          .byTooltip("Give the canvas more than one frame to animate "
+              "its position")
+          .first;
+      expect(
+          tester
+              .widget<InkWell>(
+                  find.descendant(of: dot, matching: find.byType(InkWell)))
+              .onTap,
+          isNull);
+    });
+
+    testWidgets("angle and opacity follow the pose too", (tester) async {
+      var (controller, _) = moving();
+      addTearDown(controller.dispose);
+      controller.setKeyframe(
+          "s", const Keyframe(frame: 20, rotate: 90, opacity: 0.5));
+      controller.frame = 20;
+      await pump(tester, CanvasLayersPanel(controller: controller));
+
+      expect(
+          find.descendant(
+              of: find.byKey(const ValueKey("elementAngle")),
+              matching: find.text("90")),
+          findsOneWidget);
+    });
+  });
 }

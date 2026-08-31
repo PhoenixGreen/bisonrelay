@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/background_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
@@ -95,52 +96,146 @@ Widget _positionGroup(CanvasController controller, CanvasElement e,
   // without selecting it first, and where hiding something does not make the
   // panel you are hiding it from disappear. Having them in both places meant
   // two controls for one switch that could disagree about which icon meant on.
+
+  var frame = controller.frame;
+  var pose = e.poseAt(frame);
+  var box = e.boundsAt(frame);
+  var animated = controller.document.isAnimated;
+
+  /// posing is whether these fields are editing a keyframe rather than the
+  /// element's resting position. The same question the stage asks of a drag,
+  /// so a number typed here and a pixel dragged there mean the same thing.
+  var posing = controller.posesRatherThanMoves(e);
+
+  /// onKey is what the little diamonds do: add the pose at this frame, or take
+  /// it away. One keyframe holds every animated property at once, so all of
+  /// them light up together -- see CanvasKeyframeDot.
+  var hasKey = e.track?.keyAt(frame) != null;
+  void toggleKey() {
+    begin();
+    if (hasKey) {
+      controller.removeKeyframe(e.id, frame);
+    } else {
+      controller.setKeyframe(e.id, pose.copyWith(frame: frame));
+    }
+    commit();
+  }
+
+  Widget dot(String what) => CanvasKeyframeDot(
+        on: hasKey,
+        enabled: animated,
+        tooltip: !animated
+            ? "Give the canvas more than one frame to animate its $what"
+            : hasKey
+                ? "Remove the keyframe here — it holds this element's whole "
+                    "pose, not just its $what"
+                : "Add a keyframe here for this element's pose",
+        onPressed: toggleKey,
+      );
+
+  /// moveTo writes a position, as a pose while animating and as the resting
+  /// position otherwise.
+  ///
+  /// Showing and editing the *posed* value is the point. The fields used to
+  /// show where an element rests, so scrubbing to the middle of a move left X
+  /// and Y reading the start of it -- two numbers describing somewhere the
+  /// element visibly was not.
+  void moveTo({double? x, double? y}) {
+    begin();
+    if (!posing) {
+      write(e.withBase(x: x, y: y));
+      return;
+    }
+    var track = (e.track ?? ElementTrack.empty).seededFor(frame);
+    var at = track.at(frame);
+    write(e.withBase(
+      track: track.withKey(at.copyWith(
+        frame: frame,
+        dx: x == null ? at.dx : x - e.x,
+        dy: y == null ? at.dy : y - e.y,
+      )),
+    ));
+  }
+
   return CanvasControlGroup(label: e.kind.label, children: [
     CanvasNumberField(
+      key: const ValueKey("elementX"),
       label: "X",
-      value: e.x,
-      onChanged: (v) => write(e.withBase(x: v)),
+      value: box.left,
+      onChanged: (v) => moveTo(x: v),
       onCommit: commit,
     ),
+    dot("position"),
     CanvasNumberField(
+      key: const ValueKey("elementY"),
       label: "Y",
-      value: e.y,
-      onChanged: (v) => write(e.withBase(y: v)),
+      value: box.top,
+      onChanged: (v) => moveTo(y: v),
       onCommit: commit,
     ),
+    dot("position"),
+    // Width and height show what is on screen -- the resting size times the
+    // pose's scale -- but always edit the resting size. A pose scales evenly,
+    // so there is no keyframe that could hold a width without also holding a
+    // height, and pretending otherwise would give two fields one number.
     CanvasNumberField(
       label: "W",
-      value: e.width,
+      value: box.width,
       min: 1,
-      onChanged: (v) => write(e.withBase(width: v)),
+      onChanged: (v) =>
+          write(e.withBase(width: pose.scale == 0 ? v : v / pose.scale)),
       onCommit: commit,
     ),
     CanvasNumberField(
       label: "H",
-      value: e.height,
+      value: box.height,
       min: 1,
-      onChanged: (v) => write(e.withBase(height: v)),
+      onChanged: (v) =>
+          write(e.withBase(height: pose.scale == 0 ? v : v / pose.scale)),
       onCommit: commit,
     ),
+    dot("size"),
     CanvasNumberField(
+      key: const ValueKey("elementAngle"),
       label: "Angle",
-      value: e.rotation,
+      value: e.rotationAt(frame),
       min: -3600,
       max: 3600,
       width: 56,
       suffix: "°",
-      onChanged: (v) => write(e.withBase(rotation: v)),
-      onCommit: commit,
-    ),
-    CanvasSlider(
-      label: "Opacity",
-      value: e.opacity,
       onChanged: (v) {
         begin();
-        write(e.withBase(opacity: v));
+        if (!posing) {
+          write(e.withBase(rotation: v));
+          return;
+        }
+        var track = (e.track ?? ElementTrack.empty).seededFor(frame);
+        write(e.withBase(
+            track: track.withKey(track
+                .at(frame)
+                .copyWith(frame: frame, rotate: v - e.rotation))));
       },
       onCommit: commit,
     ),
+    dot("angle"),
+    CanvasSlider(
+      label: "Opacity",
+      value: e.opacityAt(frame),
+      onChanged: (v) {
+        begin();
+        if (!posing) {
+          write(e.withBase(opacity: v));
+          return;
+        }
+        var track = (e.track ?? ElementTrack.empty).seededFor(frame);
+        write(e.withBase(
+            track: track.withKey(track.at(frame).copyWith(
+                frame: frame,
+                opacity: e.opacity == 0 ? v : (v / e.opacity).clamp(0.0, 1.0)))));
+      },
+      onCommit: commit,
+    ),
+    dot("opacity"),
   ]);
 }
 
@@ -498,6 +593,14 @@ List<Widget> _textSettings(CanvasController controller, TextElement e,
           value: e.curve!.away,
           onChanged: (v) =>
               now(e.copyWith(curve: e.curve!.copyWith(away: v))),
+        ),
+        CanvasToggle(
+          // Not the line element's own Hide: a hidden element is skipped
+          // everywhere, this one included, so the text would go with it.
+          label: "Hide line",
+          value: e.curve!.hideHost,
+          onChanged: (v) =>
+              now(e.copyWith(curve: e.curve!.copyWith(hideHost: v))),
         ),
       ],
     ]),

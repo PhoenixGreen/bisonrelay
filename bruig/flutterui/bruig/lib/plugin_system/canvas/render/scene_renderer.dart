@@ -72,8 +72,20 @@ void paintCanvasDocument(
 
   _paintDocumentBackground(canvas, rect, doc, time, images);
 
+  // Lines that are only there to carry somebody's text, and have been asked to
+  // stay out of the picture. Collected first because the text that hides a line
+  // may be drawn after it.
+  var hidden = <String>{
+    for (var e in doc.elements)
+      if (e is TextElement && e.curve?.hideHost == true) e.curve!.elementId,
+  };
+
   for (var element in doc.elements) {
-    if (!element.visible || element.id == skipElement) continue;
+    if (!element.visible ||
+        element.id == skipElement ||
+        hidden.contains(element.id)) {
+      continue;
+    }
     paintElement(canvas, element, frame,
         frameRate: doc.frameRate,
         images: images,
@@ -225,6 +237,29 @@ List<Offset>? _curveFor(TextElement e, CanvasDocument? doc) {
   var on = e.curve;
   if (on == null || doc == null) return null;
   var host = doc.elementById(on.elementId);
+  var points = _curvePoints(host);
+  if (points == null) return null;
+
+  // Turned with the line, about the line's own centre -- the same transform
+  // the painter applies when it draws it. Without this, changing a line's
+  // angle moved the line and left its text lying flat where the line used to
+  // be, which is the one thing attaching text to a line is supposed to prevent.
+  if (host!.rotation == 0) return points;
+  var centre = host.center;
+  var cos = math.cos(host.rotationRadians);
+  var sin = math.sin(host.rotationRadians);
+  return [
+    for (var p in points)
+      Offset(
+        centre.dx + (p.dx - centre.dx) * cos - (p.dy - centre.dy) * sin,
+        centre.dy + (p.dx - centre.dx) * sin + (p.dy - centre.dy) * cos,
+      ),
+  ];
+}
+
+/// _curvePoints is the host's line as a polyline in its own unrotated
+/// coordinates.
+List<Offset>? _curvePoints(CanvasElement? host) {
   if (host is PathElement && host.nodes.length >= 2) {
     return [
       for (var i = 0; i < host.segments; i++)

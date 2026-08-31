@@ -238,6 +238,40 @@ abstract class CanvasElement {
   Rect get bounds => Rect.fromLTWH(x, y, width, height);
   Offset get center => bounds.center;
 
+  /// poseAt is where this element is on [frame], as an offset from where it
+  /// rests. See canvas_animation.dart.
+  Keyframe poseAt(int frame) => base.track?.at(frame) ?? Keyframe.rest;
+
+  /// boundsAt is where the element actually *is* on [frame].
+  ///
+  /// Everything that puts something on screen beside an element has to use
+  /// this rather than [bounds], and forgetting is the sort of bug that looks
+  /// like the animation itself is wrong. The selection box and the handles
+  /// used [bounds], so scrubbing an animated text element moved the words and
+  /// left the blue rectangle behind at the resting position -- which reads
+  /// exactly as though the text were being animated *inside* a box that was
+  /// standing still.
+  ///
+  /// The transform matches the painter's, in the painter's order: the pose's
+  /// shift in document space, then the scale about the centre it has moved to.
+  Rect boundsAt(int frame) {
+    var pose = poseAt(frame);
+    var box = bounds.shift(Offset(pose.dx, pose.dy));
+    if (pose.scale == 1) return box;
+    return Rect.fromCenter(
+      center: box.center,
+      width: box.width * pose.scale,
+      height: box.height * pose.scale,
+    );
+  }
+
+  /// rotationAt and opacityAt are the same question for the other two things a
+  /// pose carries.
+  double rotationAt(int frame) => rotation + poseAt(frame).rotate;
+
+  double opacityAt(int frame) =>
+      (opacity * poseAt(frame).opacity).clamp(0.0, 1.0);
+
   /// rotationRadians is what the painter and the hit test both want.
   double get rotationRadians => rotation * math.pi / 180;
 

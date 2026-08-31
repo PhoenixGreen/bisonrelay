@@ -110,11 +110,21 @@ class TextOnCurve {
   /// a straight line does, and the alternative is glyphs overlapping.
   final double spacing;
 
+  /// hideHost leaves the line itself undrawn.
+  ///
+  /// Usually what is wanted. A line drawn to carry a caption round the top of
+  /// a badge is scaffolding: the words are the design and the line is how they
+  /// were placed. Hiding the line element itself would work, except that a
+  /// hidden element is skipped everywhere -- including here -- so the text
+  /// would go with it.
+  final bool hideHost;
+
   const TextOnCurve({
     required this.elementId,
     this.offset = 0,
     this.away = false,
     this.spacing = 0,
+    this.hideHost = false,
   });
 
   TextOnCurve copyWith({
@@ -122,12 +132,14 @@ class TextOnCurve {
     double? offset,
     bool? away,
     double? spacing,
+    bool? hideHost,
   }) =>
       TextOnCurve(
         elementId: elementId ?? this.elementId,
         offset: offset ?? this.offset,
         away: away ?? this.away,
         spacing: spacing ?? this.spacing,
+        hideHost: hideHost ?? this.hideHost,
       );
 
   Map<String, dynamic> toJson() => {
@@ -135,6 +147,7 @@ class TextOnCurve {
         if (offset != 0) "offset": offset,
         if (away) "away": true,
         if (spacing != 0) "spacing": spacing,
+        if (hideHost) "hideHost": true,
       };
 
   factory TextOnCurve.fromJson(Map<String, dynamic> json) => TextOnCurve(
@@ -142,6 +155,7 @@ class TextOnCurve {
         offset: jsonDouble(json["offset"], 0),
         away: jsonBool(json["away"], false),
         spacing: jsonDouble(json["spacing"], 0),
+        hideHost: jsonBool(json["hideHost"], false),
       );
 }
 

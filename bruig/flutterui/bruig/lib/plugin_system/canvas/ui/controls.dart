@@ -819,3 +819,64 @@ bool isTypingInAField() {
   if (context.widget is EditableText) return true;
   return context.findAncestorWidgetOfExactType<EditableText>() != null;
 }
+
+/// CanvasKeyframeDot is the little diamond beside a setting that can be
+/// animated.
+///
+/// It says two things at once: that the setting *can* hold a keyframe, and
+/// whether there is one on the frame being looked at. Pressing it adds or
+/// removes one.
+///
+/// A keyframe on this canvas is a whole pose -- where the element is, how big,
+/// how turned, how faded -- rather than one channel per property, so every dot
+/// on an element's row lights up together and pressing any of them adds the
+/// same keyframe. That is a real limitation and the tooltip says so; the
+/// alternative is four tracks per element and four rows of marks on a strip
+/// that has room for one.
+class CanvasKeyframeDot extends StatelessWidget {
+  /// on is whether a keyframe sits on the current frame.
+  final bool on;
+
+  /// enabled is false when the document is a still, where a keyframe would
+  /// have nothing to interpolate towards.
+  final bool enabled;
+
+  final String tooltip;
+  final VoidCallback onPressed;
+
+  const CanvasKeyframeDot({
+    required this.on,
+    required this.tooltip,
+    required this.onPressed,
+    this.enabled = true,
+    super.key,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    var theme = ThemeNotifier.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(right: 4, top: controlLabelHeight),
+      child: Tooltip(
+        message: tooltip,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(4),
+          onTap: enabled ? onPressed : null,
+          child: SizedBox(
+            width: 18,
+            height: controlHeight,
+            child: Icon(
+              on ? Icons.diamond : Icons.diamond_outlined,
+              size: 11,
+              color: !enabled
+                  ? theme.colors.onSurfaceVariant.withValues(alpha: 0.25)
+                  : on
+                      ? theme.colors.primary
+                      : theme.colors.onSurfaceVariant.withValues(alpha: 0.55),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}

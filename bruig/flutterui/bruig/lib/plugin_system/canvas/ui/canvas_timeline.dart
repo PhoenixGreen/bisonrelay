@@ -834,9 +834,14 @@ class _TimelinePainter extends CustomPainter {
       size,
       y: _rulerHeight + 14,
       frames: [for (var k in keyframes) k.frame],
-      color: colors.primary,
+      // Muted, the same weight as the transport's own icons. They were all
+      // drawn in the accent, which is the colour that means "this one" -- so
+      // with every mark shouting, the selected one had nothing left to say
+      // with and needed a ring drawn round it to be picked out at all.
+      color: colors.onSurfaceVariant.withValues(alpha: 0.65),
       diamond: true,
       selected: selectedKeyframe,
+      selectedColor: colors.primary,
     );
     _paintMarks(
       canvas,
@@ -872,14 +877,18 @@ class _TimelinePainter extends CustomPainter {
     required Color color,
     required bool diamond,
 
-    /// selected is drawn with a ring around it, so the one Delete will take is
-    /// the one that looks picked out.
+    /// selected is drawn in [selectedColor] instead of [color]. The colour is
+    /// the whole signal -- a ring as well was belt and braces on a mark nine
+    /// pixels wide.
     int? selected,
+    Color? selectedColor,
   }) {
     if (y > size.height) return;
     var paint = Paint()..color = color;
+    var chosen = Paint()..color = selectedColor ?? color;
     for (var f in frames) {
       var x = xFor(f);
+      var ink = f == selected ? chosen : paint;
       if (diamond) {
         canvas.drawPath(
           Path()
@@ -888,28 +897,14 @@ class _TimelinePainter extends CustomPainter {
             ..lineTo(x, y + 5)
             ..lineTo(x - 5, y)
             ..close(),
-          paint,
+          ink,
         );
       } else {
         canvas.drawRRect(
           RRect.fromRectAndRadius(
               Rect.fromCenter(center: Offset(x, y), width: 9, height: 9),
               const Radius.circular(2)),
-          paint,
-        );
-      }
-
-      // A ring rather than a different fill, so the mark keeps the colour that
-      // says what kind of mark it is and gains something that says it is the
-      // one picked out.
-      if (f == selected) {
-        canvas.drawCircle(
-          Offset(x, y),
-          8,
-          Paint()
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = 1.5
-            ..color = const Color(0xFFFFFFFF),
+          ink,
         );
       }
     }
