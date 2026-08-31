@@ -1716,4 +1716,88 @@ void main() {
           findsOneWidget);
     });
   });
+
+  group("the shape settings", () {
+    /// panel builds an element's settings the way the Layers sidebar does.
+    Future<CanvasController> panel(WidgetTester tester, ShapeElement shape,
+        {String? text}) async {
+      var element = text == null ? shape : shape.copyWith(text: text);
+      var controller =
+          CanvasController(const CanvasDocument().addElement(element));
+      addTearDown(controller.dispose);
+      controller.selectOnly(element.id);
+      await pump(tester, CanvasLayersPanel(controller: controller));
+      return controller;
+    }
+
+    ShapeElement shapeOf(ShapeKind kind) => ShapeElement(
+          const ElementBase(id: "s", width: 200, height: 120),
+          shape: kind,
+        );
+
+    testWidgets("a bubble shows its own settings, label or no label",
+        (tester) async {
+      // They were nested inside "if there is a label" by accident, so a bubble
+      // with nothing written in it offered none of them -- which is exactly
+      // the state a bubble is in when it has just been added.
+      await panel(tester, shapeOf(ShapeKind.speechBubble));
+      expect(find.text("BUBBLE"), findsOneWidget);
+      expect(find.text("Body"), findsOneWidget);
+      expect(find.text("Tail"), findsOneWidget);
+      expect(find.text("Points"), findsOneWidget);
+    });
+
+    testWidgets("and still shows them once it has one", (tester) async {
+      await panel(tester, shapeOf(ShapeKind.speechBubble), text: "Hello");
+      expect(find.text("BUBBLE"), findsOneWidget);
+      expect(find.text("LABEL TYPE"), findsOneWidget);
+    });
+
+    testWidgets("another shape shows none of them", (tester) async {
+      await panel(tester, shapeOf(ShapeKind.star), text: "Hi");
+      expect(find.text("BUBBLE"), findsNothing);
+      expect(find.text("Tail"), findsNothing);
+    });
+
+    testWidgets("the label's type appears only when there is a label",
+        (tester) async {
+      await panel(tester, shapeOf(ShapeKind.star));
+      expect(find.text("LABEL TYPE"), findsNothing);
+    });
+
+    testWidgets("changing the tail writes it to the element", (tester) async {
+      var controller = await panel(tester, shapeOf(ShapeKind.speechBubble));
+
+      await tester.tap(find.text(BubbleTail.pointer.label).first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(BubbleTail.thought.label).last);
+      await tester.pumpAndSettle();
+
+      var after = controller.document.elements.single as ShapeElement;
+      expect(after.bubble.tail, BubbleTail.thought);
+    });
+
+    testWidgets("the tail angle can be typed", (tester) async {
+      var controller = await panel(tester, shapeOf(ShapeKind.speechBubble));
+      await tester.enterText(
+          find.byKey(const ValueKey("bubbleTailAngle")), "270");
+      await tester.pump();
+      expect(
+          (controller.document.elements.single as ShapeElement).bubble.tailAngle,
+          270);
+    });
+
+    testWidgets("the curl appears only for a curved tail", (tester) async {
+      await panel(tester, shapeOf(ShapeKind.speechBubble));
+      expect(find.text("Curl"), findsNothing);
+
+      var curved = ShapeElement(
+        const ElementBase(id: "s", width: 200, height: 120),
+        shape: ShapeKind.speechBubble,
+        bubble: const SpeechBubbleSpec(tail: BubbleTail.curved),
+      );
+      await panel(tester, curved);
+      expect(find.text("Curl"), findsOneWidget);
+    });
+  });
 }

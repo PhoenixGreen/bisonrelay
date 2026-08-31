@@ -774,8 +774,7 @@ List<Widget> _shapeSettings(ShapeElement e, _Write write, VoidCallback begin,
           onCommit: commit,
         ),
       ]),
-      if (e.text.isNotEmpty)
-        // Only when it is a bubble: every one of these is meaningless on a star.
+      // Only when it is a bubble: every one of these is meaningless on a star.
       if (e.shape == ShapeKind.speechBubble)
         CanvasControlGroup(label: "Bubble", children: [
           CanvasDropdown<BubbleBody>(
@@ -853,7 +852,9 @@ List<Widget> _shapeSettings(ShapeElement e, _Write write, VoidCallback begin,
               ),
           ],
         ]),
-      ..._typeGroups(e.textSpec, (spec) => write(e.copyWith(textSpec: spec)),
+      // The label's type, and only when there is a label to set.
+      if (e.text.isNotEmpty)
+        ..._typeGroups(e.textSpec, (spec) => write(e.copyWith(textSpec: spec)),
             begin, commit,
             label: "Label type"),
     ];
