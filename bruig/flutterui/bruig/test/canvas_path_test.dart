@@ -254,4 +254,100 @@ void main() {
           reason: "the shorter run, not the two runs together");
     });
   });
+
+  group("adding points", () {
+    test("inserting keeps the curve exactly where it was", () {
+      // By de Casteljau subdivision rather than by dropping a point on the
+      // line and guessing handles: adding somewhere to grab a run must not
+      // move the run.
+      var path = PathElement(
+        const ElementBase(id: "p", x: 0, y: 0, width: 100, height: 100),
+        nodes: const [
+          PathNode(x: 0, y: 0, outDx: 0.5, outDy: 0.4, frame: 0),
+          PathNode(x: 1, y: 1, inDx: -0.3, inDy: -0.6, frame: 20),
+        ],
+      );
+      var before = [
+        for (var i = 0; i <= 20; i++) path.positionAtFrame(i)!,
+      ];
+
+      var after = path.insertAfter(0);
+      expect(after.nodes.length, 3);
+      for (var i = 0; i <= 20; i++) {
+        var was = before[i];
+        var now = after.positionAtFrame(i)!;
+        expect((now - was).distance, lessThan(1.0), reason: "frame $i moved");
+      }
+    });
+
+    test("the inserted point is timed between its neighbours", () {
+      var path = PathElement(
+        const ElementBase(id: "p", width: 100, height: 100),
+        nodes: const [
+          PathNode(x: 0, y: 0, frame: 4),
+          PathNode(x: 1, y: 0, frame: 16),
+        ],
+      ).insertAfter(0);
+      expect(path.nodes[1].frame, 10);
+    });
+
+    test("appending carries on in the direction the path was going", () {
+      // A new point dropped in the middle of the box has to be dragged into
+      // place before it means anything.
+      var path = PathElement(
+        const ElementBase(id: "p", width: 100, height: 100),
+        nodes: const [
+          PathNode(x: 0.1, y: 0.5, frame: 0),
+          PathNode(x: 0.4, y: 0.5, frame: 6),
+        ],
+      ).appendNode();
+
+      expect(path.nodes.length, 3);
+      expect(path.nodes.last.x, closeTo(0.7, 0.0001));
+      expect(path.nodes.last.frame, 12, reason: "the same gap again");
+    });
+
+    test("appending respects the document's length", () {
+      var path = PathElement(
+        const ElementBase(id: "p", width: 100, height: 100),
+        nodes: const [
+          PathNode(x: 0, y: 0, frame: 0),
+          PathNode(x: 0.5, y: 0, frame: 20),
+        ],
+      ).appendNode(maxFrame: 23);
+      expect(path.nodes.last.frame, 23);
+    });
+
+    test("insertAtFrame splits whichever segment spans the frame", () {
+      var path = PathElement(
+        const ElementBase(id: "p", width: 100, height: 100),
+        nodes: const [
+          PathNode(x: 0, y: 0, frame: 0),
+          PathNode(x: 0.5, y: 0, frame: 10),
+          PathNode(x: 1, y: 0, frame: 20),
+        ],
+      );
+      var made = path.insertAtFrame(15);
+      expect(made.nodes.length, 4);
+      expect(made.nodes[2].frame, 15);
+      expect(made.nodes.map((n) => n.frame).toList(), [0, 10, 15, 20],
+          reason: "and the order is still increasing");
+
+      // A frame already occupied, or outside the run, adds nothing.
+      expect(path.insertAtFrame(10).nodes.length, 3);
+      expect(path.insertAtFrame(99).nodes.length, 3);
+    });
+
+    test("removing keeps at least two points", () {
+      var path = PathElement(
+        const ElementBase(id: "p", width: 100, height: 100),
+        nodes: const [
+          PathNode(x: 0, y: 0, frame: 0),
+          PathNode(x: 1, y: 0, frame: 10),
+        ],
+      );
+      expect(path.withoutNode(0).nodes.length, 2,
+          reason: "one point is not a path");
+    });
+  });
 }

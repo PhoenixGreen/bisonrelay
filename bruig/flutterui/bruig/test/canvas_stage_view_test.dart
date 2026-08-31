@@ -900,4 +900,103 @@ void main() {
       expect(controller.document.elements.single.x, isNot(team.x));
     });
   });
+
+  group("two teams on one pitch", () {
+    /// pitch is two teams whose boxes overlap, which is what a real one is:
+    /// each covers its own half plus a bit, so a player standing near the
+    /// halfway line is inside both.
+    (CanvasController, TeamElement, TeamElement) pitch() {
+      var document = const CanvasDocument();
+      var w = document.size.width.toDouble();
+      var h = document.size.height.toDouble();
+      var home = TeamElement(
+        ElementBase(
+            id: "home", name: "Home", x: 0, y: 0, width: w * 0.6, height: h),
+        dotWidth: 50,
+        dotHeight: 50,
+        frameLocked: true,
+      ).withFormation(TeamFormation.f442);
+      var away = TeamElement(
+        ElementBase(
+            id: "away",
+            name: "Away",
+            x: w * 0.4,
+            y: 0,
+            width: w * 0.6,
+            height: h),
+        dotWidth: 50,
+        dotHeight: 50,
+        frameLocked: true,
+      ).withFormation(TeamFormation.f442, mirror: true);
+
+      var controller =
+          CanvasController(document.addElement(home).addElement(away));
+      return (controller, home, away);
+    }
+
+    testWidgets("a player wins against the other team's box", (tester) async {
+      // The reported problem. The away box is drawn last and covers the home
+      // strikers, so clicking one used to find the away team's box first and
+      // pick that up instead.
+      var (controller, home, _) = pitch();
+      addTearDown(controller.dispose);
+      var stage = await pump(tester, controller);
+
+      var striker = home.players.last;
+      var at = stage.pageRect.topLeft +
+          home.centreOf(striker) *
+              stage.pageRect.width /
+              controller.document.size.width.toDouble();
+
+      await tester.dragFrom(at, const Offset(30, 0));
+      await tester.pumpAndSettle();
+
+      expect(controller.selection, {"home"},
+          reason: "the player's own team was selected, not the box on top");
+      var after = controller.document.elementById("home") as TeamElement;
+      expect(after.players.last.dx, greaterThan(striker.dx));
+    });
+
+    testWidgets("a player outside his own box is still grabbable",
+        (tester) async {
+      // A player is placed as a fraction of the box but is not confined to it,
+      // so the ordinary element hit test never returned his team at all.
+      var (controller, home, _) = pitch();
+      addTearDown(controller.dispose);
+
+      // Push him well past the right-hand edge of his own team's box.
+      var moved = home.withPlayer(10, home.players[10].copyWith(dx: 1.4));
+      controller.replaceElement(moved);
+      var stage = await pump(tester, controller);
+
+      var at = stage.pageRect.topLeft +
+          moved.centreOf(moved.players[10]) *
+              stage.pageRect.width /
+              controller.document.size.width.toDouble();
+
+      await tester.dragFrom(at, const Offset(20, 0));
+      await tester.pumpAndSettle();
+
+      expect(controller.selection, {"home"});
+      var after = controller.document.elementById("home") as TeamElement;
+      expect(after.players[10].dx, greaterThan(1.4));
+    });
+
+    testWidgets("empty grass between them still selects nothing",
+        (tester) async {
+      // Both boxes are frame-locked, so a drag on the pitch itself must not
+      // slide either team.
+      var (controller, home, away) = pitch();
+      addTearDown(controller.dispose);
+      var stage = await pump(tester, controller);
+
+      await tester.dragFrom(
+          Offset(stage.pageRect.center.dx, stage.pageRect.top + 6),
+          const Offset(50, 0));
+      await tester.pumpAndSettle();
+
+      expect((controller.document.elementById("home") as TeamElement).x, home.x);
+      expect((controller.document.elementById("away") as TeamElement).x, away.x);
+    });
+  });
 }

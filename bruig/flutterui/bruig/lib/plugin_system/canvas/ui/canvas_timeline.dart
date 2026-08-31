@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
@@ -53,6 +54,15 @@ const double _notesGutter = 20;
 /// _rulerHeight is the frame numbers and the playhead.
 const double _rulerHeight = 22;
 
+/// _markGrabWidth and _markGrabHeight are how close the pointer has to be to a
+/// keyframe mark to take hold of it rather than scrub.
+///
+/// Generous horizontally, because a mark is a few pixels wide and a timeline
+/// squeezed to a hundred frames puts them close together; tight vertically, so
+/// a drag anywhere else on the strip is still a scrub.
+const double _markGrabWidth = 9;
+const double _markGrabHeight = 11;
+
 class CanvasTimeline extends StatefulWidget {
   final CanvasController controller;
 
@@ -77,6 +87,14 @@ class CanvasTimeline extends StatefulWidget {
 
 class _CanvasTimelineState extends State<CanvasTimeline> {
   CanvasController get controller => widget.controller;
+
+  /// _dragKey is the frame of the mark being dragged along the ruler, or null
+  /// while the drag is an ordinary scrub.
+  int? _dragKey;
+
+  /// _pressedFrame is the mark under the pointer when it went down, before any
+  /// drag was recognised. See onHorizontalDragDown.
+  int? _pressedFrame;
 
 
   @override
@@ -134,14 +152,88 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
     if (team != null && index != null && index < team.players.length) {
       return team.players[index].track;
     }
+    // A path's marks are its points. Its own track is empty -- what moves is
+    // the follower, whose keyframes the path writes -- so without this a
+    // selected path showed a bare strip and the one thing worth retiming from
+    // the timeline could not be reached from it.
+    var path = _selectedPath;
+    if (path != null) {
+      return ElementTrack([for (var n in path.nodes) Keyframe(frame: n.frame)]);
+    }
     return controller.selected?.track;
+  }
+
+  /// _selectedPath is the selected element when it is a path.
+  PathElement? get _selectedPath {
+    var element = controller.selected;
+    return element is PathElement ? element : null;
+  }
+
+  /// _retime moves a mark from one frame to another.
+  ///
+  /// One entry point for the three things a mark can belong to, because the
+  /// ruler that drags them does not know or care which it is holding.
+  void _retime(int from, int to) {
+    if (from == to) return;
+
+    var path = _selectedPath;
+    if (path != null) {
+      var index = path.nodes.indexWhere((n) => n.frame == from);
+      if (index < 0) return;
+      var next = path.retimeNode(index, to);
+      controller.replaceElement(next);
+      // Re-baked, or the follower goes on running the old timing while the
+      // point sits somewhere else -- the route and the movement are meant to
+      // be the same thing.
+      controller.applyPathFollow(next);
+      return;
+    }
+
+    var track = _targetTrack;
+    var key = track?.keyAt(from);
+    if (track == null || key == null) return;
+    // Not through _setTargetKey/_removeTargetKey, which route a path to its
+    // points; a path has already been dealt with above.
+    var moved = track.withoutFrame(from).withKey(key.copyWith(frame: to));
+    var team = controller.focusedTeam;
+    var index = controller.focusedPlayer;
+    if (team != null && index != null) {
+      controller.replaceElement(team.withPlayer(
+          index, team.players[index].copyWith(track: moved)));
+      return;
+    }
+    var element = controller.selected;
+    if (element != null) controller.replaceElement(element.withBase(track: moved));
   }
 
   bool get _hasTarget =>
       (controller.focusedTeam != null && controller.focusedPlayer != null) ||
       controller.selected != null;
 
+  /// _pathKeyframe adds or removes a *point* when a path is selected.
+  ///
+  /// The diamond means the same thing it always does -- "there is something
+  /// here" -- and for a path the something is a point. Routed here rather than
+  /// through setKeyframe, which would write a pose onto the path's own track,
+  /// where nothing reads it: what moves is the follower.
+  bool _pathKeyframe({required bool add}) {
+    var path = _selectedPath;
+    if (path == null) return false;
+    PathElement next;
+    if (add) {
+      next = path.insertAtFrame(controller.frame);
+    } else {
+      var index = path.nodeIndexAtFrame(controller.frame);
+      next = index == null ? path : path.withoutNode(index);
+    }
+    if (identical(next, path)) return true;
+    controller.replaceElement(next);
+    controller.applyPathFollow(next);
+    return true;
+  }
+
   void _setTargetKey(Keyframe key) {
+    if (_pathKeyframe(add: true)) return;
     var team = controller.focusedTeam;
     var index = controller.focusedPlayer;
     if (team != null && index != null) {
@@ -153,6 +245,7 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
   }
 
   void _removeTargetKey(int frame) {
+    if (_pathKeyframe(add: false)) return;
     var team = controller.focusedTeam;
     var index = controller.focusedPlayer;
     if (team != null && index != null) {
@@ -272,7 +365,12 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
           ),
           const SizedBox(width: 6),
           SizedBox(
-            width: 56,
+            // Wide enough for the longest fraction this can ever show, which
+            // is both ends at the frame cap. Sized to the worst case rather
+            // than to the usual one because the box does not grow: at 56 it
+            // fitted "1/24" and wrapped "223/240" onto a second line, pushing
+            // the row's height out and the digits half out of sight.
+            width: 104,
             child: Padding(
               padding: const EdgeInsets.only(top: controlLabelHeight),
               child: Text(
@@ -280,6 +378,11 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
                 // while scrubbing, and "Frame 1 of 100" is three words and
                 // ninety pixels to say what "1/100" says in five characters.
                 "${controller.frame + 1}/${document.frames}",
+                // One line whatever happens: a readout that reflows while
+                // scrubbing moves everything beside it.
+                maxLines: 1,
+                softWrap: false,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                     fontSize: 12, color: theme.colors.onSurfaceVariant),
               ),
@@ -420,9 +523,41 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
                 controller.frame =
                     _frameAt(details.localPosition.dx, constraints.maxWidth);
               },
-              onHorizontalDragStart: (_) => controller.pause(),
-              onHorizontalDragUpdate: (details) => controller.frame =
-                  _frameAt(details.localPosition.dx, constraints.maxWidth),
+              // A drag that starts on a mark retimes that mark; anywhere else
+              // it scrubs. Deciding once, at the start, rather than on every
+              // update: a mark dragged past the pointer's own starting row
+              // would otherwise stop being dragged half way through.
+              // The mark is found on the *press*, not on the drag start.
+              // A horizontal drag is not recognised until the pointer has
+              // moved about eighteen pixels, by which time its reported start
+              // is well past whatever it was aimed at -- so looking for a mark
+              // there finds nothing, and every attempt to retime one scrubbed
+              // instead.
+              onHorizontalDragDown: (details) {
+                _pressedFrame = _keyframeAt(
+                    details.localPosition, constraints.maxWidth);
+              },
+              onHorizontalDragStart: (_) {
+                controller.pause();
+                _dragKey = _pressedFrame;
+              },
+              onHorizontalDragUpdate: (details) {
+                var at = _frameAt(details.localPosition.dx, constraints.maxWidth);
+                if (_dragKey == null) {
+                  controller.frame = at;
+                  return;
+                }
+                _retime(_dragKey!, at);
+                _dragKey = at;
+              },
+              onHorizontalDragEnd: (_) {
+                _dragKey = null;
+                _pressedFrame = null;
+              },
+              onHorizontalDragCancel: () {
+                _dragKey = null;
+                _pressedFrame = null;
+              },
               child: CustomPaint(
                 size: Size(constraints.maxWidth, constraints.maxHeight),
                 painter: _TimelinePainter(
@@ -474,6 +609,28 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
         return KeyEventResult.ignored;
     }
     return KeyEventResult.handled;
+  }
+
+  /// _keyframeAt is the mark under [local], or null.
+  ///
+  /// Only in the keyframe row's own band -- see _TimelinePainter, which draws
+  /// them at _rulerHeight + 14. A drag that starts on the ruler's numbers is a
+  /// scrub even if it happens to begin above a mark, because that is where the
+  /// playhead is grabbed.
+  int? _keyframeAt(Offset local, double width) {
+    var keys = _targetTrack?.keys ?? const <Keyframe>[];
+    if (keys.isEmpty) return null;
+    if ((local.dy - (_rulerHeight + 14)).abs() > _markGrabHeight) return null;
+
+    int? best;
+    var nearest = _markGrabWidth;
+    for (var key in keys) {
+      var distance = (local.dx - _xFor(key.frame, width)).abs();
+      if (distance > nearest) continue;
+      nearest = distance;
+      best = key.frame;
+    }
+    return best;
   }
 
   void _replaceAction(TimelineAction action) {
@@ -672,6 +829,10 @@ class _CanvasKeyframeBarState extends State<CanvasKeyframeBar> {
     if (team != null && index != null && index < team.players.length) {
       return team.players[index].track;
     }
+    var path = controller.selected;
+    if (path is PathElement) {
+      return ElementTrack([for (var n in path.nodes) Keyframe(frame: n.frame)]);
+    }
     return controller.selected?.track;
   }
 
@@ -686,11 +847,46 @@ class _CanvasKeyframeBarState extends State<CanvasKeyframeBar> {
     if (element != null) controller.setKeyframe(element.id, key);
   }
 
+  /// _message is the bar showing one line of text instead of controls.
+  Widget _message(ThemeNotifier theme, String text) => Material(
+        color: theme.colors.surfaceContainerLow,
+        elevation: 6,
+        child: Container(
+          height: keyframeBarHeight,
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          alignment: Alignment.centerLeft,
+          decoration: BoxDecoration(
+            border: Border(
+                top: BorderSide(color: theme.colors.outlineVariant, width: 1)),
+          ),
+          child: Text(text,
+              style:
+                  TextStyle(fontSize: 11, color: theme.colors.onSurfaceVariant)),
+        ),
+      );
+
   @override
   Widget build(BuildContext context) {
     var theme = ThemeNotifier.of(context);
     var keyHere = _trackHere?.keyAt(controller.frame);
     var target = _target;
+    var path = controller.selected;
+
+    // A path's marks are points on a route, not poses. Easing, fade, scale and
+    // turn all belong to the follower rather than to the point, so offering
+    // them here would be four controls that quietly do nothing.
+    if (path is PathElement) {
+      return _message(
+        theme,
+        keyHere == null
+            ? "No point on this frame. The diamond adds one, "
+                "and points drag along the strip to retime the run."
+            : "Point ${(path.nodeIndexAtFrame(controller.frame) ?? 0) + 1} "
+                "of ${path.nodes.length}. Drag it along the strip to change "
+                "when ${controller.followerLabel(path.follow)} reaches it.",
+      );
+    }
 
     return Material(
       // Opaque and raised: it sits on top of the design rather than above it,

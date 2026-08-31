@@ -322,6 +322,112 @@ class PathElement extends CanvasElement {
     return copyWith(nodes: next);
   }
 
+  /// insertAfter adds a point in the middle of the segment following [index],
+  /// without changing the shape of the curve.
+  ///
+  /// By de Casteljau subdivision rather than by dropping a point on the line
+  /// and guessing handles for it: splitting a cubic at a parameter gives two
+  /// cubics whose union is exactly the original, so adding a point to a run
+  /// leaves the run alone. Guessing would move the curve every time somebody
+  /// asked for somewhere to grab it, which is the opposite of what adding a
+  /// control point is for.
+  PathElement insertAfter(int index) {
+    if (index < 0 || index >= nodes.length - 1) return this;
+    var a = nodes[index];
+    var b = nodes[index + 1];
+
+    Offset lerp(Offset p, Offset q) => Offset((p.dx + q.dx) / 2, (p.dy + q.dy) / 2);
+
+    // In the element's own fractional space, which is what the nodes store.
+    var p0 = a.point;
+    var p1 = (a.outDx == 0 && a.outDy == 0) ? a.point : a.outHandle;
+    var p2 = (b.inDx == 0 && b.inDy == 0) ? b.point : b.inHandle;
+    var p3 = b.point;
+
+    var q0 = lerp(p0, p1);
+    var q1 = lerp(p1, p2);
+    var q2 = lerp(p2, p3);
+    var r0 = lerp(q0, q1);
+    var r1 = lerp(q1, q2);
+    var mid = lerp(r0, r1);
+
+    var frame = (a.frame + b.frame) ~/ 2;
+    var made = PathNode(
+      x: mid.dx,
+      y: mid.dy,
+      inDx: r0.dx - mid.dx,
+      inDy: r0.dy - mid.dy,
+      outDx: r1.dx - mid.dx,
+      outDy: r1.dy - mid.dy,
+      frame: frame,
+    );
+
+    var next = [...nodes];
+    next[index] = a.copyWith(outDx: q0.dx - a.x, outDy: q0.dy - a.y);
+    next[index + 1] = b.copyWith(inDx: q2.dx - b.x, inDy: q2.dy - b.y);
+    next.insert(index + 1, made);
+    return copyWith(nodes: next);
+  }
+
+  /// appendNode carries the path on past its last point.
+  ///
+  /// Continuing the direction it was already going rather than dropping the
+  /// point in the middle of the box: a path is drawn by extending it, and a
+  /// new point that lands somewhere unrelated has to be dragged into place
+  /// before it means anything.
+  PathElement appendNode({int maxFrame = 1 << 30}) {
+    if (nodes.isEmpty) {
+      return copyWith(nodes: const [PathNode(x: 0.5, y: 0.5, frame: 0)]);
+    }
+    var last = nodes.last;
+    var previous = nodes.length > 1 ? nodes[nodes.length - 2] : null;
+    var direction = previous == null
+        ? const Offset(0.25, 0)
+        : Offset(last.x - previous.x, last.y - previous.y);
+    if (direction.distance < 0.01) direction = const Offset(0.25, 0);
+
+    var gap = nodes.length > 1
+        ? math.max(1, last.frame - nodes[nodes.length - 2].frame)
+        : 6;
+    return copyWith(nodes: [
+      ...nodes,
+      PathNode(
+        x: last.x + direction.dx,
+        y: last.y + direction.dy,
+        frame: math.min(maxFrame, last.frame + gap),
+      ),
+    ]);
+  }
+
+  /// insertAtFrame adds a point at [frame], splitting whichever segment spans
+  /// it.
+  ///
+  /// The split preserves the curve's shape (see [insertAfter]) and the new
+  /// point is then retimed onto the frame that was asked for -- so adding a
+  /// point half way through a run changes when the follower is where, and not
+  /// where it goes.
+  PathElement insertAtFrame(int frame) {
+    for (var i = 0; i < nodes.length - 1; i++) {
+      if (frame <= nodes[i].frame || frame >= nodes[i + 1].frame) continue;
+      return insertAfter(i).retimeNode(i + 1, frame);
+    }
+    return this;
+  }
+
+  /// nodeIndexAtFrame is which point sits exactly on [frame], if any.
+  int? nodeIndexAtFrame(int frame) {
+    for (var i = 0; i < nodes.length; i++) {
+      if (nodes[i].frame == frame) return i;
+    }
+    return null;
+  }
+
+  /// retimeNode moves one point along the timeline, keeping the order.
+  PathElement retimeNode(int index, int frame) {
+    if (index < 0 || index >= nodes.length) return this;
+    return withNode(index, nodes[index].copyWith(frame: frame));
+  }
+
   PathElement withoutNode(int index) {
     if (index < 0 || index >= nodes.length || nodes.length <= 2) return this;
     return copyWith(nodes: [...nodes]..removeAt(index));

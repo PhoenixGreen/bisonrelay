@@ -495,23 +495,33 @@ class CanvasStageState extends State<CanvasStage> {
       return;
     }
 
-    // A player inside the selected team, before anything else on the canvas:
-    // once a team is selected, dragging one of its dots moves that player, and
-    // dragging anywhere else moves the whole team.
-    var team = _selectedTeam();
-    if (team != null) {
-      var index = _hitPlayer(team, doc);
-      if (index != null) {
-        _mode = _DragMode.player;
-        _playerIndex = index;
-        _playerGrab = doc - team.centreAt(team.players[index], controller.frame);
-        // Clicking a player is also how the timeline is pointed at them: a
-        // player has no id and cannot be selected, so this is the only thing
-        // that says whose keyframes the controls are about.
-        controller.focusedPlayer = index;
-        controller.beginInteraction();
-        return;
+    // A player, before anything else on the canvas -- and a player of *any*
+    // team, not just the selected one.
+    //
+    // It used to be the selected team's only, and that failed in the two ways
+    // a pitch is actually used. A player dragged outside his own team's box is
+    // not inside those bounds any more, so the ordinary element hit test never
+    // returned his team and there was nothing to look inside. And with two
+    // sides on one pitch the boxes overlap, so clicking a home player standing
+    // in the away half found the away team's box first and picked that up
+    // instead. A dot is the smallest and topmost thing on the canvas; it
+    // should win against every box, including its own.
+    var hit = _hitAnyPlayer(doc);
+    if (hit != null) {
+      var (team, index) = hit;
+      if (controller.selection.length != 1 ||
+          controller.selection.first != team.id) {
+        controller.selectOnly(team.id);
       }
+      _mode = _DragMode.player;
+      _playerIndex = index;
+      _playerGrab = doc - team.centreAt(team.players[index], controller.frame);
+      // Clicking a player is also how the timeline is pointed at them: a
+      // player has no id and cannot be selected, so this is the only thing
+      // that says whose keyframes the controls are about.
+      controller.focusedPlayer = index;
+      controller.beginInteraction();
+      return;
     }
 
     var element = _hitElement(doc);
@@ -624,6 +634,25 @@ class CanvasStageState extends State<CanvasStage> {
   TeamElement? _selectedTeam() {
     var selected = controller.selected;
     return selected is TeamElement ? selected : null;
+  }
+
+  /// _hitAnyPlayer is the topmost player of any team under [doc].
+  ///
+  /// Walks the elements in reverse paint order so the team drawn last wins,
+  /// which is the same rule every other hit test on this canvas follows. It
+  /// deliberately ignores the teams' boxes: a player is placed as a fraction
+  /// of one but is not confined to it, and two teams on one pitch have
+  /// overlapping boxes anyway.
+  (TeamElement, int)? _hitAnyPlayer(Offset doc) {
+    for (var i = document.elements.length - 1; i >= 0; i--) {
+      var element = document.elements[i];
+      if (element is! TeamElement || element.locked || !element.visible) {
+        continue;
+      }
+      var index = _hitPlayer(element, doc);
+      if (index != null) return (element, index);
+    }
+    return null;
   }
 
   /// _hitPlayer is which of [team]'s players is under [doc], or null.

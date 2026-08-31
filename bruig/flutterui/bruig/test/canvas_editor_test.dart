@@ -4,6 +4,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
 import 'package:bruig/plugin_system/canvas/presets/builtin_presets.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
@@ -725,6 +726,23 @@ void main() {
       expect(find.text("0.8s"), findsOneWidget);
     });
 
+    testWidgets("the frame readout fits its longest value on one line",
+        (tester) async {
+      // At 56px it fitted "1/24" and wrapped "223/240", which pushed the
+      // transport row taller and cut the digits off.
+      var controller = CanvasController(
+          const CanvasDocument(frames: maxFrameCount));
+      addTearDown(controller.dispose);
+      controller.frame = maxFrameCount - 1;
+      await pump(tester, CanvasTimeline(controller: controller));
+
+      var readout = find.text("$maxFrameCount/$maxFrameCount");
+      expect(readout, findsOneWidget);
+      expect(tester.takeException(), isNull);
+      // One line: two would be about 28 logical pixels tall.
+      expect(tester.getSize(readout).height, lessThan(20));
+    });
+
     testWidgets("steps the playhead", (tester) async {
       var controller = CanvasController(const CanvasDocument(frames: 10));
       addTearDown(controller.dispose);
@@ -1027,5 +1045,122 @@ void main() {
       expect(controller.opened, isTrue,
           reason: "every visit after that keeps the work in progress");
     });
+  });
+
+  group("a path on the timeline", () {
+    (CanvasController, PathElement) withPath() {
+      var path = PathElement(
+        const ElementBase(id: "p", x: 0, y: 0, width: 200, height: 200),
+        nodes: const [
+          PathNode(x: 0, y: 0, frame: 0),
+          PathNode(x: 0.5, y: 0.5, frame: 10),
+          PathNode(x: 1, y: 1, frame: 20),
+        ],
+      );
+      var controller =
+          CanvasController(const CanvasDocument(frames: 30).addElement(path));
+      controller.selectOnly("p");
+      return (controller, path);
+    }
+
+    testWidgets("the strip is about its points, not its (empty) track",
+        (tester) async {
+      // A path's own track is empty -- what moves is the follower -- so
+      // without this a selected path showed a bare strip, and the one thing
+      // worth retiming from the timeline could not be reached from it.
+      var (controller, _) = withPath();
+      addTearDown(controller.dispose);
+      await pump(tester, CanvasTimeline(controller: controller));
+
+      controller.frame = 10;
+      await tester.pumpAndSettle();
+      expect(find.byTooltip("Remove this keyframe from Path"), findsOneWidget,
+          reason: "frame 10 has a point on it");
+
+      controller.frame = 11;
+      await tester.pumpAndSettle();
+      expect(find.byTooltip("Add a keyframe for Path here"), findsOneWidget);
+    });
+
+    testWidgets("the diamond adds and removes a point", (tester) async {
+      var (controller, _) = withPath();
+      addTearDown(controller.dispose);
+      controller.frame = 15;
+      await pump(tester, CanvasTimeline(controller: controller));
+
+      // The pose bar is a message for a path: easing, fade, scale and turn all
+      // belong to the follower rather than to the point, so offering them here
+      // would be four controls that quietly do nothing.
+      await pump(tester, CanvasKeyframeBar(controller: controller));
+      expect(find.textContaining("No point on this frame"), findsOneWidget);
+
+      await pump(tester, CanvasTimeline(controller: controller));
+      await tester.tap(find.byTooltip("Add a keyframe for Path here"));
+      await tester.pumpAndSettle();
+
+      var after = controller.document.elements.single as PathElement;
+      expect(after.nodes.length, 4);
+      expect(after.nodes.map((n) => n.frame).toList(), [0, 10, 15, 20]);
+
+      await tester.tap(find.byTooltip("Remove this keyframe from Path"));
+      await tester.pumpAndSettle();
+      expect((controller.document.elements.single as PathElement).nodes.length, 3);
+    });
+
+    testWidgets("a point drags along the strip to retime it", (tester) async {
+      var (controller, _) = withPath();
+      addTearDown(controller.dispose);
+      await pump(tester, CanvasTimeline(controller: controller));
+
+      // The ruler is the strip's own CustomPaint, and the marks sit at
+      // _rulerHeight + 14 down it -- see _keyframeAt, which is what this is
+      // exercising.
+      var ruler = find
+          .descendant(
+              of: find.byType(CanvasTimeline), matching: find.byType(CustomPaint))
+          .last;
+      var box = tester.getRect(ruler);
+      // The same mapping _xFor uses, so the drag starts exactly on the mark.
+      double xFor(int frame) => box.left + (frame + 0.5) / 30 * box.width;
+
+      await tester.dragFrom(
+        Offset(xFor(10), box.top + 22 + 14),
+        Offset(xFor(15) - xFor(10), 0),
+      );
+      await tester.pumpAndSettle();
+
+      var after = controller.document.elements.single as PathElement;
+      expect(after.nodes[1].frame, greaterThan(10),
+          reason: "the middle point moved later");
+      expect(after.nodes[1].frame, lessThanOrEqualTo(20),
+          reason: "clamped by its neighbour rather than reordering the curve");
+      expect(after.nodes[0].frame, 0, reason: "the others stayed put");
+      expect(after.nodes[2].frame, 20);
+    });
+
+    testWidgets("a drag away from the marks still scrubs", (tester) async {
+      var (controller, _) = withPath();
+      addTearDown(controller.dispose);
+      await pump(tester, CanvasTimeline(controller: controller));
+
+      var ruler = find
+          .descendant(
+              of: find.byType(CanvasTimeline), matching: find.byType(CustomPaint))
+          .last;
+      var box = tester.getRect(ruler);
+
+      // On the ruler's numbers, above the keyframe row: that is where the
+      // playhead is grabbed, and a drag starting there scrubs even if it
+      // happens to begin above a mark.
+      await tester.dragFrom(
+          Offset(box.left + 12, box.top + 4), const Offset(200, 0));
+      await tester.pumpAndSettle();
+
+      expect(controller.frame, greaterThan(0));
+      var after = controller.document.elements.single as PathElement;
+      expect(after.nodes.map((n) => n.frame).toList(), [0, 10, 20],
+          reason: "nothing was retimed");
+    });
+
   });
 }

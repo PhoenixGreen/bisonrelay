@@ -1553,6 +1553,12 @@ List<Widget> _pathSettings(CanvasController controller, PathElement e,
         tooltip: "Re-apply this route to ${controller.followerLabel(e.follow)}",
         onPressed: e.follow == null ? null : () => relink(e),
       ),
+      CanvasIconButton(
+        icon: Icons.add,
+        tooltip: "Carry the path on past its last point",
+        onPressed: () => relink(
+            e.appendNode(maxFrame: controller.document.frames - 1)),
+      ),
     ]),
     _pathNodeList(controller, e, relink),
   ];
@@ -1615,7 +1621,13 @@ Widget _pathNodeList(CanvasController controller, PathElement e,
                 Wrap(crossAxisAlignment: WrapCrossAlignment.center, children: [
               CanvasNumberField(
                 key: ValueKey("node-frame-$i-${e.id}"),
-                label: i == 0 ? "Start" : "Frame",
+                // The two ends are named, because they are what the run is
+                // timed against and what the Start and End fields above set.
+                label: i == 0
+                    ? "Start"
+                    : i == e.nodes.length - 1
+                        ? "End"
+                        : "Frame",
                 value: e.nodes[i].frame.toDouble(),
                 min: 0,
                 max: (controller.document.frames - 1).toDouble(),
@@ -1646,6 +1658,16 @@ Widget _pathNodeList(CanvasController controller, PathElement e,
                     i,
                     e.nodes[i].copyWith(
                         y: e.height == 0 ? 0 : (v - e.y) / e.height))),
+              ),
+              CanvasIconButton(
+                icon: Icons.add,
+                tooltip: "Add a point after this one",
+                // Only between two points -- past the last one there is no
+                // segment to halve, and that is what the Add button on the
+                // Follow row is for.
+                onPressed: i >= e.nodes.length - 1
+                    ? null
+                    : () => relink(e.insertAfter(i)),
               ),
               CanvasIconButton(
                 icon: Icons.close,
