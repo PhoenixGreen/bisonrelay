@@ -2018,4 +2018,104 @@ void main() {
       expect(controller.document.elements.single.opacity, closeTo(0.75, 0.02));
     });
   });
+
+  group("the remove-background settings", () {
+    Future<CanvasController> panel(WidgetTester tester,
+        {BackgroundRemoval removal = const BackgroundRemoval()}) async {
+      var element = ImageElement(
+        const ElementBase(id: "i", width: 200, height: 200),
+        assetId: "abcdefghijklmnop",
+        removal: removal,
+      );
+      var controller =
+          CanvasController(const CanvasDocument().addElement(element));
+      addTearDown(controller.dispose);
+      controller.selectOnly("i");
+      await pump(tester, CanvasLayersPanel(controller: controller));
+      return controller;
+    }
+
+    testWidgets("the brushes are there on a picture nothing has been done to",
+        (tester) async {
+      // They were inside "if anything is being removed", which made them
+      // unreachable on exactly the picture they are for: a fresh image has no
+      // method and no strokes, so nothing was being removed, so the brushes
+      // were hidden -- and the only way to reach the tool that needs no method
+      // was to choose a method first.
+      await panel(tester);
+
+      expect(find.byTooltip("Rub the background out by hand"), findsOneWidget);
+      expect(find.byTooltip("Put back what was taken by mistake"),
+          findsOneWidget);
+    });
+
+    testWidgets("turning a brush on offers its size, hardness and cling",
+        (tester) async {
+      var controller = await panel(tester);
+      expect(find.text("Brush"), findsNothing,
+          reason: "not until there is a brush in hand");
+
+      controller.retouch = RetouchBrush.erase;
+      await tester.pumpAndSettle();
+
+      expect(find.text("Brush"), findsOneWidget);
+      expect(find.text("Hardness"), findsOneWidget);
+      expect(find.text("Cling"), findsOneWidget);
+    });
+
+    testWidgets("a marking brush offers neither hardness nor cling",
+        (tester) async {
+      // A hint is a sample rather than a mark on the picture, so it is taken
+      // exactly where it was drawn.
+      var controller =
+          await panel(tester, removal: const BackgroundRemoval(
+              mode: RemovalMode.learn));
+      controller.retouch = RetouchBrush.markBackground;
+      await tester.pumpAndSettle();
+
+      expect(find.text("Brush"), findsOneWidget);
+      expect(find.text("Hardness"), findsNothing);
+      expect(find.text("Cling"), findsNothing);
+    });
+
+    testWidgets("the marking brushes appear with the method that uses them",
+        (tester) async {
+      await panel(tester);
+      expect(find.byTooltip("Mark some background — draw over a few parts "
+          "that should go"), findsNothing);
+
+      await panel(tester,
+          removal: const BackgroundRemoval(mode: RemovalMode.learn));
+      expect(find.byTooltip("Mark some background — draw over a few parts "
+          "that should go"), findsOneWidget);
+      expect(find.byTooltip("Mark the subject — draw over a few parts that "
+          "should stay"), findsOneWidget);
+    });
+
+    testWidgets("undo and clear appear once something has been painted",
+        (tester) async {
+      await panel(tester);
+      expect(find.byTooltip("Undo the last brush stroke"), findsNothing);
+
+      await panel(tester,
+          removal: const BackgroundRemoval(strokes: [
+            RemovalStroke(
+                points: [Offset(0.5, 0.5)], radius: 0.1, keep: false),
+          ]));
+      expect(find.byTooltip("Undo the last brush stroke"), findsOneWidget);
+      expect(find.byTooltip("Clear every brush stroke"), findsOneWidget);
+    });
+
+    testWidgets("a method's own settings stay behind the method",
+        (tester) async {
+      await panel(tester);
+      expect(find.text("Edge"), findsNothing);
+      expect(find.text("Spread"), findsNothing);
+
+      await panel(tester,
+          removal: const BackgroundRemoval(mode: RemovalMode.cornerFlood));
+      expect(find.text("Edge"), findsOneWidget);
+      expect(find.text("Spread"), findsOneWidget);
+    });
+  });
 }

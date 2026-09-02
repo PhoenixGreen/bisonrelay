@@ -1061,6 +1061,96 @@ List<Widget> _imageSettings(BuildContext context, CanvasController controller,
         ),
       ]),
       CanvasControlGroup(label: "Remove background", children: [
+        // The brush comes before the method, and outside the check for whether
+        // anything is being removed yet.
+        //
+        // It used to be inside it, which made it unreachable on exactly the
+        // picture it is for: a fresh image has no method chosen and no strokes,
+        // so nothing was being removed, so the brushes were hidden -- and the
+        // only way to reach the tool that needs no method was to choose a
+        // method first.
+        //
+        // It is first because it is the tool. Every automatic method has
+        // photographs it cannot do, and on those this is not a refinement.
+        CanvasIconButton(
+          icon: Icons.auto_fix_high,
+          tooltip: controller.retouch == RetouchBrush.erase
+              ? "Stop rubbing out"
+              : "Rub the background out by hand",
+          active: controller.retouch == RetouchBrush.erase,
+          onPressed: () => controller.retouch =
+              controller.retouch == RetouchBrush.erase
+                  ? RetouchBrush.off
+                  : RetouchBrush.erase,
+        ),
+        CanvasIconButton(
+          icon: Icons.healing,
+          tooltip: controller.retouch == RetouchBrush.restore
+              ? "Stop putting back"
+              : "Put back what was taken by mistake",
+          active: controller.retouch == RetouchBrush.restore,
+          onPressed: () => controller.retouch =
+              controller.retouch == RetouchBrush.restore
+                  ? RetouchBrush.off
+                  : RetouchBrush.restore,
+        ),
+        if (controller.retouch.on) ...[
+          CanvasNumberField(
+            label: "Brush",
+            min: 0.005,
+            max: 0.6,
+            decimals: 3,
+            width: 62,
+            value: controller.brushSize,
+            onChanged: (v) => controller.brushSize = v,
+          ),
+          // Only for the brushes that mark the picture. A hint is a sample
+          // and is taken exactly where it was drawn.
+          if (!controller.retouch.teaches) ...[
+            CanvasNumberField(
+              label: "Hardness",
+              min: 0.05,
+              max: 1,
+              decimals: 2,
+              width: 62,
+              value: controller.brushHardness,
+              onChanged: (v) => controller.brushHardness = v,
+            ),
+            CanvasNumberField(
+              label: "Cling",
+              min: 0,
+              max: 0.6,
+              decimals: 3,
+              width: 62,
+              value: controller.brushSnap,
+              onChanged: (v) => controller.brushSnap = v,
+            ),
+          ],
+        ],
+        if (e.removal.strokes.isNotEmpty) ...[
+          CanvasIconButton(
+            icon: Icons.undo,
+            tooltip: "Undo the last brush stroke",
+            onPressed: () {
+              begin();
+              write(e.copyWith(
+                  removal: e.removal.copyWith(
+                      strokes: e.removal.strokes
+                          .sublist(0, e.removal.strokes.length - 1))));
+              commit();
+            },
+          ),
+          CanvasIconButton(
+            icon: Icons.layers_clear_outlined,
+            tooltip: "Clear every brush stroke",
+            onPressed: () {
+              begin();
+              write(e.copyWith(
+                  removal: e.removal.copyWith(strokes: const [])));
+              commit();
+            },
+          ),
+        ],
         CanvasDropdown<RemovalMode>(
           label: "Method",
           value: e.removal.mode,
@@ -1196,89 +1286,6 @@ List<Widget> _imageSettings(BuildContext context, CanvasController controller,
                       : "${e.removal.hints.length} marks"),
                 ),
               ),
-            ),
-          ],
-          // The brush, beside the settings it corrects. Every automatic
-          // method has photographs it cannot do -- a subject whose outline is
-          // as soft as what is behind it has no edge to find -- and on those
-          // this is not a refinement, it is the tool.
-          CanvasIconButton(
-            icon: Icons.auto_fix_high,
-            tooltip: controller.retouch == RetouchBrush.erase
-                ? "Stop rubbing out"
-                : "Rub the background out by hand",
-            active: controller.retouch == RetouchBrush.erase,
-            onPressed: () => controller.retouch =
-                controller.retouch == RetouchBrush.erase
-                    ? RetouchBrush.off
-                    : RetouchBrush.erase,
-          ),
-          CanvasIconButton(
-            icon: Icons.healing,
-            tooltip: controller.retouch == RetouchBrush.restore
-                ? "Stop putting back"
-                : "Put back what was taken by mistake",
-            active: controller.retouch == RetouchBrush.restore,
-            onPressed: () => controller.retouch =
-                controller.retouch == RetouchBrush.restore
-                    ? RetouchBrush.off
-                    : RetouchBrush.restore,
-          ),
-          if (controller.retouch.on) ...[
-            CanvasNumberField(
-              label: "Brush",
-              min: 0.005,
-              max: 0.6,
-              decimals: 3,
-              width: 62,
-              value: controller.brushSize,
-              onChanged: (v) => controller.brushSize = v,
-            ),
-            // Only for the brushes that mark the picture. A hint is a sample
-            // and is taken exactly where it was drawn.
-            if (!controller.retouch.teaches) ...[
-              CanvasNumberField(
-                label: "Hardness",
-                min: 0.05,
-                max: 1,
-                decimals: 2,
-                width: 62,
-                value: controller.brushHardness,
-                onChanged: (v) => controller.brushHardness = v,
-              ),
-              CanvasNumberField(
-                label: "Cling",
-                min: 0,
-                max: 0.6,
-                decimals: 3,
-                width: 62,
-                value: controller.brushSnap,
-                onChanged: (v) => controller.brushSnap = v,
-              ),
-            ],
-          ],
-          if (e.removal.strokes.isNotEmpty) ...[
-            CanvasIconButton(
-              icon: Icons.undo,
-              tooltip: "Undo the last brush stroke",
-              onPressed: () {
-                begin();
-                write(e.copyWith(
-                    removal: e.removal.copyWith(
-                        strokes: e.removal.strokes
-                            .sublist(0, e.removal.strokes.length - 1))));
-                commit();
-              },
-            ),
-            CanvasIconButton(
-              icon: Icons.layers_clear_outlined,
-              tooltip: "Clear every brush stroke",
-              onPressed: () {
-                begin();
-                write(e.copyWith(
-                    removal: e.removal.copyWith(strokes: const [])));
-                commit();
-              },
             ),
           ],
           CanvasToggle(
