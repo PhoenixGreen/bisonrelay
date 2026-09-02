@@ -7,6 +7,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/render/image_placement.dart';
+import 'package:bruig/plugin_system/canvas/render/image_store.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
@@ -167,6 +168,15 @@ class CanvasStageState extends State<CanvasStage> {
   /// _liveRadius is the brush's radius in canvas units, worked out once when
   /// the stroke starts so the preview does not have to ask again per point.
   double _liveRadius = 0;
+
+  /// _preview is a picture of what the held stroke would do, and _previewOf is
+  /// the settings it was made for.
+  ///
+  /// Rebuilt whenever the stroke or the brush's settings change, which is the
+  /// point of holding a stroke at all: the reader adjusts hardness or cling
+  /// and watches the same stroke redraw itself.
+  ui.Image? _preview;
+  String? _previewOf;
 
   /// _editorRect is where the editor was opened, in document space.
   ///
@@ -928,6 +938,57 @@ class CanvasStageState extends State<CanvasStage> {
     });
   }
 
+  /// _previewPlacement is where the held stroke's preview goes on the canvas:
+  /// exactly over the picture it belongs to, through the same placement the
+  /// picture itself is drawn with.
+  Rect? _previewPlacement() {
+    var id = controller.pendingPicture;
+    if (id == null || _preview == null) return null;
+    var picture = document.elementById(id);
+    if (picture is! ImageElement) return null;
+    var inner = picture.boundsAt(controller.frame).deflate(picture.box.padding);
+    var size = Size(_preview!.width.toDouble(), _preview!.height.toDouble());
+    return placeImage(size, inner, picture.fit, crop: picture.crop).dst;
+  }
+
+  /// _refreshPreview rebuilds the picture of what the held stroke would do,
+  /// when the stroke or the settings behind it have changed.
+  ///
+  /// Keyed on the settings rather than rebuilt on every notification: the
+  /// controller notifies for everything from the playhead moving to a
+  /// selection changing, and running the brush over a photograph for each of
+  /// those would be worse than the problem this replaced.
+  void _refreshPreview() {
+    var stroke = controller.pendingAsStroke();
+    var id = controller.pendingPicture;
+    if (stroke == null || id == null) {
+      if (_preview != null || _previewOf != null) {
+        setState(() {
+          _preview = null;
+          _previewOf = null;
+        });
+      }
+      return;
+    }
+
+    var picture = document.elementById(id);
+    if (picture is! ImageElement) return;
+    var source = controller.images.original(picture.assetId);
+    if (source == null) return;
+
+    var key = "$id|${stroke.points.length}|${stroke.radius}|"
+        "${stroke.hardness}|${stroke.snap}|${stroke.keep}";
+    if (key == _previewOf) return;
+    _previewOf = key;
+
+    strokePreview(source, stroke,
+            stroke.keep ? const Color(0x8833DD88) : const Color(0x88FF5544))
+        .then((image) {
+      if (!mounted || _previewOf != key) return;
+      setState(() => _preview = image);
+    });
+  }
+
   /// _commitStroke writes the finished stroke onto the picture.
   ///
   /// One change to the document for the whole gesture, so the store does its
@@ -947,29 +1008,17 @@ class CanvasStageState extends State<CanvasStage> {
       return;
     }
 
-    // A marking brush writes into the hints, which teach the learning method
-    // what is what; the other two write into the strokes, which rub the
-    // picture out and put it back. Same gesture, two lists.
+    // A marking brush teaches the learning method what is what; the other two
+    // rub the picture out and put it back. Which of the two this is has to be
+    // remembered with the stroke, since the reader may pick up a different
+    // brush before applying it.
     var teaching = controller.retouch.teaches;
-    var stroke = RemovalStroke(
-      points: points,
-      radius: controller.brushSize,
-      keep: controller.retouch.keeps,
-      // A hint is a sample rather than a mark on the picture, so it is taken
-      // exactly where it was drawn: softening or snapping it would collect
-      // colours the reader did not point at.
-      hardness: teaching ? 1 : controller.brushHardness,
-      snap: teaching ? 0 : controller.brushSnap,
-    );
 
-    controller.replaceElement(
-      picture.copyWith(
-          removal: teaching
-              ? picture.removal
-                  .copyWith(hints: [...picture.removal.hints, stroke])
-              : picture.removal
-                  .copyWith(strokes: [...picture.removal.strokes, stroke])),
-    );
+    // Held rather than applied. The reader can now adjust the brush and watch
+    // this same stroke redraw before deciding -- see
+    // CanvasController.holdStroke.
+    controller.holdStroke(picture.id, points,
+        keeps: controller.retouch.keeps, teaches: teaching);
     controller.endInteraction();
   }
 
@@ -1420,7 +1469,14 @@ class CanvasStageState extends State<CanvasStage> {
   }
 
   @override
-  Widget build(BuildContext context) => LayoutBuilder(
+  Widget build(BuildContext context) {
+    // Cheap unless the stroke or its settings have actually changed -- see
+    // _refreshPreview, which is keyed on them.
+    _refreshPreview();
+    return _buildStage();
+  }
+
+  Widget _buildStage() => LayoutBuilder(
         builder: (context, constraints) {
           _visible = Size(constraints.maxWidth, constraints.maxHeight);
           var content = _contentSize(_visible);
@@ -1461,6 +1517,8 @@ class CanvasStageState extends State<CanvasStage> {
                       showHelpers: controller.showHelpers,
                       selectedPath: _selectedPath(),
                       editingText: _editingText,
+                      preview: _preview,
+                      previewOn: _previewPlacement(),
                       liveStroke: _liveCanvas,
                       liveStrokeRadius: _liveRadius,
                       liveStrokeKeeps: controller.retouch.keeps,
@@ -1623,6 +1681,11 @@ class _StagePainter extends CustomPainter {
   /// handles are drawn in place of a selection box.
   final PathElement? selectedPath;
 
+  /// preview is a picture of what a held stroke would do, and previewOn is
+  /// where it goes. Both null when no stroke is being held.
+  final ui.Image? preview;
+  final Rect? previewOn;
+
   /// liveStroke is the retouching stroke being drawn, in canvas coordinates,
   /// with liveStrokeRadius its width and liveStrokeKeeps which way round it
   /// works.
@@ -1661,6 +1724,8 @@ class _StagePainter extends CustomPainter {
     required this.showHelpers,
     required this.selectedPath,
     required this.editingText,
+    required this.preview,
+    required this.previewOn,
     required this.liveStroke,
     required this.liveStrokeRadius,
     required this.liveStrokeKeeps,
@@ -1721,6 +1786,23 @@ class _StagePainter extends CustomPainter {
             ..style = PaintingStyle.stroke
             ..strokeWidth = 1
             ..color = const Color(0xAA3D7EFF));
+    }
+
+    // What a held stroke would do, over the picture it belongs to. Drawn from
+    // the brush's own output rather than from its settings, so what is shown
+    // and what will happen cannot drift apart -- see strokePreview.
+    if (preview != null && previewOn != null) {
+      canvas.drawImageRect(
+          preview!,
+          Rect.fromLTWH(
+              0, 0, preview!.width.toDouble(), preview!.height.toDouble()),
+          Rect.fromLTRB(
+            previewOn!.left * scale + origin.dx,
+            previewOn!.top * scale + origin.dy,
+            previewOn!.right * scale + origin.dx,
+            previewOn!.bottom * scale + origin.dy,
+          ),
+          Paint()..filterQuality = FilterQuality.medium);
     }
 
     // The stroke being drawn, inside the frame's clip along with everything
@@ -1905,6 +1987,8 @@ class _StagePainter extends CustomPainter {
       old.showHandles != showHandles ||
       !identical(old.selectedPath, selectedPath) ||
       old.editingText != editingText ||
+      !identical(old.preview, preview) ||
+      old.previewOn != previewOn ||
       old.liveStroke.length != liveStroke.length ||
       old.liveStrokeKeeps != liveStrokeKeeps ||
       old.hoveredButton != hoveredButton ||

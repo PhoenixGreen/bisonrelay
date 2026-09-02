@@ -7,6 +7,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
 import 'package:bruig/plugin_system/canvas/render/image_store.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
@@ -314,6 +315,97 @@ class CanvasController extends ChangeNotifier {
     if (_retouch == value) return;
     _retouch = value;
     notifyListeners();
+  }
+
+  /// _pendingStroke is a stroke that has been drawn but not yet applied, and
+  /// _pendingPicture is the picture it was drawn on.
+  ///
+  /// A stroke used to land the moment the pointer came up, taking the brush's
+  /// settings with it -- so changing hardness or cling afterwards did nothing
+  /// at all to the stroke that had just been made, and the only way to try a
+  /// setting was to undo, change it, and draw again. Held here instead, the
+  /// same stroke is redrawn against whatever the settings currently say and
+  /// applied when the reader is satisfied.
+  List<Offset>? _pendingStroke;
+  String? _pendingPicture;
+
+  /// pendingKeeps and pendingTeaches are what the brush was doing when the
+  /// stroke was drawn -- which of the four brushes it came from. Kept with the
+  /// stroke rather than read live, because changing brush is choosing to do
+  /// something else rather than to adjust this.
+  bool _pendingKeeps = false;
+  bool _pendingTeaches = false;
+
+  List<Offset>? get pendingStroke => _pendingStroke;
+  String? get pendingPicture => _pendingPicture;
+  bool get pendingKeeps => _pendingKeeps;
+  bool get pendingTeaches => _pendingTeaches;
+  bool get hasPendingStroke =>
+      _pendingStroke != null && _pendingStroke!.isNotEmpty;
+
+  /// holdStroke keeps a freshly drawn stroke back for adjustment.
+  void holdStroke(String pictureId, List<Offset> points,
+      {required bool keeps, required bool teaches}) {
+    if (points.isEmpty) return;
+    _pendingPicture = pictureId;
+    _pendingStroke = List.unmodifiable(points);
+    _pendingKeeps = keeps;
+    _pendingTeaches = teaches;
+    notifyListeners();
+  }
+
+  /// discardStroke throws the held stroke away.
+  void discardStroke() {
+    if (_pendingStroke == null) return;
+    _pendingStroke = null;
+    _pendingPicture = null;
+    notifyListeners();
+  }
+
+  /// applyStroke writes the held stroke onto its picture, with the brush's
+  /// settings as they stand now.
+  void applyStroke() {
+    var id = _pendingPicture;
+    var points = _pendingStroke;
+    if (id == null || points == null || points.isEmpty) return;
+
+    var picture = _document.elementById(id);
+    if (picture is! ImageElement) {
+      discardStroke();
+      return;
+    }
+
+    var stroke = RemovalStroke(
+      points: points,
+      radius: _brushSize,
+      keep: _pendingKeeps,
+      // A hint is a sample rather than a mark on the picture, so it is taken
+      // exactly where it was drawn: softening or snapping it would collect
+      // colours the reader did not point at.
+      hardness: _pendingTeaches ? 1 : _brushHardness,
+      snap: _pendingTeaches ? 0 : _brushSnap,
+    );
+
+    replaceElement(picture.copyWith(
+        removal: _pendingTeaches
+            ? picture.removal.copyWith(hints: [...picture.removal.hints, stroke])
+            : picture.removal
+                .copyWith(strokes: [...picture.removal.strokes, stroke])));
+    discardStroke();
+  }
+
+  /// pendingAsStroke is the held stroke as it would be applied right now,
+  /// which is what the preview on the canvas is drawn from.
+  RemovalStroke? pendingAsStroke() {
+    var points = _pendingStroke;
+    if (points == null || points.isEmpty) return null;
+    return RemovalStroke(
+      points: points,
+      radius: _brushSize,
+      keep: _pendingKeeps,
+      hardness: _pendingTeaches ? 1 : _brushHardness,
+      snap: _pendingTeaches ? 0 : _brushSnap,
+    );
   }
 
   double _brushHardness = 0.6;

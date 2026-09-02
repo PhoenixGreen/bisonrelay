@@ -237,6 +237,68 @@ void applyRemovalForTest(
   _paintStrokes(pixels, width, height, removal.strokes);
 }
 
+/// strokePreview is a picture of what [stroke] would do, for showing on the
+/// canvas before it is applied.
+///
+/// It runs the brush itself over a blank alpha channel rather than describing
+/// what the brush would do, so the preview and the result cannot drift apart.
+/// A stroke that clings to an edge is not a shape anybody can draw from its
+/// settings -- it depends on the picture -- so the only honest preview is the
+/// real thing.
+///
+/// Returned as RGBA in [colour], transparent where the stroke does not reach.
+/// Sized to the whole picture: cropping to the stroke would mean carrying its
+/// offset around, and the caller draws it through the same placement the
+/// picture uses.
+Future<ui.Image?> strokePreview(
+    ui.Image source, RemovalStroke stroke, ui.Color colour) async {
+  var data = await source.toByteData(format: ui.ImageByteFormat.rawRgba);
+  if (data == null) return null;
+
+  var pixels = data.buffer.asUint8List();
+  var width = source.width, height = source.height;
+
+  // The brush works on alpha, so it is run over a picture that is entirely
+  // opaque and the result read back as coverage.
+  var coverage = Uint8List(width * height * 4);
+  for (var i = 0; i < width * height; i++) {
+    coverage[i * 4] = pixels[i * 4];
+    coverage[i * 4 + 1] = pixels[i * 4 + 1];
+    coverage[i * 4 + 2] = pixels[i * 4 + 2];
+    coverage[i * 4 + 3] = 255;
+  }
+  // Always as an erase, whichever way the stroke works: what is being shown is
+  // where it reaches, not what it does when it gets there.
+  _paintStrokes(coverage, width, height, [
+    RemovalStroke(
+      points: stroke.points,
+      radius: stroke.radius,
+      keep: false,
+      hardness: stroke.hardness,
+      snap: stroke.snap,
+    ),
+  ]);
+
+  var r = (colour.r * 255).round();
+  var g = (colour.g * 255).round();
+  var b = (colour.b * 255).round();
+  var a = colour.a;
+  for (var i = 0; i < width * height; i++) {
+    // Alpha went from 255 down to whatever the brush left, so the amount
+    // removed is the amount the stroke covers.
+    var covered = 255 - coverage[i * 4 + 3];
+    coverage[i * 4] = r;
+    coverage[i * 4 + 1] = g;
+    coverage[i * 4 + 2] = b;
+    coverage[i * 4 + 3] = (covered * a).round().clamp(0, 255);
+  }
+
+  var done = Completer<ui.Image>();
+  ui.decodeImageFromPixels(
+      coverage, width, height, ui.PixelFormat.rgba8888, done.complete);
+  return done.future;
+}
+
 /// _paintStrokes rubs the brush's marks into the alpha channel.
 ///
 /// Each stroke is a run of dabs along its points, which is what a brush is:

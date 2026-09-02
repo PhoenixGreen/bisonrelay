@@ -1094,6 +1094,32 @@ List<Widget> _imageSettings(BuildContext context, CanvasController controller,
                   ? RetouchBrush.off
                   : RetouchBrush.restore,
         ),
+        // A drawn stroke waits here until it is applied, so the settings above
+        // can be adjusted against it and the result watched on the canvas.
+        if (controller.hasPendingStroke) ...[
+          Padding(
+            padding: const EdgeInsets.only(top: controlLabelHeight, right: 6),
+            child: SizedBox(
+              height: controlHeight,
+              child: Center(
+                child: Txt.S(controller.pendingTeaches
+                    ? "Mark drawn — adjust the brush, then keep it"
+                    : "Stroke drawn — adjust the brush, then apply it"),
+              ),
+            ),
+          ),
+          CanvasIconButton(
+            icon: Icons.check,
+            tooltip: "Apply this stroke",
+            active: true,
+            onPressed: controller.applyStroke,
+          ),
+          CanvasIconButton(
+            icon: Icons.close,
+            tooltip: "Throw this stroke away",
+            onPressed: controller.discardStroke,
+          ),
+        ],
         if (controller.retouch.on) ...[
           CanvasNumberField(
             label: "Brush",

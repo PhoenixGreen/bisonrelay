@@ -1804,10 +1804,17 @@ void main() {
       await gesture.up();
       await tester.pumpAndSettle();
 
+      // Still nothing: the stroke is held so the brush can be adjusted
+      // against it, and applied when the reader is satisfied.
+      expect(current().removal.strokes, isEmpty);
+      expect(controller.hasPendingStroke, isTrue);
+      expect(controller.pendingStroke!.length, greaterThan(3),
+          reason: "with every point that was drawn");
+
+      controller.applyStroke();
       expect(current().removal.strokes.length, 1,
           reason: "and the whole line lands in one go");
-      expect(current().removal.strokes.single.points.length, greaterThan(3),
-          reason: "with every point that was drawn");
+      expect(controller.hasPendingStroke, isFalse);
     });
 
     testWidgets("a whole stroke is one undo step", (tester) async {
@@ -1824,6 +1831,7 @@ void main() {
       }
       await gesture.up();
       await tester.pumpAndSettle();
+      controller.applyStroke();
 
       expect(
           (controller.document.elementById("i")! as ImageElement)
@@ -1856,11 +1864,127 @@ void main() {
       await tester.pump();
       await gesture.up();
       await tester.pumpAndSettle();
+      controller.applyStroke();
 
       var after = controller.document.elementById("i")! as ImageElement;
       expect(after.removal.hints, hasLength(1));
       expect(after.removal.hints.single.keep, isTrue);
       expect(after.removal.strokes, isEmpty);
+    });
+  });
+
+  group("a held stroke", () {
+    Future<CanvasController> drawOne(WidgetTester tester,
+        {RetouchBrush brush = RetouchBrush.erase}) async {
+      var document = const CanvasDocument();
+      var element = ImageElement(
+        ElementBase(
+          id: "i",
+          x: 0,
+          y: 0,
+          width: document.size.width.toDouble(),
+          height: document.size.height.toDouble(),
+        ),
+        assetId: "abcdefghijklmnop",
+      );
+      var controller = CanvasController(document.addElement(element));
+      addTearDown(controller.dispose);
+      controller.selectOnly("i");
+      controller.retouch = brush;
+      var stage = await pump(tester, controller);
+
+      var pixels = Uint8List(64 * 64 * 4);
+      for (var i = 0; i < 64 * 64; i++) {
+        pixels[i * 4] = 200;
+        pixels[i * 4 + 1] = 200;
+        pixels[i * 4 + 2] = 200;
+        pixels[i * 4 + 3] = 255;
+      }
+      await tester.runAsync(() async {
+        var done = Completer<ui.Image>();
+        ui.decodeImageFromPixels(
+            pixels, 64, 64, ui.PixelFormat.rgba8888, done.complete);
+        controller.images.putForTest("abcdefghijklmnop", await done.future);
+      });
+
+      var from = stage.pageRect.center;
+      var gesture = await tester.startGesture(from);
+      await gesture.moveTo(from + const Offset(40, 0));
+      await tester.pump();
+      await gesture.up();
+      await tester.pumpAndSettle();
+      return controller;
+    }
+
+    testWidgets("takes the brush's settings as they are when it is applied",
+        (tester) async {
+      // The reported fault. A stroke used to take the settings the instant the
+      // pointer came up, so changing hardness or cling afterwards did nothing
+      // to it and the only way to try a setting was to undo and draw again.
+      var controller = await drawOne(tester);
+
+      controller.brushHardness = 0.25;
+      controller.brushSnap = 0.3;
+      controller.brushSize = 0.09;
+      controller.applyStroke();
+
+      var stroke = (controller.document.elementById("i")! as ImageElement)
+          .removal
+          .strokes
+          .single;
+      expect(stroke.hardness, 0.25);
+      expect(stroke.snap, 0.3);
+      expect(stroke.radius, 0.09);
+    });
+
+    testWidgets("can be thrown away without touching the picture",
+        (tester) async {
+      var controller = await drawOne(tester);
+      controller.discardStroke();
+
+      expect(controller.hasPendingStroke, isFalse);
+      expect(
+          (controller.document.elementById("i")! as ImageElement)
+              .removal
+              .strokes,
+          isEmpty);
+      expect(controller.canUndo, isFalse,
+          reason: "and nothing to undo, since nothing was ever done");
+    });
+
+    testWidgets("remembers which brush drew it", (tester) async {
+      // Picking up a different brush before applying is choosing to do
+      // something else, not to adjust this.
+      var controller = await drawOne(tester, brush: RetouchBrush.restore);
+      expect(controller.pendingKeeps, isTrue);
+
+      controller.retouch = RetouchBrush.erase;
+      controller.applyStroke();
+
+      expect(
+          (controller.document.elementById("i")! as ImageElement)
+              .removal
+              .strokes
+              .single
+              .keep,
+          isTrue);
+    });
+
+    testWidgets("a marking brush's hint is never softened or snapped",
+        (tester) async {
+      // A hint is a sample rather than a mark on the picture, so it is taken
+      // exactly where it was drawn.
+      var controller = await drawOne(tester, brush: RetouchBrush.markSubject);
+      controller.brushHardness = 0.2;
+      controller.brushSnap = 0.4;
+      controller.applyStroke();
+
+      var hint = (controller.document.elementById("i")! as ImageElement)
+          .removal
+          .hints
+          .single;
+      expect(hint.hardness, 1);
+      expect(hint.snap, 0);
     });
   });
 }
