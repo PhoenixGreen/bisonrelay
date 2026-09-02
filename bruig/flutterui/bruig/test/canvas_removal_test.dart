@@ -816,6 +816,50 @@ void main() {
       expect(alphaAt(pixels, size, 50, 30), 255);
     });
 
+    testWidgets("cling fades out across the edge rather than leaving a fringe",
+        (tester) async {
+      // All-or-nothing at the tolerance left a halo: the pixels along an
+      // outline are blends of the subject and what is behind it, so they fall
+      // outside any tolerance tight enough to protect the subject and stayed
+      // as a fringe of background.
+      const size = 60;
+      var pixels = picture(size, size, (x, y) {
+        if (x < 28) return const Color(0xFF3C5AA0);
+        // Two columns of blend between the two, as an anti-aliased outline.
+        // The first is far enough from the background to be in the fading
+        // part of the tolerance rather than wholly inside it.
+        if (x == 28) return const Color(0xFF648282);
+        if (x == 29) return const Color(0xFFAA8C8C);
+        return const Color(0xFFC89678);
+      });
+
+      applyRemovalForTest(
+        pixels,
+        size,
+        size,
+        const BackgroundRemoval(
+          mode: RemovalMode.none,
+          strokes: [
+            RemovalStroke(
+              points: [Offset(0.15, 0.5), Offset(0.42, 0.5)],
+              radius: 0.14,
+              keep: false,
+              hardness: 1,
+              snap: 0.2,
+            ),
+          ],
+        ),
+      );
+
+      expect(alphaAt(pixels, size, 10, 30), 0, reason: "the background went");
+      expect(alphaAt(pixels, size, 40, 30), 255, reason: "the subject stayed");
+      // And the blend between them is partly taken, which is what it is.
+      var edge = alphaAt(pixels, size, 28, 30);
+      expect(edge, greaterThan(0));
+      expect(edge, lessThan(255),
+          reason: "a blended pixel is half of each and is taken as half");
+    });
+
     testWidgets("cling follows a background that shades", (tester) async {
       // The reference is allowed to drift towards colours it already agrees
       // with -- a sky that shades from one side to the other is still the sky

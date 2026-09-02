@@ -408,7 +408,7 @@ class CanvasController extends ChangeNotifier {
     );
   }
 
-  double _brushHardness = 0.6;
+  double _brushHardness = 0.35;
 
   /// brushHardness is how abruptly a stroke stops at its own edge. See
   /// RemovalStroke.hardness.

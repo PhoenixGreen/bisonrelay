@@ -108,7 +108,7 @@ class RemovalStroke {
     required this.points,
     required this.radius,
     required this.keep,
-    this.hardness = 0.6,
+    this.hardness = 0.35,
     this.snap = 0,
   });
 
@@ -127,7 +127,7 @@ class RemovalStroke {
         "p": [for (var p in points) ...[p.dx, p.dy]],
         "r": radius,
         if (keep) "keep": true,
-        if (hardness != 0.6) "hard": hardness,
+        if (hardness != 0.35) "hard": hardness,
         if (snap > 0) "snap": snap,
       };
 
@@ -146,7 +146,7 @@ class RemovalStroke {
       points: points,
       radius: jsonDouble(json["r"], 0.05),
       keep: jsonBool(json["keep"], false),
-      hardness: jsonDouble(json["hard"], 0.6),
+      hardness: jsonDouble(json["hard"], 0.35),
       snap: jsonDouble(json["snap"], 0),
     );
   }

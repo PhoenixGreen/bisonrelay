@@ -958,14 +958,14 @@ class CanvasStageState extends State<CanvasStage> {
   /// _previewPlacement is where the held stroke's preview goes on the canvas:
   /// exactly over the picture it belongs to, through the same placement the
   /// picture itself is drawn with.
-  Rect? _previewPlacement() {
+  ImagePlacement? _previewPlacement() {
     var id = controller.pendingPicture;
     if (id == null || _preview == null) return null;
     var picture = document.elementById(id);
     if (picture is! ImageElement) return null;
     var inner = picture.boundsAt(controller.frame).deflate(picture.box.padding);
     var size = Size(_preview!.width.toDouble(), _preview!.height.toDouble());
-    return placeImage(size, inner, picture.fit, crop: picture.crop).dst;
+    return placeImage(size, inner, picture.fit, crop: picture.crop);
   }
 
   /// _refreshPreview rebuilds the picture of what the held stroke would do,
@@ -1707,9 +1707,15 @@ class _StagePainter extends CustomPainter {
   final PathElement? selectedPath;
 
   /// preview is a picture of what a held stroke would do, and previewOn is
-  /// where it goes. Both null when no stroke is being held.
+  /// the placement it is drawn through. Both null when nothing is held.
+  ///
+  /// The placement, not just a destination. The preview is the size of the
+  /// whole picture, and the picture is not necessarily drawn whole -- "fill
+  /// the box" shows a centre crop of it. Stretching the whole preview into the
+  /// element put the tint somewhere other than the stroke, over an area that
+  /// had nothing to do with it.
   final ui.Image? preview;
-  final Rect? previewOn;
+  final ImagePlacement? previewOn;
 
   /// liveStroke is the retouching stroke being drawn, in canvas coordinates,
   /// with liveStrokeRadius its width and liveStrokeKeeps which way round it
@@ -1817,15 +1823,15 @@ class _StagePainter extends CustomPainter {
     // the brush's own output rather than from its settings, so what is shown
     // and what will happen cannot drift apart -- see strokePreview.
     if (preview != null && previewOn != null) {
+      var to = previewOn!.dst;
       canvas.drawImageRect(
           preview!,
-          Rect.fromLTWH(
-              0, 0, preview!.width.toDouble(), preview!.height.toDouble()),
+          previewOn!.src,
           Rect.fromLTRB(
-            previewOn!.left * scale + origin.dx,
-            previewOn!.top * scale + origin.dy,
-            previewOn!.right * scale + origin.dx,
-            previewOn!.bottom * scale + origin.dy,
+            to.left * scale + origin.dx,
+            to.top * scale + origin.dy,
+            to.right * scale + origin.dx,
+            to.bottom * scale + origin.dy,
           ),
           Paint()..filterQuality = FilterQuality.medium);
     }

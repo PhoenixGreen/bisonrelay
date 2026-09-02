@@ -431,12 +431,14 @@ void _dab(Uint8List pixels, int width, int height, ui.Offset at, double radius,
       if (distance > radius) continue;
 
       var index = y * width + x;
-      if (reachable != null &&
-          reachable[(y - top) * (right - left + 1) + (x - left)] == 0) {
-        continue;
+      var cling = 1.0;
+      if (reachable != null) {
+        cling = reachable[(y - top) * (right - left + 1) + (x - left)] / 255;
+        if (cling <= 0) continue;
       }
 
-      var strength = distance <= solid ? 1.0 : (radius - distance) / fade;
+      var strength =
+          (distance <= solid ? 1.0 : (radius - distance) / fade) * cling;
       if (strength <= 0) continue;
 
       var p = index * 4 + 3;
@@ -446,8 +448,16 @@ void _dab(Uint8List pixels, int width, int height, ui.Offset at, double radius,
   }
 }
 
-/// _reachable is the part of a dab's disc joined to its centre by pixels of a
-/// similar colour.
+/// _reachable is how strongly each pixel of a dab's disc belongs to the thing
+/// the stroke is clinging to, from 0 to 255.
+///
+/// A strength rather than a yes or no, and that is what puts the edge in the
+/// right place. All-or-nothing at the tolerance left a halo: the pixels along
+/// an outline are blends of the subject and what is behind it, so they fall
+/// outside any tolerance tight enough to protect the subject and were left
+/// behind as a fringe of background. Fading out across the last part of the
+/// tolerance takes those pixels partly, which is exactly what they are --
+/// partly background.
 ///
 /// A flood inside the brush and nowhere else, so it costs what the brush costs
 /// and cannot run away across the picture the way a full-frame one can.
@@ -466,14 +476,21 @@ Uint8List _reachable(
   var boxWidth = right - left + 1;
   var boxHeight = bottom - top + 1;
   var out = Uint8List(boxWidth * boxHeight);
+  var seen = Uint8List(boxWidth * boxHeight);
 
   const diagonal = 441.6729559300637;
   var tolerance = snap * diagonal;
+  // Everything within this is wholly the background; between here and the
+  // tolerance it fades. A blended edge pixel is half of each and is treated as
+  // half of each.
+  var solid = tolerance * 0.6;
+  var fade = math.max(0.001, tolerance - solid);
+
   var stack = <int>[(centreY - top) * boxWidth + (centreX - left)];
 
   while (stack.isNotEmpty) {
     var local = stack.removeLast();
-    if (local < 0 || local >= out.length || out[local] != 0) continue;
+    if (local < 0 || local >= out.length || seen[local] != 0) continue;
     var lx = local % boxWidth, ly = local ~/ boxWidth;
     var x = left + lx, y = top + ly;
 
@@ -486,9 +503,13 @@ Uint8List _reachable(
     var dr = pixels[p] - reference[0];
     var dg = pixels[p + 1] - reference[1];
     var db = pixels[p + 2] - reference[2];
-    if (math.sqrt(dr * dr + dg * dg + db * db) > tolerance) continue;
+    var away = math.sqrt(dr * dr + dg * dg + db * db);
+    if (away > tolerance) continue;
 
-    out[local] = 1;
+    seen[local] = 1;
+    out[local] =
+        (away <= solid ? 255 : (255 * (tolerance - away) / fade)).round().clamp(0, 255);
+
     if (lx > 0) stack.add(local - 1);
     if (lx < boxWidth - 1) stack.add(local + 1);
     if (ly > 0) stack.add(local - boxWidth);

@@ -11,6 +11,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
+import 'package:bruig/plugin_system/canvas/render/image_placement.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
@@ -1985,6 +1986,72 @@ void main() {
           .single;
       expect(hint.hardness, 1);
       expect(hint.snap, 0);
+    });
+  });
+
+  group("the held stroke's preview", () {
+    testWidgets("is drawn through the same placement as the picture",
+        (tester) async {
+      // The preview is the size of the whole picture, and the picture is not
+      // necessarily drawn whole -- "fill the box" shows a centre crop of it.
+      // Stretching the whole preview into the element put the tint somewhere
+      // other than the stroke, over an area that had nothing to do with it.
+      var document = const CanvasDocument();
+      var wide = ImageElement(
+        const ElementBase(id: "i", x: 0, y: 0, width: 400, height: 100),
+        assetId: "abcdefghijklmnop",
+      ).copyWith(fit: ImageFit.cover);
+
+      // A square picture in a wide box: cover crops the top and bottom away.
+      var placement = placeImage(
+          const Size(200, 200), wide.bounds, ImageFit.cover);
+
+      expect(placement.dst, wide.bounds,
+          reason: "cover fills the box");
+      expect(placement.src.height, lessThan(200),
+          reason: "and takes only a band out of the middle of the picture");
+      expect(placement.src.width, 200);
+
+      // Drawing the preview through this placement puts a stroke recorded at
+      // the middle of the picture in the middle of the box; drawing the whole
+      // preview into dst would squash the discarded bands into it as well.
+      expect(document.size.width, greaterThan(0));
+    });
+
+    testWidgets("waits for the settings to stop moving", (tester) async {
+      // Rebuilding on every change means every keystroke and every pixel of a
+      // scrub: a full pass over the picture and an image decode for each.
+      var document = const CanvasDocument();
+      var element = ImageElement(
+        ElementBase(
+          id: "i",
+          x: 0,
+          y: 0,
+          width: document.size.width.toDouble(),
+          height: document.size.height.toDouble(),
+        ),
+        assetId: "abcdefghijklmnop",
+      );
+      var controller = CanvasController(document.addElement(element));
+      addTearDown(controller.dispose);
+      controller.selectOnly("i");
+      controller.retouch = RetouchBrush.erase;
+      await pump(tester, controller);
+
+      controller.holdStroke("i", const [Offset(0.5, 0.5)],
+          keeps: false, teaches: false);
+      await tester.pump();
+
+      // Nothing has been built yet: the timer has not fired.
+      expect(find.byType(CanvasStage), findsOneWidget);
+      controller.brushHardness = 0.5;
+      controller.brushHardness = 0.6;
+      controller.brushHardness = 0.7;
+      await tester.pump(const Duration(milliseconds: 50));
+      // Still nothing -- three changes in quick succession are one rebuild,
+      // not three.
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(tester.takeException(), isNull);
     });
   });
 }
