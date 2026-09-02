@@ -125,6 +125,24 @@ class CanvasAssets {
     }
   }
 
+  /// sweepUnused deletes every stored picture no saved canvas refers to.
+  ///
+  /// Called after a canvas is saved or deleted, which are the only two moments
+  /// the answer can change. Nothing called [sweep] at all until now, so a
+  /// picture dropped into a canvas and then deleted stayed on disk for good --
+  /// invisible, unreachable, and counted against nothing.
+  ///
+  /// Failing is not worth reporting. The cost of a missed sweep is some bytes
+  /// nobody can see, and a canvas that had just been saved successfully should
+  /// not raise an error about tidying up afterwards.
+  static Future<int> sweepUnused() async {
+    try {
+      return await sweep(await CanvasStorage.liveAssetIds());
+    } catch (_) {
+      return 0;
+    }
+  }
+
   /// sweep deletes stored pictures that no saved document refers to.
   ///
   /// [liveIds] has to be every id in the whole library plus whatever is open

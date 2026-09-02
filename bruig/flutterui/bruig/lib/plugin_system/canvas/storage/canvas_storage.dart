@@ -74,6 +74,31 @@ class CanvasStorage {
   @visibleForTesting
   static String? rootOverride;
 
+  /// liveAssetIds is every stored picture that some saved canvas still uses.
+  ///
+  /// Every folder and every document, because one picture can be used by more
+  /// than one canvas -- a document duplicated, or an element copied between two
+  /// of them -- and a sweep that only looked at the open one would delete a
+  /// picture another document is still showing.
+  static Future<Set<String>> liveAssetIds() async {
+    var live = <String>{};
+    // The top level, and then each folder in it. The library is one level
+    // deep, the same as the post library's.
+    var pending = <String>[""];
+    for (var entry in await list("")) {
+      if (entry.isFolder) pending.add(entry.name);
+    }
+
+    for (var folder in pending) {
+      for (var entry in await list(folder)) {
+        if (entry.isFolder) continue;
+        var document = await load(folder, entry.name);
+        if (document != null) live.addAll(document.assetIds);
+      }
+    }
+    return live;
+  }
+
   /// libraryDir is `<appDataDir>/Canvas`, created on first use.
   static Future<String> libraryDir() async {
     var root = rootOverride ?? await defaultAppDataDir();

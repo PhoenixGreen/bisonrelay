@@ -135,6 +135,16 @@ class CanvasDocument {
   /// uses to work out its frame delays.
   double get durationSeconds => frames / (frameRate <= 0 ? 1 : frameRate);
 
+  /// assetIds is every stored picture this document refers to.
+  ///
+  /// What a sweep of the picture store measures against: anything not named by
+  /// some saved document is a picture nothing can ever show again.
+  Set<String> get assetIds => {
+        for (var e in elements)
+          if (e is ImageElement && e.assetId.isNotEmpty) e.assetId,
+        if (background.imageAssetId.isNotEmpty) background.imageAssetId,
+      };
+
   /// hasKeyframes is whether anything in this document moves.
   ///
   /// Asks the players as well as the elements, for the same reason

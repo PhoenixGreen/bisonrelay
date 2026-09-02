@@ -320,6 +320,42 @@ double scaleForWork(int width, int height) {
   return longest <= workingSize ? 1 : workingSize / longest;
 }
 
+/// _workingPixels remembers the shrunk-down bytes of each picture.
+///
+/// Getting them is a draw onto a new surface and then a read back off the GPU
+/// -- seven megabytes for a picture this size -- and the preview asks for them
+/// again on every adjustment of every setting. The picture itself does not
+/// change while a brush is being tuned, so this is asked once and kept.
+///
+/// Keyed by identity rather than by asset id: a picture that has been reloaded
+/// is a different object, and the old bytes go with the old object.
+final Map<ui.Image, _Working> _workingPixels = {};
+
+class _Working {
+  final Uint8List pixels;
+  final int width;
+  final int height;
+  const _Working(this.pixels, this.width, this.height);
+}
+
+/// _workingCopy is [source] at the working size, as raw premultiplied bytes.
+Future<_Working?> _workingCopy(ui.Image source) async {
+  var cached = _workingPixels[source];
+  if (cached != null) return cached;
+
+  var working = await _atWorkingSize(source);
+  var data = await working.toByteData(format: ui.ImageByteFormat.rawRgba);
+  if (data == null) return null;
+
+  // One picture at a time is all this is ever asked for, and holding several
+  // megabytes for pictures nobody is editing is not worth the lookup it saves.
+  _workingPixels.clear();
+  var made = _Working(
+      data.buffer.asUint8List(), working.width, working.height);
+  _workingPixels[source] = made;
+  return made;
+}
+
 /// _atWorkingSize returns [source] shrunk to something worth working on, or
 /// the picture itself when it is already small.
 Future<ui.Image> _atWorkingSize(ui.Image source) async {
@@ -339,14 +375,15 @@ Future<ui.Image> _atWorkingSize(ui.Image source) async {
 }
 
 Future<ui.Image?> strokePreview(ui.Image source, RemovalStroke stroke) async {
-  // At the working size. A preview is looked at rather than published, and it
-  // is rebuilt every time a setting is adjusted -- doing that at full
-  // resolution is what made adjusting one feel like waiting for something.
-  var working = await _atWorkingSize(source);
-  var data = await working.toByteData(format: ui.ImageByteFormat.rawRgba);
-  if (data == null) return null;
+  // At the working size, and from the copy that was already made: a preview is
+  // looked at rather than published, and it is rebuilt on every adjustment of
+  // every setting.
+  var working = await _workingCopy(source);
+  if (working == null) return null;
 
-  var pixels = data.buffer.asUint8List();
+  // Copied, because the coverage pass reads the picture and the tinting pass
+  // below writes over it -- and the next adjustment wants the picture back.
+  var pixels = Uint8List.fromList(working.pixels);
   var width = working.width, height = working.height;
 
   // The same arithmetic the stroke will be applied with, not a description of
@@ -465,40 +502,40 @@ Uint8List strokeCoverage(
   const diagonal = 441.6729559300637;
   var tolerance = stroke.snap * diagonal;
 
-  for (var i = 0; i < stroke.points.length; i++) {
-    var from =
-        ui.Offset(stroke.points[i].dx * width, stroke.points[i].dy * height);
-    var to = i + 1 < stroke.points.length
-        ? ui.Offset(
-            stroke.points[i + 1].dx * width, stroke.points[i + 1].dy * height)
-        : from;
+  // Where the dabs go: every third of a radius along the stroke, measured by
+  // distance travelled rather than per point.
+  //
+  // Per point was the whole of the slowness. A drag reports a couple of
+  // hundred positions, and a dab was placed at each end of every one of the
+  // segments between them -- so a stroke was six hundred dabs whether it
+  // crossed the picture or wobbled in one place, and each dab is a flood over
+  // its own square of the picture. Walking the length instead makes a long
+  // stroke a dozen dabs and a short one two, which is what the spacing was
+  // meant to say in the first place.
+  var spacing = math.max(1.0, radius / 3);
+  var path = [
+    for (var point in stroke.points)
+      ui.Offset(point.dx * width, point.dy * height),
+  ];
 
-    // One dab per third of a radius along the segment: closer than that is
-    // wasted work, further apart and a soft brush beads into a string of blobs
-    // rather than reading as one stroke.
-    var span = (to - from).distance;
-    var steps = math.max(1, (span / (radius / 3)).ceil());
-    for (var step = 0; step <= steps; step++) {
-      var at = ui.Offset.lerp(from, to, step / steps)!;
-
-      // The reference is allowed to drift with the background -- a sky that
-      // shades from one side to the other is still the background -- but only
-      // towards colours it already agrees with. A pixel it does not recognise
-      // is the subject, and the reference does not follow it.
-      if (reference != null) {
-        var here = _averageAround(pixels, width, height, at.dx.round(),
-            at.dy.round(), math.max(1, radius ~/ 6));
-        if (_distance(here, reference) <= tolerance) {
-          reference = [
-            reference[0] * 0.85 + here[0] * 0.15,
-            reference[1] * 0.85 + here[1] * 0.15,
-            reference[2] * 0.85 + here[2] * 0.15,
-          ];
-        }
+  for (var at in _alongPath(path, spacing)) {
+    // The reference is allowed to drift with the background -- a sky that
+    // shades from one side to the other is still the background -- but only
+    // towards colours it already agrees with. A pixel it does not recognise is
+    // the subject, and the reference does not follow it.
+    if (reference != null) {
+      var here = _averageAround(pixels, width, height, at.dx.round(),
+          at.dy.round(), math.max(1, radius ~/ 6));
+      if (_distance(here, reference) <= tolerance) {
+        reference = [
+          reference[0] * 0.85 + here[0] * 0.15,
+          reference[1] * 0.85 + here[1] * 0.15,
+          reference[2] * 0.85 + here[2] * 0.15,
+        ];
       }
-
-      _dab(cover, pixels, width, height, at, radius, stroke, reference);
     }
+
+    _dab(cover, pixels, width, height, at, radius, stroke, reference);
   }
   return cover;
 }
@@ -518,6 +555,38 @@ void _paintStrokes(Uint8List pixels, int width, int height,
           (now + (target - now) * (strength / 255)).round().clamp(0, 255);
     }
   }
+}
+
+/// _alongPath is a point every [spacing] of distance travelled, starting at
+/// the beginning and always including the end.
+///
+/// The end matters: a stroke has to finish where the pointer finished, or
+/// letting go a little past something leaves it untouched.
+List<ui.Offset> _alongPath(List<ui.Offset> path, double spacing) {
+  if (path.isEmpty) return const [];
+  if (path.length == 1) return [path.first];
+
+  var out = <ui.Offset>[path.first];
+  var carried = 0.0;
+
+  for (var i = 1; i < path.length; i++) {
+    var from = path[i - 1], to = path[i];
+    var span = (to - from).distance;
+    if (span <= 0) continue;
+
+    var walked = carried;
+    while (walked + spacing <= span) {
+      walked += spacing;
+      out.add(ui.Offset.lerp(from, to, walked / span)!);
+    }
+    carried = walked - span;
+    // Negative means the next dab is still ahead; the leftover is carried into
+    // the next segment so the spacing is even across the joins.
+    carried = -carried;
+  }
+
+  if (out.last != path.last) out.add(path.last);
+  return out;
 }
 
 /// _averageAround is the mean colour of a small patch, which is steadier than

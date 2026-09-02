@@ -1,3 +1,5 @@
+import 'package:bruig/plugin_system/canvas/storage/canvas_assets.dart';
+import 'dart:async';
 import 'package:bruig/components/text.dart';
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
@@ -212,6 +214,8 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
       return;
     }
     await CanvasStorage.delete(entry.folder, entry.name);
+    // The pictures that canvas was the last user of go with it.
+    unawaited(CanvasAssets.sweepUnused());
     await _reload();
   }
 
@@ -230,6 +234,7 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
       return;
     }
     await CanvasStorage.deleteFolder(entry.name);
+    unawaited(CanvasAssets.sweepUnused());
     await _reload();
   }
 

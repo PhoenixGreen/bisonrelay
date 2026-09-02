@@ -1,3 +1,6 @@
+import 'package:bruig/plugin_system/canvas/storage/canvas_assets.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'dart:io';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
@@ -192,5 +195,88 @@ void main() {
     // Anything the order does not mention follows what it does.
     await CanvasStorage.save("", "D", const CanvasDocument());
     expect((await CanvasStorage.list("")).map((e) => e.name), ["C", "B", "D"]);
+  });
+
+  group("clearing out pictures nothing uses", () {
+    test("a picture no saved canvas refers to is deleted", () async {
+      // Nothing called sweep at all until now, so a picture dropped into a
+      // canvas and then deleted stayed on disk for good -- invisible,
+      // unreachable, and counted against nothing.
+      var kept = (await CanvasAssets.save(List.filled(64, 7)))!;
+      var dropped = (await CanvasAssets.save(List.filled(64, 9)))!;
+
+      await CanvasStorage.save(
+          "",
+          "Used",
+          CanvasDocument(elements: [
+            ImageElement(const ElementBase(id: "i", width: 10, height: 10),
+                assetId: kept),
+          ]));
+
+      expect(await CanvasAssets.load(dropped), isNotNull,
+          reason: "still there before the sweep");
+      await CanvasAssets.sweepUnused();
+
+      expect(await CanvasAssets.load(kept), isNotNull,
+          reason: "the one a canvas still shows");
+      expect(await CanvasAssets.load(dropped), isNull,
+          reason: "and the one nothing does");
+    });
+
+    test("a picture two canvases share survives either being deleted",
+        () async {
+      // One picture can be used by more than one canvas -- a document
+      // duplicated, or an element copied between two of them -- and a sweep
+      // that only looked at the open one would break the other.
+      var shared = (await CanvasAssets.save(List.filled(64, 3)))!;
+
+      CanvasDocument using() => CanvasDocument(elements: [
+            ImageElement(const ElementBase(id: "i", width: 10, height: 10),
+                assetId: shared),
+          ]);
+
+      await CanvasStorage.save("", "One", using());
+      await CanvasStorage.save("", "Two", using());
+
+      await CanvasStorage.delete("", "One");
+      await CanvasAssets.sweepUnused();
+      expect(await CanvasAssets.load(shared), isNotNull,
+          reason: "the other canvas still shows it");
+
+      await CanvasStorage.delete("", "Two");
+      await CanvasAssets.sweepUnused();
+      expect(await CanvasAssets.load(shared), isNull,
+          reason: "and now nothing does");
+    });
+
+    test("a canvas inside a folder counts too", () async {
+      // The library is one level deep, and a sweep that only walked the top
+      // would delete every picture used by a filed canvas.
+      var filed = (await CanvasAssets.save(List.filled(64, 5)))!;
+      await CanvasStorage.createFolder("Match day");
+      await CanvasStorage.save(
+          "Match day",
+          "Pitch",
+          CanvasDocument(elements: [
+            ImageElement(const ElementBase(id: "i", width: 10, height: 10),
+                assetId: filed),
+          ]));
+
+      await CanvasAssets.sweepUnused();
+      expect(await CanvasAssets.load(filed), isNotNull);
+    });
+
+    test("a background's picture is not forgotten", () async {
+      var behind = (await CanvasAssets.save(List.filled(64, 11)))!;
+      await CanvasStorage.save(
+          "",
+          "Backdrop",
+          CanvasDocument(
+              background: CanvasBackground(imageAssetId: behind)));
+
+      await CanvasAssets.sweepUnused();
+      expect(await CanvasAssets.load(behind), isNotNull,
+          reason: "the canvas background uses one as much as an element does");
+    });
   });
 }

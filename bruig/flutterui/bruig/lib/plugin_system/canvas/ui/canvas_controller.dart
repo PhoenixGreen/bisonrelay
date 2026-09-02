@@ -10,6 +10,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
 import 'package:bruig/plugin_system/canvas/render/image_store.dart';
+import 'package:bruig/plugin_system/canvas/storage/canvas_assets.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:flutter/foundation.dart';
 
@@ -1244,6 +1245,9 @@ class CanvasController extends ChangeNotifier {
     var f = folder, n = name;
     if (n == null) return false;
     var ok = await CanvasStorage.save(f ?? "", n, _document);
+    // Not awaited: tidying the picture store is bookkeeping, and a save should
+    // not wait on a walk of the whole library to report that it worked.
+    if (ok) unawaited(CanvasAssets.sweepUnused());
     if (ok) {
       _dirty = false;
       notifyListeners();
