@@ -730,12 +730,77 @@ Uint8List strokeEffect(
     if (y < height - 1) stack.add(index + width);
   }
 
-  // The line itself goes too, at whatever strength it was drawn: the cut lands
-  // on the line rather than just inside it.
+  // Inside out, when that is what was asked for: a hole cut out of something
+  // rather than something cut free of its surroundings. What the boundary
+  // encloses is simply everything the outside could not get to.
+  if (stroke.fillInside) {
+    for (var i = 0; i < reached.length; i++) {
+      reached[i] = reached[i] == 0 ? 255 : 0;
+    }
+  }
+
+  // The line itself goes with whichever side is being taken, so the cut lands
+  // on the line rather than just to one side of it.
   for (var i = 0; i < reached.length; i++) {
     if (cover[i] > reached[i]) reached[i] = cover[i];
   }
-  return reached;
+
+  // Then softened, if a soft cut was asked for.
+  //
+  // The softness is applied to the finished outline rather than being carried
+  // in from the brush that drew it. Carried in, the brush's own feathered rim
+  // reached *past* the cut and left a band of half-removed pixels hugging the
+  // inside of the line. Applied here it is what it sounds like: the edge of
+  // the cut, blurred.
+  //
+  // Independent of the brush's size on purpose. How thickly the boundary is
+  // drawn and how soft the cut is are two different decisions, and tying them
+  // together meant a fat boundary brush gave a cut nobody could aim.
+  var feather = ((1 - stroke.hardness.clamp(0.0, 1.0)) * _cutFeather).round();
+  return feather <= 0 ? reached : _blur(reached, width, height, feather);
+}
+
+/// _cutFeather is how far the softest cut edge reaches, in working-size
+/// pixels, counting both sides of the line.
+const int _cutFeather = 12;
+
+/// _blur is a box blur run twice, which is close enough to a smooth falloff
+/// and is two passes of running sums rather than a kernel per pixel. Each
+/// pass is half the asked-for radius, so the two together reach it.
+Uint8List _blur(Uint8List mask, int width, int height, int reach) {
+  var radius = (reach ~/ 2).clamp(1, reach);
+  var out = mask;
+  for (var pass = 0; pass < 2; pass++) {
+    out = _blurAxis(out, width, height, radius, true);
+    out = _blurAxis(out, width, height, radius, false);
+  }
+  return out;
+}
+
+Uint8List _blurAxis(
+    Uint8List mask, int width, int height, int radius, bool horizontal) {
+  var out = Uint8List(mask.length);
+  var span = radius * 2 + 1;
+  var outer = horizontal ? height : width;
+  var inner = horizontal ? width : height;
+
+  for (var o = 0; o < outer; o++) {
+    int at(int i) => horizontal ? o * width + i : i * width + o;
+
+    var sum = 0;
+    // The window starts hanging off the near edge, with the edge pixel
+    // counted for every position outside -- so a mask that reaches the border
+    // is not dimmed by nothing lying beyond it.
+    for (var i = -radius; i <= radius; i++) {
+      sum += mask[at(i.clamp(0, inner - 1))];
+    }
+    for (var i = 0; i < inner; i++) {
+      out[at(i)] = sum ~/ span;
+      sum -= mask[at((i - radius).clamp(0, inner - 1))];
+      sum += mask[at((i + radius + 1).clamp(0, inner - 1))];
+    }
+  }
+  return out;
 }
 
 /// _paintStrokes rubs the brush's marks into the alpha channel.

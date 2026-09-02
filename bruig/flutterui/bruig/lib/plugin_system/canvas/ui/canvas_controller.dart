@@ -396,6 +396,7 @@ class CanvasController extends ChangeNotifier {
       hardness: _pendingTeaches ? 1 : _brushHardness,
       snap: _clingFor(_pendingTeaches, _pendingKeeps),
       fill: _pendingFills,
+      fillInside: _pendingFills && _cutInside,
     );
 
     replaceElement(picture.copyWith(
@@ -447,6 +448,7 @@ class CanvasController extends ChangeNotifier {
       hardness: _pendingTeaches ? 1 : _brushHardness,
       snap: _clingFor(_pendingTeaches, _pendingKeeps),
       fill: _pendingFills,
+      fillInside: _pendingFills && _cutInside,
     );
   }
 
@@ -485,6 +487,21 @@ class CanvasController extends ChangeNotifier {
   /// reaching for deliberately. On by default it made the brush look broken,
   /// because a stroke that refused most of what it covered is indistinguishable
   /// from one that did not work.
+  bool _cutInside = false;
+
+  /// cutInside takes what a boundary encloses rather than what surrounds it.
+  ///
+  /// Read when the stroke is applied rather than when it is drawn, so it can
+  /// be turned over while the stroke is held and the preview redraws -- which
+  /// is the point of holding one.
+  bool get cutInside => _cutInside;
+
+  set cutInside(bool value) {
+    if (_cutInside == value) return;
+    _cutInside = value;
+    notifyListeners();
+  }
+
   double _brushSnap = 0;
 
   /// brushSnap makes a stroke cling to what is already in the picture. See

@@ -1191,11 +1191,28 @@ List<Widget> _imageSettings(BuildContext context, CanvasController controller,
             value: controller.brushSnap,
             onChanged: (v) => controller.brushSnap = v,
           ),
+          // Which side of the boundary goes. Read when the stroke is
+          // applied rather than when it was drawn, so it can be turned over
+          // with a stroke still held and the preview redraws.
+          if (controller.retouch.fills)
+            CanvasIconButton(
+              icon: controller.cutInside
+                  ? Icons.flip_to_back
+                  : Icons.flip_to_front,
+              tooltip: controller.cutInside
+                  ? "Taking what is inside the line — press to take what is "
+                      "outside"
+                  : "Taking what is outside the line — press to take what is "
+                      "inside",
+              active: controller.cutInside,
+              onPressed: () => controller.cutInside = !controller.cutInside,
+            ),
           // The magnet. Cling wants a number nobody can read off a
           // photograph, so this reads it off the picture instead -- see
           // CanvasController.magnetiseCling.
-          if (controller.hasPendingStroke)
-            if (!controller.retouch.fills)
+          if (!controller.retouch.keeps &&
+              !controller.retouch.fills &&
+              controller.hasPendingStroke)
             CanvasIconButton(
               icon: Icons.my_location,
               tooltip: "Find the edge this stroke crossed and cling to it",

@@ -100,6 +100,10 @@ class RemovalStroke {
   /// it is. Only where the line is.
   final bool fill;
 
+  /// fillInside takes what the boundary encloses rather than what surrounds
+  /// it -- for cutting a hole out of something rather than cutting it free.
+  final bool fillInside;
+
   /// snap makes the stroke cling to what is already in the picture.
   ///
   /// Zero paints the whole disc. Above zero, the dab spreads outwards from
@@ -120,6 +124,7 @@ class RemovalStroke {
     this.hardness = 0.35,
     this.snap = 0,
     this.fill = false,
+    this.fillInside = false,
   });
 
   RemovalStroke copyWith({List<Offset>? points}) => RemovalStroke(
@@ -129,6 +134,7 @@ class RemovalStroke {
         hardness: hardness,
         snap: snap,
         fill: fill,
+        fillInside: fillInside,
       );
 
   Map<String, dynamic> toJson() => {
@@ -141,6 +147,7 @@ class RemovalStroke {
         if (hardness != 0.35) "hard": hardness,
         if (snap > 0) "snap": snap,
         if (fill) "fill": true,
+        if (fillInside) "inside": true,
       };
 
   factory RemovalStroke.fromJson(Map<String, dynamic> json) {
@@ -161,6 +168,7 @@ class RemovalStroke {
       hardness: jsonDouble(json["hard"], 0.35),
       snap: jsonDouble(json["snap"], 0),
       fill: jsonBool(json["fill"], false),
+      fillInside: jsonBool(json["inside"], false),
     );
   }
 }

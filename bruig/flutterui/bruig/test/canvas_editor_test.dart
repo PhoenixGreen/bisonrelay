@@ -2063,6 +2063,31 @@ void main() {
       expect(find.text("Cling"), findsOneWidget);
     });
 
+    testWidgets("the cut offers to take the other side of the line",
+        (tester) async {
+      var controller = await panel(tester);
+      const outward = "Taking what is outside the line — press to take what "
+          "is inside";
+      const inward = "Taking what is inside the line — press to take what "
+          "is outside";
+
+
+      expect(find.byTooltip(outward), findsNothing,
+          reason: "only the cut has two sides to choose between");
+
+      controller.retouch = RetouchBrush.cutAround;
+      await tester.pumpAndSettle();
+
+      expect(find.byTooltip(outward), findsOneWidget);
+      expect(find.byTooltip("Cling"), findsNothing);
+
+      await tester.tap(find.byTooltip(outward));
+      await tester.pumpAndSettle();
+
+      expect(controller.cutInside, isTrue);
+      expect(find.byTooltip(inward), findsOneWidget);
+    });
+
     testWidgets("a marking brush offers neither hardness nor cling",
         (tester) async {
       // A hint is a sample rather than a mark on the picture, so it is taken

@@ -994,7 +994,8 @@ class CanvasStageState extends State<CanvasStage> {
     if (source == null) return;
 
     var key = "$id|${stroke.points.length}|${stroke.radius}|"
-        "${stroke.hardness}|${stroke.snap}|${stroke.keep}";
+        "${stroke.hardness}|${stroke.snap}|${stroke.keep}|"
+        "${stroke.fill}|${stroke.fillInside}";
     if (key == _previewOf) return;
     _previewOf = key;
 

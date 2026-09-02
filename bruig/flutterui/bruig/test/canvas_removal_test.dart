@@ -1592,13 +1592,8 @@ void main() {
       expect(alphaAt(pixels, size, 40, 40), 255);
     });
 
-    testWidgets("it leaves no half-removed outline around what is kept",
-        (tester) async {
-      // The reported strange line. A soft brush's feathered rim carried
-      // partial coverage inwards past the cut, so a band of half-removed
-      // pixels hugged the inside of the boundary. A soft edge is right for a
-      // mark, where it blends into what is around it; here there is nothing on
-      // the inside to blend into, because the inside is being kept.
+    /// cut runs a boundary at [hardness] and hands back the pixels.
+    Uint8List cut(double hardness, {bool inside = false}) {
       const size = 80;
       var pixels = picture(size, size, (x, y) => const Color(0xFF3C5AA0));
       applyRemovalForTest(
@@ -1612,22 +1607,81 @@ void main() {
               points: ring(0.3, 0.7),
               radius: 0.04,
               keep: false,
-              // Deliberately soft: the whole point is that the softness must
-              // not reach the cut.
-              hardness: 0.1,
+              hardness: hardness,
               fill: true,
+              fillInside: inside,
             ),
           ],
         ),
       );
+      return pixels;
+    }
 
+    testWidgets("a hard cut is hard the whole way round", (tester) async {
+      // The reported strange line: a soft brush's feathered rim used to carry
+      // partial coverage inwards past the cut, so a band of half-removed
+      // pixels hugged the inside of the boundary whatever was asked for.
+      var pixels = cut(1);
       var partial = 0;
-      for (var i = 0; i < size * size; i++) {
+      for (var i = 0; i < 80 * 80; i++) {
         var a = pixels[i * 4 + 3];
         if (a > 8 && a < 247) partial++;
       }
       expect(partial, 0,
           reason: "every pixel is either kept or gone, none in between");
+    });
+
+    testWidgets("a soft cut is soft on both sides of the line",
+        (tester) async {
+      // The softness belongs to the finished outline rather than to the brush
+      // that drew it. Carried in from the brush it only ever reached inwards,
+      // hugging the inside of the line, which is what made it read as an
+      // outline drawn around the subject rather than as a soft edge.
+      const size = 40;
+      var pixels = cut(0.1);
+
+      // Straight across the middle. The line runs at 24 and 56.
+      var partialOutside = 0, partialInside = 0;
+      for (var x = 0; x < 24; x++) {
+        var a = alphaAt(pixels, 80, x, size);
+        if (a > 2 && a < 253) partialOutside++;
+      }
+      for (var x = 25; x < 40; x++) {
+        var a = alphaAt(pixels, 80, x, size);
+        if (a > 2 && a < 253) partialInside++;
+      }
+
+      expect(partialOutside, greaterThan(0),
+          reason: "the feather reaches out past the line as well as in");
+      expect(partialInside, greaterThan(0));
+      expect(alphaAt(pixels, 80, 40, 40), 255,
+          reason: "and the middle of what is kept is left alone");
+    });
+
+    testWidgets("hardness decides how soft the cut is", (tester) async {
+      int softness(double hardness) {
+        var pixels = cut(hardness);
+        var partial = 0;
+        for (var i = 0; i < 80 * 80; i++) {
+          var a = pixels[i * 4 + 3];
+          if (a > 8 && a < 247) partial++;
+        }
+        return partial;
+      }
+
+      expect(softness(0.1), greaterThan(softness(0.6)));
+      expect(softness(0.6), greaterThan(softness(1)));
+    });
+
+    testWidgets("inverted, it takes what the line encloses", (tester) async {
+      // For cutting a hole out of something rather than cutting it free.
+      const size = 80;
+      var pixels = cut(1, inside: true);
+
+      expect(alphaAt(pixels, size, 40, 40), 0,
+          reason: "the middle goes");
+      expect(alphaAt(pixels, size, 5, 5), 255,
+          reason: "and what surrounds it stays");
     });
 
     testWidgets("a line that does not quite close fails safe", (tester) async {
