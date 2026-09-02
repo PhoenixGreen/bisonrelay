@@ -680,6 +680,17 @@ Uint8List strokeEffect(
   var cover = strokeCoverage(pixels, width, height, stroke);
   if (!stroke.fill) return cover;
 
+  // A boundary is all or nothing, however soft the brush drawing it is.
+  //
+  // Left soft, the line's feathered rim carried partial coverage *inwards*
+  // past the cut -- so a band of half-removed pixels hugged the inside of the
+  // line and read as a strange outline drawn around the subject. A soft edge
+  // is right for a mark, where it blends into what is around it; here there is
+  // nothing on the inside to blend into, because the inside is being kept.
+  for (var i = 0; i < cover.length; i++) {
+    if (cover[i] != 0) cover[i] = 255;
+  }
+
   // Everything reachable from the outside without crossing the line.
   //
   // From the edge inwards rather than from a point the reader picked: what is

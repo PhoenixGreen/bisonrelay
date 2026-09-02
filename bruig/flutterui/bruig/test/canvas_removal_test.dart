@@ -1592,6 +1592,44 @@ void main() {
       expect(alphaAt(pixels, size, 40, 40), 255);
     });
 
+    testWidgets("it leaves no half-removed outline around what is kept",
+        (tester) async {
+      // The reported strange line. A soft brush's feathered rim carried
+      // partial coverage inwards past the cut, so a band of half-removed
+      // pixels hugged the inside of the boundary. A soft edge is right for a
+      // mark, where it blends into what is around it; here there is nothing on
+      // the inside to blend into, because the inside is being kept.
+      const size = 80;
+      var pixels = picture(size, size, (x, y) => const Color(0xFF3C5AA0));
+      applyRemovalForTest(
+        pixels,
+        size,
+        size,
+        BackgroundRemoval(
+          mode: RemovalMode.none,
+          strokes: [
+            RemovalStroke(
+              points: ring(0.3, 0.7),
+              radius: 0.04,
+              keep: false,
+              // Deliberately soft: the whole point is that the softness must
+              // not reach the cut.
+              hardness: 0.1,
+              fill: true,
+            ),
+          ],
+        ),
+      );
+
+      var partial = 0;
+      for (var i = 0; i < size * size; i++) {
+        var a = pixels[i * 4 + 3];
+        if (a > 8 && a < 247) partial++;
+      }
+      expect(partial, 0,
+          reason: "every pixel is either kept or gone, none in between");
+    });
+
     testWidgets("a line that does not quite close fails safe", (tester) async {
       // No line drawn by hand quite closes. Flooding from the outside means a
       // gap lets the flood through and takes more -- visible and undoable --
