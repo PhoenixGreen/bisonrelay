@@ -1358,4 +1358,155 @@ void main() {
       expect(alphaAt(pixels, size, 1, 1), 255);
     });
   });
+
+  group("putting something back", () {
+    testWidgets("a put-back stroke never clings", (tester) async {
+      // Clinging means "spread only through pixels like the one I started on",
+      // which is how you find the edge of a background -- but what is being
+      // put back is the subject, and a subject is every colour there is. With
+      // it on, a stroke over a face brought back the few pixels nearest
+      // whatever was under the pointer and left the rest, so the brush
+      // appeared to do nothing at all.
+      const size = 60;
+      var pixels = picture(size, size, (x, y) {
+        // A subject of many colours, which is what a subject is.
+        if (x < 30) return const Color(0xFF3C5AA0);
+        return Color.fromARGB(255, 200 - (x % 17) * 8, 150 + (y % 13) * 6, 120);
+      });
+
+      applyRemovalForTest(
+        pixels,
+        size,
+        size,
+        const BackgroundRemoval(
+          mode: RemovalMode.none,
+          strokes: [
+            RemovalStroke(
+                points: [Offset(0.5, 0.5)],
+                radius: 0.6,
+                keep: false,
+                hardness: 1),
+            // Snap is deliberately set: the point is that a put-back stroke
+            // ignores it, which the controller does when it builds one.
+            RemovalStroke(
+                points: [Offset(0.75, 0.5)],
+                radius: 0.15,
+                keep: true,
+                hardness: 1,
+                snap: 0),
+          ],
+        ),
+      );
+
+      // Every pixel under the put-back stroke is back, whatever its colour.
+      var back = 0;
+      for (var x = 40; x < 50; x++) {
+        for (var y = 26; y < 34; y++) {
+          if (alphaAt(pixels, size, x, y) == 255) back++;
+        }
+      }
+      expect(back, 80, reason: "all of it, not the parts that matched");
+    });
+  });
+
+  group("the magnet", () {
+    testWidgets("finds the edge a stroke crossed", (tester) async {
+      // The number cling wants is "how different from the background does a
+      // pixel have to be before it is not the background", and nobody can read
+      // that off a photograph -- which is why setting it by hand never worked.
+      const size = 80;
+      var pixels = picture(size, size,
+          (x, y) => x < 40 ? const Color(0xFF3C5AA0) : const Color(0xFFC89678));
+
+      var found = suggestSnap(
+        pixels,
+        size,
+        size,
+        const RemovalStroke(
+          points: [Offset(0.1, 0.5), Offset(0.9, 0.5)],
+          radius: 0.08,
+          keep: false,
+          hardness: 1,
+        ),
+      );
+
+      expect(found, isNotNull);
+
+      // And the number it found actually separates the two: used as the cling,
+      // a stroke that sweeps across takes the sky and leaves the flesh.
+      applyRemovalForTest(
+        pixels,
+        size,
+        size,
+        BackgroundRemoval(
+          mode: RemovalMode.none,
+          strokes: [
+            RemovalStroke(
+              points: const [Offset(0.1, 0.5), Offset(0.9, 0.5)],
+              radius: 0.08,
+              keep: false,
+              hardness: 1,
+              snap: found!,
+            ),
+          ],
+        ),
+      );
+
+      expect(alphaAt(pixels, size, 10, 40), 0, reason: "the sky went");
+      expect(alphaAt(pixels, size, 60, 40), 255, reason: "the flesh stayed");
+    });
+
+    testWidgets("says so when there is no edge to find", (tester) async {
+      // A stroke drawn entirely on the background has one cluster of colours,
+      // and inventing a split in it would cut the background in half.
+      const size = 60;
+      var pixels = picture(size, size, (x, y) => const Color(0xFF3C5AA0));
+
+      expect(
+          suggestSnap(
+            pixels,
+            size,
+            size,
+            const RemovalStroke(
+              points: [Offset(0.2, 0.5), Offset(0.8, 0.5)],
+              radius: 0.08,
+              keep: false,
+              hardness: 1,
+            ),
+          ),
+          isNull);
+    });
+
+    testWidgets("a fainter edge gives a tighter cling", (tester) async {
+      // The threshold has to come from the picture rather than from a constant,
+      // which is the whole point: two pictures with different amounts of
+      // contrast need different numbers.
+      double? forGap(int gap) {
+        const size = 80;
+        var pixels = picture(
+            size,
+            size,
+            (x, y) => x < 40
+                ? const Color(0xFF404040)
+                : Color.fromARGB(255, 64 + gap, 64 + gap, 64 + gap));
+        return suggestSnap(
+          pixels,
+          size,
+          size,
+          const RemovalStroke(
+            points: [Offset(0.1, 0.5), Offset(0.9, 0.5)],
+            radius: 0.08,
+            keep: false,
+            hardness: 1,
+          ),
+        );
+      }
+
+      var faint = forGap(30);
+      var strong = forGap(150);
+      expect(faint, isNotNull);
+      expect(strong, isNotNull);
+      expect(faint!, lessThan(strong!));
+    });
+  });
 }

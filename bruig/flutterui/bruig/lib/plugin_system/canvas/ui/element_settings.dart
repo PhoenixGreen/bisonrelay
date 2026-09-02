@@ -13,6 +13,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
+import 'package:bruig/plugin_system/canvas/ui/recent_pictures.dart';
 import 'package:bruig/plugin_system/canvas/ui/image_picking.dart';
 import 'package:bruig/plugin_system/canvas/ui/procedural_settings.dart';
 import 'package:bruig/components/text.dart';
@@ -1009,6 +1010,18 @@ List<Widget> _imageSettings(BuildContext context, CanvasController controller,
           if (id != null) now(e.copyWith(assetId: id));
         },
       ),
+      // The other half of a shared picture store: the bytes have always been
+      // shared between canvases, but nothing ever showed what was in there, so
+      // the only way to put the same badge on a second canvas was to go and
+      // find the file again.
+      CanvasIconButton(
+        icon: Icons.photo_library_outlined,
+        tooltip: "Use a picture you have already added",
+        onPressed: () async {
+          var id = await showRecentPictures(context);
+          if (id != null) now(e.copyWith(assetId: id));
+        },
+      ),
       if (e.hasImage)
         CanvasIconButton(
           icon: Icons.hide_image_outlined,
@@ -1147,6 +1160,10 @@ List<Widget> _imageSettings(BuildContext context, CanvasController controller,
             value: controller.brushHardness,
             onChanged: (v) => controller.brushHardness = v,
           ),
+          // Not for putting back: clinging finds the edge of a background,
+          // and what is being put back is the subject, which is every colour
+          // there is.
+          if (!controller.retouch.keeps)
           CanvasNumberField(
             label: "Cling",
             min: 0,
@@ -1156,6 +1173,23 @@ List<Widget> _imageSettings(BuildContext context, CanvasController controller,
             value: controller.brushSnap,
             onChanged: (v) => controller.brushSnap = v,
           ),
+          // The magnet. Cling wants a number nobody can read off a
+          // photograph, so this reads it off the picture instead -- see
+          // CanvasController.magnetiseCling.
+          if (controller.hasPendingStroke)
+            CanvasIconButton(
+              icon: Icons.my_location,
+              tooltip: "Find the edge this stroke crossed and cling to it",
+              onPressed: () async {
+                var found = await controller.magnetiseCling();
+                if (!found) {
+                  // Nothing to say it wrongly: a stroke drawn entirely on the
+                  // background has no edge in it, and pretending otherwise
+                  // would cut the background in half.
+                  controller.brushSnap = 0;
+                }
+              },
+            ),
         ],
       ],
       if (e.removal.strokes.isNotEmpty) ...[

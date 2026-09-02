@@ -374,6 +374,15 @@ Future<ui.Image> _atWorkingSize(ui.Image source) async {
   return recorder.endRecording().toImage(width, height);
 }
 
+/// snapForStroke works out how far [stroke] should cling on [source]. See
+/// suggestSnap, which does the work once the pixels are to hand.
+Future<double?> snapForStroke(ui.Image source, RemovalStroke stroke) async {
+  var working = await _workingCopy(source);
+  if (working == null) return null;
+  return suggestSnap(
+      working.pixels, working.width, working.height, stroke);
+}
+
 Future<ui.Image?> strokePreview(ui.Image source, RemovalStroke stroke) async {
   // At the working size, and from the copy that was already made: a preview is
   // looked at rather than published, and it is rebuilt on every adjustment of
@@ -460,6 +469,125 @@ void _markClingEdge(
       out[i * 4 + 2] = (90 * scale).round();
     }
   }
+}
+
+/// suggestSnap works out how far a stroke should cling, from the picture
+/// under it.
+///
+/// The number cling wants is "how different from the background does a pixel
+/// have to be before it is not the background", and nobody can read that off a
+/// photograph -- which is why setting it by hand never worked. But it is
+/// visible in the picture: gather every pixel the stroke passes over, measure
+/// how far each is from what the stroke started on, and the two things the
+/// stroke crossed show up as two clusters of distances with a gap between.
+///
+/// Otsu's method finds that gap. It is the standard way to split a histogram
+/// into two groups -- pick the threshold that leaves the least variation
+/// *within* each group -- and it needs nothing to be told about either.
+///
+/// Returns null when there is no gap worth calling one: a stroke drawn
+/// entirely on the background has one cluster, and inventing a split in it
+/// would cut the background in half for no reason.
+double? suggestSnap(
+    Uint8List pixels, int width, int height, RemovalStroke stroke) {
+  if (stroke.points.isEmpty) return null;
+
+  var shorter = math.min(width, height);
+  var radius = math.max(1.0, stroke.radius * shorter);
+  var reference = _averageAround(
+      pixels,
+      width,
+      height,
+      (stroke.points.first.dx * width).round(),
+      (stroke.points.first.dy * height).round(),
+      math.max(1, radius ~/ 3));
+
+  // How many pixels sit at each distance from that colour, in 256 steps of the
+  // furthest two colours can be apart.
+  const diagonal = 441.6729559300637;
+  var counts = List<int>.filled(256, 0);
+  var total = 0;
+
+  for (var at in _alongPath([
+    for (var point in stroke.points)
+      ui.Offset(point.dx * width, point.dy * height),
+  ], math.max(1.0, radius / 3))) {
+    var left = math.max(0, (at.dx - radius).floor());
+    var right = math.min(width - 1, (at.dx + radius).ceil());
+    var top = math.max(0, (at.dy - radius).floor());
+    var bottom = math.min(height - 1, (at.dy + radius).ceil());
+
+    // Every third pixel: a histogram does not need all of them, and this is
+    // run while somebody is waiting for the line to move.
+    for (var y = top; y <= bottom; y += 3) {
+      for (var x = left; x <= right; x += 3) {
+        var dx = x - at.dx, dy = y - at.dy;
+        if (dx * dx + dy * dy > radius * radius) continue;
+        var p = (y * width + x) * 4;
+        var away = _distance(
+            [pixels[p].toDouble(), pixels[p + 1].toDouble(), pixels[p + 2].toDouble()],
+            reference);
+        var bin = (away / diagonal * 255).round().clamp(0, 255);
+        counts[bin]++;
+        total++;
+      }
+    }
+  }
+  if (total < 32) return null;
+
+  var split = _otsu(counts, total);
+  if (split == null) return null;
+
+  // A little past the split, so the pixels sitting exactly on the boundary --
+  // the blend along an outline -- fall inside the fading part of the tolerance
+  // rather than outside it altogether.
+  return ((split + 1.5) / 255).clamp(0.01, 0.6);
+}
+
+/// _otsu is the threshold that leaves the least variation within each of the
+/// two groups it makes, or null when one group would be empty.
+int? _otsu(List<int> counts, int total) {
+  var sum = 0.0;
+  for (var i = 0; i < counts.length; i++) {
+    sum += i * counts[i];
+  }
+
+  var belowWeight = 0, best = -1.0;
+  var belowSum = 0.0;
+  // The first and last thresholds that are equally the best.
+  //
+  // On a picture of two flat colours every threshold between the two is
+  // exactly as good, and taking the first of them puts the line hard against
+  // the background -- so a faint edge came out as no tolerance at all. The
+  // middle of the run is the one that sits between the two things.
+  int? first, last;
+
+  for (var i = 0; i < counts.length; i++) {
+    belowWeight += counts[i];
+    if (belowWeight == 0) continue;
+    var aboveWeight = total - belowWeight;
+    if (aboveWeight == 0) break;
+
+    belowSum += i * counts[i];
+    var belowMean = belowSum / belowWeight;
+    var aboveMean = (sum - belowSum) / aboveWeight;
+    var between =
+        belowWeight * aboveWeight * (belowMean - aboveMean) * (belowMean - aboveMean);
+    if (between > best) {
+      best = between;
+      first = i;
+      last = i;
+    } else if (between == best) {
+      last = i;
+    }
+  }
+
+  // A stroke drawn entirely on one thing has one cluster, and the best split
+  // of one cluster separates nothing. Everything here is measured in 256ths of
+  // the furthest two colours can be apart, so this is a real separation rather
+  // than the noise inside a single surface.
+  if (first == null || last == null || best <= 0) return null;
+  return (first + last) ~/ 2;
 }
 
 /// strokeCoverage is how strongly a stroke touches each pixel, from 0 to 255.

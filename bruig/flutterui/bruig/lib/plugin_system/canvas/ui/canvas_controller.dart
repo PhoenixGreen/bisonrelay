@@ -384,7 +384,7 @@ class CanvasController extends ChangeNotifier {
       // exactly where it was drawn: softening or snapping it would collect
       // colours the reader did not point at.
       hardness: _pendingTeaches ? 1 : _brushHardness,
-      snap: _pendingTeaches ? 0 : _brushSnap,
+      snap: _clingFor(_pendingTeaches, _pendingKeeps),
     );
 
     replaceElement(picture.copyWith(
@@ -393,6 +393,35 @@ class CanvasController extends ChangeNotifier {
             : picture.removal
                 .copyWith(strokes: [...picture.removal.strokes, stroke])));
     discardStroke();
+  }
+
+  /// magnetiseCling finds the edge the held stroke crossed, and sets the cling
+  /// to it.
+  ///
+  /// The number cling wants is "how different from the background does a pixel
+  /// have to be before it is not the background", and that is not something
+  /// anybody can read off a photograph -- so setting it by hand was always
+  /// guessing, which is why it never worked. The picture knows it: the stroke
+  /// crossed from one thing to another, and the two show up as two clusters of
+  /// colour distance with a gap between them. See suggestSnap.
+  ///
+  /// Returns false when there is no edge to find -- a stroke drawn entirely on
+  /// the background has one cluster, and inventing a split in it would cut the
+  /// background in half for no reason.
+  Future<bool> magnetiseCling() async {
+    var stroke = pendingAsStroke();
+    var id = _pendingPicture;
+    if (stroke == null || id == null) return false;
+
+    var picture = _document.elementById(id);
+    if (picture is! ImageElement) return false;
+    var source = images.original(picture.assetId);
+    if (source == null) return false;
+
+    var found = await snapForStroke(source, stroke);
+    if (found == null) return false;
+    brushSnap = found;
+    return true;
   }
 
   /// pendingAsStroke is the held stroke as it would be applied right now,
@@ -405,9 +434,24 @@ class CanvasController extends ChangeNotifier {
       radius: _brushSize,
       keep: _pendingKeeps,
       hardness: _pendingTeaches ? 1 : _brushHardness,
-      snap: _pendingTeaches ? 0 : _brushSnap,
+      snap: _clingFor(_pendingTeaches, _pendingKeeps),
     );
   }
+
+  /// _clingFor is how much a stroke should cling, which is not always what the
+  /// setting says.
+  ///
+  /// Never for a hint, which is a sample rather than a mark on the picture and
+  /// has to be taken exactly where it was drawn.
+  ///
+  /// And never for putting something back. Clinging means "spread only through
+  /// pixels like the one I started on", which is how you find the edge of a
+  /// background -- but what is being put back is the subject, and a subject is
+  /// every colour there is. With it on, a stroke over a face brought back the
+  /// few pixels nearest whatever was under the pointer and left the rest, so
+  /// the brush appeared to do nothing at all.
+  double _clingFor(bool teaches, bool keeps) =>
+      teaches || keeps ? 0 : _brushSnap;
 
   double _brushHardness = 0.35;
 
@@ -422,7 +466,14 @@ class CanvasController extends ChangeNotifier {
     notifyListeners();
   }
 
-  double _brushSnap = 0.12;
+  /// _brushSnap starts at nothing.
+  ///
+  /// A plain brush does what it is told, which is the behaviour to have by
+  /// default; clinging is an aid for following an edge quickly and is worth
+  /// reaching for deliberately. On by default it made the brush look broken,
+  /// because a stroke that refused most of what it covered is indistinguishable
+  /// from one that did not work.
+  double _brushSnap = 0;
 
   /// brushSnap makes a stroke cling to what is already in the picture. See
   /// RemovalStroke.snap.

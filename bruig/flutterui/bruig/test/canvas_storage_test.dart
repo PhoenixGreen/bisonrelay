@@ -349,4 +349,44 @@ void main() {
       expect(entries.where((e) => e.name == "Pictures"), isEmpty);
     });
   });
+
+  group("reusing a picture", () {
+    List<int> png([int fill = 1]) => [
+          0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
+          ...List.filled(40, fill)
+        ];
+
+    test("the store can say what is in it, newest first", () async {
+      // Without this there was no way to put the same badge on a second
+      // canvas except to go and find the file again. The bytes were shared
+      // from the beginning; nothing ever showed what was there.
+      expect(await CanvasAssets.stored(), isEmpty);
+
+      var first = (await CanvasAssets.save(png(1)))!;
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      var second = (await CanvasAssets.save(png(2)))!;
+
+      var stored = await CanvasAssets.stored();
+      expect(stored, hasLength(2));
+      expect(stored.first, second, reason: "the one added most recently");
+      expect(stored, contains(first));
+    });
+
+    test("the same picture added twice is listed once", () async {
+      await CanvasAssets.save(png(3));
+      await CanvasAssets.save(png(3));
+      expect(await CanvasAssets.stored(), hasLength(1));
+    });
+
+    test("a stray file is not offered as a picture", () async {
+      // The store is a visible folder now, so somebody may well drop something
+      // in it -- and a name that is not one of ours is not one of ours.
+      var library = await CanvasStorage.libraryDir();
+      var pictures = Directory(path.join(library, "Pictures"));
+      await pictures.create(recursive: true);
+      await File(path.join(pictures.path, "notes.txt")).writeAsString("hello");
+
+      expect(await CanvasAssets.stored(), isEmpty);
+    });
+  });
 }

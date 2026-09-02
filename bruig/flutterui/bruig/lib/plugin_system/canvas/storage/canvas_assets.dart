@@ -224,6 +224,30 @@ class CanvasAssets {
     }
   }
 
+  /// stored is every picture in the store, most recently added first.
+  ///
+  /// What the picture store was always missing: a way to use one again. The
+  /// bytes were shared from the beginning, but nothing ever showed what was in
+  /// there, so the only way to put the same badge on a second canvas was to go
+  /// and find the file again.
+  static Future<List<String>> stored() async {
+    try {
+      var dir = Directory(await _dir());
+      var found = <(String, DateTime)>[];
+      await for (var entry in dir.list(followLinks: false)) {
+        if (entry is! File) continue;
+        var id = path.basename(entry.path);
+        if (!_idPattern.hasMatch(id)) continue;
+        found.add((id, (await entry.stat()).modified));
+      }
+      found.sort((a, b) => b.$2.compareTo(a.$2));
+      return [for (var entry in found) entry.$1];
+    } catch (_) {
+      // No folder yet, which means nothing stored.
+      return const [];
+    }
+  }
+
   /// sweepUnused deletes every stored picture no saved canvas refers to.
   ///
   /// Called after a canvas is saved or deleted, which are the only two moments
