@@ -227,54 +227,126 @@ void applyRemovalForTest(
 
 /// _paintStrokes rubs the brush's marks into the alpha channel.
 ///
-/// Each stroke is a run of round dabs along its points, which is what a brush
-/// is: stamping only at the recorded points leaves a dotted line whenever the
+/// Each stroke is a run of dabs along its points, which is what a brush is:
+/// stamping only at the recorded points leaves a dotted line whenever the
 /// pointer moved faster than the samples arrived, so the gap between each pair
 /// is filled in.
-void _paintStrokes(
-    Uint8List pixels, int width, int height, List<RemovalStroke> strokes) {
+void _paintStrokes(Uint8List pixels, int width, int height,
+    List<RemovalStroke> strokes) {
   if (strokes.isEmpty) return;
   var shorter = math.min(width, height);
 
   for (var stroke in strokes) {
     var radius = math.max(1.0, stroke.radius * shorter);
-    var alpha = stroke.keep ? 255 : 0;
     if (stroke.points.isEmpty) continue;
 
     for (var i = 0; i < stroke.points.length; i++) {
-      var from = ui.Offset(stroke.points[i].dx * width, stroke.points[i].dy * height);
+      var from =
+          ui.Offset(stroke.points[i].dx * width, stroke.points[i].dy * height);
       var to = i + 1 < stroke.points.length
           ? ui.Offset(stroke.points[i + 1].dx * width,
               stroke.points[i + 1].dy * height)
           : from;
 
-      // One dab per half-radius along the segment: closer than that is wasted
-      // work, further apart and the line beads.
+      // One dab per third of a radius along the segment: closer than that is
+      // wasted work, further apart and a soft brush beads into a string of
+      // blobs rather than reading as one stroke.
       var span = (to - from).distance;
-      var steps = math.max(1, (span / (radius / 2)).ceil());
+      var steps = math.max(1, (span / (radius / 3)).ceil());
       for (var step = 0; step <= steps; step++) {
-        var at = ui.Offset.lerp(from, to, step / steps)!;
-        _dab(pixels, width, height, at, radius, alpha);
+        _dab(pixels, width, height, ui.Offset.lerp(from, to, step / steps)!,
+            radius, stroke);
       }
     }
   }
 }
 
+/// _dab is one press of the brush.
+///
+/// Two things make it a brush rather than a rubber stamp. It fades towards its
+/// rim, so strokes blend into one another and into whatever the automatic pass
+/// left, and it can be told to spread only through pixels like the one it
+/// started on -- see RemovalStroke.snap -- so brushing along a shoulder takes
+/// the sky and stops at the coat.
 void _dab(Uint8List pixels, int width, int height, ui.Offset at, double radius,
-    int alpha) {
+    RemovalStroke stroke) {
   var left = math.max(0, (at.dx - radius).floor());
   var right = math.min(width - 1, (at.dx + radius).ceil());
   var top = math.max(0, (at.dy - radius).floor());
   var bottom = math.min(height - 1, (at.dy + radius).ceil());
-  var squared = radius * radius;
+  if (right < left || bottom < top) return;
+
+  var centreX = at.dx.round().clamp(0, width - 1);
+  var centreY = at.dy.round().clamp(0, height - 1);
+  var reachable =
+      stroke.snap > 0 ? _reachable(pixels, width, left, right, top, bottom,
+          centreX, centreY, stroke.snap, radius) : null;
+
+  var target = stroke.keep ? 255.0 : 0.0;
+  // Everything within this is fully affected; beyond it the dab fades out.
+  var solid = radius * stroke.hardness.clamp(0.0, 1.0);
+  var fade = math.max(0.001, radius - solid);
 
   for (var y = top; y <= bottom; y++) {
     for (var x = left; x <= right; x++) {
       var dx = x - at.dx, dy = y - at.dy;
-      if (dx * dx + dy * dy > squared) continue;
-      pixels[(y * width + x) * 4 + 3] = alpha;
+      var distance = math.sqrt(dx * dx + dy * dy);
+      if (distance > radius) continue;
+
+      var index = y * width + x;
+      if (reachable != null &&
+          reachable[(y - top) * (right - left + 1) + (x - left)] == 0) {
+        continue;
+      }
+
+      var strength = distance <= solid ? 1.0 : (radius - distance) / fade;
+      if (strength <= 0) continue;
+
+      var p = index * 4 + 3;
+      var now = pixels[p].toDouble();
+      pixels[p] = (now + (target - now) * strength).round().clamp(0, 255);
     }
   }
+}
+
+/// _reachable is the part of a dab's disc joined to its centre by pixels of a
+/// similar colour.
+///
+/// A flood inside the brush and nowhere else, so it costs what the brush costs
+/// and cannot run away across the picture the way a full-frame one can.
+Uint8List _reachable(Uint8List pixels, int width, int left, int right, int top,
+    int bottom, int centreX, int centreY, double snap, double radius) {
+  var boxWidth = right - left + 1;
+  var boxHeight = bottom - top + 1;
+  var out = Uint8List(boxWidth * boxHeight);
+
+  const diagonal = 441.6729559300637;
+  var tolerance = snap * diagonal;
+  var centre = (centreY * width + centreX) * 4;
+  var stack = <int>[(centreY - top) * boxWidth + (centreX - left)];
+
+  while (stack.isNotEmpty) {
+    var local = stack.removeLast();
+    if (local < 0 || local >= out.length || out[local] != 0) continue;
+    var lx = local % boxWidth, ly = local ~/ boxWidth;
+    var x = left + lx, y = top + ly;
+
+    var dx = x - centreX, dy = y - centreY;
+    if (math.sqrt(dx * dx + dy * dy) > radius) continue;
+
+    var p = (y * width + x) * 4;
+    var dr = pixels[p] - pixels[centre];
+    var dg = pixels[p + 1] - pixels[centre + 1];
+    var db = pixels[p + 2] - pixels[centre + 2];
+    if (math.sqrt(dr * dr + dg * dg + db * db) > tolerance) continue;
+
+    out[local] = 1;
+    if (lx > 0) stack.add(local - 1);
+    if (lx < boxWidth - 1) stack.add(local + 1);
+    if (ly > 0) stack.add(local - boxWidth);
+    if (ly < boxHeight - 1) stack.add(local + boxWidth);
+  }
+  return out;
 }
 
 /// _chromaKey removes everything close to one colour.

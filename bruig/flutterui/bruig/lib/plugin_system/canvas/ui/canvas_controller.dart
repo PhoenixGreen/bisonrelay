@@ -316,6 +316,32 @@ class CanvasController extends ChangeNotifier {
     notifyListeners();
   }
 
+  double _brushHardness = 0.6;
+
+  /// brushHardness is how abruptly a stroke stops at its own edge. See
+  /// RemovalStroke.hardness.
+  double get brushHardness => _brushHardness;
+
+  set brushHardness(double value) {
+    var next = value.clamp(0.05, 1.0);
+    if (next == _brushHardness) return;
+    _brushHardness = next;
+    notifyListeners();
+  }
+
+  double _brushSnap = 0.12;
+
+  /// brushSnap makes a stroke cling to what is already in the picture. See
+  /// RemovalStroke.snap.
+  double get brushSnap => _brushSnap;
+
+  set brushSnap(double value) {
+    var next = value.clamp(0.0, 0.6);
+    if (next == _brushSnap) return;
+    _brushSnap = next;
+    notifyListeners();
+  }
+
   double _brushSize = 0.05;
 
   /// brushSize is the brush's radius as a fraction of the picture's shorter
@@ -324,7 +350,7 @@ class CanvasController extends ChangeNotifier {
   double get brushSize => _brushSize;
 
   set brushSize(double value) {
-    var next = value.clamp(0.005, 0.4);
+    var next = value.clamp(0.005, 0.6);
     if (next == _brushSize) return;
     _brushSize = next;
     notifyListeners();

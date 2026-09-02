@@ -83,6 +83,23 @@ class RemovalStroke {
   final List<Offset> points;
   final double radius;
 
+  /// hardness is how abruptly the stroke stops at its own edge: 1 is a disc
+  /// with a cut edge, lower fades out towards the rim.
+  ///
+  /// A hard brush is the wrong tool for a photograph. Everything in one has a
+  /// soft boundary -- hair most of all -- and a cut-out with a hard edge reads
+  /// as a sticker whatever else is right about it.
+  final double hardness;
+
+  /// snap makes the stroke cling to what is already in the picture.
+  ///
+  /// Zero paints the whole disc. Above zero, the dab spreads outwards from
+  /// where the pointer is only through pixels close in colour to the one under
+  /// it, so brushing along a shoulder takes the sky and stops at the coat
+  /// without the pointer having to trace the line. It is the difference
+  /// between painting a mask and pointing at what should go.
+  final double snap;
+
   /// keep is true for a stroke that puts the picture back and false for one
   /// that takes it away.
   final bool keep;
@@ -91,12 +108,16 @@ class RemovalStroke {
     required this.points,
     required this.radius,
     required this.keep,
+    this.hardness = 0.6,
+    this.snap = 0,
   });
 
   RemovalStroke copyWith({List<Offset>? points}) => RemovalStroke(
         points: points ?? this.points,
         radius: radius,
         keep: keep,
+        hardness: hardness,
+        snap: snap,
       );
 
   Map<String, dynamic> toJson() => {
@@ -106,6 +127,8 @@ class RemovalStroke {
         "p": [for (var p in points) ...[p.dx, p.dy]],
         "r": radius,
         if (keep) "keep": true,
+        if (hardness != 0.6) "hard": hardness,
+        if (snap > 0) "snap": snap,
       };
 
   factory RemovalStroke.fromJson(Map<String, dynamic> json) {
@@ -123,6 +146,8 @@ class RemovalStroke {
       points: points,
       radius: jsonDouble(json["r"], 0.05),
       keep: jsonBool(json["keep"], false),
+      hardness: jsonDouble(json["hard"], 0.6),
+      snap: jsonDouble(json["snap"], 0),
     );
   }
 }

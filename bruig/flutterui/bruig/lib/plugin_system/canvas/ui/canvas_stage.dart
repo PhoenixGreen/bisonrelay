@@ -904,6 +904,11 @@ class CanvasStageState extends State<CanvasStage> {
         points: [at],
         radius: controller.brushSize,
         keep: controller.retouch.keeps,
+        // A hint is a sample rather than a mark on the picture, so it is taken
+        // exactly where it was drawn: softening or snapping it would collect
+        // colours the reader did not point at.
+        hardness: teaching ? 1 : controller.brushHardness,
+        snap: teaching ? 0 : controller.brushSnap,
       ));
     } else {
       var last = marks.removeLast();

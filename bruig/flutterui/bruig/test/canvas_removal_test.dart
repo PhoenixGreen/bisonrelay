@@ -662,4 +662,177 @@ void main() {
           isNot(element.removal.cacheKey("a")));
     });
   });
+
+  group("the brush is the tool, not the fallback", () {
+    testWidgets("a soft brush fades out towards its rim", (tester) async {
+      // A hard brush is the wrong tool for a photograph: everything in one has
+      // a soft boundary, and a cut-out with a hard edge reads as a sticker
+      // whatever else is right about it.
+      const size = 60;
+      var pixels = picture(size, size, (x, y) => const Color(0xFF6688AA));
+
+      applyRemovalForTest(
+        pixels,
+        size,
+        size,
+        const BackgroundRemoval(
+          mode: RemovalMode.none,
+          strokes: [
+            RemovalStroke(
+              points: [Offset(0.5, 0.5)],
+              radius: 0.25,
+              keep: false,
+              hardness: 0.3,
+            ),
+          ],
+        ),
+      );
+
+      expect(alphaAt(pixels, size, 30, 30), 0, reason: "gone in the middle");
+      expect(alphaAt(pixels, size, 59, 30), 255, reason: "untouched outside");
+
+      // Somewhere between the two there is a partly transparent ring, which is
+      // what makes one stroke blend into the next.
+      var partial = 0;
+      for (var i = 0; i < size * size; i++) {
+        var a = pixels[i * 4 + 3];
+        if (a > 10 && a < 245) partial++;
+      }
+      expect(partial, greaterThan(20));
+    });
+
+    testWidgets("a hard brush does not", (tester) async {
+      const size = 60;
+      var pixels = picture(size, size, (x, y) => const Color(0xFF6688AA));
+
+      applyRemovalForTest(
+        pixels,
+        size,
+        size,
+        const BackgroundRemoval(
+          mode: RemovalMode.none,
+          strokes: [
+            RemovalStroke(
+              points: [Offset(0.5, 0.5)],
+              radius: 0.25,
+              keep: false,
+              hardness: 1,
+            ),
+          ],
+        ),
+      );
+
+      var partial = 0;
+      for (var i = 0; i < size * size; i++) {
+        var a = pixels[i * 4 + 3];
+        if (a > 10 && a < 245) partial++;
+      }
+      expect(partial, 0);
+    });
+
+    testWidgets("a clinging brush stops at what is already in the picture",
+        (tester) async {
+      // The one that makes this usable at speed: brushing along a shoulder
+      // takes the sky and stops at the coat, without the pointer having to
+      // trace the line.
+      const size = 60;
+      Uint8List build() => picture(size, size,
+          (x, y) => x < 30 ? const Color(0xFF88AAEE) : const Color(0xFF203020));
+
+      // A dab centred in the sky, big enough to cover a good deal of the coat.
+      const dab = RemovalStroke(
+        points: [Offset(0.25, 0.5)],
+        radius: 0.4,
+        keep: false,
+        hardness: 1,
+      );
+
+      var blunt = build();
+      applyRemovalForTest(blunt, size, size,
+          const BackgroundRemoval(mode: RemovalMode.none, strokes: [dab]));
+      // Inside the brush and past the boundary between the two colours.
+      expect(alphaAt(blunt, size, 35, 30), 0,
+          reason: "a plain brush takes whatever it covers");
+
+      var clinging = build();
+      applyRemovalForTest(
+        clinging,
+        size,
+        size,
+        const BackgroundRemoval(
+          mode: RemovalMode.none,
+          strokes: [
+            RemovalStroke(
+              points: [Offset(0.25, 0.5)],
+              radius: 0.4,
+              keep: false,
+              hardness: 1,
+              snap: 0.08,
+            ),
+          ],
+        ),
+      );
+      expect(alphaAt(clinging, size, 15, 30), 0, reason: "the sky went");
+      expect(alphaAt(clinging, size, 35, 30), 255,
+          reason: "and it stopped at the coat, though the brush covered it");
+    });
+
+    testWidgets("strokes build on one another rather than fighting",
+        (tester) async {
+      // Two overlapping soft strokes have to add up, or feathering them means
+      // every second pass undoes the first.
+      const size = 60;
+      var pixels = picture(size, size, (x, y) => const Color(0xFF6688AA));
+
+      const soft = BackgroundRemoval(
+        mode: RemovalMode.none,
+        strokes: [
+          RemovalStroke(
+              points: [Offset(0.45, 0.5)],
+              radius: 0.2,
+              keep: false,
+              hardness: 0.2),
+          RemovalStroke(
+              points: [Offset(0.55, 0.5)],
+              radius: 0.2,
+              keep: false,
+              hardness: 0.2),
+        ],
+      );
+      applyRemovalForTest(pixels, size, size, soft);
+
+      // Where the two rims overlap, between the centres, both have had a go.
+      expect(alphaAt(pixels, size, 30, 30), lessThan(60));
+    });
+
+    testWidgets("a put-back stroke wins over an erase drawn before it",
+        (tester) async {
+      const size = 40;
+      var pixels = picture(size, size, (x, y) => const Color(0xFF6688AA));
+
+      applyRemovalForTest(
+        pixels,
+        size,
+        size,
+        const BackgroundRemoval(
+          mode: RemovalMode.none,
+          strokes: [
+            RemovalStroke(
+                points: [Offset(0.5, 0.5)],
+                radius: 0.4,
+                keep: false,
+                hardness: 1),
+            RemovalStroke(
+                points: [Offset(0.5, 0.5)],
+                radius: 0.15,
+                keep: true,
+                hardness: 1),
+          ],
+        ),
+      );
+
+      expect(alphaAt(pixels, size, 20, 20), 255, reason: "put back");
+      expect(alphaAt(pixels, size, 20, 8), 0, reason: "still rubbed out");
+    });
+  });
 }

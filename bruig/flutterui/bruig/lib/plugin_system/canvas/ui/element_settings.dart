@@ -1224,16 +1224,39 @@ List<Widget> _imageSettings(BuildContext context, CanvasController controller,
                     ? RetouchBrush.off
                     : RetouchBrush.restore,
           ),
-          if (controller.retouch.on)
+          if (controller.retouch.on) ...[
             CanvasNumberField(
               label: "Brush",
               min: 0.005,
-              max: 0.4,
+              max: 0.6,
               decimals: 3,
               width: 62,
               value: controller.brushSize,
               onChanged: (v) => controller.brushSize = v,
             ),
+            // Only for the brushes that mark the picture. A hint is a sample
+            // and is taken exactly where it was drawn.
+            if (!controller.retouch.teaches) ...[
+              CanvasNumberField(
+                label: "Hardness",
+                min: 0.05,
+                max: 1,
+                decimals: 2,
+                width: 62,
+                value: controller.brushHardness,
+                onChanged: (v) => controller.brushHardness = v,
+              ),
+              CanvasNumberField(
+                label: "Cling",
+                min: 0,
+                max: 0.6,
+                decimals: 3,
+                width: 62,
+                value: controller.brushSnap,
+                onChanged: (v) => controller.brushSnap = v,
+              ),
+            ],
+          ],
           if (e.removal.strokes.isNotEmpty) ...[
             CanvasIconButton(
               icon: Icons.undo,
