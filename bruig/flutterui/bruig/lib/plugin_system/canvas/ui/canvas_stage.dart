@@ -5,6 +5,8 @@ import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
+import 'package:bruig/plugin_system/canvas/render/image_placement.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
@@ -145,6 +147,10 @@ class CanvasStageState extends State<CanvasStage> {
 
   /// _pressedAt is where the pointer went down, in stage coordinates.
   Offset _pressedAt = Offset.zero;
+
+  /// _painting is the picture being retouched, while a brush stroke is under
+  /// way. Held by id: the element is replaced on every point.
+  String? _painting;
 
   /// _editorRect is where the editor was opened, in document space.
   ///
@@ -690,6 +696,19 @@ class CanvasStageState extends State<CanvasStage> {
       return;
     }
 
+    // The retouching brush, before anything else -- while it is on, a drag is
+    // a stroke and nothing on the canvas moves.
+    if (controller.retouch.on) {
+      var picture = _selectedPicture();
+      if (picture != null) {
+        _painting = picture.id;
+        _mode = _DragMode.none;
+        controller.beginInteraction();
+        _paintStrokeAt(doc, start: true);
+        return;
+      }
+    }
+
     // A player, before anything else on the canvas -- and a player of *any*
     // team, not just the selected one.
     //
@@ -840,6 +859,57 @@ class CanvasStageState extends State<CanvasStage> {
         transient: true);
   }
 
+  /// _selectedPicture is the one selected element, when it is a picture with
+  /// something in it.
+  ImageElement? _selectedPicture() {
+    var selected = controller.selected;
+    return selected is ImageElement && selected.hasImage ? selected : null;
+  }
+
+  /// _paintStrokeAt adds a point to the stroke being painted.
+  ///
+  /// The point is stored in the *picture's* coordinates rather than the
+  /// canvas's, so a stroke stays on the shoulder it was painted on when the
+  /// element is resized, refitted or recropped afterwards. Converting is
+  /// ImagePlacement's job, and it is the same mapping the painter draws
+  /// through -- worked out separately the brush would touch pixels other than
+  /// the ones under the pointer, and it would look like a wobbly brush rather
+  /// than like two functions disagreeing.
+  void _paintStrokeAt(Offset doc, {bool start = false}) {
+    var id = _painting;
+    if (id == null) return;
+    var picture = document.elementById(id);
+    if (picture is! ImageElement) return;
+
+    var image = controller.images.original(picture.assetId);
+    if (image == null) return;
+
+    var inner = picture.boundsAt(controller.frame).deflate(picture.box.padding);
+    var size = Size(image.width.toDouble(), image.height.toDouble());
+    var at = placeImage(size, inner, picture.fit, crop: picture.crop)
+        .toImage(doc, size);
+    // Off the picture: the part of a stroke that runs past the edge has
+    // nothing to touch, which is not a reason to end the stroke.
+    if (at == null) return;
+
+    var strokes = [...picture.removal.strokes];
+    if (start || strokes.isEmpty) {
+      strokes.add(RemovalStroke(
+        points: [at],
+        radius: controller.brushSize,
+        keep: controller.retouch == RetouchBrush.restore,
+      ));
+    } else {
+      var last = strokes.removeLast();
+      strokes.add(last.copyWith(points: [...last.points, at]));
+    }
+
+    controller.replaceElement(
+      picture.copyWith(removal: picture.removal.copyWith(strokes: strokes)),
+      transient: true,
+    );
+  }
+
   /// _selectedTeam is the one selected element, when it is a team.
   TeamElement? _selectedTeam() {
     var selected = controller.selected;
@@ -987,6 +1057,10 @@ class CanvasStageState extends State<CanvasStage> {
   }
 
   void _onPointerMove(PointerMoveEvent event) {
+    if (_painting != null) {
+      _paintStrokeAt(_toDocument(event.localPosition));
+      return;
+    }
     if (_mode == _DragMode.none) {
       _updateHover(event.localPosition);
       return;
@@ -1136,6 +1210,11 @@ class CanvasStageState extends State<CanvasStage> {
   }
 
   void _onPointerUp(PointerUpEvent event) {
+    if (_painting != null) {
+      _painting = null;
+      controller.endInteraction();
+      return;
+    }
     _playerIndex = -1;
 
     // A press on an already-selected button that never became a drag is a
@@ -1435,6 +1514,9 @@ class CanvasStageState extends State<CanvasStage> {
   }
 
   MouseCursor _cursor() {
+    if (controller.retouch.on && _selectedPicture() != null) {
+      return SystemMouseCursors.precise;
+    }
     if (_mode == _DragMode.pan) return SystemMouseCursors.grabbing;
     if (controller.tool == CanvasTool.pan) return SystemMouseCursors.grab;
     if (_mode == _DragMode.rotate) return SystemMouseCursors.grabbing;

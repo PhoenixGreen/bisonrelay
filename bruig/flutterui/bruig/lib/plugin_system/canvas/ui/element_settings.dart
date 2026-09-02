@@ -57,7 +57,7 @@ List<Widget> elementSettings(
       ShapeElement e => _shapeSettings(e, write, begin, commit),
       LineElement e => _lineSettings(controller, e, write, begin, commit),
       ImageElement e =>
-        _imageSettings(context, e, write, begin, commit),
+        _imageSettings(context, controller, e, write, begin, commit),
       ChartElement e => _chartSettings(e, write, begin, commit),
       TableElement e => _tableSettings(e, write, begin, commit),
       ButtonElement e =>
@@ -984,8 +984,8 @@ List<Widget> _lineSettings(CanvasController controller, LineElement e,
   ];
 }
 
-List<Widget> _imageSettings(BuildContext context, ImageElement e, _Write write,
-    VoidCallback begin, VoidCallback commit) {
+List<Widget> _imageSettings(BuildContext context, CanvasController controller,
+    ImageElement e, _Write write, VoidCallback begin, VoidCallback commit) {
   void now(ImageElement next) {
     begin();
     write(next);
@@ -1144,6 +1144,66 @@ List<Widget> _imageSettings(BuildContext context, ImageElement e, _Write write,
             },
             onCommit: commit,
           ),
+          // The brush, beside the settings it corrects. Every automatic
+          // method has photographs it cannot do -- a subject whose outline is
+          // as soft as what is behind it has no edge to find -- and on those
+          // this is not a refinement, it is the tool.
+          CanvasIconButton(
+            icon: Icons.auto_fix_high,
+            tooltip: controller.retouch == RetouchBrush.erase
+                ? "Stop rubbing out"
+                : "Rub the background out by hand",
+            active: controller.retouch == RetouchBrush.erase,
+            onPressed: () => controller.retouch =
+                controller.retouch == RetouchBrush.erase
+                    ? RetouchBrush.off
+                    : RetouchBrush.erase,
+          ),
+          CanvasIconButton(
+            icon: Icons.healing,
+            tooltip: controller.retouch == RetouchBrush.restore
+                ? "Stop putting back"
+                : "Put back what was taken by mistake",
+            active: controller.retouch == RetouchBrush.restore,
+            onPressed: () => controller.retouch =
+                controller.retouch == RetouchBrush.restore
+                    ? RetouchBrush.off
+                    : RetouchBrush.restore,
+          ),
+          if (controller.retouch.on)
+            CanvasNumberField(
+              label: "Brush",
+              min: 0.005,
+              max: 0.4,
+              decimals: 3,
+              width: 62,
+              value: controller.brushSize,
+              onChanged: (v) => controller.brushSize = v,
+            ),
+          if (e.removal.strokes.isNotEmpty) ...[
+            CanvasIconButton(
+              icon: Icons.undo,
+              tooltip: "Undo the last brush stroke",
+              onPressed: () {
+                begin();
+                write(e.copyWith(
+                    removal: e.removal.copyWith(
+                        strokes: e.removal.strokes
+                            .sublist(0, e.removal.strokes.length - 1))));
+                commit();
+              },
+            ),
+            CanvasIconButton(
+              icon: Icons.layers_clear_outlined,
+              tooltip: "Clear every brush stroke",
+              onPressed: () {
+                begin();
+                write(e.copyWith(
+                    removal: e.removal.copyWith(strokes: const [])));
+                commit();
+              },
+            ),
+          ],
           CanvasToggle(
             label: "Invert",
             value: e.removal.invert,

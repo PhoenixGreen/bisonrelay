@@ -16,6 +16,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_painter.dart';
+import 'package:bruig/plugin_system/canvas/render/image_placement.dart';
 import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:bruig/plugin_system/canvas/render/procedural/generators.dart';
 import 'package:bruig/plugin_system/canvas/render/table_painter.dart';
@@ -761,37 +762,13 @@ void _drawImage(ui.Canvas canvas, ui.Image image, Rect rect, ImageFit fit,
     /// in the layer survives only where the picture has pixels. See
     /// _paintImage, which uses it to keep an overlay off a removed background.
     bool maskOnly = false}) {
-  var whole = Rect.fromLTWH(
-      0, 0, image.width.toDouble(), image.height.toDouble());
-  // The crop is applied first and everything after it works on what is left,
-  // so fitting, covering and framing all see the picture the reader chose
-  // rather than the one on disk.
-  var src = Rect.fromLTRB(
-    whole.width * crop.left,
-    whole.height * crop.top,
-    whole.width * crop.right,
-    whole.height * crop.bottom,
-  );
-  Rect dst;
-
-  switch (fit) {
-    case ImageFit.stretch:
-      dst = rect;
-    case ImageFit.contain:
-      var scale = math.min(rect.width / src.width, rect.height / src.height);
-      dst = Rect.fromCenter(
-          center: rect.center,
-          width: src.width * scale,
-          height: src.height * scale);
-    case ImageFit.cover:
-      // Cover crops the source rather than overflowing the destination, so
-      // the caller does not have to clip and an unclipped cover cannot spill
-      // over its neighbours.
-      var scale = math.max(rect.width / src.width, rect.height / src.height);
-      var w = rect.width / scale, h = rect.height / scale;
-      src = Rect.fromCenter(center: src.center, width: w, height: h);
-      dst = rect;
-  }
+  // Worked out once, in image_placement.dart, because the retouching brush
+  // needs the same mapping backwards -- see ImagePlacement.toImage.
+  var placement = placeImage(
+      Size(image.width.toDouble(), image.height.toDouble()), rect, fit,
+      crop: crop);
+  var src = placement.src;
+  var dst = placement.dst;
 
   var paint = Paint()..filterQuality = FilterQuality.high;
 

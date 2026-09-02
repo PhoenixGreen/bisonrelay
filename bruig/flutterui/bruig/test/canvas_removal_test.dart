@@ -1,6 +1,8 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/render/image_store.dart';
 import 'package:flutter/material.dart';
@@ -316,6 +318,144 @@ void main() {
       expect(alphaAt(pixels, size, 2, 2), 0, reason: "the bright half went");
       expect(alphaAt(pixels, size, 17, 2), 255);
       expect(math.max(1, 1), 1);
+    });
+  });
+
+  group("the retouching brush", () {
+    /// flat is a picture with no background to find automatically, which is
+    /// the case the brush exists for.
+    Uint8List flat(int size) =>
+        picture(size, size, (x, y) => const Color(0xFF6688AA));
+
+    testWidgets("a stroke rubs the picture out along its whole length",
+        (tester) async {
+      // Along its length, not at the points: stamping only where the pointer
+      // was sampled leaves a dotted line whenever it moved quickly.
+      const size = 60;
+      var pixels = flat(size);
+
+      applyRemovalForTest(
+        pixels,
+        size,
+        size,
+        const BackgroundRemoval(
+          mode: RemovalMode.none,
+          strokes: [
+            RemovalStroke(
+              points: [Offset(0.1, 0.5), Offset(0.9, 0.5)],
+              radius: 0.05,
+              keep: false,
+            ),
+          ],
+        ),
+      );
+
+      for (var x = 8; x < 52; x++) {
+        expect(alphaAt(pixels, size, x, 30), 0,
+            reason: "nothing left in the middle of the stroke at x=$x");
+      }
+      expect(alphaAt(pixels, size, 30, 5), 255,
+          reason: "and the picture above it is untouched");
+    });
+
+    testWidgets("a put-back stroke restores what a method took",
+        (tester) async {
+      // The strokes run after the automatic pass, so one is always the last
+      // word: a hand the flood ate comes back without changing the settings.
+      const size = 40;
+      var pixels = picture(size, size, (x, y) => const Color(0xFF101010));
+
+      applyRemovalForTest(
+        pixels,
+        size,
+        size,
+        const BackgroundRemoval(
+          // Takes the whole picture: it is all one flat colour reaching the
+          // border.
+          mode: RemovalMode.cornerFlood,
+          edge: 0.05,
+          tolerance: 0.5,
+          softness: 0,
+          strokes: [
+            RemovalStroke(
+              points: [Offset(0.5, 0.5)],
+              radius: 0.15,
+              keep: true,
+            ),
+          ],
+        ),
+      );
+
+      expect(alphaAt(pixels, size, 1, 1), 0, reason: "the flood took the rest");
+      expect(alphaAt(pixels, size, 20, 20), 255,
+          reason: "and the brush put the middle back");
+    });
+
+    testWidgets("the brush alone is a way to use this", (tester) async {
+      // No method at all, just strokes. On a photograph no automatic method
+      // can do, painting the background out by hand has to work without
+      // touching the dropdown -- which means "active" cannot mean "a mode is
+      // chosen".
+      const size = 40;
+      var pixels = flat(size);
+      const removal = BackgroundRemoval(
+        mode: RemovalMode.none,
+        strokes: [
+          RemovalStroke(
+              points: [Offset(0.5, 0.5)], radius: 0.2, keep: false),
+        ],
+      );
+
+      expect(removal.active, isTrue);
+      applyRemovalForTest(pixels, size, size, removal);
+      expect(alphaAt(pixels, size, 20, 20), 0);
+      expect(alphaAt(pixels, size, 1, 1), 255);
+    });
+
+    test("the cache key changes as a stroke is painted", () {
+      // Left out of the key, a stroke changed nothing on screen: the store
+      // handed back the picture it had already made and went on doing so
+      // however much was painted.
+      const one = BackgroundRemoval(strokes: [
+        RemovalStroke(points: [Offset(0.5, 0.5)], radius: 0.1, keep: false),
+      ]);
+      const longer = BackgroundRemoval(strokes: [
+        RemovalStroke(
+            points: [Offset(0.5, 0.5), Offset(0.6, 0.5)],
+            radius: 0.1,
+            keep: false),
+      ]);
+      const second = BackgroundRemoval(strokes: [
+        RemovalStroke(points: [Offset(0.5, 0.5)], radius: 0.1, keep: false),
+        RemovalStroke(points: [Offset(0.2, 0.2)], radius: 0.1, keep: true),
+      ]);
+
+      expect(one.cacheKey("a"), isNot(longer.cacheKey("a")));
+      expect(one.cacheKey("a"), isNot(second.cacheKey("a")));
+      expect(one.cacheKey("a"), one.cacheKey("a"));
+    });
+
+    test("strokes survive a round trip", () {
+      var element = ImageElement(
+        const ElementBase(id: "i", width: 100, height: 100),
+        removal: const BackgroundRemoval(
+          strokes: [
+            RemovalStroke(
+                points: [Offset(0.25, 0.5), Offset(0.75, 0.5)],
+                radius: 0.08,
+                keep: true),
+          ],
+        ),
+      );
+      var back = CanvasDocument.decode(
+              CanvasDocument(elements: [element]).encode())!.elements.single
+          as ImageElement;
+
+      expect(back.removal.strokes.length, 1);
+      expect(back.removal.strokes.single.points.length, 2);
+      expect(back.removal.strokes.single.points.first.dx, 0.25);
+      expect(back.removal.strokes.single.keep, isTrue);
+      expect(back.removal.strokes.single.radius, 0.08);
     });
   });
 }

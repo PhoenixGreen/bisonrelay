@@ -62,6 +62,66 @@ enum ImageFit {
 /// tolerance can be nudged a week later, and the document does not grow a
 /// second copy of every image. The cut-out is recomputed when the settings
 /// change and cached in memory for as long as they do not.
+/// RemovalStroke is one sweep of the retouching brush.
+///
+/// Points are fractions of the picture's own width and height, not canvas
+/// coordinates, so a stroke stays on the shoulder it was painted on when the
+/// element is later resized, refitted or recropped. The radius is a fraction
+/// of the picture's shorter side for the same reason.
+///
+/// This is the part of background removal that always works. Every automatic
+/// method has photographs it cannot do -- a subject whose outline is as soft
+/// as what is behind it has no edge to find, and no threshold separates a
+/// white shirt from a bright highlight when the two touch -- and on those the
+/// brush is not a refinement, it is the tool.
+class RemovalStroke {
+  final List<Offset> points;
+  final double radius;
+
+  /// keep is true for a stroke that puts the picture back and false for one
+  /// that takes it away.
+  final bool keep;
+
+  const RemovalStroke({
+    required this.points,
+    required this.radius,
+    required this.keep,
+  });
+
+  RemovalStroke copyWith({List<Offset>? points}) => RemovalStroke(
+        points: points ?? this.points,
+        radius: radius,
+        keep: keep,
+      );
+
+  Map<String, dynamic> toJson() => {
+        // Flat pairs rather than a list of objects: a stroke is hundreds of
+        // points and {"x":..,"y":..} triples the size of a saved canvas for
+        // nothing a reader of the file would thank us for.
+        "p": [for (var p in points) ...[p.dx, p.dy]],
+        "r": radius,
+        if (keep) "keep": true,
+      };
+
+  factory RemovalStroke.fromJson(Map<String, dynamic> json) {
+    var flat = json["p"];
+    var points = <Offset>[];
+    if (flat is List) {
+      for (var i = 0; i + 1 < flat.length; i += 2) {
+        var x = flat[i], y = flat[i + 1];
+        if (x is num && y is num) {
+          points.add(Offset(x.toDouble(), y.toDouble()));
+        }
+      }
+    }
+    return RemovalStroke(
+      points: points,
+      radius: jsonDouble(json["r"], 0.05),
+      keep: jsonBool(json["keep"], false),
+    );
+  }
+}
+
 class BackgroundRemoval {
   final RemovalMode mode;
 
@@ -83,6 +143,13 @@ class BackgroundRemoval {
   /// been kept.
   final bool invert;
 
+  /// strokes are the retouching brush's marks. See [RemovalStroke].
+  ///
+  /// Applied after whatever the automatic method did, so a stroke is always
+  /// the last word: the reader can put back a hand it ate and take out a patch
+  /// it missed without either changing the settings or losing the other.
+  final List<RemovalStroke> strokes;
+
   /// edge is how sharp a change has to be to stop the flood, for
   /// [RemovalMode.cornerFlood].
   ///
@@ -101,11 +168,16 @@ class BackgroundRemoval {
     this.tolerance = 0.45,
     this.softness = 0.04,
     this.edge = 0.09,
+    this.strokes = const [],
     this.threshold = 0.85,
     this.invert = false,
   });
 
-  bool get active => mode != RemovalMode.none;
+  /// active is whether anything is being taken out at all -- by a method, or
+  /// by the brush on its own. The brush alone is a legitimate way to use this:
+  /// on a picture no automatic method can do, the reader paints the background
+  /// out by hand and never touches the dropdown.
+  bool get active => mode != RemovalMode.none || strokes.isNotEmpty;
 
   BackgroundRemoval copyWith({
     RemovalMode? mode,
@@ -115,6 +187,7 @@ class BackgroundRemoval {
     double? threshold,
     bool? invert,
     double? edge,
+    List<RemovalStroke>? strokes,
   }) =>
       BackgroundRemoval(
         mode: mode ?? this.mode,
@@ -124,13 +197,25 @@ class BackgroundRemoval {
         threshold: threshold ?? this.threshold,
         invert: invert ?? this.invert,
         edge: edge ?? this.edge,
+        strokes: strokes ?? this.strokes,
       );
 
   /// cacheKey identifies a cut-out. Two elements with the same picture and
   /// the same settings share one, which matters on a canvas built from a
   /// dozen copies of the same badge.
+  /// cacheKey identifies the *result*, so two elements asking for the same
+  /// treatment of the same picture share one copy of it.
+  ///
+  /// The brush has to be in here. Left out, a stroke changed nothing on screen
+  /// -- the store would hand back the picture it had already made and go on
+  /// doing so however much was painted. The strokes are summarised by their
+  /// count and their last point rather than in full: a key holding every point
+  /// of every stroke would be longer than the document.
   String cacheKey(String assetId) => "$assetId|${mode.name}|"
-      "${colorToJson(keyColor)}|$tolerance|$softness|$threshold|$invert";
+      "${colorToJson(keyColor)}|$tolerance|$softness|$threshold|$invert|$edge|"
+      "${strokes.length}|${strokes.isEmpty ? "" : "${strokes.last.points.length}"
+          ":${strokes.last.points.isEmpty ? "" : strokes.last.points.last}"
+          ":${strokes.last.keep}"}";
 
   Map<String, dynamic> toJson() => {
         "mode": mode.name,
@@ -140,6 +225,8 @@ class BackgroundRemoval {
         "thr": threshold,
         if (invert) "invert": true,
         "edge": edge,
+        if (strokes.isNotEmpty)
+          "strokes": [for (var stroke in strokes) stroke.toJson()],
       };
 
   factory BackgroundRemoval.fromJson(Map<String, dynamic> json) =>
@@ -151,6 +238,12 @@ class BackgroundRemoval {
         threshold: jsonDouble(json["thr"], 0.85).clamp(0.0, 1.0),
         invert: jsonBool(json["invert"], false),
         edge: jsonDouble(json["edge"], 0.09),
+        strokes: [
+          if (json["strokes"] case List raw)
+            for (var stroke in raw)
+              if (stroke is Map<String, dynamic>)
+                RemovalStroke.fromJson(stroke),
+        ],
       );
 }
 

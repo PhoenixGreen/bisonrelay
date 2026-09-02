@@ -45,6 +45,22 @@ const int _maxUndo = 120;
 const double minZoom = 0.25;
 const double maxZoom = 16;
 
+/// RetouchBrush is what the brush does to a picture's background.
+enum RetouchBrush {
+  off("Off"),
+
+  /// erase takes the picture away, for a patch the automatic pass missed.
+  erase("Rub out"),
+
+  /// restore puts it back, for a hand or a shoulder the automatic pass ate.
+  restore("Put back");
+
+  final String label;
+  const RetouchBrush(this.label);
+
+  bool get on => this != RetouchBrush.off;
+}
+
 /// CanvasTool is what dragging on the canvas does.
 ///
 /// Two tools rather than one gesture that guesses. Dragging meant "move what
@@ -265,6 +281,36 @@ class CanvasController extends ChangeNotifier {
   TeamElement? get focusedTeam {
     var element = selected;
     return element is TeamElement ? element : null;
+  }
+
+  RetouchBrush _retouch = RetouchBrush.off;
+
+  /// retouch is whether the pointer is painting a picture's background in or
+  /// out rather than moving things about.
+  ///
+  /// A mode rather than a modifier key, because retouching is a job somebody
+  /// settles into for a minute at a time: a dozen strokes back and forth, each
+  /// one wanting both hands free.
+  RetouchBrush get retouch => _retouch;
+
+  set retouch(RetouchBrush value) {
+    if (_retouch == value) return;
+    _retouch = value;
+    notifyListeners();
+  }
+
+  double _brushSize = 0.05;
+
+  /// brushSize is the brush's radius as a fraction of the picture's shorter
+  /// side, which is how a stroke is stored -- so the brush stays the same size
+  /// relative to the picture however far the canvas is zoomed.
+  double get brushSize => _brushSize;
+
+  set brushSize(double value) {
+    var next = value.clamp(0.005, 0.4);
+    if (next == _brushSize) return;
+    _brushSize = next;
+    notifyListeners();
   }
 
   CanvasTool _tool = CanvasTool.select;

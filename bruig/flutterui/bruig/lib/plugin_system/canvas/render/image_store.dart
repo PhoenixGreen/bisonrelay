@@ -49,6 +49,15 @@ class CanvasImageStore extends ChangeNotifier implements CanvasImageSource {
 
   bool _disposed = false;
 
+  /// original is the picture as it was loaded, with nothing taken out.
+  ///
+  /// What the retouching brush measures against: a stroke is stored in the
+  /// picture's own pixels, and those do not change when a background is
+  /// removed -- the removal only rewrites the alpha. Asking [resolve] instead
+  /// would hand back null until the treated copy had been built, so the first
+  /// stroke of a session would land nowhere.
+  ui.Image? original(String assetId) => _images[assetId];
+
   @override
   ui.Image? resolve(String assetId, BackgroundRemoval removal) {
     if (assetId.isEmpty) return null;
@@ -159,7 +168,7 @@ Future<ui.Image?> _removeBackground(
   var pixels = data.buffer.asUint8List();
   var width = image.width, height = image.height;
 
-  if (removal.mode == RemovalMode.none) return null;
+  if (!removal.active) return null;
   applyRemovalForTest(pixels, width, height, removal);
 
   // decodeImageFromPixels rather than re-encoding to PNG and decoding that:
@@ -196,13 +205,73 @@ void applyRemovalForTest(
     Uint8List pixels, int width, int height, BackgroundRemoval removal) {
   switch (removal.mode) {
     case RemovalMode.none:
-      return;
+      // Not a return: the brush still has to run. Painting the background out
+      // by hand with no method chosen is a legitimate way to use this, and on
+      // a photograph no automatic method can do it is the only way.
+      break;
     case RemovalMode.chromaKey:
       _chromaKey(pixels, removal);
     case RemovalMode.luminance:
       _luminance(pixels, removal);
     case RemovalMode.cornerFlood:
       _cornerFlood(pixels, width, height, removal);
+  }
+
+  // Last, so a stroke is always the final word: the reader can put back a hand
+  // the automatic pass ate and take out a patch it missed without changing the
+  // settings, and without one undoing the other.
+  _paintStrokes(pixels, width, height, removal.strokes);
+}
+
+/// _paintStrokes rubs the brush's marks into the alpha channel.
+///
+/// Each stroke is a run of round dabs along its points, which is what a brush
+/// is: stamping only at the recorded points leaves a dotted line whenever the
+/// pointer moved faster than the samples arrived, so the gap between each pair
+/// is filled in.
+void _paintStrokes(
+    Uint8List pixels, int width, int height, List<RemovalStroke> strokes) {
+  if (strokes.isEmpty) return;
+  var shorter = math.min(width, height);
+
+  for (var stroke in strokes) {
+    var radius = math.max(1.0, stroke.radius * shorter);
+    var alpha = stroke.keep ? 255 : 0;
+    if (stroke.points.isEmpty) continue;
+
+    for (var i = 0; i < stroke.points.length; i++) {
+      var from = ui.Offset(stroke.points[i].dx * width, stroke.points[i].dy * height);
+      var to = i + 1 < stroke.points.length
+          ? ui.Offset(stroke.points[i + 1].dx * width,
+              stroke.points[i + 1].dy * height)
+          : from;
+
+      // One dab per half-radius along the segment: closer than that is wasted
+      // work, further apart and the line beads.
+      var span = (to - from).distance;
+      var steps = math.max(1, (span / (radius / 2)).ceil());
+      for (var step = 0; step <= steps; step++) {
+        var at = ui.Offset.lerp(from, to, step / steps)!;
+        _dab(pixels, width, height, at, radius, alpha);
+      }
+    }
+  }
+}
+
+void _dab(Uint8List pixels, int width, int height, ui.Offset at, double radius,
+    int alpha) {
+  var left = math.max(0, (at.dx - radius).floor());
+  var right = math.min(width - 1, (at.dx + radius).ceil());
+  var top = math.max(0, (at.dy - radius).floor());
+  var bottom = math.min(height - 1, (at.dy + radius).ceil());
+  var squared = radius * radius;
+
+  for (var y = top; y <= bottom; y++) {
+    for (var x = left; x <= right; x++) {
+      var dx = x - at.dx, dy = y - at.dy;
+      if (dx * dx + dy * dy > squared) continue;
+      pixels[(y * width + x) * 4 + 3] = alpha;
+    }
   }
 }
 
