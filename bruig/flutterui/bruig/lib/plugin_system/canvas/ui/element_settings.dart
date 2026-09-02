@@ -990,6 +990,18 @@ List<Widget> _imageSettings(BuildContext context, ImageElement e, _Write write,
             tooltip: "Take the picture out",
             onPressed: () => now(e.copyWith(assetId: "")),
           ),
+        CanvasIconButton(
+          icon: e.lockAspect ? Icons.link : Icons.link_off,
+          tooltip: e.lockAspect
+              ? "Proportions are held while it is resized — Shift to stretch"
+              : "It can be stretched — Shift to hold its proportions",
+          active: e.lockAspect,
+          onPressed: () {
+            begin();
+            write(e.copyWith(lockAspect: !e.lockAspect));
+            commit();
+          },
+        ),
         CanvasDropdown<ImageFit>(
           label: "Fit",
           value: e.fit,

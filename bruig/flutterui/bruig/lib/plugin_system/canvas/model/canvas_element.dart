@@ -272,6 +272,11 @@ abstract class CanvasElement {
   double opacityAt(int frame) =>
       (opacity * poseAt(frame).opacity).clamp(0.0, 1.0);
 
+  /// keepsAspect is whether a resize should hold this element's proportions
+  /// even without Shift. False for everything except a picture that has asked
+  /// for it -- see ImageElement.lockAspect.
+  bool get keepsAspect => false;
+
   /// rotationRadians is what the painter and the hit test both want.
   double get rotationRadians => rotation * math.pi / 180;
 

@@ -3,6 +3,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
@@ -1684,6 +1685,54 @@ void main() {
       var after = controller.document.elementById("s")!;
       expect(after.width, element.width, reason: "not resized");
       expect(after.x, greaterThan(element.x), reason: "moved");
+    });
+  });
+
+  group("resizing a picture", () {
+    (CanvasController, ImageElement) withPicture({bool locked = true}) {
+      var document = const CanvasDocument();
+      var element = ImageElement(
+        const ElementBase(id: "i", x: 100, y: 100, width: 400, height: 200),
+      ).copyWith(lockAspect: locked);
+      var controller = CanvasController(document.addElement(element));
+      controller.selectOnly("i");
+      return (controller, element);
+    }
+
+    testWidgets("the handles hold its proportions without Shift",
+        (tester) async {
+      var (controller, element) = withPicture();
+      addTearDown(controller.dispose);
+      var stage = await pump(tester, controller);
+      var scale = stage.pageRect.width / controller.document.size.width;
+
+      await tester.dragFrom(
+          stage.pageRect.topLeft + element.bounds.bottomRight * scale,
+          const Offset(0, 100));
+      await tester.pumpAndSettle();
+
+      var after = controller.document.elementById("i")!;
+      expect(after.width / after.height,
+          closeTo(element.width / element.height, 0.02),
+          reason: "dragging one edge moved the other with it");
+      expect(after.height, greaterThan(element.height));
+    });
+
+    testWidgets("unlocking lets it be stretched", (tester) async {
+      var (controller, element) = withPicture(locked: false);
+      addTearDown(controller.dispose);
+      var stage = await pump(tester, controller);
+      var scale = stage.pageRect.width / controller.document.size.width;
+
+      await tester.dragFrom(
+          stage.pageRect.topLeft + element.bounds.bottomRight * scale,
+          const Offset(0, 100));
+      await tester.pumpAndSettle();
+
+      var after = controller.document.elementById("i")!;
+      expect(after.width, closeTo(element.width, 1),
+          reason: "only the edge that was dragged moved");
+      expect(after.height, greaterThan(element.height));
     });
   });
 }

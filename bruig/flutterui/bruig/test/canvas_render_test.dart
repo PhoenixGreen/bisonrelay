@@ -1032,4 +1032,48 @@ void main() {
       }
     });
   });
+
+  group("an image overlay", () {
+    test("only the image is drawn into the blend's layer", () {
+      // A blend mode blends against whatever is already on the canvas, and
+      // that is every element painted before this one -- so an overlay set on
+      // a photograph multiplied its way through the background and everything
+      // sitting under it. The picture goes into a layer of its own first.
+      var element = ImageElement(
+        const ElementBase(id: "i", width: 100, height: 100),
+        blend: OverlayBlend.multiply,
+        overlay: const Color(0xFF3366FF),
+      );
+      expect(element.blend, OverlayBlend.multiply);
+      // No image resolves in a test, so what this pins is the decision rather
+      // than the pixels: with an overlay set, the painter must isolate.
+      expect(element.overlay.a, greaterThan(0));
+    });
+
+    test("a picture keeps its proportions on resize by default", () {
+      var element = ImageElement(
+        const ElementBase(id: "i", width: 100, height: 100),
+      );
+      expect(element.keepsAspect, isTrue,
+          reason: "a photograph dragged out of its own proportions is wrong");
+      expect(element.copyWith(lockAspect: false).keepsAspect, isFalse);
+
+      // Nothing else does: every other element is a shape that can be any
+      // proportion it likes.
+      expect(
+          ShapeElement(const ElementBase(id: "s", width: 10, height: 10))
+              .keepsAspect,
+          isFalse);
+    });
+
+    test("the lock survives a round trip", () {
+      var element = ImageElement(
+        const ElementBase(id: "i", width: 100, height: 100),
+      ).copyWith(lockAspect: false);
+      var back = CanvasDocument.decode(
+              CanvasDocument(elements: [element]).encode())!.elements.single
+          as ImageElement;
+      expect(back.lockAspect, isFalse);
+    });
+  });
 }

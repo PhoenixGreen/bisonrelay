@@ -1071,8 +1071,11 @@ class CanvasStageState extends State<CanvasStage> {
       var bottom = start.bottom + (handle.movesBottom ? delta.dy : 0);
 
       // Shift keeps the proportions, driven by whichever axis moved further so
-      // that a corner drag feels like one gesture rather than two.
-      if (_shiftHeld && start.height > 0) {
+      // that a corner drag feels like one gesture rather than two. A picture
+      // asks for the same thing without the key being held, and then Shift is
+      // how it is let go of -- see CanvasElement.keepsAspect.
+      var keep = element.keepsAspect ? !_shiftHeld : _shiftHeld;
+      if (keep && start.height > 0) {
         var aspect = start.width / start.height;
         if ((right - left).abs() > (bottom - top).abs() * aspect) {
           var height = (right - left).abs() / aspect;

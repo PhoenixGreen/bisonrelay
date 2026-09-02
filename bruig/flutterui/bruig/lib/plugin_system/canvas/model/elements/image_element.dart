@@ -273,6 +273,14 @@ class ImageElement extends CanvasElement {
   /// they are the difference between a photograph and a photograph that goes
   /// with the rest of the design.
   final Color overlay;
+
+  /// lockAspect keeps the frame's proportions while it is resized.
+  ///
+  /// On to begin with, and only for pictures. Every other element is a shape
+  /// that can be any proportion it likes; a photograph dragged out of its own
+  /// is a photograph that looks wrong, and putting it back by hand means
+  /// finding the original numbers.
+  final bool lockAspect;
   final OverlayBlend blend;
 
   const ImageElement(
@@ -288,11 +296,15 @@ class ImageElement extends CanvasElement {
     this.frame,
     this.filter = ImageFilterPreset.none,
     this.overlay = const Color(0x00000000),
+    this.lockAspect = true,
     this.blend = OverlayBlend.none,
   });
 
   @override
   ElementKind get kind => ElementKind.image;
+
+  @override
+  bool get keepsAspect => lockAspect;
 
   /// hasImage is whether there is anything to draw. An element with no
   /// picture yet is drawn as a placeholder rather than as nothing, so it can
@@ -312,6 +324,7 @@ class ImageElement extends CanvasElement {
       frame: frame,
       filter: filter,
       overlay: overlay,
+      lockAspect: lockAspect,
       blend: blend);
 
   ImageElement copyWith({
@@ -327,6 +340,7 @@ class ImageElement extends CanvasElement {
     bool clearFrame = false,
     ImageFilterPreset? filter,
     Color? overlay,
+    bool? lockAspect,
     OverlayBlend? blend,
   }) =>
       ImageElement(base,
@@ -341,6 +355,7 @@ class ImageElement extends CanvasElement {
           frame: clearFrame ? null : (frame ?? this.frame),
           filter: filter ?? this.filter,
           overlay: overlay ?? this.overlay,
+          lockAspect: lockAspect ?? this.lockAspect,
           blend: blend ?? this.blend);
 
   @override
@@ -356,6 +371,7 @@ class ImageElement extends CanvasElement {
         if (frame != null) "frame": frame!.name,
         if (filter != ImageFilterPreset.none) "filter": filter.name,
         if (blend != OverlayBlend.none) "overlay": colorToJson(overlay),
+        if (!lockAspect) "lockAspect": false,
         if (blend != OverlayBlend.none) "blend": blend.name,
       };
 
@@ -376,5 +392,6 @@ class ImageElement extends CanvasElement {
               : null,
           filter: ImageFilterPreset.fromName(json["filter"] as String?),
           overlay: colorFromJson(json["overlay"], const Color(0x00000000)),
+          lockAspect: jsonBool(json["lockAspect"], true),
           blend: OverlayBlend.fromName(json["blend"] as String?));
 }

@@ -159,16 +159,8 @@ Future<ui.Image?> _removeBackground(
   var pixels = data.buffer.asUint8List();
   var width = image.width, height = image.height;
 
-  switch (removal.mode) {
-    case RemovalMode.none:
-      return null;
-    case RemovalMode.chromaKey:
-      _chromaKey(pixels, removal);
-    case RemovalMode.luminance:
-      _luminance(pixels, removal);
-    case RemovalMode.cornerFlood:
-      _cornerFlood(pixels, width, height, removal);
-  }
+  if (removal.mode == RemovalMode.none) return null;
+  applyRemovalForTest(pixels, width, height, removal);
 
   // decodeImageFromPixels rather than re-encoding to PNG and decoding that:
   // the pixels are already exactly what is wanted, and a PNG round trip on a
@@ -190,6 +182,28 @@ int _alphaFor(double distance, double tolerance, double softness, int current) {
   if (softness <= 0 || distance >= tolerance + softness) return current;
   var t = (distance - tolerance) / softness;
   return (current * t).round().clamp(0, 255);
+}
+
+/// applyRemovalForTest runs a removal over raw RGBA pixels in place.
+///
+/// The whole of the work, with the image decoding either side of it left out.
+/// Exposed because that is where every question worth asking of this code
+/// lives -- does a two-tone background go, does a gradient creep into the
+/// subject, does inverting keep a halo -- and none of them can be asked of a
+/// photograph nobody can check into a repository. See canvas_removal_test.
+@visibleForTesting
+void applyRemovalForTest(
+    Uint8List pixels, int width, int height, BackgroundRemoval removal) {
+  switch (removal.mode) {
+    case RemovalMode.none:
+      return;
+    case RemovalMode.chromaKey:
+      _chromaKey(pixels, removal);
+    case RemovalMode.luminance:
+      _luminance(pixels, removal);
+    case RemovalMode.cornerFlood:
+      _cornerFlood(pixels, width, height, removal);
+  }
 }
 
 /// _chromaKey removes everything close to one colour.
@@ -238,55 +252,130 @@ void _luminance(Uint8List pixels, BackgroundRemoval removal) {
 /// the white of an eye going transparent along with the white background is
 /// the commonest complaint about chroma keying a logo.
 ///
+/// **Every edge pixel is its own seed, with its own colour.** That is the
+/// difference between this working on a real photograph and not. It used to
+/// compare the whole flood against one colour -- the picture's top-left pixel
+/// -- so a stadium shot whose background runs from bright bokeh on one side to
+/// near-black on the other could not be covered by any tolerance at all: raise
+/// it enough to reach the dark and it eats the subject, leave it low and half
+/// the background stays. Per seed, the bright region is found from the bright
+/// edges and the dark region from the dark ones, and neither has to know about
+/// the other.
+///
+/// The reference does *not* drift as the flood spreads. Comparing each pixel
+/// to its neighbour instead would let a gradual gradient walk the whole way
+/// into the subject one small step at a time, which is the failure the single
+/// seed was avoiding -- this keeps that guarantee and drops the assumption
+/// that the background is one colour.
+///
 /// An explicit stack rather than recursion: a full-frame flood on a large
 /// picture is millions of pixels deep and would overflow.
 void _cornerFlood(
     Uint8List pixels, int width, int height, BackgroundRemoval removal) {
-  var visited = Uint8List(width * height);
+  var count = width * height;
+  var seen = Uint8List(count);
+  var removed = Uint8List(count);
+
+  // Each entry is a pixel and the colour it is to be judged against, so a
+  // flood that started on a bright edge keeps comparing to that brightness
+  // however far it travels.
   var stack = <int>[];
+  void seed(int index) {
+    stack..add(index)..add(index);
+  }
 
   // Seeded from every edge pixel rather than from the four corners, so a
   // subject that touches one corner does not stop the rest of the background
   // being found.
   for (var x = 0; x < width; x++) {
-    stack.add(x);
-    stack.add((height - 1) * width + x);
+    seed(x);
+    seed((height - 1) * width + x);
   }
   for (var y = 0; y < height; y++) {
-    stack.add(y * width);
-    stack.add(y * width + width - 1);
+    seed(y * width);
+    seed(y * width + width - 1);
   }
 
   const diagonal = 441.6729559300637;
   var tolerance = removal.tolerance * diagonal;
 
   while (stack.isNotEmpty) {
+    var reference = stack.removeLast();
     var index = stack.removeLast();
-    if (index < 0 || index >= visited.length || visited[index] != 0) continue;
-    visited[index] = 1;
+    if (index < 0 || index >= count || seen[index] != 0) continue;
 
     var p = index * 4;
-    // Compared against the seed colour -- the picture's own top-left pixel --
-    // rather than against each neighbour, because comparing to neighbours lets
-    // a gradual gradient walk the whole way into the subject one small step at
-    // a time.
-    var dr = pixels[p] - pixels[0];
-    var dg = pixels[p + 1] - pixels[1];
-    var db = pixels[p + 2] - pixels[2];
+    var r = reference * 4;
+    var dr = pixels[p] - pixels[r];
+    var dg = pixels[p + 1] - pixels[r + 1];
+    var db = pixels[p + 2] - pixels[r + 2];
     if (math.sqrt(dr * dr + dg * dg + db * db) > tolerance) continue;
 
+    // Marked only once it is accepted. Marking on sight -- which is what the
+    // shared visited array did -- also marked every pixel the flood merely
+    // looked at and rejected, so inverting the mask kept the subject *and*
+    // a halo of everything the flood had touched around it.
+    seen[index] = 1;
+    removed[index] = 1;
     pixels[p + 3] = 0;
 
     var x = index % width, y = index ~/ width;
-    if (x > 0) stack.add(index - 1);
-    if (x < width - 1) stack.add(index + 1);
-    if (y > 0) stack.add(index - width);
-    if (y < height - 1) stack.add(index + width);
+    if (x > 0) stack..add(index - 1)..add(reference);
+    if (x < width - 1) stack..add(index + 1)..add(reference);
+    if (y > 0) stack..add(index - width)..add(reference);
+    if (y < height - 1) stack..add(index + width)..add(reference);
   }
 
   if (removal.invert) {
-    for (var i = 0; i < visited.length; i++) {
-      pixels[i * 4 + 3] = visited[i] != 0 ? 255 : 0;
+    for (var i = 0; i < count; i++) {
+      pixels[i * 4 + 3] = removed[i] != 0 ? 255 : 0;
+    }
+  }
+
+  if (removal.softness > 0) _featherAlpha(pixels, width, height, removal);
+}
+
+/// _featherAlpha softens the edge the removal left behind.
+///
+/// A flood gives every pixel all or nothing, which on anything with a soft
+/// outline -- hair, most of all -- leaves a hard staircase where a photograph
+/// had a gradual one. This averages the alpha over a small neighbourhood, but
+/// only where there is an edge to soften: a pixel surrounded by pixels that
+/// agree with it is left exactly as it was, so the middle of the subject stays
+/// solid and the middle of the hole stays empty.
+void _featherAlpha(
+    Uint8List pixels, int width, int height, BackgroundRemoval removal) {
+  var radius = (removal.softness * 3).round().clamp(1, 6);
+  var count = width * height;
+  var alpha = Uint8List(count);
+  for (var i = 0; i < count; i++) {
+    alpha[i] = pixels[i * 4 + 3];
+  }
+
+  for (var y = 0; y < height; y++) {
+    for (var x = 0; x < width; x++) {
+      var index = y * width + x;
+      var here = alpha[index];
+
+      var total = 0;
+      var seen = 0;
+      var mixed = false;
+      for (var dy = -radius; dy <= radius; dy++) {
+        var ny = y + dy;
+        if (ny < 0 || ny >= height) continue;
+        for (var dx = -radius; dx <= radius; dx++) {
+          var nx = x + dx;
+          if (nx < 0 || nx >= width) continue;
+          var value = alpha[ny * width + nx];
+          if (value != here) mixed = true;
+          total += value;
+          seen++;
+        }
+      }
+      // Nothing to soften: every neighbour agrees, so this is the inside of
+      // the subject or the inside of the hole.
+      if (!mixed || seen == 0) continue;
+      pixels[index * 4 + 3] = (total / seen).round().clamp(0, 255);
     }
   }
 }

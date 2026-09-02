@@ -687,6 +687,17 @@ void _paintImage(ui.Canvas canvas, Rect bounds, ImageElement e,
     canvas.clipRect(inner);
   }
 
+  var overlaid = e.blend != OverlayBlend.none && e.overlay.a > 0;
+
+  // With an overlay, the picture goes into a layer of its own first.
+  //
+  // A blend mode blends against whatever is already on the canvas, and what is
+  // already on the canvas is every element painted before this one -- so an
+  // overlay set on a photograph was multiplying its way through the background
+  // and everything sitting under it. Inside a layer there is nothing under the
+  // picture but the picture.
+  if (overlaid) canvas.saveLayer(inner, Paint());
+
   _drawImage(canvas, image, inner, e.fit,
       tint: e.tint,
       saturation: e.saturation,
@@ -694,14 +705,21 @@ void _paintImage(ui.Canvas canvas, Rect bounds, ImageElement e,
       crop: e.crop,
       filter: e.filter);
 
-  // The overlay goes inside the same clip, so it is cut to the frame as the
-  // picture is rather than showing as a rectangle behind a circle.
-  if (e.blend != OverlayBlend.none && e.overlay.a > 0) {
+  if (overlaid) {
     canvas.drawRect(
         inner,
         Paint()
           ..color = e.overlay
           ..blendMode = e.blend.flutter);
+
+    // Then cut back to the picture's own shape. Every separable blend mode
+    // leaves its colour behind on transparent pixels -- multiply on nothing is
+    // the source -- so on a photograph with its background taken out the
+    // overlay filled the hole it had just been cut out of. Drawing the picture
+    // again as a mask keeps the overlay only where there is picture to tint.
+    _drawImage(canvas, image, inner, e.fit,
+        crop: e.crop, maskOnly: true);
+    canvas.restore();
   }
   canvas.restore();
 }
@@ -736,7 +754,13 @@ void _drawImage(ui.Canvas canvas, ui.Image image, Rect rect, ImageFit fit,
     double saturation = 1,
     double brightness = 1,
     ImageCrop crop = const ImageCrop(),
-    ImageFilterPreset filter = ImageFilterPreset.none}) {
+    ImageFilterPreset filter = ImageFilterPreset.none,
+
+    /// maskOnly draws the picture's *shape* rather than the picture: no
+    /// colour, no filters, composited with dstIn so that whatever is already
+    /// in the layer survives only where the picture has pixels. See
+    /// _paintImage, which uses it to keep an overlay off a removed background.
+    bool maskOnly = false}) {
   var whole = Rect.fromLTWH(
       0, 0, image.width.toDouble(), image.height.toDouble());
   // The crop is applied first and everything after it works on what is left,
@@ -770,6 +794,14 @@ void _drawImage(ui.Canvas canvas, ui.Image image, Rect rect, ImageFit fit,
   }
 
   var paint = Paint()..filterQuality = FilterQuality.high;
+
+  // As a mask the picture contributes nothing but its alpha, so none of the
+  // colour work applies and dstIn keeps the layer only where there are pixels.
+  if (maskOnly) {
+    canvas.drawImageRect(image, src, dst, paint..blendMode = BlendMode.dstIn);
+    return;
+  }
+
   // One matrix for the lot: a preset and the two sliders multiplied together,
   // rather than a saveLayer per effect. Layers are the expensive part of
   // drawing and a canvas may hold a dozen pictures.
