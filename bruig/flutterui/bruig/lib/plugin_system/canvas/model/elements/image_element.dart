@@ -386,6 +386,93 @@ enum OverlayBlend {
       );
 }
 
+/// OutlineStyle is where an outline sits relative to the shape it traces.
+///
+/// Not solid/dashed/dotted. Those are the choices for a border around a box,
+/// where there is a path to walk; what is being traced here is the edge of an
+/// alpha channel -- a silhouette with holes in it and hair round the top --
+/// and it has no path anybody could put dashes along. What does vary, and
+/// what a cut-out actually needs, is which side of that edge the band falls
+/// on and how hard it is.
+enum OutlineStyle {
+  outside("Outside", "The band sits outside the subject"),
+  centred("Centred", "Half outside the edge and half in"),
+  inside("Inside", "The band eats into the subject's own edge"),
+  glow("Glow", "A soft halo rather than a line");
+
+  final String label;
+  final String description;
+  const OutlineStyle(this.label, this.description);
+
+  static OutlineStyle fromName(String? name) => values.firstWhere(
+        (s) => s.name == name,
+        orElse: () => OutlineStyle.outside,
+      );
+}
+
+/// ImageOutline is a line traced around whatever is left of a picture.
+///
+/// The sticker look, and the reason to want it is legibility rather than
+/// decoration: a subject cut out of a photograph and dropped on a busy canvas
+/// has nothing separating it from what is behind it, and a dark player on a
+/// dark background reads as a smudge until something draws the boundary.
+///
+/// It traces the alpha channel, so it needs no help from the removal that
+/// produced it and does not care which method or how many brush strokes got
+/// there. On a picture with nothing taken out it traces the rectangle, which
+/// is a border and is a perfectly reasonable thing to ask for too.
+class ImageOutline {
+  final Color color;
+
+  /// width is in canvas units, like every other thickness here, so an outline
+  /// stays the same weight when the element is resized.
+  final double width;
+
+  final OutlineStyle style;
+
+  /// feather fades the band out as it goes, 0 for a hard line and 1 for one
+  /// that is transparent by the time it reaches its own edge.
+  final double feather;
+
+  const ImageOutline({
+    this.color = const Color(0xFFFFFFFF),
+    this.width = 0,
+    this.style = OutlineStyle.outside,
+    this.feather = 0,
+  });
+
+  /// on is whether it draws anything. A width of zero is the default and the
+  /// off switch: there is no separate toggle to get out of step with it.
+  bool get on => width > 0 && color.a > 0;
+
+  ImageOutline copyWith({
+    Color? color,
+    double? width,
+    OutlineStyle? style,
+    double? feather,
+  }) =>
+      ImageOutline(
+        color: color ?? this.color,
+        width: width ?? this.width,
+        style: style ?? this.style,
+        feather: feather ?? this.feather,
+      );
+
+  Map<String, dynamic> toJson() => {
+        "c": colorToJson(color),
+        "w": width,
+        "s": style.name,
+        if (feather > 0) "f": feather,
+      };
+
+  factory ImageOutline.fromJson(Map<String, dynamic> json) => ImageOutline(
+        color: colorFromJson(json["c"]),
+        width: jsonDouble(json["w"], 0).clamp(0.0, 400.0),
+        style: OutlineStyle.fromName(json["s"] as String?),
+        feather: jsonDouble(json["f"], 0).clamp(0.0, 1.0),
+      );
+}
+
 /// ImageCrop is which part of the picture is shown, in fractions of it.
 ///
 /// Fractions rather than pixels, so a crop survives the picture being swapped
@@ -467,6 +554,9 @@ class ImageElement extends CanvasElement {
 
   final ImageFilterPreset filter;
 
+  /// outline traces what is left of the picture. See [ImageOutline].
+  final ImageOutline outline;
+
   /// overlay is a colour laid over the picture, and blend is how. Together
   /// they are the difference between a photograph and a photograph that goes
   /// with the rest of the design.
@@ -493,6 +583,7 @@ class ImageElement extends CanvasElement {
     this.crop = const ImageCrop(),
     this.frame,
     this.filter = ImageFilterPreset.none,
+    this.outline = const ImageOutline(),
     this.overlay = const Color(0x00000000),
     this.lockAspect = true,
     this.blend = OverlayBlend.none,
@@ -521,6 +612,7 @@ class ImageElement extends CanvasElement {
       crop: crop,
       frame: frame,
       filter: filter,
+      outline: outline,
       overlay: overlay,
       lockAspect: lockAspect,
       blend: blend);
@@ -537,6 +629,7 @@ class ImageElement extends CanvasElement {
     ShapeKind? frame,
     bool clearFrame = false,
     ImageFilterPreset? filter,
+    ImageOutline? outline,
     Color? overlay,
     bool? lockAspect,
     OverlayBlend? blend,
@@ -552,6 +645,7 @@ class ImageElement extends CanvasElement {
           crop: crop ?? this.crop,
           frame: clearFrame ? null : (frame ?? this.frame),
           filter: filter ?? this.filter,
+          outline: outline ?? this.outline,
           overlay: overlay ?? this.overlay,
           lockAspect: lockAspect ?? this.lockAspect,
           blend: blend ?? this.blend);
@@ -568,6 +662,7 @@ class ImageElement extends CanvasElement {
         if (!crop.isWhole) "crop": crop.toJson(),
         if (frame != null) "frame": frame!.name,
         if (filter != ImageFilterPreset.none) "filter": filter.name,
+        if (outline.on) "outline": outline.toJson(),
         if (blend != OverlayBlend.none) "overlay": colorToJson(overlay),
         if (!lockAspect) "lockAspect": false,
         if (blend != OverlayBlend.none) "blend": blend.name,
@@ -589,7 +684,37 @@ class ImageElement extends CanvasElement {
               ? ShapeKind.fromName(json["frame"] as String?)
               : null,
           filter: ImageFilterPreset.fromName(json["filter"] as String?),
+          outline: jsonSpec(json["outline"], ImageOutline.fromJson,
+              const ImageOutline()),
           overlay: colorFromJson(json["overlay"], const Color(0x00000000)),
           lockAspect: jsonBool(json["lockAspect"], true),
           blend: OverlayBlend.fromName(json["blend"] as String?));
+}
+
+/// fitToPicture gives an element the proportions of the picture in it.
+///
+/// The picture is contained rather than covered: the box shrinks to the
+/// picture's shape inside the space it already had, keeping its centre, and
+/// never grows. Growing is the tempting version -- keep the width, work out
+/// the height -- and it puts a tall photograph's bottom half off the bottom of
+/// the canvas, which is a worse first impression than a small picture.
+ImageElement fitToPicture(ImageElement e, Size picture) {
+  if (picture.width <= 0 || picture.height <= 0) return e;
+  var box = e.base;
+  if (box.width <= 0 || box.height <= 0) return e;
+
+  var aspect = picture.width / picture.height;
+  var width = box.width;
+  var height = width / aspect;
+  if (height > box.height) {
+    height = box.height;
+    width = height * aspect;
+  }
+
+  return e.rebase(box.copyWith(
+    x: box.x + (box.width - width) / 2,
+    y: box.y + (box.height - height) / 2,
+    width: width,
+    height: height,
+  )) as ImageElement;
 }

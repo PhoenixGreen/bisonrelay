@@ -2019,6 +2019,79 @@ void main() {
     });
   });
 
+  group("the outline settings", () {
+    Future<CanvasController> panel(WidgetTester tester,
+        {ImageOutline outline = const ImageOutline(),
+        String assetId = "abcdefghijklmnop"}) async {
+      var element = ImageElement(
+        const ElementBase(id: "i", width: 200, height: 200),
+        assetId: assetId,
+        outline: outline,
+      );
+      var controller =
+          CanvasController(const CanvasDocument().addElement(element));
+      addTearDown(controller.dispose);
+      controller.selectOnly("i");
+      await pump(tester, CanvasLayersPanel(controller: controller));
+      return controller;
+    }
+
+    testWidgets("the width is the only control until there is a width",
+        (tester) async {
+      // The width is also the off switch, so everything else is noise while
+      // it is zero -- and a colour and a style sitting there doing nothing is
+      // how a reader concludes the feature is broken.
+      await panel(tester);
+
+      expect(find.text("Width"), findsOneWidget);
+      expect(find.byKey(const ValueKey("imageOutlineColour")), findsNothing);
+      expect(find.text("Feather"), findsNothing);
+    });
+
+    testWidgets("with a width, it offers a colour, a style and a feather",
+        (tester) async {
+      await panel(tester, outline: const ImageOutline(width: 4));
+
+      expect(find.byKey(const ValueKey("imageOutlineColour")), findsOneWidget);
+      expect(find.text("Feather"), findsOneWidget);
+      expect(find.byType(CanvasDropdown<OutlineStyle>), findsOneWidget);
+    });
+
+    testWidgets("typing a width turns it on", (tester) async {
+      var controller = await panel(tester);
+      var width = find.ancestor(
+          of: find.text("Width"), matching: find.byType(CanvasNumberField));
+
+      await tester.enterText(
+          find.descendant(of: width, matching: find.byType(TextField)), "6");
+      await tester.pump();
+
+      var element = controller.document.elements.single as ImageElement;
+      expect(element.outline.width, 6);
+      expect(element.outline.on, isTrue);
+    });
+
+    testWidgets("a picture can be compressed after it is already in",
+        (tester) async {
+      // Compression is offered on the way in, and only above half a megabyte,
+      // so a reader who wanted the controls for a smaller picture -- or who
+      // took a size on the way in and thought better of it -- had nowhere to
+      // go.
+      await panel(tester);
+      expect(find.byTooltip("Compress this picture"), findsOneWidget);
+
+      await panel(tester, assetId: "");
+      expect(find.byTooltip("Compress this picture"), findsNothing,
+          reason: "nothing to compress until there is a picture");
+    });
+
+    testWidgets("there is nothing to outline without a picture",
+        (tester) async {
+      await panel(tester, assetId: "");
+      expect(find.text("Width"), findsNothing);
+    });
+  });
+
   group("the remove-background settings", () {
     Future<CanvasController> panel(WidgetTester tester,
         {BackgroundRemoval removal = const BackgroundRemoval()}) async {

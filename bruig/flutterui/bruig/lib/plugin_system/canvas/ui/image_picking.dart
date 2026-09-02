@@ -1,4 +1,6 @@
 import 'dart:io';
+import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_assets.dart';
@@ -29,6 +31,61 @@ import 'package:path/path.dart' as path;
 /// the real limit against the rendered PNG, which is the only size that
 /// actually matters.
 const int _compressAbove = 512 * 1024;
+
+/// pictureSize is a stored picture's own width and height in pixels.
+///
+/// Decoded from the bytes rather than asked of CanvasImageStore, because the
+/// store answers asynchronously and answers null until it has finished -- and
+/// the moment this is wanted is the moment a picture has just been chosen,
+/// which is exactly when the store has not got it yet.
+Future<Size?> pictureSize(String assetId) async {
+  try {
+    var bytes = await CanvasAssets.load(assetId);
+    if (bytes == null) return null;
+    var descriptor = await ui.ImageDescriptor.encoded(
+        await ui.ImmutableBuffer.fromUint8List(Uint8List.fromList(bytes)));
+    var size = Size(descriptor.width.toDouble(), descriptor.height.toDouble());
+    descriptor.dispose();
+    return size.isEmpty ? null : size;
+  } catch (exception) {
+    debugPrint("Unable to measure the canvas picture $assetId: $exception");
+    return null;
+  }
+}
+
+/// compressCanvasPicture runs a picture that is already on the canvas back
+/// through the compression screen and stores the result.
+///
+/// The picture is only *offered* compression on the way in, and only when it
+/// is over [_compressAbove] -- which means a reader who wanted the controls
+/// for a smaller one, or who accepted a size on the way in and changed their
+/// mind, had nowhere to go. Returns the new asset id, or null if nothing
+/// changed.
+Future<String?> compressCanvasPicture(
+    BuildContext context, String assetId) async {
+  var snackbar = SnackBarModel.of(context);
+  var bytes = await CanvasAssets.load(assetId);
+  if (bytes == null) {
+    if (context.mounted) snackbar.error("That picture is no longer there.");
+    return null;
+  }
+
+  if (!context.mounted) return null;
+  var result = await showCompressScreen(context,
+      original: Uint8List.fromList(bytes), mime: _mimeOf(bytes));
+  if (result == null) return null;
+
+  var id = await CanvasAssets.save(result.data);
+  // Content-addressed, so compressing to exactly what was already there hands
+  // back the same id. Nothing to do, and nothing to say about it.
+  return id == assetId ? null : id;
+}
+
+/// _mimeOf sniffs the stored bytes, which is the only way to know: an asset id
+/// is a hash and the file beside it has whatever extension save() worked out,
+/// neither of which is a mime type.
+String _mimeOf(List<int> bytes) =>
+    lookupMimeType("", headerBytes: bytes.take(64).toList()) ?? "image/png";
 
 /// pickCanvasImage asks for a picture, offers to compress it, stores it, and
 /// returns its asset id -- or null if the reader changed their mind at any

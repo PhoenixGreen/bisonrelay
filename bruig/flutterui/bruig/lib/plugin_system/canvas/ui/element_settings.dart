@@ -998,6 +998,20 @@ List<Widget> _imageSettings(BuildContext context, CanvasController controller,
     commit();
   }
 
+  // Putting a picture in also gives the box the picture's proportions. A
+  // photograph dropped into whatever rectangle happened to be there is either
+  // cropped by the fit or squashed by it, and the first thing anybody did was
+  // drag the handles until it looked right -- which is arithmetic the picture
+  // itself already knows the answer to. It only ever shrinks the box: growing
+  // one could push it off the canvas, and the reader asked for a picture, not
+  // for the layout to move.
+  Future<void> use(String id) async {
+    var next = e.copyWith(assetId: id);
+    var size = await pictureSize(id);
+    if (size != null) next = fitToPicture(next, size);
+    now(next);
+  }
+
   return [
     CanvasControlGroup(label: "Picture", children: [
       // The one control this element did not have, and without which it does
@@ -1007,7 +1021,7 @@ List<Widget> _imageSettings(BuildContext context, CanvasController controller,
         tooltip: e.hasImage ? "Replace this picture" : "Add a picture",
         onPressed: () async {
           var id = await pickCanvasImage(context);
-          if (id != null) now(e.copyWith(assetId: id));
+          if (id != null) await use(id);
         },
       ),
       // The other half of a shared picture store: the bytes have always been
@@ -1019,9 +1033,23 @@ List<Widget> _imageSettings(BuildContext context, CanvasController controller,
         tooltip: "Use a picture you have already added",
         onPressed: () async {
           var id = await showRecentPictures(context);
-          if (id != null) now(e.copyWith(assetId: id));
+          if (id != null) await use(id);
         },
       ),
+      // Compression is offered on the way in, but only above half a megabyte
+      // -- so anybody who wanted the controls for a smaller picture, or who
+      // took a size on the way in and thought better of it, had nowhere to go.
+      // This is that door, and it is the app's own compression screen, the
+      // same one an attachment goes through.
+      if (e.hasImage)
+        CanvasIconButton(
+          icon: Icons.compress,
+          tooltip: "Compress this picture",
+          onPressed: () async {
+            var id = await compressCanvasPicture(context, e.assetId);
+            if (id != null) await use(id);
+          },
+        ),
       if (e.hasImage)
         CanvasIconButton(
           icon: Icons.hide_image_outlined,
@@ -1470,6 +1498,56 @@ List<Widget> _imageSettings(BuildContext context, CanvasController controller,
             color: e.overlay,
             onChanged: (c) => now(e.copyWith(overlay: c)),
           ),
+      ]),
+    // Not part of "Remove background", though that is what it is for. It
+    // traces the alpha channel and does not care how the alpha got there, so
+    // it works just as well on a picture that arrived with one -- and burying
+    // it in the removal group would say otherwise.
+    if (e.hasImage)
+      CanvasControlGroup(label: "Outline", children: [
+        CanvasNumberField(
+          label: "Width",
+          min: 0,
+          max: 60,
+          decimals: 1,
+          width: 62,
+          value: e.outline.width,
+          onChanged: (v) {
+            begin();
+            write(e.copyWith(outline: e.outline.copyWith(width: v)));
+          },
+          onCommit: commit,
+        ),
+        if (e.outline.width > 0) ...[
+          CanvasColorButton(
+            key: const ValueKey("imageOutlineColour"),
+            label: "Colour",
+            color: e.outline.color,
+            onChanged: (c) => now(e.copyWith(outline: e.outline.copyWith(
+                color: c))),
+          ),
+          CanvasDropdown<OutlineStyle>(
+            label: "Style",
+            value: e.outline.style,
+            width: 116,
+            options: [for (var o in OutlineStyle.values) (o, o.label)],
+            onChanged: (v) =>
+                now(e.copyWith(outline: e.outline.copyWith(style: v))),
+          ),
+          CanvasNumberField(
+            label: "Feather",
+            min: 0,
+            max: 1,
+            decimals: 2,
+            width: 62,
+            value: e.outline.feather,
+            onChanged: (v) {
+              begin();
+              write(e.copyWith(outline: e.outline.copyWith(feather: v)));
+            },
+            onCommit: commit,
+          ),
+        ],
       ]),
     // "Border", not "Frame". Frame is now the shape the picture is cut to,
     // and one word for the outline round a rectangle and for the rectangle

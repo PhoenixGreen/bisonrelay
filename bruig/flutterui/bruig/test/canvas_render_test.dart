@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
@@ -34,6 +35,55 @@ Future<List<int>> _pixelAt(CanvasDocument document, int x, int y,
   try {
     var raw =
         await image.toByteData(format: ui.ImageByteFormat.rawStraightRgba);
+    var pixels = raw!.buffer.asUint8List();
+    var i = (y * image.width + x) * 4;
+    return [pixels[i], pixels[i + 1], pixels[i + 2], pixels[i + 3]];
+  } finally {
+    image.dispose();
+  }
+}
+
+/// _Pictures is a CanvasImageSource holding one already-decoded picture,
+/// which is what a renderer test needs and what the real store cannot be: the
+/// store reads a file and decodes it asynchronously, and answers null until it
+/// has, so a frame rendered through it would have no picture in it.
+class _Pictures implements CanvasImageSource {
+  final ui.Image image;
+  _Pictures(this.image);
+
+  @override
+  ui.Image? resolve(String assetId, BackgroundRemoval removal) => image;
+}
+
+/// _cutOut is a picture shaped like a cut-out: a solid square of [colour] in
+/// the middle of [size], transparent everywhere else. An outline traces the
+/// alpha channel, so this is the smallest thing that has one worth tracing.
+Future<ui.Image> _cutOut(int size, ui.Color colour) {
+  var pixels = Uint8List(size * size * 4);
+  var from = size ~/ 4, to = size - size ~/ 4;
+  for (var y = from; y < to; y++) {
+    for (var x = from; x < to; x++) {
+      var i = (y * size + x) * 4;
+      // Premultiplied is the same as straight at full alpha, which is all
+      // this picture has.
+      pixels[i] = (colour.r * 255).round();
+      pixels[i + 1] = (colour.g * 255).round();
+      pixels[i + 2] = (colour.b * 255).round();
+      pixels[i + 3] = 255;
+    }
+  }
+  var done = Completer<ui.Image>();
+  ui.decodeImageFromPixels(
+      pixels, size, size, ui.PixelFormat.rgba8888, done.complete);
+  return done.future;
+}
+
+/// _renderWith is _pixelAt for a document with a picture in it.
+Future<List<int>> _renderWith(
+    CanvasDocument document, CanvasImageSource images, int x, int y) async {
+  var image = await renderFrame(document, images: images);
+  try {
+    var raw = await image.toByteData(format: ui.ImageByteFormat.rawStraightRgba);
     var pixels = raw!.buffer.asUint8List();
     var i = (y * image.width + x) * 4;
     return [pixels[i], pixels[i + 1], pixels[i + 2], pixels[i + 3]];
@@ -1074,6 +1124,181 @@ void main() {
               CanvasDocument(elements: [element]).encode())!.elements.single
           as ImageElement;
       expect(back.lockAspect, isFalse);
+    });
+  });
+
+  group("an outline round a cut-out", () {
+    // The picture is 40x40 with a solid 20x20 middle, drawn into a 100x100
+    // element at the top left of a square canvas -- so the middle lands on
+    // canvas 25..75 and there are 25 units of transparent picture round it
+    // for an outline to be drawn in.
+    late ui.Image picture;
+    setUp(() async {
+      picture = await _cutOut(40, const ui.Color(0xFFFF0000));
+    });
+    tearDown(() => picture.dispose());
+
+    CanvasDocument documentWith(ImageOutline outline) => CanvasDocument(
+          size: const CanvasSize(width: 100, ratio: CanvasRatio.square),
+          elements: [
+            ImageElement(
+              const ElementBase(id: "i", x: 0, y: 0, width: 100, height: 100),
+              assetId: "abcdefghij123456",
+              fit: ImageFit.contain,
+              outline: outline,
+            ),
+          ],
+        );
+
+    test("with no width it draws nothing", () async {
+      // The width is the off switch. There is no separate toggle to get out
+      // of step with it.
+      expect(const ImageOutline().on, isFalse);
+      expect(const ImageOutline(width: 4, color: ui.Color(0x00FFFFFF)).on,
+          isFalse,
+          reason: "nor is an invisible colour an outline");
+
+      // The canvas has a background of its own, so "nothing here" is read as
+      // "not the outline's colour" rather than as no alpha.
+      var pixel = await _renderWith(
+          documentWith(const ImageOutline()), _Pictures(picture), 20, 50);
+      expect(pixel[1], lessThan(60),
+          reason: "beside the subject is still the background");
+    });
+
+    test("an outside band is drawn beside the subject, not over it",
+        () async {
+      var document = documentWith(const ImageOutline(
+          width: 8, color: ui.Color(0xFF00FF00)));
+      var images = _Pictures(picture);
+
+      var beside = await _renderWith(document, images, 20, 50);
+      expect(beside[1], greaterThan(200), reason: "green, four units out");
+      expect(beside[0], lessThan(60), reason: "and not the subject's red");
+
+      var within = await _renderWith(document, images, 50, 50);
+      expect(within[0], greaterThan(200),
+          reason: "the middle is still the picture");
+      expect(within[1], lessThan(60));
+
+      var further = await _renderWith(document, images, 5, 50);
+      expect(further[1], lessThan(60),
+          reason: "and the band stops, twenty units out");
+    });
+
+    test("an inside band eats into the subject instead", () async {
+      var document = documentWith(const ImageOutline(
+          width: 8, color: ui.Color(0xFF00FF00), style: OutlineStyle.inside));
+      var images = _Pictures(picture);
+
+      var beside = await _renderWith(document, images, 20, 50);
+      expect(beside[1], lessThan(60),
+          reason: "nothing outside the subject at all");
+
+      var rim = await _renderWith(document, images, 28, 50);
+      expect(rim[1], greaterThan(200), reason: "the rim is the outline");
+
+      var middle = await _renderWith(document, images, 50, 50);
+      expect(middle[0], greaterThan(200), reason: "the middle is untouched");
+    });
+
+    test("feathering fades the band out as it goes", () async {
+      var images = _Pictures(picture);
+      Future<int> greenAt(double feather, int x) async {
+        var pixel = await _renderWith(
+            documentWith(ImageOutline(
+                width: 12, color: const ui.Color(0xFF00FF00),
+                feather: feather)),
+            images,
+            x,
+            50);
+        return pixel[1];
+      }
+
+      // Read near the band's far edge -- 13 units out of a 12-wide band that
+      // starts at 25 -- which is where the difference between a line and a
+      // fade is the whole difference.
+      expect(await greenAt(0, 15), greaterThan(240),
+          reason: "unfeathered, the band is solid to its own edge");
+      expect(await greenAt(1, 15), lessThan(150),
+          reason: "feathered, it is nearly gone by there");
+    });
+
+    test("an outline survives a round trip, and costs nothing when off",
+        () async {
+      var element = const ImageElement(
+        ElementBase(id: "i", width: 100, height: 100),
+        assetId: "abcdefghij123456",
+        outline: ImageOutline(
+            width: 6,
+            color: ui.Color(0xFF3366FF),
+            style: OutlineStyle.glow,
+            feather: 0.4),
+      );
+      var back = CanvasDocument.decode(
+              CanvasDocument(elements: [element]).encode())!.elements.single
+          as ImageElement;
+      expect(back.outline.width, 6);
+      expect(back.outline.style, OutlineStyle.glow);
+      expect(back.outline.feather, 0.4);
+      expect(back.outline.color.toARGB32(), 0xFF3366FF);
+
+      expect(
+          const ImageElement(ElementBase(id: "i", width: 10, height: 10))
+              .toJson()
+              .containsKey("outline"),
+          isFalse);
+    });
+
+    test("every style draws without throwing", () {
+      for (var style in OutlineStyle.values) {
+        expect(
+            () => paintCanvasDocument(
+                ui.Canvas(ui.PictureRecorder()),
+                documentWith(ImageOutline(width: 5, style: style)),
+                images: _Pictures(picture)),
+            returnsNormally,
+            reason: style.name);
+      }
+    });
+  });
+
+  group("a picture takes its own proportions", () {
+    ImageElement squareBox() => const ImageElement(
+        ElementBase(id: "i", x: 100, y: 100, width: 80, height: 80));
+
+    test("a wide picture makes a wide box", () {
+      var fitted = fitToPicture(squareBox(), const Size(200, 100));
+      expect(fitted.base.width, 80, reason: "as wide as it was");
+      expect(fitted.base.height, 40);
+      expect(fitted.base.x, 100);
+      expect(fitted.base.y, 120, reason: "and still centred where it was");
+    });
+
+    test("a tall picture shrinks the width rather than growing the height",
+        () {
+      // The tempting version keeps the width and works out the height, and it
+      // puts a tall photograph's bottom half off the bottom of the canvas.
+      var fitted = fitToPicture(squareBox(), const Size(100, 200));
+      expect(fitted.base.height, 80);
+      expect(fitted.base.width, 40);
+      expect(fitted.base.x, 120);
+      expect(fitted.base.y, 100);
+    });
+
+    test("nothing sensible to do means nothing done", () {
+      var box = squareBox();
+      expect(fitToPicture(box, const Size(0, 10)).base.width, 80);
+      expect(fitToPicture(box, const Size(10, 0)).base.height, 80);
+    });
+
+    test("everything else about the picture is left alone", () {
+      var element = squareBox().copyWith(
+          assetId: "abcdefghij123456", filter: ImageFilterPreset.sepia);
+      var fitted = fitToPicture(element, const Size(200, 100));
+      expect(fitted.assetId, "abcdefghij123456");
+      expect(fitted.filter, ImageFilterPreset.sepia);
+      expect(fitted.base.id, "i");
     });
   });
 }

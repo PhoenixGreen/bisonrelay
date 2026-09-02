@@ -685,7 +685,13 @@ void _paintImage(ui.Canvas canvas, Rect bounds, ImageElement e,
     canvas.clipRRect(RRect.fromRectAndRadius(
         inner, Radius.circular(math.max(0, e.box.borderRadius - e.box.padding))));
   } else {
-    canvas.clipRect(inner);
+    // Room for an outline to be outside something. A picture that fills its
+    // box -- which is what "Fill the box" does, and it is the default -- has
+    // its own edge exactly on the clip, so an outward band had nowhere to go
+    // and the width control appeared to do nothing at all. The picture is
+    // still drawn inside the box; only the band is let out, which is what
+    // outside means.
+    canvas.clipRect(inner.inflate(_outlineRoom(e)));
   }
 
   var overlaid = e.blend != OverlayBlend.none && e.overlay.a > 0;
@@ -697,6 +703,11 @@ void _paintImage(ui.Canvas canvas, Rect bounds, ImageElement e,
   // overlay set on a photograph was multiplying its way through the background
   // and everything sitting under it. Inside a layer there is nothing under the
   // picture but the picture.
+  // Behind the picture, so the band only shows where the picture is not.
+  if (e.outline.on && e.outline.style != OutlineStyle.inside) {
+    _paintOutline(canvas, image, inner, e, outward: true);
+  }
+
   if (overlaid) canvas.saveLayer(inner, Paint());
 
   _drawImage(canvas, image, inner, e.fit,
@@ -722,6 +733,108 @@ void _paintImage(ui.Canvas canvas, Rect bounds, ImageElement e,
         crop: e.crop, maskOnly: true);
     canvas.restore();
   }
+
+  // Over the picture, and after the overlay, because an inside band is meant
+  // to be the outermost thing there is -- an overlay painted on top of it
+  // would tint the one part of the picture that is not picture at all.
+  if (e.outline.on && e.outline.style != OutlineStyle.outside &&
+      e.outline.style != OutlineStyle.glow) {
+    _paintOutline(canvas, image, inner, e, outward: false);
+  }
+  canvas.restore();
+}
+
+/// _outlineRoom is how far outside its box a picture's outline may reach.
+double _outlineRoom(ImageElement e) {
+  if (!e.outline.on) return 0;
+  switch (e.outline.style) {
+    case OutlineStyle.inside:
+      return 0;
+    case OutlineStyle.centred:
+      return e.outline.width / 2;
+    case OutlineStyle.glow:
+      // Blur reaches past the spread that fed it.
+      return e.outline.width * 1.5;
+    case OutlineStyle.outside:
+      return e.outline.width * (1 + e.outline.feather);
+  }
+}
+
+/// _paintOutline traces the edge of the picture's alpha channel.
+///
+/// Done with the compositor rather than with pixels. The obvious way is to
+/// build an outlined bitmap in image_store beside the cut-out, and it is the
+/// wrong way twice over: the outline would be cached against the removal
+/// settings and so recomputed every time a colour was nudged, and it would be
+/// drawn at the picture's resolution rather than the canvas's, so a small
+/// photograph blown up to fill a poster would get a chunky pixelated line
+/// around it. A dilate on a layer is neither -- and it costs one filter.
+void _paintOutline(ui.Canvas canvas, ui.Image image, Rect inner,
+    ImageElement e, {required bool outward}) {
+  var outline = e.outline;
+  // Centred splits the band between the two sides, which is what centred
+  // means; the other styles put all of it on one.
+  var width = outline.style == OutlineStyle.centred
+      ? outline.width / 2
+      : outline.width;
+  if (width <= 0) return;
+
+  // A glow is mostly blur with a little spread under it, so that turning the
+  // feather down still leaves something that reads as a glow rather than as a
+  // hard line by another name.
+  // Feathering pulls the spread in as well as blurring it, so that the fade
+  // happens *within* the width that was asked for rather than being added to
+  // it. Blurring alone leaves a fully solid band with a soft skirt round the
+  // outside, which reads as a thicker outline rather than as a softer one.
+  var spread = outline.style == OutlineStyle.glow
+      ? width * 0.35
+      : width * (1 - outline.feather * 0.5);
+  var blur = outline.style == OutlineStyle.glow
+      ? width * (0.5 + outline.feather * 0.8)
+      : width * outline.feather;
+
+  if (outward) {
+    var grow = ui.ImageFilter.dilate(radiusX: spread, radiusY: spread);
+    canvas.saveLayer(
+        inner,
+        Paint()
+          ..imageFilter = blur > 0
+              ? ui.ImageFilter.compose(
+                  outer: ui.ImageFilter.blur(
+                      sigmaX: blur / 2,
+                      sigmaY: blur / 2,
+                      tileMode: TileMode.decal),
+                  inner: grow)
+              : grow);
+    _drawImage(canvas, image, inner, e.fit,
+        crop: e.crop, silhouette: outline.color);
+    canvas.restore();
+    return;
+  }
+
+  // Inwards, the band is the shape with a shrunken copy of itself punched out
+  // of it. Drawn over the picture, so it hides the picture's own edge -- which
+  // is the point: an inside outline is for a subject whose boundary is messy.
+  canvas.saveLayer(inner, Paint());
+  _drawImage(canvas, image, inner, e.fit,
+      crop: e.crop, silhouette: outline.color);
+
+  var shrink = ui.ImageFilter.erode(radiusX: width, radiusY: width);
+  canvas.saveLayer(
+      inner,
+      Paint()
+        ..blendMode = BlendMode.dstOut
+        ..imageFilter = blur > 0
+            ? ui.ImageFilter.compose(
+                outer: ui.ImageFilter.blur(
+                    sigmaX: blur / 2,
+                    sigmaY: blur / 2,
+                    tileMode: TileMode.decal),
+                inner: shrink)
+            : shrink);
+  _drawImage(canvas, image, inner, e.fit,
+      crop: e.crop, silhouette: const Color(0xFF000000));
+  canvas.restore();
   canvas.restore();
 }
 
@@ -761,7 +874,11 @@ void _drawImage(ui.Canvas canvas, ui.Image image, Rect rect, ImageFit fit,
     /// colour, no filters, composited with dstIn so that whatever is already
     /// in the layer survives only where the picture has pixels. See
     /// _paintImage, which uses it to keep an overlay off a removed background.
-    bool maskOnly = false}) {
+    bool maskOnly = false,
+
+    /// silhouette draws the picture's shape filled with one colour, keeping
+    /// its alpha and throwing its own colours away. What an outline traces.
+    Color? silhouette}) {
   // Worked out once, in image_placement.dart, because the retouching brush
   // needs the same mapping backwards -- see ImagePlacement.toImage.
   var placement = placeImage(
@@ -776,6 +893,16 @@ void _drawImage(ui.Canvas canvas, ui.Image image, Rect rect, ImageFit fit,
   // colour work applies and dstIn keeps the layer only where there are pixels.
   if (maskOnly) {
     canvas.drawImageRect(image, src, dst, paint..blendMode = BlendMode.dstIn);
+    return;
+  }
+
+  // srcIn keeps the source's alpha and takes the colour from the filter, so a
+  // half-transparent strand of hair contributes a half-transparent piece of
+  // outline rather than a hard one. That is most of why an outline drawn this
+  // way looks right on a photograph.
+  if (silhouette != null) {
+    canvas.drawImageRect(image, src, dst,
+        paint..colorFilter = ColorFilter.mode(silhouette, BlendMode.srcIn));
     return;
   }
 
