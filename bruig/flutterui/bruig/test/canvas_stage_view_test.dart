@@ -2054,4 +2054,58 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   });
+
+  group("the cut-around brush", () {
+    testWidgets("its stroke is held as a boundary, not a mark", (tester) async {
+      var document = const CanvasDocument();
+      var element = ImageElement(
+        ElementBase(
+          id: "i",
+          x: 0,
+          y: 0,
+          width: document.size.width.toDouble(),
+          height: document.size.height.toDouble(),
+        ),
+        assetId: "abcdefghijklmnop",
+      );
+      var controller = CanvasController(document.addElement(element));
+      addTearDown(controller.dispose);
+      controller.selectOnly("i");
+      controller.retouch = RetouchBrush.cutAround;
+      var stage = await pump(tester, controller);
+
+      var pixels = Uint8List(64 * 64 * 4);
+      for (var i = 0; i < 64 * 64; i++) {
+        pixels[i * 4] = 200;
+        pixels[i * 4 + 1] = 200;
+        pixels[i * 4 + 2] = 200;
+        pixels[i * 4 + 3] = 255;
+      }
+      await tester.runAsync(() async {
+        var done = Completer<ui.Image>();
+        ui.decodeImageFromPixels(
+            pixels, 64, 64, ui.PixelFormat.rgba8888, done.complete);
+        controller.images.putForTest("abcdefghijklmnop", await done.future);
+      });
+
+      var from = stage.pageRect.center;
+      var gesture = await tester.startGesture(from);
+      await gesture.moveTo(from + const Offset(40, 0));
+      await gesture.moveTo(from + const Offset(40, 40));
+      await tester.pump();
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      expect(controller.pendingFills, isTrue);
+      controller.applyStroke();
+
+      var stroke = (controller.document.elementById("i")! as ImageElement)
+          .removal
+          .strokes
+          .single;
+      expect(stroke.fill, isTrue);
+      expect(stroke.snap, 0,
+          reason: "a boundary does not care what colour anything is");
+    });
+  });
 }

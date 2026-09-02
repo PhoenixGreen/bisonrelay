@@ -1101,6 +1101,21 @@ List<Widget> _imageSettings(BuildContext context, CanvasController controller,
                 ? RetouchBrush.off
                 : RetouchBrush.erase,
       ),
+      // The tool for the job the brush is bad at: a large, awkward,
+      // many-coloured area. Draw a rough line around what is being kept, let
+      // go, and everything the picture's own edge can reach without crossing
+      // that line goes -- whatever colour any of it is.
+      CanvasIconButton(
+        icon: Icons.content_cut,
+        tooltip: controller.retouch == RetouchBrush.cutAround
+            ? "Stop cutting around"
+            : "Cut around — draw a line around what you are keeping",
+        active: controller.retouch == RetouchBrush.cutAround,
+        onPressed: () => controller.retouch =
+            controller.retouch == RetouchBrush.cutAround
+                ? RetouchBrush.off
+                : RetouchBrush.cutAround,
+      ),
       CanvasIconButton(
         icon: Icons.healing,
         tooltip: controller.retouch == RetouchBrush.restore
@@ -1163,7 +1178,10 @@ List<Widget> _imageSettings(BuildContext context, CanvasController controller,
           // Not for putting back: clinging finds the edge of a background,
           // and what is being put back is the subject, which is every colour
           // there is.
-          if (!controller.retouch.keeps)
+          // Neither for putting back nor for cutting around. Clinging finds
+          // the edge of a background by colour; what is being put back is the
+          // subject, and a boundary does not care what colour anything is.
+          if (!controller.retouch.keeps && !controller.retouch.fills)
           CanvasNumberField(
             label: "Cling",
             min: 0,
@@ -1177,6 +1195,7 @@ List<Widget> _imageSettings(BuildContext context, CanvasController controller,
           // photograph, so this reads it off the picture instead -- see
           // CanvasController.magnetiseCling.
           if (controller.hasPendingStroke)
+            if (!controller.retouch.fills)
             CanvasIconButton(
               icon: Icons.my_location,
               tooltip: "Find the edge this stroke crossed and cling to it",

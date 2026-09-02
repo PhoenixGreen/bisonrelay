@@ -1509,4 +1509,162 @@ void main() {
       expect(faint!, lessThan(strong!));
     });
   });
+
+  group("cutting around", () {
+    /// ring draws a rough boundary: a square loop around the middle.
+    List<Offset> ring(double from, double to) => [
+          Offset(from, from),
+          Offset(to, from),
+          Offset(to, to),
+          Offset(from, to),
+          Offset(from, from),
+        ];
+
+    testWidgets("everything outside the line goes, whatever colour it is",
+        (tester) async {
+      // The tool for the job the brush is bad at. A background of many
+      // different colours needs no tolerance and no cling if what decides it
+      // is where the line is.
+      const size = 80;
+      var pixels = picture(size, size, (x, y) {
+        // A deliberately awkward background: four different colours, one of
+        // them the same as the subject.
+        if (x > 24 && x < 56 && y > 24 && y < 56) {
+          return const Color(0xFFC89678);
+        }
+        if (x < 20 && y < 20) return const Color(0xFFC89678);
+        if (x < 20) return const Color(0xFF102030);
+        if (y < 20) return const Color(0xFFEEEEEE);
+        return const Color(0xFF3C5AA0);
+      });
+
+      applyRemovalForTest(
+        pixels,
+        size,
+        size,
+        BackgroundRemoval(
+          mode: RemovalMode.none,
+          strokes: [
+            RemovalStroke(
+              points: ring(0.27, 0.72),
+              radius: 0.02,
+              keep: false,
+              hardness: 1,
+              fill: true,
+            ),
+          ],
+        ),
+      );
+
+      expect(alphaAt(pixels, size, 40, 40), 255,
+          reason: "inside the line is kept");
+      expect(alphaAt(pixels, size, 5, 5), 0,
+          reason: "and the corner that is the subject's own colour goes too");
+      expect(alphaAt(pixels, size, 5, 40), 0);
+      expect(alphaAt(pixels, size, 40, 5), 0);
+      expect(alphaAt(pixels, size, 70, 70), 0);
+    });
+
+    testWidgets("the cut lands on the line rather than just inside it",
+        (tester) async {
+      const size = 80;
+      var pixels = picture(size, size, (x, y) => const Color(0xFF3C5AA0));
+      applyRemovalForTest(
+        pixels,
+        size,
+        size,
+        BackgroundRemoval(
+          mode: RemovalMode.none,
+          strokes: [
+            RemovalStroke(
+              points: ring(0.3, 0.7),
+              radius: 0.03,
+              keep: false,
+              hardness: 1,
+              fill: true,
+            ),
+          ],
+        ),
+      );
+
+      // The line itself is at x=24; it goes with the outside.
+      expect(alphaAt(pixels, size, 24, 40), 0);
+      expect(alphaAt(pixels, size, 40, 40), 255);
+    });
+
+    testWidgets("a line that does not quite close fails safe", (tester) async {
+      // No line drawn by hand quite closes. Flooding from the outside means a
+      // gap lets the flood through and takes more -- visible and undoable --
+      // rather than silently doing nothing.
+      const size = 80;
+      var pixels = picture(size, size, (x, y) => const Color(0xFF3C5AA0));
+      applyRemovalForTest(
+        pixels,
+        size,
+        size,
+        const BackgroundRemoval(
+          mode: RemovalMode.none,
+          strokes: [
+            RemovalStroke(
+              // Three sides of a square: the right side is missing.
+              points: [
+                Offset(0.3, 0.3),
+                Offset(0.7, 0.3),
+                Offset(0.7, 0.5),
+              ],
+              radius: 0.02,
+              keep: false,
+              hardness: 1,
+              fill: true,
+            ),
+          ],
+        ),
+      );
+
+      expect(alphaAt(pixels, size, 40, 40), 0,
+          reason: "the flood came through the gap and took the middle");
+    });
+
+    testWidgets("an ordinary stroke is unaffected by any of this",
+        (tester) async {
+      const size = 60;
+      var pixels = picture(size, size, (x, y) => const Color(0xFF3C5AA0));
+      applyRemovalForTest(
+        pixels,
+        size,
+        size,
+        const BackgroundRemoval(
+          mode: RemovalMode.none,
+          strokes: [
+            RemovalStroke(
+                points: [Offset(0.5, 0.5)],
+                radius: 0.15,
+                keep: false,
+                hardness: 1),
+          ],
+        ),
+      );
+
+      expect(alphaAt(pixels, size, 30, 30), 0, reason: "the mark");
+      expect(alphaAt(pixels, size, 2, 2), 255,
+          reason: "and nothing else, since it is not a boundary");
+    });
+
+    test("a boundary survives a round trip", () {
+      var element = ImageElement(
+        const ElementBase(id: "i", width: 100, height: 100),
+        removal: const BackgroundRemoval(strokes: [
+          RemovalStroke(
+              points: [Offset(0.2, 0.2), Offset(0.8, 0.8)],
+              radius: 0.03,
+              keep: false,
+              fill: true),
+        ]),
+      );
+      var back = CanvasDocument.decode(
+              CanvasDocument(elements: [element]).encode())!.elements.single
+          as ImageElement;
+      expect(back.removal.strokes.single.fill, isTrue);
+    });
+  });
 }

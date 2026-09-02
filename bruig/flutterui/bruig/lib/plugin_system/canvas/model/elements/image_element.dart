@@ -91,6 +91,15 @@ class RemovalStroke {
   /// as a sticker whatever else is right about it.
   final double hardness;
 
+  /// fill makes the stroke a boundary rather than a mark.
+  ///
+  /// Draw a rough line around the subject, let go, and everything the picture's
+  /// own edge can reach without crossing that line goes. It is the tool for the
+  /// job the brush was being asked to do and is bad at -- taking out a large,
+  /// awkward, many-coloured area -- because it does not care what colour any of
+  /// it is. Only where the line is.
+  final bool fill;
+
   /// snap makes the stroke cling to what is already in the picture.
   ///
   /// Zero paints the whole disc. Above zero, the dab spreads outwards from
@@ -110,6 +119,7 @@ class RemovalStroke {
     required this.keep,
     this.hardness = 0.35,
     this.snap = 0,
+    this.fill = false,
   });
 
   RemovalStroke copyWith({List<Offset>? points}) => RemovalStroke(
@@ -118,6 +128,7 @@ class RemovalStroke {
         keep: keep,
         hardness: hardness,
         snap: snap,
+        fill: fill,
       );
 
   Map<String, dynamic> toJson() => {
@@ -129,6 +140,7 @@ class RemovalStroke {
         if (keep) "keep": true,
         if (hardness != 0.35) "hard": hardness,
         if (snap > 0) "snap": snap,
+        if (fill) "fill": true,
       };
 
   factory RemovalStroke.fromJson(Map<String, dynamic> json) {
@@ -148,6 +160,7 @@ class RemovalStroke {
       keep: jsonBool(json["keep"], false),
       hardness: jsonDouble(json["hard"], 0.35),
       snap: jsonDouble(json["snap"], 0),
+      fill: jsonBool(json["fill"], false),
     );
   }
 }

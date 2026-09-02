@@ -1043,7 +1043,9 @@ class CanvasStageState extends State<CanvasStage> {
     // this same stroke redraw before deciding -- see
     // CanvasController.holdStroke.
     controller.holdStroke(picture.id, points,
-        keeps: controller.retouch.keeps, teaches: teaching);
+        keeps: controller.retouch.keeps,
+        teaches: teaching,
+        fills: controller.retouch.fills);
     controller.endInteraction();
   }
 

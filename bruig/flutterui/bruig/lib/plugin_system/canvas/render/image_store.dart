@@ -396,9 +396,10 @@ Future<ui.Image?> strokePreview(ui.Image source, RemovalStroke stroke) async {
   var width = working.width, height = working.height;
 
   // The same arithmetic the stroke will be applied with, not a description of
-  // it: a stroke that clings to an edge is not a shape anybody can draw from
-  // its settings, because it depends on what is in the picture.
-  var cover = strokeCoverage(pixels, width, height, stroke);
+  // it: neither a stroke that clings to an edge nor one that fills from it is a
+  // shape anybody can draw from its settings, because both depend on what is
+  // in the picture.
+  var cover = strokeEffect(pixels, width, height, stroke);
 
   var out = Uint8List(width * height * 4);
   for (var i = 0; i < cover.length; i++) {
@@ -668,14 +669,72 @@ Uint8List strokeCoverage(
   return cover;
 }
 
+/// strokeEffect is everything a stroke reaches, from 0 to 255.
+///
+/// The same for a mark and for a boundary, so that the preview and the picture
+/// go through one function and cannot come out differently. For an ordinary
+/// stroke it is where the brush went; for a fill it is that *plus* everything
+/// the picture's own edge can reach without crossing it.
+Uint8List strokeEffect(
+    Uint8List pixels, int width, int height, RemovalStroke stroke) {
+  var cover = strokeCoverage(pixels, width, height, stroke);
+  if (!stroke.fill) return cover;
+
+  // Everything reachable from the outside without crossing the line.
+  //
+  // From the edge inwards rather than from a point the reader picked: what is
+  // being taken out is the background, and the background is what surrounds
+  // the thing that is not. It also means a line that does not quite close --
+  // and no line drawn by hand quite closes -- fails safe: the flood leaks
+  // through the gap and takes more, which is visible and undoable, rather than
+  // silently doing nothing.
+  var reached = Uint8List(width * height);
+  var stack = <int>[];
+
+  void seed(int index) {
+    if (index < 0 || index >= reached.length) return;
+    if (reached[index] != 0 || cover[index] != 0) return;
+    stack.add(index);
+  }
+
+  for (var x = 0; x < width; x++) {
+    seed(x);
+    seed((height - 1) * width + x);
+  }
+  for (var y = 0; y < height; y++) {
+    seed(y * width);
+    seed(y * width + width - 1);
+  }
+
+  while (stack.isNotEmpty) {
+    var index = stack.removeLast();
+    if (index < 0 || index >= reached.length) continue;
+    if (reached[index] != 0 || cover[index] != 0) continue;
+    reached[index] = 255;
+
+    var x = index % width, y = index ~/ width;
+    if (x > 0) stack.add(index - 1);
+    if (x < width - 1) stack.add(index + 1);
+    if (y > 0) stack.add(index - width);
+    if (y < height - 1) stack.add(index + width);
+  }
+
+  // The line itself goes too, at whatever strength it was drawn: the cut lands
+  // on the line rather than just inside it.
+  for (var i = 0; i < reached.length; i++) {
+    if (cover[i] > reached[i]) reached[i] = cover[i];
+  }
+  return reached;
+}
+
 /// _paintStrokes rubs the brush's marks into the alpha channel.
 void _paintStrokes(Uint8List pixels, int width, int height,
     List<RemovalStroke> strokes) {
   for (var stroke in strokes) {
-    var cover = strokeCoverage(pixels, width, height, stroke);
+    var effect = strokeEffect(pixels, width, height, stroke);
     var target = stroke.keep ? 255.0 : 0.0;
-    for (var i = 0; i < cover.length; i++) {
-      var strength = cover[i];
+    for (var i = 0; i < effect.length; i++) {
+      var strength = effect[i];
       if (strength == 0) continue;
       var p = i * 4 + 3;
       var now = pixels[p].toDouble();

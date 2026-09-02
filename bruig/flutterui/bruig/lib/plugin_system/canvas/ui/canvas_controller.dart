@@ -54,6 +54,10 @@ enum RetouchBrush {
   /// erase takes the picture away, for a patch the automatic pass missed.
   erase("Rub out"),
 
+  /// cutAround draws a boundary rather than a mark: everything outside it
+  /// goes. See RemovalStroke.fill.
+  cutAround("Cut around"),
+
   /// restore puts it back, for a hand or a shoulder the automatic pass ate.
   restore("Put back"),
 
@@ -78,6 +82,9 @@ enum RetouchBrush {
   /// background.
   bool get keeps =>
       this == RetouchBrush.restore || this == RetouchBrush.markSubject;
+
+  /// fills is whether the stroke is a boundary rather than a mark.
+  bool get fills => this == RetouchBrush.cutAround;
 }
 
 /// CanvasTool is what dragging on the canvas does.
@@ -336,22 +343,25 @@ class CanvasController extends ChangeNotifier {
   /// something else rather than to adjust this.
   bool _pendingKeeps = false;
   bool _pendingTeaches = false;
+  bool _pendingFills = false;
 
   List<Offset>? get pendingStroke => _pendingStroke;
   String? get pendingPicture => _pendingPicture;
   bool get pendingKeeps => _pendingKeeps;
   bool get pendingTeaches => _pendingTeaches;
+  bool get pendingFills => _pendingFills;
   bool get hasPendingStroke =>
       _pendingStroke != null && _pendingStroke!.isNotEmpty;
 
   /// holdStroke keeps a freshly drawn stroke back for adjustment.
   void holdStroke(String pictureId, List<Offset> points,
-      {required bool keeps, required bool teaches}) {
+      {required bool keeps, required bool teaches, bool fills = false}) {
     if (points.isEmpty) return;
     _pendingPicture = pictureId;
     _pendingStroke = List.unmodifiable(points);
     _pendingKeeps = keeps;
     _pendingTeaches = teaches;
+    _pendingFills = fills;
     notifyListeners();
   }
 
@@ -385,6 +395,7 @@ class CanvasController extends ChangeNotifier {
       // colours the reader did not point at.
       hardness: _pendingTeaches ? 1 : _brushHardness,
       snap: _clingFor(_pendingTeaches, _pendingKeeps),
+      fill: _pendingFills,
     );
 
     replaceElement(picture.copyWith(
@@ -435,6 +446,7 @@ class CanvasController extends ChangeNotifier {
       keep: _pendingKeeps,
       hardness: _pendingTeaches ? 1 : _brushHardness,
       snap: _clingFor(_pendingTeaches, _pendingKeeps),
+      fill: _pendingFills,
     );
   }
 
