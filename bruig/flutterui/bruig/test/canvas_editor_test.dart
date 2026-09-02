@@ -2106,6 +2106,35 @@ void main() {
       expect(find.byTooltip("Clear every brush stroke"), findsOneWidget);
     });
 
+    testWidgets("a picture worked on by hand is offered no method settings",
+        (tester) async {
+      // They were shown whenever anything was being removed, which includes a
+      // picture the brush alone has been used on -- so somebody working by
+      // hand was offered a tolerance and a softness that nothing reads.
+      await panel(tester,
+          removal: const BackgroundRemoval(strokes: [
+            RemovalStroke(
+                points: [Offset(0.5, 0.5)], radius: 0.1, keep: false),
+          ]));
+
+      expect(find.text("Softness"), findsNothing);
+      expect(find.text("Tolerance"), findsNothing);
+      expect(find.text("Spread"), findsNothing);
+      expect(find.text("Invert"), findsNothing);
+      // The brush's own are still there.
+      expect(find.byTooltip("Undo the last brush stroke"), findsOneWidget);
+    });
+
+    testWidgets("the brightness method is offered no tolerance",
+        (tester) async {
+      // It cuts at a threshold and never reads one.
+      await panel(tester,
+          removal: const BackgroundRemoval(mode: RemovalMode.luminance));
+      expect(find.text("Threshold"), findsOneWidget);
+      expect(find.text("Tolerance"), findsNothing);
+      expect(find.text("Softness"), findsOneWidget);
+    });
+
     testWidgets("a method's own settings stay behind the method",
         (tester) async {
       await panel(tester);

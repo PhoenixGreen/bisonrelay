@@ -314,6 +314,27 @@ void _paintStrokes(Uint8List pixels, int width, int height,
     var radius = math.max(1.0, stroke.radius * shorter);
     if (stroke.points.isEmpty) continue;
 
+    // What the stroke is clinging *to*, sampled where it began.
+    //
+    // Once for the stroke, not once per dab. Per dab, the brush took its
+    // reference from whatever happened to be under the pointer at that moment
+    // -- so the instant the stroke crossed onto the subject it re-learnt the
+    // subject and started clinging to that instead, which is the opposite of
+    // the whole idea. Starting on the background and sweeping is how anybody
+    // uses this, so the background is what the first point is standing on.
+    var reference = stroke.snap > 0
+        ? _averageAround(
+            pixels,
+            width,
+            height,
+            (stroke.points.first.dx * width).round(),
+            (stroke.points.first.dy * height).round(),
+            math.max(1, radius ~/ 3))
+        : null;
+
+    const diagonal = 441.6729559300637;
+    var tolerance = stroke.snap * diagonal;
+
     for (var i = 0; i < stroke.points.length; i++) {
       var from =
           ui.Offset(stroke.points[i].dx * width, stroke.points[i].dy * height);
@@ -328,11 +349,52 @@ void _paintStrokes(Uint8List pixels, int width, int height,
       var span = (to - from).distance;
       var steps = math.max(1, (span / (radius / 3)).ceil());
       for (var step = 0; step <= steps; step++) {
-        _dab(pixels, width, height, ui.Offset.lerp(from, to, step / steps)!,
-            radius, stroke);
+        var at = ui.Offset.lerp(from, to, step / steps)!;
+
+        // The reference is allowed to drift with the background -- a sky that
+        // shades from one side to the other is still the background -- but
+        // only towards colours it already agrees with. A pixel it does not
+        // recognise is the subject, and the reference does not follow it.
+        if (reference != null) {
+          var here = _averageAround(pixels, width, height, at.dx.round(),
+              at.dy.round(), math.max(1, radius ~/ 6));
+          if (_distance(here, reference) <= tolerance) {
+            reference = [
+              reference[0] * 0.85 + here[0] * 0.15,
+              reference[1] * 0.85 + here[1] * 0.15,
+              reference[2] * 0.85 + here[2] * 0.15,
+            ];
+          }
+        }
+
+        _dab(pixels, width, height, at, radius, stroke, reference);
       }
     }
   }
+}
+
+/// _averageAround is the mean colour of a small patch, which is steadier than
+/// one pixel: a photograph's noise moves a single pixel around by more than
+/// some of the distinctions being drawn here.
+List<double> _averageAround(
+    Uint8List pixels, int width, int height, int cx, int cy, int radius) {
+  var r = 0.0, g = 0.0, b = 0.0, seen = 0;
+  for (var y = math.max(0, cy - radius); y <= math.min(height - 1, cy + radius); y++) {
+    for (var x = math.max(0, cx - radius); x <= math.min(width - 1, cx + radius); x++) {
+      var p = (y * width + x) * 4;
+      r += pixels[p];
+      g += pixels[p + 1];
+      b += pixels[p + 2];
+      seen++;
+    }
+  }
+  if (seen == 0) return [0, 0, 0];
+  return [r / seen, g / seen, b / seen];
+}
+
+double _distance(List<double> a, List<double> b) {
+  var dr = a[0] - b[0], dg = a[1] - b[1], db = a[2] - b[2];
+  return math.sqrt(dr * dr + dg * dg + db * db);
 }
 
 /// _dab is one press of the brush.
@@ -343,7 +405,7 @@ void _paintStrokes(Uint8List pixels, int width, int height,
 /// started on -- see RemovalStroke.snap -- so brushing along a shoulder takes
 /// the sky and stops at the coat.
 void _dab(Uint8List pixels, int width, int height, ui.Offset at, double radius,
-    RemovalStroke stroke) {
+    RemovalStroke stroke, List<double>? reference) {
   var left = math.max(0, (at.dx - radius).floor());
   var right = math.min(width - 1, (at.dx + radius).ceil());
   var top = math.max(0, (at.dy - radius).floor());
@@ -352,9 +414,10 @@ void _dab(Uint8List pixels, int width, int height, ui.Offset at, double radius,
 
   var centreX = at.dx.round().clamp(0, width - 1);
   var centreY = at.dy.round().clamp(0, height - 1);
-  var reachable =
-      stroke.snap > 0 ? _reachable(pixels, width, left, right, top, bottom,
-          centreX, centreY, stroke.snap, radius) : null;
+  var reachable = stroke.snap > 0 && reference != null
+      ? _reachable(pixels, width, left, right, top, bottom, centreX, centreY,
+          stroke.snap, radius, reference)
+      : null;
 
   var target = stroke.keep ? 255.0 : 0.0;
   // Everything within this is fully affected; beyond it the dab fades out.
@@ -388,15 +451,24 @@ void _dab(Uint8List pixels, int width, int height, ui.Offset at, double radius,
 ///
 /// A flood inside the brush and nowhere else, so it costs what the brush costs
 /// and cannot run away across the picture the way a full-frame one can.
-Uint8List _reachable(Uint8List pixels, int width, int left, int right, int top,
-    int bottom, int centreX, int centreY, double snap, double radius) {
+Uint8List _reachable(
+    Uint8List pixels,
+    int width,
+    int left,
+    int right,
+    int top,
+    int bottom,
+    int centreX,
+    int centreY,
+    double snap,
+    double radius,
+    List<double> reference) {
   var boxWidth = right - left + 1;
   var boxHeight = bottom - top + 1;
   var out = Uint8List(boxWidth * boxHeight);
 
   const diagonal = 441.6729559300637;
   var tolerance = snap * diagonal;
-  var centre = (centreY * width + centreX) * 4;
   var stack = <int>[(centreY - top) * boxWidth + (centreX - left)];
 
   while (stack.isNotEmpty) {
@@ -408,10 +480,12 @@ Uint8List _reachable(Uint8List pixels, int width, int left, int right, int top,
     var dx = x - centreX, dy = y - centreY;
     if (math.sqrt(dx * dx + dy * dy) > radius) continue;
 
+    // Against what the stroke set out to remove, not against the pixel under
+    // the pointer -- see _paintStrokes.
     var p = (y * width + x) * 4;
-    var dr = pixels[p] - pixels[centre];
-    var dg = pixels[p + 1] - pixels[centre + 1];
-    var db = pixels[p + 2] - pixels[centre + 2];
+    var dr = pixels[p] - reference[0];
+    var dg = pixels[p + 1] - reference[1];
+    var db = pixels[p + 2] - reference[2];
     if (math.sqrt(dr * dr + dg * dg + db * db) > tolerance) continue;
 
     out[local] = 1;

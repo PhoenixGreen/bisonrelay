@@ -777,6 +777,83 @@ void main() {
           reason: "and it stopped at the coat, though the brush covered it");
     });
 
+    testWidgets("cling holds on to what the stroke started on",
+        (tester) async {
+      // The reported fault. The reference used to be taken per dab, from
+      // whatever was under the pointer at that moment -- so the instant the
+      // stroke crossed onto the subject it re-learnt the subject and started
+      // clinging to that, which is the opposite of the whole idea. Flesh
+      // against a blue background is about as easy as this gets, and it was
+      // eating the flesh.
+      const size = 60;
+      var pixels = picture(size, size,
+          (x, y) => x < 30 ? const Color(0xFF3C5AA0) : const Color(0xFFC89678));
+
+      applyRemovalForTest(
+        pixels,
+        size,
+        size,
+        const BackgroundRemoval(
+          mode: RemovalMode.none,
+          strokes: [
+            RemovalStroke(
+              // Starts on the blue and sweeps well over the flesh.
+              points: [Offset(0.1, 0.5), Offset(0.85, 0.5)],
+              radius: 0.12,
+              keep: false,
+              hardness: 1,
+              snap: 0.12,
+            ),
+          ],
+        ),
+      );
+
+      expect(alphaAt(pixels, size, 10, 30), 0, reason: "the blue went");
+      expect(alphaAt(pixels, size, 25, 30), 0,
+          reason: "right up to the boundary");
+      expect(alphaAt(pixels, size, 40, 30), 255,
+          reason: "and the flesh survived being swept over");
+      expect(alphaAt(pixels, size, 50, 30), 255);
+    });
+
+    testWidgets("cling follows a background that shades", (tester) async {
+      // The reference is allowed to drift towards colours it already agrees
+      // with -- a sky that shades from one side to the other is still the sky
+      // -- so long as it never follows something it does not recognise.
+      const size = 60;
+      var pixels = picture(size, size, (x, y) {
+        if (x >= 45) return const Color(0xFFC89678);
+        // A blue ramp across the background half.
+        var v = 90 + (x / 45 * 90).round();
+        return Color.fromARGB(255, v ~/ 2, (v * 0.7).round(), v);
+      });
+
+      applyRemovalForTest(
+        pixels,
+        size,
+        size,
+        const BackgroundRemoval(
+          mode: RemovalMode.none,
+          strokes: [
+            RemovalStroke(
+              points: [Offset(0.05, 0.5), Offset(0.9, 0.5)],
+              radius: 0.12,
+              keep: false,
+              hardness: 1,
+              snap: 0.1,
+            ),
+          ],
+        ),
+      );
+
+      expect(alphaAt(pixels, size, 5, 30), 0, reason: "the near end");
+      expect(alphaAt(pixels, size, 40, 30), 0,
+          reason: "and the far end of the ramp, though it is a long way from "
+              "the colour the stroke started on");
+      expect(alphaAt(pixels, size, 52, 30), 255,
+          reason: "but not the flesh");
+    });
+
     testWidgets("strokes build on one another rather than fighting",
         (tester) async {
       // Two overlapping soft strokes have to add up, or feathering them means

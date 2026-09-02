@@ -47,6 +47,7 @@ List<Widget> elementSettings(
     controller.beginInteraction();
     controller.replaceElement(next, transient: true);
   }
+
   void commit() => controller.endInteraction();
   void begin() => controller.beginInteraction();
 
@@ -60,8 +61,7 @@ List<Widget> elementSettings(
         _imageSettings(context, controller, e, write, begin, commit),
       ChartElement e => _chartSettings(e, write, begin, commit),
       TableElement e => _tableSettings(e, write, begin, commit),
-      ButtonElement e =>
-        _buttonSettings(controller, e, write, begin, commit),
+      ButtonElement e => _buttonSettings(controller, e, write, begin, commit),
       BackgroundElement e => [
           ProceduralSettings(
             spec: e.spec,
@@ -205,7 +205,7 @@ Widget _positionGroup(CanvasController controller, CanvasElement e,
       onChanged: (v) => moveTo(x: v),
       onCommit: commit,
     ),
-CanvasNumberField(
+    CanvasNumberField(
       key: const ValueKey("elementY"),
       label: "Y",
       value: box.top,
@@ -232,7 +232,7 @@ CanvasNumberField(
           write(e.withBase(height: pose.scale == 0 ? v : v / pose.scale)),
       onCommit: commit,
     ),
-CanvasNumberField(
+    CanvasNumberField(
       key: const ValueKey("elementAngle"),
       label: "Angle",
       value: e.rotationAt(frame),
@@ -254,7 +254,7 @@ CanvasNumberField(
       },
       onCommit: commit,
     ),
-CanvasNumberField(
+    CanvasNumberField(
       label: "Opacity",
       min: 0,
       max: 1,
@@ -271,7 +271,8 @@ CanvasNumberField(
         write(e.withBase(
             track: track.withKey(track.at(frame).copyWith(
                 frame: frame,
-                opacity: e.opacity == 0 ? v : (v / e.opacity).clamp(0.0, 1.0)))));
+                opacity:
+                    e.opacity == 0 ? v : (v / e.opacity).clamp(0.0, 1.0)))));
       },
       onCommit: commit,
     ),
@@ -531,8 +532,8 @@ List<Widget> _textSettings(CanvasController controller, TextElement e,
         onChanged: (v) => now(e.copyWith(autoSize: v)),
       ),
     ]),
-    ..._typeGroups(e.textSpec, (spec) => write(e.copyWith(textSpec: spec)),
-        begin, commit),
+    ..._typeGroups(
+        e.textSpec, (spec) => write(e.copyWith(textSpec: spec)), begin, commit),
     CanvasControlGroup(label: "Columns", children: [
       CanvasNumberField(
         key: const ValueKey("textColumns"),
@@ -600,16 +601,16 @@ List<Widget> _textSettings(CanvasController controller, TextElement e,
         options: _curveOptions(controller),
         onChanged: (v) => now(v.isEmpty
             ? e.copyWith(clearCurve: true)
-            : e.copyWith(curve: (e.curve ?? const TextOnCurve(elementId: ""))
-                .copyWith(elementId: v))),
+            : e.copyWith(
+                curve: (e.curve ?? const TextOnCurve(elementId: ""))
+                    .copyWith(elementId: v))),
       ),
       if (e.curve != null) ...[
         CanvasNumberField(
           label: "Slide",
           decimals: 2,
           width: 62,
-          value: controller.valueAt(
-              e, KeyframeChannel.slide, e.curve!.offset),
+          value: controller.valueAt(e, KeyframeChannel.slide, e.curve!.offset),
           min: -1,
           max: 1,
           onChanged: (v) {
@@ -625,8 +626,13 @@ List<Widget> _textSettings(CanvasController controller, TextElement e,
           },
           onCommit: commit,
         ),
-        _valueDot(controller, e, KeyframeChannel.slide, "the slide along the "
-            "line", e.curve!.offset),
+        _valueDot(
+            controller,
+            e,
+            KeyframeChannel.slide,
+            "the slide along the "
+            "line",
+            e.curve!.offset),
         CanvasNumberField(
           label: "Spacing",
           value: e.curve!.spacing,
@@ -643,8 +649,7 @@ List<Widget> _textSettings(CanvasController controller, TextElement e,
         CanvasToggle(
           label: "Below",
           value: e.curve!.away,
-          onChanged: (v) =>
-              now(e.copyWith(curve: e.curve!.copyWith(away: v))),
+          onChanged: (v) => now(e.copyWith(curve: e.curve!.copyWith(away: v))),
         ),
         CanvasToggle(
           // Not the line element's own Hide: a hidden element is skipped
@@ -888,99 +893,99 @@ List<Widget> _lineSettings(CanvasController controller, LineElement e,
   }
 
   return [
-      CanvasControlGroup(label: "Line", children: [
-        CanvasColorButton(
-          label: "Colour",
-          color: e.color,
-          onChanged: (c) {
-            begin();
-            write(e.copyWith(color: c));
-            commit();
-          },
-        ),
-        CanvasNumberField(
-          label: "Width",
-          value: e.strokeWidth,
-          min: 0.2,
-          max: 200,
-          decimals: 1,
-          width: 54,
-          onChanged: (v) => write(e.copyWith(strokeWidth: v)),
-          onCommit: commit,
-        ),
-        CanvasDropdown<LineStrokeCap>(
-          label: "Stroke end",
-          value: e.cap,
-          width: 92,
-          options: [for (var c in LineStrokeCap.values) (c, c.label)],
-          onChanged: (v) => now(e.copyWith(cap: v)),
-        ),
-        CanvasDropdown<LineEnd>(
-          label: "Start",
-          value: e.startEnd,
-          width: 124,
-          options: [for (var c in LineEnd.values) (c, c.label)],
-          onChanged: (v) => now(e.copyWith(startEnd: v)),
-        ),
-        CanvasDropdown<LineEnd>(
-          label: "End",
-          value: e.endEnd,
-          width: 124,
-          options: [for (var c in LineEnd.values) (c, c.label)],
-          onChanged: (v) => now(e.copyWith(endEnd: v)),
-        ),
-        CanvasNumberField(
-          label: "End size",
-          value: e.endSize,
-          min: 0.2,
-          max: 8,
-          decimals: 1,
-          width: 58,
-          onChanged: (v) {
-            begin();
-            write(e.copyWith(endSize: v));
-          },
-          onCommit: commit,
-        ),
-        CanvasNumberField(
-          label: "Dash",
-          value: e.dash,
-          min: 0,
-          max: 400,
-          width: 50,
-          onChanged: (v) => write(e.copyWith(dash: v)),
-          onCommit: commit,
-        ),
-        CanvasNumberField(
-          label: "Curve",
-          decimals: 2,
-          width: 62,
-          value: controller.valueAt(e, KeyframeChannel.bow, e.curvature),
-          min: -1,
-          max: 1,
-          onChanged: (v) {
-            begin();
-            if (controller.hasValueKey(e, KeyframeChannel.bow)) {
-              controller.setValueKey(e, KeyframeChannel.bow, v);
-              return;
-            }
-            write(e.copyWith(curvature: v));
-          },
-          onCommit: commit,
-        ),
-        _valueDot(controller, e, KeyframeChannel.bow, "the line's curve",
-            e.curvature),
-        CanvasIconButton(
-          icon: Icons.swap_vert,
-          tooltip: "Flip which way the line runs",
-          active: e.flipped,
-          onPressed: () {
-            begin();
-            write(e.copyWith(flipped: !e.flipped));
-            commit();
-          },
-        ),
-      ]),
+    CanvasControlGroup(label: "Line", children: [
+      CanvasColorButton(
+        label: "Colour",
+        color: e.color,
+        onChanged: (c) {
+          begin();
+          write(e.copyWith(color: c));
+          commit();
+        },
+      ),
+      CanvasNumberField(
+        label: "Width",
+        value: e.strokeWidth,
+        min: 0.2,
+        max: 200,
+        decimals: 1,
+        width: 54,
+        onChanged: (v) => write(e.copyWith(strokeWidth: v)),
+        onCommit: commit,
+      ),
+      CanvasDropdown<LineStrokeCap>(
+        label: "Stroke end",
+        value: e.cap,
+        width: 92,
+        options: [for (var c in LineStrokeCap.values) (c, c.label)],
+        onChanged: (v) => now(e.copyWith(cap: v)),
+      ),
+      CanvasDropdown<LineEnd>(
+        label: "Start",
+        value: e.startEnd,
+        width: 124,
+        options: [for (var c in LineEnd.values) (c, c.label)],
+        onChanged: (v) => now(e.copyWith(startEnd: v)),
+      ),
+      CanvasDropdown<LineEnd>(
+        label: "End",
+        value: e.endEnd,
+        width: 124,
+        options: [for (var c in LineEnd.values) (c, c.label)],
+        onChanged: (v) => now(e.copyWith(endEnd: v)),
+      ),
+      CanvasNumberField(
+        label: "End size",
+        value: e.endSize,
+        min: 0.2,
+        max: 8,
+        decimals: 1,
+        width: 58,
+        onChanged: (v) {
+          begin();
+          write(e.copyWith(endSize: v));
+        },
+        onCommit: commit,
+      ),
+      CanvasNumberField(
+        label: "Dash",
+        value: e.dash,
+        min: 0,
+        max: 400,
+        width: 50,
+        onChanged: (v) => write(e.copyWith(dash: v)),
+        onCommit: commit,
+      ),
+      CanvasNumberField(
+        label: "Curve",
+        decimals: 2,
+        width: 62,
+        value: controller.valueAt(e, KeyframeChannel.bow, e.curvature),
+        min: -1,
+        max: 1,
+        onChanged: (v) {
+          begin();
+          if (controller.hasValueKey(e, KeyframeChannel.bow)) {
+            controller.setValueKey(e, KeyframeChannel.bow, v);
+            return;
+          }
+          write(e.copyWith(curvature: v));
+        },
+        onCommit: commit,
+      ),
+      _valueDot(
+          controller, e, KeyframeChannel.bow, "the line's curve", e.curvature),
+      CanvasIconButton(
+        icon: Icons.swap_vert,
+        tooltip: "Flip which way the line runs",
+        active: e.flipped,
+        onPressed: () {
+          begin();
+          write(e.copyWith(flipped: !e.flipped));
+          commit();
+        },
+      ),
+    ]),
   ];
 }
 
@@ -993,245 +998,251 @@ List<Widget> _imageSettings(BuildContext context, CanvasController controller,
   }
 
   return [
-      CanvasControlGroup(label: "Picture", children: [
-        // The one control this element did not have, and without which it does
-        // nothing at all: somewhere to put a picture in it.
+    CanvasControlGroup(label: "Picture", children: [
+      // The one control this element did not have, and without which it does
+      // nothing at all: somewhere to put a picture in it.
+      CanvasIconButton(
+        icon: e.hasImage ? Icons.image_outlined : Icons.add_photo_alternate,
+        tooltip: e.hasImage ? "Replace this picture" : "Add a picture",
+        onPressed: () async {
+          var id = await pickCanvasImage(context);
+          if (id != null) now(e.copyWith(assetId: id));
+        },
+      ),
+      if (e.hasImage)
         CanvasIconButton(
-          icon: e.hasImage ? Icons.image_outlined : Icons.add_photo_alternate,
-          tooltip: e.hasImage ? "Replace this picture" : "Add a picture",
-          onPressed: () async {
-            var id = await pickCanvasImage(context);
-            if (id != null) now(e.copyWith(assetId: id));
-          },
+          icon: Icons.hide_image_outlined,
+          tooltip: "Take the picture out",
+          onPressed: () => now(e.copyWith(assetId: "")),
         ),
-        if (e.hasImage)
-          CanvasIconButton(
-            icon: Icons.hide_image_outlined,
-            tooltip: "Take the picture out",
-            onPressed: () => now(e.copyWith(assetId: "")),
+      CanvasIconButton(
+        icon: e.lockAspect ? Icons.link : Icons.link_off,
+        tooltip: e.lockAspect
+            ? "Proportions are held while it is resized — Shift to stretch"
+            : "It can be stretched — Shift to hold its proportions",
+        active: e.lockAspect,
+        onPressed: () {
+          begin();
+          write(e.copyWith(lockAspect: !e.lockAspect));
+          commit();
+        },
+      ),
+      CanvasDropdown<ImageFit>(
+        label: "Fit",
+        value: e.fit,
+        width: 106,
+        options: [for (var f in ImageFit.values) (f, f.label)],
+        onChanged: (v) {
+          begin();
+          write(e.copyWith(fit: v));
+          commit();
+        },
+      ),
+      CanvasNumberField(
+        label: "Saturation",
+        decimals: 2,
+        width: 62,
+        value: e.saturation,
+        min: 0,
+        max: 3,
+        onChanged: (v) {
+          begin();
+          write(e.copyWith(saturation: v));
+        },
+        onCommit: commit,
+      ),
+      CanvasNumberField(
+        label: "Brightness",
+        decimals: 2,
+        width: 62,
+        value: e.brightness,
+        min: 0,
+        max: 3,
+        onChanged: (v) {
+          begin();
+          write(e.copyWith(brightness: v));
+        },
+        onCommit: commit,
+      ),
+    ]),
+    CanvasControlGroup(label: "Remove background", children: [
+      // The brush comes before the method, and outside the check for whether
+      // anything is being removed yet.
+      //
+      // It used to be inside it, which made it unreachable on exactly the
+      // picture it is for: a fresh image has no method chosen and no strokes,
+      // so nothing was being removed, so the brushes were hidden -- and the
+      // only way to reach the tool that needs no method was to choose a
+      // method first.
+      //
+      // It is first because it is the tool. Every automatic method has
+      // photographs it cannot do, and on those this is not a refinement.
+      CanvasIconButton(
+        icon: Icons.auto_fix_high,
+        tooltip: controller.retouch == RetouchBrush.erase
+            ? "Stop rubbing out"
+            : "Rub the background out by hand",
+        active: controller.retouch == RetouchBrush.erase,
+        onPressed: () => controller.retouch =
+            controller.retouch == RetouchBrush.erase
+                ? RetouchBrush.off
+                : RetouchBrush.erase,
+      ),
+      CanvasIconButton(
+        icon: Icons.healing,
+        tooltip: controller.retouch == RetouchBrush.restore
+            ? "Stop putting back"
+            : "Put back what was taken by mistake",
+        active: controller.retouch == RetouchBrush.restore,
+        onPressed: () => controller.retouch =
+            controller.retouch == RetouchBrush.restore
+                ? RetouchBrush.off
+                : RetouchBrush.restore,
+      ),
+      // A drawn stroke waits here until it is applied, so the settings above
+      // can be adjusted against it and the result watched on the canvas.
+      if (controller.hasPendingStroke) ...[
+        Padding(
+          padding: const EdgeInsets.only(top: controlLabelHeight, right: 6),
+          child: SizedBox(
+            height: controlHeight,
+            child: Center(
+              child: Txt.S(controller.pendingTeaches
+                  ? "Mark drawn — adjust the brush, then keep it"
+                  : "Stroke drawn — adjust the brush, then apply it"),
+            ),
           ),
+        ),
         CanvasIconButton(
-          icon: e.lockAspect ? Icons.link : Icons.link_off,
-          tooltip: e.lockAspect
-              ? "Proportions are held while it is resized — Shift to stretch"
-              : "It can be stretched — Shift to hold its proportions",
-          active: e.lockAspect,
-          onPressed: () {
-            begin();
-            write(e.copyWith(lockAspect: !e.lockAspect));
-            commit();
-          },
+          icon: Icons.check,
+          tooltip: "Apply this stroke",
+          active: true,
+          onPressed: controller.applyStroke,
         ),
-        CanvasDropdown<ImageFit>(
-          label: "Fit",
-          value: e.fit,
-          width: 106,
-          options: [for (var f in ImageFit.values) (f, f.label)],
-          onChanged: (v) {
-            begin();
-            write(e.copyWith(fit: v));
-            commit();
-          },
+        CanvasIconButton(
+          icon: Icons.close,
+          tooltip: "Throw this stroke away",
+          onPressed: controller.discardStroke,
         ),
+      ],
+      if (controller.retouch.on) ...[
         CanvasNumberField(
-          label: "Saturation",
-          decimals: 2,
+          label: "Brush",
+          min: 0.005,
+          max: 0.6,
+          decimals: 3,
           width: 62,
-          value: e.saturation,
-          min: 0,
-          max: 3,
-          onChanged: (v) {
-            begin();
-            write(e.copyWith(saturation: v));
-          },
-          onCommit: commit,
+          value: controller.brushSize,
+          onChanged: (v) => controller.brushSize = v,
         ),
-        CanvasNumberField(
-          label: "Brightness",
-          decimals: 2,
-          width: 62,
-          value: e.brightness,
-          min: 0,
-          max: 3,
-          onChanged: (v) {
-            begin();
-            write(e.copyWith(brightness: v));
-          },
-          onCommit: commit,
-        ),
-      ]),
-      CanvasControlGroup(label: "Remove background", children: [
-        // The brush comes before the method, and outside the check for whether
-        // anything is being removed yet.
-        //
-        // It used to be inside it, which made it unreachable on exactly the
-        // picture it is for: a fresh image has no method chosen and no strokes,
-        // so nothing was being removed, so the brushes were hidden -- and the
-        // only way to reach the tool that needs no method was to choose a
-        // method first.
-        //
-        // It is first because it is the tool. Every automatic method has
-        // photographs it cannot do, and on those this is not a refinement.
-        CanvasIconButton(
-          icon: Icons.auto_fix_high,
-          tooltip: controller.retouch == RetouchBrush.erase
-              ? "Stop rubbing out"
-              : "Rub the background out by hand",
-          active: controller.retouch == RetouchBrush.erase,
-          onPressed: () => controller.retouch =
-              controller.retouch == RetouchBrush.erase
-                  ? RetouchBrush.off
-                  : RetouchBrush.erase,
-        ),
-        CanvasIconButton(
-          icon: Icons.healing,
-          tooltip: controller.retouch == RetouchBrush.restore
-              ? "Stop putting back"
-              : "Put back what was taken by mistake",
-          active: controller.retouch == RetouchBrush.restore,
-          onPressed: () => controller.retouch =
-              controller.retouch == RetouchBrush.restore
-                  ? RetouchBrush.off
-                  : RetouchBrush.restore,
-        ),
-        // A drawn stroke waits here until it is applied, so the settings above
-        // can be adjusted against it and the result watched on the canvas.
-        if (controller.hasPendingStroke) ...[
-          Padding(
-            padding: const EdgeInsets.only(top: controlLabelHeight, right: 6),
-            child: SizedBox(
-              height: controlHeight,
-              child: Center(
-                child: Txt.S(controller.pendingTeaches
-                    ? "Mark drawn — adjust the brush, then keep it"
-                    : "Stroke drawn — adjust the brush, then apply it"),
-              ),
-            ),
-          ),
-          CanvasIconButton(
-            icon: Icons.check,
-            tooltip: "Apply this stroke",
-            active: true,
-            onPressed: controller.applyStroke,
-          ),
-          CanvasIconButton(
-            icon: Icons.close,
-            tooltip: "Throw this stroke away",
-            onPressed: controller.discardStroke,
-          ),
-        ],
-        if (controller.retouch.on) ...[
+        // Only for the brushes that mark the picture. A hint is a sample
+        // and is taken exactly where it was drawn.
+        if (!controller.retouch.teaches) ...[
           CanvasNumberField(
-            label: "Brush",
-            min: 0.005,
-            max: 0.6,
-            decimals: 3,
-            width: 62,
-            value: controller.brushSize,
-            onChanged: (v) => controller.brushSize = v,
-          ),
-          // Only for the brushes that mark the picture. A hint is a sample
-          // and is taken exactly where it was drawn.
-          if (!controller.retouch.teaches) ...[
-            CanvasNumberField(
-              label: "Hardness",
-              min: 0.05,
-              max: 1,
-              decimals: 2,
-              width: 62,
-              value: controller.brushHardness,
-              onChanged: (v) => controller.brushHardness = v,
-            ),
-            CanvasNumberField(
-              label: "Cling",
-              min: 0,
-              max: 0.6,
-              decimals: 3,
-              width: 62,
-              value: controller.brushSnap,
-              onChanged: (v) => controller.brushSnap = v,
-            ),
-          ],
-        ],
-        if (e.removal.strokes.isNotEmpty) ...[
-          CanvasIconButton(
-            icon: Icons.undo,
-            tooltip: "Undo the last brush stroke",
-            onPressed: () {
-              begin();
-              write(e.copyWith(
-                  removal: e.removal.copyWith(
-                      strokes: e.removal.strokes
-                          .sublist(0, e.removal.strokes.length - 1))));
-              commit();
-            },
-          ),
-          CanvasIconButton(
-            icon: Icons.layers_clear_outlined,
-            tooltip: "Clear every brush stroke",
-            onPressed: () {
-              begin();
-              write(e.copyWith(
-                  removal: e.removal.copyWith(strokes: const [])));
-              commit();
-            },
-          ),
-        ],
-        CanvasDropdown<RemovalMode>(
-          label: "Method",
-          value: e.removal.mode,
-          width: 140,
-          options: [for (var m in RemovalMode.values) (m, m.label)],
-          onChanged: (v) {
-            begin();
-            write(e.copyWith(removal: e.removal.copyWith(mode: v)));
-            commit();
-          },
-        ),
-        if (e.removal.mode == RemovalMode.chromaKey)
-          CanvasColorButton(
-            label: "Key",
-            color: e.removal.keyColor,
-            allowAlpha: false,
-            onChanged: (c) {
-              begin();
-              write(e.copyWith(removal: e.removal.copyWith(keyColor: c)));
-              commit();
-            },
-          ),
-        if (e.removal.mode == RemovalMode.luminance)
-          CanvasNumberField(
-            label: "Threshold",
-            min: 0,
+            label: "Hardness",
+            min: 0.05,
             max: 1,
             decimals: 2,
             width: 62,
-            value: e.removal.threshold,
+            value: controller.brushHardness,
+            onChanged: (v) => controller.brushHardness = v,
+          ),
+          CanvasNumberField(
+            label: "Cling",
+            min: 0,
+            max: 0.6,
+            decimals: 3,
+            width: 62,
+            value: controller.brushSnap,
+            onChanged: (v) => controller.brushSnap = v,
+          ),
+        ],
+      ],
+      if (e.removal.strokes.isNotEmpty) ...[
+        CanvasIconButton(
+          icon: Icons.undo,
+          tooltip: "Undo the last brush stroke",
+          onPressed: () {
+            begin();
+            write(e.copyWith(
+                removal: e.removal.copyWith(
+                    strokes: e.removal.strokes
+                        .sublist(0, e.removal.strokes.length - 1))));
+            commit();
+          },
+        ),
+        CanvasIconButton(
+          icon: Icons.layers_clear_outlined,
+          tooltip: "Clear every brush stroke",
+          onPressed: () {
+            begin();
+            write(e.copyWith(removal: e.removal.copyWith(strokes: const [])));
+            commit();
+          },
+        ),
+      ],
+      CanvasDropdown<RemovalMode>(
+        label: "Method",
+        value: e.removal.mode,
+        width: 140,
+        options: [for (var m in RemovalMode.values) (m, m.label)],
+        onChanged: (v) {
+          begin();
+          write(e.copyWith(removal: e.removal.copyWith(mode: v)));
+          commit();
+        },
+      ),
+      if (e.removal.mode == RemovalMode.chromaKey)
+        CanvasColorButton(
+          label: "Key",
+          color: e.removal.keyColor,
+          allowAlpha: false,
+          onChanged: (c) {
+            begin();
+            write(e.copyWith(removal: e.removal.copyWith(keyColor: c)));
+            commit();
+          },
+        ),
+      if (e.removal.mode == RemovalMode.luminance)
+        CanvasNumberField(
+          label: "Threshold",
+          min: 0,
+          max: 1,
+          decimals: 2,
+          width: 62,
+          value: e.removal.threshold,
+          onChanged: (v) {
+            begin();
+            write(e.copyWith(removal: e.removal.copyWith(threshold: v)));
+          },
+          onCommit: commit,
+        ),
+      // A method's own settings, and only while one is chosen. They were
+      // shown whenever anything was being removed -- which includes a
+      // picture the brush alone has been used on -- so somebody working by
+      // hand was offered a tolerance and a softness that nothing reads.
+      if (e.removal.mode != RemovalMode.none) ...[
+        // Edge first, because on a photograph it is the control that does
+        // the work: it says how sharply the picture has to change for the
+        // flood to treat it as the end of the background. Tolerance is the
+        // runaway guard behind it.
+        if (e.removal.mode == RemovalMode.cornerFlood)
+          CanvasNumberField(
+            label: "Edge",
+            min: 0.005,
+            max: 0.5,
+            decimals: 3,
+            width: 62,
+            value: e.removal.edge,
             onChanged: (v) {
               begin();
-              write(e.copyWith(removal: e.removal.copyWith(threshold: v)));
+              write(e.copyWith(removal: e.removal.copyWith(edge: v)));
             },
             onCommit: commit,
           ),
-        if (e.removal.active) ...[
-          // Edge first, because on a photograph it is the control that does
-          // the work: it says how sharply the picture has to change for the
-          // flood to treat it as the end of the background. Tolerance is the
-          // runaway guard behind it.
-          if (e.removal.mode == RemovalMode.cornerFlood)
-            CanvasNumberField(
-              label: "Edge",
-              min: 0.005,
-              max: 0.5,
-              decimals: 3,
-              width: 62,
-              value: e.removal.edge,
-              onChanged: (v) {
-                begin();
-                write(e.copyWith(removal: e.removal.copyWith(edge: v)));
-              },
-              onCommit: commit,
-            ),
+        // Every method but the brightness one, which cuts at a threshold
+        // and has no use for it.
+        if (e.removal.mode != RemovalMode.luminance)
           CanvasNumberField(
             label: e.removal.mode == RemovalMode.cornerFlood
                 ? "Spread"
@@ -1247,84 +1258,82 @@ List<Widget> _imageSettings(BuildContext context, CanvasController controller,
             },
             onCommit: commit,
           ),
-          CanvasNumberField(
-            label: "Softness",
-            min: 0,
-            decimals: 2,
-            width: 62,
-            value: e.removal.softness,
-            max: 0.3,
-            onChanged: (v) {
-              begin();
-              write(e.copyWith(removal: e.removal.copyWith(softness: v)));
-            },
-            onCommit: commit,
+        CanvasNumberField(
+          label: "Softness",
+          min: 0,
+          decimals: 2,
+          width: 62,
+          value: e.removal.softness,
+          max: 0.3,
+          onChanged: (v) {
+            begin();
+            write(e.copyWith(removal: e.removal.copyWith(softness: v)));
+          },
+          onCommit: commit,
+        ),
+        // Marking, when the method is the one that learns from it. These
+        // two are the whole interface to it: mark some background, mark
+        // some subject, and the numbers below are a fine adjustment rather
+        // than the way in.
+        if (e.removal.mode == RemovalMode.learn) ...[
+          CanvasIconButton(
+            icon: Icons.format_paint_outlined,
+            tooltip: controller.retouch == RetouchBrush.markBackground
+                ? "Stop marking background"
+                : "Mark some background — draw over a few parts that should "
+                    "go",
+            active: controller.retouch == RetouchBrush.markBackground,
+            onPressed: () => controller.retouch =
+                controller.retouch == RetouchBrush.markBackground
+                    ? RetouchBrush.off
+                    : RetouchBrush.markBackground,
           ),
-          // Marking, when the method is the one that learns from it. These
-          // two are the whole interface to it: mark some background, mark
-          // some subject, and the numbers below are a fine adjustment rather
-          // than the way in.
-          if (e.removal.mode == RemovalMode.learn) ...[
+          CanvasIconButton(
+            icon: Icons.person_outline,
+            tooltip: controller.retouch == RetouchBrush.markSubject
+                ? "Stop marking the subject"
+                : "Mark the subject — draw over a few parts that should "
+                    "stay",
+            active: controller.retouch == RetouchBrush.markSubject,
+            onPressed: () => controller.retouch =
+                controller.retouch == RetouchBrush.markSubject
+                    ? RetouchBrush.off
+                    : RetouchBrush.markSubject,
+          ),
+          if (e.removal.hints.isNotEmpty)
             CanvasIconButton(
-              icon: Icons.format_paint_outlined,
-              tooltip: controller.retouch == RetouchBrush.markBackground
-                  ? "Stop marking background"
-                  : "Mark some background — draw over a few parts that should "
-                      "go",
-              active: controller.retouch == RetouchBrush.markBackground,
-              onPressed: () => controller.retouch =
-                  controller.retouch == RetouchBrush.markBackground
-                      ? RetouchBrush.off
-                      : RetouchBrush.markBackground,
+              icon: Icons.layers_clear_outlined,
+              tooltip: "Forget the marks and start again",
+              onPressed: () {
+                begin();
+                write(e.copyWith(removal: e.removal.copyWith(hints: const [])));
+                commit();
+              },
             ),
-            CanvasIconButton(
-              icon: Icons.person_outline,
-              tooltip: controller.retouch == RetouchBrush.markSubject
-                  ? "Stop marking the subject"
-                  : "Mark the subject — draw over a few parts that should "
-                      "stay",
-              active: controller.retouch == RetouchBrush.markSubject,
-              onPressed: () => controller.retouch =
-                  controller.retouch == RetouchBrush.markSubject
-                      ? RetouchBrush.off
-                      : RetouchBrush.markSubject,
-            ),
-            if (e.removal.hints.isNotEmpty)
-              CanvasIconButton(
-                icon: Icons.layers_clear_outlined,
-                tooltip: "Forget the marks and start again",
-                onPressed: () {
-                  begin();
-                  write(e.copyWith(
-                      removal: e.removal.copyWith(hints: const [])));
-                  commit();
-                },
-              ),
-            Padding(
-              padding:
-                  const EdgeInsets.only(top: controlLabelHeight, right: 6),
-              child: SizedBox(
-                height: controlHeight,
-                child: Center(
-                  child: Txt.S(e.removal.backgroundHints.isEmpty ||
-                          e.removal.subjectHints.isEmpty
-                      ? "Mark both, then it can compare them"
-                      : "${e.removal.hints.length} marks"),
-                ),
+          Padding(
+            padding: const EdgeInsets.only(top: controlLabelHeight, right: 6),
+            child: SizedBox(
+              height: controlHeight,
+              child: Center(
+                child: Txt.S(e.removal.backgroundHints.isEmpty ||
+                        e.removal.subjectHints.isEmpty
+                    ? "Mark both, then it can compare them"
+                    : "${e.removal.hints.length} marks"),
               ),
             ),
-          ],
-          CanvasToggle(
-            label: "Invert",
-            value: e.removal.invert,
-            onChanged: (v) {
-              begin();
-              write(e.copyWith(removal: e.removal.copyWith(invert: v)));
-              commit();
-            },
           ),
         ],
-      ]),
+        CanvasToggle(
+          label: "Invert",
+          value: e.removal.invert,
+          onChanged: (v) {
+            begin();
+            write(e.copyWith(removal: e.removal.copyWith(invert: v)));
+            commit();
+          },
+        ),
+      ],
+    ]),
     if (e.hasImage)
       CanvasControlGroup(label: "Frame", children: [
         CanvasDropdown<String>(
@@ -1342,7 +1351,8 @@ List<Widget> _imageSettings(BuildContext context, CanvasController controller,
       ]),
     if (e.hasImage)
       CanvasControlGroup(label: "Crop", children: [
-        for (var (label, value, apply) in <(String, double, ImageCrop Function(double))>[
+        for (var (label, value, apply)
+            in <(String, double, ImageCrop Function(double))>[
           ("Left", e.crop.left, (v) => e.crop.copyWith(left: v)),
           ("Top", e.crop.top, (v) => e.crop.copyWith(top: v)),
           ("Right", e.crop.right, (v) => e.crop.copyWith(right: v)),
@@ -1391,12 +1401,12 @@ List<Widget> _imageSettings(BuildContext context, CanvasController controller,
             onChanged: (c) => now(e.copyWith(overlay: c)),
           ),
       ]),
-      // "Border", not "Frame". Frame is now the shape the picture is cut to,
-      // and one word for the outline round a rectangle and for the rectangle
-      // being a circle is a word doing two jobs.
-      _boxGroup(e.box, (box) => write(e.copyWith(box: box)), begin, commit,
-          label: "Border"),
-    ];
+    // "Border", not "Frame". Frame is now the shape the picture is cut to,
+    // and one word for the outline round a rectangle and for the rectangle
+    // being a circle is a word doing two jobs.
+    _boxGroup(e.box, (box) => write(e.copyWith(box: box)), begin, commit,
+        label: "Border"),
+  ];
 }
 
 List<Widget> _chartSettings(ChartElement e, _Write write, VoidCallback begin,
@@ -1676,9 +1686,8 @@ List<Widget> _tableSettings(TableElement e, _Write write, VoidCallback begin,
       ..._typeGroups(e.cellSpec, (spec) => write(e.copyWith(cellSpec: spec)),
           begin, commit,
           label: "Cell type"),
-      ..._typeGroups(
-          e.headerSpec, (spec) => write(e.copyWith(headerSpec: spec)), begin,
-          commit,
+      ..._typeGroups(e.headerSpec,
+          (spec) => write(e.copyWith(headerSpec: spec)), begin, commit,
           label: "Header type"),
     ];
 
@@ -1776,8 +1785,8 @@ List<Widget> _buttonSettings(CanvasController controller, ButtonElement e,
 /// behind an expander because eleven rows of four fields is more than every
 /// other element's settings put together, and somebody opening a team is
 /// usually there for the formation or the kit.
-List<Widget> _teamSettings(TeamElement e, _Write write, VoidCallback begin,
-    VoidCallback commit) {
+List<Widget> _teamSettings(
+    TeamElement e, _Write write, VoidCallback begin, VoidCallback commit) {
   /// now is a change made in one go -- a dropdown, a colour, a switch -- which
   /// is its own undo step.
   void now(TeamElement next) {
@@ -1795,9 +1804,8 @@ List<Widget> _teamSettings(TeamElement e, _Write write, VoidCallback begin,
         options: [for (var s in TeamSport.values) (s, s.label)],
         // Changing the sport re-lays the squad out, since a formation belongs
         // to one game and the squad size changes with it.
-        onChanged: (v) => now(e
-            .copyWith(sport: v)
-            .withFormation(v.formations.first)),
+        onChanged: (v) =>
+            now(e.copyWith(sport: v).withFormation(v.formations.first)),
       ),
       CanvasDropdown<TeamFormation>(
         label: "Formation",
@@ -2113,15 +2121,15 @@ class _PlayerRow extends StatelessWidget {
           icon: spot.locked ? Icons.lock : Icons.lock_open,
           tooltip: spot.locked ? "Unlock" : "Lock in place",
           active: spot.locked,
-          onPressed: () => now(
-              team.withPlayer(index, spot.copyWith(locked: !spot.locked))),
+          onPressed: () =>
+              now(team.withPlayer(index, spot.copyWith(locked: !spot.locked))),
         ),
         CanvasIconButton(
           icon: spot.hidden ? Icons.visibility_off : Icons.visibility,
           tooltip: spot.hidden ? "Show" : "Hide",
           active: spot.hidden,
-          onPressed: () => now(
-              team.withPlayer(index, spot.copyWith(hidden: !spot.hidden))),
+          onPressed: () =>
+              now(team.withPlayer(index, spot.copyWith(hidden: !spot.hidden))),
         ),
         CanvasIconButton(
           icon: Icons.arrow_upward,
@@ -2270,8 +2278,7 @@ List<Widget> _pathSettings(CanvasController controller, PathElement e,
         min: 0,
         max: (controller.document.frames - 1).toDouble(),
         width: 54,
-        onChanged: (v) =>
-            relink(e.spreadFrames(v.round(), e.lastFrame)),
+        onChanged: (v) => relink(e.spreadFrames(v.round(), e.lastFrame)),
       ),
       CanvasNumberField(
         key: const ValueKey("pathEndFrame"),
@@ -2280,14 +2287,12 @@ List<Widget> _pathSettings(CanvasController controller, PathElement e,
         min: 0,
         max: (controller.document.frames - 1).toDouble(),
         width: 54,
-        onChanged: (v) =>
-            relink(e.spreadFrames(e.firstFrame, v.round())),
+        onChanged: (v) => relink(e.spreadFrames(e.firstFrame, v.round())),
       ),
       CanvasIconButton(
         icon: Icons.horizontal_distribute,
         tooltip: "Space the points evenly over the run",
-        onPressed: () =>
-            relink(e.spreadFrames(e.firstFrame, e.lastFrame)),
+        onPressed: () => relink(e.spreadFrames(e.firstFrame, e.lastFrame)),
       ),
       CanvasIconButton(
         icon: Icons.sync,
@@ -2297,8 +2302,8 @@ List<Widget> _pathSettings(CanvasController controller, PathElement e,
       CanvasIconButton(
         icon: Icons.add,
         tooltip: "Carry the path on past its last point",
-        onPressed: () => relink(
-            e.appendNode(maxFrame: controller.document.frames - 1)),
+        onPressed: () =>
+            relink(e.appendNode(maxFrame: controller.document.frames - 1)),
       ),
     ]),
     _pathNodeList(controller, e, relink),
@@ -2307,9 +2312,8 @@ List<Widget> _pathSettings(CanvasController controller, PathElement e,
 
 /// _followKey encodes a follower as a dropdown value, since a dropdown wants
 /// one comparable thing and a follower is an id and maybe an index.
-String _followKey(PathFollow? follow) => follow == null
-    ? ""
-    : "${follow.elementId}/${follow.playerIndex ?? -1}";
+String _followKey(PathFollow? follow) =>
+    follow == null ? "" : "${follow.elementId}/${follow.playerIndex ?? -1}";
 
 PathFollow? _followFromKey(String key) {
   if (key.isEmpty) return null;
@@ -2385,8 +2389,8 @@ Widget _pathNodeList(CanvasController controller, PathElement e,
                 width: 54,
                 onChanged: (v) => relink(e.withNode(
                     i,
-                    e.nodes[i].copyWith(
-                        x: e.width == 0 ? 0 : (v - e.x) / e.width))),
+                    e.nodes[i]
+                        .copyWith(x: e.width == 0 ? 0 : (v - e.x) / e.width))),
               ),
               CanvasNumberField(
                 key: ValueKey("node-y-$i-${e.id}"),
@@ -2414,9 +2418,8 @@ Widget _pathNodeList(CanvasController controller, PathElement e,
               CanvasIconButton(
                 icon: Icons.close,
                 tooltip: "Remove this point",
-                onPressed: e.nodes.length <= 2
-                    ? null
-                    : () => relink(e.withoutNode(i)),
+                onPressed:
+                    e.nodes.length <= 2 ? null : () => relink(e.withoutNode(i)),
               ),
             ]),
           ),

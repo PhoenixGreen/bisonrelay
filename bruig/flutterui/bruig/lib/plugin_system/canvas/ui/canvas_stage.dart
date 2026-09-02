@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -178,6 +179,21 @@ class CanvasStageState extends State<CanvasStage> {
   ui.Image? _preview;
   String? _previewOf;
 
+  /// _previewDebounce waits for the settings to stop moving before running the
+  /// brush again.
+  ///
+  /// Running it per change is what made typing and dragging a setting feel
+  /// like wading: every keystroke and every pixel of a scrub is a new value,
+  /// and each one started a full pass over the picture and an image decode.
+  /// A number is entered *then* applied -- which is also how anybody expects a
+  /// text field to behave.
+  Timer? _previewDebounce;
+
+  /// _previewDelay is long enough to cover the gap between keystrokes and
+  /// short enough that the result feels like a consequence of the change
+  /// rather than a separate event.
+  static const Duration _previewDelay = Duration(milliseconds: 220);
+
   /// _editorRect is where the editor was opened, in document space.
   ///
   /// Frozen at the moment it opens rather than followed live. For text riding
@@ -275,6 +291,7 @@ class CanvasStageState extends State<CanvasStage> {
 
   @override
   void dispose() {
+    _previewDebounce?.cancel();
     _scroll.dispose();
     controller.removeListener(_onChanged);
     controller.images.removeListener(_onChanged);
@@ -981,11 +998,19 @@ class CanvasStageState extends State<CanvasStage> {
     if (key == _previewOf) return;
     _previewOf = key;
 
-    strokePreview(source, stroke,
-            stroke.keep ? const Color(0x8833DD88) : const Color(0x88FF5544))
-        .then((image) {
+    // After the settings have stopped moving. The stroke itself is not worth
+    // waiting for -- it is drawn already and the reader is looking at it -- but
+    // there is no telling a keystroke from the last keystroke except by
+    // waiting, so both go through the same delay.
+    _previewDebounce?.cancel();
+    _previewDebounce = Timer(_previewDelay, () {
       if (!mounted || _previewOf != key) return;
-      setState(() => _preview = image);
+      strokePreview(source, stroke,
+              stroke.keep ? const Color(0x8833DD88) : const Color(0x88FF5544))
+          .then((image) {
+        if (!mounted || _previewOf != key) return;
+        setState(() => _preview = image);
+      });
     });
   }
 
