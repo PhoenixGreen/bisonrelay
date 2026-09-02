@@ -25,7 +25,12 @@ enum RemovalMode {
   chromaKey("Colour key", "Remove everything close to one chosen colour"),
   cornerFlood("Flood from edges",
       "Remove the connected region touching the picture's edges"),
-  luminance("By brightness", "Remove everything above or below a brightness");
+  luminance("By brightness", "Remove everything above or below a brightness"),
+
+  /// learn is the one to reach for on a photograph. See
+  /// BackgroundRemoval.hints.
+  learn("Show it what to remove",
+      "Mark some background and some subject, and it works out the rest");
 
   final String label;
   final String description;
@@ -143,6 +148,21 @@ class BackgroundRemoval {
   /// been kept.
   final bool invert;
 
+  /// hints are the marks that teach [RemovalMode.learn] what is what.
+  ///
+  /// A stroke with keep false is an example of background; keep true is an
+  /// example of subject. Nothing is removed where they are drawn -- they are
+  /// evidence rather than instructions, which is what separates them from
+  /// [strokes].
+  ///
+  /// This exists because the three settings above cannot be dialled in on a
+  /// real photograph. Every one of them asks the reader to guess a number that
+  /// stands for a property of the picture they cannot see: how far apart two
+  /// colours are, how sharply an edge changes. Marking two areas asks instead
+  /// for the one thing they can see perfectly well -- which part is the
+  /// background -- and lets the arithmetic work backwards from that.
+  final List<RemovalStroke> hints;
+
   /// strokes are the retouching brush's marks. See [RemovalStroke].
   ///
   /// Applied after whatever the automatic method did, so a stroke is always
@@ -169,6 +189,7 @@ class BackgroundRemoval {
     this.softness = 0.04,
     this.edge = 0.09,
     this.strokes = const [],
+    this.hints = const [],
     this.threshold = 0.85,
     this.invert = false,
   });
@@ -179,6 +200,11 @@ class BackgroundRemoval {
   /// out by hand and never touches the dropdown.
   bool get active => mode != RemovalMode.none || strokes.isNotEmpty;
 
+  /// backgroundHints and subjectHints are the two sides of the evidence.
+  Iterable<RemovalStroke> get backgroundHints =>
+      hints.where((h) => !h.keep);
+  Iterable<RemovalStroke> get subjectHints => hints.where((h) => h.keep);
+
   BackgroundRemoval copyWith({
     RemovalMode? mode,
     Color? keyColor,
@@ -188,6 +214,7 @@ class BackgroundRemoval {
     bool? invert,
     double? edge,
     List<RemovalStroke>? strokes,
+    List<RemovalStroke>? hints,
   }) =>
       BackgroundRemoval(
         mode: mode ?? this.mode,
@@ -198,6 +225,7 @@ class BackgroundRemoval {
         invert: invert ?? this.invert,
         edge: edge ?? this.edge,
         strokes: strokes ?? this.strokes,
+        hints: hints ?? this.hints,
       );
 
   /// cacheKey identifies a cut-out. Two elements with the same picture and
@@ -213,9 +241,16 @@ class BackgroundRemoval {
   /// of every stroke would be longer than the document.
   String cacheKey(String assetId) => "$assetId|${mode.name}|"
       "${colorToJson(keyColor)}|$tolerance|$softness|$threshold|$invert|$edge|"
-      "${strokes.length}|${strokes.isEmpty ? "" : "${strokes.last.points.length}"
-          ":${strokes.last.points.isEmpty ? "" : strokes.last.points.last}"
-          ":${strokes.last.keep}"}";
+      "${_marksKey(strokes)}|${_marksKey(hints)}";
+
+/// _marksKey summarises a list of brush marks for the cache key: how many
+/// there are, and how far the last one has got. A key holding every point of
+/// every stroke would be longer than the document.
+static String _marksKey(List<RemovalStroke> marks) => marks.isEmpty
+    ? "0"
+    : "${marks.length}:${marks.last.points.length}:"
+        "${marks.last.points.isEmpty ? "" : marks.last.points.last}:"
+        "${marks.last.keep}";
 
   Map<String, dynamic> toJson() => {
         "mode": mode.name,
@@ -227,6 +262,8 @@ class BackgroundRemoval {
         "edge": edge,
         if (strokes.isNotEmpty)
           "strokes": [for (var stroke in strokes) stroke.toJson()],
+        if (hints.isNotEmpty)
+          "hints": [for (var hint in hints) hint.toJson()],
       };
 
   factory BackgroundRemoval.fromJson(Map<String, dynamic> json) =>
@@ -243,6 +280,11 @@ class BackgroundRemoval {
             for (var stroke in raw)
               if (stroke is Map<String, dynamic>)
                 RemovalStroke.fromJson(stroke),
+        ],
+        hints: [
+          if (json["hints"] case List raw)
+            for (var hint in raw)
+              if (hint is Map<String, dynamic>) RemovalStroke.fromJson(hint),
         ],
       );
 }

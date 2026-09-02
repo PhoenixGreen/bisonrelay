@@ -53,12 +53,29 @@ enum RetouchBrush {
   erase("Rub out"),
 
   /// restore puts it back, for a hand or a shoulder the automatic pass ate.
-  restore("Put back");
+  restore("Put back"),
+
+  /// markBackground and markSubject do not change the picture at all: they
+  /// leave evidence for RemovalMode.learn to work from. See
+  /// BackgroundRemoval.hints.
+  markBackground("Mark background"),
+  markSubject("Mark subject");
 
   final String label;
   const RetouchBrush(this.label);
 
   bool get on => this != RetouchBrush.off;
+
+  /// teaches is whether this brush leaves a hint rather than rubbing something
+  /// out. The difference matters at the point the stroke is stored, and
+  /// nowhere else.
+  bool get teaches =>
+      this == RetouchBrush.markBackground || this == RetouchBrush.markSubject;
+
+  /// keeps is whether the mark is about the subject rather than the
+  /// background.
+  bool get keeps =>
+      this == RetouchBrush.restore || this == RetouchBrush.markSubject;
 }
 
 /// CanvasTool is what dragging on the canvas does.

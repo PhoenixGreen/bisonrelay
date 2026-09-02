@@ -215,6 +215,8 @@ void applyRemovalForTest(
       _luminance(pixels, removal);
     case RemovalMode.cornerFlood:
       _cornerFlood(pixels, width, height, removal);
+    case RemovalMode.learn:
+      _learn(pixels, width, height, removal);
   }
 
   // Last, so a stroke is always the final word: the reader can put back a hand
@@ -412,6 +414,198 @@ void _cornerFlood(
   }
 
   if (removal.softness > 0) _featherAlpha(pixels, width, height, removal);
+}
+
+/// _learn removes the background by comparing it with the subject, from marks
+/// the reader has drawn on each.
+///
+/// The other three methods ask for a number that stands for something nobody
+/// can see: how far apart two colours are, how sharply an edge changes. On a
+/// photograph there is usually no such number -- the reported stadium shot has
+/// a white shirt touching bright highlights and a soft outline against a dark
+/// crowd, and every threshold that keeps the background out also takes part of
+/// the player. This asks instead for the one thing anybody can see perfectly
+/// well: which part is the background.
+///
+/// Three steps, none of them clever:
+///
+///   1. Collect the colours under each set of marks, coarsely -- to five bits
+///      a channel, which is about as finely as a photograph's noise allows
+///      anything to be told apart anyway.
+///   2. Decide, once per colour rather than once per pixel, which side of the
+///      evidence it falls on. That is a table of 32768 entries built in a few
+///      milliseconds and then read for free.
+///   3. Flood outwards from the background marks and from any border that
+///      looks like background, through pixels the table calls background.
+///
+/// The flood in step three is what stops a white shirt going when the
+/// background also has white in it: the shirt is only removed if there is a
+/// path to it through other background-looking pixels, and a subject mark
+/// blocks the way.
+void _learn(
+    Uint8List pixels, int width, int height, BackgroundRemoval removal) {
+  var background = _paletteOf(pixels, width, height, removal.backgroundHints);
+  var subject = _paletteOf(pixels, width, height, removal.subjectHints);
+  // With nothing to compare there is nothing to learn, and taking a guess here
+  // would remove something arbitrary the moment the mode was chosen.
+  if (background.isEmpty || subject.isEmpty) return;
+
+  var table = _classify(background, subject, removal.tolerance);
+
+  var count = width * height;
+  var seen = Uint8List(count);
+  var removed = Uint8List(count);
+  var stack = <int>[];
+
+  // A subject mark is a barrier: whatever is under it is kept, and the flood
+  // cannot pass through it to reach what is behind.
+  var blocked = Uint8List(count);
+  _markPixels(blocked, width, height, removal.subjectHints, 1);
+
+  void seed(int index) {
+    if (index < 0 || index >= count || blocked[index] != 0) return;
+    stack.add(index);
+  }
+
+  // From the marks themselves, which are background by definition...
+  var marked = Uint8List(count);
+  _markPixels(marked, width, height, removal.backgroundHints, 1);
+  for (var i = 0; i < count; i++) {
+    if (marked[i] != 0) seed(i);
+  }
+  // ...and from any edge that looks like background, so the reader does not
+  // have to trace all four sides to have the obvious parts taken out.
+  for (var x = 0; x < width; x++) {
+    seed(x);
+    seed((height - 1) * width + x);
+  }
+  for (var y = 0; y < height; y++) {
+    seed(y * width);
+    seed(y * width + width - 1);
+  }
+
+  while (stack.isNotEmpty) {
+    var index = stack.removeLast();
+    if (index < 0 || index >= count || seen[index] != 0) continue;
+    if (blocked[index] != 0) continue;
+    seen[index] = 1;
+
+    // A background mark is taken on trust; anything else has to look like
+    // background according to the table.
+    if (marked[index] == 0 && table[_bin(pixels, index)] == 0) continue;
+
+    removed[index] = 1;
+    pixels[index * 4 + 3] = 0;
+
+    var x = index % width, y = index ~/ width;
+    if (x > 0) stack.add(index - 1);
+    if (x < width - 1) stack.add(index + 1);
+    if (y > 0) stack.add(index - width);
+    if (y < height - 1) stack.add(index + width);
+  }
+
+  if (removal.invert) {
+    for (var i = 0; i < count; i++) {
+      pixels[i * 4 + 3] = removed[i] != 0 ? 255 : 0;
+    }
+  }
+
+  if (removal.softness > 0) _featherAlpha(pixels, width, height, removal);
+}
+
+/// _bin is a pixel's colour reduced to five bits a channel.
+int _bin(Uint8List pixels, int index) {
+  var p = index * 4;
+  return ((pixels[p] >> 3) << 10) |
+      ((pixels[p + 1] >> 3) << 5) |
+      (pixels[p + 2] >> 3);
+}
+
+/// _paletteOf is the set of coarse colours found under [marks].
+Set<int> _paletteOf(Uint8List pixels, int width, int height,
+    Iterable<RemovalStroke> marks) {
+  var found = Uint8List(32768);
+  var canvas = Uint8List(width * height);
+  _markPixels(canvas, width, height, marks, 1);
+  for (var i = 0; i < canvas.length; i++) {
+    if (canvas[i] != 0) found[_bin(pixels, i)] = 1;
+  }
+  var out = <int>{};
+  for (var i = 0; i < found.length; i++) {
+    if (found[i] != 0) out.add(i);
+  }
+  return out;
+}
+
+/// _classify decides, for every colour there is, whether it belongs to the
+/// background or the subject.
+///
+/// Once per colour rather than once per pixel: 32768 entries against a few
+/// hundred samples is a few million comparisons and happens once, where the
+/// same work per pixel on a twelve-megapixel photograph would not finish.
+///
+/// [bias] shifts the boundary between the two. At a half it is a fair fight;
+/// higher takes more, which is the dial to reach for when a little background
+/// survives.
+Uint8List _classify(Set<int> background, Set<int> subject, double bias) {
+  var table = Uint8List(32768);
+  var backgroundList = background.toList();
+  var subjectList = subject.toList();
+  var lean = 0.5 + bias.clamp(0.0, 1.0);
+
+  double nearest(List<int> palette, int r, int g, int b) {
+    var best = double.infinity;
+    for (var colour in palette) {
+      var dr = r - ((colour >> 10) & 31);
+      var dg = g - ((colour >> 5) & 31);
+      var db = b - (colour & 31);
+      var d = (dr * dr + dg * dg + db * db).toDouble();
+      if (d < best) best = d;
+    }
+    return math.sqrt(best);
+  }
+
+  for (var i = 0; i < table.length; i++) {
+    var r = (i >> 10) & 31, g = (i >> 5) & 31, b = i & 31;
+    var toBackground = nearest(backgroundList, r, g, b);
+    var toSubject = nearest(subjectList, r, g, b);
+    table[i] = toBackground < toSubject * lean ? 1 : 0;
+  }
+  return table;
+}
+
+/// _markPixels rasterises brush marks into a per-pixel flag.
+void _markPixels(Uint8List into, int width, int height,
+    Iterable<RemovalStroke> marks, int value) {
+  var shorter = math.min(width, height);
+  for (var mark in marks) {
+    var radius = math.max(1.0, mark.radius * shorter);
+    for (var i = 0; i < mark.points.length; i++) {
+      var from = ui.Offset(
+          mark.points[i].dx * width, mark.points[i].dy * height);
+      var to = i + 1 < mark.points.length
+          ? ui.Offset(mark.points[i + 1].dx * width,
+              mark.points[i + 1].dy * height)
+          : from;
+      var span = (to - from).distance;
+      var steps = math.max(1, (span / (radius / 2)).ceil());
+      for (var step = 0; step <= steps; step++) {
+        var at = ui.Offset.lerp(from, to, step / steps)!;
+        var left = math.max(0, (at.dx - radius).floor());
+        var right = math.min(width - 1, (at.dx + radius).ceil());
+        var top = math.max(0, (at.dy - radius).floor());
+        var bottom = math.min(height - 1, (at.dy + radius).ceil());
+        var squared = radius * radius;
+        for (var y = top; y <= bottom; y++) {
+          for (var x = left; x <= right; x++) {
+            var dx = x - at.dx, dy = y - at.dy;
+            if (dx * dx + dy * dy > squared) continue;
+            into[y * width + x] = value;
+          }
+        }
+      }
+    }
+  }
 }
 
 /// _featherAlpha softens the edge the removal left behind.

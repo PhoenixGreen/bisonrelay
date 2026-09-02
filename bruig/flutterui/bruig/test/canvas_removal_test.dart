@@ -458,4 +458,208 @@ void main() {
       expect(back.removal.strokes.single.radius, 0.08);
     });
   });
+
+  group("learning from marks", () {
+    /// stroke is a short horizontal mark across [y], in picture fractions.
+    RemovalStroke stroke(double x1, double x2, double y,
+            {required bool keep}) =>
+        RemovalStroke(
+          points: [Offset(x1, y), Offset(x2, y)],
+          radius: 0.02,
+          keep: keep,
+        );
+
+    testWidgets("the subject is kept though its colour is in the background too",
+        (tester) async {
+      // The case that defeats every threshold, and the reason this mode
+      // exists: the player's white shirt is the same white as a highlight
+      // behind him. No colour distance tells them apart, and no edge setting
+      // does either once the outline is soft.
+      const size = 60;
+      Uint8List build() => picture(size, size, (x, y) {
+            var inSubject = x > 20 && x < 40 && y > 20 && y < 40;
+            if (inSubject) return const Color(0xFFF0F0F0);
+            // The same white in the background, well away from the subject.
+            if (x < 12 && y < 12) return const Color(0xFFF0F0F0);
+            return const Color(0xFF203040);
+          });
+
+      var pixels = build();
+      applyRemovalForTest(
+        pixels,
+        size,
+        size,
+        BackgroundRemoval(
+          mode: RemovalMode.learn,
+          tolerance: 0.5,
+          softness: 0,
+          hints: [
+            stroke(0.6, 0.9, 0.9, keep: false),
+            stroke(0.4, 0.6, 0.5, keep: true),
+          ],
+        ),
+      );
+
+      expect(alphaAt(pixels, size, 30, 55), 0, reason: "the dark background");
+      expect(alphaAt(pixels, size, 30, 30), 255,
+          reason: "and the subject kept, though the background has that white "
+              "in it as well");
+
+      // The white patch stays, and is *right* to stay on this evidence: it is
+      // the subject's own colour and nothing has been said to the contrary.
+      // What matters is that saying so is one more mark rather than a hunt
+      // through three settings for a number that does not exist.
+      expect(alphaAt(pixels, size, 5, 5), 255);
+
+      var told = build();
+      applyRemovalForTest(
+        told,
+        size,
+        size,
+        BackgroundRemoval(
+          mode: RemovalMode.learn,
+          tolerance: 0.5,
+          softness: 0,
+          hints: [
+            stroke(0.6, 0.9, 0.9, keep: false),
+            stroke(0.02, 0.15, 0.08, keep: false),
+            stroke(0.4, 0.6, 0.5, keep: true),
+          ],
+        ),
+      );
+
+      expect(alphaAt(told, size, 5, 5), 0, reason: "marked, the patch goes");
+      expect(alphaAt(told, size, 30, 30), 255,
+          reason: "and the subject is still there");
+    });
+
+    testWidgets("a subject mark blocks the flood", (tester) async {
+      // Connectivity is what makes the above work: the shirt is only removed
+      // if there is a path to it through background-looking pixels, and a
+      // subject mark closes the path.
+      const size = 40;
+      var pixels =
+          picture(size, size, (x, y) => const Color(0xFF203040));
+
+      applyRemovalForTest(
+        pixels,
+        size,
+        size,
+        BackgroundRemoval(
+          mode: RemovalMode.learn,
+          tolerance: 0.5,
+          softness: 0,
+          hints: [
+            stroke(0.05, 0.2, 0.05, keep: false),
+            stroke(0.4, 0.6, 0.5, keep: true),
+          ],
+        ),
+      );
+
+      expect(alphaAt(pixels, size, 20, 20), 255,
+          reason: "what is marked as subject is kept, whatever its colour");
+    });
+
+    testWidgets("with only one side marked it does nothing", (tester) async {
+      // There is nothing to compare, and guessing would take something
+      // arbitrary the moment the mode was chosen.
+      const size = 40;
+      var pixels =
+          picture(size, size, (x, y) => const Color(0xFF203040));
+
+      applyRemovalForTest(
+        pixels,
+        size,
+        size,
+        BackgroundRemoval(
+          mode: RemovalMode.learn,
+          hints: [stroke(0.1, 0.3, 0.1, keep: false)],
+        ),
+      );
+
+      expect(alphaAt(pixels, size, 20, 20), 255);
+      expect(alphaAt(pixels, size, 1, 1), 255);
+    });
+
+    testWidgets("the bias takes more when it is turned up", (tester) async {
+      // A colour halfway between the two sets of evidence: at a fair fight it
+      // stays, leaning towards the background it goes.
+      const size = 40;
+      Uint8List build() => picture(size, size, (x, y) {
+            if (x > 25) return const Color(0xFF101010);
+            if (x > 12) return const Color(0xFF808080);
+            return const Color(0xFFF0F0F0);
+          });
+
+      var hints = [
+        stroke(0.8, 0.95, 0.5, keep: false),
+        stroke(0.02, 0.15, 0.5, keep: true),
+      ];
+
+      var fair = build();
+      applyRemovalForTest(
+          fair,
+          size,
+          size,
+          BackgroundRemoval(
+              mode: RemovalMode.learn,
+              tolerance: 0.2,
+              softness: 0,
+              hints: hints));
+
+      var eager = build();
+      applyRemovalForTest(
+          eager,
+          size,
+          size,
+          BackgroundRemoval(
+              mode: RemovalMode.learn,
+              tolerance: 1,
+              softness: 0,
+              hints: hints));
+
+      var middle = 20;
+      expect(alphaAt(fair, size, middle, 20), 255,
+          reason: "the middle grey is left alone at a low bias");
+      expect(alphaAt(eager, size, middle, 20), 0,
+          reason: "and taken once the bias leans towards the background");
+    });
+
+    test("marks are evidence, not instructions", () {
+      // Nothing is removed where a hint is drawn -- that is the whole
+      // difference between the two lists.
+      const removal = BackgroundRemoval(
+        mode: RemovalMode.learn,
+        hints: [
+          RemovalStroke(points: [Offset(0.5, 0.5)], radius: 0.1, keep: false),
+          RemovalStroke(points: [Offset(0.2, 0.2)], radius: 0.1, keep: true),
+        ],
+      );
+      expect(removal.backgroundHints.length, 1);
+      expect(removal.subjectHints.length, 1);
+      expect(removal.strokes, isEmpty);
+    });
+
+    test("hints survive a round trip and change the cache key", () {
+      var element = ImageElement(
+        const ElementBase(id: "i", width: 100, height: 100),
+        removal: const BackgroundRemoval(
+          mode: RemovalMode.learn,
+          hints: [
+            RemovalStroke(
+                points: [Offset(0.25, 0.5)], radius: 0.03, keep: true),
+          ],
+        ),
+      );
+      var back = CanvasDocument.decode(
+              CanvasDocument(elements: [element]).encode())!.elements.single
+          as ImageElement;
+      expect(back.removal.hints.length, 1);
+      expect(back.removal.hints.single.keep, isTrue);
+
+      const none = BackgroundRemoval(mode: RemovalMode.learn);
+      expect(none.cacheKey("a"),
+          isNot(element.removal.cacheKey("a")));
+    });
+  });
 }

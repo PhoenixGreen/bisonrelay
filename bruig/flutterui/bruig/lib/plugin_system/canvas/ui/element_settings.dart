@@ -1144,6 +1144,60 @@ List<Widget> _imageSettings(BuildContext context, CanvasController controller,
             },
             onCommit: commit,
           ),
+          // Marking, when the method is the one that learns from it. These
+          // two are the whole interface to it: mark some background, mark
+          // some subject, and the numbers below are a fine adjustment rather
+          // than the way in.
+          if (e.removal.mode == RemovalMode.learn) ...[
+            CanvasIconButton(
+              icon: Icons.format_paint_outlined,
+              tooltip: controller.retouch == RetouchBrush.markBackground
+                  ? "Stop marking background"
+                  : "Mark some background — draw over a few parts that should "
+                      "go",
+              active: controller.retouch == RetouchBrush.markBackground,
+              onPressed: () => controller.retouch =
+                  controller.retouch == RetouchBrush.markBackground
+                      ? RetouchBrush.off
+                      : RetouchBrush.markBackground,
+            ),
+            CanvasIconButton(
+              icon: Icons.person_outline,
+              tooltip: controller.retouch == RetouchBrush.markSubject
+                  ? "Stop marking the subject"
+                  : "Mark the subject — draw over a few parts that should "
+                      "stay",
+              active: controller.retouch == RetouchBrush.markSubject,
+              onPressed: () => controller.retouch =
+                  controller.retouch == RetouchBrush.markSubject
+                      ? RetouchBrush.off
+                      : RetouchBrush.markSubject,
+            ),
+            if (e.removal.hints.isNotEmpty)
+              CanvasIconButton(
+                icon: Icons.layers_clear_outlined,
+                tooltip: "Forget the marks and start again",
+                onPressed: () {
+                  begin();
+                  write(e.copyWith(
+                      removal: e.removal.copyWith(hints: const [])));
+                  commit();
+                },
+              ),
+            Padding(
+              padding:
+                  const EdgeInsets.only(top: controlLabelHeight, right: 6),
+              child: SizedBox(
+                height: controlHeight,
+                child: Center(
+                  child: Txt.S(e.removal.backgroundHints.isEmpty ||
+                          e.removal.subjectHints.isEmpty
+                      ? "Mark both, then it can compare them"
+                      : "${e.removal.hints.length} marks"),
+                ),
+              ),
+            ),
+          ],
           // The brush, beside the settings it corrects. Every automatic
           // method has photographs it cannot do -- a subject whose outline is
           // as soft as what is behind it has no edge to find -- and on those

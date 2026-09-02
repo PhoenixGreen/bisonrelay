@@ -892,20 +892,29 @@ class CanvasStageState extends State<CanvasStage> {
     // nothing to touch, which is not a reason to end the stroke.
     if (at == null) return;
 
-    var strokes = [...picture.removal.strokes];
-    if (start || strokes.isEmpty) {
-      strokes.add(RemovalStroke(
+    // A marking brush writes into the hints, which teach the learning method
+    // what is what; the other two write into the strokes, which rub the
+    // picture out and put it back. Same gesture, two lists.
+    var teaching = controller.retouch.teaches;
+    var marks = [
+      ...(teaching ? picture.removal.hints : picture.removal.strokes)
+    ];
+    if (start || marks.isEmpty) {
+      marks.add(RemovalStroke(
         points: [at],
         radius: controller.brushSize,
-        keep: controller.retouch == RetouchBrush.restore,
+        keep: controller.retouch.keeps,
       ));
     } else {
-      var last = strokes.removeLast();
-      strokes.add(last.copyWith(points: [...last.points, at]));
+      var last = marks.removeLast();
+      marks.add(last.copyWith(points: [...last.points, at]));
     }
 
     controller.replaceElement(
-      picture.copyWith(removal: picture.removal.copyWith(strokes: strokes)),
+      picture.copyWith(
+          removal: teaching
+              ? picture.removal.copyWith(hints: marks)
+              : picture.removal.copyWith(strokes: marks)),
       transient: true,
     );
   }
