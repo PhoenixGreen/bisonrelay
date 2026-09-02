@@ -138,8 +138,12 @@ class ProceduralSettings extends StatelessWidget {
             ],
           ]),
           CanvasControlGroup(label: "Amount", children: [
-            CanvasSlider(
+            CanvasNumberField(
               label: "Density",
+              min: 0,
+              max: 1,
+              decimals: 2,
+              width: 62,
               value: spec.density,
               onChanged: (v) {
                 onBegin();
@@ -147,8 +151,9 @@ class ProceduralSettings extends StatelessWidget {
               },
               onCommit: onCommit,
             ),
-            CanvasSlider(
+            CanvasNumberField(
               label: "Size",
+              width: 62,
               value: spec.scale,
               min: 0.004,
               max: 0.25,
@@ -159,8 +164,12 @@ class ProceduralSettings extends StatelessWidget {
               },
               onCommit: onCommit,
             ),
-            CanvasSlider(
+            CanvasNumberField(
               label: "Brightness",
+              min: 0,
+              max: 1,
+              decimals: 2,
+              width: 62,
               value: spec.intensity,
               onChanged: (v) {
                 onBegin();
@@ -168,8 +177,12 @@ class ProceduralSettings extends StatelessWidget {
               },
               onCommit: onCommit,
             ),
-            CanvasSlider(
+            CanvasNumberField(
               label: "Variation",
+              min: 0,
+              max: 1,
+              decimals: 2,
+              width: 62,
               value: spec.variation,
               onChanged: (v) {
                 onBegin();
@@ -177,8 +190,12 @@ class ProceduralSettings extends StatelessWidget {
               },
               onCommit: onCommit,
             ),
-            CanvasSlider(
+            CanvasNumberField(
               label: "Vignette",
+              min: 0,
+              max: 1,
+              decimals: 2,
+              width: 62,
               value: spec.vignette,
               onChanged: (v) {
                 onBegin();
@@ -224,8 +241,10 @@ class ProceduralSettings extends StatelessWidget {
                 onChanged: (v) => _setNow(spec.copyWith(animated: v)),
               ),
               if (spec.animated)
-                CanvasSlider(
+                CanvasNumberField(
                   label: "Speed",
+                  decimals: 2,
+                  width: 62,
                   value: spec.speed,
                   min: 0.05,
                   max: 6,

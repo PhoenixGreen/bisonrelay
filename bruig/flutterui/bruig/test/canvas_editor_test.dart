@@ -1976,4 +1976,46 @@ void main() {
           ShapeKind.circle);
     });
   });
+
+  group("element settings use numbers, not sliders", () {
+    testWidgets("a fraction is typed and dragged like every other number",
+        (tester) async {
+      // A slider inside a settings row is a few dozen pixels wide, so the
+      // whole of an opacity is about forty pixels of travel and nothing can be
+      // set precisely. They are number fields now, which type and scrub.
+      var document = const CanvasDocument();
+      var element = newElement(ElementKind.shape, document);
+      var controller = CanvasController(document.addElement(element));
+      addTearDown(controller.dispose);
+      controller.selectOnly(element.id);
+      await pump(tester, CanvasLayersPanel(controller: controller));
+
+      expect(find.byType(Slider), findsNothing,
+          reason: "no sliders left in an element's settings");
+
+      var opacity = find.ancestor(
+          of: find.text("Opacity"), matching: find.byType(CanvasNumberField));
+      expect(opacity, findsOneWidget);
+
+      await tester.enterText(
+          find.descendant(of: opacity, matching: find.byType(TextField)), "0.4");
+      await tester.pump();
+      expect(controller.document.elements.single.opacity, closeTo(0.4, 0.001));
+    });
+
+    testWidgets("dragging its caption scrubs in hundredths", (tester) async {
+      var document = const CanvasDocument();
+      var element = newElement(ElementKind.shape, document);
+      var controller = CanvasController(document.addElement(element));
+      addTearDown(controller.dispose);
+      controller.selectOnly(element.id);
+      await pump(tester, CanvasLayersPanel(controller: controller));
+
+      await tester.drag(find.text("Opacity"), const Offset(-25, 0));
+      await tester.pumpAndSettle();
+
+      // Two decimals, so twenty-five pixels is a quarter.
+      expect(controller.document.elements.single.opacity, closeTo(0.75, 0.02));
+    });
+  });
 }

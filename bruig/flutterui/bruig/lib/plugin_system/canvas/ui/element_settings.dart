@@ -180,8 +180,12 @@ Widget _positionGroup(CanvasController controller, CanvasElement e,
           ),
         ),
       ),
-      CanvasSlider(
+      CanvasNumberField(
         label: "Opacity",
+        min: 0,
+        max: 1,
+        decimals: 2,
+        width: 62,
         value: e.opacityAt(frame),
         onChanged: (v) {
           begin();
@@ -250,8 +254,12 @@ CanvasNumberField(
       },
       onCommit: commit,
     ),
-CanvasSlider(
+CanvasNumberField(
       label: "Opacity",
+      min: 0,
+      max: 1,
+      decimals: 2,
+      width: 62,
       value: e.opacityAt(frame),
       onChanged: (v) {
         begin();
@@ -596,8 +604,10 @@ List<Widget> _textSettings(CanvasController controller, TextElement e,
                 .copyWith(elementId: v))),
       ),
       if (e.curve != null) ...[
-        CanvasSlider(
+        CanvasNumberField(
           label: "Slide",
+          decimals: 2,
+          width: 62,
           value: controller.valueAt(
               e, KeyframeChannel.slide, e.curve!.offset),
           min: -1,
@@ -754,8 +764,10 @@ List<Widget> _shapeSettings(ShapeElement e, _Write write, VoidCallback begin,
             onChanged: (v) => write(e.copyWith(points: v.round())),
             onCommit: commit,
           ),
-          CanvasSlider(
+          CanvasNumberField(
             label: "Depth",
+            decimals: 2,
+            width: 62,
             value: e.innerRatio,
             min: 0.05,
             max: 0.95,
@@ -818,8 +830,10 @@ List<Widget> _shapeSettings(ShapeElement e, _Write write, VoidCallback begin,
               },
               onCommit: commit,
             ),
-            CanvasSlider(
+            CanvasNumberField(
               label: "Length",
+              decimals: 2,
+              width: 62,
               value: e.bubble.tailLength,
               min: 0.05,
               max: 1.2,
@@ -829,8 +843,10 @@ List<Widget> _shapeSettings(ShapeElement e, _Write write, VoidCallback begin,
               },
               onCommit: commit,
             ),
-            CanvasSlider(
+            CanvasNumberField(
               label: "Width",
+              decimals: 2,
+              width: 62,
               value: e.bubble.tailWidth,
               min: 0.05,
               max: 1,
@@ -841,8 +857,10 @@ List<Widget> _shapeSettings(ShapeElement e, _Write write, VoidCallback begin,
               onCommit: commit,
             ),
             if (e.bubble.tail == BubbleTail.curved)
-              CanvasSlider(
+              CanvasNumberField(
                 label: "Curl",
+                decimals: 2,
+                width: 62,
                 value: e.bubble.curl,
                 min: -1.5,
                 max: 1.5,
@@ -933,8 +951,10 @@ List<Widget> _lineSettings(CanvasController controller, LineElement e,
           onChanged: (v) => write(e.copyWith(dash: v)),
           onCommit: commit,
         ),
-        CanvasSlider(
+        CanvasNumberField(
           label: "Curve",
+          decimals: 2,
+          width: 62,
           value: controller.valueAt(e, KeyframeChannel.bow, e.curvature),
           min: -1,
           max: 1,
@@ -1013,8 +1033,10 @@ List<Widget> _imageSettings(BuildContext context, ImageElement e, _Write write,
             commit();
           },
         ),
-        CanvasSlider(
+        CanvasNumberField(
           label: "Saturation",
+          decimals: 2,
+          width: 62,
           value: e.saturation,
           min: 0,
           max: 3,
@@ -1024,8 +1046,10 @@ List<Widget> _imageSettings(BuildContext context, ImageElement e, _Write write,
           },
           onCommit: commit,
         ),
-        CanvasSlider(
+        CanvasNumberField(
           label: "Brightness",
+          decimals: 2,
+          width: 62,
           value: e.brightness,
           min: 0,
           max: 3,
@@ -1060,8 +1084,12 @@ List<Widget> _imageSettings(BuildContext context, ImageElement e, _Write write,
             },
           ),
         if (e.removal.mode == RemovalMode.luminance)
-          CanvasSlider(
+          CanvasNumberField(
             label: "Threshold",
+            min: 0,
+            max: 1,
+            decimals: 2,
+            width: 62,
             value: e.removal.threshold,
             onChanged: (v) {
               begin();
@@ -1070,18 +1098,44 @@ List<Widget> _imageSettings(BuildContext context, ImageElement e, _Write write,
             onCommit: commit,
           ),
         if (e.removal.active) ...[
-          CanvasSlider(
-            label: "Tolerance",
+          // Edge first, because on a photograph it is the control that does
+          // the work: it says how sharply the picture has to change for the
+          // flood to treat it as the end of the background. Tolerance is the
+          // runaway guard behind it.
+          if (e.removal.mode == RemovalMode.cornerFlood)
+            CanvasNumberField(
+              label: "Edge",
+              min: 0.005,
+              max: 0.5,
+              decimals: 3,
+              width: 62,
+              value: e.removal.edge,
+              onChanged: (v) {
+                begin();
+                write(e.copyWith(removal: e.removal.copyWith(edge: v)));
+              },
+              onCommit: commit,
+            ),
+          CanvasNumberField(
+            label: e.removal.mode == RemovalMode.cornerFlood
+                ? "Spread"
+                : "Tolerance",
+            min: 0,
+            decimals: 2,
+            width: 62,
             value: e.removal.tolerance,
-            max: 0.7,
+            max: 1,
             onChanged: (v) {
               begin();
               write(e.copyWith(removal: e.removal.copyWith(tolerance: v)));
             },
             onCommit: commit,
           ),
-          CanvasSlider(
+          CanvasNumberField(
             label: "Softness",
+            min: 0,
+            decimals: 2,
+            width: 62,
             value: e.removal.softness,
             max: 0.3,
             onChanged: (v) {
@@ -1124,8 +1178,12 @@ List<Widget> _imageSettings(BuildContext context, ImageElement e, _Write write,
           ("Right", e.crop.right, (v) => e.crop.copyWith(right: v)),
           ("Bottom", e.crop.bottom, (v) => e.crop.copyWith(bottom: v)),
         ])
-          CanvasSlider(
+          CanvasNumberField(
             label: label,
+            min: 0,
+            max: 1,
+            decimals: 2,
+            width: 62,
             value: value,
             onChanged: (v) {
               begin();
@@ -1294,8 +1352,11 @@ List<Widget> _chartSettings(ChartElement e, _Write write, VoidCallback begin,
             commit();
           },
         ),
-        CanvasSlider(
+        CanvasNumberField(
           label: "Bar gap",
+          min: 0,
+          decimals: 2,
+          width: 62,
           value: e.barGap,
           max: 0.9,
           onChanged: (v) {
@@ -1628,8 +1689,10 @@ List<Widget> _teamSettings(TeamElement e, _Write write, VoidCallback begin,
       // The element's own opacity rather than a second one of the team's. Two
       // opacities multiplying together is a control that appears not to work
       // whenever the other one is down.
-      CanvasSlider(
+      CanvasNumberField(
         label: "Opacity",
+        decimals: 2,
+        width: 62,
         value: e.opacity,
         min: 0,
         max: 1,

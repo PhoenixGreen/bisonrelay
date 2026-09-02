@@ -244,29 +244,28 @@ void _luminance(Uint8List pixels, BackgroundRemoval removal) {
 
 /// _cornerFlood removes the connected region touching the picture's edges.
 ///
-/// The one of the three that handles a background that is not flat: a
-/// photograph on a wall that shades from light to dark is one connected region
-/// within a tolerance of its neighbours, and a colour key would either leave
-/// half of it or eat into the subject. It also cannot remove a colour that
-/// happens to appear *inside* the subject, which a colour key always does --
-/// the white of an eye going transparent along with the white background is
-/// the commonest complaint about chroma keying a logo.
+/// It walks outwards from the border and stops **where the picture changes
+/// suddenly**, not where the colour stops matching something. That is the
+/// whole idea, and it is what makes this usable on a photograph rather than
+/// only on a flat backdrop: a background is nearly always smooth -- out of
+/// focus, or a wall, or a sky -- while the subject has a crisp outline, so
+/// "keep going while it changes gently, stop where it changes sharply"
+/// separates them far better than any judgement about colour can.
 ///
-/// **Every edge pixel is its own seed, with its own colour.** That is the
-/// difference between this working on a real photograph and not. It used to
-/// compare the whole flood against one colour -- the picture's top-left pixel
-/// -- so a stadium shot whose background runs from bright bokeh on one side to
-/// near-black on the other could not be covered by any tolerance at all: raise
-/// it enough to reach the dark and it eats the subject, leave it low and half
-/// the background stays. Per seed, the bright region is found from the bright
-/// edges and the dark region from the dark ones, and neither has to know about
-/// the other.
+/// Two earlier versions judged each pixel against a fixed colour instead: the
+/// picture's top-left pixel, and then each edge seed's own. Both fail on the
+/// same photograph for the same reason -- a background running from bright
+/// bokeh to near-black is nowhere near any one colour, so the tolerance that
+/// reaches the dark half has already eaten the subject. On the reported
+/// stadium shot it had to be set so low that half the background survived and
+/// the shirt was still being nibbled.
 ///
-/// The reference does *not* drift as the flood spreads. Comparing each pixel
-/// to its neighbour instead would let a gradual gradient walk the whole way
-/// into the subject one small step at a time, which is the failure the single
-/// seed was avoiding -- this keeps that guarantee and drops the assumption
-/// that the background is one colour.
+/// [BackgroundRemoval.edge] is the local step: how much the picture may change
+/// from one pixel to the next and still count as the same region.
+/// [BackgroundRemoval.tolerance] is a drift budget on top of it, so a very
+/// gradual ramp cannot creep from the border all the way through the subject
+/// and out the other side. Neither alone is enough: the local step follows
+/// gradients but would follow one anywhere, and the budget bounds it.
 ///
 /// An explicit stack rather than recursion: a full-frame flood on a large
 /// picture is millions of pixels deep and would overflow.
@@ -276,54 +275,65 @@ void _cornerFlood(
   var seen = Uint8List(count);
   var removed = Uint8List(count);
 
-  // Each entry is a pixel and the colour it is to be judged against, so a
-  // flood that started on a bright edge keeps comparing to that brightness
-  // however far it travels.
+  const diagonal = 441.6729559300637;
+  var step = math.max(removal.edge, 0.002) * diagonal;
+  var budget = math.max(removal.tolerance, removal.edge) * diagonal;
+
+  double distance(int a, int b) {
+    var p = a * 4, q = b * 4;
+    var dr = pixels[p] - pixels[q];
+    var dg = pixels[p + 1] - pixels[q + 1];
+    var db = pixels[p + 2] - pixels[q + 2];
+    return math.sqrt(dr * dr + dg * dg + db * db);
+  }
+
+  // Each entry is the pixel to consider, the pixel it was reached from, and
+  // the seed the whole chain started at -- the first for the local step, the
+  // last for the drift budget.
   var stack = <int>[];
-  void seed(int index) {
-    stack..add(index)..add(index);
+  void push(int index, int from, int seed) {
+    stack..add(index)..add(from)..add(seed);
   }
 
   // Seeded from every edge pixel rather than from the four corners, so a
   // subject that touches one corner does not stop the rest of the background
   // being found.
   for (var x = 0; x < width; x++) {
-    seed(x);
-    seed((height - 1) * width + x);
+    push(x, x, x);
+    var bottom = (height - 1) * width + x;
+    push(bottom, bottom, bottom);
   }
   for (var y = 0; y < height; y++) {
-    seed(y * width);
-    seed(y * width + width - 1);
+    push(y * width, y * width, y * width);
+    var right = y * width + width - 1;
+    push(right, right, right);
   }
 
-  const diagonal = 441.6729559300637;
-  var tolerance = removal.tolerance * diagonal;
-
   while (stack.isNotEmpty) {
-    var reference = stack.removeLast();
+    var seed = stack.removeLast();
+    var from = stack.removeLast();
     var index = stack.removeLast();
     if (index < 0 || index >= count || seen[index] != 0) continue;
 
-    var p = index * 4;
-    var r = reference * 4;
-    var dr = pixels[p] - pixels[r];
-    var dg = pixels[p + 1] - pixels[r + 1];
-    var db = pixels[p + 2] - pixels[r + 2];
-    if (math.sqrt(dr * dr + dg * dg + db * db) > tolerance) continue;
+    // The step from the pixel this was reached through. An edge in the picture
+    // is a big step, and an edge is where the background ends.
+    if (index != from && distance(index, from) > step) continue;
+    // And no further from where this chain started than the budget allows.
+    if (distance(index, seed) > budget) continue;
 
     // Marked only once it is accepted. Marking on sight -- which is what the
     // shared visited array did -- also marked every pixel the flood merely
-    // looked at and rejected, so inverting the mask kept the subject *and*
-    // a halo of everything the flood had touched around it.
+    // looked at and rejected, so inverting the mask kept the subject *and* a
+    // halo of everything the flood had touched around it.
     seen[index] = 1;
     removed[index] = 1;
-    pixels[p + 3] = 0;
+    pixels[index * 4 + 3] = 0;
 
     var x = index % width, y = index ~/ width;
-    if (x > 0) stack..add(index - 1)..add(reference);
-    if (x < width - 1) stack..add(index + 1)..add(reference);
-    if (y > 0) stack..add(index - width)..add(reference);
-    if (y < height - 1) stack..add(index + width)..add(reference);
+    if (x > 0) push(index - 1, index, seed);
+    if (x < width - 1) push(index + 1, index, seed);
+    if (y > 0) push(index - width, index, seed);
+    if (y < height - 1) push(index + width, index, seed);
   }
 
   if (removal.invert) {

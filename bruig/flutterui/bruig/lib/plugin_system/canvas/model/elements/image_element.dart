@@ -83,11 +83,24 @@ class BackgroundRemoval {
   /// been kept.
   final bool invert;
 
+  /// edge is how sharp a change has to be to stop the flood, for
+  /// [RemovalMode.cornerFlood].
+  ///
+  /// This is the control that does the work on a photograph, and [tolerance]
+  /// is the one that stops it running away. A background is usually smooth --
+  /// out of focus, or a wall, or a sky -- while the subject has a crisp
+  /// outline, so "keep going while the picture changes gently, stop where it
+  /// changes suddenly" separates the two far better than any judgement about
+  /// colour can. Low values stop at the faintest change; high values push
+  /// through soft edges and eventually through the subject's own.
+  final double edge;
+
   const BackgroundRemoval({
     this.mode = RemovalMode.none,
     this.keyColor = const Color(0xFFFFFFFF),
-    this.tolerance = 0.12,
+    this.tolerance = 0.45,
     this.softness = 0.04,
+    this.edge = 0.09,
     this.threshold = 0.85,
     this.invert = false,
   });
@@ -101,6 +114,7 @@ class BackgroundRemoval {
     double? softness,
     double? threshold,
     bool? invert,
+    double? edge,
   }) =>
       BackgroundRemoval(
         mode: mode ?? this.mode,
@@ -109,6 +123,7 @@ class BackgroundRemoval {
         softness: softness ?? this.softness,
         threshold: threshold ?? this.threshold,
         invert: invert ?? this.invert,
+        edge: edge ?? this.edge,
       );
 
   /// cacheKey identifies a cut-out. Two elements with the same picture and
@@ -124,6 +139,7 @@ class BackgroundRemoval {
         "soft": softness,
         "thr": threshold,
         if (invert) "invert": true,
+        "edge": edge,
       };
 
   factory BackgroundRemoval.fromJson(Map<String, dynamic> json) =>
@@ -134,6 +150,7 @@ class BackgroundRemoval {
         softness: jsonDouble(json["soft"], 0.04).clamp(0.0, 1.0),
         threshold: jsonDouble(json["thr"], 0.85).clamp(0.0, 1.0),
         invert: jsonBool(json["invert"], false),
+        edge: jsonDouble(json["edge"], 0.09),
       );
 }
 

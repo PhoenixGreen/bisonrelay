@@ -752,12 +752,12 @@ class _ScrubLabelState extends State<_ScrubLabel> {
   /// over the same distance.
   double _from = 0;
 
-  /// _startX is where in the caption the drag began.
+  /// _startX is where the pointer went down, in screen coordinates.
   ///
-  /// The gesture reports the pointer's position within the widget, not how far
-  /// it has travelled -- so without this the value jumped by wherever in the
-  /// label it was grabbed, and a drag started at the right-hand end moved
-  /// further than the same drag started at the left.
+  /// Screen rather than local, and recorded rather than assumed: what arrives
+  /// is the pointer's *position*, not how far it has travelled, so without a
+  /// starting point to subtract the value jumped by wherever in the label it
+  /// was grabbed.
   double _startX = 0;
   bool _dragging = false;
 
@@ -769,27 +769,33 @@ class _ScrubLabelState extends State<_ScrubLabel> {
 
     return MouseRegion(
       cursor: SystemMouseCursors.resizeLeftRight,
-      child: GestureDetector(
+      // A Listener rather than a GestureDetector, so the number moves from the
+      // very first pixel. A drag gesture is not recognised until the pointer
+      // has travelled about eighteen pixels, and those eighteen are then gone:
+      // a twenty-five pixel scrub moved the value by seven. Nothing else is
+      // competing for these pointers -- it is a caption -- so there is no
+      // arena to take part in and nothing to be gained by waiting.
+      child: Listener(
         behavior: HitTestBehavior.opaque,
-        onHorizontalDragStart: (details) {
+        onPointerDown: (event) {
           _from = widget.value;
-          _startX = details.localPosition.dx;
+          _startX = event.position.dx;
           _dragging = true;
         },
-        onHorizontalDragUpdate: (details) {
+        onPointerMove: (event) {
           if (!_dragging) return;
-          var fine =
-              HardwareKeyboard.instance.isShiftPressed ? 0.1 : 1.0;
-          var travelled = details.localPosition.dx - _startX;
+          var fine = HardwareKeyboard.instance.isShiftPressed ? 0.1 : 1.0;
+          var travelled = event.position.dx - _startX;
           var next =
               (_from + travelled * step * fine).clamp(widget.min, widget.max);
           widget.onChanged(next.toDouble());
         },
-        onHorizontalDragEnd: (_) {
+        onPointerUp: (_) {
+          if (!_dragging) return;
           _dragging = false;
           widget.onCommit?.call();
         },
-        onHorizontalDragCancel: () => _dragging = false,
+        onPointerCancel: (_) => _dragging = false,
         child: SizedBox(
           height: controlLabelHeight,
           child: Text(

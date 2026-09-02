@@ -63,17 +63,23 @@ void main() {
           reason: "and the subject stayed");
     });
 
-    testWidgets("a gradient does not walk into the subject", (tester) async {
-      // The guarantee the single seed was there to give, and which the new one
-      // has to keep: the reference does not drift as the flood spreads, so a
-      // background shading gently towards the subject's own colour cannot
-      // creep across the boundary one small step at a time.
+    testWidgets("a smooth gradient background goes, sharp subject stays",
+        (tester) async {
+      // The shape of the reported photograph: the background is out of focus
+      // and shades right across the frame, while the player is in focus and
+      // has a crisp outline. Judged by colour against any fixed reference
+      // there is no tolerance that works -- the one that reaches the far end
+      // of the gradient has already eaten the subject. Judged by *how sharply
+      // the picture changes*, the two are miles apart.
       const size = 60;
       var pixels = picture(size, size, (x, y) {
-        var inSubject = x > 24 && x < 36 && y > 24 && y < 36;
+        // Over the dark end of the ramp, so the subject's own outline is a
+        // real edge -- which is what a subject in focus has. Its colour still
+        // sits in the middle of the background's overall range, so any method
+        // judging by colour against a fixed reference cannot tell them apart.
+        var inSubject = x > 8 && x < 22 && y > 20 && y < 40;
         if (inSubject) return const Color(0xFF808080);
-        // Runs from black to the subject's own grey across the frame.
-        var v = (x / size * 128).round();
+        var v = (x / size * 230).round();
         return Color.fromARGB(255, v, v, v);
       });
 
@@ -82,11 +88,89 @@ void main() {
         size,
         size,
         const BackgroundRemoval(
-            mode: RemovalMode.cornerFlood, tolerance: 0.06, softness: 0),
+            mode: RemovalMode.cornerFlood,
+            edge: 0.09,
+            tolerance: 0.6,
+            softness: 0),
       );
 
-      expect(alphaAt(pixels, size, 30, 30), 255,
-          reason: "the subject survived the gradient");
+      expect(alphaAt(pixels, size, 2, 5), 0, reason: "the dark end went");
+      expect(alphaAt(pixels, size, 57, 30), 0, reason: "the bright end too");
+      expect(alphaAt(pixels, size, 15, 30), 255,
+          reason: "and the subject survived, though its grey is the "
+              "background's grey somewhere else in the frame");
+      expect(alphaAt(pixels, size, 10, 22), 255, reason: "right to its edge");
+    });
+
+    testWidgets("a sharp edge stops the flood even at a huge budget",
+        (tester) async {
+      // The budget is a runaway guard, not the thing doing the separating.
+      const size = 40;
+      var pixels = picture(size, size, (x, y) {
+        var inSubject = x > 14 && x < 26 && y > 14 && y < 26;
+        return inSubject ? const Color(0xFF20C040) : const Color(0xFF101010);
+      });
+
+      applyRemovalForTest(
+        pixels,
+        size,
+        size,
+        const BackgroundRemoval(
+            mode: RemovalMode.cornerFlood,
+            edge: 0.05,
+            tolerance: 1,
+            softness: 0),
+      );
+
+      expect(alphaAt(pixels, size, 1, 1), 0);
+      expect(alphaAt(pixels, size, 20, 20), 255,
+          reason: "it stopped at the subject's outline, not at a colour");
+    });
+
+    testWidgets("the budget bounds how far a gentle ramp can carry it",
+        (tester) async {
+      // The local step follows a gradient, and would follow one anywhere; the
+      // budget is what stops a ramp gentle enough to pass it from walking in
+      // from the border and out the other side.
+      //
+      // A ramp *rising towards the middle*, so the interior is far from any
+      // border seed's colour. On a ramp running side to side every pixel has a
+      // seed of nearly its own colour directly above it and the budget never
+      // comes into play.
+      const size = 60;
+      Uint8List ramp() => picture(size, size, (x, y) {
+            var toEdge = math.min(math.min(x, y), math.min(size - 1 - x, size - 1 - y));
+            var v = (toEdge / (size / 2) * 240).round().clamp(0, 255);
+            return Color.fromARGB(255, v, v, v);
+          });
+
+      var tight = ramp();
+      applyRemovalForTest(
+        tight,
+        size,
+        size,
+        const BackgroundRemoval(
+            mode: RemovalMode.cornerFlood,
+            edge: 0.09,
+            tolerance: 0.12,
+            softness: 0),
+      );
+      expect(alphaAt(tight, size, 30, 30), 255,
+          reason: "the middle is well past the budget");
+
+      var loose = ramp();
+      applyRemovalForTest(
+        loose,
+        size,
+        size,
+        const BackgroundRemoval(
+            mode: RemovalMode.cornerFlood,
+            edge: 0.09,
+            tolerance: 1,
+            softness: 0),
+      );
+      expect(alphaAt(loose, size, 30, 30), 0,
+          reason: "and reachable once the budget allows it");
     });
 
     testWidgets("a colour inside the subject is left alone", (tester) async {
