@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
@@ -954,6 +956,165 @@ void main() {
 
       expect(alphaAt(pixels, size, 20, 20), 255, reason: "put back");
       expect(alphaAt(pixels, size, 20, 8), 0, reason: "still rubbed out");
+    });
+  });
+
+  group("premultiplied alpha", () {
+    /// colourAt is the three colour channels, which in this format are
+    /// already multiplied by the pixel's own alpha.
+    List<int> colourAt(Uint8List pixels, int width, int x, int y) {
+      var p = (y * width + x) * 4;
+      return [pixels[p], pixels[p + 1], pixels[p + 2]];
+    }
+
+    testWidgets("a preview's transparent pixels carry no colour",
+        (tester) async {
+      // The whole picture washing orange after a stroke. Written straight, a
+      // transparent pixel carried the tint's full colour at zero alpha --
+      // meaningless in premultiplied form, and Skia is free to draw it as the
+      // colour.
+      const size = 32;
+      late Uint8List out;
+      await tester.runAsync(() async {
+        var pixels = Uint8List(size * size * 4);
+        for (var i = 0; i < size * size; i++) {
+          pixels[i * 4] = 60;
+          pixels[i * 4 + 1] = 90;
+          pixels[i * 4 + 2] = 160;
+          pixels[i * 4 + 3] = 255;
+        }
+        var made = Completer<ui.Image>();
+        ui.decodeImageFromPixels(
+            pixels, size, size, ui.PixelFormat.rgba8888, made.complete);
+
+        var preview = await strokePreview(
+            await made.future,
+            const RemovalStroke(
+              points: [Offset(0.5, 0.5)],
+              radius: 0.1,
+              keep: false,
+              hardness: 1,
+            ),
+            const Color(0x88FF5544));
+        out = (await preview!.toByteData())!.buffer.asUint8List();
+      });
+
+      // A corner, far from the stroke: fully transparent and therefore black.
+      expect(out[3], 0, reason: "nothing there");
+      expect(colourAt(out, size, 0, 0), [0, 0, 0],
+          reason: "and no colour hiding behind the transparency");
+    });
+
+    testWidgets("a removed background carries no colour either",
+        (tester) async {
+      // The same fault in the removal itself, which is why every feathered
+      // edge glowed: a half-transparent pixel was carrying twice the colour
+      // it should.
+      const size = 40;
+      var pixels = picture(size, size, (x, y) => const Color(0xFF3C5AA0));
+
+      applyRemovalForTest(
+        pixels,
+        size,
+        size,
+        const BackgroundRemoval(
+          mode: RemovalMode.none,
+          strokes: [
+            RemovalStroke(
+                points: [Offset(0.5, 0.5)],
+                radius: 0.3,
+                keep: false,
+                hardness: 1),
+          ],
+        ),
+      );
+
+      expect(alphaAt(pixels, size, 20, 20), 0);
+      expect(colourAt(pixels, size, 20, 20), [0, 0, 0],
+          reason: "a pixel that is gone is gone, colour included");
+      expect(colourAt(pixels, size, 1, 1), [60, 90, 160],
+          reason: "and one that stayed is untouched");
+    });
+
+    testWidgets("a half-transparent pixel carries half the colour",
+        (tester) async {
+      const size = 40;
+      var pixels = picture(size, size, (x, y) => const Color(0xFF3C5AA0));
+
+      applyRemovalForTest(
+        pixels,
+        size,
+        size,
+        const BackgroundRemoval(
+          mode: RemovalMode.none,
+          strokes: [
+            RemovalStroke(
+                points: [Offset(0.5, 0.5)],
+                radius: 0.35,
+                keep: false,
+                hardness: 0.1),
+          ],
+        ),
+      );
+
+      // Somewhere on the feathered rim there is a partly transparent pixel,
+      // and its colour must have come down with its alpha.
+      for (var x = 0; x < size; x++) {
+        var a = alphaAt(pixels, size, x, 20);
+        if (a > 40 && a < 215) {
+          var colour = colourAt(pixels, size, x, 20);
+          expect(colour[2], closeTo(160 * a / 255, 3),
+              reason: "colour scaled with the alpha it now has");
+          return;
+        }
+      }
+      fail("no feathered pixel to check");
+    });
+  });
+
+  group("the working size", () {
+    test("a big picture is shrunk before any of this runs", () {
+      // Background removal is several passes over every pixel, and the
+      // preview does it again on every adjustment. A twelve-megapixel pass
+      // buys nothing anybody can see -- the result is drawn into a few hundred
+      // pixels -- and costs the whole wait.
+      expect(scaleForWork(6000, 4000), closeTo(workingSize / 6000, 0.0001));
+      expect(scaleForWork(4000, 6000), closeTo(workingSize / 6000, 0.0001));
+    });
+
+    test("a small one is left exactly as it is", () {
+      // Shrinking something already small would only lose detail, and
+      // scaling back up would soften an edge that was crisp.
+      expect(scaleForWork(800, 600), 1);
+      expect(scaleForWork(workingSize, workingSize), 1);
+      expect(scaleForWork(workingSize + 1, 10), lessThan(1));
+    });
+
+    test("a stroke lands in the same place at either size", () {
+      // The brush's measurements are fractions of the picture rather than
+      // pixel counts, which is what lets the work be done at one size and
+      // shown at another.
+      const stroke = RemovalStroke(
+        points: [Offset(0.25, 0.5), Offset(0.75, 0.5)],
+        radius: 0.1,
+        keep: false,
+        hardness: 1,
+      );
+
+      /// removed is the fraction of the picture the stroke takes out.
+      double removed(int size) {
+        var pixels = picture(size, size, (x, y) => const Color(0xFF3C5AA0));
+        applyRemovalForTest(pixels, size, size,
+            const BackgroundRemoval(mode: RemovalMode.none, strokes: [stroke]));
+        var gone = 0;
+        for (var i = 0; i < size * size; i++) {
+          if (pixels[i * 4 + 3] == 0) gone++;
+        }
+        return gone / (size * size);
+      }
+
+      expect(removed(200), closeTo(removed(60), 0.02),
+          reason: "the same fraction of the picture, whatever its size");
     });
   });
 }

@@ -174,13 +174,22 @@ Future<ui.Image?> removeBackground(
 
 Future<ui.Image?> _removeBackground(
     ui.Image image, BackgroundRemoval removal) async {
-  var data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+  if (!removal.active) return null;
+
+  // At the working size, like the preview. The result is drawn into a few
+  // hundred pixels on a canvas and published at whatever the canvas is, so a
+  // twelve-megapixel pass buys nothing anybody can see and costs the whole
+  // wait -- and, worse, costs it again on every adjustment.
+  //
+  // The brush's own measurements are fractions of the picture rather than
+  // pixel counts, so a stroke lands in the same place whichever size this is.
+  var working = await _atWorkingSize(image);
+  var data = await working.toByteData(format: ui.ImageByteFormat.rawRgba);
   if (data == null) return null;
 
   var pixels = data.buffer.asUint8List();
-  var width = image.width, height = image.height;
+  var width = working.width, height = working.height;
 
-  if (!removal.active) return null;
   applyRemovalForTest(pixels, width, height, removal);
 
   // decodeImageFromPixels rather than re-encoding to PNG and decoding that:
@@ -205,6 +214,34 @@ int _alphaFor(double distance, double tolerance, double softness, int current) {
   return (current * t).round().clamp(0, 255);
 }
 
+/// _premultiply scales the colours to match the alpha they now have.
+///
+/// The pixel format either side of this file is premultiplied: a pixel's
+/// colour channels are already multiplied by its own alpha, so a fully
+/// transparent pixel is all zeroes and a half-transparent red is (128, 0, 0,
+/// 128) rather than (255, 0, 0, 128).
+///
+/// Everything that removes a background writes alpha and leaves the colour
+/// alone, which breaks that. A pixel taken out entirely kept its full colour
+/// at zero alpha -- data that means nothing in premultiplied form, and which
+/// Skia is free to draw as the colour rather than as nothing. That is a whole
+/// picture washing over in whatever it happened to be, and it is why every
+/// feathered edge glowed: a half-transparent pixel was carrying twice the
+/// colour it should.
+void _premultiply(Uint8List pixels, Uint8List was) {
+  for (var i = 0; i < was.length; i++) {
+    var before = was[i];
+    if (before == 0) continue;
+    var now = pixels[i * 4 + 3];
+    if (now == before) continue;
+    var scale = now / before;
+    var p = i * 4;
+    pixels[p] = (pixels[p] * scale).round().clamp(0, 255);
+    pixels[p + 1] = (pixels[p + 1] * scale).round().clamp(0, 255);
+    pixels[p + 2] = (pixels[p + 2] * scale).round().clamp(0, 255);
+  }
+}
+
 /// applyRemovalForTest runs a removal over raw RGBA pixels in place.
 ///
 /// The whole of the work, with the image decoding either side of it left out.
@@ -215,6 +252,16 @@ int _alphaFor(double distance, double tolerance, double softness, int current) {
 @visibleForTesting
 void applyRemovalForTest(
     Uint8List pixels, int width, int height, BackgroundRemoval removal) {
+  // What the alpha was before anything was taken out, so the colours can be
+  // put back into the form Flutter expects afterwards. See _premultiply --
+  // and note it belongs in here rather than around the call, because this
+  // function claims to be the whole of the work and a caller that forgot the
+  // other half would draw a picture washed over in its own colour.
+  var was = Uint8List(width * height);
+  for (var i = 0; i < was.length; i++) {
+    was[i] = pixels[i * 4 + 3];
+  }
+
   switch (removal.mode) {
     case RemovalMode.none:
       // Not a return: the brush still has to run. Painting the background out
@@ -235,6 +282,8 @@ void applyRemovalForTest(
   // the automatic pass ate and take out a patch it missed without changing the
   // settings, and without one undoing the other.
   _paintStrokes(pixels, width, height, removal.strokes);
+
+  _premultiply(pixels, was);
 }
 
 /// strokePreview is a picture of what [stroke] would do, for showing on the
@@ -250,13 +299,56 @@ void applyRemovalForTest(
 /// Sized to the whole picture: cropping to the stroke would mean carrying its
 /// offset around, and the caller draws it through the same placement the
 /// picture uses.
+/// workingSize is the largest a picture is worked on at.
+///
+/// Background removal is a pass over every pixel, and several of them: a
+/// twelve-megapixel photograph is twelve million pixels flooded, feathered and
+/// premultiplied, and the brush's preview does the same again on every
+/// adjustment. That is where the waiting was. Nothing here needs the full
+/// resolution -- the result is drawn into a few hundred pixels on screen and
+/// published at whatever the canvas is -- so the work is done on a copy no
+/// bigger than this and scaled back up.
+///
+/// Sixteen hundred is a good deal more than a canvas ever shows and about
+/// fifty times less work than a modern camera's output.
+const int workingSize = 1600;
+
+/// scaleForWork is how much a picture has to shrink to be worked on, or 1 when
+/// it is already small enough.
+double scaleForWork(int width, int height) {
+  var longest = math.max(width, height);
+  return longest <= workingSize ? 1 : workingSize / longest;
+}
+
+/// _atWorkingSize returns [source] shrunk to something worth working on, or
+/// the picture itself when it is already small.
+Future<ui.Image> _atWorkingSize(ui.Image source) async {
+  var scale = scaleForWork(source.width, source.height);
+  if (scale >= 1) return source;
+
+  var width = math.max(1, (source.width * scale).round());
+  var height = math.max(1, (source.height * scale).round());
+  var recorder = ui.PictureRecorder();
+  ui.Canvas(recorder).drawImageRect(
+    source,
+    ui.Rect.fromLTWH(0, 0, source.width.toDouble(), source.height.toDouble()),
+    ui.Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
+    ui.Paint()..filterQuality = ui.FilterQuality.medium,
+  );
+  return recorder.endRecording().toImage(width, height);
+}
+
 Future<ui.Image?> strokePreview(
     ui.Image source, RemovalStroke stroke, ui.Color colour) async {
-  var data = await source.toByteData(format: ui.ImageByteFormat.rawRgba);
+  // At the working size. A preview is looked at rather than published, and it
+  // is rebuilt every time a setting is adjusted -- doing that at full
+  // resolution is what made adjusting one feel like waiting for something.
+  var working = await _atWorkingSize(source);
+  var data = await working.toByteData(format: ui.ImageByteFormat.rawRgba);
   if (data == null) return null;
 
   var pixels = data.buffer.asUint8List();
-  var width = source.width, height = source.height;
+  var width = working.width, height = working.height;
 
   // The brush works on alpha, so it is run over a picture that is entirely
   // opaque and the result read back as coverage.
@@ -287,10 +379,16 @@ Future<ui.Image?> strokePreview(
     // Alpha went from 255 down to whatever the brush left, so the amount
     // removed is the amount the stroke covers.
     var covered = 255 - coverage[i * 4 + 3];
-    coverage[i * 4] = r;
-    coverage[i * 4 + 1] = g;
-    coverage[i * 4 + 2] = b;
-    coverage[i * 4 + 3] = (covered * a).round().clamp(0, 255);
+    var alpha = (covered * a).round().clamp(0, 255);
+    // Premultiplied, which is the form decodeImageFromPixels reads. Written
+    // straight, a transparent pixel carried the tint's full colour at zero
+    // alpha -- meaningless in that form, and drawn as the colour: the whole
+    // picture washed orange the moment a stroke was let go of.
+    var scale = alpha / 255;
+    coverage[i * 4] = (r * scale).round();
+    coverage[i * 4 + 1] = (g * scale).round();
+    coverage[i * 4 + 2] = (b * scale).round();
+    coverage[i * 4 + 3] = alpha;
   }
 
   var done = Completer<ui.Image>();
