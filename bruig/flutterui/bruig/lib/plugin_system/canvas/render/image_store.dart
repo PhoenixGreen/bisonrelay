@@ -49,6 +49,18 @@ class CanvasImageStore extends ChangeNotifier implements CanvasImageSource {
 
   bool _disposed = false;
 
+  /// putForTest seeds the store with an already-decoded picture.
+  ///
+  /// The retouching brush cannot do anything without one -- a stroke is stored
+  /// in the picture's own coordinates, so with nothing loaded there is nothing
+  /// to convert against and the stroke goes nowhere. Loading normally means a
+  /// file on disk and an asynchronous decode, neither of which a widget test
+  /// has, so this is the seam.
+  @visibleForTesting
+  void putForTest(String assetId, ui.Image image) {
+    _images[assetId] = image;
+  }
+
   /// original is the picture as it was loaded, with nothing taken out.
   ///
   /// What the retouching brush measures against: a stroke is stored in the

@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+import 'dart:async';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -1733,6 +1735,132 @@ void main() {
       expect(after.width, closeTo(element.width, 1),
           reason: "only the edge that was dragged moved");
       expect(after.height, greaterThan(element.height));
+    });
+  });
+
+  group("painting a retouching stroke", () {
+    /// seed puts a decoded picture into the store, which the brush needs: a
+    /// stroke is stored in the picture's own coordinates, so with nothing
+    /// loaded there is nothing to convert against.
+    Future<void> seed(WidgetTester tester, CanvasController controller) async {
+      var pixels = Uint8List(64 * 64 * 4);
+      for (var i = 0; i < 64 * 64; i++) {
+        pixels[i * 4] = 200;
+        pixels[i * 4 + 1] = 200;
+        pixels[i * 4 + 2] = 200;
+        pixels[i * 4 + 3] = 255;
+      }
+      await tester.runAsync(() async {
+        var done = Completer<ui.Image>();
+        ui.decodeImageFromPixels(
+            pixels, 64, 64, ui.PixelFormat.rgba8888, done.complete);
+        controller.images.putForTest("abcdefghijklmnop", await done.future);
+      });
+    }
+
+    (CanvasController, ImageElement) withPicture() {
+      var document = const CanvasDocument();
+      var element = ImageElement(
+        ElementBase(
+          id: "i",
+          x: 0,
+          y: 0,
+          width: document.size.width.toDouble(),
+          height: document.size.height.toDouble(),
+        ),
+        assetId: "abcdefghijklmnop",
+      );
+      var controller = CanvasController(document.addElement(element));
+      controller.selectOnly("i");
+      controller.retouch = RetouchBrush.erase;
+      return (controller, element);
+    }
+
+    testWidgets("the picture is left alone until the pointer comes up",
+        (tester) async {
+      // Writing each point as it arrived changed the removal on every one,
+      // which changes the cache key, which sets the store rebuilding the whole
+      // treated picture -- a full pass over every pixel, dozens of times a
+      // second, while somebody is trying to draw a line.
+      var (controller, _) = withPicture();
+      addTearDown(controller.dispose);
+      var stage = await pump(tester, controller);
+      await seed(tester, controller);
+
+      ImageElement current() =>
+          controller.document.elementById("i")! as ImageElement;
+
+      var from = stage.pageRect.center;
+      var gesture = await tester.startGesture(from);
+      await tester.pump();
+      for (var i = 1; i <= 6; i++) {
+        await gesture.moveTo(from + Offset(i * 12.0, 0));
+        await tester.pump();
+      }
+
+      expect(current().removal.strokes, isEmpty,
+          reason: "nothing written while the line is being drawn");
+
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      expect(current().removal.strokes.length, 1,
+          reason: "and the whole line lands in one go");
+      expect(current().removal.strokes.single.points.length, greaterThan(3),
+          reason: "with every point that was drawn");
+    });
+
+    testWidgets("a whole stroke is one undo step", (tester) async {
+      var (controller, _) = withPicture();
+      addTearDown(controller.dispose);
+      var stage = await pump(tester, controller);
+      await seed(tester, controller);
+
+      var from = stage.pageRect.center;
+      var gesture = await tester.startGesture(from);
+      for (var i = 1; i <= 4; i++) {
+        await gesture.moveTo(from + Offset(i * 12.0, 0));
+        await tester.pump();
+      }
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      expect(
+          (controller.document.elementById("i")! as ImageElement)
+              .removal
+              .strokes,
+          hasLength(1));
+      controller.undo();
+      expect(
+          (controller.document.elementById("i")! as ImageElement)
+              .removal
+              .strokes,
+          isEmpty,
+          reason: "one press takes the whole line back, not one point of it");
+    });
+
+    testWidgets("a marking brush lands in the hints instead", (tester) async {
+      var (controller, _) = withPicture();
+      addTearDown(controller.dispose);
+      controller.replaceElement((controller.document.elementById("i")!
+              as ImageElement)
+          .copyWith(
+              removal: const BackgroundRemoval(mode: RemovalMode.learn)));
+      controller.retouch = RetouchBrush.markSubject;
+      var stage = await pump(tester, controller);
+      await seed(tester, controller);
+
+      var from = stage.pageRect.center;
+      var gesture = await tester.startGesture(from);
+      await gesture.moveTo(from + const Offset(40, 0));
+      await tester.pump();
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      var after = controller.document.elementById("i")! as ImageElement;
+      expect(after.removal.hints, hasLength(1));
+      expect(after.removal.hints.single.keep, isTrue);
+      expect(after.removal.strokes, isEmpty);
     });
   });
 }

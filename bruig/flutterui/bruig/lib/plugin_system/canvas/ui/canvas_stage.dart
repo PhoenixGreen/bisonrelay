@@ -149,8 +149,24 @@ class CanvasStageState extends State<CanvasStage> {
   Offset _pressedAt = Offset.zero;
 
   /// _painting is the picture being retouched, while a brush stroke is under
-  /// way. Held by id: the element is replaced on every point.
+  /// way. Held by id, since the element is replaced when the stroke lands.
   String? _painting;
+
+  /// _liveImage and _liveCanvas are the stroke being drawn: the same points in
+  /// the picture's coordinates, for storing, and in the canvas's, for showing.
+  ///
+  /// The stroke is not written to the element until the pointer comes up.
+  /// Writing each point as it arrived changed the removal on every one, which
+  /// changes the cache key, which sets the store rebuilding the whole treated
+  /// picture -- a full pass over every pixel, dozens of times a second, while
+  /// somebody is trying to draw a line. The line now appears immediately and
+  /// the work happens once, when the stroke is finished.
+  final List<Offset> _liveImage = [];
+  final List<Offset> _liveCanvas = [];
+
+  /// _liveRadius is the brush's radius in canvas units, worked out once when
+  /// the stroke starts so the preview does not have to ask again per point.
+  double _liveRadius = 0;
 
   /// _editorRect is where the editor was opened, in document space.
   ///
@@ -875,6 +891,9 @@ class CanvasStageState extends State<CanvasStage> {
   /// through -- worked out separately the brush would touch pixels other than
   /// the ones under the pointer, and it would look like a wobbly brush rather
   /// than like two functions disagreeing.
+  /// _paintStrokeAt adds a point to the stroke being drawn.
+  ///
+  /// Only to the live copy. Committing is [_commitStroke], on pointer up.
   void _paintStrokeAt(Offset doc, {bool start = false}) {
     var id = _painting;
     if (id == null) return;
@@ -886,42 +905,72 @@ class CanvasStageState extends State<CanvasStage> {
 
     var inner = picture.boundsAt(controller.frame).deflate(picture.box.padding);
     var size = Size(image.width.toDouble(), image.height.toDouble());
-    var at = placeImage(size, inner, picture.fit, crop: picture.crop)
-        .toImage(doc, size);
+    var placement = placeImage(size, inner, picture.fit, crop: picture.crop);
+    var at = placement.toImage(doc, size);
     // Off the picture: the part of a stroke that runs past the edge has
     // nothing to touch, which is not a reason to end the stroke.
     if (at == null) return;
+
+    if (start) {
+      // The brush is a fraction of the picture's shorter side, and the preview
+      // has to be drawn in canvas units -- so it is converted once here rather
+      // than per point.
+      var shorter = math.min(size.width, size.height);
+      var scale = placement.scaleToImage();
+      _liveRadius = controller.brushSize *
+          shorter /
+          (scale == 0 ? 1 : scale);
+    }
+
+    setState(() {
+      _liveImage.add(at);
+      _liveCanvas.add(doc);
+    });
+  }
+
+  /// _commitStroke writes the finished stroke onto the picture.
+  ///
+  /// One change to the document for the whole gesture, so the store does its
+  /// pass over the pixels once and undo has one step to take back.
+  void _commitStroke() {
+    var id = _painting;
+    _painting = null;
+    var points = [..._liveImage];
+    setState(() {
+      _liveImage.clear();
+      _liveCanvas.clear();
+    });
+
+    var picture = id == null ? null : document.elementById(id);
+    if (picture is! ImageElement || points.isEmpty) {
+      controller.endInteraction();
+      return;
+    }
 
     // A marking brush writes into the hints, which teach the learning method
     // what is what; the other two write into the strokes, which rub the
     // picture out and put it back. Same gesture, two lists.
     var teaching = controller.retouch.teaches;
-    var marks = [
-      ...(teaching ? picture.removal.hints : picture.removal.strokes)
-    ];
-    if (start || marks.isEmpty) {
-      marks.add(RemovalStroke(
-        points: [at],
-        radius: controller.brushSize,
-        keep: controller.retouch.keeps,
-        // A hint is a sample rather than a mark on the picture, so it is taken
-        // exactly where it was drawn: softening or snapping it would collect
-        // colours the reader did not point at.
-        hardness: teaching ? 1 : controller.brushHardness,
-        snap: teaching ? 0 : controller.brushSnap,
-      ));
-    } else {
-      var last = marks.removeLast();
-      marks.add(last.copyWith(points: [...last.points, at]));
-    }
+    var stroke = RemovalStroke(
+      points: points,
+      radius: controller.brushSize,
+      keep: controller.retouch.keeps,
+      // A hint is a sample rather than a mark on the picture, so it is taken
+      // exactly where it was drawn: softening or snapping it would collect
+      // colours the reader did not point at.
+      hardness: teaching ? 1 : controller.brushHardness,
+      snap: teaching ? 0 : controller.brushSnap,
+    );
 
     controller.replaceElement(
       picture.copyWith(
           removal: teaching
-              ? picture.removal.copyWith(hints: marks)
-              : picture.removal.copyWith(strokes: marks)),
-      transient: true,
+              ? picture.removal
+                  .copyWith(hints: [...picture.removal.hints, stroke])
+              : picture.removal
+                  .copyWith(strokes: [...picture.removal.strokes, stroke])),
     );
+    controller.endInteraction();
   }
 
   /// _selectedTeam is the one selected element, when it is a team.
@@ -1225,8 +1274,7 @@ class CanvasStageState extends State<CanvasStage> {
 
   void _onPointerUp(PointerUpEvent event) {
     if (_painting != null) {
-      _painting = null;
-      controller.endInteraction();
+      _commitStroke();
       return;
     }
     _playerIndex = -1;
@@ -1413,6 +1461,9 @@ class CanvasStageState extends State<CanvasStage> {
                       showHelpers: controller.showHelpers,
                       selectedPath: _selectedPath(),
                       editingText: _editingText,
+                      liveStroke: _liveCanvas,
+                      liveStrokeRadius: _liveRadius,
+                      liveStrokeKeeps: controller.retouch.keeps,
                       selectionBounds: _selectionBounds,
                       showHandles: _selectionHasOwnGeometry,
                       selectionRotation: _rotationOfSelection,
@@ -1572,6 +1623,18 @@ class _StagePainter extends CustomPainter {
   /// handles are drawn in place of a selection box.
   final PathElement? selectedPath;
 
+  /// liveStroke is the retouching stroke being drawn, in canvas coordinates,
+  /// with liveStrokeRadius its width and liveStrokeKeeps which way round it
+  /// works.
+  ///
+  /// Drawn here rather than by changing the picture, because changing the
+  /// picture means reprocessing every pixel of it -- see
+  /// CanvasStageState._liveImage. This is what the reader watches while the
+  /// stroke is being made; the picture catches up when the pointer comes up.
+  final List<Offset> liveStroke;
+  final double liveStrokeRadius;
+  final bool liveStrokeKeeps;
+
   /// editingText is the id of a text element being typed into, whose own words
   /// are left unpainted -- the editor over the top is drawing them, and both
   /// at once is the same sentence twice, half a pixel apart.
@@ -1598,6 +1661,9 @@ class _StagePainter extends CustomPainter {
     required this.showHelpers,
     required this.selectedPath,
     required this.editingText,
+    required this.liveStroke,
+    required this.liveStrokeRadius,
+    required this.liveStrokeKeeps,
     required this.document,
     required this.frame,
     required this.scale,
@@ -1655,6 +1721,31 @@ class _StagePainter extends CustomPainter {
             ..style = PaintingStyle.stroke
             ..strokeWidth = 1
             ..color = const Color(0xAA3D7EFF));
+    }
+
+    // The stroke being drawn, inside the frame's clip along with everything
+    // else the document contributes -- unclipped, a stroke on a zoomed canvas
+    // carries on over the sidebar. A thick
+    // round-capped line rather than a stamp per point: it is a preview of a
+    // brush that will be dabbed along the same path, and the two read the same
+    // at any speed the pointer moves.
+    if (liveStroke.length > 1 && liveStrokeRadius > 0) {
+      var path = Path()
+        ..moveTo(liveStroke.first.dx * scale + origin.dx,
+            liveStroke.first.dy * scale + origin.dy);
+      for (var point in liveStroke.skip(1)) {
+        path.lineTo(point.dx * scale + origin.dx, point.dy * scale + origin.dy);
+      }
+      canvas.drawPath(
+          path,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = liveStrokeRadius * 2 * scale
+            ..strokeCap = StrokeCap.round
+            ..strokeJoin = StrokeJoin.round
+            ..color = liveStrokeKeeps
+                ? const Color(0x6633DD88)
+                : const Color(0x66FF5544));
     }
 
     canvas.restore();
@@ -1814,6 +1905,8 @@ class _StagePainter extends CustomPainter {
       old.showHandles != showHandles ||
       !identical(old.selectedPath, selectedPath) ||
       old.editingText != editingText ||
+      old.liveStroke.length != liveStroke.length ||
+      old.liveStrokeKeeps != liveStrokeKeeps ||
       old.hoveredButton != hoveredButton ||
       old.selection != selection ||
       old.selectionBounds != selectionBounds ||
