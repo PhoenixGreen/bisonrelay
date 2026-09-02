@@ -1005,9 +1005,9 @@ class CanvasStageState extends State<CanvasStage> {
     _previewDebounce?.cancel();
     _previewDebounce = Timer(_previewDelay, () {
       if (!mounted || _previewOf != key) return;
-      strokePreview(source, stroke,
-              stroke.keep ? const Color(0x8833DD88) : const Color(0x88FF5544))
-          .then((image) {
+      // No colour to pass any more: the preview colours itself by how hard
+      // the brush is at each pixel, which is the thing being judged.
+      strokePreview(source, stroke).then((image) {
         if (!mounted || _previewOf != key) return;
         setState(() => _preview = image);
       });

@@ -994,8 +994,7 @@ void main() {
               radius: 0.1,
               keep: false,
               hardness: 1,
-            ),
-            const Color(0x88FF5544));
+            ));
         out = (await preview!.toByteData())!.buffer.asUint8List();
       });
 
@@ -1115,6 +1114,152 @@ void main() {
 
       expect(removed(200), closeTo(removed(60), 0.02),
           reason: "the same fraction of the picture, whatever its size");
+    });
+  });
+
+  group("hardness", () {
+    /// band is how many pixels *across* the stroke are partly taken -- the
+    /// width of the falloff.
+    ///
+    /// A column rather than a row. The stroke runs left to right, so along it
+    /// the coverage is flat and the only partial pixels are its two end caps;
+    /// the falloff is perpendicular to it, and measuring the wrong axis makes
+    /// a test that passes whatever the brush does.
+    int band(Uint8List pixels, int size, int column) {
+      var out = 0;
+      for (var y = 0; y < size; y++) {
+        var a = alphaAt(pixels, size, column, y);
+        if (a > 8 && a < 247) out++;
+      }
+      return out;
+    }
+
+    Uint8List sweep(double hardness) {
+      const size = 120;
+      var pixels = picture(size, size, (x, y) => const Color(0xFF3C5AA0));
+      applyRemovalForTest(
+        pixels,
+        size,
+        size,
+        BackgroundRemoval(
+          mode: RemovalMode.none,
+          strokes: [
+            RemovalStroke(
+              // A long stroke, so most of its length is far from either end
+              // and every pixel under it is covered by several dabs.
+              points: const [Offset(0.2, 0.5), Offset(0.8, 0.5)],
+              radius: 0.15,
+              keep: false,
+              hardness: hardness,
+            ),
+          ],
+        ),
+      );
+      return pixels;
+    }
+
+    testWidgets("a stroke that goes back over itself stays soft",
+        (tester) async {
+      // The reason coverage is the *strongest* dab rather than the sum of
+      // them. Applying each dab as it went blended a pixel towards the target
+      // once per dab, and repeated blending arrives at the target however
+      // gentle each step is -- so scrubbing back and forth over one area,
+      // which is exactly how anybody uses a brush, drove its feathered rim to
+      // a hard edge.
+      const size = 120;
+      var pixels = picture(size, size, (x, y) => const Color(0xFF3C5AA0));
+      applyRemovalForTest(
+        pixels,
+        size,
+        size,
+        const BackgroundRemoval(
+          mode: RemovalMode.none,
+          strokes: [
+            RemovalStroke(
+              // Six passes over the same band.
+              points: [
+                Offset(0.2, 0.5),
+                Offset(0.8, 0.5),
+                Offset(0.2, 0.5),
+                Offset(0.8, 0.5),
+                Offset(0.2, 0.5),
+                Offset(0.8, 0.5),
+                Offset(0.2, 0.5),
+              ],
+              radius: 0.15,
+              keep: false,
+              hardness: 0.1,
+            ),
+          ],
+        ),
+      );
+
+      expect(band(pixels, size, 60), greaterThan(10),
+          reason: "the rim is as soft after six passes as after one");
+    });
+
+    testWidgets("a soft brush feathers across the middle of a stroke",
+        (tester) async {
+      expect(band(sweep(0.1), 120, 60), greaterThan(10),
+          reason: "a soft brush has a wide falloff");
+    });
+
+    testWidgets("and a hard one does not", (tester) async {
+      expect(band(sweep(1), 120, 60), lessThan(4),
+          reason: "a hard brush is a cut edge");
+    });
+
+    testWidgets("the falloff narrows as hardness rises", (tester) async {
+      var soft = band(sweep(0.1), 120, 60);
+      var middling = band(sweep(0.5), 120, 60);
+      var hard = band(sweep(0.9), 120, 60);
+
+      expect(soft, greaterThan(middling));
+      expect(middling, greaterThan(hard));
+    });
+
+    testWidgets("the preview shows the falloff as a band of its own",
+        (tester) async {
+      // Blue where the brush is at full strength, yellow at the outer rim, so
+      // the width of the yellow *is* the softness. A flat wash showed neither
+      // and hardness could be moved end to end with no visible change.
+      const size = 64;
+      late Uint8List out;
+      await tester.runAsync(() async {
+        var pixels = Uint8List(size * size * 4);
+        for (var i = 0; i < size * size; i++) {
+          pixels[i * 4] = 60;
+          pixels[i * 4 + 1] = 90;
+          pixels[i * 4 + 2] = 160;
+          pixels[i * 4 + 3] = 255;
+        }
+        var made = Completer<ui.Image>();
+        ui.decodeImageFromPixels(
+            pixels, size, size, ui.PixelFormat.rgba8888, made.complete);
+        var preview = await strokePreview(
+            await made.future,
+            const RemovalStroke(
+              points: [Offset(0.5, 0.5)],
+              radius: 0.3,
+              keep: false,
+              hardness: 0.1,
+            ));
+        out = (await preview!.toByteData())!.buffer.asUint8List();
+      });
+
+      // The centre is at full strength: blue, with no red in it.
+      var centre = (32 * size + 32) * 4;
+      expect(out[centre + 2], greaterThan(out[centre]),
+          reason: "blue at the core");
+
+      // Somewhere out on the rim the red channel leads, which is the yellow.
+      var yellow = 0;
+      for (var x = 0; x < size; x++) {
+        var p = (32 * size + x) * 4;
+        if (out[p + 3] > 20 && out[p] > out[p + 2]) yellow++;
+      }
+      expect(yellow, greaterThan(4),
+          reason: "and a band of yellow where it fades out");
     });
   });
 }

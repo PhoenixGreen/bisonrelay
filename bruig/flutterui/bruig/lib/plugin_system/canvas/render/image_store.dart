@@ -338,8 +338,7 @@ Future<ui.Image> _atWorkingSize(ui.Image source) async {
   return recorder.endRecording().toImage(width, height);
 }
 
-Future<ui.Image?> strokePreview(
-    ui.Image source, RemovalStroke stroke, ui.Color colour) async {
+Future<ui.Image?> strokePreview(ui.Image source, RemovalStroke stroke) async {
   // At the working size. A preview is looked at rather than published, and it
   // is rebuilt every time a setting is adjusted -- doing that at full
   // resolution is what made adjusting one feel like waiting for something.
@@ -350,123 +349,173 @@ Future<ui.Image?> strokePreview(
   var pixels = data.buffer.asUint8List();
   var width = working.width, height = working.height;
 
-  // The brush works on alpha, so it is run over a picture that is entirely
-  // opaque and the result read back as coverage.
-  var coverage = Uint8List(width * height * 4);
-  for (var i = 0; i < width * height; i++) {
-    coverage[i * 4] = pixels[i * 4];
-    coverage[i * 4 + 1] = pixels[i * 4 + 1];
-    coverage[i * 4 + 2] = pixels[i * 4 + 2];
-    coverage[i * 4 + 3] = 255;
-  }
-  // Always as an erase, whichever way the stroke works: what is being shown is
-  // where it reaches, not what it does when it gets there.
-  _paintStrokes(coverage, width, height, [
-    RemovalStroke(
-      points: stroke.points,
-      radius: stroke.radius,
-      keep: false,
-      hardness: stroke.hardness,
-      snap: stroke.snap,
-    ),
-  ]);
+  // The same arithmetic the stroke will be applied with, not a description of
+  // it: a stroke that clings to an edge is not a shape anybody can draw from
+  // its settings, because it depends on what is in the picture.
+  var cover = strokeCoverage(pixels, width, height, stroke);
 
-  var r = (colour.r * 255).round();
-  var g = (colour.g * 255).round();
-  var b = (colour.b * 255).round();
-  var a = colour.a;
-  for (var i = 0; i < width * height; i++) {
-    // Alpha went from 255 down to whatever the brush left, so the amount
-    // removed is the amount the stroke covers.
-    var covered = 255 - coverage[i * 4 + 3];
-    var alpha = (covered * a).round().clamp(0, 255);
-    // Premultiplied, which is the form decodeImageFromPixels reads. Written
-    // straight, a transparent pixel carried the tint's full colour at zero
-    // alpha -- meaningless in that form, and drawn as the colour: the whole
-    // picture washed orange the moment a stroke was let go of.
+  var out = Uint8List(width * height * 4);
+  for (var i = 0; i < cover.length; i++) {
+    var strength = cover[i];
+    if (strength == 0) continue;
+
+    // Coloured by how hard the brush is at that pixel rather than tinted
+    // flat, because the thing being judged is where the falloff starts and
+    // how far it runs. A flat wash showed neither: hardness could be moved
+    // from end to end and the picture looked identical.
+    //
+    //   blue    fully taken -- inside the hard core
+    //   yellow  barely taken -- the outer rim of the falloff
+    //
+    // So the width of the yellow band *is* the softness, and at a hardness of
+    // one there is no yellow at all.
+    var t = strength / 255;
+    var r = ((1 - t) * 255).round();
+    var g = ((1 - t) * 210 + t * 90).round();
+    var b = (t * 255).round();
+
+    // Half again on the alpha, so the picture underneath stays visible: this
+    // is a guide over the work rather than a replacement for looking at it.
+    var alpha = (strength * 0.75).round().clamp(0, 255);
     var scale = alpha / 255;
-    coverage[i * 4] = (r * scale).round();
-    coverage[i * 4 + 1] = (g * scale).round();
-    coverage[i * 4 + 2] = (b * scale).round();
-    coverage[i * 4 + 3] = alpha;
+    out[i * 4] = (r * scale).round();
+    out[i * 4 + 1] = (g * scale).round();
+    out[i * 4 + 2] = (b * scale).round();
+    out[i * 4 + 3] = alpha;
   }
+
+  if (stroke.snap > 0) _markClingEdge(out, cover, width, height);
 
   var done = Completer<ui.Image>();
   ui.decodeImageFromPixels(
-      coverage, width, height, ui.PixelFormat.rgba8888, done.complete);
+      out, width, height, ui.PixelFormat.rgba8888, done.complete);
   return done.future;
 }
 
-/// _paintStrokes rubs the brush's marks into the alpha channel.
+/// _markClingEdge draws a dashed green line where cling decided to stop.
 ///
-/// Each stroke is a run of dabs along its points, which is what a brush is:
-/// stamping only at the recorded points leaves a dotted line whenever the
-/// pointer moved faster than the samples arrived, so the gap between each pair
-/// is filled in.
+/// The one thing about cling nobody can otherwise see. Where the brush's own
+/// rim runs out, the edge is a circle and obviously the brush; where cling
+/// stopped it, the edge follows something in the picture -- and being able to
+/// tell which is which is the difference between a setting that can be tuned
+/// and a number that is guessed at.
+void _markClingEdge(
+    Uint8List out, Uint8List cover, int width, int height) {
+  for (var y = 1; y < height - 1; y++) {
+    for (var x = 1; x < width - 1; x++) {
+      var i = y * width + x;
+      if (cover[i] == 0) continue;
+      // On the boundary of what the stroke reaches.
+      var edge = cover[i - 1] == 0 ||
+          cover[i + 1] == 0 ||
+          cover[i - width] == 0 ||
+          cover[i + width] == 0;
+      if (!edge) continue;
+      // Dashed, so it reads as a guide rather than as part of the picture.
+      if (((x + y) ~/ 4) % 2 == 0) continue;
+      out[i * 4] = 0;
+      out[i * 4 + 1] = 220;
+      out[i * 4 + 2] = 90;
+      out[i * 4 + 3] = 220;
+      // Premultiplied, like everything else that goes into a Flutter image.
+      var scale = 220 / 255;
+      out[i * 4 + 1] = (220 * scale).round();
+      out[i * 4 + 2] = (90 * scale).round();
+    }
+  }
+}
+
+/// strokeCoverage is how strongly a stroke touches each pixel, from 0 to 255.
+///
+/// The *most* any of the stroke's dabs reach a pixel, not the sum of them.
+/// That is the whole reason this is a separate pass. Applying each dab to the
+/// picture as it went meant a pixel under six overlapping dabs was blended
+/// towards the target six times, and repeated blending arrives at the target
+/// however gentle each step is -- so the feathered rim collapsed into a hard
+/// edge everywhere except the two ends of the stroke, and hardness appeared to
+/// do nothing at all.
+///
+/// Shared with the preview, so what is shown and what will happen are the same
+/// arithmetic rather than two descriptions of it.
+Uint8List strokeCoverage(
+    Uint8List pixels, int width, int height, RemovalStroke stroke) {
+  var cover = Uint8List(width * height);
+  if (stroke.points.isEmpty) return cover;
+
+  var shorter = math.min(width, height);
+  var radius = math.max(1.0, stroke.radius * shorter);
+
+  // What the stroke is clinging *to*, sampled where it began.
+  //
+  // Once for the stroke, not once per dab. Per dab, the brush took its
+  // reference from whatever happened to be under the pointer at that moment --
+  // so the instant the stroke crossed onto the subject it re-learnt the
+  // subject and started clinging to that instead, which is the opposite of the
+  // whole idea.
+  var reference = stroke.snap > 0
+      ? _averageAround(
+          pixels,
+          width,
+          height,
+          (stroke.points.first.dx * width).round(),
+          (stroke.points.first.dy * height).round(),
+          math.max(1, radius ~/ 3))
+      : null;
+
+  const diagonal = 441.6729559300637;
+  var tolerance = stroke.snap * diagonal;
+
+  for (var i = 0; i < stroke.points.length; i++) {
+    var from =
+        ui.Offset(stroke.points[i].dx * width, stroke.points[i].dy * height);
+    var to = i + 1 < stroke.points.length
+        ? ui.Offset(
+            stroke.points[i + 1].dx * width, stroke.points[i + 1].dy * height)
+        : from;
+
+    // One dab per third of a radius along the segment: closer than that is
+    // wasted work, further apart and a soft brush beads into a string of blobs
+    // rather than reading as one stroke.
+    var span = (to - from).distance;
+    var steps = math.max(1, (span / (radius / 3)).ceil());
+    for (var step = 0; step <= steps; step++) {
+      var at = ui.Offset.lerp(from, to, step / steps)!;
+
+      // The reference is allowed to drift with the background -- a sky that
+      // shades from one side to the other is still the background -- but only
+      // towards colours it already agrees with. A pixel it does not recognise
+      // is the subject, and the reference does not follow it.
+      if (reference != null) {
+        var here = _averageAround(pixels, width, height, at.dx.round(),
+            at.dy.round(), math.max(1, radius ~/ 6));
+        if (_distance(here, reference) <= tolerance) {
+          reference = [
+            reference[0] * 0.85 + here[0] * 0.15,
+            reference[1] * 0.85 + here[1] * 0.15,
+            reference[2] * 0.85 + here[2] * 0.15,
+          ];
+        }
+      }
+
+      _dab(cover, pixels, width, height, at, radius, stroke, reference);
+    }
+  }
+  return cover;
+}
+
+/// _paintStrokes rubs the brush's marks into the alpha channel.
 void _paintStrokes(Uint8List pixels, int width, int height,
     List<RemovalStroke> strokes) {
-  if (strokes.isEmpty) return;
-  var shorter = math.min(width, height);
-
   for (var stroke in strokes) {
-    var radius = math.max(1.0, stroke.radius * shorter);
-    if (stroke.points.isEmpty) continue;
-
-    // What the stroke is clinging *to*, sampled where it began.
-    //
-    // Once for the stroke, not once per dab. Per dab, the brush took its
-    // reference from whatever happened to be under the pointer at that moment
-    // -- so the instant the stroke crossed onto the subject it re-learnt the
-    // subject and started clinging to that instead, which is the opposite of
-    // the whole idea. Starting on the background and sweeping is how anybody
-    // uses this, so the background is what the first point is standing on.
-    var reference = stroke.snap > 0
-        ? _averageAround(
-            pixels,
-            width,
-            height,
-            (stroke.points.first.dx * width).round(),
-            (stroke.points.first.dy * height).round(),
-            math.max(1, radius ~/ 3))
-        : null;
-
-    const diagonal = 441.6729559300637;
-    var tolerance = stroke.snap * diagonal;
-
-    for (var i = 0; i < stroke.points.length; i++) {
-      var from =
-          ui.Offset(stroke.points[i].dx * width, stroke.points[i].dy * height);
-      var to = i + 1 < stroke.points.length
-          ? ui.Offset(stroke.points[i + 1].dx * width,
-              stroke.points[i + 1].dy * height)
-          : from;
-
-      // One dab per third of a radius along the segment: closer than that is
-      // wasted work, further apart and a soft brush beads into a string of
-      // blobs rather than reading as one stroke.
-      var span = (to - from).distance;
-      var steps = math.max(1, (span / (radius / 3)).ceil());
-      for (var step = 0; step <= steps; step++) {
-        var at = ui.Offset.lerp(from, to, step / steps)!;
-
-        // The reference is allowed to drift with the background -- a sky that
-        // shades from one side to the other is still the background -- but
-        // only towards colours it already agrees with. A pixel it does not
-        // recognise is the subject, and the reference does not follow it.
-        if (reference != null) {
-          var here = _averageAround(pixels, width, height, at.dx.round(),
-              at.dy.round(), math.max(1, radius ~/ 6));
-          if (_distance(here, reference) <= tolerance) {
-            reference = [
-              reference[0] * 0.85 + here[0] * 0.15,
-              reference[1] * 0.85 + here[1] * 0.15,
-              reference[2] * 0.85 + here[2] * 0.15,
-            ];
-          }
-        }
-
-        _dab(pixels, width, height, at, radius, stroke, reference);
-      }
+    var cover = strokeCoverage(pixels, width, height, stroke);
+    var target = stroke.keep ? 255.0 : 0.0;
+    for (var i = 0; i < cover.length; i++) {
+      var strength = cover[i];
+      if (strength == 0) continue;
+      var p = i * 4 + 3;
+      var now = pixels[p].toDouble();
+      pixels[p] =
+          (now + (target - now) * (strength / 255)).round().clamp(0, 255);
     }
   }
 }
@@ -477,8 +526,12 @@ void _paintStrokes(Uint8List pixels, int width, int height,
 List<double> _averageAround(
     Uint8List pixels, int width, int height, int cx, int cy, int radius) {
   var r = 0.0, g = 0.0, b = 0.0, seen = 0;
-  for (var y = math.max(0, cy - radius); y <= math.min(height - 1, cy + radius); y++) {
-    for (var x = math.max(0, cx - radius); x <= math.min(width - 1, cx + radius); x++) {
+  for (var y = math.max(0, cy - radius);
+      y <= math.min(height - 1, cy + radius);
+      y++) {
+    for (var x = math.max(0, cx - radius);
+        x <= math.min(width - 1, cx + radius);
+        x++) {
       var p = (y * width + x) * 4;
       r += pixels[p];
       g += pixels[p + 1];
@@ -493,57 +546,6 @@ List<double> _averageAround(
 double _distance(List<double> a, List<double> b) {
   var dr = a[0] - b[0], dg = a[1] - b[1], db = a[2] - b[2];
   return math.sqrt(dr * dr + dg * dg + db * db);
-}
-
-/// _dab is one press of the brush.
-///
-/// Two things make it a brush rather than a rubber stamp. It fades towards its
-/// rim, so strokes blend into one another and into whatever the automatic pass
-/// left, and it can be told to spread only through pixels like the one it
-/// started on -- see RemovalStroke.snap -- so brushing along a shoulder takes
-/// the sky and stops at the coat.
-void _dab(Uint8List pixels, int width, int height, ui.Offset at, double radius,
-    RemovalStroke stroke, List<double>? reference) {
-  var left = math.max(0, (at.dx - radius).floor());
-  var right = math.min(width - 1, (at.dx + radius).ceil());
-  var top = math.max(0, (at.dy - radius).floor());
-  var bottom = math.min(height - 1, (at.dy + radius).ceil());
-  if (right < left || bottom < top) return;
-
-  var centreX = at.dx.round().clamp(0, width - 1);
-  var centreY = at.dy.round().clamp(0, height - 1);
-  var reachable = stroke.snap > 0 && reference != null
-      ? _reachable(pixels, width, left, right, top, bottom, centreX, centreY,
-          stroke.snap, radius, reference)
-      : null;
-
-  var target = stroke.keep ? 255.0 : 0.0;
-  // Everything within this is fully affected; beyond it the dab fades out.
-  var solid = radius * stroke.hardness.clamp(0.0, 1.0);
-  var fade = math.max(0.001, radius - solid);
-
-  for (var y = top; y <= bottom; y++) {
-    for (var x = left; x <= right; x++) {
-      var dx = x - at.dx, dy = y - at.dy;
-      var distance = math.sqrt(dx * dx + dy * dy);
-      if (distance > radius) continue;
-
-      var index = y * width + x;
-      var cling = 1.0;
-      if (reachable != null) {
-        cling = reachable[(y - top) * (right - left + 1) + (x - left)] / 255;
-        if (cling <= 0) continue;
-      }
-
-      var strength =
-          (distance <= solid ? 1.0 : (radius - distance) / fade) * cling;
-      if (strength <= 0) continue;
-
-      var p = index * 4 + 3;
-      var now = pixels[p].toDouble();
-      pixels[p] = (now + (target - now) * strength).round().clamp(0, 255);
-    }
-  }
 }
 
 /// _reachable is how strongly each pixel of a dab's disc belongs to the thing
@@ -616,7 +618,55 @@ Uint8List _reachable(
   return out;
 }
 
-/// _chromaKey removes everything close to one colour.
+/// _dab is one press of the brush, recorded into [cover] rather than applied.
+///
+/// Two things make it a brush rather than a rubber stamp. It fades towards its
+/// rim, so strokes blend into one another and into whatever the automatic pass
+/// left, and it can be told to spread only through pixels like the one the
+/// stroke started on -- see RemovalStroke.snap -- so brushing along a shoulder
+/// takes the sky and stops at the coat.
+void _dab(Uint8List cover, Uint8List pixels, int width, int height,
+    ui.Offset at, double radius, RemovalStroke stroke, List<double>? reference) {
+  var left = math.max(0, (at.dx - radius).floor());
+  var right = math.min(width - 1, (at.dx + radius).ceil());
+  var top = math.max(0, (at.dy - radius).floor());
+  var bottom = math.min(height - 1, (at.dy + radius).ceil());
+  if (right < left || bottom < top) return;
+
+  var centreX = at.dx.round().clamp(0, width - 1);
+  var centreY = at.dy.round().clamp(0, height - 1);
+  var reachable = stroke.snap > 0 && reference != null
+      ? _reachable(pixels, width, left, right, top, bottom, centreX, centreY,
+          stroke.snap, radius, reference)
+      : null;
+
+  // Everything within this is fully affected; beyond it the dab fades out.
+  var solid = radius * stroke.hardness.clamp(0.0, 1.0);
+  var fade = math.max(0.001, radius - solid);
+
+  for (var y = top; y <= bottom; y++) {
+    for (var x = left; x <= right; x++) {
+      var dx = x - at.dx, dy = y - at.dy;
+      var distance = math.sqrt(dx * dx + dy * dy);
+      if (distance > radius) continue;
+
+      var index = y * width + x;
+      var cling = 1.0;
+      if (reachable != null) {
+        cling = reachable[(y - top) * (right - left + 1) + (x - left)] / 255;
+        if (cling <= 0) continue;
+      }
+
+      var strength =
+          (distance <= solid ? 1.0 : (radius - distance) / fade) * cling;
+      if (strength <= 0) continue;
+
+      var value = (strength * 255).round().clamp(0, 255);
+      if (value > cover[index]) cover[index] = value;
+    }
+  }
+}
+
 void _chromaKey(Uint8List pixels, BackgroundRemoval removal) {
   var kr = removal.keyColor.r * 255;
   var kg = removal.keyColor.g * 255;
