@@ -1265,4 +1265,97 @@ void main() {
           reason: "and a band of yellow where it fades out");
     });
   });
+
+  group("a swept line is a line, not a row of blobs", () {
+    testWidgets("a long drag covers its whole length", (tester) async {
+      // The regression. A drag reports hundreds of positions a pixel or two
+      // apart, and the spacing between dabs is carried across the joins
+      // between them -- carried wrongly, the dabs landed almost anywhere and
+      // most of the line was never covered.
+      const size = 120;
+      var pixels = picture(size, size, (x, y) => const Color(0xFF3C5AA0));
+
+      // Two hundred sampled points across the middle, as a real drag gives.
+      var points = [
+        for (var i = 0; i < 200; i++) Offset(0.1 + i * 0.004, 0.5),
+      ];
+
+      applyRemovalForTest(
+        pixels,
+        size,
+        size,
+        BackgroundRemoval(
+          mode: RemovalMode.none,
+          strokes: [
+            RemovalStroke(
+                points: points, radius: 0.05, keep: false, hardness: 1),
+          ],
+        ),
+      );
+
+      // Every pixel along the line's own row must be gone -- no gaps between
+      // one dab and the next.
+      var gaps = 0;
+      for (var x = 15; x < 105; x++) {
+        if (alphaAt(pixels, size, x, 60) != 0) gaps++;
+      }
+      expect(gaps, 0, reason: "no bare patches along the swept line");
+    });
+
+    testWidgets("a wandering drag covers its whole length too",
+        (tester) async {
+      // Segments of varying length, which is what a hand actually draws: the
+      // carried distance has to survive short and long ones alike.
+      const size = 120;
+      var pixels = picture(size, size, (x, y) => const Color(0xFF3C5AA0));
+
+      var points = <Offset>[];
+      for (var i = 0; i < 120; i++) {
+        // Uneven steps, and a wobble across the line.
+        points.add(Offset(0.12 + i * 0.006 + (i % 5) * 0.001,
+            0.5 + (i % 3) * 0.004));
+      }
+
+      applyRemovalForTest(
+        pixels,
+        size,
+        size,
+        BackgroundRemoval(
+          mode: RemovalMode.none,
+          strokes: [
+            RemovalStroke(
+                points: points, radius: 0.06, keep: false, hardness: 1),
+          ],
+        ),
+      );
+
+      var gaps = 0;
+      for (var x = 20; x < 100; x++) {
+        if (alphaAt(pixels, size, x, 62) != 0) gaps++;
+      }
+      expect(gaps, 0);
+    });
+
+    testWidgets("and a single tap still makes one mark", (tester) async {
+      const size = 60;
+      var pixels = picture(size, size, (x, y) => const Color(0xFF3C5AA0));
+      applyRemovalForTest(
+        pixels,
+        size,
+        size,
+        const BackgroundRemoval(
+          mode: RemovalMode.none,
+          strokes: [
+            RemovalStroke(
+                points: [Offset(0.5, 0.5)],
+                radius: 0.1,
+                keep: false,
+                hardness: 1),
+          ],
+        ),
+      );
+      expect(alphaAt(pixels, size, 30, 30), 0);
+      expect(alphaAt(pixels, size, 1, 1), 255);
+    });
+  });
 }

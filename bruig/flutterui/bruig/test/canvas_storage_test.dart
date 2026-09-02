@@ -279,4 +279,74 @@ void main() {
           reason: "the canvas background uses one as much as an element does");
     });
   });
+
+  group("the picture store", () {
+    /// png and jpeg are just enough of a header to be recognised.
+    List<int> png([int fill = 1]) =>
+        [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, ...List.filled(40, fill)];
+    List<int> jpeg() => [0xFF, 0xD8, 0xFF, ...List.filled(40, 2)];
+
+    test("the same picture twice is one file", () async {
+      // Every import used to write a new random name for identical bytes, so
+      // dropping the same photograph into two canvases stored it twice and
+      // there was no way to reuse anything.
+      var first = await CanvasAssets.save(png());
+      var again = await CanvasAssets.save(png());
+
+      expect(first, isNotNull);
+      expect(again, first, reason: "the same bytes are the same picture");
+    });
+
+    test("different pictures are different files", () async {
+      expect(await CanvasAssets.save(png(1)),
+          isNot(await CanvasAssets.save(png(9))));
+    });
+
+    test("the id carries the format, so the file can be opened", () async {
+      // Without one, every picture is a file the operating system cannot
+      // preview, name or open.
+      expect(await CanvasAssets.save(png()), endsWith(".png"));
+      expect(await CanvasAssets.save(jpeg()), endsWith(".jpg"));
+    });
+
+    test("the format comes from the bytes, not from a name", () async {
+      // A screenshot saved as ".jpg" that is really a PNG is common enough,
+      // and the point of the extension is that the file opens.
+      var id = await CanvasAssets.save(png());
+      expect(id, endsWith(".png"));
+    });
+
+    test("a picture stored before any of this still loads", () async {
+      // Old ids are random and have no extension, and every saved canvas
+      // points at them by name.
+      var library = await CanvasStorage.libraryDir();
+      var pictures = Directory(path.join(library, "Pictures"));
+      await pictures.create(recursive: true);
+      await File(path.join(pictures.path, "abcdefghijklmnop"))
+          .writeAsBytes(png());
+
+      expect(await CanvasAssets.load("abcdefghijklmnop"), isNotNull);
+    });
+
+    test("a store left in the hidden folder is moved, names intact", () async {
+      // The names inside are untouched, so every document still resolves.
+      var library = await CanvasStorage.libraryDir();
+      var old = Directory(path.join(library, ".assets"));
+      await old.create(recursive: true);
+      await File(path.join(old.path, "qrstuvwxyzabcdef")).writeAsBytes(png());
+
+      // Asking for anything triggers the move.
+      expect(await CanvasAssets.load("qrstuvwxyzabcdef"), isNotNull);
+      expect(await Directory(path.join(library, "Pictures")).exists(), isTrue);
+      expect(await old.exists(), isFalse);
+    });
+
+    test("the pictures folder is not offered as a canvas folder", () async {
+      // It is a real, visible folder now so that it can be opened and looked
+      // at -- which means the listing has to leave it out by name.
+      await CanvasAssets.save(png());
+      var entries = await CanvasStorage.list("");
+      expect(entries.where((e) => e.name == "Pictures"), isEmpty);
+    });
+  });
 }

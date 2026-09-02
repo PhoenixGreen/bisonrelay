@@ -567,24 +567,35 @@ List<ui.Offset> _alongPath(List<ui.Offset> path, double spacing) {
   if (path.length == 1) return [path.first];
 
   var out = <ui.Offset>[path.first];
-  var carried = 0.0;
+
+  // How much further before the next dab is due. Carried across the joins
+  // between segments, which is the whole difficulty: a drag is hundreds of
+  // segments a pixel or two long, and a spacing measured within each one
+  // separately would put a dab at every single point.
+  //
+  // The first attempt carried the *unwalked remainder* of a segment and then
+  // used it as a starting offset in the next -- wrong in meaning and in sign,
+  // so on a real stroke the dabs landed almost anywhere and most of the line
+  // was never covered at all. That is what turned a swept line into a row of
+  // blobs.
+  var until = spacing;
 
   for (var i = 1; i < path.length; i++) {
     var from = path[i - 1], to = path[i];
     var span = (to - from).distance;
     if (span <= 0) continue;
 
-    var walked = carried;
-    while (walked + spacing <= span) {
-      walked += spacing;
+    var walked = 0.0;
+    while (walked + until <= span) {
+      walked += until;
       out.add(ui.Offset.lerp(from, to, walked / span)!);
+      until = spacing;
     }
-    carried = walked - span;
-    // Negative means the next dab is still ahead; the leftover is carried into
-    // the next segment so the spacing is even across the joins.
-    carried = -carried;
+    until -= span - walked;
   }
 
+  // Always the end, so a stroke finishes where the pointer finished: letting
+  // go a little past something would otherwise leave it untouched.
   if (out.last != path.last) out.add(path.last);
   return out;
 }

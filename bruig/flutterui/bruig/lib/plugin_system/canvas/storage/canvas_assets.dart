@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
+import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as path;
 
 // canvas_assets.dart keeps the pictures a canvas refers to.
@@ -23,16 +24,29 @@ import 'package:path/path.dart' as path;
 
 /// _dirName is the folder inside the library. The leading dot is what keeps it
 /// out of the library listing, which skips dotted names.
-const _dirName = ".assets";
+const _dirName = canvasPicturesFolder;
 
-/// _idPattern is what [newAssetId] generates: sixteen letters and digits.
+/// _oldDirName is what the folder was called when it was hidden, and is only
+/// ever used to find one left over and move it. See CanvasAssets._migrate.
+const _oldDirName = ".assets";
+
+/// _idPattern is what an id may look like: sixteen letters and digits, and
+/// optionally a file extension.
+///
+/// The extension is there so the folder can be opened and looked at. Without
+/// one, every picture is a file the operating system cannot preview, name or
+/// open -- which is most of why the store was hard to find and impossible to
+/// reuse anything from by hand.
+///
+/// Old ids have no extension and still match, because they are still the names
+/// of files on disk that saved documents point at.
 ///
 /// Checked before an id is ever joined onto a path. These ids are generated
 /// rather than typed, so this is not where an attack would come from -- but an
 /// id that reached here from a saved document is text from disk, and text from
 /// disk becoming part of a path is exactly the shape of a mistake worth
 /// refusing to make.
-final _idPattern = RegExp(r"^[a-zA-Z0-9]{16}$");
+final _idPattern = RegExp(r"^[a-zA-Z0-9]{16}(\.[a-z0-9]{1,5})?$");
 
 /// maxAssetBytes bounds one picture.
 ///
@@ -65,8 +79,38 @@ class CanvasAssets {
   /// Reading and sweeping must not create it: they run in the background, and
   /// a directory conjured up after the library above it has been taken away is
   /// a directory nobody asked for.
+  /// _migrate moves a store made while the folder was hidden.
+  ///
+  /// Careful rather than clever, because this touches pictures nobody else has
+  /// a copy of and every saved canvas points at them by name:
+  ///
+  ///  - nothing to move, nothing happens;
+  ///  - both present, nothing happens either. That is a store in a state this
+  ///    cannot reason about, and refusing to guess leaves both folders where
+  ///    they can be seen and sorted out rather than merging them and
+  ///    overwriting one picture with another of the same name.
+  ///  - the move itself is a rename, which is atomic within a directory: it
+  ///    either happened or it did not, and there is no state where half the
+  ///    pictures are in each.
+  ///
+  /// The names inside are untouched, so every document still resolves.
+  static Future<void> _migrate(String library) async {
+    try {
+      var old = Directory(path.join(library, _oldDirName));
+      if (!await old.exists()) return;
+      var wanted = Directory(path.join(library, _dirName));
+      if (await wanted.exists()) return;
+      await old.rename(wanted.path);
+    } catch (_) {
+      // A store that cannot be moved is still a store, and refusing to open
+      // Canvas over a folder name would be worse than leaving it where it is.
+    }
+  }
+
   static Future<String> _dir({bool create = false}) async {
-    var dir = path.join(await CanvasStorage.libraryDir(), _dirName);
+    var library = await CanvasStorage.libraryDir();
+    await _migrate(library);
+    var dir = path.join(library, _dirName);
     if (create) await Directory(dir).create(recursive: true);
     return dir;
   }
@@ -78,17 +122,72 @@ class CanvasAssets {
 
   /// save writes one picture and returns its id, or null when it could not be
   /// stored.
+  /// save stores a picture and returns the id a document refers to it by.
+  ///
+  /// The id is the picture's own content -- the first part of a hash of the
+  /// bytes -- rather than a fresh random name. So dropping the same photograph
+  /// into a second canvas, or into the same one twice, finds the copy that is
+  /// already there instead of writing another beside it, and the two elements
+  /// share one file. That is the reuse the store was always supposed to give
+  /// and never did: every import wrote a new name for identical bytes.
+  ///
+  /// The extension comes from what the bytes actually are rather than from the
+  /// name they arrived under, which may be wrong or missing.
   static Future<String?> save(List<int> bytes) async {
     if (bytes.isEmpty || bytes.length > maxAssetBytes) return null;
-    var id = newAssetId();
+
+    var id = "${sha256.convert(bytes).toString().substring(0, 16)}"
+        "${_extensionOf(bytes)}";
     var file = await _pathFor(id, create: true);
     if (file == null) return null;
+
     try {
-      await File(file).writeAsBytes(bytes, flush: true);
+      var handle = File(file);
+      // Already stored, by this canvas or another. Writing it again would be
+      // the same bytes to the same path for nothing.
+      if (await handle.exists()) return id;
+      await handle.writeAsBytes(bytes, flush: true);
       return id;
     } catch (_) {
       return null;
     }
+  }
+
+  /// _extensionOf sniffs the format from the first few bytes.
+  ///
+  /// From the bytes rather than from the file name it came in under: a
+  /// screenshot saved as ".jpg" that is really a PNG is common enough, and the
+  /// point of the extension is that the operating system can open the file.
+  static String _extensionOf(List<int> bytes) {
+    if (bytes.length >= 8 &&
+        bytes[0] == 0x89 &&
+        bytes[1] == 0x50 &&
+        bytes[2] == 0x4E &&
+        bytes[3] == 0x47) {
+      return ".png";
+    }
+    if (bytes.length >= 3 &&
+        bytes[0] == 0xFF &&
+        bytes[1] == 0xD8 &&
+        bytes[2] == 0xFF) {
+      return ".jpg";
+    }
+    if (bytes.length >= 6 &&
+        bytes[0] == 0x47 &&
+        bytes[1] == 0x49 &&
+        bytes[2] == 0x46) {
+      return ".gif";
+    }
+    if (bytes.length >= 12 &&
+        bytes[8] == 0x57 &&
+        bytes[9] == 0x45 &&
+        bytes[10] == 0x42 &&
+        bytes[11] == 0x50) {
+      return ".webp";
+    }
+    // Something else. Left without one rather than guessed at, since a wrong
+    // extension is worse than none.
+    return "";
   }
 
   /// saveFile copies a picture in from wherever the user picked it.

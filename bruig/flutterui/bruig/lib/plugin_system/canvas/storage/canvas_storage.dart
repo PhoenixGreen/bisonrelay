@@ -24,6 +24,14 @@ import 'package:path/path.dart' as path;
 /// downloads, palettes, themes and my-posts.
 const _libraryDirName = "Canvas";
 
+/// canvasPicturesFolder is where the pictures live, inside the library.
+///
+/// Named here rather than only in canvas_assets.dart because the listing has
+/// to leave it out: it is a real, visible folder so that somebody can open it
+/// and see what is in it, which means it would otherwise appear as a canvas
+/// folder of its own.
+const canvasPicturesFolder = "Pictures";
+
 /// canvasExtension is what a saved canvas is called on disk.
 ///
 /// A distinct extension rather than ".json" so that the library listing does
@@ -175,6 +183,10 @@ class CanvasStorage {
       await for (var entry in Directory(dir).list(followLinks: false)) {
         var base = path.basename(entry.path);
         if (base.startsWith(".")) continue;
+        // The picture store is a real folder now, so that it can be opened and
+        // looked at -- which means the listing has to leave it out by name
+        // rather than relying on it being hidden.
+        if (base == canvasPicturesFolder) continue;
 
         if (entry is Directory) {
           // One level only, so subfolders are listed at the top and never
