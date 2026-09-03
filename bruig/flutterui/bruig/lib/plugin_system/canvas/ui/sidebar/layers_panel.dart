@@ -4,6 +4,7 @@ import 'package:bruig/plugin_system/canvas/ui/sidebar/element_settings_pane.dart
 import 'package:bruig/plugin_system/canvas/ui/sidebar/elements_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 // layers_panel.dart is the Layers tab: what is on the canvas, and everything
 // about whichever of it is selected.
@@ -132,7 +133,7 @@ class CanvasBackgroundLayerRow extends StatelessWidget {
   }
 }
 
-class CanvasLayerRow extends StatelessWidget {
+class CanvasLayerRow extends StatefulWidget {
   final CanvasController controller;
   final CanvasElement element;
   final int index;
@@ -145,12 +146,79 @@ class CanvasLayerRow extends StatelessWidget {
   });
 
   @override
+  State<CanvasLayerRow> createState() => _CanvasLayerRowState();
+}
+
+class _CanvasLayerRowState extends State<CanvasLayerRow> {
+  CanvasController get controller => widget.controller;
+  CanvasElement get element => widget.element;
+
+  /// _renaming is the text field standing in for the name, or null.
+  ///
+  /// Held on the row rather than on the panel, so that a rebuild caused by
+  /// anything else on the canvas cannot end an edit half way through -- and so
+  /// there is no chance of two rows believing they are the one being renamed.
+  TextEditingController? _renaming;
+  final FocusNode _renameFocus = FocusNode();
+
+  /// _lastPress is when the name was last pressed, for spotting the second
+  /// press of a double click. Read off the pointer event rather than the wall
+  /// clock, so it is the same clock the gesture system is using.
+  Duration? _lastPress;
+
+  /// _doubleClick is how long a second press has to arrive within. Flutter's
+  /// own kDoubleTapTimeout, which is what everything else double-clicked in
+  /// this app is being judged by.
+  static const Duration _doubleClick = Duration(milliseconds: 300);
+
+  @override
+  void initState() {
+    super.initState();
+    // Clicking away commits, which is what every other inline rename in this
+    // app does and what anybody expects of a field that appeared under the
+    // pointer. Escape is the way out without saving -- see _finishRename.
+    _renameFocus.addListener(() {
+      if (!_renameFocus.hasFocus && _renaming != null) _finishRename(true);
+    });
+  }
+
+  @override
+  void dispose() {
+    _renaming?.dispose();
+    _renameFocus.dispose();
+    super.dispose();
+  }
+
+  void _startRename() {
+    setState(() => _renaming = TextEditingController(text: element.name));
+    _renameFocus.requestFocus();
+    _renaming!.selection =
+        TextSelection(baseOffset: 0, extentOffset: element.name.length);
+  }
+
+  void _finishRename(bool keep) {
+    var field = _renaming;
+    if (field == null) return;
+    var next = field.text.trim();
+    setState(() => _renaming = null);
+    field.dispose();
+
+    // An empty name is not a name, and it is also how the model says "use the
+    // kind's label" -- so clearing the field puts the default back rather than
+    // leaving a row with nothing written on it.
+    if (keep && next != element.name) {
+      controller.replaceElement(element.withBase(name: next));
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     var theme = ThemeNotifier.of(context);
     var selected = controller.selection.contains(element.id);
     var count = controller.document.elements.length;
+    var index = widget.index;
 
-    return InkWell(
+    var row = InkWell(
       onTap: () => controller.selectOnly(element.id),
       borderRadius: BorderRadius.circular(6),
       child: Container(
@@ -169,24 +237,11 @@ class CanvasLayerRow extends StatelessWidget {
                 : theme.colors.onSurfaceVariant,
           ),
           const SizedBox(width: 6),
-          Expanded(
-            child: Text(
-              element.name,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 12,
-                color: element.visible
-                    ? (selected
-                        ? theme.colors.onSecondaryContainer
-                        : theme.colors.onSurface)
-                    : theme.colors.onSurfaceVariant.withValues(alpha: 0.5),
-              ),
-            ),
-          ),
-          // Buttons rather than dragging the rows to reorder. A drag inside a
-          // scrolling list beside a canvas that also drags is two gestures
-          // competing for one pointer, and the up/down pair says which
-          // direction it will go before it goes there.
+          Expanded(child: _name(theme, selected)),
+          // The buttons stay, alongside the drag. They say which direction the
+          // layer will go before it goes there, they reach a layer at the far
+          // end of a long list without dragging the length of it, and they are
+          // the only way to reorder with a keyboard.
           _rowButton(theme, Icons.keyboard_arrow_up, "Move forward",
               index < count - 1
                   ? () => controller.apply(
@@ -233,6 +288,150 @@ class CanvasLayerRow extends StatelessWidget {
         ]),
       ),
     );
+
+    // A row being renamed is not a row being dragged. The field would lose
+    // focus to the drag the moment it was pressed, which is the one gesture
+    // that must reach the text.
+    if (_renaming != null) return row;
+
+    return _draggable(theme, row, index);
+  }
+
+  /// _name is the layer's name, or the field that is renaming it.
+  ///
+  /// Double click rather than a pencil button. The list already carries five
+  /// controls per row and a sixth for something done occasionally would be
+  /// paying for it on every row -- and double-clicking a name is what renaming
+  /// a thing in a list means everywhere else.
+  Widget _name(ThemeNotifier theme, bool selected) {
+    var colour = element.visible
+        ? (selected ? theme.colors.onSecondaryContainer : theme.colors.onSurface)
+        : theme.colors.onSurfaceVariant.withValues(alpha: 0.5);
+    var style = TextStyle(fontSize: 12, color: colour);
+
+    var field = _renaming;
+    if (field != null) {
+      return Shortcuts(
+        shortcuts: const {
+          SingleActivator(LogicalKeyboardKey.escape): _CancelRenameIntent(),
+        },
+        child: Actions(
+          actions: {
+            _CancelRenameIntent: CallbackAction<_CancelRenameIntent>(
+              onInvoke: (_) {
+                _finishRename(false);
+                return null;
+              },
+            ),
+          },
+          child: TextField(
+            key: layerRenameFieldKey,
+            controller: field,
+            focusNode: _renameFocus,
+            style: style,
+            cursorHeight: 13,
+            decoration: const InputDecoration(
+              isDense: true,
+              contentPadding: EdgeInsets.symmetric(vertical: 2),
+              border: UnderlineInputBorder(),
+            ),
+            onSubmitted: (_) => _finishRename(true),
+          ),
+        ),
+      );
+    }
+
+    // A Listener reading the clock rather than GestureDetector.onDoubleTap.
+    //
+    // onDoubleTap holds the gesture arena open for the three hundred
+    // milliseconds a second tap might arrive in, so every single click on a
+    // layer name would have selected it a third of a second late -- and
+    // selecting layers is what this list is mostly for. Here the first press
+    // selects immediately and a second press soon after starts the rename,
+    // which costs the click that opens the field nothing anybody notices.
+    //
+    // A Listener also stays out of the arena altogether, so it cannot get into
+    // an argument with the long press that picks the row up.
+    return Listener(
+      onPointerDown: (event) {
+        var previous = _lastPress;
+        _lastPress = event.timeStamp;
+        if (previous != null && event.timeStamp - previous < _doubleClick) {
+          _lastPress = null;
+          _startRename();
+          return;
+        }
+        controller.selectOnly(element.id);
+      },
+      child: Text(element.name, overflow: TextOverflow.ellipsis, style: style),
+    );
+  }
+
+  /// _draggable makes the row something to pick up and something to drop on.
+  ///
+  /// A long press to start, not a plain drag. The list scrolls and the canvas
+  /// beside it drags, and a row that begins moving the moment a pointer
+  /// travels across it is a row that cannot be scrolled past.
+  ///
+  /// Deliberately Draggable rather than ReorderableListView. That widget
+  /// *moves* a row's element by GlobalKey instead of rebuilding it, and
+  /// re-attaching an overlay that way during layout is a framework error --
+  /// which is a problem for a row carrying five tooltips. See the Writing
+  /// sidebar, which learnt this the hard way.
+  Widget _draggable(ThemeNotifier theme, Widget row, int index) {
+    // What the pointer carries: the row's own look, without the controls,
+    // which are not part of what is being moved.
+    Widget feedback() => Material(
+          color: Colors.transparent,
+          child: Opacity(
+            opacity: 0.85,
+            child: Container(
+              width: 200,
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(6),
+                color: theme.colors.secondaryContainer,
+              ),
+              child: Row(children: [
+                Icon(iconForKind(element.kind),
+                    size: 15, color: theme.colors.onSecondaryContainer),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(element.name,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontSize: 12,
+                          color: theme.colors.onSecondaryContainer)),
+                ),
+              ]),
+            ),
+          ),
+        );
+
+    return DragTarget<String>(
+      onWillAcceptWithDetails: (details) => details.data != element.id,
+      onAcceptWithDetails: (details) {
+        var from = controller.document.elements
+            .indexWhere((e) => e.id == details.data);
+        if (from < 0) return;
+        controller.apply(controller.document.reorder(from, index));
+        controller.selectOnly(details.data);
+      },
+      builder: (context, candidate, rejected) => Container(
+        decoration: candidate.isEmpty
+            ? null
+            : BoxDecoration(
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: theme.colors.primary, width: 1.5),
+              ),
+        child: LongPressDraggable<String>(
+          data: element.id,
+          feedback: feedback(),
+          childWhenDragging: Opacity(opacity: 0.35, child: row),
+          child: row,
+        ),
+      ),
+    );
   }
 
   Widget _rowButton(ThemeNotifier theme, IconData icon, String tooltip,
@@ -256,4 +455,14 @@ class CanvasLayerRow extends StatelessWidget {
           ),
         ),
       );
+}
+
+/// layerRenameFieldKey names the field a layer is being renamed in. The
+/// settings under this list are full of text fields, so "the text field" is
+/// not enough to find it by.
+const Key layerRenameFieldKey = Key("canvasLayerRename");
+
+/// _CancelRenameIntent is Escape, leaving the name as it was.
+class _CancelRenameIntent extends Intent {
+  const _CancelRenameIntent();
 }

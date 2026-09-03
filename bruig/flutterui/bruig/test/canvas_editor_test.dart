@@ -2111,6 +2111,158 @@ void main() {
     });
   });
 
+  group("renaming a layer", () {
+    // The settings under the list are full of text fields, so the rename is
+    // found by its own key rather than by being "the text field".
+    var field = find.byKey(layerRenameFieldKey);
+
+    Future<CanvasController> panel(WidgetTester tester) async {
+      var document = const CanvasDocument();
+      var element = newElement(ElementKind.shape, document);
+      var controller = CanvasController(document.addElement(element));
+      addTearDown(controller.dispose);
+      await pump(tester, CanvasLayersPanel(controller: controller));
+      return controller;
+    }
+
+    /// inRow scopes a name to the layer list. Selecting a layer puts its own
+    /// settings under the list, and those are headed with the same word.
+    Finder inRow(String name) => find.descendant(
+        of: find.byType(CanvasLayerRow), matching: find.text(name));
+
+    Future<void> doubleClick(WidgetTester tester, String name) async {
+      await tester.tap(inRow(name));
+      await tester.pump(const Duration(milliseconds: 60));
+      await tester.tap(inRow(name));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets("double clicking the name opens a field", (tester) async {
+      // Double click rather than a pencil button: the row already carries five
+      // controls, and a sixth for something done occasionally would be paid
+      // for on every row of every canvas.
+      var controller = await panel(tester);
+      expect(field, findsNothing);
+
+      await doubleClick(tester, "Shape");
+      expect(field, findsOneWidget);
+
+      await tester.enterText(field, "Goal area");
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+
+      expect(controller.document.elements.single.name, "Goal area");
+      expect(inRow("Goal area"), findsOneWidget);
+      expect(field, findsNothing);
+    });
+
+    testWidgets("clearing it puts the kind's own name back", (tester) async {
+      // An empty name is not a name, and it is also how the model says "use
+      // the kind's label" -- so clearing the field is how you undo a rename
+      // rather than how you get a row with nothing written on it.
+      var controller = await panel(tester);
+      controller.replaceElement(
+          controller.document.elements.single.withBase(name: "Goal area"));
+      await tester.pumpAndSettle();
+
+      await doubleClick(tester, "Goal area");
+      await tester.enterText(field, "   ");
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+
+      expect(controller.document.elements.single.name, "Shape");
+    });
+
+    testWidgets("a single click selects it, and does so at once",
+        (tester) async {
+      // Not GestureDetector.onDoubleTap, which holds the arena open for the
+      // three hundred milliseconds a second tap might arrive in -- so every
+      // single click on a layer name would have selected it a third of a
+      // second late, and selecting layers is what this list is mostly for.
+      var controller = await panel(tester);
+      await tester.tap(inRow("Shape"));
+      await tester.pump();
+
+      expect(controller.selection, {controller.document.elements.single.id});
+      expect(field, findsNothing);
+    });
+  });
+
+  group("dragging a layer", () {
+    /// three builds a document with three named layers, bottom to top.
+    Future<CanvasController> panel(WidgetTester tester) async {
+      var document = const CanvasDocument();
+      for (var name in ["Bottom", "Middle", "Top"]) {
+        document = document.addElement(
+            newElement(ElementKind.shape, document).withBase(name: name));
+      }
+      var controller = CanvasController(document);
+      addTearDown(controller.dispose);
+      await pump(tester, CanvasLayersPanel(controller: controller));
+      return controller;
+    }
+
+    List<String> order(CanvasController controller) =>
+        [for (var e in controller.document.elements) e.name];
+
+    testWidgets("press and hold moves it to the row it is dropped on",
+        (tester) async {
+      // A long press to start rather than a plain drag: the list scrolls, and
+      // a row that begins moving the moment a pointer travels across it is a
+      // row that cannot be scrolled past.
+      var controller = await panel(tester);
+      expect(order(controller), ["Bottom", "Middle", "Top"]);
+
+      // The list is drawn top-first, so "Top" is the first row and "Bottom"
+      // the last. Dragging Top onto Bottom's row sends it to the back.
+      var drag = await tester.startGesture(tester.getCenter(find.text("Top")));
+      await tester.pump(const Duration(milliseconds: 700));
+      await drag.moveTo(tester.getCenter(find.text("Bottom")));
+      await tester.pump();
+      await drag.up();
+      await tester.pumpAndSettle();
+
+      expect(order(controller), ["Top", "Bottom", "Middle"]);
+      expect(controller.selection.length, 1,
+          reason: "what was dropped is what is selected, so it can be found");
+    });
+
+    testWidgets("a short drag scrolls rather than reordering", (tester) async {
+      var controller = await panel(tester);
+      await tester.drag(find.text("Top"), const Offset(0, 60));
+      await tester.pumpAndSettle();
+
+      expect(order(controller), ["Bottom", "Middle", "Top"],
+          reason: "no long press, no reorder");
+    });
+
+    testWidgets("the background is neither picked up nor dropped on",
+        (tester) async {
+      // It is painted before every element and cannot be reordered into the
+      // middle of them, so it is not a row that moves. It has no draggable and
+      // no target of its own; a layer dropped on it goes nowhere.
+      var controller = await panel(tester);
+      var background = find.textContaining("Background");
+      expect(background, findsOneWidget);
+
+      expect(
+          find.ancestor(
+              of: background, matching: find.byType(LongPressDraggable<String>)),
+          findsNothing);
+      expect(find.ancestor(of: background, matching: find.byType(DragTarget<String>)),
+          findsNothing);
+
+      var drag = await tester.startGesture(tester.getCenter(find.text("Top")));
+      await tester.pump(const Duration(milliseconds: 700));
+      await drag.moveTo(tester.getCenter(background));
+      await tester.pump();
+      await drag.up();
+      await tester.pumpAndSettle();
+
+      expect(order(controller), ["Bottom", "Middle", "Top"]);
+    });
+  });
+
   group("the sidebar's explanations", () {
     // Each panel carried a paragraph, permanently, taking a fifth of a narrow
     // column to say something read once and never again. Behind a question
