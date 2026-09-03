@@ -739,7 +739,12 @@ void main() {
       expect(teamIn(controller).dotWidth, 60);
       expect(teamIn(controller).dotHeight, 60);
 
-      await tester.tap(find.byTooltip("Width and height move together"));
+      // Scrolled to first: a team has more settings than fit in the panel,
+      // and a tap on something below the fold lands on whatever is there.
+      var lock = find.byTooltip("Width and height move together");
+      await tester.ensureVisible(lock);
+      await tester.pumpAndSettle();
+      await tester.tap(lock);
       await tester.pumpAndSettle();
       await tester.enterText(
           find.byKey(const ValueKey("teamDotHeight")), "20");
@@ -2620,6 +2625,70 @@ void main() {
 
       // Two "Drawn as" dropdowns now, one per series, under the table.
       expect(find.byType(CanvasDropdown<String>), findsNWidgets(2));
+    });
+  });
+
+  group("the settings' layout", () {
+    // Six clusters of small controls down one narrow column, separated by nine
+    // pixels of nothing, ran together into one field of boxes: the caption
+    // over each was the only thing saying where one ended, and a caption is
+    // nine pixels tall and grey.
+
+    testWidgets("a group is ruled off from the next", (tester) async {
+      var document = const CanvasDocument();
+      var element = newElement(ElementKind.shape, document);
+      var controller = CanvasController(document.addElement(element));
+      addTearDown(controller.dispose);
+      controller.selectOnly(element.id);
+      await pump(tester, CanvasLayersPanel(controller: controller));
+
+      expect(find.byType(CanvasControlGroup), findsWidgets);
+      // One rule per group, drawn under it.
+      var rules = find.descendant(
+          of: find.byType(CanvasControlGroup),
+          matching: find.byWidgetPredicate((w) =>
+              w is Container &&
+              w.constraints?.maxHeight == 1.0));
+      expect(rules, findsWidgets);
+    });
+
+    testWidgets("where it is and how it is turned are two lines",
+        (tester) async {
+      // Left to the Wrap, the line fell between W and H or after Angle
+      // depending on how wide the sidebar happened to be.
+      var document = const CanvasDocument();
+      var element = newElement(ElementKind.shape, document);
+      var controller = CanvasController(document.addElement(element));
+      addTearDown(controller.dispose);
+      controller.selectOnly(element.id);
+      await pump(tester, CanvasLayersPanel(controller: controller));
+
+      expect(find.byType(CanvasLineBreak), findsWidgets);
+      var x = tester.getRect(find.byKey(const ValueKey("elementX")));
+      var angle = tester.getRect(find.byKey(const ValueKey("elementAngle")));
+      expect(angle.top, greaterThan(x.bottom - 2),
+          reason: "Angle starts a line of its own, under X");
+    });
+
+    testWidgets("the element's own name is not said twice", (tester) async {
+      // The settings are headed with it already, so the group caption under
+      // that heading said "Chart" directly under "Chart".
+      var document = const CanvasDocument();
+      var element = ChartElement(
+        const ElementBase(id: "c", width: 400, height: 300),
+        data: ChartData.parse("Cat\tA\nx\t10"),
+      );
+      var controller = CanvasController(document.addElement(element));
+      addTearDown(controller.dispose);
+      controller.selectOnly("c");
+      await pump(tester, CanvasLayersPanel(controller: controller));
+
+      // Once: the settings' own heading. The position group's caption was a
+      // second one directly under it.
+      expect(find.text("CHART"), findsOneWidget);
+      expect(find.text("Chart"), findsOneWidget,
+          reason: "and the layer row that names it, which is not the same "
+              "thing");
     });
   });
 

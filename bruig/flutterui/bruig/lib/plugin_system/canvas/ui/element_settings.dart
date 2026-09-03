@@ -200,7 +200,12 @@ Widget _positionGroup(CanvasController controller, CanvasElement e,
     ]);
   }
 
-  return CanvasControlGroup(label: e.kind.label, children: [
+  return CanvasControlGroup(
+      label: e.kind.label,
+      // The settings are already headed with the element's own name, so this
+      // caption said "Chart" directly under a heading saying "Chart".
+      bandOnlyLabel: true,
+      children: [
     CanvasNumberField(
       key: const ValueKey("elementX"),
       label: "X",
@@ -235,6 +240,10 @@ Widget _positionGroup(CanvasController controller, CanvasElement e,
           write(e.withBase(height: pose.scale == 0 ? v : v / pose.scale)),
       onCommit: commit,
     ),
+    // Where it is and how big it is, then how it is turned and how solid.
+    // Two different questions, and left to the Wrap the line fell between W
+    // and H or after Angle depending on how wide the sidebar happened to be.
+    const CanvasLineBreak(),
     CanvasNumberField(
       key: const ValueKey("elementAngle"),
       label: "Angle",
@@ -1636,6 +1645,10 @@ List<Widget> _chartSettings(BuildContext context, ChartElement e, _Write write,
             onPressed: () => now(withBox(
                 box.placed ? box.copyWith(unplace: true) : whenPlaced)),
           ),
+        // The words and the switches, then where it sits. Four coordinates
+        // sharing a line with a text field and two buttons is four numbers
+        // nobody can scan.
+        if (box.show && box.placed) const CanvasLineBreak(),
         if (box.show && box.placed)
           for (var (label, value, apply)
               in <(String, double, ChartLabel Function(double))>[
@@ -1743,6 +1756,10 @@ List<Widget> _chartSettings(BuildContext context, ChartElement e, _Write write,
         onChanged: (v) => write(e.copyWith(yAxisLabel: v)),
         onCommit: commit,
       ),
+      // The two axis titles are text, and the four below are switches. On one
+      // line the first switch sat on the end of the Y label's row and read as
+      // part of it.
+      const CanvasLineBreak(),
       CanvasToggle(
         label: "Grid",
         value: e.showGrid,

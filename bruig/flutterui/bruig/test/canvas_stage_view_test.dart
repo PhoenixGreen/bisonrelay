@@ -564,17 +564,21 @@ void main() {
   });
 
   group("a chart's placed title", () {
-    /// build fills the canvas with a chart whose title has been placed, so a
-    /// document position and a screen position are easy to reason about.
+    /// build puts a chart in the middle of the canvas with its title placed.
+    ///
+    /// Inset rather than filling the canvas, so that a label can be dragged
+    /// outside the *chart* while staying over the page -- the stage ignores a
+    /// press outside the frame, so a label dragged clean off it could not be
+    /// pressed a second time.
     (CanvasController, ChartElement) build() {
       var document = const CanvasDocument();
       var chart = ChartElement(
         ElementBase(
           id: newElementId(),
-          x: 0,
-          y: 0,
-          width: document.size.width.toDouble(),
-          height: document.size.height.toDouble(),
+          x: 240,
+          y: 140,
+          width: document.size.width * 0.6,
+          height: document.size.height * 0.6,
         ),
         title: "Messages",
         titleBox: const ChartLabel(x: 0.1, y: 0.1, width: 0.3, height: 0.2),
@@ -594,8 +598,8 @@ void main() {
       var stage = await pump(tester, controller);
 
       var box = chart.titleBox.rectIn(
-          Rect.fromLTWH(0, 0, chart.width, chart.height));
-      var scale = stage.pageRect.width / chart.width;
+          Rect.fromLTWH(chart.x, chart.y, chart.width, chart.height));
+      var scale = stage.pageRect.width / controller.document.size.width;
       var at = stage.pageRect.topLeft + box.center * scale;
 
       await tester.dragFrom(at, const Offset(60, 40));
@@ -618,8 +622,8 @@ void main() {
       var stage = await pump(tester, controller);
 
       var box = chart.titleBox.rectIn(
-          Rect.fromLTWH(0, 0, chart.width, chart.height));
-      var scale = stage.pageRect.width / chart.width;
+          Rect.fromLTWH(chart.x, chart.y, chart.width, chart.height));
+      var scale = stage.pageRect.width / controller.document.size.width;
       var at = stage.pageRect.topLeft + box.bottomRight * scale;
 
       await tester.dragFrom(at, const Offset(50, 30));
@@ -645,8 +649,8 @@ void main() {
       var stage = await pump(tester, controller);
 
       var box = chart.titleBox.rectIn(
-          Rect.fromLTWH(0, 0, chart.width, chart.height));
-      var scale = stage.pageRect.width / chart.width;
+          Rect.fromLTWH(chart.x, chart.y, chart.width, chart.height));
+      var scale = stage.pageRect.width / controller.document.size.width;
       var at = stage.pageRect.topLeft + box.center * scale;
 
       // Up and to the left, off the chart's own top-left corner.
@@ -678,8 +682,8 @@ void main() {
       var stage = await pump(tester, controller);
 
       var box = chart.titleBox.rectIn(
-          Rect.fromLTWH(0, 0, chart.width, chart.height));
-      var scale = stage.pageRect.width / chart.width;
+          Rect.fromLTWH(chart.x, chart.y, chart.width, chart.height));
+      var scale = stage.pageRect.width / controller.document.size.width;
       var before = chart.body
           .rectIn(Rect.fromLTWH(chart.x, chart.y, chart.width, chart.height));
 
@@ -697,6 +701,47 @@ void main() {
           reason: "and the chart did not move");
       expect(body.width, closeTo(before.width, 0.5));
       expect(body.height, closeTo(before.height, 0.5));
+    });
+
+    testWidgets("bringing it back shrinks the box again", (tester) async {
+      // Growing only was the first attempt, and left a box that could be
+      // stretched but never put back -- so an experimental drag out and back
+      // cost a chart a margin of empty selection for good.
+      var (controller, chart) = build();
+      addTearDown(controller.dispose);
+      controller.selectOnly(chart.id);
+      var stage = await pump(tester, controller);
+
+      var scale = stage.pageRect.width / controller.document.size.width;
+      Rect labelOnScreen() {
+        var e = controller.document.elements.whereType<ChartElement>().single;
+        return e.titleBox.rectIn(
+            Rect.fromLTWH(e.x, e.y, e.width, e.height));
+      }
+
+      // A short drag, so the label stays over the canvas. Dragged clean off
+      // the page it cannot be pressed again at all -- the stage ignores a
+      // press outside the frame -- which is what the overspill margin is for.
+      await tester.dragFrom(
+          stage.pageRect.topLeft + labelOnScreen().center * scale,
+          const Offset(-90, -60));
+      await tester.pumpAndSettle();
+      var grown =
+          controller.document.elements.whereType<ChartElement>().single;
+      expect(grown.width, greaterThan(chart.width));
+
+      await tester.dragFrom(
+          stage.pageRect.topLeft + labelOnScreen().center * scale,
+          const Offset(90, 60));
+      await tester.pumpAndSettle();
+
+      var back = controller.document.elements.whereType<ChartElement>().single;
+      expect(back.width, closeTo(chart.width, 1),
+          reason: "back to the chart's own rectangle");
+      expect(back.height, closeTo(chart.height, 1));
+      expect(back.x, closeTo(chart.x, 1));
+      expect(back.body.isWhole, isTrue,
+          reason: "and the chart fills its box again");
     });
 
     testWidgets("a title the chart is placing is not draggable",

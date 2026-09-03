@@ -1327,23 +1327,27 @@ class CanvasStageState extends State<CanvasStage> {
     controller.replaceElement(_grownFor(updated, bounds), transient: true);
   }
 
-  /// _grownFor widens the chart's own box to hold a label dragged past its
-  /// edge, keeping every label where it looks like it is.
+  /// _grownFor sizes the chart's box to exactly hold the chart and its placed
+  /// labels, keeping everything where it looks like it is.
   ///
-  /// Without it a title dragged off the side sat outside the element's box.
-  /// It still drew -- nothing clips it -- but it was outside the selection
+  /// Without it a title dragged off the side sat outside the element's box. It
+  /// still drew -- nothing clips it -- but it was outside the selection
   /// outline and outside what a marquee or a group move would pick up, so it
   /// read as a separate thing that happened to be near the chart. The box is
-  /// what says "this text belongs to this chart", so the box grows.
+  /// what says "this text belongs to this chart".
   ///
-  /// Grows only. Dragging back inside does not shrink it again: a box that
-  /// followed the label in both directions would resize the plot on every
-  /// frame of a drag, and the plot is the part nobody is dragging.
+  /// It shrinks as well as grows, back to the chart's own rectangle once the
+  /// labels are inside it again. Growing only was the first attempt and left a
+  /// box that could be stretched but never put back, so an experimental drag
+  /// out and back cost a chart a margin of empty selection for good. Shrinking
+  /// is only safe because the chart's own rectangle is a thing in its own
+  /// right -- see ChartBody -- so the plot does not follow the box in either
+  /// direction.
   ChartElement _grownFor(ChartElement e, Rect bounds) {
     var rects = chartLabelRects(e, bounds);
     if (rects.isEmpty) return e;
 
-    var wanted = bounds;
+    var wanted = e.body.rectIn(bounds);
     for (var rect in rects.values) {
       wanted = wanted.expandToInclude(rect);
     }

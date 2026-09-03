@@ -72,6 +72,26 @@ class CanvasControlScope extends InheritedWidget {
       old.stacked != stacked || old.maxWidth != maxWidth;
 }
 
+/// CanvasLineBreak starts a new line inside a group.
+///
+/// A group lays its controls out with a Wrap, which fills each line before
+/// starting the next -- so where the break falls depends on how wide the
+/// sidebar happens to be, and six controls that are two different questions
+/// came out as "X Y W" over "H Angle Opacity". This is a child wide enough to
+/// take a whole line and tall enough to take none of it, which is how a Wrap
+/// is told where a line ends.
+///
+/// Nothing at all in the band above the canvas, which is one line by
+/// definition.
+class CanvasLineBreak extends StatelessWidget {
+  const CanvasLineBreak({super.key});
+
+  @override
+  Widget build(BuildContext context) => CanvasControlScope.isStacked(context)
+      ? const SizedBox(width: double.infinity, height: 0)
+      : const SizedBox.shrink();
+}
+
 /// CanvasHint is a question mark that explains a section when it is hovered.
 ///
 /// The sidebar's panels each carried a paragraph of explanation above or below
@@ -118,8 +138,20 @@ class CanvasControlGroup extends StatelessWidget {
   final String label;
   final List<Widget> children;
 
-  const CanvasControlGroup(
-      {required this.label, required this.children, super.key});
+  /// bandOnlyLabel drops the caption in a sidebar and keeps it in the band.
+  ///
+  /// For the one group whose name is the element's own. The sidebar already
+  /// heads the settings with that, so the caption underneath said the same
+  /// word a second time; the band has no such heading, so there it is the only
+  /// thing naming the cluster.
+  final bool bandOnlyLabel;
+
+  const CanvasControlGroup({
+    required this.label,
+    required this.children,
+    this.bandOnlyLabel = false,
+    super.key,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -139,15 +171,27 @@ class CanvasControlGroup extends StatelessWidget {
     // drawing a boundary across the direction the eye is already travelling.
     if (CanvasControlScope.isStacked(context)) {
       return Padding(
-        padding: const EdgeInsets.only(bottom: 9),
+        // A rule under each group as well as a gap. Six clusters of small
+        // controls down one narrow column, separated by nine pixels of
+        // nothing, ran together into one field of boxes -- the caption above
+        // each was the only thing saying where one ended, and a caption is
+        // nine pixels tall and grey.
+        padding: const EdgeInsets.only(bottom: 11),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
+            if (!bandOnlyLabel)
+              Padding(
+                  padding: const EdgeInsets.only(bottom: 3, left: 1),
+                  child: caption),
+            Wrap(runSpacing: 2, children: children),
             Padding(
-                padding: const EdgeInsets.only(bottom: 3, left: 1),
-                child: caption),
-            Wrap(children: children),
+              padding: const EdgeInsets.only(top: 9),
+              child: Container(
+                  height: 1,
+                  color: theme.colors.outlineVariant.withValues(alpha: 0.45)),
+            ),
           ],
         ),
       );
