@@ -2567,7 +2567,10 @@ void main() {
     testWidgets("the title and the description can be switched off",
         (tester) async {
       var controller = await panel(tester);
-      expect(find.text("Title"), findsOneWidget);
+      // The group's caption. The field under it has none of its own any more
+      // -- "Title > Title" was the heading saying the word twice.
+      expect(find.text("TITLE"), findsOneWidget);
+      expect(find.text("DESCRIPTION"), findsOneWidget);
       expect(chartIn(controller).titleBox.show, isTrue);
 
       // Two "Show" toggles, one per label, so the title's is the first.
@@ -2595,25 +2598,28 @@ void main() {
           findsOneWidget);
     });
 
-    testWidgets("a series can be added and given its own type",
-        (tester) async {
-      // The point of the override: a set of bars with a line across it.
+    testWidgets("a series is added beside the data, not in a section of its "
+        "own", (tester) async {
+      // A series is a column of the table, so it is added where the table is
+      // and its name, colour and type sit under the table rather than three
+      // headings away.
       var controller = await panel(tester);
       expect(chartIn(controller).data.series.length, 1);
+      expect(find.text("SERIES"), findsNothing);
 
-      // The series section is closed to begin with: a chart of five series is
-      // five closed headings rather than fifteen controls in a column.
-      await press(tester, find.text("SERIES"));
       await press(
           tester,
-          find.byTooltip("Add a series — give it its own type to lay one kind "
-              "of chart over another"));
+          find.byTooltip("Add a series — give it its own type below to lay "
+              "one kind of chart over another"));
 
       var data = chartIn(controller).data;
       expect(data.series.length, 2);
       expect(data.series[1].type, isNull, reason: "following the chart");
       expect(data.series[1].values.length, data.categories.length,
           reason: "a value per row, so it lines up with what is there");
+
+      // Two "Drawn as" dropdowns now, one per series, under the table.
+      expect(find.byType(CanvasDropdown<String>), findsNWidgets(2));
     });
   });
 

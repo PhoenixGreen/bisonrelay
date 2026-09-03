@@ -1320,11 +1320,57 @@ class CanvasStageState extends State<CanvasStage> {
       );
     }
 
-    controller.replaceElement(
-        grab.title
-            ? element.copyWith(titleBox: next)
-            : element.copyWith(descriptionBox: next),
-        transient: true);
+    var updated = grab.title
+        ? element.copyWith(titleBox: next)
+        : element.copyWith(descriptionBox: next);
+
+    controller.replaceElement(_grownFor(updated, bounds), transient: true);
+  }
+
+  /// _grownFor widens the chart's own box to hold a label dragged past its
+  /// edge, keeping every label where it looks like it is.
+  ///
+  /// Without it a title dragged off the side sat outside the element's box.
+  /// It still drew -- nothing clips it -- but it was outside the selection
+  /// outline and outside what a marquee or a group move would pick up, so it
+  /// read as a separate thing that happened to be near the chart. The box is
+  /// what says "this text belongs to this chart", so the box grows.
+  ///
+  /// Grows only. Dragging back inside does not shrink it again: a box that
+  /// followed the label in both directions would resize the plot on every
+  /// frame of a drag, and the plot is the part nobody is dragging.
+  ChartElement _grownFor(ChartElement e, Rect bounds) {
+    var rects = chartLabelRects(e, bounds);
+    if (rects.isEmpty) return e;
+
+    var wanted = bounds;
+    for (var rect in rects.values) {
+      wanted = wanted.expandToInclude(rect);
+    }
+    if (wanted == bounds) return e;
+
+    /// refit rewrites a label's fractions against the new box, so it stays
+    /// exactly where it is on screen while the box moves under it.
+    ChartLabel refit(ChartLabel label) {
+      if (!label.placed) return label;
+      var rect = label.rectIn(bounds);
+      return label.copyWith(
+        x: (rect.left - wanted.left) / wanted.width,
+        y: (rect.top - wanted.top) / wanted.height,
+        width: rect.width / wanted.width,
+        height: rect.height / wanted.height,
+      );
+    }
+
+    return e.copyWith(
+      titleBox: refit(e.titleBox),
+      descriptionBox: refit(e.descriptionBox),
+    ).withBase(
+      x: e.x + (wanted.left - bounds.left),
+      y: e.y + (wanted.top - bounds.top),
+      width: wanted.width,
+      height: wanted.height,
+    ) as ChartElement;
   }
 
   void _onPointerMove(PointerMoveEvent event) {

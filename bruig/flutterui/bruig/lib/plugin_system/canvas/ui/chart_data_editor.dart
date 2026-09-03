@@ -110,6 +110,27 @@ class _ChartDataEditorState extends State<ChartDataEditor> {
     ));
   }
 
+  void _addSeries() {
+    var series = [...data.series];
+    series.add(ChartSeries(
+      name: "Series ${series.length + 1}",
+      color: chartPalette[series.length % chartPalette.length],
+      values: List.filled(data.categories.length, 0),
+    ));
+    _write(ChartData(categories: data.categories, series: series));
+  }
+
+  void _removeSeries(int index) {
+    var series = [...data.series]..removeAt(index);
+    _write(ChartData(categories: data.categories, series: series));
+  }
+
+  void _writeSeries(int index, ChartSeries next) {
+    var series = [...data.series];
+    series[index] = next;
+    _write(ChartData(categories: data.categories, series: series));
+  }
+
   void _removeRow(int row) {
     var categories = [...data.categories]..removeAt(row);
     var series = [
@@ -152,18 +173,86 @@ class _ChartDataEditorState extends State<ChartDataEditor> {
               StorageManager.saveData(_layoutKey, _grid);
             },
           ),
-          if (_grid) ...[
-            CanvasIconButton(
-              icon: Icons.add,
-              tooltip: "Add a row",
-              onPressed: _addRow,
-            ),
-          ],
+          // The two ways a chart grows, side by side, because they are the
+          // same kind of thing: a row is another category and a series is
+          // another column of numbers against the same ones.
+          CanvasIconButton(
+            icon: Icons.add,
+            tooltip: "Add a row",
+            onPressed: _addRow,
+          ),
+          CanvasIconButton(
+            icon: Icons.add_chart,
+            tooltip: "Add a series — give it its own type below to lay one "
+                "kind of chart over another",
+            onPressed: _addSeries,
+          ),
         ]),
         body,
         _grip(theme),
+        // Under the table, because a series is a column of it: what it is
+        // called, what colour it is and how it is drawn all belong beside the
+        // numbers they describe rather than in a section of their own three
+        // headings away.
+        for (var i = 0; i < data.series.length; i++) _seriesRow(i),
       ],
     );
+  }
+
+  /// _seriesRow is one series' name, colour and type, in a line.
+  ///
+  /// Captioned on the first row only. One caption per column says as much as
+  /// one per control and leaves a chart of six series six lines rather than
+  /// eighteen.
+  Widget _seriesRow(int i) {
+    var series = data.series[i];
+    // Wrapped rather than a row: a narrow sidebar has no room for a swatch, a
+    // name and a dropdown side by side, and a Row that does not fit is an
+    // overflow stripe rather than a second line.
+    return Wrap(crossAxisAlignment: WrapCrossAlignment.start, children: [
+      CanvasColorButton(
+        label: i == 0 ? "Colour" : "",
+        color: series.color,
+        onChanged: (c) => _writeSeries(i, series.copyWith(color: c)),
+      ),
+      Padding(
+        padding: EdgeInsets.only(top: i == 0 ? controlLabelHeight : 0),
+        child: SizedBox(
+          width: 96,
+          height: controlHeight,
+          child: _Cell(
+            value: series.name,
+            dense: true,
+            onChanged: (v) {
+              var out = [...data.series];
+              out[i] = out[i].copyWith(name: v);
+              widget.onChanged(
+                  ChartData(categories: data.categories, series: out));
+            },
+            onCommit: widget.onCommit,
+          ),
+        ),
+      ),
+      const SizedBox(width: 5),
+      // "As the chart" rather than a second copy of the chart's own type: a
+      // series that follows the chart keeps following it when the chart is
+      // changed, which is what almost every series wants.
+      CanvasDropdown<String>(
+        label: i == 0 ? "Drawn as" : "",
+        value: series.type?.name ?? "",
+        width: 118,
+        options: [
+          ("", "As the chart"),
+          for (var t in ChartType.values)
+            if (!t.isCircular) (t.name, t.label),
+        ],
+        onChanged: (v) => _writeSeries(
+            i,
+            v.isEmpty
+                ? series.copyWith(followChart: true)
+                : series.copyWith(type: ChartType.fromName(v))),
+      ),
+    ]);
   }
 
   /// _grip drags the editor taller or shorter.
@@ -222,20 +311,30 @@ class _ChartDataEditorState extends State<ChartDataEditor> {
           for (var s = 0; s < data.series.length; s++)
             Padding(
               padding: const EdgeInsets.only(right: 4, bottom: 3),
-              child: SizedBox(
-                width: valueWidth,
-                child: _Cell(
-                  value: data.series[s].name,
-                  dense: true,
-                  onChanged: (v) {
-                    var out = [...data.series];
-                    out[s] = out[s].copyWith(name: v);
-                    widget.onChanged(
-                        ChartData(categories: data.categories, series: out));
-                  },
-                  onCommit: widget.onCommit,
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                SizedBox(
+                  width: valueWidth,
+                  child: _Cell(
+                    value: data.series[s].name,
+                    dense: true,
+                    onChanged: (v) {
+                      var out = [...data.series];
+                      out[s] = out[s].copyWith(name: v);
+                      widget.onChanged(
+                          ChartData(categories: data.categories, series: out));
+                    },
+                    onCommit: widget.onCommit,
+                  ),
                 ),
-              ),
+                // Against the column it removes, which is the only place a
+                // "remove this series" control is unambiguous -- a list of
+                // them somewhere else is a list of names to match up.
+                CanvasIconButton(
+                  icon: Icons.close,
+                  tooltip: "Remove this series",
+                  onPressed: () => _removeSeries(s),
+                ),
+              ]),
             ),
         ]);
 

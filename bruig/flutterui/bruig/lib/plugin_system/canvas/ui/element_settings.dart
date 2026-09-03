@@ -1578,15 +1578,16 @@ List<Widget> _chartSettings(ChartElement e, _Write write, VoidCallback begin,
   /// both. So the label is either the chart's to place or the reader's, and
   /// the button says which.
   List<Widget> labelControls(
-    String name,
     String text,
     ChartLabel box,
+    ChartLabel whenPlaced,
     ChartElement Function(String) withText,
     ChartElement Function(ChartLabel) withBox,
   ) =>
       [
+        // No caption of its own: the group above it is already called Title.
         CanvasTextField(
-          label: name,
+          label: "",
           value: text,
           width: 160,
           onChanged: (v) => write(withText(v)),
@@ -1604,9 +1605,13 @@ List<Widget> _chartSettings(ChartElement e, _Write write, VoidCallback begin,
                 ? "Put it back where the chart wants it"
                 : "Place it yourself — then drag it on the canvas",
             active: box.placed,
-            onPressed: () => now(withBox(box.placed
-                ? box.copyWith(unplace: true)
-                : box.copyWith(x: 0.02, y: 0.02))),
+            // Placed where the chart would have put it rather than in the
+            // corner. Both labels used to land on 0.02, 0.02 -- so placing
+            // the second put it exactly over the first, and since the
+            // description is drawn last it looked as though the description
+            // had gone above the title.
+            onPressed: () => now(withBox(
+                box.placed ? box.copyWith(unplace: true) : whenPlaced)),
           ),
         if (box.show && box.placed)
           for (var (label, value, apply)
@@ -1638,9 +1643,12 @@ List<Widget> _chartSettings(ChartElement e, _Write write, VoidCallback begin,
       e.data.series.any((s) => s.typeIn(e.type).usesSmooth);
 
   return [
-    CanvasControlGroup(label: "Chart", children: [
+    // "Type", not "Chart". The settings are already headed with the element's
+    // own name, so a group called Chart under a heading called Chart said the
+    // word twice and the dropdown under it said a third.
+    CanvasControlGroup(label: "Type", children: [
       CanvasDropdown<ChartType>(
-        label: "Type",
+        label: "",
         value: e.type,
         width: 132,
         options: [for (var t in ChartType.values) (t, t.label)],
@@ -1657,14 +1665,17 @@ List<Widget> _chartSettings(ChartElement e, _Write write, VoidCallback begin,
             "under Series below."),
     ]),
     CanvasControlGroup(label: "Title", children: [
-      ...labelControls("Title", e.title, e.titleBox,
+      ...labelControls(e.title, e.titleBox, defaultTitlePlacement,
           (v) => e.copyWith(title: v), (b) => e.copyWith(titleBox: b)),
     ]),
     CanvasControlGroup(label: "Description", children: [
+      // Under the title, not on top of it. A description above a title is
+      // almost never what anybody means, and two labels placed at the same
+      // corner is what that looked like.
       ...labelControls(
-          "Description",
           e.description,
           e.descriptionBox,
+          defaultDescriptionPlacement(e.titleBox, e.title.isNotEmpty),
           (v) => e.copyWith(description: v),
           (b) => e.copyWith(descriptionBox: b)),
     ]),
@@ -1685,31 +1696,6 @@ List<Widget> _chartSettings(ChartElement e, _Write write, VoidCallback begin,
           },
           onCommit: commit,
         ),
-      ],
-    ),
-    CanvasExpander(
-      label: "Series",
-      trailing: "${e.data.series.length}",
-      children: [
-        for (var i = 0; i < e.data.series.length; i++)
-          _chartSeriesSettings(e, i, write, begin, commit),
-        CanvasControlGroup(label: "Add", children: [
-          CanvasIconButton(
-            icon: Icons.add_chart,
-            tooltip: "Add a series — give it its own type to lay one kind of "
-                "chart over another",
-            onPressed: () {
-              var series = [...e.data.series];
-              series.add(ChartSeries(
-                name: "Series ${series.length + 1}",
-                color: chartPalette[series.length % chartPalette.length],
-                values: List.filled(e.data.categories.length, 0),
-              ));
-              now(e.copyWith(data: ChartData(
-                  categories: e.data.categories, series: series)));
-            },
-          ),
-        ]),
       ],
     ),
     CanvasControlGroup(label: "Axes", children: [
@@ -1796,81 +1782,6 @@ List<Widget> _chartSettings(ChartElement e, _Write write, VoidCallback begin,
         ),
     ]),
   ];
-}
-
-/// _chartSeriesSettings is one series: its name, its colour, and the type it
-/// is drawn as if that is not the chart's own.
-///
-/// Grouped in a section of its own so that a chart of five series is five
-/// closed headings rather than fifteen controls wrapped into a column nobody
-/// can find anything in.
-Widget _chartSeriesSettings(ChartElement e, int index, _Write write,
-    VoidCallback begin, VoidCallback commit) {
-  var series = e.data.series[index];
-
-  void writeSeries(ChartSeries next) {
-    begin();
-    var out = [...e.data.series];
-    out[index] = next;
-    write(e.copyWith(
-        data: ChartData(categories: e.data.categories, series: out)));
-    commit();
-  }
-
-  return CanvasExpander(
-    label: series.name.isEmpty ? "Series ${index + 1}" : series.name,
-    trailing: series.type?.label,
-    children: [
-      CanvasControlGroup(label: "Series", children: [
-        CanvasTextField(
-          label: "Name",
-          value: series.name,
-          width: 120,
-          onChanged: (v) {
-            begin();
-            var out = [...e.data.series];
-            out[index] = out[index].copyWith(name: v);
-            write(e.copyWith(
-                data: ChartData(categories: e.data.categories, series: out)));
-          },
-          onCommit: commit,
-        ),
-        CanvasColorButton(
-          label: "Colour",
-          color: series.color,
-          onChanged: (c) => writeSeries(series.copyWith(color: c)),
-        ),
-        // "As the chart" rather than a second copy of the chart's own type.
-        // A series that follows the chart keeps following it when the chart
-        // is changed, which is what almost every series wants -- an override
-        // is for the one line laid over the bars.
-        CanvasDropdown<String>(
-          label: "Drawn as",
-          value: series.type?.name ?? "",
-          width: 132,
-          options: [
-            ("", "As the chart"),
-            for (var t in ChartType.values)
-              if (!t.isCircular) (t.name, t.label),
-          ],
-          onChanged: (v) => writeSeries(v.isEmpty
-              ? series.copyWith(followChart: true)
-              : series.copyWith(type: ChartType.fromName(v))),
-        ),
-        CanvasIconButton(
-          icon: Icons.delete_outline,
-          tooltip: "Remove this series",
-          onPressed: () {
-            begin();
-            var out = [...e.data.series]..removeAt(index);
-            write(e.copyWith(
-                data: ChartData(categories: e.data.categories, series: out)));
-            commit();
-          },
-        ),
-      ]),
-    ],
-  );
 }
 
 List<Widget> _tableSettings(TableElement e, _Write write, VoidCallback begin,

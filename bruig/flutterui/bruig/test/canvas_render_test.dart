@@ -1581,6 +1581,35 @@ void _chartTests() {
       expect(rect.height, 60);
     });
 
+    test("a placed description goes under the title, not over it", () {
+      // Both used to land on the same corner, so placing the second put it
+      // exactly over the first -- and since the description is drawn last,
+      // that looked like a description sitting above a title.
+      expect(defaultTitlePlacement.y, lessThan(0.05));
+
+      var under = defaultDescriptionPlacement(defaultTitlePlacement, true);
+      expect(under.y,
+          greaterThanOrEqualTo(
+              defaultTitlePlacement.y + defaultTitlePlacement.height),
+          reason: "below the bottom of the title");
+      expect(under.x, defaultTitlePlacement.x,
+          reason: "and lined up with it, so the two read as a pair");
+    });
+
+    test("it follows a title that has already been moved", () {
+      const title = ChartLabel(x: 0.4, y: 0.5, width: 0.3, height: 0.1);
+      var under = defaultDescriptionPlacement(title, true);
+      expect(under.x, 0.4);
+      expect(under.y, greaterThanOrEqualTo(0.6));
+      expect(under.width, 0.3);
+    });
+
+    test("with no title it takes the top itself", () {
+      // Rather than leaving a band of nothing where a title would have been.
+      var alone = defaultDescriptionPlacement(const ChartLabel(), false);
+      expect(alone.y, lessThan(0.05));
+    });
+
     test("a chart's labels and series types survive a round trip", () {
       var element = ChartElement(
         const ElementBase(id: "c", width: 400, height: 300),

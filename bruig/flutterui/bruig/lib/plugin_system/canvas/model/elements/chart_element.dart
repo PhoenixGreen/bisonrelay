@@ -334,6 +334,32 @@ class ChartData {
   }
 }
 
+/// defaultTitlePlacement and defaultDescriptionPlacement are where a label
+/// goes the first time somebody takes control of it.
+///
+/// Where the chart would have put it, near enough: across the top, title
+/// first and description under it. Both used to land in the same corner, so
+/// placing the second put it exactly over the first -- and since the
+/// description is drawn last, that looked like a description sitting above a
+/// title, which is almost never what anybody means.
+const ChartLabel defaultTitlePlacement =
+    ChartLabel(x: 0.02, y: 0.02, width: 0.96, height: 0.14);
+
+ChartLabel defaultDescriptionPlacement(ChartLabel title, bool hasTitle) {
+  // Under the title wherever the title is, so the two stay a pair. With no
+  // title to sit under, the description takes the top itself rather than
+  // leaving a band of nothing above it.
+  var top = hasTitle
+      ? (title.placed ? title.y + title.height : defaultTitlePlacement.y +
+          defaultTitlePlacement.height)
+      : 0.02;
+  return ChartLabel(
+      x: hasTitle && title.placed ? title.x : 0.02,
+      y: top + 0.01,
+      width: hasTitle && title.placed ? title.width : 0.96,
+      height: 0.1);
+}
+
 /// ChartElement is a chart on the canvas.
 class ChartElement extends CanvasElement {
   final ChartType type;

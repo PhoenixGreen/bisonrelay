@@ -633,6 +633,39 @@ void main() {
           reason: "a corner drag pins the other corner");
     });
 
+    testWidgets("dragging it off the edge grows the chart's box",
+        (tester) async {
+      // Outside the box it still drew, but it was outside the selection
+      // outline and outside what a marquee or a group move picks up -- so it
+      // read as a separate thing that happened to be near the chart. The box
+      // is what says the text belongs to the chart.
+      var (controller, chart) = build();
+      addTearDown(controller.dispose);
+      controller.selectOnly(chart.id);
+      var stage = await pump(tester, controller);
+
+      var box = chart.titleBox.rectIn(
+          Rect.fromLTWH(0, 0, chart.width, chart.height));
+      var scale = stage.pageRect.width / chart.width;
+      var at = stage.pageRect.topLeft + box.center * scale;
+
+      // Up and to the left, off the chart's own top-left corner.
+      await tester.dragFrom(at, const Offset(-120, -90));
+      await tester.pumpAndSettle();
+
+      var after =
+          controller.document.elements.whereType<ChartElement>().single;
+      expect(after.width, greaterThan(chart.width));
+      expect(after.height, greaterThan(chart.height));
+      expect(after.x, lessThan(chart.x), reason: "grown on the side it left");
+
+      // And the label is still where it was let go, in the bigger box.
+      var moved = after.titleBox
+          .rectIn(Rect.fromLTWH(after.x, after.y, after.width, after.height));
+      expect(moved.left, closeTo(box.left - 120 / scale, 4));
+      expect(moved.top, closeTo(box.top - 90 / scale, 4));
+    });
+
     testWidgets("a title the chart is placing is not draggable",
         (tester) async {
       // There is no box to take hold of: it is wherever the title happens to
