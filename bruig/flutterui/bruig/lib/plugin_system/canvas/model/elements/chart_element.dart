@@ -334,6 +334,57 @@ class ChartData {
   }
 }
 
+/// ChartBody is where the chart itself is drawn inside its element, as
+/// fractions of the box.
+///
+/// The whole box, until a label is dragged outside it. The box then grows to
+/// hold the label -- so that the text is inside the selection outline and is
+/// picked up by a marquee, which is what says it belongs to this chart -- and
+/// the body stays exactly where it was, so the plot does not resize under a
+/// drag that was never about the plot.
+///
+/// Resizing the element by its handles scales the body with everything else,
+/// which is the behaviour that was already there and is the one anybody
+/// dragging a corner is expecting.
+class ChartBody {
+  final double x;
+  final double y;
+  final double width;
+  final double height;
+
+  const ChartBody({this.x = 0, this.y = 0, this.width = 1, this.height = 1});
+
+  bool get isWhole => x == 0 && y == 0 && width == 1 && height == 1;
+
+  Rect rectIn(Rect box) => Rect.fromLTWH(
+        box.left + x * box.width,
+        box.top + y * box.height,
+        width * box.width,
+        height * box.height,
+      );
+
+  /// fitting is the body that puts [want] inside [box], for when the box has
+  /// just grown and the chart must not move.
+  static ChartBody fitting(Rect want, Rect box) => box.width <= 0 ||
+          box.height <= 0
+      ? const ChartBody()
+      : ChartBody(
+          x: (want.left - box.left) / box.width,
+          y: (want.top - box.top) / box.height,
+          width: want.width / box.width,
+          height: want.height / box.height,
+        );
+
+  Map<String, dynamic> toJson() => {"x": x, "y": y, "w": width, "h": height};
+
+  factory ChartBody.fromJson(Map<String, dynamic> json) => ChartBody(
+        x: jsonDouble(json["x"], 0),
+        y: jsonDouble(json["y"], 0),
+        width: jsonDouble(json["w"], 1),
+        height: jsonDouble(json["h"], 1),
+      );
+}
+
 /// defaultTitlePlacement and defaultDescriptionPlacement are where a label
 /// goes the first time somebody takes control of it.
 ///
@@ -372,6 +423,9 @@ class ChartElement extends CanvasElement {
   /// they have been moved, where. See [ChartLabel].
   final ChartLabel titleBox;
   final ChartLabel descriptionBox;
+
+  /// body is where the chart itself is drawn. See [ChartBody].
+  final ChartBody body;
 
   final String xAxisLabel;
   final String yAxisLabel;
@@ -425,6 +479,7 @@ class ChartElement extends CanvasElement {
     this.description = "",
     this.titleBox = const ChartLabel(),
     this.descriptionBox = const ChartLabel(height: 0.1),
+    this.body = const ChartBody(),
     this.xAxisLabel = "",
     this.yAxisLabel = "",
     this.showGrid = true,
@@ -458,6 +513,7 @@ class ChartElement extends CanvasElement {
     String? description,
     ChartLabel? titleBox,
     ChartLabel? descriptionBox,
+    ChartBody? body,
     String? xAxisLabel,
     String? yAxisLabel,
     bool? showGrid,
@@ -484,6 +540,7 @@ class ChartElement extends CanvasElement {
           description: description,
           titleBox: titleBox,
           descriptionBox: descriptionBox,
+          body: body,
           xAxisLabel: xAxisLabel,
           yAxisLabel: yAxisLabel,
           showGrid: showGrid,
@@ -514,6 +571,7 @@ class ChartElement extends CanvasElement {
     String? description,
     ChartLabel? titleBox,
     ChartLabel? descriptionBox,
+    ChartBody? body,
     String? xAxisLabel,
     String? yAxisLabel,
     bool? showGrid,
@@ -540,6 +598,7 @@ class ChartElement extends CanvasElement {
           description: description ?? this.description,
           titleBox: titleBox ?? this.titleBox,
           descriptionBox: descriptionBox ?? this.descriptionBox,
+          body: body ?? this.body,
           xAxisLabel: xAxisLabel ?? this.xAxisLabel,
           yAxisLabel: yAxisLabel ?? this.yAxisLabel,
           showGrid: showGrid ?? this.showGrid,
@@ -568,6 +627,7 @@ class ChartElement extends CanvasElement {
         if (titleBox.toJson().isNotEmpty) "titleBox": titleBox.toJson(),
         if (descriptionBox.toJson().isNotEmpty)
           "descBox": descriptionBox.toJson(),
+        if (!body.isWhole) "body": body.toJson(),
         if (xAxisLabel.isNotEmpty) "xlabel": xAxisLabel,
         if (yAxisLabel.isNotEmpty) "ylabel": yAxisLabel,
         "grid": showGrid,
@@ -598,6 +658,7 @@ class ChartElement extends CanvasElement {
               const ChartLabel()),
           descriptionBox: jsonSpec(json["descBox"], ChartLabel.fromJson,
               const ChartLabel(height: 0.1)),
+          body: jsonSpec(json["body"], ChartBody.fromJson, const ChartBody()),
           xAxisLabel: jsonString(json["xlabel"], ""),
           yAxisLabel: jsonString(json["ylabel"], ""),
           showGrid: jsonBool(json["grid"], true),

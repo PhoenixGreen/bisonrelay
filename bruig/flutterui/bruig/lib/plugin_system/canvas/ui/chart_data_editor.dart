@@ -48,26 +48,40 @@ class ChartDataEditor extends StatefulWidget {
 }
 
 class _ChartDataEditorState extends State<ChartDataEditor> {
-  bool _grid = false;
-  double _height = 132;
+  /// _rememberedGrid and _rememberedHeight are static, and that is the fix
+  /// rather than an optimisation.
+  ///
+  /// This editor is rebuilt from scratch whenever the settings panel is --
+  /// clicking away from the chart and back, or opening the section again --
+  /// and a fresh State starts at the default and reads the stored value
+  /// asynchronously. So a table dragged taller went back to its default height
+  /// every time it was returned to, for as long as it took a preference to
+  /// come back off disk. Held in memory for the session, it does not.
+  static bool? _rememberedGrid;
+  static double? _rememberedHeight;
+
+  late bool _grid = _rememberedGrid ?? false;
+  late double _height = _rememberedHeight ?? 132;
 
   ChartData get data => widget.data;
 
   @override
   void initState() {
     super.initState();
-    _restore();
+    if (_rememberedHeight == null || _rememberedGrid == null) _restore();
   }
 
   Future<void> _restore() async {
     var grid = await StorageManager.readData(_layoutKey);
     var height = await StorageManager.readData(_heightKey);
+    if (grid is bool) _rememberedGrid = grid;
+    if (height is num) {
+      _rememberedHeight = height.toDouble().clamp(_minHeight, _maxHeight);
+    }
     if (!mounted) return;
     setState(() {
-      if (grid is bool) _grid = grid;
-      if (height is num) {
-        _height = height.toDouble().clamp(_minHeight, _maxHeight);
-      }
+      _grid = _rememberedGrid ?? _grid;
+      _height = _rememberedHeight ?? _height;
     });
   }
 
@@ -170,6 +184,7 @@ class _ChartDataEditorState extends State<ChartDataEditor> {
             active: _grid,
             onPressed: () {
               setState(() => _grid = !_grid);
+              _rememberedGrid = _grid;
               StorageManager.saveData(_layoutKey, _grid);
             },
           ),
@@ -190,6 +205,10 @@ class _ChartDataEditorState extends State<ChartDataEditor> {
         ]),
         body,
         _grip(theme),
+        // Clear of the table. The series rows are about the columns above
+        // them, not another row of them, and butted up against the grid they
+        // read as one more line of it.
+        const SizedBox(height: 8),
         // Under the table, because a series is a column of it: what it is
         // called, what colour it is and how it is drawn all belong beside the
         // numbers they describe rather than in a section of their own three
@@ -260,9 +279,17 @@ class _ChartDataEditorState extends State<ChartDataEditor> {
         cursor: SystemMouseCursors.resizeRow,
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
-          onVerticalDragUpdate: (d) => setState(() =>
-              _height = (_height + d.delta.dy).clamp(_minHeight, _maxHeight)),
+          onVerticalDragUpdate: (d) => setState(() {
+            _height = (_height + d.delta.dy).clamp(_minHeight, _maxHeight);
+            // Remembered as it moves rather than only when the drag ends. A
+            // drag that the surrounding list wins ends as a cancel, and a
+            // height saved only on a clean end was a height that sometimes
+            // was not saved at all.
+            _rememberedHeight = _height;
+          }),
           onVerticalDragEnd: (_) => StorageManager.saveData(_heightKey, _height),
+          onVerticalDragCancel: () =>
+              StorageManager.saveData(_heightKey, _height),
           child: SizedBox(
             height: 11,
             child: Center(

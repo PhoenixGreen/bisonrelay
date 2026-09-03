@@ -666,6 +666,39 @@ void main() {
       expect(moved.top, closeTo(box.top - 90 / scale, 4));
     });
 
+    testWidgets("growing the box does not resize the chart itself",
+        (tester) async {
+      // The box grows so the words are inside the selection outline. The plot
+      // must not grow with it: dragging a title off the corner made the bars
+      // taller, which is a resize nobody asked for from a drag that was about
+      // the words.
+      var (controller, chart) = build();
+      addTearDown(controller.dispose);
+      controller.selectOnly(chart.id);
+      var stage = await pump(tester, controller);
+
+      var box = chart.titleBox.rectIn(
+          Rect.fromLTWH(0, 0, chart.width, chart.height));
+      var scale = stage.pageRect.width / chart.width;
+      var before = chart.body
+          .rectIn(Rect.fromLTWH(chart.x, chart.y, chart.width, chart.height));
+
+      await tester.dragFrom(
+          stage.pageRect.topLeft + box.center * scale, const Offset(-120, -90));
+      await tester.pumpAndSettle();
+
+      var after =
+          controller.document.elements.whereType<ChartElement>().single;
+      var body = after.body
+          .rectIn(Rect.fromLTWH(after.x, after.y, after.width, after.height));
+
+      expect(after.width, greaterThan(chart.width), reason: "the box grew");
+      expect(body.left, closeTo(before.left, 0.5),
+          reason: "and the chart did not move");
+      expect(body.width, closeTo(before.width, 0.5));
+      expect(body.height, closeTo(before.height, 0.5));
+    });
+
     testWidgets("a title the chart is placing is not draggable",
         (tester) async {
       // There is no box to take hold of: it is wherever the title happens to

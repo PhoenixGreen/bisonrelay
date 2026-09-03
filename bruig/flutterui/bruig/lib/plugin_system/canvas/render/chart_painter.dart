@@ -25,19 +25,24 @@ void paintChart(ui.Canvas canvas, Rect rect, ChartElement e) {
   if (rect.width <= 8 || rect.height <= 8) return;
   var data = e.data;
   if (data.series.isEmpty) {
-    _placeholder(canvas, rect, e);
+    _placeholder(canvas, e.body.rectIn(rect), e);
     return;
   }
 
-  var area = rect;
+  // Everything but a placed label is drawn in the body rather than in the
+  // whole box. They are the same rectangle until a label has been dragged
+  // outside the element, at which point the box grew to hold the label and the
+  // body kept the plot where it was. See ChartBody.
+  var body = e.body.rectIn(rect);
+  var area = body;
 
   // The two labels, each either laid out by the chart or sitting where it was
   // put. A placed label is drawn last, over the plot, because a label somebody
   // has dragged onto the plot was dragged there on purpose -- and because
   // taking room away from the plot for a label that is no longer above it
   // would leave a band of nothing where it used to be.
-  area = _flowLabel(canvas, area, rect, e.title, e.titleBox, e.titleSpec);
-  area = _flowLabel(canvas, area, rect, e.description, e.descriptionBox,
+  area = _flowLabel(canvas, area, body, e.title, e.titleBox, e.titleSpec);
+  area = _flowLabel(canvas, area, body, e.description, e.descriptionBox,
       descriptionSpec(e));
 
   // Not "and more than one series". A one-series chart with the legend turned
@@ -72,9 +77,18 @@ TextSpec descriptionSpec(ChartElement e) => e.labelSpec.copyWith(
 Rect _flowLabel(ui.Canvas canvas, Rect area, Rect rect, String text,
     ChartLabel box, TextSpec spec) {
   if (!box.show || text.isEmpty || box.placed) return area;
+  // Against the top of what is left, always.
+  //
+  // The box handed to paintTextInBox is the whole remaining area, and a
+  // TextSpec is vertically centred unless it says otherwise -- so the title
+  // was drawn down the middle of the plot while the description, which did
+  // say otherwise, sat at the top above it. A title under its own description,
+  // over the bars.
   var h = paintTextInBox(
-      canvas, text, spec, Rect.fromLTWH(area.left, area.top, area.width,
-          area.height),
+      canvas,
+      text,
+      spec.copyWith(verticalAlign: VerticalAlignSpec.top),
+      Rect.fromLTWH(area.left, area.top, area.width, area.height),
       clip: true);
   return Rect.fromLTRB(
       area.left, area.top + h + rect.height * 0.02, area.right, area.bottom);

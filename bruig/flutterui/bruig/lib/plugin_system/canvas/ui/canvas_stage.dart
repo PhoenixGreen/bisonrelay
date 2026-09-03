@@ -1365,6 +1365,11 @@ class CanvasStageState extends State<CanvasStage> {
     return e.copyWith(
       titleBox: refit(e.titleBox),
       descriptionBox: refit(e.descriptionBox),
+      // The chart itself stays exactly where it is. Growing the box grew the
+      // plot with it, so dragging a title off the corner made the bars
+      // taller -- a resize nobody asked for, from a drag that was about the
+      // words.
+      body: ChartBody.fitting(e.body.rectIn(bounds), wanted),
     ).withBase(
       x: e.x + (wanted.left - bounds.left),
       y: e.y + (wanted.top - bounds.top),

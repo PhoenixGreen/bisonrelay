@@ -1428,6 +1428,52 @@ void main() {
 }
 
 
+/// _chartPixels is a chart rendered to raw bytes.
+Future<Uint8List> _chartPixels(ChartElement e,
+    {int width = 400, int height = 300}) async {
+  var recorder = ui.PictureRecorder();
+  paintChart(ui.Canvas(recorder),
+      Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()), e);
+  var image = await recorder.endRecording().toImage(width, height);
+  try {
+    return (await image.toByteData(format: ui.ImageByteFormat.rawStraightRgba))!
+        .buffer
+        .asUint8List();
+  } finally {
+    image.dispose();
+  }
+}
+
+/// _rowsOf is which rows of a rendered chart carry a given colour.
+///
+/// Colour rather than "any text", because taking a label away rearranges
+/// everything under it -- the plot grows into the space -- so a difference
+/// between two renders is mostly the axis labels having moved. Giving the
+/// label a colour of its own asks where *it* is and nothing else.
+Future<List<int>> _rowsOf(ChartElement e, ui.Color colour,
+    {int width = 400, int height = 300}) async {
+  var pixels = await _chartPixels(e, width: width, height: height);
+  var want = [
+    (colour.r * 255).round(),
+    (colour.g * 255).round(),
+    (colour.b * 255).round(),
+  ];
+  var rows = <int>[];
+  for (var y = 0; y < height; y++) {
+    for (var x = 0; x < width; x++) {
+      var i = (y * width + x) * 4;
+      if (pixels[i + 3] > 200 &&
+          (pixels[i] - want[0]).abs() < 24 &&
+          (pixels[i + 1] - want[1]).abs() < 24 &&
+          (pixels[i + 2] - want[2]).abs() < 24) {
+        rows.add(y);
+        break;
+      }
+    }
+  }
+  return rows;
+}
+
 /// _chartColours is every fully-opaque colour a chart draws, which is how a
 /// painter test asks "is the second series there at all".
 Future<Set<String>> _chartColours(ChartElement e,
@@ -1560,10 +1606,70 @@ void _chartTests() {
         data: ChartData.parse("Cat\tA\nx\t10\ny\t6"),
         titleSpec: const TextSpec(fontSize: 24, weight: 700),
       );
-      var shown = await _chartColours(titled);
-      var hidden = await _chartColours(
+      var shown = await _chartPixels(titled);
+      var hidden = await _chartPixels(
           titled.copyWith(titleBox: const ChartLabel(show: false)));
-      expect(shown, isNot(hidden));
+      expect(shown, isNot(orderedEquals(hidden)));
+    });
+
+    test("a title the chart places sits at the top, not down the middle",
+        () async {
+      // The box handed to the text painter is the whole remaining area, and a
+      // TextSpec is vertically centred unless it says otherwise -- so the
+      // title was drawn across the middle of the plot, over the bars, while
+      // the description sat at the top above it.
+      const red = ui.Color(0xFFFF0000);
+      var e = ChartElement(
+        const ElementBase(id: "c", width: 400, height: 300),
+        title: "Messages",
+        showGrid: false,
+        showAxes: false,
+        data: ChartData.parse("Cat\tA\nx\t10\ny\t6"),
+        titleSpec: const TextSpec(fontSize: 24, weight: 700, color: red),
+        labelSpec: const TextSpec(fontSize: 11),
+      );
+
+      var rows = await _rowsOf(e, red);
+      expect(rows, isNotEmpty, reason: "the title is drawn at all");
+      expect(rows.last, lessThan(60),
+          reason: "every row of it is in the top fifth, not over the bars");
+    });
+
+    test("a description sits under the title, not above it", () async {
+      const red = ui.Color(0xFFFF0000);
+      const green = ui.Color(0xFF00FF00);
+      var e = ChartElement(
+        const ElementBase(id: "c", width: 400, height: 300),
+        title: "Messages",
+        description: "By week",
+        showGrid: false,
+        showAxes: false,
+        data: ChartData.parse("Cat\tA\nx\t10\ny\t6"),
+        titleSpec: const TextSpec(fontSize: 24, weight: 700, color: red),
+        labelSpec: const TextSpec(fontSize: 11, color: green),
+      );
+
+      var titleRows = await _rowsOf(e, red);
+      var descriptionRows = await _rowsOf(e, green);
+      expect(titleRows, isNotEmpty);
+      expect(descriptionRows, isNotEmpty);
+      expect(titleRows.last, lessThan(descriptionRows.first),
+          reason: "the title finishes before the description begins");
+    });
+
+    test("the body is the whole box until a label leaves it", () {
+      expect(const ChartBody().isWhole, isTrue);
+
+      // What the stage does when the box grows: the chart keeps the rectangle
+      // it already had, so a drag about the words does not resize the plot.
+      const was = Rect.fromLTWH(100, 100, 400, 300);
+      const grown = Rect.fromLTWH(60, 80, 460, 340);
+      var body = ChartBody.fitting(was, grown);
+
+      expect(body.rectIn(grown).left, closeTo(was.left, 0.001));
+      expect(body.rectIn(grown).top, closeTo(was.top, 0.001));
+      expect(body.rectIn(grown).width, closeTo(was.width, 0.001));
+      expect(body.rectIn(grown).height, closeTo(was.height, 0.001));
     });
 
     test("a placed label sits where it was put and takes no room", () {

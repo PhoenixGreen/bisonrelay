@@ -2647,6 +2647,16 @@ void main() {
       await tester.pumpAndSettle();
     }
 
+    /// grid switches to the table, if it is not already showing one.
+    ///
+    /// Which view the editor is in is remembered for the session, deliberately
+    /// -- somebody who works in the grid works in the grid, whatever chart
+    /// they open next -- so a test cannot assume it starts in the text one.
+    Future<void> grid(WidgetTester tester) async {
+      var toTable = find.byTooltip("Edit the numbers in a table");
+      if (toTable.evaluate().isNotEmpty) await press(tester, toTable);
+    }
+
     testWidgets("the numbers are a section of their own", (tester) async {
       // They are the longest thing in a chart's settings and the least often
       // changed once they are right, so they were pushing everything else off
@@ -2661,10 +2671,11 @@ void main() {
       // in the middle of forty, which is the other thing people do all day.
       var controller = await panel(tester);
       expect(find.byType(ChartDataEditor), findsOneWidget);
+      expect(find.byTooltip("Add a row"), findsOneWidget,
+          reason: "rows and series are added the same way in either view");
 
-      await press(tester, find.byTooltip("Edit the numbers in a table"));
+      await grid(tester);
       expect(find.byTooltip("Edit the numbers as pasted text"), findsOneWidget);
-      expect(find.byTooltip("Add a row"), findsOneWidget);
 
       // The first row's category, then its value.
       await tester.enterText(
@@ -2678,7 +2689,7 @@ void main() {
 
     testWidgets("a row can be added and taken away", (tester) async {
       var controller = await panel(tester);
-      await press(tester, find.byTooltip("Edit the numbers in a table"));
+      await grid(tester);
 
       await press(tester, find.byTooltip("Add a row"));
       expect(dataIn(controller).categories.length, 3);

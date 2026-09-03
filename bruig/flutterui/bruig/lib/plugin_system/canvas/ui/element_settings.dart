@@ -14,6 +14,7 @@ import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/chart_data_editor.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:bruig/plugin_system/canvas/ui/recent_pictures.dart';
 import 'package:bruig/plugin_system/canvas/ui/image_picking.dart';
 import 'package:bruig/plugin_system/canvas/ui/procedural_settings.dart';
@@ -61,7 +62,7 @@ List<Widget> elementSettings(
       LineElement e => _lineSettings(controller, e, write, begin, commit),
       ImageElement e =>
         _imageSettings(context, controller, e, write, begin, commit),
-      ChartElement e => _chartSettings(e, write, begin, commit),
+      ChartElement e => _chartSettings(context, e, write, begin, commit),
       TableElement e => _tableSettings(e, write, begin, commit),
       ButtonElement e => _buttonSettings(controller, e, write, begin, commit),
       BackgroundElement e => [
@@ -1558,8 +1559,30 @@ List<Widget> _imageSettings(BuildContext context, CanvasController controller,
   ];
 }
 
-List<Widget> _chartSettings(ChartElement e, _Write write, VoidCallback begin,
-    VoidCallback commit) {
+/// _boxed draws a rule around a section and leaves a gap after it.
+///
+/// For the one section that is a panel rather than a row of controls. The rest
+/// of these settings are captioned clusters that read as a list; a table with
+/// its own scrollbars sitting in the middle of that list needs an edge, or
+/// what follows it looks like part of it.
+Widget _boxed(BuildContext context, Widget child) {
+  var theme = ThemeNotifier.of(context);
+  return Padding(
+    padding: const EdgeInsets.only(bottom: 14, top: 2),
+    child: Container(
+      padding: const EdgeInsets.fromLTRB(7, 2, 7, 8),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: theme.colors.outlineVariant),
+        color: theme.colors.surfaceContainerHighest.withValues(alpha: 0.25),
+      ),
+      child: child,
+    ),
+  );
+}
+
+List<Widget> _chartSettings(BuildContext context, ChartElement e, _Write write,
+    VoidCallback begin, VoidCallback commit) {
   void now(ChartElement next) {
     begin();
     write(next);
@@ -1682,21 +1705,28 @@ List<Widget> _chartSettings(ChartElement e, _Write write, VoidCallback begin,
     // Its own section, opened and closed. The numbers are the longest thing in
     // these settings and the least often changed once they are right, so they
     // were pushing everything else off the bottom of the panel.
-    CanvasExpander(
-      label: "Data",
-      trailing: "${e.data.categories.length} rows, "
-          "${e.data.series.length} series",
-      initiallyOpen: true,
-      children: [
-        ChartDataEditor(
-          data: e.data,
-          onChanged: (data) {
-            begin();
-            writeData(data);
-          },
-          onCommit: commit,
-        ),
-      ],
+    // Boxed, and with room after it. Open, it is a table and three rows of
+    // series settings in the middle of a column of ordinary controls, and
+    // without an edge of its own it ran straight into the axis settings under
+    // it -- so the first thing under the table looked like part of the table.
+    _boxed(
+      context,
+      CanvasExpander(
+        label: "Data",
+        trailing: "${e.data.categories.length} rows, "
+            "${e.data.series.length} series",
+        initiallyOpen: true,
+        children: [
+          ChartDataEditor(
+            data: e.data,
+            onChanged: (data) {
+              begin();
+              writeData(data);
+            },
+            onCommit: commit,
+          ),
+        ],
+      ),
     ),
     CanvasControlGroup(label: "Axes", children: [
       CanvasTextField(
