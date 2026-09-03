@@ -704,7 +704,9 @@ void _paintImage(ui.Canvas canvas, Rect bounds, ImageElement e,
   // and everything sitting under it. Inside a layer there is nothing under the
   // picture but the picture.
   // Behind the picture, so the band only shows where the picture is not.
-  if (e.outline.on && e.outline.style != OutlineStyle.inside) {
+  if (e.outline.on &&
+      (e.outline.style == OutlineStyle.outside ||
+          e.outline.style == OutlineStyle.glow)) {
     _paintOutline(canvas, image, inner, e, outward: true);
   }
 
@@ -737,8 +739,9 @@ void _paintImage(ui.Canvas canvas, Rect bounds, ImageElement e,
   // Over the picture, and after the overlay, because an inside band is meant
   // to be the outermost thing there is -- an overlay painted on top of it
   // would tint the one part of the picture that is not picture at all.
-  if (e.outline.on && e.outline.style != OutlineStyle.outside &&
-      e.outline.style != OutlineStyle.glow) {
+  if (e.outline.on &&
+      (e.outline.style == OutlineStyle.inside ||
+          e.outline.style == OutlineStyle.centred)) {
     _paintOutline(canvas, image, inner, e, outward: false);
   }
   canvas.restore();
@@ -751,12 +754,14 @@ double _outlineRoom(ImageElement e) {
     case OutlineStyle.inside:
       return 0;
     case OutlineStyle.centred:
-      return e.outline.width / 2;
+      return e.outline.width / 2 * 1.3;
     case OutlineStyle.glow:
-      // Blur reaches past the spread that fed it.
-      return e.outline.width * 1.5;
+      // Blur reaches well past the spread that fed it.
+      return e.outline.width * 2;
     case OutlineStyle.outside:
-      return e.outline.width * (1 + e.outline.feather);
+      // The fade happens within the width, but a blur's tail runs a little
+      // past where it is meant to stop.
+      return e.outline.width * 1.3;
   }
 }
 
@@ -768,7 +773,16 @@ double _outlineRoom(ImageElement e) {
 /// settings and so recomputed every time a colour was nudged, and it would be
 /// drawn at the picture's resolution rather than the canvas's, so a small
 /// photograph blown up to fill a poster would get a chunky pixelated line
-/// around it. A dilate on a layer is neither -- and it costs one filter.
+/// around it. A dilate on a layer is neither.
+///
+/// An outward band is drawn in two passes and it has to be. One blurred pass
+/// on its own fades at *both* of its edges -- and the inner edge is not
+/// hidden behind the picture, because the picture's own edge is soft after a
+/// background comes out. What showed was a bright core with a fade either
+/// side of it and a dim ring where the subject's rim lay over the band, which
+/// is three lines' worth of edge for something asked to draw one. So the fade
+/// is a pass of its own and a solid band is laid over the inside of it, which
+/// leaves exactly one edge to look at: the outer one.
 void _paintOutline(ui.Canvas canvas, ui.Image image, Rect inner,
     ImageElement e, {required bool outward}) {
   var outline = e.outline;
@@ -779,59 +793,95 @@ void _paintOutline(ui.Canvas canvas, ui.Image image, Rect inner,
       : outline.width;
   if (width <= 0) return;
 
-  // A glow is mostly blur with a little spread under it, so that turning the
-  // feather down still leaves something that reads as a glow rather than as a
-  // hard line by another name.
-  // Feathering pulls the spread in as well as blurring it, so that the fade
-  // happens *within* the width that was asked for rather than being added to
-  // it. Blurring alone leaves a fully solid band with a soft skirt round the
-  // outside, which reads as a thicker outline rather than as a softer one.
-  var spread = outline.style == OutlineStyle.glow
-      ? width * 0.35
-      : width * (1 - outline.feather * 0.5);
-  var blur = outline.style == OutlineStyle.glow
-      ? width * (0.5 + outline.feather * 0.8)
-      : width * outline.feather;
+  void silhouette(Color colour, ui.ImageFilter? filter) {
+    canvas.saveLayer(
+        inner, filter == null ? Paint() : (Paint()..imageFilter = filter));
+    _drawImage(canvas, image, inner, e.fit, crop: e.crop, silhouette: colour);
+    canvas.restore();
+  }
 
   if (outward) {
-    var grow = ui.ImageFilter.dilate(radiusX: spread, radiusY: spread);
-    canvas.saveLayer(
-        inner,
-        Paint()
-          ..imageFilter = blur > 0
-              ? ui.ImageFilter.compose(
-                  outer: ui.ImageFilter.blur(
-                      sigmaX: blur / 2,
-                      sigmaY: blur / 2,
-                      tileMode: TileMode.decal),
-                  inner: grow)
-              : grow);
-    _drawImage(canvas, image, inner, e.fit,
-        crop: e.crop, silhouette: outline.color);
-    canvas.restore();
+    // A glow is all fade and no band -- that is what makes it a glow rather
+    // than a thick line -- so it skips the solid pass entirely.
+    var glow = outline.style == OutlineStyle.glow;
+    // Never all fade, however far the feather is pushed. The band has to
+    // meet the subject at full strength or it is no longer tracing anything
+    // -- feathering it away to nothing at both ends is the fault this is
+    // fixing, not a setting worth offering.
+    var solid = glow ? 0.0 : width * (1 - outline.feather * 0.8);
+    var fade = width - solid;
+
+    if (glow || fade > 0) {
+      // Dilate to the middle of where the fade should be and blur across it,
+      // so the band still reaches the width that was asked for rather than
+      // the feather quietly making the outline bigger.
+      var spread = glow ? width * 0.35 : solid + fade / 2;
+      var sigma = glow ? width * (0.25 + outline.feather * 0.4) : fade / 4;
+      silhouette(
+          outline.color,
+          ui.ImageFilter.compose(
+            outer: ui.ImageFilter.blur(
+                sigmaX: sigma, sigmaY: sigma, tileMode: TileMode.decal),
+            inner: ui.ImageFilter.dilate(radiusX: spread, radiusY: spread),
+          ));
+    }
+
+    // The solid part, over the inside of the fade. Drawn even when there is
+    // none to speak of -- a glow has none at all -- because its other job is
+    // to back the subject's own soft rim with the outline's colour. Without
+    // it the rim lies over the fade at half strength and shows as a second,
+    // dimmer line hugging the first.
+    silhouette(
+        outline.color,
+        solid > 0
+            ? ui.ImageFilter.dilate(radiusX: solid, radiusY: solid)
+            : null);
     return;
   }
 
-  // Inwards, the band is the shape with a shrunken copy of itself punched out
-  // of it. Drawn over the picture, so it hides the picture's own edge -- which
-  // is the point: an inside outline is for a subject whose boundary is messy.
-  canvas.saveLayer(inner, Paint());
-  _drawImage(canvas, image, inner, e.fit,
-      crop: e.crop, silhouette: outline.color);
+  // A band that touches the picture is drawn *over* it, as one ring, rather
+  // than as an outward half behind and an inward half in front. Two halves
+  // meeting at the edge leave the subject's own soft rim sandwiched between
+  // them, and neither half can be more than half-opaque where that rim is --
+  // so the join came out dimmer than either side of it and read as two lines
+  // with a gap. One ring has no join.
+  //
+  // The ring is the silhouette grown by [grow] with a copy of itself shrunk
+  // by [shrink] punched out of the middle.
+  var grow = outline.style == OutlineStyle.centred ? width : 0.0;
+  var shrink = width;
+  var blur = width * outline.feather / 2;
 
-  var shrink = ui.ImageFilter.erode(radiusX: width, radiusY: width);
+  canvas.saveLayer(inner, Paint());
+
+  // Feathering fades the edge that faces away from the subject, whichever
+  // that is: outwards for a centred band, inwards for one wholly inside. The
+  // edge being traced stays crisp either way -- an outline that blurs the
+  // very line it is drawing is no longer drawing it.
+  var fill = <ui.ImageFilter>[
+    if (grow > 0) ui.ImageFilter.dilate(radiusX: grow, radiusY: grow),
+    if (grow > 0 && blur > 0)
+      ui.ImageFilter.blur(sigmaX: blur, sigmaY: blur, tileMode: TileMode.decal),
+  ];
+  silhouette(
+      outline.color,
+      fill.isEmpty
+          ? null
+          : fill.length == 1
+              ? fill.first
+              : ui.ImageFilter.compose(outer: fill.last, inner: fill.first));
+
+  var punch = ui.ImageFilter.erode(radiusX: shrink, radiusY: shrink);
   canvas.saveLayer(
       inner,
       Paint()
         ..blendMode = BlendMode.dstOut
-        ..imageFilter = blur > 0
+        ..imageFilter = grow == 0 && blur > 0
             ? ui.ImageFilter.compose(
                 outer: ui.ImageFilter.blur(
-                    sigmaX: blur / 2,
-                    sigmaY: blur / 2,
-                    tileMode: TileMode.decal),
-                inner: shrink)
-            : shrink);
+                    sigmaX: blur, sigmaY: blur, tileMode: TileMode.decal),
+                inner: punch)
+            : punch);
   _drawImage(canvas, image, inner, e.fit,
       crop: e.crop, silhouette: const Color(0xFF000000));
   canvas.restore();

@@ -78,6 +78,45 @@ Future<ui.Image> _cutOut(int size, ui.Color colour) {
   return done.future;
 }
 
+/// _softBlob is a dark disc with a soft alpha ramp round it, which is what a
+/// cut-out actually looks like: a background taken out of a photograph leaves
+/// a rim of half-transparent pixels, and that rim is where an outline drawn in
+/// two overlapping pieces gives itself away.
+Future<ui.Image> _softBlob(int size) {
+  var pixels = Uint8List(size * size * 4);
+  var centre = size / 2;
+  for (var y = 0; y < size; y++) {
+    for (var x = 0; x < size; x++) {
+      var away = math.sqrt(
+          math.pow(x - centre, 2).toDouble() + math.pow(y - centre, 2));
+      var alpha = ((size * 0.25 - away) / 4).clamp(0.0, 1.0);
+      var i = (y * size + x) * 4;
+      pixels[i] = (40 * alpha).round();
+      pixels[i + 3] = (255 * alpha).round();
+    }
+  }
+  var done = Completer<ui.Image>();
+  ui.decodeImageFromPixels(
+      pixels, size, size, ui.PixelFormat.rgba8888, done.complete);
+  return done.future;
+}
+
+/// _rowOf reads one channel straight across the middle of a rendered document.
+Future<List<int>> _rowOf(CanvasDocument document, CanvasImageSource images,
+    int channel, int y) async {
+  var image = await renderFrame(document, images: images);
+  try {
+    var raw = await image.toByteData(format: ui.ImageByteFormat.rawStraightRgba);
+    var pixels = raw!.buffer.asUint8List();
+    return [
+      for (var x = 0; x < image.width; x++)
+        pixels[(y * image.width + x) * 4 + channel]
+    ];
+  } finally {
+    image.dispose();
+  }
+}
+
 /// _renderWith is _pixelAt for a document with a picture in it.
 Future<List<int>> _renderWith(
     CanvasDocument document, CanvasImageSource images, int x, int y) async {
@@ -1260,6 +1299,87 @@ void main() {
             returnsNormally,
             reason: style.name);
       }
+    });
+  });
+
+  group("an outline is one line", () {
+    // The reported fault, and the reason the band is not drawn as an outward
+    // half behind the picture and an inward half in front of it. Two halves
+    // meet at the subject's own soft rim, neither can be more than half
+    // opaque where that rim is, and the join comes out dimmer than either
+    // side -- which is a second line with a gap in front of it.
+    late ui.Image picture;
+    setUp(() async {
+      picture = await _softBlob(200);
+    });
+    tearDown(() => picture.dispose());
+
+    CanvasDocument documentWith(OutlineStyle style, double feather) =>
+        CanvasDocument(
+          size: const CanvasSize(width: 200, ratio: CanvasRatio.square),
+          elements: [
+            ImageElement(
+              const ElementBase(id: "i", x: 0, y: 0, width: 200, height: 200),
+              assetId: "abcdefghij123456",
+              fit: ImageFit.contain,
+              outline: ImageOutline(
+                  width: 10,
+                  color: const ui.Color(0xFFFFFFFF),
+                  style: style,
+                  feather: feather),
+            ),
+          ],
+        );
+
+    for (var style in OutlineStyle.values) {
+      for (var feather in [0.0, 0.6]) {
+        test("${style.name} at feather $feather rises once and does not dip",
+            () async {
+          // Green, because the outline is white on a dark canvas over a dark
+          // subject, so green is the outline and nothing else.
+          var row = await _rowOf(
+              documentWith(style, feather), _Pictures(picture), 1, 100);
+
+          // Walk in from the left edge as far as the band's brightest point.
+          // Everything up to there is the band arriving, and it must arrive
+          // once: any fall on the way in is a dim ring, which is the fault.
+          // A glow never reaches full, so the peak is the brightest point
+          // rather than a fixed level.
+          var left = row.sublist(0, row.length ~/ 2);
+          var brightest = left.reduce(math.max);
+          expect(brightest, greaterThan(100), reason: "the band is drawn");
+          var peak = left.indexOf(brightest);
+
+          for (var x = 1; x <= peak; x++) {
+            expect(row[x], greaterThanOrEqualTo(row[x - 1] - 2),
+                reason: "dips at $x, from ${row[x - 1]} to ${row[x]}");
+          }
+        });
+      }
+    }
+
+    test("feathering fades the outward side and leaves the traced edge alone",
+        () async {
+      // An outline that blurs the very line it is drawing is no longer
+      // drawing it, so the feather goes on the side facing away from the
+      // subject -- outwards here.
+      var hard = await _rowOf(
+          documentWith(OutlineStyle.outside, 0), _Pictures(picture), 1, 100);
+      var soft = await _rowOf(
+          documentWith(OutlineStyle.outside, 1), _Pictures(picture), 1, 100);
+
+      // The subject's own edge is at 50. Just outside it the band is solid
+      // either way; further out only the hard one still is.
+      // The subject's own edge is at 50, and the band runs out to 40.
+      expect(hard[49], greaterThan(240));
+      expect(hard[42], greaterThan(100));
+
+      var atTheSubject = hard[49] - soft[49];
+      var atTheFarSide = hard[42] - soft[42];
+      expect(atTheFarSide, greaterThan(atTheSubject * 2),
+          reason: "the fade belongs to the outward side, not to both");
+      expect(soft[49], greaterThan(150),
+          reason: "and the band still meets the subject");
     });
   });
 
