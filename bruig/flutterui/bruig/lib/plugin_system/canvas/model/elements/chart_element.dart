@@ -48,6 +48,96 @@ enum ChartType {
   /// useful. A pie of two series is two pies, which this does not draw.
   bool get wantsMultipleSeries =>
       this != pie && this != donut && this != radialBar;
+
+  /// needsMultipleSeries is whether the type is *only* different from plain
+  /// bars once there are two series to group or stack.
+  ///
+  /// Worth naming, because choosing one of these on a one-series chart draws
+  /// exactly what was already there -- which reads as the setting being
+  /// broken rather than as there being nothing to group.
+  bool get needsMultipleSeries => this == groupedBar || this == stackedBar;
+
+  /// usesSmooth is whether curving between the points means anything. Bars
+  /// have nothing to curve, and a scatter is unconnected by definition.
+  bool get usesSmooth => this == line || this == area || this == radar;
+
+  /// isBar and isLinear split the cartesian types by how they are drawn,
+  /// which is what an overlay of two kinds on one pair of axes needs to know.
+  bool get isBar =>
+      this == bar || this == groupedBar || this == stackedBar ||
+      this == horizontalBar;
+  bool get isLinear => this == line || this == area || this == scatter;
+}
+
+/// ChartLabel is a chart's title or description: whether it is shown, and
+/// where.
+///
+/// Placement is optional and off to begin with. A chart lays its own title out
+/// -- stacked at the top, taking the height it needs and giving the rest to
+/// the plot -- which is right until somebody wants the title down the side or
+/// over the corner of the plot, and there is no arrangement of automatic rules
+/// that covers both. So [x] is NaN until the label is moved, and the moment it
+/// is moved it stops taking room from the plot and starts sitting where it was
+/// put.
+class ChartLabel {
+  final bool show;
+
+  /// x, y, width and height are fractions of the element's own box, so a
+  /// title stays where it was put when the chart is resized.
+  final double x;
+  final double y;
+  final double width;
+  final double height;
+
+  const ChartLabel({
+    this.show = true,
+    this.x = double.nan,
+    this.y = 0,
+    this.width = 1,
+    this.height = 0.14,
+  });
+
+  /// placed is whether it has been moved off the chart's own arrangement.
+  bool get placed => !x.isNaN;
+
+  Rect rectIn(Rect box) => Rect.fromLTWH(
+        box.left + x * box.width,
+        box.top + y * box.height,
+        width * box.width,
+        height * box.height,
+      );
+
+  ChartLabel copyWith({
+    bool? show,
+    double? x,
+    double? y,
+    double? width,
+    double? height,
+    bool unplace = false,
+  }) =>
+      ChartLabel(
+        show: show ?? this.show,
+        x: unplace ? double.nan : (x ?? this.x),
+        y: y ?? this.y,
+        width: width ?? this.width,
+        height: height ?? this.height,
+      );
+
+  Map<String, dynamic> toJson() => {
+        if (!show) "off": true,
+        if (placed) "x": x,
+        if (placed) "y": y,
+        if (placed) "w": width,
+        if (placed) "h": height,
+      };
+
+  factory ChartLabel.fromJson(Map<String, dynamic> json) => ChartLabel(
+        show: !jsonBool(json["off"], false),
+        x: jsonDouble(json["x"], double.nan),
+        y: jsonDouble(json["y"], 0),
+        width: jsonDouble(json["w"], 1),
+        height: jsonDouble(json["h"], 0.14),
+      );
 }
 
 /// chartPalette is the default series colours.
@@ -73,21 +163,45 @@ class ChartSeries {
   final Color color;
   final List<double> values;
 
+  /// type draws this series differently from the rest of the chart, so a set
+  /// of bars can have a line over it.
+  ///
+  /// Null means "whatever the chart is", which is what almost every series
+  /// wants and is why this is an override rather than a required field. Only
+  /// meaningful for the types with an x and a y axis: a pie has one ring and
+  /// nothing to overlay on it.
+  final ChartType? type;
+
   const ChartSeries({
     required this.name,
     required this.color,
     required this.values,
+    this.type,
   });
 
-  ChartSeries copyWith({String? name, Color? color, List<double>? values}) =>
+  /// typeIn is how this series is actually drawn on a chart of [chartType].
+  ChartType typeIn(ChartType chartType) => type ?? chartType;
+
+  ChartSeries copyWith({
+    String? name,
+    Color? color,
+    List<double>? values,
+    ChartType? type,
+    bool followChart = false,
+  }) =>
       ChartSeries(
         name: name ?? this.name,
         color: color ?? this.color,
         values: values ?? this.values,
+        type: followChart ? null : (type ?? this.type),
       );
 
-  Map<String, dynamic> toJson() =>
-      {"name": name, "color": colorToJson(color), "values": values};
+  Map<String, dynamic> toJson() => {
+        "name": name,
+        "color": colorToJson(color),
+        "values": values,
+        if (type != null) "type": type!.name,
+      };
 
   factory ChartSeries.fromJson(Map<String, dynamic> json, int index) {
     var raw = json["values"];
@@ -95,6 +209,9 @@ class ChartSeries {
       name: jsonString(json["name"], "Series ${index + 1}"),
       color: colorFromJson(
           json["color"], chartPalette[index % chartPalette.length]),
+      type: json["type"] is String
+          ? ChartType.fromName(json["type"] as String?)
+          : null,
       values: raw is List
           ? [for (var v in raw) v is num ? v.toDouble() : 0.0]
           : const [],
@@ -152,7 +269,11 @@ class ChartData {
   /// first parses as a number. Sniffed rather than declared, for the same
   /// reason -- and it is the right guess almost always, since a header row of
   /// numbers is indistinguishable from data by any means at all.
-  static ChartData parse(String text, {List<Color>? colors}) {
+  /// [keep] is the series this is replacing, if any. Their colours and their
+  /// per-series types are carried across by position, so editing the numbers
+  /// does not throw away the fact that the second series was drawn as a line.
+  static ChartData parse(String text, {List<Color>? colors,
+      List<ChartSeries>? keep}) {
     var rows = splitTable(text);
     if (rows.isEmpty) return const ChartData();
 
@@ -182,7 +303,10 @@ class ChartData {
             name: names[i],
             color: colors != null && i < colors.length
                 ? colors[i]
-                : chartPalette[i % chartPalette.length],
+                : keep != null && i < keep.length
+                    ? keep[i].color
+                    : chartPalette[i % chartPalette.length],
+            type: keep != null && i < keep.length ? keep[i].type : null,
             values: values[i],
           ),
       ],
@@ -217,6 +341,12 @@ class ChartElement extends CanvasElement {
 
   final String title;
   final String description;
+
+  /// titleBox and descriptionBox say whether those two are shown and, once
+  /// they have been moved, where. See [ChartLabel].
+  final ChartLabel titleBox;
+  final ChartLabel descriptionBox;
+
   final String xAxisLabel;
   final String yAxisLabel;
 
@@ -267,6 +397,8 @@ class ChartElement extends CanvasElement {
     this.data = const ChartData(),
     this.title = "",
     this.description = "",
+    this.titleBox = const ChartLabel(),
+    this.descriptionBox = const ChartLabel(height: 0.1),
     this.xAxisLabel = "",
     this.yAxisLabel = "",
     this.showGrid = true,
@@ -298,6 +430,8 @@ class ChartElement extends CanvasElement {
     ChartData? data,
     String? title,
     String? description,
+    ChartLabel? titleBox,
+    ChartLabel? descriptionBox,
     String? xAxisLabel,
     String? yAxisLabel,
     bool? showGrid,
@@ -322,6 +456,8 @@ class ChartElement extends CanvasElement {
           data: data,
           title: title,
           description: description,
+          titleBox: titleBox,
+          descriptionBox: descriptionBox,
           xAxisLabel: xAxisLabel,
           yAxisLabel: yAxisLabel,
           showGrid: showGrid,
@@ -350,6 +486,8 @@ class ChartElement extends CanvasElement {
     ChartData? data,
     String? title,
     String? description,
+    ChartLabel? titleBox,
+    ChartLabel? descriptionBox,
     String? xAxisLabel,
     String? yAxisLabel,
     bool? showGrid,
@@ -374,6 +512,8 @@ class ChartElement extends CanvasElement {
           data: data ?? this.data,
           title: title ?? this.title,
           description: description ?? this.description,
+          titleBox: titleBox ?? this.titleBox,
+          descriptionBox: descriptionBox ?? this.descriptionBox,
           xAxisLabel: xAxisLabel ?? this.xAxisLabel,
           yAxisLabel: yAxisLabel ?? this.yAxisLabel,
           showGrid: showGrid ?? this.showGrid,
@@ -399,6 +539,9 @@ class ChartElement extends CanvasElement {
         "data": data.toJson(),
         if (title.isNotEmpty) "title": title,
         if (description.isNotEmpty) "desc": description,
+        if (titleBox.toJson().isNotEmpty) "titleBox": titleBox.toJson(),
+        if (descriptionBox.toJson().isNotEmpty)
+          "descBox": descriptionBox.toJson(),
         if (xAxisLabel.isNotEmpty) "xlabel": xAxisLabel,
         if (yAxisLabel.isNotEmpty) "ylabel": yAxisLabel,
         "grid": showGrid,
@@ -425,6 +568,10 @@ class ChartElement extends CanvasElement {
           data: jsonSpec(json["data"], ChartData.fromJson, const ChartData()),
           title: jsonString(json["title"], ""),
           description: jsonString(json["desc"], ""),
+          titleBox: jsonSpec(json["titleBox"], ChartLabel.fromJson,
+              const ChartLabel()),
+          descriptionBox: jsonSpec(json["descBox"], ChartLabel.fromJson,
+              const ChartLabel(height: 0.1)),
           xAxisLabel: jsonString(json["xlabel"], ""),
           yAxisLabel: jsonString(json["ylabel"], ""),
           showGrid: jsonBool(json["grid"], true),

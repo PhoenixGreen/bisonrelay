@@ -12,6 +12,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/chart_data_editor.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/recent_pictures.dart';
 import 'package:bruig/plugin_system/canvas/ui/image_picking.dart';
@@ -1558,171 +1559,319 @@ List<Widget> _imageSettings(BuildContext context, CanvasController controller,
 }
 
 List<Widget> _chartSettings(ChartElement e, _Write write, VoidCallback begin,
-        VoidCallback commit) =>
-    [
-      CanvasControlGroup(label: "Chart", children: [
-        CanvasDropdown<ChartType>(
-          label: "Type",
-          value: e.type,
-          width: 132,
-          options: [for (var t in ChartType.values) (t, t.label)],
-          onChanged: (v) {
-            begin();
-            write(e.copyWith(type: v));
-            commit();
-          },
-        ),
+    VoidCallback commit) {
+  void now(ChartElement next) {
+    begin();
+    write(next);
+    commit();
+  }
+
+  void writeData(ChartData data) => write(e.copyWith(data: data));
+
+  /// labelControls is the shared shape of the title's and the description's
+  /// settings: the words, a switch, and -- once it has been moved off the
+  /// chart's own arrangement -- where it sits.
+  ///
+  /// Placing is a button rather than a mode. A chart lays its title out at the
+  /// top and gives the rest to the plot, which is right until somebody wants
+  /// it somewhere else, and there is no set of automatic rules that covers
+  /// both. So the label is either the chart's to place or the reader's, and
+  /// the button says which.
+  List<Widget> labelControls(
+    String name,
+    String text,
+    ChartLabel box,
+    ChartElement Function(String) withText,
+    ChartElement Function(ChartLabel) withBox,
+  ) =>
+      [
         CanvasTextField(
-          label: "Title",
-          value: e.title,
+          label: name,
+          value: text,
           width: 160,
-          onChanged: (v) => write(e.copyWith(title: v)),
-          onCommit: commit,
-        ),
-        CanvasTextField(
-          label: "Description",
-          value: e.description,
-          width: 160,
-          onChanged: (v) => write(e.copyWith(description: v)),
-          onCommit: commit,
-        ),
-      ]),
-      CanvasControlGroup(label: "Data", children: [
-        // The whole table as one editable block, in the same tab or comma
-        // separated form a spreadsheet copies. Pasting a table in and having a
-        // chart is the fastest path there is, and it is the reason there is no
-        // row-by-row editor here.
-        CanvasTextField(
-          label: "Rows (paste a table)",
-          value: e.data.asText(),
-          width: 260,
-          maxLines: 2,
-          hint: "Name\tSeries\nWeek 1\t120",
-          onChanged: (v) => write(e.copyWith(data: ChartData.parse(v))),
-          onCommit: commit,
-        ),
-      ]),
-      CanvasControlGroup(label: "Axes", children: [
-        CanvasTextField(
-          label: "X label",
-          value: e.xAxisLabel,
-          width: 108,
-          onChanged: (v) => write(e.copyWith(xAxisLabel: v)),
-          onCommit: commit,
-        ),
-        CanvasTextField(
-          label: "Y label",
-          value: e.yAxisLabel,
-          width: 108,
-          onChanged: (v) => write(e.copyWith(yAxisLabel: v)),
+          onChanged: (v) => write(withText(v)),
           onCommit: commit,
         ),
         CanvasToggle(
-          label: "Grid",
-          value: e.showGrid,
-          onChanged: (v) {
-            begin();
-            write(e.copyWith(showGrid: v));
-            commit();
-          },
+          label: "Show",
+          value: box.show,
+          onChanged: (v) => now(withBox(box.copyWith(show: v))),
         ),
-        CanvasToggle(
-          label: "Axes",
-          value: e.showAxes,
-          onChanged: (v) {
+        if (box.show && text.isNotEmpty)
+          CanvasIconButton(
+            icon: box.placed ? Icons.push_pin : Icons.auto_awesome_mosaic,
+            tooltip: box.placed
+                ? "Put it back where the chart wants it"
+                : "Place it yourself — then drag it on the canvas",
+            active: box.placed,
+            onPressed: () => now(withBox(box.placed
+                ? box.copyWith(unplace: true)
+                : box.copyWith(x: 0.02, y: 0.02))),
+          ),
+        if (box.show && box.placed)
+          for (var (label, value, apply)
+              in <(String, double, ChartLabel Function(double))>[
+            ("X", box.x, (v) => box.copyWith(x: v)),
+            ("Y", box.y, (v) => box.copyWith(y: v)),
+            ("W", box.width, (v) => box.copyWith(width: v)),
+            ("H", box.height, (v) => box.copyWith(height: v)),
+          ])
+            CanvasNumberField(
+              label: label,
+              min: -1,
+              max: 2,
+              decimals: 3,
+              width: 58,
+              value: value,
+              onChanged: (v) {
+                begin();
+                write(withBox(apply(v)));
+              },
+              onCommit: commit,
+            ),
+      ];
+
+  // Whether Smooth means anything here: the chart's own type, or any series
+  // that has overridden it. Offered otherwise, it was a switch that did
+  // nothing on a bar chart, which is indistinguishable from a broken one.
+  var smoothable = e.type.usesSmooth ||
+      e.data.series.any((s) => s.typeIn(e.type).usesSmooth);
+
+  return [
+    CanvasControlGroup(label: "Chart", children: [
+      CanvasDropdown<ChartType>(
+        label: "Type",
+        value: e.type,
+        width: 132,
+        options: [for (var t in ChartType.values) (t, t.label)],
+        onChanged: (v) => now(e.copyWith(type: v)),
+      ),
+      // Said here rather than left to be discovered. Grouped and stacked bars
+      // draw exactly what plain bars draw until there is a second series to
+      // group or stack, so choosing one on a one-series chart looks like the
+      // setting doing nothing at all.
+      if (e.type.needsMultipleSeries && e.data.series.length < 2)
+        const CanvasHint(
+            "Grouped and stacked bars need more than one series -- with one "
+            "they draw exactly what plain bars draw. Add a second series "
+            "under Series below."),
+    ]),
+    CanvasControlGroup(label: "Title", children: [
+      ...labelControls("Title", e.title, e.titleBox,
+          (v) => e.copyWith(title: v), (b) => e.copyWith(titleBox: b)),
+    ]),
+    CanvasControlGroup(label: "Description", children: [
+      ...labelControls(
+          "Description",
+          e.description,
+          e.descriptionBox,
+          (v) => e.copyWith(description: v),
+          (b) => e.copyWith(descriptionBox: b)),
+    ]),
+    // Its own section, opened and closed. The numbers are the longest thing in
+    // these settings and the least often changed once they are right, so they
+    // were pushing everything else off the bottom of the panel.
+    CanvasExpander(
+      label: "Data",
+      trailing: "${e.data.categories.length} rows, "
+          "${e.data.series.length} series",
+      initiallyOpen: true,
+      children: [
+        ChartDataEditor(
+          data: e.data,
+          onChanged: (data) {
             begin();
-            write(e.copyWith(showAxes: v));
-            commit();
+            writeData(data);
           },
+          onCommit: commit,
         ),
-        CanvasToggle(
-          label: "Legend",
-          value: e.showLegend,
-          onChanged: (v) {
-            begin();
-            write(e.copyWith(showLegend: v));
-            commit();
-          },
-        ),
-        CanvasToggle(
-          label: "Values",
-          value: e.showValues,
-          onChanged: (v) {
-            begin();
-            write(e.copyWith(showValues: v));
-            commit();
-          },
-        ),
-      ]),
-      CanvasControlGroup(label: "Style", children: [
-        for (var i = 0; i < e.data.series.length && i < 6; i++)
-          CanvasColorButton(
-            label: e.data.series[i].name.isEmpty
-                ? "Series ${i + 1}"
-                : e.data.series[i].name,
-            color: e.data.series[i].color,
-            onChanged: (c) {
-              begin();
+      ],
+    ),
+    CanvasExpander(
+      label: "Series",
+      trailing: "${e.data.series.length}",
+      children: [
+        for (var i = 0; i < e.data.series.length; i++)
+          _chartSeriesSettings(e, i, write, begin, commit),
+        CanvasControlGroup(label: "Add", children: [
+          CanvasIconButton(
+            icon: Icons.add_chart,
+            tooltip: "Add a series — give it its own type to lay one kind of "
+                "chart over another",
+            onPressed: () {
               var series = [...e.data.series];
-              series[i] = series[i].copyWith(color: c);
-              write(e.copyWith(
-                  data: ChartData(
-                      categories: e.data.categories, series: series)));
-              commit();
+              series.add(ChartSeries(
+                name: "Series ${series.length + 1}",
+                color: chartPalette[series.length % chartPalette.length],
+                values: List.filled(e.data.categories.length, 0),
+              ));
+              now(e.copyWith(data: ChartData(
+                  categories: e.data.categories, series: series)));
             },
           ),
-        CanvasColorButton(
-          label: "Grid",
-          color: e.gridColor,
-          onChanged: (c) {
-            begin();
-            write(e.copyWith(gridColor: c));
-            commit();
-          },
-        ),
-        CanvasNumberField(
-          label: "Bar gap",
-          min: 0,
-          decimals: 2,
-          width: 62,
-          value: e.barGap,
-          max: 0.9,
-          onChanged: (v) {
-            begin();
-            write(e.copyWith(barGap: v));
-          },
-          onCommit: commit,
-        ),
-        CanvasNumberField(
-          label: "Bar radius",
-          value: e.barRadius,
-          min: 0,
-          max: 100,
-          width: 54,
-          onChanged: (v) => write(e.copyWith(barRadius: v)),
-          onCommit: commit,
-        ),
-        CanvasNumberField(
-          label: "Stroke",
-          value: e.strokeWidth,
-          min: 0.5,
-          max: 40,
-          decimals: 1,
-          width: 54,
-          onChanged: (v) => write(e.copyWith(strokeWidth: v)),
-          onCommit: commit,
-        ),
+        ]),
+      ],
+    ),
+    CanvasControlGroup(label: "Axes", children: [
+      CanvasTextField(
+        label: "X label",
+        value: e.xAxisLabel,
+        width: 108,
+        onChanged: (v) => write(e.copyWith(xAxisLabel: v)),
+        onCommit: commit,
+      ),
+      CanvasTextField(
+        label: "Y label",
+        value: e.yAxisLabel,
+        width: 108,
+        onChanged: (v) => write(e.copyWith(yAxisLabel: v)),
+        onCommit: commit,
+      ),
+      CanvasToggle(
+        label: "Grid",
+        value: e.showGrid,
+        onChanged: (v) => now(e.copyWith(showGrid: v)),
+      ),
+      CanvasToggle(
+        label: "Axes",
+        value: e.showAxes,
+        onChanged: (v) => now(e.copyWith(showAxes: v)),
+      ),
+      CanvasToggle(
+        label: "Legend",
+        value: e.showLegend,
+        onChanged: (v) => now(e.copyWith(showLegend: v)),
+      ),
+      CanvasToggle(
+        label: "Values",
+        value: e.showValues,
+        onChanged: (v) => now(e.copyWith(showValues: v)),
+      ),
+    ]),
+    CanvasControlGroup(label: "Style", children: [
+      CanvasColorButton(
+        label: "Grid",
+        color: e.gridColor,
+        onChanged: (c) => now(e.copyWith(gridColor: c)),
+      ),
+      CanvasNumberField(
+        label: "Bar gap",
+        min: 0,
+        decimals: 2,
+        width: 62,
+        value: e.barGap,
+        max: 0.9,
+        onChanged: (v) {
+          begin();
+          write(e.copyWith(barGap: v));
+        },
+        onCommit: commit,
+      ),
+      CanvasNumberField(
+        label: "Bar radius",
+        value: e.barRadius,
+        min: 0,
+        max: 100,
+        width: 54,
+        onChanged: (v) => write(e.copyWith(barRadius: v)),
+        onCommit: commit,
+      ),
+      CanvasNumberField(
+        label: "Stroke",
+        value: e.strokeWidth,
+        min: 0.5,
+        max: 40,
+        decimals: 1,
+        width: 54,
+        onChanged: (v) => write(e.copyWith(strokeWidth: v)),
+        onCommit: commit,
+      ),
+      // Only where there is a line to curve. Bars have nothing to curve and a
+      // scatter is unconnected by definition.
+      if (smoothable)
         CanvasToggle(
           label: "Smooth",
           value: e.smooth,
+          onChanged: (v) => now(e.copyWith(smooth: v)),
+        ),
+    ]),
+  ];
+}
+
+/// _chartSeriesSettings is one series: its name, its colour, and the type it
+/// is drawn as if that is not the chart's own.
+///
+/// Grouped in a section of its own so that a chart of five series is five
+/// closed headings rather than fifteen controls wrapped into a column nobody
+/// can find anything in.
+Widget _chartSeriesSettings(ChartElement e, int index, _Write write,
+    VoidCallback begin, VoidCallback commit) {
+  var series = e.data.series[index];
+
+  void writeSeries(ChartSeries next) {
+    begin();
+    var out = [...e.data.series];
+    out[index] = next;
+    write(e.copyWith(
+        data: ChartData(categories: e.data.categories, series: out)));
+    commit();
+  }
+
+  return CanvasExpander(
+    label: series.name.isEmpty ? "Series ${index + 1}" : series.name,
+    trailing: series.type?.label,
+    children: [
+      CanvasControlGroup(label: "Series", children: [
+        CanvasTextField(
+          label: "Name",
+          value: series.name,
+          width: 120,
           onChanged: (v) {
             begin();
-            write(e.copyWith(smooth: v));
+            var out = [...e.data.series];
+            out[index] = out[index].copyWith(name: v);
+            write(e.copyWith(
+                data: ChartData(categories: e.data.categories, series: out)));
+          },
+          onCommit: commit,
+        ),
+        CanvasColorButton(
+          label: "Colour",
+          color: series.color,
+          onChanged: (c) => writeSeries(series.copyWith(color: c)),
+        ),
+        // "As the chart" rather than a second copy of the chart's own type.
+        // A series that follows the chart keeps following it when the chart
+        // is changed, which is what almost every series wants -- an override
+        // is for the one line laid over the bars.
+        CanvasDropdown<String>(
+          label: "Drawn as",
+          value: series.type?.name ?? "",
+          width: 132,
+          options: [
+            ("", "As the chart"),
+            for (var t in ChartType.values)
+              if (!t.isCircular) (t.name, t.label),
+          ],
+          onChanged: (v) => writeSeries(v.isEmpty
+              ? series.copyWith(followChart: true)
+              : series.copyWith(type: ChartType.fromName(v))),
+        ),
+        CanvasIconButton(
+          icon: Icons.delete_outline,
+          tooltip: "Remove this series",
+          onPressed: () {
+            begin();
+            var out = [...e.data.series]..removeAt(index);
+            write(e.copyWith(
+                data: ChartData(categories: e.data.categories, series: out)));
             commit();
           },
         ),
       ]),
-    ];
+    ],
+  );
+}
 
 List<Widget> _tableSettings(TableElement e, _Write write, VoidCallback begin,
         VoidCallback commit) =>

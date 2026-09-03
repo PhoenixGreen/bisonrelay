@@ -31,24 +31,20 @@ void paintChart(ui.Canvas canvas, Rect rect, ChartElement e) {
 
   var area = rect;
 
-  if (e.title.isNotEmpty) {
-    var h = paintTextInBox(canvas, e.title, e.titleSpec,
-        Rect.fromLTWH(area.left, area.top, area.width, area.height),
-        clip: true);
-    area = Rect.fromLTRB(area.left, area.top + h + rect.height * 0.02,
-        area.right, area.bottom);
-  }
-  if (e.description.isNotEmpty) {
-    var spec = e.labelSpec.copyWith(
-        color: e.labelSpec.color.withValues(alpha: 0.75),
-        verticalAlign: VerticalAlignSpec.top);
-    var h = paintTextInBox(canvas, e.description, spec,
-        Rect.fromLTWH(area.left, area.top, area.width, area.height),
-        clip: true);
-    area = Rect.fromLTRB(
-        area.left, area.top + h + rect.height * 0.02, area.right, area.bottom);
-  }
-  if (e.showLegend && data.series.length > 1) {
+  // The two labels, each either laid out by the chart or sitting where it was
+  // put. A placed label is drawn last, over the plot, because a label somebody
+  // has dragged onto the plot was dragged there on purpose -- and because
+  // taking room away from the plot for a label that is no longer above it
+  // would leave a band of nothing where it used to be.
+  area = _flowLabel(canvas, area, rect, e.title, e.titleBox, e.titleSpec);
+  area = _flowLabel(canvas, area, rect, e.description, e.descriptionBox,
+      descriptionSpec(e));
+
+  // Not "and more than one series". A one-series chart with the legend turned
+  // on used to draw nothing at all, which reads as the switch being broken
+  // rather than as the legend being unnecessary -- and a single series with a
+  // name worth reading is a perfectly good reason to want one.
+  if (e.showLegend && data.series.isNotEmpty) {
     area = _legend(canvas, area, e);
   }
 
@@ -57,6 +53,39 @@ void paintChart(ui.Canvas canvas, Rect rect, ChartElement e) {
   } else {
     _cartesian(canvas, area, e);
   }
+
+  _placedLabel(canvas, rect, e.title, e.titleBox, e.titleSpec);
+  _placedLabel(canvas, rect, e.description, e.descriptionBox,
+      descriptionSpec(e));
+}
+
+/// descriptionSpec is the description's type: the label size, softened, so it
+/// reads as a note under the title rather than as a second title.
+TextSpec descriptionSpec(ChartElement e) => e.labelSpec.copyWith(
+      color: e.labelSpec.color.withValues(alpha: 0.75),
+      verticalAlign: VerticalAlignSpec.top,
+    );
+
+/// _flowLabel draws a label the chart is laying out itself, and returns what
+/// is left below it. A hidden, empty or placed label takes no room and draws
+/// nothing here.
+Rect _flowLabel(ui.Canvas canvas, Rect area, Rect rect, String text,
+    ChartLabel box, TextSpec spec) {
+  if (!box.show || text.isEmpty || box.placed) return area;
+  var h = paintTextInBox(
+      canvas, text, spec, Rect.fromLTWH(area.left, area.top, area.width,
+          area.height),
+      clip: true);
+  return Rect.fromLTRB(
+      area.left, area.top + h + rect.height * 0.02, area.right, area.bottom);
+}
+
+/// _placedLabel draws a label that has been moved, in its own box over
+/// everything else.
+void _placedLabel(ui.Canvas canvas, Rect rect, String text, ChartLabel box,
+    TextSpec spec) {
+  if (!box.show || text.isEmpty || !box.placed) return;
+  paintTextInBox(canvas, text, spec, box.rectIn(rect), clip: true);
 }
 
 /// _placeholder is what an empty chart looks like: a labelled frame rather
@@ -223,19 +252,40 @@ void _cartesian(ui.Canvas canvas, Rect area, ChartElement e) {
   _axisLabels(canvas, area, plot, range, e, horizontal, valueGutter,
       categoryGutter, axisTitleGutter);
 
-  switch (e.type) {
-    case ChartType.bar:
-    case ChartType.groupedBar:
-    case ChartType.stackedBar:
-    case ChartType.horizontalBar:
-      _bars(canvas, plot, range, e, horizontal);
-    case ChartType.line:
-    case ChartType.area:
-    case ChartType.scatter:
-      _lines(canvas, plot, range, e);
-    default:
-      break;
+  // Split by how each series is drawn rather than by what the chart is, so a
+  // set of bars can have a line over it. A series with no type of its own is
+  // drawn as the chart is, which is every series until somebody says
+  // otherwise.
+  var bars = <int>[];
+  var lines = <int>[];
+  var plainBarTaken = false;
+  for (var i = 0; i < data.series.length; i++) {
+    var series = data.series[i];
+    var kind = series.typeIn(e.type);
+    if (kind.isBar) {
+      // "Bars" means one bar per category, so a chart set to it draws its
+      // first series and no more -- that is the whole difference between it
+      // and "Grouped bars", and letting it quietly group as well would make
+      // choosing between them do nothing.
+      //
+      // A series with a type of its own is exempt. Asking for bars over a
+      // line chart is asking for those bars specifically, not for the chart's
+      // idea of how many series it draws.
+      if (e.type == ChartType.bar && series.type == null) {
+        if (plainBarTaken) continue;
+        plainBarTaken = true;
+      }
+      bars.add(i);
+    } else if (kind.isLinear) {
+      lines.add(i);
+    }
   }
+
+  // Bars first. A line drawn under a bar is a line nobody can see, and the
+  // reason for putting the two on one pair of axes is to read the line
+  // against the bars.
+  if (bars.isNotEmpty) _bars(canvas, plot, range, e, horizontal, bars);
+  if (lines.isNotEmpty) _lines(canvas, plot, range, e, lines);
 }
 
 double _widestCategory(List<String> categories, TextSpec spec, Rect area) {
@@ -372,16 +422,21 @@ void _axisLabels(
   }
 }
 
-/// _bars draws the four bar types.
+/// _bars draws the bar types, for the series in [which].
+///
+/// [which] rather than every series, because a chart may be a set of bars with
+/// a line over it -- see _cartesian. It is also what decides whether the bars
+/// are side by side: two bar series share a slot however the chart's own type
+/// is set, since drawing them on top of each other would hide one of them.
 void _bars(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
-    bool horizontal) {
+    bool horizontal, List<int> which) {
   var data = e.data;
   var slots = data.categories.length;
-  if (slots == 0) return;
+  if (slots == 0 || which.isEmpty) return;
 
-  var grouped = e.type == ChartType.groupedBar;
-  var stacked = e.type.isStacked;
-  var seriesCount = grouped ? data.series.length : 1;
+  var stacked = e.type.isStacked && which.length > 1;
+  var grouped = !stacked && which.length > 1;
+  var seriesCount = grouped ? which.length : 1;
 
   var slotSize = (horizontal ? plot.height : plot.width) / slots;
   var barSpan = slotSize * (1 - e.barGap.clamp(0.0, 0.9));
@@ -393,8 +448,8 @@ void _bars(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
     var inset = (slotSize - barSpan) / 2;
 
     var stackPos = 0.0, stackNeg = 0.0;
-    var count = stacked || grouped ? data.series.length : 1;
-    for (var s = 0; s < count; s++) {
+    for (var at = 0; at < which.length; at++) {
+      var s = which[at];
       var series = data.series[s];
       var v = data.valueAt(s, i);
 
@@ -412,11 +467,11 @@ void _bars(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
       var lo = math.min(from, to), hi = math.max(from, to);
       Rect bar;
       if (horizontal) {
-        var y = slotStart + inset + (grouped ? barSize * s : 0);
+        var y = slotStart + inset + (grouped ? barSize * at : 0);
         bar = Rect.fromLTWH(plot.left + plot.width * lo, y,
             plot.width * (hi - lo), grouped ? barSize : barSpan);
       } else {
-        var x = slotStart + inset + (grouped ? barSize * s : 0);
+        var x = slotStart + inset + (grouped ? barSize * at : 0);
         bar = Rect.fromLTWH(x, plot.bottom - plot.height * hi,
             grouped ? barSize : barSpan, plot.height * (hi - lo));
       }
@@ -447,8 +502,12 @@ void _bars(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
   }
 }
 
-/// _lines draws the line, area and scatter types.
-void _lines(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e) {
+/// _lines draws the line, area and scatter types, for the series in [which].
+///
+/// Each of them by its *own* type rather than by the chart's, so one series
+/// can be an area and the next a scatter over the same axes.
+void _lines(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
+    List<int> which) {
   var data = e.data;
   var n = data.categories.length;
   if (n == 0) return;
@@ -460,16 +519,17 @@ void _lines(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e) {
   double yAt(double v) =>
       plot.bottom - plot.height * range.fraction(v).clamp(-0.2, 1.2);
 
-  for (var s = 0; s < data.series.length; s++) {
+  for (var s in which) {
     var series = data.series[s];
+    var kind = series.typeIn(e.type);
     var points = [
       for (var i = 0; i < n; i++) Offset(xAt(i), yAt(data.valueAt(s, i))),
     ];
     if (points.isEmpty) continue;
 
-    if (e.type != ChartType.scatter) {
-      var path = _linePath(points, e.smooth);
-      if (e.type == ChartType.area) {
+    if (kind != ChartType.scatter) {
+      var path = _linePath(points, e.smooth && kind.usesSmooth);
+      if (kind == ChartType.area) {
         var fill = Path.from(path)
           ..lineTo(points.last.dx, plot.bottom)
           ..lineTo(points.first.dx, plot.bottom)
@@ -493,7 +553,7 @@ void _lines(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e) {
             ..color = series.color);
     }
 
-    if (e.type == ChartType.scatter || e.showValues) {
+    if (kind == ChartType.scatter || e.showValues) {
       for (var i = 0; i < points.length; i++) {
         canvas.drawCircle(points[i], e.strokeWidth * 1.4,
             Paint()..color = series.color);

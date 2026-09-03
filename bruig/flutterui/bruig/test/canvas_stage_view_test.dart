@@ -2,6 +2,7 @@ import 'dart:ui' as ui;
 import 'dart:async';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
@@ -559,6 +560,103 @@ void main() {
       expect(after.x, isNot(team.x));
       expect(after.players[5].dx, closeTo(team.players[5].dx, 0.0001),
           reason: "everybody keeps their place within the box");
+    });
+  });
+
+  group("a chart's placed title", () {
+    /// build fills the canvas with a chart whose title has been placed, so a
+    /// document position and a screen position are easy to reason about.
+    (CanvasController, ChartElement) build() {
+      var document = const CanvasDocument();
+      var chart = ChartElement(
+        ElementBase(
+          id: newElementId(),
+          x: 0,
+          y: 0,
+          width: document.size.width.toDouble(),
+          height: document.size.height.toDouble(),
+        ),
+        title: "Messages",
+        titleBox: const ChartLabel(x: 0.1, y: 0.1, width: 0.3, height: 0.2),
+        data: ChartData.parse("Cat\tA\nx\t10\ny\t6"),
+      );
+      var controller = CanvasController(document.addElement(chart));
+      return (controller, chart);
+    }
+
+    testWidgets("dragging it moves the title, not the chart", (tester) async {
+      // The label sits inside the chart's own box, so without somewhere for
+      // the press to go the ordinary hit test picks the chart up and moves the
+      // whole thing -- which is what happened before it could be placed.
+      var (controller, chart) = build();
+      addTearDown(controller.dispose);
+      controller.selectOnly(chart.id);
+      var stage = await pump(tester, controller);
+
+      var box = chart.titleBox.rectIn(
+          Rect.fromLTWH(0, 0, chart.width, chart.height));
+      var scale = stage.pageRect.width / chart.width;
+      var at = stage.pageRect.topLeft + box.center * scale;
+
+      await tester.dragFrom(at, const Offset(60, 40));
+      await tester.pumpAndSettle();
+
+      var after =
+          controller.document.elements.whereType<ChartElement>().single;
+      expect(after.titleBox.x, greaterThan(chart.titleBox.x));
+      expect(after.titleBox.y, greaterThan(chart.titleBox.y));
+      expect(after.x, chart.x, reason: "the chart itself has not moved");
+      expect(after.y, chart.y);
+      expect(after.titleBox.width, chart.titleBox.width,
+          reason: "and dragging its middle does not resize it");
+    });
+
+    testWidgets("dragging its corner resizes it", (tester) async {
+      var (controller, chart) = build();
+      addTearDown(controller.dispose);
+      controller.selectOnly(chart.id);
+      var stage = await pump(tester, controller);
+
+      var box = chart.titleBox.rectIn(
+          Rect.fromLTWH(0, 0, chart.width, chart.height));
+      var scale = stage.pageRect.width / chart.width;
+      var at = stage.pageRect.topLeft + box.bottomRight * scale;
+
+      await tester.dragFrom(at, const Offset(50, 30));
+      await tester.pumpAndSettle();
+
+      var after =
+          controller.document.elements.whereType<ChartElement>().single;
+      expect(after.titleBox.width, greaterThan(chart.titleBox.width));
+      expect(after.titleBox.height, greaterThan(chart.titleBox.height));
+      expect(after.titleBox.x, chart.titleBox.x,
+          reason: "a corner drag pins the other corner");
+    });
+
+    testWidgets("a title the chart is placing is not draggable",
+        (tester) async {
+      // There is no box to take hold of: it is wherever the title happens to
+      // end up above the plot, and dragging that would mean dragging the
+      // arrangement rather than the label.
+      var (controller, chart) = build();
+      addTearDown(controller.dispose);
+      var flowing = chart.copyWith(titleBox: const ChartLabel());
+      controller.replaceElement(flowing);
+      controller.selectOnly(chart.id);
+      var stage = await pump(tester, controller);
+
+      var at = stage.pageRect.topLeft +
+          const Offset(0.2, 0.15) *
+              stage.pageRect.width /
+              1; // near where the title is drawn
+      await tester.dragFrom(at, const Offset(40, 25));
+      await tester.pumpAndSettle();
+
+      var after =
+          controller.document.elements.whereType<ChartElement>().single;
+      expect(after.titleBox.placed, isFalse);
+      expect(after.x, isNot(chart.x),
+          reason: "the chart moved instead, as any other element would");
     });
   });
 

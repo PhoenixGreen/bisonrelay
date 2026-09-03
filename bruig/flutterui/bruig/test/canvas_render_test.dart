@@ -8,12 +8,14 @@ import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/presets/builtin_presets.dart';
+import 'package:bruig/plugin_system/canvas/render/chart_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:flutter/services.dart';
@@ -1419,6 +1421,209 @@ void main() {
       expect(fitted.assetId, "abcdefghij123456");
       expect(fitted.filter, ImageFilterPreset.sepia);
       expect(fitted.base.id, "i");
+    });
+  });
+
+  _chartTests();
+}
+
+
+/// _chartColours is every fully-opaque colour a chart draws, which is how a
+/// painter test asks "is the second series there at all".
+Future<Set<String>> _chartColours(ChartElement e,
+    {int width = 400, int height = 300}) async {
+  var recorder = ui.PictureRecorder();
+  paintChart(ui.Canvas(recorder),
+      Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()), e);
+  var image = await recorder.endRecording().toImage(width, height);
+  try {
+    var raw = await image.toByteData(format: ui.ImageByteFormat.rawStraightRgba);
+    var pixels = raw!.buffer.asUint8List();
+    var out = <String>{};
+    for (var i = 0; i < width * height; i++) {
+      if (pixels[i * 4 + 3] > 240) {
+        out.add("${pixels[i * 4]},${pixels[i * 4 + 1]},${pixels[i * 4 + 2]}");
+      }
+    }
+    return out;
+  } finally {
+    image.dispose();
+  }
+}
+
+/// _two is a chart of two series, which is what most of these need.
+ChartElement _two(ChartType type, {ChartType? secondAs}) {
+  var data = ChartData.parse("Cat\tA\tB\nx\t10\t5\ny\t6\t9");
+  if (secondAs != null) {
+    data = ChartData(
+      categories: data.categories,
+      series: [data.series.first, data.series[1].copyWith(type: secondAs)],
+    );
+  }
+  return ChartElement(
+    const ElementBase(id: "c", width: 400, height: 300),
+    type: type,
+    data: data,
+  );
+}
+
+void _chartTests() {
+  group("a chart", () {
+    test("the legend draws for one series as well as for several", () async {
+      // It was "showLegend && series.length > 1", so a one-series chart with
+      // the legend switched on drew nothing at all -- which reads as the
+      // switch being broken rather than as the legend being unnecessary.
+      var one = ChartElement(
+        const ElementBase(id: "c", width: 400, height: 300),
+        data: ChartData.parse("Cat\tMessages\nx\t10\ny\t6"),
+        showLegend: true,
+        labelSpec: const TextSpec(fontSize: 14),
+      );
+
+      var recorder = ui.PictureRecorder();
+      paintChart(ui.Canvas(recorder), const Rect.fromLTWH(0, 0, 400, 300), one);
+      var withLegend = await recorder.endRecording().toImage(400, 300);
+
+      recorder = ui.PictureRecorder();
+      paintChart(ui.Canvas(recorder), const Rect.fromLTWH(0, 0, 400, 300),
+          one.copyWith(showLegend: false));
+      var without = await recorder.endRecording().toImage(400, 300);
+
+      try {
+        var a = (await withLegend.toByteData(
+                format: ui.ImageByteFormat.rawStraightRgba))!
+            .buffer
+            .asUint8List();
+        var b = (await without.toByteData(
+                format: ui.ImageByteFormat.rawStraightRgba))!
+            .buffer
+            .asUint8List();
+        expect(a, isNot(orderedEquals(b)),
+            reason: "turning the legend on changes the picture");
+      } finally {
+        withLegend.dispose();
+        without.dispose();
+      }
+    });
+
+    test("grouped bars put two series side by side", () async {
+      // They draw exactly what plain bars draw until there is a second series
+      // to group, which is why choosing one on a one-series chart looks like
+      // the setting doing nothing.
+      var grouped = await _chartColours(_two(ChartType.groupedBar));
+      expect(grouped, contains("61,126,255"), reason: "the first series");
+      expect(grouped, contains("255,176,32"), reason: "and the second");
+
+      var one = ChartElement(
+        const ElementBase(id: "c", width: 400, height: 300),
+        type: ChartType.groupedBar,
+        data: ChartData.parse("Cat\tA\nx\t10\ny\t6"),
+      );
+      expect(ChartType.groupedBar.needsMultipleSeries, isTrue);
+      expect((await _chartColours(one)), isNot(contains("255,176,32")));
+    });
+
+    test("stacked bars stack the second series on the first", () async {
+      var stacked = await _chartColours(_two(ChartType.stackedBar));
+      expect(stacked, contains("61,126,255"));
+      expect(stacked, contains("255,176,32"));
+    });
+
+    test("a series can be drawn as something else over the rest", () async {
+      // The point of the override: a set of bars with a line across it.
+      var overlaid = _two(ChartType.bar, secondAs: ChartType.line);
+      expect(overlaid.data.series[1].typeIn(ChartType.bar), ChartType.line);
+      expect(overlaid.data.series.first.typeIn(ChartType.bar), ChartType.bar);
+
+      var colours = await _chartColours(overlaid);
+      expect(colours, contains("255,176,32"),
+          reason: "the line series is drawn");
+
+      // Plain bars ignore every series but the first, so the second showing at
+      // all is the override doing its work.
+      var plain = await _chartColours(_two(ChartType.bar));
+      expect(plain, isNot(contains("255,176,32")));
+    });
+
+    test("smooth is only offered where there is a line to curve", () {
+      expect(ChartType.line.usesSmooth, isTrue);
+      expect(ChartType.area.usesSmooth, isTrue);
+      expect(ChartType.bar.usesSmooth, isFalse);
+      expect(ChartType.scatter.usesSmooth, isFalse,
+          reason: "a scatter is unconnected by definition");
+    });
+
+    test("a label can be switched off", () async {
+      var titled = ChartElement(
+        const ElementBase(id: "c", width: 400, height: 300),
+        title: "Messages",
+        data: ChartData.parse("Cat\tA\nx\t10\ny\t6"),
+        titleSpec: const TextSpec(fontSize: 24, weight: 700),
+      );
+      var shown = await _chartColours(titled);
+      var hidden = await _chartColours(
+          titled.copyWith(titleBox: const ChartLabel(show: false)));
+      expect(shown, isNot(hidden));
+    });
+
+    test("a placed label sits where it was put and takes no room", () {
+      // Placed, it stops being part of the chart's own arrangement: it is
+      // drawn over the plot at its own box, and the plot gets the height the
+      // title used to take.
+      const box = ChartLabel(x: 0.5, y: 0.6, width: 0.4, height: 0.2);
+      expect(box.placed, isTrue);
+      expect(const ChartLabel().placed, isFalse);
+
+      var rect = box.rectIn(const Rect.fromLTWH(100, 200, 400, 300));
+      expect(rect.left, 300);
+      expect(rect.top, 380);
+      expect(rect.width, 160);
+      expect(rect.height, 60);
+    });
+
+    test("a chart's labels and series types survive a round trip", () {
+      var element = ChartElement(
+        const ElementBase(id: "c", width: 400, height: 300),
+        title: "T",
+        description: "D",
+        titleBox: const ChartLabel(x: 0.1, y: 0.2, width: 0.5, height: 0.15),
+        descriptionBox: const ChartLabel(show: false),
+        data: ChartData(
+          categories: const ["x"],
+          series: [
+            const ChartSeries(
+                name: "A", color: Color(0xFF3D7EFF), values: [1]),
+            const ChartSeries(
+                name: "B",
+                color: Color(0xFFFFB020),
+                values: [2],
+                type: ChartType.line),
+          ],
+        ),
+      );
+      var back = CanvasDocument.decode(
+              CanvasDocument(elements: [element]).encode())!.elements.single
+          as ChartElement;
+
+      expect(back.titleBox.x, 0.1);
+      expect(back.titleBox.height, 0.15);
+      expect(back.descriptionBox.show, isFalse);
+      expect(back.data.series[1].type, ChartType.line);
+      expect(back.data.series.first.type, isNull,
+          reason: "a series following the chart carries nothing");
+    });
+
+    test("editing the numbers keeps a series' colour and its type", () {
+      // The text form has no room for either, so parsing it back would throw
+      // them away -- and changing one number would silently turn the line
+      // over the bars back into bars.
+      var before = _two(ChartType.bar, secondAs: ChartType.line).data;
+      var after = ChartData.parse(
+          "Cat\tA\tB\nx\t11\t5\ny\t6\t9", keep: before.series);
+
+      expect(after.valueAt(0, 0), 11);
+      expect(after.series[1].type, ChartType.line);
+      expect(after.series[1].color, before.series[1].color);
     });
   });
 }

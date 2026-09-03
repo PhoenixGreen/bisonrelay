@@ -10,6 +10,8 @@ import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
 import 'package:bruig/plugin_system/canvas/presets/builtin_presets.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
+import 'package:bruig/plugin_system/canvas/ui/chart_data_editor.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_settings_bar.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_timeline.dart';
@@ -2495,6 +2497,190 @@ void main() {
 
       expect(elements, lessThan(layers),
           reason: "the add grid needs less room than the layer list");
+    });
+  });
+
+  group("the chart settings", () {
+    Future<CanvasController> panel(WidgetTester tester,
+        {ChartElement Function(ChartElement)? shape}) async {
+      var element = ChartElement(
+        const ElementBase(id: "c", width: 400, height: 300),
+        title: "Messages",
+        description: "By week",
+        data: ChartData.parse("Cat\tA\nx\t10\ny\t6"),
+      );
+      if (shape != null) element = shape(element);
+      var controller =
+          CanvasController(const CanvasDocument().addElement(element));
+      addTearDown(controller.dispose);
+      controller.selectOnly("c");
+      await pump(tester, CanvasLayersPanel(controller: controller));
+      return controller;
+    }
+
+    ChartElement chartIn(CanvasController controller) =>
+        controller.document.elements.single as ChartElement;
+
+    /// press scrolls the settings to a control and taps it. A chart has more
+    /// settings than fit in the panel, so most of them start off screen.
+    Future<void> press(WidgetTester tester, Finder what) async {
+      await tester.ensureVisible(what);
+      await tester.pumpAndSettle();
+      await tester.tap(what);
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets("smooth is only offered where there is a line to curve",
+        (tester) async {
+      // Offered on a bar chart it was a switch that did nothing, which is
+      // indistinguishable from a broken one.
+      await panel(tester);
+      expect(find.text("Smooth"), findsNothing);
+
+      await panel(tester, shape: (e) => e.copyWith(type: ChartType.line));
+      expect(find.text("Smooth"), findsOneWidget);
+    });
+
+    testWidgets("grouped bars say what they need", (tester) async {
+      // They draw exactly what plain bars draw until there is a second series
+      // to group, so choosing one on a one-series chart looks like the setting
+      // doing nothing at all.
+      var controller =
+          await panel(tester, shape: (e) => e.copyWith(type: ChartType.bar));
+      Iterable<String> hints() => tester
+          .widgetList<CanvasHint>(find.byType(CanvasHint))
+          .map((h) => h.message)
+          .where((m) => m.contains("Grouped and stacked"));
+      expect(hints(), isEmpty);
+
+      controller.replaceElement(
+          chartIn(controller).copyWith(type: ChartType.groupedBar));
+      await tester.pumpAndSettle();
+      expect(hints(), isNotEmpty);
+
+      controller.replaceElement(chartIn(controller).copyWith(
+          data: ChartData.parse("Cat\tA\tB\nx\t10\t5\ny\t6\t9")));
+      await tester.pumpAndSettle();
+      expect(hints(), isEmpty, reason: "with two series it has its answer");
+    });
+
+    testWidgets("the title and the description can be switched off",
+        (tester) async {
+      var controller = await panel(tester);
+      expect(find.text("Title"), findsOneWidget);
+      expect(chartIn(controller).titleBox.show, isTrue);
+
+      // Two "Show" toggles, one per label, so the title's is the first.
+      await press(tester, find.text("Show").first);
+      expect(chartIn(controller).titleBox.show, isFalse);
+      expect(chartIn(controller).descriptionBox.show, isTrue,
+          reason: "one switch each");
+    });
+
+    testWidgets("placing a label offers where it goes", (tester) async {
+      // A chart lays its title out at the top and gives the rest to the plot,
+      // which is right until somebody wants it somewhere else -- and there is
+      // no set of automatic rules that covers both.
+      var controller = await panel(tester);
+      expect(chartIn(controller).titleBox.placed, isFalse);
+
+      await press(
+          tester,
+          find
+              .byTooltip("Place it yourself — then drag it on the canvas")
+              .first);
+
+      expect(chartIn(controller).titleBox.placed, isTrue);
+      expect(find.byTooltip("Put it back where the chart wants it"),
+          findsOneWidget);
+    });
+
+    testWidgets("a series can be added and given its own type",
+        (tester) async {
+      // The point of the override: a set of bars with a line across it.
+      var controller = await panel(tester);
+      expect(chartIn(controller).data.series.length, 1);
+
+      // The series section is closed to begin with: a chart of five series is
+      // five closed headings rather than fifteen controls in a column.
+      await press(tester, find.text("SERIES"));
+      await press(
+          tester,
+          find.byTooltip("Add a series — give it its own type to lay one kind "
+              "of chart over another"));
+
+      var data = chartIn(controller).data;
+      expect(data.series.length, 2);
+      expect(data.series[1].type, isNull, reason: "following the chart");
+      expect(data.series[1].values.length, data.categories.length,
+          reason: "a value per row, so it lines up with what is there");
+    });
+  });
+
+  group("the chart's numbers", () {
+    Future<CanvasController> panel(WidgetTester tester) async {
+      var element = ChartElement(
+        const ElementBase(id: "c", width: 400, height: 300),
+        data: ChartData.parse("Cat\tA\nx\t10\ny\t6"),
+      );
+      var controller =
+          CanvasController(const CanvasDocument().addElement(element));
+      addTearDown(controller.dispose);
+      controller.selectOnly("c");
+      await pump(tester, CanvasLayersPanel(controller: controller));
+      return controller;
+    }
+
+    ChartData dataIn(CanvasController controller) =>
+        (controller.document.elements.single as ChartElement).data;
+
+    Future<void> press(WidgetTester tester, Finder what) async {
+      await tester.ensureVisible(what);
+      await tester.pumpAndSettle();
+      await tester.tap(what);
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets("the numbers are a section of their own", (tester) async {
+      // They are the longest thing in a chart's settings and the least often
+      // changed once they are right, so they were pushing everything else off
+      // the bottom of the panel.
+      await panel(tester);
+      expect(find.text("DATA"), findsOneWidget);
+      expect(find.text("2 rows, 1 series"), findsOneWidget);
+    });
+
+    testWidgets("it switches between pasted text and a table", (tester) async {
+      // Pasted text is the fast way in; it is a bad way to change one number
+      // in the middle of forty, which is the other thing people do all day.
+      var controller = await panel(tester);
+      expect(find.byType(ChartDataEditor), findsOneWidget);
+
+      await press(tester, find.byTooltip("Edit the numbers in a table"));
+      expect(find.byTooltip("Edit the numbers as pasted text"), findsOneWidget);
+      expect(find.byTooltip("Add a row"), findsOneWidget);
+
+      // The first row's category, then its value.
+      await tester.enterText(
+          find.descendant(
+              of: find.byType(ChartDataEditor),
+              matching: find.byType(TextField)).at(2),
+          "42");
+      await tester.pumpAndSettle();
+      expect(dataIn(controller).valueAt(0, 0), 42);
+    });
+
+    testWidgets("a row can be added and taken away", (tester) async {
+      var controller = await panel(tester);
+      await press(tester, find.byTooltip("Edit the numbers in a table"));
+
+      await press(tester, find.byTooltip("Add a row"));
+      expect(dataIn(controller).categories.length, 3);
+
+      await press(tester, find.byTooltip("Remove this row").first);
+      expect(dataIn(controller).categories.length, 2);
+      expect(dataIn(controller).series.single.values.length, 2,
+          reason: "the series loses the row too, or the data goes ragged");
     });
   });
 

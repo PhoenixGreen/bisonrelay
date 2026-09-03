@@ -6,6 +6,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/render/image_placement.dart';
 import 'package:bruig/plugin_system/canvas/render/image_store.dart';
@@ -88,7 +89,35 @@ enum _Handle {
 }
 
 /// _DragMode is what the pointer is currently doing.
-enum _DragMode { none, move, resize, rotate, marquee, pan, player, node, handle }
+enum _DragMode {
+  none,
+  move,
+  resize,
+  rotate,
+  marquee,
+  pan,
+  player,
+  node,
+  handle,
+
+  /// chartLabel is a chart's title or description being moved or resized
+  /// inside the chart. Its own mode because it moves a *part* of an element
+  /// rather than the element, the same way player does.
+  chartLabel,
+}
+
+/// _ChartLabelGrab is which of a chart's two labels is being dragged, and
+/// whether by its body or by its corner.
+class _ChartLabelGrab {
+  final bool title;
+  final bool resizing;
+
+  /// grab is where in the label the pointer took hold, in document units, so
+  /// the label does not jump its own corner under the pointer.
+  final Offset grab;
+
+  const _ChartLabelGrab(this.title, this.resizing, this.grab);
+}
 
 class CanvasStage extends StatefulWidget {
   final CanvasController controller;
@@ -781,6 +810,21 @@ class CanvasStageState extends State<CanvasStage> {
       return;
     }
 
+    // A placed label of the selected chart, before the chart itself. It sits
+    // inside the chart's own box, so the ordinary hit test would pick the
+    // chart up and move the whole thing -- which is what happened before
+    // there was anywhere else for the press to go.
+    var chart = controller.selected;
+    if (chart is ChartElement && !chart.locked) {
+      var grab = _hitChartLabel(chart, doc);
+      if (grab != null) {
+        _labelGrab = grab;
+        _mode = _DragMode.chartLabel;
+        controller.beginInteraction();
+        return;
+      }
+    }
+
     var element = _hitElement(doc);
     if (element == null) {
       if (!_shiftHeld) controller.clearSelection();
@@ -1196,6 +1240,93 @@ class CanvasStageState extends State<CanvasStage> {
     controller.beginInteraction();
   }
 
+  /// _selectedChartLabels is what the painter outlines. Empty unless one
+  /// chart is selected and has a placed label.
+  List<Rect> _selectedChartLabels() {
+    var element = controller.selected;
+    if (element is! ChartElement || !controller.showHelpers) return const [];
+    return chartLabelRects(element, element.boundsAt(controller.frame))
+        .values
+        .toList();
+  }
+
+  /// _labelGrab is the chart label being dragged, while one is.
+  _ChartLabelGrab? _labelGrab;
+
+  /// chartLabelRects is the boxes of a selected chart's placed labels, in
+  /// document units -- what the stage draws an outline around and what a
+  /// pointer can take hold of.
+  ///
+  /// Only for a label that has been placed. One the chart is laying out itself
+  /// has no box of its own to move: it is wherever the title happens to end up
+  /// above the plot, and dragging that would mean dragging the arrangement.
+  static Map<bool, Rect> chartLabelRects(ChartElement e, Rect bounds) => {
+        if (e.titleBox.show && e.titleBox.placed && e.title.isNotEmpty)
+          true: e.titleBox.rectIn(bounds),
+        if (e.descriptionBox.show &&
+            e.descriptionBox.placed &&
+            e.description.isNotEmpty)
+          false: e.descriptionBox.rectIn(bounds),
+      };
+
+  /// _hitChartLabel is which label a document point lands on, if any.
+  ///
+  /// The corner is tried before the body, and both are tried against the
+  /// description before the title, so the one drawn on top is the one picked
+  /// up when they overlap.
+  _ChartLabelGrab? _hitChartLabel(ChartElement e, Offset doc) {
+    var bounds = e.boundsAt(controller.frame);
+    var rects = chartLabelRects(e, bounds);
+    var corner = _handleHitSlop / _scale;
+    for (var title in [false, true]) {
+      var rect = rects[title];
+      if (rect == null) continue;
+      if ((doc - rect.bottomRight).distance <= corner) {
+        return _ChartLabelGrab(title, true, doc - rect.bottomRight);
+      }
+      if (rect.contains(doc)) {
+        return _ChartLabelGrab(title, false, doc - rect.topLeft);
+      }
+    }
+    return null;
+  }
+
+  /// _applyChartLabel writes the drag onto the label, in fractions of the
+  /// chart's own box so that it stays put when the chart is resized.
+  void _applyChartLabel(Offset doc) {
+    var grab = _labelGrab;
+    if (grab == null) return;
+    var element = controller.selected;
+    if (element is! ChartElement) return;
+
+    var bounds = element.boundsAt(controller.frame);
+    if (bounds.width <= 0 || bounds.height <= 0) return;
+    var box = grab.title ? element.titleBox : element.descriptionBox;
+
+    ChartLabel next;
+    if (grab.resizing) {
+      var corner = doc - grab.grab;
+      next = box.copyWith(
+        width: ((corner.dx - bounds.left) / bounds.width - box.x)
+            .clamp(0.05, 2.0),
+        height: ((corner.dy - bounds.top) / bounds.height - box.y)
+            .clamp(0.03, 2.0),
+      );
+    } else {
+      var at = doc - grab.grab;
+      next = box.copyWith(
+        x: (at.dx - bounds.left) / bounds.width,
+        y: (at.dy - bounds.top) / bounds.height,
+      );
+    }
+
+    controller.replaceElement(
+        grab.title
+            ? element.copyWith(titleBox: next)
+            : element.copyWith(descriptionBox: next),
+        transient: true);
+  }
+
   void _onPointerMove(PointerMoveEvent event) {
     if (_painting != null) {
       _paintStrokeAt(_toDocument(event.localPosition));
@@ -1230,6 +1361,8 @@ class CanvasStageState extends State<CanvasStage> {
         _applyNodeMove(doc, handle: false);
       case _DragMode.handle:
         _applyNodeMove(doc, handle: true);
+      case _DragMode.chartLabel:
+        _applyChartLabel(doc);
       default:
         break;
     }
@@ -1544,6 +1677,7 @@ class CanvasStageState extends State<CanvasStage> {
                       selection: controller.selection,
                       showHelpers: controller.showHelpers,
                       selectedPath: _selectedPath(),
+                      chartLabels: _selectedChartLabels(),
                       editingText: _editingText,
                       preview: _preview,
                       previewOn: _previewPlacement(),
@@ -1709,6 +1843,13 @@ class _StagePainter extends CustomPainter {
   /// handles are drawn in place of a selection box.
   final PathElement? selectedPath;
 
+  /// chartLabels is the boxes of the selected chart's placed labels, in
+  /// document units. Outlined so that a title somebody has taken control of
+  /// looks like something that can be taken hold of -- placed and then not
+  /// drawn, it is a piece of text that mysteriously moves when dragged and
+  /// has no visible corner to resize by.
+  final List<Rect> chartLabels;
+
   /// preview is a picture of what a held stroke would do, and previewOn is
   /// the placement it is drawn through. Both null when nothing is held.
   ///
@@ -1757,6 +1898,7 @@ class _StagePainter extends CustomPainter {
     required this.showHandles,
     required this.showHelpers,
     required this.selectedPath,
+    required this.chartLabels,
     required this.editingText,
     required this.preview,
     required this.previewOn,
@@ -1908,8 +2050,47 @@ class _StagePainter extends CustomPainter {
     }
   }
 
+  /// _paintChartLabels outlines a chart's placed title and description, with a
+  /// grip on the corner that resizes them.
+  ///
+  /// Dashes rather than a solid line, so it does not read as part of the
+  /// design: it is scaffolding, the same as the selection box, and it is never
+  /// exported -- this painter draws over the document rather than into it.
+  void _paintChartLabels(Canvas canvas) {
+    if (chartLabels.isEmpty) return;
+    var line = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1
+      ..color = const Color(0x883D7EFF);
+
+    for (var rect in chartLabels) {
+      var box = Rect.fromPoints(
+          rect.topLeft * scale + origin, rect.bottomRight * scale + origin);
+      const dash = 5.0, gap = 4.0;
+      for (var (from, to) in [
+        (box.topLeft, box.topRight),
+        (box.bottomLeft, box.bottomRight),
+        (box.topLeft, box.bottomLeft),
+        (box.topRight, box.bottomRight),
+      ]) {
+        var span = (to - from).distance;
+        if (span <= 0) continue;
+        var step = (to - from) / span;
+        for (var at = 0.0; at < span; at += dash + gap) {
+          canvas.drawLine(from + step * at,
+              from + step * math.min(at + dash, span), line);
+        }
+      }
+      canvas.drawRect(
+          Rect.fromCenter(center: box.bottomRight, width: 7, height: 7),
+          Paint()..color = const Color(0xFF3D7EFF));
+    }
+  }
+
   void _paintSelection(Canvas canvas) {
     if (!showHelpers) return;
+
+    _paintChartLabels(canvas);
 
     // A selected path shows its points and handles instead of a box: the box
     // round a curve is a rectangle nobody drew and cannot be usefully dragged,
