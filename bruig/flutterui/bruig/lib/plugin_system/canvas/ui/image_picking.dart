@@ -4,7 +4,7 @@ import 'dart:ui' as ui;
 
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_assets.dart';
-import 'package:bruig/screens/compress.dart';
+import 'package:bruig/plugin_system/canvas/ui/picture_options_dialog.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:mime/mime.dart';
@@ -12,18 +12,19 @@ import 'package:path/path.dart' as path;
 
 // image_picking.dart is how a picture gets onto the canvas.
 //
-// It goes through the app's own compression screen -- the same one an
-// attachment and an embedded picture use -- rather than a second one written
-// for here. A canvas is published into a chat, a post or a page, all of which
-// have the same payload limit as everything else Bison Relay sends, so the
-// question "is this small enough to send" has one answer and one place to
-// decide it.
+// It goes through the app's own picture controls -- the same width, quality
+// and format an embedded picture and a site's picture are offered -- rather
+// than a second set written for here. A canvas is published into a chat, a
+// post or a page, all of which have the same payload limit as everything else
+// Bison Relay sends, so the question "how big should this be" has one answer
+// and one place to decide it.
 //
 // The bytes are then handed to CanvasAssets, which is content-addressed: the
 // same badge dropped onto eleven canvases is stored once, and a document that
 // refers to it keeps an id rather than the picture.
 
-/// _compressAbove is the size past which the compression screen is offered.
+/// _compressAbove is the size past which the size controls are offered on the
+/// way in.
 ///
 /// Not a hard limit. A large picture on a canvas is legitimate -- the canvas
 /// may be exported at 4096 wide for a poster -- so this is the point at which
@@ -54,13 +55,12 @@ Future<Size?> pictureSize(String assetId) async {
 }
 
 /// compressCanvasPicture runs a picture that is already on the canvas back
-/// through the compression screen and stores the result.
+/// through the size controls and stores the result.
 ///
-/// The picture is only *offered* compression on the way in, and only when it
-/// is over [_compressAbove] -- which means a reader who wanted the controls
-/// for a smaller one, or who accepted a size on the way in and changed their
-/// mind, had nowhere to go. Returns the new asset id, or null if nothing
-/// changed.
+/// The picture is only *offered* them on the way in, and only when it is over
+/// [_compressAbove] -- which means a reader who wanted the controls for a
+/// smaller one, or who accepted a size on the way in and changed their mind,
+/// had nowhere to go. Returns the new asset id, or null if nothing changed.
 Future<String?> compressCanvasPicture(
     BuildContext context, String assetId) async {
   var snackbar = SnackBarModel.of(context);
@@ -71,11 +71,13 @@ Future<String?> compressCanvasPicture(
   }
 
   if (!context.mounted) return null;
-  var result = await showCompressScreen(context,
-      original: Uint8List.fromList(bytes), mime: _mimeOf(bytes));
+  var result = await showCanvasPictureOptions(context,
+      original: Uint8List.fromList(bytes),
+      mime: _mimeOf(bytes),
+      title: "Picture size");
   if (result == null) return null;
 
-  var id = await CanvasAssets.save(result.data);
+  var id = await CanvasAssets.save(result);
   // Content-addressed, so compressing to exactly what was already there hands
   // back the same id. Nothing to do, and nothing to say about it.
   return id == assetId ? null : id;
@@ -107,13 +109,13 @@ Future<String?> pickCanvasImage(BuildContext context) async {
 
     if (bytes.length > _compressAbove) {
       if (!context.mounted) return null;
-      var result =
-          await showCompressScreen(context, original: bytes, mime: mime);
-      // Cancelled at the compression screen means cancelled altogether: the
-      // reader was asked whether to shrink it and said no to the whole thing,
-      // which is not the same as saying "store the big one".
+      var result = await showCanvasPictureOptions(context,
+          original: bytes, mime: mime, title: "Add a picture");
+      // Cancelled there means cancelled altogether: the reader was asked how
+      // big it should be and said no to the whole thing, which is not the
+      // same as saying "store the big one".
       if (result == null) return null;
-      bytes = result.data;
+      bytes = result;
     }
 
     var id = await CanvasAssets.save(bytes);

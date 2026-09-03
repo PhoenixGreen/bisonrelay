@@ -1036,15 +1036,15 @@ List<Widget> _imageSettings(BuildContext context, CanvasController controller,
           if (id != null) await use(id);
         },
       ),
-      // Compression is offered on the way in, but only above half a megabyte
-      // -- so anybody who wanted the controls for a smaller picture, or who
-      // took a size on the way in and thought better of it, had nowhere to go.
-      // This is that door, and it is the app's own compression screen, the
-      // same one an attachment goes through.
+      // The size controls are offered on the way in, but only above half a
+      // megabyte -- so anybody who wanted them for a smaller picture, or who
+      // took a size on the way in and thought better of it, had nowhere to
+      // go. This is that door, and it is the app's own width, quality and
+      // format controls, the same ones an embedded picture goes through.
       if (e.hasImage)
         CanvasIconButton(
           icon: Icons.compress,
-          tooltip: "Compress this picture",
+          tooltip: "Change this picture's size and quality",
           onPressed: () async {
             var id = await compressCanvasPicture(context, e.assetId);
             if (id != null) await use(id);

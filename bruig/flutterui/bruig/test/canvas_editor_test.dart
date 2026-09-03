@@ -2071,18 +2071,19 @@ void main() {
       expect(element.outline.on, isTrue);
     });
 
-    testWidgets("a picture can be compressed after it is already in",
+    testWidgets("a picture's size can be changed after it is already in",
         (tester) async {
-      // Compression is offered on the way in, and only above half a megabyte,
-      // so a reader who wanted the controls for a smaller picture -- or who
-      // took a size on the way in and thought better of it -- had nowhere to
-      // go.
+      // The width, quality and format controls are offered on the way in, and
+      // only above half a megabyte, so a reader who wanted them for a smaller
+      // picture -- or who took a size on the way in and thought better of it
+      // -- had nowhere to go.
+      const tooltip = "Change this picture's size and quality";
       await panel(tester);
-      expect(find.byTooltip("Compress this picture"), findsOneWidget);
+      expect(find.byTooltip(tooltip), findsOneWidget);
 
       await panel(tester, assetId: "");
-      expect(find.byTooltip("Compress this picture"), findsNothing,
-          reason: "nothing to compress until there is a picture");
+      expect(find.byTooltip(tooltip), findsNothing,
+          reason: "nothing to resize until there is a picture");
     });
 
     testWidgets("there is nothing to outline without a picture",
