@@ -1,4 +1,3 @@
-import 'package:bruig/components/text.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
@@ -87,7 +86,13 @@ class CanvasElementsPanel extends StatelessWidget {
         top: ListView(
           padding: const EdgeInsets.fromLTRB(8, 8, 8, 16),
           children: [
-            const CanvasSectionHeading("Add"),
+            // Behind the question mark rather than under the grid. It is a
+            // paragraph read once and then never again, and in a column this
+            // narrow it was taking a fifth of the panel to go on saying it.
+            const CanvasSectionHeading("Add",
+                hint: "Click to add one in the middle of the canvas, or drag "
+                    "it where you want it. What is already on the canvas is "
+                    "in the Layers tab."),
             Wrap(
               spacing: 6,
               runSpacing: 6,
@@ -95,11 +100,6 @@ class CanvasElementsPanel extends StatelessWidget {
                 for (var kind in _addable) _AddChip(controller, kind),
               ],
             ),
-            const SizedBox(height: 12),
-            const Txt.S(
-                "Click to add one in the middle of the canvas, or drag it "
-                "where you want it. What is already on the canvas is in the "
-                "Layers tab."),
           ],
         ),
       );

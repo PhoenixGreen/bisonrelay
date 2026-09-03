@@ -1,9 +1,9 @@
 import 'dart:math' as math;
 
-import 'package:bruig/components/text.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/presets/builtin_presets.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/element_settings_pane.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
@@ -43,12 +43,9 @@ class _CanvasPresetsPanelState extends State<CanvasPresetsPanel> {
   Widget build(BuildContext context) => ListView(
         padding: const EdgeInsets.fromLTRB(8, 10, 8, 16),
         children: [
-          const Padding(
-            padding: EdgeInsets.only(bottom: 8),
-            child: Txt.S(
-                "Start from one of these, then change whatever you like and "
-                "save your own copy."),
-          ),
+          const CanvasSectionHeading("Presets",
+              hint: "Start from one of these, then change whatever you like "
+                  "and save your own copy."),
           for (var preset in builtinPresets)
             _PresetCard(
               preset: preset,

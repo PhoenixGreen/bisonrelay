@@ -34,8 +34,14 @@ import 'package:flutter/material.dart';
 /// showing an empty space, because an empty space reads as broken.
 /// [stacked] lays the controls down a column, which is what a sidebar wants.
 /// False puts them along a row, for the band above the canvas.
+///
+/// [explainEmpty] says what to do with nothing selected. The band says so in
+/// words, because its line is there whether anything is selected or not and an
+/// empty strip reads as broken. The sidebar does not: the same sentence lives
+/// on the question mark beside the section's own name, where it is read once
+/// rather than sitting in the column for ever.
 Widget elementSettingsBody(BuildContext context, CanvasController controller,
-    {bool stacked = true}) {
+    {bool stacked = true, bool explainEmpty = true}) {
   var selected = controller.selected;
 
   if (controller.backgroundSelected) {
@@ -76,32 +82,48 @@ Widget elementSettingsBody(BuildContext context, CanvasController controller,
         "Choose one to change its settings.");
   }
 
-  return const Txt.S(
-      "Choose a layer to change its settings, or the background at the "
-      "bottom of the list to change the whole canvas.");
+  return explainEmpty
+      ? const Txt.S(elementSettingsHint)
+      : const SizedBox.shrink();
 }
 
-/// CanvasSectionHeading is a small capitalised label above a group of things.
+/// elementSettingsHint is what this section is for, in one sentence. Shown in
+/// the band and, in the sidebar, on the question mark beside its name.
+const String elementSettingsHint =
+    "Choose a layer to change its settings, or the background at the bottom "
+    "of the list to change the whole canvas.";
+
+/// CanvasSectionHeading is a small capitalised label above a group of things,
+/// with an optional question mark beside it explaining what they are.
 class CanvasSectionHeading extends StatelessWidget {
   final String text;
-  const CanvasSectionHeading(this.text, {super.key});
+  final String? hint;
+  const CanvasSectionHeading(this.text, {this.hint, super.key});
 
   @override
-  Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(bottom: 6, top: 2),
-        child: Text(
-          text.toUpperCase(),
-          style: TextStyle(
-            fontSize: 10,
-            letterSpacing: 0.8,
-            fontWeight: FontWeight.w600,
-            color: ThemeNotifier.of(context)
-                .colors
-                .onSurfaceVariant
-                .withValues(alpha: 0.75),
-          ),
-        ),
-      );
+  Widget build(BuildContext context) {
+    var label = Text(
+      text.toUpperCase(),
+      style: TextStyle(
+        fontSize: 10,
+        letterSpacing: 0.8,
+        fontWeight: FontWeight.w600,
+        color: ThemeNotifier.of(context)
+            .colors
+            .onSurfaceVariant
+            .withValues(alpha: 0.75),
+      ),
+    );
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6, top: 2),
+      child: hint == null
+          ? label
+          : Row(mainAxisSize: MainAxisSize.min, children: [
+              label,
+              CanvasHint(hint!),
+            ]),
+    );
+  }
 }
 
 /// CanvasSettingsSplit is [top] with a collapsible settings section under it.
@@ -235,6 +257,7 @@ class _CanvasSettingsSplitState extends State<CanvasSettingsSplit> {
               color: theme.colors.onSurfaceVariant,
             ),
           ),
+          const CanvasHint(elementSettingsHint),
         ]),
       ),
     );
@@ -278,7 +301,10 @@ class _CanvasSettingsSplitState extends State<CanvasSettingsSplit> {
         maxWidth: widget.maxControlWidth,
         child: ListView(
           padding: const EdgeInsets.fromLTRB(8, 8, 8, 16),
-          children: [elementSettingsBody(context, widget.controller)],
+          children: [
+            elementSettingsBody(context, widget.controller,
+                explainEmpty: false),
+          ],
         ),
       );
 }

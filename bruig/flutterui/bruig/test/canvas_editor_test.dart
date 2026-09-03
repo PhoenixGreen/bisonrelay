@@ -16,6 +16,7 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_timeline.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/element_settings_pane.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/elements_panel.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/presets_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/canvas_sidebar.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/layers_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
@@ -2107,6 +2108,75 @@ void main() {
 
       // Two decimals, so twenty-five pixels is a quarter.
       expect(controller.document.elements.single.opacity, closeTo(0.75, 0.02));
+    });
+  });
+
+  group("the sidebar's explanations", () {
+    // Each panel carried a paragraph, permanently, taking a fifth of a narrow
+    // column to say something read once and never again. Behind a question
+    // mark it is still there for whoever has not read it and costs nothing to
+    // whoever has.
+
+    /// shown is the text of every hint the panel is offering.
+    List<String> shown(WidgetTester tester) => tester
+        .widgetList<CanvasHint>(find.byType(CanvasHint))
+        .map((h) => h.message)
+        .toList();
+
+    testWidgets("the Add grid explains itself on a question mark",
+        (tester) async {
+      var controller = CanvasController(const CanvasDocument());
+      addTearDown(controller.dispose);
+      await pump(tester, CanvasElementsPanel(controller: controller));
+
+      const hint = "Click to add one in the middle of the canvas, or drag it "
+          "where you want it. What is already on the canvas is in the Layers "
+          "tab.";
+      expect(find.text(hint), findsNothing, reason: "not in the column");
+      expect(shown(tester), contains(hint));
+
+      // Tap as well as hover: a hint reachable only by hovering does not
+      // exist on a touch screen.
+      await tester.tap(find.byType(CanvasHint).first);
+      await tester.pumpAndSettle();
+      expect(find.text(hint), findsOneWidget);
+    });
+
+    testWidgets("so do the presets", (tester) async {
+      await pump(tester, CanvasPresetsPanel(onChoose: (_, __) {}));
+
+      expect(find.text("PRESETS"), findsOneWidget,
+          reason: "a heading to hang the question mark off");
+      expect(
+          shown(tester),
+          contains("Start from one of these, then change whatever you like "
+              "and save your own copy."));
+    });
+
+    testWidgets("and the element settings, in the sidebar but not the band",
+        (tester) async {
+      var controller = CanvasController(const CanvasDocument());
+      addTearDown(controller.dispose);
+
+      await pump(tester, CanvasLayersPanel(controller: controller));
+      expect(find.text(elementSettingsHint), findsNothing);
+      expect(shown(tester), contains(elementSettingsHint));
+
+      // The band keeps the words. Its line is there whether anything is
+      // selected or not, and an empty strip reads as broken.
+      await pump(
+          tester,
+          CanvasSettingsBar(
+            controller: controller,
+            onPublish: () {},
+            canvasSettingsOpen: false,
+            onToggleCanvasSettings: () {},
+          ));
+      await tester.tap(find.byTooltip(
+          "Element settings — the selected element's controls, on a second "
+          "line"));
+      await tester.pumpAndSettle();
+      expect(find.text(elementSettingsHint), findsOneWidget);
     });
   });
 

@@ -72,6 +72,42 @@ class CanvasControlScope extends InheritedWidget {
       old.stacked != stacked || old.maxWidth != maxWidth;
 }
 
+/// CanvasHint is a question mark that explains a section when it is hovered.
+///
+/// The sidebar's panels each carried a paragraph of explanation above or below
+/// their contents, permanently, taking a fifth of a narrow column to say
+/// something that is read once and never again. Behind a question mark it is
+/// still there for whoever has not read it and costs nothing to whoever has.
+///
+/// Tap as well as hover, because a hint reachable only by hovering is a hint
+/// that does not exist on a touch screen.
+class CanvasHint extends StatelessWidget {
+  final String message;
+  const CanvasHint(this.message, {super.key});
+
+  @override
+  Widget build(BuildContext context) => Tooltip(
+        message: message,
+        triggerMode: TooltipTriggerMode.tap,
+        // Wider than the sidebar, because the sidebar is what it is too big
+        // for. A tooltip the width of the column it is explaining would be the
+        // paragraph again, in a box.
+        constraints: const BoxConstraints(maxWidth: 300),
+        margin: const EdgeInsets.symmetric(horizontal: 8),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+          child: Icon(
+            Icons.help_outline,
+            size: 13,
+            color: ThemeNotifier.of(context)
+                .colors
+                .onSurfaceVariant
+                .withValues(alpha: 0.7),
+          ),
+        ),
+      );
+}
+
 /// CanvasControlGroup is a labelled cluster of controls with a rule after it.
 ///
 /// The rules are what stop a bar of thirty controls reading as one undivided
