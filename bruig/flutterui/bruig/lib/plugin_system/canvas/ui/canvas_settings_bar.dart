@@ -136,7 +136,10 @@ class _CanvasSettingsBarState extends State<CanvasSettingsBar> {
     var theme = ThemeNotifier.of(context);
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(8, 5, 8, 5),
+      // No bottom padding of its own: the row below supplies its own, and
+      // with both the gap under the second line came out twice the gap over
+      // it.
+      padding: const EdgeInsets.fromLTRB(8, 5, 8, 0),
       decoration: BoxDecoration(
         color: theme.colors.surfaceContainerLow,
         border: Border(
@@ -148,10 +151,28 @@ class _CanvasSettingsBarState extends State<CanvasSettingsBar> {
           const Spacer(),
           _actions(theme),
         ]),
+        // The gap between the two lines is here rather than being the line's
+        // own margin, so that the line is exactly what it looks like: the rule
+        // and what hangs under it.
+        const SizedBox(height: 5),
         if (_elementSettingsOpen) _elementLine(theme),
       ]),
     );
   }
+
+  /// _elementLineHeight is how tall the second line is, always.
+  ///
+  /// Fixed, and that is the whole point of it. The line is as tall as its
+  /// contents otherwise, so it was one height with nothing selected, another
+  /// with a picture, and a third with a chart -- and since it pushes the
+  /// canvas down, every change of selection moved the design and re-fitted the
+  /// zoom under whatever was being looked at. One height means selecting
+  /// things costs nothing after the line is opened.
+  ///
+  /// The number is the height of a captioned control, which is what almost
+  /// everything in here is. The rare control taller than that -- the chart's
+  /// data box -- scrolls rather than growing the line.
+  static const double _elementLineHeight = 44;
 
   /// _elementLine is the selected element's settings, along a row.
   ///
@@ -160,20 +181,38 @@ class _CanvasSettingsBarState extends State<CanvasSettingsBar> {
   /// selection changes -- which is the fault this line already has to be
   /// careful about, made continuous.
   Widget _elementLine(ThemeNotifier theme) => Container(
-        margin: const EdgeInsets.only(top: 5),
-        padding: const EdgeInsets.only(top: 4),
+        key: const ValueKey("canvasBarElementLine"),
+        // The same gap above the controls as below them. It was four above and
+        // five below, which is close enough to equal to be an accident and far
+        // enough from it to look like one.
+        padding: const EdgeInsets.symmetric(vertical: 6),
         decoration: BoxDecoration(
           border: Border(
               top: BorderSide(color: theme.colors.outlineVariant, width: 1)),
         ),
-        child: CanvasControlScope(
-          stacked: false,
-          // Wider than the sidebar allows: the band has the whole window.
-          maxWidth: 260,
-          child: SingleChildScrollView(
-            controller: _elementScroll,
-            scrollDirection: Axis.horizontal,
-            child: elementSettingsBody(context, controller, stacked: false),
+        child: SizedBox(
+          height: _elementLineHeight,
+          child: CanvasControlScope(
+            stacked: false,
+            // Wider than the sidebar allows: the band has the whole window.
+            maxWidth: 260,
+            // Both ways. Sideways is the ordinary case and what the scroll
+            // controller remembers; up and down exists so that a control
+            // taller than the line is reachable instead of overflowing it.
+            child: SingleChildScrollView(
+              child: ConstrainedBox(
+                constraints:
+                    const BoxConstraints(minHeight: _elementLineHeight),
+                child: SingleChildScrollView(
+                  controller: _elementScroll,
+                  scrollDirection: Axis.horizontal,
+                  child: Center(
+                    child: elementSettingsBody(context, controller,
+                        stacked: false),
+                  ),
+                ),
+              ),
+            ),
           ),
         ),
       );

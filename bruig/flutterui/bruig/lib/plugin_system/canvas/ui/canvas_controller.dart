@@ -762,12 +762,33 @@ class CanvasController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// copyElement and pasteInto are the layer list's buttons, which act on one
-  /// row rather than on the selection.
+  /// copyElement puts one row on the clipboard, whatever is selected.
   void copyElement(String id) {
     var element = _document.elementById(id);
     if (element == null) return;
     _clipboard = List.unmodifiable([element]);
+    notifyListeners();
+  }
+
+  /// duplicateElement is the layer list's button: copy and paste in one press.
+  ///
+  /// The row's control was a copy, which did nothing anybody could see -- the
+  /// canvas was unchanged and the only evidence was that a paste somewhere
+  /// else would now produce this. What the button is actually reached for is a
+  /// second one of these, so it makes one.
+  ///
+  /// The clipboard is deliberately left alone. Duplicating a layer is not a
+  /// reason to lose whatever was copied to paste onto another canvas.
+  void duplicateElement(String id) {
+    var element = _document.elementById(id);
+    if (element == null) return;
+    var copy = element
+        .withId(newElementId())
+        .withBase(x: element.x + _pasteOffset, y: element.y + _pasteOffset);
+    apply(_document.addElement(copy));
+    _backgroundSelected = false;
+    _focusedPlayer = null;
+    _selection = {copy.id};
     notifyListeners();
   }
 

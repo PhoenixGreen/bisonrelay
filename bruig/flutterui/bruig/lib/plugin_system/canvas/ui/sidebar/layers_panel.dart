@@ -206,21 +206,29 @@ class CanvasLayerRow extends StatelessWidget {
             () => controller
                 .replaceElement(element.withBase(visible: !element.visible)),
           ),
+          // Filled and tinted when it is locked, outlined when it is not.
+          // The pair used to be lock_outline and lock_open_outlined, which are
+          // the same padlock with the shackle moved a couple of pixels -- at
+          // fourteen pixels on a row of five icons the state was unreadable,
+          // and locking something looked like it had done nothing.
           _rowButton(
             theme,
-            element.locked ? Icons.lock_outline : Icons.lock_open_outlined,
+            element.locked ? Icons.lock : Icons.lock_open_outlined,
             element.locked ? "Unlock" : "Lock",
             () => controller
                 .replaceElement(element.withBase(locked: !element.locked)),
+            active: element.locked,
           ),
-          // Copy is on the row as well as on Cmd-C, because the row is where
-          // you already are when you have found the element you want -- and
-          // because a shortcut nobody is told about is a shortcut nobody uses.
+          // Duplicate rather than copy. A copy did nothing anybody could see:
+          // the canvas was unchanged and the only evidence was that a paste
+          // somewhere else would now produce this. What the button is reached
+          // for is a second one of these, so it makes one. Cmd-C is still
+          // there for a copy that is going somewhere.
           _rowButton(
             theme,
-            Icons.copy_outlined,
-            "Copy",
-            () => controller.copyElement(element.id),
+            Icons.control_point_duplicate_outlined,
+            "Duplicate",
+            () => controller.duplicateElement(element.id),
           ),
         ]),
       ),
@@ -228,7 +236,7 @@ class CanvasLayerRow extends StatelessWidget {
   }
 
   Widget _rowButton(ThemeNotifier theme, IconData icon, String tooltip,
-          VoidCallback? onTap) =>
+          VoidCallback? onTap, {bool active = false}) =>
       Tooltip(
         message: tooltip,
         child: InkWell(
@@ -241,7 +249,9 @@ class CanvasLayerRow extends StatelessWidget {
               size: 14,
               color: onTap == null
                   ? theme.colors.onSurfaceVariant.withValues(alpha: 0.3)
-                  : theme.colors.onSurfaceVariant,
+                  : active
+                      ? theme.colors.primary
+                      : theme.colors.onSurfaceVariant,
             ),
           ),
         ),

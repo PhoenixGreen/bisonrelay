@@ -146,6 +146,61 @@ void main() {
       expect(tester.getSize(find.byType(CanvasSettingsBar)).height, oneLine);
     });
 
+    testWidgets("the second line is one height whatever is selected",
+        (tester) async {
+      // It pushes the canvas down, so a line that were as tall as its contents
+      // would move the design and re-fit the zoom on every change of
+      // selection. Opening it costs a line once; selecting things after that
+      // costs nothing.
+      var document = const CanvasDocument();
+      var text = newElement(ElementKind.text, document);
+      var chart = newElement(ElementKind.chart, document);
+      var controller =
+          CanvasController(document.addElement(text).addElement(chart));
+      addTearDown(controller.dispose);
+
+      await pump(tester, bar(controller));
+      await tester.tap(find.byTooltip(
+          "Element settings — the selected element's controls, on a second "
+          "line"));
+      await tester.pumpAndSettle();
+      var empty = tester.getSize(find.byType(CanvasSettingsBar)).height;
+
+      for (var element in [text, chart]) {
+        controller.selectOnly(element.id);
+        await tester.pumpAndSettle();
+        expect(tester.getSize(find.byType(CanvasSettingsBar)).height, empty,
+            reason: "${element.kind.name} makes the band no taller");
+      }
+      expect(tester.takeException(), isNull,
+          reason: "and a control taller than the line scrolls, not overflows");
+    });
+
+    testWidgets("the second line has the same gap above as below",
+        (tester) async {
+      var controller = CanvasController(const CanvasDocument());
+      addTearDown(controller.dispose);
+      await pump(tester, bar(controller));
+      await tester.tap(find.byTooltip(
+          "Element settings — the selected element's controls, on a second "
+          "line"));
+      await tester.pumpAndSettle();
+
+      // Measured off the rule the line hangs from and the bottom of the band,
+      // because the gap between them is what was actually complained about.
+      var line =
+          tester.getRect(find.byKey(const ValueKey("canvasBarElementLine")));
+      var controls = tester.getRect(find.byType(CanvasControlScope).first);
+      var above = controls.top - line.top;
+      var below = line.bottom - controls.bottom;
+
+      expect(above, closeTo(below, 1.5), reason: "above $above, below $below");
+      // Only the band's own bottom rule below it, and nothing else.
+      expect(line.bottom,
+          closeTo(tester.getRect(find.byType(CanvasSettingsBar)).bottom, 1.5),
+          reason: "the band adds no padding of its own under the line");
+    });
+
     testWidgets("offers both frame buttons", (tester) async {
       var controller = CanvasController(const CanvasDocument());
       addTearDown(controller.dispose);
@@ -2052,6 +2107,74 @@ void main() {
 
       // Two decimals, so twenty-five pixels is a quarter.
       expect(controller.document.elements.single.opacity, closeTo(0.75, 0.02));
+    });
+  });
+
+  group("a layer row", () {
+    Future<CanvasController> panel(WidgetTester tester) async {
+      var document = const CanvasDocument();
+      var element = newElement(ElementKind.shape, document);
+      var controller = CanvasController(document.addElement(element));
+      addTearDown(controller.dispose);
+      await pump(tester, CanvasLayersPanel(controller: controller));
+      return controller;
+    }
+
+    testWidgets("duplicates rather than copying", (tester) async {
+      // A copy did nothing anybody could see: the canvas was unchanged and the
+      // only evidence was that a paste somewhere else would now produce this.
+      var controller = await panel(tester);
+      var original = controller.document.elements.single;
+
+      expect(find.byTooltip("Copy"), findsNothing);
+      await tester.tap(find.byTooltip("Duplicate"));
+      await tester.pumpAndSettle();
+
+      var elements = controller.document.elements;
+      expect(elements.length, 2);
+      expect(elements.last.id, isNot(original.id), reason: "a new element");
+      expect(elements.last.x, greaterThan(original.x),
+          reason: "offset, so it is visibly a second thing");
+      expect(controller.selection, {elements.last.id},
+          reason: "and selected, which is what makes it findable");
+    });
+
+    testWidgets("duplicating leaves the clipboard alone", (tester) async {
+      // Wanting a second one of these is not a reason to lose whatever was
+      // copied to paste onto another canvas.
+      var controller = await panel(tester);
+      controller.selectOnly(controller.document.elements.single.id);
+      controller.copySelected();
+      var copied = controller.document.elements.single.id;
+
+      await tester.tap(find.byTooltip("Duplicate"));
+      await tester.pumpAndSettle();
+      controller.paste();
+
+      expect(controller.document.elements.length, 3);
+      expect(controller.canPaste, isTrue);
+      expect(copied, isNotEmpty);
+    });
+
+    testWidgets("the lock is legible either way round", (tester) async {
+      // It was lock_outline against lock_open_outlined, which are the same
+      // padlock with the shackle moved a couple of pixels. At fourteen pixels
+      // on a row of five icons, locking something looked like it had done
+      // nothing at all.
+      var controller = await panel(tester);
+
+      expect(find.byIcon(Icons.lock_open_outlined), findsOneWidget);
+      await tester.tap(find.byTooltip("Lock"));
+      await tester.pumpAndSettle();
+
+      expect(controller.document.elements.single.locked, isTrue);
+      expect(find.byIcon(Icons.lock), findsOneWidget,
+          reason: "filled, not another outline");
+      expect(find.byIcon(Icons.lock_open_outlined), findsNothing);
+
+      await tester.tap(find.byTooltip("Unlock"));
+      await tester.pumpAndSettle();
+      expect(find.byIcon(Icons.lock_open_outlined), findsOneWidget);
     });
   });
 
