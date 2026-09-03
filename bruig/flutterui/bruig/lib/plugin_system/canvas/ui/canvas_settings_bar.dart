@@ -4,6 +4,8 @@ import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/canvas_sidebar.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/element_settings_pane.dart';
+import 'package:bruig/storage_manager.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
@@ -21,14 +23,23 @@ import 'package:flutter/material.dart';
 // being looked at. Floating it costs a strip of the canvas's top edge while it
 // is open, which is recoverable by closing it; moving the canvas is not.
 //
-// What is deliberately *not* here is any element's settings, or the
-// background's. Those are in the Layers sidebar, stacked, where there is room
-// to show all of an element at once. They were here as well for a while and
-// the duplication was not worth it: the band's copy could only ever show a few
-// controls at a time along a line that had to be scrolled sideways, and having
-// two places to change the same thing meant neither was the obvious one. The
-// band now answers "how do I look at this, and what shape is it", and the
-// sidebar answers "what is this made of".
+// The selected element's settings are the second line, behind a button, and
+// the band is one line whenever that button is off -- which is how it starts
+// and how it stays until somebody presses it.
+//
+// They were taken out of here once, on the grounds that a row that has to be
+// scrolled sideways shows fewer controls than a column and that two places to
+// change one thing meant neither was the obvious one. Both are still true, and
+// they are not the whole story: the sidebar is also where the layer list, the
+// file list and the presets are, so working in the band meant the settings
+// were a panel away behind whichever of those was up. Three places, each
+// remembering whether it is open, lets the reader put the settings where the
+// rest of their work is rather than the other way round.
+//
+// This one does push the canvas down when it opens, which is exactly what the
+// canvas settings panel floats to avoid. It is a second line of the band and
+// was asked for as one; the difference that makes it bearable is that it is
+// off unless it has been switched on, and it never switches itself on.
 //
 // The animation settings are absent for the same sort of reason -- the frame
 // count and the frame rate live on the timeline, beside the frames they
@@ -68,18 +79,51 @@ class CanvasSettingsBar extends StatefulWidget {
   State<CanvasSettingsBar> createState() => _CanvasSettingsBarState();
 }
 
+/// _elementSettingsKey remembers whether the second line is out.
+///
+/// Persisted, and separately from the sidebar's two copies, because it is a
+/// decision about the shape of the page rather than a mood -- and because
+/// having the settings in the band is usually a decision to *not* have them in
+/// the sidebar.
+const String _elementSettingsKey = "canvasBarElementSettingsOpen";
+
 class _CanvasSettingsBarState extends State<CanvasSettingsBar> {
   CanvasController get controller => widget.controller;
+
+  /// _elementSettingsOpen is whether the second line is showing. Never turned
+  /// on by anything but the button: a line that appears because an element was
+  /// selected is a line that has to be dismissed again after every selection.
+  bool _elementSettingsOpen = false;
+
+  /// _elementScroll survives the rebuild that every edit causes, which is what
+  /// keeps the row where it was left. Without it, changing a setting scrolled
+  /// the row back to the beginning and the control being used went off the
+  /// side of the screen.
+  final ScrollController _elementScroll = ScrollController();
 
   @override
   void initState() {
     super.initState();
     controller.addListener(_onChanged);
+    _restoreOpen();
+  }
+
+  Future<void> _restoreOpen() async {
+    var saved = await StorageManager.readData(_elementSettingsKey);
+    if (saved is bool && mounted) {
+      setState(() => _elementSettingsOpen = saved);
+    }
+  }
+
+  void _toggleElementSettings() {
+    setState(() => _elementSettingsOpen = !_elementSettingsOpen);
+    StorageManager.saveData(_elementSettingsKey, _elementSettingsOpen);
   }
 
   @override
   void dispose() {
     controller.removeListener(_onChanged);
+    _elementScroll.dispose();
     super.dispose();
   }
 
@@ -98,13 +142,41 @@ class _CanvasSettingsBarState extends State<CanvasSettingsBar> {
         border: Border(
             bottom: BorderSide(color: theme.colors.outlineVariant, width: 1)),
       ),
-      child: Row(children: [
-        _viewControls(theme),
-        const Spacer(),
-        _actions(theme),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Row(children: [
+          _viewControls(theme),
+          const Spacer(),
+          _actions(theme),
+        ]),
+        if (_elementSettingsOpen) _elementLine(theme),
       ]),
     );
   }
+
+  /// _elementLine is the selected element's settings, along a row.
+  ///
+  /// Scrolled sideways rather than wrapped, because a band that grows to three
+  /// and four lines to fit a chart's settings moves the canvas every time the
+  /// selection changes -- which is the fault this line already has to be
+  /// careful about, made continuous.
+  Widget _elementLine(ThemeNotifier theme) => Container(
+        margin: const EdgeInsets.only(top: 5),
+        padding: const EdgeInsets.only(top: 4),
+        decoration: BoxDecoration(
+          border: Border(
+              top: BorderSide(color: theme.colors.outlineVariant, width: 1)),
+        ),
+        child: CanvasControlScope(
+          stacked: false,
+          // Wider than the sidebar allows: the band has the whole window.
+          maxWidth: 260,
+          child: SingleChildScrollView(
+            controller: _elementScroll,
+            scrollDirection: Axis.horizontal,
+            child: elementSettingsBody(context, controller, stacked: false),
+          ),
+        ),
+      );
 
   /// _viewControls is the tools and the zoom: how you are looking at the
   /// canvas, rather than what is on it.
@@ -202,6 +274,14 @@ class _CanvasSettingsBarState extends State<CanvasSettingsBar> {
   Widget _actions(ThemeNotifier theme) => Row(
         mainAxisSize: MainAxisSize.min,
         children: [
+          _barButton(theme,
+              icon: Icons.format_paint_outlined,
+              tooltip: _elementSettingsOpen
+                  ? "Hide the element settings"
+                  : "Element settings — the selected element's controls, on a "
+                      "second line",
+              active: _elementSettingsOpen,
+              onPressed: _toggleElementSettings),
           _barButton(theme,
               icon: Icons.tune,
               tooltip: "Canvas settings",

@@ -1,11 +1,7 @@
-import 'package:bruig/components/text.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
-import 'package:bruig/plugin_system/canvas/ui/controls.dart';
-import 'package:bruig/plugin_system/canvas/ui/element_settings.dart';
-import 'package:bruig/plugin_system/canvas/ui/procedural_settings.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/element_settings_pane.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/elements_panel.dart';
-import 'package:bruig/storage_manager.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
@@ -19,127 +15,40 @@ import 'package:flutter/material.dart';
 // list was always scrolled below a grid of things the reader had finished
 // with.
 //
-// The panel is in two parts with a divider between them that can be dragged.
-// The list grows without limit -- a football canvas is thirty layers -- and
-// settings pushed off the bottom by it were settings that had to be scrolled
-// back to after every selection. Splitting the height means both are always on
-// screen, and how the height is shared is the reader's call: a document being
-// arranged wants the list, one being styled wants the settings.
+// The panel is in two parts with a divider between them that can be dragged,
+// and the lower part can be closed altogether. The list grows without limit --
+// a football canvas is thirty layers -- and settings pushed off the bottom by
+// it were settings that had to be scrolled back to after every selection.
+// Splitting the height means both are on screen, and how the height is shared
+// is the reader's call: a document being arranged wants the list, one being
+// styled wants the settings, and one being arranged with the band's copy of
+// the settings open wants no settings here at all.
 //
-// The settings are the same controls as the band above the canvas used to
-// carry, laid out stacked rather than in a row (see CanvasControlScope). They
-// are only here now. Two places to change the same thing meant neither was the
-// obvious one, and the band's copy could only show a few at a time along a
-// line that had to be scrolled sideways.
+// The settings themselves are shared with the Design Elements tab and with the
+// band above the canvas -- see element_settings_pane.dart, which also holds the
+// section that carries them. This tab remembers its own open state and its own
+// height, independently of the other two.
 
-/// _settingsMaxControlWidth caps a control in this column.
-///
-/// The chart's data box asks for 260 and the sidebar is narrower than that on
-/// a small window. A control sized past its parent overflows rather than
-/// shrinking, so the cap is what keeps the stripes off the screen.
-const double _settingsMaxControlWidth = 240;
-
-/// _splitKey remembers where the divider was left.
-///
-/// Persisted because it is a decision about the shape of the window rather
-/// than a mood -- somebody who has dragged the settings open to work on a
-/// chart should not find them shut again after switching tabs.
-const String _splitKey = "canvasLayersSplit";
-
-/// _minSection keeps either half from being dragged away entirely. A divider
-/// that can be pushed to the edge is a divider that can be lost.
-const double _minSection = 90;
-
-class CanvasLayersPanel extends StatefulWidget {
+class CanvasLayersPanel extends StatelessWidget {
   final CanvasController controller;
   const CanvasLayersPanel({required this.controller, super.key});
 
   @override
-  State<CanvasLayersPanel> createState() => _CanvasLayersPanelState();
-}
-
-class _CanvasLayersPanelState extends State<CanvasLayersPanel> {
-  /// _split is the fraction of the panel's height the layer list gets.
-  double _split = 0.55;
-
-  @override
-  void initState() {
-    super.initState();
-    _restoreSplit();
-  }
-
-  Future<void> _restoreSplit() async {
-    var saved = await StorageManager.readData(_splitKey);
-    if (saved is num && mounted) {
-      setState(() => _split = saved.toDouble().clamp(0.1, 0.9));
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) => ListenableBuilder(
-        listenable: widget.controller,
-        builder: (context, _) => LayoutBuilder(
-          builder: (context, constraints) {
-            var height = constraints.maxHeight;
-            // With too little room to split, the list gets all of it and the
-            // settings are reached by scrolling. Better than two sections too
-            // short to show anything.
-            if (height < _minSection * 2 + _dividerHeight) {
-              return _layerList();
-            }
-
-            var listHeight = (height * _split)
-                .clamp(_minSection, height - _minSection - _dividerHeight);
-            return Column(children: [
-              SizedBox(height: listHeight, child: _layerList()),
-              _divider(height),
-              Expanded(child: _settings()),
-            ]);
-          },
+  Widget build(BuildContext context) => CanvasSettingsSplit(
+        controller: controller,
+        storageKey: "canvasLayers",
+        top: ListenableBuilder(
+          listenable: controller,
+          builder: (context, _) => _layerList(),
         ),
       );
 
-  static const double _dividerHeight = 11;
-
-  /// _divider is the grip between the two halves.
-  Widget _divider(double panelHeight) {
-    var theme = ThemeNotifier.of(context);
-    return MouseRegion(
-      cursor: SystemMouseCursors.resizeRow,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        // Vertical drag rather than a pan, so a slightly diagonal drag still
-        // moves the divider instead of being claimed by the list's scroll.
-        onVerticalDragUpdate: (details) {
-          if (panelHeight <= 0) return;
-          setState(() => _split =
-              (_split + details.delta.dy / panelHeight).clamp(0.1, 0.9));
-        },
-        onVerticalDragEnd: (_) => StorageManager.saveData(_splitKey, _split),
-        child: SizedBox(
-          height: _dividerHeight,
-          child: Center(
-            child: Container(
-              height: 3,
-              width: 34,
-              decoration: BoxDecoration(
-                color: theme.colors.outlineVariant,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _layerList() {
-    var controller = widget.controller;
     var elements = controller.document.elements;
     return ListView(
       padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
       children: [
-        _SectionHeading("Layers (${elements.length + 1})"),
+        CanvasSectionHeading("Layers (${elements.length + 1})"),
         // Reversed, so what is on top of the canvas is at the top of the list.
         // The document stores paint order, where the last element is the
         // frontmost; a list showing that order literally reads upside down to
@@ -158,53 +67,6 @@ class _CanvasLayersPanelState extends State<CanvasLayersPanel> {
         // everything and then noticing that the band had changed.
         CanvasBackgroundLayerRow(controller: controller),
       ],
-    );
-  }
-
-  Widget _settings() {
-    var controller = widget.controller;
-    var selected = controller.selected;
-
-    Widget body;
-    if (controller.backgroundSelected) {
-      body = ProceduralSettings(
-        spec: controller.document.background.spec,
-        label: "Background",
-        onBegin: controller.beginInteraction,
-        onCommit: controller.endInteraction,
-        onChanged: (spec) {
-          controller.beginInteraction();
-          controller.apply(
-              controller.document.copyWith(
-                  background:
-                      controller.document.background.copyWith(spec: spec)),
-              transient: true);
-        },
-      );
-    } else if (selected != null) {
-      body = Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _SectionHeading(selected.name),
-          ...elementSettings(context, controller, selected),
-        ],
-      );
-    } else if (controller.selection.length > 1) {
-      body = Txt.S("${controller.selection.length} elements selected. "
-          "Choose one to change its settings.");
-    } else {
-      body = const Txt.S(
-          "Choose a layer to change its settings, or the background at the "
-          "bottom of the list to change the whole canvas.");
-    }
-
-    return CanvasControlScope(
-      stacked: true,
-      maxWidth: _settingsMaxControlWidth,
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(8, 8, 8, 16),
-        children: [body],
-      ),
     );
   }
 }
@@ -270,33 +132,6 @@ class CanvasBackgroundLayerRow extends StatelessWidget {
   }
 }
 
-class _SectionHeading extends StatelessWidget {
-  final String text;
-  const _SectionHeading(this.text);
-
-  @override
-  Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(bottom: 6, top: 2),
-        child: Text(
-          text.toUpperCase(),
-          style: TextStyle(
-            fontSize: 10,
-            letterSpacing: 0.8,
-            fontWeight: FontWeight.w600,
-            color: ThemeNotifier.of(context)
-                .colors
-                .onSurfaceVariant
-                .withValues(alpha: 0.75),
-          ),
-        ),
-      );
-}
-
-/// CanvasLayerRow is one element in the Layers list.
-///
-/// Public because the list it belongs to lives in layers_panel.dart, next
-/// door; it stays a single widget so that a row's controls -- reorder, hide,
-/// lock -- are described once.
 class CanvasLayerRow extends StatelessWidget {
   final CanvasController controller;
   final CanvasElement element;

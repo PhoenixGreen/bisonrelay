@@ -2,16 +2,24 @@ import 'package:bruig/components/text.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/element_settings_pane.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
-// elements_panel.dart is the Design Elements tab: what you can add.
+// elements_panel.dart is the Design Elements tab: what you can add, and the
+// settings of whatever is selected.
 //
-// Only that. The layer list was underneath it and has moved to its own tab
-// (see layers_panel.dart): the two answer different questions -- "what can I
-// add" is asked once at the beginning, "what is already here" is asked
+// The *layer list* is not here and does not come back: it moved to its own tab
+// (see layers_panel.dart) because the two answer different questions -- "what
+// can I add" is asked once at the beginning, "what is already here" is asked
 // continuously -- and sharing a panel meant the list of what was on the canvas
 // was always scrolled below a grid of things the reader had finished with.
+//
+// The settings are a different matter. The first thing anybody does after
+// adding an element is change it, and with the settings only on the Layers tab
+// that was a trip to another tab and back for every element on a canvas. So
+// they are here as well, in the same collapsible section, remembering its own
+// open state and its own height -- see element_settings_pane.dart.
 //
 // An element can be added by clicking it or by dragging it onto the canvas.
 // Both, because the two answer different questions -- a click means "I want
@@ -69,12 +77,17 @@ class CanvasElementsPanel extends StatelessWidget {
   const CanvasElementsPanel({required this.controller, super.key});
 
   @override
-  Widget build(BuildContext context) => ListenableBuilder(
-        listenable: controller,
-        builder: (context, _) => ListView(
+  Widget build(BuildContext context) => CanvasSettingsSplit(
+        controller: controller,
+        storageKey: "canvasElements",
+        // The grid is a fixed size and the settings are not, so the grid gets
+        // the smaller share here -- the opposite of the Layers tab, where the
+        // list is the part that grows.
+        initialSplit: 0.45,
+        top: ListView(
           padding: const EdgeInsets.fromLTRB(8, 8, 8, 16),
           children: [
-            const _SectionHeading("Add"),
+            const CanvasSectionHeading("Add"),
             Wrap(
               spacing: 6,
               runSpacing: 6,
@@ -88,28 +101,6 @@ class CanvasElementsPanel extends StatelessWidget {
                 "where you want it. What is already on the canvas is in the "
                 "Layers tab."),
           ],
-        ),
-      );
-}
-
-class _SectionHeading extends StatelessWidget {
-  final String text;
-  const _SectionHeading(this.text);
-
-  @override
-  Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(bottom: 6, top: 2),
-        child: Text(
-          text.toUpperCase(),
-          style: TextStyle(
-            fontSize: 10,
-            letterSpacing: 0.8,
-            fontWeight: FontWeight.w600,
-            color: ThemeNotifier.of(context)
-                .colors
-                .onSurfaceVariant
-                .withValues(alpha: 0.75),
-          ),
         ),
       );
 }

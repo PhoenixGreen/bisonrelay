@@ -14,6 +14,7 @@ import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_settings_bar.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_timeline.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/element_settings_pane.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/elements_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/canvas_sidebar.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/layers_panel.dart';
@@ -94,11 +95,30 @@ void main() {
       expect(toggled, 1);
     });
 
-    testWidgets("carries no element or background settings", (tester) async {
-      // They are in the Layers sidebar, and only there. Two places to change
-      // the same thing meant neither was the obvious one, and the band's copy
-      // could only show a few controls at a time along a line that had to be
-      // scrolled sideways.
+    testWidgets("carries no element settings until they are asked for",
+        (tester) async {
+      // The band is one line unless the button has been pressed, and selecting
+      // something is not pressing the button. A line that appears because an
+      // element was selected is a line that has to be dismissed again after
+      // every selection.
+      var document = const CanvasDocument();
+      var element = newElement(ElementKind.text, document);
+      var controller = CanvasController(document.addElement(element));
+      addTearDown(controller.dispose);
+
+      await pump(tester, bar(controller));
+      var oneLine = tester.getSize(find.byType(CanvasSettingsBar)).height;
+
+      controller.selectOnly(element.id);
+      await tester.pumpAndSettle();
+
+      expect(find.byTooltip("Try the next variation"), findsNothing);
+      expect(tester.getSize(find.byType(CanvasSettingsBar)).height, oneLine,
+          reason: "selecting something does not open the second line");
+    });
+
+    testWidgets("the element button opens a second line and keeps it",
+        (tester) async {
       var document = const CanvasDocument();
       var element = newElement(ElementKind.text, document);
       var controller = CanvasController(document.addElement(element));
@@ -106,8 +126,24 @@ void main() {
       controller.selectOnly(element.id);
 
       await pump(tester, bar(controller));
-      expect(find.text("TEXT"), findsNothing);
-      expect(find.byTooltip("Try the next variation"), findsNothing);
+      var oneLine = tester.getSize(find.byType(CanvasSettingsBar)).height;
+
+      await tester.tap(find.byTooltip(
+          "Element settings — the selected element's controls, on a second "
+          "line"));
+      await tester.pumpAndSettle();
+
+      expect(tester.getSize(find.byType(CanvasSettingsBar)).height,
+          greaterThan(oneLine),
+          reason: "the settings are a second line, as asked for");
+      // Along a row rather than down a column: the band has a window's width
+      // and no height to spare.
+      expect(find.byType(SingleChildScrollView), findsWidgets);
+      expect(find.text("Opacity"), findsOneWidget);
+
+      await tester.tap(find.byTooltip("Hide the element settings"));
+      await tester.pumpAndSettle();
+      expect(tester.getSize(find.byType(CanvasSettingsBar)).height, oneLine);
     });
 
     testWidgets("offers both frame buttons", (tester) async {
@@ -2016,6 +2052,104 @@ void main() {
 
       // Two decimals, so twenty-five pixels is a quarter.
       expect(controller.document.elements.single.opacity, closeTo(0.75, 0.02));
+    });
+  });
+
+  group("the element settings section", () {
+    Future<CanvasController> panel(WidgetTester tester, Widget Function(
+            CanvasController) build) async {
+      var document = const CanvasDocument();
+      var element = newElement(ElementKind.shape, document);
+      var controller = CanvasController(document.addElement(element));
+      addTearDown(controller.dispose);
+      await pump(tester, build(controller));
+      return controller;
+    }
+
+    testWidgets("is on the Design Elements tab as well as Layers",
+        (tester) async {
+      // The first thing anybody does after adding an element is change it, and
+      // with the settings only on Layers that was a trip to another tab and
+      // back for every element on a canvas.
+      var controller = await panel(
+          tester, (c) => CanvasElementsPanel(controller: c));
+
+      expect(find.text("ADD"), findsOneWidget, reason: "still the add grid");
+      expect(find.text("Element settings"), findsOneWidget);
+
+      controller.selectOnly(controller.document.elements.single.id);
+      await tester.pumpAndSettle();
+      expect(find.text("Opacity"), findsOneWidget,
+          reason: "and the selected element's controls under it");
+    });
+
+    for (var (name, build) in <(String, Widget Function(CanvasController))>[
+      ("Design Elements", (c) => CanvasElementsPanel(controller: c)),
+      ("Layers", (c) => CanvasLayersPanel(controller: c)),
+    ]) {
+      testWidgets("closed on the $name tab, it stays closed when something "
+          "is selected", (tester) async {
+        // The instruction that makes closing it worth doing. A section that
+        // reopens because an element was clicked is a section that has to be
+        // closed again after every click.
+        var controller = await panel(tester, build);
+
+        await tester.tap(find.text("Element settings"));
+        await tester.pumpAndSettle();
+        expect(find.text("Opacity"), findsNothing);
+
+        controller.selectOnly(controller.document.elements.single.id);
+        await tester.pumpAndSettle();
+        expect(find.text("Opacity"), findsNothing,
+            reason: "selecting does not reopen it");
+
+        controller.addElement(newElement(ElementKind.text, controller.document));
+        await tester.pumpAndSettle();
+        expect(find.text("Opacity"), findsNothing,
+            reason: "nor does adding one");
+
+        // And the handle is still there, because a section with no way back is
+        // a trap.
+        await tester.tap(find.text("Element settings"));
+        await tester.pumpAndSettle();
+        expect(find.text("Opacity"), findsOneWidget);
+      });
+    }
+
+    testWidgets("the two tabs remember separately", (tester) async {
+      // Three sections, three keys -- the band's is the third. Somebody
+      // working in the band wants the sidebar's copy shut so the layer list
+      // has the room, which does not work if they share one switch.
+      await panel(tester, (c) => CanvasElementsPanel(controller: c));
+      var elements = tester
+          .widget<CanvasSettingsSplit>(find.byType(CanvasSettingsSplit))
+          .storageKey;
+
+      await panel(tester, (c) => CanvasLayersPanel(controller: c));
+      var layers = tester
+          .widget<CanvasSettingsSplit>(find.byType(CanvasSettingsSplit))
+          .storageKey;
+
+      expect(elements, isNot(layers));
+    });
+
+    testWidgets("the height each tab gives the settings is its own",
+        (tester) async {
+      // A grid of ten chips is a fixed height and a layer list is not, so the
+      // two do not want the same share -- and having dragged one there is no
+      // reason to have moved the other.
+      await panel(tester, (c) => CanvasElementsPanel(controller: c));
+      var elements = tester
+          .widget<CanvasSettingsSplit>(find.byType(CanvasSettingsSplit))
+          .initialSplit;
+
+      await panel(tester, (c) => CanvasLayersPanel(controller: c));
+      var layers = tester
+          .widget<CanvasSettingsSplit>(find.byType(CanvasSettingsSplit))
+          .initialSplit;
+
+      expect(elements, lessThan(layers),
+          reason: "the add grid needs less room than the layer list");
     });
   });
 
