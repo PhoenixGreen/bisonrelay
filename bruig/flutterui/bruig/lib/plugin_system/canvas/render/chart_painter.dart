@@ -160,6 +160,7 @@ _SliceProgress _sliceProgress(
       return _SliceProgress(1, p.clamp(0.0, 1.0));
     case ChartAnimationPreset.grow:
     case ChartAnimationPreset.popIn:
+    case ChartAnimationPreset.random:
     case ChartAnimationPreset.drawOn:
       return _SliceProgress(p, 1);
     case ChartAnimationPreset.none:
@@ -579,13 +580,18 @@ void _bars(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
       // series, which is what "one bar after another, left to right" means --
       // grouped bars in the same slot arrive together, as a group.
       var colour = series.color;
+      var arrived = 1.0;
       if (e.animation.on && reveal < 1) {
         var p = e.animation.progressAt(reveal, i, slots);
         if (p <= 0) continue;
         switch (e.animation.preset) {
           case ChartAnimationPreset.fadeIn:
+            // Fading, not growing. The number is already its full self and
+            // counting it up would say something the bar does not.
             colour = colour.withValues(alpha: colour.a * p.clamp(0.0, 1.0));
           case ChartAnimationPreset.popIn:
+          case ChartAnimationPreset.random:
+            arrived = p;
             // About its own centre, so it springs where it stands rather than
             // sliding in from the axis.
             bar = Rect.fromCenter(
@@ -594,6 +600,7 @@ void _bars(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
                 height: bar.height * p);
           case ChartAnimationPreset.grow:
           case ChartAnimationPreset.drawOn:
+            arrived = p;
             // Out of the axis. An overshoot goes past the true height and
             // settles back, which is the whole reason the ease is a setting.
             bar = horizontal
@@ -615,7 +622,11 @@ void _bars(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
           Paint()..color = colour);
 
       if (e.showValues && v != 0) {
-        var label = _formatTick(v);
+        // Counting up with the bar. Clamped to the real value even when the
+        // curve overshoots: a bar may stand a little proud of its mark for a
+        // moment and be read as a flourish, and a number that says 21 where
+        // the data says 20 is simply wrong.
+        var label = _formatTick(v * arrived.clamp(0.0, 1.0));
         var box = horizontal
             ? Rect.fromLTWH(bar.right + e.valueSpec.fontSize * 0.3,
                 bar.center.dy - e.valueSpec.fontSize, e.valueSpec.fontSize * 5,
@@ -666,10 +677,16 @@ void _lines(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
     // A line is staggered by *series*, not by point: the points of one line
     // are one movement, and drawing them in turn is what "draw on" already
     // does along the length of it.
-    var progress = animating
+    //
+    // A scattered cloud is the exception, and Random is the preset for it:
+    // there every dot is its own item and they are counted across the series
+    // as well as along them, so two series fill in together rather than one
+    // after the other.
+    var perPoint = animation.preset.scrambles && kind == ChartType.scatter;
+    var progress = animating && !perPoint
         ? animation.progressAt(reveal, at, which.length)
         : 1.0;
-    if (animating && progress <= 0) continue;
+    if (animating && !perPoint && progress <= 0) continue;
 
     var alpha = 1.0;
     if (animating) {
@@ -678,8 +695,10 @@ void _lines(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
           alpha = progress.clamp(0.0, 1.0);
         case ChartAnimationPreset.grow:
         case ChartAnimationPreset.popIn:
+        case ChartAnimationPreset.random:
           // Up out of the baseline, so a line arrives the way the bars beside
-          // it do.
+          // it do. A scattered cloud never gets here -- it is dealt dot by dot
+          // below.
           points = [
             for (var point in points)
               Offset(point.dx,
@@ -711,8 +730,13 @@ void _lines(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
         if (points.isEmpty) points = [_firstPoint(path)];
       }
       if (kind == ChartType.area) {
+        // Closed at the line's own tip rather than at the last point it has
+        // passed. Using the last *data* point left the fill's right edge
+        // standing still while the line ran on ahead of it, so the area
+        // caught up in jumps -- one jump per category.
+        var tip = _pathEnd(path) ?? points.last;
         var fill = Path.from(path)
-          ..lineTo(points.last.dx, plot.bottom)
+          ..lineTo(tip.dx, plot.bottom)
           ..lineTo(points.first.dx, plot.bottom)
           ..close();
         canvas.drawPath(
@@ -736,17 +760,32 @@ void _lines(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
 
     if (kind == ChartType.scatter || e.showValues) {
       for (var i = 0; i < points.length; i++) {
+        // Each dot's own arrival, when they are being dealt one at a time.
+        var dot = perPoint
+            ? animation.progressAt(reveal, at * n + i, which.length * n)
+            : progress;
+        if (animating && dot <= 0) continue;
+
+        var swelling = animating &&
+            (animation.preset == ChartAnimationPreset.popIn ||
+                animation.preset == ChartAnimationPreset.random);
         canvas.drawCircle(
             points[i],
-            e.strokeWidth * 1.4 *
-                (animating && animation.preset == ChartAnimationPreset.popIn
-                    ? progress.clamp(0.0, 1.4)
-                    : 1),
-            Paint()..color = colour);
+            e.strokeWidth * 1.4 * (swelling ? dot.clamp(0.0, 1.4) : 1),
+            Paint()..color = perPoint && dot < 1
+                ? colour.withValues(alpha: colour.a * dot.clamp(0.0, 1.0))
+                : colour);
         if (e.showValues) {
+          // Counting up only where the point itself is growing. Drawn on, a
+          // point that has been passed is at its full value and saying
+          // otherwise would contradict the line running through it.
+          var shown = swelling || (animating && !perPoint &&
+                  animation.preset == ChartAnimationPreset.grow)
+              ? dot.clamp(0.0, 1.0)
+              : 1.0;
           paintTextInBox(
               canvas,
-              _formatTick(data.valueAt(s, i)),
+              _formatTick(data.valueAt(s, i) * shown),
               e.valueSpec.copyWith(
                   align: TextAlignSpec.center,
                   verticalAlign: VerticalAlignSpec.bottom),
@@ -775,6 +814,21 @@ Path _trimmed(Path path, double fraction) {
 /// _lastX is how far along the drawn part has got, which is what decides
 /// which of the line's points have arrived and may be dotted or labelled.
 double _lastX(Path path) => path.getBounds().right;
+
+/// _pathEnd is where a path actually stops.
+///
+/// Off the metrics rather than off the bounding box, which is the same thing
+/// only for a line that runs left to right and never comes back -- and a
+/// smoothed line overshoots its own points, so even that one is not quite
+/// true.
+Offset? _pathEnd(Path path) {
+  Offset? out;
+  for (var metric in path.computeMetrics()) {
+    var tangent = metric.getTangentForOffset(metric.length);
+    if (tangent != null) out = tangent.position;
+  }
+  return out;
+}
 
 Offset _firstPoint(Path path) => path.getBounds().topLeft;
 
@@ -861,7 +915,8 @@ void _circular(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
               Offset(math.cos(mid), math.sin(mid)) * (radius + inner) / 2;
           paintTextInBox(
               canvas,
-              "${(values[i].abs() / total * 100).round()}%",
+              "${(values[i].abs() / total * 100 *
+                      slice.size.clamp(0.0, 1.0)).round()}%",
               e.valueSpec.copyWith(
                   align: TextAlignSpec.center,
                   verticalAlign: VerticalAlignSpec.middle),

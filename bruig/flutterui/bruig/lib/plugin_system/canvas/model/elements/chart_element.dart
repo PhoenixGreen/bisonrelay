@@ -368,6 +368,14 @@ enum ChartAnimationPreset {
   sweep("Sweep round", "The chart is uncovered clockwise from the top"),
 
   popIn("Pop in", "Each one springs up where it stands, in turn"),
+
+  /// random is popIn with the order shuffled. What a scatter wants: points in
+  /// a scatter have no order worth animating in -- left to right is a
+  /// property of how they were typed rather than of what they mean -- and a
+  /// cloud that fills in unevenly reads as a cloud arriving rather than as a
+  /// row being dealt.
+  random("Random", "Each one appears on its own, in no particular order"),
+
   fadeIn("Fade in", "Each one fades up, in turn");
 
   final String label;
@@ -385,12 +393,15 @@ enum ChartAnimationPreset {
   bool get staggers =>
       this != none && this != wipe && this != sweep;
 
+  /// scrambles is whether the order things arrive in is shuffled.
+  bool get scrambles => this == random;
+
   /// suitsCircular and suitsCartesian are which chart families a preset makes
   /// sense on. A wipe across a pie is a wipe across a circle, which reads as a
   /// mistake; a sweep round a bar chart is worse.
   bool get suitsCircular =>
       this == none || this == grow || this == sweep || this == popIn ||
-      this == fadeIn;
+      this == random || this == fadeIn;
 
   bool get suitsCartesian => this != sweep;
 }
@@ -511,8 +522,43 @@ class ChartAnimation {
     // later one, measured in item-movements.
     var step = gap.clamp(0.0, 4.0);
     var total = 1 + step * (count - 1);
-    var local = (reveal * total - step * index).clamp(0.0, 1.0);
+    var place = preset.scrambles
+        ? scrambled(index, count)
+        : index.toDouble();
+    var local = (reveal * total - step * place).clamp(0.0, 1.0);
     return ease.apply(local);
+  }
+
+  /// scrambled is where item [index] comes in the order things arrive, for the
+  /// presets that shuffle. Not a whole number: two items may well arrive
+  /// together, which is what random looks like.
+  ///
+  /// Arithmetic rather than a shuffled list, and the same answer every time
+  /// rather than a fresh one. A chart is drawn once per frame and exported
+  /// frame by frame in a separate pass, so anything that consulted a random
+  /// number generator would deal the points differently on every frame and on
+  /// every export -- which is not an animation, it is static.
+  ///
+  /// A mix rather than "multiply by a prime and take the remainder", which is
+  /// the obvious version and is not random at all: the multiplier is only ever
+  /// used modulo the count, so twelve items came out as a plain reversal and
+  /// two series of six arrived one series at a time -- which is the exact
+  /// thing this preset exists to avoid.
+  static double scrambled(int index, int count) {
+    if (count <= 1) return 0;
+    return _mix(index) * (count - 1);
+  }
+
+  /// _mix avalanches an index into 0..1. Murmur3's finaliser, which is the
+  /// standard answer to "spread these integers out" and is three multiplies.
+  static double _mix(int index) {
+    var x = (index + 1) & 0xFFFFFFFF;
+    x ^= x >>> 16;
+    x = (x * 0x85EBCA6B) & 0xFFFFFFFF;
+    x ^= x >>> 13;
+    x = (x * 0xC2B2AE35) & 0xFFFFFFFF;
+    x ^= x >>> 16;
+    return x / 0xFFFFFFFF;
   }
 
   Map<String, dynamic> toJson() => {

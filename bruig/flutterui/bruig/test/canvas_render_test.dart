@@ -1478,10 +1478,11 @@ Future<List<int>> _rowsOf(ChartElement e, ui.Color colour,
 /// _chartColours is every fully-opaque colour a chart draws, which is how a
 /// painter test asks "is the second series there at all".
 Future<Set<String>> _chartColours(ChartElement e,
-    {int width = 400, int height = 300}) async {
+    {int width = 400, int height = 300, double reveal = 1}) async {
   var recorder = ui.PictureRecorder();
   paintChart(ui.Canvas(recorder),
-      Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()), e);
+      Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()), e,
+      reveal: reveal);
   var image = await recorder.endRecording().toImage(width, height);
   try {
     var raw = await image.toByteData(format: ui.ImageByteFormat.rawStraightRgba);
@@ -1814,6 +1815,120 @@ void _chartTests() {
       for (var t = 0.0; t <= 1; t += 0.05) {
         expect(ChartEase.easeOut.apply(t), inInclusiveRange(0, 1));
         expect(ChartEase.linear.apply(t), closeTo(t, 0.001));
+      }
+    });
+
+    test("the values count up with the bars", () async {
+      // The number is part of the bar, and a bar growing under a number that
+      // already says twenty is two things happening at different times.
+      const red = ui.Color(0xFFFF0000);
+      var e = ChartElement(
+        const ElementBase(id: "c", width: 400, height: 300),
+        showValues: true,
+        showGrid: false,
+        showAxes: false,
+        // Two bars, so neither fills the plot and both labels have room
+        // above them to be drawn in.
+        data: ChartData.parse("Cat\tA\nx\t20\ny\t10"),
+        labelSpec: const TextSpec(fontSize: 11),
+        valueSpec: const TextSpec(fontSize: 20, weight: 700, color: red),
+        animation: const ChartAnimation(
+            preset: ChartAnimationPreset.grow, ease: ChartEase.linear),
+      );
+
+      // Different numbers are different pictures. Counting red pixels is
+      // enough to say the label changed as the bar grew.
+      Future<int> red255(double reveal) async {
+        var pixels = await _chartPixels(e, reveal: reveal);
+        var n = 0;
+        for (var i = 0; i < 400 * 300; i++) {
+          if (pixels[i * 4] > 200 &&
+              pixels[i * 4 + 1] < 60 &&
+              pixels[i * 4 + 2] < 60) {
+            n++;
+          }
+        }
+        return n;
+      }
+
+      expect(await red255(1), greaterThan(0), reason: "the label is drawn");
+      expect(await red255(0.5), isNot(await red255(1)),
+          reason: "and says something different half way up");
+    });
+
+    test("a drawn-on line labels the points it has passed at full value", () {
+      // The line's own progress is how far along it has got, not how tall its
+      // points are -- a point it has reached is at its value, and saying
+      // otherwise would contradict the line running through it.
+      const drawn = ChartAnimation(
+          preset: ChartAnimationPreset.drawOn, ease: ChartEase.linear);
+      expect(ChartAnimationPreset.drawOn.staggers, isTrue);
+      expect(drawn.progressAt(1, 0, 1), 1);
+    });
+
+    test("Random deals the items in a shuffled but settled order", () {
+      // Arithmetic rather than a random number generator: a chart is drawn
+      // once per frame and exported frame by frame in a separate pass, so
+      // anything genuinely random would deal the points differently on every
+      // frame and every export -- which is not an animation, it is static.
+      var order = [
+        for (var i = 0; i < 12; i++) ChartAnimation.scrambled(i, 12)
+      ];
+      expect(order.every((p) => p >= 0 && p <= 11), isTrue,
+          reason: "every place is inside the run");
+      expect(order, isNot(orderedEquals([...order]..sort())),
+          reason: "and not in the order they were given");
+      expect(order, isNot(orderedEquals([...order]..sort((a, b) => b.compareTo(a)))),
+          reason: "nor simply reversed, which is what multiplying by a prime "
+              "and taking the remainder actually gave");
+      expect(
+          order,
+          orderedEquals(
+              [for (var i = 0; i < 12; i++) ChartAnimation.scrambled(i, 12)]),
+          reason: "the same shuffle every time it is asked");
+
+      // The two halves interleave, which is what lets two series of dots fill
+      // in together rather than one series after the other.
+      var firstHalf = order.take(6).where((p) => p < 5.5).length;
+      expect(firstHalf, greaterThan(0));
+      expect(firstHalf, lessThan(6));
+
+      expect(ChartAnimation.scrambled(0, 1), 0);
+      expect(ChartAnimation.scrambled(3, 0), 0, reason: "nothing to shuffle");
+      expect(ChartAnimationPreset.random.scrambles, isTrue);
+      expect(ChartAnimationPreset.popIn.scrambles, isFalse);
+    });
+
+    test("a scattered cloud fills in across its series, not one at a time",
+        () {
+      // Points in a scatter have no order worth animating in -- left to right
+      // is a property of how they were typed -- so Random counts them across
+      // the series as well as along them, and the two series must interleave.
+      //
+      // Twelve items: the first six belong to one series and the last six to
+      // the other, which is how the painter numbers them.
+      var byPlace = [for (var i = 0; i < 12; i++) i]
+        ..sort((a, b) => ChartAnimation.scrambled(a, 12)
+            .compareTo(ChartAnimation.scrambled(b, 12)));
+
+      var firstHalf = byPlace.take(6);
+      expect(firstHalf.any((i) => i < 6), isTrue);
+      expect(firstHalf.any((i) => i >= 6), isTrue,
+          reason: "both series are under way before either has finished");
+    });
+
+    test("a scattered cloud draws at every stage of a Random", () {
+      for (var reveal in [0.0, 0.2, 0.6, 1.0]) {
+        expect(
+            () => paintChart(
+                ui.Canvas(ui.PictureRecorder()),
+                const Rect.fromLTWH(0, 0, 400, 300),
+                _two(ChartType.scatter).copyWith(
+                    animation: const ChartAnimation(
+                        preset: ChartAnimationPreset.random)),
+                reveal: reveal),
+            returnsNormally,
+            reason: "at $reveal");
       }
     });
 
