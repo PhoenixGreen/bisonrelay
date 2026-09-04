@@ -2535,6 +2535,14 @@ void main() {
       await tester.pumpAndSettle();
     }
 
+    /// labels opens the section the title, the description and the key are
+    /// now gathered in. Closed to begin with, like the other sections.
+    Future<void> labels(WidgetTester tester) async {
+      if (find.text("TITLE").evaluate().isEmpty) {
+        await press(tester, find.text("LABELS"));
+      }
+    }
+
     testWidgets("smooth is only offered where there is a line to curve",
         (tester) async {
       // Offered on a bar chart it was a switch that did nothing, which is
@@ -2572,6 +2580,7 @@ void main() {
     testWidgets("the title and the description can be switched off",
         (tester) async {
       var controller = await panel(tester);
+      await labels(tester);
       // The group's caption. The field under it has none of its own any more
       // -- "Title > Title" was the heading saying the word twice.
       expect(find.text("TITLE"), findsOneWidget);
@@ -2590,6 +2599,7 @@ void main() {
       // which is right until somebody wants it somewhere else -- and there is
       // no set of automatic rules that covers both.
       var controller = await panel(tester);
+      await labels(tester);
       expect(chartIn(controller).titleBox.placed, isFalse);
 
       await press(
@@ -2616,7 +2626,7 @@ void main() {
       expect(find.text("X label"), findsNothing);
       expect(find.text("VALUES"), findsOneWidget,
           reason: "a pie still has values and a legend");
-      expect(find.text("LEGEND"), findsOneWidget);
+      expect(find.text("LABELS"), findsOneWidget);
     });
 
     testWidgets("a radial bar says where its numbers went", (tester) async {
@@ -2659,6 +2669,7 @@ void main() {
       // The three of them together, because taking room is what made every
       // one of their settings a setting that resized the chart.
       var controller = await panel(tester);
+      await labels(tester);
       expect(chartIn(controller).floatingLabels, isTrue,
           reason: "over the chart to begin with");
 
@@ -2666,15 +2677,39 @@ void main() {
       expect(chartIn(controller).floatingLabels, isFalse);
     });
 
-    testWidgets("the legend has a section of its own", (tester) async {
+    testWidgets("a closed section still fills the column", (tester) async {
+      // The settings are a Column of start-aligned children, so a box left to
+      // size itself shrank to fit its own heading -- and a closed section
+      // narrower than the one above it does not read as a section, it reads
+      // as a button somebody has left lying there.
+      await panel(tester);
+
+      var panelWidth = tester.getSize(find.byType(CanvasLayersPanel)).width;
+      for (var name in ["LABELS", "DATA", "ANIMATION"]) {
+        var heading = find.text(name);
+        await tester.ensureVisible(heading);
+        await tester.pumpAndSettle();
+        // The box around the section, which is the widest thing in it.
+        var box = tester.getSize(find.ancestor(
+                of: heading,
+                matching: find.byWidgetPredicate(
+                    (w) => w is Container && w.decoration is BoxDecoration))
+            .first);
+        expect(box.width, greaterThan(panelWidth * 0.8), reason: name);
+      }
+    });
+
+    testWidgets("the legend is in with the other words on the chart",
+        (tester) async {
+      // The title, the description and the key are the same kind of thing --
+      // writing laid over a picture -- and were three clusters and an
+      // expander scattered down the panel with the data between them.
       var controller = await panel(tester);
+      await labels(tester);
 
-      var legend = find.text("LEGEND");
-      await tester.ensureVisible(legend);
-      await tester.pumpAndSettle();
-      await tester.tap(legend);
-      await tester.pumpAndSettle();
-
+      expect(find.text("TITLE"), findsOneWidget);
+      expect(find.text("DESCRIPTION"), findsOneWidget);
+      expect(find.text("LEGEND"), findsOneWidget);
       expect(find.text("Place"), findsNothing, reason: "the key is off");
 
       await press(tester, find.text("Show").last);
@@ -2696,6 +2731,7 @@ void main() {
       // -- so making the description bigger made the numbers up the side of
       // the chart bigger with it.
       var controller = await panel(tester);
+      await labels(tester);
       var before = chartIn(controller).labelSpec.fontSize;
 
       // Two "Size" fields, the title's first.

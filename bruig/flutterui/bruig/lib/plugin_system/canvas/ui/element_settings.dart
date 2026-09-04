@@ -207,90 +207,91 @@ Widget _positionGroup(CanvasController controller, CanvasElement e,
       // caption said "Chart" directly under a heading saying "Chart".
       bandOnlyLabel: true,
       children: [
-    CanvasNumberField(
-      key: const ValueKey("elementX"),
-      label: "X",
-      value: box.left,
-      onChanged: (v) => moveTo(x: v),
-      onCommit: commit,
-    ),
-    CanvasNumberField(
-      key: const ValueKey("elementY"),
-      label: "Y",
-      value: box.top,
-      onChanged: (v) => moveTo(y: v),
-      onCommit: commit,
-    ),
-    // Width and height show what is on screen -- the resting size times the
-    // pose's scale -- but always edit the resting size. A pose scales evenly,
-    // so there is no keyframe that could hold a width without also holding a
-    // height, and pretending otherwise would give two fields one number.
-    CanvasNumberField(
-      label: "W",
-      value: box.width,
-      min: 1,
-      onChanged: (v) =>
-          write(e.withBase(width: pose.scale == 0 ? v : v / pose.scale)),
-      onCommit: commit,
-    ),
-    CanvasNumberField(
-      label: "H",
-      value: box.height,
-      min: 1,
-      onChanged: (v) =>
-          write(e.withBase(height: pose.scale == 0 ? v : v / pose.scale)),
-      onCommit: commit,
-    ),
-    // Where it is and how big it is, then how it is turned and how solid.
-    // Two different questions, and left to the Wrap the line fell between W
-    // and H or after Angle depending on how wide the sidebar happened to be.
-    const CanvasLineBreak(),
-    CanvasNumberField(
-      key: const ValueKey("elementAngle"),
-      label: "Angle",
-      value: e.rotationAt(frame),
-      min: -3600,
-      max: 3600,
-      width: 56,
-      suffix: "°",
-      onChanged: (v) {
-        begin();
-        if (!posing) {
-          write(e.withBase(rotation: v));
-          return;
-        }
-        var track = (e.track ?? ElementTrack.empty).seededFor(frame);
-        write(e.withBase(
-            track: track.withKey(track
-                .at(frame)
-                .copyWith(frame: frame, rotate: v - e.rotation))));
-      },
-      onCommit: commit,
-    ),
-    CanvasNumberField(
-      label: "Opacity",
-      min: 0,
-      max: 1,
-      decimals: 2,
-      width: 62,
-      value: e.opacityAt(frame),
-      onChanged: (v) {
-        begin();
-        if (!posing) {
-          write(e.withBase(opacity: v));
-          return;
-        }
-        var track = (e.track ?? ElementTrack.empty).seededFor(frame);
-        write(e.withBase(
-            track: track.withKey(track.at(frame).copyWith(
-                frame: frame,
-                opacity:
-                    e.opacity == 0 ? v : (v / e.opacity).clamp(0.0, 1.0)))));
-      },
-      onCommit: commit,
-    ),
-    poseDot,
-  ]);
+        CanvasNumberField(
+          key: const ValueKey("elementX"),
+          label: "X",
+          value: box.left,
+          onChanged: (v) => moveTo(x: v),
+          onCommit: commit,
+        ),
+        CanvasNumberField(
+          key: const ValueKey("elementY"),
+          label: "Y",
+          value: box.top,
+          onChanged: (v) => moveTo(y: v),
+          onCommit: commit,
+        ),
+        // Width and height show what is on screen -- the resting size times the
+        // pose's scale -- but always edit the resting size. A pose scales evenly,
+        // so there is no keyframe that could hold a width without also holding a
+        // height, and pretending otherwise would give two fields one number.
+        CanvasNumberField(
+          label: "W",
+          value: box.width,
+          min: 1,
+          onChanged: (v) =>
+              write(e.withBase(width: pose.scale == 0 ? v : v / pose.scale)),
+          onCommit: commit,
+        ),
+        CanvasNumberField(
+          label: "H",
+          value: box.height,
+          min: 1,
+          onChanged: (v) =>
+              write(e.withBase(height: pose.scale == 0 ? v : v / pose.scale)),
+          onCommit: commit,
+        ),
+        // Where it is and how big it is, then how it is turned and how solid.
+        // Two different questions, and left to the Wrap the line fell between W
+        // and H or after Angle depending on how wide the sidebar happened to be.
+        const CanvasLineBreak(),
+        CanvasNumberField(
+          key: const ValueKey("elementAngle"),
+          label: "Angle",
+          value: e.rotationAt(frame),
+          min: -3600,
+          max: 3600,
+          width: 56,
+          suffix: "°",
+          onChanged: (v) {
+            begin();
+            if (!posing) {
+              write(e.withBase(rotation: v));
+              return;
+            }
+            var track = (e.track ?? ElementTrack.empty).seededFor(frame);
+            write(e.withBase(
+                track: track.withKey(track
+                    .at(frame)
+                    .copyWith(frame: frame, rotate: v - e.rotation))));
+          },
+          onCommit: commit,
+        ),
+        CanvasNumberField(
+          label: "Opacity",
+          min: 0,
+          max: 1,
+          decimals: 2,
+          width: 62,
+          value: e.opacityAt(frame),
+          onChanged: (v) {
+            begin();
+            if (!posing) {
+              write(e.withBase(opacity: v));
+              return;
+            }
+            var track = (e.track ?? ElementTrack.empty).seededFor(frame);
+            write(e.withBase(
+                track: track.withKey(track.at(frame).copyWith(
+                    frame: frame,
+                    opacity: e.opacity == 0
+                        ? v
+                        : (v / e.opacity).clamp(0.0, 1.0)))));
+          },
+          onCommit: commit,
+        ),
+        poseDot,
+      ]);
 }
 
 /// _typeGroups is the shared type controls, used by every element that draws
@@ -1222,15 +1223,15 @@ List<Widget> _imageSettings(BuildContext context, CanvasController controller,
           // the edge of a background by colour; what is being put back is the
           // subject, and a boundary does not care what colour anything is.
           if (!controller.retouch.keeps && !controller.retouch.fills)
-          CanvasNumberField(
-            label: "Cling",
-            min: 0,
-            max: 0.6,
-            decimals: 3,
-            width: 62,
-            value: controller.brushSnap,
-            onChanged: (v) => controller.brushSnap = v,
-          ),
+            CanvasNumberField(
+              label: "Cling",
+              min: 0,
+              max: 0.6,
+              decimals: 3,
+              width: 62,
+              value: controller.brushSnap,
+              onChanged: (v) => controller.brushSnap = v,
+            ),
           // Which side of the boundary goes. Read when the stroke is
           // applied rather than when it was drawn, so it can be turned over
           // with a stroke still held and the preview redraws.
@@ -1535,8 +1536,8 @@ List<Widget> _imageSettings(BuildContext context, CanvasController controller,
             key: const ValueKey("imageOutlineColour"),
             label: "Colour",
             color: e.outline.color,
-            onChanged: (c) => now(e.copyWith(outline: e.outline.copyWith(
-                color: c))),
+            onChanged: (c) =>
+                now(e.copyWith(outline: e.outline.copyWith(color: c))),
           ),
           CanvasDropdown<OutlineStyle>(
             label: "Style",
@@ -1579,14 +1580,28 @@ Widget _boxed(BuildContext context, Widget child) {
   var theme = ThemeNotifier.of(context);
   return Padding(
     padding: const EdgeInsets.only(bottom: 14, top: 2),
-    child: Container(
-      padding: const EdgeInsets.fromLTRB(7, 2, 7, 8),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: theme.colors.outlineVariant),
-        color: theme.colors.surfaceContainerHighest.withValues(alpha: 0.25),
+    // Builder, because the context these settings are built with comes from
+    // *above* the CanvasControlScope that says whether this is a column or a
+    // band -- so asking it directly always answered "band".
+    child: Builder(
+      builder: (context) => Container(
+        // The full width of the column, open or closed. The settings are a
+        // Column of start-aligned children, so a box left to size itself
+        // shrank to fit its heading -- and a closed section narrower than the
+        // one above it does not read as a section, it reads as a button
+        // somebody has left lying there.
+        //
+        // Only in a column. The band above the canvas scrolls sideways, where
+        // there is no width to fill and asking for all of it is an error.
+        width: CanvasControlScope.isStacked(context) ? double.infinity : null,
+        padding: const EdgeInsets.fromLTRB(7, 2, 7, 8),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: theme.colors.outlineVariant),
+          color: theme.colors.surfaceContainerHighest.withValues(alpha: 0.25),
+        ),
+        child: child,
       ),
-      child: child,
     ),
   );
 }
@@ -1659,8 +1674,8 @@ List<Widget> _chartSettings(BuildContext context, CanvasController controller,
             // the second put it exactly over the first, and since the
             // description is drawn last it looked as though the description
             // had gone above the title.
-            onPressed: () => now(withBox(
-                box.placed ? box.copyWith(unplace: true) : whenPlaced)),
+            onPressed: () => now(
+                withBox(box.placed ? box.copyWith(unplace: true) : whenPlaced)),
           ),
         // The words and the switches, then where it sits. Four coordinates
         // sharing a line with a text field and two buttons is four numbers
@@ -1717,198 +1732,70 @@ List<Widget> _chartSettings(BuildContext context, CanvasController controller,
             "they draw exactly what plain bars draw. Add a second series "
             "under Series below."),
     ]),
-    CanvasControlGroup(label: "Title", children: [
-      ...labelControls(
-          e.title,
-          e.titleBox,
-          defaultTitlePlacement,
-          e.titleSpec.fontSize,
-          (v) => e.copyWith(title: v),
-          (b) => e.copyWith(titleBox: b),
-          (v) => e.copyWith(titleSpec: e.titleSpec.copyWith(fontSize: v))),
-    ]),
-    CanvasControlGroup(label: "Description", children: [
-      // Under the title, not on top of it. A description above a title is
-      // almost never what anybody means, and two labels placed at the same
-      // corner is what that looked like.
-      // Its own size, not the label size it starts at. Sharing meant making
-      // the description bigger made the numbers up the side of the chart
-      // bigger with it.
-      ...labelControls(
-          e.description,
-          e.descriptionBox,
-          defaultDescriptionPlacement(e.titleBox, e.title.isNotEmpty),
-          e.descriptionText.fontSize,
-          (v) => e.copyWith(description: v),
-          (b) => e.copyWith(descriptionBox: b),
-          (v) => e.copyWith(
-              descriptionSpec: e.descriptionText.copyWith(fontSize: v))),
-    ]),
-    // Its own section, opened and closed. The numbers are the longest thing in
-    // these settings and the least often changed once they are right, so they
-    // were pushing everything else off the bottom of the panel.
-    // Boxed, and with room after it. Open, it is a table and three rows of
-    // series settings in the middle of a column of ordinary controls, and
-    // without an edge of its own it ran straight into the axis settings under
-    // it -- so the first thing under the table looked like part of the table.
+    // The words on the chart, together, in a section of their own. The title,
+    // the description and the key are the same kind of thing -- writing laid
+    // over a picture -- and they were three separate clusters and an expander
+    // scattered down the panel with the data and the animation between them.
     _boxed(
       context,
       CanvasExpander(
-        label: "Data",
-        trailing: "${e.data.categories.length} rows, "
-            "${e.data.series.length} series",
-        initiallyOpen: true,
+        label: "Labels",
+        trailing: [
+          if (e.title.isNotEmpty && e.titleBox.show) "title",
+          if (e.description.isNotEmpty && e.descriptionBox.show) "description",
+          if (e.showLegend) "legend",
+        ].join(", "),
         children: [
-          ChartDataEditor(
-            data: e.data,
-            onChanged: (data) {
-              begin();
-              writeData(data);
-            },
-            onCommit: commit,
-          ),
-        ],
-      ),
-    ),
-    // Its own section, like the data. An animation is a handful of choices
-    // made once and then left alone, and open by default they were four more
-    // rows between the numbers and the axes.
-    _boxed(
-      context,
-      CanvasExpander(
-        label: "Animation",
-        trailing: e.animation.on ? e.animation.preset.label : null,
-        children: [
-          CanvasControlGroup(label: "Preset", children: [
-            const CanvasHint(
-                "Choosing one draws the chart on over two seconds and puts a "
-                "keyframe at each end of it on the timeline. Drag those to "
-                "decide how long it takes and when it happens."),
-            const CanvasLineBreak(),
-            for (var preset in ChartAnimationPreset.values)
-              if (e.type.isCircular
-                  ? preset.suitsCircular
-                  : preset.suitsCartesian)
-                CanvasToggle(
-                  label: preset.label,
-                  value: e.animation.preset == preset,
-                  // A press applies it and lays the keyframes together: a
-                  // preset with nothing pinning the reveal channel draws
-                  // exactly what a still chart draws.
-                  onChanged: (_) =>
-                      controller.applyChartAnimation(e, preset),
-                ),
+          CanvasControlGroup(label: "Title", children: [
+            ...labelControls(
+                e.title,
+                e.titleBox,
+                defaultTitlePlacement,
+                e.titleSpec.fontSize,
+                (v) => e.copyWith(title: v),
+                (b) => e.copyWith(titleBox: b),
+                (v) =>
+                    e.copyWith(titleSpec: e.titleSpec.copyWith(fontSize: v))),
           ]),
-          if (e.animation.on)
-            CanvasControlGroup(label: "Timing", children: [
-              // Only where there is more than one thing to space out. A wipe
-              // and a sweep are one edge crossing everything at once.
-              if (e.animation.preset.staggers)
-                CanvasNumberField(
-                  label: "Gap",
-                  min: 0,
-                  max: 4,
-                  decimals: 2,
-                  width: 62,
-                  value: e.animation.gap,
-                  onChanged: (v) {
-                    begin();
-                    write(e.copyWith(
-                        animation: e.animation.copyWith(gap: v)));
-                  },
-                  onCommit: commit,
-                ),
-              if (e.animation.preset.staggers)
-                const CanvasHint(
-                    "How long after one starts before the next does, as a "
-                    "share of one item's own movement. 1 is strictly one "
-                    "after another; below 1 they overlap; above 1 leaves a "
-                    "pause between them."),
-              CanvasDropdown<ChartEase>(
-                label: "End curve",
-                value: e.animation.ease,
-                width: 118,
-                options: [for (var c in ChartEase.values) (c, c.label)],
-                onChanged: (v) {
-                  begin();
-                  write(e.copyWith(animation: e.animation.copyWith(ease: v)));
-                  commit();
-                },
-              ),
-            ]),
-        ],
-      ),
-    ),
-    // A pie has no axes, so it is not offered any. The four switches below are
-    // its own group for the same reason: a group called Axes holding nothing
-    // but Legend and Values is a heading that lies.
-    if (!e.type.isCircular)
-      CanvasControlGroup(label: "Axes", children: [
-        CanvasTextField(
-          label: "X label",
-          value: e.xAxisLabel,
-          width: 108,
-          onChanged: (v) => write(e.copyWith(xAxisLabel: v)),
-          onCommit: commit,
-        ),
-        CanvasTextField(
-          label: "Y label",
-          value: e.yAxisLabel,
-          width: 108,
-          onChanged: (v) => write(e.copyWith(yAxisLabel: v)),
-          onCommit: commit,
-        ),
-        // The two axis titles are text, and the switches below are switches.
-        // On one line the first switch sat on the end of the Y label's row
-        // and read as part of it.
-        const CanvasLineBreak(),
-        CanvasToggle(
-          label: "Grid",
-          value: e.showGrid,
-          onChanged: (v) => now(e.copyWith(showGrid: v)),
-        ),
-        CanvasToggle(
-          label: "Axes",
-          value: e.showAxes,
-          onChanged: (v) => now(e.copyWith(showAxes: v)),
-        ),
-      ]),
-    CanvasControlGroup(label: "Labels", children: [
-      // The one switch for all three of them. Taking room is what made every
-      // one of their settings a setting that resized the chart.
-      CanvasToggle(
-        label: "Over the chart",
-        value: e.floatingLabels,
-        onChanged: (v) => now(e.copyWith(floatingLabels: v)),
-      ),
-      const CanvasHint(
-          "The title, the description and the legend sit over the chart and "
-          "leave its size alone. Switched off they take room from it, which "
-          "is right for a plot that fills its box -- a bar reaching the top "
-          "will otherwise run behind a title floating over it."),
-    ]),
-    CanvasControlGroup(label: "Values", children: [
-      CanvasToggle(
-        label: "On the chart",
-        value: e.showValues,
-        onChanged: (v) => now(e.copyWith(showValues: v)),
-      ),
-      // Rings a few pixels thick have nowhere to write a number and no axis to
-      // read one against, so theirs go in the key -- which is no use with the
-      // key switched off.
-      if (e.type == ChartType.radialBar && !(e.showLegend && e.legend.values))
-        const CanvasHint(
-            "A radial bar has no room to write a number on and no axis to "
-            "read one against, so its values go in the legend. Switch the "
-            "legend on, and its values with it, to see them."),
-    ]),
-    _boxed(
-      context,
-      CanvasExpander(
-        label: "Legend",
-        trailing: e.showLegend ? e.legend.placement.label : "off",
-        children: [
-          CanvasControlGroup(label: "Legend", bandOnlyLabel: true, children: [
+          CanvasControlGroup(label: "Description", children: [
+            // Under the title, not on top of it. A description above a title is
+            // almost never what anybody means, and two labels placed at the same
+            // corner is what that looked like.
+            // Its own size, not the label size it starts at. Sharing meant making
+            // the description bigger made the numbers up the side of the chart
+            // bigger with it.
+            ...labelControls(
+                e.description,
+                e.descriptionBox,
+                defaultDescriptionPlacement(e.titleBox, e.title.isNotEmpty),
+                e.descriptionText.fontSize,
+                (v) => e.copyWith(description: v),
+                (b) => e.copyWith(descriptionBox: b),
+                (v) => e.copyWith(
+                    descriptionSpec: e.descriptionText.copyWith(fontSize: v))),
+          ]),
+          // Its own section, opened and closed. The numbers are the longest thing in
+          // these settings and the least often changed once they are right, so they
+          // were pushing everything else off the bottom of the panel.
+          // Boxed, and with room after it. Open, it is a table and three rows of
+          // series settings in the middle of a column of ordinary controls, and
+          // without an edge of its own it ran straight into the axis settings under
+          // it -- so the first thing under the table looked like part of the table.
+          CanvasControlGroup(label: "Labels", children: [
+            // The one switch for all three of them. Taking room is what made every
+            // one of their settings a setting that resized the chart.
+            CanvasToggle(
+              label: "Over the chart",
+              value: e.floatingLabels,
+              onChanged: (v) => now(e.copyWith(floatingLabels: v)),
+            ),
+            const CanvasHint(
+                "The title, the description and the legend sit over the chart and "
+                "leave its size alone. Switched off they take room from it, which "
+                "is right for a plot that fills its box -- a bar reaching the top "
+                "will otherwise run behind a title floating over it."),
+          ]),
+          CanvasControlGroup(label: "Legend", children: [
             CanvasToggle(
               label: "Show",
               value: e.showLegend,
@@ -1974,8 +1861,8 @@ List<Widget> _chartSettings(BuildContext context, CanvasController controller,
                   value: e.legend.separator,
                   width: 104,
                   options: ChartLegend.separators,
-                  onChanged: (v) => now(
-                      e.copyWith(legend: e.legend.copyWith(separator: v))),
+                  onChanged: (v) =>
+                      now(e.copyWith(legend: e.legend.copyWith(separator: v))),
                 ),
               const CanvasHint(
                   "Size is measured against the chart's own label size, so "
@@ -1986,6 +1873,141 @@ List<Widget> _chartSettings(BuildContext context, CanvasController controller,
         ],
       ),
     ),
+    _boxed(
+      context,
+      CanvasExpander(
+        label: "Data",
+        trailing: "${e.data.categories.length} rows, "
+            "${e.data.series.length} series",
+        initiallyOpen: true,
+        children: [
+          ChartDataEditor(
+            data: e.data,
+            onChanged: (data) {
+              begin();
+              writeData(data);
+            },
+            onCommit: commit,
+          ),
+        ],
+      ),
+    ),
+    // Its own section, like the data. An animation is a handful of choices
+    // made once and then left alone, and open by default they were four more
+    // rows between the numbers and the axes.
+    _boxed(
+      context,
+      CanvasExpander(
+        label: "Animation",
+        trailing: e.animation.on ? e.animation.preset.label : null,
+        children: [
+          CanvasControlGroup(label: "Preset", children: [
+            const CanvasHint(
+                "Choosing one draws the chart on over two seconds and puts a "
+                "keyframe at each end of it on the timeline. Drag those to "
+                "decide how long it takes and when it happens."),
+            const CanvasLineBreak(),
+            for (var preset in ChartAnimationPreset.values)
+              if (e.type.isCircular
+                  ? preset.suitsCircular
+                  : preset.suitsCartesian)
+                CanvasToggle(
+                  label: preset.label,
+                  value: e.animation.preset == preset,
+                  // A press applies it and lays the keyframes together: a
+                  // preset with nothing pinning the reveal channel draws
+                  // exactly what a still chart draws.
+                  onChanged: (_) => controller.applyChartAnimation(e, preset),
+                ),
+          ]),
+          if (e.animation.on)
+            CanvasControlGroup(label: "Timing", children: [
+              // Only where there is more than one thing to space out. A wipe
+              // and a sweep are one edge crossing everything at once.
+              if (e.animation.preset.staggers)
+                CanvasNumberField(
+                  label: "Gap",
+                  min: 0,
+                  max: 4,
+                  decimals: 2,
+                  width: 62,
+                  value: e.animation.gap,
+                  onChanged: (v) {
+                    begin();
+                    write(e.copyWith(animation: e.animation.copyWith(gap: v)));
+                  },
+                  onCommit: commit,
+                ),
+              if (e.animation.preset.staggers)
+                const CanvasHint(
+                    "How long after one starts before the next does, as a "
+                    "share of one item's own movement. 1 is strictly one "
+                    "after another; below 1 they overlap; above 1 leaves a "
+                    "pause between them."),
+              CanvasDropdown<ChartEase>(
+                label: "End curve",
+                value: e.animation.ease,
+                width: 118,
+                options: [for (var c in ChartEase.values) (c, c.label)],
+                onChanged: (v) {
+                  begin();
+                  write(e.copyWith(animation: e.animation.copyWith(ease: v)));
+                  commit();
+                },
+              ),
+            ]),
+        ],
+      ),
+    ),
+    // A pie has no axes, so it is not offered any. The four switches below are
+    // its own group for the same reason: a group called Axes holding nothing
+    // but Legend and Values is a heading that lies.
+    if (!e.type.isCircular)
+      CanvasControlGroup(label: "Axes", children: [
+        CanvasTextField(
+          label: "X label",
+          value: e.xAxisLabel,
+          width: 108,
+          onChanged: (v) => write(e.copyWith(xAxisLabel: v)),
+          onCommit: commit,
+        ),
+        CanvasTextField(
+          label: "Y label",
+          value: e.yAxisLabel,
+          width: 108,
+          onChanged: (v) => write(e.copyWith(yAxisLabel: v)),
+          onCommit: commit,
+        ),
+        // The two axis titles are text, and the switches below are switches.
+        // On one line the first switch sat on the end of the Y label's row
+        // and read as part of it.
+        const CanvasLineBreak(),
+        CanvasToggle(
+          label: "Grid",
+          value: e.showGrid,
+          onChanged: (v) => now(e.copyWith(showGrid: v)),
+        ),
+        CanvasToggle(
+          label: "Axes",
+          value: e.showAxes,
+          onChanged: (v) => now(e.copyWith(showAxes: v)),
+        ),
+      ]),
+    CanvasControlGroup(label: "Values", children: [
+      CanvasToggle(
+        label: "On the chart",
+        value: e.showValues,
+        onChanged: (v) => now(e.copyWith(showValues: v)),
+      ),
+      // Rings a few pixels thick have nowhere to write a number and no axis to
+      // read one against, so theirs go in the key -- which is no use with the
+      // key switched off.
+      if (e.type == ChartType.radialBar && !(e.showLegend && e.legend.values))
+        const CanvasHint(
+            "A radial bar has no room to write a number on and no axis to "
+            "read one against, so its values go in the legend. Switch the "
+            "legend on, and its values with it, to see them."),
+    ]),
     CanvasControlGroup(label: "Style", children: [
       CanvasColorButton(
         label: "Grid",
