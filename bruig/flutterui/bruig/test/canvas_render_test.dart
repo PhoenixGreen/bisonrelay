@@ -3221,6 +3221,117 @@ void _tableTests() {
       expect(await drawn(named), isNot(orderedEquals(await drawn(empty))));
     });
 
+    test("a picture can be given room round the outside", () async {
+      // A badge that touches the rules either side of it reads as a mistake,
+      // and the cell padding cannot be used for it -- that is the words'
+      // margin as well.
+      var picture = await _softBlob(40);
+      addTearDown(picture.dispose);
+      var e = TableElement(
+        const ElementBase(id: "t", width: 400, height: 120),
+        rows: const [
+          ["Badge"],
+          ["img:abcdef1234567890"],
+        ],
+      );
+
+      Future<int> painted(double scale) async {
+        var recorder = ui.PictureRecorder();
+        paintTable(ui.Canvas(recorder), const Rect.fromLTWH(0, 0, 400, 120),
+            e.copyWith(pictureScale: scale),
+            images: _Pictures(picture));
+        var image = await recorder.endRecording().toImage(400, 120);
+        var pixels = (await image.toByteData(
+                format: ui.ImageByteFormat.rawStraightRgba))!
+            .buffer
+            .asUint8List();
+        image.dispose();
+        var n = 0;
+        for (var i = 0; i < 400 * 120; i++) {
+          if (pixels[i * 4 + 3] > 40) n++;
+        }
+        return n;
+      }
+
+      expect(await painted(0.5), lessThan(await painted(1)));
+      expect(await painted(1), greaterThan(0));
+
+      // And it costs a table that has not asked for it nothing.
+      expect(e.toJson().containsKey("picScale"), isFalse);
+    });
+
+    test("a minimum stops a row of chips being three sizes", () async {
+      // A W is wider than an L, so hugging the letters exactly gave a form
+      // guide three different boxes.
+      var e = TableElement(
+        const ElementBase(id: "t", width: 400, height: 160),
+        rows: const [
+          ["Form"],
+          ["W"],
+          ["L"],
+        ],
+        cellSpec: const TextSpec(fontSize: 18, align: TextAlignSpec.center),
+      );
+
+      Future<List<int>> widths(double minWidth) async {
+        var recorder = ui.PictureRecorder();
+        paintTable(
+            ui.Canvas(recorder),
+            const Rect.fromLTWH(0, 0, 400, 160),
+            // One rule per letter, so each is a chip round its own word --
+            // a rule with no word to look for is a band down the column and
+            // has no letters to hug.
+            e.copyWith(rules: [
+              for (var letter in ["W", "L"])
+                TableRule(
+                    column: "Form",
+                    match: letter,
+                    style: TableCellStyle(
+                        background: const Color(0xFF00FF00),
+                        minWidth: minWidth)),
+            ]));
+        var image = await recorder.endRecording().toImage(400, 160);
+        var pixels = (await image.toByteData(
+                format: ui.ImageByteFormat.rawStraightRgba))!
+            .buffer
+            .asUint8List();
+        image.dispose();
+
+        // How far the chip reaches, not how much green there is: the letter
+        // sits on top of the chip and a wide letter hides more of it, so
+        // counting green would say a W's chip is the smaller of the two.
+        return [
+          for (var (from, to) in [(55, 105), (105, 160)])
+            () {
+              var min = 400, max = 0;
+              for (var y = from; y < to; y++) {
+                for (var x = 0; x < 400; x++) {
+                  var i = (y * 400 + x) * 4;
+                  if (pixels[i + 1] > 200 && pixels[i] < 80) {
+                    if (x < min) min = x;
+                    if (x > max) max = x;
+                  }
+                }
+              }
+              return min > max ? 0 : max - min + 1;
+            }()
+        ];
+      }
+
+      var hugging = await widths(0);
+      expect(hugging.first, isNot(hugging.last),
+          reason: "left to themselves the two are different widths");
+
+      // Past the widest of them, so both are clamped up to it rather than
+      // one of them being left at its own width -- it is a minimum, not a
+      // size.
+      var even = await widths(80);
+      // Within a pixel or two: the corners are rounded, so how much of the
+      // last column of each chip is green depends on where the rows fall.
+      expect(even.first, closeTo(even.last, 3));
+      expect(even.first, greaterThan(hugging.first));
+    });
+
     test("a cell may hold a comma, and survives the round trip", () {
       // Without quoting there is no way to write one at all, and "Brighton &
       // Hove Albion, 2nd" is an ordinary thing to want in a cell.

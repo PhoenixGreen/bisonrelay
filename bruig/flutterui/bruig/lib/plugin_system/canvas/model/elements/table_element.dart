@@ -79,6 +79,15 @@ class TableCellStyle {
   /// margin without giving all of them one.
   final double textPad;
 
+  /// minWidth and minHeight are the least a hugging box may be.
+  ///
+  /// What makes a row of chips a row of chips. Hugging the letters exactly is
+  /// right for the box and wrong for a set of them: a W is wider than an L, so
+  /// a form guide came out as boxes of three different sizes. A minimum makes
+  /// them all the same, and a minimum equal to the height makes them square.
+  final double minWidth;
+  final double minHeight;
+
   /// hug fits the box to the words rather than to the cell.
   ///
   /// On, because the thing anybody asks for by naming a word is a chip round
@@ -100,6 +109,8 @@ class TableCellStyle {
     this.inset = 6,
     this.hug = true,
     this.textPad = 0,
+    this.minWidth = 0,
+    this.minHeight = 0,
   });
 
   bool get allSides => !sides.contains(false);
@@ -129,6 +140,8 @@ class TableCellStyle {
     double? inset,
     bool? hug,
     double? textPad,
+    double? minWidth,
+    double? minHeight,
   }) =>
       TableCellStyle(
         background: background ?? this.background,
@@ -145,6 +158,8 @@ class TableCellStyle {
         inset: inset ?? this.inset,
         hug: hug ?? this.hug,
         textPad: textPad ?? this.textPad,
+        minWidth: minWidth ?? this.minWidth,
+        minHeight: minHeight ?? this.minHeight,
       );
 
   Map<String, dynamic> toJson() => {
@@ -161,6 +176,8 @@ class TableCellStyle {
         if (inset != 6) "inset": inset,
         if (!hug) "fill": true,
         if (textPad != 0) "pad": textPad,
+        if (minWidth != 0) "minw": minWidth,
+        if (minHeight != 0) "minh": minHeight,
       };
 
   factory TableCellStyle.fromJson(Map<String, dynamic> json) => TableCellStyle(
@@ -183,6 +200,8 @@ class TableCellStyle {
         inset: jsonDouble(json["inset"], 6),
         hug: !jsonBool(json["fill"], false),
         textPad: jsonDouble(json["pad"], 0),
+        minWidth: jsonDouble(json["minw"], 0),
+        minHeight: jsonDouble(json["minh"], 0),
       );
 }
 
@@ -445,6 +464,16 @@ class TableElement extends CanvasElement {
   final double cellPadding;
   final double cornerRadius;
 
+  /// pictureScale is how much of its cell a picture fills, on top of the
+  /// cell's own padding.
+  ///
+  /// One for the whole cell, less for room round the outside. A badge that
+  /// touches the rules either side of it reads as a mistake, and the cell
+  /// padding cannot be used for this -- it is the words' margin as well, and
+  /// a table with room enough round its pictures would have its text a long
+  /// way from the rules.
+  final double pictureScale;
+
   /// columnWidths are fractions of the table's width and must sum to
   /// something; an empty list means equal columns, which is the default and
   /// covers most tables.
@@ -477,6 +506,7 @@ class TableElement extends CanvasElement {
     this.gridColor = const Color(0x33FFFFFF),
     this.cellPadding = 10,
     this.cornerRadius = 6,
+    this.pictureScale = 1,
     this.columnWidths = const [],
     this.headerHeightRatio = 1.15,
     this.rules = const [],
@@ -555,6 +585,12 @@ class TableElement extends CanvasElement {
               hug: rule.style.hug,
               textPad:
                   rule.style.textPad != 0 ? rule.style.textPad : out.textPad,
+              minWidth: rule.style.minWidth != 0
+                  ? rule.style.minWidth
+                  : out.minWidth,
+              minHeight: rule.style.minHeight != 0
+                  ? rule.style.minHeight
+                  : out.minHeight,
             );
     }
     return out;
@@ -592,6 +628,7 @@ class TableElement extends CanvasElement {
     Color? gridColor,
     double? cellPadding,
     double? cornerRadius,
+    double? pictureScale,
     List<double>? columnWidths,
     double? headerHeightRatio,
     List<TableRule>? rules,
@@ -611,6 +648,7 @@ class TableElement extends CanvasElement {
           gridColor: gridColor,
           cellPadding: cellPadding,
           cornerRadius: cornerRadius,
+          pictureScale: pictureScale,
           columnWidths: columnWidths,
           headerHeightRatio: headerHeightRatio,
           rules: rules);
@@ -631,6 +669,7 @@ class TableElement extends CanvasElement {
     Color? gridColor,
     double? cellPadding,
     double? cornerRadius,
+    double? pictureScale,
     List<double>? columnWidths,
     double? headerHeightRatio,
     List<TableRule>? rules,
@@ -650,6 +689,7 @@ class TableElement extends CanvasElement {
           gridColor: gridColor ?? this.gridColor,
           cellPadding: cellPadding ?? this.cellPadding,
           cornerRadius: cornerRadius ?? this.cornerRadius,
+          pictureScale: pictureScale ?? this.pictureScale,
           columnWidths: columnWidths ?? this.columnWidths,
           headerHeightRatio: headerHeightRatio ?? this.headerHeightRatio,
           rules: rules ?? this.rules);
@@ -670,6 +710,7 @@ class TableElement extends CanvasElement {
         "gridColor": colorToJson(gridColor),
         "pad": cellPadding,
         "cr": cornerRadius,
+        if (pictureScale != 1) "picScale": pictureScale,
         if (columnWidths.isNotEmpty) "cols": columnWidths,
         "headerRatio": headerHeightRatio,
         if (rules.isNotEmpty)
@@ -701,6 +742,7 @@ class TableElement extends CanvasElement {
         gridColor: colorFromJson(json["gridColor"], const Color(0x33FFFFFF)),
         cellPadding: jsonDouble(json["pad"], 10),
         cornerRadius: jsonDouble(json["cr"], 6),
+        pictureScale: jsonDouble(json["picScale"], 1).clamp(0.05, 1.0),
         columnWidths: cols is List
             ? [for (var c in cols) c is num ? c.toDouble() : 1.0]
             : const [],

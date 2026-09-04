@@ -2235,6 +2235,21 @@ List<Widget> _tableSettings(BuildContext context, TableElement e,
           onChanged: (v) => write(e.copyWith(cornerRadius: v)),
           onCommit: commit,
         ),
+        CanvasNumberField(
+          label: "Picture size",
+          value: e.pictureScale,
+          min: 0.05,
+          max: 1,
+          decimals: 2,
+          width: 62,
+          onChanged: (v) => write(e.copyWith(pictureScale: v)),
+          onCommit: commit,
+        ),
+        const CanvasHint(
+            "Picture size is how much of its cell a picture fills, on top of "
+            "the cell padding. Less than one leaves room round the outside, "
+            "which the padding cannot do on its own -- that is the words' "
+            "margin as well."),
       ]),
       // One mechanism for three things that were asked for separately, and
       // they really are one: a green chip wherever a column says W is a rule
@@ -3127,6 +3142,18 @@ Widget _tableRuleSettings(TableElement e, int index, _Write write,
           color: style.background,
           onChanged: (c) => styled(style.copyWith(background: c)),
         ),
+        // Beside the colour it rounds, rather than three rows below it.
+        CanvasNumberField(
+          label: "Radius",
+          value: style.radius,
+          min: 0,
+          max: 80,
+          decimals: 1,
+          width: 54,
+          onChanged: (v) =>
+              put(rule.copyWith(style: style.copyWith(radius: v))),
+          onCommit: commit,
+        ),
         CanvasColorButton(
           label: "Text",
           color: style.textColor,
@@ -3181,14 +3208,25 @@ Widget _tableRuleSettings(TableElement e, int index, _Write write,
         ),
         const CanvasLineBreak(),
         CanvasNumberField(
-          label: "Radius",
-          value: style.radius,
+          label: "Min width",
+          value: style.minWidth,
           min: 0,
-          max: 80,
+          max: 400,
           decimals: 1,
-          width: 54,
+          width: 62,
           onChanged: (v) =>
-              put(rule.copyWith(style: style.copyWith(radius: v))),
+              put(rule.copyWith(style: style.copyWith(minWidth: v))),
+          onCommit: commit,
+        ),
+        CanvasNumberField(
+          label: "Min height",
+          value: style.minHeight,
+          min: 0,
+          max: 400,
+          decimals: 1,
+          width: 66,
+          onChanged: (v) =>
+              put(rule.copyWith(style: style.copyWith(minHeight: v))),
           onCommit: commit,
         ),
         CanvasNumberField(
@@ -3288,7 +3326,11 @@ Widget _tableRuleSettings(TableElement e, int index, _Write write,
             "Padding is the room round the word, or the amount taken off the "
             "inside of a band. Text space is room either side of the words "
             "themselves, which is what alignment needs to be usable -- pushed "
-            "left or right they otherwise sit against the edge of the cell."),
+            "left or right they otherwise sit against the edge of the cell.\n\n"
+            "Min width and min height stop a box shrinking to its letters, "
+            "which is what makes a row of chips one size rather than three -- "
+            "a W is wider than an L. The same number in both makes them "
+            "square."),
       ]),
     ],
   );

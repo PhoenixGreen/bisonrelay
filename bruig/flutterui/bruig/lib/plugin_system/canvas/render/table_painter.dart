@@ -102,7 +102,14 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
       // them happens to be.
       var asset = TableElement.pictureIn(e.cell(r, c));
       if (asset != null) {
-        var box = Rect.fromLTWH(x, y, w, h).deflate(e.cellPadding);
+        // Its share of the cell, inside the cell's own padding. A badge that
+        // touches the rules either side of it reads as a mistake.
+        var cell = Rect.fromLTWH(x, y, w, h).deflate(e.cellPadding);
+        var scale = e.pictureScale.clamp(0.05, 1.0);
+        var box = Rect.fromCenter(
+            center: cell.center,
+            width: cell.width * scale,
+            height: cell.height * scale);
         // A vector first, and kept as one: a badge drawn from its own
         // drawing is sharp at any export scale and costs no bitmap at all,
         // which is the difference between a squad of twenty-two badges and
@@ -369,6 +376,17 @@ void _paintStyleBox(ui.Canvas canvas, Rect cell, TableCellStyle style,
   var box = hug
       ? cell.inflate(style.inset.clamp(0.0, 200.0))
       : cell.inflate(-style.inset.clamp(-200.0, cell.shortestSide / 2));
+
+  // A minimum, so a row of chips is a row of chips. Hugging the letters
+  // exactly is right for one box and wrong for a set of them: a W is wider
+  // than an L, so a form guide came out as three different sizes.
+  if (hug && (style.minWidth > 0 || style.minHeight > 0)) {
+    box = Rect.fromCenter(
+      center: box.center,
+      width: math.max(box.width, style.minWidth),
+      height: math.max(box.height, style.minHeight),
+    );
+  }
   if (box.width <= 0 || box.height <= 0) return;
 
   if (style.background.a > 0) {
