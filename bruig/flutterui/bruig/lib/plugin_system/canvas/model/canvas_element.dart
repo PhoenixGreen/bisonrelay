@@ -280,6 +280,16 @@ abstract class CanvasElement {
   /// rotationRadians is what the painter and the hit test both want.
   double get rotationRadians => rotation * math.pi / 180;
 
+  /// assetIds is every stored picture this element refers to.
+  ///
+  /// Asked of the element rather than worked out by the document, and that is
+  /// the whole point: the document used to know that a picture element has an
+  /// asset and that nothing else does, so when a table learnt to hold one in
+  /// a cell the sweep did not hear about it and deleted every badge on the
+  /// next restart. An element that refers to a picture says so here, and
+  /// there is nowhere else to forget.
+  Set<String> get assetIds => const {};
+
   /// withBase is [ElementBase.copyWith] plumbed through [rebase], so a caller
   /// changing one property writes one line rather than three.
   CanvasElement withBase({

@@ -474,6 +474,13 @@ class TableElement extends CanvasElement {
   int get columnCount =>
       rows.fold(0, (n, r) => r.length > n ? r.length : n);
 
+  @override
+  Set<String> get assetIds => {
+        for (var row in rows)
+          for (var cell in row)
+            if (pictureIn(cell) case var asset?) asset,
+      };
+
   /// pictureCell is the prefix that turns a cell into a picture.
   ///
   /// Kept in the cell's own text rather than in a map of positions beside the

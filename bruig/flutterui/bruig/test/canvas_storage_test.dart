@@ -6,6 +6,8 @@ import 'dart:io';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as path;
 
@@ -407,6 +409,41 @@ void main() {
               [0x89, 0x50, 0x4E, 0x47, 0, 0, 0, 0]),
           ".png");
       expect(CanvasAssets.extensionForTest([0xFF, 0xD8, 0xFF]), ".jpg");
+    });
+  });
+  group("which pictures a document is using", () {
+    test("a table's cell pictures count", () {
+      // The fault that ate them: the document knew a picture element has an
+      // asset and that nothing else does, so when a table learnt to hold one
+      // in a cell the sweep did not hear about it and deleted every badge on
+      // the next restart.
+      var table = TableElement(
+        const ElementBase(id: "t"),
+        rows: const [
+          ["Team", "Badge"],
+          ["Hull City", "img:abcdef1234567890"],
+          ["Leeds", "img:0123456789abcdef"],
+          ["Notes", "not a picture"],
+        ],
+      );
+
+      expect(table.assetIds,
+          {"abcdef1234567890", "0123456789abcdef"});
+      expect(CanvasDocument(elements: [table]).assetIds,
+          {"abcdef1234567890", "0123456789abcdef"});
+    });
+
+    test("a picture element's still does, and an empty one names nothing", () {
+      var picture = const ImageElement(ElementBase(id: "i"),
+          assetId: "abcdef1234567890");
+      expect(picture.assetIds, {"abcdef1234567890"});
+      expect(const ImageElement(ElementBase(id: "i")).assetIds, isEmpty);
+    });
+
+    test("an element with no pictures names none", () {
+      // The default, so a new kind of element that holds no picture needs to
+      // say nothing at all.
+      expect(ShapeElement(const ElementBase(id: "s")).assetIds, isEmpty);
     });
   });
 }

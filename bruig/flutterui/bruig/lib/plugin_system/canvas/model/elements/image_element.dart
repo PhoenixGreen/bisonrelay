@@ -595,6 +595,9 @@ class ImageElement extends CanvasElement {
   @override
   bool get keepsAspect => lockAspect;
 
+  @override
+  Set<String> get assetIds => assetId.isEmpty ? const {} : {assetId};
+
   /// hasImage is whether there is anything to draw. An element with no
   /// picture yet is drawn as a placeholder rather than as nothing, so it can
   /// still be selected and given one.

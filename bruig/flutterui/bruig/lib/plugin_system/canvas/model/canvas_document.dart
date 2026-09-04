@@ -140,8 +140,7 @@ class CanvasDocument {
   /// What a sweep of the picture store measures against: anything not named by
   /// some saved document is a picture nothing can ever show again.
   Set<String> get assetIds => {
-        for (var e in elements)
-          if (e is ImageElement && e.assetId.isNotEmpty) e.assetId,
+        for (var e in elements) ...e.assetIds,
         if (background.imageAssetId.isNotEmpty) background.imageAssetId,
       };
 
