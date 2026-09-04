@@ -44,6 +44,14 @@ class TableCellStyle {
   /// weight is 0 to keep the type's own, and 100..900 to override it.
   final int weight;
 
+  /// align and verticalAlign are null to keep the type's own.
+  ///
+  /// Worth having on a rule rather than only on the table's type: a column of
+  /// numbers wants to be right-aligned and the column of names beside it does
+  /// not, and one alignment for the whole table cannot say that.
+  final TextAlignSpec? align;
+  final VerticalAlignSpec? verticalAlign;
+
   final Color borderColor;
   final double borderWidth;
 
@@ -74,11 +82,13 @@ class TableCellStyle {
     this.textColor = const Color(0x00000000),
     this.fontScale = 1,
     this.weight = 0,
+    this.align,
+    this.verticalAlign,
     this.borderColor = const Color(0x00000000),
     this.borderWidth = 0,
     this.sides = const [true, true, true, true],
     this.radius = 4,
-    this.inset = 3,
+    this.inset = 6,
     this.hug = true,
   });
 
@@ -86,13 +96,22 @@ class TableCellStyle {
 
   bool get paintsBox => background.a > 0 || (borderColor.a > 0 && borderWidth > 0);
 
-  bool get changesType => textColor.a > 0 || fontScale != 1 || weight != 0;
+  bool get changesType =>
+      textColor.a > 0 ||
+      fontScale != 1 ||
+      weight != 0 ||
+      align != null ||
+      verticalAlign != null;
 
   TableCellStyle copyWith({
     Color? background,
     Color? textColor,
     double? fontScale,
     int? weight,
+    TextAlignSpec? align,
+    VerticalAlignSpec? verticalAlign,
+    bool clearAlign = false,
+    bool clearVerticalAlign = false,
     Color? borderColor,
     double? borderWidth,
     List<bool>? sides,
@@ -105,6 +124,9 @@ class TableCellStyle {
         textColor: textColor ?? this.textColor,
         fontScale: fontScale ?? this.fontScale,
         weight: weight ?? this.weight,
+        align: clearAlign ? null : (align ?? this.align),
+        verticalAlign:
+            clearVerticalAlign ? null : (verticalAlign ?? this.verticalAlign),
         borderColor: borderColor ?? this.borderColor,
         borderWidth: borderWidth ?? this.borderWidth,
         sides: sides ?? this.sides,
@@ -118,11 +140,13 @@ class TableCellStyle {
         if (textColor.a > 0) "fg": colorToJson(textColor),
         if (fontScale != 1) "scale": fontScale,
         if (weight != 0) "weight": weight,
+        if (align != null) "align": align!.name,
+        if (verticalAlign != null) "valign": verticalAlign!.name,
         if (borderColor.a > 0) "bc": colorToJson(borderColor),
         if (borderWidth != 0) "bw": borderWidth,
         if (!allSides) "sides": sides,
         if (radius != 4) "r": radius,
-        if (inset != 3) "inset": inset,
+        if (inset != 6) "inset": inset,
         if (!hug) "fill": true,
       };
 
@@ -131,13 +155,19 @@ class TableCellStyle {
         textColor: colorFromJson(json["fg"], const Color(0x00000000)),
         fontScale: jsonDouble(json["scale"], 1).clamp(0.2, 6.0),
         weight: jsonInt(json["weight"], 0),
+        align: json["align"] is String
+            ? TextAlignSpec.fromName(json["align"] as String?)
+            : null,
+        verticalAlign: json["valign"] is String
+            ? VerticalAlignSpec.fromName(json["valign"] as String?)
+            : null,
         borderColor: colorFromJson(json["bc"], const Color(0x00000000)),
         borderWidth: jsonDouble(json["bw"], 0),
         sides: json["sides"] is List && (json["sides"] as List).length == 4
             ? [for (var v in json["sides"] as List) v == true]
             : const [true, true, true, true],
         radius: jsonDouble(json["r"], 4),
-        inset: jsonDouble(json["inset"], 3),
+        inset: jsonDouble(json["inset"], 6),
         hug: !jsonBool(json["fill"], false),
       );
 }
@@ -401,6 +431,8 @@ class TableElement extends CanvasElement {
               fontScale:
                   rule.style.fontScale != 1 ? rule.style.fontScale : out.fontScale,
               weight: rule.style.weight != 0 ? rule.style.weight : out.weight,
+              align: rule.style.align ?? out.align,
+              verticalAlign: rule.style.verticalAlign ?? out.verticalAlign,
               borderColor: rule.style.borderColor.a > 0
                   ? rule.style.borderColor
                   : out.borderColor,

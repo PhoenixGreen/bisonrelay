@@ -84,7 +84,7 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
   for (var rule in e.rules) {
     if (!rule.banded || !rule.style.paintsBox) continue;
     var box = _bandFor(e, rule, rect, widths, heights, cols);
-    if (box != null) _paintStyleBox(canvas, box, rule.style, fill: true);
+    if (box != null) _paintStyleBox(canvas, box, rule.style);
   }
 
   // Cells.
@@ -127,6 +127,8 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
             fontSize: spec.fontSize * style.fontScale,
             weight: style.weight == 0 ? spec.weight : style.weight,
             color: style.textColor.a > 0 ? style.textColor : spec.color,
+            align: style.align ?? spec.align,
+            verticalAlign: style.verticalAlign ?? spec.verticalAlign,
           );
         }
       }
@@ -146,7 +148,7 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
                 ? _wordsIn(canvas, e.cell(r, c), spec, textBox)
                 : Rect.fromLTWH(x, y, w, h),
             style,
-            fill: true);
+            hug: style.hug);
       }
 
       // The spec's own vertical alignment, not the middle regardless. It was
@@ -300,11 +302,17 @@ Rect _wordsIn(ui.Canvas canvas, String text, TextSpec spec, Rect box) {
 
 /// _paintStyleBox fills and outlines one rule's box.
 void _paintStyleBox(ui.Canvas canvas, Rect cell, TableCellStyle style,
-    {bool fill = true}) {
-  var box = cell.inflate(-style.inset.clamp(-40.0, cell.shortestSide / 2));
+    {bool hug = false}) {
+  // Padding round a chip, and an inset inside a band. The same number, and it
+  // has to work both ways round: a box drawn round the letters and then
+  // *shrunk* by three is a box smaller than the letters, which is a chip
+  // nobody can see because the letters are sitting on top of it.
+  var box = hug
+      ? cell.inflate(style.inset.clamp(0.0, 200.0))
+      : cell.inflate(-style.inset.clamp(-200.0, cell.shortestSide / 2));
   if (box.width <= 0 || box.height <= 0) return;
 
-  if (fill && style.background.a > 0) {
+  if (style.background.a > 0) {
     canvas.drawRRect(
         RRect.fromRectAndRadius(box, Radius.circular(style.radius)),
         Paint()..color = style.background);

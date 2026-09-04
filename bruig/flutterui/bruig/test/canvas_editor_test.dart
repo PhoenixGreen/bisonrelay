@@ -2332,6 +2332,23 @@ void main() {
       expect(tableIn(controller).rows.first.first, "Team");
     });
 
+    testWidgets("a rule can be added and taken away from the same line",
+        (tester) async {
+      // Adding and removing in the same place, rather than one here and one
+      // at the foot of a section that has to be opened first.
+      var controller = await panel(tester);
+      await press(tester, find.text("SPECIAL CELLS"));
+      expect(find.byTooltip("Add a rule"), findsOneWidget);
+
+      await press(tester, find.byTooltip("Add a rule"));
+      expect(tableIn(controller).rules.length, 1);
+      expect(find.byTooltip("Remove every cell"), findsOneWidget,
+          reason: "named for what it picks out, not 'rule 1'");
+
+      await press(tester, find.byTooltip("Remove every cell"));
+      expect(tableIn(controller).rules, isEmpty);
+    });
+
     testWidgets("the cells are a section of their own", (tester) async {
       // The longest thing in these settings and the least often changed once
       // it is right, so it was pushing everything else off the bottom.

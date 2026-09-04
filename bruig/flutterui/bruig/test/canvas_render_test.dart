@@ -2623,6 +2623,81 @@ void _tableTests() {
       expect(await greenPixels(true), greaterThan(0));
       expect(await greenPixels(true), lessThan(await greenPixels(false) ~/ 2),
           reason: "a chip is far smaller than a filled cell");
+
+      // And bigger than the letters it is drawn round, which is the whole
+      // point: a box the size of the word is a box the word sits on top of.
+      // The test font draws every glyph as a solid block, so this is the one
+      // thing that cannot be checked by counting visible green.
+      const chip = TableCellStyle(background: Color(0xFF00FF00));
+      expect(chip.hug, isTrue);
+      expect(chip.inset, greaterThan(0),
+          reason: "padding round the word, not an inset into it");
+    });
+
+    test("a rule can align one column without touching the rest", () async {
+      // A column of numbers wants to be right-aligned and the column of names
+      // beside it does not, and one alignment for the whole table cannot say
+      // that.
+      var e = TableElement(
+        const ElementBase(id: "t", width: 400, height: 200),
+        rows: const [
+          ["Name", "Value"],
+          ["First", "120"],
+        ],
+        cellSpec: const TextSpec(fontSize: 14, align: TextAlignSpec.left),
+      );
+
+      const right = TableRule(
+          column: "Value",
+          style: TableCellStyle(align: TextAlignSpec.right));
+      expect(right.style.changesType, isTrue);
+      expect(e.copyWith(rules: const [right]).styleFor(1, 1)?.align,
+          TextAlignSpec.right);
+      expect(e.copyWith(rules: const [right]).styleFor(1, 0), isNull);
+
+      Future<Uint8List> drawn(List<TableRule> rules) async {
+        var recorder = ui.PictureRecorder();
+        paintTable(ui.Canvas(recorder), const Rect.fromLTWH(0, 0, 400, 200),
+            e.copyWith(rules: rules));
+        var image = await recorder.endRecording().toImage(400, 200);
+        try {
+          return (await image.toByteData(
+                  format: ui.ImageByteFormat.rawStraightRgba))!
+              .buffer
+              .asUint8List();
+        } finally {
+          image.dispose();
+        }
+      }
+
+      expect(await drawn(const []),
+          isNot(orderedEquals(await drawn(const [right]))));
+    });
+
+    test("alignment and padding survive the round trip", () {
+      var e = TableElement(const ElementBase(id: "t"), rows: const [
+        ["Value"],
+        ["120"],
+      ], rules: const [
+        TableRule(
+            column: "Value",
+            style: TableCellStyle(
+                align: TextAlignSpec.right,
+                verticalAlign: VerticalAlignSpec.bottom,
+                inset: 11)),
+      ]);
+      var back = CanvasDocument.decode(
+              CanvasDocument(elements: [e]).encode())!.elements.single
+          as TableElement;
+
+      expect(back.rules.single.style.align, TextAlignSpec.right);
+      expect(back.rules.single.style.verticalAlign, VerticalAlignSpec.bottom);
+      expect(back.rules.single.style.inset, 11);
+
+      // Left alone, they are not written at all -- "as the cell" is the
+      // common case and should cost a saved document nothing.
+      expect(
+          const TableCellStyle().toJson().containsKey("align"), isFalse);
     });
 
     test("a border can be drawn on some sides and not others", () async {

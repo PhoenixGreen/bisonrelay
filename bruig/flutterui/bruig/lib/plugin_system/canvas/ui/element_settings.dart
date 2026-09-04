@@ -2263,6 +2263,19 @@ List<Widget> _tableSettings(BuildContext context, TableElement e,
                   commit();
                 },
               ),
+              // Beside Add, one per rule, so adding and removing are the same
+              // gesture in the same place rather than one here and one at the
+              // bottom of a section that has to be opened first.
+              for (var i = 0; i < e.rules.length; i++)
+                CanvasIconButton(
+                  icon: Icons.backspace_outlined,
+                  tooltip: "Remove ${_tableRuleName(e.rules[i], i)}",
+                  onPressed: () {
+                    begin();
+                    write(e.copyWith(rules: [...e.rules]..removeAt(i)));
+                    commit();
+                  },
+                ),
               const CanvasHint(
                   "A rule says which cells look different and how. Leave the "
                   "column, the row or the text blank to mean any of them -- "
@@ -3036,6 +3049,17 @@ Widget _pathNodeList(CanvasController controller, PathElement e,
       ],
     );
 
+/// _tableRuleName says what a rule picks out, for its own heading and for the
+/// button that removes it.
+String _tableRuleName(TableRule rule, int index) {
+  var name = [
+    if (rule.column.isNotEmpty) rule.column,
+    if (rule.rows.isNotEmpty) "rows ${rule.rows}",
+    if (rule.match.isNotEmpty) '"${rule.match}"',
+  ].join(" ");
+  return name.isEmpty ? "every cell" : name;
+}
+
 /// _tableRuleSettings is one rule: which cells, and what they look like.
 Widget _tableRuleSettings(TableElement e, int index, _Write write,
     VoidCallback begin, VoidCallback commit) {
@@ -3056,16 +3080,10 @@ Widget _tableRuleSettings(TableElement e, int index, _Write write,
   var style = rule.style;
   void styled(TableCellStyle next) => now(rule.copyWith(style: next));
 
-  // Named for what it does rather than "Rule 3", so a list of them can be read
-  // without opening each one.
-  var name = [
-    if (rule.column.isNotEmpty) rule.column,
-    if (rule.rows.isNotEmpty) "rows ${rule.rows}",
-    if (rule.match.isNotEmpty) '"${rule.match}"',
-  ].join(" ");
-
   return CanvasExpander(
-    label: name.isEmpty ? "Every cell" : name,
+    // Named for what it does rather than "Rule 3", so a list of them can be
+    // read without opening each one.
+    label: _tableRuleName(rule, index),
     children: [
       CanvasControlGroup(label: "Which cells", children: [
         CanvasTextField(
@@ -3178,7 +3196,7 @@ Widget _tableRuleSettings(TableElement e, int index, _Write write,
           onCommit: commit,
         ),
         CanvasNumberField(
-          label: "Inset",
+          label: "Padding",
           value: style.inset,
           min: -40,
           max: 60,
@@ -3213,14 +3231,43 @@ Widget _tableRuleSettings(TableElement e, int index, _Write write,
           value: !style.hug,
           onChanged: (v) => styled(style.copyWith(hug: !v)),
         ),
+        const CanvasLineBreak(),
+        // On the rule rather than only on the table's type: a column of
+        // numbers wants to be right-aligned and the column of names beside it
+        // does not, and one alignment for the whole table cannot say that.
+        CanvasDropdown<String>(
+          label: "Align",
+          value: style.align?.name ?? "",
+          width: 96,
+          options: [
+            ("", "As the cell"),
+            for (var a in TextAlignSpec.values) (a.name, a.label),
+          ],
+          onChanged: (v) => styled(v.isEmpty
+              ? style.copyWith(clearAlign: true)
+              : style.copyWith(align: TextAlignSpec.fromName(v))),
+        ),
+        CanvasDropdown<String>(
+          label: "Vertical",
+          value: style.verticalAlign?.name ?? "",
+          width: 96,
+          options: [
+            ("", "As the cell"),
+            for (var a in VerticalAlignSpec.values) (a.name, a.label),
+          ],
+          onChanged: (v) => styled(v.isEmpty
+              ? style.copyWith(clearVerticalAlign: true)
+              : style.copyWith(
+                  verticalAlign: VerticalAlignSpec.fromName(v))),
+        ),
         const CanvasHint(
             "Size multiplies the cell's own font size and weight overrides "
             "it, so a column can be made bigger or bolder without giving it "
             "a font of its own. A rule that names a word draws its box round "
             "the word; one that names a row or a column draws a single box "
-            "round all of it. Fill the cell takes the whole cell instead, and "
-            "inset shrinks the box inside whatever it was drawn round -- a "
-            "negative one grows it."),
+            "round all of it, and Fill the cell takes the whole cell instead. "
+            "Padding is the room round the word, or the amount taken off the "
+            "inside of a band."),
       ]),
     ],
   );

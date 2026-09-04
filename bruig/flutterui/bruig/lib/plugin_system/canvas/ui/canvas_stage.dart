@@ -709,10 +709,15 @@ class CanvasStageState extends State<CanvasStage> {
   bool get _shiftHeld => HardwareKeyboard.instance.isShiftPressed;
 
   void _onPointerDown(PointerDownEvent event) {
-    // Not while typing: the editor is a real text field sitting over the
+    // Not while typing: an editor is a real text field sitting over the
     // canvas, and it deals with its own pointers. Clicking off it moves the
     // focus, which is what closes it -- see CanvasTextEditor._onFocus.
-    if (_editingText != null) return;
+    //
+    // A cell editor counts. Without it here, pressing anything inside one --
+    // its own picture button included -- ran the stage's hit test and asked
+    // for the canvas's focus, which took the focus off the field, which closed
+    // the editor, which took the button with it before its tap had finished.
+    if (_editingText != null || _editingCell != null) return;
     _focus.requestFocus();
     var stage = event.localPosition;
     _pressedAt = stage;
