@@ -2538,7 +2538,10 @@ void main() {
     /// labels opens the section the title, the description and the key are
     /// now gathered in. Closed to begin with, like the other sections.
     Future<void> labels(WidgetTester tester) async {
-      if (find.text("TITLE").evaluate().isEmpty) {
+      // Keyed off the "over the chart" switch at the foot of the section
+      // rather than off a caption: the title and the description have no
+      // captions any more, only placeholders inside their own fields.
+      if (find.text("Over the chart").evaluate().isEmpty) {
         await press(tester, find.text("LABELS"));
       }
     }
@@ -2581,10 +2584,14 @@ void main() {
         (tester) async {
       var controller = await panel(tester);
       await labels(tester);
-      // The group's caption. The field under it has none of its own any more
-      // -- "Title > Title" was the heading saying the word twice.
-      expect(find.text("TITLE"), findsOneWidget);
-      expect(find.text("DESCRIPTION"), findsOneWidget);
+      // No captions at all now: an empty field says which it is, and a full
+      // one says what it says.
+      expect(find.text("TITLE"), findsNothing);
+      expect(find.text("DESCRIPTION"), findsNothing);
+      var hints = tester
+          .widgetList<CanvasTextField>(find.byType(CanvasTextField))
+          .map((f) => f.hint);
+      expect(hints, containsAll(["Title", "Description"]));
       expect(chartIn(controller).titleBox.show, isTrue);
 
       // Two "Show" toggles, one per label, so the title's is the first.
@@ -2730,15 +2737,15 @@ void main() {
       // anybody saw.
       var controller = await panel(tester);
       await labels(tester);
-      expect(find.text("TITLE"), findsOneWidget);
+      expect(find.text("Over the chart"), findsOneWidget);
 
       controller.clearSelection();
       await tester.pumpAndSettle();
-      expect(find.text("TITLE"), findsNothing);
+      expect(find.text("Over the chart"), findsNothing);
 
       controller.selectOnly("c");
       await tester.pumpAndSettle();
-      expect(find.text("TITLE"), findsOneWidget,
+      expect(find.text("Over the chart"), findsOneWidget,
           reason: "still open, without waiting for a preference to load");
     });
 
@@ -2772,9 +2779,9 @@ void main() {
       var controller = await panel(tester);
       await labels(tester);
 
-      expect(find.text("TITLE"), findsOneWidget);
-      expect(find.text("DESCRIPTION"), findsOneWidget);
       expect(find.text("LEGEND"), findsOneWidget);
+      expect(find.text("Over the chart"), findsOneWidget,
+          reason: "and the switch that places them, at the foot of it");
       expect(find.text("Place"), findsNothing, reason: "the key is off");
 
       await press(tester, find.text("Show").last);

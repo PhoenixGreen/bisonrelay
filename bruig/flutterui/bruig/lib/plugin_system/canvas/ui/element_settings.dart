@@ -1626,6 +1626,7 @@ List<Widget> _chartSettings(BuildContext context, CanvasController controller,
   /// both. So the label is either the chart's to place or the reader's, and
   /// the button says which.
   List<Widget> labelControls(
+    String name,
     String text,
     ChartLabel box,
     ChartLabel whenPlaced,
@@ -1635,10 +1636,14 @@ List<Widget> _chartSettings(BuildContext context, CanvasController controller,
     ChartElement Function(double) withSize,
   ) =>
       [
-        // No caption of its own: the group above it is already called Title.
+        // The name is the empty field's own placeholder rather than a caption
+        // over it. A caption saying "Title" above a field saying "Chart
+        // title" is the word twice and a line of panel for the second one,
+        // and in a section already called Labels it is the third.
         CanvasTextField(
           label: "",
           value: text,
+          hint: name,
           width: 160,
           onChanged: (v) => write(withText(v)),
           onCommit: commit,
@@ -1863,8 +1868,11 @@ List<Widget> _chartSettings(BuildContext context, CanvasController controller,
           if (e.showLegend) "legend",
         ].join(", "),
         children: [
-          CanvasControlGroup(label: "Title", children: [
+          // No caption: the field says which it is when it is empty, and
+          // what it says when it is not.
+          CanvasControlGroup(label: "Title", bandOnlyLabel: true, children: [
             ...labelControls(
+                "Title",
                 e.title,
                 e.titleBox,
                 defaultTitlePlacement,
@@ -1874,23 +1882,28 @@ List<Widget> _chartSettings(BuildContext context, CanvasController controller,
                 (v) =>
                     e.copyWith(titleSpec: e.titleSpec.copyWith(fontSize: v))),
           ]),
-          CanvasControlGroup(label: "Description", children: [
-            // Under the title, not on top of it. A description above a title is
-            // almost never what anybody means, and two labels placed at the same
-            // corner is what that looked like.
-            // Its own size, not the label size it starts at. Sharing meant making
-            // the description bigger made the numbers up the side of the chart
-            // bigger with it.
-            ...labelControls(
-                e.description,
-                e.descriptionBox,
-                defaultDescriptionPlacement(e.titleBox, e.title.isNotEmpty),
-                e.descriptionText.fontSize,
-                (v) => e.copyWith(description: v),
-                (b) => e.copyWith(descriptionBox: b),
-                (v) => e.copyWith(
-                    descriptionSpec: e.descriptionText.copyWith(fontSize: v))),
-          ]),
+          CanvasControlGroup(
+              label: "Description",
+              bandOnlyLabel: true,
+              children: [
+                // Under the title, not on top of it. A description above a title is
+                // almost never what anybody means, and two labels placed at the same
+                // corner is what that looked like.
+                // Its own size, not the label size it starts at. Sharing meant making
+                // the description bigger made the numbers up the side of the chart
+                // bigger with it.
+                ...labelControls(
+                    "Description",
+                    e.description,
+                    e.descriptionBox,
+                    defaultDescriptionPlacement(e.titleBox, e.title.isNotEmpty),
+                    e.descriptionText.fontSize,
+                    (v) => e.copyWith(description: v),
+                    (b) => e.copyWith(descriptionBox: b),
+                    (v) => e.copyWith(
+                        descriptionSpec:
+                            e.descriptionText.copyWith(fontSize: v))),
+              ]),
           // Its own section, opened and closed. The numbers are the longest thing in
           // these settings and the least often changed once they are right, so they
           // were pushing everything else off the bottom of the panel.
@@ -1899,28 +1912,6 @@ List<Widget> _chartSettings(BuildContext context, CanvasController controller,
           // without an edge of its own it ran straight into the axis settings under
           // it -- so the first thing under the table looked like part of the table.
           // No caption: the section this sits in is already called Labels.
-          CanvasControlGroup(label: "Labels", bandOnlyLabel: true, children: [
-            // The one switch for all three of them. Taking room is what made every
-            // one of their settings a setting that resized the chart.
-            CanvasToggle(
-              label: "Over the chart",
-              value: e.floatingLabels,
-              // Switched off, the box goes back round the chart. Dragging a
-              // floating label outside it grew the box to hold the label and
-              // inset the chart to keep it where it was -- and left like that
-              // the chart sat small in the middle of an element with a margin
-              // of nothing round it, so the switch did not go both ways after
-              // all.
-              onChanged: (v) => now(v
-                  ? e.copyWith(floatingLabels: true)
-                  : e.copyWith(floatingLabels: false).aroundTheChart()),
-            ),
-            const CanvasHint(
-                "The title, the description and the legend sit over the chart and "
-                "leave its size alone. Switched off they take room from it, which "
-                "is right for a plot that fills its box -- a bar reaching the top "
-                "will otherwise run behind a title floating over it."),
-          ]),
           CanvasControlGroup(label: "Legend", children: [
             CanvasToggle(
               label: "Show",
@@ -2002,6 +1993,28 @@ List<Widget> _chartSettings(BuildContext context, CanvasController controller,
                   "the key stays in proportion when those are changed. "
                   "Spacing is the gap between one entry and the next."),
             ],
+          ]),
+          CanvasControlGroup(label: "Labels", bandOnlyLabel: true, children: [
+            // The one switch for all three of them. Taking room is what made every
+            // one of their settings a setting that resized the chart.
+            CanvasToggle(
+              label: "Over the chart",
+              value: e.floatingLabels,
+              // Switched off, the box goes back round the chart. Dragging a
+              // floating label outside it grew the box to hold the label and
+              // inset the chart to keep it where it was -- and left like that
+              // the chart sat small in the middle of an element with a margin
+              // of nothing round it, so the switch did not go both ways after
+              // all.
+              onChanged: (v) => now(v
+                  ? e.copyWith(floatingLabels: true)
+                  : e.copyWith(floatingLabels: false).aroundTheChart()),
+            ),
+            const CanvasHint(
+                "The title, the description and the legend sit over the chart and "
+                "leave its size alone. Switched off they take room from it, which "
+                "is right for a plot that fills its box -- a bar reaching the top "
+                "will otherwise run behind a title floating over it."),
           ]),
         ],
       ),
