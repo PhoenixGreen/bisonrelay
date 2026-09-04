@@ -70,6 +70,15 @@ class TableCellStyle {
   /// background into a chip rather than a filled cell.
   final double inset;
 
+  /// textPad is extra room either side of the words, on top of the table's
+  /// own cell padding.
+  ///
+  /// What alignment needs to be usable: pushed to the left or the right, the
+  /// words sit against the edge of the cell, and the table's padding is one
+  /// number for every cell in it -- so there was no way to give one column a
+  /// margin without giving all of them one.
+  final double textPad;
+
   /// hug fits the box to the words rather than to the cell.
   ///
   /// On, because the thing anybody asks for by naming a word is a chip round
@@ -90,6 +99,7 @@ class TableCellStyle {
     this.radius = 4,
     this.inset = 6,
     this.hug = true,
+    this.textPad = 0,
   });
 
   bool get allSides => !sides.contains(false);
@@ -118,6 +128,7 @@ class TableCellStyle {
     double? radius,
     double? inset,
     bool? hug,
+    double? textPad,
   }) =>
       TableCellStyle(
         background: background ?? this.background,
@@ -133,6 +144,7 @@ class TableCellStyle {
         radius: radius ?? this.radius,
         inset: inset ?? this.inset,
         hug: hug ?? this.hug,
+        textPad: textPad ?? this.textPad,
       );
 
   Map<String, dynamic> toJson() => {
@@ -148,6 +160,7 @@ class TableCellStyle {
         if (radius != 4) "r": radius,
         if (inset != 6) "inset": inset,
         if (!hug) "fill": true,
+        if (textPad != 0) "pad": textPad,
       };
 
   factory TableCellStyle.fromJson(Map<String, dynamic> json) => TableCellStyle(
@@ -169,6 +182,7 @@ class TableCellStyle {
         radius: jsonDouble(json["r"], 4),
         inset: jsonDouble(json["inset"], 6),
         hug: !jsonBool(json["fill"], false),
+        textPad: jsonDouble(json["pad"], 0),
       );
 }
 
@@ -539,6 +553,8 @@ class TableElement extends CanvasElement {
               radius: rule.style.radius,
               inset: rule.style.inset,
               hug: rule.style.hug,
+              textPad:
+                  rule.style.textPad != 0 ? rule.style.textPad : out.textPad,
             );
     }
     return out;

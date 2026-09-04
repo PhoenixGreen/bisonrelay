@@ -446,4 +446,41 @@ void main() {
       expect(ShapeElement(const ElementBase(id: "s")).assetIds, isEmpty);
     });
   });
+  group("a picture stored and read back", () {
+    test("the id a save hands out is the id a load takes", () async {
+      // The whole round trip a table cell depends on: the cell keeps the id
+      // as text, and everything after that is the store finding the file
+      // again. An id with an extension on it that load could not read would
+      // look exactly like a cell that had never been given a picture.
+      {
+        // A one-pixel PNG, which is the smallest thing the sniffer will
+        // recognise as one.
+        var png = <int>[
+          0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, //
+          for (var i = 0; i < 40; i++) i,
+        ];
+
+        var id = await CanvasAssets.save(png);
+        expect(id, isNotNull);
+        expect(id!.endsWith(".png"), isTrue,
+            reason: "named for what it is, so the system can open it");
+
+        expect(await CanvasAssets.load(id), png);
+        expect(TableElement.pictureIn("img:$id"), id,
+            reason: "and a cell holding it hands back exactly that");
+
+        // And a sweep that knows about the table keeps it.
+        var document = CanvasDocument(elements: [
+          TableElement(const ElementBase(id: "t"), rows: [
+            ["Badge"],
+            ["img:$id"],
+          ]),
+        ]);
+        expect(document.assetIds, {id});
+        await CanvasAssets.sweep(document.assetIds);
+        expect(await CanvasAssets.load(id), isNotNull,
+            reason: "still there after the sweep");
+      }
+    });
+  });
 }

@@ -2674,6 +2674,55 @@ void _tableTests() {
           isNot(orderedEquals(await drawn(const [right]))));
     });
 
+    test("a rule can hold its words off the edge", () async {
+      // What alignment needs to be usable: pushed to the right, the words sit
+      // against the edge of the cell, and the table's own padding is one
+      // number for every cell in it.
+      const red = ui.Color(0xFFFF0000);
+      var e = TableElement(
+        const ElementBase(id: "t", width: 400, height: 100),
+        rows: const [
+          ["Points"],
+          ["6"],
+        ],
+        cellSpec: const TextSpec(fontSize: 18, color: red),
+        headerSpec: const TextSpec(fontSize: 18),
+      );
+
+      Future<int> rightmostRed(double space) async {
+        var recorder = ui.PictureRecorder();
+        paintTable(
+            ui.Canvas(recorder),
+            const Rect.fromLTWH(0, 0, 400, 100),
+            e.copyWith(rules: [
+              TableRule(
+                  column: "Points",
+                  rows: "2",
+                  style: TableCellStyle(
+                      align: TextAlignSpec.right, textPad: space)),
+            ]));
+        var image = await recorder.endRecording().toImage(400, 100);
+        var pixels = (await image.toByteData(
+                format: ui.ImageByteFormat.rawStraightRgba))!
+            .buffer
+            .asUint8List();
+        image.dispose();
+        var out = 0;
+        for (var i = 0; i < 400 * 100; i++) {
+          if (pixels[i * 4] > 180 && pixels[i * 4 + 1] < 80) {
+            out = math.max(out, i % 400);
+          }
+        }
+        return out;
+      }
+
+      var tight = await rightmostRed(0);
+      var spaced = await rightmostRed(30);
+      expect(tight, greaterThan(0), reason: "the number is drawn");
+      expect(spaced, lessThan(tight - 20),
+          reason: "and pushed thirty back off the edge");
+    });
+
     test("alignment and padding survive the round trip", () {
       var e = TableElement(const ElementBase(id: "t"), rows: const [
         ["Value"],
@@ -2693,6 +2742,11 @@ void _tableTests() {
       expect(back.rules.single.style.align, TextAlignSpec.right);
       expect(back.rules.single.style.verticalAlign, VerticalAlignSpec.bottom);
       expect(back.rules.single.style.inset, 11);
+      expect(
+          TableCellStyle.fromJson(
+                  const TableCellStyle(textPad: 12).toJson())
+              .textPad,
+          12);
 
       // Left alone, they are not written at all -- "as the cell" is the
       // common case and should cost a saved document nothing.
@@ -3130,6 +3184,41 @@ void _tableTests() {
           greaterThan(0));
       expect(await reds(_Pictures(bitmap)), 0,
           reason: "and a bitmap asset still goes through resolve");
+    });
+
+    test("a picture that has not arrived is marked, not left blank", () async {
+      // A cell that names a picture and shows nothing is indistinguishable
+      // from a cell that was never told about one -- which makes a fault
+      // impossible to tell from a typo.
+      var named = TableElement(
+        const ElementBase(id: "t", width: 400, height: 120),
+        rows: const [
+          ["Team", "Badge"],
+          ["Hull City", "img:abcdef1234567890"],
+        ],
+      );
+      var empty = named.copyWith(rows: const [
+        ["Team", "Badge"],
+        ["Hull City", ""],
+      ]);
+
+      Future<Uint8List> drawn(TableElement e) async {
+        var recorder = ui.PictureRecorder();
+        // No store at all, which is what a picture still loading looks like.
+        paintTable(
+            ui.Canvas(recorder), const Rect.fromLTWH(0, 0, 400, 120), e);
+        var image = await recorder.endRecording().toImage(400, 120);
+        try {
+          return (await image.toByteData(
+                  format: ui.ImageByteFormat.rawStraightRgba))!
+              .buffer
+              .asUint8List();
+        } finally {
+          image.dispose();
+        }
+      }
+
+      expect(await drawn(named), isNot(orderedEquals(await drawn(empty))));
     });
 
     test("a cell may hold a comma, and survives the round trip", () {

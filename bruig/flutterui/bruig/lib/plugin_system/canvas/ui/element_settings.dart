@@ -3192,6 +3192,17 @@ Widget _tableRuleSettings(TableElement e, int index, _Write write,
           onCommit: commit,
         ),
         CanvasNumberField(
+          label: "Text space",
+          value: style.textPad,
+          min: 0,
+          max: 200,
+          decimals: 1,
+          width: 62,
+          onChanged: (v) =>
+              put(rule.copyWith(style: style.copyWith(textPad: v))),
+          onCommit: commit,
+        ),
+        CanvasNumberField(
           label: "Padding",
           value: style.inset,
           min: -40,
@@ -3275,7 +3286,9 @@ Widget _tableRuleSettings(TableElement e, int index, _Write write,
             "the word; one that names a row or a column draws a single box "
             "round all of it, and Fill the cell takes the whole cell instead. "
             "Padding is the room round the word, or the amount taken off the "
-            "inside of a band."),
+            "inside of a band. Text space is room either side of the words "
+            "themselves, which is what alignment needs to be usable -- pushed "
+            "left or right they otherwise sit against the edge of the cell."),
       ]),
     ],
   );

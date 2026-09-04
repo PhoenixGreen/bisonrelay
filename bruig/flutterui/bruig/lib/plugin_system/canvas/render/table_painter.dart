@@ -112,7 +112,15 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
           _paintCellVector(canvas, vector, box);
         } else {
           var image = images?.resolve(asset, const BackgroundRemoval());
-          if (image != null) _paintCellImage(canvas, image, box);
+          if (image != null) {
+            _paintCellImage(canvas, image, box);
+          } else {
+            // Nothing to draw yet, or nothing to draw ever. Marked rather
+            // than left blank: a cell that names a picture and shows nothing
+            // is indistinguishable from a cell that was never told about one,
+            // which is a fault that cannot be told from a typo.
+            _paintMissingPicture(canvas, box, e);
+          }
         }
         x += w;
         continue;
@@ -132,8 +140,12 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
           );
         }
       }
-      var textBox =
-          Rect.fromLTWH(x + e.cellPadding, y, w - e.cellPadding * 2, h);
+      // The table's own padding, and whatever a rule adds on top of it.
+      // Alignment is unusable without the second: pushed left or right the
+      // words sit against the edge, and the table's padding is one number for
+      // every cell in it.
+      var pad = e.cellPadding + (style?.textPad ?? 0);
+      var textBox = Rect.fromLTWH(x + pad, y, math.max(1, w - pad * 2), h);
 
       // A chip round the word, drawn before the word itself.
       //
@@ -217,6 +229,25 @@ void _paintCellImage(ui.Canvas canvas, ui.Image image, Rect box) {
   canvas.drawImageRect(
       image, Offset.zero & size, drawn, Paint()..filterQuality =
           FilterQuality.high);
+}
+
+/// _paintMissingPicture is the mark left where a picture has not arrived.
+///
+/// A frame with a corner cut off, at the size the picture would have been --
+/// small, grey, and unmistakably not a photograph. It says "there is meant to
+/// be something here", which a blank cell does not.
+void _paintMissingPicture(ui.Canvas canvas, Rect box, TableElement e) {
+  var side = math.min(box.width, box.height) * 0.7;
+  if (side < 6) return;
+  var frame = Rect.fromCenter(center: box.center, width: side, height: side);
+  var paint = Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = math.max(1, side * 0.06)
+    ..color = e.gridColor;
+
+  canvas.drawRRect(
+      RRect.fromRectAndRadius(frame, Radius.circular(side * 0.12)), paint);
+  canvas.drawLine(frame.topLeft, frame.bottomRight, paint);
 }
 
 /// _paintCellVector draws a vector inside a cell, contained rather than
