@@ -1452,7 +1452,7 @@ Future<Uint8List> _chartPixels(ChartElement e,
 /// between two renders is mostly the axis labels having moved. Giving the
 /// label a colour of its own asks where *it* is and nothing else.
 Future<List<int>> _rowsOf(ChartElement e, ui.Color colour,
-    {int width = 400, int height = 300}) async {
+    {int width = 400, int height = 300, int tolerance = 24}) async {
   var pixels = await _chartPixels(e, width: width, height: height);
   var want = [
     (colour.r * 255).round(),
@@ -1464,9 +1464,9 @@ Future<List<int>> _rowsOf(ChartElement e, ui.Color colour,
     for (var x = 0; x < width; x++) {
       var i = (y * width + x) * 4;
       if (pixels[i + 3] > 200 &&
-          (pixels[i] - want[0]).abs() < 24 &&
-          (pixels[i + 1] - want[1]).abs() < 24 &&
-          (pixels[i + 2] - want[2]).abs() < 24) {
+          (pixels[i] - want[0]).abs() < tolerance &&
+          (pixels[i + 1] - want[1]).abs() < tolerance &&
+          (pixels[i + 2] - want[2]).abs() < tolerance) {
         rows.add(y);
         break;
       }
@@ -1648,11 +1648,16 @@ void _chartTests() {
         showAxes: false,
         data: ChartData.parse("Cat\tA\nx\t10\ny\t6"),
         titleSpec: const TextSpec(fontSize: 24, weight: 700, color: red),
-        labelSpec: const TextSpec(fontSize: 11, color: green),
+        labelSpec: const TextSpec(fontSize: 11),
+        // Its own colour and its own spec: the label spec is also the axis
+        // ticks', and looking for green would find those as well.
+        descriptionSpec: const TextSpec(fontSize: 11, color: green),
       );
 
       var titleRows = await _rowsOf(e, red);
-      var descriptionRows = await _rowsOf(e, green);
+      // Softened by the painter -- a description is a note under a title, not
+      // a second title -- so it lands nearer 0,191,0 than 0,255,0.
+      var descriptionRows = await _rowsOf(e, green, tolerance: 90);
       expect(titleRows, isNotEmpty);
       expect(descriptionRows, isNotEmpty);
       expect(titleRows.last, lessThan(descriptionRows.first),
@@ -2002,7 +2007,14 @@ void _chartTests() {
       );
 
       expect(legendEntriesForTest(e, 1).map((k) => k.$2),
-          ["One  10", "Two  20"]);
+          ["One: 10", "Two: 20"]);
+      expect(
+          legendEntriesForTest(
+                  e.copyWith(
+                      legend: e.legend.copyWith(separator: " - ")), 1)
+              .map((k) => k.$2),
+          ["One - 10", "Two - 20"],
+          reason: "which one reads best depends on the names");
 
       // The key's own switch, not the chart's. A bar chart may want numbers on
       // its bars and a key without them, and a radial bar has nowhere to put a
@@ -2034,13 +2046,72 @@ void _chartTests() {
         animation: const ChartAnimation(
             preset: ChartAnimationPreset.grow, ease: ChartEase.linear),
       );
-      expect(legendEntriesForTest(e, 0.5).single.$2, "One  5");
-      expect(legendEntriesForTest(e, 1).single.$2, "One  10");
+      expect(legendEntriesForTest(e, 0.5).single.$2, "One: 5");
+      expect(legendEntriesForTest(e, 1).single.$2, "One: 10");
     });
 
     test("a bar chart's legend still keys its series", () {
       var e = _two(ChartType.groupedBar).copyWith(showLegend: true);
       expect(legendEntriesForTest(e, 1).map((k) => k.$2), ["A", "B"]);
+    });
+
+    test("floating labels leave the chart exactly where it was", () async {
+      // The reported fault: a key moved to the left took a third of the
+      // width, so a pie became a small ring in the corner -- a change to the
+      // chart from a setting that is not about the chart.
+      var plain = ChartElement(
+        const ElementBase(id: "c", width: 400, height: 300),
+        type: ChartType.donut,
+        title: "Chart title",
+        description: "description",
+        data: ChartData.parse("Cat\tShare\nOne\t8\nTwo\t14\nThree\t11"),
+        titleSpec: const TextSpec(fontSize: 22, weight: 700),
+        labelSpec: const TextSpec(fontSize: 11),
+      );
+
+      var bare = await _chartPixels(plain.copyWith(
+          title: "", description: "", showLegend: false));
+
+      // Everything the labels and the key can be set to, over the top of it.
+      for (var legend in const [
+        ChartLegend(),
+        ChartLegend(placement: LegendPlacement.left, vertical: true),
+        ChartLegend(placement: LegendPlacement.right, scale: 2),
+        ChartLegend(placement: LegendPlacement.bottom, spacing: 4),
+      ]) {
+        var with_ = plain.copyWith(showLegend: true, legend: legend);
+        var ring = await _chartPixels(with_);
+
+        // The ring itself is untouched: every pixel the bare chart drew in a
+        // series colour is still that colour.
+        var same = 0, differs = 0;
+        for (var i = 0; i < 400 * 300; i++) {
+          if (bare[i * 4 + 3] < 250) continue;
+          var isSeries = bare[i * 4] != bare[i * 4 + 1];
+          if (!isSeries) continue;
+          if (ring[i * 4] == bare[i * 4] && ring[i * 4 + 1] == bare[i * 4 + 1]) {
+            same++;
+          } else {
+            differs++;
+          }
+        }
+        expect(same, greaterThan(0), reason: "$legend");
+        expect(differs / (same + differs), lessThan(0.06),
+            reason: "the chart is where it was, whatever the key does");
+      }
+    });
+
+    test("switched off, they take room again", () async {
+      // The older behaviour, and the right one for a plot that fills its box.
+      var e = _two(ChartType.groupedBar).copyWith(
+          showLegend: true,
+          floatingLabels: false,
+          legend: const ChartLegend(placement: LegendPlacement.left));
+      expect(e.floatingLabels, isFalse);
+
+      var floating = await _chartPixels(e.copyWith(floatingLabels: true));
+      var solid = await _chartPixels(e);
+      expect(floating, isNot(orderedEquals(solid)));
     });
 
     test("the legend goes where it is put and takes only what it needs", () {

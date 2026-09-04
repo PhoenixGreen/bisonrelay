@@ -615,6 +615,13 @@ class ChartLegend {
   /// own type.
   final double spacing;
 
+  /// separator goes between an entry's name and its number.
+  ///
+  /// A string rather than a boolean, because which one reads best depends on
+  /// the names: a colon after "Q1" is a label and a colon after "Revenue
+  /// 2024" is a sentence, and two spaces is enough on a short list.
+  final String separator;
+
   /// values writes each entry's number beside its name.
   ///
   /// Its own switch rather than the chart's showValues. They are two
@@ -629,7 +636,18 @@ class ChartLegend {
     this.scale = 1,
     this.spacing = 1,
     this.values = false,
+    this.separator = ": ",
   });
+
+  /// separators are the ones offered. Free text would be a field somebody
+  /// could put a paragraph in.
+  static const List<(String, String)> separators = [
+    (": ", "Colon"),
+    (" - ", "Dash"),
+    (" — ", "Long dash"),
+    ("  ", "A space"),
+    (" = ", "Equals"),
+  ];
 
   ChartLegend copyWith({
     LegendPlacement? placement,
@@ -637,6 +655,7 @@ class ChartLegend {
     double? scale,
     double? spacing,
     bool? values,
+    String? separator,
   }) =>
       ChartLegend(
         placement: placement ?? this.placement,
@@ -644,6 +663,7 @@ class ChartLegend {
         scale: scale ?? this.scale,
         spacing: spacing ?? this.spacing,
         values: values ?? this.values,
+        separator: separator ?? this.separator,
       );
 
   Map<String, dynamic> toJson() => {
@@ -652,6 +672,7 @@ class ChartLegend {
         if (scale != 1) "scale": scale,
         if (spacing != 1) "spacing": spacing,
         if (values) "values": true,
+        if (separator != ": ") "sep": separator,
       };
 
   factory ChartLegend.fromJson(Map<String, dynamic> json) => ChartLegend(
@@ -660,6 +681,7 @@ class ChartLegend {
         scale: jsonDouble(json["scale"], 1).clamp(0.3, 4.0),
         spacing: jsonDouble(json["spacing"], 1).clamp(0.0, 6.0),
         values: jsonBool(json["values"], false),
+        separator: jsonString(json["sep"], ": "),
       );
 }
 
@@ -763,6 +785,20 @@ class ChartElement extends CanvasElement {
   /// [showLegend]. See [ChartLegend].
   final ChartLegend legend;
 
+  /// floatingLabels puts the title, the description and the key *over* the
+  /// chart instead of taking room from it.
+  ///
+  /// On, because taking room is what made every one of their settings a
+  /// setting that resized the chart. A key moved to the left took a third of
+  /// the width, so a pie became a small ring in the corner; a title made
+  /// bigger pushed the plot down. None of those are decisions about the
+  /// chart, and all of them changed it.
+  ///
+  /// Off is the older behaviour and is right for a chart whose plot fills its
+  /// box -- a bar reaching the top of a busy chart will run behind a title
+  /// that is floating over it.
+  final bool floatingLabels;
+
   /// descriptionSpec is the description's own type, or null to follow the
   /// label size -- which is where it started and is what every document saved
   /// before this had.
@@ -823,6 +859,7 @@ class ChartElement extends CanvasElement {
     this.body = const ChartBody(),
     this.animation = const ChartAnimation(),
     this.legend = const ChartLegend(),
+    this.floatingLabels = true,
     this.descriptionSpec,
     this.xAxisLabel = "",
     this.yAxisLabel = "",
@@ -864,6 +901,7 @@ class ChartElement extends CanvasElement {
     ChartBody? body,
     ChartAnimation? animation,
     ChartLegend? legend,
+    bool? floatingLabels,
     TextSpec? descriptionSpec,
     String? xAxisLabel,
     String? yAxisLabel,
@@ -894,6 +932,7 @@ class ChartElement extends CanvasElement {
           body: body,
           animation: animation,
           legend: legend,
+          floatingLabels: floatingLabels,
           descriptionSpec: descriptionSpec,
           xAxisLabel: xAxisLabel,
           yAxisLabel: yAxisLabel,
@@ -928,6 +967,7 @@ class ChartElement extends CanvasElement {
     ChartBody? body,
     ChartAnimation? animation,
     ChartLegend? legend,
+    bool? floatingLabels,
     TextSpec? descriptionSpec,
     String? xAxisLabel,
     String? yAxisLabel,
@@ -958,6 +998,7 @@ class ChartElement extends CanvasElement {
           body: body ?? this.body,
           animation: animation ?? this.animation,
           legend: legend ?? this.legend,
+          floatingLabels: floatingLabels ?? this.floatingLabels,
           descriptionSpec: descriptionSpec ?? this.descriptionSpec,
           xAxisLabel: xAxisLabel ?? this.xAxisLabel,
           yAxisLabel: yAxisLabel ?? this.yAxisLabel,
@@ -994,6 +1035,7 @@ class ChartElement extends CanvasElement {
         // row.
         if (showLegend || legend.toJson().length > 1)
           "legendSpec": legend.toJson(),
+        if (!floatingLabels) "solidLabels": true,
         if (descriptionSpec != null) "descSpec": descriptionSpec!.toJson(),
         if (xAxisLabel.isNotEmpty) "xlabel": xAxisLabel,
         if (yAxisLabel.isNotEmpty) "ylabel": yAxisLabel,
@@ -1030,6 +1072,7 @@ class ChartElement extends CanvasElement {
               const ChartAnimation()),
           legend: jsonSpec(json["legendSpec"], ChartLegend.fromJson,
               const ChartLegend()),
+          floatingLabels: !jsonBool(json["solidLabels"], false),
           descriptionSpec: json["descSpec"] is Map<String, dynamic>
               ? TextSpec.fromJson(json["descSpec"] as Map<String, dynamic>)
               : null,

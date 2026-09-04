@@ -54,8 +54,12 @@ void paintChart(ui.Canvas canvas, Rect rect, ChartElement e,
   // has dragged onto the plot was dragged there on purpose -- and because
   // taking room away from the plot for a label that is no longer above it
   // would leave a band of nothing where it used to be.
-  area = _flowLabel(canvas, area, body, e.title, e.titleBox, e.titleSpec);
-  area = _flowLabel(canvas, area, body, e.description, e.descriptionBox,
+  // The labels and the key are laid out one under the other whether or not
+  // they take room, so a floating description still sits under its title
+  // rather than on top of it. What floating changes is only what is handed on
+  // to the chart: the body, unreduced.
+  var band = _flowLabel(canvas, area, body, e.title, e.titleBox, e.titleSpec);
+  band = _flowLabel(canvas, band, body, e.description, e.descriptionBox,
       descriptionSpec(e));
 
   // Not "and more than one series". A one-series chart with the legend turned
@@ -63,8 +67,14 @@ void paintChart(ui.Canvas canvas, Rect rect, ChartElement e,
   // rather than as the legend being unnecessary -- and a single series with a
   // name worth reading is a perfectly good reason to want one.
   if (e.showLegend && data.series.isNotEmpty) {
-    area = _legend(canvas, area, e, showing);
+    band = _legend(canvas, band, e, showing);
   }
+
+  // Over the chart, or above it. Taking room is what made every one of these
+  // settings a setting that resized the chart: a key moved to the left took a
+  // third of the width, so a pie became a small ring in the corner, and none
+  // of that is a decision about the chart.
+  area = e.floatingLabels ? body : band;
 
   // A wipe and a sweep are one edge travelling over everything, so they are a
   // clip round the whole plot rather than anything the series need to know
@@ -263,7 +273,8 @@ String _legendName(
   // had on its own.
   if (!e.legend.values) return name;
   // Counting with its ring, like every other number on an animating chart.
-  return "$name  ${_formatTick(value * slice.size.clamp(0.0, 1.0))}";
+  return "$name${e.legend.separator}"
+      "${_formatTick(value * slice.size.clamp(0.0, 1.0))}";
 }
 
 /// legendEntriesForTest is [_legendEntries], which decides what a legend says

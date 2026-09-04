@@ -2654,6 +2654,18 @@ void main() {
           reason: "with both on, the numbers are where it says");
     });
 
+    testWidgets("one switch decides whether the labels take room",
+        (tester) async {
+      // The three of them together, because taking room is what made every
+      // one of their settings a setting that resized the chart.
+      var controller = await panel(tester);
+      expect(chartIn(controller).floatingLabels, isTrue,
+          reason: "over the chart to begin with");
+
+      await press(tester, find.text("Over the chart"));
+      expect(chartIn(controller).floatingLabels, isFalse);
+    });
+
     testWidgets("the legend has a section of its own", (tester) async {
       var controller = await panel(tester);
 
@@ -2670,6 +2682,12 @@ void main() {
       expect(find.text("Place"), findsOneWidget);
       expect(find.text("Along"), findsOneWidget);
       expect(find.byType(CanvasDropdown<LegendPlacement>), findsOneWidget);
+      expect(find.text("Between"), findsNothing,
+          reason: "nothing to separate until the key shows values");
+
+      await press(tester, find.text("Values"));
+      expect(chartIn(controller).legend.values, isTrue);
+      expect(find.text("Between"), findsOneWidget);
     });
 
     testWidgets("the title and the description size separately",

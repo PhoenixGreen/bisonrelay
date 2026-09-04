@@ -1873,6 +1873,20 @@ List<Widget> _chartSettings(BuildContext context, CanvasController controller,
           onChanged: (v) => now(e.copyWith(showAxes: v)),
         ),
       ]),
+    CanvasControlGroup(label: "Labels", children: [
+      // The one switch for all three of them. Taking room is what made every
+      // one of their settings a setting that resized the chart.
+      CanvasToggle(
+        label: "Over the chart",
+        value: e.floatingLabels,
+        onChanged: (v) => now(e.copyWith(floatingLabels: v)),
+      ),
+      const CanvasHint(
+          "The title, the description and the legend sit over the chart and "
+          "leave its size alone. Switched off they take room from it, which "
+          "is right for a plot that fills its box -- a bar reaching the top "
+          "will otherwise run behind a title floating over it."),
+    ]),
     CanvasControlGroup(label: "Values", children: [
       CanvasToggle(
         label: "On the chart",
@@ -1954,6 +1968,15 @@ List<Widget> _chartSettings(BuildContext context, CanvasController controller,
                 },
                 onCommit: commit,
               ),
+              if (e.legend.values)
+                CanvasDropdown<String>(
+                  label: "Between",
+                  value: e.legend.separator,
+                  width: 104,
+                  options: ChartLegend.separators,
+                  onChanged: (v) => now(
+                      e.copyWith(legend: e.legend.copyWith(separator: v))),
+                ),
               const CanvasHint(
                   "Size is measured against the chart's own label size, so "
                   "the key stays in proportion when those are changed. "
