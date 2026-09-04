@@ -1298,6 +1298,23 @@ class CanvasStageState extends State<CanvasStage> {
         .toList();
   }
 
+  /// _selectedTableColumns is what the painter puts grips on: each inner
+  /// column rule of the selected table, as an x and the top and bottom of the
+  /// table.
+  List<(double, double, double)> _selectedTableColumns() {
+    var element = controller.selected;
+    if (element is! TableElement ||
+        element.locked ||
+        !controller.showHelpers) {
+      return const [];
+    }
+    var bounds = element.boundsAt(controller.frame);
+    return [
+      for (var x in _tableColumnDividers(element, bounds))
+        (x, bounds.top, bounds.bottom),
+    ];
+  }
+
   /// _labelGrab is the chart label being dragged, while one is.
   _ChartLabelGrab? _labelGrab;
 
@@ -1865,6 +1882,7 @@ class CanvasStageState extends State<CanvasStage> {
                       showHelpers: controller.showHelpers,
                       selectedPath: _selectedPath(),
                       chartLabels: _selectedChartLabels(),
+                      tableColumns: _selectedTableColumns(),
                       editingText: _editingText,
                       preview: _preview,
                       previewOn: _previewPlacement(),
@@ -2135,6 +2153,14 @@ class _StagePainter extends CustomPainter {
   /// has no visible corner to resize by.
   final List<Rect> chartLabels;
 
+  /// tableColumns is where a selected table's column rules are, in document
+  /// units, so each can be given a grip.
+  ///
+  /// Without one there was nothing to say a rule could be dragged at all: the
+  /// pointer had to be within a few pixels of a hairline nobody had been told
+  /// about.
+  final List<(double, double, double)> tableColumns;
+
   /// preview is a picture of what a held stroke would do, and previewOn is
   /// the placement it is drawn through. Both null when nothing is held.
   ///
@@ -2184,6 +2210,7 @@ class _StagePainter extends CustomPainter {
     required this.showHelpers,
     required this.selectedPath,
     required this.chartLabels,
+    required this.tableColumns,
     required this.editingText,
     required this.preview,
     required this.previewOn,
@@ -2372,10 +2399,34 @@ class _StagePainter extends CustomPainter {
     }
   }
 
+  /// _paintTableColumns puts a grip on each of a table's inner column rules.
+  ///
+  /// A short bar at the top and the bottom rather than a line down the whole
+  /// rule: the rule is already drawn by the table, and a second line over it
+  /// would read as the table having two.
+  void _paintTableColumns(Canvas canvas) {
+    if (tableColumns.isEmpty) return;
+    var paint = Paint()..color = const Color(0xFF3D7EFF);
+
+    for (var (x, top, bottom) in tableColumns) {
+      var at = x * scale + origin.dx;
+      var t = top * scale + origin.dy;
+      var b = bottom * scale + origin.dy;
+      for (var y in [t + 5, b - 5]) {
+        canvas.drawRRect(
+            RRect.fromRectAndRadius(
+                Rect.fromCenter(center: Offset(at, y), width: 4, height: 12),
+                const Radius.circular(2)),
+            paint);
+      }
+    }
+  }
+
   void _paintSelection(Canvas canvas) {
     if (!showHelpers) return;
 
     _paintChartLabels(canvas);
+    _paintTableColumns(canvas);
 
     // A selected path shows its points and handles instead of a box: the box
     // round a curve is a rectangle nobody drew and cannot be usefully dragged,

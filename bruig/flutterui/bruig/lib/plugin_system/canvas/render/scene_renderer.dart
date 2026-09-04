@@ -43,10 +43,32 @@ import 'package:flutter/painting.dart';
 /// change. Returning null for "not yet" lets the renderer draw a placeholder
 /// and the stage redraw a moment later, rather than either blocking a frame or
 /// making the whole document wait on an image.
+/// CanvasVector is a picture kept as a picture: the drawing itself and the
+/// size it was drawn for.
+///
+/// A vector stays a vector wherever it can. A club badge drawn into a table
+/// cell is forty pixels on screen and four hundred in a poster export, and a
+/// bitmap has to pick one of those in advance -- so a canvas with twenty-two
+/// of them either looks soft in the export or carries twenty-two half-megabyte
+/// bitmaps around in memory. Drawn from the picture there is nothing to pick.
+class CanvasVector {
+  final ui.Picture picture;
+  final Size size;
+  const CanvasVector(this.picture, this.size);
+}
+
 abstract class CanvasImageSource {
   /// resolve returns the picture for [assetId] with [removal] applied, or null
   /// when it is not decoded yet.
   ui.Image? resolve(String assetId, BackgroundRemoval removal);
+
+  /// resolveVector is the same asset kept as a drawing, when it is one.
+  ///
+  /// Null by default, and null for every bitmap: a caller that can draw a
+  /// vector asks for one and falls back to [resolve], and a caller that
+  /// cannot -- anything that has to look at pixels, which is the background
+  /// remover and the whole of the export pipeline -- simply does not ask.
+  CanvasVector? resolveVector(String assetId) => null;
 }
 
 /// paintCanvasDocument draws [doc] at [frame].

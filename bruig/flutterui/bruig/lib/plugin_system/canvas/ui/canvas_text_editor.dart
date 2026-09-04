@@ -216,9 +216,16 @@ class _CanvasCellEditorState extends State<CanvasCellEditor> {
     _text.selection =
         TextSelection(baseOffset: 0, extentOffset: widget.value.length);
     _focus.addListener(() {
-      if (!_focus.hasFocus) widget.onDone();
+      // Not while the file picker is up. Opening it takes the focus away from
+      // the field, which closed the editor and took its own button with it --
+      // so the tap that opened the picker was cancelled before it finished
+      // and no picture ever arrived.
+      if (!_focus.hasFocus && !_picking) widget.onDone();
     });
   }
+
+  /// _picking is whether a file picker is open on this cell's behalf.
+  bool _picking = false;
 
   @override
   void dispose() {
@@ -269,8 +276,14 @@ class _CanvasCellEditorState extends State<CanvasCellEditor> {
             ),
             Tooltip(
               message: "Put a picture in this cell",
-              child: InkWell(
-                onTap: widget.onPickPicture,
+              // A bare detector rather than an InkWell, which asks for focus
+              // and so takes it off the field the moment it is pressed.
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () async {
+                  setState(() => _picking = true);
+                  widget.onPickPicture();
+                },
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 4),
                   child: Icon(Icons.add_photo_alternate_outlined,

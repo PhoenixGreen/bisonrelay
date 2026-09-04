@@ -3060,7 +3060,7 @@ Widget _tableRuleSettings(TableElement e, int index, _Write write,
   // without opening each one.
   var name = [
     if (rule.column.isNotEmpty) rule.column,
-    if (rule.row >= 1) "row ${rule.row}",
+    if (rule.rows.isNotEmpty) "rows ${rule.rows}",
     if (rule.match.isNotEmpty) '"${rule.match}"',
   ].join(" ");
 
@@ -3076,13 +3076,12 @@ Widget _tableRuleSettings(TableElement e, int index, _Write write,
           onChanged: (v) => put(rule.copyWith(column: v)),
           onCommit: commit,
         ),
-        CanvasNumberField(
-          label: "Row",
-          value: rule.row.toDouble(),
-          min: -1,
-          max: 999,
-          width: 54,
-          onChanged: (v) => put(rule.copyWith(row: v.round())),
+        CanvasTextField(
+          label: "Rows",
+          value: rule.rows,
+          hint: "any",
+          width: 78,
+          onChanged: (v) => put(rule.copyWith(rows: v)),
           onCommit: commit,
         ),
         CanvasTextField(
@@ -3102,6 +3101,11 @@ Widget _tableRuleSettings(TableElement e, int index, _Write write,
           options: const [(true, "The whole cell"), (false, "Anywhere in it")],
           onChanged: (v) => now(rule.copyWith(exact: v)),
         ),
+        const CanvasHint(
+            "Rows counts from one and includes the header: 2 is one row, "
+            "2:4 is a block of them, >1 is everything under the header. Left "
+            "blank it means any row, which is what a rule about a column "
+            "wants."),
       ]),
       CanvasControlGroup(label: "Look", children: [
         CanvasColorButton(
@@ -3131,15 +3135,24 @@ Widget _tableRuleSettings(TableElement e, int index, _Write write,
               fontScale: v))),
           onCommit: commit,
         ),
-        CanvasNumberField(
+        // A list, not a number. Weight is nine values and a field scrubbing
+        // through nine hundred of them one pixel at a time was a control that
+        // moved and did nothing until it crossed a boundary.
+        CanvasDropdown<int>(
           label: "Weight",
-          value: style.weight.toDouble(),
-          min: 0,
-          max: 900,
-          width: 58,
-          onChanged: (v) => put(rule.copyWith(style: style.copyWith(
-              weight: v.round()))),
-          onCommit: commit,
+          value: style.weight,
+          width: 98,
+          options: const [
+            (0, "As the cell"),
+            (300, "Light"),
+            (400, "Regular"),
+            (500, "Medium"),
+            (600, "Semi-bold"),
+            (700, "Bold"),
+            (800, "Extra-bold"),
+            (900, "Black"),
+          ],
+          onChanged: (v) => styled(style.copyWith(weight: v)),
         ),
         CanvasNumberField(
           label: "Border w",
@@ -3167,7 +3180,7 @@ Widget _tableRuleSettings(TableElement e, int index, _Write write,
         CanvasNumberField(
           label: "Inset",
           value: style.inset,
-          min: 0,
+          min: -40,
           max: 60,
           decimals: 1,
           width: 54,
@@ -3175,21 +3188,39 @@ Widget _tableRuleSettings(TableElement e, int index, _Write write,
               put(rule.copyWith(style: style.copyWith(inset: v))),
           onCommit: commit,
         ),
-        CanvasIconButton(
-          icon: Icons.delete_outline,
-          tooltip: "Remove this rule",
-          onPressed: () {
-            begin();
-            write(e.copyWith(rules: [...e.rules]..removeAt(index)));
-            commit();
-          },
+        const CanvasLineBreak(),
+        // Which edges the border is drawn on. Four buttons rather than a list
+        // of combinations, because "the top and the bottom" is a pair of
+        // decisions and not a named style.
+        for (var (at, icon, name) in const [
+          (0, Icons.border_top, "Top"),
+          (1, Icons.border_right, "Right"),
+          (2, Icons.border_bottom, "Bottom"),
+          (3, Icons.border_left, "Left"),
+        ])
+          CanvasIconButton(
+            icon: icon,
+            tooltip: "$name border",
+            active: style.sides[at],
+            onPressed: () {
+              var sides = [...style.sides];
+              sides[at] = !sides[at];
+              styled(style.copyWith(sides: sides));
+            },
+          ),
+        CanvasToggle(
+          label: "Fill the cell",
+          value: !style.hug,
+          onChanged: (v) => styled(style.copyWith(hug: !v)),
         ),
         const CanvasHint(
             "Size multiplies the cell's own font size and weight overrides "
             "it, so a column can be made bigger or bolder without giving it "
-            "a font of its own. Inset shrinks the coloured box inside its "
-            "cell, which is what makes a background a chip rather than a "
-            "filled cell."),
+            "a font of its own. A rule that names a word draws its box round "
+            "the word; one that names a row or a column draws a single box "
+            "round all of it. Fill the cell takes the whole cell instead, and "
+            "inset shrinks the box inside whatever it was drawn round -- a "
+            "negative one grows it."),
       ]),
     ],
   );

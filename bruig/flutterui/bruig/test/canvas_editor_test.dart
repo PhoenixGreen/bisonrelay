@@ -2299,6 +2299,39 @@ void main() {
       await tester.pumpAndSettle();
     }
 
+    testWidgets("a row and a column can be moved", (tester) async {
+      // Buttons rather than dragging: a row added at the end and wanted
+      // second is one press away either way, and a drag inside a grid of text
+      // fields has to be told apart from selecting text in one of them.
+      var controller = await panel(tester);
+      var toGrid = find.byTooltip("Edit the cells in a grid");
+      if (toGrid.evaluate().isNotEmpty) await press(tester, toGrid);
+
+      expect(tableIn(controller).rows.first.first, "Team");
+      await press(tester, find.byTooltip("Move this row down").first);
+      expect(tableIn(controller).rows.first.first, "Hull City",
+          reason: "the header has gone under the row that was below it");
+
+      await press(tester, find.byTooltip("Move this column right").first);
+      expect(tableIn(controller).rows.first, ["6", "Hull City"]);
+    });
+
+    testWidgets("the ends of the table have nowhere further to go",
+        (tester) async {
+      var controller = await panel(tester);
+      var toGrid = find.byTooltip("Edit the cells in a grid");
+      if (toGrid.evaluate().isNotEmpty) await press(tester, toGrid);
+
+      // The first row's "up" and the last row's "down" are there and do
+      // nothing, rather than being missing and shuffling the other buttons
+      // along by one on every row.
+      var up = tester.widget<CanvasIconButton>(find.ancestor(
+          of: find.byTooltip("Move this row up").first,
+          matching: find.byType(CanvasIconButton)).first);
+      expect(up.onPressed, isNull);
+      expect(tableIn(controller).rows.first.first, "Team");
+    });
+
     testWidgets("the cells are a section of their own", (tester) async {
       // The longest thing in these settings and the least often changed once
       // it is right, so it was pushing everything else off the bottom.

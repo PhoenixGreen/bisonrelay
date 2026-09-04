@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -45,11 +46,28 @@ class TableCellStyle {
 
   final Color borderColor;
   final double borderWidth;
+
+  /// sides is which edges the border is drawn on, in the order top, right,
+  /// bottom, left.
+  ///
+  /// A list of four rather than four fields because that is how it is read
+  /// and written -- and because the common wants are "all of them" and "the
+  /// top and the bottom", neither of which is improved by four named
+  /// booleans.
+  final List<bool> sides;
+
   final double radius;
 
   /// inset shrinks the painted box inside its cell, which is what turns a
   /// background into a chip rather than a filled cell.
   final double inset;
+
+  /// hug fits the box to the words rather than to the cell.
+  ///
+  /// On, because the thing anybody asks for by naming a word is a chip round
+  /// that word -- a green box behind the W, not a green cell with a W in it.
+  /// Off fills the cell, which is what a rule about a whole column wants.
+  final bool hug;
 
   const TableCellStyle({
     this.background = const Color(0x00000000),
@@ -58,9 +76,13 @@ class TableCellStyle {
     this.weight = 0,
     this.borderColor = const Color(0x00000000),
     this.borderWidth = 0,
+    this.sides = const [true, true, true, true],
     this.radius = 4,
     this.inset = 3,
+    this.hug = true,
   });
+
+  bool get allSides => !sides.contains(false);
 
   bool get paintsBox => background.a > 0 || (borderColor.a > 0 && borderWidth > 0);
 
@@ -73,8 +95,10 @@ class TableCellStyle {
     int? weight,
     Color? borderColor,
     double? borderWidth,
+    List<bool>? sides,
     double? radius,
     double? inset,
+    bool? hug,
   }) =>
       TableCellStyle(
         background: background ?? this.background,
@@ -83,8 +107,10 @@ class TableCellStyle {
         weight: weight ?? this.weight,
         borderColor: borderColor ?? this.borderColor,
         borderWidth: borderWidth ?? this.borderWidth,
+        sides: sides ?? this.sides,
         radius: radius ?? this.radius,
         inset: inset ?? this.inset,
+        hug: hug ?? this.hug,
       );
 
   Map<String, dynamic> toJson() => {
@@ -94,8 +120,10 @@ class TableCellStyle {
         if (weight != 0) "weight": weight,
         if (borderColor.a > 0) "bc": colorToJson(borderColor),
         if (borderWidth != 0) "bw": borderWidth,
+        if (!allSides) "sides": sides,
         if (radius != 4) "r": radius,
         if (inset != 3) "inset": inset,
+        if (!hug) "fill": true,
       };
 
   factory TableCellStyle.fromJson(Map<String, dynamic> json) => TableCellStyle(
@@ -105,8 +133,12 @@ class TableCellStyle {
         weight: jsonInt(json["weight"], 0),
         borderColor: colorFromJson(json["bc"], const Color(0x00000000)),
         borderWidth: jsonDouble(json["bw"], 0),
+        sides: json["sides"] is List && (json["sides"] as List).length == 4
+            ? [for (var v in json["sides"] as List) v == true]
+            : const [true, true, true, true],
         radius: jsonDouble(json["r"], 4),
         inset: jsonDouble(json["inset"], 3),
+        hug: !jsonBool(json["fill"], false),
       );
 }
 
@@ -128,8 +160,13 @@ class TableRule {
   /// where two columns share a name.
   final String column;
 
-  /// row counts from one and includes the header. -1 is any row.
-  final int row;
+  /// rows is which rows, counting from one and including the header.
+  ///
+  /// A little language rather than a number, because the three things people
+  /// want are one row, every row after the header, and a block of them -- and
+  /// "2", ">1" and "2:4" say those in the space a number took. Empty is any
+  /// row, which is what a rule about a column means.
+  final String rows;
 
   /// match is the text to look for. Empty matches every cell.
   final String match;
@@ -142,15 +179,48 @@ class TableRule {
 
   const TableRule({
     this.column = "",
-    this.row = -1,
+    this.rows = "",
     this.match = "",
     this.exact = true,
     this.style = const TableCellStyle(),
   });
 
-  /// wholeRow is a rule that picks out a row and nothing narrower, which is
-  /// the one case drawn as a band across the table rather than cell by cell.
-  bool get wholeRow => row >= 1 && column.isEmpty && match.isEmpty;
+  /// banded is a rule with no text to look for, which is the case drawn as
+  /// one box around everything it picks out rather than a box per cell.
+  ///
+  /// A rule naming a row is a band across the table; one naming a column is a
+  /// band down it; one naming both is the cell where they cross. A rule
+  /// naming a *word* is not a band at all -- it is a chip round that word,
+  /// wherever the word happens to be.
+  bool get banded => match.isEmpty;
+
+  /// matchesRow reads the little range language. [index] counts from zero.
+  bool matchesRow(int index) {
+    var spec = rows.trim();
+    if (spec.isEmpty) return true;
+    var at = index + 1;
+
+    if (spec.startsWith(">")) {
+      var from = int.tryParse(spec.substring(1).trim());
+      return from == null ? false : at > from;
+    }
+    if (spec.startsWith("<")) {
+      var to = int.tryParse(spec.substring(1).trim());
+      return to == null ? false : at < to;
+    }
+    if (spec.contains(":")) {
+      var parts = spec.split(":");
+      var from = int.tryParse(parts.first.trim());
+      var to = int.tryParse(parts.last.trim());
+      if (from == null || to == null) return false;
+      return at >= math.min(from, to) && at <= math.max(from, to);
+    }
+    var one = int.tryParse(spec);
+    // An unreadable range matches nothing rather than everything, for the
+    // same reason an unknown column does: a typo should show up as a rule
+    // that does nothing, not as a table painted entirely green.
+    return one == null ? false : at == one;
+  }
 
   /// columnIndex resolves [column] against a header row. -1 means any.
   int columnIndex(List<String> header) {
@@ -171,14 +241,14 @@ class TableRule {
 
   TableRule copyWith({
     String? column,
-    int? row,
+    String? rows,
     String? match,
     bool? exact,
     TableCellStyle? style,
   }) =>
       TableRule(
         column: column ?? this.column,
-        row: row ?? this.row,
+        rows: rows ?? this.rows,
         match: match ?? this.match,
         exact: exact ?? this.exact,
         style: style ?? this.style,
@@ -186,7 +256,7 @@ class TableRule {
 
   Map<String, dynamic> toJson() => {
         if (column.isNotEmpty) "col": column,
-        if (row >= 0) "row": row,
+        if (rows.isNotEmpty) "rows": rows,
         if (match.isNotEmpty) "match": match,
         if (!exact) "loose": true,
         "style": style.toJson(),
@@ -194,7 +264,10 @@ class TableRule {
 
   factory TableRule.fromJson(Map<String, dynamic> json) => TableRule(
         column: jsonString(json["col"], ""),
-        row: jsonInt(json["row"], -1),
+        // "row" is the number this used to be, kept readable so a table saved
+        // before the range language still highlights the row it was told to.
+        rows: jsonString(json["rows"],
+            json["row"] is num ? "${(json["row"] as num).toInt()}" : ""),
         match: jsonString(json["match"], ""),
         exact: !jsonBool(json["loose"], false),
         style: jsonSpec(json["style"], TableCellStyle.fromJson,
@@ -313,7 +386,7 @@ class TableElement extends CanvasElement {
     TableCellStyle? out;
     var head = header;
     for (var rule in rules) {
-      if (rule.row >= 1 && rule.row - 1 != row) continue;
+      if (!rule.matchesRow(row)) continue;
       var wanted = rule.columnIndex(head);
       if (wanted == -2 || (wanted >= 0 && wanted != col)) continue;
       if (!rule.matches(cell(row, col))) continue;
@@ -334,8 +407,10 @@ class TableElement extends CanvasElement {
               borderWidth: rule.style.borderWidth != 0
                   ? rule.style.borderWidth
                   : out.borderWidth,
+              sides: rule.style.allSides ? out.sides : rule.style.sides,
               radius: rule.style.radius,
               inset: rule.style.inset,
+              hug: rule.style.hug,
             );
     }
     return out;

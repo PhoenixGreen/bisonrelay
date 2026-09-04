@@ -53,10 +53,18 @@ Future<List<int>> _pixelAt(CanvasDocument document, int x, int y,
 /// has, so a frame rendered through it would have no picture in it.
 class _Pictures implements CanvasImageSource {
   final ui.Image image;
-  _Pictures(this.image);
+
+  /// vector is what resolveVector hands back, for the tests about drawings
+  /// that stay drawings. Null for the rest, which is what a bitmap asset is.
+  final CanvasVector? vector;
+
+  _Pictures(this.image, {this.vector});
 
   @override
   ui.Image? resolve(String assetId, BackgroundRemoval removal) => image;
+
+  @override
+  CanvasVector? resolveVector(String assetId) => vector;
 }
 
 /// _cutOut is a picture shaped like a cut-out: a solid square of [colour] in
@@ -2481,18 +2489,187 @@ void _tableTests() {
       expect(bigger.styleFor(1, 1)?.fontScale, 1.3);
       expect(bigger.styleFor(1, 0), isNull);
 
-      // A row on its own is a highlighted row, and is the one case drawn as a
-      // band rather than cell by cell.
+      // A row on its own is a highlighted row, and is drawn as one band
+      // rather than cell by cell -- as is a column, which used to be a box
+      // round each of its cells.
       var highlighted = e.copyWith(rules: const [
-        TableRule(row: 2, style: TableCellStyle(borderWidth: 3)),
+        TableRule(rows: "2", style: TableCellStyle(borderWidth: 3)),
       ]);
-      expect(highlighted.rules.single.wholeRow, isTrue);
+      expect(highlighted.rules.single.banded, isTrue);
       expect(highlighted.styleFor(1, 0)?.borderWidth, 3);
       expect(highlighted.styleFor(2, 0), isNull);
 
-      // And a rule with a column as well is not a band any more.
-      expect(
-          const TableRule(row: 2, column: "Points").wholeRow, isFalse);
+      expect(const TableRule(rows: "2", column: "Points").banded, isTrue,
+          reason: "a row and a column together is the cell where they cross");
+      expect(const TableRule(column: "Points", match: "6").banded, isFalse,
+          reason: "but a word is a chip round the word, not a band");
+    });
+
+    test("a row can be one, a block, or everything under the header", () {
+      // The three things people actually want, in the space a number took.
+      const one = TableRule(rows: "2");
+      expect([0, 1, 2].map(one.matchesRow), [false, true, false]);
+
+      const block = TableRule(rows: "2:4");
+      expect([0, 1, 2, 3, 4].map(block.matchesRow),
+          [false, true, true, true, false]);
+
+      const after = TableRule(rows: ">1");
+      expect([0, 1, 2].map(after.matchesRow), [false, true, true],
+          reason: "everything under the header");
+
+      const before = TableRule(rows: "<3");
+      expect([0, 1, 2].map(before.matchesRow), [true, true, false]);
+
+      const any = TableRule();
+      expect([0, 5, 40].map(any.matchesRow), [true, true, true]);
+
+      // An unreadable range matches nothing rather than everything, for the
+      // same reason an unknown column does.
+      const rubbish = TableRule(rows: "two");
+      expect([0, 1, 2].map(rubbish.matchesRow), [false, false, false]);
+    });
+
+    test("a row number saved before the range language still works", () {
+      var back = TableRule.fromJson({"row": 2, "style": const <String, dynamic>{}});
+      expect(back.rows, "2");
+      expect(back.matchesRow(1), isTrue);
+    });
+
+    test("a column is one band, the same as a row", () async {
+      // Per cell, a column border came out as a border round each of its
+      // cells: a stack of boxes rather than a column with a line round it.
+      var e = TableElement(
+        const ElementBase(id: "t", width: 400, height: 200),
+        rows: const [
+          ["Name", "Value"],
+          ["First", "120"],
+          ["Second", "185"],
+        ],
+      );
+
+      Future<int> borderRows(TableRule rule) async {
+        var recorder = ui.PictureRecorder();
+        paintTable(ui.Canvas(recorder), const Rect.fromLTWH(0, 0, 400, 200),
+            e.copyWith(rules: [rule]));
+        var image = await recorder.endRecording().toImage(400, 200);
+        var pixels = (await image.toByteData(
+                format: ui.ImageByteFormat.rawStraightRgba))!
+            .buffer
+            .asUint8List();
+        image.dispose();
+        // How many separate horizontal runs of red there are down a strip in
+        // the middle of the column, clear of its own left and right edges:
+        // one band has two, a box per cell has six.
+        var rows = <int>[];
+        for (var y = 0; y < 200; y++) {
+          for (var x = 90; x < 110; x++) {
+            var i = (y * 400 + x) * 4;
+            if (pixels[i] > 180 && pixels[i + 1] < 80 && pixels[i + 2] < 80) {
+              rows.add(y);
+              break;
+            }
+          }
+        }
+        var runs = 0;
+        for (var i = 0; i < rows.length; i++) {
+          if (i == 0 || rows[i] != rows[i - 1] + 1) runs++;
+        }
+        return runs;
+      }
+
+      const red = TableCellStyle(borderColor: Color(0xFFFF0000), borderWidth: 2);
+      expect(await borderRows(const TableRule(column: "Name", style: red)), 2,
+          reason: "a top and a bottom, once");
+    });
+
+    test("a chip is drawn round the word, not round the cell", () async {
+      // The thing anybody asks for by naming a word is a green box behind the
+      // W, not a green cell with a W in it.
+      var e = TableElement(
+        const ElementBase(id: "t", width: 400, height: 200),
+        rows: const [
+          ["Form"],
+          ["W"],
+        ],
+        cellSpec: const TextSpec(fontSize: 16, align: TextAlignSpec.center),
+      );
+
+      Future<int> greenPixels(bool hug) async {
+        var recorder = ui.PictureRecorder();
+        paintTable(
+            ui.Canvas(recorder),
+            const Rect.fromLTWH(0, 0, 400, 200),
+            e.copyWith(rules: [
+              TableRule(
+                  column: "Form",
+                  match: "W",
+                  style: TableCellStyle(
+                      background: const Color(0xFF00FF00), hug: hug)),
+            ]));
+        var image = await recorder.endRecording().toImage(400, 200);
+        var pixels = (await image.toByteData(
+                format: ui.ImageByteFormat.rawStraightRgba))!
+            .buffer
+            .asUint8List();
+        image.dispose();
+        var n = 0;
+        for (var i = 0; i < 400 * 200; i++) {
+          if (pixels[i * 4 + 1] > 200 && pixels[i * 4] < 80) n++;
+        }
+        return n;
+      }
+
+      expect(await greenPixels(true), greaterThan(0));
+      expect(await greenPixels(true), lessThan(await greenPixels(false) ~/ 2),
+          reason: "a chip is far smaller than a filled cell");
+    });
+
+    test("a border can be drawn on some sides and not others", () async {
+      var e = TableElement(
+        const ElementBase(id: "t", width: 400, height: 200),
+        rows: const [
+          ["Name"],
+          ["First"],
+        ],
+      );
+
+      Future<Uint8List> drawn(List<bool> sides) async {
+        var recorder = ui.PictureRecorder();
+        paintTable(
+            ui.Canvas(recorder),
+            const Rect.fromLTWH(0, 0, 400, 200),
+            e.copyWith(rules: [
+              TableRule(
+                  column: "Name",
+                  style: TableCellStyle(
+                      borderColor: const Color(0xFFFF0000),
+                      borderWidth: 3,
+                      sides: sides)),
+            ]));
+        var image = await recorder.endRecording().toImage(400, 200);
+        try {
+          return (await image.toByteData(
+                  format: ui.ImageByteFormat.rawStraightRgba))!
+              .buffer
+              .asUint8List();
+        } finally {
+          image.dispose();
+        }
+      }
+
+      int reds(Uint8List p) {
+        var n = 0;
+        for (var i = 0; i < 400 * 200; i++) {
+          if (p[i * 4] > 180 && p[i * 4 + 1] < 80) n++;
+        }
+        return n;
+      }
+
+      var all = reds(await drawn(const [true, true, true, true]));
+      var topAndBottom = reds(await drawn(const [true, false, true, false]));
+      expect(topAndBottom, greaterThan(0));
+      expect(topAndBottom, lessThan(all));
     });
 
     test("later rules win, field by field", () {
@@ -2607,6 +2784,57 @@ void _tableTests() {
           .asUint8List();
       image.dispose();
       expect(await drawn(withStore: false), isNot(orderedEquals(words)));
+    });
+
+    test("a vector cell is drawn from its drawing, not from a bitmap",
+        () async {
+      // Kept as a drawing wherever it can be: a badge is forty pixels in a
+      // table and four hundred in a poster export, and a bitmap has to pick
+      // one of those in advance. Twenty-two of them is the difference between
+      // a squad and twenty-two half-megabyte images.
+      var recorder = ui.PictureRecorder();
+      ui.Canvas(recorder)
+          .drawRect(const Rect.fromLTWH(0, 0, 40, 40),
+              ui.Paint()..color = const ui.Color(0xFFFF0000));
+      var drawing = recorder.endRecording();
+      addTearDown(drawing.dispose);
+
+      var bitmap = await _softBlob(40);
+      addTearDown(bitmap.dispose);
+
+      var e = TableElement(
+        const ElementBase(id: "t", width: 400, height: 200),
+        rows: const [
+          ["Team", "Badge"],
+          ["Hull City", "img:abcdef1234567890"],
+        ],
+      );
+
+      Future<int> reds(CanvasImageSource images) async {
+        var into = ui.PictureRecorder();
+        paintTable(ui.Canvas(into), const Rect.fromLTWH(0, 0, 400, 200), e,
+            images: images);
+        var image = await into.endRecording().toImage(400, 200);
+        var pixels = (await image.toByteData(
+                format: ui.ImageByteFormat.rawStraightRgba))!
+            .buffer
+            .asUint8List();
+        image.dispose();
+        var n = 0;
+        for (var i = 0; i < 400 * 200; i++) {
+          if (pixels[i * 4] > 200 && pixels[i * 4 + 1] < 60) n++;
+        }
+        return n;
+      }
+
+      // The drawing is red and the bitmap is not, so counting red says which
+      // of the two was used.
+      expect(
+          await reds(_Pictures(bitmap,
+              vector: CanvasVector(drawing, const Size(40, 40)))),
+          greaterThan(0));
+      expect(await reds(_Pictures(bitmap)), 0,
+          reason: "and a bitmap asset still goes through resolve");
     });
 
     test("a cell may hold a comma, and survives the round trip", () {

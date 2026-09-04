@@ -48,6 +48,14 @@ class CanvasImageStore extends ChangeNotifier implements CanvasImageSource {
   /// for once rather than on every single frame forever.
   final Set<String> _failed = {};
 
+  /// _vectors is the assets that are drawings rather than bitmaps, kept as
+  /// drawings.
+  ///
+  /// Separate from _images and loaded separately, so a table of twenty-two
+  /// badges rasterises none of them. Only a caller that needs pixels -- the
+  /// image element, with its background remover and its filters -- makes one.
+  final Map<String, CanvasVector> _vectors = {};
+
   bool _disposed = false;
 
   /// putForTest seeds the store with an already-decoded picture.
@@ -86,6 +94,42 @@ class CanvasImageStore extends ChangeNotifier implements CanvasImageSource {
       _load(assetId, removal, key);
     }
     return null;
+  }
+
+  @override
+  CanvasVector? resolveVector(String assetId) {
+    if (assetId.isEmpty) return null;
+    var vector = _vectors[assetId];
+    if (vector != null) return vector;
+    var key = "vector:$assetId";
+    if (!_pending.contains(key) && !_failed.contains(key)) {
+      _pending.add(key);
+      _loadVector(assetId, key);
+    }
+    return null;
+  }
+
+  Future<void> _loadVector(String assetId, String key) async {
+    try {
+      var bytes = await CanvasAssets.load(assetId);
+      if (bytes == null || !_looksLikeSvg(Uint8List.fromList(bytes))) {
+        _failed.add(key);
+        return;
+      }
+      var info = await vg.loadPicture(
+          SvgStringLoader(String.fromCharCodes(bytes)), null);
+      if (_disposed) {
+        info.picture.dispose();
+        return;
+      }
+      _vectors[assetId] = CanvasVector(info.picture, info.size);
+      notifyListeners();
+    } catch (exception) {
+      debugPrint("Unable to read the canvas vector $assetId: $exception");
+      _failed.add(key);
+    } finally {
+      _pending.remove(key);
+    }
   }
 
   void _touch(String key) {
@@ -148,13 +192,19 @@ class CanvasImageStore extends ChangeNotifier implements CanvasImageSource {
       _order.remove(key);
       _images.remove(key)?.dispose();
     }
-    _failed.removeWhere((k) => k.startsWith(assetId));
+    _failed.removeWhere((k) => k.startsWith(assetId) ||
+        k == "vector:$assetId");
+    _vectors.remove(assetId)?.picture.dispose();
     if (keys.isNotEmpty) notifyListeners();
   }
 
   @override
   void dispose() {
     _disposed = true;
+    for (var vector in _vectors.values) {
+      vector.picture.dispose();
+    }
+    _vectors.clear();
     for (var image in _images.values) {
       image.dispose();
     }

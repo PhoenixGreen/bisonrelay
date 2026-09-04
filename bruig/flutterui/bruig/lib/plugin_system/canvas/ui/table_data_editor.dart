@@ -116,6 +116,36 @@ class _TableDataEditorState extends State<TableDataEditor> {
     _write(next);
   }
 
+  /// _moveRow and _moveColumn shuffle one along by [by].
+  ///
+  /// Buttons rather than dragging the rows about. A row added at the end and
+  /// wanted second is one press away either way, and a drag inside a grid of
+  /// text fields is a gesture that has to be told apart from selecting text
+  /// in one of them.
+  void _moveRow(int row, int by) {
+    var next = _rectangular;
+    var to = row + by;
+    if (to < 0 || to >= next.length) return;
+    var moved = next.removeAt(row);
+    next.insert(to, moved);
+    _write(next);
+  }
+
+  void _moveColumn(int col, int by) {
+    var to = col + by;
+    if (to < 0 || to >= columns) return;
+    // Taken out and put back, which is the only ordering that is right in
+    // both directions. Inserting first and then removing has to know whether
+    // the insertion shifted the thing being removed, and getting that wrong
+    // leaves the row exactly as it was -- a button that does nothing.
+    _write([
+      for (var row in _rectangular)
+        [...row]
+          ..removeAt(col)
+          ..insert(to, row[col]),
+    ]);
+  }
+
   void _removeColumn(int col) {
     _write([
       for (var row in _rectangular) [...row]..removeAt(col),
@@ -227,14 +257,24 @@ class _TableDataEditorState extends State<TableDataEditor> {
               for (var c = 0; c < columns; c++)
                 SizedBox(
                   width: cellWidth + 4,
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: CanvasIconButton(
+                  child: Row(children: [
+                    CanvasIconButton(
+                      icon: Icons.chevron_left,
+                      tooltip: "Move this column left",
+                      onPressed: c == 0 ? null : () => _moveColumn(c, -1),
+                    ),
+                    CanvasIconButton(
+                      icon: Icons.chevron_right,
+                      tooltip: "Move this column right",
+                      onPressed:
+                          c == columns - 1 ? null : () => _moveColumn(c, 1),
+                    ),
+                    CanvasIconButton(
                       icon: Icons.close,
                       tooltip: "Remove this column",
                       onPressed: () => _removeColumn(c),
                     ),
-                  ),
+                  ]),
                 ),
             ]),
             for (var r = 0; r < grid.length; r++)
@@ -254,6 +294,17 @@ class _TableDataEditorState extends State<TableDataEditor> {
                         ),
                       ),
                     ),
+                  CanvasIconButton(
+                    icon: Icons.keyboard_arrow_up,
+                    tooltip: "Move this row up",
+                    onPressed: r == 0 ? null : () => _moveRow(r, -1),
+                  ),
+                  CanvasIconButton(
+                    icon: Icons.keyboard_arrow_down,
+                    tooltip: "Move this row down",
+                    onPressed:
+                        r == grid.length - 1 ? null : () => _moveRow(r, 1),
+                  ),
                   CanvasIconButton(
                     icon: Icons.close,
                     tooltip: "Remove this row",
