@@ -44,6 +44,15 @@ class TableCellStyle {
   /// weight is 0 to keep the type's own, and 100..900 to override it.
   final int weight;
 
+  /// letterSpacing is 0 to keep the type's own.
+  ///
+  /// On a rule because that is where it is needed: a form guide reading
+  /// "W D L" wants its letters far enough apart that their boxes do not
+  /// touch, and the cell type's own spacing is one number for the whole
+  /// table -- spacing the form column out would space the team names out
+  /// with it.
+  final double letterSpacing;
+
   /// align and verticalAlign are null to keep the type's own.
   ///
   /// Worth having on a rule rather than only on the table's type: a column of
@@ -100,6 +109,7 @@ class TableCellStyle {
     this.textColor = const Color(0x00000000),
     this.fontScale = 1,
     this.weight = 0,
+    this.letterSpacing = 0,
     this.align,
     this.verticalAlign,
     this.borderColor = const Color(0x00000000),
@@ -121,6 +131,7 @@ class TableCellStyle {
       textColor.a > 0 ||
       fontScale != 1 ||
       weight != 0 ||
+      letterSpacing != 0 ||
       align != null ||
       verticalAlign != null;
 
@@ -129,6 +140,7 @@ class TableCellStyle {
     Color? textColor,
     double? fontScale,
     int? weight,
+    double? letterSpacing,
     TextAlignSpec? align,
     VerticalAlignSpec? verticalAlign,
     bool clearAlign = false,
@@ -148,6 +160,7 @@ class TableCellStyle {
         textColor: textColor ?? this.textColor,
         fontScale: fontScale ?? this.fontScale,
         weight: weight ?? this.weight,
+        letterSpacing: letterSpacing ?? this.letterSpacing,
         align: clearAlign ? null : (align ?? this.align),
         verticalAlign:
             clearVerticalAlign ? null : (verticalAlign ?? this.verticalAlign),
@@ -167,6 +180,7 @@ class TableCellStyle {
         if (textColor.a > 0) "fg": colorToJson(textColor),
         if (fontScale != 1) "scale": fontScale,
         if (weight != 0) "weight": weight,
+        if (letterSpacing != 0) "ls": letterSpacing,
         if (align != null) "align": align!.name,
         if (verticalAlign != null) "valign": verticalAlign!.name,
         if (borderColor.a > 0) "bc": colorToJson(borderColor),
@@ -185,6 +199,7 @@ class TableCellStyle {
         textColor: colorFromJson(json["fg"], const Color(0x00000000)),
         fontScale: jsonDouble(json["scale"], 1).clamp(0.2, 6.0),
         weight: jsonInt(json["weight"], 0),
+        letterSpacing: jsonDouble(json["ls"], 0),
         align: json["align"] is String
             ? TextAlignSpec.fromName(json["align"] as String?)
             : null,
@@ -571,6 +586,9 @@ class TableElement extends CanvasElement {
               fontScale:
                   rule.style.fontScale != 1 ? rule.style.fontScale : out.fontScale,
               weight: rule.style.weight != 0 ? rule.style.weight : out.weight,
+              letterSpacing: rule.style.letterSpacing != 0
+                  ? rule.style.letterSpacing
+                  : out.letterSpacing,
               align: rule.style.align ?? out.align,
               verticalAlign: rule.style.verticalAlign ?? out.verticalAlign,
               borderColor: rule.style.borderColor.a > 0

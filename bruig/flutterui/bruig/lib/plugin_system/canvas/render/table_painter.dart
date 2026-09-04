@@ -144,6 +144,9 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
             color: style.textColor.a > 0 ? style.textColor : spec.color,
             align: style.align ?? spec.align,
             verticalAlign: style.verticalAlign ?? spec.verticalAlign,
+            letterSpacing: style.letterSpacing != 0
+                ? style.letterSpacing
+                : spec.letterSpacing,
           );
         }
       }
@@ -160,16 +163,14 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
       // anybody asks for by naming a word is a green box behind the W and not
       // a green cell with a W in it. A rule about a whole column has no word
       // and is a band above; one that has been told to fill takes the cell.
-      if (style != null && style.paintsBox && !_bandedHere(e, r, c)) {
-        // One chip per occurrence. A form guide reading "- - W | W" has two
-        // of them, and a rule that stopped at the first was a rule that
-        // highlighted half the answer.
-        for (var chip in style.hug
-            ? _chipsIn(e, r, c, spec, textBox)
-            : [Rect.fromLTWH(x, y, w, h)]) {
-          _paintStyleBox(canvas, chip, style, hug: style.hug);
-        }
-      }
+      // Every rule that names a word, each drawing its own chips in its own
+      // colours.
+      //
+      // Not the merged style: a form guide has a rule for W, one for D and
+      // one for L, and merging them gave every chip in the cell the last
+      // rule's background -- and only that rule's chips were drawn at all, so
+      // a row reading "D L W" showed one letter marked and two bare.
+      _paintChips(canvas, e, r, c, spec, textBox, Rect.fromLTWH(x, y, w, h));
 
       // The spec's own vertical alignment, not the middle regardless. It was
       // forced here, so the Vertical setting on a table's type did nothing at
@@ -276,16 +277,6 @@ void _paintCellVector(ui.Canvas canvas, CanvasVector vector, Rect box) {
 /// _bandedHere is whether every rule touching this cell was already drawn as
 /// a band -- so the band is not drawn again, once per cell, with a border
 /// between each.
-bool _bandedHere(TableElement e, int row, int col) {
-  var head = e.header;
-  for (var rule in e.rules) {
-    if (!rule.matchesRow(row) || !rule.matchesColumn(col, head)) continue;
-    if (!rule.matches(e.cell(row, col))) continue;
-    if (!rule.banded && rule.style.paintsBox) return false;
-  }
-  return true;
-}
-
 /// _bandFor is the rectangle a banded rule covers: every cell it picks out,
 /// taken together.
 Rect? _bandFor(TableElement e, TableRule rule, Rect rect, List<double> widths,
@@ -319,31 +310,31 @@ Rect? _bandFor(TableElement e, TableRule rule, Rect rect, List<double> widths,
   return Rect.fromLTRB(fromX, fromY, toX, toY);
 }
 
-/// _chipsIn is what the chips are drawn round: every place a rule's word
-/// falls, and the whole of the cell's words when no rule named one.
+/// _paintChips draws the boxes for every rule that names a word in this cell.
 ///
-/// The words' own glyph boxes rather than a guess from the character count,
-/// since a W and a full stop are not the same width -- see textRunBox.
-List<Rect> _chipsIn(
-    TableElement e, int row, int col, TextSpec spec, Rect box) {
+/// Each with its own style, and every occurrence of each: a form guide has a
+/// rule per result, and a cell reading "D L W" wants three boxes in three
+/// colours rather than one.
+///
+/// Off the words' own glyph boxes rather than a guess from the character
+/// count, since a W and a full stop are not the same width -- see textRunBox.
+void _paintChips(ui.Canvas canvas, TableElement e, int row, int col,
+    TextSpec spec, Rect textBox, Rect cell) {
   var text = e.cell(row, col);
   var head = e.header;
 
-  for (var rule in e.rules.reversed) {
-    if (rule.how != TableMatch.word && rule.how != TableMatch.anywhere) {
-      continue;
-    }
-    if (rule.match.isEmpty) continue;
+  for (var rule in e.rules) {
+    if (rule.banded || !rule.style.paintsBox) continue;
     if (!rule.matchesRow(row) || !rule.matchesColumn(col, head)) continue;
 
-    var found = <Rect>[
-      for (var (from, to) in rule.runsIn(text))
-        if (textRunBox(text, spec, box, from, to) case var at?) at,
-    ];
-    if (found.isNotEmpty) return found;
+    for (var (from, to) in rule.runsIn(text)) {
+      var box = !rule.style.hug
+          ? cell
+          : (textRunBox(text, spec, textBox, from, to) ??
+              _wordsIn(text, spec, textBox));
+      _paintStyleBox(canvas, box, rule.style, hug: rule.style.hug);
+    }
   }
-
-  return [_wordsIn(text, spec, box)];
 }
 
 /// _wordsIn is the box the words actually occupy inside their cell, which is

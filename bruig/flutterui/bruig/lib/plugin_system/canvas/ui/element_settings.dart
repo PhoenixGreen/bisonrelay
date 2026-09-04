@@ -3230,6 +3230,17 @@ Widget _tableRuleSettings(TableElement e, int index, _Write write,
           onCommit: commit,
         ),
         CanvasNumberField(
+          label: "Letter space",
+          value: style.letterSpacing,
+          min: -20,
+          max: 200,
+          decimals: 1,
+          width: 66,
+          onChanged: (v) =>
+              put(rule.copyWith(style: style.copyWith(letterSpacing: v))),
+          onCommit: commit,
+        ),
+        CanvasNumberField(
           label: "Text space",
           value: style.textPad,
           min: 0,
@@ -3330,7 +3341,11 @@ Widget _tableRuleSettings(TableElement e, int index, _Write write,
             "Min width and min height stop a box shrinking to its letters, "
             "which is what makes a row of chips one size rather than three -- "
             "a W is wider than an L. The same number in both makes them "
-            "square."),
+            "square.\n\n"
+            "Letter space pushes the letters of the cell apart, which is what "
+            "keeps a row of boxes from touching -- the cell type's own "
+            "spacing is one number for the whole table, so widening the form "
+            "column there would widen the team names with it."),
       ]),
     ],
   );

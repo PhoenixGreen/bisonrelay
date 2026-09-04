@@ -3260,6 +3260,155 @@ void _tableTests() {
       expect(e.toJson().containsKey("picScale"), isFalse);
     });
 
+    test("every rule draws its own chips in its own colours", () async {
+      // The reported fault: a form guide has a rule for W, one for D and one
+      // for L, and only one of them drew anything -- a row reading "D L W"
+      // showed one letter marked and two bare, all in the last rule's colour.
+      var e = TableElement(
+        const ElementBase(id: "t", width: 500, height: 100),
+        rows: const [
+          ["Form"],
+          ["W D L"],
+        ],
+        cellSpec: const TextSpec(fontSize: 18, align: TextAlignSpec.left),
+        rules: const [
+          TableRule(
+              column: "Form",
+              match: "W",
+              how: TableMatch.word,
+              style: TableCellStyle(
+                  background: Color(0xFF00FF00), inset: 2, radius: 0)),
+          TableRule(
+              column: "Form",
+              match: "D",
+              how: TableMatch.word,
+              style: TableCellStyle(
+                  background: Color(0xFF0000FF), inset: 2, radius: 0)),
+          TableRule(
+              column: "Form",
+              match: "L",
+              how: TableMatch.word,
+              style: TableCellStyle(
+                  background: Color(0xFFFF0000), inset: 2, radius: 0)),
+        ],
+      );
+
+      var recorder = ui.PictureRecorder();
+      paintTable(ui.Canvas(recorder), const Rect.fromLTWH(0, 0, 500, 100), e);
+      var image = await recorder.endRecording().toImage(500, 100);
+      var pixels = (await image.toByteData(
+              format: ui.ImageByteFormat.rawStraightRgba))!
+          .buffer
+          .asUint8List();
+      image.dispose();
+
+      var seen = <String>{};
+      for (var i = 0; i < 500 * 100; i++) {
+        var r = pixels[i * 4], g = pixels[i * 4 + 1], b = pixels[i * 4 + 2];
+        if (r > 200 && g < 60 && b < 60) seen.add("red");
+        if (g > 200 && r < 60 && b < 60) seen.add("green");
+        if (b > 200 && r < 60 && g < 60) seen.add("blue");
+      }
+      expect(seen, {"red", "green", "blue"},
+          reason: "three rules, three colours, three boxes");
+    });
+
+    test("a rule's radius is its own, not the last rule's", () async {
+      // It came from whichever rule was merged last, so a rule set to square
+      // corners drew rounded ones because another rule matching the same cell
+      // had a radius.
+      var e = TableElement(
+        const ElementBase(id: "t", width: 200, height: 80),
+        rows: const [
+          ["Form"],
+          ["W"],
+        ],
+        cellSpec: const TextSpec(fontSize: 18, align: TextAlignSpec.center),
+      );
+
+      Future<int> corners(double radius) async {
+        var recorder = ui.PictureRecorder();
+        paintTable(
+            ui.Canvas(recorder),
+            const Rect.fromLTWH(0, 0, 200, 80),
+            e.copyWith(rules: [
+              // A column-wide rule with a radius of its own, merged first.
+              const TableRule(
+                  column: "Form",
+                  style: TableCellStyle(fontScale: 1, radius: 20)),
+              TableRule(
+                  column: "Form",
+                  match: "W",
+                  style: TableCellStyle(
+                      background: const Color(0xFF00FF00),
+                      minWidth: 60,
+                      minHeight: 40,
+                      radius: radius)),
+            ]));
+        var image = await recorder.endRecording().toImage(200, 80);
+        var pixels = (await image.toByteData(
+                format: ui.ImageByteFormat.rawStraightRgba))!
+            .buffer
+            .asUint8List();
+        image.dispose();
+
+        // The width of the chip's topmost green line. Square corners make it
+        // the full width; rounded ones make it narrower.
+        var top = 0;
+        for (var y = 0; y < 80 && top == 0; y++) {
+          var n = 0;
+          for (var x = 0; x < 200; x++) {
+            var i = (y * 200 + x) * 4;
+            if (pixels[i + 1] > 200 && pixels[i] < 80) n++;
+          }
+          if (n > 0) top = n;
+        }
+        return top;
+      }
+
+      expect(await corners(0), greaterThan(await corners(20)));
+    });
+
+    test("a rule can push a cell's letters apart", () async {
+      // What keeps a row of boxes from touching. On the rule because the cell
+      // type's own spacing is one number for the whole table -- widening the
+      // form column there would widen the team names with it.
+      var e = TableElement(
+        const ElementBase(id: "t", width: 500, height: 100),
+        rows: const [
+          ["Form", "Team"],
+          ["W D L", "Hull City"],
+        ],
+        cellSpec: const TextSpec(fontSize: 18, align: TextAlignSpec.left),
+      );
+
+      const spread = TableRule(
+          column: "Form", style: TableCellStyle(letterSpacing: 14));
+      expect(spread.style.changesType, isTrue);
+      expect(e.copyWith(rules: const [spread]).styleFor(1, 0)?.letterSpacing,
+          14);
+      expect(e.copyWith(rules: const [spread]).styleFor(1, 1), isNull,
+          reason: "and the team beside it is untouched");
+
+      Future<Uint8List> drawn(List<TableRule> rules) async {
+        var recorder = ui.PictureRecorder();
+        paintTable(ui.Canvas(recorder), const Rect.fromLTWH(0, 0, 500, 100),
+            e.copyWith(rules: rules));
+        var image = await recorder.endRecording().toImage(500, 100);
+        try {
+          return (await image.toByteData(
+                  format: ui.ImageByteFormat.rawStraightRgba))!
+              .buffer
+              .asUint8List();
+        } finally {
+          image.dispose();
+        }
+      }
+
+      expect(await drawn(const []),
+          isNot(orderedEquals(await drawn(const [spread]))));
+    });
+
     test("a minimum stops a row of chips being three sizes", () async {
       // A W is wider than an L, so hugging the letters exactly gave a form
       // guide three different boxes.
