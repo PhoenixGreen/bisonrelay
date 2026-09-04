@@ -195,7 +195,10 @@ void paintElement(
     case ImageElement e:
       _paintImage(canvas, bounds, e, images);
     case ChartElement e:
-      paintChart(canvas, bounds.deflate(bounds.shortestSide * 0.02), e);
+      // How much of it has arrived. A chart with no animation on it has no
+      // keyframe pinning this and gets 1, which is all of it.
+      paintChart(canvas, bounds.deflate(bounds.shortestSide * 0.02), e,
+          reveal: pose.values[KeyframeChannel.reveal] ?? 1);
     case TableElement e:
       paintTable(canvas, bounds, e);
     case ButtonElement e:

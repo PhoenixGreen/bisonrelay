@@ -2692,6 +2692,145 @@ void main() {
     });
   });
 
+  group("a chart's animation", () {
+    (CanvasController, ChartElement) build({int frames = 1}) {
+      var document = CanvasDocument(frames: frames);
+      var chart = ChartElement(
+        const ElementBase(id: "c", width: 400, height: 300),
+        data: ChartData.parse("Cat\tA\nx\t10\ny\t6"),
+      );
+      var controller = CanvasController(document.addElement(chart));
+      return (controller, chart);
+    }
+
+    ChartElement chartIn(CanvasController controller) =>
+        controller.document.elements.single as ChartElement;
+
+    test("choosing a preset lays a keyframe at each end of it", () {
+      // One gesture, because it is one decision. A preset with nothing
+      // pinning the reveal channel draws exactly what a still chart draws, so
+      // applying it separately from keying it would be asking somebody to
+      // know how this is implemented.
+      var (controller, chart) = build(frames: 24);
+      addTearDown(controller.dispose);
+
+      controller.applyChartAnimation(chart, ChartAnimationPreset.grow);
+
+      var after = chartIn(controller);
+      expect(after.animation.preset, ChartAnimationPreset.grow);
+
+      var keys = after.track!.keys;
+      expect(keys.length, 2);
+      expect(keys.first.values[KeyframeChannel.reveal], 0);
+      expect(keys.last.values[KeyframeChannel.reveal], 1);
+      expect(keys.last.frame, greaterThan(keys.first.frame),
+          reason: "the gap between them is the length of the animation");
+    });
+
+    test("a still document is given frames to play it in", () {
+      // An animation on a one-frame canvas is an animation nobody can watch.
+      var (controller, chart) = build();
+      addTearDown(controller.dispose);
+      expect(controller.document.isAnimated, isFalse);
+
+      controller.applyChartAnimation(chart, ChartAnimationPreset.wipe);
+
+      expect(controller.document.isAnimated, isTrue);
+      expect(chartIn(controller).track!.keys.length, 2);
+    });
+
+    test("it starts from where the reader is looking", () {
+      var (controller, chart) = build(frames: 60);
+      addTearDown(controller.dispose);
+      controller.frame = 20;
+
+      controller.applyChartAnimation(chart, ChartAnimationPreset.grow);
+
+      expect(chartIn(controller).track!.keys.first.frame, 20,
+          reason: "rather than jumping the playhead back to the start");
+    });
+
+    test("choosing None takes the keyframes away with it", () {
+      var (controller, chart) = build(frames: 24);
+      addTearDown(controller.dispose);
+      controller.applyChartAnimation(chart, ChartAnimationPreset.grow);
+      expect(chartIn(controller).track, isNotNull);
+
+      controller.applyChartAnimation(
+          chartIn(controller), ChartAnimationPreset.none);
+
+      expect(chartIn(controller).animation.on, isFalse);
+      expect(chartIn(controller).track, isNull,
+          reason: "no animation left, so no empty track in the saved file");
+    });
+
+    test("it is one undo step", () {
+      var (controller, chart) = build(frames: 24);
+      addTearDown(controller.dispose);
+      controller.applyChartAnimation(chart, ChartAnimationPreset.grow);
+
+      controller.undo();
+      var back = controller.document.elements.single as ChartElement;
+      expect(back.animation.on, isFalse);
+      expect(back.track, isNull);
+    });
+
+    testWidgets("the presets offered suit the chart", (tester) async {
+      // A sweep round a bar chart is a sweep round a rectangle, and a wipe
+      // across a pie is worse.
+      var (controller, _) = build(frames: 24);
+      addTearDown(controller.dispose);
+      controller.selectOnly("c");
+      await pump(tester, CanvasLayersPanel(controller: controller));
+
+      var animation = find.text("ANIMATION");
+      await tester.ensureVisible(animation);
+      await tester.pumpAndSettle();
+      await tester.tap(animation);
+      await tester.pumpAndSettle();
+
+      expect(find.text("Grow"), findsOneWidget);
+      expect(find.text("Wipe across"), findsOneWidget);
+      expect(find.text("Sweep round"), findsNothing,
+          reason: "not on a bar chart");
+
+      controller.replaceElement(
+          (controller.document.elements.single as ChartElement)
+              .copyWith(type: ChartType.pie));
+      await tester.pumpAndSettle();
+      expect(find.text("Sweep round"), findsOneWidget);
+      expect(find.text("Wipe across"), findsNothing,
+          reason: "nor a wipe across a circle");
+    });
+
+    testWidgets("the gap is only offered where there is something to space",
+        (tester) async {
+      var (controller, chart) = build(frames: 24);
+      addTearDown(controller.dispose);
+      controller.selectOnly("c");
+      await pump(tester, CanvasLayersPanel(controller: controller));
+
+      var animation = find.text("ANIMATION");
+      await tester.ensureVisible(animation);
+      await tester.pumpAndSettle();
+      await tester.tap(animation);
+      await tester.pumpAndSettle();
+      expect(find.text("Gap"), findsNothing, reason: "no preset yet");
+
+      controller.applyChartAnimation(chart, ChartAnimationPreset.grow);
+      await tester.pumpAndSettle();
+      expect(find.text("Gap"), findsOneWidget);
+      expect(find.text("End curve"), findsOneWidget);
+
+      controller.applyChartAnimation(
+          chartIn(controller), ChartAnimationPreset.wipe);
+      await tester.pumpAndSettle();
+      expect(find.text("Gap"), findsNothing,
+          reason: "one edge crossing everything has nothing to space out");
+      expect(find.text("End curve"), findsOneWidget);
+    });
+  });
+
   group("the chart's numbers", () {
     Future<CanvasController> panel(WidgetTester tester) async {
       var element = ChartElement(

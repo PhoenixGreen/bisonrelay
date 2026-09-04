@@ -62,7 +62,8 @@ List<Widget> elementSettings(
       LineElement e => _lineSettings(controller, e, write, begin, commit),
       ImageElement e =>
         _imageSettings(context, controller, e, write, begin, commit),
-      ChartElement e => _chartSettings(context, e, write, begin, commit),
+      ChartElement e =>
+        _chartSettings(context, controller, e, write, begin, commit),
       TableElement e => _tableSettings(e, write, begin, commit),
       ButtonElement e => _buttonSettings(controller, e, write, begin, commit),
       BackgroundElement e => [
@@ -1590,8 +1591,8 @@ Widget _boxed(BuildContext context, Widget child) {
   );
 }
 
-List<Widget> _chartSettings(BuildContext context, ChartElement e, _Write write,
-    VoidCallback begin, VoidCallback commit) {
+List<Widget> _chartSettings(BuildContext context, CanvasController controller,
+    ChartElement e, _Write write, VoidCallback begin, VoidCallback commit) {
   void now(ChartElement next) {
     begin();
     write(next);
@@ -1738,6 +1739,75 @@ List<Widget> _chartSettings(BuildContext context, ChartElement e, _Write write,
             },
             onCommit: commit,
           ),
+        ],
+      ),
+    ),
+    // Its own section, like the data. An animation is a handful of choices
+    // made once and then left alone, and open by default they were four more
+    // rows between the numbers and the axes.
+    _boxed(
+      context,
+      CanvasExpander(
+        label: "Animation",
+        trailing: e.animation.on ? e.animation.preset.label : null,
+        children: [
+          CanvasControlGroup(label: "Preset", children: [
+            const CanvasHint(
+                "Choosing one draws the chart on over two seconds and puts a "
+                "keyframe at each end of it on the timeline. Drag those to "
+                "decide how long it takes and when it happens."),
+            const CanvasLineBreak(),
+            for (var preset in ChartAnimationPreset.values)
+              if (e.type.isCircular
+                  ? preset.suitsCircular
+                  : preset.suitsCartesian)
+                CanvasToggle(
+                  label: preset.label,
+                  value: e.animation.preset == preset,
+                  // A press applies it and lays the keyframes together: a
+                  // preset with nothing pinning the reveal channel draws
+                  // exactly what a still chart draws.
+                  onChanged: (_) =>
+                      controller.applyChartAnimation(e, preset),
+                ),
+          ]),
+          if (e.animation.on)
+            CanvasControlGroup(label: "Timing", children: [
+              // Only where there is more than one thing to space out. A wipe
+              // and a sweep are one edge crossing everything at once.
+              if (e.animation.preset.staggers)
+                CanvasNumberField(
+                  label: "Gap",
+                  min: 0,
+                  max: 4,
+                  decimals: 2,
+                  width: 62,
+                  value: e.animation.gap,
+                  onChanged: (v) {
+                    begin();
+                    write(e.copyWith(
+                        animation: e.animation.copyWith(gap: v)));
+                  },
+                  onCommit: commit,
+                ),
+              if (e.animation.preset.staggers)
+                const CanvasHint(
+                    "How long after one starts before the next does, as a "
+                    "share of one item's own movement. 1 is strictly one "
+                    "after another; below 1 they overlap; above 1 leaves a "
+                    "pause between them."),
+              CanvasDropdown<ChartEase>(
+                label: "End curve",
+                value: e.animation.ease,
+                width: 118,
+                options: [for (var c in ChartEase.values) (c, c.label)],
+                onChanged: (v) {
+                  begin();
+                  write(e.copyWith(animation: e.animation.copyWith(ease: v)));
+                  commit();
+                },
+              ),
+            ]),
         ],
       ),
     ),

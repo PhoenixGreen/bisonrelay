@@ -387,6 +387,15 @@ class KeyframeChannel {
   /// TextOnCurve.offset holds.
   static const String slide = "slide";
 
+  /// reveal is how much of a chart has been drawn, 0 to 1.
+  ///
+  /// One channel for the whole chart rather than one per bar. What each bar is
+  /// doing at a given moment is worked out from this and the chart's own
+  /// animation settings -- see ChartAnimation -- because a chart of forty bars
+  /// would otherwise be forty channels on one keyframe, and moving the end of
+  /// the animation would mean moving forty of them.
+  static const String reveal = "reveal";
+
   /// bow is how far a line element is curved, as LineElement.curvature holds.
   static const String bow = "bow";
 }

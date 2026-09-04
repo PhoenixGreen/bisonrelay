@@ -5,6 +5,7 @@ import 'dart:ui' show Offset;
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
@@ -1269,6 +1270,60 @@ class CanvasController extends ChangeNotifier {
     if (element == null) return;
     var track = (element.track ?? ElementTrack.empty).withKey(key);
     replaceElement(element.withBase(track: track));
+  }
+
+  /// applyChartAnimation puts a preset on a chart and lays the two keyframes
+  /// that give it a length.
+  ///
+  /// One gesture, because it is one decision. A preset with no keyframes draws
+  /// nothing different -- the reveal channel would never be pinned, so the
+  /// chart would sit at "all of it" for every frame -- and asking somebody to
+  /// choose a preset and then separately key a channel they have never heard
+  /// of is asking them to know how this is implemented.
+  ///
+  /// The keyframes are ordinary ones. That is the point: the length of the
+  /// animation is the gap between them on the timeline, dragged like anything
+  /// else, rather than a duration stored on the chart where the timeline could
+  /// not see it.
+  ///
+  /// A still document is given a second's worth of frames first. An animation
+  /// on a one-frame canvas is an animation nobody can watch.
+  void applyChartAnimation(ChartElement element, ChartAnimationPreset preset) {
+    beginInteraction();
+
+    if (preset == ChartAnimationPreset.none) {
+      replaceElement(element
+          .copyWith(animation: element.animation.copyWith(preset: preset))
+          .withBase(clearTrack: true));
+      endInteraction();
+      return;
+    }
+
+    var document = _document;
+    if (!document.isAnimated) {
+      document = document.copyWith(
+          frames: math.max(2, document.frameRate * chartAnimationSeconds));
+    }
+
+    // From this frame, so a chart animated while scrubbed to the middle starts
+    // where the reader is looking rather than jumping the playhead.
+    var from = _frame.clamp(0, document.frames - 2);
+    var span = math.max(2, (document.frameRate * chartAnimationSeconds).round());
+    var to = math.min(document.frames - 1, from + span);
+    if (to <= from) {
+      from = 0;
+      to = document.frames - 1;
+    }
+
+    var track = ElementTrack.empty
+        .withKey(Keyframe(frame: from).withValue(KeyframeChannel.reveal, 0))
+        .withKey(Keyframe(frame: to).withValue(KeyframeChannel.reveal, 1));
+
+    var next = element
+        .copyWith(animation: element.animation.copyWith(preset: preset))
+        .withBase(track: track);
+    apply(document.withElement(next));
+    endInteraction();
   }
 
   /// removeKeyframe drops the pose at [frame], and drops the track entirely

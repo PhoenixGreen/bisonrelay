@@ -21,8 +21,20 @@ import 'package:flutter/painting.dart';
 // rather than hovered over.
 
 /// paintChart draws [e] filling [rect].
-void paintChart(ui.Canvas canvas, Rect rect, ChartElement e) {
+///
+/// [reveal] is how much of the chart has arrived, 0 to 1, which comes off the
+/// element's keyframes -- see KeyframeChannel.reveal. One means "all of it",
+/// which is what a chart with no animation on it always gets.
+void paintChart(ui.Canvas canvas, Rect rect, ChartElement e,
+    {double reveal = 1}) {
   if (rect.width <= 8 || rect.height <= 8) return;
+  var animation = e.animation;
+  var showing = animation.on ? reveal.clamp(0.0, 1.0) : 1.0;
+  // Nothing at all yet. Returning rather than drawing zero-height bars,
+  // because the axes and the labels arrive with the chart -- a chart whose
+  // grid appears a second before anything is in it looks broken rather than
+  // early.
+  if (animation.on && showing <= 0) return;
   var data = e.data;
   if (data.series.isEmpty) {
     _placeholder(canvas, e.body.rectIn(rect), e);
@@ -53,11 +65,31 @@ void paintChart(ui.Canvas canvas, Rect rect, ChartElement e) {
     area = _legend(canvas, area, e);
   }
 
-  if (e.type.isCircular) {
-    _circular(canvas, area, e);
-  } else {
-    _cartesian(canvas, area, e);
+  // A wipe and a sweep are one edge travelling over everything, so they are a
+  // clip round the whole plot rather than anything the series need to know
+  // about. Everything else is per item and is handled where the items are
+  // drawn.
+  var clipping = animation.on &&
+      showing < 1 &&
+      (animation.preset == ChartAnimationPreset.wipe ||
+          animation.preset == ChartAnimationPreset.sweep);
+  if (clipping) {
+    canvas.save();
+    if (animation.preset == ChartAnimationPreset.wipe) {
+      canvas.clipRect(Rect.fromLTWH(area.left, area.top,
+          area.width * animation.ease.apply(showing), area.height));
+    } else {
+      canvas.clipPath(_wedge(area, animation.ease.apply(showing)));
+    }
   }
+
+  if (e.type.isCircular) {
+    _circular(canvas, area, e, showing);
+  } else {
+    _cartesian(canvas, area, e, showing);
+  }
+
+  if (clipping) canvas.restore();
 
   _placedLabel(canvas, rect, e.title, e.titleBox, e.titleSpec);
   _placedLabel(canvas, rect, e.description, e.descriptionBox,
@@ -100,6 +132,57 @@ void _placedLabel(ui.Canvas canvas, Rect rect, String text, ChartLabel box,
     TextSpec spec) {
   if (!box.show || text.isEmpty || !box.placed) return;
   paintTextInBox(canvas, text, spec, box.rectIn(rect), clip: true);
+}
+
+/// _SliceProgress is what one item of a circular chart is doing: how big it
+/// is, and how solid.
+///
+/// One little object rather than two doubles, because every circular type
+/// needs both and the branches that use them are already long enough.
+class _SliceProgress {
+  final double size;
+  final double alpha;
+  const _SliceProgress(this.size, this.alpha);
+
+  bool get gone => size <= 0 || alpha <= 0;
+
+  Color tint(Color colour) =>
+      alpha >= 1 ? colour : colour.withValues(alpha: colour.a * alpha);
+}
+
+/// _sliceProgress works out both from the chart's animation.
+_SliceProgress _sliceProgress(
+    ChartElement e, double reveal, int index, int count) {
+  if (!e.animation.on || reveal >= 1) return const _SliceProgress(1, 1);
+  var p = e.animation.progressAt(reveal, index, count);
+  switch (e.animation.preset) {
+    case ChartAnimationPreset.fadeIn:
+      return _SliceProgress(1, p.clamp(0.0, 1.0));
+    case ChartAnimationPreset.grow:
+    case ChartAnimationPreset.popIn:
+    case ChartAnimationPreset.drawOn:
+      return _SliceProgress(p, 1);
+    case ChartAnimationPreset.none:
+    case ChartAnimationPreset.wipe:
+    case ChartAnimationPreset.sweep:
+      return const _SliceProgress(1, 1);
+  }
+}
+
+/// _wedge is a pie slice from the top, for a sweep. A full turn is the whole
+/// area, so the clip stops mattering exactly when the animation ends.
+Path _wedge(Rect area, double turn) {
+  if (turn >= 1) return Path()..addRect(area);
+  var centre = area.center;
+  // Long enough to reach any corner, so the wedge clips the whole rectangle
+  // rather than a circle inscribed in it.
+  var reach = area.longestSide;
+  return Path()
+    ..moveTo(centre.dx, centre.dy)
+    ..lineTo(centre.dx, centre.dy - reach)
+    ..arcTo(Rect.fromCircle(center: centre, radius: reach), -math.pi / 2,
+        math.pi * 2 * turn.clamp(0.0, 1.0), false)
+    ..close();
 }
 
 /// _placeholder is what an empty chart looks like: a labelled frame rather
@@ -207,7 +290,7 @@ String _formatTick(double v) {
 }
 
 /// _cartesian draws every type that has an x and a y axis.
-void _cartesian(ui.Canvas canvas, Rect area, ChartElement e) {
+void _cartesian(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
   var data = e.data;
   var horizontal = e.type == ChartType.horizontalBar;
 
@@ -298,8 +381,10 @@ void _cartesian(ui.Canvas canvas, Rect area, ChartElement e) {
   // Bars first. A line drawn under a bar is a line nobody can see, and the
   // reason for putting the two on one pair of axes is to read the line
   // against the bars.
-  if (bars.isNotEmpty) _bars(canvas, plot, range, e, horizontal, bars);
-  if (lines.isNotEmpty) _lines(canvas, plot, range, e, lines);
+  if (bars.isNotEmpty) {
+    _bars(canvas, plot, range, e, horizontal, bars, reveal);
+  }
+  if (lines.isNotEmpty) _lines(canvas, plot, range, e, lines, reveal);
 }
 
 double _widestCategory(List<String> categories, TextSpec spec, Rect area) {
@@ -443,7 +528,7 @@ void _axisLabels(
 /// are side by side: two bar series share a slot however the chart's own type
 /// is set, since drawing them on top of each other would hide one of them.
 void _bars(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
-    bool horizontal, List<int> which) {
+    bool horizontal, List<int> which, double reveal) {
   var data = e.data;
   var slots = data.categories.length;
   if (slots == 0 || which.isEmpty) return;
@@ -490,11 +575,44 @@ void _bars(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
             grouped ? barSize : barSpan, plot.height * (hi - lo));
       }
 
+      // Where this bar has got to. Staggered by category rather than by
+      // series, which is what "one bar after another, left to right" means --
+      // grouped bars in the same slot arrive together, as a group.
+      var colour = series.color;
+      if (e.animation.on && reveal < 1) {
+        var p = e.animation.progressAt(reveal, i, slots);
+        if (p <= 0) continue;
+        switch (e.animation.preset) {
+          case ChartAnimationPreset.fadeIn:
+            colour = colour.withValues(alpha: colour.a * p.clamp(0.0, 1.0));
+          case ChartAnimationPreset.popIn:
+            // About its own centre, so it springs where it stands rather than
+            // sliding in from the axis.
+            bar = Rect.fromCenter(
+                center: bar.center,
+                width: bar.width * p,
+                height: bar.height * p);
+          case ChartAnimationPreset.grow:
+          case ChartAnimationPreset.drawOn:
+            // Out of the axis. An overshoot goes past the true height and
+            // settles back, which is the whole reason the ease is a setting.
+            bar = horizontal
+                ? Rect.fromLTWH(
+                    bar.left, bar.top, bar.width * p, bar.height)
+                : Rect.fromLTWH(bar.left, bar.bottom - bar.height * p,
+                    bar.width, bar.height * p);
+          case ChartAnimationPreset.none:
+          case ChartAnimationPreset.wipe:
+          case ChartAnimationPreset.sweep:
+            break;
+        }
+      }
+
       var r = math.min(e.barRadius,
           math.min(bar.width, bar.height) / 2);
       canvas.drawRRect(
           RRect.fromRectAndRadius(bar, Radius.circular(math.max(0, r))),
-          Paint()..color = series.color);
+          Paint()..color = colour);
 
       if (e.showValues && v != 0) {
         var label = _formatTick(v);
@@ -521,7 +639,7 @@ void _bars(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
 /// Each of them by its *own* type rather than by the chart's, so one series
 /// can be an area and the next a scatter over the same axes.
 void _lines(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
-    List<int> which) {
+    List<int> which, double reveal) {
   var data = e.data;
   var n = data.categories.length;
   if (n == 0) return;
@@ -533,7 +651,11 @@ void _lines(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
   double yAt(double v) =>
       plot.bottom - plot.height * range.fraction(v).clamp(-0.2, 1.2);
 
-  for (var s in which) {
+  var animation = e.animation;
+  var animating = animation.on && reveal < 1;
+
+  for (var at = 0; at < which.length; at++) {
+    var s = which[at];
     var series = data.series[s];
     var kind = series.typeIn(e.type);
     var points = [
@@ -541,8 +663,53 @@ void _lines(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
     ];
     if (points.isEmpty) continue;
 
+    // A line is staggered by *series*, not by point: the points of one line
+    // are one movement, and drawing them in turn is what "draw on" already
+    // does along the length of it.
+    var progress = animating
+        ? animation.progressAt(reveal, at, which.length)
+        : 1.0;
+    if (animating && progress <= 0) continue;
+
+    var alpha = 1.0;
+    if (animating) {
+      switch (animation.preset) {
+        case ChartAnimationPreset.fadeIn:
+          alpha = progress.clamp(0.0, 1.0);
+        case ChartAnimationPreset.grow:
+        case ChartAnimationPreset.popIn:
+          // Up out of the baseline, so a line arrives the way the bars beside
+          // it do.
+          points = [
+            for (var point in points)
+              Offset(point.dx,
+                  plot.bottom - (plot.bottom - point.dy) * progress),
+          ];
+        case ChartAnimationPreset.drawOn:
+        case ChartAnimationPreset.none:
+        case ChartAnimationPreset.wipe:
+        case ChartAnimationPreset.sweep:
+          break;
+      }
+    }
+    var colour = alpha >= 1
+        ? series.color
+        : series.color.withValues(alpha: series.color.a * alpha);
+
     if (kind != ChartType.scatter) {
       var path = _linePath(points, e.smooth && kind.usesSmooth);
+      // Traced from its start rather than grown from the axis: the line is
+      // cut short at the point it has reached, and the area under it with it.
+      if (animating &&
+          animation.preset == ChartAnimationPreset.drawOn &&
+          progress < 1) {
+        path = _trimmed(path, progress);
+        points = [
+          for (var point in points)
+            if (point.dx <= _lastX(path)) point,
+        ];
+        if (points.isEmpty) points = [_firstPoint(path)];
+      }
       if (kind == ChartType.area) {
         var fill = Path.from(path)
           ..lineTo(points.last.dx, plot.bottom)
@@ -553,8 +720,8 @@ void _lines(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
             Paint()
               ..shader = ui.Gradient.linear(
                   Offset(0, plot.top), Offset(0, plot.bottom), [
-                series.color.withValues(alpha: 0.45),
-                series.color.withValues(alpha: 0.02),
+                colour.withValues(alpha: 0.45 * alpha),
+                colour.withValues(alpha: 0.02 * alpha),
               ]));
       }
       canvas.drawPath(
@@ -564,13 +731,18 @@ void _lines(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
             ..strokeWidth = e.strokeWidth
             ..strokeCap = StrokeCap.round
             ..strokeJoin = StrokeJoin.round
-            ..color = series.color);
+            ..color = colour);
     }
 
     if (kind == ChartType.scatter || e.showValues) {
       for (var i = 0; i < points.length; i++) {
-        canvas.drawCircle(points[i], e.strokeWidth * 1.4,
-            Paint()..color = series.color);
+        canvas.drawCircle(
+            points[i],
+            e.strokeWidth * 1.4 *
+                (animating && animation.preset == ChartAnimationPreset.popIn
+                    ? progress.clamp(0.0, 1.4)
+                    : 1),
+            Paint()..color = colour);
         if (e.showValues) {
           paintTextInBox(
               canvas,
@@ -587,6 +759,24 @@ void _lines(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
     }
   }
 }
+
+/// _trimmed is the first [fraction] of a path, by length. What draws a line on
+/// rather than growing it out of the axis.
+Path _trimmed(Path path, double fraction) {
+  var out = Path();
+  for (var metric in path.computeMetrics()) {
+    var want = metric.length * fraction.clamp(0.0, 1.0);
+    if (want <= 0) continue;
+    out.addPath(metric.extractPath(0, want), Offset.zero);
+  }
+  return out;
+}
+
+/// _lastX is how far along the drawn part has got, which is what decides
+/// which of the line's points have arrived and may be dotted or labelled.
+double _lastX(Path path) => path.getBounds().right;
+
+Offset _firstPoint(Path path) => path.getBounds().topLeft;
 
 /// _linePath joins the points, optionally through a Catmull-Rom style smooth.
 ///
@@ -614,7 +804,7 @@ Path _linePath(List<Offset> points, bool smooth) {
 }
 
 /// _circular draws the pie, donut, radial-bar and radar types.
-void _circular(ui.Canvas canvas, Rect area, ChartElement e) {
+void _circular(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
   var side = math.min(area.width, area.height);
   var box = Rect.fromCenter(
       center: area.center, width: side, height: side).deflate(side * 0.06);
@@ -637,15 +827,27 @@ void _circular(ui.Canvas canvas, Rect area, ChartElement e) {
             ? data.series[i].color
             : chartPalette[i % chartPalette.length];
 
+        // Each slice opens out of the middle in turn. A sweep is handled by
+        // the clip around the whole chart -- see paintChart -- so it is not
+        // one of the cases here.
+        var slice = _sliceProgress(e, reveal, i, values.length);
+        if (slice.gone) {
+          start += sweep;
+          continue;
+        }
+        var sliceRadius = radius * slice.size;
+        var sliceInner = inner * slice.size;
+        color = slice.tint(color);
+
         var path = Path()
-          ..moveTo(centre.dx + math.cos(start) * inner,
-              centre.dy + math.sin(start) * inner)
-          ..lineTo(centre.dx + math.cos(start) * radius,
-              centre.dy + math.sin(start) * radius)
-          ..arcTo(Rect.fromCircle(center: centre, radius: radius), start, sweep,
-              false);
-        if (inner > 0) {
-          path.arcTo(Rect.fromCircle(center: centre, radius: inner),
+          ..moveTo(centre.dx + math.cos(start) * sliceInner,
+              centre.dy + math.sin(start) * sliceInner)
+          ..lineTo(centre.dx + math.cos(start) * sliceRadius,
+              centre.dy + math.sin(start) * sliceRadius)
+          ..arcTo(Rect.fromCircle(center: centre, radius: sliceRadius), start,
+              sweep, false);
+        if (sliceInner > 0) {
+          path.arcTo(Rect.fromCircle(center: centre, radius: sliceInner),
               start + sweep, -sweep, false);
         } else {
           path.lineTo(centre.dx, centre.dy);
@@ -680,6 +882,9 @@ void _circular(ui.Canvas canvas, Rect area, ChartElement e) {
       for (var i = 0; i < values.length; i++) {
         var r = radius - ring * i - ring / 2;
         var color = chartPalette[i % chartPalette.length];
+        var slice = _sliceProgress(e, reveal, i, values.length);
+        if (slice.gone) continue;
+        color = slice.tint(color);
         var track = Paint()
           ..style = PaintingStyle.stroke
           ..strokeWidth = ring * 0.7
@@ -688,7 +893,7 @@ void _circular(ui.Canvas canvas, Rect area, ChartElement e) {
         canvas.drawArc(
             Rect.fromCircle(center: centre, radius: r),
             -math.pi / 2,
-            math.pi * 2 * (values[i].abs() / maxV),
+            math.pi * 2 * (values[i].abs() / maxV) * slice.size,
             false,
             Paint()
               ..style = PaintingStyle.stroke
@@ -740,20 +945,27 @@ void _circular(ui.Canvas canvas, Rect area, ChartElement e) {
       }
 
       for (var s = 0; s < data.series.length; s++) {
+        // A radar has one shape per series, so it is staggered by series and
+        // grows out of the centre -- the only direction a radar has.
+        var slice = _sliceProgress(e, reveal, s, data.series.length);
+        if (slice.gone) continue;
+
         var path = Path();
         for (var i = 0; i <= axes; i++) {
-          var p = spoke(i % axes, data.valueAt(s, i % axes).abs() / maxV);
+          var p = spoke(
+              i % axes, data.valueAt(s, i % axes).abs() / maxV * slice.size);
           i == 0 ? path.moveTo(p.dx, p.dy) : path.lineTo(p.dx, p.dy);
         }
         path.close();
-        canvas.drawPath(path,
-            Paint()..color = data.series[s].color.withValues(alpha: 0.28));
+        var colour = slice.tint(data.series[s].color);
+        canvas.drawPath(
+            path, Paint()..color = colour.withValues(alpha: colour.a * 0.28));
         canvas.drawPath(
             path,
             Paint()
               ..style = PaintingStyle.stroke
               ..strokeWidth = e.strokeWidth
-              ..color = data.series[s].color);
+              ..color = colour);
       }
 
     default:

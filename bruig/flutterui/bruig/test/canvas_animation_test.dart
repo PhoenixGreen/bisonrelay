@@ -406,4 +406,29 @@ void main() {
       }
     });
   });
+
+  group("the reveal channel", () {
+    test("moving a keyframe along the timeline keeps what it pins", () {
+      // How a chart's animation is lengthened: the two keyframes are ordinary
+      // ones, dragged on the timeline like anything else, so retiming one must
+      // not drop the channel that made it worth having.
+      var key = const Keyframe(frame: 4).withValue(KeyframeChannel.reveal, 1);
+      var moved = key.copyWith(frame: 30);
+
+      expect(moved.frame, 30);
+      expect(moved.values[KeyframeChannel.reveal], 1);
+    });
+
+    test("between the two keyframes it interpolates", () {
+      var track = ElementTrack.empty
+          .withKey(const Keyframe(frame: 0)
+              .withValue(KeyframeChannel.reveal, 0))
+          .withKey(const Keyframe(frame: 10)
+              .withValue(KeyframeChannel.reveal, 1));
+
+      expect(track.at(0).values[KeyframeChannel.reveal], 0);
+      expect(track.at(5).values[KeyframeChannel.reveal], closeTo(0.5, 0.001));
+      expect(track.at(10).values[KeyframeChannel.reveal], 1);
+    });
+  });
 }

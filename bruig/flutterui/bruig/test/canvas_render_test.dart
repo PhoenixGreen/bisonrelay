@@ -1430,10 +1430,11 @@ void main() {
 
 /// _chartPixels is a chart rendered to raw bytes.
 Future<Uint8List> _chartPixels(ChartElement e,
-    {int width = 400, int height = 300}) async {
+    {int width = 400, int height = 300, double reveal = 1}) async {
   var recorder = ui.PictureRecorder();
   paintChart(ui.Canvas(recorder),
-      Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()), e);
+      Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()), e,
+      reveal: reveal);
   var image = await recorder.endRecording().toImage(width, height);
   try {
     return (await image.toByteData(format: ui.ImageByteFormat.rawStraightRgba))!
@@ -1714,6 +1715,146 @@ void _chartTests() {
       // Rather than leaving a band of nothing where a title would have been.
       var alone = defaultDescriptionPlacement(const ChartLabel(), false);
       expect(alone.y, lessThan(0.05));
+    });
+
+    test("a preset with no reveal keyed draws the whole chart", () async {
+      // The default everywhere: a chart with no keyframe pinning the channel
+      // gets 1, which is all of it. Anything else would mean every still
+      // chart in every document drawing itself half finished.
+      var e = _two(ChartType.bar).copyWith(
+          animation: const ChartAnimation(preset: ChartAnimationPreset.grow));
+      expect(await _chartPixels(e),
+          orderedEquals(await _chartPixels(_two(ChartType.bar))));
+    });
+
+    test("half way through, the bars are shorter", () async {
+      var e = _two(ChartType.groupedBar).copyWith(
+          animation: const ChartAnimation(
+              preset: ChartAnimationPreset.grow,
+              gap: 0,
+              ease: ChartEase.linear));
+
+      // Count the coloured pixels rather than look at one: how many there are
+      // is how much bar there is.
+      Future<int> painted(double reveal) async {
+        var pixels = await _chartPixels(e, reveal: reveal);
+        var n = 0;
+        for (var i = 0; i < 400 * 300; i++) {
+          if (pixels[i * 4] == 61 &&
+              pixels[i * 4 + 1] == 126 &&
+              pixels[i * 4 + 2] == 255) {
+            n++;
+          }
+        }
+        return n;
+      }
+
+      var all = await painted(1);
+      var half = await painted(0.5);
+      expect(all, greaterThan(0));
+      expect(half, greaterThan(0));
+      expect(half, lessThan(all),
+          reason: "half way up is less bar than all the way");
+    });
+
+    test("nothing is drawn before it starts", () async {
+      // Returning rather than drawing zero-height bars: the axes and the
+      // labels arrive with the chart, and a grid that appears a second before
+      // anything is in it looks broken rather than early.
+      var e = _two(ChartType.bar).copyWith(
+          animation: const ChartAnimation(preset: ChartAnimationPreset.grow));
+      var pixels = await _chartPixels(e, reveal: 0);
+      expect(pixels.every((b) => b == 0), isTrue);
+    });
+
+    test("the gap decides when the next one starts", () {
+      // 1 is strictly one after another; 0 is all together; above 1 leaves a
+      // pause between one finishing and the next starting.
+      const together =
+          ChartAnimation(preset: ChartAnimationPreset.grow, gap: 0,
+              ease: ChartEase.linear);
+      expect(together.progressAt(0.5, 0, 4), closeTo(0.5, 0.001));
+      expect(together.progressAt(0.5, 3, 4), closeTo(0.5, 0.001),
+          reason: "no gap means all four move as one");
+
+      const inTurn = ChartAnimation(preset: ChartAnimationPreset.grow, gap: 1,
+          ease: ChartEase.linear);
+      // Four items strictly in turn take four item-movements, so at a quarter
+      // through the first has just finished and the second has not begun.
+      expect(inTurn.progressAt(0.25, 0, 4), closeTo(1, 0.001));
+      expect(inTurn.progressAt(0.25, 1, 4), closeTo(0, 0.001));
+      expect(inTurn.progressAt(0.25, 3, 4), 0);
+
+      const overlapping =
+          ChartAnimation(preset: ChartAnimationPreset.grow, gap: 0.5,
+              ease: ChartEase.linear);
+      expect(overlapping.progressAt(0.5, 1, 4), greaterThan(0),
+          reason: "the second is under way before the first has finished");
+    });
+
+    test("a wipe has nothing to stagger, so it ignores the gap", () {
+      const wipe = ChartAnimation(preset: ChartAnimationPreset.wipe, gap: 2,
+          ease: ChartEase.linear);
+      expect(ChartAnimationPreset.wipe.staggers, isFalse);
+      expect(wipe.progressAt(0.5, 0, 8), closeTo(0.5, 0.001));
+      expect(wipe.progressAt(0.5, 7, 8), closeTo(0.5, 0.001));
+    });
+
+    test("an overshoot goes past its mark and comes back", () {
+      // The whole reason the end curve is a setting: a bar that eases to a
+      // stop is a chart and a bar that overshoots is an advertisement.
+      var most = [
+        for (var t = 0.05; t < 1; t += 0.05) ChartEase.overshoot.apply(t)
+      ];
+      expect(most.any((v) => v > 1), isTrue);
+      expect(ChartEase.overshoot.apply(1), 1);
+      expect(ChartEase.overshoot.apply(0), 0);
+
+      // And the plain ones never do.
+      for (var t = 0.0; t <= 1; t += 0.05) {
+        expect(ChartEase.easeOut.apply(t), inInclusiveRange(0, 1));
+        expect(ChartEase.linear.apply(t), closeTo(t, 0.001));
+      }
+    });
+
+    test("every preset draws every chart type without throwing", () {
+      for (var type in ChartType.values) {
+        for (var preset in ChartAnimationPreset.values) {
+          var e = _two(type).copyWith(
+              animation: ChartAnimation(preset: preset));
+          for (var reveal in [0.0, 0.3, 1.0]) {
+            expect(
+                () => paintChart(ui.Canvas(ui.PictureRecorder()),
+                    const Rect.fromLTWH(0, 0, 400, 300), e,
+                    reveal: reveal),
+                returnsNormally,
+                reason: "${type.name} / ${preset.name} at $reveal");
+          }
+        }
+      }
+    });
+
+    test("an animation survives a round trip, and costs nothing when off",
+        () {
+      var element = ChartElement(
+        const ElementBase(id: "c", width: 400, height: 300),
+        animation: const ChartAnimation(
+            preset: ChartAnimationPreset.popIn,
+            gap: 1.25,
+            ease: ChartEase.bounce),
+      );
+      var back = CanvasDocument.decode(
+              CanvasDocument(elements: [element]).encode())!.elements.single
+          as ChartElement;
+      expect(back.animation.preset, ChartAnimationPreset.popIn);
+      expect(back.animation.gap, 1.25);
+      expect(back.animation.ease, ChartEase.bounce);
+
+      expect(
+          ChartElement(const ElementBase(id: "c", width: 10, height: 10))
+              .toJson()
+              .containsKey("anim"),
+          isFalse);
     });
 
     test("a chart's labels and series types survive a round trip", () {
