@@ -2263,19 +2263,7 @@ List<Widget> _tableSettings(BuildContext context, TableElement e,
                   commit();
                 },
               ),
-              // Beside Add, one per rule, so adding and removing are the same
-              // gesture in the same place rather than one here and one at the
-              // bottom of a section that has to be opened first.
-              for (var i = 0; i < e.rules.length; i++)
-                CanvasIconButton(
-                  icon: Icons.backspace_outlined,
-                  tooltip: "Remove ${_tableRuleName(e.rules[i], i)}",
-                  onPressed: () {
-                    begin();
-                    write(e.copyWith(rules: [...e.rules]..removeAt(i)));
-                    commit();
-                  },
-                ),
+
               const CanvasHint(
                   "A rule says which cells look different and how. Leave the "
                   "column, the row or the text blank to mean any of them -- "
@@ -3084,6 +3072,10 @@ Widget _tableRuleSettings(TableElement e, int index, _Write write,
     // Named for what it does rather than "Rule 3", so a list of them can be
     // read without opening each one.
     label: _tableRuleName(rule, index),
+    // Remembered like every other section. A rule being worked on used to
+    // shut the moment the element was deselected and selected again, which is
+    // every time anybody looks at the canvas and comes back.
+    remember: "tableRule$index",
     children: [
       CanvasControlGroup(label: "Which cells", children: [
         CanvasTextField(
@@ -3110,16 +3102,19 @@ Widget _tableRuleSettings(TableElement e, int index, _Write write,
           onChanged: (v) => put(rule.copyWith(match: v)),
           onCommit: commit,
         ),
-        CanvasDropdown<bool>(
+        CanvasDropdown<TableMatch>(
           label: "Matching",
-          value: rule.exact,
-          width: 104,
+          value: rule.how,
+          width: 116,
           // Whole cell by default: "W" appearing inside "Won" is not what
           // anybody typing W means.
-          options: const [(true, "The whole cell"), (false, "Anywhere in it")],
-          onChanged: (v) => now(rule.copyWith(exact: v)),
+          options: [for (var m in TableMatch.values) (m, m.label)],
+          onChanged: (v) => now(rule.copyWith(how: v)),
         ),
         const CanvasHint(
+            "A whole word finds it on its own -- W in \"--- W\" but not in "
+            "\"Won\" -- and draws its box round that word rather than round "
+            "the cell.\n\n"
             "Rows counts from one and includes the header: 2 is one row, "
             "2:4 is a block of them, >1 is everything under the header. Left "
             "blank it means any row, which is what a rule about a column "
@@ -3259,6 +3254,18 @@ Widget _tableRuleSettings(TableElement e, int index, _Write write,
               ? style.copyWith(clearVerticalAlign: true)
               : style.copyWith(
                   verticalAlign: VerticalAlignSpec.fromName(v))),
+        ),
+        // At the foot of the rule it removes. Beside Add it was one button
+        // per rule on one line, which is fine for two rules and is twenty
+        // buttons for twenty.
+        CanvasIconButton(
+          icon: Icons.delete_outline,
+          tooltip: "Remove this rule",
+          onPressed: () {
+            begin();
+            write(e.copyWith(rules: [...e.rules]..removeAt(index)));
+            commit();
+          },
         ),
         const CanvasHint(
             "Size multiplies the cell's own font size and weight overrides "

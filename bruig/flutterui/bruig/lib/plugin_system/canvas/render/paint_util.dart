@@ -813,3 +813,37 @@ Path _bubbleBody(Rect body, BubbleBody kind, double cornerRadius) {
   }
   return path;
 }
+
+/// textRunBox is where a stretch of [text] lands inside [box], laid out and
+/// aligned exactly as paintTextInBox would lay it out.
+///
+/// For drawing something behind part of a line -- a chip round the W in
+/// "--- W" -- which needs the glyphs' own boxes rather than a guess from the
+/// character count, since a W and a full stop are not the same width.
+///
+/// Null when the range is empty or falls outside the text.
+Rect? textRunBox(String text, TextSpec spec, Rect box, int start, int end) {
+  var shown = spec.textCase.apply(text);
+  if (start < 0 || end > shown.length || end <= start || box.width <= 0) {
+    return null;
+  }
+
+  var painter = layoutText(shown, spec, maxWidth: box.width, fillWidth: true);
+  var boxes = painter.getBoxesForSelection(
+      TextSelection(baseOffset: start, extentOffset: end));
+  if (boxes.isEmpty) return null;
+
+  // The same vertical placement paintTextInBox uses, or the chip would sit
+  // where the words are not.
+  var dy = switch (spec.verticalAlign) {
+    VerticalAlignSpec.top => 0.0,
+    VerticalAlignSpec.bottom => box.height - painter.height,
+    VerticalAlignSpec.middle => (box.height - painter.height) / 2,
+  };
+
+  var out = boxes.first.toRect();
+  for (var b in boxes.skip(1)) {
+    out = out.expandToInclude(b.toRect());
+  }
+  return out.translate(box.left, box.top + dy);
+}

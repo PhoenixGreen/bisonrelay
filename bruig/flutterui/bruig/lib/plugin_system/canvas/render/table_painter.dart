@@ -145,7 +145,7 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
         _paintStyleBox(
             canvas,
             style.hug
-                ? _wordsIn(canvas, e.cell(r, c), spec, textBox)
+                ? _chipIn(e, r, c, spec, textBox)
                 : Rect.fromLTWH(x, y, w, h),
             style,
             hug: style.hug);
@@ -280,9 +280,32 @@ Rect? _bandFor(TableElement e, TableRule rule, Rect rect, List<double> widths,
   return Rect.fromLTRB(left, from, right, to);
 }
 
+/// _chipIn is what a chip is drawn round: the matched word where a rule asked
+/// for one, and the whole of the cell's words otherwise.
+///
+/// The word's own glyph boxes rather than a guess from the character count,
+/// since a W and a full stop are not the same width -- see textRunBox.
+Rect _chipIn(TableElement e, int row, int col, TextSpec spec, Rect box) {
+  var text = e.cell(row, col);
+  var head = e.header;
+
+  for (var rule in e.rules.reversed) {
+    if (rule.how != TableMatch.word || rule.match.isEmpty) continue;
+    if (!rule.matchesRow(row)) continue;
+    var wanted = rule.columnIndex(head);
+    if (wanted == -2 || (wanted >= 0 && wanted != col)) continue;
+    var run = rule.runIn(text);
+    if (run == null) continue;
+    var found = textRunBox(text, spec, box, run.$1, run.$2);
+    if (found != null) return found;
+  }
+
+  return _wordsIn(text, spec, box);
+}
+
 /// _wordsIn is the box the words actually occupy inside their cell, which is
 /// what a chip is drawn round.
-Rect _wordsIn(ui.Canvas canvas, String text, TextSpec spec, Rect box) {
+Rect _wordsIn(String text, TextSpec spec, Rect box) {
   if (text.trim().isEmpty) return box;
   var painter = layoutText(text, spec, maxWidth: box.width);
   var width = math.min(box.width, painter.width);

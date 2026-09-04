@@ -2471,7 +2471,7 @@ void _tableTests() {
       expect(strict.styleFor(1, 0), isNull);
 
       var loose = strict.copyWith(
-          rules: [strict.rules.single.copyWith(exact: false)]);
+          rules: [strict.rules.single.copyWith(how: TableMatch.anywhere)]);
       expect(loose.styleFor(1, 0), isNotNull);
     });
 
@@ -2698,6 +2698,95 @@ void _tableTests() {
       // common case and should cost a saved document nothing.
       expect(
           const TableCellStyle().toJson().containsKey("align"), isFalse);
+    });
+
+    test("a whole word is found on its own and nowhere else", () {
+      const rule = TableRule(match: "W", how: TableMatch.word);
+
+      expect(rule.runIn("--- W"), (4, 5), reason: "the W and not the dashes");
+      expect(rule.runIn("W"), (0, 1));
+      expect(rule.runIn("W D W"), (0, 1), reason: "the first of them");
+      expect(rule.runIn("Won"), isNull, reason: "not a word on its own");
+      expect(rule.runIn("Draw"), isNull);
+      expect(rule.runIn("-W-"), (1, 2),
+          reason: "punctuation ends a word as surely as a space does");
+
+      // The other two are unchanged by it.
+      expect(const TableRule(match: "W").runIn("--- W"), isNull);
+      expect(const TableRule(match: "W", how: TableMatch.anywhere)
+              .runIn("Won"), (0, 1));
+    });
+
+    test("the chip goes round the word, not round the line it is in",
+        () async {
+      // "--- W" wants a box round the W. The word's own glyph boxes rather
+      // than a guess from the character count, since a W and a full stop are
+      // not the same width.
+      var e = TableElement(
+        const ElementBase(id: "t", width: 400, height: 120),
+        rows: const [
+          ["Form"],
+          ["--- W"],
+        ],
+        cellSpec: const TextSpec(fontSize: 18, align: TextAlignSpec.left),
+      );
+
+      Future<Rect> greenBox(TableMatch how) async {
+        var recorder = ui.PictureRecorder();
+        paintTable(
+            ui.Canvas(recorder),
+            const Rect.fromLTWH(0, 0, 400, 120),
+            e.copyWith(rules: [
+              TableRule(
+                  column: "Form",
+                  match: "W",
+                  how: how,
+                  style:
+                      const TableCellStyle(background: Color(0xFF00FF00))),
+            ]));
+        var image = await recorder.endRecording().toImage(400, 120);
+        var pixels = (await image.toByteData(
+                format: ui.ImageByteFormat.rawStraightRgba))!
+            .buffer
+            .asUint8List();
+        image.dispose();
+
+        var minX = 400, maxX = 0, minY = 120, maxY = 0;
+        for (var y = 0; y < 120; y++) {
+          for (var x = 0; x < 400; x++) {
+            var i = (y * 400 + x) * 4;
+            if (pixels[i + 1] > 200 && pixels[i] < 80) {
+              minX = math.min(minX, x);
+              maxX = math.max(maxX, x);
+              minY = math.min(minY, y);
+              maxY = math.max(maxY, y);
+            }
+          }
+        }
+        return minX > maxX
+            ? Rect.zero
+            : Rect.fromLTRB(minX.toDouble(), minY.toDouble(), maxX.toDouble(),
+                maxY.toDouble());
+      }
+
+      var word = await greenBox(TableMatch.word);
+      var anywhere = await greenBox(TableMatch.anywhere);
+
+      expect(word, isNot(Rect.zero));
+      expect(word.width, lessThan(anywhere.width),
+          reason: "one letter's worth, not five");
+      expect(word.left, greaterThan(anywhere.left),
+          reason: "and at the end of the line, where the W is");
+    });
+
+    test("a rule saved before whole words still matches how it did", () {
+      // "loose" is what the two-way version wrote.
+      expect(
+          TableRule.fromJson({"match": "W", "loose": true, "style": const {}})
+              .how,
+          TableMatch.anywhere);
+      expect(TableRule.fromJson({"match": "W", "style": const {}}).how,
+          TableMatch.cell);
     });
 
     test("a border can be drawn on some sides and not others", () async {

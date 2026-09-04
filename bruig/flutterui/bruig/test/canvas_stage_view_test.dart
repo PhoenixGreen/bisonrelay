@@ -1,5 +1,6 @@
 import 'dart:ui' as ui;
 import 'dart:async';
+import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
@@ -60,6 +61,9 @@ void main() {
       providers: [
         ChangeNotifierProvider<ThemeNotifier>(
             create: (c) => ThemeNotifier(doLoad: false)),
+        // The stage reaches for it when a cell asks for a picture: adding one
+        // is how a picker reports that a file could not be read.
+        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
       ],
       child: MaterialApp(
         home: Scaffold(
@@ -902,6 +906,51 @@ void main() {
       var after = controller.document.elements.whereType<TableElement>().single;
       expect(after.cell(1, 1), "9");
       expect(after.cell(1, 0), "Hull City", reason: "and nothing else moved");
+    });
+
+    testWidgets("a cell editor has a picture button that can be pressed",
+        (tester) async {
+      // It did nothing three times over, so this pins the half that can be
+      // pinned here: the button is in the tree, a press reaches its callback,
+      // and the editor is still open afterwards -- which the picker needs,
+      // since it is opened from the editor's own callback and would otherwise
+      // be cancelled with it. The file dialog itself has no implementation in
+      // a widget test, so the last step is not reachable from here.
+      var pressed = 0;
+      await tester.pumpWidget(MultiProvider(
+        providers: [
+          ChangeNotifierProvider<ThemeNotifier>(
+              create: (c) => ThemeNotifier(doLoad: false)),
+        ],
+        child: MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: SizedBox(
+                width: 160,
+                height: 30,
+                child: CanvasCellEditor(
+                  value: "6",
+                  fontSize: 14,
+                  onChanged: (_) {},
+                  onDone: () {},
+                  onPickPicture: () => pressed++,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      var button = find.byTooltip("Put a picture in this cell");
+      expect(button, findsOneWidget);
+
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+
+      expect(pressed, 1);
+      expect(find.byType(CanvasCellEditor), findsOneWidget,
+          reason: "and the editor has not closed under it");
     });
 
     testWidgets("one click still just selects it", (tester) async {

@@ -172,6 +172,27 @@ class TableCellStyle {
       );
 }
 
+/// TableMatch is how a rule's text is looked for.
+enum TableMatch {
+  /// cell wants the whole cell. "W" does not find the W in "Won", and does
+  /// not find the W in "--- W" either.
+  cell("The whole cell"),
+
+  /// anywhere finds it inside anything, "Won" included.
+  anywhere("Anywhere in it"),
+
+  /// word finds it as a word of its own, so "W" finds the W in "--- W" and
+  /// not the W in "Won" -- and a chip is drawn round that word rather than
+  /// round the whole cell.
+  word("A whole word");
+
+  final String label;
+  const TableMatch(this.label);
+
+  static TableMatch fromName(String? name) =>
+      values.firstWhere((m) => m.name == name, orElse: () => TableMatch.cell);
+}
+
 /// TableRule is "these cells look like that".
 ///
 /// One mechanism for three things that were asked for separately, and they
@@ -201,9 +222,8 @@ class TableRule {
   /// match is the text to look for. Empty matches every cell.
   final String match;
 
-  /// exact wants the whole cell rather than a cell containing it. On by
-  /// default: "W" appearing inside "Won" is not what anybody typing W means.
-  final bool exact;
+  /// how the text is looked for. See [TableMatch].
+  final TableMatch how;
 
   final TableCellStyle style;
 
@@ -211,7 +231,7 @@ class TableRule {
     this.column = "",
     this.rows = "",
     this.match = "",
-    this.exact = true,
+    this.how = TableMatch.cell,
     this.style = const TableCellStyle(),
   });
 
@@ -262,25 +282,59 @@ class TableRule {
     return byNumber == null ? -2 : byNumber - 1;
   }
 
-  bool matches(String cell) {
-    if (match.isEmpty) return true;
-    return exact
-        ? cell.trim().toLowerCase() == match.trim().toLowerCase()
-        : cell.toLowerCase().contains(match.trim().toLowerCase());
+  bool matches(String cell) => match.isEmpty || runIn(cell) != null;
+
+  /// runIn is where the match falls inside [cell], or null when it does not.
+  ///
+  /// A range rather than a yes or no, because a chip round a word has to know
+  /// which part of the cell the word is -- "--- W" wants a box round the W
+  /// and not round the dashes.
+  (int, int)? runIn(String cell) {
+    var wanted = match.trim().toLowerCase();
+    if (wanted.isEmpty) return null;
+    var lower = cell.toLowerCase();
+
+    switch (how) {
+      case TableMatch.cell:
+        return cell.trim().toLowerCase() == wanted
+            ? (0, cell.length)
+            : null;
+      case TableMatch.anywhere:
+        var at = lower.indexOf(wanted);
+        return at < 0 ? null : (at, at + wanted.length);
+      case TableMatch.word:
+        // A whole word, so "W" finds the W in "--- W" and not the W in "Won".
+        // Bounded by anything that is not a letter or a digit, which is what
+        // a word ends at everywhere anybody would expect it to.
+        for (var at = lower.indexOf(wanted);
+            at >= 0;
+            at = lower.indexOf(wanted, at + 1)) {
+          var before = at == 0 ? "" : lower[at - 1];
+          var afterAt = at + wanted.length;
+          var after = afterAt >= lower.length ? "" : lower[afterAt];
+          if (!_wordish(before) && !_wordish(after)) {
+            return (at, afterAt);
+          }
+        }
+        return null;
+    }
   }
+
+  static bool _wordish(String c) =>
+      c.isNotEmpty && RegExp(r"[a-z0-9]").hasMatch(c);
 
   TableRule copyWith({
     String? column,
     String? rows,
     String? match,
-    bool? exact,
+    TableMatch? how,
     TableCellStyle? style,
   }) =>
       TableRule(
         column: column ?? this.column,
         rows: rows ?? this.rows,
         match: match ?? this.match,
-        exact: exact ?? this.exact,
+        how: how ?? this.how,
         style: style ?? this.style,
       );
 
@@ -288,7 +342,7 @@ class TableRule {
         if (column.isNotEmpty) "col": column,
         if (rows.isNotEmpty) "rows": rows,
         if (match.isNotEmpty) "match": match,
-        if (!exact) "loose": true,
+        if (how != TableMatch.cell) "how": how.name,
         "style": style.toJson(),
       };
 
@@ -299,7 +353,13 @@ class TableRule {
         rows: jsonString(json["rows"],
             json["row"] is num ? "${(json["row"] as num).toInt()}" : ""),
         match: jsonString(json["match"], ""),
-        exact: !jsonBool(json["loose"], false),
+        // "loose" is what the two-way version wrote, so a table saved before
+        // whole-word matching still finds what it was told to.
+        how: json["how"] is String
+            ? TableMatch.fromName(json["how"] as String?)
+            : (jsonBool(json["loose"], false)
+                ? TableMatch.anywhere
+                : TableMatch.cell),
         style: jsonSpec(json["style"], TableCellStyle.fromJson,
             const TableCellStyle()),
       );

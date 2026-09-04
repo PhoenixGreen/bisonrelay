@@ -2342,10 +2342,14 @@ void main() {
 
       await press(tester, find.byTooltip("Add a rule"));
       expect(tableIn(controller).rules.length, 1);
-      expect(find.byTooltip("Remove every cell"), findsOneWidget,
-          reason: "named for what it picks out, not 'rule 1'");
 
-      await press(tester, find.byTooltip("Remove every cell"));
+      // At the foot of the rule it removes rather than beside Add: one button
+      // per rule on one line is fine for two rules and is twenty buttons for
+      // twenty.
+      expect(find.byTooltip("Remove this rule"), findsNothing,
+          reason: "the rule is closed");
+      await press(tester, find.text("EVERY CELL"));
+      await press(tester, find.byTooltip("Remove this rule"));
       expect(tableIn(controller).rules, isEmpty);
     });
 
