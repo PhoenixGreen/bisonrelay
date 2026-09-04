@@ -2236,6 +2236,43 @@ List<Widget> _tableSettings(BuildContext context, TableElement e,
           onCommit: commit,
         ),
       ]),
+      // One mechanism for three things that were asked for separately, and
+      // they really are one: a green chip wherever a column says W is a rule
+      // about a column and a word, a highlighted row is a rule about a row,
+      // and a points column set slightly larger is a rule about a column.
+      _boxed(
+        context,
+        CanvasExpander(
+          label: "Special cells",
+          remember: "tableRules",
+          trailing: e.rules.isEmpty ? null : "${e.rules.length}",
+          children: [
+            for (var i = 0; i < e.rules.length; i++)
+              _tableRuleSettings(e, i, write, begin, commit),
+            CanvasControlGroup(label: "Add", bandOnlyLabel: true, children: [
+              CanvasIconButton(
+                icon: Icons.add_box_outlined,
+                tooltip: "Add a rule",
+                onPressed: () {
+                  begin();
+                  write(e.copyWith(rules: [
+                    ...e.rules,
+                    const TableRule(
+                        style: TableCellStyle(background: Color(0xFF2E7D32))),
+                  ]));
+                  commit();
+                },
+              ),
+              const CanvasHint(
+                  "A rule says which cells look different and how. Leave the "
+                  "column, the row or the text blank to mean any of them -- "
+                  "so a column and a word is a chip wherever that word "
+                  "appears, a row on its own is a highlighted row, and a "
+                  "column on its own restyles the whole column."),
+            ]),
+          ],
+        ),
+      ),
       // Two sets of type controls is a dozen rows of settings that are not
       // about the table, so they fold away like everything else that is long.
       _boxed(
@@ -2998,3 +3035,162 @@ Widget _pathNodeList(CanvasController controller, PathElement e,
           ),
       ],
     );
+
+/// _tableRuleSettings is one rule: which cells, and what they look like.
+Widget _tableRuleSettings(TableElement e, int index, _Write write,
+    VoidCallback begin, VoidCallback commit) {
+  var rule = e.rules[index];
+
+  void put(TableRule next) {
+    begin();
+    var out = [...e.rules];
+    out[index] = next;
+    write(e.copyWith(rules: out));
+  }
+
+  void now(TableRule next) {
+    put(next);
+    commit();
+  }
+
+  var style = rule.style;
+  void styled(TableCellStyle next) => now(rule.copyWith(style: next));
+
+  // Named for what it does rather than "Rule 3", so a list of them can be read
+  // without opening each one.
+  var name = [
+    if (rule.column.isNotEmpty) rule.column,
+    if (rule.row >= 1) "row ${rule.row}",
+    if (rule.match.isNotEmpty) '"${rule.match}"',
+  ].join(" ");
+
+  return CanvasExpander(
+    label: name.isEmpty ? "Every cell" : name,
+    children: [
+      CanvasControlGroup(label: "Which cells", children: [
+        CanvasTextField(
+          label: "Column",
+          value: rule.column,
+          hint: "any",
+          width: 96,
+          onChanged: (v) => put(rule.copyWith(column: v)),
+          onCommit: commit,
+        ),
+        CanvasNumberField(
+          label: "Row",
+          value: rule.row.toDouble(),
+          min: -1,
+          max: 999,
+          width: 54,
+          onChanged: (v) => put(rule.copyWith(row: v.round())),
+          onCommit: commit,
+        ),
+        CanvasTextField(
+          label: "Text",
+          value: rule.match,
+          hint: "any",
+          width: 96,
+          onChanged: (v) => put(rule.copyWith(match: v)),
+          onCommit: commit,
+        ),
+        CanvasDropdown<bool>(
+          label: "Matching",
+          value: rule.exact,
+          width: 104,
+          // Whole cell by default: "W" appearing inside "Won" is not what
+          // anybody typing W means.
+          options: const [(true, "The whole cell"), (false, "Anywhere in it")],
+          onChanged: (v) => now(rule.copyWith(exact: v)),
+        ),
+      ]),
+      CanvasControlGroup(label: "Look", children: [
+        CanvasColorButton(
+          label: "Background",
+          color: style.background,
+          onChanged: (c) => styled(style.copyWith(background: c)),
+        ),
+        CanvasColorButton(
+          label: "Text",
+          color: style.textColor,
+          onChanged: (c) => styled(style.copyWith(textColor: c)),
+        ),
+        CanvasColorButton(
+          label: "Border",
+          color: style.borderColor,
+          onChanged: (c) => styled(style.copyWith(borderColor: c)),
+        ),
+        const CanvasLineBreak(),
+        CanvasNumberField(
+          label: "Size",
+          value: style.fontScale,
+          min: 0.2,
+          max: 6,
+          decimals: 2,
+          width: 54,
+          onChanged: (v) => put(rule.copyWith(style: style.copyWith(
+              fontScale: v))),
+          onCommit: commit,
+        ),
+        CanvasNumberField(
+          label: "Weight",
+          value: style.weight.toDouble(),
+          min: 0,
+          max: 900,
+          width: 58,
+          onChanged: (v) => put(rule.copyWith(style: style.copyWith(
+              weight: v.round()))),
+          onCommit: commit,
+        ),
+        CanvasNumberField(
+          label: "Border w",
+          value: style.borderWidth,
+          min: 0,
+          max: 40,
+          decimals: 1,
+          width: 58,
+          onChanged: (v) => put(rule.copyWith(style: style.copyWith(
+              borderWidth: v))),
+          onCommit: commit,
+        ),
+        const CanvasLineBreak(),
+        CanvasNumberField(
+          label: "Radius",
+          value: style.radius,
+          min: 0,
+          max: 80,
+          decimals: 1,
+          width: 54,
+          onChanged: (v) =>
+              put(rule.copyWith(style: style.copyWith(radius: v))),
+          onCommit: commit,
+        ),
+        CanvasNumberField(
+          label: "Inset",
+          value: style.inset,
+          min: 0,
+          max: 60,
+          decimals: 1,
+          width: 54,
+          onChanged: (v) =>
+              put(rule.copyWith(style: style.copyWith(inset: v))),
+          onCommit: commit,
+        ),
+        CanvasIconButton(
+          icon: Icons.delete_outline,
+          tooltip: "Remove this rule",
+          onPressed: () {
+            begin();
+            write(e.copyWith(rules: [...e.rules]..removeAt(index)));
+            commit();
+          },
+        ),
+        const CanvasHint(
+            "Size multiplies the cell's own font size and weight overrides "
+            "it, so a column can be made bigger or bolder without giving it "
+            "a font of its own. Inset shrinks the coloured box inside its "
+            "cell, which is what makes a background a chip rather than a "
+            "filled cell."),
+      ]),
+    ],
+  );
+}

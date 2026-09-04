@@ -2430,6 +2430,125 @@ void _tableTests() {
       expect(await pixels(plain), isNot(orderedEquals(await pixels(upper))));
     });
 
+    test("a rule finds its column by name and its cells by their text", () {
+      // A heading, because that is what somebody looking at the table can
+      // see; the number is there for a table with no header row.
+      var e = table(rows: const [
+        ["Team", "Form"],
+        ["Hull City", "W"],
+        ["Leeds", "D"],
+      ]).copyWith(rules: const [
+        TableRule(
+            column: "Form",
+            match: "W",
+            style: TableCellStyle(background: Color(0xFF2E7D32))),
+      ]);
+
+      expect(e.styleFor(1, 1)?.background, const Color(0xFF2E7D32));
+      expect(e.styleFor(2, 1), isNull, reason: "D is not W");
+      expect(e.styleFor(1, 0), isNull, reason: "and Team is not Form");
+      expect(e.styleFor(0, 1), isNull,
+          reason: "nor is the heading, which says Form rather than W");
+    });
+
+    test("the whole cell, not a cell containing it", () {
+      // "W" inside "Won" is not what anybody typing W means.
+      var strict = TableElement(const ElementBase(id: "t"), rows: const [
+        ["Form"],
+        ["Won"],
+      ], rules: const [
+        TableRule(column: "Form", match: "W", style: TableCellStyle(
+            background: Color(0xFF2E7D32))),
+      ]);
+      expect(strict.styleFor(1, 0), isNull);
+
+      var loose = strict.copyWith(
+          rules: [strict.rules.single.copyWith(exact: false)]);
+      expect(loose.styleFor(1, 0), isNotNull);
+    });
+
+    test("a column, a row or a word on its own each mean something", () {
+      var e = TableElement(const ElementBase(id: "t"), rows: const [
+        ["Team", "Points"],
+        ["Hull", "6"],
+        ["Leeds", "4"],
+      ]);
+
+      // A column on its own restyles the column, header included.
+      var bigger = e.copyWith(rules: const [
+        TableRule(column: "Points", style: TableCellStyle(fontScale: 1.3)),
+      ]);
+      expect(bigger.styleFor(1, 1)?.fontScale, 1.3);
+      expect(bigger.styleFor(1, 0), isNull);
+
+      // A row on its own is a highlighted row, and is the one case drawn as a
+      // band rather than cell by cell.
+      var highlighted = e.copyWith(rules: const [
+        TableRule(row: 2, style: TableCellStyle(borderWidth: 3)),
+      ]);
+      expect(highlighted.rules.single.wholeRow, isTrue);
+      expect(highlighted.styleFor(1, 0)?.borderWidth, 3);
+      expect(highlighted.styleFor(2, 0), isNull);
+
+      // And a rule with a column as well is not a band any more.
+      expect(
+          const TableRule(row: 2, column: "Points").wholeRow, isFalse);
+    });
+
+    test("later rules win, field by field", () {
+      // A list of exceptions: the one written last is the one thought of
+      // last. Field by field, because a rule is an exception rather than a
+      // complete description.
+      var e = TableElement(const ElementBase(id: "t"), rows: const [
+        ["Points"],
+        ["6"],
+      ], rules: const [
+        TableRule(column: "Points", style: TableCellStyle(fontScale: 1.4)),
+        TableRule(
+            column: "Points",
+            style: TableCellStyle(background: Color(0xFF2E7D32))),
+      ]);
+
+      var style = e.styleFor(1, 0)!;
+      expect(style.background, const Color(0xFF2E7D32));
+      expect(style.fontScale, 1.4, reason: "kept from the first rule");
+    });
+
+    test("an unknown column matches nothing rather than everything", () {
+      // The failure that would otherwise be silent and total: a typo in the
+      // column name painting the whole table green.
+      var e = TableElement(const ElementBase(id: "t"), rows: const [
+        ["Team", "Points"],
+        ["Hull", "6"],
+      ], rules: const [
+        TableRule(column: "Pionts", style: TableCellStyle(fontScale: 2)),
+      ]);
+      expect(e.styleFor(1, 0), isNull);
+      expect(e.styleFor(1, 1), isNull);
+    });
+
+    test("rules change the picture, and survive a round trip", () async {
+      var plain = table();
+      var ruled = plain.copyWith(rules: const [
+        TableRule(
+            column: "Points",
+            match: "6",
+            style: TableCellStyle(
+                background: Color(0xFF2E7D32), radius: 6, inset: 4)),
+      ]);
+      expect(await pixels(plain), isNot(orderedEquals(await pixels(ruled))));
+
+      var back = CanvasDocument.decode(
+              CanvasDocument(elements: [ruled]).encode())!.elements.single
+          as TableElement;
+      expect(back.rules.single.column, "Points");
+      expect(back.rules.single.match, "6");
+      expect(back.rules.single.style.background, const Color(0xFF2E7D32));
+      expect(
+          plain.toJson().containsKey("rules"), isFalse,
+          reason: "and cost a table with none of them nothing");
+    });
+
     test("a cell may hold a comma, and survives the round trip", () {
       // Without quoting there is no way to write one at all, and "Brighton &
       // Hove Albion, 2nd" is an ordinary thing to want in a cell.

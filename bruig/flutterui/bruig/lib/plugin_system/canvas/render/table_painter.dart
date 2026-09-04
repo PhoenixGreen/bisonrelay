@@ -66,6 +66,20 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e) {
         Paint()..color = e.headerFill);
   }
 
+  // A rule that picks out a whole row is drawn as one band across the table
+  // rather than cell by cell, so its border is a border round the row and not
+  // a border round each of its cells.
+  y = rect.top;
+  for (var r = 0; r < e.rows.length; r++) {
+    var h = heights[r];
+    for (var rule in e.rules) {
+      if (!rule.wholeRow || rule.row - 1 != r) continue;
+      _paintStyleBox(canvas, Rect.fromLTWH(rect.left, y, rect.width, h),
+          rule.style);
+    }
+    y += h;
+  }
+
   // Cells.
   y = rect.top;
   for (var r = 0; r < e.rows.length; r++) {
@@ -75,6 +89,23 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e) {
       var w = widths[c];
       var isHeader = (e.headerRow && r == 0) || (e.headerColumn && c == 0);
       var spec = isHeader ? e.headerSpec : e.cellSpec;
+
+      // Whatever the rules say about this one. Drawn under its own text and
+      // over the row's fill, which is what makes a chip a chip.
+      var style = e.styleFor(r, c);
+      if (style != null) {
+        if (style.paintsBox && !_isWholeRowOnly(e, r, c)) {
+          _paintStyleBox(
+              canvas, Rect.fromLTWH(x, y, w, h), style);
+        }
+        if (style.changesType) {
+          spec = spec.copyWith(
+            fontSize: spec.fontSize * style.fontScale,
+            weight: style.weight == 0 ? spec.weight : style.weight,
+            color: style.textColor.a > 0 ? style.textColor : spec.color,
+          );
+        }
+      }
       // The spec's own vertical alignment, not the middle regardless. It was
       // forced here, so the Vertical setting on a table's type did nothing at
       // all -- and a table of one-line cells does want the middle, which is
@@ -122,6 +153,41 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e) {
           ..style = PaintingStyle.stroke
           ..strokeWidth = e.gridWidth
           ..color = e.gridColor);
+  }
+}
+
+/// _isWholeRowOnly is whether the only rules touching this cell are ones that
+/// already drew a band across its row -- so the band is not drawn again, once
+/// per cell, with a border between each.
+bool _isWholeRowOnly(TableElement e, int row, int col) {
+  var head = e.header;
+  for (var rule in e.rules) {
+    if (rule.row >= 1 && rule.row - 1 != row) continue;
+    var wanted = rule.columnIndex(head);
+    if (wanted == -2 || (wanted >= 0 && wanted != col)) continue;
+    if (!rule.matches(e.cell(row, col))) continue;
+    if (!rule.wholeRow && rule.style.paintsBox) return false;
+  }
+  return true;
+}
+
+/// _paintStyleBox fills and outlines one rule's box.
+void _paintStyleBox(ui.Canvas canvas, Rect cell, TableCellStyle style) {
+  var box = cell.deflate(style.inset.clamp(0.0, cell.shortestSide / 2));
+  if (box.width <= 0 || box.height <= 0) return;
+  var rounded = RRect.fromRectAndRadius(box, Radius.circular(style.radius));
+
+  if (style.background.a > 0) {
+    canvas.drawRRect(rounded, Paint()..color = style.background);
+  }
+  if (style.borderColor.a > 0 && style.borderWidth > 0) {
+    canvas.drawRRect(
+        RRect.fromRectAndRadius(box.deflate(style.borderWidth / 2),
+            Radius.circular(style.radius)),
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = style.borderWidth
+          ..color = style.borderColor);
   }
 }
 
