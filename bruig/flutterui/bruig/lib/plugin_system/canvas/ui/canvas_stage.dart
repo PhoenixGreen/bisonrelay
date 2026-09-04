@@ -21,6 +21,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_text_editor.dart';
+import 'package:bruig/plugin_system/canvas/ui/image_picking.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -1974,6 +1975,15 @@ class CanvasStageState extends State<CanvasStage> {
         onDone: () {
           controller.endInteraction();
           if (mounted) setState(() => _editingCell = null);
+        },
+        onPickPicture: () async {
+          var asset = await pickCanvasImage(context);
+          if (asset == null || !mounted) return;
+          controller.beginInteraction();
+          controller.replaceElement(_withCell(
+              element, row, col, "${TableElement.pictureCell}$asset"));
+          controller.endInteraction();
+          setState(() => _editingCell = null);
         },
       ),
     );

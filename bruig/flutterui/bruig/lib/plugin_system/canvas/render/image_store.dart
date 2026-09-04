@@ -6,6 +6,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_assets.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 // image_store.dart decodes the pictures a canvas uses, and cuts their
 // backgrounds out.
@@ -101,9 +102,11 @@ class CanvasImageStore extends ChangeNotifier implements CanvasImageSource {
         return;
       }
 
-      var codec = await ui.instantiateImageCodec(Uint8List.fromList(bytes));
-      var frame = await codec.getNextFrame();
-      var image = frame.image;
+      var image = await _decode(Uint8List.fromList(bytes));
+      if (image == null) {
+        _failed.add(key);
+        return;
+      }
 
       if (removal.active) {
         var cut = await _removeBackground(image, removal);
@@ -158,6 +161,62 @@ class CanvasImageStore extends ChangeNotifier implements CanvasImageSource {
     _images.clear();
     _order.clear();
     super.dispose();
+  }
+}
+
+/// _decode turns stored bytes into a picture, whatever kind of picture they
+/// are.
+///
+/// Vectors go through flutter_svg and come out as a bitmap, because
+/// everything downstream of here -- the background remover, the export, the
+/// canvas itself -- works on pixels. Rasterised once at [_vectorSize] rather
+/// than at the size it happens to be drawn: a badge in a table cell is drawn
+/// at forty pixels on screen and at four hundred in a poster export, and
+/// re-rasterising per frame would be a decode inside the paint loop.
+Future<ui.Image?> _decode(Uint8List bytes) async {
+  if (_looksLikeSvg(bytes)) return _rasterise(bytes);
+  try {
+    var codec = await ui.instantiateImageCodec(bytes);
+    return (await codec.getNextFrame()).image;
+  } catch (exception) {
+    debugPrint("Unable to decode a canvas picture: $exception");
+    return null;
+  }
+}
+
+/// _vectorSize is how large a vector is rasterised on its longest side.
+const int _vectorSize = 512;
+
+bool _looksLikeSvg(Uint8List bytes) =>
+    String.fromCharCodes(bytes.take(512)).toLowerCase().contains("<svg");
+
+Future<ui.Image?> _rasterise(Uint8List bytes) async {
+  try {
+    var info = await vg.loadPicture(
+        SvgStringLoader(String.fromCharCodes(bytes)), null);
+    try {
+      var size = info.size;
+      if (size.isEmpty) return null;
+      var scale = _vectorSize / math.max(size.width, size.height);
+      var width = math.max(1, (size.width * scale).round());
+      var height = math.max(1, (size.height * scale).round());
+
+      var recorder = ui.PictureRecorder();
+      var canvas = ui.Canvas(recorder);
+      canvas.scale(scale);
+      canvas.drawPicture(info.picture);
+      var picture = recorder.endRecording();
+      try {
+        return await picture.toImage(width, height);
+      } finally {
+        picture.dispose();
+      }
+    } finally {
+      info.picture.dispose();
+    }
+  } catch (exception) {
+    debugPrint("Unable to draw a canvas vector: $exception");
+    return null;
   }
 }
 

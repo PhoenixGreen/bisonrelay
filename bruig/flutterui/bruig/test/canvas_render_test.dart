@@ -2549,6 +2549,66 @@ void _tableTests() {
           reason: "and cost a table with none of them nothing");
     });
 
+    test("a cell can hold a picture instead of words", () async {
+      // Kept in the cell's own text rather than in a map of positions beside
+      // the grid: a map has to be renumbered every time a row is inserted,
+      // and one missed renumbering puts a badge against the wrong team.
+      expect(TableElement.pictureIn("img:abcdef1234567890"),
+          "abcdef1234567890");
+      expect(TableElement.pictureIn("Hull City"), isNull);
+      expect(TableElement.pictureIn("img:"), isNull,
+          reason: "the prefix on its own names nothing");
+
+      var picture = await _softBlob(40);
+      addTearDown(picture.dispose);
+      var e = TableElement(
+        const ElementBase(id: "t", width: 400, height: 200),
+        rows: const [
+          ["Team", "Badge"],
+          ["Hull City", "img:abcdef1234567890"],
+        ],
+      );
+
+      Future<Uint8List> drawn({bool withStore = true}) async {
+        var recorder = ui.PictureRecorder();
+        paintTable(ui.Canvas(recorder), const Rect.fromLTWH(0, 0, 400, 200), e,
+            images: withStore ? _Pictures(picture) : null);
+        var image = await recorder.endRecording().toImage(400, 200);
+        try {
+          return (await image.toByteData(
+                  format: ui.ImageByteFormat.rawStraightRgba))!
+              .buffer
+              .asUint8List();
+        } finally {
+          image.dispose();
+        }
+      }
+
+      expect(await drawn(), isNot(orderedEquals(await drawn(withStore: false))),
+          reason: "the picture is drawn when there is a store to get it from");
+
+      // And the cell's own text is never drawn as words, store or no store:
+      // "img:abcdef1234567890" across a badge column would be worse than a
+      // blank one.
+      var asWords = TableElement(
+        const ElementBase(id: "t", width: 400, height: 200),
+        rows: const [
+          ["Team", "Badge"],
+          ["Hull City", "abcdef1234567890"],
+        ],
+      );
+      var recorder = ui.PictureRecorder();
+      paintTable(
+          ui.Canvas(recorder), const Rect.fromLTWH(0, 0, 400, 200), asWords);
+      var image = await recorder.endRecording().toImage(400, 200);
+      var words = (await image.toByteData(
+              format: ui.ImageByteFormat.rawStraightRgba))!
+          .buffer
+          .asUint8List();
+      image.dispose();
+      expect(await drawn(withStore: false), isNot(orderedEquals(words)));
+    });
+
     test("a cell may hold a comma, and survives the round trip", () {
       // Without quoting there is no way to write one at all, and "Brighton &
       // Hove Albion, 2nd" is an ordinary thing to want in a cell.

@@ -3,7 +3,9 @@ import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
+import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:flutter/painting.dart';
 
 // table_painter.dart draws a TableElement.
@@ -15,7 +17,13 @@ import 'package:flutter/painting.dart';
 // nothing, which is the failure mode of every content-sized table.
 
 /// paintTable draws [e] filling [rect].
-void paintTable(ui.Canvas canvas, Rect rect, TableElement e) {
+///
+/// [images] is where a cell holding a picture gets it from. Null draws those
+/// cells as nothing rather than as their own asset id, which is the right
+/// answer while a picture is still loading and the only answer in a context
+/// with no store at all.
+void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
+    {CanvasImageSource? images}) {
   if (rect.width <= 4 || rect.height <= 4 || e.rows.isEmpty) {
     if (e.rows.isEmpty) _placeholder(canvas, rect, e);
     return;
@@ -90,6 +98,20 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e) {
       var isHeader = (e.headerRow && r == 0) || (e.headerColumn && c == 0);
       var spec = isHeader ? e.headerSpec : e.cellSpec;
 
+      // A picture, if the cell names one. Fitted inside the cell's padding
+      // and centred, so a column of badges lines up whatever shape each of
+      // them happens to be.
+      var asset = TableElement.pictureIn(e.cell(r, c));
+      if (asset != null) {
+        var image = images?.resolve(asset, const BackgroundRemoval());
+        if (image != null) {
+          _paintCellImage(canvas, image,
+              Rect.fromLTWH(x, y, w, h).deflate(e.cellPadding));
+        }
+        x += w;
+        continue;
+      }
+
       // Whatever the rules say about this one. Drawn under its own text and
       // over the row's fill, which is what makes a chip a chip.
       var style = e.styleFor(r, c);
@@ -154,6 +176,23 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e) {
           ..strokeWidth = e.gridWidth
           ..color = e.gridColor);
   }
+}
+
+/// _paintCellImage draws a picture inside a cell, contained rather than
+/// cropped: a badge with its sides cut off is not a badge.
+void _paintCellImage(ui.Canvas canvas, ui.Image image, Rect box) {
+  if (box.width <= 0 || box.height <= 0) return;
+  var size = Size(image.width.toDouble(), image.height.toDouble());
+  if (size.isEmpty) return;
+
+  var scale = math.min(box.width / size.width, box.height / size.height);
+  var drawn = Rect.fromCenter(
+      center: box.center,
+      width: size.width * scale,
+      height: size.height * scale);
+  canvas.drawImageRect(
+      image, Offset.zero & size, drawn, Paint()..filterQuality =
+          FilterQuality.high);
 }
 
 /// _isWholeRowOnly is whether the only rules touching this cell are ones that

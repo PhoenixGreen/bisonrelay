@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
+import 'package:flutter/foundation.dart';
 
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:crypto/crypto.dart';
@@ -158,6 +159,11 @@ class CanvasAssets {
   /// From the bytes rather than from the file name it came in under: a
   /// screenshot saved as ".jpg" that is really a PNG is common enough, and the
   /// point of the extension is that the operating system can open the file.
+  /// extensionForTest is [_extensionOf], which decides what a stored picture
+  /// is called and is worth checking without writing files.
+  @visibleForTesting
+  static String extensionForTest(List<int> bytes) => _extensionOf(bytes);
+
   static String _extensionOf(List<int> bytes) {
     if (bytes.length >= 8 &&
         bytes[0] == 0x89 &&
@@ -185,6 +191,14 @@ class CanvasAssets {
         bytes[11] == 0x50) {
       return ".webp";
     }
+    // A vector, which has no magic number: it is XML, so the only thing to go
+    // on is that it says so somewhere near the top. Checked over the first
+    // few hundred bytes rather than the first few, because a file routinely
+    // opens with an XML declaration, a doctype and a comment before it gets
+    // to the tag.
+    var head = String.fromCharCodes(bytes.take(512)).toLowerCase();
+    if (head.contains("<svg")) return ".svg";
+
     // Something else. Left without one rather than guessed at, since a wrong
     // extension is worse than none.
     return "";

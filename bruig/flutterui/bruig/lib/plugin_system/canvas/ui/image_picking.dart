@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:bruig/components/md_elements.dart';
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_assets.dart';
 import 'package:bruig/plugin_system/canvas/ui/picture_options_dialog.dart';
@@ -95,8 +96,12 @@ String _mimeOf(List<int> bytes) =>
 Future<String?> pickCanvasImage(BuildContext context) async {
   var snackbar = SnackBarModel.of(context);
 
+  // The extensions rather than FileType.image, which is the platform's idea
+  // of a picture and does not include SVG on macOS -- so the one format a
+  // badge in a table cell is nearly always in could not be chosen at all.
   var picked = await FilePicker.platform.pickFiles(
-    type: FileType.image,
+    type: FileType.custom,
+    allowedExtensions: const ["png", "jpg", "jpeg", "gif", "webp", "svg"],
     withData: false,
   );
   var chosen = picked?.files.singleOrNull?.path;
@@ -107,7 +112,10 @@ Future<String?> pickCanvasImage(BuildContext context) async {
     var bytes = await file.readAsBytes();
     var mime = lookupMimeType(chosen) ?? "image/png";
 
-    if (bytes.length > _compressAbove) {
+    // A vector has no pixels to scale and no quality to trade away, and
+    // putting one through the compressor would turn a few kilobytes of markup
+    // into a bitmap of whatever size it happened to be drawn at.
+    if (bytes.length > _compressAbove && !isSvgMime(mime)) {
       if (!context.mounted) return null;
       var result = await showCanvasPictureOptions(context,
           original: bytes, mime: mime, title: "Add a picture");

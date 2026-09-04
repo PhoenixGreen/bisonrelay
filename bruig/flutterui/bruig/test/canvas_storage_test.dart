@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:bruig/plugin_system/canvas/storage/canvas_assets.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -387,6 +388,25 @@ void main() {
       await File(path.join(pictures.path, "notes.txt")).writeAsString("hello");
 
       expect(await CanvasAssets.stored(), isEmpty);
+    });
+  });
+  group("what a stored picture is called", () {
+    test("a vector is recognised by what it says, not by a magic number", () {
+      // SVG is XML: there is no magic number, and a file routinely opens with
+      // a declaration, a doctype and a comment before it gets to the tag.
+      var svg = utf8.encode('<?xml version="1.0"?>\n<!-- a badge -->\n'
+          '<svg xmlns="http://www.w3.org/2000/svg"><rect/></svg>');
+      expect(CanvasAssets.extensionForTest(svg), ".svg");
+
+      expect(CanvasAssets.extensionForTest(utf8.encode("not a picture")), "");
+    });
+
+    test("the bitmaps still are", () {
+      expect(
+          CanvasAssets.extensionForTest(
+              [0x89, 0x50, 0x4E, 0x47, 0, 0, 0, 0]),
+          ".png");
+      expect(CanvasAssets.extensionForTest([0xFF, 0xD8, 0xFF]), ".jpg");
     });
   });
 }

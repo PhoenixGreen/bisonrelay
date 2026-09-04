@@ -182,11 +182,19 @@ class CanvasCellEditor extends StatefulWidget {
   final ValueChanged<String> onChanged;
   final VoidCallback onDone;
 
+  /// onPickPicture puts a picture in this cell instead of words.
+  ///
+  /// Offered here rather than behind a right-click menu, because this is
+  /// already the gesture for "I want to change this cell" -- and a menu with
+  /// one item on it is a menu nobody finds.
+  final VoidCallback onPickPicture;
+
   const CanvasCellEditor({
     required this.value,
     required this.fontSize,
     required this.onChanged,
     required this.onDone,
+    required this.onPickPicture,
     super.key,
   });
 
@@ -241,20 +249,36 @@ class _CanvasCellEditorState extends State<CanvasCellEditor> {
             borderRadius: BorderRadius.circular(3),
             side: BorderSide(color: theme.colors.primary, width: 1.5),
           ),
-          child: TextField(
-            controller: _text,
-            focusNode: _focus,
-            style: TextStyle(
-                fontSize: widget.fontSize.clamp(9, 40),
-                color: theme.colors.onSurface),
-            decoration: const InputDecoration(
-              isDense: true,
-              border: InputBorder.none,
-              contentPadding: EdgeInsets.symmetric(horizontal: 5, vertical: 4),
+          child: Row(children: [
+            Expanded(
+              child: TextField(
+                controller: _text,
+                focusNode: _focus,
+                style: TextStyle(
+                    fontSize: widget.fontSize.clamp(9, 40),
+                    color: theme.colors.onSurface),
+                decoration: const InputDecoration(
+                  isDense: true,
+                  border: InputBorder.none,
+                  contentPadding:
+                      EdgeInsets.symmetric(horizontal: 5, vertical: 4),
+                ),
+                onChanged: widget.onChanged,
+                onSubmitted: (_) => widget.onDone(),
+              ),
             ),
-            onChanged: widget.onChanged,
-            onSubmitted: (_) => widget.onDone(),
-          ),
+            Tooltip(
+              message: "Put a picture in this cell",
+              child: InkWell(
+                onTap: widget.onPickPicture,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: Icon(Icons.add_photo_alternate_outlined,
+                      size: 15, color: theme.colors.onSurfaceVariant),
+                ),
+              ),
+            ),
+          ]),
         ),
       ),
     );

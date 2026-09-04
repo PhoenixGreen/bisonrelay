@@ -281,6 +281,24 @@ class TableElement extends CanvasElement {
   int get columnCount =>
       rows.fold(0, (n, r) => r.length > n ? r.length : n);
 
+  /// pictureCell is the prefix that turns a cell into a picture.
+  ///
+  /// Kept in the cell's own text rather than in a map of positions beside the
+  /// grid. A map has to be renumbered every time a row is inserted or a
+  /// column removed, and one missed renumbering puts a badge against the
+  /// wrong team; text is carried by the cell it belongs to, whatever happens
+  /// to the rows around it. It also survives the round trip through the
+  /// pasted-text box for free.
+  static const String pictureCell = "img:";
+
+  /// pictureIn is the asset a cell names, or null when it is words.
+  static String? pictureIn(String cell) {
+    var text = cell.trim();
+    return text.startsWith(pictureCell) && text.length > pictureCell.length
+        ? text.substring(pictureCell.length)
+        : null;
+  }
+
   /// header is the first row when there is one, for resolving a rule's column
   /// by name. Empty otherwise, which makes every name fail to match and every
   /// number still work.

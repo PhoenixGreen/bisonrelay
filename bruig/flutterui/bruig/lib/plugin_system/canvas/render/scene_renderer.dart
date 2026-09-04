@@ -200,7 +200,7 @@ void paintElement(
       paintChart(canvas, bounds.deflate(bounds.shortestSide * 0.02), e,
           reveal: pose.values[KeyframeChannel.reveal] ?? 1);
     case TableElement e:
-      paintTable(canvas, bounds, e);
+      paintTable(canvas, bounds, e, images: images);
     case ButtonElement e:
       _paintButton(canvas, bounds, e, hovered);
     case BackgroundElement e:
