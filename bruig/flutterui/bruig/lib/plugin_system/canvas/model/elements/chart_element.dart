@@ -574,6 +574,95 @@ class ChartAnimation {
       );
 }
 
+/// LegendPlacement is which side of the chart the key sits on.
+enum LegendPlacement {
+  top("Top"),
+  bottom("Bottom"),
+  left("Left"),
+  right("Right");
+
+  final String label;
+  const LegendPlacement(this.label);
+
+  bool get isSide => this == left || this == right;
+
+  static LegendPlacement fromName(String? name) => values.firstWhere(
+        (p) => p.name == name,
+        orElse: () => LegendPlacement.top,
+      );
+}
+
+/// ChartLegend is everything about the key except whether it is shown.
+///
+/// Whether it is shown stays on the element as showLegend, where it already
+/// was and where every saved document already has it. Splitting a setting in
+/// two to tidy the model is how a chart that used to have a legend stops
+/// having one.
+class ChartLegend {
+  final LegendPlacement placement;
+
+  /// vertical puts one entry per line. Horizontal wraps them along the width
+  /// it is given, which is what a key over the top of a chart wants and what a
+  /// key down the side of one does not.
+  final bool vertical;
+
+  /// scale sizes the key against the chart's own label size, so a legend
+  /// stays in proportion when the labels are changed and can still be made
+  /// bigger or smaller than them.
+  final double scale;
+
+  /// spacing is the gap between one entry and the next, in ems of the key's
+  /// own type.
+  final double spacing;
+
+  /// values writes each entry's number beside its name.
+  ///
+  /// Its own switch rather than the chart's showValues. They are two
+  /// questions -- a bar chart may well want numbers on its bars and a key
+  /// without them, and a radial bar has nowhere to put a number *except* the
+  /// key -- and one switch answering both meant neither could be had alone.
+  final bool values;
+
+  const ChartLegend({
+    this.placement = LegendPlacement.top,
+    this.vertical = false,
+    this.scale = 1,
+    this.spacing = 1,
+    this.values = false,
+  });
+
+  ChartLegend copyWith({
+    LegendPlacement? placement,
+    bool? vertical,
+    double? scale,
+    double? spacing,
+    bool? values,
+  }) =>
+      ChartLegend(
+        placement: placement ?? this.placement,
+        vertical: vertical ?? this.vertical,
+        scale: scale ?? this.scale,
+        spacing: spacing ?? this.spacing,
+        values: values ?? this.values,
+      );
+
+  Map<String, dynamic> toJson() => {
+        "at": placement.name,
+        if (vertical) "vertical": true,
+        if (scale != 1) "scale": scale,
+        if (spacing != 1) "spacing": spacing,
+        if (values) "values": true,
+      };
+
+  factory ChartLegend.fromJson(Map<String, dynamic> json) => ChartLegend(
+        placement: LegendPlacement.fromName(json["at"] as String?),
+        vertical: jsonBool(json["vertical"], false),
+        scale: jsonDouble(json["scale"], 1).clamp(0.3, 4.0),
+        spacing: jsonDouble(json["spacing"], 1).clamp(0.0, 6.0),
+        values: jsonBool(json["values"], false),
+      );
+}
+
 /// ChartBody is where the chart itself is drawn inside its element, as
 /// fractions of the box.
 ///
@@ -670,6 +759,15 @@ class ChartElement extends CanvasElement {
   /// animation is how the chart draws itself on. See [ChartAnimation].
   final ChartAnimation animation;
 
+  /// legend is everything about the key except whether it is shown, which is
+  /// [showLegend]. See [ChartLegend].
+  final ChartLegend legend;
+
+  /// descriptionSpec is the description's own type, or null to follow the
+  /// label size -- which is where it started and is what every document saved
+  /// before this had.
+  final TextSpec? descriptionSpec;
+
   final String xAxisLabel;
   final String yAxisLabel;
 
@@ -724,6 +822,8 @@ class ChartElement extends CanvasElement {
     this.descriptionBox = const ChartLabel(height: 0.1),
     this.body = const ChartBody(),
     this.animation = const ChartAnimation(),
+    this.legend = const ChartLegend(),
+    this.descriptionSpec,
     this.xAxisLabel = "",
     this.yAxisLabel = "",
     this.showGrid = true,
@@ -747,6 +847,10 @@ class ChartElement extends CanvasElement {
   @override
   ElementKind get kind => ElementKind.chart;
 
+  /// descriptionText is the type the description is actually set in: its own
+  /// when it has been given one, and the label size otherwise.
+  TextSpec get descriptionText => descriptionSpec ?? labelSpec;
+
   @override
   CanvasElement rebase(ElementBase base) => _copy(base);
 
@@ -759,6 +863,8 @@ class ChartElement extends CanvasElement {
     ChartLabel? descriptionBox,
     ChartBody? body,
     ChartAnimation? animation,
+    ChartLegend? legend,
+    TextSpec? descriptionSpec,
     String? xAxisLabel,
     String? yAxisLabel,
     bool? showGrid,
@@ -787,6 +893,8 @@ class ChartElement extends CanvasElement {
           descriptionBox: descriptionBox,
           body: body,
           animation: animation,
+          legend: legend,
+          descriptionSpec: descriptionSpec,
           xAxisLabel: xAxisLabel,
           yAxisLabel: yAxisLabel,
           showGrid: showGrid,
@@ -819,6 +927,8 @@ class ChartElement extends CanvasElement {
     ChartLabel? descriptionBox,
     ChartBody? body,
     ChartAnimation? animation,
+    ChartLegend? legend,
+    TextSpec? descriptionSpec,
     String? xAxisLabel,
     String? yAxisLabel,
     bool? showGrid,
@@ -847,6 +957,8 @@ class ChartElement extends CanvasElement {
           descriptionBox: descriptionBox ?? this.descriptionBox,
           body: body ?? this.body,
           animation: animation ?? this.animation,
+          legend: legend ?? this.legend,
+          descriptionSpec: descriptionSpec ?? this.descriptionSpec,
           xAxisLabel: xAxisLabel ?? this.xAxisLabel,
           yAxisLabel: yAxisLabel ?? this.yAxisLabel,
           showGrid: showGrid ?? this.showGrid,
@@ -877,6 +989,12 @@ class ChartElement extends CanvasElement {
           "descBox": descriptionBox.toJson(),
         if (!body.isWhole) "body": body.toJson(),
         if (animation.on) "anim": animation.toJson(),
+        // Kept even with the legend switched off: turning it off and on
+        // again should find it where it was left, not back at the top in a
+        // row.
+        if (showLegend || legend.toJson().length > 1)
+          "legendSpec": legend.toJson(),
+        if (descriptionSpec != null) "descSpec": descriptionSpec!.toJson(),
         if (xAxisLabel.isNotEmpty) "xlabel": xAxisLabel,
         if (yAxisLabel.isNotEmpty) "ylabel": yAxisLabel,
         "grid": showGrid,
@@ -910,6 +1028,11 @@ class ChartElement extends CanvasElement {
           body: jsonSpec(json["body"], ChartBody.fromJson, const ChartBody()),
           animation: jsonSpec(json["anim"], ChartAnimation.fromJson,
               const ChartAnimation()),
+          legend: jsonSpec(json["legendSpec"], ChartLegend.fromJson,
+              const ChartLegend()),
+          descriptionSpec: json["descSpec"] is Map<String, dynamic>
+              ? TextSpec.fromJson(json["descSpec"] as Map<String, dynamic>)
+              : null,
           xAxisLabel: jsonString(json["xlabel"], ""),
           yAxisLabel: jsonString(json["ylabel"], ""),
           showGrid: jsonBool(json["grid"], true),

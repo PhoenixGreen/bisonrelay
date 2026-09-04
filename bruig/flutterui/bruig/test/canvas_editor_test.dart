@@ -2609,13 +2609,14 @@ void main() {
       await panel(tester);
       expect(find.text("AXES"), findsOneWidget);
       expect(find.text("X label"), findsOneWidget);
-      expect(find.text("KEYS"), findsOneWidget);
+      expect(find.text("VALUES"), findsOneWidget);
 
       await panel(tester, shape: (e) => e.copyWith(type: ChartType.pie));
       expect(find.text("AXES"), findsNothing);
       expect(find.text("X label"), findsNothing);
-      expect(find.text("KEYS"), findsOneWidget,
-          reason: "a pie still has a legend and values");
+      expect(find.text("VALUES"), findsOneWidget,
+          reason: "a pie still has values and a legend");
+      expect(find.text("LEGEND"), findsOneWidget);
     });
 
     testWidgets("a radial bar says where its numbers went", (tester) async {
@@ -2624,23 +2625,75 @@ void main() {
       // the legend switched off.
       const hint = "A radial bar has no room to write a number on and no axis "
           "to read one against, so its values go in the legend. Switch the "
-          "legend on to see them.";
+          "legend on, and its values with it, to see them.";
       Iterable<String> hints() => tester
           .widgetList<CanvasHint>(find.byType(CanvasHint))
           .map((h) => h.message);
 
       await panel(
           tester,
-          shape: (e) => e.copyWith(
-              type: ChartType.radialBar, showValues: true, showLegend: false));
+          shape: (e) =>
+              e.copyWith(type: ChartType.radialBar, showLegend: false));
+      expect(hints(), contains(hint));
+
+      // The legend on but its own values off is still nowhere for them to go:
+      // the two switches are separate now.
+      await panel(
+          tester,
+          shape: (e) =>
+              e.copyWith(type: ChartType.radialBar, showLegend: true));
       expect(hints(), contains(hint));
 
       await panel(
           tester,
           shape: (e) => e.copyWith(
-              type: ChartType.radialBar, showValues: true, showLegend: true));
+              type: ChartType.radialBar,
+              showLegend: true,
+              legend: const ChartLegend(values: true)));
       expect(hints(), isNot(contains(hint)),
-          reason: "with the legend on, the numbers are where it says");
+          reason: "with both on, the numbers are where it says");
+    });
+
+    testWidgets("the legend has a section of its own", (tester) async {
+      var controller = await panel(tester);
+
+      var legend = find.text("LEGEND");
+      await tester.ensureVisible(legend);
+      await tester.pumpAndSettle();
+      await tester.tap(legend);
+      await tester.pumpAndSettle();
+
+      expect(find.text("Place"), findsNothing, reason: "the key is off");
+
+      await press(tester, find.text("Show").last);
+      expect(chartIn(controller).showLegend, isTrue);
+      expect(find.text("Place"), findsOneWidget);
+      expect(find.text("Along"), findsOneWidget);
+      expect(find.byType(CanvasDropdown<LegendPlacement>), findsOneWidget);
+    });
+
+    testWidgets("the title and the description size separately",
+        (tester) async {
+      // The description took the label size, which is also the tick labels'
+      // -- so making the description bigger made the numbers up the side of
+      // the chart bigger with it.
+      var controller = await panel(tester);
+      var before = chartIn(controller).labelSpec.fontSize;
+
+      // Two "Size" fields, the title's first.
+      var sizes = find.ancestor(
+          of: find.text("Size"), matching: find.byType(CanvasNumberField));
+      expect(sizes, findsNWidgets(2));
+
+      await tester.enterText(
+          find.descendant(of: sizes.at(1), matching: find.byType(TextField)),
+          "44");
+      await tester.pump();
+
+      var after = chartIn(controller);
+      expect(after.descriptionText.fontSize, 44);
+      expect(after.labelSpec.fontSize, before,
+          reason: "and the axis labels are where they were");
     });
 
     testWidgets("a series is added beside the data, not in a section of its "

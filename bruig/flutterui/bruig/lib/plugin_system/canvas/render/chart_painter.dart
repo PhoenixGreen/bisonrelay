@@ -99,8 +99,8 @@ void paintChart(ui.Canvas canvas, Rect rect, ChartElement e,
 
 /// descriptionSpec is the description's type: the label size, softened, so it
 /// reads as a note under the title rather than as a second title.
-TextSpec descriptionSpec(ChartElement e) => e.labelSpec.copyWith(
-      color: e.labelSpec.color.withValues(alpha: 0.75),
+TextSpec descriptionSpec(ChartElement e) => e.descriptionText.copyWith(
+      color: e.descriptionText.color.withValues(alpha: 0.75),
       verticalAlign: VerticalAlignSpec.top,
     );
 
@@ -257,7 +257,11 @@ String _legendName(
   var name = i < e.data.categories.length && e.data.categories[i].isNotEmpty
       ? e.data.categories[i]
       : "${i + 1}";
-  if (!e.showValues) return name;
+  // The key's own switch, not the chart's. A bar chart may well want numbers
+  // on its bars and a key without them, and a radial bar has nowhere to put a
+  // number except the key -- one switch answering both meant neither could be
+  // had on its own.
+  if (!e.legend.values) return name;
   // Counting with its ring, like every other number on an animating chart.
   return "$name  ${_formatTick(value * slice.size.clamp(0.0, 1.0))}";
 }
@@ -268,35 +272,129 @@ String _legendName(
 List<(Color, String)> legendEntriesForTest(ChartElement e, double reveal) =>
     _legendEntries(e, reveal);
 
-/// _legend draws the keys along the top and returns what is left.
+/// legendLeavesForTest is what the chart gets once the key has taken its
+/// share -- which is the whole of what placement, direction, size and spacing
+/// actually decide.
+///
+/// Asked of the layout rather than read off a bitmap, because the key's own
+/// swatches are drawn in the series' colours: a test looking for "where the
+/// blue starts" finds the swatch, not the bars.
+@visibleForTesting
+Rect legendLeavesForTest(ChartElement e, Rect area, {double reveal = 1}) =>
+    _legend(ui.Canvas(ui.PictureRecorder()), area, e, reveal);
+
+/// _legend draws the key and returns what is left for the chart.
+///
+/// Laid out by measuring rather than into a reserved margin, in whichever
+/// direction it has been put, so a key of eleven names down the right takes
+/// the width it needs and a key of two along the top takes one line.
 Rect _legend(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
-  var spec = e.labelSpec;
+  var legend = e.legend;
+  var spec = e.labelSpec.copyWith(
+      fontSize: e.labelSpec.fontSize * legend.scale.clamp(0.3, 4.0));
+  var entries = _legendEntries(e, reveal);
+  if (entries.isEmpty || spec.fontSize <= 0) return area;
+
   var swatch = spec.fontSize * 0.7;
   var gap = spec.fontSize * 0.5;
-  var x = area.left;
-  var y = area.top;
   var rowHeight = spec.fontSize * 1.6;
+  var between = spec.fontSize * legend.spacing.clamp(0.0, 6.0);
 
-  for (var (colour, name) in _legendEntries(e, reveal)) {
-    var painter = layoutText(name, spec, maxWidth: area.width);
-    var itemWidth = swatch + gap * 0.6 + painter.width + gap * 1.6;
-    if (x + itemWidth > area.right && x > area.left) {
-      x = area.left;
-      y += rowHeight;
+  // Down the side, the key gets a third of the width to wrap its names in;
+  // along the top it gets all of it. Either way the width it *takes* is the
+  // width it turns out to need.
+  var room = legend.placement.isSide ? area.width * 0.34 : area.width;
+
+  var items = [
+    for (var (colour, name) in entries)
+      (
+        colour,
+        layoutText(name, spec, maxWidth: math.max(1, room - swatch - gap))
+      ),
+  ];
+
+  // Laid out into rows before anything is drawn, so the block's own size is
+  // known and the placement can be worked out from it.
+  var rows = <List<(Color, TextPainter)>>[];
+  var row = <(Color, TextPainter)>[];
+  var used = 0.0;
+  for (var item in items) {
+    if (legend.vertical) {
+      rows.add([item]);
+      continue;
     }
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-          Rect.fromLTWH(x, y + (rowHeight - swatch) / 2, swatch, swatch),
-          Radius.circular(swatch * 0.25)),
-      Paint()..color = colour,
-    );
-    painter.paint(
-        canvas, Offset(x + swatch + gap * 0.6, y + (rowHeight - painter.height) / 2));
-    x += itemWidth;
+    var width = swatch + gap * 0.6 + item.$2.width;
+    if (row.isNotEmpty && used + between + width > room) {
+      rows.add(row);
+      row = [];
+      used = 0;
+    }
+    used += (row.isEmpty ? 0 : between) + width;
+    row.add(item);
+  }
+  if (row.isNotEmpty) rows.add(row);
+
+  var rowGap = legend.vertical ? between * 0.35 : 0.0;
+  var blockHeight = rows.length * rowHeight + (rows.length - 1) * rowGap;
+  var blockWidth = 0.0;
+  for (var r in rows) {
+    var w = 0.0;
+    for (var i = 0; i < r.length; i++) {
+      w += (i > 0 ? between : 0) + swatch + gap * 0.6 + r[i].$2.width;
+    }
+    blockWidth = math.max(blockWidth, w);
   }
 
-  return Rect.fromLTRB(
-      area.left, y + rowHeight + e.labelSpec.fontSize * 0.4, area.right, area.bottom);
+  var pad = spec.fontSize * 0.5;
+  var (origin, left) = switch (legend.placement) {
+    LegendPlacement.top => (
+        Offset(area.left, area.top),
+        Rect.fromLTRB(
+            area.left, area.top + blockHeight + pad, area.right, area.bottom),
+      ),
+    LegendPlacement.bottom => (
+        Offset(area.left, area.bottom - blockHeight),
+        Rect.fromLTRB(area.left, area.top, area.right,
+            area.bottom - blockHeight - pad),
+      ),
+    LegendPlacement.left => (
+        Offset(area.left, area.top),
+        Rect.fromLTRB(
+            area.left + blockWidth + pad, area.top, area.right, area.bottom),
+      ),
+    LegendPlacement.right => (
+        Offset(area.right - blockWidth, area.top),
+        Rect.fromLTRB(
+            area.left, area.top, area.right - blockWidth - pad, area.bottom),
+      ),
+  };
+
+  var y = origin.dy;
+  for (var r in rows) {
+    var x = origin.dx;
+    for (var i = 0; i < r.length; i++) {
+      if (i > 0) x += between;
+      var (colour, painter) = r[i];
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+            Rect.fromLTWH(x, y + (rowHeight - swatch) / 2, swatch, swatch),
+            Radius.circular(swatch * 0.25)),
+        Paint()..color = colour,
+      );
+      painter.paint(canvas,
+          Offset(x + swatch + gap * 0.6, y + (rowHeight - painter.height) / 2));
+      x += swatch + gap * 0.6 + painter.width;
+    }
+    y += rowHeight + rowGap;
+  }
+
+  // Never all of it. A key given more room than the chart is a key with a
+  // chart in the corner, and a key sized up until there is nothing left draws
+  // over an empty rectangle rather than reporting an error nobody can act on.
+  if (left.width < area.width * 0.35 || left.height < area.height * 0.35) {
+    return area;
+  }
+  return left;
 }
 
 /// _ValueRange is the axis and its ticks, worked out together.
@@ -1046,6 +1144,29 @@ void _circular(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
         }
         canvas.drawPath(path, web);
       }
+      // The scale, up the spoke that points at twelve o'clock.
+      //
+      // Not a number at every corner of every shape, which is where these
+      // started: a radar of three series is thirty numbers scattered round a
+      // ring, most of them sitting on a line or on each other. One scale on
+      // one spoke is what the rings already mean, written down.
+      if (e.showValues) {
+        for (var ringIndex = 1; ringIndex <= 4; ringIndex++) {
+          var at = spoke(0, ringIndex / 4);
+          paintTextInBox(
+              canvas,
+              _formatTick(maxV * ringIndex / 4),
+              e.valueSpec.copyWith(
+                  align: TextAlignSpec.left,
+                  verticalAlign: VerticalAlignSpec.middle),
+              Rect.fromLTWH(
+                  at.dx + e.valueSpec.fontSize * 0.35,
+                  at.dy - e.valueSpec.fontSize,
+                  e.valueSpec.fontSize * 5,
+                  e.valueSpec.fontSize * 2));
+        }
+      }
+
       for (var i = 0; i < axes; i++) {
         canvas.drawLine(centre, spoke(i, 1), web);
         paintTextInBox(
@@ -1083,33 +1204,6 @@ void _circular(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
               ..strokeWidth = e.strokeWidth
               ..color = colour);
 
-        // The numbers, at the corners of the shape. A radar had none at all:
-        // the switch was there and did nothing, which is the same fault the
-        // legend and the smooth setting had.
-        //
-        // Pushed a little further out than the corner it belongs to, along
-        // the spoke, so it clears the shape's own edge rather than sitting on
-        // the line.
-        if (!e.showValues) continue;
-        for (var i = 0; i < axes; i++) {
-          var v = data.valueAt(s, i);
-          if (v == 0) continue;
-          var reach = (v.abs() / maxV * slice.size).clamp(0.0, 1.3);
-          var at = spoke(i, reach) +
-              (spoke(i, reach) - centre) * (e.valueSpec.fontSize * 0.9 /
-                  math.max(1, (spoke(i, reach) - centre).distance));
-          paintTextInBox(
-              canvas,
-              _formatTick(v * slice.size.clamp(0.0, 1.0)),
-              e.valueSpec.copyWith(
-                  align: TextAlignSpec.center,
-                  verticalAlign: VerticalAlignSpec.middle,
-                  color: slice.tint(e.valueSpec.color)),
-              Rect.fromCenter(
-                  center: at,
-                  width: e.valueSpec.fontSize * 5,
-                  height: e.valueSpec.fontSize * 1.6));
-        }
       }
 
     default:

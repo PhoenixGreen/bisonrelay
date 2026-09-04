@@ -1997,17 +1997,30 @@ void _chartTests() {
         const ElementBase(id: "c", width: 400, height: 300),
         type: ChartType.radialBar,
         showLegend: true,
-        showValues: true,
+        legend: const ChartLegend(values: true),
         data: ChartData.parse("Cat\tShare\nOne\t10\nTwo\t20"),
       );
 
       expect(legendEntriesForTest(e, 1).map((k) => k.$2),
           ["One  10", "Two  20"]);
+
+      // The key's own switch, not the chart's. A bar chart may want numbers on
+      // its bars and a key without them, and a radial bar has nowhere to put a
+      // number except the key -- one switch answering both meant neither could
+      // be had on its own.
       expect(
-          legendEntriesForTest(e.copyWith(showValues: false), 1)
+          legendEntriesForTest(
+                  e.copyWith(legend: const ChartLegend()), 1)
+              .map((k) => k.$2),
+          ["One", "Two"]);
+      expect(
+          legendEntriesForTest(
+                  e.copyWith(
+                      showValues: true, legend: const ChartLegend()),
+                  1)
               .map((k) => k.$2),
           ["One", "Two"],
-          reason: "and only when the values are asked for");
+          reason: "numbers on the chart do not put numbers in the key");
     });
 
     test("they count with the rings", () {
@@ -2016,7 +2029,7 @@ void _chartTests() {
         const ElementBase(id: "c", width: 400, height: 300),
         type: ChartType.radialBar,
         showLegend: true,
-        showValues: true,
+        legend: const ChartLegend(values: true),
         data: ChartData.parse("Cat\tShare\nOne\t10"),
         animation: const ChartAnimation(
             preset: ChartAnimationPreset.grow, ease: ChartEase.linear),
@@ -2030,9 +2043,118 @@ void _chartTests() {
       expect(legendEntriesForTest(e, 1).map((k) => k.$2), ["A", "B"]);
     });
 
-    test("a radar draws its values", () async {
-      // The switch was there and did nothing, which is the same fault the
-      // legend and the smooth setting had.
+    test("the legend goes where it is put and takes only what it needs", () {
+      const area = Rect.fromLTWH(0, 0, 400, 300);
+      var e = _two(ChartType.groupedBar).copyWith(showLegend: true);
+
+      Rect leftFor(ChartLegend legend) =>
+          legendLeavesForTest(e.copyWith(legend: legend), area);
+
+      var top = leftFor(const ChartLegend());
+      var bottom =
+          leftFor(const ChartLegend(placement: LegendPlacement.bottom));
+      var onLeft = leftFor(const ChartLegend(placement: LegendPlacement.left));
+      var onRight =
+          leftFor(const ChartLegend(placement: LegendPlacement.right));
+
+      expect(top.top, greaterThan(area.top));
+      expect(top.bottom, area.bottom, reason: "and nothing off the bottom");
+      expect(bottom.bottom, lessThan(area.bottom));
+      expect(bottom.top, area.top);
+      expect(onLeft.left, greaterThan(area.left));
+      expect(onRight.right, lessThan(area.right));
+      expect(onRight.left, area.left);
+    });
+
+    test("a vertical key takes more height and less width", () {
+      const area = Rect.fromLTWH(0, 0, 400, 300);
+      var e = _two(ChartType.groupedBar).copyWith(showLegend: true);
+
+      var across = legendLeavesForTest(
+          e.copyWith(legend: const ChartLegend()), area);
+      var down = legendLeavesForTest(
+          e.copyWith(legend: const ChartLegend(vertical: true)), area);
+
+      expect(down.height, lessThan(across.height),
+          reason: "one entry per line is two lines rather than one");
+    });
+
+    test("a bigger key leaves the chart less room", () {
+      const area = Rect.fromLTWH(0, 0, 400, 300);
+      var e = _two(ChartType.groupedBar).copyWith(showLegend: true);
+
+      var normal = legendLeavesForTest(
+          e.copyWith(legend: const ChartLegend()), area);
+      var large = legendLeavesForTest(
+          e.copyWith(legend: const ChartLegend(scale: 2.5)), area);
+      expect(large.height, lessThan(normal.height));
+
+      // Spacing pushes the entries apart, which wraps them onto more lines.
+      var spread = legendLeavesForTest(
+          e.copyWith(legend: const ChartLegend(spacing: 6)), area);
+      expect(spread.height, lessThanOrEqualTo(normal.height));
+    });
+
+    test("a key that would leave no chart is not given the room", () {
+      // Sized up until there is nothing left, it draws over an empty
+      // rectangle rather than reporting an error nobody can act on.
+      const area = Rect.fromLTWH(0, 0, 400, 300);
+      var e = _two(ChartType.groupedBar).copyWith(
+          showLegend: true,
+          labelSpec: const TextSpec(fontSize: 40),
+          legend: const ChartLegend(vertical: true, scale: 4));
+
+      expect(legendLeavesForTest(e, area), area,
+          reason: "the chart keeps its area rather than being squeezed out");
+    });
+
+    test("the key's size and spacing survive a round trip", () {
+      var element = ChartElement(
+        const ElementBase(id: "c", width: 400, height: 300),
+        showLegend: true,
+        legend: const ChartLegend(
+            placement: LegendPlacement.right,
+            vertical: true,
+            scale: 1.6,
+            spacing: 2.5,
+            values: true),
+      );
+      var back = CanvasDocument.decode(
+              CanvasDocument(elements: [element]).encode())!.elements.single
+          as ChartElement;
+
+      expect(back.legend.placement, LegendPlacement.right);
+      expect(back.legend.vertical, isTrue);
+      expect(back.legend.scale, 1.6);
+      expect(back.legend.spacing, 2.5);
+      expect(back.legend.values, isTrue);
+    });
+
+    test("a description can be sized without moving the axis labels", () {
+      // It took the label size, which is also the tick labels' -- so making
+      // the description bigger made the numbers up the side bigger with it.
+      var e = ChartElement(
+        const ElementBase(id: "c", width: 400, height: 300),
+        labelSpec: const TextSpec(fontSize: 12),
+      );
+      expect(e.descriptionText.fontSize, 12,
+          reason: "it follows the labels until it is given a size");
+
+      var sized = e.copyWith(
+          descriptionSpec: e.descriptionText.copyWith(fontSize: 30));
+      expect(sized.descriptionText.fontSize, 30);
+      expect(sized.labelSpec.fontSize, 12);
+
+      var back = CanvasDocument.decode(
+              CanvasDocument(elements: [sized]).encode())!.elements.single
+          as ChartElement;
+      expect(back.descriptionText.fontSize, 30);
+    });
+
+    test("a radar's values are a scale up one spoke", () async {
+      // Not a number at every corner of every shape, which is where these
+      // started: a radar of three series is thirty numbers scattered round a
+      // ring, most of them sitting on a line or on each other.
       const red = ui.Color(0xFFFF0000);
       var e = ChartElement(
         const ElementBase(id: "c", width: 400, height: 300),

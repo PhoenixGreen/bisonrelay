@@ -1614,8 +1614,10 @@ List<Widget> _chartSettings(BuildContext context, CanvasController controller,
     String text,
     ChartLabel box,
     ChartLabel whenPlaced,
+    double size,
     ChartElement Function(String) withText,
     ChartElement Function(ChartLabel) withBox,
+    ChartElement Function(double) withSize,
   ) =>
       [
         // No caption of its own: the group above it is already called Title.
@@ -1631,6 +1633,20 @@ List<Widget> _chartSettings(BuildContext context, CanvasController controller,
           value: box.show,
           onChanged: (v) => now(withBox(box.copyWith(show: v))),
         ),
+        if (box.show)
+          CanvasNumberField(
+            label: "Size",
+            min: 4,
+            max: 400,
+            decimals: 1,
+            width: 58,
+            value: size,
+            onChanged: (v) {
+              begin();
+              write(withSize(v));
+            },
+            onCommit: commit,
+          ),
         if (box.show && text.isNotEmpty)
           CanvasIconButton(
             icon: box.placed ? Icons.push_pin : Icons.auto_awesome_mosaic,
@@ -1702,19 +1718,31 @@ List<Widget> _chartSettings(BuildContext context, CanvasController controller,
             "under Series below."),
     ]),
     CanvasControlGroup(label: "Title", children: [
-      ...labelControls(e.title, e.titleBox, defaultTitlePlacement,
-          (v) => e.copyWith(title: v), (b) => e.copyWith(titleBox: b)),
+      ...labelControls(
+          e.title,
+          e.titleBox,
+          defaultTitlePlacement,
+          e.titleSpec.fontSize,
+          (v) => e.copyWith(title: v),
+          (b) => e.copyWith(titleBox: b),
+          (v) => e.copyWith(titleSpec: e.titleSpec.copyWith(fontSize: v))),
     ]),
     CanvasControlGroup(label: "Description", children: [
       // Under the title, not on top of it. A description above a title is
       // almost never what anybody means, and two labels placed at the same
       // corner is what that looked like.
+      // Its own size, not the label size it starts at. Sharing meant making
+      // the description bigger made the numbers up the side of the chart
+      // bigger with it.
       ...labelControls(
           e.description,
           e.descriptionBox,
           defaultDescriptionPlacement(e.titleBox, e.title.isNotEmpty),
+          e.descriptionText.fontSize,
           (v) => e.copyWith(description: v),
-          (b) => e.copyWith(descriptionBox: b)),
+          (b) => e.copyWith(descriptionBox: b),
+          (v) => e.copyWith(
+              descriptionSpec: e.descriptionText.copyWith(fontSize: v))),
     ]),
     // Its own section, opened and closed. The numbers are the longest thing in
     // these settings and the least often changed once they are right, so they
@@ -1845,28 +1873,96 @@ List<Widget> _chartSettings(BuildContext context, CanvasController controller,
           onChanged: (v) => now(e.copyWith(showAxes: v)),
         ),
       ]),
-    CanvasControlGroup(label: "Keys", children: [
+    CanvasControlGroup(label: "Values", children: [
       CanvasToggle(
-        label: "Legend",
-        value: e.showLegend,
-        onChanged: (v) => now(e.copyWith(showLegend: v)),
-      ),
-      CanvasToggle(
-        label: "Values",
+        label: "On the chart",
         value: e.showValues,
         onChanged: (v) => now(e.copyWith(showValues: v)),
       ),
       // Rings a few pixels thick have nowhere to write a number and no axis to
-      // read one against, so theirs go in the legend -- which is no use with
-      // the legend switched off.
-      if (e.type == ChartType.radialBar &&
-          e.showValues &&
-          !e.showLegend)
+      // read one against, so theirs go in the key -- which is no use with the
+      // key switched off.
+      if (e.type == ChartType.radialBar && !(e.showLegend && e.legend.values))
         const CanvasHint(
             "A radial bar has no room to write a number on and no axis to "
             "read one against, so its values go in the legend. Switch the "
-            "legend on to see them."),
+            "legend on, and its values with it, to see them."),
     ]),
+    _boxed(
+      context,
+      CanvasExpander(
+        label: "Legend",
+        trailing: e.showLegend ? e.legend.placement.label : "off",
+        children: [
+          CanvasControlGroup(label: "Legend", bandOnlyLabel: true, children: [
+            CanvasToggle(
+              label: "Show",
+              value: e.showLegend,
+              onChanged: (v) => now(e.copyWith(showLegend: v)),
+            ),
+            if (e.showLegend) ...[
+              // Its own switch, not the chart's. A bar chart may want numbers
+              // on its bars and a key without them, and a radial bar has
+              // nowhere to put a number except the key.
+              CanvasToggle(
+                label: "Values",
+                value: e.legend.values,
+                onChanged: (v) =>
+                    now(e.copyWith(legend: e.legend.copyWith(values: v))),
+              ),
+              const CanvasLineBreak(),
+              CanvasDropdown<LegendPlacement>(
+                label: "Place",
+                value: e.legend.placement,
+                width: 104,
+                options: [for (var p in LegendPlacement.values) (p, p.label)],
+                onChanged: (v) =>
+                    now(e.copyWith(legend: e.legend.copyWith(placement: v))),
+              ),
+              CanvasDropdown<bool>(
+                label: "Along",
+                value: e.legend.vertical,
+                width: 104,
+                options: const [(false, "A row"), (true, "A column")],
+                onChanged: (v) =>
+                    now(e.copyWith(legend: e.legend.copyWith(vertical: v))),
+              ),
+              const CanvasLineBreak(),
+              CanvasNumberField(
+                label: "Size",
+                min: 0.3,
+                max: 4,
+                decimals: 2,
+                width: 58,
+                value: e.legend.scale,
+                onChanged: (v) {
+                  begin();
+                  write(e.copyWith(legend: e.legend.copyWith(scale: v)));
+                },
+                onCommit: commit,
+              ),
+              CanvasNumberField(
+                label: "Spacing",
+                min: 0,
+                max: 6,
+                decimals: 2,
+                width: 62,
+                value: e.legend.spacing,
+                onChanged: (v) {
+                  begin();
+                  write(e.copyWith(legend: e.legend.copyWith(spacing: v)));
+                },
+                onCommit: commit,
+              ),
+              const CanvasHint(
+                  "Size is measured against the chart's own label size, so "
+                  "the key stays in proportion when those are changed. "
+                  "Spacing is the gap between one entry and the next."),
+            ],
+          ]),
+        ],
+      ),
+    ),
     CanvasControlGroup(label: "Style", children: [
       CanvasColorButton(
         label: "Grid",
