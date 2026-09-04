@@ -12,6 +12,8 @@ import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
+import 'package:bruig/plugin_system/canvas/render/table_painter.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/presets/builtin_presets.dart';
@@ -1425,6 +1427,7 @@ void main() {
   });
 
   _chartTests();
+  _tableTests();
 }
 
 
@@ -2349,6 +2352,118 @@ void _chartTests() {
       expect(after.valueAt(0, 0), 11);
       expect(after.series[1].type, ChartType.line);
       expect(after.series[1].color, before.series[1].color);
+    });
+  });
+}
+
+void _tableTests() {
+  group("a table", () {
+    TableElement table({
+      bool headerColumn = false,
+      TextSpec? cell,
+      List<List<String>>? rows,
+    }) =>
+        TableElement(
+          const ElementBase(id: "t", width: 400, height: 200),
+          rows: rows ??
+              const [
+                ["Team", "Points"],
+                ["Hull City", "6"],
+                ["Leeds United", "4"],
+              ],
+          headerColumn: headerColumn,
+          cellSpec: cell ??
+              const TextSpec(fontSize: 14, align: TextAlignSpec.left),
+        );
+
+    Future<Uint8List> pixels(TableElement e,
+        {int width = 400, int height = 200}) async {
+      var recorder = ui.PictureRecorder();
+      paintTable(ui.Canvas(recorder),
+          Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()), e);
+      var image = await recorder.endRecording().toImage(width, height);
+      try {
+        return (await image.toByteData(
+                format: ui.ImageByteFormat.rawStraightRgba))!
+            .buffer
+            .asUint8List();
+      } finally {
+        image.dispose();
+      }
+    }
+
+    test("the header column is drawn, not merely typed", () async {
+      // The switch changed the type in column one and nothing else, so on a
+      // table whose header type and cell type had been made to match it did
+      // nothing anybody could see. The header row has had a fill all along.
+      var plain = table();
+      var withColumn = table(headerColumn: true);
+      expect(await pixels(plain), isNot(orderedEquals(await pixels(withColumn))));
+
+      // Even when the two types are identical, which is the case that used to
+      // draw nothing at all.
+      var same = plain.copyWith(headerSpec: plain.cellSpec);
+      expect(await pixels(same),
+          isNot(orderedEquals(await pixels(same.copyWith(headerColumn: true)))));
+    });
+
+    test("the cell type's vertical alignment is used", () async {
+      // It was forced to the middle in the painter, so the setting did
+      // nothing -- and a table of one-line cells does want the middle, which
+      // is why it is the default rather than an override.
+      var middle = table(
+          cell: const TextSpec(
+              fontSize: 14, verticalAlign: VerticalAlignSpec.middle));
+      var top = table(
+          cell: const TextSpec(
+              fontSize: 14, verticalAlign: VerticalAlignSpec.top));
+      expect(await pixels(middle), isNot(orderedEquals(await pixels(top))));
+    });
+
+    test("the case is applied wherever words are drawn", () async {
+      // It was applied by the callers -- five of them, each remembering to
+      // write spec.textCase.apply(text) -- so every painter written
+      // afterwards forgot, and Case did nothing on a table or a chart.
+      var plain = table(cell: const TextSpec(fontSize: 14));
+      var upper =
+          table(cell: const TextSpec(fontSize: 14, textCase: TextCase.upper));
+      expect(await pixels(plain), isNot(orderedEquals(await pixels(upper))));
+    });
+
+    test("a cell may hold a comma, and survives the round trip", () {
+      // Without quoting there is no way to write one at all, and "Brighton &
+      // Hove Albion, 2nd" is an ordinary thing to want in a cell.
+      var rows = [
+        ["Team", "Note"],
+        ["Hull City", "Won 3, drew 0"],
+        ["Leeds", 'Said "up"'],
+      ];
+      var text = TableElement(const ElementBase(id: "t"), rows: rows).asText();
+      expect(text.contains('"Won 3, drew 0"'), isTrue);
+      expect(TableElement.parseRows(text), rows);
+    });
+
+    test("a table is written with commas, not tabs", () {
+      // A tab in a text field is a wide invisible gap that cannot be typed
+      // without leaving the field, so a table written with tabs could be read
+      // and not edited -- and editing is the one thing that box is for.
+      var text = TableElement(const ElementBase(id: "t"), rows: const [
+        ["Team", "Points"],
+        ["Hull City", "6"],
+      ]).asText();
+      expect(text.contains("\t"), isFalse);
+      expect(text, "Team,Points\nHull City,6");
+    });
+
+    test("a pasted spreadsheet still arrives on tabs", () {
+      // Tabs first, because a spreadsheet paste always uses them and a cell
+      // may well contain a comma.
+      expect(
+          TableElement.parseRows("Team\tNote\nHull, City\t6"),
+          [
+            ["Team", "Note"],
+            ["Hull, City", "6"],
+          ]);
     });
   });
 }

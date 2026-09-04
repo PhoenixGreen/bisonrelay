@@ -105,9 +105,9 @@ class TableElement extends CanvasElement {
     return col >= 0 && col < r.length ? r[col] : "";
   }
 
-  /// asText and parse are the quick-entry round trip, in the same tab or
-  /// comma separated form the chart uses -- one habit to learn, not two.
-  String asText() => rows.map((r) => r.join("\t")).join("\n");
+  /// asText and parse are the quick-entry round trip. Comma separated, with
+  /// quoting for the cells that need it -- see joinTable.
+  String asText() => joinTable(rows);
 
   static List<List<String>> parseRows(String text) => splitTable(text);
 

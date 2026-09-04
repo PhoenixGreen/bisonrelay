@@ -11,7 +11,9 @@ import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
 import 'package:bruig/plugin_system/canvas/presets/builtin_presets.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/chart_data_editor.dart';
+import 'package:bruig/plugin_system/canvas/ui/table_data_editor.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_settings_bar.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_timeline.dart';
@@ -2267,6 +2269,75 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(order(controller), ["Bottom", "Middle", "Top"]);
+    });
+  });
+
+  group("a table's settings", () {
+    Future<CanvasController> panel(WidgetTester tester) async {
+      var element = TableElement(
+        const ElementBase(id: "t", width: 400, height: 200),
+        rows: const [
+          ["Team", "Points"],
+          ["Hull City", "6"],
+        ],
+      );
+      var controller =
+          CanvasController(const CanvasDocument().addElement(element));
+      addTearDown(controller.dispose);
+      controller.selectOnly("t");
+      await pump(tester, CanvasLayersPanel(controller: controller));
+      return controller;
+    }
+
+    TableElement tableIn(CanvasController controller) =>
+        controller.document.elements.single as TableElement;
+
+    Future<void> press(WidgetTester tester, Finder what) async {
+      await tester.ensureVisible(what);
+      await tester.pumpAndSettle();
+      await tester.tap(what);
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets("the cells are a section of their own", (tester) async {
+      // The longest thing in these settings and the least often changed once
+      // it is right, so it was pushing everything else off the bottom.
+      await panel(tester);
+      expect(find.text("CELLS"), findsOneWidget);
+      expect(find.text("2 rows, 2 columns"), findsOneWidget);
+      expect(find.byType(TableDataEditor), findsOneWidget);
+    });
+
+    testWidgets("the two sets of type controls fold away", (tester) async {
+      await panel(tester);
+      expect(find.text("CELL TYPE"), findsOneWidget);
+      expect(find.text("HEADER TYPE"), findsOneWidget);
+      // Closed, so neither is showing a dozen rows of settings.
+      expect(find.text("Weight"), findsNothing);
+
+      await press(tester, find.text("CELL TYPE"));
+      expect(find.text("Weight"), findsOneWidget);
+    });
+
+    testWidgets("a row and a column can be added and taken away",
+        (tester) async {
+      var controller = await panel(tester);
+      var toGrid = find.byTooltip("Edit the cells in a grid");
+      if (toGrid.evaluate().isNotEmpty) await press(tester, toGrid);
+
+      await press(tester, find.byTooltip("Add a row"));
+      expect(tableIn(controller).rows.length, 3);
+
+      await press(tester, find.byTooltip("Add a column"));
+      expect(tableIn(controller).columnCount, 3);
+      expect(tableIn(controller).rows.every((r) => r.length == 3), isTrue,
+          reason: "every row gains the column, or the grid goes ragged");
+
+      await press(tester, find.byTooltip("Remove this column").first);
+      expect(tableIn(controller).columnCount, 2);
+
+      await press(tester, find.byTooltip("Remove this row").first);
+      expect(tableIn(controller).rows.length, 2);
     });
   });
 

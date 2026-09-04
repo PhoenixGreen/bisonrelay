@@ -63,11 +63,64 @@ List<List<String>> splitTable(String text) {
 
     var cells = switch (separator) {
       TableSeparator.tab => line.split("\t"),
-      TableSeparator.comma => line.split(","),
+      TableSeparator.comma => _splitQuoted(line),
       TableSeparator.spaces => line.split(_spaceRun),
     };
     rows.add([for (var cell in cells) cell.trim()]);
   }
 
   return rows;
+}
+
+/// _splitQuoted splits a comma-separated line, honouring double quotes.
+///
+/// Only for commas. A tab cannot appear inside a cell anybody typed and a run
+/// of spaces is already ambiguous, but a comma inside a cell is ordinary --
+/// "Brighton & Hove Albion, 2nd" -- and without quoting there is no way to
+/// write one at all.
+List<String> _splitQuoted(String line) {
+  var cells = <String>[];
+  var cell = StringBuffer();
+  var quoted = false;
+
+  for (var i = 0; i < line.length; i++) {
+    var c = line[i];
+    if (c == '"') {
+      // A doubled quote inside a quoted cell is one quote, which is what every
+      // spreadsheet writes and so what every spreadsheet paste contains.
+      if (quoted && i + 1 < line.length && line[i + 1] == '"') {
+        cell.write('"');
+        i++;
+      } else {
+        quoted = !quoted;
+      }
+      continue;
+    }
+    if (c == "," && !quoted) {
+      cells.add(cell.toString());
+      cell.clear();
+      continue;
+    }
+    cell.write(c);
+  }
+  cells.add(cell.toString());
+  return cells;
+}
+
+/// joinTable writes rows back out as comma-separated text, quoting the cells
+/// that need it.
+///
+/// Commas rather than tabs, which is what this used to write. A tab in a text
+/// field is a wide invisible gap that cannot be typed without leaving the
+/// field, so a table written out with tabs could be read and not edited --
+/// and the one thing this box is for is editing.
+String joinTable(List<List<String>> rows) => rows
+    .map((row) => row.map(_quoted).join(","))
+    .join("\n");
+
+String _quoted(String cell) {
+  if (!cell.contains(",") && !cell.contains('"') && cell.trim() == cell) {
+    return cell;
+  }
+  return '"${cell.replaceAll('"', '""')}"';
 }

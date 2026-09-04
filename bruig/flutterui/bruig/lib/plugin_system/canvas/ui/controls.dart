@@ -1138,3 +1138,84 @@ class CanvasKeyframeDot extends StatelessWidget {
     );
   }
 }
+
+/// CanvasGridCell is a text field with no caption over it.
+///
+/// Its own widget rather than CanvasTextField because that one carries a
+/// label above it and a fixed width, and a grid of forty of those would be a
+/// grid of forty captions.
+///
+/// Shared by the chart's numbers and the table's cells, which are the same
+/// control asked for twice.
+class CanvasGridCell extends StatefulWidget {
+  final String value;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onCommit;
+  final bool multiline;
+  final bool dense;
+  final String hint;
+
+  const CanvasGridCell({
+    required this.value,
+    required this.onChanged,
+    required this.onCommit,
+    this.multiline = false,
+    this.dense = false,
+    this.hint = "",
+    super.key,
+  });
+
+  @override
+  State<CanvasGridCell> createState() => CanvasGridCellState();
+}
+
+class CanvasGridCellState extends State<CanvasGridCell> {
+  late final TextEditingController _text =
+      TextEditingController(text: widget.value);
+  final FocusNode _focus = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    _focus.addListener(() {
+      if (!_focus.hasFocus) widget.onCommit();
+    });
+  }
+
+  @override
+  void didUpdateWidget(CanvasGridCell oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Only while it is not being typed in. Rewriting the text under the cursor
+    // is how an editor eats a keystroke and moves the caret to the end.
+    if (!_focus.hasFocus && widget.value != _text.text) {
+      _text.text = widget.value;
+    }
+  }
+
+  @override
+  void dispose() {
+    _text.dispose();
+    _focus.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => TextField(
+        controller: _text,
+        focusNode: _focus,
+        expands: widget.multiline,
+        maxLines: widget.multiline ? null : 1,
+        minLines: null,
+        style: TextStyle(fontSize: widget.dense ? 11 : 12),
+        textAlignVertical: TextAlignVertical.top,
+        decoration: InputDecoration(
+          isDense: true,
+          hintText: widget.hint.isEmpty ? null : widget.hint,
+          hintStyle: const TextStyle(fontSize: 11),
+          contentPadding: EdgeInsets.symmetric(
+              horizontal: 6, vertical: widget.dense ? 5 : 6),
+          border: const OutlineInputBorder(),
+        ),
+        onChanged: widget.onChanged,
+      );
+}

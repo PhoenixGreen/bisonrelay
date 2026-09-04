@@ -239,7 +239,7 @@ class _ChartDataEditorState extends State<ChartDataEditor> {
         child: SizedBox(
           width: 96,
           height: controlHeight,
-          child: _Cell(
+          child: CanvasGridCell(
             value: series.name,
             dense: true,
             onChanged: (v) {
@@ -308,7 +308,7 @@ class _ChartDataEditorState extends State<ChartDataEditor> {
 
   /// _raw is the whole table as one block of text, in the tab or comma
   /// separated form a spreadsheet copies.
-  Widget _raw() => _Cell(
+  Widget _raw() => CanvasGridCell(
         value: data.asText(),
         multiline: true,
         hint: "Name\tSeries\nWeek 1\t120",
@@ -341,7 +341,7 @@ class _ChartDataEditorState extends State<ChartDataEditor> {
               child: Row(mainAxisSize: MainAxisSize.min, children: [
                 SizedBox(
                   width: valueWidth,
-                  child: _Cell(
+                  child: CanvasGridCell(
                     value: data.series[s].name,
                     dense: true,
                     onChanged: (v) {
@@ -368,7 +368,7 @@ class _ChartDataEditorState extends State<ChartDataEditor> {
     Widget row(int i) => Row(children: [
           SizedBox(
             width: nameWidth,
-            child: _Cell(
+            child: CanvasGridCell(
               value: data.categories[i],
               dense: true,
               onChanged: (v) {
@@ -386,7 +386,7 @@ class _ChartDataEditorState extends State<ChartDataEditor> {
               padding: const EdgeInsets.only(right: 4),
               child: SizedBox(
                 width: valueWidth,
-                child: _Cell(
+                child: CanvasGridCell(
                   value: _number(data.valueAt(s, i)),
                   dense: true,
                   onChanged: (v) =>
@@ -425,81 +425,4 @@ class _ChartDataEditorState extends State<ChartDataEditor> {
 
   static String _number(double v) =>
       v == v.roundToDouble() ? v.round().toString() : v.toString();
-}
-
-/// _Cell is a text field with no caption over it.
-///
-/// Its own widget rather than CanvasTextField because that one carries a
-/// label above it and a fixed width, and a grid of forty of those would be a
-/// grid of forty captions.
-class _Cell extends StatefulWidget {
-  final String value;
-  final ValueChanged<String> onChanged;
-  final VoidCallback onCommit;
-  final bool multiline;
-  final bool dense;
-  final String hint;
-
-  const _Cell({
-    required this.value,
-    required this.onChanged,
-    required this.onCommit,
-    this.multiline = false,
-    this.dense = false,
-    this.hint = "",
-  });
-
-  @override
-  State<_Cell> createState() => _CellState();
-}
-
-class _CellState extends State<_Cell> {
-  late final TextEditingController _text =
-      TextEditingController(text: widget.value);
-  final FocusNode _focus = FocusNode();
-
-  @override
-  void initState() {
-    super.initState();
-    _focus.addListener(() {
-      if (!_focus.hasFocus) widget.onCommit();
-    });
-  }
-
-  @override
-  void didUpdateWidget(_Cell old) {
-    super.didUpdateWidget(old);
-    // Only while it is not being typed in. Rewriting the text under the cursor
-    // is how an editor eats a keystroke and moves the caret to the end.
-    if (!_focus.hasFocus && widget.value != _text.text) {
-      _text.text = widget.value;
-    }
-  }
-
-  @override
-  void dispose() {
-    _text.dispose();
-    _focus.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) => TextField(
-        controller: _text,
-        focusNode: _focus,
-        expands: widget.multiline,
-        maxLines: widget.multiline ? null : 1,
-        minLines: null,
-        style: TextStyle(fontSize: widget.dense ? 11 : 12),
-        textAlignVertical: TextAlignVertical.top,
-        decoration: InputDecoration(
-          isDense: true,
-          hintText: widget.hint.isEmpty ? null : widget.hint,
-          hintStyle: const TextStyle(fontSize: 11),
-          contentPadding: EdgeInsets.symmetric(
-              horizontal: 6, vertical: widget.dense ? 5 : 6),
-          border: const OutlineInputBorder(),
-        ),
-        onChanged: widget.onChanged,
-      );
 }

@@ -18,6 +18,7 @@ import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:bruig/plugin_system/canvas/ui/recent_pictures.dart';
 import 'package:bruig/plugin_system/canvas/ui/image_picking.dart';
 import 'package:bruig/plugin_system/canvas/ui/procedural_settings.dart';
+import 'package:bruig/plugin_system/canvas/ui/table_data_editor.dart';
 import 'package:bruig/components/text.dart';
 import 'package:flutter/material.dart';
 
@@ -64,7 +65,7 @@ List<Widget> elementSettings(
         _imageSettings(context, controller, e, write, begin, commit),
       ChartElement e =>
         _chartSettings(context, controller, e, write, begin, commit),
-      TableElement e => _tableSettings(e, write, begin, commit),
+      TableElement e => _tableSettings(context, e, write, begin, commit),
       ButtonElement e => _buttonSettings(controller, e, write, begin, commit),
       BackgroundElement e => [
           ProceduralSettings(
@@ -303,9 +304,13 @@ List<Widget> _typeGroups(
   VoidCallback commit, {
   String label = "Type",
   bool includeCase = true,
+
+  /// bandOnlyLabel drops the first group's caption in a sidebar, for the
+  /// callers that have already headed a section with the same word.
+  bool bandOnlyLabel = false,
 }) =>
     [
-      CanvasControlGroup(label: label, children: [
+      CanvasControlGroup(label: label, bandOnlyLabel: bandOnlyLabel, children: [
         CanvasDropdown<String>(
           label: "Font",
           value: spec.fontFamily,
@@ -2110,18 +2115,32 @@ List<Widget> _chartSettings(BuildContext context, CanvasController controller,
   ];
 }
 
-List<Widget> _tableSettings(TableElement e, _Write write, VoidCallback begin,
-        VoidCallback commit) =>
+List<Widget> _tableSettings(BuildContext context, TableElement e,
+        _Write write, VoidCallback begin, VoidCallback commit) =>
     [
-      CanvasControlGroup(label: "Table", children: [
-        CanvasTextField(
-          label: "Rows (paste a table)",
-          value: e.asText(),
-          width: 280,
-          maxLines: 2,
-          onChanged: (v) => write(e.copyWith(rows: TableElement.parseRows(v))),
-          onCommit: commit,
+      // Its own section, like the chart's numbers. The cells are the longest
+      // thing in these settings and the least often changed once they are
+      // right, so they were pushing everything else off the bottom.
+      _boxed(
+        context,
+        CanvasExpander(
+          label: "Cells",
+          remember: "tableCells",
+          trailing: "${e.rows.length} rows, ${e.columnCount} columns",
+          initiallyOpen: true,
+          children: [
+            TableDataEditor(
+              rows: e.rows,
+              onChanged: (rows) {
+                begin();
+                write(e.copyWith(rows: rows));
+              },
+              onCommit: commit,
+            ),
+          ],
         ),
+      ),
+      CanvasControlGroup(label: "Table", children: [
         CanvasToggle(
           label: "Header row",
           value: e.headerRow,
@@ -2217,12 +2236,32 @@ List<Widget> _tableSettings(TableElement e, _Write write, VoidCallback begin,
           onCommit: commit,
         ),
       ]),
-      ..._typeGroups(e.cellSpec, (spec) => write(e.copyWith(cellSpec: spec)),
-          begin, commit,
-          label: "Cell type"),
-      ..._typeGroups(e.headerSpec,
-          (spec) => write(e.copyWith(headerSpec: spec)), begin, commit,
-          label: "Header type"),
+      // Two sets of type controls is a dozen rows of settings that are not
+      // about the table, so they fold away like everything else that is long.
+      _boxed(
+        context,
+        CanvasExpander(
+          label: "Cell type",
+          remember: "tableCellType",
+          trailing: "${e.cellSpec.fontSize.round()}",
+          children: _typeGroups(
+              e.cellSpec, (spec) => write(e.copyWith(cellSpec: spec)),
+              begin, commit,
+              label: "Cell type", bandOnlyLabel: true),
+        ),
+      ),
+      _boxed(
+        context,
+        CanvasExpander(
+          label: "Header type",
+          remember: "tableHeaderType",
+          trailing: "${e.headerSpec.fontSize.round()}",
+          children: _typeGroups(
+              e.headerSpec, (spec) => write(e.copyWith(headerSpec: spec)),
+              begin, commit,
+              label: "Header type", bandOnlyLabel: true),
+        ),
+      ),
     ];
 
 List<Widget> _buttonSettings(CanvasController controller, ButtonElement e,

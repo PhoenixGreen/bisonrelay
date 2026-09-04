@@ -53,6 +53,19 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e) {
     y += h;
   }
 
+  // The header column's fill, down the first column.
+  //
+  // It had none: the switch changed the type in column one and nothing else,
+  // so on a table whose header type and cell type had been made to match it
+  // did nothing anybody could see. The header *row* has had a fill all along,
+  // and a header column is the same idea turned ninety degrees.
+  if (e.headerColumn && e.headerFill.a > 0 && widths.isNotEmpty) {
+    var top = rect.top + (e.headerRow ? heights.first : 0);
+    canvas.drawRect(
+        Rect.fromLTRB(rect.left, top, rect.left + widths.first, rect.bottom),
+        Paint()..color = e.headerFill);
+  }
+
   // Cells.
   y = rect.top;
   for (var r = 0; r < e.rows.length; r++) {
@@ -62,10 +75,14 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e) {
       var w = widths[c];
       var isHeader = (e.headerRow && r == 0) || (e.headerColumn && c == 0);
       var spec = isHeader ? e.headerSpec : e.cellSpec;
+      // The spec's own vertical alignment, not the middle regardless. It was
+      // forced here, so the Vertical setting on a table's type did nothing at
+      // all -- and a table of one-line cells does want the middle, which is
+      // why it is the default rather than an override.
       paintTextInBox(
         canvas,
         e.cell(r, c),
-        spec.copyWith(verticalAlign: VerticalAlignSpec.middle),
+        spec,
         Rect.fromLTWH(x + e.cellPadding, y, w - e.cellPadding * 2, h),
         clip: true,
       );

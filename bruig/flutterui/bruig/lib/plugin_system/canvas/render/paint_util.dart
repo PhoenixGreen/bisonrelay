@@ -47,6 +47,16 @@ TextPainter layoutText(
   /// only behaviour.
   bool fillWidth = false,
 }) {
+  // The case transform belongs here rather than at every call site.
+  //
+  // It was applied by the callers -- five of them, each remembering to write
+  // spec.textCase.apply(text) -- so every painter written afterwards forgot,
+  // and Case was a setting that did nothing on a table, a chart or a shape's
+  // label. Applying it where the words are measured and drawn means there is
+  // nowhere left to forget it. It is idempotent, so a caller that still does
+  // it does no harm.
+  text = spec.textCase.apply(text);
+
   var painter = TextPainter(
     text: TextSpan(
       text: text,
