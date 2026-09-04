@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
+import 'package:bruig/plugin_system/canvas/ui/canvas_text_editor.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
@@ -17,7 +19,6 @@ import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_stage.dart';
-import 'package:bruig/plugin_system/canvas/ui/canvas_text_editor.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/rendering.dart';
@@ -772,6 +773,147 @@ void main() {
       expect(after.floatingLabels, isFalse);
       expect(after.x, isNot(chart.x),
           reason: "the chart moved instead, as any other element would");
+    });
+  });
+
+  group("dragging a table's column rule", () {
+    (CanvasController, TableElement) build() {
+      var document = const CanvasDocument();
+      var table = TableElement(
+        ElementBase(
+          id: newElementId(),
+          x: 200,
+          y: 150,
+          width: document.size.width * 0.6,
+          height: document.size.height * 0.5,
+        ),
+        rows: const [
+          ["Team", "Points"],
+          ["Hull City", "6"],
+          ["Leeds United", "4"],
+        ],
+        columnWidths: const [0.5, 0.5],
+      );
+      var controller = CanvasController(document.addElement(table));
+      return (controller, table);
+    }
+
+    testWidgets("moving it makes one column wider and its neighbour narrower",
+        (tester) async {
+      // Either side, because a table fills its element: making one column
+      // wider has to make another narrower, and taking it from its neighbour
+      // is the only choice that does not shuffle the whole table sideways.
+      var (controller, table) = build();
+      addTearDown(controller.dispose);
+      controller.selectOnly(table.id);
+      var stage = await pump(tester, controller);
+
+      var scale = stage.pageRect.width / controller.document.size.width;
+      var divider = Offset(table.x + table.width / 2, table.y + table.height / 2);
+
+      await tester.dragFrom(
+          stage.pageRect.topLeft + divider * scale, const Offset(60, 0));
+      await tester.pumpAndSettle();
+
+      var after = controller.document.elements.whereType<TableElement>().single;
+      expect(after.columnWidths.first, greaterThan(0.5));
+      expect(after.columnWidths.last, lessThan(0.5));
+      expect(after.columnWidths.first + after.columnWidths.last,
+          closeTo(1, 0.001), reason: "the table still fills its element");
+      expect(after.x, table.x, reason: "and has not moved");
+      expect(after.width, table.width);
+    });
+
+    testWidgets("a drag elsewhere in the table still moves the table",
+        (tester) async {
+      var (controller, table) = build();
+      addTearDown(controller.dispose);
+      controller.selectOnly(table.id);
+      var stage = await pump(tester, controller);
+
+      var scale = stage.pageRect.width / controller.document.size.width;
+      // A quarter of the way across, well clear of the middle rule.
+      var inside =
+          Offset(table.x + table.width * 0.25, table.y + table.height / 2);
+
+      await tester.dragFrom(
+          stage.pageRect.topLeft + inside * scale, const Offset(40, 20));
+      await tester.pumpAndSettle();
+
+      var after = controller.document.elements.whereType<TableElement>().single;
+      expect(after.x, isNot(table.x));
+      expect(after.columnWidths, table.columnWidths);
+    });
+  });
+
+  group("typing into a table", () {
+    (CanvasController, TableElement) build() {
+      var document = const CanvasDocument();
+      var table = TableElement(
+        ElementBase(
+          id: newElementId(),
+          x: 200,
+          y: 150,
+          width: document.size.width * 0.6,
+          height: document.size.height * 0.5,
+        ),
+        rows: const [
+          ["Team", "Points"],
+          ["Hull City", "6"],
+        ],
+        columnWidths: const [0.5, 0.5],
+      );
+      var controller = CanvasController(document.addElement(table));
+      return (controller, table);
+    }
+
+    /// tapCell clicks the middle of one cell of a two-by-two table.
+    Future<Offset> cellCentre(CanvasStageState stage, TableElement table,
+        int row, int col) async {
+      var scale = stage.pageRect.width / 1280;
+      var doc = Offset(
+        table.x + table.width * (col == 0 ? 0.25 : 0.75),
+        table.y + table.height * (row == 0 ? 0.25 : 0.75),
+      );
+      return stage.pageRect.topLeft + doc * scale;
+    }
+
+    testWidgets("a second click on a cell opens it for typing",
+        (tester) async {
+      // The same gesture the text element has, and the same one that renames
+      // a file: the first click selects, so a table is still moved by
+      // dragging it.
+      var (controller, table) = build();
+      addTearDown(controller.dispose);
+      controller.selectOnly(table.id);
+      var stage = await pump(tester, controller);
+
+      var at = await cellCentre(stage, table, 1, 1);
+      await tester.tapAt(at);
+      await tester.pump(const Duration(milliseconds: 60));
+      await tester.tapAt(at);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(CanvasCellEditor), findsOneWidget);
+
+      await tester.enterText(find.byType(TextField), "9");
+      await tester.pumpAndSettle();
+
+      var after = controller.document.elements.whereType<TableElement>().single;
+      expect(after.cell(1, 1), "9");
+      expect(after.cell(1, 0), "Hull City", reason: "and nothing else moved");
+    });
+
+    testWidgets("one click still just selects it", (tester) async {
+      var (controller, table) = build();
+      addTearDown(controller.dispose);
+      var stage = await pump(tester, controller);
+
+      await tester.tapAt(await cellCentre(stage, table, 1, 1));
+      await tester.pumpAndSettle();
+
+      expect(controller.selection, {table.id});
+      expect(find.byType(CanvasCellEditor), findsNothing);
     });
   });
 

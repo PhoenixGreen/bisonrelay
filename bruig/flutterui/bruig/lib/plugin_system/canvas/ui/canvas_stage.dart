@@ -8,7 +8,9 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_painter.dart';
+import 'package:bruig/plugin_system/canvas/render/table_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/image_placement.dart';
 import 'package:bruig/plugin_system/canvas/render/image_store.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
@@ -105,6 +107,10 @@ enum _DragMode {
   /// inside the chart. Its own mode because it moves a *part* of an element
   /// rather than the element, the same way player does.
   chartLabel,
+
+  /// tableColumn is the rule between two of a table's columns being dragged
+  /// to make one wider and the other narrower.
+  tableColumn,
 }
 
 /// _ChartLabelGrab is which of a chart's three pieces of writing is being
@@ -231,6 +237,13 @@ class CanvasStageState extends State<CanvasStage> {
   /// every keystroke -- so a live box jumped about under the caret while it
   /// was being typed into.
   Rect? _editorRect;
+
+  /// _editingCell is the table cell being typed into, or null.
+  ///
+  /// A record rather than an id: a cell has no identity of its own, and the
+  /// table it belongs to is whatever is selected -- the same reasoning as the
+  /// focused player of a team.
+  (String, int, int)? _editingCell;
 
   /// _editingText is the text element being typed into, or null.
   ///
@@ -826,6 +839,20 @@ class CanvasStageState extends State<CanvasStage> {
       }
     }
 
+    // A column rule of the selected table, before the table itself -- the
+    // rule is inside the table's own box, so the ordinary hit test would pick
+    // the table up and move the whole thing.
+    var table = controller.selected;
+    if (table is TableElement && !table.locked) {
+      var divider = _hitTableColumn(table, doc);
+      if (divider != null) {
+        _columnGrab = divider;
+        _mode = _DragMode.tableColumn;
+        controller.beginInteraction();
+        return;
+      }
+    }
+
     var element = _hitElement(doc);
     if (element == null) {
       if (!_shiftHeld) controller.clearSelection();
@@ -847,6 +874,24 @@ class CanvasStageState extends State<CanvasStage> {
       _pendingButton = element;
       _beginTransform(_DragMode.move, null);
       return;
+    }
+
+    // A second click on a cell of a table that is already selected opens that
+    // cell for typing, which is the same gesture the text element has and the
+    // same one that renames a file.
+    if (element is TableElement &&
+        !_shiftHeld &&
+        !element.locked &&
+        controller.selection.length == 1 &&
+        controller.selection.first == element.id &&
+        _pressedAt != Offset.zero &&
+        DateTime.now().difference(_lastClickAt) < _doubleClickWindow) {
+      var at = _cellAt(element, doc);
+      if (at != null) {
+        setState(() => _editingCell = (element.id, at.$1, at.$2));
+        _mode = _DragMode.none;
+        return;
+      }
     }
 
     // A second click on a text element that is already selected opens it for
@@ -1255,6 +1300,79 @@ class CanvasStageState extends State<CanvasStage> {
   /// _labelGrab is the chart label being dragged, while one is.
   _ChartLabelGrab? _labelGrab;
 
+  /// _columnGrab is which of a table's dividers is being dragged: the index of
+  /// the column to its left.
+  int? _columnGrab;
+
+  /// _tableColumnDividers is where a selected table's column rules fall, in
+  /// document units.
+  ///
+  /// Only the inner ones. The outer two are the element's own edges, which
+  /// already have resize handles on them and would be two controls doing
+  /// different things in the same place.
+  List<double> _tableColumnDividers(TableElement e, Rect bounds) {
+    var widths = tableColumnWidths(e, bounds);
+    var out = <double>[];
+    var x = bounds.left;
+    for (var i = 0; i < widths.length - 1; i++) {
+      x += widths[i];
+      out.add(x);
+    }
+    return out;
+  }
+
+  /// _hitTableColumn is which divider a document point is on, if any.
+  int? _hitTableColumn(TableElement e, Offset doc) {
+    var bounds = e.boundsAt(controller.frame);
+    if (!bounds.inflate(_handleHitSlop / _scale).contains(doc)) return null;
+    var slop = _handleHitSlop / _scale;
+    var dividers = _tableColumnDividers(e, bounds);
+    for (var i = 0; i < dividers.length; i++) {
+      if ((doc.dx - dividers[i]).abs() <= slop) return i;
+    }
+    return null;
+  }
+
+  /// _applyTableColumn writes the drag onto the two columns either side of the
+  /// divider, leaving every other column where it is.
+  ///
+  /// Either side, because a table fills its element: making one column wider
+  /// has to make another narrower, and taking it from its neighbour is the
+  /// only choice that does not shuffle the whole table sideways.
+  void _applyTableColumn(Offset doc) {
+    var at = _columnGrab;
+    var element = controller.selected;
+    if (at == null || element is! TableElement) return;
+
+    var bounds = element.boundsAt(controller.frame);
+    if (bounds.width <= 0) return;
+
+    // Seeded from the measured widths the first time, so a drag starts from
+    // the table as it looks rather than from equal columns.
+    var widths = tableColumnWidths(element, bounds);
+    if (at + 1 >= widths.length) return;
+
+    var pair = widths[at] + widths[at + 1];
+    var left = (doc.dx - (bounds.left + _sumTo(widths, at)))
+        .clamp(bounds.width * 0.02, pair - bounds.width * 0.02);
+
+    widths[at] = left;
+    widths[at + 1] = pair - left;
+
+    controller.replaceElement(
+        element.copyWith(
+            columnWidths: [for (var w in widths) w / bounds.width]),
+        transient: true);
+  }
+
+  static double _sumTo(List<double> widths, int end) {
+    var total = 0.0;
+    for (var i = 0; i < end; i++) {
+      total += widths[i];
+    }
+    return total;
+  }
+
   /// _hitChartLabel is which of the three a document point lands on, if any.
   ///
   /// The corner is tried before the body, and they are tried in reverse
@@ -1429,6 +1547,8 @@ class CanvasStageState extends State<CanvasStage> {
         _applyNodeMove(doc, handle: true);
       case _DragMode.chartLabel:
         _applyChartLabel(doc);
+      case _DragMode.tableColumn:
+        _applyTableColumn(doc);
       default:
         break;
     }
@@ -1762,6 +1882,7 @@ class CanvasStageState extends State<CanvasStage> {
               ),
               )),
               if (_editorFor() case var editor?) editor,
+              if (_cellEditorFor() case var cell?) cell,
             ]),
           );
 
@@ -1782,6 +1903,94 @@ class CanvasStageState extends State<CanvasStage> {
           return Focus(focusNode: _focus, onKeyEvent: _onKey, child: painter);
         },
       );
+
+  /// _cellAt is which cell of a table a document point is in.
+  (int, int)? _cellAt(TableElement e, Offset doc) {
+    var bounds = e.boundsAt(controller.frame);
+    if (!bounds.contains(doc) || e.rows.isEmpty) return null;
+
+    var widths = tableColumnWidths(e, bounds);
+    var heights = tableRowHeights(e, bounds);
+
+    var row = 0;
+    var y = bounds.top;
+    for (; row < heights.length - 1; row++) {
+      if (doc.dy < y + heights[row]) break;
+      y += heights[row];
+    }
+
+    var col = 0;
+    var x = bounds.left;
+    for (; col < widths.length - 1; col++) {
+      if (doc.dx < x + widths[col]) break;
+      x += widths[col];
+    }
+    return (row, col);
+  }
+
+  /// _cellRect is where that cell is, in document units.
+  Rect _cellRect(TableElement e, int row, int col) {
+    var bounds = e.boundsAt(controller.frame);
+    var widths = tableColumnWidths(e, bounds);
+    var heights = tableRowHeights(e, bounds);
+    if (row >= heights.length || col >= widths.length) return bounds;
+    return Rect.fromLTWH(
+      bounds.left + _sumTo(widths, col),
+      bounds.top + _sumTo(heights, row),
+      widths[col],
+      heights[row],
+    );
+  }
+
+  /// _cellEditorFor is the overlay for a cell being typed into.
+  ///
+  /// A plain field rather than CanvasTextEditor, which draws the element's own
+  /// type at the element's own size across the whole box -- right for a
+  /// headline and wrong for a cell in a grid, where what is wanted is a slot
+  /// the size of the cell.
+  Widget? _cellEditorFor() {
+    var editing = _editingCell;
+    if (editing == null) return null;
+    var (id, row, col) = editing;
+    var element = document.elementById(id);
+    if (element is! TableElement) return null;
+
+    var box = _cellRect(element, row, col);
+    var topLeft = _toStage(box.topLeft);
+    return Positioned(
+      left: topLeft.dx,
+      top: topLeft.dy,
+      width: math.max(40, box.width * _scale),
+      height: math.max(20, box.height * _scale),
+      child: CanvasCellEditor(
+        key: ValueKey("cell-$id-$row-$col"),
+        value: element.cell(row, col),
+        fontSize: math.max(9, element.cellSpec.fontSize * _scale),
+        onChanged: (text) {
+          controller.beginInteraction();
+          controller.replaceElement(_withCell(element, row, col, text),
+              transient: true);
+        },
+        onDone: () {
+          controller.endInteraction();
+          if (mounted) setState(() => _editingCell = null);
+        },
+      ),
+    );
+  }
+
+  /// _withCell is [e] with one cell rewritten, growing the grid to reach it.
+  TableElement _withCell(TableElement e, int row, int col, String text) {
+    var width = math.max(e.columnCount, col + 1);
+    var rows = [
+      for (var r in e.rows) [...r, for (var i = r.length; i < width; i++) ""],
+    ];
+    while (rows.length <= row) {
+      rows.add(List.filled(width, ""));
+    }
+    rows[row][col] = text;
+    return e.copyWith(rows: rows);
+  }
 
   /// _editorFor is the text editor overlay, when one is open.
   ///

@@ -207,6 +207,14 @@ void _placeholder(ui.Canvas canvas, Rect rect, TableElement e) {
       clip: true);
 }
 
+/// tableColumnWidths is where a table's columns actually fall.
+///
+/// Public because the stage has to put a grip on each divider, and a grip
+/// that worked out the widths for itself would be a grip that drifted off the
+/// line it is meant to be on the moment either calculation changed.
+List<double> tableColumnWidths(TableElement e, Rect rect) =>
+    _columnWidths(e, rect, e.columnCount);
+
 /// _columnWidths sizes the columns to their contents, or to the fractions the
 /// element carries when it has any.
 List<double> _columnWidths(TableElement e, Rect rect, int cols) {
@@ -237,6 +245,11 @@ List<double> _columnWidths(TableElement e, Rect rect, int cols) {
   // more than there is room for or less.
   return [for (var w in natural) rect.width * w / sum];
 }
+
+/// tableRowHeights is where a table's rows fall, for the same reason
+/// tableColumnWidths is public: the stage has to put an editor exactly over a
+/// cell, and a second calculation would be a second answer.
+List<double> tableRowHeights(TableElement e, Rect rect) => _rowHeights(e, rect);
 
 /// _rowHeights splits the height evenly, giving the header its extra share.
 List<double> _rowHeights(TableElement e, Rect rect) {

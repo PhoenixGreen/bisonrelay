@@ -1,5 +1,6 @@
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -166,4 +167,101 @@ class _CanvasTextEditorState extends State<CanvasTextEditor> {
 
 class _FinishIntent extends Intent {
   const _FinishIntent();
+}
+
+/// CanvasCellEditor is one table cell, opened for typing where it is drawn.
+///
+/// A plain field rather than CanvasTextEditor, which sets the element's own
+/// type at the element's own size across the whole box. That is right for a
+/// headline and wrong for a cell in a grid, where what is wanted is a slot the
+/// size of the cell with a visible edge -- the cell has rules round it already
+/// and an invisible field inside them cannot be told from the table.
+class CanvasCellEditor extends StatefulWidget {
+  final String value;
+  final double fontSize;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onDone;
+
+  const CanvasCellEditor({
+    required this.value,
+    required this.fontSize,
+    required this.onChanged,
+    required this.onDone,
+    super.key,
+  });
+
+  @override
+  State<CanvasCellEditor> createState() => _CanvasCellEditorState();
+}
+
+class _CanvasCellEditorState extends State<CanvasCellEditor> {
+  late final TextEditingController _text =
+      TextEditingController(text: widget.value);
+  final FocusNode _focus = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    // Selected, not merely focused: a cell is opened to be replaced far more
+    // often than to be appended to.
+    _focus.requestFocus();
+    _text.selection =
+        TextSelection(baseOffset: 0, extentOffset: widget.value.length);
+    _focus.addListener(() {
+      if (!_focus.hasFocus) widget.onDone();
+    });
+  }
+
+  @override
+  void dispose() {
+    _text.dispose();
+    _focus.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    var theme = ThemeNotifier.of(context);
+    return Shortcuts(
+      shortcuts: const {
+        SingleActivator(LogicalKeyboardKey.escape): _CloseCellIntent(),
+      },
+      child: Actions(
+        actions: {
+          _CloseCellIntent: CallbackAction<_CloseCellIntent>(
+            onInvoke: (_) {
+              widget.onDone();
+              return null;
+            },
+          ),
+        },
+        child: Material(
+          color: theme.colors.surface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(3),
+            side: BorderSide(color: theme.colors.primary, width: 1.5),
+          ),
+          child: TextField(
+            controller: _text,
+            focusNode: _focus,
+            style: TextStyle(
+                fontSize: widget.fontSize.clamp(9, 40),
+                color: theme.colors.onSurface),
+            decoration: const InputDecoration(
+              isDense: true,
+              border: InputBorder.none,
+              contentPadding: EdgeInsets.symmetric(horizontal: 5, vertical: 4),
+            ),
+            onChanged: widget.onChanged,
+            onSubmitted: (_) => widget.onDone(),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// _CloseCellIntent is Escape, which shuts the editor.
+class _CloseCellIntent extends Intent {
+  const _CloseCellIntent();
 }
