@@ -64,10 +64,9 @@ Future<Size?> pictureSize(String assetId) async {
 /// had nowhere to go. Returns the new asset id, or null if nothing changed.
 Future<String?> compressCanvasPicture(
     BuildContext context, String assetId) async {
-  var snackbar = SnackBarModel.of(context);
   var bytes = await CanvasAssets.load(assetId);
   if (bytes == null) {
-    if (context.mounted) snackbar.error("That picture is no longer there.");
+    if (context.mounted) _report(context, "That picture is no longer there.");
     return null;
   }
 
@@ -94,8 +93,6 @@ String _mimeOf(List<int> bytes) =>
 /// returns its asset id -- or null if the reader changed their mind at any
 /// point along the way.
 Future<String?> pickCanvasImage(BuildContext context) async {
-  var snackbar = SnackBarModel.of(context);
-
   // The extensions rather than FileType.image, which is the platform's idea
   // of a picture and does not include SVG on macOS -- so the one format a
   // badge in a table cell is nearly always in could not be chosen at all.
@@ -128,16 +125,35 @@ Future<String?> pickCanvasImage(BuildContext context) async {
 
     var id = await CanvasAssets.save(bytes);
     if (id == null) {
-      if (context.mounted) {
-        snackbar.error("That picture is too large for a canvas.");
-      }
+      if (context.mounted) _report(context, "That picture is too large for a canvas.");
       return null;
     }
     return id;
   } catch (exception) {
     if (context.mounted) {
-      snackbar.error("Unable to read ${path.basename(chosen)}: $exception");
+      _report(context, "Unable to read ${path.basename(chosen)}: $exception");
+    } else {
+      debugPrint("Unable to read ${path.basename(chosen)}: $exception");
     }
     return null;
+  }
+}
+
+/// _report says something went wrong, and does not itself go wrong.
+///
+/// Looked up when there is something to say rather than before the picker
+/// opens, and guarded. Asking for the snackbar first meant that on any screen
+/// without one, reaching for the *error channel* threw before the file dialog
+/// was ever asked for -- and the throw was swallowed, because the caller was a
+/// fire-and-forget callback, so the button simply did nothing at all.
+// ignore: use_build_context_synchronously
+void _report(BuildContext context, String message) {
+  debugPrint(message);
+  if (!context.mounted) return;
+  try {
+    SnackBarModel.of(context).error(message);
+  } catch (_) {
+    // No snackbar here. The message is already in the log, and a picker that
+    // fell over is not made better by falling over twice.
   }
 }

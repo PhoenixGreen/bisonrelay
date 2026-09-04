@@ -187,7 +187,12 @@ class CanvasCellEditor extends StatefulWidget {
   /// Offered here rather than behind a right-click menu, because this is
   /// already the gesture for "I want to change this cell" -- and a menu with
   /// one item on it is a menu nobody finds.
-  final VoidCallback onPickPicture;
+  ///
+  /// Returns a Future so that it can be *awaited*. Called and forgotten, an
+  /// exception inside it becomes an unhandled Future error, which in a
+  /// release build goes nowhere at all -- so a picker that fell over on its
+  /// first line looked exactly like a button that was not connected.
+  final Future<void> Function() onPickPicture;
 
   const CanvasCellEditor({
     required this.value,
@@ -224,7 +229,16 @@ class _CanvasCellEditorState extends State<CanvasCellEditor> {
     });
   }
 
-  /// _picking is whether a file picker is open on this cell's behalf.
+  /// _picking is whether the picture button has been pressed.
+  ///
+  /// Set on pointer *down*, not on the tap. The field loses focus the moment
+  /// the pointer goes down somewhere else, and losing focus is what closes
+  /// this editor -- so a flag set when the tap completed was set after the
+  /// editor it was protecting had already gone, taking the half-finished tap
+  /// with it. Which is why the button did nothing three times over.
+  ///
+  /// Not in setState: a rebuild in the middle of a gesture is another way to
+  /// lose it.
   bool _picking = false;
 
   @override
@@ -278,16 +292,30 @@ class _CanvasCellEditorState extends State<CanvasCellEditor> {
               message: "Put a picture in this cell",
               // A bare detector rather than an InkWell, which asks for focus
               // and so takes it off the field the moment it is pressed.
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () async {
-                  setState(() => _picking = true);
-                  widget.onPickPicture();
-                },
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  child: Icon(Icons.add_photo_alternate_outlined,
-                      size: 15, color: theme.colors.onSurfaceVariant),
+              // Listener rather than the detector's own onTapDown, which
+              // fires only once the gesture arena has settled -- by which
+              // time the focus has already moved and the editor has already
+              // been told to close. A Listener sees the pointer itself.
+              child: Listener(
+                onPointerDown: (_) => _picking = true,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTapCancel: () => _picking = false,
+                  onTap: () async {
+                    _picking = true;
+                    try {
+                      await widget.onPickPicture();
+                    } catch (exception) {
+                      debugPrint("Unable to put a picture in the cell: "
+                          "$exception");
+                    }
+                    _picking = false;
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: Icon(Icons.add_photo_alternate_outlined,
+                        size: 15, color: theme.colors.onSurfaceVariant),
+                  ),
                 ),
               ),
             ),

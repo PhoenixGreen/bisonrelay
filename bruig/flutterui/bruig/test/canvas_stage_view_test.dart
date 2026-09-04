@@ -933,7 +933,7 @@ void main() {
                   fontSize: 14,
                   onChanged: (_) {},
                   onDone: () {},
-                  onPickPicture: () => pressed++,
+                  onPickPicture: () async => pressed++,
                 ),
               ),
             ),
@@ -951,6 +951,92 @@ void main() {
       expect(pressed, 1);
       expect(find.byType(CanvasCellEditor), findsOneWidget,
           reason: "and the editor has not closed under it");
+    });
+
+    testWidgets("the editor survives losing focus to its own button",
+        (tester) async {
+      // The actual fault, and the one a synthetic tap does not reproduce: the
+      // field loses focus the moment the pointer goes down somewhere else,
+      // and losing focus is what closes this editor -- so the tap was
+      // cancelled with the widget before it ever finished.
+      var pressed = 0;
+      var closed = 0;
+      await tester.pumpWidget(MultiProvider(
+        providers: [
+          ChangeNotifierProvider<ThemeNotifier>(
+              create: (c) => ThemeNotifier(doLoad: false)),
+        ],
+        child: MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: SizedBox(
+                width: 160,
+                height: 30,
+                child: CanvasCellEditor(
+                  value: "6",
+                  fontSize: 14,
+                  onChanged: (_) {},
+                  onDone: () => closed++,
+                  onPickPicture: () async => pressed++,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      // Pressed and released as a pointer, with the focus taken away in
+      // between -- which is what a real mouse does.
+      var button = find.byTooltip("Put a picture in this cell");
+      var gesture = await tester.startGesture(tester.getCenter(button));
+      await tester.pump();
+      FocusManager.instance.primaryFocus?.unfocus();
+      await tester.pump();
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      expect(pressed, 1, reason: "the press still arrives");
+      expect(closed, 0, reason: "and the editor is not closed under it");
+    });
+
+    testWidgets("a picker that falls over does not take the editor with it",
+        (tester) async {
+      // The failure that hid this for three attempts: called and forgotten,
+      // an exception inside the callback became an unhandled Future error,
+      // which in a release build goes nowhere -- so a picker that threw on
+      // its first line looked exactly like a button that was not connected.
+      await tester.pumpWidget(MultiProvider(
+        providers: [
+          ChangeNotifierProvider<ThemeNotifier>(
+              create: (c) => ThemeNotifier(doLoad: false)),
+        ],
+        child: MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: SizedBox(
+                width: 160,
+                height: 30,
+                child: CanvasCellEditor(
+                  value: "6",
+                  fontSize: 14,
+                  onChanged: (_) {},
+                  onDone: () {},
+                  onPickPicture: () async => throw StateError("no picker"),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip("Put a picture in this cell"));
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull,
+          reason: "it is caught and logged rather than thrown into the void");
+      expect(find.byType(CanvasCellEditor), findsOneWidget);
     });
 
     testWidgets("one click still just selects it", (tester) async {
