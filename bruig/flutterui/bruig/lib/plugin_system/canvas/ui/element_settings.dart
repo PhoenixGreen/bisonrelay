@@ -3115,9 +3115,10 @@ Widget _tableRuleSettings(TableElement e, int index, _Write write,
             "A whole word finds it on its own -- W in \"--- W\" but not in "
             "\"Won\" -- and draws its box round that word rather than round "
             "the cell.\n\n"
-            "Rows counts from one and includes the header: 2 is one row, "
-            "2:4 is a block of them, >1 is everything under the header. Left "
-            "blank it means any row, which is what a rule about a column "
+            "Column takes a heading -- Points -- or the same ranges the rows "
+            "take. Rows counts from one and includes the header: 2 is one "
+            "row, 2:4 a block of them, >1 everything under the header. Left "
+            "blank either means any, which is what a rule about the other one "
             "wants."),
       ]),
       CanvasControlGroup(label: "Look", children: [

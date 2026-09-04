@@ -244,79 +244,109 @@ class TableRule {
   /// wherever the word happens to be.
   bool get banded => match.isEmpty;
 
-  /// matchesRow reads the little range language. [index] counts from zero.
-  bool matchesRow(int index) {
-    var spec = rows.trim();
-    if (spec.isEmpty) return true;
+  /// matchesRow reads the range language. [index] counts from zero.
+  bool matchesRow(int index) => spanMatches(rows, index);
+
+  /// spanMatches is the little range language, shared by the rows and the
+  /// columns because they are asking the same question.
+  ///
+  /// Empty is any. "3" is one, counting from one. "2:4" is a block, "&gt;1"
+  /// everything after, "&lt;4" everything before.
+  ///
+  /// An unreadable range matches nothing rather than everything, for the same
+  /// reason an unknown column name does: a typo should show up as a rule that
+  /// does nothing, not as a table painted entirely green.
+  static bool spanMatches(String spec, int index) {
+    var text = spec.trim();
+    if (text.isEmpty) return true;
     var at = index + 1;
 
-    if (spec.startsWith(">")) {
-      var from = int.tryParse(spec.substring(1).trim());
+    if (text.startsWith(">")) {
+      var from = int.tryParse(text.substring(1).trim());
       return from == null ? false : at > from;
     }
-    if (spec.startsWith("<")) {
-      var to = int.tryParse(spec.substring(1).trim());
+    if (text.startsWith("<")) {
+      var to = int.tryParse(text.substring(1).trim());
       return to == null ? false : at < to;
     }
-    if (spec.contains(":")) {
-      var parts = spec.split(":");
+    if (text.contains(":")) {
+      var parts = text.split(":");
       var from = int.tryParse(parts.first.trim());
       var to = int.tryParse(parts.last.trim());
       if (from == null || to == null) return false;
       return at >= math.min(from, to) && at <= math.max(from, to);
     }
-    var one = int.tryParse(spec);
-    // An unreadable range matches nothing rather than everything, for the
-    // same reason an unknown column does: a typo should show up as a rule
-    // that does nothing, not as a table painted entirely green.
+    var one = int.tryParse(text);
     return one == null ? false : at == one;
   }
 
-  /// columnIndex resolves [column] against a header row. -1 means any.
-  int columnIndex(List<String> header) {
-    if (column.trim().isEmpty) return -1;
+  /// matchesColumn is whether [index] is one of the columns this rule is
+  /// about.
+  ///
+  /// A heading first, because that is what somebody looking at the table can
+  /// see. Failing that it is read as a range, the same little language the
+  /// rows use -- 3, 2:4, >1 -- so a rule can cover a block of columns without
+  /// naming each of them, and so a table with no header row can still be
+  /// picked apart.
+  bool matchesColumn(int index, List<String> header) {
+    var spec = column.trim();
+    if (spec.isEmpty) return true;
+
     var byName = header.indexWhere(
-        (h) => h.trim().toLowerCase() == column.trim().toLowerCase());
-    if (byName >= 0) return byName;
-    var byNumber = int.tryParse(column.trim());
-    return byNumber == null ? -2 : byNumber - 1;
+        (h) => h.trim().toLowerCase() == spec.toLowerCase());
+    if (byName >= 0) return byName == index;
+    return spanMatches(spec, index);
   }
 
-  bool matches(String cell) => match.isEmpty || runIn(cell) != null;
+  /// spansColumns is whether the rule names more than one column, which is
+  /// what tells a band how wide to be.
+  bool get spansColumns => column.trim().isEmpty || !_isOne(column.trim());
 
-  /// runIn is where the match falls inside [cell], or null when it does not.
+  static bool _isOne(String spec) => int.tryParse(spec) != null;
+
+  bool matches(String cell) => match.isEmpty || runsIn(cell).isNotEmpty;
+
+  /// runIn is the first place the match falls inside [cell].
+  (int, int)? runIn(String cell) {
+    var all = runsIn(cell);
+    return all.isEmpty ? null : all.first;
+  }
+
+  /// runsIn is every place the match falls inside [cell].
   ///
-  /// A range rather than a yes or no, because a chip round a word has to know
+  /// Every place, not the first: a form guide reading "- - W | W" has two of
+  /// them and wants two chips, and a rule that stopped at the first was a
+  /// rule that highlighted half the answer.
+  ///
+  /// Ranges rather than a yes or no, because a chip round a word has to know
   /// which part of the cell the word is -- "--- W" wants a box round the W
   /// and not round the dashes.
-  (int, int)? runIn(String cell) {
+  List<(int, int)> runsIn(String cell) {
     var wanted = match.trim().toLowerCase();
-    if (wanted.isEmpty) return null;
+    if (wanted.isEmpty) return const [];
     var lower = cell.toLowerCase();
 
     switch (how) {
       case TableMatch.cell:
-        return cell.trim().toLowerCase() == wanted
-            ? (0, cell.length)
-            : null;
+        return cell.trim().toLowerCase() == wanted ? [(0, cell.length)] : const [];
       case TableMatch.anywhere:
-        var at = lower.indexOf(wanted);
-        return at < 0 ? null : (at, at + wanted.length);
       case TableMatch.word:
-        // A whole word, so "W" finds the W in "--- W" and not the W in "Won".
-        // Bounded by anything that is not a letter or a digit, which is what
-        // a word ends at everywhere anybody would expect it to.
+        // A whole word is bounded by anything that is not a letter or a
+        // digit, which is what a word ends at everywhere anybody would expect
+        // it to.
+        var out = <(int, int)>[];
         for (var at = lower.indexOf(wanted);
             at >= 0;
             at = lower.indexOf(wanted, at + 1)) {
-          var before = at == 0 ? "" : lower[at - 1];
-          var afterAt = at + wanted.length;
-          var after = afterAt >= lower.length ? "" : lower[afterAt];
-          if (!_wordish(before) && !_wordish(after)) {
-            return (at, afterAt);
+          var end = at + wanted.length;
+          if (how == TableMatch.word) {
+            var before = at == 0 ? "" : lower[at - 1];
+            var after = end >= lower.length ? "" : lower[end];
+            if (_wordish(before) || _wordish(after)) continue;
           }
+          out.add((at, end));
         }
-        return null;
+        return out;
     }
   }
 
@@ -477,8 +507,7 @@ class TableElement extends CanvasElement {
     var head = header;
     for (var rule in rules) {
       if (!rule.matchesRow(row)) continue;
-      var wanted = rule.columnIndex(head);
-      if (wanted == -2 || (wanted >= 0 && wanted != col)) continue;
+      if (!rule.matchesColumn(col, head)) continue;
       if (!rule.matches(cell(row, col))) continue;
       out = out == null
           ? rule.style

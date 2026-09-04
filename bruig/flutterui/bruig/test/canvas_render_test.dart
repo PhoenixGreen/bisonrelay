@@ -2731,19 +2731,10 @@ void _tableTests() {
         cellSpec: const TextSpec(fontSize: 18, align: TextAlignSpec.left),
       );
 
-      Future<Rect> greenBox(TableMatch how) async {
+      Future<Rect> greenBox(TableRule rule) async {
         var recorder = ui.PictureRecorder();
-        paintTable(
-            ui.Canvas(recorder),
-            const Rect.fromLTWH(0, 0, 400, 120),
-            e.copyWith(rules: [
-              TableRule(
-                  column: "Form",
-                  match: "W",
-                  how: how,
-                  style:
-                      const TableCellStyle(background: Color(0xFF00FF00))),
-            ]));
+        paintTable(ui.Canvas(recorder), const Rect.fromLTWH(0, 0, 400, 120),
+            e.copyWith(rules: [rule]));
         var image = await recorder.endRecording().toImage(400, 120);
         var pixels = (await image.toByteData(
                 format: ui.ImageByteFormat.rawStraightRgba))!
@@ -2769,14 +2760,66 @@ void _tableTests() {
                 maxY.toDouble());
       }
 
-      var word = await greenBox(TableMatch.word);
-      var anywhere = await greenBox(TableMatch.anywhere);
+      const green = TableCellStyle(background: Color(0xFF00FF00));
+      var word = await greenBox(const TableRule(
+          column: "Form", match: "W", how: TableMatch.word, style: green));
+      // A rule with no word to look for hugs the whole of the cell's text,
+      // which is what the word chip has to be smaller than.
+      var wholeLine =
+          await greenBox(const TableRule(column: "Form", style: green));
 
       expect(word, isNot(Rect.zero));
-      expect(word.width, lessThan(anywhere.width),
+      expect(word.width, lessThan(wholeLine.width),
           reason: "one letter's worth, not five");
-      expect(word.left, greaterThan(anywhere.left),
+      expect(word.left, greaterThan(wholeLine.left),
           reason: "and at the end of the line, where the W is");
+    });
+
+    test("two Ws in one cell get two chips", () async {
+      // The reported case: a form guide reading "- - W | W" was chipping the
+      // first W and leaving the second bare.
+      var e = TableElement(
+        const ElementBase(id: "t", width: 400, height: 120),
+        rows: const [
+          ["Form"],
+          ["- - W | W"],
+        ],
+        cellSpec: const TextSpec(fontSize: 18, align: TextAlignSpec.left),
+        rules: const [
+          TableRule(
+              column: "Form",
+              match: "W",
+              how: TableMatch.word,
+              style: TableCellStyle(
+                  background: Color(0xFF00FF00), inset: 1)),
+        ],
+      );
+
+      var recorder = ui.PictureRecorder();
+      paintTable(ui.Canvas(recorder), const Rect.fromLTWH(0, 0, 400, 120), e);
+      var image = await recorder.endRecording().toImage(400, 120);
+      var pixels = (await image.toByteData(
+              format: ui.ImageByteFormat.rawStraightRgba))!
+          .buffer
+          .asUint8List();
+      image.dispose();
+
+      // How many separate columns of green there are: one chip is one run of
+      // them, two chips are two. Projected down the whole picture rather than
+      // read off one line, or the white letters sitting on the chip would
+      // break a single chip into several.
+      var runs = 0;
+      var wasGreen = false;
+      for (var x = 0; x < 400; x++) {
+        var green = false;
+        for (var y = 0; y < 120 && !green; y++) {
+          var i = (y * 400 + x) * 4;
+          green = pixels[i + 1] > 200 && pixels[i] < 80;
+        }
+        if (green && !wasGreen) runs++;
+        wasGreen = green;
+      }
+      expect(runs, 2);
     });
 
     test("a rule saved before whole words still matches how it did", () {
@@ -2866,6 +2909,94 @@ void _tableTests() {
       ]);
       expect(e.styleFor(1, 0), isNull);
       expect(e.styleFor(1, 1), isNull);
+    });
+
+    test("a column takes a range as well as a name", () {
+      // The same little language the rows take, so a rule can cover a block
+      // of columns without naming each of them -- and a table with no header
+      // row can still be picked apart.
+      var e = TableElement(const ElementBase(id: "t"), rows: const [
+        ["A", "B", "C", "D"],
+        ["1", "2", "3", "4"],
+      ]);
+
+      bool covers(String column, int col) => e
+          .copyWith(rules: [
+            TableRule(column: column, style: const TableCellStyle(fontScale: 2))
+          ])
+          .styleFor(1, col) !=
+          null;
+
+      expect([0, 1, 2, 3].map((c) => covers("2:3", c)),
+          [false, true, true, false]);
+      expect([0, 1, 2, 3].map((c) => covers(">2", c)),
+          [false, false, true, true]);
+      expect([0, 1, 2, 3].map((c) => covers("<2", c)),
+          [true, false, false, false]);
+      expect([0, 1, 2, 3].map((c) => covers("C", c)),
+          [false, false, true, false],
+          reason: "a heading still wins, since that is what is visible");
+      expect([0, 1, 2, 3].map((c) => covers("", c)),
+          [true, true, true, true]);
+      expect([0, 1, 2, 3].map((c) => covers("Ponits", c)),
+          [false, false, false, false],
+          reason: "and a name nothing answers to matches nothing");
+    });
+
+    test("a band spans every column it names", () async {
+      // A rule about columns two to four is one band three columns wide
+      // rather than three bands.
+      var e = TableElement(
+        const ElementBase(id: "t", width: 400, height: 100),
+        rows: const [
+          ["A", "B", "C", "D"],
+          ["1", "2", "3", "4"],
+        ],
+        columnWidths: const [0.25, 0.25, 0.25, 0.25],
+        rules: const [
+          TableRule(
+              column: "2:3",
+              style: TableCellStyle(
+                  background: Color(0xFF00FF00), inset: 0)),
+        ],
+      );
+
+      var recorder = ui.PictureRecorder();
+      paintTable(ui.Canvas(recorder), const Rect.fromLTWH(0, 0, 400, 100), e);
+      var image = await recorder.endRecording().toImage(400, 100);
+      var pixels = (await image.toByteData(
+              format: ui.ImageByteFormat.rawStraightRgba))!
+          .buffer
+          .asUint8List();
+      image.dispose();
+
+      var minX = 400, maxX = 0;
+      for (var x = 0; x < 400; x++) {
+        var i = (50 * 400 + x) * 4;
+        if (pixels[i + 1] > 200 && pixels[i] < 80) {
+          minX = math.min(minX, x);
+          maxX = math.max(maxX, x);
+        }
+      }
+      expect(minX, closeTo(100, 2), reason: "the start of the second column");
+      expect(maxX, closeTo(299, 2), reason: "the end of the third");
+    });
+
+    test("every occurrence gets a chip, not just the first", () {
+      // A form guide reading "- - W | W" has two of them, and a rule that
+      // stopped at the first was a rule that highlighted half the answer.
+      const word = TableRule(match: "W", how: TableMatch.word);
+      expect(word.runsIn("- - W | W"), [(4, 5), (8, 9)]);
+      expect(word.runsIn("W W W").length, 3);
+      expect(word.runsIn("Won W"), [(4, 5)],
+          reason: "and still only the ones that are words");
+
+      const anywhere = TableRule(match: "w", how: TableMatch.anywhere);
+      expect(anywhere.runsIn("Won W").length, 2);
+
+      const whole = TableRule(match: "W");
+      expect(whole.runsIn("W W"), isEmpty,
+          reason: "the whole cell is one thing or it is nothing");
     });
 
     test("rules change the picture, and survive a round trip", () async {

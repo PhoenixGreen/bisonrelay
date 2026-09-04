@@ -142,13 +142,14 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
       // a green cell with a W in it. A rule about a whole column has no word
       // and is a band above; one that has been told to fill takes the cell.
       if (style != null && style.paintsBox && !_bandedHere(e, r, c)) {
-        _paintStyleBox(
-            canvas,
-            style.hug
-                ? _chipIn(e, r, c, spec, textBox)
-                : Rect.fromLTWH(x, y, w, h),
-            style,
-            hug: style.hug);
+        // One chip per occurrence. A form guide reading "- - W | W" has two
+        // of them, and a rule that stopped at the first was a rule that
+        // highlighted half the answer.
+        for (var chip in style.hug
+            ? _chipsIn(e, r, c, spec, textBox)
+            : [Rect.fromLTWH(x, y, w, h)]) {
+          _paintStyleBox(canvas, chip, style, hug: style.hug);
+        }
       }
 
       // The spec's own vertical alignment, not the middle regardless. It was
@@ -240,9 +241,7 @@ void _paintCellVector(ui.Canvas canvas, CanvasVector vector, Rect box) {
 bool _bandedHere(TableElement e, int row, int col) {
   var head = e.header;
   for (var rule in e.rules) {
-    if (!rule.matchesRow(row)) continue;
-    var wanted = rule.columnIndex(head);
-    if (wanted == -2 || (wanted >= 0 && wanted != col)) continue;
+    if (!rule.matchesRow(row) || !rule.matchesColumn(col, head)) continue;
     if (!rule.matches(e.cell(row, col))) continue;
     if (!rule.banded && rule.style.paintsBox) return false;
   }
@@ -254,53 +253,59 @@ bool _bandedHere(TableElement e, int row, int col) {
 Rect? _bandFor(TableElement e, TableRule rule, Rect rect, List<double> widths,
     List<double> heights, int cols) {
   var head = e.header;
-  var column = rule.columnIndex(head);
-  if (column == -2 || column >= cols) return null;
 
   var top = rect.top;
-  double? from, to;
+  double? fromY, toY;
   for (var r = 0; r < heights.length; r++) {
     if (rule.matchesRow(r)) {
-      from ??= top;
-      to = top + heights[r];
+      fromY ??= top;
+      toY = top + heights[r];
     }
     top += heights[r];
   }
-  if (from == null || to == null) return null;
+  if (fromY == null || toY == null) return null;
 
+  // Every column the rule names, taken together -- so a rule about columns
+  // two to four is one band three columns wide rather than three bands.
   var left = rect.left;
-  var right = rect.right;
-  if (column >= 0) {
-    left = rect.left;
-    for (var c = 0; c < column; c++) {
-      left += widths[c];
+  double? fromX, toX;
+  for (var c = 0; c < cols; c++) {
+    if (rule.matchesColumn(c, head)) {
+      fromX ??= left;
+      toX = left + widths[c];
     }
-    right = left + widths[column];
+    left += widths[c];
   }
-  return Rect.fromLTRB(left, from, right, to);
+  if (fromX == null || toX == null) return null;
+
+  return Rect.fromLTRB(fromX, fromY, toX, toY);
 }
 
-/// _chipIn is what a chip is drawn round: the matched word where a rule asked
-/// for one, and the whole of the cell's words otherwise.
+/// _chipsIn is what the chips are drawn round: every place a rule's word
+/// falls, and the whole of the cell's words when no rule named one.
 ///
-/// The word's own glyph boxes rather than a guess from the character count,
+/// The words' own glyph boxes rather than a guess from the character count,
 /// since a W and a full stop are not the same width -- see textRunBox.
-Rect _chipIn(TableElement e, int row, int col, TextSpec spec, Rect box) {
+List<Rect> _chipsIn(
+    TableElement e, int row, int col, TextSpec spec, Rect box) {
   var text = e.cell(row, col);
   var head = e.header;
 
   for (var rule in e.rules.reversed) {
-    if (rule.how != TableMatch.word || rule.match.isEmpty) continue;
-    if (!rule.matchesRow(row)) continue;
-    var wanted = rule.columnIndex(head);
-    if (wanted == -2 || (wanted >= 0 && wanted != col)) continue;
-    var run = rule.runIn(text);
-    if (run == null) continue;
-    var found = textRunBox(text, spec, box, run.$1, run.$2);
-    if (found != null) return found;
+    if (rule.how != TableMatch.word && rule.how != TableMatch.anywhere) {
+      continue;
+    }
+    if (rule.match.isEmpty) continue;
+    if (!rule.matchesRow(row) || !rule.matchesColumn(col, head)) continue;
+
+    var found = <Rect>[
+      for (var (from, to) in rule.runsIn(text))
+        if (textRunBox(text, spec, box, from, to) case var at?) at,
+    ];
+    if (found.isNotEmpty) return found;
   }
 
-  return _wordsIn(text, spec, box);
+  return [_wordsIn(text, spec, box)];
 }
 
 /// _wordsIn is the box the words actually occupy inside their cell, which is
