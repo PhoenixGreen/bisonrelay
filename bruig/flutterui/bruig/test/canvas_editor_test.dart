@@ -2594,23 +2594,45 @@ void main() {
           reason: "one switch each");
     });
 
-    testWidgets("placing a label offers where it goes", (tester) async {
-      // A chart lays its title out at the top and gives the rest to the plot,
-      // which is right until somebody wants it somewhere else -- and there is
-      // no set of automatic rules that covers both.
+    testWidgets("floating offers where each label goes", (tester) async {
+      // There used to be a "place it yourself" button per label, which was a
+      // second switch saying the same thing as "Over the chart": a label that
+      // floats is one that sits where it is put.
       var controller = await panel(tester);
       await labels(tester);
-      expect(chartIn(controller).titleBox.placed, isFalse);
+      expect(chartIn(controller).floatingLabels, isFalse);
+      // One X already: the element's own position, at the top of the panel.
+      expect(find.text("X"), findsOneWidget);
+      expect(find.byTooltip("Place it yourself — then drag it on the canvas"),
+          findsNothing);
 
-      await press(
-          tester,
-          find
-              .byTooltip("Place it yourself — then drag it on the canvas")
-              .first);
+      await press(tester, find.text("Over the chart"));
 
-      expect(chartIn(controller).titleBox.placed, isTrue);
-      expect(find.byTooltip("Put it back where the chart wants it"),
-          findsOneWidget);
+      // And now one for the title and one for the description as well.
+      expect(find.text("X"), findsNWidgets(3));
+      expect(find.text("H"), findsNWidgets(3));
+    });
+
+    testWidgets("switching it off keeps where they were put", (tester) async {
+      // The switch goes both ways without losing anything: off puts the chart
+      // back exactly as it was, and on again finds the labels where they were
+      // dragged rather than back at their defaults.
+      var controller = await panel(tester);
+      await labels(tester);
+      await press(tester, find.text("Over the chart"));
+
+      controller.replaceElement(chartIn(controller).copyWith(
+          titleBox: const ChartLabel(
+              x: 0.4, y: 0.5, width: 0.3, height: 0.12)));
+      await tester.pumpAndSettle();
+
+      await press(tester, find.text("Over the chart"));
+      expect(chartIn(controller).floatingLabels, isFalse);
+      expect(chartIn(controller).titleBox.x, 0.4,
+          reason: "kept, not thrown away");
+
+      await press(tester, find.text("Over the chart"));
+      expect(chartIn(controller).titleBox.x, 0.4);
     });
 
     testWidgets("a pie is offered no axes", (tester) async {
@@ -2670,11 +2692,30 @@ void main() {
       // one of their settings a setting that resized the chart.
       var controller = await panel(tester);
       await labels(tester);
-      expect(chartIn(controller).floatingLabels, isTrue,
-          reason: "over the chart to begin with");
+      expect(chartIn(controller).floatingLabels, isFalse,
+          reason: "stacked above the plot is what a chart looks like");
 
       await press(tester, find.text("Over the chart"));
-      expect(chartIn(controller).floatingLabels, isFalse);
+      expect(chartIn(controller).floatingLabels, isTrue);
+    });
+
+    testWidgets("a section remembers whether it was open", (tester) async {
+      // The panel is rebuilt from scratch whenever the selection changes, so
+      // a section opened, deselected and selected again used to be shut --
+      // the stored answer arrives asynchronously and the default is what
+      // anybody saw.
+      var controller = await panel(tester);
+      await labels(tester);
+      expect(find.text("TITLE"), findsOneWidget);
+
+      controller.clearSelection();
+      await tester.pumpAndSettle();
+      expect(find.text("TITLE"), findsNothing);
+
+      controller.selectOnly("c");
+      await tester.pumpAndSettle();
+      expect(find.text("TITLE"), findsOneWidget,
+          reason: "still open, without waiting for a preference to load");
     });
 
     testWidgets("a closed section still fills the column", (tester) async {
@@ -2840,6 +2881,21 @@ void main() {
   });
 
   group("a chart's animation", () {
+    /// openAnimation opens the section if it is not already open.
+    ///
+    /// Whether a section is open is remembered for the session, deliberately
+    /// -- somebody who opens the animation settings is working on animation
+    /// -- so a test cannot assume it starts closed and cannot simply tap the
+    /// heading, which would shut one a previous test left open.
+    Future<void> openAnimation(WidgetTester tester) async {
+      if (find.text("PRESET").evaluate().isNotEmpty) return;
+      var heading = find.text("ANIMATION");
+      await tester.ensureVisible(heading);
+      await tester.pumpAndSettle();
+      await tester.tap(heading);
+      await tester.pumpAndSettle();
+    }
+
     (CanvasController, ChartElement) build({int frames = 1}) {
       var document = CanvasDocument(frames: frames);
       var chart = ChartElement(
@@ -2930,11 +2986,7 @@ void main() {
       controller.selectOnly("c");
       await pump(tester, CanvasLayersPanel(controller: controller));
 
-      var animation = find.text("ANIMATION");
-      await tester.ensureVisible(animation);
-      await tester.pumpAndSettle();
-      await tester.tap(animation);
-      await tester.pumpAndSettle();
+      await openAnimation(tester);
 
       expect(find.text("Grow"), findsOneWidget);
       expect(find.text("Wipe across"), findsOneWidget);
@@ -2957,11 +3009,7 @@ void main() {
       controller.selectOnly("c");
       await pump(tester, CanvasLayersPanel(controller: controller));
 
-      var animation = find.text("ANIMATION");
-      await tester.ensureVisible(animation);
-      await tester.pumpAndSettle();
-      await tester.tap(animation);
-      await tester.pumpAndSettle();
+      await openAnimation(tester);
       expect(find.text("Gap"), findsNothing, reason: "no preset yet");
 
       controller.applyChartAnimation(chart, ChartAnimationPreset.grow);

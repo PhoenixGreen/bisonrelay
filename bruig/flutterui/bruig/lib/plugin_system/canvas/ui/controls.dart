@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:bruig/storage_manager.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:flutter/material.dart';
@@ -952,11 +953,23 @@ class CanvasExpander extends StatefulWidget {
   /// settings is usually there for the colours or the formation.
   final bool initiallyOpen;
 
+  /// remember names where this section's open state is kept, or null to let
+  /// it start closed every time.
+  ///
+  /// Kept in memory as well as on disk, and that is the point rather than an
+  /// optimisation: the settings panel is rebuilt from scratch whenever the
+  /// selection changes, and a fresh State reads a stored preference
+  /// asynchronously -- so a section opened, deselected and selected again was
+  /// shut for as long as it took the answer to come back off disk, which is
+  /// every time anybody looked.
+  final String? remember;
+
   const CanvasExpander({
     required this.label,
     required this.children,
     this.trailing,
     this.initiallyOpen = false,
+    this.remember,
     super.key,
   });
 
@@ -965,7 +978,33 @@ class CanvasExpander extends StatefulWidget {
 }
 
 class _CanvasExpanderState extends State<CanvasExpander> {
-  late bool _open = widget.initiallyOpen;
+  /// _remembered is every named section's state, for this run of the app.
+  static final Map<String, bool> _remembered = {};
+
+  late bool _open =
+      _remembered[widget.remember] ?? widget.initiallyOpen;
+
+  @override
+  void initState() {
+    super.initState();
+    var key = widget.remember;
+    if (key != null && !_remembered.containsKey(key)) _restore(key);
+  }
+
+  Future<void> _restore(String key) async {
+    var saved = await StorageManager.readData("canvasSection.$key");
+    if (saved is! bool) return;
+    _remembered[key] = saved;
+    if (mounted) setState(() => _open = saved);
+  }
+
+  void _toggle() {
+    setState(() => _open = !_open);
+    var key = widget.remember;
+    if (key == null) return;
+    _remembered[key] = _open;
+    StorageManager.saveData("canvasSection.$key", _open);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -975,7 +1014,7 @@ class _CanvasExpanderState extends State<CanvasExpander> {
       mainAxisSize: MainAxisSize.min,
       children: [
         InkWell(
-          onTap: () => setState(() => _open = !_open),
+          onTap: _toggle,
           borderRadius: BorderRadius.circular(5),
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),

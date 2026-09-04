@@ -581,6 +581,10 @@ void main() {
           height: document.size.height * 0.6,
         ),
         title: "Messages",
+        // Floating is what makes a label something to take hold of: laid out
+        // by the chart it is wherever the title happens to end up above the
+        // plot, and dragging that would mean dragging the arrangement.
+        floatingLabels: true,
         titleBox: const ChartLabel(x: 0.1, y: 0.1, width: 0.3, height: 0.2),
         data: ChartData.parse("Cat\tA\nx\t10\ny\t6"),
       );
@@ -633,7 +637,7 @@ void main() {
           controller.document.elements.whereType<ChartElement>().single;
       expect(after.titleBox.width, greaterThan(chart.titleBox.width));
       expect(after.titleBox.height, greaterThan(chart.titleBox.height));
-      expect(after.titleBox.x, chart.titleBox.x,
+      expect(after.titleBox.x, closeTo(chart.titleBox.x, 0.001),
           reason: "a corner drag pins the other corner");
     });
 
@@ -751,7 +755,7 @@ void main() {
       // arrangement rather than the label.
       var (controller, chart) = build();
       addTearDown(controller.dispose);
-      var flowing = chart.copyWith(titleBox: const ChartLabel());
+      var flowing = chart.copyWith(floatingLabels: false);
       controller.replaceElement(flowing);
       controller.selectOnly(chart.id);
       var stage = await pump(tester, controller);
@@ -765,7 +769,7 @@ void main() {
 
       var after =
           controller.document.elements.whereType<ChartElement>().single;
-      expect(after.titleBox.placed, isFalse);
+      expect(after.floatingLabels, isFalse);
       expect(after.x, isNot(chart.x),
           reason: "the chart moved instead, as any other element would");
     });

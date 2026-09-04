@@ -8,6 +8,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
+import 'package:bruig/plugin_system/canvas/render/chart_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/image_placement.dart';
 import 'package:bruig/plugin_system/canvas/render/image_store.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
@@ -106,17 +107,17 @@ enum _DragMode {
   chartLabel,
 }
 
-/// _ChartLabelGrab is which of a chart's two labels is being dragged, and
-/// whether by its body or by its corner.
+/// _ChartLabelGrab is which of a chart's three pieces of writing is being
+/// dragged, and whether by its body or by its corner.
 class _ChartLabelGrab {
-  final bool title;
+  final ChartLabelPart part;
   final bool resizing;
 
   /// grab is where in the label the pointer took hold, in document units, so
   /// the label does not jump its own corner under the pointer.
   final Offset grab;
 
-  const _ChartLabelGrab(this.title, this.resizing, this.grab);
+  const _ChartLabelGrab(this.part, this.resizing, this.grab);
 }
 
 class CanvasStage extends StatefulWidget {
@@ -1245,54 +1246,43 @@ class CanvasStageState extends State<CanvasStage> {
   List<Rect> _selectedChartLabels() {
     var element = controller.selected;
     if (element is! ChartElement || !controller.showHelpers) return const [];
-    return chartLabelRects(element, element.boundsAt(controller.frame))
+    return chartLabelPlaces(element, element.boundsAt(controller.frame))
         .values
+        .where((r) => !r.isEmpty)
         .toList();
   }
 
   /// _labelGrab is the chart label being dragged, while one is.
   _ChartLabelGrab? _labelGrab;
 
-  /// chartLabelRects is the boxes of a selected chart's placed labels, in
-  /// document units -- what the stage draws an outline around and what a
-  /// pointer can take hold of.
+  /// _hitChartLabel is which of the three a document point lands on, if any.
   ///
-  /// Only for a label that has been placed. One the chart is laying out itself
-  /// has no box of its own to move: it is wherever the title happens to end up
-  /// above the plot, and dragging that would mean dragging the arrangement.
-  static Map<bool, Rect> chartLabelRects(ChartElement e, Rect bounds) => {
-        if (e.titleBox.show && e.titleBox.placed && e.title.isNotEmpty)
-          true: e.titleBox.rectIn(bounds),
-        if (e.descriptionBox.show &&
-            e.descriptionBox.placed &&
-            e.description.isNotEmpty)
-          false: e.descriptionBox.rectIn(bounds),
-      };
-
-  /// _hitChartLabel is which label a document point lands on, if any.
+  /// The corner is tried before the body, and they are tried in reverse
+  /// drawing order, so the one on top is the one picked up when they overlap.
   ///
-  /// The corner is tried before the body, and both are tried against the
-  /// description before the title, so the one drawn on top is the one picked
-  /// up when they overlap.
+  /// The key is moved but not resized: its size is decided by its own setting
+  /// and by the words in it, so a corner to drag would be a corner that
+  /// argued with the number in the panel.
   _ChartLabelGrab? _hitChartLabel(ChartElement e, Offset doc) {
     var bounds = e.boundsAt(controller.frame);
-    var rects = chartLabelRects(e, bounds);
+    var rects = chartLabelPlaces(e, bounds);
     var corner = _handleHitSlop / _scale;
-    for (var title in [false, true]) {
-      var rect = rects[title];
-      if (rect == null) continue;
-      if ((doc - rect.bottomRight).distance <= corner) {
-        return _ChartLabelGrab(title, true, doc - rect.bottomRight);
+    for (var part in ChartLabelPart.values.reversed) {
+      var rect = rects[part];
+      if (rect == null || rect.isEmpty) continue;
+      if (part != ChartLabelPart.legend &&
+          (doc - rect.bottomRight).distance <= corner) {
+        return _ChartLabelGrab(part, true, doc - rect.bottomRight);
       }
       if (rect.contains(doc)) {
-        return _ChartLabelGrab(title, false, doc - rect.topLeft);
+        return _ChartLabelGrab(part, false, doc - rect.topLeft);
       }
     }
     return null;
   }
 
-  /// _applyChartLabel writes the drag onto the label, in fractions of the
-  /// chart's own box so that it stays put when the chart is resized.
+  /// _applyChartLabel writes the drag onto whichever it is, in fractions of
+  /// the chart's own box so that it stays put when the chart is resized.
   void _applyChartLabel(Offset doc) {
     var grab = _labelGrab;
     if (grab == null) return;
@@ -1301,26 +1291,47 @@ class CanvasStageState extends State<CanvasStage> {
 
     var bounds = element.boundsAt(controller.frame);
     if (bounds.width <= 0 || bounds.height <= 0) return;
-    var box = grab.title ? element.titleBox : element.descriptionBox;
 
-    ChartLabel next;
-    if (grab.resizing) {
-      var corner = doc - grab.grab;
-      next = box.copyWith(
-        width: ((corner.dx - bounds.left) / bounds.width - box.x)
-            .clamp(0.05, 2.0),
-        height: ((corner.dy - bounds.top) / bounds.height - box.y)
-            .clamp(0.03, 2.0),
-      );
-    } else {
-      var at = doc - grab.grab;
-      next = box.copyWith(
-        x: (at.dx - bounds.left) / bounds.width,
-        y: (at.dy - bounds.top) / bounds.height,
-      );
+    var at = doc - grab.grab;
+    var x = (at.dx - bounds.left) / bounds.width;
+    var y = (at.dy - bounds.top) / bounds.height;
+
+    if (grab.part == ChartLabelPart.legend) {
+      controller.replaceElement(
+          _grownFor(
+              element.copyWith(
+                  legend: element.legend.copyWith(x: x, y: y)),
+              bounds),
+          transient: true);
+      return;
     }
 
-    var updated = grab.title
+    // Where it is drawn now, which is its own place or the chart's idea of
+    // one -- a label dragged for the first time must move from where it can
+    // be seen rather than from a corner it has never been in.
+    var drawn = chartLabelPlaces(element, bounds)[grab.part]!;
+    var box = (grab.part == ChartLabelPart.title
+            ? element.titleBox
+            : element.descriptionBox)
+        .copyWith(
+      x: (drawn.left - bounds.left) / bounds.width,
+      y: (drawn.top - bounds.top) / bounds.height,
+      width: drawn.width / bounds.width,
+      height: drawn.height / bounds.height,
+    );
+
+    var next = grab.resizing
+        ? box.copyWith(
+            width: ((doc.dx - grab.grab.dx - bounds.left) / bounds.width -
+                    box.x)
+                .clamp(0.05, 2.0),
+            height: ((doc.dy - grab.grab.dy - bounds.top) / bounds.height -
+                    box.y)
+                .clamp(0.03, 2.0),
+          )
+        : box.copyWith(x: x, y: y);
+
+    var updated = grab.part == ChartLabelPart.title
         ? element.copyWith(titleBox: next)
         : element.copyWith(descriptionBox: next);
 
@@ -1344,7 +1355,7 @@ class CanvasStageState extends State<CanvasStage> {
   /// right -- see ChartBody -- so the plot does not follow the box in either
   /// direction.
   ChartElement _grownFor(ChartElement e, Rect bounds) {
-    var rects = chartLabelRects(e, bounds);
+    var rects = chartLabelPlaces(e, bounds);
     if (rects.isEmpty) return e;
 
     var wanted = e.body.rectIn(bounds);
@@ -1356,7 +1367,7 @@ class CanvasStageState extends State<CanvasStage> {
     /// refit rewrites a label's fractions against the new box, so it stays
     /// exactly where it is on screen while the box moves under it.
     ChartLabel refit(ChartLabel label) {
-      if (!label.placed) return label;
+      if (!label.hasPlace) return label;
       var rect = label.rectIn(bounds);
       return label.copyWith(
         x: (rect.left - wanted.left) / wanted.width,

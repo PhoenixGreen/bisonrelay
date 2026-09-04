@@ -1662,32 +1662,41 @@ List<Widget> _chartSettings(BuildContext context, CanvasController controller,
             },
             onCommit: commit,
           ),
-        if (box.show && text.isNotEmpty)
-          CanvasIconButton(
-            icon: box.placed ? Icons.push_pin : Icons.auto_awesome_mosaic,
-            tooltip: box.placed
-                ? "Put it back where the chart wants it"
-                : "Place it yourself — then drag it on the canvas",
-            active: box.placed,
-            // Placed where the chart would have put it rather than in the
-            // corner. Both labels used to land on 0.02, 0.02 -- so placing
-            // the second put it exactly over the first, and since the
-            // description is drawn last it looked as though the description
-            // had gone above the title.
-            onPressed: () => now(
-                withBox(box.placed ? box.copyWith(unplace: true) : whenPlaced)),
-          ),
+        // No button of its own to place it. There was one, and it was a
+        // second switch saying the same thing as "Over the chart" -- a label
+        // that floats is a label that sits where it is put, and a label that
+        // does not is one the chart arranges. One switch, three labels.
+        //
         // The words and the switches, then where it sits. Four coordinates
         // sharing a line with a text field and two buttons is four numbers
         // nobody can scan.
-        if (box.show && box.placed) const CanvasLineBreak(),
-        if (box.show && box.placed)
+        if (box.show && e.floatingLabels) const CanvasLineBreak(),
+        if (box.show && e.floatingLabels)
+          // Against the place it is drawn in, which is its own once it has
+          // been dragged and the chart's idea of one until then -- otherwise
+          // the fields read NaN on a label nobody has moved yet.
           for (var (label, value, apply)
               in <(String, double, ChartLabel Function(double))>[
-            ("X", box.x, (v) => box.copyWith(x: v)),
-            ("Y", box.y, (v) => box.copyWith(y: v)),
-            ("W", box.width, (v) => box.copyWith(width: v)),
-            ("H", box.height, (v) => box.copyWith(height: v)),
+            (
+              "X",
+              (box.hasPlace ? box : whenPlaced).x,
+              (v) => (box.hasPlace ? box : whenPlaced).copyWith(x: v)
+            ),
+            (
+              "Y",
+              (box.hasPlace ? box : whenPlaced).y,
+              (v) => (box.hasPlace ? box : whenPlaced).copyWith(y: v)
+            ),
+            (
+              "W",
+              (box.hasPlace ? box : whenPlaced).width,
+              (v) => (box.hasPlace ? box : whenPlaced).copyWith(width: v)
+            ),
+            (
+              "H",
+              (box.hasPlace ? box : whenPlaced).height,
+              (v) => (box.hasPlace ? box : whenPlaced).copyWith(height: v)
+            ),
           ])
             CanvasNumberField(
               label: label,
@@ -1740,6 +1749,7 @@ List<Widget> _chartSettings(BuildContext context, CanvasController controller,
       context,
       CanvasExpander(
         label: "Labels",
+        remember: "chartLabels",
         trailing: [
           if (e.title.isNotEmpty && e.titleBox.show) "title",
           if (e.description.isNotEmpty && e.descriptionBox.show) "description",
@@ -1781,7 +1791,8 @@ List<Widget> _chartSettings(BuildContext context, CanvasController controller,
           // series settings in the middle of a column of ordinary controls, and
           // without an edge of its own it ran straight into the axis settings under
           // it -- so the first thing under the table looked like part of the table.
-          CanvasControlGroup(label: "Labels", children: [
+          // No caption: the section this sits in is already called Labels.
+          CanvasControlGroup(label: "Labels", bandOnlyLabel: true, children: [
             // The one switch for all three of them. Taking room is what made every
             // one of their settings a setting that resized the chart.
             CanvasToggle(
@@ -1801,6 +1812,13 @@ List<Widget> _chartSettings(BuildContext context, CanvasController controller,
               value: e.showLegend,
               onChanged: (v) => now(e.copyWith(showLegend: v)),
             ),
+            if (e.showLegend && e.floatingLabels && e.legend.hasPlace)
+              CanvasIconButton(
+                icon: Icons.filter_center_focus,
+                tooltip: "Put the key back where Place says",
+                onPressed: () =>
+                    now(e.copyWith(legend: e.legend.copyWith(unplace: true))),
+              ),
             if (e.showLegend) ...[
               // Its own switch, not the chart's. A bar chart may want numbers
               // on its bars and a key without them, and a radial bar has
@@ -1877,6 +1895,7 @@ List<Widget> _chartSettings(BuildContext context, CanvasController controller,
       context,
       CanvasExpander(
         label: "Data",
+        remember: "chartData",
         trailing: "${e.data.categories.length} rows, "
             "${e.data.series.length} series",
         initiallyOpen: true,
@@ -1899,6 +1918,7 @@ List<Widget> _chartSettings(BuildContext context, CanvasController controller,
       context,
       CanvasExpander(
         label: "Animation",
+        remember: "chartAnimation",
         trailing: e.animation.on ? e.animation.preset.label : null,
         children: [
           CanvasControlGroup(label: "Preset", children: [

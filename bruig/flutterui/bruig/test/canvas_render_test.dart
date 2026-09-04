@@ -1463,7 +1463,9 @@ Future<List<int>> _rowsOf(ChartElement e, ui.Color colour,
   for (var y = 0; y < height; y++) {
     for (var x = 0; x < width; x++) {
       var i = (y * width + x) * 4;
-      if (pixels[i + 3] > 200 &&
+      // Not "opaque": a description is softened to three quarters, so the
+      // only pixels it ever writes are partly transparent.
+      if (pixels[i + 3] > 120 &&
           (pixels[i] - want[0]).abs() < tolerance &&
           (pixels[i + 1] - want[1]).abs() < tolerance &&
           (pixels[i + 2] - want[2]).abs() < tolerance) {
@@ -1655,9 +1657,7 @@ void _chartTests() {
       );
 
       var titleRows = await _rowsOf(e, red);
-      // Softened by the painter -- a description is a note under a title, not
-      // a second title -- so it lands nearer 0,191,0 than 0,255,0.
-      var descriptionRows = await _rowsOf(e, green, tolerance: 90);
+      var descriptionRows = await _rowsOf(e, green);
       expect(titleRows, isNotEmpty);
       expect(descriptionRows, isNotEmpty);
       expect(titleRows.last, lessThan(descriptionRows.first),
@@ -1684,8 +1684,8 @@ void _chartTests() {
       // drawn over the plot at its own box, and the plot gets the height the
       // title used to take.
       const box = ChartLabel(x: 0.5, y: 0.6, width: 0.4, height: 0.2);
-      expect(box.placed, isTrue);
-      expect(const ChartLabel().placed, isFalse);
+      expect(box.hasPlace, isTrue);
+      expect(const ChartLabel().hasPlace, isFalse);
 
       var rect = box.rectIn(const Rect.fromLTWH(100, 200, 400, 300));
       expect(rect.left, 300);
@@ -2070,9 +2070,11 @@ void _chartTests() {
       );
 
       var bare = await _chartPixels(plain.copyWith(
-          title: "", description: "", showLegend: false));
+          title: "", description: "", showLegend: false,
+          floatingLabels: true));
 
       // Everything the labels and the key can be set to, over the top of it.
+      plain = plain.copyWith(floatingLabels: true);
       for (var legend in const [
         ChartLegend(),
         ChartLegend(placement: LegendPlacement.left, vertical: true),

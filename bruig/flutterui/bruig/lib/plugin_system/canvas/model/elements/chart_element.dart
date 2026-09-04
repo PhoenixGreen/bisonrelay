@@ -73,13 +73,16 @@ enum ChartType {
 /// ChartLabel is a chart's title or description: whether it is shown, and
 /// where.
 ///
-/// Placement is optional and off to begin with. A chart lays its own title out
-/// -- stacked at the top, taking the height it needs and giving the rest to
-/// the plot -- which is right until somebody wants the title down the side or
-/// over the corner of the plot, and there is no arrangement of automatic rules
-/// that covers both. So [x] is NaN until the label is moved, and the moment it
-/// is moved it stops taking room from the plot and starts sitting where it was
-/// put.
+/// Whether the place is *used* is [ChartElement.floatingLabels]. A chart lays
+/// its own title out -- stacked at the top, taking the height it needs and
+/// giving the rest to the plot -- which is right until somebody wants the
+/// title down the side or over the corner of the plot, and there is no
+/// arrangement of automatic rules that covers both.
+///
+/// The coordinates are kept either way, which is what makes the switch a
+/// switch rather than a decision: turning it off puts the chart back exactly
+/// as it was, and turning it on again finds the labels where they were
+/// dragged to rather than back at their defaults.
 class ChartLabel {
   final bool show;
 
@@ -98,8 +101,10 @@ class ChartLabel {
     this.height = 0.14,
   });
 
-  /// placed is whether it has been moved off the chart's own arrangement.
-  bool get placed => !x.isNaN;
+  /// hasPlace is whether it has been given coordinates of its own. Without
+  /// them a floating label falls back to where the chart would have put it --
+  /// see defaultTitlePlacement.
+  bool get hasPlace => !x.isNaN;
 
   Rect rectIn(Rect box) => Rect.fromLTWH(
         box.left + x * box.width,
@@ -126,10 +131,10 @@ class ChartLabel {
 
   Map<String, dynamic> toJson() => {
         if (!show) "off": true,
-        if (placed) "x": x,
-        if (placed) "y": y,
-        if (placed) "w": width,
-        if (placed) "h": height,
+        if (hasPlace) "x": x,
+        if (hasPlace) "y": y,
+        if (hasPlace) "w": width,
+        if (hasPlace) "h": height,
       };
 
   factory ChartLabel.fromJson(Map<String, dynamic> json) => ChartLabel(
@@ -615,6 +620,12 @@ class ChartLegend {
   /// own type.
   final double spacing;
 
+  /// x and y are where the key sits when the labels are floating, as
+  /// fractions of the chart's box. NaN until it is dragged, and then
+  /// [placement] no longer decides where it goes.
+  final double x;
+  final double y;
+
   /// separator goes between an entry's name and its number.
   ///
   /// A string rather than a boolean, because which one reads best depends on
@@ -637,7 +648,12 @@ class ChartLegend {
     this.spacing = 1,
     this.values = false,
     this.separator = ": ",
+    this.x = double.nan,
+    this.y = double.nan,
   });
+
+  /// hasPlace is whether it has been dragged somewhere of its own.
+  bool get hasPlace => !x.isNaN && !y.isNaN;
 
   /// separators are the ones offered. Free text would be a field somebody
   /// could put a paragraph in.
@@ -656,6 +672,9 @@ class ChartLegend {
     double? spacing,
     bool? values,
     String? separator,
+    double? x,
+    double? y,
+    bool unplace = false,
   }) =>
       ChartLegend(
         placement: placement ?? this.placement,
@@ -664,6 +683,8 @@ class ChartLegend {
         spacing: spacing ?? this.spacing,
         values: values ?? this.values,
         separator: separator ?? this.separator,
+        x: unplace ? double.nan : (x ?? this.x),
+        y: unplace ? double.nan : (y ?? this.y),
       );
 
   Map<String, dynamic> toJson() => {
@@ -673,6 +694,8 @@ class ChartLegend {
         if (spacing != 1) "spacing": spacing,
         if (values) "values": true,
         if (separator != ": ") "sep": separator,
+        if (hasPlace) "x": x,
+        if (hasPlace) "y": y,
       };
 
   factory ChartLegend.fromJson(Map<String, dynamic> json) => ChartLegend(
@@ -682,6 +705,8 @@ class ChartLegend {
         spacing: jsonDouble(json["spacing"], 1).clamp(0.0, 6.0),
         values: jsonBool(json["values"], false),
         separator: jsonString(json["sep"], ": "),
+        x: jsonDouble(json["x"], double.nan),
+        y: jsonDouble(json["y"], double.nan),
       );
 }
 
@@ -752,13 +777,14 @@ ChartLabel defaultDescriptionPlacement(ChartLabel title, bool hasTitle) {
   // title to sit under, the description takes the top itself rather than
   // leaving a band of nothing above it.
   var top = hasTitle
-      ? (title.placed ? title.y + title.height : defaultTitlePlacement.y +
-          defaultTitlePlacement.height)
+      ? (title.hasPlace
+          ? title.y + title.height
+          : defaultTitlePlacement.y + defaultTitlePlacement.height)
       : 0.02;
   return ChartLabel(
-      x: hasTitle && title.placed ? title.x : 0.02,
+      x: hasTitle && title.hasPlace ? title.x : 0.02,
       y: top + 0.01,
-      width: hasTitle && title.placed ? title.width : 0.96,
+      width: hasTitle && title.hasPlace ? title.width : 0.96,
       height: 0.1);
 }
 
@@ -786,17 +812,18 @@ class ChartElement extends CanvasElement {
   final ChartLegend legend;
 
   /// floatingLabels puts the title, the description and the key *over* the
-  /// chart instead of taking room from it.
+  /// chart instead of taking room from it, and lets them be dragged anywhere.
   ///
-  /// On, because taking room is what made every one of their settings a
-  /// setting that resized the chart. A key moved to the left took a third of
-  /// the width, so a pie became a small ring in the corner; a title made
-  /// bigger pushed the plot down. None of those are decisions about the
-  /// chart, and all of them changed it.
+  /// Off to begin with. Stacked above the plot is what a chart looks like and
+  /// is right until somebody wants otherwise; floating is the answer to "I
+  /// want the title in that corner", which is a thing to ask for rather than
+  /// a thing to be given.
   ///
-  /// Off is the older behaviour and is right for a chart whose plot fills its
-  /// box -- a bar reaching the top of a busy chart will run behind a title
-  /// that is floating over it.
+  /// On, each of the three sits where it has been put -- or where the chart
+  /// would have put it, until it is moved -- and takes no room from the plot,
+  /// so none of their settings resizes the chart. The coordinates are kept
+  /// when it is switched off again, so the switch goes both ways without
+  /// losing anything.
   final bool floatingLabels;
 
   /// descriptionSpec is the description's own type, or null to follow the
@@ -859,7 +886,7 @@ class ChartElement extends CanvasElement {
     this.body = const ChartBody(),
     this.animation = const ChartAnimation(),
     this.legend = const ChartLegend(),
-    this.floatingLabels = true,
+    this.floatingLabels = false,
     this.descriptionSpec,
     this.xAxisLabel = "",
     this.yAxisLabel = "",
@@ -1035,7 +1062,7 @@ class ChartElement extends CanvasElement {
         // row.
         if (showLegend || legend.toJson().length > 1)
           "legendSpec": legend.toJson(),
-        if (!floatingLabels) "solidLabels": true,
+        if (floatingLabels) "floatLabels": true,
         if (descriptionSpec != null) "descSpec": descriptionSpec!.toJson(),
         if (xAxisLabel.isNotEmpty) "xlabel": xAxisLabel,
         if (yAxisLabel.isNotEmpty) "ylabel": yAxisLabel,
@@ -1072,7 +1099,7 @@ class ChartElement extends CanvasElement {
               const ChartAnimation()),
           legend: jsonSpec(json["legendSpec"], ChartLegend.fromJson,
               const ChartLegend()),
-          floatingLabels: !jsonBool(json["solidLabels"], false),
+          floatingLabels: jsonBool(json["floatLabels"], false),
           descriptionSpec: json["descSpec"] is Map<String, dynamic>
               ? TextSpec.fromJson(json["descSpec"] as Map<String, dynamic>)
               : null,
