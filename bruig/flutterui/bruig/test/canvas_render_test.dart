@@ -3369,6 +3369,118 @@ void _tableTests() {
       expect(await corners(0), greaterThan(await corners(20)));
     });
 
+    test("the outline is its own switch", () async {
+      // "Rules between the rows" and "a line round the whole thing" are two
+      // decisions anybody might want either of, and folding them into one
+      // list means an entry for every combination.
+      var e = TableElement(
+        const ElementBase(id: "t", width: 300, height: 100),
+        rows: const [
+          ["Team"],
+          ["Hull"],
+        ],
+        grid: TableGrid.horizontal,
+        gridColor: const Color(0xFFFF0000),
+        gridWidth: 2,
+      );
+
+      Future<int> redRows(bool outline) async {
+        var recorder = ui.PictureRecorder();
+        paintTable(ui.Canvas(recorder), const Rect.fromLTWH(0, 0, 300, 100),
+            e.copyWith(showOutline: outline));
+        var image = await recorder.endRecording().toImage(300, 100);
+        var pixels = (await image.toByteData(
+                format: ui.ImageByteFormat.rawStraightRgba))!
+            .buffer
+            .asUint8List();
+        image.dispose();
+        var n = 0;
+        for (var y = 0; y < 100; y++) {
+          for (var x = 0; x < 300; x++) {
+            var i = (y * 300 + x) * 4;
+            if (pixels[i] > 180 && pixels[i + 1] < 80) {
+              n++;
+              break;
+            }
+          }
+        }
+        return n;
+      }
+
+      expect(await redRows(false), lessThan(await redRows(true)));
+      expect(await redRows(false), greaterThan(0),
+          reason: "the rule between the rows is still there");
+      expect(e.toJson().containsKey("noOutline"), isFalse,
+          reason: "and a table that keeps its outline says nothing");
+    });
+
+    test("a fixed pitch puts every letter in the same-sized slot", () async {
+      // A W is wider than an L, so however carefully the spacing is set the
+      // boxes round a row of letters come out at different places -- lining
+      // them up by eye is a job that cannot be finished.
+      var e = TableElement(
+        const ElementBase(id: "t", width: 400, height: 80),
+        rows: const [
+          ["Form"],
+          ["WLD"],
+        ],
+        cellSpec: const TextSpec(fontSize: 18, align: TextAlignSpec.left),
+        rules: const [
+          TableRule(
+              column: "Form",
+              style: TableCellStyle(letterWidth: 30, letterSpacing: 10)),
+          // Anywhere, since the letters are written without spaces between
+          // them -- a fixed pitch is what puts the space there.
+          TableRule(
+              column: "Form",
+              match: "W",
+              how: TableMatch.anywhere,
+              style: TableCellStyle(
+                  background: Color(0xFF00FF00), inset: 0, radius: 0)),
+          TableRule(
+              column: "Form",
+              match: "L",
+              how: TableMatch.anywhere,
+              style: TableCellStyle(
+                  background: Color(0xFFFF0000), inset: 0, radius: 0)),
+        ],
+      );
+
+      var recorder = ui.PictureRecorder();
+      paintTable(ui.Canvas(recorder), const Rect.fromLTWH(0, 0, 400, 80), e);
+      var image = await recorder.endRecording().toImage(400, 80);
+      var pixels = (await image.toByteData(
+              format: ui.ImageByteFormat.rawStraightRgba))!
+          .buffer
+          .asUint8List();
+      image.dispose();
+
+      (int, int) extentOf(bool red) {
+        var min = 400, max = 0;
+        for (var y = 40; y < 80; y++) {
+          for (var x = 0; x < 400; x++) {
+            var i = (y * 400 + x) * 4;
+            var hit = red
+                ? pixels[i] > 180 && pixels[i + 1] < 80
+                : pixels[i + 1] > 180 && pixels[i] < 80;
+            if (hit) {
+              if (x < min) min = x;
+              if (x > max) max = x;
+            }
+          }
+        }
+        return (min, max);
+      }
+
+      var (wFrom, wTo) = extentOf(false);
+      var (lFrom, lTo) = extentOf(true);
+
+      expect(wTo - wFrom, closeTo(lTo - lFrom, 2),
+          reason: "the same width, though a W is wider than an L");
+      expect(lFrom - wFrom, closeTo(40, 2),
+          reason: "and one pitch apart -- thirty wide, ten between");
+    });
+
     test("a rule can push a cell's letters apart", () async {
       // What keeps a row of boxes from touching. On the rule because the cell
       // type's own spacing is one number for the whole table -- widening the

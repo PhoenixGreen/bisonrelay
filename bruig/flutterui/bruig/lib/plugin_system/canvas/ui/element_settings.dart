@@ -2200,6 +2200,15 @@ List<Widget> _tableSettings(BuildContext context, TableElement e,
           },
         ),
         CanvasToggle(
+          label: "Outline",
+          value: e.showOutline,
+          onChanged: (v) {
+            begin();
+            write(e.copyWith(showOutline: v));
+            commit();
+          },
+        ),
+        CanvasToggle(
           label: "Zebra",
           value: e.zebra,
           onChanged: (v) {
@@ -3230,6 +3239,17 @@ Widget _tableRuleSettings(TableElement e, int index, _Write write,
           onCommit: commit,
         ),
         CanvasNumberField(
+          label: "Letter width",
+          value: style.letterWidth,
+          min: 0,
+          max: 300,
+          decimals: 1,
+          width: 66,
+          onChanged: (v) =>
+              put(rule.copyWith(style: style.copyWith(letterWidth: v))),
+          onCommit: commit,
+        ),
+        CanvasNumberField(
           label: "Letter space",
           value: style.letterSpacing,
           min: -20,
@@ -3342,9 +3362,12 @@ Widget _tableRuleSettings(TableElement e, int index, _Write write,
             "which is what makes a row of chips one size rather than three -- "
             "a W is wider than an L. The same number in both makes them "
             "square.\n\n"
-            "Letter space pushes the letters of the cell apart, which is what "
-            "keeps a row of boxes from touching -- the cell type's own "
-            "spacing is one number for the whole table, so widening the form "
+            "Letter width gives every character in the cell a slot of the "
+            "same width, and letter space is the gap between the slots. That "
+            "is what lines a row of boxes up: a W is wider than an L, so "
+            "without it no amount of spacing puts them in the same places. "
+            "Both are on the rule rather than on the cell type, whose own "
+            "spacing is one number for the whole table -- widening the form "
             "column there would widen the team names with it."),
       ]),
     ],

@@ -170,7 +170,20 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
       // one for L, and merging them gave every chip in the cell the last
       // rule's background -- and only that rule's chips were drawn at all, so
       // a row reading "D L W" showed one letter marked and two bare.
-      _paintChips(canvas, e, r, c, spec, textBox, Rect.fromLTWH(x, y, w, h));
+      _paintChips(canvas, e, r, c, spec, textBox, Rect.fromLTWH(x, y, w, h),
+          _slotsIn(e.cell(r, c), spec, textBox, style?.letterWidth ?? 0,
+              style?.letterSpacing ?? 0));
+
+      // On a fixed pitch, if a rule asked for one: each character in a slot
+      // of its own, so a W and an L land in the same places and the boxes
+      // round them line up.
+      var slots = _slotsIn(e.cell(r, c), spec, textBox, style?.letterWidth ?? 0,
+          style?.letterSpacing ?? 0);
+      if (slots != null) {
+        _paintSlots(canvas, e.cell(r, c), spec, slots);
+        x += w;
+        continue;
+      }
 
       // The spec's own vertical alignment, not the middle regardless. It was
       // forced here, so the Vertical setting on a table's type did nothing at
@@ -212,7 +225,7 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
 
   canvas.restore();
 
-  if (e.grid.drawsOuter && e.gridWidth > 0) {
+  if (e.grid.drawsOuter && e.showOutline && e.gridWidth > 0) {
     canvas.drawRRect(
         RRect.fromRectAndRadius(rect.deflate(e.gridWidth / 2), radius),
         Paint()
@@ -319,7 +332,7 @@ Rect? _bandFor(TableElement e, TableRule rule, Rect rect, List<double> widths,
 /// Off the words' own glyph boxes rather than a guess from the character
 /// count, since a W and a full stop are not the same width -- see textRunBox.
 void _paintChips(ui.Canvas canvas, TableElement e, int row, int col,
-    TextSpec spec, Rect textBox, Rect cell) {
+    TextSpec spec, Rect textBox, Rect cell, List<Rect>? slots) {
   var text = e.cell(row, col);
   var head = e.header;
 
@@ -330,10 +343,61 @@ void _paintChips(ui.Canvas canvas, TableElement e, int row, int col,
     for (var (from, to) in rule.runsIn(text)) {
       var box = !rule.style.hug
           ? cell
-          : (textRunBox(text, spec, textBox, from, to) ??
-              _wordsIn(text, spec, textBox));
+          // On a fixed pitch the box is the slots themselves, which is the
+          // point of the pitch: the letters are already in line, so the boxes
+          // round them are too.
+          : (slots != null
+              ? _slotSpan(slots, from, to)
+              : (textRunBox(text, spec, textBox, from, to) ??
+                  _wordsIn(text, spec, textBox)));
+      if (box == null) continue;
       _paintStyleBox(canvas, box, rule.style, hug: rule.style.hug);
     }
+  }
+}
+
+/// _slotsIn is one rectangle per character when a rule asked for a fixed
+/// pitch, and null when it did not.
+///
+/// A W is wider than an L, so however carefully the spacing is set the boxes
+/// round a row of letters come out at different places -- lining them up by
+/// eye is a job that cannot be finished. A slot each makes it arithmetic.
+List<Rect>? _slotsIn(String text, TextSpec spec, Rect box, double width,
+    double gap) {
+  if (width <= 0 || text.isEmpty) return null;
+
+  var pitch = width + gap;
+  var total = text.length * width + (text.length - 1) * gap;
+  var left = switch (spec.align) {
+    TextAlignSpec.center => box.center.dx - total / 2,
+    TextAlignSpec.right => box.right - total,
+    _ => box.left,
+  };
+
+  return [
+    for (var i = 0; i < text.length; i++)
+      Rect.fromLTWH(left + pitch * i, box.top, width, box.height),
+  ];
+}
+
+/// _slotSpan is the slots a run covers, taken together.
+Rect? _slotSpan(List<Rect> slots, int from, int to) {
+  if (from < 0 || to > slots.length || to <= from) return null;
+  var out = slots[from];
+  for (var i = from + 1; i < to; i++) {
+    out = out.expandToInclude(slots[i]);
+  }
+  return out;
+}
+
+/// _paintSlots draws each character in the middle of its own slot.
+void _paintSlots(
+    ui.Canvas canvas, String text, TextSpec spec, List<Rect> slots) {
+  var centred = spec.copyWith(
+      align: TextAlignSpec.center, letterSpacing: 0);
+  for (var i = 0; i < text.length && i < slots.length; i++) {
+    if (text[i].trim().isEmpty) continue;
+    paintTextInBox(canvas, text[i], centred, slots[i]);
   }
 }
 

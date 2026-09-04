@@ -44,6 +44,15 @@ class TableCellStyle {
   /// weight is 0 to keep the type's own, and 100..900 to override it.
   final int weight;
 
+  /// letterWidth lays the cell's characters out on a fixed pitch.
+  ///
+  /// Zero is the natural widths, which is what words want. A number is what a
+  /// row of boxes wants: a W is wider than an L, so however carefully the
+  /// spacing is set the boxes come out at different places, and lining them
+  /// up by eye is a job that cannot be finished. Every character gets a slot
+  /// of this width, and [letterSpacing] is the gap between the slots.
+  final double letterWidth;
+
   /// letterSpacing is 0 to keep the type's own.
   ///
   /// On a rule because that is where it is needed: a form guide reading
@@ -110,6 +119,7 @@ class TableCellStyle {
     this.fontScale = 1,
     this.weight = 0,
     this.letterSpacing = 0,
+    this.letterWidth = 0,
     this.align,
     this.verticalAlign,
     this.borderColor = const Color(0x00000000),
@@ -141,6 +151,7 @@ class TableCellStyle {
     double? fontScale,
     int? weight,
     double? letterSpacing,
+    double? letterWidth,
     TextAlignSpec? align,
     VerticalAlignSpec? verticalAlign,
     bool clearAlign = false,
@@ -161,6 +172,7 @@ class TableCellStyle {
         fontScale: fontScale ?? this.fontScale,
         weight: weight ?? this.weight,
         letterSpacing: letterSpacing ?? this.letterSpacing,
+        letterWidth: letterWidth ?? this.letterWidth,
         align: clearAlign ? null : (align ?? this.align),
         verticalAlign:
             clearVerticalAlign ? null : (verticalAlign ?? this.verticalAlign),
@@ -181,6 +193,7 @@ class TableCellStyle {
         if (fontScale != 1) "scale": fontScale,
         if (weight != 0) "weight": weight,
         if (letterSpacing != 0) "ls": letterSpacing,
+        if (letterWidth != 0) "lw": letterWidth,
         if (align != null) "align": align!.name,
         if (verticalAlign != null) "valign": verticalAlign!.name,
         if (borderColor.a > 0) "bc": colorToJson(borderColor),
@@ -200,6 +213,7 @@ class TableCellStyle {
         fontScale: jsonDouble(json["scale"], 1).clamp(0.2, 6.0),
         weight: jsonInt(json["weight"], 0),
         letterSpacing: jsonDouble(json["ls"], 0),
+        letterWidth: jsonDouble(json["lw"], 0),
         align: json["align"] is String
             ? TextAlignSpec.fromName(json["align"] as String?)
             : null,
@@ -461,6 +475,14 @@ class TableElement extends CanvasElement {
   final bool headerRow;
   final bool headerColumn;
 
+  /// showOutline is the rule round the outside of the table.
+  ///
+  /// Its own switch rather than another entry in [TableGrid], because it is a
+  /// separate decision: "rules between the rows" and "a line round the whole
+  /// thing" are two things anybody might want either of, and folding them
+  /// into one list means an entry for every combination.
+  final bool showOutline;
+
   final TextSpec cellSpec;
   final TextSpec headerSpec;
 
@@ -508,6 +530,7 @@ class TableElement extends CanvasElement {
     this.rows = const [],
     this.headerRow = true,
     this.headerColumn = false,
+    this.showOutline = true,
     this.cellSpec = const TextSpec(
         fontSize: 18, weight: 400, align: TextAlignSpec.left),
     this.headerSpec = const TextSpec(
@@ -589,6 +612,9 @@ class TableElement extends CanvasElement {
               letterSpacing: rule.style.letterSpacing != 0
                   ? rule.style.letterSpacing
                   : out.letterSpacing,
+              letterWidth: rule.style.letterWidth != 0
+                  ? rule.style.letterWidth
+                  : out.letterWidth,
               align: rule.style.align ?? out.align,
               verticalAlign: rule.style.verticalAlign ?? out.verticalAlign,
               borderColor: rule.style.borderColor.a > 0
@@ -635,6 +661,7 @@ class TableElement extends CanvasElement {
     List<List<String>>? rows,
     bool? headerRow,
     bool? headerColumn,
+    bool? showOutline,
     TextSpec? cellSpec,
     TextSpec? headerSpec,
     Color? headerFill,
@@ -655,6 +682,7 @@ class TableElement extends CanvasElement {
           rows: rows,
           headerRow: headerRow,
           headerColumn: headerColumn,
+          showOutline: showOutline,
           cellSpec: cellSpec,
           headerSpec: headerSpec,
           headerFill: headerFill,
@@ -676,6 +704,7 @@ class TableElement extends CanvasElement {
     List<List<String>>? rows,
     bool? headerRow,
     bool? headerColumn,
+    bool? showOutline,
     TextSpec? cellSpec,
     TextSpec? headerSpec,
     Color? headerFill,
@@ -696,6 +725,7 @@ class TableElement extends CanvasElement {
           rows: rows ?? this.rows,
           headerRow: headerRow ?? this.headerRow,
           headerColumn: headerColumn ?? this.headerColumn,
+          showOutline: showOutline ?? this.showOutline,
           cellSpec: cellSpec ?? this.cellSpec,
           headerSpec: headerSpec ?? this.headerSpec,
           headerFill: headerFill ?? this.headerFill,
@@ -717,6 +747,7 @@ class TableElement extends CanvasElement {
         "rows": rows,
         "headerRow": headerRow,
         if (headerColumn) "headerCol": true,
+        if (!showOutline) "noOutline": true,
         "cellSpec": cellSpec.toJson(),
         "headerSpec": headerSpec.toJson(),
         "headerFill": colorToJson(headerFill),
@@ -747,6 +778,7 @@ class TableElement extends CanvasElement {
             : const [],
         headerRow: jsonBool(json["headerRow"], true),
         headerColumn: jsonBool(json["headerCol"], false),
+        showOutline: !jsonBool(json["noOutline"], false),
         cellSpec: jsonSpec(json["cellSpec"], TextSpec.fromJson,
             const TextSpec(fontSize: 18, weight: 400, align: TextAlignSpec.left)),
         headerSpec: jsonSpec(json["headerSpec"], TextSpec.fromJson,
