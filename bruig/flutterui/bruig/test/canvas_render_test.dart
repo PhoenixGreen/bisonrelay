@@ -2116,6 +2116,56 @@ void _chartTests() {
       expect(floating, isNot(orderedEquals(solid)));
     });
 
+    test("switching floating off puts the box back round the chart", () {
+      // Dragging a floating label outside the box grows the box to hold it
+      // and insets the chart to keep it where it was. Left like that, the
+      // chart sat small in the middle of an element with a margin of nothing
+      // round it -- so the switch did not go both ways after all.
+      var grown = ChartElement(
+        const ElementBase(id: "c", x: 40, y: 30, width: 500, height: 380),
+        floatingLabels: true,
+        // What a drag off the top left leaves behind: the box is bigger than
+        // the chart and the chart is over to one side of it.
+        body: const ChartBody(x: 0.2, y: 0.1, width: 0.8, height: 0.9),
+      );
+
+      var back = grown.aroundTheChart();
+      expect(back.body.isWhole, isTrue);
+      expect(back.x, closeTo(40 + 0.2 * 500, 0.001));
+      expect(back.y, closeTo(30 + 0.1 * 380, 0.001));
+      expect(back.width, closeTo(0.8 * 500, 0.001));
+      expect(back.height, closeTo(0.9 * 380, 0.001));
+
+      // And the chart itself has not moved an inch, which is the point.
+      Rect boxOf(ChartElement e) => Rect.fromLTWH(e.x, e.y, e.width, e.height);
+      expect(back.body.rectIn(boxOf(back)), grown.body.rectIn(boxOf(grown)));
+
+      // A chart that never grew is left exactly alone.
+      var plain = ChartElement(
+          const ElementBase(id: "c", x: 1, y: 2, width: 3, height: 4));
+      expect(identical(plain.aroundTheChart(), plain), isTrue);
+    });
+
+    test("the axes labels can be taken off, gutters and all", () async {
+      // No writing, no gutters. Keeping the room they took would be a chart
+      // with a margin of nothing down two sides.
+      var e = _two(ChartType.groupedBar);
+
+      Future<int> plotLeft(bool labels) async {
+        var pixels = await _chartPixels(e.copyWith(showAxisLabels: labels));
+        for (var x = 0; x < 400; x++) {
+          for (var y = 0; y < 300; y++) {
+            var i = (y * 400 + x) * 4;
+            if (pixels[i] == 61 && pixels[i + 1] == 126) return x;
+          }
+        }
+        return 400;
+      }
+
+      expect(await plotLeft(false), lessThan(await plotLeft(true)),
+          reason: "the bars start further left with no numbers beside them");
+    });
+
     test("the legend goes where it is put and takes only what it needs", () {
       const area = Rect.fromLTWH(0, 0, 400, 300);
       var e = _two(ChartType.groupedBar).copyWith(showLegend: true);

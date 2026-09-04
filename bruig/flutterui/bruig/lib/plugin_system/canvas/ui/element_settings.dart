@@ -1741,6 +1741,113 @@ List<Widget> _chartSettings(BuildContext context, CanvasController controller,
             "they draw exactly what plain bars draw. Add a second series "
             "under Series below."),
     ]),
+    // "Axes and values", and the values are in it: they are all the same
+    // question -- what does this chart write on itself -- and the switches
+    // were split across two groups with a boxed section between them.
+    CanvasControlGroup(label: "Axes and values", children: [
+      // A pie has no axes, so it is offered none of the axis controls. It
+      // still has values.
+      if (!e.type.isCircular) ...[
+        CanvasTextField(
+          label: "X label",
+          value: e.xAxisLabel,
+          width: 108,
+          onChanged: (v) => write(e.copyWith(xAxisLabel: v)),
+          onCommit: commit,
+        ),
+        CanvasTextField(
+          label: "Y label",
+          value: e.yAxisLabel,
+          width: 108,
+          onChanged: (v) => write(e.copyWith(yAxisLabel: v)),
+          onCommit: commit,
+        ),
+        // The two axis titles are text, and the switches below are switches.
+        // On one line the first switch sat on the end of the Y label's row
+        // and read as part of it.
+        const CanvasLineBreak(),
+        CanvasToggle(
+          label: "Grid",
+          value: e.showGrid,
+          onChanged: (v) => now(e.copyWith(showGrid: v)),
+        ),
+        CanvasToggle(
+          label: "Axes",
+          value: e.showAxes,
+          onChanged: (v) => now(e.copyWith(showAxes: v)),
+        ),
+        CanvasToggle(
+          label: "Axes labels",
+          value: e.showAxisLabels,
+          onChanged: (v) => now(e.copyWith(showAxisLabels: v)),
+        ),
+      ],
+      CanvasToggle(
+        label: "Values",
+        value: e.showValues,
+        onChanged: (v) => now(e.copyWith(showValues: v)),
+      ),
+      if (!e.type.isCircular)
+        const CanvasHint(
+            "Axes labels is everything written along the axes: the numbers, "
+            "the category names and the two titles above. They are read "
+            "together or not at all."),
+      // Rings a few pixels thick have nowhere to write a number and no axis
+      // to read one against, so theirs go in the key -- which is no use with
+      // the key switched off.
+      if (e.type == ChartType.radialBar && !(e.showLegend && e.legend.values))
+        const CanvasHint(
+            "A radial bar has no room to write a number on and no axis to "
+            "read one against, so its values go in the legend. Switch the "
+            "legend on, and its values with it, to see them."),
+    ]),
+    CanvasControlGroup(label: "Style", children: [
+      CanvasColorButton(
+        label: "Grid",
+        color: e.gridColor,
+        onChanged: (c) => now(e.copyWith(gridColor: c)),
+      ),
+      CanvasNumberField(
+        label: "Bar gap",
+        min: 0,
+        decimals: 2,
+        width: 62,
+        value: e.barGap,
+        max: 0.9,
+        onChanged: (v) {
+          begin();
+          write(e.copyWith(barGap: v));
+        },
+        onCommit: commit,
+      ),
+      CanvasNumberField(
+        label: "Bar radius",
+        value: e.barRadius,
+        min: 0,
+        max: 100,
+        width: 54,
+        onChanged: (v) => write(e.copyWith(barRadius: v)),
+        onCommit: commit,
+      ),
+      CanvasNumberField(
+        label: "Stroke",
+        value: e.strokeWidth,
+        min: 0.5,
+        max: 40,
+        decimals: 1,
+        width: 54,
+        onChanged: (v) => write(e.copyWith(strokeWidth: v)),
+        onCommit: commit,
+      ),
+      // Only where there is a line to curve. Bars have nothing to curve and a
+      // scatter is unconnected by definition.
+      if (smoothable)
+        CanvasToggle(
+          label: "Smooth",
+          value: e.smooth,
+          onChanged: (v) => now(e.copyWith(smooth: v)),
+        ),
+    ]),
     // The words on the chart, together, in a section of their own. The title,
     // the description and the key are the same kind of thing -- writing laid
     // over a picture -- and they were three separate clusters and an expander
@@ -1798,7 +1905,15 @@ List<Widget> _chartSettings(BuildContext context, CanvasController controller,
             CanvasToggle(
               label: "Over the chart",
               value: e.floatingLabels,
-              onChanged: (v) => now(e.copyWith(floatingLabels: v)),
+              // Switched off, the box goes back round the chart. Dragging a
+              // floating label outside it grew the box to hold the label and
+              // inset the chart to keep it where it was -- and left like that
+              // the chart sat small in the middle of an element with a margin
+              // of nothing round it, so the switch did not go both ways after
+              // all.
+              onChanged: (v) => now(v
+                  ? e.copyWith(floatingLabels: true)
+                  : e.copyWith(floatingLabels: false).aroundTheChart()),
             ),
             const CanvasHint(
                 "The title, the description and the legend sit over the chart and "
@@ -1979,102 +2094,6 @@ List<Widget> _chartSettings(BuildContext context, CanvasController controller,
         ],
       ),
     ),
-    // A pie has no axes, so it is not offered any. The four switches below are
-    // its own group for the same reason: a group called Axes holding nothing
-    // but Legend and Values is a heading that lies.
-    if (!e.type.isCircular)
-      CanvasControlGroup(label: "Axes", children: [
-        CanvasTextField(
-          label: "X label",
-          value: e.xAxisLabel,
-          width: 108,
-          onChanged: (v) => write(e.copyWith(xAxisLabel: v)),
-          onCommit: commit,
-        ),
-        CanvasTextField(
-          label: "Y label",
-          value: e.yAxisLabel,
-          width: 108,
-          onChanged: (v) => write(e.copyWith(yAxisLabel: v)),
-          onCommit: commit,
-        ),
-        // The two axis titles are text, and the switches below are switches.
-        // On one line the first switch sat on the end of the Y label's row
-        // and read as part of it.
-        const CanvasLineBreak(),
-        CanvasToggle(
-          label: "Grid",
-          value: e.showGrid,
-          onChanged: (v) => now(e.copyWith(showGrid: v)),
-        ),
-        CanvasToggle(
-          label: "Axes",
-          value: e.showAxes,
-          onChanged: (v) => now(e.copyWith(showAxes: v)),
-        ),
-      ]),
-    CanvasControlGroup(label: "Values", children: [
-      CanvasToggle(
-        label: "On the chart",
-        value: e.showValues,
-        onChanged: (v) => now(e.copyWith(showValues: v)),
-      ),
-      // Rings a few pixels thick have nowhere to write a number and no axis to
-      // read one against, so theirs go in the key -- which is no use with the
-      // key switched off.
-      if (e.type == ChartType.radialBar && !(e.showLegend && e.legend.values))
-        const CanvasHint(
-            "A radial bar has no room to write a number on and no axis to "
-            "read one against, so its values go in the legend. Switch the "
-            "legend on, and its values with it, to see them."),
-    ]),
-    CanvasControlGroup(label: "Style", children: [
-      CanvasColorButton(
-        label: "Grid",
-        color: e.gridColor,
-        onChanged: (c) => now(e.copyWith(gridColor: c)),
-      ),
-      CanvasNumberField(
-        label: "Bar gap",
-        min: 0,
-        decimals: 2,
-        width: 62,
-        value: e.barGap,
-        max: 0.9,
-        onChanged: (v) {
-          begin();
-          write(e.copyWith(barGap: v));
-        },
-        onCommit: commit,
-      ),
-      CanvasNumberField(
-        label: "Bar radius",
-        value: e.barRadius,
-        min: 0,
-        max: 100,
-        width: 54,
-        onChanged: (v) => write(e.copyWith(barRadius: v)),
-        onCommit: commit,
-      ),
-      CanvasNumberField(
-        label: "Stroke",
-        value: e.strokeWidth,
-        min: 0.5,
-        max: 40,
-        decimals: 1,
-        width: 54,
-        onChanged: (v) => write(e.copyWith(strokeWidth: v)),
-        onCommit: commit,
-      ),
-      // Only where there is a line to curve. Bars have nothing to curve and a
-      // scatter is unconnected by definition.
-      if (smoothable)
-        CanvasToggle(
-          label: "Smooth",
-          value: e.smooth,
-          onChanged: (v) => now(e.copyWith(smooth: v)),
-        ),
-    ]),
   ];
 }
 

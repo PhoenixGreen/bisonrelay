@@ -839,6 +839,16 @@ class ChartElement extends CanvasElement {
   /// guessing.
   final bool showGrid;
   final bool showAxes;
+
+  /// showAxisLabels is the writing along the axes: the tick values, the
+  /// category names and the two axis titles.
+  ///
+  /// One switch for all of it rather than three. They are read together or
+  /// not at all -- a chart with numbers up the side and no categories along
+  /// the bottom is not a simpler chart, it is a broken one -- and what
+  /// switching them off is for is a small chart in a corner that is a shape
+  /// rather than a reading.
+  final bool showAxisLabels;
   final bool showLegend;
 
   /// showValues prints each number on its own bar or point, which is what
@@ -892,6 +902,7 @@ class ChartElement extends CanvasElement {
     this.yAxisLabel = "",
     this.showGrid = true,
     this.showAxes = true,
+    this.showAxisLabels = true,
     this.showLegend = false,
     this.showValues = false,
     this.gridColor = const Color(0x33FFFFFF),
@@ -910,6 +921,25 @@ class ChartElement extends CanvasElement {
 
   @override
   ElementKind get kind => ElementKind.chart;
+
+  /// aroundTheChart is this element with its box back round the chart itself.
+  ///
+  /// Dragging a floating label outside the box grows the box to hold it and
+  /// insets the body to keep the chart where it was. Switched off, the label
+  /// goes back into the chart's own arrangement -- and without this the box
+  /// stayed grown, so the chart sat small in the middle of an element with a
+  /// margin of nothing around it, and the switch did not go both ways after
+  /// all.
+  ChartElement aroundTheChart() {
+    if (body.isWhole) return this;
+    var was = body.rectIn(Rect.fromLTWH(x, y, width, height));
+    return copyWith(body: const ChartBody()).withBase(
+      x: was.left,
+      y: was.top,
+      width: was.width,
+      height: was.height,
+    ) as ChartElement;
+  }
 
   /// descriptionText is the type the description is actually set in: its own
   /// when it has been given one, and the label size otherwise.
@@ -934,6 +964,7 @@ class ChartElement extends CanvasElement {
     String? yAxisLabel,
     bool? showGrid,
     bool? showAxes,
+    bool? showAxisLabels,
     bool? showLegend,
     bool? showValues,
     Color? gridColor,
@@ -965,6 +996,7 @@ class ChartElement extends CanvasElement {
           yAxisLabel: yAxisLabel,
           showGrid: showGrid,
           showAxes: showAxes,
+          showAxisLabels: showAxisLabels,
           showLegend: showLegend,
           showValues: showValues,
           gridColor: gridColor,
@@ -1000,6 +1032,7 @@ class ChartElement extends CanvasElement {
     String? yAxisLabel,
     bool? showGrid,
     bool? showAxes,
+    bool? showAxisLabels,
     bool? showLegend,
     bool? showValues,
     Color? gridColor,
@@ -1031,6 +1064,7 @@ class ChartElement extends CanvasElement {
           yAxisLabel: yAxisLabel ?? this.yAxisLabel,
           showGrid: showGrid ?? this.showGrid,
           showAxes: showAxes ?? this.showAxes,
+          showAxisLabels: showAxisLabels ?? this.showAxisLabels,
           showLegend: showLegend ?? this.showLegend,
           showValues: showValues ?? this.showValues,
           gridColor: gridColor ?? this.gridColor,
@@ -1068,6 +1102,7 @@ class ChartElement extends CanvasElement {
         if (yAxisLabel.isNotEmpty) "ylabel": yAxisLabel,
         "grid": showGrid,
         "axes": showAxes,
+        if (!showAxisLabels) "noAxisLabels": true,
         "legend": showLegend,
         "values": showValues,
         "gridColor": colorToJson(gridColor),
@@ -1107,6 +1142,7 @@ class ChartElement extends CanvasElement {
           yAxisLabel: jsonString(json["ylabel"], ""),
           showGrid: jsonBool(json["grid"], true),
           showAxes: jsonBool(json["axes"], true),
+          showAxisLabels: !jsonBool(json["noAxisLabels"], false),
           showLegend: jsonBool(json["legend"], false),
           showValues: jsonBool(json["values"], false),
           gridColor: colorFromJson(json["gridColor"], const Color(0x33FFFFFF)),

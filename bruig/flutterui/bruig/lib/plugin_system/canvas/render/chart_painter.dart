@@ -580,14 +580,18 @@ void _cartesian(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
   // left gutter and the category labels decide the bottom one.
   var labelSpec = e.labelSpec;
   var valueGutter = 0.0;
-  for (var t in range.ticks) {
-    var p = layoutText(_formatTick(t), labelSpec, maxWidth: area.width / 3);
-    valueGutter = math.max(valueGutter, p.width);
+  if (e.showAxisLabels) {
+    for (var t in range.ticks) {
+      var p = layoutText(_formatTick(t), labelSpec, maxWidth: area.width / 3);
+      valueGutter = math.max(valueGutter, p.width);
+    }
+    valueGutter += labelSpec.fontSize * 0.5;
   }
-  valueGutter += labelSpec.fontSize * 0.5;
 
-  var categoryGutter = labelSpec.fontSize * 1.6;
-  var axisTitleGutter = labelSpec.fontSize * 1.5;
+  // No writing, no gutters. Switching the labels off and keeping the room
+  // they took would be a chart with a margin of nothing down two sides.
+  var categoryGutter = e.showAxisLabels ? labelSpec.fontSize * 1.6 : 0.0;
+  var axisTitleGutter = e.showAxisLabels ? labelSpec.fontSize * 1.5 : 0.0;
 
   var left = area.left +
       (horizontal ? _widestCategory(data.categories, labelSpec, area) : valueGutter) +
@@ -600,8 +604,10 @@ void _cartesian(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
   if (plot.width <= 4 || plot.height <= 4) return;
 
   _grid(canvas, plot, range, e, horizontal);
-  _axisLabels(canvas, area, plot, range, e, horizontal, valueGutter,
-      categoryGutter, axisTitleGutter);
+  if (e.showAxisLabels) {
+    _axisLabels(canvas, area, plot, range, e, horizontal, valueGutter,
+        categoryGutter, axisTitleGutter);
+  }
 
   // Split by how each series is drawn rather than by what the chart is, so a
   // set of bars can have a line over it. A series with no type of its own is

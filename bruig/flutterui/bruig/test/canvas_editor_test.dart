@@ -2626,8 +2626,16 @@ void main() {
               x: 0.4, y: 0.5, width: 0.3, height: 0.12)));
       await tester.pumpAndSettle();
 
+      // And the box goes back round the chart, rather than staying as big as
+      // the labels made it while they were floating.
+      controller.replaceElement(chartIn(controller).copyWith(
+          body: const ChartBody(x: 0.1, y: 0.1, width: 0.9, height: 0.9)));
+      await tester.pumpAndSettle();
+
       await press(tester, find.text("Over the chart"));
       expect(chartIn(controller).floatingLabels, isFalse);
+      expect(chartIn(controller).body.isWhole, isTrue,
+          reason: "the chart fills its element again");
       expect(chartIn(controller).titleBox.x, 0.4,
           reason: "kept, not thrown away");
 
@@ -2635,20 +2643,36 @@ void main() {
       expect(chartIn(controller).titleBox.x, 0.4);
     });
 
-    testWidgets("a pie is offered no axes", (tester) async {
-      // A group called Axes holding nothing but Legend and Values is a
-      // heading that lies.
+    testWidgets("a pie is offered no axes, but still its values",
+        (tester) async {
+      // The switches are all the same question -- what does this chart write
+      // on itself -- so they are one group, and a pie keeps the half of it
+      // that applies.
       await panel(tester);
-      expect(find.text("AXES"), findsOneWidget);
+      expect(find.text("AXES AND VALUES"), findsOneWidget);
       expect(find.text("X label"), findsOneWidget);
-      expect(find.text("VALUES"), findsOneWidget);
+      // "Grid" twice over: the switch here and the colour in Style, so it is
+      // found by the control it belongs to rather than by its word.
+      Finder toggle(String label) => find.ancestor(
+          of: find.text(label), matching: find.byType(CanvasToggle));
+      expect(toggle("Grid"), findsOneWidget);
+      expect(find.text("Axes labels"), findsOneWidget);
+      expect(toggle("Values"), findsOneWidget);
 
       await panel(tester, shape: (e) => e.copyWith(type: ChartType.pie));
-      expect(find.text("AXES"), findsNothing);
+      expect(find.text("AXES AND VALUES"), findsOneWidget);
       expect(find.text("X label"), findsNothing);
-      expect(find.text("VALUES"), findsOneWidget,
-          reason: "a pie still has values and a legend");
-      expect(find.text("LABELS"), findsOneWidget);
+      expect(toggle("Grid"), findsNothing);
+      expect(find.text("Axes labels"), findsNothing);
+      expect(toggle("Values"), findsOneWidget);
+    });
+
+    testWidgets("the axes labels can be switched off", (tester) async {
+      var controller = await panel(tester);
+      expect(chartIn(controller).showAxisLabels, isTrue);
+
+      await press(tester, find.text("Axes labels"));
+      expect(chartIn(controller).showAxisLabels, isFalse);
     });
 
     testWidgets("a radial bar says where its numbers went", (tester) async {
@@ -2761,7 +2785,9 @@ void main() {
       expect(find.text("Between"), findsNothing,
           reason: "nothing to separate until the key shows values");
 
-      await press(tester, find.text("Values"));
+      // Two "Values" on the panel now: the chart's own, up in Axes and
+      // values, and the key's down here. The key's is the later of the two.
+      await press(tester, find.text("Values").last);
       expect(chartIn(controller).legend.values, isTrue);
       expect(find.text("Between"), findsOneWidget);
     });
