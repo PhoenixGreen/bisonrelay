@@ -1811,35 +1811,41 @@ List<Widget> _chartSettings(BuildContext context, CanvasController controller,
         ],
       ),
     ),
-    CanvasControlGroup(label: "Axes", children: [
-      CanvasTextField(
-        label: "X label",
-        value: e.xAxisLabel,
-        width: 108,
-        onChanged: (v) => write(e.copyWith(xAxisLabel: v)),
-        onCommit: commit,
-      ),
-      CanvasTextField(
-        label: "Y label",
-        value: e.yAxisLabel,
-        width: 108,
-        onChanged: (v) => write(e.copyWith(yAxisLabel: v)),
-        onCommit: commit,
-      ),
-      // The two axis titles are text, and the four below are switches. On one
-      // line the first switch sat on the end of the Y label's row and read as
-      // part of it.
-      const CanvasLineBreak(),
-      CanvasToggle(
-        label: "Grid",
-        value: e.showGrid,
-        onChanged: (v) => now(e.copyWith(showGrid: v)),
-      ),
-      CanvasToggle(
-        label: "Axes",
-        value: e.showAxes,
-        onChanged: (v) => now(e.copyWith(showAxes: v)),
-      ),
+    // A pie has no axes, so it is not offered any. The four switches below are
+    // its own group for the same reason: a group called Axes holding nothing
+    // but Legend and Values is a heading that lies.
+    if (!e.type.isCircular)
+      CanvasControlGroup(label: "Axes", children: [
+        CanvasTextField(
+          label: "X label",
+          value: e.xAxisLabel,
+          width: 108,
+          onChanged: (v) => write(e.copyWith(xAxisLabel: v)),
+          onCommit: commit,
+        ),
+        CanvasTextField(
+          label: "Y label",
+          value: e.yAxisLabel,
+          width: 108,
+          onChanged: (v) => write(e.copyWith(yAxisLabel: v)),
+          onCommit: commit,
+        ),
+        // The two axis titles are text, and the switches below are switches.
+        // On one line the first switch sat on the end of the Y label's row
+        // and read as part of it.
+        const CanvasLineBreak(),
+        CanvasToggle(
+          label: "Grid",
+          value: e.showGrid,
+          onChanged: (v) => now(e.copyWith(showGrid: v)),
+        ),
+        CanvasToggle(
+          label: "Axes",
+          value: e.showAxes,
+          onChanged: (v) => now(e.copyWith(showAxes: v)),
+        ),
+      ]),
+    CanvasControlGroup(label: "Keys", children: [
       CanvasToggle(
         label: "Legend",
         value: e.showLegend,
@@ -1850,6 +1856,16 @@ List<Widget> _chartSettings(BuildContext context, CanvasController controller,
         value: e.showValues,
         onChanged: (v) => now(e.copyWith(showValues: v)),
       ),
+      // Rings a few pixels thick have nowhere to write a number and no axis to
+      // read one against, so theirs go in the legend -- which is no use with
+      // the legend switched off.
+      if (e.type == ChartType.radialBar &&
+          e.showValues &&
+          !e.showLegend)
+        const CanvasHint(
+            "A radial bar has no room to write a number on and no axis to "
+            "read one against, so its values go in the legend. Switch the "
+            "legend on to see them."),
     ]),
     CanvasControlGroup(label: "Style", children: [
       CanvasColorButton(

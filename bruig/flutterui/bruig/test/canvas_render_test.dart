@@ -1972,6 +1972,95 @@ void _chartTests() {
           isFalse);
     });
 
+    test("a circular chart's legend keys the slices, not the series", () {
+      // A pie of one series had one entry naming that series and five slices
+      // nobody had a key for, which is a legend answering a question nobody
+      // asked.
+      var e = ChartElement(
+        const ElementBase(id: "c", width: 400, height: 300),
+        type: ChartType.pie,
+        showLegend: true,
+        data: ChartData.parse("Cat\tShare\nOne\t10\nTwo\t20\nThree\t30"),
+      );
+
+      var entries = legendEntriesForTest(e, 1);
+      expect(entries.map((k) => k.$2), ["One", "Two", "Three"]);
+      expect(entries.map((k) => k.$1),
+          [for (var i = 0; i < 3; i++) sliceColour(e, i)],
+          reason: "the swatches are the colours the slices are drawn in");
+    });
+
+    test("a radial bar's values go in the legend", () {
+      // Rings a few pixels thick have nowhere to write a number and no axis to
+      // read one against, so this is the only place the numbers can go.
+      var e = ChartElement(
+        const ElementBase(id: "c", width: 400, height: 300),
+        type: ChartType.radialBar,
+        showLegend: true,
+        showValues: true,
+        data: ChartData.parse("Cat\tShare\nOne\t10\nTwo\t20"),
+      );
+
+      expect(legendEntriesForTest(e, 1).map((k) => k.$2),
+          ["One  10", "Two  20"]);
+      expect(
+          legendEntriesForTest(e.copyWith(showValues: false), 1)
+              .map((k) => k.$2),
+          ["One", "Two"],
+          reason: "and only when the values are asked for");
+    });
+
+    test("they count with the rings", () {
+      // Like every other number on an animating chart.
+      var e = ChartElement(
+        const ElementBase(id: "c", width: 400, height: 300),
+        type: ChartType.radialBar,
+        showLegend: true,
+        showValues: true,
+        data: ChartData.parse("Cat\tShare\nOne\t10"),
+        animation: const ChartAnimation(
+            preset: ChartAnimationPreset.grow, ease: ChartEase.linear),
+      );
+      expect(legendEntriesForTest(e, 0.5).single.$2, "One  5");
+      expect(legendEntriesForTest(e, 1).single.$2, "One  10");
+    });
+
+    test("a bar chart's legend still keys its series", () {
+      var e = _two(ChartType.groupedBar).copyWith(showLegend: true);
+      expect(legendEntriesForTest(e, 1).map((k) => k.$2), ["A", "B"]);
+    });
+
+    test("a radar draws its values", () async {
+      // The switch was there and did nothing, which is the same fault the
+      // legend and the smooth setting had.
+      const red = ui.Color(0xFFFF0000);
+      var e = ChartElement(
+        const ElementBase(id: "c", width: 400, height: 300),
+        type: ChartType.radar,
+        data: ChartData.parse(
+            "Cat\tA\nOne\t10\nTwo\t20\nThree\t30\nFour\t15"),
+        labelSpec: const TextSpec(fontSize: 10),
+        valueSpec: const TextSpec(fontSize: 16, weight: 700, color: red),
+      );
+
+      Future<int> reds(bool values) async {
+        var pixels = await _chartPixels(e.copyWith(showValues: values));
+        var n = 0;
+        for (var i = 0; i < 400 * 300; i++) {
+          if (pixels[i * 4] > 180 &&
+              pixels[i * 4 + 1] < 90 &&
+              pixels[i * 4 + 2] < 90 &&
+              pixels[i * 4 + 3] > 100) {
+            n++;
+          }
+        }
+        return n;
+      }
+
+      expect(await reds(false), 0, reason: "nothing red on a plain radar");
+      expect(await reds(true), greaterThan(0));
+    });
+
     test("a chart's labels and series types survive a round trip", () {
       var element = ChartElement(
         const ElementBase(id: "c", width: 400, height: 300),

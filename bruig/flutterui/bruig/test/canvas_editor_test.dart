@@ -2603,6 +2603,46 @@ void main() {
           findsOneWidget);
     });
 
+    testWidgets("a pie is offered no axes", (tester) async {
+      // A group called Axes holding nothing but Legend and Values is a
+      // heading that lies.
+      await panel(tester);
+      expect(find.text("AXES"), findsOneWidget);
+      expect(find.text("X label"), findsOneWidget);
+      expect(find.text("KEYS"), findsOneWidget);
+
+      await panel(tester, shape: (e) => e.copyWith(type: ChartType.pie));
+      expect(find.text("AXES"), findsNothing);
+      expect(find.text("X label"), findsNothing);
+      expect(find.text("KEYS"), findsOneWidget,
+          reason: "a pie still has a legend and values");
+    });
+
+    testWidgets("a radial bar says where its numbers went", (tester) async {
+      // Rings a few pixels thick have nowhere to write a number and no axis to
+      // read one against, so theirs go in the legend -- which is no use with
+      // the legend switched off.
+      const hint = "A radial bar has no room to write a number on and no axis "
+          "to read one against, so its values go in the legend. Switch the "
+          "legend on to see them.";
+      Iterable<String> hints() => tester
+          .widgetList<CanvasHint>(find.byType(CanvasHint))
+          .map((h) => h.message);
+
+      await panel(
+          tester,
+          shape: (e) => e.copyWith(
+              type: ChartType.radialBar, showValues: true, showLegend: false));
+      expect(hints(), contains(hint));
+
+      await panel(
+          tester,
+          shape: (e) => e.copyWith(
+              type: ChartType.radialBar, showValues: true, showLegend: true));
+      expect(hints(), isNot(contains(hint)),
+          reason: "with the legend on, the numbers are where it says");
+    });
+
     testWidgets("a series is added beside the data, not in a section of its "
         "own", (tester) async {
       // A series is a column of the table, so it is added where the table is

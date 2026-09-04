@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
 
 // chart_painter.dart draws a ChartElement.
@@ -62,7 +63,7 @@ void paintChart(ui.Canvas canvas, Rect rect, ChartElement e,
   // rather than as the legend being unnecessary -- and a single series with a
   // name worth reading is a perfectly good reason to want one.
   if (e.showLegend && data.series.isNotEmpty) {
-    area = _legend(canvas, area, e);
+    area = _legend(canvas, area, e, showing);
   }
 
   // A wipe and a sweep are one edge travelling over everything, so they are a
@@ -205,8 +206,70 @@ void _placeholder(ui.Canvas canvas, Rect rect, ChartElement e) {
       clip: true);
 }
 
-/// _legend draws the series keys along the top and returns what is left.
-Rect _legend(ui.Canvas canvas, Rect area, ChartElement e) {
+/// _legendEntries is what a legend has one line of: a colour and a name.
+///
+/// Series for the types drawn as series, and *categories* for the ones whose
+/// colours belong to the values rather than to the series -- a pie of one
+/// series has one entry naming that series and five slices nobody has a key
+/// for, which is a legend answering a question nobody asked.
+///
+/// It is also where the radial bars get their numbers. They are rings a few
+/// pixels thick with no room to write on and no axis to read against, so a
+/// value written here is the only place it can go.
+List<(Color, String)> _legendEntries(ChartElement e, double reveal) {
+  var data = e.data;
+  if (!_colouredByValue(e.type)) {
+    return [for (var s in data.series) (s.color, s.name)];
+  }
+
+  var values = data.series.isEmpty ? const <double>[] : data.series.first.values;
+  return [
+    for (var i = 0; i < values.length; i++)
+      (
+        sliceColour(e, i),
+        _legendName(e, i, values[i], _sliceProgress(e, reveal, i, values.length))
+      ),
+  ];
+}
+
+/// _colouredByValue is whether a type takes its colours from the values rather
+/// than from the series they are in.
+bool _colouredByValue(ChartType type) =>
+    type == ChartType.pie ||
+    type == ChartType.donut ||
+    type == ChartType.radialBar;
+
+/// sliceColour is what the i-th value of a circular chart is drawn in.
+///
+/// Shared with the painter deliberately. A legend whose swatches were worked
+/// out separately would be a legend that quietly stopped matching the chart
+/// the first time either changed.
+Color sliceColour(ChartElement e, int i) {
+  var series = e.data.series;
+  if (e.type != ChartType.radialBar && series.length > 1 && i < series.length) {
+    return series[i].color;
+  }
+  return chartPalette[i % chartPalette.length];
+}
+
+String _legendName(
+    ChartElement e, int i, double value, _SliceProgress slice) {
+  var name = i < e.data.categories.length && e.data.categories[i].isNotEmpty
+      ? e.data.categories[i]
+      : "${i + 1}";
+  if (!e.showValues) return name;
+  // Counting with its ring, like every other number on an animating chart.
+  return "$name  ${_formatTick(value * slice.size.clamp(0.0, 1.0))}";
+}
+
+/// legendEntriesForTest is [_legendEntries], which decides what a legend says
+/// and is worth checking without reading it off a bitmap.
+@visibleForTesting
+List<(Color, String)> legendEntriesForTest(ChartElement e, double reveal) =>
+    _legendEntries(e, reveal);
+
+/// _legend draws the keys along the top and returns what is left.
+Rect _legend(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
   var spec = e.labelSpec;
   var swatch = spec.fontSize * 0.7;
   var gap = spec.fontSize * 0.5;
@@ -214,8 +277,8 @@ Rect _legend(ui.Canvas canvas, Rect area, ChartElement e) {
   var y = area.top;
   var rowHeight = spec.fontSize * 1.6;
 
-  for (var s in e.data.series) {
-    var painter = layoutText(s.name, spec, maxWidth: area.width);
+  for (var (colour, name) in _legendEntries(e, reveal)) {
+    var painter = layoutText(name, spec, maxWidth: area.width);
     var itemWidth = swatch + gap * 0.6 + painter.width + gap * 1.6;
     if (x + itemWidth > area.right && x > area.left) {
       x = area.left;
@@ -225,7 +288,7 @@ Rect _legend(ui.Canvas canvas, Rect area, ChartElement e) {
       RRect.fromRectAndRadius(
           Rect.fromLTWH(x, y + (rowHeight - swatch) / 2, swatch, swatch),
           Radius.circular(swatch * 0.25)),
-      Paint()..color = s.color,
+      Paint()..color = colour,
     );
     painter.paint(
         canvas, Offset(x + swatch + gap * 0.6, y + (rowHeight - painter.height) / 2));
@@ -877,9 +940,7 @@ void _circular(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
 
       for (var i = 0; i < values.length; i++) {
         var sweep = values[i].abs() / total * math.pi * 2;
-        var color = i < data.series.length && data.series.length > 1
-            ? data.series[i].color
-            : chartPalette[i % chartPalette.length];
+        var color = sliceColour(e, i);
 
         // Each slice opens out of the middle in turn. A sweep is handled by
         // the clip around the whole chart -- see paintChart -- so it is not
@@ -936,7 +997,7 @@ void _circular(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
       var ring = radius * (1 - e.innerRadius) / math.max(1, values.length);
       for (var i = 0; i < values.length; i++) {
         var r = radius - ring * i - ring / 2;
-        var color = chartPalette[i % chartPalette.length];
+        var color = sliceColour(e, i);
         var slice = _sliceProgress(e, reveal, i, values.length);
         if (slice.gone) continue;
         color = slice.tint(color);
@@ -1021,6 +1082,34 @@ void _circular(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
               ..style = PaintingStyle.stroke
               ..strokeWidth = e.strokeWidth
               ..color = colour);
+
+        // The numbers, at the corners of the shape. A radar had none at all:
+        // the switch was there and did nothing, which is the same fault the
+        // legend and the smooth setting had.
+        //
+        // Pushed a little further out than the corner it belongs to, along
+        // the spoke, so it clears the shape's own edge rather than sitting on
+        // the line.
+        if (!e.showValues) continue;
+        for (var i = 0; i < axes; i++) {
+          var v = data.valueAt(s, i);
+          if (v == 0) continue;
+          var reach = (v.abs() / maxV * slice.size).clamp(0.0, 1.3);
+          var at = spoke(i, reach) +
+              (spoke(i, reach) - centre) * (e.valueSpec.fontSize * 0.9 /
+                  math.max(1, (spoke(i, reach) - centre).distance));
+          paintTextInBox(
+              canvas,
+              _formatTick(v * slice.size.clamp(0.0, 1.0)),
+              e.valueSpec.copyWith(
+                  align: TextAlignSpec.center,
+                  verticalAlign: VerticalAlignSpec.middle,
+                  color: slice.tint(e.valueSpec.color)),
+              Rect.fromCenter(
+                  center: at,
+                  width: e.valueSpec.fontSize * 5,
+                  height: e.valueSpec.fontSize * 1.6));
+        }
       }
 
     default:
