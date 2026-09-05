@@ -269,6 +269,47 @@ class TableCellStyle {
       );
 }
 
+/// _Span is a parsed range: "", "3", "2:4", ">1", "<4".
+///
+/// Read once and kept, because the same handful of strings are asked the same
+/// question thousands of times a frame -- see TableRule._spans.
+class _Span {
+  final int from;
+  final int to;
+  const _Span(this.from, this.to);
+
+  /// any is the empty spec, and none is one that could not be read -- which
+  /// matches nothing rather than everything, so a typo shows up as a rule
+  /// that does nothing rather than a table painted entirely green.
+  static const any = _Span(1, 1 << 30);
+  static const none = _Span(1, 0);
+
+  bool covers(int at) => at >= from && at <= to;
+
+  factory _Span.parse(String spec) {
+    var text = spec.trim();
+    if (text.isEmpty) return any;
+
+    if (text.startsWith(">")) {
+      var from = int.tryParse(text.substring(1).trim());
+      return from == null ? none : _Span(from + 1, 1 << 30);
+    }
+    if (text.startsWith("<")) {
+      var to = int.tryParse(text.substring(1).trim());
+      return to == null ? none : _Span(1, to - 1);
+    }
+    if (text.contains(":")) {
+      var parts = text.split(":");
+      var from = int.tryParse(parts.first.trim());
+      var to = int.tryParse(parts.last.trim());
+      if (from == null || to == null) return none;
+      return _Span(math.min(from, to), math.max(from, to));
+    }
+    var one = int.tryParse(text);
+    return one == null ? none : _Span(one, one);
+  }
+}
+
 /// TableMatch is how a rule's text is looked for.
 enum TableMatch {
   /// cell wants the whole cell. "W" does not find the W in "Won", and does
@@ -344,6 +385,14 @@ class TableRule {
   /// matchesRow reads the range language. [index] counts from zero.
   bool matchesRow(int index) => spanMatches(rows, index);
 
+  /// _spans remembers what a range string means.
+  ///
+  /// The strings are read once per cell per rule per frame -- a league table
+  /// with eight rules is two thousand reads a frame -- and there are only ever
+  /// a handful of distinct ones, so parsing them again each time is work done
+  /// for an answer already known.
+  static final Map<String, _Span> _spans = {};
+
   /// spanMatches is the little range language, shared by the rows and the
   /// columns because they are asking the same question.
   ///
@@ -353,29 +402,8 @@ class TableRule {
   /// An unreadable range matches nothing rather than everything, for the same
   /// reason an unknown column name does: a typo should show up as a rule that
   /// does nothing, not as a table painted entirely green.
-  static bool spanMatches(String spec, int index) {
-    var text = spec.trim();
-    if (text.isEmpty) return true;
-    var at = index + 1;
-
-    if (text.startsWith(">")) {
-      var from = int.tryParse(text.substring(1).trim());
-      return from == null ? false : at > from;
-    }
-    if (text.startsWith("<")) {
-      var to = int.tryParse(text.substring(1).trim());
-      return to == null ? false : at < to;
-    }
-    if (text.contains(":")) {
-      var parts = text.split(":");
-      var from = int.tryParse(parts.first.trim());
-      var to = int.tryParse(parts.last.trim());
-      if (from == null || to == null) return false;
-      return at >= math.min(from, to) && at <= math.max(from, to);
-    }
-    var one = int.tryParse(text);
-    return one == null ? false : at == one;
-  }
+  static bool spanMatches(String spec, int index) =>
+      (_spans[spec] ??= _Span.parse(spec)).covers(index + 1);
 
   /// matchesColumn is whether [index] is one of the columns this rule is
   /// about.
@@ -418,10 +446,14 @@ class TableRule {
   /// Ranges rather than a yes or no, because a chip round a word has to know
   /// which part of the cell the word is -- "--- W" wants a box round the W
   /// and not round the dashes.
-  List<(int, int)> runsIn(String cell) {
-    var wanted = match.trim().toLowerCase();
+  static final Map<String, String> _lowered = {};
+
+  List<(int, int)> runsIn(String cell, [String? lowered]) {
+    var wanted = _lowered[match] ??= match.trim().toLowerCase();
     if (wanted.isEmpty) return const [];
-    var lower = cell.toLowerCase();
+    // The caller may already have lowered it. A cell with three rules looking
+    // at it was lowering the same string three times a frame.
+    var lower = lowered ?? cell.toLowerCase();
 
     switch (how) {
       case TableMatch.cell:
@@ -490,6 +522,40 @@ class TableRule {
         style: jsonSpec(json["style"], TableCellStyle.fromJson,
             const TableCellStyle()),
       );
+}
+
+/// TableCellLook is everything the rules say about one cell, worked out once.
+///
+/// Once, because four different questions were being asked of the same rules
+/// for every cell of every frame -- what the cell's type is, where the chips
+/// go, what type each stretch of it is, and how far each letter is nudged --
+/// and each walked every rule and searched the text again. A league table is
+/// two hundred cells and eight rules, so the same search was being run
+/// thousands of times a frame for an answer that had not changed.
+class TableCellLook {
+  /// style is the cell's own look: what a rule about the whole cell says.
+  final TableCellStyle? style;
+
+  /// words are the rules that named a word, with the places they found it.
+  /// In the order they were written, so a later one draws over an earlier.
+  final List<(TableRule, List<(int, int)>)> words;
+
+  const TableCellLook(this.style, this.words);
+
+  static const nothing = TableCellLook(null, []);
+
+  bool get isEmpty => style == null && words.isEmpty;
+
+  /// ruleAt is the rule that claims the character at [index], latest first --
+  /// a list of exceptions is read in the order it was written.
+  TableRule? ruleAt(int index) {
+    for (var i = words.length - 1; i >= 0; i--) {
+      for (var (from, to) in words[i].$2) {
+        if (index >= from && index < to) return words[i].$1;
+      }
+    }
+    return null;
+  }
 }
 
 /// TableElement is a grid of strings, drawn rather than laid out as widgets.
@@ -621,102 +687,103 @@ class TableElement extends CanvasElement {
   /// number still work.
   List<String> get header => headerRow && rows.isNotEmpty ? rows.first : const [];
 
-  /// styleFor is the look of one cell: every rule that matches it, later ones
-  /// winning, or null when none do.
+  /// lookAt is what the rules say about one cell.
   ///
-  /// Later wins because that is what a list of exceptions means -- the one
-  /// written last is the one thought of last.
-  TableCellStyle? styleFor(int row, int col) {
-    TableCellStyle? out;
+  /// One walk of the rules rather than four, and one search of the cell's
+  /// text rather than one per question -- see [TableCellLook].
+  TableCellLook lookAt(int row, int col) {
+    if (rules.isEmpty) return TableCellLook.nothing;
+
     var head = header;
+    var text = cell(row, col);
+    String? lower;
+    TableCellStyle? style;
+    var words = <(TableRule, List<(int, int)>)>[];
+
     for (var rule in rules) {
       if (!rule.matchesRow(row)) continue;
       if (!rule.matchesColumn(col, head)) continue;
-      if (!rule.matches(cell(row, col))) continue;
-      out = out == null
+
+      if (rule.match.isNotEmpty) {
+        var runs = rule.runsIn(text, lower ??= text.toLowerCase());
+        if (runs.isEmpty) continue;
+        words.add((rule, runs));
+      }
+
+      style = style == null
           ? (rule.match.isEmpty
               ? rule.style
-              // Same rule for the first one as for every one after it, or a
-              // cell whose only rule names a letter would take that letter's
-              // pitch and its type.
+              // A rule that names a word describes that word: its type and
+              // the cell's pitch are not the cell's to take. Same treatment
+              // for the first matching rule as for every one after it, or a
+              // cell whose only rule names a letter would take both.
               : rule.style.copyWith(
                   letterWidth: 0,
                   letterSpacing: 0,
                   fontScale: 1,
                   weight: 0,
                   textColor: const Color(0x00000000)))
-          : out.copyWith(
+          : style.copyWith(
               background: rule.style.background.a > 0
                   ? rule.style.background
-                  : out.background,
-              // The type only from a rule about the whole cell. A rule that
-              // names a word carries its type into runStyleFor instead, and
-              // it is applied to that word alone -- setting a size on the
-              // dashes was resizing the letters beside them, which is the
-              // pitch's mistake wearing different clothes.
-              textColor: rule.match.isEmpty && rule.style.textColor.a > 0
-                  ? rule.style.textColor
-                  : out.textColor,
-              fontScale: rule.match.isEmpty && rule.style.fontScale != 1
-                  ? rule.style.fontScale
-                  : out.fontScale,
-              weight: rule.match.isEmpty && rule.style.weight != 0
-                  ? rule.style.weight
-                  : out.weight,
-              // Only from a rule about the whole cell. See letterWidth: the
-              // pitch is how the cell is laid out, and a rule about one
-              // letter has no business deciding it for the others.
-              letterSpacing: rule.match.isEmpty && rule.style.letterSpacing != 0
-                  ? rule.style.letterSpacing
-                  : out.letterSpacing,
-              letterWidth: rule.match.isEmpty && rule.style.letterWidth != 0
-                  ? rule.style.letterWidth
-                  : out.letterWidth,
-              align: rule.style.align ?? out.align,
-              verticalAlign: rule.style.verticalAlign ?? out.verticalAlign,
+                  : style.background,
               borderColor: rule.style.borderColor.a > 0
                   ? rule.style.borderColor
-                  : out.borderColor,
+                  : style.borderColor,
               borderWidth: rule.style.borderWidth != 0
                   ? rule.style.borderWidth
-                  : out.borderWidth,
-              sides: rule.style.allSides ? out.sides : rule.style.sides,
+                  : style.borderWidth,
+              sides: rule.style.allSides ? style.sides : rule.style.sides,
               radius: rule.style.radius,
               inset: rule.style.inset,
               hug: rule.style.hug,
               textPad:
-                  rule.style.textPad != 0 ? rule.style.textPad : out.textPad,
+                  rule.style.textPad != 0 ? rule.style.textPad : style.textPad,
               minWidth: rule.style.minWidth != 0
                   ? rule.style.minWidth
-                  : out.minWidth,
+                  : style.minWidth,
               minHeight: rule.style.minHeight != 0
                   ? rule.style.minHeight
-                  : out.minHeight,
-              nudgeX: rule.style.nudgeX != 0 ? rule.style.nudgeX : out.nudgeX,
-              nudgeY: rule.style.nudgeY != 0 ? rule.style.nudgeY : out.nudgeY,
+                  : style.minHeight,
+              nudgeX:
+                  rule.style.nudgeX != 0 ? rule.style.nudgeX : style.nudgeX,
+              nudgeY:
+                  rule.style.nudgeY != 0 ? rule.style.nudgeY : style.nudgeY,
+              align: rule.style.align ?? style.align,
+              verticalAlign: rule.style.verticalAlign ?? style.verticalAlign,
+              // The type and the pitch only from a rule about the whole cell.
+              textColor: rule.match.isEmpty && rule.style.textColor.a > 0
+                  ? rule.style.textColor
+                  : style.textColor,
+              fontScale: rule.match.isEmpty && rule.style.fontScale != 1
+                  ? rule.style.fontScale
+                  : style.fontScale,
+              weight: rule.match.isEmpty && rule.style.weight != 0
+                  ? rule.style.weight
+                  : style.weight,
+              letterSpacing: rule.match.isEmpty && rule.style.letterSpacing != 0
+                  ? rule.style.letterSpacing
+                  : style.letterSpacing,
+              letterWidth: rule.match.isEmpty && rule.style.letterWidth != 0
+                  ? rule.style.letterWidth
+                  : style.letterWidth,
             );
     }
-    return out;
+
+    return style == null && words.isEmpty
+        ? TableCellLook.nothing
+        : TableCellLook(style, words);
   }
 
-  /// runStyleFor is the type change that belongs to the character at [index]
-  /// of a cell, from whichever rule that names a word claims it.
-  ///
-  /// Separate from [styleFor], which is the cell's own look. A rule that
-  /// names a word describes that word: its size, its weight and its colour
-  /// are the word's, and merging them into the cell made a rule about the
-  /// dashes resize the letters beside them.
+  /// styleFor is the cell's own look. See [lookAt], which is the one to reach
+  /// for when more than one of these questions is being asked.
+  TableCellStyle? styleFor(int row, int col) => lookAt(row, col).style;
+
+  /// runStyleFor is the type change that belongs to the character at [index],
+  /// from whichever rule that names a word claims it.
   TableCellStyle? runStyleFor(int row, int col, int index) {
-    var head = header;
-    var text = cell(row, col);
-    for (var rule in rules.reversed) {
-      if (rule.match.isEmpty || !rule.style.changesType) continue;
-      if (!rule.matchesRow(row) || !rule.matchesColumn(col, head)) continue;
-      for (var (from, to) in rule.runsIn(text)) {
-        if (index >= from && index < to) return rule.style;
-      }
-    }
-    return null;
+    var rule = lookAt(row, col).ruleAt(index);
+    return rule != null && rule.style.changesType ? rule.style : null;
   }
 
   /// cell is the string at a position, padding out ragged rows rather than

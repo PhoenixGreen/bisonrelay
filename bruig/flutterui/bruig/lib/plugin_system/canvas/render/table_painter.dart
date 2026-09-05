@@ -133,9 +133,11 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
         continue;
       }
 
-      // Whatever the rules say about this one. Drawn under its own text and
-      // over the row's fill, which is what makes a chip a chip.
-      var style = e.styleFor(r, c);
+      // Everything the rules say about this cell, asked once. Four questions
+      // used to walk every rule and search the text again -- see
+      // TableCellLook.
+      var look = e.lookAt(r, c);
+      var style = look.style;
       if (style != null) {
         if (style.changesType) {
           spec = spec.copyWith(
@@ -170,17 +172,16 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
       // one for L, and merging them gave every chip in the cell the last
       // rule's background -- and only that rule's chips were drawn at all, so
       // a row reading "D L W" showed one letter marked and two bare.
-      _paintChips(canvas, e, r, c, spec, textBox, Rect.fromLTWH(x, y, w, h),
-          _slotsIn(e.cell(r, c), spec, textBox, style?.letterWidth ?? 0,
-              style?.letterSpacing ?? 0));
+      var slots = _slotsIn(e.cell(r, c), spec, textBox,
+          style?.letterWidth ?? 0, style?.letterSpacing ?? 0);
+      _paintChips(canvas, look, e.cell(r, c), spec, textBox,
+          Rect.fromLTWH(x, y, w, h), slots);
 
       // On a fixed pitch, if a rule asked for one: each character in a slot
       // of its own, so a W and an L land in the same places and the boxes
       // round them line up.
-      var slots = _slotsIn(e.cell(r, c), spec, textBox, style?.letterWidth ?? 0,
-          style?.letterSpacing ?? 0);
       if (slots != null) {
-        _paintSlots(canvas, e, r, c, spec, slots);
+        _paintSlots(canvas, look, e.cell(r, c), spec, slots);
         x += w;
         continue;
       }
@@ -190,7 +191,7 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
       // styled stretches. Painted as pieces one after another it would have
       // to be positioned by adding up widths, and a line laid out that way is
       // a line that will not centre.
-      var runs = _runsOf(e, r, c, spec);
+      var runs = _runsOf(look, e.cell(r, c), spec);
       if (runs != null) {
         paintRunsInBox(canvas, runs, spec, textBox, clip: true);
         x += w;
@@ -343,16 +344,12 @@ Rect? _bandFor(TableElement e, TableRule rule, Rect rect, List<double> widths,
 ///
 /// Off the words' own glyph boxes rather than a guess from the character
 /// count, since a W and a full stop are not the same width -- see textRunBox.
-void _paintChips(ui.Canvas canvas, TableElement e, int row, int col,
+void _paintChips(ui.Canvas canvas, TableCellLook look, String text,
     TextSpec spec, Rect textBox, Rect cell, List<Rect>? slots) {
-  var text = e.cell(row, col);
-  var head = e.header;
+  for (var (rule, runs) in look.words) {
+    if (!rule.style.paintsBox) continue;
 
-  for (var rule in e.rules) {
-    if (rule.banded || !rule.style.paintsBox) continue;
-    if (!rule.matchesRow(row) || !rule.matchesColumn(col, head)) continue;
-
-    for (var (from, to) in rule.runsIn(text)) {
+    for (var (from, to) in runs) {
       var box = !rule.style.hug
           ? cell
           // On a fixed pitch the box is the slots themselves, which is the
@@ -422,9 +419,8 @@ Rect? _slotSpan(List<Rect> slots, int from, int to) {
 /// the slots being in line is the whole point of a fixed pitch -- moving one
 /// of them to centre a letter would take that letter's box out of the row it
 /// was put there to join.
-void _paintSlots(ui.Canvas canvas, TableElement e, int row, int col,
+void _paintSlots(ui.Canvas canvas, TableCellLook look, String text,
     TextSpec spec, List<Rect> slots) {
-  var text = e.cell(row, col);
   var centred = spec.copyWith(
       align: TextAlignSpec.center,
       verticalAlign: VerticalAlignSpec.middle,
@@ -432,12 +428,14 @@ void _paintSlots(ui.Canvas canvas, TableElement e, int row, int col,
 
   for (var i = 0; i < text.length && i < slots.length; i++) {
     if (text[i].trim().isEmpty) continue;
-    var nudge = _nudgeAt(e, row, col, text, i);
+    var rule = look.ruleAt(i);
+    var nudge = rule == null
+        ? Offset.zero
+        : Offset(rule.style.nudgeX, rule.style.nudgeY);
     // Each character in the type its own rule asks for. A rule that names a
     // word describes that word: setting a size on the dashes used to resize
     // the letters beside them.
-    paintTextInBox(canvas, text[i],
-        _typed(centred, e.runStyleFor(row, col, i)),
+    paintTextInBox(canvas, text[i], _typed(centred, _typeAt(look, i)),
         nudge == Offset.zero ? slots[i] : slots[i].shift(nudge));
   }
 }
@@ -445,12 +443,11 @@ void _paintSlots(ui.Canvas canvas, TableElement e, int row, int col,
 /// _runsOf splits a cell into stretches of differently styled text, or null
 /// when every character is the same.
 List<(String, TextSpec)>? _runsOf(
-    TableElement e, int row, int col, TextSpec spec) {
-  var text = e.cell(row, col);
-  if (text.isEmpty) return null;
+    TableCellLook look, String text, TextSpec spec) {
+  if (text.isEmpty || look.words.isEmpty) return null;
 
   var styles = [
-    for (var i = 0; i < text.length; i++) e.runStyleFor(row, col, i),
+    for (var i = 0; i < text.length; i++) _typeAt(look, i),
   ];
   if (styles.every((s) => s == null)) return null;
 
@@ -474,26 +471,12 @@ TextSpec _typed(TextSpec spec, TableCellStyle? style) {
   );
 }
 
-/// _nudgeAt is how far the character at [index] should be moved inside its
-/// slot, according to whichever rule claims it.
-///
-/// Later rules win, as they do everywhere else here: a list of exceptions is
-/// read in the order it was written.
-Offset _nudgeAt(
-    TableElement e, int row, int col, String text, int index) {
-  var head = e.header;
-  for (var rule in e.rules.reversed) {
-    if (rule.match.isEmpty) continue;
-    if (rule.style.nudgeX == 0 && rule.style.nudgeY == 0) continue;
-    if (!rule.matchesRow(row) || !rule.matchesColumn(col, head)) continue;
-    for (var (from, to) in rule.runsIn(text)) {
-      if (index >= from && index < to) {
-        return Offset(rule.style.nudgeX, rule.style.nudgeY);
-      }
-    }
-  }
-  return Offset.zero;
+/// _typeAt is the type change that belongs to one character, or null.
+TableCellStyle? _typeAt(TableCellLook look, int index) {
+  var rule = look.ruleAt(index);
+  return rule != null && rule.style.changesType ? rule.style : null;
 }
+
 
 /// _wordsIn is the box the words actually occupy inside their cell, which is
 /// what a chip is drawn round.
@@ -600,6 +583,20 @@ void _placeholder(ui.Canvas canvas, Rect rect, TableElement e) {
 List<double> tableColumnWidths(TableElement e, Rect rect) =>
     _columnWidths(e, rect, e.columnCount);
 
+/// _measured remembers the last content-sized answer.
+///
+/// Measuring means laying out every cell of the table -- two hundred of them
+/// on a league table -- and the answer only changes when the table's contents,
+/// its type or its width do. Recomputing it per frame was half the cost of
+/// drawing one, and a canvas plays at twelve frames a second.
+///
+/// One entry, because one table is being looked at: a second element pushes
+/// the first out and measures again, which is exactly as expensive as having
+/// no cache at all rather than worse.
+TableElement? _measuredOf;
+double _measuredWidth = 0;
+List<double>? _measured;
+
 /// _columnWidths sizes the columns to their contents, or to the fractions the
 /// element carries when it has any.
 List<double> _columnWidths(TableElement e, Rect rect, int cols) {
@@ -608,6 +605,12 @@ List<double> _columnWidths(TableElement e, Rect rect, int cols) {
     if (total > 0) {
       return [for (var w in e.columnWidths) rect.width * w / total];
     }
+  }
+
+  if (identical(_measuredOf, e) &&
+      _measuredWidth == rect.width &&
+      _measured?.length == cols) {
+    return _measured!;
   }
 
   // Measured against a third of the table, so one long cell wraps rather than
@@ -625,10 +628,16 @@ List<double> _columnWidths(TableElement e, Rect rect, int cols) {
   }
 
   var sum = natural.fold<double>(0, (t, v) => t + v);
-  if (sum <= 0) return List.filled(cols, rect.width / cols);
   // Scaled to fill the element exactly, whether the natural widths came to
   // more than there is room for or less.
-  return [for (var w in natural) rect.width * w / sum];
+  var out = sum <= 0
+      ? List.filled(cols, rect.width / cols)
+      : [for (var w in natural) rect.width * w / sum];
+
+  _measuredOf = e;
+  _measuredWidth = rect.width;
+  _measured = out;
+  return out;
 }
 
 /// tableRowHeights is where a table's rows fall, for the same reason
