@@ -231,6 +231,54 @@ class TextSpec {
         shadowOffset:
             Offset(jsonDouble(json["sx"], 0), jsonDouble(json["sy"], 0)),
       );
+
+  /// Two specs are the same when every decision in them is.
+  ///
+  /// Worth having on a value object anyway, and needed by one thing in
+  /// particular: laying out a line of text is the most expensive thing the
+  /// renderer does, and it cannot be skipped for a line already laid out
+  /// unless "the same type" is a question that can be asked. See
+  /// paint_util's layout cache.
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is TextSpec &&
+          other.fontFamily == fontFamily &&
+          other.fontSize == fontSize &&
+          other.weight == weight &&
+          other.italic == italic &&
+          other.underline == underline &&
+          other.letterSpacing == letterSpacing &&
+          other.lineHeight == lineHeight &&
+          other.align == align &&
+          other.verticalAlign == verticalAlign &&
+          other.textCase == textCase &&
+          other.color == color &&
+          other.outlineWidth == outlineWidth &&
+          other.outlineColor == outlineColor &&
+          other.shadowBlur == shadowBlur &&
+          other.shadowColor == shadowColor &&
+          other.shadowOffset == shadowOffset;
+
+  @override
+  int get hashCode => Object.hash(
+        fontFamily,
+        fontSize,
+        weight,
+        italic,
+        underline,
+        letterSpacing,
+        lineHeight,
+        align,
+        verticalAlign,
+        textCase,
+        color,
+        outlineWidth,
+        outlineColor,
+        shadowBlur,
+        shadowColor,
+        shadowOffset,
+      );
 }
 
 /// BoxSpec is the frame around something: a fill, a border and a padding.

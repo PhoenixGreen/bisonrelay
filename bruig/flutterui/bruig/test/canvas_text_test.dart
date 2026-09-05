@@ -140,8 +140,8 @@ void main() {
       var many = withText(text(
           columns: const TextColumns(
               count: 3, gap: 12, ruleStyle: ColumnRuleStyle.dashed)));
-      var back = CanvasDocument.decode(many.encode())!.elements.single
-          as TextElement;
+      var back =
+          CanvasDocument.decode(many.encode())!.elements.single as TextElement;
       expect(back.columns.count, 3);
       expect(back.columns.gap, 12);
       expect(back.columns.ruleStyle, ColumnRuleStyle.dashed);
@@ -189,8 +189,9 @@ void main() {
         text: "Hi",
         curve: const TextOnCurve(elementId: "gone"),
       ));
-      expect(() => paintCanvasDocument(
-          ui.Canvas(ui.PictureRecorder()), document), returnsNormally);
+      expect(
+          () => paintCanvasDocument(ui.Canvas(ui.PictureRecorder()), document),
+          returnsNormally);
     });
 
     test("the attachment survives a round trip", () {
@@ -199,8 +200,8 @@ void main() {
         text: "Hi",
         curve: const TextOnCurve(elementId: "l", offset: 0.25, away: true),
       ));
-      var back =
-          CanvasDocument.decode(document.encode())!.elements.single as TextElement;
+      var back = CanvasDocument.decode(document.encode())!.elements.single
+          as TextElement;
       expect(back.curve!.elementId, "l");
       expect(back.curve!.offset, 0.25);
       expect(back.curve!.away, isTrue);
@@ -221,7 +222,8 @@ void main() {
   });
 
   group("a line's angle", () {
-    CanvasDocument angled(double degrees, {bool hide = false}) => CanvasDocument(
+    CanvasDocument angled(double degrees, {bool hide = false}) =>
+        CanvasDocument(
           size: const CanvasSize(width: 400),
           background: const CanvasBackground(),
           elements: [
@@ -230,7 +232,11 @@ void main() {
               // dimension, so a hairline drawn as height 0 never appears at
               // all. The factory gives a new line four pixels for this reason.
               ElementBase(
-                  id: "l", x: 40, y: 99, width: 320, height: 2,
+                  id: "l",
+                  x: 40,
+                  y: 99,
+                  width: 320,
+                  height: 2,
                   rotation: degrees),
             ),
             TextElement(
@@ -325,8 +331,10 @@ void main() {
         ),
         curve: const TextOnCurve(elementId: "l"),
       );
-      var back = CanvasDocument.decode(
-              CanvasDocument(elements: [element]).encode())!.elements.single;
+      var back =
+          CanvasDocument.decode(CanvasDocument(elements: [element]).encode())!
+              .elements
+              .single;
       expect(back.track!.keyAt(12)!.values[KeyframeChannel.slide], 0.6);
     });
 
@@ -347,8 +355,8 @@ void main() {
               background: const CanvasBackground(),
               frames: 20,
               elements: [
-                const LineElement(ElementBase(
-                    id: "l", x: 20, y: 99, width: 360, height: 2)),
+                const LineElement(
+                    ElementBase(id: "l", x: 20, y: 99, width: 360, height: 2)),
                 TextElement(
                   ElementBase(
                     id: "t",
@@ -362,8 +370,8 @@ void main() {
                     ]),
                   ),
                   text: "GO",
-                  textSpec: const TextSpec(
-                      fontSize: 24, color: Color(0xFFFFFFFF)),
+                  textSpec:
+                      const TextSpec(fontSize: 24, color: Color(0xFFFFFFFF)),
                   box: const BoxSpec(padding: 0),
                   curve: const TextOnCurve(elementId: "l", hideHost: true),
                 ),
@@ -385,6 +393,90 @@ void main() {
       expect(late_, isNotEmpty);
       expect(late_.first, greaterThan(early.first + 0.2),
           reason: "the caption travelled along the line");
+    });
+  });
+
+  group("the layout cache", () {
+    // Laying a line out is the most expensive thing the renderer does, and
+    // layoutText memoises it. The cache is only correct while a TextSpec can
+    // answer "am I the same as that one" honestly -- if a field were ever
+    // added to TextSpec and left out of its ==, the renderer would quietly
+    // draw a stale paragraph for the new setting, and nothing about the
+    // picture would look broken enough to notice.
+
+    test("the same line laid out twice is the same paragraph", () {
+      const spec = TextSpec(fontSize: 20);
+      var a = layoutText("Hull City", spec, maxWidth: 300);
+      var b = layoutText("Hull City", spec, maxWidth: 300);
+      expect(identical(a, b), isTrue);
+    });
+
+    test("every part of the key is part of the key", () {
+      const spec = TextSpec(fontSize: 20);
+      var base = layoutText("Hull City", spec, maxWidth: 300);
+      expect(identical(base, layoutText("Leeds", spec, maxWidth: 300)), isFalse,
+          reason: "different words");
+      expect(identical(base, layoutText("Hull City", spec, maxWidth: 200)),
+          isFalse,
+          reason: "different box");
+      expect(
+          identical(
+              base, layoutText("Hull City", spec, maxWidth: 300, scale: 2)),
+          isFalse,
+          reason: "different scale");
+      expect(
+          identical(
+              base,
+              layoutText("Hull City", spec,
+                  maxWidth: 300, colorOverride: const Color(0xFFFF0000))),
+          isFalse,
+          reason: "different colour");
+      expect(
+          identical(base,
+              layoutText("Hull City", spec, maxWidth: 300, outline: true)),
+          isFalse,
+          reason: "the outline pass");
+      expect(
+          identical(base,
+              layoutText("Hull City", spec, maxWidth: 300, fillWidth: true)),
+          isFalse,
+          reason: "laid out at the full width");
+      expect(
+          identical(
+              base,
+              layoutText("Hull City", spec.copyWith(fontSize: 21),
+                  maxWidth: 300)),
+          isFalse,
+          reason: "a different spec");
+    });
+
+    test("a spec with a different setting is a different spec", () {
+      const spec = TextSpec();
+      expect(spec, equals(const TextSpec()));
+      expect(spec.hashCode, equals(const TextSpec().hashCode));
+      // Every field, so a field added later without an == entry fails here
+      // rather than in a picture somebody has to look closely at.
+      var others = [
+        spec.copyWith(fontFamily: "Roboto"),
+        spec.copyWith(fontSize: 12),
+        spec.copyWith(weight: 300),
+        spec.copyWith(italic: true),
+        spec.copyWith(underline: true),
+        spec.copyWith(letterSpacing: 2),
+        spec.copyWith(lineHeight: 2),
+        spec.copyWith(align: TextAlignSpec.right),
+        spec.copyWith(verticalAlign: VerticalAlignSpec.top),
+        spec.copyWith(textCase: TextCase.upper),
+        spec.copyWith(color: const Color(0xFF00FF00)),
+        spec.copyWith(outlineWidth: 3),
+        spec.copyWith(outlineColor: const Color(0xFF00FF00)),
+        spec.copyWith(shadowBlur: 4),
+        spec.copyWith(shadowColor: const Color(0xFF00FF00)),
+        spec.copyWith(shadowOffset: const Offset(1, 1)),
+      ];
+      for (var other in others) {
+        expect(other, isNot(equals(spec)));
+      }
     });
   });
 }

@@ -21,6 +21,33 @@ import 'package:flutter/painting.dart';
 // produce a picture that changed depending on what the sender's app looked
 // like.
 
+// _layouts memoises laid-out paragraphs.
+//
+// Laying text out is by a wide margin the most expensive thing this file
+// does, and the same string is laid out over and over: a table redraws every
+// cell on every frame of an animation that only moves a chart, an axis label
+// is measured once to decide the plot area and laid out again to draw it, and
+// a scrubbed timeline repaints the whole scene per pointer move. None of that
+// text changed, but each pass built a fresh ui.Paragraph for it.
+//
+// The key is every input that can change the result, so a different colour,
+// scale or box width is a different entry and a theme or font change misses
+// the cache by construction rather than by anyone remembering to clear it.
+//
+// A returned painter is only ever read from -- paint, width, height,
+// getBoxesForSelection -- so handing the same one to two callers is safe.
+// Evicted painters are dropped rather than disposed: a caller may still be
+// holding one from an earlier frame, and letting them be collected is exactly
+// what happened before there was a cache here.
+typedef _LayoutKey = (String, TextSpec, double, double, Color?, bool, bool);
+
+final _layouts = <_LayoutKey, TextPainter>{};
+
+/// _layoutCap is the number of paragraphs kept. A busy league table is a few
+/// hundred cells, so this holds a whole scene with room over, and the oldest
+/// entries go first when it doesn't.
+const _layoutCap = 512;
+
 /// layoutText builds a laid-out paragraph from a [TextSpec].
 ///
 /// The outline is drawn as a second painter behind the first rather than as a
@@ -47,6 +74,31 @@ TextPainter layoutText(
   /// only behaviour.
   bool fillWidth = false,
 }) {
+  var key = (text, spec, maxWidth, scale, colorOverride, outline, fillWidth);
+  var hit = _layouts[key];
+  if (hit != null) return hit;
+  var painter = _layoutText(text, spec,
+      maxWidth: maxWidth,
+      scale: scale,
+      colorOverride: colorOverride,
+      outline: outline,
+      fillWidth: fillWidth);
+  if (_layouts.length >= _layoutCap) {
+    _layouts.remove(_layouts.keys.first);
+  }
+  _layouts[key] = painter;
+  return painter;
+}
+
+TextPainter _layoutText(
+  String text,
+  TextSpec spec, {
+  required double maxWidth,
+  double scale = 1,
+  Color? colorOverride,
+  bool outline = false,
+  bool fillWidth = false,
+}) {
   // The case transform belongs here rather than at every call site.
   //
   // It was applied by the callers -- five of them, each remembering to write
@@ -68,7 +120,8 @@ TextPainter layoutText(
     maxLines: null,
   );
   var width = math.max(0.0, maxWidth);
-  painter.layout(minWidth: fillWidth && width.isFinite ? width : 0, maxWidth: width);
+  painter.layout(
+      minWidth: fillWidth && width.isFinite ? width : 0, maxWidth: width);
   return painter;
 }
 
@@ -135,8 +188,7 @@ double fitFontSize(String text, TextSpec spec, Size box) {
   var low = 4.0, high = box.height * 2;
   for (var i = 0; i < 12; i++) {
     var mid = (low + high) / 2;
-    var p = layoutText(text, spec.copyWith(fontSize: mid),
-        maxWidth: box.width);
+    var p = layoutText(text, spec.copyWith(fontSize: mid), maxWidth: box.width);
     if (p.height <= box.height && p.width <= box.width + 0.5) {
       low = mid;
     } else {
@@ -225,7 +277,8 @@ Path shapePath(ShapeKind kind, Rect rect,
       for (var i = 0; i < n * 2; i++) {
         var a = -math.pi / 2 + i * math.pi / n;
         var r = i.isEven ? 1.0 : ratio;
-        var p = Offset(c.dx + math.cos(a) * rx * r, c.dy + math.sin(a) * ry * r);
+        var p =
+            Offset(c.dx + math.cos(a) * rx * r, c.dy + math.sin(a) * ry * r);
         i == 0 ? path.moveTo(p.dx, p.dy) : path.lineTo(p.dx, p.dy);
       }
       path.close();
@@ -300,8 +353,9 @@ Path dashPath(Path source, double on, double off) {
 /// somewhere the arrow is not.
 const double arrowSpread = 0.42;
 
-void arrowHead(ui.Canvas canvas, Offset tip, double angle, double size,
-    Paint paint, {bool filled = true}) {
+void arrowHead(
+    ui.Canvas canvas, Offset tip, double angle, double size, Paint paint,
+    {bool filled = true}) {
   var back = angle + math.pi;
   var spread = arrowSpread;
   var path = Path()
@@ -404,8 +458,8 @@ void paintTextInColumns(
   var width = columns.columnWidth(box.width);
   if (width <= 0) return;
 
-  var painter = layoutText(text, spec,
-      maxWidth: width, scale: scale, fillWidth: true);
+  var painter =
+      layoutText(text, spec, maxWidth: width, scale: scale, fillWidth: true);
   var metrics = painter.computeLineMetrics();
   if (metrics.isEmpty) return;
 
@@ -478,8 +532,7 @@ void _paintColumnRules(
           dashPath(line, columns.ruleWidth * 4, columns.ruleWidth * 3),
         // A dotted rule is a dashed one whose dashes are nothing and whose cap
         // is round -- a zero-length stroke with a round cap is a dot.
-        ColumnRuleStyle.dotted =>
-          dashPath(line, 0.01, columns.ruleWidth * 3),
+        ColumnRuleStyle.dotted => dashPath(line, 0.01, columns.ruleWidth * 3),
         _ => line,
       },
       paint,
@@ -560,8 +613,8 @@ List<PlacedGlyph> placeTextOnPath(
     at += widths[i];
     if (centre < 0 || centre > total) continue;
     var (point, angle) = _alongPolyline(curve, lengths, centre);
-    out.add(PlacedGlyph(glyphs[i], point, angle,
-        Size(painters[i].width, painters[i].height)));
+    out.add(PlacedGlyph(
+        glyphs[i], point, angle, Size(painters[i].width, painters[i].height)));
   }
   return out;
 }
@@ -704,14 +757,13 @@ Path bubblePath(Rect rect, SpeechBubbleSpec bubble, double cornerRadius) {
     for (var i = 0; i < count; i++) {
       var t = i / (count - 1);
       var at = edge + out * (unit * 1.6 + reach * 0.9 * t);
-      trail.addOval(Rect.fromCircle(
-          center: at, radius: unit * (1 - t * 0.4)));
+      trail.addOval(Rect.fromCircle(center: at, radius: unit * (1 - t * 0.4)));
     }
     return Path.combine(PathOperation.union, shape, trail);
   }
 
-  var across = Offset(-out.dy, out.dx) *
-      (rect.shortestSide / 2 * bubble.tailWidth / 2);
+  var across =
+      Offset(-out.dy, out.dx) * (rect.shortestSide / 2 * bubble.tailWidth / 2);
   // Started from inside the body so the union has something to bite on: a
   // triangle that merely touched the outline would leave a hairline where the
   // two boundaries met.
@@ -723,10 +775,10 @@ Path bubblePath(Rect rect, SpeechBubbleSpec bubble, double cornerRadius) {
     // the body square and bends as it narrows.
     var bend = Offset(-out.dy, out.dx) * (reach * bubble.curl);
     tail
-      ..quadraticBezierTo(anchor.dx + bend.dx, anchor.dy + bend.dy, tip.dx,
-          tip.dy)
-      ..quadraticBezierTo(anchor.dx + bend.dx * 0.35, anchor.dy + bend.dy * 0.35,
-          root.dx - across.dx, root.dy - across.dy);
+      ..quadraticBezierTo(
+          anchor.dx + bend.dx, anchor.dy + bend.dy, tip.dx, tip.dy)
+      ..quadraticBezierTo(anchor.dx + bend.dx * 0.35,
+          anchor.dy + bend.dy * 0.35, root.dx - across.dx, root.dy - across.dy);
   } else {
     tail
       ..lineTo(tip.dx, tip.dy)
@@ -752,7 +804,8 @@ Path _bubbleBody(Rect body, BubbleBody kind, double cornerRadius) {
   var path = Path();
   switch (kind) {
     case BubbleBody.rounded:
-      var r = math.min(cornerRadius > 0 ? cornerRadius : body.shortestSide * 0.22,
+      var r = math.min(
+          cornerRadius > 0 ? cornerRadius : body.shortestSide * 0.22,
           body.shortestSide / 2);
       path.addRRect(RRect.fromRectAndRadius(body, Radius.circular(r)));
     case BubbleBody.oval:
