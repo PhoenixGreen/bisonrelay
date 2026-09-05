@@ -3617,6 +3617,80 @@ void _tableTests() {
       expect(nudgedBox, closeTo(box, 1), reason: "the box has not moved");
     });
 
+    test("a rule about a word sizes that word and nothing else", () {
+      // Setting a size on the dashes resized the letters beside them, which
+      // is the pitch's mistake wearing different clothes: a rule that names a
+      // word describes that word.
+      var e = TableElement(const ElementBase(id: "t"), rows: const [
+        ["Form"],
+        ["-W"],
+      ]);
+
+      var sized = e.copyWith(rules: const [
+        TableRule(
+            column: "Form",
+            match: "-",
+            how: TableMatch.anywhere,
+            style: TableCellStyle(fontScale: 1.4, weight: 700)),
+      ]);
+
+      // Not on the cell.
+      expect(sized.styleFor(1, 0)?.fontScale, 1);
+      expect(sized.styleFor(1, 0)?.weight, 0);
+
+      // On the dash, and not on the W beside it.
+      expect(sized.runStyleFor(1, 0, 0)?.fontScale, 1.4);
+      expect(sized.runStyleFor(1, 0, 0)?.weight, 700);
+      expect(sized.runStyleFor(1, 0, 1), isNull);
+
+      // A rule about the column still sizes the whole cell, which is what a
+      // rule about a column is for.
+      var column = e.copyWith(rules: const [
+        TableRule(column: "Form", style: TableCellStyle(fontScale: 1.4)),
+      ]);
+      expect(column.styleFor(1, 0)?.fontScale, 1.4);
+      expect(column.runStyleFor(1, 0, 0), isNull);
+    });
+
+    test("a cell of two sizes is drawn as one line", () async {
+      // Painted piece by piece it would have to be positioned by adding up
+      // widths, and a line laid out that way is a line that will not centre.
+      var e = TableElement(
+        const ElementBase(id: "t", width: 400, height: 120),
+        rows: const [
+          ["Form"],
+          ["-W"],
+        ],
+        cellSpec: const TextSpec(
+            fontSize: 16, align: TextAlignSpec.center, color: Color(0xFFFFFFFF)),
+      );
+
+      Future<Uint8List> drawn(List<TableRule> rules) async {
+        var recorder = ui.PictureRecorder();
+        paintTable(ui.Canvas(recorder), const Rect.fromLTWH(0, 0, 400, 120),
+            e.copyWith(rules: rules));
+        var image = await recorder.endRecording().toImage(400, 120);
+        try {
+          return (await image.toByteData(
+                  format: ui.ImageByteFormat.rawStraightRgba))!
+              .buffer
+              .asUint8List();
+        } finally {
+          image.dispose();
+        }
+      }
+
+      var plain = await drawn(const []);
+      var mixed = await drawn(const [
+        TableRule(
+            column: "Form",
+            match: "-",
+            how: TableMatch.anywhere,
+            style: TableCellStyle(fontScale: 2)),
+      ]);
+      expect(plain, isNot(orderedEquals(mixed)));
+    });
+
     test("a rule about one letter cannot respace the rest", () {
       // Setting a width on the D silently respaced the Ls and Ws beside it:
       // the pitch is how the whole cell is laid out, and one letter's rule

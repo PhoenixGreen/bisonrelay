@@ -185,6 +185,18 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
         continue;
       }
 
+      // Where the rules describe parts of the cell -- the dashes one size and
+      // the letters another -- the cell is one paragraph of differently
+      // styled stretches. Painted as pieces one after another it would have
+      // to be positioned by adding up widths, and a line laid out that way is
+      // a line that will not centre.
+      var runs = _runsOf(e, r, c, spec);
+      if (runs != null) {
+        paintRunsInBox(canvas, runs, spec, textBox, clip: true);
+        x += w;
+        continue;
+      }
+
       // The spec's own vertical alignment, not the middle regardless. It was
       // forced here, so the Vertical setting on a table's type did nothing at
       // all -- and a table of one-line cells does want the middle, which is
@@ -421,9 +433,45 @@ void _paintSlots(ui.Canvas canvas, TableElement e, int row, int col,
   for (var i = 0; i < text.length && i < slots.length; i++) {
     if (text[i].trim().isEmpty) continue;
     var nudge = _nudgeAt(e, row, col, text, i);
-    paintTextInBox(canvas, text[i], centred,
+    // Each character in the type its own rule asks for. A rule that names a
+    // word describes that word: setting a size on the dashes used to resize
+    // the letters beside them.
+    paintTextInBox(canvas, text[i],
+        _typed(centred, e.runStyleFor(row, col, i)),
         nudge == Offset.zero ? slots[i] : slots[i].shift(nudge));
   }
+}
+
+/// _runsOf splits a cell into stretches of differently styled text, or null
+/// when every character is the same.
+List<(String, TextSpec)>? _runsOf(
+    TableElement e, int row, int col, TextSpec spec) {
+  var text = e.cell(row, col);
+  if (text.isEmpty) return null;
+
+  var styles = [
+    for (var i = 0; i < text.length; i++) e.runStyleFor(row, col, i),
+  ];
+  if (styles.every((s) => s == null)) return null;
+
+  var runs = <(String, TextSpec)>[];
+  var from = 0;
+  for (var i = 1; i <= text.length; i++) {
+    if (i < text.length && identical(styles[i], styles[from])) continue;
+    runs.add((text.substring(from, i), _typed(spec, styles[from])));
+    from = i;
+  }
+  return runs;
+}
+
+/// _typed is [spec] with one rule's type changes applied.
+TextSpec _typed(TextSpec spec, TableCellStyle? style) {
+  if (style == null) return spec;
+  return spec.copyWith(
+    fontSize: spec.fontSize * style.fontScale,
+    weight: style.weight == 0 ? spec.weight : style.weight,
+    color: style.textColor.a > 0 ? style.textColor : spec.color,
+  );
 }
 
 /// _nudgeAt is how far the character at [index] should be moved inside its

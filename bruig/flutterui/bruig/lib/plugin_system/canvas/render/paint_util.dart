@@ -60,34 +60,8 @@ TextPainter layoutText(
   var painter = TextPainter(
     text: TextSpan(
       text: text,
-      style: TextStyle(
-        fontFamily: spec.fontFamily,
-        fontSize: spec.fontSize * scale,
-        fontWeight: spec.fontWeight,
-        fontStyle: spec.italic ? FontStyle.italic : FontStyle.normal,
-        decoration:
-            spec.underline ? TextDecoration.underline : TextDecoration.none,
-        decorationColor: colorOverride ?? spec.color,
-        letterSpacing: spec.letterSpacing * scale,
-        height: spec.lineHeight,
-        color: outline ? null : (colorOverride ?? spec.color),
-        foreground: outline
-            ? (Paint()
-              ..style = PaintingStyle.stroke
-              ..strokeJoin = StrokeJoin.round
-              ..strokeWidth = spec.outlineWidth * 2 * scale
-              ..color = spec.outlineColor)
-            : null,
-        shadows: spec.shadowBlur > 0 && !outline
-            ? [
-                Shadow(
-                  color: spec.shadowColor,
-                  blurRadius: spec.shadowBlur * scale,
-                  offset: spec.shadowOffset * scale,
-                ),
-              ]
-            : null,
-      ),
+      style: textStyleOf(spec,
+          scale: scale, colorOverride: colorOverride, outline: outline),
     ),
     textAlign: spec.align.flutter,
     textDirection: TextDirection.ltr,
@@ -846,4 +820,89 @@ Rect? textRunBox(String text, TextSpec spec, Rect box, int start, int end) {
     out = out.expandToInclude(b.toRect());
   }
   return out.translate(box.left, box.top + dy);
+}
+
+/// textStyleOf is one TextSpec as Flutter sees it.
+///
+/// Its own function because a paragraph of differently styled stretches needs
+/// it once per stretch -- see paintRunsInBox -- and a second copy of this
+/// list would be a second place for a setting to be forgotten.
+TextStyle textStyleOf(
+  TextSpec spec, {
+  double scale = 1,
+  Color? colorOverride,
+  bool outline = false,
+}) =>
+    TextStyle(
+      fontFamily: spec.fontFamily,
+      fontSize: spec.fontSize * scale,
+      fontWeight: spec.fontWeight,
+      fontStyle: spec.italic ? FontStyle.italic : FontStyle.normal,
+      decoration:
+          spec.underline ? TextDecoration.underline : TextDecoration.none,
+      decorationColor: colorOverride ?? spec.color,
+      letterSpacing: spec.letterSpacing * scale,
+      height: spec.lineHeight,
+      color: outline ? null : (colorOverride ?? spec.color),
+      foreground: outline
+          ? (Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeJoin = StrokeJoin.round
+            ..strokeWidth = spec.outlineWidth * 2 * scale
+            ..color = spec.outlineColor)
+          : null,
+      shadows: spec.shadowBlur > 0 && !outline
+          ? [
+              Shadow(
+                color: spec.shadowColor,
+                blurRadius: spec.shadowBlur * scale,
+                offset: spec.shadowOffset * scale,
+              ),
+            ]
+          : null,
+    );
+
+/// paintRunsInBox draws one line made of stretches of differently styled
+/// text, laid out and aligned as paintTextInBox would lay out one stretch.
+///
+/// For a cell whose rules describe parts of it: a form guide where the dashes
+/// are one size and the letters another. Painted as a single paragraph of
+/// spans rather than piece by piece, because pieces painted one after another
+/// have to be positioned by adding up their widths, and a line laid out that
+/// way is a line that will not centre.
+double paintRunsInBox(
+  ui.Canvas canvas,
+  List<(String, TextSpec)> runs,
+  TextSpec base,
+  Rect box, {
+  bool clip = false,
+}) {
+  if (runs.isEmpty || box.width <= 0) return 0;
+
+  var painter = TextPainter(
+    text: TextSpan(
+      style: textStyleOf(base),
+      children: [
+        for (var (text, spec) in runs)
+          TextSpan(text: spec.textCase.apply(text), style: textStyleOf(spec)),
+      ],
+    ),
+    textAlign: base.align.flutter,
+    textDirection: TextDirection.ltr,
+    maxLines: 1,
+  )..layout(minWidth: box.width, maxWidth: box.width);
+
+  var dy = switch (base.verticalAlign) {
+    VerticalAlignSpec.top => 0.0,
+    VerticalAlignSpec.bottom => box.height - painter.height,
+    VerticalAlignSpec.middle => (box.height - painter.height) / 2,
+  };
+
+  if (clip) {
+    canvas.save();
+    canvas.clipRect(box);
+  }
+  painter.paint(canvas, Offset(box.left, box.top + dy));
+  if (clip) canvas.restore();
+  return painter.height;
 }

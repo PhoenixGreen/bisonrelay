@@ -637,17 +637,32 @@ class TableElement extends CanvasElement {
           ? (rule.match.isEmpty
               ? rule.style
               // Same rule for the first one as for every one after it, or a
-              // cell whose only rule names a letter would take its pitch.
-              : rule.style.copyWith(letterWidth: 0, letterSpacing: 0))
+              // cell whose only rule names a letter would take that letter's
+              // pitch and its type.
+              : rule.style.copyWith(
+                  letterWidth: 0,
+                  letterSpacing: 0,
+                  fontScale: 1,
+                  weight: 0,
+                  textColor: const Color(0x00000000)))
           : out.copyWith(
               background: rule.style.background.a > 0
                   ? rule.style.background
                   : out.background,
-              textColor:
-                  rule.style.textColor.a > 0 ? rule.style.textColor : out.textColor,
-              fontScale:
-                  rule.style.fontScale != 1 ? rule.style.fontScale : out.fontScale,
-              weight: rule.style.weight != 0 ? rule.style.weight : out.weight,
+              // The type only from a rule about the whole cell. A rule that
+              // names a word carries its type into runStyleFor instead, and
+              // it is applied to that word alone -- setting a size on the
+              // dashes was resizing the letters beside them, which is the
+              // pitch's mistake wearing different clothes.
+              textColor: rule.match.isEmpty && rule.style.textColor.a > 0
+                  ? rule.style.textColor
+                  : out.textColor,
+              fontScale: rule.match.isEmpty && rule.style.fontScale != 1
+                  ? rule.style.fontScale
+                  : out.fontScale,
+              weight: rule.match.isEmpty && rule.style.weight != 0
+                  ? rule.style.weight
+                  : out.weight,
               // Only from a rule about the whole cell. See letterWidth: the
               // pitch is how the cell is laid out, and a rule about one
               // letter has no business deciding it for the others.
@@ -682,6 +697,26 @@ class TableElement extends CanvasElement {
             );
     }
     return out;
+  }
+
+  /// runStyleFor is the type change that belongs to the character at [index]
+  /// of a cell, from whichever rule that names a word claims it.
+  ///
+  /// Separate from [styleFor], which is the cell's own look. A rule that
+  /// names a word describes that word: its size, its weight and its colour
+  /// are the word's, and merging them into the cell made a rule about the
+  /// dashes resize the letters beside them.
+  TableCellStyle? runStyleFor(int row, int col, int index) {
+    var head = header;
+    var text = cell(row, col);
+    for (var rule in rules.reversed) {
+      if (rule.match.isEmpty || !rule.style.changesType) continue;
+      if (!rule.matchesRow(row) || !rule.matchesColumn(col, head)) continue;
+      for (var (from, to) in rule.runsIn(text)) {
+        if (index >= from && index < to) return rule.style;
+      }
+    }
+    return null;
   }
 
   /// cell is the string at a position, padding out ragged rows rather than
