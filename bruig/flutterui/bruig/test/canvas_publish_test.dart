@@ -108,5 +108,23 @@ void main() {
           of: find.text("Publish"), matching: find.byType(FilledButton)));
       expect(publish.onPressed, isNotNull);
     });
+
+    testWidgets("the format says where its file will and will not play",
+        (tester) async {
+      // The two differ in exactly the way somebody about to send a clip cares
+      // about, and there is no way to find that out from the file afterwards.
+      await open(tester);
+      await tester.tap(find.text("Video"));
+      await tester.pumpAndSettle();
+      expect(find.textContaining(VideoFormat.mp4.note), findsOneWidget);
+
+      await tester.tap(find.text("MP4"));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text("WebM").last);
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining(VideoFormat.webm.note), findsOneWidget);
+      expect(find.textContaining(VideoFormat.mp4.note), findsNothing);
+    });
   });
 }

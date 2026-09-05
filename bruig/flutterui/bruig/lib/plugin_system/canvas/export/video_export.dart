@@ -54,8 +54,15 @@ const List<String> _candidates = [
 ];
 
 /// ffmpegHelp is what to tell somebody who has not got one.
+///
+/// The exact commands rather than "install ffmpeg", because this message is
+/// the whole of what stands between a reader and a working export -- ffmpeg is
+/// not bundled, and it is not bundled for a reason worth knowing: the H.264
+/// encoder ffmpeg uses, libx264, is GPL, and Bison Relay is ISC. Shipping the
+/// two together would relicense the app. So the encoder is the reader's, on
+/// their machine, under whatever licence they please.
 const String ffmpegHelp =
-    "MP4 needs ffmpeg, which is not installed. Install it with "
+    "Video needs ffmpeg, which is not installed. Install it with "
     "\"brew install ffmpeg\" on a Mac, \"apt install ffmpeg\" on Linux, or "
     "from ffmpeg.org on Windows — then restart. The GIF export needs nothing.";
 
@@ -112,22 +119,60 @@ void forgetFfmpegForTest() {
   _found = null;
 }
 
-/// mp4Quality is the constant-rate factor handed to ffmpeg: lower is better
-/// and larger, 18 is generally called visually lossless, 28 is small.
+/// VideoFormat is which of the two files to write.
 ///
-/// Offered as three named choices rather than a number, because a CRF is a
-/// number nobody outside video encoding has an opinion about.
-enum Mp4Quality {
-  high("Best", 18),
-  balanced("Balanced", 23),
-  small("Smallest", 28);
+/// Two rather than one because they fail in opposite places. An MP4 is the
+/// file everything takes -- QuickTime, Photos, a phone, a browser -- and its
+/// encoder is GPL, which is why it can only ever be the reader's own copy of
+/// ffmpeg and never one shipped here. A WebM is smaller at the same quality
+/// and its encoder is BSD, so it is the one that could be built in one day if
+/// that ever became worth doing; what it will not do is open in iOS or macOS
+/// Photos, which is exactly where somebody sending a clip to a friend expects
+/// it to land.
+enum VideoFormat {
+  mp4("MP4", "video/mp4", ".mp4", "libx264",
+      "Plays everywhere, including Photos on a Mac or an iPhone."),
+  webm("WebM", "video/webm", ".webm", "libvpx-vp9",
+      "Smaller at the same quality, and plays in browsers and most chat "
+          "apps — but not in Photos on a Mac or an iPhone.");
 
   final String label;
-  final int crf;
-  const Mp4Quality(this.label, this.crf);
+  final String mime;
+  final String extension;
+
+  /// encoder is what ffmpeg is asked for by name. A build without it says so
+  /// and is reported as such -- see [renderVideo].
+  final String encoder;
+
+  final String note;
+  const VideoFormat(
+      this.label, this.mime, this.extension, this.encoder, this.note);
 }
 
-/// renderMp4 draws every frame and hands them to ffmpeg.
+/// VideoQuality is the constant-rate factor handed to ffmpeg: lower is better
+/// and larger.
+///
+/// Offered as three named choices rather than a number, because a CRF is a
+/// number nobody outside video encoding has an opinion about -- and because
+/// the two encoders do not even use the same scale. x264 runs 0..51 and calls
+/// 18 visually lossless; VP9 runs 0..63 and wants something in the low
+/// thirties for the same picture. One label, two numbers, so that switching
+/// format does not silently change how good the file is.
+enum VideoQuality {
+  high("Best", 18, 24),
+  balanced("Balanced", 23, 31),
+  small("Smallest", 28, 40);
+
+  final String label;
+  final int _h264;
+  final int _vp9;
+  const VideoQuality(this.label, this._h264, this._vp9);
+
+  int crfFor(VideoFormat format) =>
+      format == VideoFormat.webm ? _vp9 : _h264;
+}
+
+/// renderVideo draws every frame and hands them to ffmpeg.
 ///
 /// The frames go to a temporary directory as PNGs rather than down ffmpeg's
 /// standard input. Piping is the tidier shape and it deadlocks: ffmpeg blocks
@@ -138,11 +183,12 @@ enum Mp4Quality {
 ///
 /// Returns null when there is no ffmpeg, when it fails, or when the document
 /// has no frames. The caller reports it; see [ffmpegHelp].
-Future<CanvasExport?> renderMp4(
+Future<CanvasExport?> renderVideo(
   CanvasDocument document, {
   double scale = 1,
   CanvasImageSource? images,
-  Mp4Quality quality = Mp4Quality.balanced,
+  VideoFormat format = VideoFormat.mp4,
+  VideoQuality quality = VideoQuality.balanced,
   GifProgress? onProgress,
 }) async {
   var ffmpeg = await ffmpegPath();
@@ -150,7 +196,7 @@ Future<CanvasExport?> renderMp4(
 
   Directory? work;
   try {
-    work = await Directory.systemTemp.createTemp("bruig-canvas-mp4");
+    work = await Directory.systemTemp.createTemp("bruig-canvas-video");
 
     var width = 0, height = 0;
     for (var i = 0; i < document.frames; i++) {
@@ -175,35 +221,54 @@ Future<CanvasExport?> renderMp4(
     }
     if (width == 0) return null;
 
-    var out = path.join(work.path, "canvas.mp4");
+    var out = path.join(work.path, "canvas${format.extension}");
     var result = await Process.run(ffmpeg, [
       "-y",
       "-framerate", "${document.frameRate}",
       "-i", path.join(work.path, "frame-%05d.png"),
       // yuv420p and the even-sized scale are what makes the file play in
-      // QuickTime, on a phone and in a browser rather than only in VLC. H.264
-      // in 4:2:0 cannot have an odd dimension, and a canvas is any size its
-      // author made it.
+      // QuickTime, on a phone and in a browser rather than only in VLC.
+      // Neither codec in 4:2:0 can have an odd dimension, and a canvas is any
+      // size its author made it.
       "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2",
       "-pix_fmt", "yuv420p",
-      "-c:v", "libx264",
-      "-crf", "${quality.crf}",
-      "-preset", "medium",
-      // Puts the index at the front, so the file starts playing before it has
-      // all arrived -- which is the difference between a link that plays and
-      // one that downloads.
-      "-movflags", "+faststart",
+      "-c:v", format.encoder,
+      "-crf", "${quality.crfFor(format)}",
+      if (format == VideoFormat.mp4) ...[
+        "-preset", "medium",
+        // Puts the index at the front, so the file starts playing before it
+        // has all arrived -- which is the difference between a link that
+        // plays and one that downloads.
+        "-movflags", "+faststart",
+      ],
+      if (format == VideoFormat.webm) ...[
+        // VP9 only honours the CRF when the bitrate is explicitly nothing.
+        // Left out, it quietly encodes to a default bitrate instead and the
+        // quality control does nothing at all.
+        "-b:v", "0",
+        // Rows in parallel. VP9 is slow enough without it that a long export
+        // reads as a hang.
+        "-row-mt", "1",
+      ],
       out,
     ]);
 
     if (result.exitCode != 0) {
-      debugPrint("ffmpeg could not write the video: ${result.stderr}");
+      var why = "${result.stderr}";
+      // An ffmpeg built without the encoder is a different problem from a
+      // failed encode, and it is one the reader can do something about.
+      if (why.contains("Unknown encoder")) {
+        debugPrint("This ffmpeg has no ${format.encoder}: ${format.label} "
+            "needs a build that includes it.");
+      } else {
+        debugPrint("ffmpeg could not write the video: $why");
+      }
       return null;
     }
     var file = File(out);
     if (!await file.exists()) return null;
 
-    return CanvasExport(await file.readAsBytes(), "video/mp4",
+    return CanvasExport(await file.readAsBytes(), format.mime,
         width: _even(width), height: _even(height));
   } catch (exception) {
     debugPrint("Unable to render the canvas video: $exception");
@@ -227,7 +292,7 @@ String _numbered(int frame) =>
 /// _even is what the scale filter above will have made of a dimension.
 int _even(int side) => math.max(2, side - (side % 2));
 
-/// estimateVideoBytes is a rough guess at an MP4's size, for the line under
+/// estimateVideoBytes is a rough guess at a video's size, for the line under
 /// the publish sheet.
 ///
 /// Deliberately crude: bits per pixel per frame at the chosen quality, times
@@ -236,13 +301,18 @@ int _even(int side) => math.max(2, side - (side % 2));
 /// can be known without encoding -- so this is honest about orders of
 /// magnitude and nothing finer, which is exactly what the line is for.
 int estimateVideoBytes(CanvasDocument document,
-    {double scale = 1, Mp4Quality quality = Mp4Quality.balanced}) {
+    {double scale = 1,
+    VideoFormat format = VideoFormat.mp4,
+    VideoQuality quality = VideoQuality.balanced}) {
   var pixels = document.size.width * document.size.height * scale * scale;
   var perPixel = switch (quality) {
-    Mp4Quality.high => 0.12,
-    Mp4Quality.balanced => 0.05,
-    Mp4Quality.small => 0.02,
+    VideoQuality.high => 0.12,
+    VideoQuality.balanced => 0.05,
+    VideoQuality.small => 0.02,
   };
+  // VP9 lands somewhere around two thirds of what x264 does at a matched
+  // quality, which is the reason anybody chooses it.
+  if (format == VideoFormat.webm) perPixel *= 0.65;
   // A canvas animation is mostly still: the background does not change, and
   // the parts that do are a few elements moving. An inter-frame codec spends
   // almost nothing on the rest, so the frames after the first are a fraction

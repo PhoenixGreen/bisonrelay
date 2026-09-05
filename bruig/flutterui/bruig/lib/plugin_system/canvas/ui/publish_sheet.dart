@@ -38,7 +38,7 @@ import 'package:provider/provider.dart';
 enum PublishAs {
   image("Image", "A single frame as a PNG or a JPEG"),
   animation("Animation", "Every frame as an animated GIF"),
-  video("Video", "Every frame as an MP4, at full colour"),
+  video("Video", "Every frame as an MP4 or a WebM, at full colour"),
   interactive("Interactive canvas",
       "The canvas itself, with its pictures, to open and edit again");
 
@@ -128,7 +128,8 @@ class _PublishSheetState extends State<_PublishSheet> {
   int _colors = 256;
   bool _loop = true;
 
-  Mp4Quality _videoQuality = Mp4Quality.balanced;
+  VideoFormat _videoFormat = VideoFormat.mp4;
+  VideoQuality _videoQuality = VideoQuality.balanced;
 
   /// _ffmpeg is whether there is an encoder to make an MP4 with, which is not
   /// known until it has been looked for. Assumed absent until the look comes
@@ -191,7 +192,7 @@ class _PublishSheetState extends State<_PublishSheet> {
         PublishAs.animation =>
           estimateAnimationBytes(widget.document, scale: _scale),
         PublishAs.video => estimateVideoBytes(widget.document,
-            scale: _scale, quality: _videoQuality),
+            scale: _scale, format: _videoFormat, quality: _videoQuality),
         // An interactive canvas is the document itself, which is a known
         // quantity rather than an estimate -- so this one is exact, and the
         // label below says so. The pictures are added at their stored size,
@@ -256,10 +257,11 @@ class _PublishSheetState extends State<_PublishSheet> {
           },
         );
       case PublishAs.video:
-        return renderMp4(
+        return renderVideo(
           widget.document,
           scale: _scale,
           images: widget.images,
+          format: _videoFormat,
           quality: _videoQuality,
           onProgress: (done, total) {
             if (mounted) {
@@ -658,21 +660,37 @@ class _PublishSheetState extends State<_PublishSheet> {
             Expanded(child: _scaleField(theme)),
             const SizedBox(width: 12),
             Expanded(
-              child: _dropdown<Mp4Quality>(
+              child: _dropdown<VideoFormat>(
+                  theme,
+                  "Format",
+                  _videoFormat,
+                  [for (var f in VideoFormat.values) (f, f.label)],
+                  (v) => setState(() => _videoFormat = v)),
+            ),
+          ]),
+          const SizedBox(height: 4),
+          Row(children: [
+            Expanded(
+              child: _dropdown<VideoQuality>(
                   theme,
                   "Quality",
                   _videoQuality,
-                  [for (var q in Mp4Quality.values) (q, q.label)],
+                  [for (var q in VideoQuality.values) (q, q.label)],
                   (v) => setState(() => _videoQuality = v)),
             ),
+            // The second half is deliberately empty. A dropdown stretched to
+            // the width of the dialog looks like it holds more than three
+            // words, and the two rows line up as one grid this way.
+            const SizedBox(width: 12),
+            const Expanded(child: SizedBox()),
           ]),
           _note(
               theme,
               "${widget.document.frames} frames at "
               "${widget.document.frameRate} per second — "
               "${widget.document.durationSeconds.toStringAsFixed(1)} seconds. "
-              "An MP4 keeps every colour, where a GIF has 256, and is "
-              "usually much smaller."),
+              "A video keeps every colour, where a GIF has 256, and is "
+              "usually much smaller. ${_videoFormat.note}"),
         ];
 
       case PublishAs.interactive:
