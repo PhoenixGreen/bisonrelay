@@ -266,8 +266,9 @@ class _CanvasNumberFieldState extends State<CanvasNumberField> {
       TextEditingController(text: _format(widget.value));
   final FocusNode _focus = FocusNode();
 
-  String _format(double v) =>
-      widget.decimals == 0 ? v.round().toString() : v.toStringAsFixed(widget.decimals);
+  String _format(double v) => widget.decimals == 0
+      ? v.round().toString()
+      : v.toStringAsFixed(widget.decimals);
 
   @override
   void initState() {
@@ -521,10 +522,8 @@ class CanvasSlider extends StatelessWidget {
             child: SliderTheme(
               data: SliderTheme.of(context).copyWith(
                 trackHeight: 2,
-                thumbShape:
-                    const RoundSliderThumbShape(enabledThumbRadius: 6),
-                overlayShape:
-                    const RoundSliderOverlayShape(overlayRadius: 12),
+                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
               ),
               child: Slider(
                 value: value.clamp(min, max),
@@ -541,8 +540,8 @@ class CanvasSlider extends StatelessWidget {
               decimals == 0
                   ? value.round().toString()
                   : value.toStringAsFixed(decimals),
-              style: TextStyle(
-                  fontSize: 10, color: theme.colors.onSurfaceVariant),
+              style:
+                  TextStyle(fontSize: 10, color: theme.colors.onSurfaceVariant),
               textAlign: TextAlign.right,
             ),
           ),
@@ -682,7 +681,9 @@ class CanvasToggle extends StatelessWidget {
   final ValueChanged<bool> onChanged;
 
   const CanvasToggle(
-      {required this.label, required this.value, required this.onChanged,
+      {required this.label,
+      required this.value,
+      required this.onChanged,
       super.key});
 
   @override
@@ -914,17 +915,17 @@ Widget _labelled(ThemeNotifier theme, String label, Widget child,
           if (scrub != null)
             scrub
           else
-          SizedBox(
-            height: controlLabelHeight,
-            child: Text(
-              label,
-              style: TextStyle(
-                  fontSize: 9,
-                  height: 1.1,
-                  color: theme.colors.onSurfaceVariant),
-              overflow: TextOverflow.ellipsis,
+            SizedBox(
+              height: controlLabelHeight,
+              child: Text(
+                label,
+                style: TextStyle(
+                    fontSize: 9,
+                    height: 1.1,
+                    color: theme.colors.onSurfaceVariant),
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
-          ),
           child,
         ],
       ),
@@ -981,8 +982,7 @@ class _CanvasExpanderState extends State<CanvasExpander> {
   /// _remembered is every named section's state, for this run of the app.
   static final Map<String, bool> _remembered = {};
 
-  late bool _open =
-      _remembered[widget.remember] ?? widget.initiallyOpen;
+  late bool _open = _remembered[widget.remember] ?? widget.initiallyOpen;
 
   @override
   void initState() {

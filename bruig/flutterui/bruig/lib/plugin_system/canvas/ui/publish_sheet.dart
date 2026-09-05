@@ -125,19 +125,16 @@ class _PublishSheetState extends State<_PublishSheet> {
 
   Future<void> _loadRecord() async {
     if (!_canRecord) return;
-    var record =
-        await PublishRecords.read(widget.folder ?? "", widget.name!);
+    var record = await PublishRecords.read(widget.folder ?? "", widget.name!);
     if (mounted && record != null) setState(() => _record = record);
   }
 
   String get _suggestedName =>
-      widget.name ?? (widget.document.title.isEmpty
-          ? "Canvas"
-          : widget.document.title);
+      widget.name ??
+      (widget.document.title.isEmpty ? "Canvas" : widget.document.title);
 
   int get _estimate => switch (_as) {
-        PublishAs.image =>
-          estimateStillBytes(widget.document, scale: _scale),
+        PublishAs.image => estimateStillBytes(widget.document, scale: _scale),
         PublishAs.animation =>
           estimateAnimationBytes(widget.document, scale: _scale),
         // An interactive canvas is the document's own JSON, which is a known
@@ -226,8 +223,7 @@ class _PublishSheetState extends State<_PublishSheet> {
               : snackbar.error(problem);
 
         case PublishTo.library:
-          var record =
-              await publishToLibrary(export, _suggestedName, _record);
+          var record = await publishToLibrary(export, _suggestedName, _record);
           if (!mounted) return;
           if (record == null) {
             snackbar.error("Unable to add the canvas to the library.");
@@ -235,9 +231,9 @@ class _PublishSheetState extends State<_PublishSheet> {
           }
           await _remember(record);
           if (!mounted) return;
-          snackbar.success(
-              "Added to the post library under $publishedFolderName. "
-              "Embed it from a post or a page with Add Embed.");
+          snackbar
+              .success("Added to the post library under $publishedFolderName. "
+                  "Embed it from a post or a page with Add Embed.");
 
         case PublishTo.shared:
           var record = await shareInFiles(export, _suggestedName, _record);
@@ -317,13 +313,12 @@ class _PublishSheetState extends State<_PublishSheet> {
                   onTap: _busy ? null : () => setState(() => _as = option),
                 ),
               if (_as == PublishAs.animation && !widget.document.isAnimated)
-                _warning(theme,
+                _warning(
+                    theme,
                     "This canvas is a single frame, so the animation will be "
                     "one frame long. Add frames on the timeline first."),
-
               const SizedBox(height: 8),
               ..._formatControls(theme),
-
               const Divider(height: 24),
               _heading("Publish to"),
               for (var option in PublishTo.values)
@@ -334,7 +329,6 @@ class _PublishSheetState extends State<_PublishSheet> {
                   icon: option.icon,
                   onTap: _busy ? null : () => setState(() => _to = option),
                 ),
-
               if (_to == PublishTo.chat) ..._chatControls(theme),
               if (_to == PublishTo.library)
                 Padding(
@@ -345,21 +339,23 @@ class _PublishSheetState extends State<_PublishSheet> {
                       "product can embed it."),
                 ),
               if (_isPublishedHere)
-                _note(theme,
+                _note(
+                    theme,
                     "Already published here"
                     "${_record.publishedAt == null ? "" : " on "
                         "${_record.publishedAt!.toLocal()}"}. "
                     "Publishing again replaces it."),
-              if (!_canRecord && (_to == PublishTo.shared ||
-                  _to == PublishTo.library))
-                _warning(theme,
+              if (!_canRecord &&
+                  (_to == PublishTo.shared || _to == PublishTo.library))
+                _warning(
+                    theme,
                     "Save this canvas first if you want to be able to update "
                     "or unpublish it later."),
               if (_tooBigForChat)
-                _warning(theme,
+                _warning(
+                    theme,
                     "This is likely to be too large for one message. Reduce "
                     "the scale, or publish as a JPEG."),
-
               const Divider(height: 24),
               Row(children: [
                 Icon(Icons.data_usage,
@@ -420,10 +416,15 @@ class _PublishSheetState extends State<_PublishSheet> {
         return [
           Row(children: [
             Expanded(
-              child: _dropdown<EmbedFormat>(theme, "Format", _format, const [
-                (EmbedFormat.png, "PNG (lossless)"),
-                (EmbedFormat.jpeg, "JPEG (smaller)"),
-              ], (v) => setState(() => _format = v)),
+              child: _dropdown<EmbedFormat>(
+                  theme,
+                  "Format",
+                  _format,
+                  const [
+                    (EmbedFormat.png, "PNG (lossless)"),
+                    (EmbedFormat.jpeg, "JPEG (smaller)"),
+                  ],
+                  (v) => setState(() => _format = v)),
             ),
             const SizedBox(width: 12),
             Expanded(child: _scaleField(theme)),
@@ -440,11 +441,16 @@ class _PublishSheetState extends State<_PublishSheet> {
             Expanded(child: _scaleField(theme)),
             const SizedBox(width: 12),
             Expanded(
-              child: _dropdown<int>(theme, "Colours", _colors, const [
-                (256, "256 (best)"),
-                (128, "128"),
-                (64, "64 (smallest)"),
-              ], (v) => setState(() => _colors = v)),
+              child: _dropdown<int>(
+                  theme,
+                  "Colours",
+                  _colors,
+                  const [
+                    (256, "256 (best)"),
+                    (128, "128"),
+                    (64, "64 (smallest)"),
+                  ],
+                  (v) => setState(() => _colors = v)),
             ),
           ]),
           const SizedBox(height: 4),
@@ -458,8 +464,7 @@ class _PublishSheetState extends State<_PublishSheet> {
                 title: const Text("Dither", style: TextStyle(fontSize: 12)),
                 subtitle: Text("Smoother gradients, slightly larger",
                     style: TextStyle(
-                        fontSize: 10,
-                        color: theme.colors.onSurfaceVariant)),
+                        fontSize: 10, color: theme.colors.onSurfaceVariant)),
                 onChanged: (v) => setState(() => _dither = v ?? true),
               ),
             ),
@@ -469,13 +474,14 @@ class _PublishSheetState extends State<_PublishSheet> {
                 dense: true,
                 contentPadding: EdgeInsets.zero,
                 controlAffinity: ListTileControlAffinity.leading,
-                title: const Text("Loop forever",
-                    style: TextStyle(fontSize: 12)),
+                title:
+                    const Text("Loop forever", style: TextStyle(fontSize: 12)),
                 onChanged: (v) => setState(() => _loop = v ?? true),
               ),
             ),
           ]),
-          _note(theme,
+          _note(
+              theme,
               "${widget.document.frames} frames at "
               "${widget.document.frameRate} per second — "
               "${widget.document.durationSeconds.toStringAsFixed(1)} seconds."),
@@ -483,8 +489,7 @@ class _PublishSheetState extends State<_PublishSheet> {
 
       case PublishAs.interactive:
         return [
-          Txt.S(
-              "The canvas is published as itself: whoever opens it can play "
+          Txt.S("The canvas is published as itself: whoever opens it can play "
               "the animation, press its buttons and move anything you have "
               "not locked. Nothing is rendered, so it stays small however "
               "large the canvas is."),
@@ -492,13 +497,17 @@ class _PublishSheetState extends State<_PublishSheet> {
     }
   }
 
-  Widget _scaleField(ThemeNotifier theme) =>
-      _dropdown<double>(theme, "Size", _scale, const [
+  Widget _scaleField(ThemeNotifier theme) => _dropdown<double>(
+      theme,
+      "Size",
+      _scale,
+      const [
         (0.5, "Half"),
         (1.0, "Actual size"),
         (2.0, "Double"),
         (3.0, "Triple"),
-      ], (v) => setState(() => _scale = v));
+      ],
+      (v) => setState(() => _scale = v));
 
   List<Widget> _chatControls(ThemeNotifier theme) {
     var client = context.watch<ClientModel>();
@@ -596,8 +605,8 @@ class _PublishSheetState extends State<_PublishSheet> {
   ) =>
       Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(label,
-            style: TextStyle(
-                fontSize: 10, color: theme.colors.onSurfaceVariant)),
+            style:
+                TextStyle(fontSize: 10, color: theme.colors.onSurfaceVariant)),
         SizedBox(
           height: 34,
           child: DropdownButton<T>(
@@ -626,8 +635,8 @@ class _PublishSheetState extends State<_PublishSheet> {
   Widget _note(ThemeNotifier theme, String text) => Padding(
         padding: const EdgeInsets.only(top: 6),
         child: Text(text,
-            style: TextStyle(
-                fontSize: 11, color: theme.colors.onSurfaceVariant)),
+            style:
+                TextStyle(fontSize: 11, color: theme.colors.onSurfaceVariant)),
       );
 
   Widget _warning(ThemeNotifier theme, String text) => Padding(
@@ -638,8 +647,7 @@ class _PublishSheetState extends State<_PublishSheet> {
           const SizedBox(width: 6),
           Expanded(
             child: Text(text,
-                style:
-                    TextStyle(fontSize: 11, color: theme.colors.tertiary)),
+                style: TextStyle(fontSize: 11, color: theme.colors.tertiary)),
           ),
         ]),
       );
@@ -652,8 +660,7 @@ class _PublishSheetState extends State<_PublishSheet> {
             width: 60,
             child: Text(label, style: const TextStyle(fontSize: 12))),
         Expanded(
-          child: Slider(
-              value: value, min: min, max: max, onChanged: onChanged),
+          child: Slider(value: value, min: min, max: max, onChanged: onChanged),
         ),
         SizedBox(
             width: 34,

@@ -201,8 +201,7 @@ class CanvasController extends ChangeNotifier {
 
   /// atFit is whether the view is showing the whole canvas, untouched -- which
   /// is what the Fit button lights up for.
-  bool get atFit =>
-      (_zoom - 1).abs() < 0.001 && _pan.dx == 0 && _pan.dy == 0;
+  bool get atFit => (_zoom - 1).abs() < 0.001 && _pan.dx == 0 && _pan.dy == 0;
 
   Offset2 _pan = const Offset2(0, 0);
   Offset2 get pan => _pan;
@@ -402,7 +401,8 @@ class CanvasController extends ChangeNotifier {
 
     replaceElement(picture.copyWith(
         removal: _pendingTeaches
-            ? picture.removal.copyWith(hints: [...picture.removal.hints, stroke])
+            ? picture.removal
+                .copyWith(hints: [...picture.removal.hints, stroke])
             : picture.removal
                 .copyWith(strokes: [...picture.removal.strokes, stroke])));
     discardStroke();
@@ -586,8 +586,10 @@ class CanvasController extends ChangeNotifier {
 
   /// selectedElements are the chosen elements in paint order, which is the
   /// order every multi-element operation wants.
-  List<CanvasElement> get selectedElements =>
-      [for (var e in _document.elements) if (_selection.contains(e.id)) e];
+  List<CanvasElement> get selectedElements => [
+        for (var e in _document.elements)
+          if (_selection.contains(e.id)) e
+      ];
 
   /// selected is the one chosen element, or null when none or several are.
   /// What the settings bar asks, since it shows one element's controls.
@@ -620,9 +622,7 @@ class CanvasController extends ChangeNotifier {
     // different document -- and every reader of the selection would then have
     // to cope with an id that resolves to nothing. Pruning here means none of
     // them do.
-    _selection = _selection
-        .where((id) => _document.indexOf(id) >= 0)
-        .toSet();
+    _selection = _selection.where((id) => _document.indexOf(id) >= 0).toSet();
 
     if (_frame >= _document.frames) _frame = _document.frames - 1;
 
@@ -961,7 +961,9 @@ class CanvasController extends ChangeNotifier {
     var target = _document.elementById(follow.elementId);
     if (target == null) return "Missing";
     var index = follow.playerIndex;
-    if (target is TeamElement && index != null && index < target.players.length) {
+    if (target is TeamElement &&
+        index != null &&
+        index < target.players.length) {
       var spot = target.players[index];
       var who = spot.name.isNotEmpty ? spot.name : "#${spot.number}";
       return "$who (${target.name})";
@@ -976,10 +978,8 @@ class CanvasController extends ChangeNotifier {
       return;
     }
     var spot = team.players[index];
-    replaceElement(team.withPlayer(
-        index,
-        spot.copyWith(
-            track: (spot.track ?? ElementTrack.empty).withKey(key))));
+    replaceElement(team.withPlayer(index,
+        spot.copyWith(track: (spot.track ?? ElementTrack.empty).withKey(key))));
   }
 
   /// valueAt reads an animatable extra channel at the current frame, falling
@@ -1001,8 +1001,8 @@ class CanvasController extends ChangeNotifier {
     var track = (element.track ?? ElementTrack.empty).seededFor(_frame);
     var at = track.at(_frame);
     replaceElement(element.withBase(
-        track: track.withKey(
-            at.copyWith(frame: _frame).withValue(channel, value))));
+        track: track
+            .withKey(at.copyWith(frame: _frame).withValue(channel, value))));
   }
 
   /// clearValueKey takes one property off this frame's keyframe, and the
@@ -1034,8 +1034,8 @@ class CanvasController extends ChangeNotifier {
       return;
     }
     if (team.players[index].track == null) return;
-    replaceElement(team.withPlayer(
-        index, team.players[index].copyWith(clearTrack: true)));
+    replaceElement(
+        team.withPlayer(index, team.players[index].copyWith(clearTrack: true)));
   }
 
   /// clearAllKeyframes takes the animation off the whole document.
@@ -1072,7 +1072,9 @@ class CanvasController extends ChangeNotifier {
   // ------------------------------------------------------------------------
 
   void selectOnly(String id) {
-    if (_selection.length == 1 && _selection.first == id && !_backgroundSelected) {
+    if (_selection.length == 1 &&
+        _selection.first == id &&
+        !_backgroundSelected) {
       return;
     }
     _backgroundSelected = false;
@@ -1171,7 +1173,8 @@ class CanvasController extends ChangeNotifier {
     if (playing || _document.frames <= 1) return;
     _loopCounts.clear();
     var interval = Duration(
-        microseconds: (1000000 / _document.frameRate).round().clamp(8000, 1000000));
+        microseconds:
+            (1000000 / _document.frameRate).round().clamp(8000, 1000000));
     _playback = Timer.periodic(interval, (_) => _tick());
     notifyListeners();
   }
@@ -1209,13 +1212,13 @@ class CanvasController extends ChangeNotifier {
           // many ticks as the hold asks for. Held as a countdown on the action
           // rather than by sleeping, so the window stays responsive and the
           // playhead can still be dragged out of the hold.
-          var held = _loopCounts.update(action.frame, (v) => v + 1,
-              ifAbsent: () => 1);
+          var held =
+              _loopCounts.update(action.frame, (v) => v + 1, ifAbsent: () => 1);
           if (held < action.holdFrames) _frame = next - 1 < 0 ? 0 : next;
           if (held >= action.holdFrames) _loopCounts.remove(action.frame);
         case TimelineActionKind.loop:
-          var count = _loopCounts.update(action.frame, (v) => v + 1,
-              ifAbsent: () => 1);
+          var count =
+              _loopCounts.update(action.frame, (v) => v + 1, ifAbsent: () => 1);
           if (action.repeats == 0 || count <= action.repeats) {
             _frame = action.target.clamp(0, _document.frames - 1).toInt();
           }
@@ -1308,7 +1311,8 @@ class CanvasController extends ChangeNotifier {
     // From this frame, so a chart animated while scrubbed to the middle starts
     // where the reader is looking rather than jumping the playhead.
     var from = _frame.clamp(0, document.frames - 2);
-    var span = math.max(2, (document.frameRate * chartAnimationSeconds).round());
+    var span =
+        math.max(2, (document.frameRate * chartAnimationSeconds).round());
     var to = math.min(document.frames - 1, from + span);
     if (to <= from) {
       from = 0;
@@ -1413,7 +1417,8 @@ class CanvasController extends ChangeNotifier {
 
   /// saveAs writes to a new place and makes it this document's home.
   Future<bool> saveAs(String folder, String name) async {
-    var ok = await CanvasStorage.save(folder, name, _document.copyWith(title: name));
+    var ok =
+        await CanvasStorage.save(folder, name, _document.copyWith(title: name));
     if (!ok) return false;
     this.folder = folder;
     this.name = name;

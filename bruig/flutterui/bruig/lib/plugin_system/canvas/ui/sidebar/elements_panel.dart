@@ -68,7 +68,7 @@ String _hintForKind(ElementKind kind) => switch (kind) {
       ElementKind.background => "A generated pattern in a panel",
       ElementKind.player => "A numbered dot with a name",
       ElementKind.path =>
-          "A curve, and optionally the route something takes along it",
+        "A curve, and optionally the route something takes along it",
     };
 
 class CanvasElementsPanel extends StatelessWidget {
@@ -148,12 +148,11 @@ class _AddChip extends StatelessWidget {
         childWhenDragging: Opacity(opacity: 0.35, child: body),
         child: InkWell(
           borderRadius: BorderRadius.circular(8),
-          onTap: () => controller
-              .addElement(newElement(kind, controller.document)),
+          onTap: () =>
+              controller.addElement(newElement(kind, controller.document)),
           child: body,
         ),
       ),
     );
   }
 }
-

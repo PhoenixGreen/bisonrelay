@@ -63,8 +63,7 @@ class CanvasSidebarShell extends StatelessWidget {
         // itself. Spaced apart, most of the row is gap that looks like part of
         // the control and does nothing when clicked.
         child: Row(children: [
-          for (var p in CanvasPanel.values)
-            Expanded(child: _icon(theme, p)),
+          for (var p in CanvasPanel.values) Expanded(child: _icon(theme, p)),
           // In the collapsed drawer the sidebar is already an overlay you put
           // away by tapping off it, so a control of its own for hiding it is a
           // second route to the same place -- and its chevron points at an edge

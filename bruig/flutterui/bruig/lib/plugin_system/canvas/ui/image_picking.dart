@@ -125,7 +125,9 @@ Future<String?> pickCanvasImage(BuildContext context) async {
 
     var id = await CanvasAssets.save(bytes);
     if (id == null) {
-      if (context.mounted) _report(context, "That picture is too large for a canvas.");
+      if (context.mounted) {
+        _report(context, "That picture is too large for a canvas.");
+      }
       return null;
     }
     return id;

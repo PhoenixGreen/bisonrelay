@@ -54,7 +54,8 @@ Widget elementSettingsBody(BuildContext context, CanvasController controller,
         controller.beginInteraction();
         controller.apply(
             controller.document.copyWith(
-                background: controller.document.background.copyWith(spec: spec)),
+                background:
+                    controller.document.background.copyWith(spec: spec)),
             transient: true);
       },
     );
@@ -215,8 +216,8 @@ class _CanvasSettingsSplitState extends State<CanvasSettingsSplit> {
               ]);
             }
 
-            var topHeight = (height * _split).clamp(
-                _minSection, height - _minSection - _dividerHeight * 2);
+            var topHeight = (height * _split)
+                .clamp(_minSection, height - _minSection - _dividerHeight * 2);
             return Column(children: [
               SizedBox(height: topHeight, child: widget.top),
               _grip(height),
@@ -241,7 +242,8 @@ class _CanvasSettingsSplitState extends State<CanvasSettingsSplit> {
           border: Border(
             top: BorderSide(color: theme.colors.outlineVariant),
             bottom: BorderSide(
-                color: _open ? theme.colors.outlineVariant : Colors.transparent),
+                color:
+                    _open ? theme.colors.outlineVariant : Colors.transparent),
           ),
         ),
         child: Row(children: [

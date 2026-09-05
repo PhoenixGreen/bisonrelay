@@ -242,15 +242,21 @@ class _CanvasLayerRowState extends State<CanvasLayerRow> {
           // layer will go before it goes there, they reach a layer at the far
           // end of a long list without dragging the length of it, and they are
           // the only way to reorder with a keyboard.
-          _rowButton(theme, Icons.keyboard_arrow_up, "Move forward",
+          _rowButton(
+              theme,
+              Icons.keyboard_arrow_up,
+              "Move forward",
               index < count - 1
-                  ? () => controller.apply(
-                      controller.document.reorder(index, index + 1))
+                  ? () => controller
+                      .apply(controller.document.reorder(index, index + 1))
                   : null),
-          _rowButton(theme, Icons.keyboard_arrow_down, "Move back",
+          _rowButton(
+              theme,
+              Icons.keyboard_arrow_down,
+              "Move back",
               index > 0
-                  ? () => controller.apply(
-                      controller.document.reorder(index, index - 1))
+                  ? () => controller
+                      .apply(controller.document.reorder(index, index - 1))
                   : null),
           _rowButton(
             theme,
@@ -305,7 +311,9 @@ class _CanvasLayerRowState extends State<CanvasLayerRow> {
   /// a thing in a list means everywhere else.
   Widget _name(ThemeNotifier theme, bool selected) {
     var colour = element.visible
-        ? (selected ? theme.colors.onSecondaryContainer : theme.colors.onSurface)
+        ? (selected
+            ? theme.colors.onSecondaryContainer
+            : theme.colors.onSurface)
         : theme.colors.onSurfaceVariant.withValues(alpha: 0.5);
     var style = TextStyle(fontSize: 12, color: colour);
 
@@ -435,7 +443,8 @@ class _CanvasLayerRowState extends State<CanvasLayerRow> {
   }
 
   Widget _rowButton(ThemeNotifier theme, IconData icon, String tooltip,
-          VoidCallback? onTap, {bool active = false}) =>
+          VoidCallback? onTap,
+          {bool active = false}) =>
       Tooltip(
         message: tooltip,
         child: InkWell(

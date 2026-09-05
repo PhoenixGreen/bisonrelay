@@ -81,7 +81,8 @@ class _PresetCard extends StatelessWidget {
             border: Border.all(color: theme.colors.outlineVariant),
           ),
           clipBehavior: Clip.antiAlias,
-          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             AspectRatio(
               aspectRatio: 16 / 9,
               child: preview == null
@@ -91,7 +92,8 @@ class _PresetCard extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
               child: Row(children: [
-                Icon(preset.icon, size: 16, color: theme.colors.onSurfaceVariant),
+                Icon(preset.icon,
+                    size: 16, color: theme.colors.onSurfaceVariant),
                 const SizedBox(width: 6),
                 Expanded(
                   child: Column(
@@ -103,8 +105,7 @@ class _PresetCard extends StatelessWidget {
                       Text(
                         preset.description,
                         style: TextStyle(
-                            fontSize: 10,
-                            color: theme.colors.onSurfaceVariant),
+                            fontSize: 10, color: theme.colors.onSurfaceVariant),
                       ),
                     ],
                   ),
@@ -132,10 +133,11 @@ class _PreviewPainter extends CustomPainter {
     var docSize = document.size.size;
     if (docSize.width <= 0 || docSize.height <= 0) return;
 
-    var scale = math.min(size.width / docSize.width, size.height / docSize.height);
+    var scale =
+        math.min(size.width / docSize.width, size.height / docSize.height);
     var drawn = Size(docSize.width * scale, docSize.height * scale);
-    var offset = Offset((size.width - drawn.width) / 2,
-        (size.height - drawn.height) / 2);
+    var offset = Offset(
+        (size.width - drawn.width) / 2, (size.height - drawn.height) / 2);
 
     canvas.save();
     canvas.clipRect(Offset.zero & size);

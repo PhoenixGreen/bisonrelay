@@ -63,197 +63,197 @@ class ProceduralSettings extends StatelessWidget {
   }
 
   List<Widget> _groups() => [
-          CanvasControlGroup(label: label, children: [
-            CanvasDropdown<ProceduralStyle>(
-              label: "Style",
-              value: spec.style,
-              width: 138,
-              options: [for (var s in ProceduralStyle.values) (s, s.label)],
-              onChanged: (v) => _setNow(spec.copyWith(style: v)),
+        CanvasControlGroup(label: label, children: [
+          CanvasDropdown<ProceduralStyle>(
+            label: "Style",
+            value: spec.style,
+            width: 138,
+            options: [for (var s in ProceduralStyle.values) (s, s.label)],
+            onChanged: (v) => _setNow(spec.copyWith(style: v)),
+          ),
+          // The seed and its shuffle sit together, because the number is
+          // almost never typed -- what it is for is pressing the button
+          // until something good appears, and then being able to write down
+          // which one it was.
+          CanvasNumberField(
+            label: "Seed",
+            value: spec.seed.toDouble(),
+            min: 0,
+            max: 1000000,
+            width: 62,
+            onChanged: (v) => _set(spec.copyWith(seed: v.round())),
+            onCommit: onCommit,
+          ),
+          CanvasIconButton(
+            icon: Icons.casino_outlined,
+            tooltip: "Try the next variation",
+            onPressed: () => _setNow(spec.shuffled()),
+          ),
+          if (spec.style == ProceduralStyle.pitch)
+            CanvasDropdown<PitchSport>(
+              label: "Sport",
+              value: spec.sport,
+              width: 148,
+              options: [for (var s in PitchSport.values) (s, s.label)],
+              onChanged: (v) => _setNow(spec.copyWith(sport: v)),
             ),
-            // The seed and its shuffle sit together, because the number is
-            // almost never typed -- what it is for is pressing the button
-            // until something good appears, and then being able to write down
-            // which one it was.
-            CanvasNumberField(
-              label: "Seed",
-              value: spec.seed.toDouble(),
-              min: 0,
-              max: 1000000,
-              width: 62,
-              onChanged: (v) => _set(spec.copyWith(seed: v.round())),
-              onCommit: onCommit,
-            ),
-            CanvasIconButton(
-              icon: Icons.casino_outlined,
-              tooltip: "Try the next variation",
-              onPressed: () => _setNow(spec.shuffled()),
-            ),
-            if (spec.style == ProceduralStyle.pitch)
-              CanvasDropdown<PitchSport>(
-                label: "Sport",
-                value: spec.sport,
-                width: 148,
-                options: [for (var s in PitchSport.values) (s, s.label)],
-                onChanged: (v) => _setNow(spec.copyWith(sport: v)),
-              ),
-          ]),
-          CanvasControlGroup(label: "Colours", children: [
+        ]),
+        CanvasControlGroup(label: "Colours", children: [
+          CanvasColorButton(
+            label: "Base",
+            color: spec.background,
+            onChanged: (c) => _setNow(spec.copyWith(background: c)),
+          ),
+          CanvasColorButton(
+            label: "Main",
+            color: spec.foreground,
+            onChanged: (c) => _setNow(spec.copyWith(foreground: c)),
+          ),
+          CanvasColorButton(
+            label: "Accent",
+            color: spec.accent,
+            onChanged: (c) => _setNow(spec.copyWith(accent: c)),
+          ),
+          CanvasToggle(
+            label: "Gradient",
+            value: spec.gradient,
+            onChanged: (v) => _setNow(spec.copyWith(gradient: v)),
+          ),
+          if (spec.gradient) ...[
             CanvasColorButton(
-              label: "Base",
-              color: spec.background,
-              onChanged: (c) => _setNow(spec.copyWith(background: c)),
-            ),
-            CanvasColorButton(
-              label: "Main",
-              color: spec.foreground,
-              onChanged: (c) => _setNow(spec.copyWith(foreground: c)),
-            ),
-            CanvasColorButton(
-              label: "Accent",
-              color: spec.accent,
-              onChanged: (c) => _setNow(spec.copyWith(accent: c)),
-            ),
-            CanvasToggle(
-              label: "Gradient",
-              value: spec.gradient,
-              onChanged: (v) => _setNow(spec.copyWith(gradient: v)),
-            ),
-            if (spec.gradient) ...[
-              CanvasColorButton(
-                label: "To",
-                color: spec.gradientTo,
-                onChanged: (c) => _setNow(spec.copyWith(gradientTo: c)),
-              ),
-              CanvasNumberField(
-                label: "Angle",
-                value: spec.gradientAngle,
-                min: -360,
-                max: 360,
-                width: 54,
-                suffix: "°",
-                onChanged: (v) => _set(spec.copyWith(gradientAngle: v)),
-                onCommit: onCommit,
-              ),
-            ],
-          ]),
-          CanvasControlGroup(label: "Amount", children: [
-            CanvasNumberField(
-              label: "Density",
-              min: 0,
-              max: 1,
-              decimals: 2,
-              width: 62,
-              value: spec.density,
-              onChanged: (v) {
-                onBegin();
-                _set(spec.copyWith(density: v));
-              },
-              onCommit: onCommit,
+              label: "To",
+              color: spec.gradientTo,
+              onChanged: (c) => _setNow(spec.copyWith(gradientTo: c)),
             ),
             CanvasNumberField(
-              label: "Size",
-              width: 62,
-              value: spec.scale,
-              min: 0.004,
-              max: 0.25,
-              decimals: 3,
-              onChanged: (v) {
-                onBegin();
-                _set(spec.copyWith(scale: v));
-              },
-              onCommit: onCommit,
-            ),
-            CanvasNumberField(
-              label: "Brightness",
-              min: 0,
-              max: 1,
-              decimals: 2,
-              width: 62,
-              value: spec.intensity,
-              onChanged: (v) {
-                onBegin();
-                _set(spec.copyWith(intensity: v));
-              },
-              onCommit: onCommit,
-            ),
-            CanvasNumberField(
-              label: "Variation",
-              min: 0,
-              max: 1,
-              decimals: 2,
-              width: 62,
-              value: spec.variation,
-              onChanged: (v) {
-                onBegin();
-                _set(spec.copyWith(variation: v));
-              },
-              onCommit: onCommit,
-            ),
-            CanvasNumberField(
-              label: "Vignette",
-              min: 0,
-              max: 1,
-              decimals: 2,
-              width: 62,
-              value: spec.vignette,
-              onChanged: (v) {
-                onBegin();
-                _set(spec.copyWith(vignette: v));
-              },
-              onCommit: onCommit,
-            ),
-            CanvasNumberField(
-              label: "Rotation",
-              value: spec.rotation,
+              label: "Angle",
+              value: spec.gradientAngle,
               min: -360,
               max: 360,
               width: 54,
               suffix: "°",
-              onChanged: (v) => _set(spec.copyWith(rotation: v)),
+              onChanged: (v) => _set(spec.copyWith(gradientAngle: v)),
               onCommit: onCommit,
             ),
+          ],
+        ]),
+        CanvasControlGroup(label: "Amount", children: [
+          CanvasNumberField(
+            label: "Density",
+            min: 0,
+            max: 1,
+            decimals: 2,
+            width: 62,
+            value: spec.density,
+            onChanged: (v) {
+              onBegin();
+              _set(spec.copyWith(density: v));
+            },
+            onCommit: onCommit,
+          ),
+          CanvasNumberField(
+            label: "Size",
+            width: 62,
+            value: spec.scale,
+            min: 0.004,
+            max: 0.25,
+            decimals: 3,
+            onChanged: (v) {
+              onBegin();
+              _set(spec.copyWith(scale: v));
+            },
+            onCommit: onCommit,
+          ),
+          CanvasNumberField(
+            label: "Brightness",
+            min: 0,
+            max: 1,
+            decimals: 2,
+            width: 62,
+            value: spec.intensity,
+            onChanged: (v) {
+              onBegin();
+              _set(spec.copyWith(intensity: v));
+            },
+            onCommit: onCommit,
+          ),
+          CanvasNumberField(
+            label: "Variation",
+            min: 0,
+            max: 1,
+            decimals: 2,
+            width: 62,
+            value: spec.variation,
+            onChanged: (v) {
+              onBegin();
+              _set(spec.copyWith(variation: v));
+            },
+            onCommit: onCommit,
+          ),
+          CanvasNumberField(
+            label: "Vignette",
+            min: 0,
+            max: 1,
+            decimals: 2,
+            width: 62,
+            value: spec.vignette,
+            onChanged: (v) {
+              onBegin();
+              _set(spec.copyWith(vignette: v));
+            },
+            onCommit: onCommit,
+          ),
+          CanvasNumberField(
+            label: "Rotation",
+            value: spec.rotation,
+            min: -360,
+            max: 360,
+            width: 54,
+            suffix: "°",
+            onChanged: (v) => _set(spec.copyWith(rotation: v)),
+            onCommit: onCommit,
+          ),
+        ]),
+        if (spec.style.usesGlyphs)
+          CanvasControlGroup(label: "Symbols", children: [
+            // The whole set as one string, so adding a character means
+            // typing it. A picker of symbol categories would be a longer
+            // walk to the same place, and would not let somebody use their
+            // own initials as the rain.
+            CanvasTextField(
+              label: "Characters used",
+              value: spec.glyphs,
+              width: 240,
+              onChanged: (v) => _set(spec.copyWith(glyphs: v)),
+              onCommit: onCommit,
+            ),
+            CanvasIconButton(
+              icon: Icons.restart_alt,
+              tooltip: "Back to the default characters",
+              onPressed: () => _setNow(spec.copyWith(glyphs: defaultGlyphs)),
+            ),
           ]),
-          if (spec.style.usesGlyphs)
-            CanvasControlGroup(label: "Symbols", children: [
-              // The whole set as one string, so adding a character means
-              // typing it. A picker of symbol categories would be a longer
-              // walk to the same place, and would not let somebody use their
-              // own initials as the rain.
-              CanvasTextField(
-                label: "Characters used",
-                value: spec.glyphs,
-                width: 240,
-                onChanged: (v) => _set(spec.copyWith(glyphs: v)),
+        if (spec.style.canAnimate)
+          CanvasControlGroup(label: "Movement", children: [
+            CanvasToggle(
+              label: "Animate",
+              value: spec.animated,
+              onChanged: (v) => _setNow(spec.copyWith(animated: v)),
+            ),
+            if (spec.animated)
+              CanvasNumberField(
+                label: "Speed",
+                decimals: 2,
+                width: 62,
+                value: spec.speed,
+                min: 0.05,
+                max: 6,
+                onChanged: (v) {
+                  onBegin();
+                  _set(spec.copyWith(speed: v));
+                },
                 onCommit: onCommit,
               ),
-              CanvasIconButton(
-                icon: Icons.restart_alt,
-                tooltip: "Back to the default characters",
-                onPressed: () => _setNow(spec.copyWith(glyphs: defaultGlyphs)),
-              ),
-            ]),
-          if (spec.style.canAnimate)
-            CanvasControlGroup(label: "Movement", children: [
-              CanvasToggle(
-                label: "Animate",
-                value: spec.animated,
-                onChanged: (v) => _setNow(spec.copyWith(animated: v)),
-              ),
-              if (spec.animated)
-                CanvasNumberField(
-                  label: "Speed",
-                  decimals: 2,
-                  width: 62,
-                  value: spec.speed,
-                  min: 0.05,
-                  max: 6,
-                  onChanged: (v) {
-                    onBegin();
-                    _set(spec.copyWith(speed: v));
-                  },
-                  onCommit: onCommit,
-                ),
-            ]),
+          ]),
       ];
 }

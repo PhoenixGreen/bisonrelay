@@ -86,8 +86,7 @@ enum _Handle {
       this == topLeft || this == centerLeft || this == bottomLeft;
   bool get movesRight =>
       this == topRight || this == centerRight || this == bottomRight;
-  bool get movesTop =>
-      this == topLeft || this == topCenter || this == topRight;
+  bool get movesTop => this == topLeft || this == topCenter || this == topRight;
   bool get movesBottom =>
       this == bottomLeft || this == bottomCenter || this == bottomRight;
 }
@@ -482,8 +481,8 @@ class CanvasStageState extends State<CanvasStage> {
   /// whole widget while everything in here works in the scrolled content's
   /// coordinates. Without it, an element dropped on a scrolled fit-width canvas
   /// lands as far up the page as the view had been scrolled down.
-  Offset toDocumentPoint(Offset local) => _toDocument(
-      local + Offset(0, _scroll.hasClients ? _scroll.offset : 0));
+  Offset toDocumentPoint(Offset local) =>
+      _toDocument(local + Offset(0, _scroll.hasClients ? _scroll.offset : 0));
 
   /// pageRect is the canvas's frame, in this widget's coordinates.
   ///
@@ -543,19 +542,16 @@ class CanvasStageState extends State<CanvasStage> {
   bool get _selectionHasOwnGeometry {
     var elements = controller.selectedElements;
     if (elements.isEmpty) return false;
-    return elements
-        .every((e) => hasOwnGeometry(e, document, controller.frame));
+    return elements.every((e) => hasOwnGeometry(e, document, controller.frame));
   }
 
   /// _rotationOfSelection is the single selected element's rotation, or zero
   /// when several are chosen.
-  double get _rotationOfSelection =>
-      controller.selectedElements.length == 1
-          ? controller.selectedElements.first
-                  .rotationAt(controller.frame) *
-              math.pi /
-              180
-          : 0;
+  double get _rotationOfSelection => controller.selectedElements.length == 1
+      ? controller.selectedElements.first.rotationAt(controller.frame) *
+          math.pi /
+          180
+      : 0;
 
   // ------------------------------------------------------------------------
   // Hit testing
@@ -609,13 +605,11 @@ class CanvasStageState extends State<CanvasStage> {
     // twice over: its box is wherever it was dropped, and the words are
     // wherever the line is.
     if (e is LineElement || e is PathElement) {
-      var curve = curveOfElement(e is LineElement
-          ? lineWithPose(e, controller.frame)
-          : e);
+      var curve = curveOfElement(
+          e is LineElement ? lineWithPose(e, controller.frame) : e);
       if (curve != null && curve.length >= 2) {
-        var width = e is LineElement
-            ? e.strokeWidth
-            : (e as PathElement).strokeWidth;
+        var width =
+            e is LineElement ? e.strokeWidth : (e as PathElement).strokeWidth;
         return _nearPolyline(curve, point, _strokeReach(width));
       }
     }
@@ -737,8 +731,8 @@ class CanvasStageState extends State<CanvasStage> {
     }
 
     // A selected path's points and handles are grabbed before anything
-      // else, exactly as a team's players are: they are drawn on top of the
-      // curve and are the thing being aimed at.
+    // else, exactly as a team's players are: they are drawn on top of the
+    // curve and are the thing being aimed at.
     var path = _selectedPath();
     if (path != null) {
       var grab = _hitPathControl(path, doc);
@@ -783,7 +777,8 @@ class CanvasStageState extends State<CanvasStage> {
 
     var handle = _hitHandle(stage);
     if (handle != null) {
-      _beginTransform(handle == _Handle.rotate ? _DragMode.rotate : _DragMode.resize,
+      _beginTransform(
+          handle == _Handle.rotate ? _DragMode.rotate : _DragMode.resize,
           handle);
       return;
     }
@@ -977,8 +972,7 @@ class CanvasStageState extends State<CanvasStage> {
     }
     var w = path.width == 0 ? 1.0 : path.width;
     var h = path.height == 0 ? 1.0 : path.height;
-    var fraction =
-        Offset((doc.dx - path.x) / w, (doc.dy - path.y) / h);
+    var fraction = Offset((doc.dx - path.x) / w, (doc.dy - path.y) / h);
     var node = path.nodes[_nodeIndex];
 
     // Alt breaks the handle pair, which is how a corner is made. Held down is
@@ -994,8 +988,7 @@ class CanvasStageState extends State<CanvasStage> {
             : node.withMirroredHandle(out: _nodeHandleOut, to: fraction))
         : node.copyWith(x: fraction.dx, y: fraction.dy);
 
-    controller.replaceElement(path.withNode(_nodeIndex, next),
-        transient: true);
+    controller.replaceElement(path.withNode(_nodeIndex, next), transient: true);
   }
 
   /// _selectedPicture is the one selected element, when it is a picture with
@@ -1040,9 +1033,7 @@ class CanvasStageState extends State<CanvasStage> {
       // than per point.
       var shorter = math.min(size.width, size.height);
       var scale = placement.scaleToImage();
-      _liveRadius = controller.brushSize *
-          shorter /
-          (scale == 0 ? 1 : scale);
+      _liveRadius = controller.brushSize * shorter / (scale == 0 ? 1 : scale);
     }
 
     setState(() {
@@ -1226,8 +1217,8 @@ class CanvasStageState extends State<CanvasStage> {
       // Seeded at the start, so a drag at frame 12 reads as a run from where
       // he was rather than as having moved him for the whole document. See
       // ElementTrack.seededFor.
-      var track = (spot.track ?? ElementTrack.empty)
-          .seededFor(controller.frame);
+      var track =
+          (spot.track ?? ElementTrack.empty).seededFor(controller.frame);
       var pose = track.at(controller.frame);
       controller.replaceElement(
         team.withPlayer(
@@ -1308,9 +1299,7 @@ class CanvasStageState extends State<CanvasStage> {
   /// table.
   List<(double, double, double)> _selectedTableColumns() {
     var element = controller.selected;
-    if (element is! TableElement ||
-        element.locked ||
-        !controller.showHelpers) {
+    if (element is! TableElement || element.locked || !controller.showHelpers) {
       return const [];
     }
     var bounds = element.boundsAt(controller.frame);
@@ -1383,8 +1372,8 @@ class CanvasStageState extends State<CanvasStage> {
     widths[at + 1] = pair - left;
 
     controller.replaceElement(
-        element.copyWith(
-            columnWidths: [for (var w in widths) w / bounds.width]),
+        element
+            .copyWith(columnWidths: [for (var w in widths) w / bounds.width]),
         transient: true);
   }
 
@@ -1440,8 +1429,7 @@ class CanvasStageState extends State<CanvasStage> {
     if (grab.part == ChartLabelPart.legend) {
       controller.replaceElement(
           _grownFor(
-              element.copyWith(
-                  legend: element.legend.copyWith(x: x, y: y)),
+              element.copyWith(legend: element.legend.copyWith(x: x, y: y)),
               bounds),
           transient: true);
       return;
@@ -1463,12 +1451,12 @@ class CanvasStageState extends State<CanvasStage> {
 
     var next = grab.resizing
         ? box.copyWith(
-            width: ((doc.dx - grab.grab.dx - bounds.left) / bounds.width -
-                    box.x)
-                .clamp(0.05, 2.0),
-            height: ((doc.dy - grab.grab.dy - bounds.top) / bounds.height -
-                    box.y)
-                .clamp(0.03, 2.0),
+            width:
+                ((doc.dx - grab.grab.dx - bounds.left) / bounds.width - box.x)
+                    .clamp(0.05, 2.0),
+            height:
+                ((doc.dy - grab.grab.dy - bounds.top) / bounds.height - box.y)
+                    .clamp(0.03, 2.0),
           )
         : box.copyWith(x: x, y: y);
 
@@ -1518,20 +1506,22 @@ class CanvasStageState extends State<CanvasStage> {
       );
     }
 
-    return e.copyWith(
-      titleBox: refit(e.titleBox),
-      descriptionBox: refit(e.descriptionBox),
-      // The chart itself stays exactly where it is. Growing the box grew the
-      // plot with it, so dragging a title off the corner made the bars
-      // taller -- a resize nobody asked for, from a drag that was about the
-      // words.
-      body: ChartBody.fitting(e.body.rectIn(bounds), wanted),
-    ).withBase(
-      x: e.x + (wanted.left - bounds.left),
-      y: e.y + (wanted.top - bounds.top),
-      width: wanted.width,
-      height: wanted.height,
-    ) as ChartElement;
+    return e
+        .copyWith(
+          titleBox: refit(e.titleBox),
+          descriptionBox: refit(e.descriptionBox),
+          // The chart itself stays exactly where it is. Growing the box grew the
+          // plot with it, so dragging a title off the corner made the bars
+          // taller -- a resize nobody asked for, from a drag that was about the
+          // words.
+          body: ChartBody.fitting(e.body.rectIn(bounds), wanted),
+        )
+        .withBase(
+          x: e.x + (wanted.left - bounds.left),
+          y: e.y + (wanted.top - bounds.top),
+          width: wanted.width,
+          height: wanted.height,
+        ) as ChartElement;
   }
 
   void _onPointerMove(PointerMoveEvent event) {
@@ -1593,8 +1583,8 @@ class CanvasStageState extends State<CanvasStage> {
       // element that is being animated is being posed rather than relocated --
       // see CanvasController.posesRatherThanMoves, which is the whole reason
       // dragging an animated element used to appear to do nothing.
-      next = next.withElement(controller.movedTo(
-          element, entry.value.topLeft + delta));
+      next = next.withElement(
+          controller.movedTo(element, entry.value.topLeft + delta));
     }
     controller.apply(next, transient: true);
   }
@@ -1824,7 +1814,9 @@ class CanvasStageState extends State<CanvasStage> {
       case LogicalKeyboardKey.arrowRight:
         nudging ? controller.nudgeSelected(step, 0) : controller.stepFrame(1);
       case LogicalKeyboardKey.arrowUp:
-        nudging ? controller.nudgeSelected(0, -step) : controller.stepFrame(-10);
+        nudging
+            ? controller.nudgeSelected(0, -step)
+            : controller.stepFrame(-10);
       case LogicalKeyboardKey.arrowDown:
         nudging ? controller.nudgeSelected(0, step) : controller.stepFrame(10);
       case LogicalKeyboardKey.delete:
@@ -1858,52 +1850,53 @@ class CanvasStageState extends State<CanvasStage> {
             // Not clipped: the text editor sits in here and a long caption
             // grows past the box it opened in rather than being cut in half.
             child: Stack(clipBehavior: Clip.none, children: [
-              Positioned.fill(child: Listener(
-              onPointerDown: _onPointerDown,
-              onPointerMove: _onPointerMove,
-              onPointerUp: _onPointerUp,
-              onPointerHover: (e) => _updateHover(e.localPosition),
-              onPointerSignal: _onPointerSignal,
-              child: MouseRegion(
-                cursor: _cursor(),
-                // Clipped to the stage's own box as well as to the frame
-                // inside it. A CustomPainter is free to draw outside the
-                // bounds it is given and nothing stops it, so without this a
-                // zoomed canvas painted straight over the sidebar, the
-                // settings band and the timeline -- and took the zoom control
-                // with them, leaving no way back out.
-                child: ClipRect(
-                  child: CustomPaint(
-                    painter: _StagePainter(
-                      page: _pageRect,
-                      view: _viewRect,
-                      document: document,
-                      frame: controller.frame,
-                      scale: _scale,
-                      origin: _origin,
-                      images: controller.images,
-                      hoveredButton: controller.hoveredButton,
-                      selection: controller.selection,
-                      showHelpers: controller.showHelpers,
-                      selectedPath: _selectedPath(),
-                      chartLabels: _selectedChartLabels(),
-                      tableColumns: _selectedTableColumns(),
-                      editingText: _editingText,
-                      preview: _preview,
-                      previewOn: _previewPlacement(),
-                      liveStroke: _liveCanvas,
-                      liveStrokeRadius: _liveRadius,
-                      liveStrokeKeeps: controller.retouch.keeps,
-                      selectionBounds: _selectionBounds,
-                      showHandles: _selectionHasOwnGeometry,
-                      selectionRotation: _rotationOfSelection,
-                      handleFor: _handlePosition,
-                      marquee: _marquee,
+              Positioned.fill(
+                  child: Listener(
+                onPointerDown: _onPointerDown,
+                onPointerMove: _onPointerMove,
+                onPointerUp: _onPointerUp,
+                onPointerHover: (e) => _updateHover(e.localPosition),
+                onPointerSignal: _onPointerSignal,
+                child: MouseRegion(
+                  cursor: _cursor(),
+                  // Clipped to the stage's own box as well as to the frame
+                  // inside it. A CustomPainter is free to draw outside the
+                  // bounds it is given and nothing stops it, so without this a
+                  // zoomed canvas painted straight over the sidebar, the
+                  // settings band and the timeline -- and took the zoom control
+                  // with them, leaving no way back out.
+                  child: ClipRect(
+                    child: CustomPaint(
+                      painter: _StagePainter(
+                        page: _pageRect,
+                        view: _viewRect,
+                        document: document,
+                        frame: controller.frame,
+                        scale: _scale,
+                        origin: _origin,
+                        images: controller.images,
+                        hoveredButton: controller.hoveredButton,
+                        selection: controller.selection,
+                        showHelpers: controller.showHelpers,
+                        selectedPath: _selectedPath(),
+                        chartLabels: _selectedChartLabels(),
+                        tableColumns: _selectedTableColumns(),
+                        editingText: _editingText,
+                        preview: _preview,
+                        previewOn: _previewPlacement(),
+                        liveStroke: _liveCanvas,
+                        liveStrokeRadius: _liveRadius,
+                        liveStrokeKeeps: controller.retouch.keeps,
+                        selectionBounds: _selectionBounds,
+                        showHandles: _selectionHasOwnGeometry,
+                        selectionRotation: _rotationOfSelection,
+                        handleFor: _handlePosition,
+                        marquee: _marquee,
+                      ),
+                      size: Size.infinite,
                     ),
-                    size: Size.infinite,
                   ),
                 ),
-              ),
               )),
               if (_editorFor() case var editor?) editor,
               if (_cellEditorFor() case var cell?) cell,
@@ -2041,8 +2034,8 @@ class CanvasStageState extends State<CanvasStage> {
     return CanvasTextEditor(
       key: ValueKey("edit-$id"),
       element: element,
-      rect: Rect.fromLTWH(topLeft.dx, topLeft.dy, box.width * _scale,
-          box.height * _scale),
+      rect: Rect.fromLTWH(
+          topLeft.dx, topLeft.dy, box.width * _scale, box.height * _scale),
       scale: _scale,
       onChanged: (text) {
         controller.beginInteraction();
@@ -2102,8 +2095,8 @@ class CanvasStageState extends State<CanvasStage> {
   void _onPointerSignal(PointerSignalEvent signal) {
     if (signal is! PointerScrollEvent) return;
     if (controller.tool != CanvasTool.pan) return;
-    GestureBinding.instance.pointerSignalResolver.register(
-        signal, (event) => _onScroll(event as PointerScrollEvent));
+    GestureBinding.instance.pointerSignalResolver
+        .register(signal, (event) => _onScroll(event as PointerScrollEvent));
   }
 
   MouseCursor _cursor() {
@@ -2334,7 +2327,8 @@ class _StagePainter extends CustomPainter {
       canvas.drawRect(
           Rect.fromLTRB(view.left, view.top, view.right, page.top), shade);
       canvas.drawRect(
-          Rect.fromLTRB(view.left, page.bottom, view.right, view.bottom), shade);
+          Rect.fromLTRB(view.left, page.bottom, view.right, view.bottom),
+          shade);
       canvas.drawRect(
           Rect.fromLTRB(view.left, page.top, page.left, page.bottom), shade);
       canvas.drawRect(
@@ -2394,8 +2388,8 @@ class _StagePainter extends CustomPainter {
         if (span <= 0) continue;
         var step = (to - from) / span;
         for (var at = 0.0; at < span; at += dash + gap) {
-          canvas.drawLine(from + step * at,
-              from + step * math.min(at + dash, span), line);
+          canvas.drawLine(
+              from + step * at, from + step * math.min(at + dash, span), line);
         }
       }
       canvas.drawRect(
@@ -2488,8 +2482,8 @@ class _StagePainter extends CustomPainter {
         canvas.drawCircle(at, _handleSize / 2 + 1, edge);
         continue;
       }
-      var square = Rect.fromCenter(
-          center: at, width: _handleSize, height: _handleSize);
+      var square =
+          Rect.fromCenter(center: at, width: _handleSize, height: _handleSize);
       canvas.drawRect(square, fill);
       canvas.drawRect(square, edge);
     }
@@ -2526,7 +2520,12 @@ class _StagePainter extends CustomPainter {
 
       // The point itself last, so it is on top of its own handle lines.
       canvas.drawCircle(point, 5, knob);
-      canvas.drawCircle(point, 5, fill..style = PaintingStyle.stroke..strokeWidth = 2);
+      canvas.drawCircle(
+          point,
+          5,
+          fill
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 2);
       canvas.drawCircle(point, 2.5, fill..style = PaintingStyle.fill);
     }
   }

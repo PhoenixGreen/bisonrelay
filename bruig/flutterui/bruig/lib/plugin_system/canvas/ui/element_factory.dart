@@ -98,8 +98,7 @@ CanvasElement newElement(
           textSpec: TextSpec(fontSize: unit, weight: 700));
 
     case ElementKind.line:
-      return LineElement(base,
-          strokeWidth: unit * 0.18, endEnd: LineEnd.arrow);
+      return LineElement(base, strokeWidth: unit * 0.18, endEnd: LineEnd.arrow);
 
     case ElementKind.chart:
       return ChartElement(base,
@@ -122,8 +121,7 @@ CanvasElement newElement(
 
     case ElementKind.table:
       return TableElement(base,
-          cellSpec: TextSpec(
-              fontSize: unit * 0.55, align: TextAlignSpec.left),
+          cellSpec: TextSpec(fontSize: unit * 0.55, align: TextAlignSpec.left),
           headerSpec: TextSpec(
               fontSize: unit * 0.55, weight: 700, align: TextAlignSpec.left),
           cellPadding: unit * 0.35,

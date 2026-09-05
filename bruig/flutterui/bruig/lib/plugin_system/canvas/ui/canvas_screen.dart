@@ -130,11 +130,9 @@ class _CanvasScreenState extends State<CanvasScreen> {
   /// error about a document the reader has not asked for yet would be noise.
   Future<void> _reopenLast(CanvasPreferences prefs) async {
     if (prefs.lastName.isEmpty) return;
-    var document =
-        await CanvasStorage.load(prefs.lastFolder, prefs.lastName);
+    var document = await CanvasStorage.load(prefs.lastFolder, prefs.lastName);
     if (!mounted || document == null) return;
-    _controller.load(document,
-        folder: prefs.lastFolder, name: prefs.lastName);
+    _controller.load(document, folder: prefs.lastFolder, name: prefs.lastName);
   }
 
   /// _onSelectionChanged redraws the screen only when the *selection* moves.
@@ -215,8 +213,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
   /// The document is handed in already built rather than built here, so the
   /// panel's preview and the working copy are separate objects -- editing the
   /// new canvas must not change the thumbnail beside it.
-  Future<void> _openPreset(
-      CanvasPreset preset, CanvasDocument document) async {
+  Future<void> _openPreset(CanvasPreset preset, CanvasDocument document) async {
     if (!await _confirmDiscard()) return;
     _controller.load(document);
     if (mounted) {
@@ -412,5 +409,4 @@ class _CanvasScreenState extends State<CanvasScreen> {
         folder: _controller.folder,
         name: _controller.name,
       );
-
 }

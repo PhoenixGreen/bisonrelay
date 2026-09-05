@@ -1,6 +1,6 @@
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
-import 'package:bruig/storage_manager.dart';
+import 'package:bruig/plugin_system/canvas/ui/data_editor_shell.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
@@ -17,17 +17,6 @@ import 'package:flutter/material.dart';
 // It is as wide as the sidebar and as tall as it has been dragged, both
 // because a table crammed into a 240-pixel control with two visible lines is a
 // table nobody can read.
-
-/// _layoutKey and _heightKey remember the two decisions about this editor.
-///
-/// Decisions about the shape of the panel rather than about one chart, which
-/// is why they are not on the element: somebody who works in the grid works in
-/// the grid, whatever chart they open next.
-const String _layoutKey = "canvasChartDataGrid";
-const String _heightKey = "canvasChartDataHeight";
-
-const double _minHeight = 70;
-const double _maxHeight = 460;
 
 class ChartDataEditor extends StatefulWidget {
   final ChartData data;
@@ -48,42 +37,7 @@ class ChartDataEditor extends StatefulWidget {
 }
 
 class _ChartDataEditorState extends State<ChartDataEditor> {
-  /// _rememberedGrid and _rememberedHeight are static, and that is the fix
-  /// rather than an optimisation.
-  ///
-  /// This editor is rebuilt from scratch whenever the settings panel is --
-  /// clicking away from the chart and back, or opening the section again --
-  /// and a fresh State starts at the default and reads the stored value
-  /// asynchronously. So a table dragged taller went back to its default height
-  /// every time it was returned to, for as long as it took a preference to
-  /// come back off disk. Held in memory for the session, it does not.
-  static bool? _rememberedGrid;
-  static double? _rememberedHeight;
-
-  late bool _grid = _rememberedGrid ?? false;
-  late double _height = _rememberedHeight ?? 132;
-
   ChartData get data => widget.data;
-
-  @override
-  void initState() {
-    super.initState();
-    if (_rememberedHeight == null || _rememberedGrid == null) _restore();
-  }
-
-  Future<void> _restore() async {
-    var grid = await StorageManager.readData(_layoutKey);
-    var height = await StorageManager.readData(_heightKey);
-    if (grid is bool) _rememberedGrid = grid;
-    if (height is num) {
-      _rememberedHeight = height.toDouble().clamp(_minHeight, _maxHeight);
-    }
-    if (!mounted) return;
-    setState(() {
-      _grid = _rememberedGrid ?? _grid;
-      _height = _rememberedHeight ?? _height;
-    });
-  }
 
   void _write(ChartData next) {
     widget.onChanged(next);
@@ -158,36 +112,11 @@ class _ChartDataEditorState extends State<ChartDataEditor> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    var theme = ThemeNotifier.of(context);
-    // Full width in the sidebar, where there is a column to fill. In the band
-    // above the canvas there is not -- the whole line is one control tall --
-    // so it keeps to a control's width there.
-    var stacked = CanvasControlScope.isStacked(context);
-
-    var body = SizedBox(
-      width: stacked ? double.infinity : 260,
-      height: _height,
-      child: _grid ? _table(theme) : _raw(),
-    );
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Row(children: [
-          CanvasIconButton(
-            icon: _grid ? Icons.notes : Icons.grid_on,
-            tooltip: _grid
-                ? "Edit the numbers as pasted text"
-                : "Edit the numbers in a table",
-            active: _grid,
-            onPressed: () {
-              setState(() => _grid = !_grid);
-              _rememberedGrid = _grid;
-              StorageManager.saveData(_layoutKey, _grid);
-            },
-          ),
+  Widget build(BuildContext context) => CanvasDataEditorShell(
+        remember: "canvasChartData",
+        gridTooltip: "Edit the numbers in a table",
+        textTooltip: "Edit the numbers as pasted text",
+        toolbar: [
           // The two ways a chart grows, side by side, because they are the
           // same kind of thing: a row is another category and a series is
           // another column of numbers against the same ones.
@@ -202,21 +131,21 @@ class _ChartDataEditorState extends State<ChartDataEditor> {
                 "kind of chart over another",
             onPressed: _addSeries,
           ),
-        ]),
-        body,
-        _grip(theme),
-        // Clear of the table. The series rows are about the columns above
-        // them, not another row of them, and butted up against the grid they
-        // read as one more line of it.
-        const SizedBox(height: 8),
-        // Under the table, because a series is a column of it: what it is
-        // called, what colour it is and how it is drawn all belong beside the
-        // numbers they describe rather than in a section of their own three
-        // headings away.
-        for (var i = 0; i < data.series.length; i++) _seriesRow(i),
-      ],
-    );
-  }
+        ],
+        text: (_) => _raw(),
+        grid: (context) => _table(ThemeNotifier.of(context)),
+        below: [
+          // Clear of the table. The series rows are about the columns above
+          // them, not another row of them, and butted up against the grid
+          // they read as one more line of it.
+          const SizedBox(height: 8),
+          // Under the table, because a series is a column of it: what it is
+          // called, what colour it is and how it is drawn all belong beside
+          // the numbers they describe rather than in a section of their own
+          // three headings away.
+          for (var i = 0; i < data.series.length; i++) _seriesRow(i),
+        ],
+      );
 
   /// _seriesRow is one series' name, colour and type, in a line.
   ///
@@ -275,37 +204,6 @@ class _ChartDataEditorState extends State<ChartDataEditor> {
   }
 
   /// _grip drags the editor taller or shorter.
-  Widget _grip(ThemeNotifier theme) => MouseRegion(
-        cursor: SystemMouseCursors.resizeRow,
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onVerticalDragUpdate: (d) => setState(() {
-            _height = (_height + d.delta.dy).clamp(_minHeight, _maxHeight);
-            // Remembered as it moves rather than only when the drag ends. A
-            // drag that the surrounding list wins ends as a cancel, and a
-            // height saved only on a clean end was a height that sometimes
-            // was not saved at all.
-            _rememberedHeight = _height;
-          }),
-          onVerticalDragEnd: (_) => StorageManager.saveData(_heightKey, _height),
-          onVerticalDragCancel: () =>
-              StorageManager.saveData(_heightKey, _height),
-          child: SizedBox(
-            height: 11,
-            child: Center(
-              child: Container(
-                height: 3,
-                width: 34,
-                decoration: BoxDecoration(
-                  color: theme.colors.outlineVariant,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-          ),
-        ),
-      );
-
   /// _raw is the whole table as one block of text, in the tab or comma
   /// separated form a spreadsheet copies.
   Widget _raw() => CanvasGridCell(
@@ -315,8 +213,8 @@ class _ChartDataEditorState extends State<ChartDataEditor> {
         // Parsed against the series it is replacing, so editing the numbers
         // does not throw away a series' colour or the fact that it was drawn
         // as a line.
-        onChanged: (text) => widget.onChanged(
-            ChartData.parse(text, keep: data.series)),
+        onChanged: (text) =>
+            widget.onChanged(ChartData.parse(text, keep: data.series)),
         onCommit: widget.onCommit,
       );
 
@@ -325,8 +223,8 @@ class _ChartDataEditorState extends State<ChartDataEditor> {
     if (data.series.isEmpty) {
       return Center(
         child: Text("No series yet",
-            style: TextStyle(
-                fontSize: 11, color: theme.colors.onSurfaceVariant)),
+            style:
+                TextStyle(fontSize: 11, color: theme.colors.onSurfaceVariant)),
       );
     }
 
@@ -374,8 +272,8 @@ class _ChartDataEditorState extends State<ChartDataEditor> {
               onChanged: (v) {
                 var out = [...data.categories];
                 out[i] = v;
-                widget.onChanged(
-                    ChartData(categories: out, series: data.series));
+                widget
+                    .onChanged(ChartData(categories: out, series: data.series));
               },
               onCommit: widget.onCommit,
             ),

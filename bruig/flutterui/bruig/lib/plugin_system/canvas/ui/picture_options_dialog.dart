@@ -127,8 +127,8 @@ class _PictureOptionsDialogState extends State<_PictureOptionsDialog> {
           // Whatever the options produced, falling back to the original if
           // the work has not finished: pressing Use is not a reason to be
           // made to wait, and the original is always valid.
-          onPressed: () => Navigator.of(context)
-              .pop(_prepared?.data ?? widget.original),
+          onPressed: () =>
+              Navigator.of(context).pop(_prepared?.data ?? widget.original),
           child: const Text("Use"),
         ),
       ],

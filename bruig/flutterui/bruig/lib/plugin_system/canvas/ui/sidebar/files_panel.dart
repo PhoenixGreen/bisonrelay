@@ -78,7 +78,8 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
 
   /// _ask puts up a one-field dialog. Used for every name this panel needs,
   /// which is four of them, so it is worth having once.
-  Future<String?> _ask(String title, String label, {String initial = ""}) async {
+  Future<String?> _ask(String title, String label,
+      {String initial = ""}) async {
     var text = TextEditingController(text: initial);
     var result = await showDialog<String>(
       context: context,
@@ -181,7 +182,8 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
       if (mounted) snackbar.error("Unable to read ${entry.name}.");
       return;
     }
-    var name = await CanvasStorage.uniqueName(entry.folder, "${entry.name} copy");
+    var name =
+        await CanvasStorage.uniqueName(entry.folder, "${entry.name} copy");
     await CanvasStorage.save(
         entry.folder, name, document.copyWith(title: name));
     await _reload();
@@ -224,8 +226,7 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
     var contents = await CanvasStorage.list(entry.name);
     if (!mounted) return;
     if (contents.isNotEmpty) {
-      snackbar.error(
-          "${entry.name} still holds ${contents.length} canvas"
+      snackbar.error("${entry.name} still holds ${contents.length} canvas"
           "${contents.length == 1 ? "" : "es"}. Empty it first.");
       return;
     }
@@ -269,9 +270,11 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
         ),
       Expanded(
         child: _loading
-            ? const Center(child: SizedBox(
-                width: 18, height: 18,
-                child: CircularProgressIndicator(strokeWidth: 2)))
+            ? const Center(
+                child: SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2)))
             : _entries.isEmpty
                 ? const Padding(
                     padding: EdgeInsets.all(16),
@@ -290,21 +293,22 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
 
   Widget _toolbar(ThemeNotifier theme) => Padding(
         padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        child:
+            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Row(children: [
             Expanded(
               child: Text(
                 controller.name ?? "Unsaved canvas",
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                    fontSize: 12, fontWeight: FontWeight.w600),
+                style:
+                    const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
               ),
             ),
             if (controller.dirty)
               Tooltip(
                 message: "There are changes that have not been saved",
-                child: Icon(Icons.circle,
-                    size: 8, color: theme.colors.tertiary),
+                child:
+                    Icon(Icons.circle, size: 8, color: theme.colors.tertiary),
               ),
           ]),
           const SizedBox(height: 6),

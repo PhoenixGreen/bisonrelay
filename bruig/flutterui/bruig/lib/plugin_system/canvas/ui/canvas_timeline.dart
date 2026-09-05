@@ -107,7 +107,6 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
   /// clicked, because a mark is not a widget and cannot take focus itself.
   final FocusNode _focus = FocusNode();
 
-
   @override
   void initState() {
     super.initState();
@@ -238,12 +237,14 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
     var team = controller.focusedTeam;
     var index = controller.focusedPlayer;
     if (team != null && index != null) {
-      controller.replaceElement(team.withPlayer(
-          index, team.players[index].copyWith(track: moved)));
+      controller.replaceElement(
+          team.withPlayer(index, team.players[index].copyWith(track: moved)));
       return;
     }
     var element = controller.selected;
-    if (element != null) controller.replaceElement(element.withBase(track: moved));
+    if (element != null) {
+      controller.replaceElement(element.withBase(track: moved));
+    }
   }
 
   bool get _hasTarget =>
@@ -360,7 +361,6 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
         actions: document.actions.where((a) => a.frame != frame).toList()));
   }
 
-
   /// _keyframeToggle opens and closes the pose line.
   ///
   /// It sits immediately after the two keyframe buttons, because it is the
@@ -395,304 +395,314 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
       focusNode: _focus,
       onKeyEvent: _onKey,
       child: Container(
-      height: timelineHeight,
-      padding: const EdgeInsets.fromLTRB(10, 4, 10, 6 + _notesGutter),
-      decoration: BoxDecoration(
-        color: theme.colors.surfaceContainerLow,
-        border:
-            Border(top: BorderSide(color: theme.colors.outlineVariant, width: 1)),
-      ),
-      child: Column(children: [
-        // Scrolls sideways rather than overflowing. The row grew when the
-        // animation settings moved here from the band above, and on a narrow
-        // window a Row that cannot break is a red-and-yellow stripe rather
-        // than a control anybody can reach.
-        SizedBox(
-          height: controlHeight + controlLabelHeight,
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(children: [
-          CanvasIconButton(
-            icon: Icons.skip_previous,
-            tooltip: "Back to the first frame",
-            onPressed: controller.stop,
-          ),
-          CanvasIconButton(
-            icon: controller.playing ? Icons.pause : Icons.play_arrow,
-            tooltip: controller.playing ? "Pause" : "Play",
-            active: controller.playing,
-            onPressed: document.frames > 1 ? controller.togglePlay : null,
-          ),
-          CanvasIconButton(
-            icon: Icons.chevron_left,
-            tooltip: "Previous frame",
-            onPressed: () => controller.frame = controller.frame - 1,
-          ),
-          CanvasIconButton(
-            icon: Icons.chevron_right,
-            tooltip: "Next frame",
-            onPressed: () => controller.frame = controller.frame + 1,
-          ),
-          const SizedBox(width: 6),
-          // The playhead and the document's length, as one control reading
-          // "frame 288 of 600". They were a readout and a separate Frames
-          // field a few pixels apart, saying the same number twice -- and the
-          // field was too narrow for four digits, so a long document showed
-          // "10000" clipped to "1000".
-          CanvasNumberField(
-            key: const ValueKey("canvasFrame"),
-            label: "Frame",
-            // One-based on screen and zero-based underneath, because the first
-            // frame of an animation is frame 1 to everybody except a computer.
-            value: (controller.frame + 1).toDouble(),
-            min: 1,
-            max: document.frames.toDouble(),
-            width: 68,
-            onChanged: (v) => controller.stepFrame(v.round() - 1 - controller.frame),
-          ),
-          Padding(
-            padding: const EdgeInsets.only(top: controlLabelHeight, right: 2),
-            child: SizedBox(
-              height: controlHeight,
-              child: Center(
-                child: Text("/",
-                    style: TextStyle(
-                        fontSize: 13, color: theme.colors.onSurfaceVariant)),
-              ),
-            ),
-          ),
-          CanvasNumberField(
-            key: const ValueKey("canvasFrames"),
-            label: "Length",
-            value: document.frames.toDouble(),
-            min: 1,
-            max: maxFrameCount.toDouble(),
-            width: 68,
-            onChanged: (v) {
-              controller.beginInteraction();
-              controller.apply(document.copyWith(frames: v.round()),
-                  transient: true);
-            },
-            onCommit: controller.endInteraction,
-          ),
-          CanvasNumberField(
-            key: const ValueKey("canvasFrameRate"),
-            label: "Per second",
-            value: document.frameRate.toDouble(),
-            min: 1,
-            max: 60,
-            width: 60,
-            onChanged: (v) {
-              controller.beginInteraction();
-              controller.apply(document.copyWith(frameRate: v.round()),
-                  transient: true);
-            },
-            onCommit: controller.endInteraction,
-          ),
-          SizedBox(
-            // Room for the longest duration a canvas can have: an hour of
-            // frames at one a second.
-            width: 62,
-            child: Padding(
-              padding: const EdgeInsets.only(top: controlLabelHeight),
-              child: Text(
-                document.isAnimated
-                    ? "${document.durationSeconds.toStringAsFixed(1)}s"
-                    : "Still",
-                maxLines: 1,
-                softWrap: false,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                    fontSize: 11, color: theme.colors.onSurfaceVariant),
-              ),
-            ),
-          ),
-          const SizedBox(width: 6),
-
-          // The two keyframe buttons stay on the transport row: they are
-          // pressed constantly while animating, and neither changes width, so
-          // neither can shift the row. What moved off is the *pose* controls
-          // -- easing, fade, scale, turn -- which appeared and vanished as the
-          // playhead crossed a keyframe and took the play buttons with them.
-          CanvasIconButton(
-            icon: Icons.fiber_manual_record,
-            tooltip: controller.autoKeyframe
-                ? "Auto-keyframe is on — dragging records a keyframe here"
-                : "Auto-keyframe: record a keyframe whenever something moves",
-            active: controller.autoKeyframe,
-            onPressed: () => controller.autoKeyframe = !controller.autoKeyframe,
-          ),
-          CanvasIconButton(
-            icon: keyHere != null ? Icons.diamond : Icons.diamond_outlined,
-            tooltip: _drivingPath != null
-                ? "$target is following ${_drivingPath!.name} — "
-                    "its timing is that path's points"
-                : target == null
-                    ? "Select an element, or click a player, to give it a "
-                        "keyframe"
-                    : keyHere != null
-                        ? "Remove this keyframe from $target"
-                        : "Add a keyframe for $target here",
-            active: keyHere != null,
-            onPressed: !_hasTarget
-                ? null
-                : keyHere != null
-                    ? () => _removeTargetKey(controller.frame)
-                    : _addKeyframe,
-          ),
-          // Clearing, beside the diamond that adds and removes one. The wider
-          // of the two is guarded by needing something to clear rather than by
-          // a dialog: both are one undo step, and a confirmation on every
-          // press is worse than an undo on the rare one.
-          CanvasIconButton(
-            icon: Icons.layers_clear_outlined,
-            tooltip: _selectedPath != null
-                ? "A path's marks are its points — remove them in its settings"
-                : _drivingPath != null
-                    ? "$target is following ${_drivingPath!.name} — clear it "
-                        "by unlinking the path"
-                    : target == null
-                    ? "Select an element, or click a player, to clear its "
-                        "keyframes"
-                    : "Clear every keyframe on $target",
-            onPressed: _canClearChannel ? _clearChannel : null,
-          ),
-          CanvasIconButton(
-            icon: Icons.delete_sweep_outlined,
-            tooltip: "Clear every keyframe in the whole canvas",
-            onPressed: document.hasKeyframes
-                ? controller.clearAllKeyframes
-                : null,
-          ),
-          _keyframeToggle(theme, target, keyHere != null),
-          // A fixed gap rather than a Spacer: the row scrolls, so it has no
-          // width to divide up and a Spacer inside it is an unbounded
-          // constraint rather than a space.
-          const SizedBox(width: 24),
-          if (actionHere == null)
-            for (var kind in TimelineActionKind.values)
-              CanvasIconButton(
-                icon: switch (kind) {
-                  TimelineActionKind.stop => Icons.stop_circle_outlined,
-                  TimelineActionKind.loop => Icons.loop,
-                  TimelineActionKind.jump => Icons.subdirectory_arrow_right,
-                  TimelineActionKind.pause => Icons.pause_circle_outline,
-                },
-                tooltip: "${kind.label} — ${kind.description}",
-                onPressed: () => _addAction(kind),
-              )
-          else ...[
-            CanvasDropdown<TimelineActionKind>(
-              label: "At this frame",
-              value: actionHere.kind,
-              width: 116,
-              options: [for (var k in TimelineActionKind.values) (k, k.label)],
-              onChanged: (v) => _replaceAction(actionHere.copyWith(kind: v)),
-            ),
-            if (actionHere.kind == TimelineActionKind.loop ||
-                actionHere.kind == TimelineActionKind.jump)
-              CanvasNumberField(
-                label: "To frame",
-                value: actionHere.target.toDouble(),
-                min: 0,
-                max: (document.frames - 1).toDouble(),
-                width: 56,
-                onChanged: (v) =>
-                    _replaceAction(actionHere.copyWith(target: v.round())),
-              ),
-            if (actionHere.kind == TimelineActionKind.loop)
-              CanvasNumberField(
-                label: "Times (0 = ∞)",
-                value: actionHere.repeats.toDouble(),
-                min: 0,
-                max: 999,
-                width: 56,
-                onChanged: (v) =>
-                    _replaceAction(actionHere.copyWith(repeats: v.round())),
-              ),
-            CanvasIconButton(
-              icon: Icons.close,
-              tooltip: "Remove this marker",
-              onPressed: () => _removeAction(actionHere.frame),
-            ),
-          ],
-            ]),
-          ),
+        height: timelineHeight,
+        padding: const EdgeInsets.fromLTRB(10, 4, 10, 6 + _notesGutter),
+        decoration: BoxDecoration(
+          color: theme.colors.surfaceContainerLow,
+          border: Border(
+              top: BorderSide(color: theme.colors.outlineVariant, width: 1)),
         ),
-        const SizedBox(height: 3),
-        Expanded(
-          child: LayoutBuilder(
-            builder: (context, constraints) => GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTapDown: (details) {
-                controller.pause();
-                // A tap on a mark selects it *and* moves the playhead to it,
-                // which is the same thing anybody wants from clicking a
-                // keyframe: to be looking at the pose they are about to change.
-                var mark =
-                    _keyframeAt(details.localPosition, constraints.maxWidth);
-                setState(() => _selectedKey = mark);
-                if (mark != null) _focus.requestFocus();
-                controller.frame = mark ??
-                    _frameAt(details.localPosition.dx, constraints.maxWidth);
-              },
-              // A drag that starts on a mark retimes that mark; anywhere else
-              // it scrubs. Deciding once, at the start, rather than on every
-              // update: a mark dragged past the pointer's own starting row
-              // would otherwise stop being dragged half way through.
-              // The mark is found on the *press*, not on the drag start.
-              // A horizontal drag is not recognised until the pointer has
-              // moved about eighteen pixels, by which time its reported start
-              // is well past whatever it was aimed at -- so looking for a mark
-              // there finds nothing, and every attempt to retime one scrubbed
-              // instead.
-              onHorizontalDragDown: (details) {
-                _pressedFrame = _keyframeAt(
-                    details.localPosition, constraints.maxWidth);
-              },
-              onHorizontalDragStart: (_) {
-                controller.pause();
-                _dragKey = _pressedFrame;
-              },
-              onHorizontalDragUpdate: (details) {
-                var at = _frameAt(details.localPosition.dx, constraints.maxWidth);
-                if (_dragKey == null) {
-                  controller.frame = at;
-                  return;
-                }
-                _retime(_dragKey!, at);
-                _dragKey = at;
-              },
-              onHorizontalDragEnd: (_) {
-                _dragKey = null;
-                _pressedFrame = null;
-              },
-              onHorizontalDragCancel: () {
-                _dragKey = null;
-                _pressedFrame = null;
-              },
-              child: CustomPaint(
-                size: Size(constraints.maxWidth, constraints.maxHeight),
-                painter: _TimelinePainter(
-                  frames: document.frames,
-                  frame: controller.frame,
-                  frameRate: document.frameRate,
-                  // The focused player's, when one is focused -- see
-                  // _targetTrack. The marks on the ruler have to be the same
-                  // keyframes the diamond button adds and removes, or the
-                  // strip shows one player's run while the button edits
-                  // another's.
-                  keyframes: _targetTrack?.keys ?? const [],
-                  selectedKeyframe: _selectedKey,
-                  actions: document.actions,
-                  colors: theme.colors,
-                  xFor: (f) => _xFor(f, constraints.maxWidth),
+        child: Column(children: [
+          // Scrolls sideways rather than overflowing. The row grew when the
+          // animation settings moved here from the band above, and on a narrow
+          // window a Row that cannot break is a red-and-yellow stripe rather
+          // than a control anybody can reach.
+          SizedBox(
+            height: controlHeight + controlLabelHeight,
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(children: [
+                CanvasIconButton(
+                  icon: Icons.skip_previous,
+                  tooltip: "Back to the first frame",
+                  onPressed: controller.stop,
+                ),
+                CanvasIconButton(
+                  icon: controller.playing ? Icons.pause : Icons.play_arrow,
+                  tooltip: controller.playing ? "Pause" : "Play",
+                  active: controller.playing,
+                  onPressed: document.frames > 1 ? controller.togglePlay : null,
+                ),
+                CanvasIconButton(
+                  icon: Icons.chevron_left,
+                  tooltip: "Previous frame",
+                  onPressed: () => controller.frame = controller.frame - 1,
+                ),
+                CanvasIconButton(
+                  icon: Icons.chevron_right,
+                  tooltip: "Next frame",
+                  onPressed: () => controller.frame = controller.frame + 1,
+                ),
+                const SizedBox(width: 6),
+                // The playhead and the document's length, as one control reading
+                // "frame 288 of 600". They were a readout and a separate Frames
+                // field a few pixels apart, saying the same number twice -- and the
+                // field was too narrow for four digits, so a long document showed
+                // "10000" clipped to "1000".
+                CanvasNumberField(
+                  key: const ValueKey("canvasFrame"),
+                  label: "Frame",
+                  // One-based on screen and zero-based underneath, because the first
+                  // frame of an animation is frame 1 to everybody except a computer.
+                  value: (controller.frame + 1).toDouble(),
+                  min: 1,
+                  max: document.frames.toDouble(),
+                  width: 68,
+                  onChanged: (v) =>
+                      controller.stepFrame(v.round() - 1 - controller.frame),
+                ),
+                Padding(
+                  padding:
+                      const EdgeInsets.only(top: controlLabelHeight, right: 2),
+                  child: SizedBox(
+                    height: controlHeight,
+                    child: Center(
+                      child: Text("/",
+                          style: TextStyle(
+                              fontSize: 13,
+                              color: theme.colors.onSurfaceVariant)),
+                    ),
+                  ),
+                ),
+                CanvasNumberField(
+                  key: const ValueKey("canvasFrames"),
+                  label: "Length",
+                  value: document.frames.toDouble(),
+                  min: 1,
+                  max: maxFrameCount.toDouble(),
+                  width: 68,
+                  onChanged: (v) {
+                    controller.beginInteraction();
+                    controller.apply(document.copyWith(frames: v.round()),
+                        transient: true);
+                  },
+                  onCommit: controller.endInteraction,
+                ),
+                CanvasNumberField(
+                  key: const ValueKey("canvasFrameRate"),
+                  label: "Per second",
+                  value: document.frameRate.toDouble(),
+                  min: 1,
+                  max: 60,
+                  width: 60,
+                  onChanged: (v) {
+                    controller.beginInteraction();
+                    controller.apply(document.copyWith(frameRate: v.round()),
+                        transient: true);
+                  },
+                  onCommit: controller.endInteraction,
+                ),
+                SizedBox(
+                  // Room for the longest duration a canvas can have: an hour of
+                  // frames at one a second.
+                  width: 62,
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: controlLabelHeight),
+                    child: Text(
+                      document.isAnimated
+                          ? "${document.durationSeconds.toStringAsFixed(1)}s"
+                          : "Still",
+                      maxLines: 1,
+                      softWrap: false,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontSize: 11, color: theme.colors.onSurfaceVariant),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 6),
+
+                // The two keyframe buttons stay on the transport row: they are
+                // pressed constantly while animating, and neither changes width, so
+                // neither can shift the row. What moved off is the *pose* controls
+                // -- easing, fade, scale, turn -- which appeared and vanished as the
+                // playhead crossed a keyframe and took the play buttons with them.
+                CanvasIconButton(
+                  icon: Icons.fiber_manual_record,
+                  tooltip: controller.autoKeyframe
+                      ? "Auto-keyframe is on — dragging records a keyframe here"
+                      : "Auto-keyframe: record a keyframe whenever something moves",
+                  active: controller.autoKeyframe,
+                  onPressed: () =>
+                      controller.autoKeyframe = !controller.autoKeyframe,
+                ),
+                CanvasIconButton(
+                  icon:
+                      keyHere != null ? Icons.diamond : Icons.diamond_outlined,
+                  tooltip: _drivingPath != null
+                      ? "$target is following ${_drivingPath!.name} — "
+                          "its timing is that path's points"
+                      : target == null
+                          ? "Select an element, or click a player, to give it a "
+                              "keyframe"
+                          : keyHere != null
+                              ? "Remove this keyframe from $target"
+                              : "Add a keyframe for $target here",
+                  active: keyHere != null,
+                  onPressed: !_hasTarget
+                      ? null
+                      : keyHere != null
+                          ? () => _removeTargetKey(controller.frame)
+                          : _addKeyframe,
+                ),
+                // Clearing, beside the diamond that adds and removes one. The wider
+                // of the two is guarded by needing something to clear rather than by
+                // a dialog: both are one undo step, and a confirmation on every
+                // press is worse than an undo on the rare one.
+                CanvasIconButton(
+                  icon: Icons.layers_clear_outlined,
+                  tooltip: _selectedPath != null
+                      ? "A path's marks are its points — remove them in its settings"
+                      : _drivingPath != null
+                          ? "$target is following ${_drivingPath!.name} — clear it "
+                              "by unlinking the path"
+                          : target == null
+                              ? "Select an element, or click a player, to clear its "
+                                  "keyframes"
+                              : "Clear every keyframe on $target",
+                  onPressed: _canClearChannel ? _clearChannel : null,
+                ),
+                CanvasIconButton(
+                  icon: Icons.delete_sweep_outlined,
+                  tooltip: "Clear every keyframe in the whole canvas",
+                  onPressed: document.hasKeyframes
+                      ? controller.clearAllKeyframes
+                      : null,
+                ),
+                _keyframeToggle(theme, target, keyHere != null),
+                // A fixed gap rather than a Spacer: the row scrolls, so it has no
+                // width to divide up and a Spacer inside it is an unbounded
+                // constraint rather than a space.
+                const SizedBox(width: 24),
+                if (actionHere == null)
+                  for (var kind in TimelineActionKind.values)
+                    CanvasIconButton(
+                      icon: switch (kind) {
+                        TimelineActionKind.stop => Icons.stop_circle_outlined,
+                        TimelineActionKind.loop => Icons.loop,
+                        TimelineActionKind.jump =>
+                          Icons.subdirectory_arrow_right,
+                        TimelineActionKind.pause => Icons.pause_circle_outline,
+                      },
+                      tooltip: "${kind.label} — ${kind.description}",
+                      onPressed: () => _addAction(kind),
+                    )
+                else ...[
+                  CanvasDropdown<TimelineActionKind>(
+                    label: "At this frame",
+                    value: actionHere.kind,
+                    width: 116,
+                    options: [
+                      for (var k in TimelineActionKind.values) (k, k.label)
+                    ],
+                    onChanged: (v) =>
+                        _replaceAction(actionHere.copyWith(kind: v)),
+                  ),
+                  if (actionHere.kind == TimelineActionKind.loop ||
+                      actionHere.kind == TimelineActionKind.jump)
+                    CanvasNumberField(
+                      label: "To frame",
+                      value: actionHere.target.toDouble(),
+                      min: 0,
+                      max: (document.frames - 1).toDouble(),
+                      width: 56,
+                      onChanged: (v) => _replaceAction(
+                          actionHere.copyWith(target: v.round())),
+                    ),
+                  if (actionHere.kind == TimelineActionKind.loop)
+                    CanvasNumberField(
+                      label: "Times (0 = ∞)",
+                      value: actionHere.repeats.toDouble(),
+                      min: 0,
+                      max: 999,
+                      width: 56,
+                      onChanged: (v) => _replaceAction(
+                          actionHere.copyWith(repeats: v.round())),
+                    ),
+                  CanvasIconButton(
+                    icon: Icons.close,
+                    tooltip: "Remove this marker",
+                    onPressed: () => _removeAction(actionHere.frame),
+                  ),
+                ],
+              ]),
+            ),
+          ),
+          const SizedBox(height: 3),
+          Expanded(
+            child: LayoutBuilder(
+              builder: (context, constraints) => GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTapDown: (details) {
+                  controller.pause();
+                  // A tap on a mark selects it *and* moves the playhead to it,
+                  // which is the same thing anybody wants from clicking a
+                  // keyframe: to be looking at the pose they are about to change.
+                  var mark =
+                      _keyframeAt(details.localPosition, constraints.maxWidth);
+                  setState(() => _selectedKey = mark);
+                  if (mark != null) _focus.requestFocus();
+                  controller.frame = mark ??
+                      _frameAt(details.localPosition.dx, constraints.maxWidth);
+                },
+                // A drag that starts on a mark retimes that mark; anywhere else
+                // it scrubs. Deciding once, at the start, rather than on every
+                // update: a mark dragged past the pointer's own starting row
+                // would otherwise stop being dragged half way through.
+                // The mark is found on the *press*, not on the drag start.
+                // A horizontal drag is not recognised until the pointer has
+                // moved about eighteen pixels, by which time its reported start
+                // is well past whatever it was aimed at -- so looking for a mark
+                // there finds nothing, and every attempt to retime one scrubbed
+                // instead.
+                onHorizontalDragDown: (details) {
+                  _pressedFrame =
+                      _keyframeAt(details.localPosition, constraints.maxWidth);
+                },
+                onHorizontalDragStart: (_) {
+                  controller.pause();
+                  _dragKey = _pressedFrame;
+                },
+                onHorizontalDragUpdate: (details) {
+                  var at =
+                      _frameAt(details.localPosition.dx, constraints.maxWidth);
+                  if (_dragKey == null) {
+                    controller.frame = at;
+                    return;
+                  }
+                  _retime(_dragKey!, at);
+                  _dragKey = at;
+                },
+                onHorizontalDragEnd: (_) {
+                  _dragKey = null;
+                  _pressedFrame = null;
+                },
+                onHorizontalDragCancel: () {
+                  _dragKey = null;
+                  _pressedFrame = null;
+                },
+                child: CustomPaint(
+                  size: Size(constraints.maxWidth, constraints.maxHeight),
+                  painter: _TimelinePainter(
+                    frames: document.frames,
+                    frame: controller.frame,
+                    frameRate: document.frameRate,
+                    // The focused player's, when one is focused -- see
+                    // _targetTrack. The marks on the ruler have to be the same
+                    // keyframes the diamond button adds and removes, or the
+                    // strip shows one player's run while the button edits
+                    // another's.
+                    keyframes: _targetTrack?.keys ?? const [],
+                    selectedKeyframe: _selectedKey,
+                    actions: document.actions,
+                    colors: theme.colors,
+                    xFor: (f) => _xFor(f, constraints.maxWidth),
+                  ),
                 ),
               ),
             ),
           ),
-        ),
-      ]),
+        ]),
       ),
     );
   }
@@ -855,7 +865,9 @@ class _TimelinePainter extends CustomPainter {
     // The playhead last, over everything, because it is the one mark that has
     // to be findable at a glance in a timeline covered in others.
     var x = xFor(frame);
-    canvas.drawLine(Offset(x, 0), Offset(x, size.height),
+    canvas.drawLine(
+        Offset(x, 0),
+        Offset(x, size.height),
         Paint()
           ..color = colors.primary
           ..strokeWidth = 2);
@@ -1026,8 +1038,8 @@ class _CanvasKeyframeBarState extends State<CanvasKeyframeBar> {
                 top: BorderSide(color: theme.colors.outlineVariant, width: 1)),
           ),
           child: Text(text,
-              style:
-                  TextStyle(fontSize: 11, color: theme.colors.onSurfaceVariant)),
+              style: TextStyle(
+                  fontSize: 11, color: theme.colors.onSurfaceVariant)),
         ),
       );
 
@@ -1096,8 +1108,7 @@ class _CanvasKeyframeBarState extends State<CanvasKeyframeBar> {
                           : "No keyframe on this frame. Add one to set how "
                               "$target eases, fades, scales and turns.",
                       style: TextStyle(
-                          fontSize: 11,
-                          color: theme.colors.onSurfaceVariant),
+                          fontSize: 11, color: theme.colors.onSurfaceVariant),
                     ),
                   ),
                 ),

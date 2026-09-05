@@ -281,22 +281,20 @@ class _CanvasSettingsBarState extends State<CanvasSettingsBar> {
           _barButton(theme,
               icon: Icons.fit_screen_outlined,
               tooltip: CanvasFit.whole.label,
-              active:
-                  controller.fit == CanvasFit.whole && controller.atFit,
+              active: controller.fit == CanvasFit.whole && controller.atFit,
               onPressed: controller.showWhole),
           _barButton(theme,
               icon: Icons.width_full,
               tooltip: "${CanvasFit.width.label} — the canvas scrolls if it "
                   "is taller than the window",
-              active:
-                  controller.fit == CanvasFit.width && controller.atFit,
+              active: controller.fit == CanvasFit.width && controller.atFit,
               onPressed: controller.fitWidth),
           SizedBox(
             width: 38,
             child: Text(
               "${(controller.zoom * 100).round()}%",
-              style: TextStyle(
-                  fontSize: 10, color: theme.colors.onSurfaceVariant),
+              style:
+                  TextStyle(fontSize: 10, color: theme.colors.onSurfaceVariant),
               textAlign: TextAlign.center,
             ),
           ),
@@ -399,7 +397,6 @@ class _CanvasSettingsBarState extends State<CanvasSettingsBar> {
           ),
         ),
       );
-
 }
 
 /// CanvasSettingsPanel is the canvas's own settings: its shape, its export
@@ -511,8 +508,8 @@ class _CanvasSettingsPanelState extends State<CanvasSettingsPanel> {
             const SizedBox(width: 6),
             Text(
               "as a ${document.isAnimated ? "GIF" : "PNG"}",
-              style: TextStyle(
-                  fontSize: 10, color: theme.colors.onSurfaceVariant),
+              style:
+                  TextStyle(fontSize: 10, color: theme.colors.onSurfaceVariant),
             ),
             if (behind) ...[
               const SizedBox(width: 6),

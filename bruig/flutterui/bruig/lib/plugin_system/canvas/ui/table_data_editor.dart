@@ -1,7 +1,7 @@
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
-import 'package:bruig/storage_manager.dart';
+import 'package:bruig/plugin_system/canvas/ui/data_editor_shell.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
@@ -18,12 +18,6 @@ import 'package:flutter/material.dart';
 // It is as wide as the sidebar and as tall as it has been dragged, because a
 // table crammed into a 280-pixel control with two visible lines is a table
 // nobody can read.
-
-const String _layoutKey = "canvasTableDataGrid";
-const String _heightKey = "canvasTableDataHeight";
-
-const double _minHeight = 70;
-const double _maxHeight = 460;
 
 class TableDataEditor extends StatefulWidget {
   final List<List<String>> rows;
@@ -44,39 +38,9 @@ class TableDataEditor extends StatefulWidget {
 }
 
 class _TableDataEditorState extends State<TableDataEditor> {
-  /// Static, for the reason the chart's are: this editor is rebuilt from
-  /// scratch whenever the settings panel is, and a fresh State reads a stored
-  /// preference asynchronously -- so a table dragged taller went back to its
-  /// default height every time it was returned to.
-  static bool? _rememberedGrid;
-  static double? _rememberedHeight;
-
-  late bool _grid = _rememberedGrid ?? false;
-  late double _height = _rememberedHeight ?? 132;
-
   List<List<String>> get rows => widget.rows;
 
   int get columns => rows.fold(0, (n, r) => r.length > n ? r.length : n);
-
-  @override
-  void initState() {
-    super.initState();
-    if (_rememberedHeight == null || _rememberedGrid == null) _restore();
-  }
-
-  Future<void> _restore() async {
-    var grid = await StorageManager.readData(_layoutKey);
-    var height = await StorageManager.readData(_heightKey);
-    if (grid is bool) _rememberedGrid = grid;
-    if (height is num) {
-      _rememberedHeight = height.toDouble().clamp(_minHeight, _maxHeight);
-    }
-    if (!mounted) return;
-    setState(() {
-      _grid = _rememberedGrid ?? _grid;
-      _height = _rememberedHeight ?? _height;
-    });
-  }
 
   void _write(List<List<String>> next) {
     widget.onChanged(next);
@@ -153,27 +117,11 @@ class _TableDataEditorState extends State<TableDataEditor> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    var theme = ThemeNotifier.of(context);
-    var stacked = CanvasControlScope.isStacked(context);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Row(children: [
-          CanvasIconButton(
-            icon: _grid ? Icons.notes : Icons.grid_on,
-            tooltip: _grid
-                ? "Edit the cells as pasted text"
-                : "Edit the cells in a grid",
-            active: _grid,
-            onPressed: () {
-              setState(() => _grid = !_grid);
-              _rememberedGrid = _grid;
-              StorageManager.saveData(_layoutKey, _grid);
-            },
-          ),
+  Widget build(BuildContext context) => CanvasDataEditorShell(
+        remember: "canvasTableData",
+        gridTooltip: "Edit the cells in a grid",
+        textTooltip: "Edit the cells as pasted text",
+        toolbar: [
           CanvasIconButton(
             icon: Icons.add,
             tooltip: "Add a row",
@@ -184,42 +132,9 @@ class _TableDataEditorState extends State<TableDataEditor> {
             tooltip: "Add a column",
             onPressed: _addColumn,
           ),
-        ]),
-        SizedBox(
-          width: stacked ? double.infinity : 280,
-          height: _height,
-          child: _grid ? _table(theme) : _raw(),
-        ),
-        _grip(theme),
-      ],
-    );
-  }
-
-  Widget _grip(ThemeNotifier theme) => MouseRegion(
-        cursor: SystemMouseCursors.resizeRow,
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onVerticalDragUpdate: (d) => setState(() {
-            _height = (_height + d.delta.dy).clamp(_minHeight, _maxHeight);
-            _rememberedHeight = _height;
-          }),
-          onVerticalDragEnd: (_) => StorageManager.saveData(_heightKey, _height),
-          onVerticalDragCancel: () =>
-              StorageManager.saveData(_heightKey, _height),
-          child: SizedBox(
-            height: 11,
-            child: Center(
-              child: Container(
-                height: 3,
-                width: 34,
-                decoration: BoxDecoration(
-                  color: theme.colors.outlineVariant,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-          ),
-        ),
+        ],
+        text: (_) => _raw(),
+        grid: (context) => _table(ThemeNotifier.of(context)),
       );
 
   /// _raw is the whole grid as one block, comma separated with quoting -- see
