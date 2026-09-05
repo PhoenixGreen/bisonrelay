@@ -3398,10 +3398,10 @@ Widget _tableRuleSettings(TableElement e, int index, _Write write,
             "the pitch is how the whole cell is laid out. Then a rule that "
             "names a letter draws its box on those slots, and min height "
             "makes the box taller than the letters.\n\n"
-            "Nudge moves the box off where it was measured. The box is "
-            "centred on the room the font says the letter takes, and a "
-            "letter's ink is not always centred in that -- padding cannot fix "
-            "it, since padding is the same on both sides."),
+            "Nudge moves the letter inside its box, for the letters whose "
+            "ink does not sit in the middle of the room the font gives them "
+            "-- a W often does not. The box stays where it is, since the "
+            "boxes being in line is the point of a letter width."),
       ]),
     ],
   );

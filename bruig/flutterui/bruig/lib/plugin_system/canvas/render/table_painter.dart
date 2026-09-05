@@ -180,7 +180,7 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
       var slots = _slotsIn(e.cell(r, c), spec, textBox, style?.letterWidth ?? 0,
           style?.letterSpacing ?? 0);
       if (slots != null) {
-        _paintSlots(canvas, e.cell(r, c), spec, slots);
+        _paintSlots(canvas, e, r, c, spec, slots);
         x += w;
         continue;
       }
@@ -403,17 +403,48 @@ Rect? _slotSpan(List<Rect> slots, int from, int to) {
   return out;
 }
 
-/// _paintSlots draws each character in the middle of its own slot.
-void _paintSlots(
-    ui.Canvas canvas, String text, TextSpec spec, List<Rect> slots) {
+/// _paintSlots draws each character in the middle of its own slot, moved by
+/// whatever nudge the rule that claims it asks for.
+///
+/// The nudge moves the *letter*, not the box. The boxes are the slots, and
+/// the slots being in line is the whole point of a fixed pitch -- moving one
+/// of them to centre a letter would take that letter's box out of the row it
+/// was put there to join.
+void _paintSlots(ui.Canvas canvas, TableElement e, int row, int col,
+    TextSpec spec, List<Rect> slots) {
+  var text = e.cell(row, col);
   var centred = spec.copyWith(
       align: TextAlignSpec.center,
       verticalAlign: VerticalAlignSpec.middle,
       letterSpacing: 0);
+
   for (var i = 0; i < text.length && i < slots.length; i++) {
     if (text[i].trim().isEmpty) continue;
-    paintTextInBox(canvas, text[i], centred, slots[i]);
+    var nudge = _nudgeAt(e, row, col, text, i);
+    paintTextInBox(canvas, text[i], centred,
+        nudge == Offset.zero ? slots[i] : slots[i].shift(nudge));
   }
+}
+
+/// _nudgeAt is how far the character at [index] should be moved inside its
+/// slot, according to whichever rule claims it.
+///
+/// Later rules win, as they do everywhere else here: a list of exceptions is
+/// read in the order it was written.
+Offset _nudgeAt(
+    TableElement e, int row, int col, String text, int index) {
+  var head = e.header;
+  for (var rule in e.rules.reversed) {
+    if (rule.match.isEmpty) continue;
+    if (rule.style.nudgeX == 0 && rule.style.nudgeY == 0) continue;
+    if (!rule.matchesRow(row) || !rule.matchesColumn(col, head)) continue;
+    for (var (from, to) in rule.runsIn(text)) {
+      if (index >= from && index < to) {
+        return Offset(rule.style.nudgeX, rule.style.nudgeY);
+      }
+    }
+  }
+  return Offset.zero;
 }
 
 /// _wordsIn is the box the words actually occupy inside their cell, which is
@@ -456,9 +487,6 @@ void _paintStyleBox(ui.Canvas canvas, Rect cell, TableCellStyle style,
       width: math.max(box.width, style.minWidth),
       height: math.max(box.height, style.minHeight),
     );
-  }
-  if (style.nudgeX != 0 || style.nudgeY != 0) {
-    box = box.translate(style.nudgeX, style.nudgeY);
   }
   if (box.width <= 0 || box.height <= 0) return;
 

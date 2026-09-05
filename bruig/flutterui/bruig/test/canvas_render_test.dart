@@ -3541,11 +3541,11 @@ void _tableTests() {
       expect(taller, greaterThan(natural));
     });
 
-    test("a chip is centred on its slot, and can be nudged off it", () async {
-      // The arithmetic is symmetric -- this pins that -- but the box is
-      // centred on the room the *font* says a letter takes, and a letter's
-      // ink is not always centred in that. Padding cannot correct it, being
-      // the same on both sides.
+    test("a nudge moves the letter and leaves its box alone", () async {
+      // The arithmetic is symmetric -- the box's middle and the slot's middle
+      // agree -- so what is off is the letter inside the room the font gives
+      // it. Moving the box instead would take it out of the row of boxes it
+      // was put there to join.
       var e = TableElement(
         const ElementBase(id: "t", width: 400, height: 120),
         rows: const [
@@ -3570,7 +3570,7 @@ void _tableTests() {
         ],
       );
 
-      Future<double> chipCentre(TableElement of) async {
+      Future<(double, double)> centres(TableElement of) async {
         var recorder = ui.PictureRecorder();
         paintTable(
             ui.Canvas(recorder), const Rect.fromLTWH(0, 0, 400, 120), of);
@@ -3580,30 +3580,41 @@ void _tableTests() {
             .buffer
             .asUint8List();
         image.dispose();
-        var min = 400, max = 0;
+
+        var boxMin = 400, boxMax = 0, inkMin = 400, inkMax = 0;
         for (var i = 0; i < 400 * 120; i++) {
-          if (pixels[i * 4 + 1] > 180 &&
-              pixels[i * 4] < 90 &&
-              pixels[i * 4 + 2] < 90) {
-            var x = i % 400;
-            if (x < min) min = x;
-            if (x > max) max = x;
+          // Opaque only: the table's own rules are drawn in a white at a
+          // fifth of an alpha, and a test looking for "white" finds those
+          // first and measures the whole width of the table.
+          if (pixels[i * 4 + 3] < 200) continue;
+          var r = pixels[i * 4], g = pixels[i * 4 + 1], b = pixels[i * 4 + 2];
+          var x = i % 400;
+          if (g > 180 && r < 90 && b < 90) {
+            if (x < boxMin) boxMin = x;
+            if (x > boxMax) boxMax = x;
+          }
+          if (r > 200 && g > 200 && b > 200) {
+            if (x < inkMin) inkMin = x;
+            if (x > inkMax) inkMax = x;
           }
         }
-        return (min + max) / 2;
+        return ((boxMin + boxMax) / 2, (inkMin + inkMax) / 2);
       }
 
-      var centred = await chipCentre(e);
+      var (box, ink) = await centres(e);
       // The slot starts at the cell padding and is thirty wide, so its middle
       // is twenty-five.
-      expect(centred, closeTo(25, 1));
+      expect(box, closeTo(25, 1));
+      expect(ink, closeTo(25, 1),
+          reason: "and in the test font, whose glyphs fill their advance "
+              "exactly, the letter is already centred");
 
-      var nudged = await chipCentre(e.copyWith(rules: [
+      var (nudgedBox, nudgedInk) = await centres(e.copyWith(rules: [
         e.rules.first,
-        e.rules.last
-            .copyWith(style: e.rules.last.style.copyWith(nudgeX: 8)),
+        e.rules.last.copyWith(style: e.rules.last.style.copyWith(nudgeX: 6)),
       ]));
-      expect(nudged, closeTo(centred + 8, 1));
+      expect(nudgedInk, closeTo(ink + 6, 1));
+      expect(nudgedBox, closeTo(box, 1), reason: "the box has not moved");
     });
 
     test("a rule about one letter cannot respace the rest", () {

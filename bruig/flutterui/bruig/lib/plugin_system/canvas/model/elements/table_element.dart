@@ -112,17 +112,22 @@ class TableCellStyle {
   final double minWidth;
   final double minHeight;
 
-  /// nudgeX and nudgeY move the box off where it was measured.
+  /// nudgeX and nudgeY move the *letter* inside its box.
   ///
-  /// The box is centred on the letter's *advance* -- the room the font says
-  /// the letter takes -- and a letter's ink is not always centred in that.
-  /// The W in one face sits a pixel right of its advance and the L in another
-  /// sits three left, so a box that is arithmetically centred can still look
-  /// wrong, and no amount of padding fixes it because padding is symmetric.
+  /// The box is centred on the letter's advance -- the room the font says the
+  /// letter takes -- and a letter's ink is not always centred in that. A W
+  /// can sit a pixel right of its advance while the L beside it is fine, so a
+  /// box that is arithmetically centred still looks wrong, and no amount of
+  /// padding fixes it because padding is symmetric.
   ///
-  /// A nudge rather than measuring the ink: what the ink of a glyph actually
-  /// covers is not something the text engine will say, and guessing it from
-  /// the outline would be a font renderer.
+  /// The letter and not the box, because the boxes are the slots and the
+  /// slots being in line is the whole point of a fixed pitch: moving one of
+  /// them to centre a letter would take that letter's box out of the row it
+  /// was put there to join.
+  ///
+  /// A nudge rather than measuring the ink: what a glyph actually covers is
+  /// not something the text engine will say, and working it out from the
+  /// outline would be writing a font renderer.
   final double nudgeX;
   final double nudgeY;
 
