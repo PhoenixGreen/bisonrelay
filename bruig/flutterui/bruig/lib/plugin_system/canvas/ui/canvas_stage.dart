@@ -10,7 +10,6 @@ import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_painter.dart';
-import 'package:bruig/plugin_system/canvas/render/table_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/image_placement.dart';
 import 'package:bruig/plugin_system/canvas/render/image_store.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
@@ -23,6 +22,9 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_text_editor.dart';
 import 'package:bruig/plugin_system/canvas/ui/image_picking.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
+import 'package:bruig/plugin_system/canvas/ui/stage_geometry.dart';
+import 'package:bruig/plugin_system/canvas/ui/stage_painter.dart';
+import 'package:bruig/plugin_system/canvas/ui/stage_parts.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -36,6 +38,12 @@ import 'package:flutter/services.dart';
 // entirely the other half: which element is under the pointer, what dragging a
 // handle means, and where the handles go.
 //
+// Three pieces of that live next door, because each is read on its own and
+// none of them needs the widget: stage_painter.dart draws everything, given
+// values this file has already decided; stage_parts.dart answers the drags
+// that move a piece *inside* an element -- a chart's title, a table's column
+// rules; stage_geometry.dart is the sizes both halves have to agree on.
+//
 // The one idea worth stating plainly is the two coordinate spaces. *Document
 // space* is where elements live and never changes with the view. *Stage space*
 // is pixels on screen. Everything the pointer says arrives in stage space and
@@ -43,53 +51,6 @@ import 'package:flutter/services.dart';
 // below that line has to think about zoom. Handles are the exception and are
 // deliberately drawn and hit-tested in stage space, because a handle must stay
 // the same size on screen at every zoom or it becomes unusable at both ends.
-
-/// _handleSize is a resize handle's side, in screen pixels.
-const double _handleSize = 9;
-
-/// _handleHitSlop grows the target past what is drawn.
-///
-/// A 9px square is a fifth of a fingertip and a tenth of the distance most
-/// people can hold a mouse still, and the whole target is on the edge of the
-/// selection -- so half of what this buys is outside the element, where there
-/// is nothing else to hit anyway. Undersized, the miss does not do nothing: it
-/// falls through to the element underneath and *moves* it, which is the
-/// reported "more often than not I end up moving the element".
-const double _handleHitSlop = 13;
-
-/// _strokeHitSlop is the same allowance for a *line*, and is deliberately not
-/// the same number.
-///
-/// A handle can afford to be generous because it sits on the edge of the
-/// selection with nothing else nearby. A line cannot: its tolerance decides
-/// how much empty canvas beside it counts as "on the line", and too much of
-/// that steals clicks meant for whatever is behind it. They were one constant
-/// until widening the handles quietly widened this too.
-const double _strokeHitSlop = 7;
-
-/// _rotateHandleGap is how far above the selection the rotate ring sits.
-const double _rotateHandleGap = 26;
-
-/// _Handle names the eight resize grips and the rotate one.
-enum _Handle {
-  topLeft,
-  topCenter,
-  topRight,
-  centerLeft,
-  centerRight,
-  bottomLeft,
-  bottomCenter,
-  bottomRight,
-  rotate;
-
-  bool get movesLeft =>
-      this == topLeft || this == centerLeft || this == bottomLeft;
-  bool get movesRight =>
-      this == topRight || this == centerRight || this == bottomRight;
-  bool get movesTop => this == topLeft || this == topCenter || this == topRight;
-  bool get movesBottom =>
-      this == bottomLeft || this == bottomCenter || this == bottomRight;
-}
 
 /// _DragMode is what the pointer is currently doing.
 enum _DragMode {
@@ -111,19 +72,6 @@ enum _DragMode {
   /// tableColumn is the rule between two of a table's columns being dragged
   /// to make one wider and the other narrower.
   tableColumn,
-}
-
-/// _ChartLabelGrab is which of a chart's three pieces of writing is being
-/// dragged, and whether by its body or by its corner.
-class _ChartLabelGrab {
-  final ChartLabelPart part;
-  final bool resizing;
-
-  /// grab is where in the label the pointer took hold, in document units, so
-  /// the label does not jump its own corner under the pointer.
-  final Offset grab;
-
-  const _ChartLabelGrab(this.part, this.resizing, this.grab);
 }
 
 class CanvasStage extends StatefulWidget {
@@ -259,7 +207,7 @@ class CanvasStageState extends State<CanvasStage> {
   int _nodeIndex = -1;
   bool _nodeHandleOut = false;
 
-  _Handle? _handle;
+  StageHandle? _handle;
 
   /// _dragStart is where the gesture began, in document space, and
   /// _startBounds are the selected elements as they were then.
@@ -577,7 +525,7 @@ class CanvasStageState extends State<CanvasStage> {
   /// it, in document units. Half the stroke plus a few pixels of slack, so a
   /// hairline is still catchable without a steady hand.
   double _strokeReach(double strokeWidth) =>
-      math.max(strokeWidth / 2, 0) + _strokeHitSlop / _scale;
+      math.max(strokeWidth / 2, 0) + strokeHitSlop / _scale;
 
   /// _nearPolyline is whether [point] is within [reach] of the polyline.
   bool _nearPolyline(List<Offset> points, Offset point, double reach) {
@@ -650,18 +598,18 @@ class CanvasStageState extends State<CanvasStage> {
   }
 
   /// _hitHandle is which grip is under a stage-space point, if any.
-  _Handle? _hitHandle(Offset stage) {
+  StageHandle? _hitHandle(Offset stage) {
     // Nothing to grab on something whose size and angle are a line's.
     if (!_selectionHasOwnGeometry) return null;
     var bounds = _selectionBounds;
     if (bounds == null) return null;
-    var reach = _handleSize / 2 + _handleHitSlop;
+    var reach = handleSize / 2 + handleHitSlop;
 
     // Hidden helpers are unreachable helpers -- see
     // CanvasController.showHelpers.
     if (!controller.showHelpers) return null;
 
-    for (var handle in _Handle.values) {
+    for (var handle in StageHandle.values) {
       var at = _handlePosition(handle, bounds);
       // Clipped out of sight means clipped out of reach. A handle that can be
       // grabbed where nothing is drawn is a click that appears to do nothing
@@ -673,20 +621,20 @@ class CanvasStageState extends State<CanvasStage> {
   }
 
   /// _handlePosition is where a grip is drawn, in stage space.
-  Offset _handlePosition(_Handle handle, Rect bounds) {
+  Offset _handlePosition(StageHandle handle, Rect bounds) {
     var centre = _toStage(bounds.center);
     var half = Offset(bounds.width, bounds.height) * _scale / 2;
 
     var local = switch (handle) {
-      _Handle.topLeft => Offset(-half.dx, -half.dy),
-      _Handle.topCenter => Offset(0, -half.dy),
-      _Handle.topRight => Offset(half.dx, -half.dy),
-      _Handle.centerLeft => Offset(-half.dx, 0),
-      _Handle.centerRight => Offset(half.dx, 0),
-      _Handle.bottomLeft => Offset(-half.dx, half.dy),
-      _Handle.bottomCenter => Offset(0, half.dy),
-      _Handle.bottomRight => Offset(half.dx, half.dy),
-      _Handle.rotate => Offset(0, -half.dy - _rotateHandleGap),
+      StageHandle.topLeft => Offset(-half.dx, -half.dy),
+      StageHandle.topCenter => Offset(0, -half.dy),
+      StageHandle.topRight => Offset(half.dx, -half.dy),
+      StageHandle.centerLeft => Offset(-half.dx, 0),
+      StageHandle.centerRight => Offset(half.dx, 0),
+      StageHandle.bottomLeft => Offset(-half.dx, half.dy),
+      StageHandle.bottomCenter => Offset(0, half.dy),
+      StageHandle.bottomRight => Offset(half.dx, half.dy),
+      StageHandle.rotate => Offset(0, -half.dy - rotateHandleGap),
     };
 
     var a = _rotationOfSelection;
@@ -778,7 +726,7 @@ class CanvasStageState extends State<CanvasStage> {
     var handle = _hitHandle(stage);
     if (handle != null) {
       _beginTransform(
-          handle == _Handle.rotate ? _DragMode.rotate : _DragMode.resize,
+          handle == StageHandle.rotate ? _DragMode.rotate : _DragMode.resize,
           handle);
       return;
     }
@@ -831,7 +779,8 @@ class CanvasStageState extends State<CanvasStage> {
     // there was anywhere else for the press to go.
     var chart = controller.selected;
     if (chart is ChartElement && !chart.locked) {
-      var grab = _hitChartLabel(chart, doc);
+      var grab = chartLabelGrabAt(
+          chart, chart.boundsAt(controller.frame), doc, _docSlop);
       if (grab != null) {
         _labelGrab = grab;
         _mode = _DragMode.chartLabel;
@@ -845,7 +794,8 @@ class CanvasStageState extends State<CanvasStage> {
     // the table up and move the whole thing.
     var table = controller.selected;
     if (table is TableElement && !table.locked) {
-      var divider = _hitTableColumn(table, doc);
+      var divider =
+          tableColumnAt(table, table.boundsAt(controller.frame), doc, _docSlop);
       if (divider != null) {
         _columnGrab = divider;
         _mode = _DragMode.tableColumn;
@@ -887,7 +837,7 @@ class CanvasStageState extends State<CanvasStage> {
         controller.selection.first == element.id &&
         _pressedAt != Offset.zero &&
         DateTime.now().difference(_lastClickAt) < _doubleClickWindow) {
-      var at = _cellAt(element, doc);
+      var at = tableCellAt(element, element.boundsAt(controller.frame), doc);
       if (at != null) {
         setState(() => _editingCell = (element.id, at.$1, at.$2));
         _mode = _DragMode.none;
@@ -944,7 +894,7 @@ class CanvasStageState extends State<CanvasStage> {
     // In document units, so the grab area is the same size on screen however
     // far the canvas is zoomed -- what is being allowed for is a pointer, not
     // a distance on the page.
-    var reach = (_handleSize / 2 + _handleHitSlop) / _scale;
+    var reach = (handleSize / 2 + handleHitSlop) / _scale;
     for (var i = 0; i < path.nodes.length; i++) {
       var node = path.nodes[i];
       if ((doc - path.outHandleOf(node)).distance <= reach &&
@@ -1247,7 +1197,7 @@ class CanvasStageState extends State<CanvasStage> {
     );
   }
 
-  void _beginTransform(_DragMode mode, _Handle? handle) {
+  void _beginTransform(_DragMode mode, StageHandle? handle) {
     _mode = mode;
     _handle = handle;
     _startBounds = {
@@ -1304,225 +1254,45 @@ class CanvasStageState extends State<CanvasStage> {
     }
     var bounds = element.boundsAt(controller.frame);
     return [
-      for (var x in _tableColumnDividers(element, bounds))
+      for (var x in tableColumnDividers(element, bounds))
         (x, bounds.top, bounds.bottom),
     ];
   }
 
   /// _labelGrab is the chart label being dragged, while one is.
-  _ChartLabelGrab? _labelGrab;
+  /// _docSlop is the pointer's reach in document units.
+  ///
+  /// The allowance is a number of screen pixels -- how still a hand is, not
+  /// how big the document is -- so it has to be divided by the zoom before it
+  /// can be compared with anything in document space. Zoomed in, a grip that
+  /// kept its document size would swallow half the table.
+  double get _docSlop => handleHitSlop / _scale;
+
+  /// _applyPart writes a part-drag onto the selected element -- see
+  /// stage_parts.dart, which works out what the new element is. Both kinds
+  /// are transient: the drag is one undo step, closed when the pointer lifts.
+  void _applyPart(Offset doc, {required bool chartLabel}) {
+    var element = controller.selected;
+    if (element == null) return;
+    var bounds = element.boundsAt(controller.frame);
+    CanvasElement? next;
+    if (chartLabel) {
+      var grab = _labelGrab;
+      if (grab == null || element is! ChartElement) return;
+      next = chartLabelDragged(element, bounds, grab, doc);
+    } else {
+      var at = _columnGrab;
+      if (at == null || element is! TableElement) return;
+      next = tableColumnDragged(element, bounds, at, doc);
+    }
+    if (next != null) controller.replaceElement(next, transient: true);
+  }
+
+  ChartLabelGrab? _labelGrab;
 
   /// _columnGrab is which of a table's dividers is being dragged: the index of
   /// the column to its left.
   int? _columnGrab;
-
-  /// _tableColumnDividers is where a selected table's column rules fall, in
-  /// document units.
-  ///
-  /// Only the inner ones. The outer two are the element's own edges, which
-  /// already have resize handles on them and would be two controls doing
-  /// different things in the same place.
-  List<double> _tableColumnDividers(TableElement e, Rect bounds) {
-    var widths = tableColumnWidths(e, bounds);
-    var out = <double>[];
-    var x = bounds.left;
-    for (var i = 0; i < widths.length - 1; i++) {
-      x += widths[i];
-      out.add(x);
-    }
-    return out;
-  }
-
-  /// _hitTableColumn is which divider a document point is on, if any.
-  int? _hitTableColumn(TableElement e, Offset doc) {
-    var bounds = e.boundsAt(controller.frame);
-    if (!bounds.inflate(_handleHitSlop / _scale).contains(doc)) return null;
-    var slop = _handleHitSlop / _scale;
-    var dividers = _tableColumnDividers(e, bounds);
-    for (var i = 0; i < dividers.length; i++) {
-      if ((doc.dx - dividers[i]).abs() <= slop) return i;
-    }
-    return null;
-  }
-
-  /// _applyTableColumn writes the drag onto the two columns either side of the
-  /// divider, leaving every other column where it is.
-  ///
-  /// Either side, because a table fills its element: making one column wider
-  /// has to make another narrower, and taking it from its neighbour is the
-  /// only choice that does not shuffle the whole table sideways.
-  void _applyTableColumn(Offset doc) {
-    var at = _columnGrab;
-    var element = controller.selected;
-    if (at == null || element is! TableElement) return;
-
-    var bounds = element.boundsAt(controller.frame);
-    if (bounds.width <= 0) return;
-
-    // Seeded from the measured widths the first time, so a drag starts from
-    // the table as it looks rather than from equal columns.
-    var widths = tableColumnWidths(element, bounds);
-    if (at + 1 >= widths.length) return;
-
-    var pair = widths[at] + widths[at + 1];
-    var left = (doc.dx - (bounds.left + _sumTo(widths, at)))
-        .clamp(bounds.width * 0.02, pair - bounds.width * 0.02);
-
-    widths[at] = left;
-    widths[at + 1] = pair - left;
-
-    controller.replaceElement(
-        element
-            .copyWith(columnWidths: [for (var w in widths) w / bounds.width]),
-        transient: true);
-  }
-
-  static double _sumTo(List<double> widths, int end) {
-    var total = 0.0;
-    for (var i = 0; i < end; i++) {
-      total += widths[i];
-    }
-    return total;
-  }
-
-  /// _hitChartLabel is which of the three a document point lands on, if any.
-  ///
-  /// The corner is tried before the body, and they are tried in reverse
-  /// drawing order, so the one on top is the one picked up when they overlap.
-  ///
-  /// The key is moved but not resized: its size is decided by its own setting
-  /// and by the words in it, so a corner to drag would be a corner that
-  /// argued with the number in the panel.
-  _ChartLabelGrab? _hitChartLabel(ChartElement e, Offset doc) {
-    var bounds = e.boundsAt(controller.frame);
-    var rects = chartLabelPlaces(e, bounds);
-    var corner = _handleHitSlop / _scale;
-    for (var part in ChartLabelPart.values.reversed) {
-      var rect = rects[part];
-      if (rect == null || rect.isEmpty) continue;
-      if (part != ChartLabelPart.legend &&
-          (doc - rect.bottomRight).distance <= corner) {
-        return _ChartLabelGrab(part, true, doc - rect.bottomRight);
-      }
-      if (rect.contains(doc)) {
-        return _ChartLabelGrab(part, false, doc - rect.topLeft);
-      }
-    }
-    return null;
-  }
-
-  /// _applyChartLabel writes the drag onto whichever it is, in fractions of
-  /// the chart's own box so that it stays put when the chart is resized.
-  void _applyChartLabel(Offset doc) {
-    var grab = _labelGrab;
-    if (grab == null) return;
-    var element = controller.selected;
-    if (element is! ChartElement) return;
-
-    var bounds = element.boundsAt(controller.frame);
-    if (bounds.width <= 0 || bounds.height <= 0) return;
-
-    var at = doc - grab.grab;
-    var x = (at.dx - bounds.left) / bounds.width;
-    var y = (at.dy - bounds.top) / bounds.height;
-
-    if (grab.part == ChartLabelPart.legend) {
-      controller.replaceElement(
-          _grownFor(
-              element.copyWith(legend: element.legend.copyWith(x: x, y: y)),
-              bounds),
-          transient: true);
-      return;
-    }
-
-    // Where it is drawn now, which is its own place or the chart's idea of
-    // one -- a label dragged for the first time must move from where it can
-    // be seen rather than from a corner it has never been in.
-    var drawn = chartLabelPlaces(element, bounds)[grab.part]!;
-    var box = (grab.part == ChartLabelPart.title
-            ? element.titleBox
-            : element.descriptionBox)
-        .copyWith(
-      x: (drawn.left - bounds.left) / bounds.width,
-      y: (drawn.top - bounds.top) / bounds.height,
-      width: drawn.width / bounds.width,
-      height: drawn.height / bounds.height,
-    );
-
-    var next = grab.resizing
-        ? box.copyWith(
-            width:
-                ((doc.dx - grab.grab.dx - bounds.left) / bounds.width - box.x)
-                    .clamp(0.05, 2.0),
-            height:
-                ((doc.dy - grab.grab.dy - bounds.top) / bounds.height - box.y)
-                    .clamp(0.03, 2.0),
-          )
-        : box.copyWith(x: x, y: y);
-
-    var updated = grab.part == ChartLabelPart.title
-        ? element.copyWith(titleBox: next)
-        : element.copyWith(descriptionBox: next);
-
-    controller.replaceElement(_grownFor(updated, bounds), transient: true);
-  }
-
-  /// _grownFor sizes the chart's box to exactly hold the chart and its placed
-  /// labels, keeping everything where it looks like it is.
-  ///
-  /// Without it a title dragged off the side sat outside the element's box. It
-  /// still drew -- nothing clips it -- but it was outside the selection
-  /// outline and outside what a marquee or a group move would pick up, so it
-  /// read as a separate thing that happened to be near the chart. The box is
-  /// what says "this text belongs to this chart".
-  ///
-  /// It shrinks as well as grows, back to the chart's own rectangle once the
-  /// labels are inside it again. Growing only was the first attempt and left a
-  /// box that could be stretched but never put back, so an experimental drag
-  /// out and back cost a chart a margin of empty selection for good. Shrinking
-  /// is only safe because the chart's own rectangle is a thing in its own
-  /// right -- see ChartBody -- so the plot does not follow the box in either
-  /// direction.
-  ChartElement _grownFor(ChartElement e, Rect bounds) {
-    var rects = chartLabelPlaces(e, bounds);
-    if (rects.isEmpty) return e;
-
-    var wanted = e.body.rectIn(bounds);
-    for (var rect in rects.values) {
-      wanted = wanted.expandToInclude(rect);
-    }
-    if (wanted == bounds) return e;
-
-    /// refit rewrites a label's fractions against the new box, so it stays
-    /// exactly where it is on screen while the box moves under it.
-    ChartLabel refit(ChartLabel label) {
-      if (!label.hasPlace) return label;
-      var rect = label.rectIn(bounds);
-      return label.copyWith(
-        x: (rect.left - wanted.left) / wanted.width,
-        y: (rect.top - wanted.top) / wanted.height,
-        width: rect.width / wanted.width,
-        height: rect.height / wanted.height,
-      );
-    }
-
-    return e
-        .copyWith(
-          titleBox: refit(e.titleBox),
-          descriptionBox: refit(e.descriptionBox),
-          // The chart itself stays exactly where it is. Growing the box grew the
-          // plot with it, so dragging a title off the corner made the bars
-          // taller -- a resize nobody asked for, from a drag that was about the
-          // words.
-          body: ChartBody.fitting(e.body.rectIn(bounds), wanted),
-        )
-        .withBase(
-          x: e.x + (wanted.left - bounds.left),
-          y: e.y + (wanted.top - bounds.top),
-          width: wanted.width,
-          height: wanted.height,
-        ) as ChartElement;
-  }
 
   void _onPointerMove(PointerMoveEvent event) {
     if (_painting != null) {
@@ -1559,9 +1329,9 @@ class CanvasStageState extends State<CanvasStage> {
       case _DragMode.handle:
         _applyNodeMove(doc, handle: true);
       case _DragMode.chartLabel:
-        _applyChartLabel(doc);
+        _applyPart(doc, chartLabel: true);
       case _DragMode.tableColumn:
-        _applyTableColumn(doc);
+        _applyPart(doc, chartLabel: false);
       default:
         break;
     }
@@ -1867,7 +1637,7 @@ class CanvasStageState extends State<CanvasStage> {
                   // with them, leaving no way back out.
                   child: ClipRect(
                     child: CustomPaint(
-                      painter: _StagePainter(
+                      painter: StagePainter(
                         page: _pageRect,
                         view: _viewRect,
                         document: document,
@@ -1921,44 +1691,6 @@ class CanvasStageState extends State<CanvasStage> {
         },
       );
 
-  /// _cellAt is which cell of a table a document point is in.
-  (int, int)? _cellAt(TableElement e, Offset doc) {
-    var bounds = e.boundsAt(controller.frame);
-    if (!bounds.contains(doc) || e.rows.isEmpty) return null;
-
-    var widths = tableColumnWidths(e, bounds);
-    var heights = tableRowHeights(e, bounds);
-
-    var row = 0;
-    var y = bounds.top;
-    for (; row < heights.length - 1; row++) {
-      if (doc.dy < y + heights[row]) break;
-      y += heights[row];
-    }
-
-    var col = 0;
-    var x = bounds.left;
-    for (; col < widths.length - 1; col++) {
-      if (doc.dx < x + widths[col]) break;
-      x += widths[col];
-    }
-    return (row, col);
-  }
-
-  /// _cellRect is where that cell is, in document units.
-  Rect _cellRect(TableElement e, int row, int col) {
-    var bounds = e.boundsAt(controller.frame);
-    var widths = tableColumnWidths(e, bounds);
-    var heights = tableRowHeights(e, bounds);
-    if (row >= heights.length || col >= widths.length) return bounds;
-    return Rect.fromLTWH(
-      bounds.left + _sumTo(widths, col),
-      bounds.top + _sumTo(heights, row),
-      widths[col],
-      heights[row],
-    );
-  }
-
   /// _cellEditorFor is the overlay for a cell being typed into.
   ///
   /// A plain field rather than CanvasTextEditor, which draws the element's own
@@ -1972,7 +1704,8 @@ class CanvasStageState extends State<CanvasStage> {
     var element = document.elementById(id);
     if (element is! TableElement) return null;
 
-    var box = _cellRect(element, row, col);
+    var box =
+        tableCellRect(element, element.boundsAt(controller.frame), row, col);
     var topLeft = _toStage(box.topLeft);
     return Positioned(
       left: topLeft.dx,
@@ -1985,7 +1718,7 @@ class CanvasStageState extends State<CanvasStage> {
         fontSize: math.max(9, element.cellSpec.fontSize * _scale),
         onChanged: (text) {
           controller.beginInteraction();
-          controller.replaceElement(_withCell(element, row, col, text),
+          controller.replaceElement(tableWithCell(element, row, col, text),
               transient: true);
         },
         onDone: () {
@@ -1996,26 +1729,13 @@ class CanvasStageState extends State<CanvasStage> {
           var asset = await pickCanvasImage(context);
           if (asset == null || !mounted) return;
           controller.beginInteraction();
-          controller.replaceElement(_withCell(
+          controller.replaceElement(tableWithCell(
               element, row, col, "${TableElement.pictureCell}$asset"));
           controller.endInteraction();
           setState(() => _editingCell = null);
         },
       ),
     );
-  }
-
-  /// _withCell is [e] with one cell rewritten, growing the grid to reach it.
-  TableElement _withCell(TableElement e, int row, int col, String text) {
-    var width = math.max(e.columnCount, col + 1);
-    var rows = [
-      for (var r in e.rows) [...r, for (var i = r.length; i < width; i++) ""],
-    ];
-    while (rows.length <= row) {
-      rows.add(List.filled(width, ""));
-    }
-    rows[row][col] = text;
-    return e.copyWith(rows: rows);
   }
 
   /// _editorFor is the text editor overlay, when one is open.
@@ -2109,445 +1829,4 @@ class CanvasStageState extends State<CanvasStage> {
     if (_mode == _DragMode.move) return SystemMouseCursors.move;
     return SystemMouseCursors.basic;
   }
-}
-
-/// _StagePainter draws the document, the page edge, the handles and the
-/// marquee.
-class _StagePainter extends CustomPainter {
-  final CanvasDocument document;
-  final int frame;
-
-  /// scale is document units to screen pixels -- the fitted size times the
-  /// reader's zoom, already combined by the stage.
-  final double scale;
-  final Offset origin;
-  final CanvasImageSource images;
-  final String? hoveredButton;
-  final Set<String> selection;
-  final Rect? selectionBounds;
-  final double selectionRotation;
-  final Offset Function(_Handle, Rect) handleFor;
-  final Rect? marquee;
-
-  /// page is the frame the canvas is drawn inside. Everything the document
-  /// contributes is clipped to it; the shadow and the border are drawn outside
-  /// the clip, which is what keeps the edge of the canvas visible at every
-  /// zoom.
-  final Rect page;
-
-  /// view is everything drawn: the page, plus the overspill around it when
-  /// that is showing. The clip is this rather than [page], so an element
-  /// waiting off the left of the canvas can be seen and taken hold of.
-  final Rect view;
-
-  /// selectedPath is the selected element when it is a path, whose points and
-  /// handles are drawn in place of a selection box.
-  final PathElement? selectedPath;
-
-  /// chartLabels is the boxes of the selected chart's placed labels, in
-  /// document units. Outlined so that a title somebody has taken control of
-  /// looks like something that can be taken hold of -- placed and then not
-  /// drawn, it is a piece of text that mysteriously moves when dragged and
-  /// has no visible corner to resize by.
-  final List<Rect> chartLabels;
-
-  /// tableColumns is where a selected table's column rules are, in document
-  /// units, so each can be given a grip.
-  ///
-  /// Without one there was nothing to say a rule could be dragged at all: the
-  /// pointer had to be within a few pixels of a hairline nobody had been told
-  /// about.
-  final List<(double, double, double)> tableColumns;
-
-  /// preview is a picture of what a held stroke would do, and previewOn is
-  /// the placement it is drawn through. Both null when nothing is held.
-  ///
-  /// The placement, not just a destination. The preview is the size of the
-  /// whole picture, and the picture is not necessarily drawn whole -- "fill
-  /// the box" shows a centre crop of it. Stretching the whole preview into the
-  /// element put the tint somewhere other than the stroke, over an area that
-  /// had nothing to do with it.
-  final ui.Image? preview;
-  final ImagePlacement? previewOn;
-
-  /// liveStroke is the retouching stroke being drawn, in canvas coordinates,
-  /// with liveStrokeRadius its width and liveStrokeKeeps which way round it
-  /// works.
-  ///
-  /// Drawn here rather than by changing the picture, because changing the
-  /// picture means reprocessing every pixel of it -- see
-  /// CanvasStageState._liveImage. This is what the reader watches while the
-  /// stroke is being made; the picture catches up when the pointer comes up.
-  final List<Offset> liveStroke;
-  final double liveStrokeRadius;
-  final bool liveStrokeKeeps;
-
-  /// editingText is the id of a text element being typed into, whose own words
-  /// are left unpainted -- the editor over the top is drawing them, and both
-  /// at once is the same sentence twice, half a pixel apart.
-  final String? editingText;
-
-  /// showHandles is false for something whose size and angle belong to
-  /// another element -- text riding a line. The outline is still drawn, so it
-  /// is clear what is selected; the eight squares and the rotate ring are not,
-  /// because they would be controls that appear to do nothing.
-  final bool showHandles;
-
-  /// showHelpers draws the selection box, the handles and the rotation ring.
-  ///
-  /// Passed in rather than being faked by blanking the selection, which is how
-  /// this was first written and did nothing at all: _paintSelection reads
-  /// selectionBounds, not the selection, so emptying the set left every mark
-  /// exactly where it was.
-  final bool showHelpers;
-
-  const _StagePainter({
-    required this.page,
-    required this.view,
-    required this.showHandles,
-    required this.showHelpers,
-    required this.selectedPath,
-    required this.chartLabels,
-    required this.tableColumns,
-    required this.editingText,
-    required this.preview,
-    required this.previewOn,
-    required this.liveStroke,
-    required this.liveStrokeRadius,
-    required this.liveStrokeKeeps,
-    required this.document,
-    required this.frame,
-    required this.scale,
-    required this.origin,
-    required this.images,
-    required this.hoveredButton,
-    required this.selection,
-    required this.selectionBounds,
-    required this.selectionRotation,
-    required this.handleFor,
-    required this.marquee,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    // A shadow under the frame, so the canvas reads as a sheet on a desk
-    // rather than as a region of the window -- which matters most when the
-    // document's own background happens to be the same colour as the editor's.
-    canvas.drawRect(
-        view.shift(const Offset(0, 6)),
-        Paint()
-          ..color = const Color(0x55000000)
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12));
-
-    // Everything the document contributes goes inside the frame, at whatever
-    // zoom, including the selection handles. The frame itself never moves --
-    // see CanvasStage._pageRect.
-    canvas.save();
-    canvas.clipRect(view);
-
-    var docSize = document.size.size;
-    canvas.save();
-    canvas.translate(origin.dx, origin.dy);
-    canvas.scale(scale);
-    paintCanvasDocument(canvas, document,
-        frame: frame,
-        images: images,
-        hoveredButton: hoveredButton,
-        skipElement: editingText,
-        // Guide paths show here and nowhere else: the line describing a run is
-        // scaffolding, and a published diagram with every run drawn on it is
-        // unreadable.
-        editing: true);
-    canvas.restore();
-
-    _paintSelection(canvas);
-
-    if (marquee != null) {
-      var box = Rect.fromPoints(marquee!.topLeft * scale + origin,
-          marquee!.bottomRight * scale + origin);
-      canvas.drawRect(box, Paint()..color = const Color(0x223D7EFF));
-      canvas.drawRect(
-          box,
-          Paint()
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = 1
-            ..color = const Color(0xAA3D7EFF));
-    }
-
-    // What a held stroke would do, over the picture it belongs to. Drawn from
-    // the brush's own output rather than from its settings, so what is shown
-    // and what will happen cannot drift apart -- see strokePreview.
-    if (preview != null && previewOn != null) {
-      var to = previewOn!.dst;
-      canvas.drawImageRect(
-          preview!,
-          previewOn!.src,
-          Rect.fromLTRB(
-            to.left * scale + origin.dx,
-            to.top * scale + origin.dy,
-            to.right * scale + origin.dx,
-            to.bottom * scale + origin.dy,
-          ),
-          Paint()..filterQuality = FilterQuality.medium);
-    }
-
-    // The stroke being drawn, inside the frame's clip along with everything
-    // else the document contributes -- unclipped, a stroke on a zoomed canvas
-    // carries on over the sidebar. A thick
-    // round-capped line rather than a stamp per point: it is a preview of a
-    // brush that will be dabbed along the same path, and the two read the same
-    // at any speed the pointer moves.
-    if (liveStroke.length > 1 && liveStrokeRadius > 0) {
-      var path = Path()
-        ..moveTo(liveStroke.first.dx * scale + origin.dx,
-            liveStroke.first.dy * scale + origin.dy);
-      for (var point in liveStroke.skip(1)) {
-        path.lineTo(point.dx * scale + origin.dx, point.dy * scale + origin.dy);
-      }
-      canvas.drawPath(
-          path,
-          Paint()
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = liveStrokeRadius * 2 * scale
-            ..strokeCap = StrokeCap.round
-            ..strokeJoin = StrokeJoin.round
-            ..color = liveStrokeKeeps
-                ? const Color(0x6633DD88)
-                : const Color(0x66FF5544));
-    }
-
-    canvas.restore();
-
-    // Everything outside the page dimmed, so the edge of what will actually be
-    // published stays obvious. Four bands rather than a stroked rectangle with
-    // a hole in it, which is what a Path.difference would be for one frame of
-    // shading.
-    if (view != page) {
-      var shade = Paint()..color = const Color(0x66000000);
-      canvas.drawRect(
-          Rect.fromLTRB(view.left, view.top, view.right, page.top), shade);
-      canvas.drawRect(
-          Rect.fromLTRB(view.left, page.bottom, view.right, view.bottom),
-          shade);
-      canvas.drawRect(
-          Rect.fromLTRB(view.left, page.top, page.left, page.bottom), shade);
-      canvas.drawRect(
-          Rect.fromLTRB(page.right, page.top, view.right, page.bottom), shade);
-    }
-
-    // The border last and outside the clip, so it is a crisp full-width line
-    // rather than a half-width one sitting on the edge of the clip.
-    canvas.drawRect(
-        page,
-        Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1
-          ..color = const Color(0x55FFFFFF));
-
-    // A hint that there is more of the canvas outside the frame. Drawn only
-    // when there is: at zoom 1 the document exactly fills the frame and a
-    // shadow round the inside would be saying something untrue.
-    if (docSize.width * scale > page.width + 1) {
-      canvas.drawRect(
-        page,
-        Paint()
-          ..shader = ui.Gradient.radial(
-            page.center,
-            math.max(page.width, page.height) * 0.7,
-            [const Color(0x00000000), const Color(0x33000000)],
-            [0.7, 1.0],
-          ),
-      );
-    }
-  }
-
-  /// _paintChartLabels outlines a chart's placed title and description, with a
-  /// grip on the corner that resizes them.
-  ///
-  /// Dashes rather than a solid line, so it does not read as part of the
-  /// design: it is scaffolding, the same as the selection box, and it is never
-  /// exported -- this painter draws over the document rather than into it.
-  void _paintChartLabels(Canvas canvas) {
-    if (chartLabels.isEmpty) return;
-    var line = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1
-      ..color = const Color(0x883D7EFF);
-
-    for (var rect in chartLabels) {
-      var box = Rect.fromPoints(
-          rect.topLeft * scale + origin, rect.bottomRight * scale + origin);
-      const dash = 5.0, gap = 4.0;
-      for (var (from, to) in [
-        (box.topLeft, box.topRight),
-        (box.bottomLeft, box.bottomRight),
-        (box.topLeft, box.bottomLeft),
-        (box.topRight, box.bottomRight),
-      ]) {
-        var span = (to - from).distance;
-        if (span <= 0) continue;
-        var step = (to - from) / span;
-        for (var at = 0.0; at < span; at += dash + gap) {
-          canvas.drawLine(
-              from + step * at, from + step * math.min(at + dash, span), line);
-        }
-      }
-      canvas.drawRect(
-          Rect.fromCenter(center: box.bottomRight, width: 7, height: 7),
-          Paint()..color = const Color(0xFF3D7EFF));
-    }
-  }
-
-  /// _paintTableColumns puts a grip on each of a table's inner column rules.
-  ///
-  /// A short bar at the top and the bottom rather than a line down the whole
-  /// rule: the rule is already drawn by the table, and a second line over it
-  /// would read as the table having two.
-  void _paintTableColumns(Canvas canvas) {
-    if (tableColumns.isEmpty) return;
-    var paint = Paint()..color = const Color(0xFF3D7EFF);
-
-    for (var (x, top, bottom) in tableColumns) {
-      var at = x * scale + origin.dx;
-      var t = top * scale + origin.dy;
-      var b = bottom * scale + origin.dy;
-      for (var y in [t + 5, b - 5]) {
-        canvas.drawRRect(
-            RRect.fromRectAndRadius(
-                Rect.fromCenter(center: Offset(at, y), width: 4, height: 12),
-                const Radius.circular(2)),
-            paint);
-      }
-    }
-  }
-
-  void _paintSelection(Canvas canvas) {
-    if (!showHelpers) return;
-
-    _paintChartLabels(canvas);
-    _paintTableColumns(canvas);
-
-    // A selected path shows its points and handles instead of a box: the box
-    // round a curve is a rectangle nobody drew and cannot be usefully dragged,
-    // where the points are the whole of what there is to edit.
-    var path = selectedPath;
-    if (path != null) {
-      _paintPathControls(canvas, path);
-      return;
-    }
-
-    var bounds = selectionBounds;
-    if (bounds == null) return;
-
-    var centre = bounds.center * scale + origin;
-    var half = Offset(bounds.width, bounds.height) * scale / 2;
-
-    canvas.save();
-    canvas.translate(centre.dx, centre.dy);
-    if (selectionRotation != 0) canvas.rotate(selectionRotation);
-    var box = Rect.fromCenter(
-        center: Offset.zero, width: half.dx * 2, height: half.dy * 2);
-    canvas.drawRect(
-        box,
-        Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1
-          ..color = const Color(0xFF3D7EFF));
-    // The line out to the rotate ring, so it reads as attached to the
-    // selection rather than as a stray dot floating above it.
-    if (showHandles) {
-      canvas.drawLine(
-          Offset(0, -half.dy),
-          Offset(0, -half.dy - _rotateHandleGap),
-          Paint()
-            ..strokeWidth = 1
-            ..color = const Color(0xFF3D7EFF));
-    }
-    canvas.restore();
-
-    // The outline alone for something placed by another element: it says what
-    // is selected without offering eight squares that would do nothing.
-    if (!showHandles) return;
-
-    var fill = Paint()..color = const Color(0xFFFFFFFF);
-    var edge = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.5
-      ..color = const Color(0xFF3D7EFF);
-
-    for (var handle in _Handle.values) {
-      var at = handleFor(handle, bounds);
-      if (handle == _Handle.rotate) {
-        canvas.drawCircle(at, _handleSize / 2 + 1, fill);
-        canvas.drawCircle(at, _handleSize / 2 + 1, edge);
-        continue;
-      }
-      var square =
-          Rect.fromCenter(center: at, width: _handleSize, height: _handleSize);
-      canvas.drawRect(square, fill);
-      canvas.drawRect(square, edge);
-    }
-  }
-
-  /// _paintPathControls draws a path's points and its handles.
-  ///
-  /// Handles only where there are any: an unbent node's handles sit exactly on
-  /// top of it, and drawing them there would be three overlapping dots that
-  /// cannot be told apart or aimed at separately.
-  void _paintPathControls(Canvas canvas, PathElement path) {
-    Offset at(Offset doc) => doc * scale + origin;
-
-    var line = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1
-      ..color = const Color(0x883D7EFF);
-    var fill = Paint()..color = const Color(0xFF3D7EFF);
-    var knob = Paint()..color = const Color(0xFFFFFFFF);
-
-    for (var node in path.nodes) {
-      var point = at(path.pointOf(node));
-
-      for (var (dx, dy, handle) in [
-        (node.outDx, node.outDy, path.outHandleOf(node)),
-        (node.inDx, node.inDy, path.inHandleOf(node)),
-      ]) {
-        if (dx == 0 && dy == 0) continue;
-        var end = at(handle);
-        canvas.drawLine(point, end, line);
-        canvas.drawCircle(end, 4, knob);
-        canvas.drawCircle(end, 4, line);
-      }
-
-      // The point itself last, so it is on top of its own handle lines.
-      canvas.drawCircle(point, 5, knob);
-      canvas.drawCircle(
-          point,
-          5,
-          fill
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = 2);
-      canvas.drawCircle(point, 2.5, fill..style = PaintingStyle.fill);
-    }
-  }
-
-  @override
-  bool shouldRepaint(_StagePainter old) =>
-      old.document != document ||
-      old.frame != frame ||
-      old.scale != scale ||
-      old.origin != origin ||
-      old.page != page ||
-      old.view != view ||
-      old.showHelpers != showHelpers ||
-      old.showHandles != showHandles ||
-      !identical(old.selectedPath, selectedPath) ||
-      old.editingText != editingText ||
-      !identical(old.preview, preview) ||
-      old.previewOn != previewOn ||
-      old.liveStroke.length != liveStroke.length ||
-      old.liveStrokeKeeps != liveStrokeKeeps ||
-      old.hoveredButton != hoveredButton ||
-      old.selection != selection ||
-      old.selectionBounds != selectionBounds ||
-      old.marquee != marquee;
 }
