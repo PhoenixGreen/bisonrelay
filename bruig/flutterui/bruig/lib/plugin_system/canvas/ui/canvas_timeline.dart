@@ -858,7 +858,10 @@ class _TimelinePainter extends CustomPainter {
       size,
       y: _rulerHeight + 34,
       frames: [for (var a in actions) a.frame],
-      color: colors.tertiary,
+      // A different colour from the keyframes above, which is the whole job of
+      // this row -- but not tertiary, which is a panel background in this app
+      // and drew these marks in near-black on a near-black ruler.
+      color: colors.secondary,
       diamond: false,
     );
 

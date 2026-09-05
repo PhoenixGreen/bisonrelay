@@ -94,11 +94,22 @@ Future<String?> ffmpegPath() async {
 /// arguments, reading the file back, clearing up afterwards -- is then
 /// checked on a machine with no ffmpeg on it, which is most machines.
 ///
-/// Pass null to forget the cached answer and look again.
+/// Pass null to pin the answer to "there is not one", which is what the
+/// publish sheet's own tests need and cannot get from the machine they happen
+/// to be running on. [forgetFfmpegForTest] puts it back.
 @visibleForTesting
 void useFfmpegForTest(String? path) {
-  _looked = path != null;
+  _looked = true;
   _found = path;
+}
+
+/// forgetFfmpegForTest clears the pinned answer, so the next look is a real
+/// one. Every test that pins has to end with this, or a machine that does have
+/// ffmpeg quietly stops testing the half that uses it.
+@visibleForTesting
+void forgetFfmpegForTest() {
+  _looked = false;
+  _found = null;
 }
 
 /// mp4Quality is the constant-rate factor handed to ffmpeg: lower is better

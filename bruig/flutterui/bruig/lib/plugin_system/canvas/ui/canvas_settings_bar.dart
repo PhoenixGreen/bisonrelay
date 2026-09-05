@@ -516,8 +516,11 @@ class _CanvasSettingsPanelState extends State<CanvasSettingsPanel> {
               Tooltip(
                 message: "There are keyframes past the end of the timeline. "
                     "Raise the frame count to reach them.",
+                // error rather than tertiary: tertiary is a panel background
+                // in this app, near-black in the dark theme, so this icon was
+                // invisible on the band it sits in.
                 child: Icon(Icons.warning_amber_rounded,
-                    size: 14, color: theme.colors.tertiary),
+                    size: 14, color: theme.colors.error),
               ),
             ],
           ]),

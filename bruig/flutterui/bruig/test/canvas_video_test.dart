@@ -96,7 +96,7 @@ head -c 4000 /dev/zero >> "\$out"
     });
 
     tearDown(() async {
-      useFfmpegForTest(null);
+      forgetFfmpegForTest();
       await scratch.delete(recursive: true);
     });
 

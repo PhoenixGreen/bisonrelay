@@ -358,8 +358,10 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
             if (controller.dirty)
               Tooltip(
                 message: "There are changes that have not been saved",
-                child:
-                    Icon(Icons.circle, size: 8, color: theme.colors.tertiary),
+                // primary, because this is a mark that has to be seen and
+                // tertiary is a panel background in this app -- an eight-pixel
+                // near-black dot on a near-black sidebar was nothing at all.
+                child: Icon(Icons.circle, size: 8, color: theme.colors.primary),
               ),
           ]),
           const SizedBox(height: 6),

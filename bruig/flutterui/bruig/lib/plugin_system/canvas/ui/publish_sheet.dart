@@ -847,17 +847,38 @@ class _PublishSheetState extends State<_PublishSheet> {
                 TextStyle(fontSize: 11, color: theme.colors.onSurfaceVariant)),
       );
 
+  /// _warning is the one thing on this sheet somebody has to read.
+  ///
+  /// Drawn in the error colour on a tint of it, rather than as coloured text
+  /// on the dialog. It was tertiary, which is not an accent in this app at all
+  /// -- see the theming system, where tertiary is the *background* of a
+  /// settings panel and is 0xFF232030 in the dark theme. Dark grey text on a
+  /// dark grey sheet: the warning was drawn every time and could not be read
+  /// once, which is worse than not drawing it, because the button it explains
+  /// is disabled and nothing says why.
+  ///
+  /// The band is what makes it independent of the palette. Whatever the reader
+  /// has chosen, error contrasts with surface and the tint is made from the
+  /// same colour, so the two cannot come out the same as each other.
   Widget _warning(ThemeNotifier theme, String text) => Padding(
         padding: const EdgeInsets.only(top: 8),
-        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Icon(Icons.warning_amber_rounded,
-              size: 15, color: theme.colors.tertiary),
-          const SizedBox(width: 6),
-          Expanded(
-            child: Text(text,
-                style: TextStyle(fontSize: 11, color: theme.colors.tertiary)),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          decoration: BoxDecoration(
+            color: theme.colors.error.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(6),
           ),
-        ]),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Icon(Icons.warning_amber_rounded,
+                size: 15, color: theme.colors.error),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(text,
+                  style:
+                      TextStyle(fontSize: 11, color: theme.colors.onSurface)),
+            ),
+          ]),
+        ),
       );
 
   Widget _slider(ThemeNotifier theme, String label, double value, double min,
