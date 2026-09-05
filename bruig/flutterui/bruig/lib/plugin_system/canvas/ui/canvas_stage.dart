@@ -72,6 +72,11 @@ enum _DragMode {
   /// tableColumn is the rule between two of a table's columns being dragged
   /// to make one wider and the other narrower.
   tableColumn,
+
+  /// imageFrame is a picture being moved about inside its own frame, which
+  /// moves neither the element nor the picture's pixels -- only which part of
+  /// them the frame is showing. See ImageFraming.
+  imageFrame,
 }
 
 class CanvasStage extends StatefulWidget {
@@ -130,6 +135,20 @@ class CanvasStageState extends State<CanvasStage> {
   /// is coming. Selecting something must not wait.
   DateTime _lastClickAt = DateTime.fromMillisecondsSinceEpoch(0);
   static const Duration _doubleClickWindow = Duration(milliseconds: 400);
+
+  /// _framing is the picture being repositioned inside its frame, if one is.
+  ///
+  /// A mode rather than a tool, entered by double-clicking a picture that is
+  /// already selected -- the same second click that opens a text element for
+  /// typing and a table's cell for editing. Dragging inside a picture has to
+  /// go on moving the picture *element*, which is what it does nine times out
+  /// of ten; asking for the other thing is a second click.
+  String? _framing;
+
+  /// _framingStart is the framing the drag started from, so that a drag is
+  /// applied to where the picture was when it was taken hold of rather than
+  /// accumulating rounding as it goes.
+  ImageFraming _framingStart = const ImageFraming();
 
   /// _pressedAt is where the pointer went down, in stage coordinates.
   Offset _pressedAt = Offset.zero;
@@ -291,6 +310,15 @@ class CanvasStageState extends State<CanvasStage> {
   }
 
   void _onChanged() {
+    // Reframing follows the selection. Selecting something else -- from the
+    // layers list, from a keyboard shortcut, by undoing back past the picture
+    // -- has to leave the mode, or the ghost of a picture nobody is looking at
+    // any more stays on the canvas over whatever is selected now.
+    if (_framing != null &&
+        (controller.selection.length != 1 ||
+            controller.selection.first != _framing)) {
+      _framing = null;
+    }
     if (mounted) setState(() {});
   }
 
@@ -678,6 +706,20 @@ class CanvasStageState extends State<CanvasStage> {
       return;
     }
 
+    // While a picture is being reframed, a press inside it drags the picture
+    // rather than the element. A press anywhere else is how the reframing is
+    // finished -- the same way clicking off a text editor closes it.
+    if (_framing != null) {
+      var framed = document.elementById(_framing!);
+      if (framed is ImageElement && _containsPoint(framed, doc)) {
+        _framingStart = framed.framing;
+        _mode = _DragMode.imageFrame;
+        controller.beginInteraction();
+        return;
+      }
+      setState(() => _framing = null);
+    }
+
     // A selected path's points and handles are grabbed before anything
     // else, exactly as a team's players are: they are drawn on top of the
     // curve and are the thing being aimed at.
@@ -827,6 +869,27 @@ class CanvasStageState extends State<CanvasStage> {
       return;
     }
 
+    // A second click on a picture that is already selected reframes it:
+    // dragging then moves the picture inside its box instead of moving the
+    // box. Only for a picture that fills its box -- see ImageFraming -- and
+    // one that does not is switched to, because "fit inside" shows the whole
+    // picture and there would be nothing to move.
+    if (element is ImageElement &&
+        element.hasImage &&
+        !_shiftHeld &&
+        !element.locked &&
+        controller.selection.length == 1 &&
+        controller.selection.first == element.id &&
+        _pressedAt != Offset.zero &&
+        DateTime.now().difference(_lastClickAt) < _doubleClickWindow) {
+      if (element.fit != ImageFit.cover) {
+        controller.replaceElement(element.copyWith(fit: ImageFit.cover));
+      }
+      setState(() => _framing = element.id);
+      _mode = _DragMode.none;
+      return;
+    }
+
     // A second click on a cell of a table that is already selected opens that
     // cell for typing, which is the same gesture the text element has and the
     // same one that renames a file.
@@ -971,7 +1034,8 @@ class CanvasStageState extends State<CanvasStage> {
 
     var inner = picture.boundsAt(controller.frame).deflate(picture.box.padding);
     var size = Size(image.width.toDouble(), image.height.toDouble());
-    var placement = placeImage(size, inner, picture.fit, crop: picture.crop);
+    var placement = placeImage(size, inner, picture.fit,
+        crop: picture.crop, framing: picture.framing);
     var at = placement.toImage(doc, size);
     // Off the picture: the part of a stroke that runs past the edge has
     // nothing to touch, which is not a reason to end the stroke.
@@ -992,6 +1056,96 @@ class CanvasStageState extends State<CanvasStage> {
     });
   }
 
+  /// _framedPicture is the element being reframed and the picture in it,
+  /// when both are there to be had.
+  (ImageElement, ui.Image)? _framedPicture() {
+    var id = _framing;
+    if (id == null) return null;
+    var element = document.elementById(id);
+    if (element is! ImageElement) return null;
+    var image = controller.images.original(element.assetId);
+    return image == null ? null : (element, image);
+  }
+
+  /// _framingPlacement is where the picture is drawn right now, asked of the
+  /// same code that draws it.
+  ImagePlacement? _framingPlacement(ImageElement e, ui.Image image) {
+    var inner = e.boundsAt(controller.frame).deflate(e.box.padding);
+    if (inner.width <= 0 || inner.height <= 0) return null;
+    return placeImage(
+        Size(image.width.toDouble(), image.height.toDouble()), inner, e.fit,
+        crop: e.crop, framing: e.framing);
+  }
+
+  /// _framingView is what the painter draws over a picture being reframed:
+  /// the whole of it, in the place the visible part is already in.
+  StageFraming? _framingView() {
+    if (_framedPicture() case (var e, var image)) {
+      var placement = _framingPlacement(e, image);
+      if (placement == null || placement.src.width <= 0) return null;
+
+      // Doc units per picture pixel, which is the same in both directions --
+      // a cover never distorts -- so one number scales the whole ghost.
+      var perPixel = placement.dst.width / placement.src.width;
+      var whole = placement.whole;
+      var dst = Rect.fromLTWH(
+        placement.dst.left - (placement.src.left - whole.left) * perPixel,
+        placement.dst.top - (placement.src.top - whole.top) * perPixel,
+        whole.width * perPixel,
+        whole.height * perPixel,
+      );
+      return StageFraming(
+          image,
+          whole,
+          dst,
+          e.boundsAt(controller.frame).deflate(e.box.padding),
+          e.rotationAt(controller.frame) * math.pi / 180);
+    }
+    return null;
+  }
+
+  /// _applyFraming moves the picture inside its frame by however far the
+  /// pointer has come since it went down.
+  ///
+  /// The pointer's travel is in canvas units and the framing is in fractions
+  /// of the slack, so it is converted through the placement rather than
+  /// through a guess: a picture with very little spare moves a long way for a
+  /// short drag, and one with a lot of spare barely moves, which is what makes
+  /// the picture appear to follow the pointer at any zoom.
+  ///
+  /// The sign is the way round it looks. Dragging right moves the *picture*
+  /// right, which means the window is choosing pixels further to its left.
+  void _applyFraming(Offset doc) {
+    if (_framedPicture() case (var e, var image)) {
+      var placement = _framingPlacement(e, image);
+      if (placement == null) return;
+      var perPixel = placement.dst.width / placement.src.width;
+      if (perPixel <= 0) return;
+      var slack = placement.slack;
+
+      // Undone by the element's own rotation, so a tilted picture moves the
+      // way the pointer does rather than along its own diagonal.
+      var travel = doc - _dragStart;
+      var a = -e.rotationAt(controller.frame) * math.pi / 180;
+      if (a != 0) {
+        travel = Offset(travel.dx * math.cos(a) - travel.dy * math.sin(a),
+            travel.dx * math.sin(a) + travel.dy * math.cos(a));
+      }
+
+      controller.replaceElement(
+          e.copyWith(
+              framing: e.framing.copyWith(
+            x: slack.dx <= 0
+                ? _framingStart.x
+                : _framingStart.x - travel.dx / perPixel / slack.dx,
+            y: slack.dy <= 0
+                ? _framingStart.y
+                : _framingStart.y - travel.dy / perPixel / slack.dy,
+          )),
+          transient: true);
+    }
+  }
+
   /// _previewPlacement is where the held stroke's preview goes on the canvas:
   /// exactly over the picture it belongs to, through the same placement the
   /// picture itself is drawn with.
@@ -1002,7 +1156,8 @@ class CanvasStageState extends State<CanvasStage> {
     if (picture is! ImageElement) return null;
     var inner = picture.boundsAt(controller.frame).deflate(picture.box.padding);
     var size = Size(_preview!.width.toDouble(), _preview!.height.toDouble());
-    return placeImage(size, inner, picture.fit, crop: picture.crop);
+    return placeImage(size, inner, picture.fit,
+        crop: picture.crop, framing: picture.framing);
   }
 
   /// _refreshPreview rebuilds the picture of what the held stroke would do,
@@ -1332,6 +1487,8 @@ class CanvasStageState extends State<CanvasStage> {
         _applyPart(doc, chartLabel: true);
       case _DragMode.tableColumn:
         _applyPart(doc, chartLabel: false);
+      case _DragMode.imageFrame:
+        _applyFraming(doc);
       default:
         break;
     }
@@ -1495,9 +1652,20 @@ class CanvasStageState extends State<CanvasStage> {
       controller.endInteraction();
       _nodeIndex = -1;
     }
+    // Every mode that opened one closes it here.
+    //
+    // The list used to be the three that move the whole element, and the part
+    // drags below it opened an interaction that nothing closed. Because
+    // beginInteraction only takes the document if there is not one held
+    // already, that did not lose the undo step -- it merged it into whatever
+    // gesture came next, so undoing after nudging a chart's title also undid
+    // the move that followed it.
     if (_mode == _DragMode.move ||
         _mode == _DragMode.resize ||
-        _mode == _DragMode.rotate) {
+        _mode == _DragMode.rotate ||
+        _mode == _DragMode.chartLabel ||
+        _mode == _DragMode.tableColumn ||
+        _mode == _DragMode.imageFrame) {
       controller.endInteraction();
     }
     _mode = _DragMode.none;
@@ -1515,6 +1683,23 @@ class CanvasStageState extends State<CanvasStage> {
   }
 
   void _onScroll(PointerScrollEvent event) {
+    // While reframing, the wheel is the picture's zoom rather than the view's.
+    // It is the other half of the gesture -- drag to choose what is in shot,
+    // scroll to choose how much of it -- and the view's zoom is still there on
+    // the toolbar and under the pan tool.
+    if (_framing != null) {
+      var framed = document.elementById(_framing!);
+      if (framed is ImageElement) {
+        controller.replaceElement(
+            framed.copyWith(
+                framing: framed.framing.copyWith(
+                    zoom: framed.framing.zoom *
+                        (event.scrollDelta.dy > 0 ? 0.94 : 1.06))),
+            transient: true);
+        return;
+      }
+    }
+
     // Zoom about the pointer rather than about the middle, so scrolling in on
     // a corner of the pitch keeps that corner where it is instead of sending
     // it off screen.
@@ -1593,7 +1778,13 @@ class CanvasStageState extends State<CanvasStage> {
       case LogicalKeyboardKey.backspace:
         controller.deleteSelected();
       case LogicalKeyboardKey.escape:
-        controller.clearSelection();
+        // One thing at a time: the first Escape leaves the picture's frame,
+        // and only then does the next one drop the selection.
+        if (_framing != null) {
+          setState(() => _framing = null);
+        } else {
+          controller.clearSelection();
+        }
       default:
         return KeyEventResult.ignored;
     }
@@ -1658,6 +1849,7 @@ class CanvasStageState extends State<CanvasStage> {
                         liveStrokeRadius: _liveRadius,
                         liveStrokeKeeps: controller.retouch.keeps,
                         selectionBounds: _selectionBounds,
+                        framing: _framingView(),
                         showHandles: _selectionHasOwnGeometry,
                         selectionRotation: _rotationOfSelection,
                         handleFor: _handlePosition,
@@ -1827,6 +2019,13 @@ class CanvasStageState extends State<CanvasStage> {
     if (controller.tool == CanvasTool.pan) return SystemMouseCursors.grab;
     if (_mode == _DragMode.rotate) return SystemMouseCursors.grabbing;
     if (_mode == _DragMode.move) return SystemMouseCursors.move;
+    // A picture being reframed is grabbable everywhere inside it, and saying
+    // so is most of what tells the reader they are in a mode at all.
+    if (_framing != null) {
+      return _mode == _DragMode.imageFrame
+          ? SystemMouseCursors.grabbing
+          : SystemMouseCursors.grab;
+    }
     return SystemMouseCursors.basic;
   }
 }

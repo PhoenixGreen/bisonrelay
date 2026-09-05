@@ -520,6 +520,60 @@ class ImageCrop {
       );
 }
 
+/// ImageFraming is where the picture sits inside its frame, and how much of
+/// it is shown.
+///
+/// It only means anything when the picture fills the frame -- see
+/// [ImageFit.cover]. A picture that fills a frame it is not the same shape as
+/// has slack in one direction, and something has to decide which part of it is
+/// given away; covering on its own always takes it off both ends equally, so a
+/// portrait in a wide frame is cropped to the subject's chest whatever the
+/// picture is of. [x] and [y] spend that slack, 0 for the left or top edge and
+/// 1 for the right or bottom.
+///
+/// [zoom] then makes slack where there was none. At 1 the picture is as small
+/// as it can be and still fill the frame, which is what covering has always
+/// done; above that it is scaled up and correspondingly less of it is shown,
+/// so a face can be brought up to fill a frame the photograph was never
+/// composed for.
+///
+/// This is deliberately not [ImageCrop]. A crop is a decision about the
+/// picture -- these are the same pixels however the element is resized -- and
+/// framing is a decision about the frame, which has to be re-spent every time
+/// the frame changes shape. Kept as fractions of the slack rather than as a
+/// rectangle, a reframed picture survives its element being dragged from
+/// square to wide without the subject sliding out of shot.
+class ImageFraming {
+  /// x and y are how the slack is spent, 0.5 being the middle -- which is what
+  /// covering did before there was anything to say otherwise, and is why an
+  /// untouched picture looks exactly as it always has.
+  final double x;
+  final double y;
+
+  /// zoom is 1 for "just filling the frame". Capped at 8, past which a
+  /// photograph is a handful of pixels and the reader has lost the picture
+  /// rather than framed it.
+  final double zoom;
+
+  const ImageFraming({this.x = 0.5, this.y = 0.5, this.zoom = 1});
+
+  bool get isDefault => x == 0.5 && y == 0.5 && zoom == 1;
+
+  ImageFraming copyWith({double? x, double? y, double? zoom}) => ImageFraming(
+        x: (x ?? this.x).clamp(0.0, 1.0),
+        y: (y ?? this.y).clamp(0.0, 1.0),
+        zoom: (zoom ?? this.zoom).clamp(1.0, 8.0),
+      );
+
+  Map<String, dynamic> toJson() => {"x": x, "y": y, "zoom": zoom};
+
+  factory ImageFraming.fromJson(Map<String, dynamic> json) => ImageFraming(
+        x: jsonDouble(json["x"], 0.5).clamp(0.0, 1.0),
+        y: jsonDouble(json["y"], 0.5).clamp(0.0, 1.0),
+        zoom: jsonDouble(json["zoom"], 1).clamp(1.0, 8.0),
+      );
+}
+
 /// ImageElement is a picture on the canvas.
 ///
 /// It holds an [assetId], not the bytes. The bytes live once in the canvas
@@ -543,6 +597,10 @@ class ImageElement extends CanvasElement {
 
   /// crop is which part of the picture is shown. See [ImageCrop].
   final ImageCrop crop;
+
+  /// framing is where that part sits inside the frame, and how far in. See
+  /// [ImageFraming].
+  final ImageFraming framing;
 
   /// frame is a shape the picture is cut to -- a circle, a star, a speech
   /// bubble. Null leaves it rectangular.
@@ -581,6 +639,7 @@ class ImageElement extends CanvasElement {
     this.saturation = 1,
     this.brightness = 1,
     this.crop = const ImageCrop(),
+    this.framing = const ImageFraming(),
     this.frame,
     this.filter = ImageFilterPreset.none,
     this.outline = const ImageOutline(),
@@ -613,6 +672,7 @@ class ImageElement extends CanvasElement {
       saturation: saturation,
       brightness: brightness,
       crop: crop,
+      framing: framing,
       frame: frame,
       filter: filter,
       outline: outline,
@@ -629,6 +689,7 @@ class ImageElement extends CanvasElement {
     double? saturation,
     double? brightness,
     ImageCrop? crop,
+    ImageFraming? framing,
     ShapeKind? frame,
     bool clearFrame = false,
     ImageFilterPreset? filter,
@@ -646,6 +707,7 @@ class ImageElement extends CanvasElement {
           saturation: saturation ?? this.saturation,
           brightness: brightness ?? this.brightness,
           crop: crop ?? this.crop,
+          framing: framing ?? this.framing,
           frame: clearFrame ? null : (frame ?? this.frame),
           filter: filter ?? this.filter,
           outline: outline ?? this.outline,
@@ -663,6 +725,7 @@ class ImageElement extends CanvasElement {
         if (saturation != 1) "sat": saturation,
         if (brightness != 1) "bri": brightness,
         if (!crop.isWhole) "crop": crop.toJson(),
+        if (!framing.isDefault) "framing": framing.toJson(),
         if (frame != null) "frame": frame!.name,
         if (filter != ImageFilterPreset.none) "filter": filter.name,
         if (outline.on) "outline": outline.toJson(),
@@ -683,6 +746,8 @@ class ImageElement extends CanvasElement {
           saturation: jsonDouble(json["sat"], 1),
           brightness: jsonDouble(json["bri"], 1),
           crop: jsonSpec(json["crop"], ImageCrop.fromJson, const ImageCrop()),
+          framing: jsonSpec(
+              json["framing"], ImageFraming.fromJson, const ImageFraming()),
           frame: json["frame"] is String
               ? ShapeKind.fromName(json["frame"] as String?)
               : null,

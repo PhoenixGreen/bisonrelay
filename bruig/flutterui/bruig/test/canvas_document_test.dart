@@ -3,6 +3,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
@@ -38,9 +39,32 @@ void main() {
     }
   });
 
+  test("a picture keeps how it is framed inside its box", () {
+    // Framing is written only when it is not the default, so this also checks
+    // that the default reads back as the default rather than as nothing.
+    var framed = ImageElement(
+      const ElementBase(id: "i", width: 100, height: 200),
+      assetId: "abcdefghijklmnop",
+      framing: const ImageFraming(x: 0.2, y: 0.8, zoom: 2.5),
+    );
+    var plain = ImageElement(
+      const ElementBase(id: "j", width: 100, height: 200),
+      assetId: "abcdefghijklmnop",
+    );
+
+    var back = CanvasDocument.decode(
+        CanvasDocument(elements: [framed, plain]).encode())!;
+    var one = back.elements.first as ImageElement;
+    expect(one.framing.x, 0.2);
+    expect(one.framing.y, 0.8);
+    expect(one.framing.zoom, 2.5);
+    expect((back.elements[1] as ImageElement).framing.isDefault, isTrue);
+  });
+
   test("a text element keeps its type and its box", () {
     var element = TextElement(
-      ElementBase(id: "t1", name: "Headline", x: 4, y: 8, width: 200, height: 60),
+      ElementBase(
+          id: "t1", name: "Headline", x: 4, y: 8, width: 200, height: 60),
       text: "Hello",
       textSpec: const TextSpec(
         fontFamily: "Georgia",
@@ -59,8 +83,10 @@ void main() {
       autoSize: true,
     );
 
-    var back = CanvasDocument.decode(
-        CanvasDocument(elements: [element]).encode())!.elements.first;
+    var back =
+        CanvasDocument.decode(CanvasDocument(elements: [element]).encode())!
+            .elements
+            .first;
     expect(back, isA<TextElement>());
     var text = back as TextElement;
 
@@ -84,8 +110,10 @@ void main() {
     // colour that comes back very slightly different. This is what says so.
     const colour = Color(0xC3456789);
     var element = ShapeElement(const ElementBase(id: "s1"), fill: colour);
-    var back = CanvasDocument.decode(
-        CanvasDocument(elements: [element]).encode())!.elements.first;
+    var back =
+        CanvasDocument.decode(CanvasDocument(elements: [element]).encode())!
+            .elements
+            .first;
     expect((back as ShapeElement).fill.toARGB32(), colour.toARGB32());
   });
 
@@ -102,9 +130,10 @@ void main() {
       showNames: false,
     ).withFormation(TeamFormation.f433, mirror: true);
 
-    var back = CanvasDocument.decode(
-        CanvasDocument(elements: [element]).encode())!.elements.first
-        as TeamElement;
+    var back =
+        CanvasDocument.decode(CanvasDocument(elements: [element]).encode())!
+            .elements
+            .first as TeamElement;
 
     expect(back.formation, TeamFormation.f433);
     expect(back.mirrored, isTrue);
@@ -183,7 +212,6 @@ void main() {
     expect(team.movePlayer(99, 0).players.length, 11);
   });
 
-
   test("chart data and its series colours survive", () {
     var element = ChartElement(
       const ElementBase(id: "c1"),
@@ -200,9 +228,10 @@ void main() {
         ChartSeries(name: "Two", color: Color(0xFF040506), values: [3, 4]),
       ]),
     );
-    var back = CanvasDocument.decode(
-        CanvasDocument(elements: [element]).encode())!.elements.first
-        as ChartElement;
+    var back =
+        CanvasDocument.decode(CanvasDocument(elements: [element]).encode())!
+            .elements
+            .first as ChartElement;
 
     expect(back.type, ChartType.stackedBar);
     expect(back.data.categories, ["a", "b"]);
@@ -311,8 +340,8 @@ void main() {
     // is only true if the away side is mirrored.
     var home = teams.firstWhere((t) => !t.mirrored);
     var away = teams.firstWhere((t) => t.mirrored);
-    expect(home.centreOf(home.players.first).dx,
-        lessThan(document.size.width / 2),
+    expect(
+        home.centreOf(home.players.first).dx, lessThan(document.size.width / 2),
         reason: "the home keeper is in the left-hand goal");
     expect(away.centreOf(away.players.first).dx,
         greaterThan(document.size.width / 2),
@@ -321,7 +350,6 @@ void main() {
     // The keeper is the first player, and is the one in a different shirt.
     expect(home.keeperColor, isNot(home.playerColor));
   });
-
 
   test("two canvases from one preset do not share elements", () {
     var a = footballCanvas();

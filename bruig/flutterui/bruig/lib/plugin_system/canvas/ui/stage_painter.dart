@@ -18,6 +18,31 @@ import 'package:flutter/material.dart';
 // and draws them. It never asks a question, which is why it can be read on
 // its own; deciding is the stage's half.
 
+/// StageFraming is a picture being repositioned inside its frame, worked out
+/// by the stage and drawn by [StagePainter].
+///
+/// [src] is the whole of the picture the frame is choosing from and [dst] is
+/// where all of it would land, which is bigger than [frame] in at least one
+/// direction -- that difference is precisely what is being spent. The painter
+/// draws the whole of it faintly, so that what is being dragged out of shot
+/// can be seen while it is being dragged.
+class StageFraming {
+  final ui.Image image;
+  final Rect src;
+  final Rect dst;
+
+  /// frame is the element's own rectangle: the part of [dst] that is actually
+  /// kept, and the only part drawn at full strength -- by the renderer, which
+  /// has already drawn it under all of this.
+  final Rect frame;
+
+  /// rotation is the element's, in radians. The overlay turns with it, or a
+  /// tilted photograph would be reframed against a level ghost of itself.
+  final double rotation;
+
+  const StageFraming(this.image, this.src, this.dst, this.frame, this.rotation);
+}
+
 /// StagePainter draws the document, the page edge, the handles and the
 /// marquee.
 class StagePainter extends CustomPainter {
@@ -100,6 +125,9 @@ class StagePainter extends CustomPainter {
   /// because they would be controls that appear to do nothing.
   final bool showHandles;
 
+  /// framing is the picture being repositioned inside its frame, if one is.
+  final StageFraming? framing;
+
   /// showHelpers draws the selection box, the handles and the rotation ring.
   ///
   /// Passed in rather than being faked by blanking the selection, which is how
@@ -113,6 +141,7 @@ class StagePainter extends CustomPainter {
     required this.view,
     required this.showHandles,
     required this.showHelpers,
+    required this.framing,
     required this.selectedPath,
     required this.chartLabels,
     required this.tableColumns,
@@ -167,6 +196,7 @@ class StagePainter extends CustomPainter {
         editing: true);
     canvas.restore();
 
+    _paintFraming(canvas);
     _paintSelection(canvas);
 
     if (marquee != null) {
@@ -437,8 +467,52 @@ class StagePainter extends CustomPainter {
     }
   }
 
+  /// _paintFraming shows the rest of the picture while it is being moved
+  /// about inside its frame.
+  ///
+  /// Everything outside the frame is drawn faintly and everything inside it is
+  /// left alone -- the renderer has already drawn that part properly, and
+  /// painting it again half-transparent on top would only muddy it. Without
+  /// the ghost, dragging a photograph inside its frame is done blind: what
+  /// comes into shot cannot be seen until it has arrived.
+  void _paintFraming(Canvas canvas) {
+    var it = framing;
+    if (it == null || it.dst.isEmpty) return;
+
+    canvas.save();
+    canvas.translate(origin.dx, origin.dy);
+    canvas.scale(scale);
+    if (it.rotation != 0) {
+      canvas.translate(it.frame.center.dx, it.frame.center.dy);
+      canvas.rotate(it.rotation);
+      canvas.translate(-it.frame.center.dx, -it.frame.center.dy);
+    }
+
+    // The whole picture, faint, with the frame punched out of it -- so the
+    // part already on the canvas shows through at full strength and the two
+    // are seen as one picture rather than as two overlaid.
+    canvas.save();
+    canvas.clipRect(it.frame, clipOp: ui.ClipOp.difference);
+    canvas.drawImageRect(it.image, it.src, it.dst,
+        Paint()
+          ..filterQuality = FilterQuality.medium
+          ..color = const Color(0x55FFFFFF));
+    canvas.restore();
+
+    // The frame itself, so the edge the picture is being placed against is
+    // unmistakable while everything around it is half there.
+    canvas.drawRect(
+        it.frame,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.5 / scale
+          ..color = const Color(0xFF3D7EFF));
+    canvas.restore();
+  }
+
   @override
   bool shouldRepaint(StagePainter old) =>
+      !identical(old.framing, framing) ||
       old.document != document ||
       old.frame != frame ||
       old.scale != scale ||

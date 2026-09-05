@@ -241,8 +241,8 @@ void paintElement(
 
 // --------------------------------------------------------------------------
 
-void _paintText(ui.Canvas canvas, Rect bounds, TextElement e,
-    CanvasDocument? doc,
+void _paintText(
+    ui.Canvas canvas, Rect bounds, TextElement e, CanvasDocument? doc,
     {Keyframe pose = Keyframe.rest, int frame = 0}) {
   // Text on a curve has no box of its own to fill or frame: it belongs to the
   // line it is riding, and drawing its rectangle behind the line would be a
@@ -280,7 +280,8 @@ void _paintText(ui.Canvas canvas, Rect bounds, TextElement e,
 
 /// lineWithPose is [e] with whatever its keyframes say about its bow on
 /// [frame], so the hit test catches the curve where it is drawn.
-LineElement lineWithPose(LineElement e, int frame) => _bowed(e, e.poseAt(frame));
+LineElement lineWithPose(LineElement e, int frame) =>
+    _bowed(e, e.poseAt(frame));
 
 /// _bowed applies a keyed curvature to a line. See KeyframeChannel.bow.
 LineElement _bowed(LineElement e, Keyframe pose) {
@@ -317,9 +318,7 @@ Rect visualBoundsOf(CanvasElement element, CanvasDocument? doc, int frame) {
   }
 
   if (element is LineElement || element is PathElement) {
-    var host = element is LineElement
-        ? lineWithPose(element, frame)
-        : element;
+    var host = element is LineElement ? lineWithPose(element, frame) : element;
     var curve = curveOfElement(host);
     var box = _boundsOfPoints(curve);
     if (box == null) return element.boundsAt(frame);
@@ -333,8 +332,8 @@ Rect visualBoundsOf(CanvasElement element, CanvasDocument? doc, int frame) {
     var ends = element is LineElement
         ? math.max(element.startEnd.reach, element.endEnd.reach) *
             element.endSize
-        : math.max((element as PathElement).startEnd.reach,
-                element.endEnd.reach) *
+        : math.max(
+                (element as PathElement).startEnd.reach, element.endEnd.reach) *
             element.endSize;
     return box.inflate(math.max(width, 1) * math.max(ends, 1.5));
   }
@@ -510,7 +509,9 @@ void _paintShape(ui.Canvas canvas, Rect bounds, ShapeElement e) {
       _ => 0.06,
     };
     var box = rect.deflate(rect.shortestSide * inset);
-    if (e.shape == ShapeKind.triangle) box = box.translate(0, rect.height * 0.1);
+    if (e.shape == ShapeKind.triangle) {
+      box = box.translate(0, rect.height * 0.1);
+    }
     paintTextInBox(canvas, e.textSpec.textCase.apply(e.text), e.textSpec, box);
   }
 }
@@ -605,8 +606,8 @@ double _trimFor(LineEnd end, double strokeWidth, double endSize) =>
 ///
 /// [angle] is where the line is going at that end, taken from the path metric,
 /// so every one of these sits square on the curve however hard it is bent.
-void _paintLineEnd(ui.Canvas canvas, LineEnd end, Offset at, double angle,
-    LineElement e) {
+void _paintLineEnd(
+    ui.Canvas canvas, LineEnd end, Offset at, double angle, LineElement e) {
   if (end == LineEnd.none) return;
   var w = e.strokeWidth * e.endSize;
   var fill = Paint()
@@ -689,8 +690,8 @@ void _paintLineEnd(ui.Canvas canvas, LineEnd end, Offset at, double angle,
   }
 }
 
-void _paintImage(ui.Canvas canvas, Rect bounds, ImageElement e,
-    CanvasImageSource? images) {
+void _paintImage(
+    ui.Canvas canvas, Rect bounds, ImageElement e, CanvasImageSource? images) {
   paintBox(canvas, bounds, e.box);
   var inner = bounds.deflate(e.box.padding);
   if (inner.width <= 0 || inner.height <= 0) return;
@@ -705,10 +706,11 @@ void _paintImage(ui.Canvas canvas, Rect bounds, ImageElement e,
   // A frame cuts the picture to a shape -- the same shapes an element can be
   // drawn as, so anything added there is a frame here for nothing.
   if (e.frame != null) {
-    canvas.clipPath(shapePath(e.frame!, inner, bubble: const SpeechBubbleSpec()));
+    canvas
+        .clipPath(shapePath(e.frame!, inner, bubble: const SpeechBubbleSpec()));
   } else if (e.box.borderRadius > 0) {
-    canvas.clipRRect(RRect.fromRectAndRadius(
-        inner, Radius.circular(math.max(0, e.box.borderRadius - e.box.padding))));
+    canvas.clipRRect(RRect.fromRectAndRadius(inner,
+        Radius.circular(math.max(0, e.box.borderRadius - e.box.padding))));
   } else {
     // Room for an outline to be outside something. A picture that fills its
     // box -- which is what "Fill the box" does, and it is the default -- has
@@ -742,6 +744,7 @@ void _paintImage(ui.Canvas canvas, Rect bounds, ImageElement e,
       saturation: e.saturation,
       brightness: e.brightness,
       crop: e.crop,
+      framing: e.framing,
       filter: e.filter);
 
   if (overlaid) {
@@ -757,7 +760,7 @@ void _paintImage(ui.Canvas canvas, Rect bounds, ImageElement e,
     // overlay filled the hole it had just been cut out of. Drawing the picture
     // again as a mask keeps the overlay only where there is picture to tint.
     _drawImage(canvas, image, inner, e.fit,
-        crop: e.crop, maskOnly: true);
+        crop: e.crop, framing: e.framing, maskOnly: true);
     canvas.restore();
   }
 
@@ -808,20 +811,20 @@ double _outlineRoom(ImageElement e) {
 /// is three lines' worth of edge for something asked to draw one. So the fade
 /// is a pass of its own and a solid band is laid over the inside of it, which
 /// leaves exactly one edge to look at: the outer one.
-void _paintOutline(ui.Canvas canvas, ui.Image image, Rect inner,
-    ImageElement e, {required bool outward}) {
+void _paintOutline(ui.Canvas canvas, ui.Image image, Rect inner, ImageElement e,
+    {required bool outward}) {
   var outline = e.outline;
   // Centred splits the band between the two sides, which is what centred
   // means; the other styles put all of it on one.
-  var width = outline.style == OutlineStyle.centred
-      ? outline.width / 2
-      : outline.width;
+  var width =
+      outline.style == OutlineStyle.centred ? outline.width / 2 : outline.width;
   if (width <= 0) return;
 
   void silhouette(Color colour, ui.ImageFilter? filter) {
     canvas.saveLayer(
         inner, filter == null ? Paint() : (Paint()..imageFilter = filter));
-    _drawImage(canvas, image, inner, e.fit, crop: e.crop, silhouette: colour);
+    _drawImage(canvas, image, inner, e.fit,
+        crop: e.crop, framing: e.framing, silhouette: colour);
     canvas.restore();
   }
 
@@ -908,7 +911,7 @@ void _paintOutline(ui.Canvas canvas, ui.Image image, Rect inner,
                 inner: punch)
             : punch);
   _drawImage(canvas, image, inner, e.fit,
-      crop: e.crop, silhouette: const Color(0xFF000000));
+      crop: e.crop, framing: e.framing, silhouette: const Color(0xFF000000));
   canvas.restore();
   canvas.restore();
 }
@@ -943,6 +946,7 @@ void _drawImage(ui.Canvas canvas, ui.Image image, Rect rect, ImageFit fit,
     double saturation = 1,
     double brightness = 1,
     ImageCrop crop = const ImageCrop(),
+    ImageFraming framing = const ImageFraming(),
     ImageFilterPreset filter = ImageFilterPreset.none,
 
     /// maskOnly draws the picture's *shape* rather than the picture: no
@@ -958,7 +962,7 @@ void _drawImage(ui.Canvas canvas, ui.Image image, Rect rect, ImageFit fit,
   // needs the same mapping backwards -- see ImagePlacement.toImage.
   var placement = placeImage(
       Size(image.width.toDouble(), image.height.toDouble()), rect, fit,
-      crop: crop);
+      crop: crop, framing: framing);
   var src = placement.src;
   var dst = placement.dst;
 
@@ -990,7 +994,11 @@ void _drawImage(ui.Canvas canvas, ui.Image image, Rect rect, ImageFit fit,
   canvas.drawImageRect(image, src, dst, paint);
 
   if (tint.a > 0) {
-    canvas.drawRect(dst, Paint()..color = tint..blendMode = BlendMode.modulate);
+    canvas.drawRect(
+        dst,
+        Paint()
+          ..color = tint
+          ..blendMode = BlendMode.modulate);
   }
 }
 
@@ -1099,10 +1107,26 @@ List<double>? _colorMatrix(double sat, double bri) {
   var s = sat.clamp(0.0, 4.0);
   var b = bri.clamp(0.0, 4.0);
   return [
-    (lr + (1 - lr) * s) * b, (lg - lg * s) * b, (lb - lb * s) * b, 0, 0,
-    (lr - lr * s) * b, (lg + (1 - lg) * s) * b, (lb - lb * s) * b, 0, 0,
-    (lr - lr * s) * b, (lg - lg * s) * b, (lb + (1 - lb) * s) * b, 0, 0,
-    0, 0, 0, 1, 0,
+    (lr + (1 - lr) * s) * b,
+    (lg - lg * s) * b,
+    (lb - lb * s) * b,
+    0,
+    0,
+    (lr - lr * s) * b,
+    (lg + (1 - lg) * s) * b,
+    (lb - lb * s) * b,
+    0,
+    0,
+    (lr - lr * s) * b,
+    (lg - lg * s) * b,
+    (lb + (1 - lb) * s) * b,
+    0,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
   ];
 }
 
@@ -1257,8 +1281,8 @@ void _paintPath(ui.Canvas canvas, Rect bounds, PathElement e, bool editing) {
   if (e.guide && !editing) return;
 
   var path = ui.Path();
-  Offset at(PathNode n) =>
-      Offset(bounds.left + n.x * bounds.width, bounds.top + n.y * bounds.height);
+  Offset at(PathNode n) => Offset(
+      bounds.left + n.x * bounds.width, bounds.top + n.y * bounds.height);
   Offset handle(PathNode n, double dx, double dy) => Offset(
       bounds.left + (n.x + dx) * bounds.width,
       bounds.top + (n.y + dy) * bounds.height);

@@ -472,6 +472,40 @@ List<Widget> imageSettings(
               : e.copyWith(frame: ShapeKind.fromName(v))),
         ),
       ]),
+    // Framing is the same three numbers the double-click gesture writes -- see
+    // CanvasStageState._applyFraming. Here as well as there because a number
+    // is the only way to put two pictures in exactly the same place as each
+    // other, and because a control that exists is how anybody finds out the
+    // gesture is there at all.
+    if (e.hasImage && e.fit == ImageFit.cover)
+      CanvasControlGroup(label: "Framing", children: [
+        CanvasHint("Double-click the picture to drag it about inside its box, "
+            "and scroll to zoom."),
+        for (var (label, value, apply)
+            in <(String, double, ImageFraming Function(double))>[
+          ("Across", e.framing.x, (v) => e.framing.copyWith(x: v)),
+          ("Down", e.framing.y, (v) => e.framing.copyWith(y: v)),
+          ("Zoom", e.framing.zoom, (v) => e.framing.copyWith(zoom: v)),
+        ])
+          CanvasNumberField(
+            label: label,
+            min: label == "Zoom" ? 1 : 0,
+            max: label == "Zoom" ? 8 : 1,
+            decimals: 2,
+            width: 62,
+            value: value,
+            onChanged: (v) {
+              begin();
+              write(e.copyWith(framing: apply(v)));
+            },
+            onCommit: commit,
+          ),
+        CanvasIconButton(
+          icon: Icons.filter_center_focus,
+          tooltip: "Put the picture back in the middle",
+          onPressed: () => now(e.copyWith(framing: const ImageFraming())),
+        ),
+      ]),
     if (e.hasImage)
       CanvasControlGroup(label: "Crop", children: [
         for (var (label, value, apply)

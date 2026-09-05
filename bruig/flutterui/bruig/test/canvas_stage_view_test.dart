@@ -250,8 +250,7 @@ void main() {
   });
 
   group("fit to width", () {
-    testWidgets("fills the width and lets the canvas run long",
-        (tester) async {
+    testWidgets("fills the width and lets the canvas run long", (tester) async {
       // A 9:16 story fitted whole is a narrow strip down the middle of a wide
       // window with most of the screen empty either side of it.
       var controller = CanvasController(const CanvasDocument(
@@ -468,9 +467,7 @@ void main() {
       await tester.dragFrom(at, const Offset(40, -30));
       await tester.pumpAndSettle();
 
-      var after = controller.document.elements
-          .whereType<TeamElement>()
-          .single;
+      var after = controller.document.elements.whereType<TeamElement>().single;
       expect(after.players[5].dx, isNot(before.dx));
       expect(after.x, team.x, reason: "the team's own box has not moved");
       expect(after.y, team.y);
@@ -485,8 +482,7 @@ void main() {
       // through them without knocking one out of position.
       var (controller, team) = build();
       addTearDown(controller.dispose);
-      var locked = team.withPlayer(
-          5, team.players[5].copyWith(locked: true));
+      var locked = team.withPlayer(5, team.players[5].copyWith(locked: true));
       controller.replaceElement(locked);
       controller.selectOnly(team.id);
       var stage = await pump(tester, controller);
@@ -498,8 +494,7 @@ void main() {
       await tester.dragFrom(at, const Offset(40, -30));
       await tester.pumpAndSettle();
 
-      var after =
-          controller.document.elements.whereType<TeamElement>().single;
+      var after = controller.document.elements.whereType<TeamElement>().single;
       expect(after.players[5].dx, closeTo(before.dx, 0.0001));
       expect(after.players[5].dy, closeTo(before.dy, 0.0001));
     });
@@ -534,8 +529,7 @@ void main() {
       await tester.dragFrom(at, const Offset(50, -20));
       await tester.pumpAndSettle();
 
-      var after =
-          controller.document.elements.whereType<TeamElement>().single;
+      var after = controller.document.elements.whereType<TeamElement>().single;
       expect(after.players[6].dx, closeTo(before.dx, 0.0001),
           reason: "where he lines up has not changed");
       expect(after.players[6].track, isNotNull,
@@ -560,8 +554,7 @@ void main() {
       await tester.dragFrom(at, const Offset(30, 20));
       await tester.pumpAndSettle();
 
-      var after =
-          controller.document.elements.whereType<TeamElement>().single;
+      var after = controller.document.elements.whereType<TeamElement>().single;
       expect(after.x, isNot(team.x));
       expect(after.players[5].dx, closeTo(team.players[5].dx, 0.0001),
           reason: "everybody keeps their place within the box");
@@ -606,16 +599,15 @@ void main() {
       controller.selectOnly(chart.id);
       var stage = await pump(tester, controller);
 
-      var box = chart.titleBox.rectIn(
-          Rect.fromLTWH(chart.x, chart.y, chart.width, chart.height));
+      var box = chart.titleBox
+          .rectIn(Rect.fromLTWH(chart.x, chart.y, chart.width, chart.height));
       var scale = stage.pageRect.width / controller.document.size.width;
       var at = stage.pageRect.topLeft + box.center * scale;
 
       await tester.dragFrom(at, const Offset(60, 40));
       await tester.pumpAndSettle();
 
-      var after =
-          controller.document.elements.whereType<ChartElement>().single;
+      var after = controller.document.elements.whereType<ChartElement>().single;
       expect(after.titleBox.x, greaterThan(chart.titleBox.x));
       expect(after.titleBox.y, greaterThan(chart.titleBox.y));
       expect(after.x, chart.x, reason: "the chart itself has not moved");
@@ -630,16 +622,15 @@ void main() {
       controller.selectOnly(chart.id);
       var stage = await pump(tester, controller);
 
-      var box = chart.titleBox.rectIn(
-          Rect.fromLTWH(chart.x, chart.y, chart.width, chart.height));
+      var box = chart.titleBox
+          .rectIn(Rect.fromLTWH(chart.x, chart.y, chart.width, chart.height));
       var scale = stage.pageRect.width / controller.document.size.width;
       var at = stage.pageRect.topLeft + box.bottomRight * scale;
 
       await tester.dragFrom(at, const Offset(50, 30));
       await tester.pumpAndSettle();
 
-      var after =
-          controller.document.elements.whereType<ChartElement>().single;
+      var after = controller.document.elements.whereType<ChartElement>().single;
       expect(after.titleBox.width, greaterThan(chart.titleBox.width));
       expect(after.titleBox.height, greaterThan(chart.titleBox.height));
       expect(after.titleBox.x, closeTo(chart.titleBox.x, 0.001),
@@ -657,8 +648,8 @@ void main() {
       controller.selectOnly(chart.id);
       var stage = await pump(tester, controller);
 
-      var box = chart.titleBox.rectIn(
-          Rect.fromLTWH(chart.x, chart.y, chart.width, chart.height));
+      var box = chart.titleBox
+          .rectIn(Rect.fromLTWH(chart.x, chart.y, chart.width, chart.height));
       var scale = stage.pageRect.width / controller.document.size.width;
       var at = stage.pageRect.topLeft + box.center * scale;
 
@@ -666,8 +657,7 @@ void main() {
       await tester.dragFrom(at, const Offset(-120, -90));
       await tester.pumpAndSettle();
 
-      var after =
-          controller.document.elements.whereType<ChartElement>().single;
+      var after = controller.document.elements.whereType<ChartElement>().single;
       expect(after.width, greaterThan(chart.width));
       expect(after.height, greaterThan(chart.height));
       expect(after.x, lessThan(chart.x), reason: "grown on the side it left");
@@ -690,8 +680,8 @@ void main() {
       controller.selectOnly(chart.id);
       var stage = await pump(tester, controller);
 
-      var box = chart.titleBox.rectIn(
-          Rect.fromLTWH(chart.x, chart.y, chart.width, chart.height));
+      var box = chart.titleBox
+          .rectIn(Rect.fromLTWH(chart.x, chart.y, chart.width, chart.height));
       var scale = stage.pageRect.width / controller.document.size.width;
       var before = chart.body
           .rectIn(Rect.fromLTWH(chart.x, chart.y, chart.width, chart.height));
@@ -700,8 +690,7 @@ void main() {
           stage.pageRect.topLeft + box.center * scale, const Offset(-120, -90));
       await tester.pumpAndSettle();
 
-      var after =
-          controller.document.elements.whereType<ChartElement>().single;
+      var after = controller.document.elements.whereType<ChartElement>().single;
       var body = after.body
           .rectIn(Rect.fromLTWH(after.x, after.y, after.width, after.height));
 
@@ -724,8 +713,7 @@ void main() {
       var scale = stage.pageRect.width / controller.document.size.width;
       Rect labelOnScreen() {
         var e = controller.document.elements.whereType<ChartElement>().single;
-        return e.titleBox.rectIn(
-            Rect.fromLTWH(e.x, e.y, e.width, e.height));
+        return e.titleBox.rectIn(Rect.fromLTWH(e.x, e.y, e.width, e.height));
       }
 
       // A short drag, so the label stays over the canvas. Dragged clean off
@@ -735,8 +723,7 @@ void main() {
           stage.pageRect.topLeft + labelOnScreen().center * scale,
           const Offset(-90, -60));
       await tester.pumpAndSettle();
-      var grown =
-          controller.document.elements.whereType<ChartElement>().single;
+      var grown = controller.document.elements.whereType<ChartElement>().single;
       expect(grown.width, greaterThan(chart.width));
 
       await tester.dragFrom(
@@ -772,8 +759,7 @@ void main() {
       await tester.dragFrom(at, const Offset(40, 25));
       await tester.pumpAndSettle();
 
-      var after =
-          controller.document.elements.whereType<ChartElement>().single;
+      var after = controller.document.elements.whereType<ChartElement>().single;
       expect(after.floatingLabels, isFalse);
       expect(after.x, isNot(chart.x),
           reason: "the chart moved instead, as any other element would");
@@ -813,7 +799,8 @@ void main() {
       var stage = await pump(tester, controller);
 
       var scale = stage.pageRect.width / controller.document.size.width;
-      var divider = Offset(table.x + table.width / 2, table.y + table.height / 2);
+      var divider =
+          Offset(table.x + table.width / 2, table.y + table.height / 2);
 
       await tester.dragFrom(
           stage.pageRect.topLeft + divider * scale, const Offset(60, 0));
@@ -822,8 +809,9 @@ void main() {
       var after = controller.document.elements.whereType<TableElement>().single;
       expect(after.columnWidths.first, greaterThan(0.5));
       expect(after.columnWidths.last, lessThan(0.5));
-      expect(after.columnWidths.first + after.columnWidths.last,
-          closeTo(1, 0.001), reason: "the table still fills its element");
+      expect(
+          after.columnWidths.first + after.columnWidths.last, closeTo(1, 0.001),
+          reason: "the table still fills its element");
       expect(after.x, table.x, reason: "and has not moved");
       expect(after.width, table.width);
     });
@@ -872,8 +860,8 @@ void main() {
     }
 
     /// tapCell clicks the middle of one cell of a two-by-two table.
-    Future<Offset> cellCentre(CanvasStageState stage, TableElement table,
-        int row, int col) async {
+    Future<Offset> cellCentre(
+        CanvasStageState stage, TableElement table, int row, int col) async {
       var scale = stage.pageRect.width / 1280;
       var doc = Offset(
         table.x + table.width * (col == 0 ? 0.25 : 0.75),
@@ -882,8 +870,7 @@ void main() {
       return stage.pageRect.topLeft + doc * scale;
     }
 
-    testWidgets("a second click on a cell opens it for typing",
-        (tester) async {
+    testWidgets("a second click on a cell opens it for typing", (tester) async {
       // The same gesture the text element has, and the same one that renames
       // a file: the first click selects, so a table is still moved by
       // dragging it.
@@ -1155,8 +1142,7 @@ void main() {
       // the drag, not the transport.
       controller.pause();
 
-      await tester.dragFrom(
-          Offset(viewport.width / 2, viewport.height / 2),
+      await tester.dragFrom(Offset(viewport.width / 2, viewport.height / 2),
           const Offset(-60, 0));
       await tester.sendKeyUpEvent(LogicalKeyboardKey.space);
       await tester.pumpAndSettle();
@@ -1312,7 +1298,9 @@ void main() {
       var stage = await pump(tester, controller);
 
       var at = stage.pageRect.topLeft +
-          element.center * stage.pageRect.width / controller.document.size.width.toDouble();
+          element.center *
+              stage.pageRect.width /
+              controller.document.size.width.toDouble();
       await tester.dragFrom(at, const Offset(60, 40));
       await tester.pumpAndSettle();
 
@@ -1327,7 +1315,9 @@ void main() {
       var stage = await pump(tester, controller);
 
       var at = stage.pageRect.topLeft +
-          element.center * stage.pageRect.width / controller.document.size.width.toDouble();
+          element.center *
+              stage.pageRect.width /
+              controller.document.size.width.toDouble();
       await tester.tapAt(at);
       await tester.pumpAndSettle();
 
@@ -1495,8 +1485,10 @@ void main() {
           const Offset(50, 0));
       await tester.pumpAndSettle();
 
-      expect((controller.document.elementById("home") as TeamElement).x, home.x);
-      expect((controller.document.elementById("away") as TeamElement).x, away.x);
+      expect(
+          (controller.document.elementById("home") as TeamElement).x, home.x);
+      expect(
+          (controller.document.elementById("away") as TeamElement).x, away.x);
     });
   });
 
@@ -1567,8 +1559,8 @@ void main() {
       controller.showOverspill = true;
       await tester.pumpAndSettle();
 
-      expect(stage.pageRect.width / stage.pageRect.height,
-          closeTo(16 / 9, 0.01),
+      expect(
+          stage.pageRect.width / stage.pageRect.height, closeTo(16 / 9, 0.01),
           reason: "the page is still the document's shape");
     });
   });
@@ -1791,12 +1783,15 @@ void main() {
       expect(controller.selection, {"l"});
     });
 
-    testWidgets("text on a line is caught where the words are",
-        (tester) async {
+    testWidgets("text on a line is caught where the words are", (tester) async {
       var document = const CanvasDocument();
       var line = LineElement(
         ElementBase(
-            id: "l", x: 200, y: document.size.height / 2, width: 800, height: 6),
+            id: "l",
+            x: 200,
+            y: document.size.height / 2,
+            width: 800,
+            height: 6),
       );
       var text = TextElement(
         // Its own box is nowhere near the line.
@@ -1810,8 +1805,8 @@ void main() {
       var stage = await pump(tester, controller);
       var scale = stage.pageRect.width / document.size.width;
 
-      await tester.tapAt(
-          stage.pageRect.topLeft + Offset(260, document.size.height / 2) * scale);
+      await tester.tapAt(stage.pageRect.topLeft +
+          Offset(260, document.size.height / 2) * scale);
       await tester.pumpAndSettle();
       expect(controller.selection, {"t"},
           reason: "the words are on top of the line and win");
@@ -1865,8 +1860,7 @@ void main() {
       var scale = stage.pageRect.width / controller.document.size.width;
 
       var box = visualBoundsOf(line, controller.document, 0);
-      await tester.dragFrom(
-          stage.pageRect.topLeft + box.bottomRight * scale,
+      await tester.dragFrom(stage.pageRect.topLeft + box.bottomRight * scale,
           const Offset(-60, 0));
       await tester.pumpAndSettle();
 
@@ -1882,7 +1876,11 @@ void main() {
       var document = const CanvasDocument();
       var line = LineElement(
         ElementBase(
-            id: "l", x: 200, y: document.size.height * 0.7, width: 800, height: 6),
+            id: "l",
+            x: 200,
+            y: document.size.height * 0.7,
+            width: 800,
+            height: 6),
       );
       var text = TextElement(
         // Far away from the line, up in the corner.
@@ -1911,7 +1909,11 @@ void main() {
       var document = const CanvasDocument();
       var line = LineElement(
         ElementBase(
-            id: "l", x: 200, y: document.size.height / 2, width: 800, height: 6),
+            id: "l",
+            x: 200,
+            y: document.size.height / 2,
+            width: 800,
+            height: 6),
       );
       var text = TextElement(
         const ElementBase(id: "t", x: 0, y: 0, width: 300, height: 80),
@@ -1932,7 +1934,11 @@ void main() {
       var document = const CanvasDocument();
       var line = LineElement(
         ElementBase(
-            id: "l", x: 200, y: document.size.height * 0.7, width: 800, height: 6),
+            id: "l",
+            x: 200,
+            y: document.size.height * 0.7,
+            width: 800,
+            height: 6),
       );
       var text = TextElement(
         const ElementBase(id: "t", x: 0, y: 0, width: 300, height: 80),
@@ -2019,8 +2025,7 @@ void main() {
       expect(controller.selection, isEmpty);
     });
 
-    testWidgets("something under the box still wins the click",
-        (tester) async {
+    testWidgets("something under the box still wins the click", (tester) async {
       var (controller, line) = bowedLine();
       addTearDown(controller.dispose);
       var under = ShapeElement(
@@ -2053,7 +2058,11 @@ void main() {
       var document = const CanvasDocument();
       var line = LineElement(
         ElementBase(
-            id: "l", x: 200, y: document.size.height / 2, width: 800, height: 6),
+            id: "l",
+            x: 200,
+            y: document.size.height / 2,
+            width: 800,
+            height: 6),
       );
       var text = TextElement(
         const ElementBase(id: "t", x: 0, y: 0, width: 120, height: 40),
@@ -2087,7 +2096,11 @@ void main() {
       var document = const CanvasDocument();
       var line = LineElement(
         ElementBase(
-            id: "l", x: 200, y: document.size.height / 2, width: 800, height: 6),
+            id: "l",
+            x: 200,
+            y: document.size.height / 2,
+            width: 800,
+            height: 6),
       );
       var text = TextElement(
         const ElementBase(id: "t", x: 0, y: 0, width: 120, height: 40),
@@ -2143,7 +2156,8 @@ void main() {
       // Ten screen pixels inside the bottom-right corner: a miss, but the kind
       // anybody makes.
       var corner = stage.pageRect.topLeft + element.bounds.bottomRight * scale;
-      await tester.dragFrom(corner - const Offset(10, 10), const Offset(-40, 0));
+      await tester.dragFrom(
+          corner - const Offset(10, 10), const Offset(-40, 0));
       await tester.pumpAndSettle();
 
       var after = controller.document.elementById("s")!;
@@ -2343,8 +2357,7 @@ void main() {
       addTearDown(controller.dispose);
       controller.replaceElement((controller.document.elementById("i")!
               as ImageElement)
-          .copyWith(
-              removal: const BackgroundRemoval(mode: RemovalMode.learn)));
+          .copyWith(removal: const BackgroundRemoval(mode: RemovalMode.learn)));
       controller.retouch = RetouchBrush.markSubject;
       var stage = await pump(tester, controller);
       await seed(tester, controller);
@@ -2493,11 +2506,10 @@ void main() {
       ).copyWith(fit: ImageFit.cover);
 
       // A square picture in a wide box: cover crops the top and bottom away.
-      var placement = placeImage(
-          const Size(200, 200), wide.bounds, ImageFit.cover);
+      var placement =
+          placeImage(const Size(200, 200), wide.bounds, ImageFit.cover);
 
-      expect(placement.dst, wide.bounds,
-          reason: "cover fills the box");
+      expect(placement.dst, wide.bounds, reason: "cover fills the box");
       expect(placement.src.height, lessThan(200),
           reason: "and takes only a band out of the middle of the picture");
       expect(placement.src.width, 200);
@@ -2596,6 +2608,142 @@ void main() {
       expect(stroke.fill, isTrue);
       expect(stroke.snap, 0,
           reason: "a boundary does not care what colour anything is");
+    });
+  });
+
+  group("framing a picture inside its box", () {
+    // The picture fills the box, so something has to decide which part of it
+    // is given away. Covering on its own always takes it off both ends
+    // equally; framing spends that slack deliberately. See ImageFraming.
+
+    const picture = Size(200, 200);
+    const tall = Rect.fromLTWH(0, 0, 100, 200);
+
+    test("a picture nobody has framed is placed exactly as it always was", () {
+      var plain = placeImage(picture, tall, ImageFit.cover);
+      var framed = placeImage(picture, tall, ImageFit.cover,
+          framing: const ImageFraming());
+      expect(framed.src, plain.src);
+      expect(framed.dst, plain.dst);
+    });
+
+    test("the slack is what framing has to spend", () {
+      var placement = placeImage(picture, tall, ImageFit.cover);
+      expect(placement.src.width, 100, reason: "half the picture is shown");
+      expect(placement.src.height, 200);
+      expect(placement.slack, const Offset(100, 0),
+          reason: "spare across, none down -- the box is the picture's height");
+    });
+
+    test("across 0 and 1 take the two edges", () {
+      var left = placeImage(picture, tall, ImageFit.cover,
+          framing: const ImageFraming(x: 0));
+      var right = placeImage(picture, tall, ImageFit.cover,
+          framing: const ImageFraming(x: 1));
+      expect(left.src.left, 0);
+      expect(right.src.right, 200);
+      expect(left.src.width, right.src.width,
+          reason: "moving the window does not resize it");
+    });
+
+    test("zoom shows less of the picture, and makes slack in both directions",
+        () {
+      var placement = placeImage(picture, tall, ImageFit.cover,
+          framing: const ImageFraming(zoom: 2));
+      expect(placement.src.width, 50);
+      expect(placement.src.height, 100);
+      expect(placement.slack, const Offset(150, 100));
+      expect(placement.dst, tall, reason: "the box is still filled");
+    });
+
+    test("the other fits ignore it", () {
+      // There is nothing to spend: contain shows the whole picture and
+      // stretch distorts it to the box. Framing either would be a setting
+      // that moved nothing.
+      for (var fit in [ImageFit.contain, ImageFit.stretch]) {
+        expect(
+            placeImage(picture, tall, fit,
+                    framing: const ImageFraming(x: 0, zoom: 3))
+                .src,
+            placeImage(picture, tall, fit).src,
+            reason: fit.name);
+      }
+    });
+
+    test("the crop is what framing chooses from", () {
+      // Crop first, then fit, then framing -- so framing spends the slack in
+      // the part of the picture the reader kept, not in the whole file.
+      var placement = placeImage(picture, tall, ImageFit.cover,
+          crop: const ImageCrop(left: 0.5, top: 0, right: 1, bottom: 1),
+          framing: const ImageFraming(x: 0));
+      expect(placement.whole.left, 100);
+      expect(placement.src.left, 100,
+          reason: "the left edge of the crop, not of the picture");
+    });
+
+    testWidgets("a second click reframes rather than moves", (tester) async {
+      var document = const CanvasDocument();
+      var element = ImageElement(
+        const ElementBase(id: "i", x: 100, y: 100, width: 100, height: 200),
+        assetId: "abcdefghijklmnop",
+      );
+      var controller = CanvasController(document.addElement(element));
+      addTearDown(controller.dispose);
+      controller.selectOnly("i");
+      var stage = await pump(tester, controller);
+
+      var pixels = Uint8List(200 * 200 * 4);
+      for (var i = 0; i < 200 * 200; i++) {
+        pixels[i * 4 + 3] = 255;
+      }
+      await tester.runAsync(() async {
+        var done = Completer<ui.Image>();
+        ui.decodeImageFromPixels(
+            pixels, 200, 200, ui.PixelFormat.rgba8888, done.complete);
+        controller.images.putForTest("abcdefghijklmnop", await done.future);
+      });
+      await tester.pumpAndSettle();
+
+      var scale = stage.pageRect.width / controller.document.size.width;
+      var at = stage.pageRect.topLeft + element.bounds.center * scale;
+
+      // The first click selects and is remembered; the second, inside the
+      // window a double click is, opens the picture for framing.
+      await tester.tapAt(at);
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.tapAt(at);
+      await tester.pumpAndSettle();
+
+      var before = controller.document.elementById("i")! as ImageElement;
+      await tester.dragFrom(at, const Offset(40, 0));
+      await tester.pumpAndSettle();
+
+      var after = controller.document.elementById("i")! as ImageElement;
+      expect(after.x, before.x, reason: "the box has not moved");
+      expect(after.framing.x, lessThan(before.framing.x),
+          reason: "dragging right shows what was off to the left");
+    });
+
+    testWidgets("without the second click the same drag moves the box",
+        (tester) async {
+      var document = const CanvasDocument();
+      var element = ImageElement(
+        const ElementBase(id: "i", x: 100, y: 100, width: 100, height: 200),
+        assetId: "abcdefghijklmnop",
+      );
+      var controller = CanvasController(document.addElement(element));
+      addTearDown(controller.dispose);
+      controller.selectOnly("i");
+      var stage = await pump(tester, controller);
+
+      var scale = stage.pageRect.width / controller.document.size.width;
+      var at = stage.pageRect.topLeft + element.bounds.center * scale;
+      await tester.dragFrom(at, const Offset(40, 0));
+      await tester.pumpAndSettle();
+
+      var after = controller.document.elementById("i")! as ImageElement;
+      expect(after.x, greaterThan(element.x));
+      expect(after.framing.isDefault, isTrue);
     });
   });
 }
