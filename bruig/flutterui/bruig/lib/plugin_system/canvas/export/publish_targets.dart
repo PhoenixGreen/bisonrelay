@@ -49,6 +49,7 @@ String extensionFor(String mime) => switch (mime) {
       "image/png" => ".png",
       "image/jpeg" => ".jpg",
       "image/gif" => ".gif",
+      "video/mp4" => ".mp4",
       "application/json" => ".bcanvas",
       _ => ".bin",
     };
@@ -135,14 +136,11 @@ Future<PublishRecord?> publishToLibrary(
     // Reusing the embed id on an update overwrites the old picture instead of
     // leaving it behind. Without this, republishing a canvas ten times leaves
     // nine orphaned copies of it in the embed store.
-    var id = existing.embedId.isNotEmpty
-        ? existing.embedId
-        : _newEmbedId();
+    var id = existing.embedId.isNotEmpty ? existing.embedId : _newEmbedId();
     await EmbedStore.save(id, base64Encode(export.data));
 
     var content = "--embed[type=${export.mime},data=[content $id]]--\n";
-    var written =
-        await PostStorage.write(publishedFolderName, clean, content);
+    var written = await PostStorage.write(publishedFolderName, clean, content);
     if (written == null) return null;
 
     return existing.copyWith(
@@ -200,7 +198,8 @@ Future<PublishRecord?> shareInFiles(
     if (existing.hasShare) await unshareFiles(existing);
 
     await File(file).writeAsBytes(export.data, flush: true);
-    await Golib.shareFile(file, null, 0, description.isEmpty ? clean : description);
+    await Golib.shareFile(
+        file, null, 0, description.isEmpty ? clean : description);
 
     return existing.copyWith(
       sharedPath: file,

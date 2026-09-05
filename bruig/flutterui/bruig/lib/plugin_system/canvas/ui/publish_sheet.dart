@@ -7,6 +7,7 @@ import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/export/canvas_export.dart';
 import 'package:bruig/plugin_system/canvas/export/publish_record.dart';
 import 'package:bruig/plugin_system/canvas/export/publish_targets.dart';
+import 'package:bruig/plugin_system/canvas/export/video_export.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
@@ -35,6 +36,7 @@ import 'package:provider/provider.dart';
 enum PublishAs {
   image("Image", "A single frame as a PNG or a JPEG"),
   animation("Animation", "Every frame as an animated GIF"),
+  video("Video", "Every frame as an MP4, at full colour"),
   interactive("Interactive canvas",
       "The canvas itself, which can be replayed and moved around");
 
@@ -124,6 +126,13 @@ class _PublishSheetState extends State<_PublishSheet> {
   int _colors = 256;
   bool _loop = true;
 
+  Mp4Quality _videoQuality = Mp4Quality.balanced;
+
+  /// _ffmpeg is whether there is an encoder to make an MP4 with, which is not
+  /// known until it has been looked for. Assumed absent until the look comes
+  /// back, so the sheet never offers something and then takes it away.
+  bool _ffmpeg = false;
+
   ChatModel? _chat;
   String _caption = "";
 
@@ -149,6 +158,11 @@ class _PublishSheetState extends State<_PublishSheet> {
     // animated one almost always wants to be one.
     if (widget.document.isAnimated) _as = PublishAs.animation;
     _loadRecord();
+    // Asked once, here, rather than in build: it is a process launch, and
+    // build runs on every keystroke in the caption field.
+    ffmpegPath().then((found) {
+      if (mounted) setState(() => _ffmpeg = found != null);
+    });
   }
 
   /// _loadRecord reads what this canvas published before, if anything.
@@ -173,6 +187,8 @@ class _PublishSheetState extends State<_PublishSheet> {
         PublishAs.image => estimateStillBytes(widget.document, scale: _scale),
         PublishAs.animation =>
           estimateAnimationBytes(widget.document, scale: _scale),
+        PublishAs.video => estimateVideoBytes(widget.document,
+            scale: _scale, quality: _videoQuality),
         // An interactive canvas is the document's own JSON, which is a known
         // quantity rather than an estimate -- so this one is exact, and the
         // label below says so.
@@ -220,6 +236,18 @@ class _PublishSheetState extends State<_PublishSheet> {
             }
           },
         );
+      case PublishAs.video:
+        return renderMp4(
+          widget.document,
+          scale: _scale,
+          images: widget.images,
+          quality: _videoQuality,
+          onProgress: (done, total) {
+            if (mounted) {
+              setState(() => _progress = "Rendering frame $done of $total…");
+            }
+          },
+        );
       case PublishAs.interactive:
         // Nothing is rendered: the document's own JSON is the export. It is
         // declared as the canvas's size all the same, because whatever
@@ -252,10 +280,18 @@ class _PublishSheetState extends State<_PublishSheet> {
     });
 
     try {
+      // The encoder is the likeliest thing to have gone wrong on a video, and
+      // "unable to render" would send somebody looking at their canvas rather
+      // than at their machine.
+      if (_as == PublishAs.video) {
+        setState(() => _progress = "Encoding the video…");
+      }
       var export = await _render();
       if (!mounted) return;
       if (export == null) {
-        snackbar.error("Unable to render the canvas.");
+        snackbar.error(_as == PublishAs.video && !_ffmpeg
+            ? ffmpegHelp
+            : "Unable to render the canvas.");
         return;
       }
 
@@ -390,7 +426,13 @@ class _PublishSheetState extends State<_PublishSheet> {
                   description: option.description,
                   onTap: _busy ? null : () => setState(() => _as = option),
                 ),
-              if (_as == PublishAs.animation && !widget.document.isAnimated)
+              // Said where the choice is rather than after a long wait: a
+              // video with no encoder to make it cannot be published, and the
+              // button below says so too.
+              if (_as == PublishAs.video && !_ffmpeg)
+                _warning(theme, ffmpegHelp),
+              if ((_as == PublishAs.animation || _as == PublishAs.video) &&
+                  !widget.document.isAnimated)
                 _warning(
                     theme,
                     "This canvas is a single frame, so the animation will be "
@@ -486,7 +528,8 @@ class _PublishSheetState extends State<_PublishSheet> {
           child: const Text("Cancel"),
         ),
         FilledButton(
-          onPressed: _busy ? null : _publish,
+          onPressed:
+              _busy || (_as == PublishAs.video && !_ffmpeg) ? null : _publish,
           child: Text(_isPublishedHere ? "Update" : "Publish"),
         ),
       ],
@@ -574,6 +617,29 @@ class _PublishSheetState extends State<_PublishSheet> {
               "${widget.document.frames} frames at "
               "${widget.document.frameRate} per second — "
               "${widget.document.durationSeconds.toStringAsFixed(1)} seconds."),
+        ];
+
+      case PublishAs.video:
+        return [
+          Row(children: [
+            Expanded(child: _scaleField(theme)),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _dropdown<Mp4Quality>(
+                  theme,
+                  "Quality",
+                  _videoQuality,
+                  [for (var q in Mp4Quality.values) (q, q.label)],
+                  (v) => setState(() => _videoQuality = v)),
+            ),
+          ]),
+          _note(
+              theme,
+              "${widget.document.frames} frames at "
+              "${widget.document.frameRate} per second — "
+              "${widget.document.durationSeconds.toStringAsFixed(1)} seconds. "
+              "An MP4 keeps every colour, where a GIF has 256, and is "
+              "usually much smaller."),
         ];
 
       case PublishAs.interactive:
