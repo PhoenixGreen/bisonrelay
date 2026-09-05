@@ -4,12 +4,14 @@ import 'package:bruig/components/feed/embed_options.dart';
 import 'package:bruig/components/text.dart';
 import 'package:bruig/models/client.dart';
 import 'package:bruig/models/snackbar.dart';
+import 'package:bruig/plugin_system/canvas/export/canvas_bundle.dart';
 import 'package:bruig/plugin_system/canvas/export/canvas_export.dart';
 import 'package:bruig/plugin_system/canvas/export/publish_record.dart';
 import 'package:bruig/plugin_system/canvas/export/publish_targets.dart';
 import 'package:bruig/plugin_system/canvas/export/video_export.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
+import 'package:bruig/plugin_system/canvas/storage/canvas_assets.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -38,7 +40,7 @@ enum PublishAs {
   animation("Animation", "Every frame as an animated GIF"),
   video("Video", "Every frame as an MP4, at full colour"),
   interactive("Interactive canvas",
-      "The canvas itself, which can be replayed and moved around");
+      "The canvas itself, with its pictures, to open and edit again");
 
   final String label;
   final String description;
@@ -158,6 +160,7 @@ class _PublishSheetState extends State<_PublishSheet> {
     // animated one almost always wants to be one.
     if (widget.document.isAnimated) _as = PublishAs.animation;
     _loadRecord();
+    _measurePictures();
     // Asked once, here, rather than in build: it is a process launch, and
     // build runs on every keystroke in the caption field.
     ffmpegPath().then((found) {
@@ -189,11 +192,27 @@ class _PublishSheetState extends State<_PublishSheet> {
           estimateAnimationBytes(widget.document, scale: _scale),
         PublishAs.video => estimateVideoBytes(widget.document,
             scale: _scale, quality: _videoQuality),
-        // An interactive canvas is the document's own JSON, which is a known
+        // An interactive canvas is the document itself, which is a known
         // quantity rather than an estimate -- so this one is exact, and the
-        // label below says so.
-        PublishAs.interactive => widget.document.encode().length,
+        // label below says so. The pictures are added at their stored size,
+        // which is what the bundle will carry: they go in without being
+        // deflated again, being compressed already.
+        PublishAs.interactive =>
+          widget.document.encode().length + _pictureBytes,
       };
+
+  /// _pictureBytes is what the canvas's pictures weigh, which is nearly all
+  /// of a bundle. Measured once when the sheet opens rather than per build:
+  /// it is a read of every picture in the canvas.
+  int _pictureBytes = 0;
+
+  Future<void> _measurePictures() async {
+    var total = 0;
+    for (var id in widget.document.assetIds) {
+      total += (await CanvasAssets.load(id))?.length ?? 0;
+    }
+    if (mounted) setState(() => _pictureBytes = total);
+  }
 
   /// _tooBigForChat is the one warning the sheet gives before anything is
   /// rendered, because it is the one failure that would otherwise happen after
@@ -249,12 +268,26 @@ class _PublishSheetState extends State<_PublishSheet> {
           },
         );
       case PublishAs.interactive:
-        // Nothing is rendered: the document's own JSON is the export. It is
-        // declared as the canvas's size all the same, because whatever
-        // receives it lays out a box before it has anything to put in it.
+        // Nothing is rendered: the canvas goes as itself. It is declared as
+        // the canvas's size all the same, because whatever receives it lays
+        // out a box before it has anything to put in it.
+        //
+        // With its pictures when it has any -- see canvas_bundle.dart. Without
+        // them the file opened on somebody else's machine with a grey
+        // placeholder where every photograph had been, because the ids in it
+        // pointed at a store only the sender had. A canvas with no pictures
+        // stays the plain readable JSON it has always been.
+        if (widget.document.assetIds.isEmpty) {
+          return CanvasExport(
+            utf8.encode(widget.document.encode()),
+            "application/json",
+            width: widget.document.size.width,
+            height: widget.document.size.height,
+          );
+        }
         return CanvasExport(
-          utf8.encode(widget.document.encode()),
-          "application/json",
+          await packCanvas(widget.document),
+          bundleMime,
           width: widget.document.size.width,
           height: widget.document.size.height,
         );
@@ -644,10 +677,18 @@ class _PublishSheetState extends State<_PublishSheet> {
 
       case PublishAs.interactive:
         return [
-          Txt.S("The canvas is published as itself: whoever opens it can play "
-              "the animation, press its buttons and move anything you have "
-              "not locked. Nothing is rendered, so it stays small however "
-              "large the canvas is."),
+          Txt.S(widget.document.assetIds.isEmpty
+              ? "The canvas is published as itself: whoever opens it can play "
+                  "the animation, press its buttons and move anything you "
+                  "have not locked. Nothing is rendered, so it stays small "
+                  "however large the canvas is."
+              : "The canvas is published as itself, with its "
+                  "${widget.document.assetIds.length} "
+                  "picture${widget.document.assetIds.length == 1 ? "" : "s"} "
+                  "packed in beside it, so it opens on another machine "
+                  "looking the way it does here. Nothing is rendered: whoever "
+                  "opens it can play the animation, press its buttons and "
+                  "move anything you have not locked."),
         ];
     }
   }

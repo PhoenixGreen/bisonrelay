@@ -2,9 +2,11 @@ import 'package:bruig/plugin_system/canvas/storage/canvas_assets.dart';
 import 'dart:async';
 import 'package:bruig/components/text.dart';
 import 'package:bruig/models/snackbar.dart';
+import 'package:bruig/plugin_system/canvas/export/canvas_bundle.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -163,6 +165,55 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
         ? snackbar.success("Saved ${controller.name}.")
         : snackbar.error("Unable to save ${controller.name}.");
     await _reload();
+  }
+
+  /// _import reads a canvas somebody sent and puts it in the library.
+  ///
+  /// Both forms of the file go through unpackCanvas -- the plain document and
+  /// the bundle carrying its pictures -- so there is nothing here that has to
+  /// know which arrived. The pictures are stored first: a canvas that appeared
+  /// in the list and then failed to find its photographs would look like a
+  /// broken canvas rather than like a failed import.
+  Future<void> _import() async {
+    var snackbar = SnackBarModel.of(context);
+    var chosen = await FilePicker.platform.pickFiles(
+      dialogTitle: "Open a canvas",
+      // Not filtered to the extension: a canvas that has been through a chat,
+      // a download folder or a mail client often arrives called something
+      // else, and refusing to show it is worse than reading it and saying it
+      // is not a canvas.
+      withData: true,
+    );
+    var file = chosen?.files.firstOrNull;
+    var bytes = file?.bytes;
+    if (bytes == null) return;
+
+    var bundle = await unpackCanvas(bytes);
+    if (!mounted) return;
+    if (bundle == null) {
+      snackbar.error("That file is not a canvas.");
+      return;
+    }
+
+    var stored = await storeBundlePictures(bundle);
+    var wanted = CanvasStorage.sanitizeName(bundle.document.title) ??
+        CanvasStorage.sanitizeName(file!.name.split(".").first) ??
+        "Canvas";
+    var name = await CanvasStorage.uniqueName(_folder, wanted);
+    var ok = await CanvasStorage.save(
+        _folder, name, bundle.document.copyWith(title: name));
+    if (!mounted) return;
+
+    if (!ok) {
+      snackbar.error("Unable to save the canvas here.");
+      return;
+    }
+    snackbar.success(stored == 0
+        ? "Opened $name."
+        : "Opened $name with $stored "
+            "picture${stored == 1 ? "" : "s"}.");
+    await _reload();
+    await widget.onOpen(_folder, name);
   }
 
   Future<void> _newFolder() async {
@@ -328,6 +379,14 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
               child: IconButton(
                 onPressed: _saveAs,
                 icon: const Icon(Icons.save_as_outlined, size: 17),
+                visualDensity: VisualDensity.compact,
+              ),
+            ),
+            Tooltip(
+              message: "Open a canvas from a file",
+              child: IconButton(
+                onPressed: _import,
+                icon: const Icon(Icons.file_open_outlined, size: 17),
                 visualDensity: VisualDensity.compact,
               ),
             ),

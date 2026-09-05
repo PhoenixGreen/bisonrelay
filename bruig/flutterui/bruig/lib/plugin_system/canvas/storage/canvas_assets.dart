@@ -154,6 +154,31 @@ class CanvasAssets {
     }
   }
 
+  /// saveAs stores a picture under the id it already has.
+  ///
+  /// For a canvas arriving from somewhere else -- see canvas_bundle.dart. The
+  /// ids are the pictures' own content, so [save] would nearly always work out
+  /// the same name; nearly is not good enough for a document whose every
+  /// reference would break, and a canvas made before the ids carried a file
+  /// extension is exactly the case where the two differ.
+  ///
+  /// The id is still checked against [_idPattern] before it is joined onto a
+  /// path, and this one really is text from somebody else's machine.
+  static Future<bool> saveAs(String id, List<int> bytes) async {
+    if (bytes.isEmpty || bytes.length > maxAssetBytes) return false;
+    var file = await _pathFor(id, create: true);
+    if (file == null) return false;
+    try {
+      var handle = File(file);
+      if (await handle.exists()) return true;
+      await handle.writeAsBytes(bytes, flush: true);
+      return true;
+    } catch (exception) {
+      debugPrint("Unable to store the picture $id: $exception");
+      return false;
+    }
+  }
+
   /// _extensionOf sniffs the format from the first few bytes.
   ///
   /// From the bytes rather than from the file name it came in under: a
