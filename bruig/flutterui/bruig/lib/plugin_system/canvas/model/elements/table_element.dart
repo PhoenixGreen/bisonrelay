@@ -51,6 +51,12 @@ class TableCellStyle {
   /// spacing is set the boxes come out at different places, and lining them
   /// up by eye is a job that cannot be finished. Every character gets a slot
   /// of this width, and [letterSpacing] is the gap between the slots.
+  ///
+  /// It belongs to a rule about a *cell* rather than one about a word, and
+  /// [TableElement.styleFor] enforces that. The pitch is how the whole cell
+  /// is laid out, so a rule that named the letter D and set a width was
+  /// silently respacing the Ls and Ws beside it -- one letter's rule deciding
+  /// the layout of the rest.
   final double letterWidth;
 
   /// letterSpacing is 0 to keep the type's own.
@@ -599,7 +605,11 @@ class TableElement extends CanvasElement {
       if (!rule.matchesColumn(col, head)) continue;
       if (!rule.matches(cell(row, col))) continue;
       out = out == null
-          ? rule.style
+          ? (rule.match.isEmpty
+              ? rule.style
+              // Same rule for the first one as for every one after it, or a
+              // cell whose only rule names a letter would take its pitch.
+              : rule.style.copyWith(letterWidth: 0, letterSpacing: 0))
           : out.copyWith(
               background: rule.style.background.a > 0
                   ? rule.style.background
@@ -609,10 +619,13 @@ class TableElement extends CanvasElement {
               fontScale:
                   rule.style.fontScale != 1 ? rule.style.fontScale : out.fontScale,
               weight: rule.style.weight != 0 ? rule.style.weight : out.weight,
-              letterSpacing: rule.style.letterSpacing != 0
+              // Only from a rule about the whole cell. See letterWidth: the
+              // pitch is how the cell is laid out, and a rule about one
+              // letter has no business deciding it for the others.
+              letterSpacing: rule.match.isEmpty && rule.style.letterSpacing != 0
                   ? rule.style.letterSpacing
                   : out.letterSpacing,
-              letterWidth: rule.style.letterWidth != 0
+              letterWidth: rule.match.isEmpty && rule.style.letterWidth != 0
                   ? rule.style.letterWidth
                   : out.letterWidth,
               align: rule.style.align ?? out.align,

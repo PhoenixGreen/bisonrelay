@@ -3238,28 +3238,34 @@ Widget _tableRuleSettings(TableElement e, int index, _Write write,
               put(rule.copyWith(style: style.copyWith(minHeight: v))),
           onCommit: commit,
         ),
-        CanvasNumberField(
-          label: "Letter width",
-          value: style.letterWidth,
-          min: 0,
-          max: 300,
-          decimals: 1,
-          width: 66,
-          onChanged: (v) =>
-              put(rule.copyWith(style: style.copyWith(letterWidth: v))),
-          onCommit: commit,
-        ),
-        CanvasNumberField(
-          label: "Letter space",
-          value: style.letterSpacing,
-          min: -20,
-          max: 200,
-          decimals: 1,
-          width: 66,
-          onChanged: (v) =>
-              put(rule.copyWith(style: style.copyWith(letterSpacing: v))),
-          onCommit: commit,
-        ),
+        // Only on a rule about a cell. The pitch is how the whole cell is
+        // laid out, so a rule that names one letter has no business deciding
+        // it for the others -- offered there, setting it on the D respaced
+        // the Ls and Ws beside it.
+        if (rule.match.isEmpty) ...[
+          CanvasNumberField(
+            label: "Letter width",
+            value: style.letterWidth,
+            min: 0,
+            max: 300,
+            decimals: 1,
+            width: 66,
+            onChanged: (v) =>
+                put(rule.copyWith(style: style.copyWith(letterWidth: v))),
+            onCommit: commit,
+          ),
+          CanvasNumberField(
+            label: "Letter space",
+            value: style.letterSpacing,
+            min: -20,
+            max: 200,
+            decimals: 1,
+            width: 66,
+            onChanged: (v) =>
+                put(rule.copyWith(style: style.copyWith(letterSpacing: v))),
+            onCommit: commit,
+          ),
+        ],
         CanvasNumberField(
           label: "Text space",
           value: style.textPad,
@@ -3366,9 +3372,10 @@ Widget _tableRuleSettings(TableElement e, int index, _Write write,
             "same width, and letter space is the gap between the slots. That "
             "is what lines a row of boxes up: a W is wider than an L, so "
             "without it no amount of spacing puts them in the same places. "
-            "Both are on the rule rather than on the cell type, whose own "
-            "spacing is one number for the whole table -- widening the form "
-            "column there would widen the team names with it."),
+            "Set them on a rule with no text -- one about the column -- since "
+            "the pitch is how the whole cell is laid out. Then a rule that "
+            "names a letter draws its box on those slots, and min height "
+            "makes the box taller than the letters."),
       ]),
     ],
   );

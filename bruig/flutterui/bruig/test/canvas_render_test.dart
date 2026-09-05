@@ -3481,6 +3481,101 @@ void _tableTests() {
           reason: "and one pitch apart -- thirty wide, ten between");
     });
 
+    test("a slot is as tall as its letters, not as tall as its row", () async {
+      // One number was setting the width and the height at once, so every
+      // chip came out a full-height bar and there was no way to ask for a
+      // square one. Min height is what makes a slot taller than its letters.
+      var e = TableElement(
+        const ElementBase(id: "t", width: 400, height: 200),
+        rows: const [
+          ["Form"],
+          ["W"],
+        ],
+        cellSpec: const TextSpec(fontSize: 16, align: TextAlignSpec.left),
+        rules: const [
+          TableRule(
+              column: "Form",
+              style: TableCellStyle(letterWidth: 30)),
+          TableRule(
+              column: "Form",
+              match: "W",
+              how: TableMatch.anywhere,
+              style: TableCellStyle(
+                  background: Color(0xFF00FF00), inset: 0, radius: 0)),
+        ],
+      );
+
+      Future<int> chipHeight(TableElement of) async {
+        var recorder = ui.PictureRecorder();
+        paintTable(
+            ui.Canvas(recorder), const Rect.fromLTWH(0, 0, 400, 200), of);
+        var image = await recorder.endRecording().toImage(400, 200);
+        var pixels = (await image.toByteData(
+                format: ui.ImageByteFormat.rawStraightRgba))!
+            .buffer
+            .asUint8List();
+        image.dispose();
+        var min = 200, max = 0;
+        for (var y = 0; y < 200; y++) {
+          for (var x = 0; x < 400; x++) {
+            var i = (y * 400 + x) * 4;
+            if (pixels[i + 1] > 200 && pixels[i] < 80) {
+              if (y < min) min = y;
+              if (y > max) max = y;
+            }
+          }
+        }
+        return min > max ? 0 : max - min + 1;
+      }
+
+      // The row is roughly ninety tall; the letters are sixteen.
+      var natural = await chipHeight(e);
+      expect(natural, greaterThan(0));
+      expect(natural, lessThan(50), reason: "not the whole row");
+
+      var taller = await chipHeight(e.copyWith(rules: [
+        e.rules.first,
+        e.rules.last.copyWith(
+            style: e.rules.last.style.copyWith(minHeight: 60)),
+      ]));
+      expect(taller, greaterThan(natural));
+    });
+
+    test("a rule about one letter cannot respace the rest", () {
+      // Setting a width on the D silently respaced the Ls and Ws beside it:
+      // the pitch is how the whole cell is laid out, and one letter's rule
+      // has no business deciding it for the others.
+      var e = TableElement(const ElementBase(id: "t"), rows: const [
+        ["Form"],
+        ["LLD"],
+      ]);
+
+      var fromLetter = e.copyWith(rules: const [
+        TableRule(
+            column: "Form",
+            match: "D",
+            how: TableMatch.anywhere,
+            style: TableCellStyle(letterWidth: 20, letterSpacing: 5)),
+      ]);
+      expect(fromLetter.styleFor(1, 0)?.letterWidth, 0);
+      expect(fromLetter.styleFor(1, 0)?.letterSpacing, 0);
+
+      var fromColumn = e.copyWith(rules: const [
+        TableRule(
+            column: "Form",
+            style: TableCellStyle(letterWidth: 20, letterSpacing: 5)),
+      ]);
+      expect(fromColumn.styleFor(1, 0)?.letterWidth, 20);
+      expect(fromColumn.styleFor(1, 0)?.letterSpacing, 5);
+
+      // And a letter rule alongside a column rule leaves the column's alone.
+      var both = e.copyWith(rules: [
+        fromColumn.rules.single,
+        fromLetter.rules.single,
+      ]);
+      expect(both.styleFor(1, 0)?.letterWidth, 20);
+    });
+
     test("a rule can push a cell's letters apart", () async {
       // What keeps a row of boxes from touching. On the rule because the cell
       // type's own spacing is one number for the whole table -- widening the

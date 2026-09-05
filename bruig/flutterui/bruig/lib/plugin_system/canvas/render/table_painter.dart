@@ -374,9 +374,22 @@ List<Rect>? _slotsIn(String text, TextSpec spec, Rect box, double width,
     _ => box.left,
   };
 
+  // As tall as the letters, not as tall as the row. A slot the height of the
+  // cell made every chip a full-height bar, so the one number was setting the
+  // width and the height at once -- and there was no way to ask for a square
+  // one. Min height is what makes a slot taller than its letters.
+  var height = math.min(box.height, layoutText(text, spec,
+          maxWidth: double.infinity)
+      .height);
+  var top = switch (spec.verticalAlign) {
+    VerticalAlignSpec.top => box.top,
+    VerticalAlignSpec.bottom => box.bottom - height,
+    VerticalAlignSpec.middle => box.center.dy - height / 2,
+  };
+
   return [
     for (var i = 0; i < text.length; i++)
-      Rect.fromLTWH(left + pitch * i, box.top, width, box.height),
+      Rect.fromLTWH(left + pitch * i, top, width, height),
   ];
 }
 
@@ -394,7 +407,9 @@ Rect? _slotSpan(List<Rect> slots, int from, int to) {
 void _paintSlots(
     ui.Canvas canvas, String text, TextSpec spec, List<Rect> slots) {
   var centred = spec.copyWith(
-      align: TextAlignSpec.center, letterSpacing: 0);
+      align: TextAlignSpec.center,
+      verticalAlign: VerticalAlignSpec.middle,
+      letterSpacing: 0);
   for (var i = 0; i < text.length && i < slots.length; i++) {
     if (text[i].trim().isEmpty) continue;
     paintTextInBox(canvas, text[i], centred, slots[i]);
