@@ -26,6 +26,12 @@ import 'package:provider/provider.dart';
 // as long as publishing it.
 
 /// PublishAs is what to make.
+///
+/// In order of how much of the canvas survives: a picture of one frame, a
+/// picture of all of them, or the canvas itself. The last is the cheapest and
+/// the most capable and is still last, because it is the one that needs the
+/// reader on the other end to have Bison Relay -- an image is what can be
+/// shown to anyone.
 enum PublishAs {
   image("Image", "A single frame as a PNG or a JPEG"),
   animation("Animation", "Every frame as an animated GIF"),
@@ -38,6 +44,12 @@ enum PublishAs {
 }
 
 /// PublishTo is where it goes.
+///
+/// Four destinations rather than one save dialog, because three of them are
+/// things Bison Relay can do that a file cannot: a canvas in a chat, a canvas
+/// a post can embed, a canvas somebody can fetch from Files. Saving to disk is
+/// the one that leaves the app, and it is first because it is the one that
+/// always works -- the other three each need something set up.
 enum PublishTo {
   file("Save to a file", Icons.download_outlined),
   chat("Send to a chat", Icons.chat_outlined),
@@ -74,6 +86,9 @@ Future<void> showPublishSheet(
       ),
     );
 
+/// _PublishSheet is the dialog itself. Private: everything outside goes
+/// through showPublishSheet, so there is one way to open it and one place the
+/// arguments it needs are listed.
 class _PublishSheet extends StatefulWidget {
   final CanvasDocument document;
   final CanvasImageSource? images;
@@ -97,6 +112,10 @@ class _PublishSheetState extends State<_PublishSheet> {
   PublishAs _as = PublishAs.image;
   PublishTo _to = PublishTo.file;
 
+  // The still settings, then the animation's. Kept side by side rather than
+  // in one settings object per kind, because switching between Image and
+  // Animation and back has to find both exactly as they were left -- somebody
+  // comparing the two sizes does that several times in a row.
   EmbedFormat _format = EmbedFormat.png;
   int _quality = 85;
   double _scale = 1;
@@ -108,10 +127,19 @@ class _PublishSheetState extends State<_PublishSheet> {
   ChatModel? _chat;
   String _caption = "";
 
+  /// _record is what was published from this canvas before, which is what
+  /// makes Publish say Update and puts an Unpublish button in the corner.
   PublishRecord _record = const PublishRecord();
+
+  /// _busy disables every control while a render is running. A GIF takes long
+  /// enough that a second press is a real possibility, and it would render the
+  /// whole thing twice and publish whichever finished last.
   bool _busy = false;
   String _progress = "";
 
+  /// _canRecord is whether there is anywhere to keep [_record]. The record is
+  /// filed under the canvas's folder and name, so a canvas that has never been
+  /// saved can be published but not updated afterwards.
   bool get _canRecord => widget.name != null;
 
   @override
@@ -123,12 +151,20 @@ class _PublishSheetState extends State<_PublishSheet> {
     _loadRecord();
   }
 
+  /// _loadRecord reads what this canvas published before, if anything.
+  ///
+  /// Not awaited by initState -- the sheet opens immediately and fills this in
+  /// when it arrives, which is a button that changes from Publish to Update a
+  /// moment later rather than a dialog that takes a moment to appear.
   Future<void> _loadRecord() async {
     if (!_canRecord) return;
     var record = await PublishRecords.read(widget.folder ?? "", widget.name!);
     if (mounted && record != null) setState(() => _record = record);
   }
 
+  /// _suggestedName is what the file, the document or the share is called: the
+  /// canvas's own name if it has been saved, otherwise its title, otherwise a
+  /// word rather than an empty string.
   String get _suggestedName =>
       widget.name ??
       (widget.document.title.isEmpty ? "Canvas" : widget.document.title);
@@ -153,6 +189,13 @@ class _PublishSheetState extends State<_PublishSheet> {
     return _estimate * 4 / 3 > 900000;
   }
 
+  /// _render makes the bytes, and is the only slow thing here.
+  ///
+  /// Both raster paths go through export/canvas_export.dart, which is also
+  /// what the embed and the thumbnail use -- so what is published is the same
+  /// picture the canvas draws, at a different size. Only the GIF reports
+  /// progress, because it is the only one where there is any to report: a
+  /// still is one frame and is done before a progress line could be read.
   Future<CanvasExport?> _render() async {
     switch (_as) {
       case PublishAs.image:
@@ -178,6 +221,9 @@ class _PublishSheetState extends State<_PublishSheet> {
           },
         );
       case PublishAs.interactive:
+        // Nothing is rendered: the document's own JSON is the export. It is
+        // declared as the canvas's size all the same, because whatever
+        // receives it lays out a box before it has anything to put in it.
         return CanvasExport(
           utf8.encode(widget.document.encode()),
           "application/json",
@@ -187,6 +233,17 @@ class _PublishSheetState extends State<_PublishSheet> {
     }
   }
 
+  /// _publish renders and then sends, and reports the result itself.
+  ///
+  /// The snackbar is taken before the first await. Reading it afterwards means
+  /// reaching for an InheritedWidget through a context whose element may have
+  /// been unmounted by a render that took a minute, which is the exception
+  /// nobody sees until a slow publish is cancelled.
+  ///
+  /// Every branch below re-checks mounted after its own await for the same
+  /// reason, and the finally clears _busy however it ends -- an error that
+  /// left the sheet disabled would be a dialog that can only be closed by
+  /// cancelling.
   Future<void> _publish() async {
     var snackbar = SnackBarModel.of(context);
     setState(() {
@@ -259,12 +316,23 @@ class _PublishSheetState extends State<_PublishSheet> {
     }
   }
 
+  /// _remember keeps what a publish produced, both on screen and on disk.
+  ///
+  /// On screen always, so the button says Update immediately; on disk only
+  /// when there is a canvas to file it against. An unsaved canvas that has
+  /// just been shared still shows its Unpublish button for as long as the
+  /// sheet is open, which is the honest thing -- the share exists.
   Future<void> _remember(PublishRecord record) async {
     setState(() => _record = record);
     if (!_canRecord) return;
     await PublishRecords.write(widget.folder ?? "", widget.name!, record);
   }
 
+  /// _unpublish takes back what was published to the chosen destination.
+  ///
+  /// Only the two that can be taken back. A file that has been saved and a
+  /// message that has been sent are gone from here, and offering to undo them
+  /// would be a button that lies.
   Future<void> _unpublish() async {
     var snackbar = SnackBarModel.of(context);
     setState(() => _busy = true);
@@ -290,6 +358,10 @@ class _PublishSheetState extends State<_PublishSheet> {
         _ => false,
       };
 
+  /// The sheet is one scrolling column in a fixed-width dialog rather than a
+  /// page of its own. It is a decision with an answer, taken in the middle of
+  /// working on a canvas, and a full-screen route would lose sight of the
+  /// thing being published.
   @override
   Widget build(BuildContext context) {
     var theme = ThemeNotifier.of(context);
@@ -303,6 +375,12 @@ class _PublishSheetState extends State<_PublishSheet> {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
+              // The two questions in order, with the settings for the first
+              // between them: what it is, then how big and in what format,
+              // then where it goes. Anything that would go wrong -- a
+              // one-frame animation, an unsaved canvas, a chat message too
+              // large to send -- is said where the choice that caused it is,
+              // rather than collected into one list at the bottom.
               _heading("Publish as"),
               for (var option in PublishAs.values)
                 _option(
@@ -357,6 +435,11 @@ class _PublishSheetState extends State<_PublishSheet> {
                     "This is likely to be too large for one message. Reduce "
                     "the scale, or publish as a JPEG."),
               const Divider(height: 24),
+              // The size line, which is the whole reason the sheet estimates
+              // anything. It is what a reader checks before pressing a button
+              // that may take a minute, and it changes as the scale and the
+              // format do -- so the effect of each setting can be seen without
+              // publishing anything.
               Row(children: [
                 Icon(Icons.data_usage,
                     size: 15, color: theme.colors.onSurfaceVariant),
@@ -410,6 +493,12 @@ class _PublishSheetState extends State<_PublishSheet> {
     );
   }
 
+  /// _formatControls is the settings for whatever is being made.
+  ///
+  /// A branch per kind rather than every control shown and some of them
+  /// disabled: quality means nothing to a GIF and dithering means nothing to
+  /// a PNG, and a greyed-out row still reads as a setting somebody is failing
+  /// to reach.
   List<Widget> _formatControls(ThemeNotifier theme) {
     switch (_as) {
       case PublishAs.image:
@@ -497,6 +586,12 @@ class _PublishSheetState extends State<_PublishSheet> {
     }
   }
 
+  /// _scaleField is shared by the still and the animation, and is multiples of
+  /// the canvas rather than a pixel width.
+  ///
+  /// The canvas has a size of its own that the reader chose, so "double" is a
+  /// thing they can picture; a box wanting a number in pixels is a sum they
+  /// have to do first, against a size they would have to go and look up.
   Widget _scaleField(ThemeNotifier theme) => _dropdown<double>(
       theme,
       "Size",
@@ -624,6 +719,12 @@ class _PublishSheetState extends State<_PublishSheet> {
           ),
         ),
       ]);
+
+  // The rest are the sheet's own small pieces: a section heading, a quiet
+  // line of explanation, a warning in the theme's tertiary colour, and a
+  // slider with its value beside it. Local rather than from ui/controls.dart,
+  // which is built for the sidebar's narrow bands and looks wrong at a
+  // dialog's width.
 
   Widget _heading(String text) => Padding(
         padding: const EdgeInsets.only(bottom: 2),
