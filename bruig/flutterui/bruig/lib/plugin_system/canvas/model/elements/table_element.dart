@@ -112,6 +112,20 @@ class TableCellStyle {
   final double minWidth;
   final double minHeight;
 
+  /// nudgeX and nudgeY move the box off where it was measured.
+  ///
+  /// The box is centred on the letter's *advance* -- the room the font says
+  /// the letter takes -- and a letter's ink is not always centred in that.
+  /// The W in one face sits a pixel right of its advance and the L in another
+  /// sits three left, so a box that is arithmetically centred can still look
+  /// wrong, and no amount of padding fixes it because padding is symmetric.
+  ///
+  /// A nudge rather than measuring the ink: what the ink of a glyph actually
+  /// covers is not something the text engine will say, and guessing it from
+  /// the outline would be a font renderer.
+  final double nudgeX;
+  final double nudgeY;
+
   /// hug fits the box to the words rather than to the cell.
   ///
   /// On, because the thing anybody asks for by naming a word is a chip round
@@ -135,6 +149,8 @@ class TableCellStyle {
     this.inset = 6,
     this.hug = true,
     this.textPad = 0,
+    this.nudgeX = 0,
+    this.nudgeY = 0,
     this.minWidth = 0,
     this.minHeight = 0,
   });
@@ -171,6 +187,8 @@ class TableCellStyle {
     double? textPad,
     double? minWidth,
     double? minHeight,
+    double? nudgeX,
+    double? nudgeY,
   }) =>
       TableCellStyle(
         background: background ?? this.background,
@@ -191,6 +209,8 @@ class TableCellStyle {
         textPad: textPad ?? this.textPad,
         minWidth: minWidth ?? this.minWidth,
         minHeight: minHeight ?? this.minHeight,
+        nudgeX: nudgeX ?? this.nudgeX,
+        nudgeY: nudgeY ?? this.nudgeY,
       );
 
   Map<String, dynamic> toJson() => {
@@ -211,6 +231,8 @@ class TableCellStyle {
         if (textPad != 0) "pad": textPad,
         if (minWidth != 0) "minw": minWidth,
         if (minHeight != 0) "minh": minHeight,
+        if (nudgeX != 0) "nx": nudgeX,
+        if (nudgeY != 0) "ny": nudgeY,
       };
 
   factory TableCellStyle.fromJson(Map<String, dynamic> json) => TableCellStyle(
@@ -237,6 +259,8 @@ class TableCellStyle {
         textPad: jsonDouble(json["pad"], 0),
         minWidth: jsonDouble(json["minw"], 0),
         minHeight: jsonDouble(json["minh"], 0),
+        nudgeX: jsonDouble(json["nx"], 0),
+        nudgeY: jsonDouble(json["ny"], 0),
       );
 }
 
@@ -648,6 +672,8 @@ class TableElement extends CanvasElement {
               minHeight: rule.style.minHeight != 0
                   ? rule.style.minHeight
                   : out.minHeight,
+              nudgeX: rule.style.nudgeX != 0 ? rule.style.nudgeX : out.nudgeX,
+              nudgeY: rule.style.nudgeY != 0 ? rule.style.nudgeY : out.nudgeY,
             );
     }
     return out;

@@ -3541,6 +3541,71 @@ void _tableTests() {
       expect(taller, greaterThan(natural));
     });
 
+    test("a chip is centred on its slot, and can be nudged off it", () async {
+      // The arithmetic is symmetric -- this pins that -- but the box is
+      // centred on the room the *font* says a letter takes, and a letter's
+      // ink is not always centred in that. Padding cannot correct it, being
+      // the same on both sides.
+      var e = TableElement(
+        const ElementBase(id: "t", width: 400, height: 120),
+        rows: const [
+          ["W"],
+        ],
+        headerRow: false,
+        cellSpec: const TextSpec(
+            fontSize: 20, align: TextAlignSpec.left, color: Color(0xFFFFFFFF)),
+        rules: const [
+          TableRule(
+              column: "1",
+              style: TableCellStyle(letterWidth: 30, letterSpacing: 8)),
+          TableRule(
+              column: "1",
+              match: "W",
+              how: TableMatch.anywhere,
+              style: TableCellStyle(
+                  background: Color(0xFF00FF00),
+                  inset: 6,
+                  radius: 0,
+                  minHeight: 30)),
+        ],
+      );
+
+      Future<double> chipCentre(TableElement of) async {
+        var recorder = ui.PictureRecorder();
+        paintTable(
+            ui.Canvas(recorder), const Rect.fromLTWH(0, 0, 400, 120), of);
+        var image = await recorder.endRecording().toImage(400, 120);
+        var pixels = (await image.toByteData(
+                format: ui.ImageByteFormat.rawStraightRgba))!
+            .buffer
+            .asUint8List();
+        image.dispose();
+        var min = 400, max = 0;
+        for (var i = 0; i < 400 * 120; i++) {
+          if (pixels[i * 4 + 1] > 180 &&
+              pixels[i * 4] < 90 &&
+              pixels[i * 4 + 2] < 90) {
+            var x = i % 400;
+            if (x < min) min = x;
+            if (x > max) max = x;
+          }
+        }
+        return (min + max) / 2;
+      }
+
+      var centred = await chipCentre(e);
+      // The slot starts at the cell padding and is thirty wide, so its middle
+      // is twenty-five.
+      expect(centred, closeTo(25, 1));
+
+      var nudged = await chipCentre(e.copyWith(rules: [
+        e.rules.first,
+        e.rules.last
+            .copyWith(style: e.rules.last.style.copyWith(nudgeX: 8)),
+      ]));
+      expect(nudged, closeTo(centred + 8, 1));
+    });
+
     test("a rule about one letter cannot respace the rest", () {
       // Setting a width on the D silently respaced the Ls and Ws beside it:
       // the pitch is how the whole cell is laid out, and one letter's rule

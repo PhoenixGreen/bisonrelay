@@ -3267,6 +3267,28 @@ Widget _tableRuleSettings(TableElement e, int index, _Write write,
           ),
         ],
         CanvasNumberField(
+          label: "Nudge X",
+          value: style.nudgeX,
+          min: -100,
+          max: 100,
+          decimals: 1,
+          width: 58,
+          onChanged: (v) =>
+              put(rule.copyWith(style: style.copyWith(nudgeX: v))),
+          onCommit: commit,
+        ),
+        CanvasNumberField(
+          label: "Nudge Y",
+          value: style.nudgeY,
+          min: -100,
+          max: 100,
+          decimals: 1,
+          width: 58,
+          onChanged: (v) =>
+              put(rule.copyWith(style: style.copyWith(nudgeY: v))),
+          onCommit: commit,
+        ),
+        CanvasNumberField(
           label: "Text space",
           value: style.textPad,
           min: 0,
@@ -3375,7 +3397,11 @@ Widget _tableRuleSettings(TableElement e, int index, _Write write,
             "Set them on a rule with no text -- one about the column -- since "
             "the pitch is how the whole cell is laid out. Then a rule that "
             "names a letter draws its box on those slots, and min height "
-            "makes the box taller than the letters."),
+            "makes the box taller than the letters.\n\n"
+            "Nudge moves the box off where it was measured. The box is "
+            "centred on the room the font says the letter takes, and a "
+            "letter's ink is not always centred in that -- padding cannot fix "
+            "it, since padding is the same on both sides."),
       ]),
     ],
   );

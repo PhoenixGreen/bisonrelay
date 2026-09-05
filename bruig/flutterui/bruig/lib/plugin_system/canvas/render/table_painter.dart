@@ -457,6 +457,9 @@ void _paintStyleBox(ui.Canvas canvas, Rect cell, TableCellStyle style,
       height: math.max(box.height, style.minHeight),
     );
   }
+  if (style.nudgeX != 0 || style.nudgeY != 0) {
+    box = box.translate(style.nudgeX, style.nudgeY);
+  }
   if (box.width <= 0 || box.height <= 0) return;
 
   if (style.background.a > 0) {
