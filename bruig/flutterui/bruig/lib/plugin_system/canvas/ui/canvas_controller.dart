@@ -817,10 +817,18 @@ class CanvasController extends ChangeNotifier {
   /// different question from the one being asked.
   ///
   /// So a drag poses when the document is animated and either auto-keyframe is
-  /// on, or the element has already been given keyframes -- something that has
-  /// been animated is being posed, not repositioned. To relocate an animated
-  /// element wholesale, the X and Y fields in its settings still move the
-  /// resting position, and the whole animation travels with it.
+  /// on, or the element has already been *posed* -- something that has been
+  /// animated in space is being posed, not repositioned. To relocate an
+  /// animated element wholesale, the X and Y fields in its settings still move
+  /// the resting position, and the whole animation travels with it.
+  ///
+  /// Posed, rather than merely having keyframes. The two are not the same and
+  /// the difference was a reported bug: applying one of the chart animation
+  /// presets lays two keyframes that say nothing but how much of the chart has
+  /// been drawn, and after that every drag of the chart wrote a move keyframe
+  /// at the playhead -- with auto-keyframe switched off, which is precisely
+  /// the setting that is supposed to mean "do not do that". A chart told how
+  /// to arrive has not been animated in space, so dragging it moves it.
   bool posesRatherThanMoves(CanvasElement element) =>
       _document.isAnimated &&
       // Never for something a path is driving. Its poses belong to the route,
@@ -828,7 +836,7 @@ class CanvasController extends ChangeNotifier {
       // moved -- so a drag moves where it starts from instead, and the whole
       // run travels with it.
       pathDriving(element.id) == null &&
-      (_autoKeyframe || (element.track?.isEmpty == false));
+      (_autoKeyframe || (element.track?.posesAnything == true));
 
   /// _moved is one element shifted, as either a pose or a relocation.
   CanvasElement _moved(CanvasElement element, double dx, double dy) {

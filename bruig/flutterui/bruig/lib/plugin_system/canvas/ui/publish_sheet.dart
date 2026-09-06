@@ -134,6 +134,7 @@ class _PublishSheetState extends State<_PublishSheet> {
   /// everywhere a photograph is compressed.
   bool _pdf = false;
   PdfPaper _paper = PdfPaper.canvas;
+  PdfOrientation _orientation = PdfOrientation.auto;
 
   bool _dither = true;
   int _colors = 256;
@@ -257,6 +258,7 @@ class _PublishSheetState extends State<_PublishSheet> {
             scale: _scale,
             images: widget.images,
             paper: _paper,
+            orientation: _orientation,
           );
         }
         return renderImage(
@@ -646,7 +648,19 @@ class _PublishSheetState extends State<_PublishSheet> {
                     (v) => setState(() => _paper = v)),
               ),
               const SizedBox(width: 12),
-              const Expanded(child: SizedBox()),
+              Expanded(
+                // Only a sheet of paper has a second way up. A page cut to the
+                // canvas is the canvas's shape, and offering to turn it would
+                // be a control that does nothing.
+                child: _paper.turns
+                    ? _dropdown<PdfOrientation>(
+                        theme,
+                        "Orientation",
+                        _orientation,
+                        [for (var o in PdfOrientation.values) (o, o.label)],
+                        (v) => setState(() => _orientation = v))
+                    : const SizedBox(),
+              ),
             ]),
             _note(
                 theme,
@@ -655,9 +669,11 @@ class _PublishSheetState extends State<_PublishSheet> {
                         "${_pageLabel()}, with the design filling it. Size is "
                         "the print resolution — 1 is a screen's worth of "
                         "detail, which is soft on paper."
-                    : "The design is centred on ${_paper.label} with a half "
-                        "inch margin, turned to match the canvas. Size is the "
-                        "print resolution rather than the page size."),
+                    : "The design is centred on ${_paper.label} "
+                        "${_pageLabel()} with a half inch margin, as large as "
+                        "it fits — so a wide design on a portrait sheet fills "
+                        "the width and leaves the room above and below. Size "
+                        "is the print resolution rather than the page size."),
           ],
         ];
 
@@ -774,7 +790,8 @@ class _PublishSheetState extends State<_PublishSheet> {
   /// means anything in. Worth saying: a canvas laid out at 1280 pixels is a
   /// thirteen-inch page, which surprises people.
   String _pageLabel() {
-    var page = pageFor(_paper, widget.document.size.size);
+    var page =
+        pageFor(_paper, widget.document.size.size, orientation: _orientation);
     return "${(page.width / 72).toStringAsFixed(1)} × "
         "${(page.height / 72).toStringAsFixed(1)} inches";
   }

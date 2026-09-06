@@ -70,6 +70,11 @@ class CanvasImageStore extends ChangeNotifier implements CanvasImageSource {
     _images[assetId] = image;
   }
 
+  /// notifyForTest is the store saying a picture arrived, which is the one
+  /// thing a late load does that anything else can see.
+  @visibleForTesting
+  void notifyForTest() => notifyListeners();
+
   /// original is the picture as it was loaded, with nothing taken out.
   ///
   /// What the retouching brush measures against: a stroke is stored in the

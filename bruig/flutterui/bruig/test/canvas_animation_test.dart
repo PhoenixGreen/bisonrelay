@@ -107,8 +107,7 @@ void main() {
   test("lastFrame is where the track stops changing", () {
     expect(ElementTrack.empty.lastFrame, 0);
     expect(
-        ElementTrack(const [Keyframe(frame: 3), Keyframe(frame: 17)])
-            .lastFrame,
+        ElementTrack(const [Keyframe(frame: 3), Keyframe(frame: 17)]).lastFrame,
         17);
   });
 
@@ -139,6 +138,59 @@ void main() {
       var pose = (e.track ?? ElementTrack.empty).at(frame);
       return Offset(e.x + pose.dx, e.y + pose.dy);
     }
+
+    test("a chart's animation preset does not turn drags into keyframes", () {
+      // Reported: "keyframes are recording actions without auto keyframing
+      // turned on -- I have an animation set for a chart using the chart
+      // animation presets, I then re-position the chart and wherever the
+      // playhead is it creates a new move keyframe".
+      //
+      // The presets lay two keyframes that carry nothing but how much of the
+      // chart has been drawn. Those were read as "this element is animated",
+      // which is true, and then as "so a drag is a pose", which is not: the
+      // chart has been told how to arrive, not where to be.
+      var controller = animated();
+      addTearDown(controller.dispose);
+
+      var element = controller.document.elementById("s1")!;
+      controller.replaceElement(element.withBase(
+        track: ElementTrack(const [
+          Keyframe(frame: 0, values: {KeyframeChannel.reveal: 0}),
+          Keyframe(frame: 20, values: {KeyframeChannel.reveal: 1}),
+        ]),
+      ));
+
+      controller.frame = 12;
+      controller.nudgeSelected(40, 0);
+
+      var after = controller.document.elementById("s1")!;
+      expect(after.x, 140, reason: "the element moved, as a drag should");
+      expect(after.track!.keys.length, 2,
+          reason: "and no keyframe was written to say so");
+      for (var key in after.track!.keys) {
+        expect(key.dx, 0);
+        expect(key.dy, 0);
+      }
+      // The arrival it was given is untouched and still travels with it.
+      expect(after.track!.at(0).values[KeyframeChannel.reveal], 0);
+      expect(after.track!.at(20).values[KeyframeChannel.reveal], 1);
+    });
+
+    test("but a keyframe laid by hand still means poses", () {
+      // The other side of the same rule. A keyframe deliberately pinned to
+      // hold something where it is says nothing about any channel, and is the
+      // clearest statement there is that this element's position is being
+      // animated.
+      var controller = animated();
+      addTearDown(controller.dispose);
+      controller.frame = 1;
+      controller.setKeyframe("s1", const Keyframe(frame: 1));
+
+      expect(
+          controller
+              .posesRatherThanMoves(controller.document.elementById("s1")!),
+          isTrue);
+    });
 
     test("the reported sequence now animates", () {
       var controller = animated();
@@ -303,7 +355,8 @@ void main() {
       var rest = team.centreOf(team.players[6]);
       expect(team.centreAt(team.players[6], 0).dx, rest.dx);
       expect(team.centreAt(team.players[6], 18).dx, rest.dx + 90);
-      expect(team.centreAt(team.players[6], 9).dx, closeTo(rest.dx + 45, 0.001));
+      expect(
+          team.centreAt(team.players[6], 9).dx, closeTo(rest.dx + 45, 0.001));
     });
 
     test("a player's run survives the team being moved and resized", () {
@@ -356,9 +409,10 @@ void main() {
 
   group("formation spread", () {
     test("own half fits everybody inside the box", () {
-      var team = TeamElement(const ElementBase(id: "t", width: 400, height: 300))
-          .withFormation(TeamFormation.f442,
-              spread: FormationSpread.ownHalf);
+      var team =
+          TeamElement(const ElementBase(id: "t", width: 400, height: 300))
+              .withFormation(TeamFormation.f442,
+                  spread: FormationSpread.ownHalf);
       for (var p in team.players) {
         expect(p.dx, inInclusiveRange(0, 1), reason: p.number);
         expect(p.dy, inInclusiveRange(0, 1), reason: p.number);
@@ -368,24 +422,25 @@ void main() {
     test("attacking pushes the forwards past the box", () {
       // The real metres: a 4-4-2's strikers stand about fifteen metres inside
       // the opposition half, so their fraction of a *half* is over 1.
-      var team = TeamElement(const ElementBase(id: "t", width: 400, height: 300))
-          .withFormation(TeamFormation.f442,
-              spread: FormationSpread.attacking);
+      var team =
+          TeamElement(const ElementBase(id: "t", width: 400, height: 300))
+              .withFormation(TeamFormation.f442,
+                  spread: FormationSpread.attacking);
       expect(team.players.last.dx, greaterThan(1));
-      expect(team.players.first.dx, lessThan(0.2), reason: "the keeper is deep");
+      expect(team.players.first.dx, lessThan(0.2),
+          reason: "the keeper is deep");
     });
 
     test("both spreads keep the same shape", () {
       // Only the denominator differs, so the order of the lines is identical.
       var box = const ElementBase(id: "t", width: 400, height: 300);
-      var attacking = TeamElement(box).withFormation(TeamFormation.f442,
-          spread: FormationSpread.attacking);
+      var attacking = TeamElement(box)
+          .withFormation(TeamFormation.f442, spread: FormationSpread.attacking);
       var own = TeamElement(box)
           .withFormation(TeamFormation.f442, spread: FormationSpread.ownHalf);
 
       for (var i = 1; i < attacking.players.length; i++) {
-        expect(
-            own.players[i].dx.compareTo(own.players[i - 1].dx),
+        expect(own.players[i].dx.compareTo(own.players[i - 1].dx),
             attacking.players[i].dx.compareTo(attacking.players[i - 1].dx),
             reason: "player $i");
         expect(own.players[i].dy, closeTo(attacking.players[i].dy, 0.0001),
@@ -396,10 +451,11 @@ void main() {
     test("the spread survives a change of formation", () {
       // Kept as a field for the same reason mirrored is: changing the shape
       // must not quietly change which of the two pictures is being shown.
-      var team = TeamElement(const ElementBase(id: "t", width: 400, height: 300))
-          .withFormation(TeamFormation.f442,
-              spread: FormationSpread.ownHalf)
-          .withFormation(TeamFormation.f433);
+      var team =
+          TeamElement(const ElementBase(id: "t", width: 400, height: 300))
+              .withFormation(TeamFormation.f442,
+                  spread: FormationSpread.ownHalf)
+              .withFormation(TeamFormation.f433);
       expect(team.spread, FormationSpread.ownHalf);
       for (var p in team.players) {
         expect(p.dx, inInclusiveRange(0, 1));
@@ -421,10 +477,10 @@ void main() {
 
     test("between the two keyframes it interpolates", () {
       var track = ElementTrack.empty
-          .withKey(const Keyframe(frame: 0)
-              .withValue(KeyframeChannel.reveal, 0))
-          .withKey(const Keyframe(frame: 10)
-              .withValue(KeyframeChannel.reveal, 1));
+          .withKey(
+              const Keyframe(frame: 0).withValue(KeyframeChannel.reveal, 0))
+          .withKey(
+              const Keyframe(frame: 10).withValue(KeyframeChannel.reveal, 1));
 
       expect(track.at(0).values[KeyframeChannel.reveal], 0);
       expect(track.at(5).values[KeyframeChannel.reveal], closeTo(0.5, 0.001));

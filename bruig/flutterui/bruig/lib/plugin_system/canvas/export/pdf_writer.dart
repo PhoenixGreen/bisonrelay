@@ -58,6 +58,26 @@ enum PdfPaper {
 
   final String label;
   const PdfPaper(this.label);
+
+  /// turns is whether this is a sheet of paper, and so has an orientation to
+  /// argue about. A page cut to the canvas is already the canvas's shape.
+  bool get turns => this != PdfPaper.canvas;
+}
+
+/// PdfOrientation is which way up the paper goes.
+///
+/// Following the canvas is the sensible default and is not always what is
+/// wanted: a wide design on a portrait sheet is a band across the top of the
+/// page with room under it for everything else that is going on that page --
+/// a heading, a table, a signature -- and somebody printing a report wants
+/// exactly that far more often than they want a sideways sheet.
+enum PdfOrientation {
+  auto("Match the canvas"),
+  portrait("Portrait"),
+  landscape("Landscape");
+
+  final String label;
+  const PdfOrientation(this.label);
 }
 
 /// pointsPerPixel converts a canvas's own pixels to points.
@@ -70,7 +90,11 @@ enum PdfPaper {
 const double pointsPerPixel = 72 / 96;
 
 /// pageFor is the sheet a canvas of [size] pixels goes on.
-PdfPage pageFor(PdfPaper paper, Size size) {
+///
+/// [orientation] is ignored for a page cut to the canvas, which is the
+/// canvas's shape by definition and has no second way up.
+PdfPage pageFor(PdfPaper paper, Size size,
+    {PdfOrientation orientation = PdfOrientation.auto}) {
   switch (paper) {
     case PdfPaper.canvas:
       return PdfPage(
@@ -81,7 +105,12 @@ PdfPage pageFor(PdfPaper paper, Size size) {
     case PdfPaper.a4:
     case PdfPaper.letter:
       var sheet = paper == PdfPaper.a4 ? PdfPage.a4 : PdfPage.letter;
-      return size.width > size.height ? sheet.turned : sheet;
+      var wide = switch (orientation) {
+        PdfOrientation.auto => size.width > size.height,
+        PdfOrientation.landscape => true,
+        PdfOrientation.portrait => false,
+      };
+      return wide ? sheet.turned : sheet;
   }
 }
 
@@ -89,7 +118,9 @@ PdfPage pageFor(PdfPaper paper, Size size) {
 /// [width] by [height] pixels.
 ///
 /// The picture is centred on the page and made as large as it can be inside
-/// the margin without changing shape. A page cut to the canvas has no margin
+/// the margin without changing shape -- so a wide canvas on a portrait sheet
+/// fills the width and leaves the room above and below, which is the whole
+/// reason somebody would choose that. A page cut to the canvas has no margin
 /// and no letterboxing, so the two are the same thing there.
 Uint8List writePdf(
   Uint8List rgba, {

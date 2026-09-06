@@ -104,6 +104,19 @@ class Keyframe {
     this.values = const {},
   });
 
+  /// posesElement is whether this keyframe says anything about *where* the
+  /// element is -- moved, resized, turned or faded.
+  ///
+  /// A keyframe that says none of those is still a real keyframe: a chart's
+  /// animation preset lays two that carry nothing but how much of the chart
+  /// has been drawn, and a caption sliding along a line is the same. The
+  /// difference matters because "this element has been animated" is the
+  /// question a drag asks before deciding whether it is posing or moving --
+  /// see CanvasController.posesRatherThanMoves -- and a chart that has only
+  /// been told how to arrive has not been animated *in space* at all.
+  bool get posesElement =>
+      dx != 0 || dy != 0 || scale != 1 || rotate != 0 || opacity != 1;
+
   /// rest is the pose that changes nothing, which is what a track with no
   /// keyframes evaluates to and what a new keyframe starts from.
   static const Keyframe rest = Keyframe(frame: 0);
@@ -203,6 +216,23 @@ class ElementTrack {
   static final ElementTrack empty = ElementTrack(const []);
 
   bool get isEmpty => keys.isEmpty;
+
+  /// posesAnything is whether this track is about where the element is, as
+  /// opposed to being nothing but channels.
+  ///
+  /// True if any keyframe either poses the element or pins nothing at all. The
+  /// second half matters: a keyframe deliberately laid to hold something where
+  /// it is has a rest pose and no channels, and it is the clearest possible
+  /// statement that this element's position is being animated -- pinning the
+  /// start and then moving at a later frame is the ordinary way to make an
+  /// animation by hand.
+  ///
+  /// So what this excludes is only a track whose every keyframe exists to
+  /// carry a channel: a chart told how to arrive, a caption told how far along
+  /// its line to sit. Those say nothing about position, and treating them as
+  /// though they did turned every later drag into a keyframe nobody asked for.
+  bool get posesAnything =>
+      keys.any((k) => k.posesElement || k.values.isEmpty);
 
   /// at returns the pose for [frame].
   ///

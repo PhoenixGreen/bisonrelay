@@ -136,7 +136,17 @@ class StagePainter extends CustomPainter {
   /// exactly where it was.
   final bool showHelpers;
 
-  const StagePainter({
+  /// The picture store is handed to CustomPainter as something to repaint on,
+  /// which is the only way a picture that arrives late reaches the screen.
+  ///
+  /// Pictures load off the disk after the frame that asked for them: the
+  /// painter draws a placeholder, the bytes turn up a moment later and the
+  /// store says so. Nothing else here changes when that happens -- the
+  /// document is the same, the selection is the same -- so shouldRepaint
+  /// answered no and the placeholder stayed until something unrelated forced
+  /// a repaint. The reported version of that was a picture put in a table
+  /// cell showing a grey crossed box until another cell was clicked.
+  StagePainter({
     required this.page,
     required this.view,
     required this.showHandles,
@@ -162,7 +172,7 @@ class StagePainter extends CustomPainter {
     required this.selectionRotation,
     required this.handleFor,
     required this.marquee,
-  });
+  }) : super(repaint: images is Listenable ? images as Listenable : null);
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -493,7 +503,10 @@ class StagePainter extends CustomPainter {
     // are seen as one picture rather than as two overlaid.
     canvas.save();
     canvas.clipRect(it.frame, clipOp: ui.ClipOp.difference);
-    canvas.drawImageRect(it.image, it.src, it.dst,
+    canvas.drawImageRect(
+        it.image,
+        it.src,
+        it.dst,
         Paint()
           ..filterQuality = FilterQuality.medium
           ..color = const Color(0x55FFFFFF));

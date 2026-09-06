@@ -135,6 +135,7 @@ Future<CanvasExport?> renderPdf(
   double scale = 1,
   CanvasImageSource? images,
   PdfPaper paper = PdfPaper.canvas,
+  PdfOrientation orientation = PdfOrientation.auto,
 }) async {
   ui.Image? image;
   try {
@@ -147,7 +148,7 @@ Future<CanvasExport?> renderPdf(
     var raw = await image.toByteData(format: ui.ImageByteFormat.rawStraightRgba);
     if (raw == null) return null;
 
-    var page = pageFor(paper, document.size.size);
+    var page = pageFor(paper, document.size.size, orientation: orientation);
     var bytes = writePdf(
       raw.buffer.asUint8List(),
       width: image.width,

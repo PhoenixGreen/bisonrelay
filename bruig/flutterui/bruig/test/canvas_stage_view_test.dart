@@ -20,6 +20,7 @@ import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_stage.dart';
+import 'package:bruig/plugin_system/canvas/ui/stage_painter.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/rendering.dart';
@@ -2745,5 +2746,44 @@ void main() {
       expect(after.x, greaterThan(element.x));
       expect(after.framing.isDefault, isTrue);
     });
+  });
+
+  testWidgets("a picture that arrives late still reaches the screen",
+      (tester) async {
+    // The bug this is here for: a picture put in a table cell showed a grey
+    // crossed placeholder until some unrelated thing forced a repaint --
+    // clicking another cell, usually.
+    //
+    // Pictures load off the disk after the frame that asked for them, and
+    // nothing the painter compares itself on changes when they arrive: the
+    // document is the same, the selection is the same. So shouldRepaint said
+    // no and the stale frame stayed on screen. The fix is to hand the store
+    // to CustomPainter as something to repaint on, and what that buys is
+    // exactly this -- the painter asking for a repaint when the store speaks,
+    // without anything else having changed.
+    var document = const CanvasDocument().addElement(TableElement(
+      const ElementBase(id: "t", x: 0, y: 0, width: 400, height: 200),
+      rows: const [
+        ["${TableElement.pictureCell}abcdefghijklmnop", "Hull City"],
+      ],
+    ));
+    var controller = CanvasController(document);
+    addTearDown(controller.dispose);
+    await pump(tester, controller);
+
+    var painter = tester
+        .widgetList<CustomPaint>(find.byType(CustomPaint))
+        .map((c) => c.painter)
+        .whereType<StagePainter>()
+        .single;
+
+    var repaints = 0;
+    void count() => repaints++;
+    painter.addListener(count);
+    addTearDown(() => painter.removeListener(count));
+
+    controller.images.notifyForTest();
+    expect(repaints, greaterThan(0),
+        reason: "a picture arriving has to reach the screen on its own");
   });
 }
