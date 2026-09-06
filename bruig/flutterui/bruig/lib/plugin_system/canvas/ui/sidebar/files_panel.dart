@@ -284,6 +284,27 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
     await _reload();
   }
 
+  /// _renameFolder renames a folder and everything in it.
+  Future<void> _renameFolder(CanvasEntry entry) async {
+    var snackbar = SnackBarModel.of(context);
+    var wanted = await _ask("Rename folder", "Name", initial: entry.name);
+    if (wanted == null || wanted == entry.name) return;
+
+    var ok = await CanvasStorage.renameFolder(entry.name, wanted);
+    if (!mounted) return;
+    if (!ok) {
+      snackbar.error("Unable to rename — is there already a $wanted?");
+      return;
+    }
+    // The editor may be holding a canvas that was in there, so its idea of
+    // where that canvas lives has to move with the folder or the next write
+    // goes to a directory that is no longer called that.
+    if (controller.folder == entry.name) {
+      controller.folder = CanvasStorage.sanitizeName(wanted) ?? entry.name;
+    }
+    await _reload();
+  }
+
   Future<void> _deleteFolder(CanvasEntry entry) async {
     var snackbar = SnackBarModel.of(context);
     var contents = await CanvasStorage.list(entry.name);
@@ -376,7 +397,10 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
           if (_folder.isEmpty)
             _action(theme, Icons.create_new_folder_outlined, "New folder",
                 _newFolder),
-          _action(theme, Icons.file_open_outlined, "Open a file", _import),
+          // Icon only: it is the least used of the three and the one whose
+          // meaning survives without a word beside it.
+          _iconAction(theme, Icons.file_open_outlined,
+              "Open a canvas from a file", _import),
           // Only for a canvas that has nowhere to save itself to: one started
           // from a preset, or from nothing. Everything else is already saving
           // itself, and a button that says Save next to a canvas that has just
@@ -384,6 +408,23 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
           if (controller.name == null && controller.dirty)
             _action(theme, Icons.save_outlined, "Save this canvas", _saveAs),
         ]),
+      );
+
+  /// _iconAction is a chip with no words, for an action whose icon says it.
+  ///
+  /// A Tooltip is safe here: this is below the list, not inside a row, so
+  /// nothing moves it mid-layout. See _rowButton for why that distinction
+  /// matters.
+  Widget _iconAction(ThemeNotifier theme, IconData icon, String tooltip,
+          VoidCallback onTap) =>
+      Tooltip(
+        message: tooltip,
+        child: ActionChip(
+          visualDensity: VisualDensity.compact,
+          labelPadding: EdgeInsets.zero,
+          label: Icon(icon, size: 16, color: theme.colors.onSurfaceVariant),
+          onPressed: onTap,
+        ),
       );
 
   Widget _action(ThemeNotifier theme, IconData icon, String label,
@@ -402,7 +443,7 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
   /// mid-layout when the row moves, and the sidebar is replaced by a red error
   /// box. See _rowButton, and the post library's own note on the same crash.
   Widget? _reorderHint(ThemeNotifier theme) {
-    if (_documents().length < 2) return null;
+    if (_entries.length < 2) return null;
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
       child: Text(
@@ -412,36 +453,21 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
     );
   }
 
-  /// _documents is the entries that can be reordered.
-  ///
-  /// Folders are not among them. A folder's place in the listing is decided by
-  /// the listing -- they come first, always -- so dragging one would be a
-  /// gesture that appeared to work and then undid itself on the next read.
-  List<CanvasEntry> _documents() => [
-        for (var e in _entries)
-          if (!e.isFolder) e
-      ];
-
   /// _reorder writes the new order down. See CanvasStorage.saveOrder, which
   /// is what the listing reads back.
+  ///
+  /// Folders move too. They are listed before documents only until somebody
+  /// says otherwise, and dragging one is exactly that -- so the order file
+  /// names both, and a folder is marked in it so a folder and a canvas of the
+  /// same name cannot take each other's place.
   Future<void> _reorder(int from, int to) async {
-    var folders = _entries.length - _documents().length;
-    // The indices arrive against the whole list, folders included, and a drop
-    // above the folders is clamped to just below them rather than refused --
-    // a drag that snaps back tells the reader nothing about why.
-    from = math.max(0, from - folders);
-    to = math.max(0, to - folders);
+    if (from < 0 || from >= _entries.length) return;
+    var entries = [..._entries];
+    var moved = entries.removeAt(from);
+    entries.insert(math.min(to, entries.length), moved);
 
-    var documents = _documents();
-    if (from >= documents.length) return;
-    var moved = documents.removeAt(from);
-    documents.insert(math.min(to, documents.length), moved);
-
-    setState(() => _entries = [
-          ..._entries.where((e) => e.isFolder),
-          ...documents,
-        ]);
-    await CanvasStorage.saveOrder(_folder, [for (var d in documents) d.name]);
+    setState(() => _entries = entries);
+    await CanvasStorage.saveOrder(_folder, entries);
   }
 
   /// _newCanvas starts an empty one and gives it a name straight away.
@@ -542,7 +568,7 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
       // positioned off that opens at its corner.
       builder: (buttonContext) => Semantics(
         button: true,
-        label: entry.isFolder ? "More" : "More — press and hold to move",
+        label: "More — press and hold to move",
         child: GestureDetector(
           // Opaque, so the tap stops here rather than reaching the row's own
           // InkWell and opening the canvas under the menu.
@@ -558,7 +584,6 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
       ),
     );
 
-    if (entry.isFolder) return button;
     return ReorderableDelayedDragStartListener(
       index: index,
       child: MouseRegion(cursor: SystemMouseCursors.grab, child: button),
@@ -589,7 +614,10 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
         overlay.size.height - bottomRight.dy,
       ),
       items: entry.isFolder
-          ? const [PopupMenuItem(value: "deleteFolder", child: Text("Delete"))]
+          ? const [
+              PopupMenuItem(value: "renameFolder", child: Text("Rename…")),
+              PopupMenuItem(value: "deleteFolder", child: Text("Delete")),
+            ]
           : const [
               PopupMenuItem(value: "publish", child: Text("Publish…")),
               PopupMenuItem(value: "duplicate", child: Text("Duplicate")),
@@ -607,6 +635,8 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
         await _rename(entry);
       case "delete":
         await _delete(entry);
+      case "renameFolder":
+        await _renameFolder(entry);
       case "deleteFolder":
         await _deleteFolder(entry);
     }

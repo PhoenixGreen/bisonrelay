@@ -218,24 +218,36 @@ class CanvasStorage {
         .sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
 
     var order = await _readOrder(dir);
-    if (order.isNotEmpty) {
-      // Names rather than positions, so a file renamed or deleted outside the
-      // app drops out of the order instead of shifting everything after it.
-      // Anything the order does not mention follows what it does.
-      var byName = {for (var d in documents) d.name: d};
-      var ordered = <CanvasEntry>[];
-      for (var name in order) {
-        var entry = byName.remove(name);
-        if (entry != null) ordered.add(entry);
-      }
-      documents = [
-        ...ordered,
-        ...documents.where((d) => byName.containsKey(d.name))
-      ];
-    }
+    if (order.isEmpty) return [...folders, ...documents];
 
-    return [...folders, ...documents];
+    // Names rather than positions, so a file renamed or deleted outside the
+    // app drops out of the order instead of shifting everything after it.
+    // Anything the order does not mention follows what it does, folders first,
+    // which is where a listing with no order of its own puts them.
+    var left = {
+      for (var e in [...folders, ...documents]) orderKeyFor(e): e,
+    };
+    var ordered = <CanvasEntry>[];
+    for (var key in order) {
+      var entry = left.remove(key);
+      if (entry != null) ordered.add(entry);
+    }
+    return [
+      ...ordered,
+      ...folders.where((f) => left.containsKey(orderKeyFor(f))),
+      ...documents.where((d) => left.containsKey(orderKeyFor(d))),
+    ];
   }
+
+  /// orderKeyFor is how an entry is named in the order file.
+  ///
+  /// A folder is prefixed and a document is not, which is both what tells them
+  /// apart and what keeps every order file written before folders could be
+  /// moved readable: a bare name has always meant a document and still does.
+  /// Without the prefix a folder and a canvas of the same name would be the
+  /// same line, and one of them would take the other's place.
+  static String orderKeyFor(CanvasEntry entry) =>
+      entry.isFolder ? "f:${entry.name}" : entry.name;
 
   static Future<List<String>> _readOrder(String dir) async {
     try {
@@ -250,12 +262,18 @@ class CanvasStorage {
     }
   }
 
-  static Future<void> saveOrder(String folder, List<String> names) async {
+  /// saveOrder writes the order a listing should come back in.
+  ///
+  /// Takes the entries rather than their names so that folders and documents
+  /// cannot be confused for one another -- see [orderKeyFor].
+  static Future<void> saveOrder(
+      String folder, List<CanvasEntry> entries) async {
     var dir = await _dirFor(folder);
     if (dir == null) return;
     try {
+      var keys = [for (var e in entries) orderKeyFor(e)];
       await File(path.join(dir, _orderFile))
-          .writeAsString("${names.join("\n")}\n", flush: true);
+          .writeAsString("${keys.join("\n")}\n", flush: true);
     } catch (exception) {
       debugPrint("Unable to save the canvas order: $exception");
     }
@@ -332,6 +350,31 @@ class CanvasStorage {
       await File(source).rename(target);
       return true;
     } catch (_) {
+      return false;
+    }
+  }
+
+  /// renameFolder renames a folder, with everything in it.
+  ///
+  /// Its own method rather than a branch in [rename], which is about documents
+  /// and appends the extension to both names -- handing it a folder made a
+  /// path to a file that was never there and failed quietly.
+  ///
+  /// Refuses to write over anything that already exists, as renaming a
+  /// document does, and for the same reason: a rename onto a name in use is a
+  /// mistake, and this one would merge two folders with no way back.
+  static Future<bool> renameFolder(String from, String to) async {
+    var clean = sanitizeName(to);
+    if (clean == null || sanitizeName(from) != from) return false;
+    try {
+      var library = await libraryDir();
+      var source = Directory(path.join(library, from));
+      var target = Directory(path.join(library, clean));
+      if (!await source.exists() || await target.exists()) return false;
+      await source.rename(target.path);
+      return true;
+    } catch (exception) {
+      debugPrint("Unable to rename the folder $from: $exception");
       return false;
     }
   }

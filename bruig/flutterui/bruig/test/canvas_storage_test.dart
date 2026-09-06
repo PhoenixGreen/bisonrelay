@@ -100,7 +100,8 @@ void main() {
         isTrue);
 
     var top = await CanvasStorage.list("");
-    expect(top.where((e) => e.isFolder).map((e) => e.name), contains("Matches"));
+    expect(
+        top.where((e) => e.isFolder).map((e) => e.name), contains("Matches"));
     // The document is inside the folder, not loose at the top level.
     expect(top.where((e) => !e.isFolder), isEmpty);
 
@@ -163,8 +164,7 @@ void main() {
   });
 
   test("a damaged file loads as null and stays on disk", () async {
-    var file = File(path.join(
-        root.path, "Canvas", "Broken$canvasExtension"));
+    var file = File(path.join(root.path, "Canvas", "Broken$canvasExtension"));
     await file.parent.create(recursive: true);
     await file.writeAsString("{ this is not json");
 
@@ -172,8 +172,8 @@ void main() {
     // Still listed and still there. Whatever the reader had is not thrown away
     // because this build could not read it.
     expect(await file.exists(), isTrue);
-    expect((await CanvasStorage.list("")).map((e) => e.name),
-        contains("Broken"));
+    expect(
+        (await CanvasStorage.list("")).map((e) => e.name), contains("Broken"));
   });
 
   test("dotted files stay out of the listing", () async {
@@ -187,7 +187,12 @@ void main() {
     for (var name in ["A", "B", "C"]) {
       await CanvasStorage.save("", name, const CanvasDocument());
     }
-    await CanvasStorage.saveOrder("", ["C", "A", "B"]);
+    // The order is written as entries rather than names, so a folder and a
+    // canvas of the same name cannot end up as the same line.
+    await CanvasStorage.saveOrder("", [
+      for (var name in ["C", "A", "B"])
+        CanvasEntry(name: name, folder: "", isFolder: false),
+    ]);
     expect((await CanvasStorage.list("")).map((e) => e.name), ["C", "A", "B"]);
 
     // A file deleted outside the app drops out of the order rather than
@@ -271,11 +276,8 @@ void main() {
 
     test("a background's picture is not forgotten", () async {
       var behind = (await CanvasAssets.save(List.filled(64, 11)))!;
-      await CanvasStorage.save(
-          "",
-          "Backdrop",
-          CanvasDocument(
-              background: CanvasBackground(imageAssetId: behind)));
+      await CanvasStorage.save("", "Backdrop",
+          CanvasDocument(background: CanvasBackground(imageAssetId: behind)));
 
       await CanvasAssets.sweepUnused();
       expect(await CanvasAssets.load(behind), isNotNull,
@@ -285,8 +287,17 @@ void main() {
 
   group("the picture store", () {
     /// png and jpeg are just enough of a header to be recognised.
-    List<int> png([int fill = 1]) =>
-        [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, ...List.filled(40, fill)];
+    List<int> png([int fill = 1]) => [
+          0x89,
+          0x50,
+          0x4E,
+          0x47,
+          0x0D,
+          0x0A,
+          0x1A,
+          0x0A,
+          ...List.filled(40, fill)
+        ];
     List<int> jpeg() => [0xFF, 0xD8, 0xFF, ...List.filled(40, 2)];
 
     test("the same picture twice is one file", () async {
@@ -355,7 +366,14 @@ void main() {
 
   group("reusing a picture", () {
     List<int> png([int fill = 1]) => [
-          0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
+          0x89,
+          0x50,
+          0x4E,
+          0x47,
+          0x0D,
+          0x0A,
+          0x1A,
+          0x0A,
           ...List.filled(40, fill)
         ];
 
@@ -405,8 +423,7 @@ void main() {
 
     test("the bitmaps still are", () {
       expect(
-          CanvasAssets.extensionForTest(
-              [0x89, 0x50, 0x4E, 0x47, 0, 0, 0, 0]),
+          CanvasAssets.extensionForTest([0x89, 0x50, 0x4E, 0x47, 0, 0, 0, 0]),
           ".png");
       expect(CanvasAssets.extensionForTest([0xFF, 0xD8, 0xFF]), ".jpg");
     });
@@ -427,15 +444,14 @@ void main() {
         ],
       );
 
-      expect(table.assetIds,
-          {"abcdef1234567890", "0123456789abcdef"});
+      expect(table.assetIds, {"abcdef1234567890", "0123456789abcdef"});
       expect(CanvasDocument(elements: [table]).assetIds,
           {"abcdef1234567890", "0123456789abcdef"});
     });
 
     test("a picture element's still does, and an empty one names nothing", () {
-      var picture = const ImageElement(ElementBase(id: "i"),
-          assetId: "abcdef1234567890");
+      var picture =
+          const ImageElement(ElementBase(id: "i"), assetId: "abcdef1234567890");
       expect(picture.assetIds, {"abcdef1234567890"});
       expect(const ImageElement(ElementBase(id: "i")).assetIds, isEmpty);
     });
@@ -482,5 +498,36 @@ void main() {
             reason: "still there after the sweep");
       }
     });
+  });
+
+  test("a folder keeps its place in the order too", () async {
+    // Folders were listed first and left there whatever anybody did. They are
+    // listed first only until somebody says otherwise.
+    await CanvasStorage.createFolder("Plans");
+    await CanvasStorage.save("", "Match plan", const CanvasDocument());
+
+    var listed = await CanvasStorage.list("");
+    expect(listed.map((e) => e.name), ["Plans", "Match plan"],
+        reason: "a folder comes first when nothing says otherwise");
+
+    await CanvasStorage.saveOrder("", listed.reversed.toList());
+    expect((await CanvasStorage.list("")).map((e) => e.name),
+        ["Match plan", "Plans"]);
+  });
+
+  test("a folder and a canvas of the same name keep their own places",
+      () async {
+    // The reason the order file marks folders: a bare name has always meant a
+    // canvas, so an unmarked folder would take a canvas's line.
+    await CanvasStorage.createFolder("Plans");
+    await CanvasStorage.save("", "Plans", const CanvasDocument());
+
+    var listed = await CanvasStorage.list("");
+    expect(listed, hasLength(2));
+    await CanvasStorage.saveOrder("", listed.reversed.toList());
+
+    var back = await CanvasStorage.list("");
+    expect(back.map((e) => e.isFolder), [false, true],
+        reason: "the canvas first, the folder second, as it was written");
   });
 }

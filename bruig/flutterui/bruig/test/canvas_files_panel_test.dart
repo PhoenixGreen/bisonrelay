@@ -107,7 +107,9 @@ void main() {
 
     expect(find.text("New canvas"), findsOneWidget);
     expect(find.text("New folder"), findsOneWidget);
-    expect(find.text("Open a file"), findsOneWidget);
+    // Icon only, so it is found by what it says on hover rather than by a
+    // label it does not carry.
+    expect(find.byTooltip("Open a canvas from a file"), findsOneWidget);
 
     // They are below the list, which is the thing somebody came here to read.
     var list = tester.getBottomLeft(find.text("Match plan")).dy;
@@ -200,7 +202,54 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text("Delete"), findsOneWidget);
+    expect(find.text("Rename…"), findsOneWidget,
+        reason: "a folder can be renamed, with everything in it");
     expect(find.text("Duplicate"), findsNothing,
         reason: "there is no duplicating a folder here");
+  });
+
+  testWidgets("a folder can be moved like anything else", (tester) async {
+    // Folders were listed first and left there. They are listed first only
+    // until somebody says otherwise, and dragging one is exactly that.
+    await pump(tester, canvases: ["Match plan"], folders: ["Plans"]);
+
+    var list =
+        tester.widget<ReorderableListView>(find.byType(ReorderableListView));
+    expect(list.itemCount, 2);
+
+    // Both rows carry a drag listener, the folder included.
+    expect(find.byType(ReorderableDelayedDragStartListener), findsNWidgets(2));
+  });
+
+  testWidgets("the order that comes back names folders apart from canvases",
+      (tester) async {
+    // A folder and a canvas can share a name. In the order file they must not
+    // share a line, or one takes the other's place.
+    var folder = const CanvasEntry(name: "Plans", folder: "", isFolder: true);
+    var document =
+        const CanvasEntry(name: "Plans", folder: "", isFolder: false);
+    expect(CanvasStorage.orderKeyFor(folder),
+        isNot(CanvasStorage.orderKeyFor(document)));
+    expect(CanvasStorage.orderKeyFor(document), "Plans",
+        reason: "a bare name has always meant a canvas, and still does");
+  });
+
+  test("a folder is renamed with everything in it", () async {
+    await CanvasStorage.createFolder("Plans");
+    await CanvasStorage.save(
+        "Plans", "Match plan", const CanvasDocument(title: "Match plan"));
+
+    expect(await CanvasStorage.renameFolder("Plans", "Season"), isTrue);
+    expect(await CanvasStorage.load("Season", "Match plan"), isNotNull,
+        reason: "what was in it came too");
+    expect(await CanvasStorage.load("Plans", "Match plan"), isNull);
+  });
+
+  test("a folder is not renamed onto one that exists", () async {
+    // It would merge the two with no way back.
+    await CanvasStorage.createFolder("Plans");
+    await CanvasStorage.createFolder("Season");
+    expect(await CanvasStorage.renameFolder("Plans", "Season"), isFalse);
+    expect(await CanvasStorage.list(""), hasLength(2));
   });
 }
