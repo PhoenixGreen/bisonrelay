@@ -19,10 +19,11 @@ import 'package:flutter/material.dart';
 // somebody makes once about how they work, so all three are written down and
 // come back next time -- see [CanvasPanelStack.storageKey].
 //
-// The grip is the top edge of a panel's header rather than a bar of its own.
-// A bar between two panels is a row of pixels that does nothing but be
-// dragged, in a column where every row is wanted for something; the edge is
-// already there.
+// A header is a band of its own colour with nothing in it but the panel's
+// name: no expander arrow, because the whole band is the switch and an arrow
+// beside a band that is entirely clickable is a smaller target that looks like
+// the only one, and no grip, because the line between two panels is where
+// anybody reaches to move a boundary.
 
 /// PanelDrag is a panel being carried, and exists only to be its own type.
 ///
@@ -86,7 +87,14 @@ class _CanvasPanelStackState extends State<CanvasPanelStack> {
   /// _headerHeight is what a shut panel costs. Its own constant because the
   /// arithmetic that shares out the rest has to subtract it for every panel,
   /// open or not.
-  static const double _headerHeight = 30;
+  ///
+  /// Roomy for a row of nine-pixel capitals, deliberately: the whole band is
+  /// the switch, so it may as well be worth aiming at.
+  static const double _headerHeight = 34;
+
+  /// _dividerHeight is the line between two panels, and the grip that moves
+  /// it. Thin to look at and thick enough to catch.
+  static const double _dividerHeight = 7;
 
   /// _minBody keeps a panel from being dragged away to nothing. A panel that
   /// can be closed by dragging is a panel that gets closed by accident, and
@@ -205,12 +213,15 @@ class _CanvasPanelStackState extends State<CanvasPanelStack> {
 
     return LayoutBuilder(builder: (context, constraints) {
       // What is left for the open panels once every header has had its row.
-      var room = constraints.maxHeight - panels.length * _headerHeight;
+      var room = constraints.maxHeight -
+          panels.length * _headerHeight -
+          math.max(0, panels.length - 1) * _dividerHeight;
       var share = open.isEmpty ? 0.0 : math.max(_minBody, room / open.length);
 
       return Column(children: [
         for (var (i, panel) in panels.indexed) ...[
-          _header(theme, panel, first: i == 0),
+          if (i > 0) _divider(theme, panel),
+          _header(theme, panel),
           if (_isOpen(panel.id))
             // The last open panel takes what is left rather than a remembered
             // height, so the column always fills the sidebar exactly and there
@@ -233,101 +244,95 @@ class _CanvasPanelStackState extends State<CanvasPanelStack> {
         child: Builder(builder: panel.builder),
       );
 
-  /// _header is the panel's name, its switch, its grip and its handle.
+  /// _divider is the line between two panels, and the grip that moves it.
+  ///
+  /// Between them rather than inside a header, which is where the grip used to
+  /// be. A boundary is the thing being moved, so the boundary is the thing to
+  /// take hold of -- and an icon in the header was a second small target in a
+  /// band that is otherwise one big one.
+  Widget _divider(ThemeNotifier theme, CanvasStackPanel below) => MouseRegion(
+        cursor: SystemMouseCursors.resizeUpDown,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onVerticalDragUpdate: (details) =>
+              _resize(below.id, details.delta.dy),
+          child: SizedBox(
+            height: _dividerHeight,
+            child: Center(
+              child: Container(
+                height: 1,
+                color: theme.colors.outlineVariant,
+              ),
+            ),
+          ),
+        ),
+      );
+
+  /// _header is the panel's name, its switch and its handle -- which are two
+  /// things, because the whole band is the switch.
   ///
   /// A DragTarget rather than a reorderable list. A list would move the
   /// panels' elements rather than rebuild them, which is how an overlay inside
   /// one gets re-attached mid-layout and takes the sidebar down with it -- and
   /// these panels are full of tooltips and menus. Dropping one header on
   /// another rebuilds both, which nothing minds.
-  Widget _header(ThemeNotifier theme, CanvasStackPanel panel,
-      {required bool first}) {
-    var open = _isOpen(panel.id);
-
+  Widget _header(ThemeNotifier theme, CanvasStackPanel panel) {
     return DragTarget<PanelDrag>(
       onWillAcceptWithDetails: (details) => details.data.id != panel.id,
       onAcceptWithDetails: (details) => _move(details.data.id, panel.id),
-      builder: (context, candidate, _) => Container(
-        height: _headerHeight,
-        decoration: BoxDecoration(
-          color: candidate.isEmpty
-              ? null
-              : theme.colors.primary.withValues(alpha: 0.14),
-          border: Border(
-            top: BorderSide(
-                color: first
-                    ? Colors.transparent
-                    : theme.colors.outlineVariant.withValues(alpha: 0.8)),
+      builder: (context, candidate, _) => Material(
+        // Its own colour across the whole band, so a header is a header at a
+        // glance rather than a line of small capitals floating above some
+        // controls. A Material rather than a Container, so the ink the InkWell
+        // draws -- the hover, the press -- lands on this rather than on
+        // whatever is behind the sidebar.
+        color: candidate.isEmpty
+            ? theme.colors.surfaceContainerHighest
+            : theme.colors.primary.withValues(alpha: 0.18),
+        child: InkWell(
+          onTap: () => _toggle(panel.id),
+          child: SizedBox(
+            height: _headerHeight,
+            child: Row(children: [
+              const SizedBox(width: 10),
+              Icon(panel.icon, size: 14, color: theme.colors.onSurfaceVariant),
+              const SizedBox(width: 7),
+              Flexible(
+                child: Text(
+                  panel.label.toUpperCase(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 10,
+                    letterSpacing: 0.8,
+                    fontWeight: FontWeight.w600,
+                    color: theme.colors.onSurfaceVariant.withValues(alpha: 0.9),
+                  ),
+                ),
+              ),
+              if (panel.trailing != null) ...[
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    panel.trailing!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: 9,
+                        color: theme.colors.onSurfaceVariant
+                            .withValues(alpha: 0.55)),
+                  ),
+                ),
+              ],
+              if (panel.hint != null) CanvasHint(panel.hint!),
+              const Spacer(),
+              _handle(theme, panel),
+            ]),
           ),
         ),
-        child: Row(children: [
-          // The grip. The top edge of every header but the first, which has
-          // nothing above it to take room from.
-          if (!first) _grip(panel) else const SizedBox(width: 6),
-          Expanded(
-            child: InkWell(
-              onTap: () => _toggle(panel.id),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 2),
-                child: Row(children: [
-                  Icon(open ? Icons.expand_more : Icons.chevron_right,
-                      size: 16, color: theme.colors.onSurfaceVariant),
-                  const SizedBox(width: 2),
-                  Icon(panel.icon,
-                      size: 14, color: theme.colors.onSurfaceVariant),
-                  const SizedBox(width: 6),
-                  Flexible(
-                    child: Text(
-                      panel.label.toUpperCase(),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 10,
-                        letterSpacing: 0.8,
-                        fontWeight: FontWeight.w600,
-                        color: theme.colors.onSurfaceVariant
-                            .withValues(alpha: 0.85),
-                      ),
-                    ),
-                  ),
-                  if (panel.trailing != null) ...[
-                    const SizedBox(width: 5),
-                    Flexible(
-                      child: Text(
-                        panel.trailing!,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                            fontSize: 9,
-                            color: theme.colors.onSurfaceVariant
-                                .withValues(alpha: 0.55)),
-                      ),
-                    ),
-                  ],
-                  if (panel.hint != null) CanvasHint(panel.hint!),
-                ]),
-              ),
-            ),
-          ),
-          _handle(theme, panel),
-        ]),
       ),
     );
   }
-
-  /// _grip is the few pixels of the top edge that resize the panel above.
-  Widget _grip(CanvasStackPanel panel) => MouseRegion(
-        cursor: SystemMouseCursors.resizeUpDown,
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onVerticalDragUpdate: (details) =>
-              _resize(panel.id, details.delta.dy),
-          child: const SizedBox(
-              width: 14,
-              height: _headerHeight,
-              child: Icon(Icons.drag_handle, size: 12)),
-        ),
-      );
 
   /// _handle is what a panel is carried by.
   Widget _handle(ThemeNotifier theme, CanvasStackPanel panel) {

@@ -509,9 +509,11 @@ void main() {
 
       var before = tester.getSize(find.byType(CanvasElementsPanel)).height;
 
-      // The grip on the Layers header, which is the boundary between Add and
-      // Layers. Dragging it down gives Add the room.
-      var grip = find.byIcon(Icons.drag_handle).first;
+      // The line between Add and Layers. Dragging it down gives Add the room.
+      var grip = find
+          .byWidgetPredicate((w) =>
+              w is MouseRegion && w.cursor == SystemMouseCursors.resizeUpDown)
+          .first;
       await tester.drag(grip, const Offset(0, 60));
       await tester.pumpAndSettle();
 
@@ -2696,10 +2698,38 @@ void main() {
       expect(find.byIcon(Icons.drag_indicator), findsNWidgets(3));
     });
 
-    testWidgets("the top panel has no grip above it", (tester) async {
-      // There is nothing above it to take the room from.
+    testWidgets("the boundaries are the grips, and the top has none",
+        (tester) async {
+      // Resizing is done on the line between two panels rather than on an icon
+      // in a header: the boundary is the thing being moved. Three panels have
+      // two boundaries, and the top of the first is not one of them -- there
+      // is nothing above it to take the room from.
       await panel(tester);
-      expect(find.byIcon(Icons.drag_handle), findsNWidgets(2));
+      expect(find.byIcon(Icons.drag_handle), findsNothing,
+          reason: "the grip that used to sit in the header is gone");
+      expect(
+          find.descendant(
+              of: find.byType(CanvasPanelStack),
+              matching: find.byWidgetPredicate((w) =>
+                  w is MouseRegion &&
+                  w.cursor == SystemMouseCursors.resizeUpDown)),
+          findsNWidgets(2));
+    });
+
+    testWidgets("a header is a band, and the whole of it is the switch",
+        (tester) async {
+      // No expander arrow: the whole band opens and closes the panel, and an
+      // arrow beside it is a smaller target that looks like the only one.
+      await panel(tester);
+      expect(find.byIcon(Icons.expand_more), findsNothing);
+      expect(find.byIcon(Icons.chevron_right), findsNothing);
+
+      // Tapping the name, which is nowhere near where an arrow would have
+      // been, still closes it.
+      expect(find.byType(CanvasElementsPanel), findsOneWidget);
+      await tester.tap(find.text("ADD"));
+      await tester.pumpAndSettle();
+      expect(find.byType(CanvasElementsPanel), findsNothing);
     });
   });
 
