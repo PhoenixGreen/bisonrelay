@@ -368,3 +368,27 @@ List<List<String>> keepColumns(
   }
   return out;
 }
+
+/// keepHeaders puts the table's existing column names back over the ones the
+/// source supplied.
+///
+/// A rule that colours cells names its column -- "Points", "GD" -- so a
+/// refresh that renamed the headers quietly switched every one of those off.
+/// The reader named these columns and the source did not, so the reader wins:
+/// what arrives is the numbers, not the vocabulary.
+///
+/// Columns the table did not have before take the source's name, which is the
+/// only name they have.
+List<List<String>> keepHeaders(
+  List<List<String>> before,
+  List<List<String>> after, {
+  bool headerRow = true,
+}) {
+  if (!headerRow || before.isEmpty || after.isEmpty) return after;
+  var was = before.first;
+  var out = [for (var row in after) [...row]];
+  for (var c = 0; c < out.first.length && c < was.length; c++) {
+    out.first[c] = was[c];
+  }
+  return out;
+}

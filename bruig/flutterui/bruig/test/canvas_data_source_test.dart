@@ -424,4 +424,71 @@ void main() {
     expect(footballDataColumns[footballData.matchColumn].header, "Team",
         reason: "rows are matched by the club, not by their position");
   });
+
+  group("what a refresh must not break", () {
+    // A table somebody has set up: their own column names, their own rules
+    // written against those names, their own badges.
+    List<List<String>> mine() => [
+          ["Pos", "Crest", "Club", "Points"],
+          ["1", "img:mine-hull", "Hull City", "6"],
+          ["2", "img:mine-arsenal", "Arsenal", "4"],
+        ];
+
+    var source = const DataSource(
+      kind: DataKind.file,
+      where: "x",
+      matchColumn: 2,
+      columns: [
+        SourceColumn(header: "Position", path: "position"),
+        SourceColumn(header: "Badge", path: "crest", picture: true, keep: true),
+        SourceColumn(header: "Team", path: "team"),
+        SourceColumn(header: "Pts", path: "points"),
+      ],
+    );
+
+    test("the reader's column names survive it", () {
+      // Rules pick their cells out by column name, so a refresh that renamed
+      // the headers switched every rule off -- the crest column's padding
+      // among them. The reader named these columns; the source did not.
+      var arrived = [
+        ["Position", "Badge", "Team", "Pts"],
+        ["1", "", "Hull City", "9"],
+      ];
+      var merged = keepHeaders(mine(), arrived);
+      expect(merged.first, ["Pos", "Crest", "Club", "Points"]);
+      expect(merged[1][3], "9", reason: "the numbers still arrived");
+    });
+
+    test("a column the table did not have takes the source's name", () {
+      var arrived = [
+        ["Position", "Badge", "Team", "Pts", "Form"],
+        ["1", "", "Hull City", "9", "WWD"],
+      ];
+      expect(keepHeaders(mine(), arrived).first.last, "Form");
+    });
+
+    test("a table with no header row is left alone", () {
+      var arrived = [
+        ["1", "", "Hull City", "9"],
+      ];
+      expect(identical(keepHeaders(mine(), arrived, headerRow: false), arrived),
+          isTrue);
+    });
+
+    test("names and badges both survive together", () {
+      // The two merges run one after the other on a refresh, and neither may
+      // undo the other.
+      var arrived = [
+        ["Position", "Badge", "Team", "Pts"],
+        ["1", "", "Arsenal", "9"],
+        ["2", "", "Hull City", "7"],
+      ];
+      var merged = keepColumns(mine(), arrived, source);
+      merged = keepHeaders(mine(), merged);
+      expect(merged.first, ["Pos", "Crest", "Club", "Points"]);
+      expect(merged[1][1], "img:mine-arsenal",
+          reason: "Arsenal has climbed and brought its badge");
+      expect(merged[2][1], "img:mine-hull");
+    });
+  });
 }

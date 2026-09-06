@@ -1027,66 +1027,72 @@ class _CanvasExpanderState extends State<CanvasExpander> {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        // Loose fits throughout, and no Expanded anywhere.
+        // Two layouts, chosen by whether there is a width to fill.
         //
-        // A section is laid out in two quite different places: down the
-        // sidebar, where the width is fixed, and along the settings band,
-        // which is a horizontal scroller and so offers no width at all. An
-        // Expanded in the second one is not a layout that looks wrong, it is
-        // an assertion -- a child cannot fill a space of unknown size.
-        Row(mainAxisSize: MainAxisSize.min, children: [
-          Flexible(
-            child: InkWell(
-              onTap: _toggle,
-              borderRadius: BorderRadius.circular(5),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(_open ? Icons.expand_more : Icons.chevron_right,
-                      size: 16, color: theme.colors.onSurfaceVariant),
-                  const SizedBox(width: 3),
-                  // The name shrinks too, before the summary does. A
-                  // heading carrying a button as well is wider than a narrow
-                  // sidebar for several of these, and a Text that cannot
-                  // shrink overflows however flexible everything beside it is.
+        // Down the sidebar there is, and the action belongs hard against the
+        // right edge with the summary taking whatever is left -- a button
+        // floating just after the text looks like part of the text. Along the
+        // settings band there is not: it is a horizontal scroller offering
+        // unbounded width, where an Expanded is not a layout that looks wrong
+        // but an assertion, because a child cannot fill a space of unknown
+        // size. So the heading shrink-wraps there instead.
+        LayoutBuilder(builder: (context, constraints) {
+          var fills = constraints.maxWidth.isFinite;
+          Widget heading = InkWell(
+            onTap: _toggle,
+            borderRadius: BorderRadius.circular(5),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(_open ? Icons.expand_more : Icons.chevron_right,
+                    size: 16, color: theme.colors.onSurfaceVariant),
+                const SizedBox(width: 3),
+                // The name shrinks before the summary does, and both clip. A
+                // heading carrying a button as well is wider than a narrow
+                // sidebar for several of these, and a Text that cannot shrink
+                // overflows however flexible everything beside it is.
+                Flexible(
+                  child: Text(
+                    widget.label.toUpperCase(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 9,
+                      letterSpacing: 0.7,
+                      fontWeight: FontWeight.w600,
+                      color:
+                          theme.colors.onSurfaceVariant.withValues(alpha: 0.7),
+                    ),
+                  ),
+                ),
+                if (widget.trailing != null) ...[
+                  const SizedBox(width: 5),
                   Flexible(
                     child: Text(
-                      widget.label.toUpperCase(),
+                      widget.trailing!,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        fontSize: 9,
-                        letterSpacing: 0.7,
-                        fontWeight: FontWeight.w600,
-                        color: theme.colors.onSurfaceVariant
-                            .withValues(alpha: 0.7),
-                      ),
+                          fontSize: 9,
+                          color: theme.colors.onSurfaceVariant
+                              .withValues(alpha: 0.5)),
                     ),
                   ),
-                  if (widget.trailing != null) ...[
-                    const SizedBox(width: 5),
-                    // Flexible and clipped: the heading is one line whatever
-                    // the summary says.
-                    Flexible(
-                      child: Text(
-                        widget.trailing!,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                            fontSize: 9,
-                            color: theme.colors.onSurfaceVariant
-                                .withValues(alpha: 0.5)),
-                      ),
-                    ),
-                  ],
-                ]),
-              ),
+                ],
+              ]),
             ),
-          ),
-          // Outside the InkWell, so pressing it does not also open or shut the
-          // section it sits on.
-          if (widget.action != null) widget.action!,
-        ]),
+          );
+
+          return Row(
+            mainAxisSize: fills ? MainAxisSize.max : MainAxisSize.min,
+            children: [
+              fills ? Expanded(child: heading) : Flexible(child: heading),
+              // Outside the InkWell, so pressing it does not also open or shut
+              // the section it sits on.
+              if (widget.action != null) widget.action!,
+            ],
+          );
+        }),
         if (_open)
           Padding(
             padding: const EdgeInsets.only(left: 4, bottom: 6),

@@ -152,6 +152,11 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
       // down the table rather than staying at the position it was put in.
       rows = keepColumns(widget.element.rows, rows, source,
           headerRow: widget.element.headerRow);
+      // And the column names the reader gave them. Rules pick their cells out
+      // by column name, so a refresh that renamed the headers switched every
+      // rule off -- the crest column's padding among them.
+      rows = keepHeaders(widget.element.rows, rows,
+          headerRow: widget.element.headerRow);
       setState(() => _fields = result.fields);
 
       // Sorted on the way in, so a refresh puts the rows back in the order the
@@ -212,11 +217,17 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
         trailing: _summary(source),
         // In the heading, so a table is refreshed with one press and without
         // opening anything. It is the thing this section is for.
+        // The last-updated line lived at the bottom of the section, which is
+        // the one place somebody checking how old a table is would not look.
+        // It belongs on the button that changes it.
         action: CanvasIconButton(
           icon: _busy ? Icons.hourglass_empty : Icons.refresh,
-          tooltip: source.on
-              ? "Read the data again and put it in the table"
-              : "Choose where the data comes from first",
+          tooltip: !source.on
+              ? "Choose where the data comes from first"
+              : source.fetchedAt == null
+                  ? "Read the data and put it in the table"
+                  : "Read the data again — last updated "
+                      "${DateFormat("d MMM y, HH:mm").format(source.fetchedAt!.toLocal())}",
           onPressed: source.on && !_busy ? _refresh : null,
         ),
         children: _controls(context, preset, allowed),
@@ -299,8 +310,11 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
             onChanged: (v) => _set(source.copyWith(where: v)),
           ),
         ]),
-        CanvasControlGroup(label: "Key", children: [
-          _KeyField(host: source.host, onSaved: _checkKey),
+        // The group's own caption says whether there is a key, so the field
+        // does not caption itself as well. A box labelled "Key" over a
+        // working table reads as something still to be done.
+        CanvasControlGroup(label: _hasKey ? "Key active" : "Key", children: [
+          _KeyField(host: source.host, saved: _hasKey, onSaved: _checkKey),
           CanvasHint(_hasKey
               ? "A key is saved for ${source.host}. It is kept on this "
                   "machine and never written into the canvas, so a canvas you "
@@ -342,31 +356,41 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
                 onChanged: (v) =>
                     _setColumn(i, source.columns[i].copyWith(header: v)),
               ),
-              CanvasTextField(
-                label: "Path",
-                value: source.columns[i].path,
-                width: 130,
-                onChanged: (v) =>
-                    _setColumn(i, source.columns[i].copyWith(path: v)),
-              ),
-              // The fields the last refresh actually contained, so a path is
-              // chosen from a list rather than guessed and typed. Only after
-              // a refresh: until then there is nothing to have found out.
+              // One control, not two. A free-text path beside a list of the
+              // paths that exist is the same answer asked for twice, and the
+              // typed one is the one that can be wrong. So once a refresh has
+              // said what is actually in the data, this is a list -- with
+              // whatever the column is set to already in it, even if the
+              // source has since stopped sending it, because silently
+              // changing a mapping to something else would be worse.
               if (_fields.isNotEmpty)
                 CanvasDropdown<String>(
-                  label: "Available",
-                  value: _fields.contains(source.columns[i].path)
-                      ? source.columns[i].path
-                      : "",
+                  label: "Field",
+                  value: source.columns[i].path,
                   width: 150,
                   options: [
-                    ("", "—"),
+                    if (!_fields.contains(source.columns[i].path))
+                      (
+                        source.columns[i].path,
+                        source.columns[i].path.isEmpty
+                            ? "—"
+                            : "${source.columns[i].path} (not in the data)"
+                      ),
                     for (var field in _fields) (field, field),
                   ],
-                  onChanged: (v) {
-                    if (v.isEmpty) return;
-                    _setColumn(i, source.columns[i].copyWith(path: v));
-                  },
+                  onChanged: (v) =>
+                      _setColumn(i, source.columns[i].copyWith(path: v)),
+                )
+              else
+                // Before the first refresh there is nothing to list, so the
+                // path is typed -- which is also the way in for a source
+                // nobody has written a preset for.
+                CanvasTextField(
+                  label: "Path",
+                  value: source.columns[i].path,
+                  width: 130,
+                  onChanged: (v) =>
+                      _setColumn(i, source.columns[i].copyWith(path: v)),
                 ),
               CanvasToggle(
                 label: "A picture",
@@ -423,11 +447,6 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
           ]),
         ],
       ),
-
-      if (source.fetchedAt != null)
-        CanvasHint("Last updated "
-            "${DateFormat("d MMM y, HH:mm").format(source.fetchedAt!.toLocal())}."
-            " Refresh is the button in this section's heading."),
     ];
   }
 
@@ -461,9 +480,15 @@ String _choiceOf(DataPreset preset, DataSource source) {
 /// a key half saved.
 class _KeyField extends StatefulWidget {
   final String host;
+
+  /// saved is whether there is already a key for this host, which is all the
+  /// interface ever says about one. A key is never shown back.
+  final bool saved;
+
   final VoidCallback onSaved;
 
-  const _KeyField({required this.host, required this.onSaved});
+  const _KeyField(
+      {required this.host, required this.saved, required this.onSaved});
 
   @override
   State<_KeyField> createState() => _KeyFieldState();
@@ -488,40 +513,46 @@ class _KeyFieldState extends State<_KeyField> {
   static const double _buttonRoom = 40;
 
   @override
-  Widget build(BuildContext context) => LayoutBuilder(
-        // The width that is actually there, rather than the width the control
-        // scope would like. A raw SizedBox is what overflowed the sidebar in
-        // the first place, and asking the scope only moved the number that was
-        // too big -- the room this row has is what its own parent gives it,
-        // and only a LayoutBuilder knows that.
-        //
-        // Unbounded in the settings band above the canvas, which scrolls
-        // sideways; there the field takes a fixed width like everything else.
-        builder: (context, constraints) {
-          var room = constraints.maxWidth.isFinite
-              ? constraints.maxWidth - _buttonRoom
-              : 190.0;
-          return Row(mainAxisSize: MainAxisSize.min, children: [
-            SizedBox(
-              width: math.max(60, math.min(190, room)),
-              child: TextField(
-                controller: _text,
-                obscureText: true,
-                style: const TextStyle(fontSize: 12),
-                decoration: const InputDecoration(
-                  labelText: "Key",
-                  isDense: true,
-                  border: OutlineInputBorder(),
-                ),
-                onSubmitted: (_) => _save(),
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      // The width that is actually there, rather than the width the control
+      // scope would like. A raw SizedBox is what overflowed the sidebar in the
+      // first place, and asking the scope only moved the number that was too
+      // big -- the room this row has is what its own parent gives it, and
+      // nothing else knows that.
+      //
+      // Unbounded in the settings band above the canvas, which scrolls
+      // sideways; there the field takes a fixed width like everything else.
+      builder: (context, constraints) {
+        var room = constraints.maxWidth.isFinite
+            ? constraints.maxWidth - _buttonRoom
+            : 190.0;
+        return Row(mainAxisSize: MainAxisSize.min, children: [
+          SizedBox(
+            width: math.max(60, math.min(190, room)),
+            height: controlHeight,
+            child: TextField(
+              controller: _text,
+              obscureText: true,
+              style: const TextStyle(fontSize: 12),
+              decoration: InputDecoration(
+                isDense: true,
+                hintText: widget.saved ? "Replace it" : "Paste it here",
+                hintStyle: const TextStyle(fontSize: 11),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+                border: const OutlineInputBorder(),
               ),
+              onSubmitted: (_) => _save(),
             ),
-            CanvasIconButton(
-              icon: Icons.save_outlined,
-              tooltip: "Save this key on this machine",
-              onPressed: _save,
-            ),
-          ]);
-        },
-      );
+          ),
+          CanvasIconButton(
+            icon: Icons.save_outlined,
+            tooltip: "Save this key on this machine",
+            onPressed: _save,
+          ),
+        ]);
+      },
+    );
+  }
 }

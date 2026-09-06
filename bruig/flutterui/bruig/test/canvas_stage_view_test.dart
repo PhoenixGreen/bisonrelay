@@ -20,7 +20,9 @@ import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_stage.dart';
+import 'package:bruig/plugin_system/canvas/render/table_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage_painter.dart';
+import 'package:bruig/plugin_system/canvas/ui/stage_parts.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/rendering.dart';
@@ -2785,5 +2787,71 @@ void main() {
     controller.images.notifyForTest();
     expect(repaints, greaterThan(0),
         reason: "a picture arriving has to reach the screen on its own");
+  });
+
+  group("a league table's narrow columns", () {
+    // Reported: after switching a table to the API, cells in the narrow
+    // columns -- GD, For -- could not be clicked at all.
+    //
+    // The rule between two columns is grabbed within thirteen screen pixels
+    // either side. On a table of a dozen columns, several of them three
+    // characters wide, that is wider than the columns: every point in GD was
+    // nearer a rule than not, so every press became a column drag and the
+    // cell was unreachable.
+    TableElement league() => TableElement(
+          const ElementBase(id: "t", x: 0, y: 0, width: 480, height: 100),
+          headerRow: true,
+          rows: const [
+            ["Pos", "Team", "P", "W", "D", "L", "GD", "Pts"],
+            ["1", "Hull City", "2", "2", "0", "0", "4", "6"],
+          ],
+          // Even columns, so a narrow one is 60 document units across -- less
+          // than twice the old allowance.
+          columnWidths: const [1, 1, 1, 1, 1, 1, 1, 1],
+        );
+
+    test("the middle of a narrow column is not a rule", () {
+      var table = league();
+      var bounds = table.bounds;
+      var widths = tableColumnWidths(table, bounds);
+      expect(widths[6], 60, reason: "the GD column is 60 across");
+
+      // The centre of GD, with the old fixed allowance of 13.
+      var centre = Offset(
+          bounds.left + widths.take(6).fold<double>(0, (a, b) => a + b) + 30,
+          bounds.center.dy);
+      expect(tableColumnAt(table, bounds, centre, 13), isNull,
+          reason: "the middle of a column belongs to the column");
+      expect(tableCellAt(table, bounds, centre)!.$2, 6,
+          reason: "and is the cell that can be clicked there");
+    });
+
+    test("the rule itself is still grabbable", () {
+      var table = league();
+      var bounds = table.bounds;
+      var dividers = tableColumnDividers(table, bounds);
+      var on = Offset(dividers[5], bounds.center.dy);
+      expect(tableColumnAt(table, bounds, on, 13), 5);
+
+      // And a few pixels either side of it, which is what the allowance is
+      // for -- a quarter of a 60-unit column is 15.
+      expect(tableColumnAt(table, bounds, on.translate(6, 0), 13), 5);
+      expect(tableColumnAt(table, bounds, on.translate(-6, 0), 13), 5);
+    });
+
+    test("a wide column still gets the full allowance", () {
+      // The narrowing is a cap, not a replacement: a table of two wide
+      // columns keeps the thirteen pixels an unsteady hand needs.
+      var wide = TableElement(
+        const ElementBase(id: "w", x: 0, y: 0, width: 400, height: 100),
+        rows: const [
+          ["One", "Two"],
+        ],
+        columnWidths: const [1, 1],
+      );
+      var dividers = tableColumnDividers(wide, wide.bounds);
+      var on = Offset(dividers.single, wide.bounds.center.dy);
+      expect(tableColumnAt(wide, wide.bounds, on.translate(12, 0), 13), 0);
+    });
   });
 }

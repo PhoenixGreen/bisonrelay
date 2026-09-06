@@ -186,11 +186,25 @@ List<double> tableColumnDividers(TableElement e, Rect bounds) {
 
 /// tableColumnAt is which divider a document point is on, if any, given the
 /// pointer's reach in document units.
+///
+/// The reach is narrowed to a quarter of the thinner column either side of
+/// the rule. A league table has a dozen columns, several of them three
+/// characters wide, and a fixed thirteen-pixel allowance each way swallowed
+/// most of them -- so a cell in the GD column could not be clicked at all,
+/// because every point in it was nearer a rule than not. What is being
+/// allowed for is an unsteady hand, and it cannot be worth more than the
+/// thing it is covering up.
 int? tableColumnAt(TableElement e, Rect bounds, Offset doc, double slop) {
   if (!bounds.inflate(slop).contains(doc)) return null;
+  var widths = tableColumnWidths(e, bounds);
   var dividers = tableColumnDividers(e, bounds);
   for (var i = 0; i < dividers.length; i++) {
-    if ((doc.dx - dividers[i]).abs() <= slop) return i;
+    var near = math.min(
+        slop,
+        math.min(i < widths.length ? widths[i] : slop,
+                i + 1 < widths.length ? widths[i + 1] : slop) *
+            0.25);
+    if ((doc.dx - dividers[i]).abs() <= near) return i;
   }
   return null;
 }
