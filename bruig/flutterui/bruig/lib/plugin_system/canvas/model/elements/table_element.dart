@@ -5,6 +5,12 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/tabular_text.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 
+// The order a table's rows go in is its own file, and is exported so that
+// "import table_element.dart" still brings a whole table.
+export 'package:bruig/plugin_system/canvas/model/elements/table_sort.dart';
+
+import 'package:bruig/plugin_system/canvas/model/elements/table_sort.dart';
+
 /// TableGrid is which rules a table draws between its cells.
 enum TableGrid {
   all("All"),
@@ -595,6 +601,10 @@ class TableElement extends CanvasElement {
   final bool zebra;
   final Color zebraFill;
 
+  /// sort is the order the rows were last put in, kept so that the same order
+  /// can be applied again after the data underneath changes.
+  final TableSort sort;
+
   final TableGrid grid;
   final double gridWidth;
   final Color gridColor;
@@ -649,6 +659,7 @@ class TableElement extends CanvasElement {
     this.columnWidths = const [],
     this.headerHeightRatio = 1.15,
     this.rules = const [],
+    this.sort = const TableSort(),
   });
 
   @override
@@ -823,6 +834,7 @@ class TableElement extends CanvasElement {
     List<double>? columnWidths,
     double? headerHeightRatio,
     List<TableRule>? rules,
+    TableSort? sort,
   }) =>
       _copy(base,
           rows: rows,
@@ -843,7 +855,8 @@ class TableElement extends CanvasElement {
           pictureScale: pictureScale,
           columnWidths: columnWidths,
           headerHeightRatio: headerHeightRatio,
-          rules: rules);
+          rules: rules,
+          sort: sort);
 
   TableElement _copy(
     ElementBase newBase, {
@@ -866,6 +879,7 @@ class TableElement extends CanvasElement {
     List<double>? columnWidths,
     double? headerHeightRatio,
     List<TableRule>? rules,
+    TableSort? sort,
   }) =>
       TableElement(newBase,
           rows: rows ?? this.rows,
@@ -886,7 +900,8 @@ class TableElement extends CanvasElement {
           pictureScale: pictureScale ?? this.pictureScale,
           columnWidths: columnWidths ?? this.columnWidths,
           headerHeightRatio: headerHeightRatio ?? this.headerHeightRatio,
-          rules: rules ?? this.rules);
+          rules: rules ?? this.rules,
+          sort: sort ?? this.sort);
 
   @override
   Map<String, dynamic> props() => {
@@ -910,6 +925,7 @@ class TableElement extends CanvasElement {
         "headerRatio": headerHeightRatio,
         if (rules.isNotEmpty)
           "rules": [for (var rule in rules) rule.toJson()],
+        if (sort.on || !sort.pinFirstColumn) "sort": sort.toJson(),
       };
 
   factory TableElement.fromJson(Map<String, dynamic> json, ElementBase b) {
@@ -947,6 +963,18 @@ class TableElement extends CanvasElement {
           if (json["rules"] case List raw)
             for (var rule in raw)
               if (rule is Map<String, dynamic>) TableRule.fromJson(rule),
-        ]);
+        ],
+        sort: jsonSpec(json["sort"], TableSort.fromJson, const TableSort()));
+  }
+
+  /// sorted is this table with its rows in the order [sort] asks for.
+  ///
+  /// Returns the same table when there is nothing to do, so a caller can apply
+  /// it unconditionally -- after a refresh, say -- without producing an undo
+  /// step for a table that was never sorted.
+  TableElement sorted() {
+    if (!sort.on) return this;
+    var next = sortTableRows(rows, sort, headerRow: headerRow);
+    return identical(next, rows) ? this : copyWith(rows: next);
   }
 }

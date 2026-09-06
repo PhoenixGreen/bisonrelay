@@ -32,6 +32,83 @@ List<Widget> tableSettings(BuildContext context, TableElement e,
           ],
         ),
       ),
+      // Sorting is its own section next to the cells, because it is about the
+      // data rather than about how the table looks -- and because three
+      // columns and their directions is more than a band's worth of controls.
+      boxed(
+        context,
+        CanvasExpander(
+          label: "Order",
+          remember: "tableSort",
+          trailing: _sortSummary(e),
+          children: [
+            CanvasHint("Choose a column to order the rows by. The second and "
+                "third only decide the rows the one before them left equal — "
+                "for a league table that is points, then goal difference, "
+                "then goals scored. Sorting happens when you press Sort, not "
+                "as you type."),
+            for (var level = 0; level < 3; level++)
+              CanvasControlGroup(
+                label: level == 0 ? "Order by" : "Then by",
+                children: [
+                  CanvasDropdown<int>(
+                    label: "Column",
+                    value: e.sort.at(level).column,
+                    width: 132,
+                    options: [
+                      (-1, "—"),
+                      for (var c = 0; c < e.columnCount; c++)
+                        (c, _columnName(e, c)),
+                    ],
+                    onChanged: (v) => _setLevel(e, write, begin, commit, level,
+                        e.sort.at(level).copyWith(column: v)),
+                  ),
+                  if (e.sort.at(level).on)
+                    CanvasDropdown<bool>(
+                      label: "Direction",
+                      value: e.sort.at(level).descending,
+                      width: 116,
+                      options: const [
+                        (true, "Highest first"),
+                        (false, "Lowest first"),
+                      ],
+                      onChanged: (v) => _setLevel(e, write, begin, commit,
+                          level, e.sort.at(level).copyWith(descending: v)),
+                    ),
+                ],
+              ),
+            CanvasControlGroup(label: "First column", children: [
+              CanvasToggle(
+                label: "Keep the numbering",
+                value: e.sort.pinFirstColumn,
+                onChanged: (v) {
+                  begin();
+                  write(e.copyWith(sort: e.sort.copyWith(pinFirstColumn: v)));
+                  commit();
+                },
+              ),
+              CanvasHint("A league table's first column is the position, "
+                  "which belongs to the place rather than to the team in it — "
+                  "so it stays reading 1, 2, 3 while everything else moves."),
+            ]),
+            CanvasControlGroup(label: "Apply", children: [
+              CanvasIconButton(
+                icon: Icons.sort,
+                tooltip: e.sort.on
+                    ? "Put the rows in this order"
+                    : "Choose a column to order by first",
+                onPressed: e.sort.on
+                    ? () {
+                        begin();
+                        write(e.sorted());
+                        commit();
+                      }
+                    : null,
+              ),
+            ]),
+          ],
+        ),
+      ),
       CanvasControlGroup(label: "Table", children: [
         CanvasToggle(
           label: "Header row",
@@ -559,4 +636,28 @@ Widget _tableRuleSettings(TableElement e, int index, SettingsWrite write,
       ]),
     ],
   );
+}
+
+/// _columnName is what to call a column in the Order controls: its header
+/// where there is one, and its number where there is not.
+String _columnName(TableElement e, int column) {
+  var head = e.header;
+  var name = column < head.length ? head[column].trim() : "";
+  return name.isEmpty ? "Column ${column + 1}" : name;
+}
+
+/// _sortSummary is the closed section's one line.
+String _sortSummary(TableElement e) {
+  var named = [
+    for (var level in e.sort.levels)
+      if (level.on) _columnName(e, level.column),
+  ];
+  return named.isEmpty ? "Not sorted" : named.join(", then ");
+}
+
+void _setLevel(TableElement e, SettingsWrite write, VoidCallback begin,
+    VoidCallback commit, int level, TableSortLevel value) {
+  begin();
+  write(e.copyWith(sort: e.sort.withLevel(level, value)));
+  commit();
 }
