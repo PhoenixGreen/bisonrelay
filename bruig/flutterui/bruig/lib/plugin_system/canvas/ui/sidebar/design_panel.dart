@@ -67,9 +67,11 @@ class CanvasDesignPanel extends StatelessWidget {
             builder: (context) => ListenableBuilder(
               listenable: controller,
               builder: (context, _) => SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(8, 6, 8, 12),
+                // A clear gap under the header. It is a coloured band now,
+                // so settings starting immediately beneath it read as being
+                // part of it.
+                padding: const EdgeInsets.fromLTRB(8, 12, 8, 12),
                 child: CanvasControlScope(
-                  stacked: true,
                   maxWidth: 240,
                   child: elementSettingsBody(context, controller),
                 ),

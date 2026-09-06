@@ -28,11 +28,7 @@ import 'package:flutter/material.dart';
 /// room back and giving it away again. The background is also the one thing on
 /// a canvas that is always there and always worth changing, so it is the
 /// honest answer to "what am I editing" rather than a placeholder.
-///
-/// [stacked] lays the controls down a column, which is what a sidebar wants.
-/// False puts them along a row.
-Widget elementSettingsBody(BuildContext context, CanvasController controller,
-    {bool stacked = true}) {
+Widget elementSettingsBody(BuildContext context, CanvasController controller) {
   var selected = controller.selected;
 
   if (controller.selection.length > 1) {
@@ -42,8 +38,10 @@ Widget elementSettingsBody(BuildContext context, CanvasController controller,
 
   if (selected == null) {
     return ProceduralSettings(
+      // No caption: the panel's header already says these are the
+      // background's, and this is what it shows whenever nothing is selected
+      // -- so the repetition would be the commonest thing on the panel.
       spec: controller.document.background.spec,
-      label: "Background",
       onBegin: controller.beginInteraction,
       onCommit: controller.endInteraction,
       onChanged: (spec) {
@@ -57,21 +55,13 @@ Widget elementSettingsBody(BuildContext context, CanvasController controller,
     );
   }
 
-  var controls = elementSettings(context, controller, selected);
-  return stacked
-      ? Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          // No heading naming the element. The panel's own header says what is
-          // being edited -- "Shape settings" -- and a heading under it saying
-          // "Shape" was the same word twice, three lines apart, above a group
-          // also called Shape.
-          children: controls,
-        )
-      : Row(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: controls,
-        );
+  // No heading naming the element. The panel's own header says what is being
+  // edited -- "Shape settings" -- and a heading under it saying "Shape" was
+  // the same word twice, three lines apart, above a group also called Shape.
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: elementSettings(context, controller, selected),
+  );
 }
 
 /// elementSettingsTitle is what the panel holding these is called.

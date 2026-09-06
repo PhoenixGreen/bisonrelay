@@ -529,9 +529,7 @@ Widget boxed(BuildContext context, Widget child) {
         // one above it does not read as a section, it reads as a button
         // somebody has left lying there.
         //
-        // Only in a column. The band above the canvas scrolls sideways, where
-        // there is no width to fill and asking for all of it is an error.
-        width: CanvasControlScope.isStacked(context) ? double.infinity : null,
+        width: double.infinity,
         padding: const EdgeInsets.fromLTRB(7, 2, 7, 8),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(6),

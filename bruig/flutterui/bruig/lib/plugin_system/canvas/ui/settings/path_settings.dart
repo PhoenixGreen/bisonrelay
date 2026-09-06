@@ -224,11 +224,14 @@ List<(String, String)> _followOptions(CanvasController controller) {
 /// is made to look right -- fast out of the turn, slow into the box -- and
 /// doing it by dragging the marks on the timeline is the other half of the
 /// same control.
+/// An ordinary group rather than something to open. A path has a handful of
+/// points, they are the thing anybody came to this panel for, and a section
+/// that has to be opened before the main work can start is a press paid every
+/// time.
 Widget _pathNodeList(CanvasController controller, PathElement e,
         void Function(PathElement) relink) =>
-    CanvasExpander(
-      label: "Points",
-      trailing: "${e.nodes.length}",
+    CanvasControlGroup(
+      label: "Points (${e.nodes.length})",
       children: [
         for (var i = 0; i < e.nodes.length; i++)
           Padding(

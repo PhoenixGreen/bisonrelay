@@ -22,6 +22,7 @@ class CanvasPreferences extends ChangeNotifier {
   static const _lastFolderKey = "canvasLastFolder";
   static const _lastNameKey = "canvasLastName";
   static const _allowFetchingKey = "canvasAllowFetching";
+  static const _fitKey = "canvasFit";
 
   /// enabled is whether the Canvas section exists.
   bool get enabled => _enabled;
@@ -59,6 +60,26 @@ class CanvasPreferences extends ChangeNotifier {
   bool get allowFetching => _allowFetching;
   bool _allowFetching = false;
 
+  /// fit is how the canvas is framed -- the whole of it, or the full width.
+  ///
+  /// A preference rather than a property of the document, because it is about
+  /// the reader's screen rather than about the design: the same canvas wants
+  /// the whole frame on a wide monitor and the width on a laptop, and it is
+  /// the same canvas either way. So it survives opening a different one, which
+  /// is the whole point -- choosing it again for every canvas is choosing it
+  /// several times a session.
+  ///
+  /// Stored as the enum's name so that adding or reordering the fits does not
+  /// silently change what an old preference means.
+  String get fit => _fit;
+  String _fit = "";
+
+  set fit(String value) {
+    if (_fit == value) return;
+    _fit = value;
+    StorageManager.saveString(_fitKey, value);
+  }
+
   set allowFetching(bool value) {
     if (_allowFetching == value) return;
     _allowFetching = value;
@@ -77,6 +98,7 @@ class CanvasPreferences extends ChangeNotifier {
     _lastName = await StorageManager.readString(_lastNameKey);
     _allowFetching =
         await StorageManager.readBool(_allowFetchingKey, defaultVal: false);
+    _fit = await StorageManager.readString(_fitKey);
     notifyListeners();
   }
 

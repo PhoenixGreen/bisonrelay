@@ -42,7 +42,7 @@ class CanvasLayersPanel extends StatelessWidget {
   Widget _layerList() {
     var elements = controller.document.elements;
     return ListView(
-      padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
+      padding: const EdgeInsets.fromLTRB(8, 12, 8, 8),
       children: [
         // Reversed, so what is on top of the canvas is at the top of the list.
         // The document stores paint order, where the last element is the

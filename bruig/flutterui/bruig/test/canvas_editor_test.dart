@@ -3145,6 +3145,37 @@ void main() {
           reason: "Angle starts a line of its own, under X");
     });
 
+    testWidgets("the background's settings are not captioned Background",
+        (tester) async {
+      // The header says it. A caption underneath repeating it was the word
+      // twice, and the background is what the panel shows whenever nothing is
+      // selected -- so it was the commonest thing on the panel.
+      var controller = CanvasController(const CanvasDocument());
+      addTearDown(controller.dispose);
+      await pump(tester, CanvasDesignPanel(controller: controller));
+
+      expect(find.text("BACKGROUND SETTINGS"), findsOneWidget);
+      expect(find.text("BACKGROUND"), findsNothing);
+      expect(find.text("Style"), findsOneWidget,
+          reason: "and its controls are still there");
+    });
+
+    testWidgets("a path's points are not folded away", (tester) async {
+      // They are the thing anybody opens a path's settings for, and a section
+      // that has to be opened first is a press paid every time.
+      var document = const CanvasDocument();
+      var element = newElement(ElementKind.path, document);
+      var controller = CanvasController(document.addElement(element));
+      addTearDown(controller.dispose);
+      controller.selectOnly(element.id);
+      await pump(tester, CanvasDesignPanel(controller: controller));
+
+      expect(find.textContaining("POINTS ("), findsOneWidget,
+          reason: "a group with its count in the caption, not an expander");
+      expect(find.byKey(ValueKey("node-frame-0-${element.id}")), findsOneWidget,
+          reason: "and the first point's row is already showing");
+    });
+
     testWidgets("the panel's header names what is being edited",
         (tester) async {
       // The settings used to head themselves with the element's name, three

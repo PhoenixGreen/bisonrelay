@@ -69,7 +69,7 @@ class CanvasElementsPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => ListView(
-        padding: const EdgeInsets.fromLTRB(8, 8, 8, 12),
+        padding: const EdgeInsets.fromLTRB(8, 12, 8, 12),
         children: [
           Wrap(
             spacing: 6,

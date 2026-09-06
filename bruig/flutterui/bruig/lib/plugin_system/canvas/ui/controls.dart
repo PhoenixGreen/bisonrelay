@@ -57,10 +57,6 @@ const double controlWithLabelHeight =
 /// Rather than a second set of forty controls, a group asks the scope which it
 /// is in, and every control that sizes itself clamps to what the scope allows.
 class CanvasControlScope extends InheritedWidget {
-  /// stacked wraps a group's controls onto as many lines as they need, and
-  /// puts the group's name above them instead of beside them.
-  final bool stacked;
-
   /// maxWidth is the widest a single control may be. In a sidebar this is what
   /// stops the chart's data box -- which asks for 260 -- from running off the
   /// edge, since a control sized past its parent overflows rather than
@@ -68,7 +64,6 @@ class CanvasControlScope extends InheritedWidget {
   final double maxWidth;
 
   const CanvasControlScope({
-    required this.stacked,
     required this.maxWidth,
     required super.child,
     super.key,
@@ -83,12 +78,8 @@ class CanvasControlScope extends InheritedWidget {
     return scope == null ? wanted : math.min(wanted, scope.maxWidth);
   }
 
-  static bool isStacked(BuildContext context) =>
-      maybeOf(context)?.stacked ?? false;
-
   @override
-  bool updateShouldNotify(CanvasControlScope old) =>
-      old.stacked != stacked || old.maxWidth != maxWidth;
+  bool updateShouldNotify(CanvasControlScope old) => old.maxWidth != maxWidth;
 }
 
 /// CanvasLineBreak starts a new line inside a group.
@@ -100,15 +91,12 @@ class CanvasControlScope extends InheritedWidget {
 /// take a whole line and tall enough to take none of it, which is how a Wrap
 /// is told where a line ends.
 ///
-/// Nothing at all in the band above the canvas, which is one line by
-/// definition.
 class CanvasLineBreak extends StatelessWidget {
   const CanvasLineBreak({super.key});
 
   @override
-  Widget build(BuildContext context) => CanvasControlScope.isStacked(context)
-      ? const SizedBox(width: double.infinity, height: 0)
-      : const SizedBox.shrink();
+  Widget build(BuildContext context) =>
+      const SizedBox(width: double.infinity, height: 0);
 }
 
 /// CanvasHint is a question mark that explains a section when it is hovered.
@@ -193,65 +181,36 @@ class CanvasControlGroup extends StatelessWidget {
       ),
     );
 
-    // Stacked, in a sidebar: the name above, the controls wrapped beneath it,
-    // and a gap instead of a rule -- a vertical rule between rows would be
-    // drawing a boundary across the direction the eye is already travelling.
-    if (CanvasControlScope.isStacked(context)) {
-      return Padding(
-        // A rule under each group as well as a gap. Six clusters of small
-        // controls down one narrow column, separated by nine pixels of
-        // nothing, ran together into one field of boxes -- the caption above
-        // each was the only thing saying where one ended, and a caption is
-        // nine pixels tall and grey.
-        // The spacing every group gets, and the reason it is here rather than
-        // in each of them: a settings panel where one group breathes and the
-        // next is packed reads as two panels by different hands. These four
-        // numbers -- above the caption, under it, between wrapped rows, and
-        // before the rule -- are the whole of it.
-        padding: const EdgeInsets.only(top: 4, bottom: 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (!hideCaption)
-              Padding(
-                  padding: const EdgeInsets.only(bottom: 7, left: 1),
-                  child: caption),
-            Wrap(runSpacing: 8, children: children),
-            Padding(
-              padding: const EdgeInsets.only(top: 12),
-              child: Container(
-                  height: 1,
-                  color: theme.colors.outlineVariant.withValues(alpha: 0.45)),
-            ),
-          ],
-        ),
-      );
-    }
-
     return Padding(
-      padding: const EdgeInsets.only(right: 8),
-      // In the band the group's name sits to the left of its controls rather
-      // than above them. Above, it was a second row of caption stacked on top
-      // of each control's own caption, and thirteen pixels of every line went
-      // on saying a word twice over. The band is above the canvas, so its
-      // height comes straight out of the design.
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        Padding(
-          padding: const EdgeInsets.only(right: 7, top: controlLabelHeight),
-          child: SizedBox(
-            height: controlHeight,
-            child: Center(child: caption),
+      // The spacing every group gets, and the reason it is here rather than in
+      // each of them: a settings panel where one group breathes and the next
+      // is packed reads as two panels by different hands. These four numbers
+      // -- above the caption, under it, between wrapped rows, and before the
+      // rule -- are the whole of it.
+      //
+      // A rule under each group as well as a gap. Six clusters of small
+      // controls down one narrow column, separated by nine pixels of nothing,
+      // ran together into one field of boxes -- the caption above each was the
+      // only thing saying where one ended, and a caption is nine pixels tall
+      // and grey.
+      padding: const EdgeInsets.only(top: 4, bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (!hideCaption)
+            Padding(
+                padding: const EdgeInsets.only(bottom: 7, left: 1),
+                child: caption),
+          Wrap(runSpacing: 8, children: children),
+          Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: Container(
+                height: 1,
+                color: theme.colors.outlineVariant.withValues(alpha: 0.45)),
           ),
-        ),
-        ...children,
-        Container(
-          width: 1,
-          height: 24,
-          margin: const EdgeInsets.only(left: 6, top: controlLabelHeight),
-          color: theme.colors.outlineVariant.withValues(alpha: 0.5),
-        ),
-      ]),
+        ],
+      ),
     );
   }
 }

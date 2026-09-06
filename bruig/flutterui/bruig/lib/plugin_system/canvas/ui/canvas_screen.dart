@@ -117,6 +117,12 @@ class _CanvasScreenState extends State<CanvasScreen> {
     // already holds whatever was being worked on, and reopening the last saved
     // file over the top would throw away the unsaved edits this whole
     // arrangement exists to keep.
+    // The frame the reader last chose, before anything is drawn. It belongs
+    // to them rather than to the document -- see CanvasPreferences.fit -- so
+    // it survives opening a different canvas.
+    for (var fit in CanvasFit.values) {
+      if (fit.name == prefs.fit) _controller.fit = fit;
+    }
     if (!_controller.opened) _reopenLast(prefs);
     _controller.markOpened();
     _controller.addListener(_onSelectionChanged);
@@ -141,11 +147,28 @@ class _CanvasScreenState extends State<CanvasScreen> {
   /// the band and the timeline all listen for themselves. Rebuilding it for
   /// each of those would be work done for nothing.
   void _onSelectionChanged() {
+    // Whatever the frame has ended up as, written down. The buttons that
+    // change it are on the band and talk to the controller directly, so this
+    // is the one place that sees every way it can change -- including the
+    // keyboard and anything added later.
+    var prefs = Provider.of<CanvasPreferences>(context, listen: false);
+    if (prefs.fit != _controller.fit.name) prefs.fit = _controller.fit.name;
+
     var next = _controller.backgroundSelected
         ? "background"
         : (_controller.selection.toList()..sort()).join(",");
     if (next == _selectionRevision) return;
-    if (mounted) setState(() => _selectionRevision = next);
+    if (!mounted) return;
+
+    // Choosing something on the canvas is asking about it, and its settings
+    // are on the Design tab. Selecting an element and then having to find the
+    // tab that says anything about it is a step nobody wants twice.
+    //
+    // Only when something has actually been chosen: clearing the selection
+    // must not drag the reader away from the file list they just came to.
+    var chose = next.isNotEmpty && next != _selectionRevision;
+    setState(() => _selectionRevision = next);
+    if (chose && _panel != CanvasPanel.design) _setPanel(CanvasPanel.design);
   }
 
   @override

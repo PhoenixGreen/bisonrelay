@@ -90,11 +90,6 @@ class _CanvasDataEditorShellState extends State<CanvasDataEditorShell> {
   @override
   Widget build(BuildContext context) {
     var theme = ThemeNotifier.of(context);
-    // Full width in the sidebar, where there is a column to fill. In the band
-    // above the canvas there is not -- the whole line is one control tall --
-    // so it keeps to a control's width there.
-    var stacked = CanvasControlScope.isStacked(context);
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
@@ -112,7 +107,7 @@ class _CanvasDataEditorShellState extends State<CanvasDataEditorShell> {
           ...widget.toolbar,
         ]),
         SizedBox(
-          width: stacked ? double.infinity : 280,
+          width: double.infinity,
           height: _height,
           child: _grid ? widget.grid(context) : widget.text(context),
         ),

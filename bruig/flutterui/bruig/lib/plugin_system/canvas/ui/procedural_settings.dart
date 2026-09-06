@@ -23,8 +23,12 @@ class ProceduralSettings extends StatelessWidget {
   final VoidCallback onBegin;
   final VoidCallback onCommit;
 
-  /// label names the group, so the canvas's own background and an element's
-  /// can be told apart when both are on the bar.
+  /// label names the group.
+  ///
+  /// Empty by default, and empty is what both callers want: the panel's own
+  /// header says whether these are the canvas's background or an element's,
+  /// and a caption underneath repeating it is the word twice. It stays a
+  /// parameter because a third place showing these would need one.
   final String label;
 
   const ProceduralSettings({
@@ -32,7 +36,7 @@ class ProceduralSettings extends StatelessWidget {
     required this.onChanged,
     required this.onBegin,
     required this.onCommit,
-    this.label = "Background",
+    this.label = "",
     super.key,
   });
 
@@ -47,23 +51,17 @@ class ProceduralSettings extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     var groups = _groups();
-    // Stacked, in the Layers sidebar, these run down the column like every
-    // other element's settings. A Row of five groups in a 280px sidebar is a
-    // thousand pixels of overflow, and it does not shrink -- the groups are
-    // sized to their controls.
-    return CanvasControlScope.isStacked(context)
-        ? Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: groups)
-        : Row(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: groups);
+    // Down the column like every other element's settings. A Row of five
+    // groups in a 280px sidebar is a thousand pixels of overflow, and it does
+    // not shrink -- the groups are sized to their controls.
+    return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: groups);
   }
 
   List<Widget> _groups() => [
-        CanvasControlGroup(label: label, children: [
+        CanvasControlGroup(label: label, hideCaption: label.isEmpty, children: [
           CanvasDropdown<ProceduralStyle>(
             label: "Style",
             value: spec.style,
