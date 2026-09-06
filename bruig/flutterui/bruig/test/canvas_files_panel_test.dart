@@ -252,4 +252,72 @@ void main() {
     expect(await CanvasStorage.renameFolder("Plans", "Season"), isFalse);
     expect(await CanvasStorage.list(""), hasLength(2));
   });
+
+  group("moving a canvas", () {
+    test("it lands in the folder it was sent to", () async {
+      await CanvasStorage.createFolder("Plans");
+      await CanvasStorage.save(
+          "", "Match plan", const CanvasDocument(title: "Match plan"));
+
+      expect(await CanvasStorage.move("", "Match plan", "Plans"), isTrue);
+      expect(await CanvasStorage.load("Plans", "Match plan"), isNotNull);
+      expect(await CanvasStorage.load("", "Match plan"), isNull);
+    });
+
+    test("and comes back out again", () async {
+      await CanvasStorage.createFolder("Plans");
+      await CanvasStorage.save("Plans", "Match plan", const CanvasDocument());
+
+      expect(await CanvasStorage.move("Plans", "Match plan", ""), isTrue);
+      expect(await CanvasStorage.load("", "Match plan"), isNotNull);
+    });
+
+    test("it will not write over one already there", () async {
+      // The only way a move can destroy anything, and there is nothing to undo
+      // it with.
+      await CanvasStorage.createFolder("Plans");
+      await CanvasStorage.save(
+          "", "Match plan", const CanvasDocument(title: "mine"));
+      await CanvasStorage.save(
+          "Plans", "Match plan", const CanvasDocument(title: "theirs"));
+
+      expect(await CanvasStorage.move("", "Match plan", "Plans"), isFalse);
+      expect((await CanvasStorage.load("Plans", "Match plan"))!.title, "theirs",
+          reason: "the one that was there is untouched");
+      expect(await CanvasStorage.load("", "Match plan"), isNotNull,
+          reason: "and so is the one that stayed");
+    });
+
+    test("moving somewhere it already is does nothing and says so", () async {
+      await CanvasStorage.save("", "Match plan", const CanvasDocument());
+      expect(await CanvasStorage.move("", "Match plan", ""), isTrue);
+      expect(await CanvasStorage.load("", "Match plan"), isNotNull);
+    });
+
+    test("the folders offered are the ones that exist", () async {
+      await CanvasStorage.createFolder("Plans");
+      await CanvasStorage.createFolder("Archive");
+      await CanvasStorage.save("", "Match plan", const CanvasDocument());
+
+      expect(await CanvasStorage.folderNames(), ["Archive", "Plans"],
+          reason: "and not the loose canvases beside them");
+    });
+
+    testWidgets("a canvas is offered somewhere to go", (tester) async {
+      await pump(tester, canvases: ["Match plan"], folders: ["Plans"]);
+      // The last row: folders are listed before canvases until somebody drags
+      // one, so the first button belongs to the folder.
+      await tester.tap(find.byIcon(Icons.more_vert).last);
+      await tester.pumpAndSettle();
+      expect(find.text("Move to…"), findsOneWidget);
+    });
+
+    testWidgets("a folder is not: the library is one level deep",
+        (tester) async {
+      await pump(tester, folders: ["Plans"]);
+      await tester.tap(find.byIcon(Icons.more_vert).first);
+      await tester.pumpAndSettle();
+      expect(find.text("Move to…"), findsNothing);
+    });
+  });
 }

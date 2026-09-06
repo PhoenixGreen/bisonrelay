@@ -354,6 +354,42 @@ class CanvasStorage {
     }
   }
 
+  /// move puts a canvas in another folder, keeping its name.
+  ///
+  /// Its own method rather than a rename with a different folder, because a
+  /// rename is about the name and this is about the place -- and the two
+  /// checks are different. A rename refuses a name already in use here; this
+  /// refuses one already in use *there*, which is the only way a move can
+  /// destroy anything.
+  ///
+  /// The order file is not touched. The canvas simply drops out of the one it
+  /// was in -- an order forgives what has gone, by name -- and lands at the
+  /// end of wherever it went, which is where a listing puts anything its order
+  /// does not mention.
+  static Future<bool> move(String from, String name, String to) async {
+    if (from == to) return true;
+    var source = await pathFor(from, name);
+    var target = await pathFor(to, name);
+    if (source == null || target == null) return false;
+    try {
+      if (!await File(source).exists()) return false;
+      if (await File(target).exists()) return false;
+      await Directory(path.dirname(target)).create(recursive: true);
+      await File(source).rename(target);
+      return true;
+    } catch (exception) {
+      debugPrint("Unable to move $name: $exception");
+      return false;
+    }
+  }
+
+  /// folderNames is every folder in the library, in the order a listing shows
+  /// them. For the "move to" list.
+  static Future<List<String>> folderNames() async => [
+        for (var entry in await list(""))
+          if (entry.isFolder) entry.name,
+      ];
+
   /// renameFolder renames a folder, with everything in it.
   ///
   /// Its own method rather than a branch in [rename], which is about documents

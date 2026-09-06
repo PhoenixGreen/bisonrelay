@@ -284,6 +284,62 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
     await _reload();
   }
 
+  /// _move asks which folder a canvas should go to, and puts it there.
+  ///
+  /// A dialog rather than dragging it onto a folder row. The library is one
+  /// level deep, so there are rarely more than a handful of destinations, and
+  /// a drag that has to land on a particular row is a drag that misses.
+  Future<void> _move(CanvasEntry entry) async {
+    var snackbar = SnackBarModel.of(context);
+    var folders = await CanvasStorage.folderNames();
+    if (!mounted) return;
+
+    var destinations = ["", ...folders]..remove(entry.folder);
+    if (destinations.isEmpty) {
+      snackbar.error("There is nowhere else to put it yet — make a folder "
+          "first.");
+      return;
+    }
+
+    var choice = await showDialog<String>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: Text("Move \"${entry.name}\" to"),
+        children: [
+          for (var folder in destinations)
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(context, folder),
+              child: Row(children: [
+                Icon(
+                    folder.isEmpty
+                        ? Icons.inbox_outlined
+                        : Icons.folder_outlined,
+                    size: 16),
+                const SizedBox(width: 8),
+                Text(folder.isEmpty ? "Canvases" : folder),
+              ]),
+            ),
+        ],
+      ),
+    );
+    if (choice == null || !mounted) return;
+
+    var ok = await CanvasStorage.move(entry.folder, entry.name, choice);
+    if (!mounted) return;
+    if (!ok) {
+      snackbar.error("Unable to move ${entry.name} — is there already one "
+          "called that there?");
+      return;
+    }
+    // The editor may be holding this canvas open, so its idea of where the
+    // canvas lives has to move with it or the next write goes back to the
+    // folder it came from.
+    if (controller.name == entry.name && controller.folder == entry.folder) {
+      controller.folder = choice;
+    }
+    await _reload();
+  }
+
   /// _renameFolder renames a folder and everything in it.
   Future<void> _renameFolder(CanvasEntry entry) async {
     var snackbar = SnackBarModel.of(context);
@@ -622,6 +678,7 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
               PopupMenuItem(value: "publish", child: Text("Publish…")),
               PopupMenuItem(value: "duplicate", child: Text("Duplicate")),
               PopupMenuItem(value: "rename", child: Text("Rename…")),
+              PopupMenuItem(value: "move", child: Text("Move to…")),
               PopupMenuItem(value: "delete", child: Text("Delete")),
             ],
     );
@@ -633,6 +690,8 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
         await _duplicate(entry);
       case "rename":
         await _rename(entry);
+      case "move":
+        await _move(entry);
       case "delete":
         await _delete(entry);
       case "renameFolder":
