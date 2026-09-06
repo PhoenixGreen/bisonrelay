@@ -31,6 +31,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 // canvas_editor_test.dart builds the controls and uses them.
 //
@@ -3713,6 +3714,54 @@ void main() {
           removal: const BackgroundRemoval(mode: RemovalMode.cornerFlood));
       expect(find.text("Edge"), findsOneWidget);
       expect(find.text("Spread"), findsOneWidget);
+    });
+  });
+
+  group("how the canvas is framed", () {
+    // Reported: the fit setting was not remembered. It was applied when the
+    // page opened and thrown away by the next load -- which is opening a
+    // canvas, the moment it is most wanted.
+    test("opening a canvas keeps the frame the reader chose", () {
+      var controller = CanvasController(const CanvasDocument());
+      addTearDown(controller.dispose);
+
+      controller.fitWidth();
+      expect(controller.fit, CanvasFit.width);
+
+      controller.load(const CanvasDocument(title: "Another"));
+      expect(controller.fit, CanvasFit.width,
+          reason: "the frame is about the screen, not about the document");
+    });
+
+    test("but the zoom and the pan do not survive it", () {
+      // Both are a position inside the document being replaced, and mean
+      // nothing in the new one.
+      var controller = CanvasController(const CanvasDocument());
+      addTearDown(controller.dispose);
+
+      controller.zoom = 2.5;
+      controller.pan = const Offset2(40, -20);
+
+      controller.load(const CanvasDocument(title: "Another"));
+      expect(controller.zoom, 1);
+      expect(controller.pan.dx, 0);
+      expect(controller.pan.dy, 0);
+    });
+
+    test("the preference is stored by name, not by position", () async {
+      // So that adding or reordering the fits later does not silently change
+      // what an old preference means.
+      SharedPreferences.setMockInitialValues({});
+      var prefs = CanvasPreferences();
+      addTearDown(prefs.dispose);
+
+      prefs.fit = CanvasFit.width.name;
+      expect(prefs.fit, "width");
+
+      var back = CanvasPreferences();
+      addTearDown(back.dispose);
+      await back.load();
+      expect(back.fit, "width");
     });
   });
 }

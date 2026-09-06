@@ -1369,7 +1369,14 @@ class CanvasController extends ChangeNotifier {
     _redo.clear();
     _interaction = null;
     _dirty = false;
-    _fit = CanvasFit.whole;
+    // The zoom and the pan go, because both are a position inside the document
+    // being replaced and mean nothing in the new one.
+    //
+    // The fit stays. It is a fact about the reader's screen rather than about
+    // any document -- the whole frame on a monitor, the width on a laptop --
+    // so resetting it here made "remember how I like the canvas framed" a
+    // setting that lasted until the next time a canvas was opened, which is
+    // the moment it was most wanted.
     _zoom = 1;
     _pan = const Offset2(0, 0);
     notifyListeners();
