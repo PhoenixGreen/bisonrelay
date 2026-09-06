@@ -549,12 +549,6 @@ Widget _tableSection(
   }
   var columns = chosen?.columnCount ?? 0;
 
-  String columnName(TableElement table, int column) {
-    var header = table.header;
-    var name = column < header.length ? header[column].trim() : "";
-    return name.isEmpty ? "Column ${column + 1}" : name;
-  }
-
   void set(TableLink next) {
     begin();
     write(e.copyWith(fromTable: next));
@@ -591,7 +585,7 @@ Widget _tableSection(
               value: link.categoryColumn,
               width: 148,
               options: [
-                for (var c = 0; c < columns; c++) (c, columnName(table, c)),
+                for (var c = 0; c < columns; c++) (c, table.columnName(c)),
               ],
               onChanged: (c) => set(link.copyWith(categoryColumn: c)),
             ),
@@ -599,7 +593,7 @@ Widget _tableSection(
           CanvasControlGroup(label: "Values", children: [
             for (var c = 0; c < columns; c++)
               CanvasToggle(
-                label: columnName(table, c),
+                label: table.columnName(c),
                 value: link.valueColumns.contains(c),
                 onChanged: (v) => set(link.copyWith(valueColumns: [
                   for (var i = 0; i < columns; i++)

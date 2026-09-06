@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/data_source.dart';
+import 'package:bruig/plugin_system/canvas/model/tabular_text.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 
 // A chart's data, its animation and its key are each large enough to be read
@@ -590,12 +591,6 @@ class ChartElement extends CanvasElement {
 ChartData chartDataFromTable(TableElement table, TableLink link) {
   if (!link.on) return const ChartData();
   var body = table.headerRow ? table.rows.skip(1).toList() : table.rows;
-  var header = table.header;
-
-  String name(int column) {
-    var text = column < header.length ? header[column].trim() : "";
-    return text.isEmpty ? "Column ${column + 1}" : text;
-  }
 
   return ChartData(
     categories: [
@@ -605,19 +600,13 @@ ChartData chartDataFromTable(TableElement table, TableLink link) {
     series: [
       for (var (i, column) in link.valueColumns.indexed)
         ChartSeries(
-          name: name(column),
+          name: table.columnName(column),
           color: chartPalette[i % chartPalette.length],
           values: [
             for (var row in body)
-              column < row.length ? _asNumber(row[column]) : 0,
+              column < row.length ? (cellNumber(row[column]) ?? 0) : 0,
           ],
         ),
     ],
   );
-}
-
-double _asNumber(String cell) {
-  var text = cell.trim().replaceAll(",", "").replaceAll("%", "");
-  if (text.startsWith("+")) text = text.substring(1);
-  return double.tryParse(text) ?? 0;
 }

@@ -123,3 +123,20 @@ String _quoted(String cell) {
   }
   return '"${cell.replaceAll('"', '""')}"';
 }
+
+/// cellNumber reads a cell as a number, or null when it is not one.
+///
+/// One reading of what a cell is worth, because two disagreeing is a table
+/// sorted one way and a chart of the same column drawn another. It was two:
+/// the sort had its own and so did the chart, with the same rules written out
+/// twice and nothing keeping them in step.
+///
+/// The allowances are what a table of figures actually contains -- a leading
+/// plus, thousands separators, a percent sign -- rather than what a strict
+/// parser would accept. A column typed as "1,240" and "+3%" is a column of
+/// numbers to everybody except a parser.
+double? cellNumber(String cell) {
+  var text = cell.trim().replaceAll(",", "").replaceAll("%", "");
+  if (text.startsWith("+")) text = text.substring(1);
+  return text.isEmpty ? null : double.tryParse(text);
+}

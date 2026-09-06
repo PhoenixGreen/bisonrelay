@@ -82,7 +82,7 @@ List<Widget> tableSettings(
                     options: [
                       (-1, "—"),
                       for (var c = 0; c < e.columnCount; c++)
-                        (c, _columnName(e, c)),
+                        (c, e.columnName(c)),
                     ],
                     onChanged: (v) => _setLevel(e, write, begin, commit, level,
                         e.sort.at(level).copyWith(column: v)),
@@ -187,7 +187,7 @@ List<Widget> tableSettings(
               ),
               for (var c = 0; c < e.columnCount; c++)
                 CanvasToggle(
-                  label: _headingName(e, c),
+                  label: e.columnName(c),
                   value: !e.hiddenHeaders.contains(c),
                   onChanged: (v) {
                     begin();
@@ -682,19 +682,11 @@ Widget _tableRuleSettings(TableElement e, int index, SettingsWrite write,
   );
 }
 
-/// _columnName is what to call a column in the Order controls: its header
-/// where there is one, and its number where there is not.
-String _columnName(TableElement e, int column) {
-  var head = e.header;
-  var name = column < head.length ? head[column].trim() : "";
-  return name.isEmpty ? "Column ${column + 1}" : name;
-}
-
 /// _sortSummary is the closed section's one line.
 String _sortSummary(TableElement e) {
   var named = [
     for (var level in e.sort.levels)
-      if (level.on) _columnName(e, level.column),
+      if (level.on) e.columnName(level.column),
   ];
   return named.isEmpty ? "Not sorted" : named.join(", then ");
 }
@@ -704,12 +696,4 @@ void _setLevel(TableElement e, SettingsWrite write, VoidCallback begin,
   begin();
   write(e.copyWith(sort: e.sort.withLevel(level, value)));
   commit();
-}
-
-/// _headingName is what to call a column in the Headings switches: what its
-/// header says, or its number when it says nothing yet.
-String _headingName(TableElement e, int column) {
-  var header = e.header;
-  var name = column < header.length ? header[column].trim() : "";
-  return name.isEmpty ? "Column ${column + 1}" : name;
 }

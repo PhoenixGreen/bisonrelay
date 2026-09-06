@@ -719,6 +719,21 @@ class TableElement extends CanvasElement {
   List<String> get header =>
       headerRow && rows.isNotEmpty ? rows.first : const [];
 
+  /// columnName is what to call a column: what its header says, or its number
+  /// when it says nothing.
+  ///
+  /// On the element because four places were asking it -- the order settings,
+  /// the headings switches, a chart choosing which column to plot, and the
+  /// chart data itself naming its series -- and two of them had written the
+  /// same six lines out. A column called one thing in the settings and
+  /// another on the chart beside them is a small thing that makes a panel
+  /// feel untrustworthy.
+  String columnName(int column) {
+    var names = header;
+    var name = column < names.length ? names[column].trim() : "";
+    return name.isEmpty ? "Column ${column + 1}" : name;
+  }
+
   /// lookAt is what the rules say about one cell.
   ///
   /// One walk of the rules rather than four, and one search of the cell's

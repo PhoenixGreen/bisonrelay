@@ -1,4 +1,5 @@
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/tabular_text.dart';
 
 // table_sort.dart puts a table's rows in order.
 //
@@ -159,20 +160,12 @@ String _at(List<String> row, int column) =>
 /// "9". Falling back to text means a column of names still sorts sensibly, and
 /// a column of mixed rubbish sorts consistently rather than throwing.
 int _compare(String a, String b) {
-  var x = _number(a);
-  var y = _number(b);
+  var x = cellNumber(a);
+  var y = cellNumber(b);
   if (x != null && y != null) return x.compareTo(y);
   // A cell with a number in it beats one without, so blanks and dashes end up
   // together at one end instead of scattered through the table.
   if (x != null) return 1;
   if (y != null) return -1;
   return a.toLowerCase().compareTo(b.toLowerCase());
-}
-
-/// _number reads a cell as a number, allowing the things a table of figures
-/// actually contains: a leading plus, thousands separators, a percent sign.
-double? _number(String cell) {
-  var text = cell.trim().replaceAll(",", "").replaceAll("%", "");
-  if (text.startsWith("+")) text = text.substring(1);
-  return text.isEmpty ? null : double.tryParse(text);
 }
