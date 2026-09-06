@@ -364,7 +364,7 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
       CanvasExpander(
         label: "Custom fields",
         remember: "tableSourceCustom",
-        trailing: "${_customColumns(source).length}",
+        trailing: "${_customColumns(source, preset).length}",
         children: [
           const CanvasHint(
               "A custom field builds its cell instead of taking it. Put a "
@@ -382,7 +382,7 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
                 "refresh. The column is an ordinary custom field otherwise, "
                 "and its slots and divider are yours to change."),
           for (var i = 0; i < source.columns.length; i++)
-            if (_isCustom(source.columns[i]))
+            if (_isCustom(source.columns[i], preset))
               _customControls(i, source.columns[i]),
           CanvasControlGroup(label: "Add", children: [
             CanvasIconButton(
@@ -461,6 +461,18 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
                   onChanged: (v) =>
                       _setColumn(i, source.columns[i].copyWith(path: v)),
                 ),
+              // A column becomes custom by being given a recipe. A toggle
+              // rather than a text box, because the first thing a custom
+              // field is is a copy of the field it replaces -- "{points}" --
+              // and editing it from there is the Custom fields section's job.
+              CanvasToggle(
+                label: "Custom",
+                value: source.columns[i].template.isNotEmpty,
+                onChanged: (v) => _setColumn(
+                    i,
+                    source.columns[i].copyWith(
+                        template: v ? "{${source.columns[i].path}}" : "")),
+              ),
               CanvasToggle(
                 label: "A picture",
                 value: source.columns[i].picture,
@@ -674,13 +686,19 @@ class _KeyFieldState extends State<_KeyField> {
 
 /// _isCustom is whether a column builds its cell rather than taking one.
 ///
-/// A template or a spread: either is a recipe rather than a field name, and
-/// either is something somebody looking at the Columns list would want
-/// explained.
-bool _isCustom(SourceColumn column) =>
-    column.template.isNotEmpty || column.spread > 0;
+/// A template or a spread is a recipe rather than a field name. So is a path
+/// the preset fills in itself: a column mapped to one of those is a custom
+/// field whether or not it has been given any settings yet, and it has to be
+/// listed here -- otherwise the preset quietly fills a column in and the
+/// settings that lay it out are behind a section it does not appear in, which
+/// is exactly what happened to a Form column added by hand before the preset
+/// took an interest in it.
+bool _isCustom(SourceColumn column, DataPreset? preset) =>
+    column.template.isNotEmpty ||
+    column.spread > 0 ||
+    (preset?.derived.contains(column.path) ?? false);
 
-List<SourceColumn> _customColumns(DataSource source) => [
+List<SourceColumn> _customColumns(DataSource source, DataPreset? preset) => [
       for (var c in source.columns)
-        if (_isCustom(c)) c
+        if (_isCustom(c, preset)) c
     ];

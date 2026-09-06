@@ -249,4 +249,36 @@ void main() {
       expect(filled[1][1], "— — — — W | L");
     });
   });
+
+  group("a form column added by hand", () {
+    // Reported: the Custom form field could not be found in the Custom fields
+    // section. A column mapped to "form" by hand carries no template and no
+    // spread, so nothing marked it as custom -- and the preset filled it in
+    // anyway, which left it filled by something and explained by nothing.
+    test("the preset says which paths it fills in itself", () {
+      expect(footballData.derived, contains("form"));
+    });
+
+    test("it is still filled in, spread or not", () {
+      var source = footballData.applyTo(const DataSource(), "PL").copyWith(
+        matchColumn: 0,
+        columns: const [
+          SourceColumn(header: "Team", path: "team.shortName"),
+          // No spread, no divider: exactly what pressing Add and choosing the
+          // field gives you.
+          SourceColumn(header: "Form", path: "form"),
+        ],
+      );
+      var filled = fillFootballForm(
+          [
+            ["Team", "Form"],
+            ["Hull City", ""],
+          ],
+          source,
+          {"hull city": "W,L,D"});
+
+      expect(filled[1][1], "W,L,D",
+          reason: "the guide arrives; laying it out is what the slots are for");
+    });
+  });
 }

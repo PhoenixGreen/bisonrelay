@@ -45,6 +45,17 @@ class DataPreset {
   /// list before anything has been fetched.
   final List<String> fields;
 
+  /// derived are the paths this preset fills in itself, whatever the response
+  /// said.
+  ///
+  /// So that a column mapped to one of them is known to be a custom field
+  /// even when it carries no template and no spread -- which is how a column
+  /// added by hand, before anybody knew the preset would take an interest in
+  /// it, ends up. Without this such a column is filled in by the preset and
+  /// listed nowhere that explains it, and the settings that lay it out are
+  /// behind a section it does not appear in.
+  final List<String> derived;
+
   /// derive fills in what one request cannot answer.
   ///
   /// Given the rows as mapped and a way to fetch more JSON, it returns the
@@ -73,6 +84,7 @@ class DataPreset {
     this.matchColumn = -1,
     this.hiddenHeaders = const [],
     this.fields = const [],
+    this.derived = const [],
     this.derive,
   });
 
@@ -191,6 +203,7 @@ final DataPreset footballData = DataPreset(
   matchColumn: 2,
   hiddenHeaders: const [0, 1],
   fields: footballDataFields,
+  derived: const ["form"],
   derive: footballFormFromResults,
   columns: footballDataColumns,
 );
