@@ -10,8 +10,10 @@ void main() {
 
   group('displayPath', () {
     test('hides the home directory, which carries the account name', () {
-      var full = p.join(home, "Library", "Application Support", "bruig", "pages");
-      expect(displayPath(full), "~${sep}Library${sep}Application Support${sep}bruig${sep}pages");
+      var full =
+          p.join(home, "Library", "Application Support", "bruig", "pages");
+      expect(displayPath(full),
+          "~${sep}Library${sep}Application Support${sep}bruig${sep}pages");
       // The point of the exercise: no account name left in what is shown.
       expect(displayPath(full), isNot(contains(home)));
     });

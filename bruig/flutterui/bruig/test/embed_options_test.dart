@@ -218,8 +218,8 @@ void main() {
       // would turn a few kilobytes of markup into a bitmap.
       var svg = Uint8List.fromList(
           '<svg xmlns="http://www.w3.org/2000/svg"/>'.codeUnits);
-      var out = await prepareEmbed(svg, "image/svg+xml",
-          const EmbedOptions(maxWidth: 100, quality: 30));
+      var out = await prepareEmbed(
+          svg, "image/svg+xml", const EmbedOptions(maxWidth: 100, quality: 30));
       expect(out.mime, "image/svg+xml");
       expect(out.data, same(svg));
     });

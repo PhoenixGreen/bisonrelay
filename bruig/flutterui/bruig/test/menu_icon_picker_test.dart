@@ -68,12 +68,13 @@ void main() {
 
     // Nothing to undo yet -- an enabled button that does nothing reads as
     // broken.
-    var reset = tester.widget<TextButton>(
-        find.ancestor(of: find.text('Default'), matching: find.byType(TextButton)));
+    var reset = tester.widget<TextButton>(find.ancestor(
+        of: find.text('Default'), matching: find.byType(TextButton)));
     expect(reset.onPressed, isNull);
   });
 
-  testWidgets('choosing an icon from the grid changes that row', (tester) async {
+  testWidgets('choosing an icon from the grid changes that row',
+      (tester) async {
     await tester.pumpWidget(_app());
     var menu = Provider.of<MainMenuModel>(
         tester.element(find.byType(MenuSection)),

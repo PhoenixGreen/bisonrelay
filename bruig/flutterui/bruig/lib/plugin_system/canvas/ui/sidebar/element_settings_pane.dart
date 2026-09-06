@@ -61,16 +61,30 @@ Widget elementSettingsBody(BuildContext context, CanvasController controller,
   return stacked
       ? Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            CanvasSectionHeading(selected.name),
-            ...controls,
-          ],
+          // No heading naming the element. The panel's own header says what is
+          // being edited -- "Shape settings" -- and a heading under it saying
+          // "Shape" was the same word twice, three lines apart, above a group
+          // also called Shape.
+          children: controls,
         )
       : Row(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.center,
           children: controls,
         );
+}
+
+/// elementSettingsTitle is what the panel holding these is called.
+///
+/// It follows the selection rather than always saying "Element settings": the
+/// panel is the only thing naming what is being edited now that the settings
+/// themselves do not, and "Image settings" is a more useful heading than a
+/// word that is true of every element there is.
+String elementSettingsTitle(CanvasController controller) {
+  if (controller.selection.length > 1) return "Element settings";
+  var selected = controller.selected;
+  if (selected == null) return "Background settings";
+  return "${selected.kind.label} settings";
 }
 
 /// elementSettingsHint is what this section is for, in one sentence, for the

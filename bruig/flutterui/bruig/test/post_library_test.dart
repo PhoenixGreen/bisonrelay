@@ -182,12 +182,12 @@ void main() {
       await PostStorage.write("Drafts", "Other", "# Other\n\ny");
       await model.openFolderNamed("Drafts");
 
-      await model.open(
-          model.entries.firstWhere((e) => e.name == "Routing fees"));
+      await model
+          .open(model.entries.firstWhere((e) => e.name == "Routing fees"));
       expect(editor.text, contains("Routing fees"));
 
-      await model.delete(
-          model.entries.firstWhere((e) => e.name == "Routing fees"));
+      await model
+          .delete(model.entries.firstWhere((e) => e.name == "Routing fees"));
       expect(await PostStorage.exists("Drafts", "Routing fees"), isFalse);
 
       // Opening another document is what used to bring it back.
@@ -223,8 +223,7 @@ void main() {
       await model.open(model.entries.firstWhere((e) => e.name == "A draft"));
       expect(editor.text, isNotEmpty);
 
-      await model.delete(
-          model.entries.firstWhere((e) => e.name == "A draft"));
+      await model.delete(model.entries.firstWhere((e) => e.name == "A draft"));
       expect(editor.text, isEmpty,
           reason: "text with no document behind it gets refiled");
       expect(model.openName, isNull);

@@ -160,8 +160,8 @@ DsExampleAddress0123456789
     // at it.
     testWidgets("copies when the address itself is pressed", (tester) async {
       var copied = <String>[];
-      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-          SystemChannels.platform, (call) async {
+      tester.binding.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, (call) async {
         if (call.method == "Clipboard.setData") {
           copied.add(call.arguments["text"] as String);
         }
@@ -217,8 +217,7 @@ DsExampleAddress0123456789
     // test there is no golib to ask, so the block must come out empty rather
     // than saying something it does not know -- "we could not read your
     // balance" on a checkout page reads as a problem with the shop.
-    testWidgets("says nothing when the wallet does not answer",
-        (tester) async {
+    testWidgets("says nothing when the wallet does not answer", (tester) async {
       await _pump(tester, "--wallet[need=0.31000000, show=ln onchain]--\n");
       await tester.pump();
       expect(find.byType(MarkdownWallet), findsOneWidget);
@@ -287,8 +286,8 @@ Settles after one confirmation.
       var right = tester.getRect(find.byType(InkWell).last);
       expect(left.left - block.left, greaterThan(100),
           reason: "the cards should not stretch to the page edges");
-      expect((block.center.dx - (left.left + right.right) / 2).abs(),
-          lessThan(2),
+      expect(
+          (block.center.dx - (left.left + right.right) / 2).abs(), lessThan(2),
           reason: "the pair should sit in the middle");
     });
 
@@ -318,8 +317,8 @@ Settles after one confirmation.
         ("Lightning", Icons.bolt),
         ("On-chain", Icons.link_rounded),
       ]) {
-        var card = tester.getRect(find.ancestor(
-            of: find.text(word), matching: find.byType(InkWell)));
+        var card = tester.getRect(
+            find.ancestor(of: find.text(word), matching: find.byType(InkWell)));
         for (var part in [find.text(word), find.byIcon(icon)]) {
           expect((tester.getRect(part).center.dx - card.center.dx).abs(),
               lessThan(1),
@@ -391,7 +390,8 @@ Settles after one confirmation.
   });
 
   group("the on-chain pay area", () {
-    const area = "--payways[addr=DsAddr, amount=0.31000000, dcr=0.3100 DCR]--\n";
+    const area =
+        "--payways[addr=DsAddr, amount=0.31000000, dcr=0.3100 DCR]--\n";
 
     testWidgets("offers a square, an address and this app's own wallet",
         (tester) async {
@@ -425,8 +425,10 @@ Settles after one confirmation.
 
     testWidgets("puts one under the other in a narrow window", (tester) async {
       await _pump(tester, area, width: 380, tall: true);
-      var title = tester.getRect(find.text("Pay with an external Decred wallet"));
-      var button = tester.getRect(find.text("Pay with your Bison Relay wallet"));
+      var title =
+          tester.getRect(find.text("Pay with an external Decred wallet"));
+      var button =
+          tester.getRect(find.text("Pay with your Bison Relay wallet"));
       expect(button.top, greaterThan(title.top));
       expect(find.byType(IntrinsicHeight), findsNothing);
     });
@@ -461,8 +463,8 @@ Settles after one confirmation.
 
       expect(block.width, 700, reason: "the block should fill the page");
       expect((title.center.dx - block.center.dx).abs(), lessThan(2));
-      expect((title.center.dx - (left.left + right.right) / 2).abs(),
-          lessThan(2),
+      expect(
+          (title.center.dx - (left.left + right.right) / 2).abs(), lessThan(2),
           reason: "the question and the cards should share a centre");
     });
 
@@ -498,8 +500,7 @@ Settles after one confirmation.
     // Sent and confirmed are two states, not one. A button that says "Sent"
     // and then nothing stops talking exactly when the buyer starts wondering.
     testWidgets("says it is waiting once the coins have gone", (tester) async {
-      await _pump(
-          tester,
+      await _pump(tester,
           "--paynow[addr=DsAddr, amount=0.31000000, order=/order/1]--\n",
           tall: true);
 
@@ -670,8 +671,8 @@ Ada
       await _pump(
           tester, "Ada Lovelace  \n1 Long Road  \nCanterbury, Kent, CT1 1AA\n");
 
-      var name = tester.getRect(find.textContaining("Ada Lovelace",
-          findRichText: true));
+      var name = tester
+          .getRect(find.textContaining("Ada Lovelace", findRichText: true));
       expect(name.height, greaterThan(40),
           reason: "three lines, not one paragraph run together");
     });
@@ -725,7 +726,8 @@ Ada
     // A panel can carry both. The ribbon is the louder of the two and keeps
     // the corner.
     testWidgets("sits inside a ribbon when there is one", (tester) async {
-      await _pump(tester, asked.replaceFirst("color=outline", "color=outline, badge=Sold out"),
+      await _pump(tester,
+          asked.replaceFirst("color=outline", "color=outline, badge=Sold out"),
           width: 600);
       var mark = tester.getRect(find.byIcon(Icons.help_outline));
       var badge = tester.getRect(find.text("Sold out"));
@@ -742,8 +744,8 @@ Ada
           of: find.byType(MarkdownSteps), matching: find.byType(InkWell));
       expect(tester.widgetList(links).length, 1,
           reason: "only Cart is behind Checkout");
-      expect(
-          find.descendant(of: links, matching: find.text("Cart")), findsOneWidget);
+      expect(find.descendant(of: links, matching: find.text("Cart")),
+          findsOneWidget);
     });
 
     // Going forward past a question you have not answered is what the
@@ -755,7 +757,8 @@ Ada
       expect(
           tester
               .widgetList(find.descendant(
-                  of: find.byType(MarkdownSteps), matching: find.byType(InkWell)))
+                  of: find.byType(MarkdownSteps),
+                  matching: find.byType(InkWell)))
               .length,
           0,
           reason: "nothing is behind the first step");
@@ -791,8 +794,7 @@ Ada
           tester.element(find.byType(MarkdownPanel).first),
           listen: false);
       var box = tester.widgetList<DecoratedBox>(find.descendant(
-          of: find.byType(MarkdownPanel),
-          matching: find.byType(DecoratedBox)));
+          of: find.byType(MarkdownPanel), matching: find.byType(DecoratedBox)));
       var lines = [
         for (var b in box)
           if ((b.decoration as BoxDecoration).border != null)
@@ -818,7 +820,8 @@ Ada
     testWidgets("carries the whole sentence", (tester) async {
       await _pump(tester, area, width: 800);
       var tip = tester.widget<HelpTooltip>(find.byType(HelpTooltip).first);
-      expect(tip.message,
+      expect(
+          tip.message,
           "The shop watches for your payment, and marks the order when the "
           "network confirms it.");
       expect(tip.triggerMode, TooltipTriggerMode.tap);

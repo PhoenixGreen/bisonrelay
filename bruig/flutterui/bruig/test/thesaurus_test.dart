@@ -104,7 +104,14 @@ void main() {
       // these wakes the plugin to no purpose. A phrase is not on the list --
       // the datasets carry "take off" and "wedding ring", and those are the
       // entries somebody learning English most wants.
-      for (var raw in ["four words is plenty", "", "   ", "123", "!!!", "3.5"]) {
+      for (var raw in [
+        "four words is plenty",
+        "",
+        "   ",
+        "123",
+        "!!!",
+        "3.5"
+      ]) {
         expect(ThesaurusCapability.normalizeWord(raw), isNull,
             reason: "for input '$raw'");
       }

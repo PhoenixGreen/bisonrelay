@@ -41,14 +41,14 @@ void main() {
       // A product that had a picture and should not any more. copyWith
       // treats null as "unchanged", so clearing has to be an empty string
       // and not a null -- easy to get wrong and silent when it is.
-      var d = ProductDraft.of(
-          ManagedProduct.empty().copyWith(image: "guitar.jpg"));
+      var d =
+          ProductDraft.of(ManagedProduct.empty().copyWith(image: "guitar.jpg"));
       expect(d.copyWith(image: "").image, isEmpty);
     });
 
     test('editing something else leaves the picture alone', () {
-      var d = ProductDraft.of(
-          ManagedProduct.empty().copyWith(image: "guitar.jpg"));
+      var d =
+          ProductDraft.of(ManagedProduct.empty().copyWith(image: "guitar.jpg"));
       expect(d.copyWith(title: "A guitar").image, "guitar.jpg");
     });
   });

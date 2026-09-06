@@ -85,7 +85,6 @@ void main() {
       }
     });
 
-
     test('every navigation shape, through the block that reads one', () {
       // Through the real block syntax, not just NavStyle.parse: a bar
       // written --nav[style=pills]-- matches nothing and is drawn as the
@@ -95,8 +94,7 @@ void main() {
       var style = navSpec.allSettings.firstWhere((s) => s.key == "style");
       for (var option in style.options) {
         var written = navSpec.write({"style": option.value});
-        var el = parseBlock(
-            blockOnly(written), NavBlockSyntax());
+        var el = parseBlock(blockOnly(written), NavBlockSyntax());
         expect(el.attributes["style"], option.value, reason: option.value);
         expect(int.parse(el.attributes["count"]!), 3, reason: option.value);
       }
@@ -153,7 +151,8 @@ void main() {
       // picture only the writer has seen.
       expect(NavWritten.parse("pills, background=raised").background?.role,
           MarkdownRole.raised);
-      expect(NavWritten.parse("pills, background=#00000080").background?.literal,
+      expect(
+          NavWritten.parse("pills, background=#00000080").background?.literal,
           isNotNull);
       expect(NavWritten.parse("pills, background=none").background?.isInherit,
           isTrue);
@@ -203,15 +202,16 @@ void main() {
     // a fixed height. Both would have been picked, done nothing, and left
     // the writer unable to tell a mistake from a bug.
     Map<String, String> fieldsOf(String written) {
-      var el = parseBlock(
-          blockOnly(written), HeaderBlockSyntax());
+      var el = parseBlock(blockOnly(written), HeaderBlockSyntax());
       return el.attributes;
     }
 
     /// bannerFields are the settings written as lines of the banner --
     /// everything but the row's, whose settings are words in its brackets.
     List<ElementSetting> bannerFields() {
-      var rowKeys = {for (var s in [for (var r in headerSpec.rows) ...r.settings]) s.key};
+      var rowKeys = {
+        for (var s in [for (var r in headerSpec.rows) ...r.settings]) s.key
+      };
       return [
         for (var s in headerSpec.allSettings)
           if (!rowKeys.contains(s.key)) s
@@ -250,8 +250,7 @@ void main() {
         "titleoutlinecolor",
         "titlebackground",
       ]) {
-        var setting =
-            headerSpec.allSettings.firstWhere((s) => s.key == key);
+        var setting = headerSpec.allSettings.firstWhere((s) => s.key == key);
         for (var option in setting.options) {
           if (option.value.isEmpty) continue;
           var style = HeaderTextStyle.parse({key: option.value});
@@ -295,7 +294,8 @@ void main() {
       expect(plain.first.group, isFalse);
 
       var both = headerRowsOf(parseBlock(
-              blockOnly(headerSpec.write({"flush1": "flush", "group1": "group"})),
+              blockOnly(
+                  headerSpec.write({"flush1": "flush", "group1": "group"})),
               HeaderBlockSyntax())
           .attributes);
       expect(both.first.flush, isTrue);
@@ -381,13 +381,28 @@ void main() {
       expect(
         {for (var s in headerSpec.allSettings) s.key},
         {
-          "background", "titlesize",
-          "titlecolor", "titlegradient", "titleimage",
-          "titleoutline", "titleoutlinecolor",
-          "titlebackground", "titlepadding", "titleradius",
-          "titleweight", "titleitalic", "titlecase", "titletracking",
-          "height1", "layout1", "flush1", "group1",
-          "height2", "layout2", "flush2", "group2",
+          "background",
+          "titlesize",
+          "titlecolor",
+          "titlegradient",
+          "titleimage",
+          "titleoutline",
+          "titleoutlinecolor",
+          "titlebackground",
+          "titlepadding",
+          "titleradius",
+          "titleweight",
+          "titleitalic",
+          "titlecase",
+          "titletracking",
+          "height1",
+          "layout1",
+          "flush1",
+          "group1",
+          "height2",
+          "layout2",
+          "flush2",
+          "group2",
         },
       );
     });
@@ -413,7 +428,11 @@ void main() {
     });
 
     test('a navigation bar with nothing picked is still plain', () {
-      expect(navSpec.allSettings.firstWhere((s) => s.key == "style").fallback.value,
+      expect(
+          navSpec.allSettings
+              .firstWhere((s) => s.key == "style")
+              .fallback
+              .value,
           "plain");
       expect(NavStyle.parse(null), NavStyle.plain);
     });
@@ -512,7 +531,8 @@ void main() {
   });
 
   group('writing a block', () {
-    test('leaves out a setting with no answer, rather than writing a blank', () {
+    test('leaves out a setting with no answer, rather than writing a blank',
+        () {
       // "background:" with no answer is a line the parser reads and
       // discards, and a writer looking at it cannot tell it does nothing.
       var written = pageSpec.write({"background": "", "width": ""});

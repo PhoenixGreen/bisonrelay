@@ -176,8 +176,9 @@ void _languageTests() {
   // pay in full to arrive at the data already held.
   group("reloading", () {
     PluginInfo installed(String id, String version) => PluginInfo(
-        PluginManifest(id, id, version, "d", "s", "dynamic-wasm", 1, const {},
-            [PluginService("spellcheck-data", "get_spellcheck_data", const [])]),
+        PluginManifest(id, id, version, "d", "s", "dynamic-wasm", 1, const {}, [
+          PluginService("spellcheck-data", "get_spellcheck_data", const [])
+        ]),
         true);
 
     test("the same plugin set is not fetched twice", () async {
@@ -214,5 +215,4 @@ void _languageTests() {
       expect(fetches, 3);
     });
   });
-
 }

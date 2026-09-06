@@ -22,8 +22,8 @@ class _FakePages extends PagesModel {
 
   final hostArrived = Completer<PagesHostStatus>();
 
-  static final storeConfig = PagesHostConfig(
-      pagesHostModeStore, "", "/store", "ln", "", 0, "");
+  static final storeConfig =
+      PagesHostConfig(pagesHostModeStore, "", "/store", "ln", "", 0, "");
 
   @override
   Future<PagesHostStatus> fetchHost() => hostArrived.future;
@@ -41,8 +41,8 @@ class _FakeStore extends StoreModel {
   Future<List<ManagedProduct>> fetchProducts() async {
     productFetches++;
     return [
-      ManagedProduct("A thing", "SKU1", "", const [], 1, false, false, "",
-          "products.toml")
+      ManagedProduct(
+          "A thing", "SKU1", "", const [], 1, false, false, "", "products.toml")
     ];
   }
 
@@ -54,7 +54,8 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
-  test('the catalogue waits for the hosting config rather than emptying', () async {
+  test('the catalogue waits for the hosting config rather than emptying',
+      () async {
     var m = _FakePages();
     var shop = _FakeStore(m);
 
@@ -63,8 +64,8 @@ void main() {
     await Future<void>.delayed(Duration.zero);
     expect(shop.productFetches, 0, reason: "nothing to ask for yet");
 
-    m.hostArrived.complete(PagesHostStatus(
-        _FakePages.storeConfig, true, "", "/store", const []));
+    m.hostArrived.complete(
+        PagesHostStatus(_FakePages.storeConfig, true, "", "/store", const []));
     await loading;
 
     expect(shop.products, hasLength(1));
@@ -91,8 +92,8 @@ void main() {
     var shop = _FakeStore(m);
     var a = shop.loadStore(), b = shop.loadStore();
     var ready = m.hostReady;
-    m.hostArrived.complete(PagesHostStatus(
-        _FakePages.storeConfig, true, "", "/store", const []));
+    m.hostArrived.complete(
+        PagesHostStatus(_FakePages.storeConfig, true, "", "/store", const []));
     await Future.wait([a, b, ready]);
 
     // hostArrived is a single Completer: a second call to fetchHost would

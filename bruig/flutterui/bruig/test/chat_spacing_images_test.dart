@@ -34,7 +34,8 @@ void main() {
     });
 
     test('it round-trips, and an untouched theme writes nothing', () {
-      var back = AreaStyle.fromJson(const AreaStyle(messageSpacing: 24).toJson());
+      var back =
+          AreaStyle.fromJson(const AreaStyle(messageSpacing: 24).toJson());
       expect(back.messageSpacing, 24);
       expect(const AreaStyle().toJson().containsKey('messageSpacing'), isFalse);
       expect(AreaStyle.fromJson(const AreaStyle().toJson()).messageSpacing,
@@ -88,8 +89,8 @@ void main() {
       // The whole point of the setting following Message layout: the same
       // choice in a narrowed conversation draws a smaller picture, because
       // the share is of the width the message actually has.
-      expect(chatImageWidth('half', 400),
-          lessThan(chatImageWidth('half', 800)!));
+      expect(
+          chatImageWidth('half', 400), lessThan(chatImageWidth('half', 800)!));
     });
 
     test('an unbounded width has no share to take', () {

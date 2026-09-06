@@ -15,10 +15,9 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   test("the pitch keeps its proportions in a wide frame", () {
-    var metrics = pitchRect(const Rect.fromLTWH(0, 0, 2000, 600),
-        PitchSport.football);
-    expect(metrics.area.width / metrics.area.height,
-        closeTo(105 / 68, 0.001));
+    var metrics =
+        pitchRect(const Rect.fromLTWH(0, 0, 2000, 600), PitchSport.football);
+    expect(metrics.area.width / metrics.area.height, closeTo(105 / 68, 0.001));
     // Letterboxed rather than stretched: the frame is far wider than a pitch,
     // so the pitch cannot have used all of it.
     expect(metrics.area.width, lessThan(2000));
@@ -27,8 +26,7 @@ void main() {
   test("the pitch keeps its proportions in a tall frame", () {
     var metrics =
         pitchRect(const Rect.fromLTWH(0, 0, 600, 2000), PitchSport.football);
-    expect(metrics.area.width / metrics.area.height,
-        closeTo(105 / 68, 0.001));
+    expect(metrics.area.width / metrics.area.height, closeTo(105 / 68, 0.001));
     expect(metrics.area.height, lessThan(2000));
   });
 
@@ -78,8 +76,7 @@ void main() {
 
   test("every sport has its own shape and none is degenerate", () {
     for (var sport in PitchSport.values) {
-      var metrics =
-          pitchRect(const Rect.fromLTWH(0, 0, 1200, 800), sport);
+      var metrics = pitchRect(const Rect.fromLTWH(0, 0, 1200, 800), sport);
       expect(metrics.area.width, greaterThan(0), reason: sport.name);
       expect(metrics.area.height, greaterThan(0), reason: sport.name);
       expect(metrics.area.width / metrics.area.height,
@@ -94,8 +91,8 @@ void main() {
     // Reachable from a background element dragged very small, and a negative
     // rectangle draws nothing while still being selectable, which is a way to
     // lose an element.
-    var metrics = pitchRect(const Rect.fromLTWH(0, 0, 12, 8),
-        PitchSport.football);
+    var metrics =
+        pitchRect(const Rect.fromLTWH(0, 0, 12, 8), PitchSport.football);
     expect(metrics.area.width, greaterThanOrEqualTo(0));
     expect(metrics.area.height, greaterThanOrEqualTo(0));
   });

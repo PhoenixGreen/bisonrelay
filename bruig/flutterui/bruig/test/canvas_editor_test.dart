@@ -575,7 +575,9 @@ void main() {
       var controller = await panel(tester);
       expect(teamIn(controller).players.length, 11,
           reason: "ten outfield players and a goalkeeper");
-      expect(find.text("TEAM"), findsWidgets);
+      // The panel header names the element now, so the first group no longer
+      // captions itself with the same word.
+      expect(find.text("TEAM SETTINGS"), findsOneWidget);
       expect(find.text("PLAYERS"), findsOneWidget);
     });
 
@@ -2631,7 +2633,7 @@ void main() {
 
     testWidgets("all three are in one column", (tester) async {
       await panel(tester);
-      for (var name in ["ADD", "LAYERS", "ELEMENT SETTINGS"]) {
+      for (var name in ["ADD", "LAYERS", "BACKGROUND SETTINGS"]) {
         expect(find.text(name), findsOneWidget, reason: name);
       }
       expect(find.byType(CanvasPanelStack), findsOneWidget);
@@ -2665,7 +2667,9 @@ void main() {
       // every click.
       var controller = await panel(tester);
 
-      await tester.tap(find.text("ELEMENT SETTINGS"));
+      // The header names what is being edited, so with nothing selected it is
+      // the background's.
+      await tester.tap(find.text("BACKGROUND SETTINGS"));
       await tester.pumpAndSettle();
       expect(find.text("Opacity"), findsNothing);
 
@@ -2679,8 +2683,9 @@ void main() {
       expect(find.text("Opacity"), findsNothing, reason: "nor does adding one");
 
       // And the header is still there, because a panel with no way back is a
-      // trap.
-      await tester.tap(find.text("ELEMENT SETTINGS"));
+      // trap. It is named for whatever is selected by now, so it is found by
+      // what every one of those names ends with.
+      await tester.tap(find.textContaining("SETTINGS").last);
       await tester.pumpAndSettle();
       expect(find.text("Opacity"), findsOneWidget);
     });
@@ -3140,6 +3145,63 @@ void main() {
           reason: "Angle starts a line of its own, under X");
     });
 
+    testWidgets("the panel's header names what is being edited",
+        (tester) async {
+      // The settings used to head themselves with the element's name, three
+      // lines above a group with the same name again. The header says it now,
+      // and says it usefully: "Shape settings" rather than a phrase that is
+      // true of everything.
+      var document = const CanvasDocument();
+      var element = newElement(ElementKind.shape, document);
+      var controller = CanvasController(document.addElement(element));
+      addTearDown(controller.dispose);
+      await pump(tester, CanvasDesignPanel(controller: controller));
+
+      expect(find.text("BACKGROUND SETTINGS"), findsOneWidget,
+          reason: "with nothing selected, that is what these are");
+
+      controller.selectOnly(element.id);
+      await tester.pumpAndSettle();
+      expect(find.text("SHAPE SETTINGS"), findsOneWidget);
+      expect(find.text("ELEMENT SETTINGS"), findsNothing);
+    });
+
+    testWidgets("and a group does not say it again", (tester) async {
+      // A panel headed "Shape settings" over a group captioned "Shape" over a
+      // control labelled "Shape" is the same word three times in four lines.
+      var document = const CanvasDocument();
+      var element = newElement(ElementKind.shape, document);
+      var controller = CanvasController(document.addElement(element));
+      addTearDown(controller.dispose);
+      controller.selectOnly(element.id);
+      await pump(tester, CanvasDesignPanel(controller: controller));
+
+      expect(find.text("SHAPE"), findsNothing,
+          reason: "the group caption is gone; the header carries the name");
+      // The control that chooses which shape keeps its own label. The other
+      // two "Shape"s in the column are the chip that adds one and the layer
+      // row that names it, neither of which is this panel repeating itself.
+      expect(
+          find.descendant(
+              of: find.byType(CanvasDropdown<ShapeKind>),
+              matching: find.text("Shape")),
+          findsOneWidget);
+    });
+
+    testWidgets("a field that explains itself has no caption", (tester) async {
+      // "Label" over a field captioned "Text inside" was the same instruction
+      // twice. The empty field says what it is for.
+      var document = const CanvasDocument();
+      var element = newElement(ElementKind.shape, document);
+      var controller = CanvasController(document.addElement(element));
+      addTearDown(controller.dispose);
+      controller.selectOnly(element.id);
+      await pump(tester, CanvasDesignPanel(controller: controller));
+
+      expect(find.text("Text inside"), findsNothing);
+      expect(find.text("Type text on the shape"), findsOneWidget);
+    });
+
     testWidgets("the element's own name is not said twice", (tester) async {
       // The settings are headed with it already, so the group caption under
       // that heading said "Chart" directly under "Chart".
@@ -3153,9 +3215,9 @@ void main() {
       controller.selectOnly("c");
       await pump(tester, CanvasDesignPanel(controller: controller));
 
-      // Once: the settings' own heading. The position group's caption was a
-      // second one directly under it.
-      expect(find.text("CHART"), findsOneWidget);
+      // Not at all in the settings themselves: the panel's header says it.
+      expect(find.text("CHART"), findsNothing);
+      expect(find.text("CHART SETTINGS"), findsOneWidget);
       // Twice in the column as a whole, and neither of them is the caption
       // this test is about: the layer row that names the element, and the Add
       // chip that makes one.

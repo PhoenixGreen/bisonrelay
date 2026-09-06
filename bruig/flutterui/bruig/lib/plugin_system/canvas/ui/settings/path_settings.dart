@@ -31,7 +31,9 @@ List<Widget> pathSettings(CanvasController controller, PathElement e,
   }
 
   return [
-    CanvasControlGroup(label: "Path", children: [
+    // No caption: the panel header says "Path settings" already, and a
+    // group called Path directly under it was the word twice.
+    CanvasControlGroup(label: "Path", hideCaption: true, children: [
       CanvasColorButton(
         label: "Colour",
         color: e.color,

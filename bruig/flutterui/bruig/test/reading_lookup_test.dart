@@ -103,8 +103,8 @@ void main() {
     });
 
     test("not a sentence, and not nothing", () {
-      expect(ThesaurusCapability.normalizeWord("four words is too many"),
-          isNull);
+      expect(
+          ThesaurusCapability.normalizeWord("four words is too many"), isNull);
       expect(ThesaurusCapability.normalizeWord(""), isNull);
       expect(ThesaurusCapability.normalizeWord("   "), isNull);
     });

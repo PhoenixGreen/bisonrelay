@@ -28,8 +28,8 @@ void main() {
     /// The renderer puts every block in a paragraph and a paragraph draws
     /// its contents in a Wrap of its own, so the first Wrap on the page
     /// belongs to the paragraph and answers nothing about the bar.
-    Finder navBar() => find.byWidgetPredicate(
-        (w) => w.runtimeType.toString() == "_MarkdownNav");
+    Finder navBar() => find
+        .byWidgetPredicate((w) => w.runtimeType.toString() == "_MarkdownNav");
 
     Future<Wrap> barIn(WidgetTester tester, String src) async {
       await tester.pumpWidget(drawHost(MarkdownArea(src, false)));
@@ -39,16 +39,16 @@ void main() {
     }
 
     testWidgets('align runs the links that way', (tester) async {
-      var left = await barIn(tester,
-          "--nav[pills, align=left]--\n[Home](index.md)\n--/nav--");
+      var left = await barIn(
+          tester, "--nav[pills, align=left]--\n[Home](index.md)\n--/nav--");
       expect(left.alignment, WrapAlignment.start);
 
-      var middle = await barIn(tester,
-          "--nav[pills, align=center]--\n[Home](index.md)\n--/nav--");
+      var middle = await barIn(
+          tester, "--nav[pills, align=center]--\n[Home](index.md)\n--/nav--");
       expect(middle.alignment, WrapAlignment.center);
 
-      var right = await barIn(tester,
-          "--nav[pills, align=right]--\n[Home](index.md)\n--/nav--");
+      var right = await barIn(
+          tester, "--nav[pills, align=right]--\n[Home](index.md)\n--/nav--");
       expect(right.alignment, WrapAlignment.end);
     });
 
@@ -95,8 +95,9 @@ void main() {
         await tester.pumpWidget(drawHost(MarkdownArea(src, false)));
         await tester.pumpAndSettle();
         return tester
-            .getTopLeft(
-                find.descendant(of: navBar(), matching: find.byType(Wrap)).first)
+            .getTopLeft(find
+                .descendant(of: navBar(), matching: find.byType(Wrap))
+                .first)
             .dy;
       }
 
@@ -113,8 +114,7 @@ void main() {
       // allSettings, not groups.first: which group a setting is in is a
       // decision about how the panel reads, and reaching for one by
       // position breaks the moment another group is added above it.
-      var setting =
-          navSpec.allSettings.firstWhere((s) => s.key == "margin");
+      var setting = navSpec.allSettings.firstWhere((s) => s.key == "margin");
 
       Future<Offset> drawnAt(String value) async {
         var attrs = value.isEmpty ? "" : ", margin=$value";
@@ -193,10 +193,10 @@ void main() {
         var pill = tester
             .widgetList<Container>(
                 find.descendant(of: navBar(), matching: find.byType(Container)))
-            .firstWhere((c) => c.decoration is BoxDecoration &&
+            .firstWhere((c) =>
+                c.decoration is BoxDecoration &&
                 (c.decoration as BoxDecoration).borderRadius != null);
-        return ((pill.decoration as BoxDecoration).borderRadius
-                as BorderRadius)
+        return ((pill.decoration as BoxDecoration).borderRadius as BorderRadius)
             .topLeft
             .x;
       }
@@ -205,8 +205,7 @@ void main() {
       expect(await radiusOf("pills, radius=10"), 10);
     });
 
-    testWidgets('margin moves the bar rather than growing it',
-        (tester) async {
+    testWidgets('margin moves the bar rather than growing it', (tester) async {
       // Outside the background: padding would grow the strip instead of
       // keeping it away from what is above.
       //
@@ -270,8 +269,6 @@ void main() {
       expect(int.parse(e.attributes["count"]!), NavBlockSyntax.maxLinks);
     });
   });
-
-
 
   group('a bar in a banner', () {
     setUp(() => SharedPreferences.setMockInitialValues({}));

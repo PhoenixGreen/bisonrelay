@@ -18,7 +18,8 @@ FetchedResource _page(List<String> path) => FetchedResource(
       DateTime.now(),
       DateTime.now(),
       RMFetchResource(path, null, 0, null, 0, 0),
-      RMFetchResourceReply(0, 200, null, Uint8List.fromList(utf8.encode("x")), 0, 0),
+      RMFetchResourceReply(
+          0, 200, null, Uint8List.fromList(utf8.encode("x")), 0, 0),
       "",
     );
 
@@ -106,31 +107,35 @@ void main() {
       String pathOf(PagesSession s) =>
           (s.currentPage?.request.path ?? const []).join("/");
 
-      await tester.pumpWidget(MultiProvider(providers: [
-        ChangeNotifierProvider<ThemeNotifier>(create: (_) => ThemeNotifier()),
-      ], child: MaterialApp(
-          home: Scaffold(
-              body: ListenableBuilder(
-                  listenable: session,
-                  builder: (context, _) => PageBrowserBar(
-                        session: session,
-                        sectionLabel: "",
-                        nick: "Your site",
-                        path: pathOf(session),
-                        loading: false,
-                        sidebarOpen: true,
-                        onToggleSidebar: null,
-                        onBack: session.goBack,
-                        onForward: session.goForward,
-                        onReload: () {},
-                        onHome: () {},
-                      ))))));
+      await tester.pumpWidget(MultiProvider(
+          providers: [
+            ChangeNotifierProvider<ThemeNotifier>(
+                create: (_) => ThemeNotifier()),
+          ],
+          child: MaterialApp(
+              home: Scaffold(
+                  body: ListenableBuilder(
+                      listenable: session,
+                      builder: (context, _) => PageBrowserBar(
+                            session: session,
+                            sectionLabel: "",
+                            nick: "Your site",
+                            path: pathOf(session),
+                            loading: false,
+                            sidebarOpen: true,
+                            onToggleSidebar: null,
+                            onBack: session.goBack,
+                            onForward: session.goForward,
+                            onReload: () {},
+                            onHome: () {},
+                          ))))));
       await tester.pumpAndSettle();
 
       expect(find.text("your_site/about.md"), findsOneWidget);
       expect(
           tester
-              .widget<IconButton>(find.widgetWithIcon(IconButton, Icons.arrow_forward))
+              .widget<IconButton>(
+                  find.widgetWithIcon(IconButton, Icons.arrow_forward))
               .onPressed,
           isNull);
 
@@ -140,7 +145,8 @@ void main() {
       expect(find.text("your_site/index.md"), findsOneWidget);
       expect(
           tester
-              .widget<IconButton>(find.widgetWithIcon(IconButton, Icons.arrow_forward))
+              .widget<IconButton>(
+                  find.widgetWithIcon(IconButton, Icons.arrow_forward))
               .onPressed,
           isNotNull);
 

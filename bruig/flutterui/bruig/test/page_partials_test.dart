@@ -92,7 +92,8 @@ void main() {
     });
 
     test('the same fragment fills every place it appears', () {
-      var got = expandPartials("--include[r]--\na\n--include[r]--", {"r": "---"});
+      var got =
+          expandPartials("--include[r]--\na\n--include[r]--", {"r": "---"});
       expect("---".allMatches(got).length, 2);
     });
 
@@ -113,8 +114,8 @@ void main() {
     });
 
     test('two naming each other do not loop', () {
-      var got = expandPartials("--include[a]--",
-          {"a": "A --include[b]--", "b": "B --include[a]--"});
+      var got = expandPartials(
+          "--include[a]--", {"a": "A --include[b]--", "b": "B --include[a]--"});
       expect(got, contains("A"));
       expect(got, contains("B"));
     });

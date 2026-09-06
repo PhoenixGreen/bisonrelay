@@ -32,13 +32,12 @@ void main() {
       // The banner's own top, not the page's: the second margin was inside
       // the banner widget, so the widget sat where it always had and only
       // what it drew moved down.
-      await tester.pumpWidget(drawHost(
-          MarkdownArea("--header--\n--row[96]--\n# Site\n--/row--\n--/header--", false)));
+      await tester.pumpWidget(drawHost(MarkdownArea(
+          "--header--\n--row[96]--\n# Site\n--/row--\n--/header--", false)));
       await tester.pumpAndSettle();
 
-      var drawn = find
-          .descendant(of: banner(), matching: find.byType(SizedBox))
-          .first;
+      var drawn =
+          find.descendant(of: banner(), matching: find.byType(SizedBox)).first;
       expect(tester.getTopLeft(drawn).dy, tester.getTopLeft(banner()).dy);
     });
 
@@ -47,7 +46,8 @@ void main() {
       // blocks, and the renderer puts that between them already. A margin of
       // its own on top of that is the banner counted twice.
       await tester.pumpWidget(drawHost(MarkdownArea(
-          "--header--\n--row[96]--\n# Site\n--/row--\n--/header--\n\nBody", false)));
+          "--header--\n--row[96]--\n# Site\n--/row--\n--/header--\n\nBody",
+          false)));
       await tester.pumpAndSettle();
 
       var bannerBottom = tester.getBottomLeft(banner()).dy;
@@ -82,10 +82,16 @@ right: # My Site
     });
 
     test('the two words work in either order', () {
-      expect(rowsOf("--header--\n--row[center,40]--\nx\n--/row--\n--/header--")
-          .first.mode, HeaderRowMode.center);
-      expect(rowsOf("--header--\n--row[center,40]--\nx\n--/row--\n--/header--")
-          .first.height, 40);
+      expect(
+          rowsOf("--header--\n--row[center,40]--\nx\n--/row--\n--/header--")
+              .first
+              .mode,
+          HeaderRowMode.center);
+      expect(
+          rowsOf("--header--\n--row[center,40]--\nx\n--/row--\n--/header--")
+              .first
+              .height,
+          40);
     });
 
     test('centre is spelt either way', () {
@@ -96,10 +102,16 @@ right: # My Site
     });
 
     test('a height is bounded to something still a banner', () {
-      expect(rowsOf("--header--\n--row[9999]--\nx\n--/row--\n--/header--")
-          .first.height, HeaderRow.maxHeight);
-      expect(rowsOf("--header--\n--row[1]--\nx\n--/row--\n--/header--")
-          .first.height, 16);
+      expect(
+          rowsOf("--header--\n--row[9999]--\nx\n--/row--\n--/header--")
+              .first
+              .height,
+          HeaderRow.maxHeight);
+      expect(
+          rowsOf("--header--\n--row[1]--\nx\n--/row--\n--/header--")
+              .first
+              .height,
+          16);
     });
 
     test('two rows are kept and a third is not', () {
@@ -160,8 +172,9 @@ left: [Home](br://abc/index.md)
     });
 
     test('an empty row is no cells rather than one empty one', () {
-      expect(rowsOf("--header--\n--row[40]--\n--/row--\n--/header--")
-          .first.cells, isEmpty);
+      expect(
+          rowsOf("--header--\n--row[40]--\n--/row--\n--/header--").first.cells,
+          isEmpty);
     });
   });
 
@@ -183,8 +196,7 @@ right: # My site
 
     test('and both are kept, rather than one being dropped', () {
       for (var mode in ["left", "center", "right"]) {
-        var rows = rowsOf(
-            "--header--\n--row[60,$mode]--\nleft: A\nright: B\n"
+        var rows = rowsOf("--header--\n--row[60,$mode]--\nleft: A\nright: B\n"
             "--/row--\n--/header--");
         expect(rows.first.cells, ["A", "B"], reason: mode);
       }
@@ -226,7 +238,8 @@ right: # B
       expect(embedImage("photo.png"), isNull);
       expect(embedImage("--embed[type=application/pdf,data=AAAA]--"), isNull);
       // A reference the document still carries while it is being written.
-      expect(embedImage("--embed[type=image/png,data=[content abcdefghijkl]]--"),
+      expect(
+          embedImage("--embed[type=image/png,data=[content abcdefghijkl]]--"),
           isNull);
     });
   });
@@ -241,8 +254,8 @@ right: # B
 
   group('the rules survive being saved', () {
     test('a header round-trips', () {
-      const r = HeaderRule(
-          height: 300, padding: 24, radius: 12, gap: 16, scrim: 0.5);
+      const r =
+          HeaderRule(height: 300, padding: 24, radius: 12, gap: 16, scrim: 0.5);
       expect(HeaderRule.fromJson(r.toJson()), r);
     });
 
@@ -274,7 +287,8 @@ right: # Title
           .first);
       // The rows, plus the padding above and below them.
       const padding = 20.0;
-      expect(banner.height, moreOrLessEquals(80 + 40 + padding * 2, epsilon: 1));
+      expect(
+          banner.height, moreOrLessEquals(80 + 40 + padding * 2, epsilon: 1));
       expect(tester.takeException(), isNull);
     });
 
@@ -489,9 +503,11 @@ right: # Title
 """, false), width: width));
       await tester.pump();
       return (
-        banner: tester.getRect(find
-            .ancestor(of: find.text("Logo"), matching: find.byType(ClipRRect))
-            .first)
+        banner: tester
+            .getRect(find
+                .ancestor(
+                    of: find.text("Logo"), matching: find.byType(ClipRRect))
+                .first)
             .height,
         logo: tester.getRect(find.text("Logo")).height,
       );
@@ -542,8 +558,11 @@ right: # Title
     });
 
     test('an ordinary row is not flush', () {
-      expect(rowsOf("--header--\n--row[44]--\nx\n--/row--\n--/header--")
-          .first.flush, isFalse);
+      expect(
+          rowsOf("--header--\n--row[44]--\nx\n--/row--\n--/header--")
+              .first
+              .flush,
+          isFalse);
     });
 
     testWidgets('sits hard against the edge it is at', (tester) async {
@@ -574,9 +593,8 @@ right: # Title
   });
 
   group('where a banner puts its spaces', () {
-    HeaderRow row({bool flush = false}) =>
-        HeaderRow(height: 40, mode: HeaderRowMode.left, cells: const ["x"],
-            flush: flush);
+    HeaderRow row({bool flush = false}) => HeaderRow(
+        height: 40, mode: HeaderRowMode.left, cells: const ["x"], flush: flush);
 
     test('two ordinary rows are inset from the edges and stacked', () {
       // Before, between, after.
@@ -586,13 +604,11 @@ right: # Title
     test('a strip at the bottom keeps the row above its own space', () {
       // Which is the fault this fixes: the writing sat crowded against the
       // strip because the flush row took the space between them with it.
-      expect(headerRowSpaces([row(), row(flush: true)]),
-          [true, true, false]);
+      expect(headerRowSpaces([row(), row(flush: true)]), [true, true, false]);
     });
 
     test('and a strip at the top does the same', () {
-      expect(headerRowSpaces([row(flush: true), row()]),
-          [false, true, true]);
+      expect(headerRowSpaces([row(flush: true), row()]), [false, true, true]);
     });
 
     test('a strip at both ends leaves the middle row its room', () {
@@ -665,8 +681,10 @@ right: # $title
       // alignment says where its writing sits, not how much of the banner
       // it may use.
       var left = await widthIn(tester, "left");
-      expect(await widthIn(tester, "center"), moreOrLessEquals(left, epsilon: 1));
-      expect(await widthIn(tester, "right"), moreOrLessEquals(left, epsilon: 1));
+      expect(
+          await widthIn(tester, "center"), moreOrLessEquals(left, epsilon: 1));
+      expect(
+          await widthIn(tester, "right"), moreOrLessEquals(left, epsilon: 1));
       expect(tester.takeException(), isNull);
     });
 
@@ -702,8 +720,11 @@ right: # Short
     });
 
     test('an ordinary row is not grouped', () {
-      expect(rowsOf("--header--\n--row[96,center]--\nx\n--/row--\n--/header--")
-          .first.group, isFalse);
+      expect(
+          rowsOf("--header--\n--row[96,center]--\nx\n--/row--\n--/header--")
+              .first
+              .group,
+          isFalse);
     });
 
     test('reads alongside flush, in either order', () {

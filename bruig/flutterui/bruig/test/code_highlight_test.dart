@@ -108,8 +108,7 @@ void main() {
       expect(MarkdownStyleGuide.fromJson(g.toJson()).cards.button,
           ButtonRole.outlined);
       // Plain is the default and stays out of the file.
-      expect(
-          const MarkdownStyleGuide(id: "g", name: "G").cards.button,
+      expect(const MarkdownStyleGuide(id: "g", name: "G").cards.button,
           ButtonRole.plain);
       expect(const CardRule().toJson().containsKey("button"), isFalse);
     });

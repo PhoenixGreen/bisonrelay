@@ -46,15 +46,17 @@ void main() {
     });
 
     test('a background it does not recognise is none, not a guess', () {
-      expect(PageSetup.parse("--page--\nbackground: #ff0000\n--/page--")
-          .background, PageBackground.none);
+      expect(
+          PageSetup.parse("--page--\nbackground: #ff0000\n--/page--")
+              .background,
+          PageBackground.none);
     });
 
     test('a setting it does not know is left alone', () {
       // A typo shows up as itself rather than silently doing nothing
       // somewhere else.
-      expect(PageSetup.parse("--page--\nwdith: 800\n--/page--"),
-          PageSetup.none);
+      expect(
+          PageSetup.parse("--page--\nwdith: 800\n--/page--"), PageSetup.none);
     });
 
     test('nothing outside the block is read as part of it', () {
@@ -123,17 +125,21 @@ void main() {
       // unconsumed it renders as itself, and the reader sees "--page--" and
       // "width: 800" at the top of every page.
       SharedPreferences.setMockInitialValues({});
-      await tester.pumpWidget(MultiProvider(providers: [
-        ChangeNotifierProvider<ThemeNotifier>(create: (_) => ThemeNotifier()),
-        ChangeNotifierProvider<PaymentsModel>(create: (_) => PaymentsModel()),
-        ChangeNotifierProvider<MarkdownAreaModel>(
-            create: (_) => MarkdownAreaModel("")),
-      ], child: MaterialApp(
-          home: Scaffold(
-              body: MarkdownArea(
-                  "--page--\nwidth: 800\nbackground: raised\n--/page--\n"
-                  "# Title",
-                  false)))));
+      await tester.pumpWidget(MultiProvider(
+          providers: [
+            ChangeNotifierProvider<ThemeNotifier>(
+                create: (_) => ThemeNotifier()),
+            ChangeNotifierProvider<PaymentsModel>(
+                create: (_) => PaymentsModel()),
+            ChangeNotifierProvider<MarkdownAreaModel>(
+                create: (_) => MarkdownAreaModel("")),
+          ],
+          child: MaterialApp(
+              home: Scaffold(
+                  body: MarkdownArea(
+                      "--page--\nwidth: 800\nbackground: raised\n--/page--\n"
+                      "# Title",
+                      false)))));
       await tester.pumpAndSettle();
 
       var shown = find
@@ -159,16 +165,21 @@ void main() {
       // could reach it.
       SharedPreferences.setMockInitialValues({});
       Future<double> topOf(String md) async {
-        await tester.pumpWidget(MultiProvider(providers: [
-          ChangeNotifierProvider<ThemeNotifier>(create: (_) => ThemeNotifier()),
-        ], child: MaterialApp(
-            home: Scaffold(
-                body: Align(
-                    alignment: Alignment.topLeft,
-                    child: PageFrame(
-                        setup: PageSetup.parse(md),
-                        child: const SizedBox(
-                            key: ValueKey("body"), width: 10, height: 10)))))));
+        await tester.pumpWidget(MultiProvider(
+            providers: [
+              ChangeNotifierProvider<ThemeNotifier>(
+                  create: (_) => ThemeNotifier()),
+            ],
+            child: MaterialApp(
+                home: Scaffold(
+                    body: Align(
+                        alignment: Alignment.topLeft,
+                        child: PageFrame(
+                            setup: PageSetup.parse(md),
+                            child: const SizedBox(
+                                key: ValueKey("body"),
+                                width: 10,
+                                height: 10)))))));
         await tester.pumpAndSettle();
         return tester.getTopLeft(find.byKey(const ValueKey("body"))).dy;
       }

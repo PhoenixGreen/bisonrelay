@@ -107,9 +107,8 @@ void main() {
       await page("Zebra");
       await page("index");
 
-      var names = (await PostStorage.list(pagesFolderName))
-          .map((e) => e.name)
-          .toList();
+      var names =
+          (await PostStorage.list(pagesFolderName)).map((e) => e.name).toList();
       expect(names.first, "index");
     });
 

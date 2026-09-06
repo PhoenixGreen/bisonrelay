@@ -79,17 +79,18 @@ void main() {
       const doc = PageDocument(
           name: "index", file: "index.md", state: PagePublishState.draft);
       expect(doc.isIndex, isTrue);
-      const withExt =
-          PageDocument(name: "index.md", file: "x.md", state: PagePublishState.draft);
+      const withExt = PageDocument(
+          name: "index.md", file: "x.md", state: PagePublishState.draft);
       expect(withExt.isIndex, isTrue);
       // However it was capitalised.
-      const caps = PageDocument(name: "Index", file: "x.md", state: PagePublishState.draft);
+      const caps = PageDocument(
+          name: "Index", file: "x.md", state: PagePublishState.draft);
       expect(caps.isIndex, isTrue);
     });
 
     test('is not just any page starting with index', () {
-      const doc =
-          PageDocument(name: "index-old", file: "x.md", state: PagePublishState.draft);
+      const doc = PageDocument(
+          name: "index-old", file: "x.md", state: PagePublishState.draft);
       expect(doc.isIndex, isFalse);
     });
   });

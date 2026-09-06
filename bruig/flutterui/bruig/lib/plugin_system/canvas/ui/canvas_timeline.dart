@@ -37,10 +37,19 @@ import 'package:flutter/services.dart';
 /// area rather than in a row that makes this taller -- see CanvasKeyframeBar.
 /// Growing the strip pushed the canvas up and re-fitted it, so opening a panel
 /// moved the design; the same reason the canvas settings float.
-const double timelineHeight = 110;
+///
+/// Added up rather than written down. It was 110, and the transport row above
+/// the ruler grew by three pixels the day a caption was given room to breathe
+/// -- which took those three off the ruler, and the keyframe marks with them,
+/// because the marks sit a fixed distance down a box that had quietly become
+/// shorter. A total that is the sum of its parts cannot do that.
+/// Seventy-two is everything below the transport row: the ruler, the two rows
+/// of marks and the air around them. It was 110 all in, of which the transport
+/// row was 38.
+const double timelineHeight = controlWithLabelHeight + 72;
 
 /// keyframeBarHeight is the floating pose bar's height.
-const double keyframeBarHeight = controlHeight + controlLabelHeight + 10;
+const double keyframeBarHeight = controlWithLabelHeight + 10;
 
 /// _notesGutter is the empty band kept along the bottom of the strip.
 ///
@@ -408,7 +417,7 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
           // window a Row that cannot break is a red-and-yellow stripe rather
           // than a control anybody can reach.
           SizedBox(
-            height: controlHeight + controlLabelHeight,
+            height: controlWithLabelHeight,
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Row(children: [

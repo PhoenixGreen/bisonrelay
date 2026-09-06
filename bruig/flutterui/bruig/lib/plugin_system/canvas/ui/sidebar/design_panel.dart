@@ -25,7 +25,16 @@ class CanvasDesignPanel extends StatelessWidget {
   const CanvasDesignPanel({required this.controller, super.key});
 
   @override
-  Widget build(BuildContext context) => CanvasPanelStack(
+  Widget build(BuildContext context) => ListenableBuilder(
+        // The whole stack, because two of the three headers say something
+        // about the document: how many layers there are, and what is
+        // selected. A panel whose name is out of date is worse than one with
+        // no name.
+        listenable: controller,
+        builder: (context, _) => _stack(context),
+      );
+
+  Widget _stack(BuildContext context) => CanvasPanelStack(
         storageKey: "canvasDesign",
         panels: [
           CanvasStackPanel(
@@ -48,7 +57,11 @@ class CanvasDesignPanel extends StatelessWidget {
           ),
           CanvasStackPanel(
             id: "settings",
-            label: "Element settings",
+            // Named for what is selected. The settings no longer head
+            // themselves with the element's name, so this is what says what is
+            // being edited -- and "Image settings" is a more useful heading
+            // than a phrase that is true of everything.
+            label: elementSettingsTitle(controller),
             icon: Icons.tune,
             hint: elementSettingsHint,
             builder: (context) => ListenableBuilder(

@@ -26,10 +26,28 @@ import 'package:flutter/services.dart';
 /// they can be while still being a comfortable click target.
 const double controlHeight = 27;
 
+/// controlLabelGap is the air between a control's caption and the control.
+///
+/// Three pixels rather than none. A caption sitting directly on the box it
+/// names reads as part of it, which is what made the denser groups -- the
+/// picture's, the border's -- look cramped beside the position row, whose
+/// fields are underlines with room around them.
+const double controlLabelGap = 3;
+
 /// controlLabelHeight is the little caption above each control. Everything
 /// that has no caption -- a toggle, an icon button -- is pushed down by
 /// exactly this much so the whole row sits on one baseline.
 const double controlLabelHeight = 11;
+
+/// controlWithLabelHeight is what a captioned control stands at, all in.
+///
+/// One place, because three others were adding the same two numbers up for
+/// themselves -- the keyframe strip's height twice and the timeline's row once
+/// -- and none of them knew when a gap was put between the caption and the
+/// control. The first thing that happened was three pixels of overflow in a
+/// row nobody had touched.
+const double controlWithLabelHeight =
+    controlLabelHeight + controlLabelGap + controlHeight;
 
 /// CanvasControlScope says how the controls below it should lay themselves out.
 ///
@@ -139,18 +157,26 @@ class CanvasControlGroup extends StatelessWidget {
   final String label;
   final List<Widget> children;
 
-  /// bandOnlyLabel drops the caption in a sidebar and keeps it in the band.
+  /// hideCaption drops the caption in a sidebar and keeps it in the band.
   ///
   /// For the one group whose name is the element's own. The sidebar already
   /// heads the settings with that, so the caption underneath said the same
   /// word a second time; the band has no such heading, so there it is the only
-  /// thing naming the cluster.
-  final bool bandOnlyLabel;
+  /// hideCaption drops the group's own name, for a group whose name is
+  /// already said by whatever is above it.
+  ///
+  /// It was called bandOnlyLabel, from when these controls were laid out two
+  /// ways: down the sidebar with a caption over each group, and along a band
+  /// above the canvas where the caption sat to the left instead. The band is
+  /// gone, so "shown only in the band" is no longer a thing that can happen --
+  /// what the flag does now is hide the caption, and it is used where the
+  /// panel's own header has already named the element.
+  final bool hideCaption;
 
   const CanvasControlGroup({
     required this.label,
     required this.children,
-    this.bandOnlyLabel = false,
+    this.hideCaption = false,
     super.key,
   });
 
@@ -177,18 +203,23 @@ class CanvasControlGroup extends StatelessWidget {
         // nothing, ran together into one field of boxes -- the caption above
         // each was the only thing saying where one ended, and a caption is
         // nine pixels tall and grey.
-        padding: const EdgeInsets.only(bottom: 11),
+        // The spacing every group gets, and the reason it is here rather than
+        // in each of them: a settings panel where one group breathes and the
+        // next is packed reads as two panels by different hands. These four
+        // numbers -- above the caption, under it, between wrapped rows, and
+        // before the rule -- are the whole of it.
+        padding: const EdgeInsets.only(top: 4, bottom: 12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (!bandOnlyLabel)
+            if (!hideCaption)
               Padding(
-                  padding: const EdgeInsets.only(bottom: 3, left: 1),
+                  padding: const EdgeInsets.only(bottom: 7, left: 1),
                   child: caption),
-            Wrap(runSpacing: 2, children: children),
+            Wrap(runSpacing: 8, children: children),
             Padding(
-              padding: const EdgeInsets.only(top: 9),
+              padding: const EdgeInsets.only(top: 12),
               child: Container(
                   height: 1,
                   color: theme.colors.outlineVariant.withValues(alpha: 0.45)),
@@ -926,6 +957,7 @@ Widget _labelled(ThemeNotifier theme, String label, Widget child,
                 overflow: TextOverflow.ellipsis,
               ),
             ),
+          const SizedBox(height: controlLabelGap),
           child,
         ],
       ),

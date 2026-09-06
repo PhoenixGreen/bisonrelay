@@ -111,8 +111,8 @@ void main() {
     // A clock with nowhere to send anybody still tells the time.
     testWidgets("offers nothing to press when the page named nothing",
         (tester) async {
-      await tester.pumpWidget(
-          _host(MarkdownArea("--countdown[seconds=1]--\n", false)));
+      await tester
+          .pumpWidget(_host(MarkdownArea("--countdown[seconds=1]--\n", false)));
       await tester.pump();
       await tester.pump(const Duration(seconds: 2));
       expect(find.textContaining("has lapsed"), findsOneWidget);
@@ -120,8 +120,8 @@ void main() {
     });
 
     testWidgets("does not show its own markers", (tester) async {
-      await tester.pumpWidget(_host(
-          MarkdownArea("--countdown[seconds=125, link=/reorder/1]--\n", false)));
+      await tester.pumpWidget(_host(MarkdownArea(
+          "--countdown[seconds=125, link=/reorder/1]--\n", false)));
       await tester.pump();
       expect(find.textContaining("--countdown"), findsNothing);
       expect(find.textContaining("seconds="), findsNothing);

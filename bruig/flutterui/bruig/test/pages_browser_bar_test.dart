@@ -130,8 +130,7 @@ void main() {
     late bool narrow, wide;
     await tester.pumpWidget(ChangeNotifierProvider<ThemeNotifier>.value(
       value: ThemeNotifier(doLoad: false),
-      child: MaterialApp(
-          home: Builder(builder: (context) {
+      child: MaterialApp(home: Builder(builder: (context) {
         narrow = sidebarIsInDrawer(context, kSidebarCollapseWidth - 1);
         wide = sidebarIsInDrawer(context, kSidebarCollapseWidth);
         return const SizedBox();

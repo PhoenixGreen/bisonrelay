@@ -284,7 +284,7 @@ List<Widget> chartSettings(
         children: [
           // No caption: the field says which it is when it is empty, and
           // what it says when it is not.
-          CanvasControlGroup(label: "Title", bandOnlyLabel: true, children: [
+          CanvasControlGroup(label: "Title", hideCaption: true, children: [
             ...labelControls(
                 "Title",
                 e.title,
@@ -298,7 +298,7 @@ List<Widget> chartSettings(
           ]),
           CanvasControlGroup(
               label: "Description",
-              bandOnlyLabel: true,
+              hideCaption: true,
               children: [
                 // Under the title, not on top of it. A description above a title is
                 // almost never what anybody means, and two labels placed at the same
@@ -408,7 +408,7 @@ List<Widget> chartSettings(
                   "Spacing is the gap between one entry and the next."),
             ],
           ]),
-          CanvasControlGroup(label: "Labels", bandOnlyLabel: true, children: [
+          CanvasControlGroup(label: "Labels", hideCaption: true, children: [
             // The one switch for all three of them. Taking room is what made every
             // one of their settings a setting that resized the chart.
             CanvasToggle(

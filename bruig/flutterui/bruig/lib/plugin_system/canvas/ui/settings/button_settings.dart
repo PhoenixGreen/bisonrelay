@@ -10,7 +10,9 @@ List<Widget> buttonSettings(CanvasController controller, ButtonElement e,
     SettingsWrite write, VoidCallback begin, VoidCallback commit) {
   var action = e.action;
   return [
-    CanvasControlGroup(label: "Button", children: [
+    // No caption: the panel header says "Button settings" already, and a
+    // group called Button directly under it was the word twice.
+    CanvasControlGroup(label: "Button", hideCaption: true, children: [
       CanvasTextField(
         label: "Label",
         value: e.label,

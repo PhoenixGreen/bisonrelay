@@ -23,7 +23,9 @@ List<Widget> teamSettings(TeamElement e, SettingsWrite write,
   }
 
   return [
-    CanvasControlGroup(label: "Team", children: [
+    // No caption: the panel header says "Team settings" already, and a
+    // group called Team directly under it was the word twice.
+    CanvasControlGroup(label: "Team", hideCaption: true, children: [
       CanvasDropdown<TeamSport>(
         label: "Sport",
         value: e.sport,

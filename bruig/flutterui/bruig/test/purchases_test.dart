@@ -15,11 +15,21 @@ FileMetadata sent({
   String hash = "h1",
   String filename = "guide.md",
 }) =>
-    FileMetadata(1, 0, 10, "", filename, "", hash, const [], "", {
-      purchaseOrderAttr: "7",
-      purchaseSKUAttr: sku,
-      purchaseTitleAttr: title,
-    });
+    FileMetadata(
+        1,
+        0,
+        10,
+        "",
+        filename,
+        "",
+        hash,
+        const [],
+        "",
+        {
+          purchaseOrderAttr: "7",
+          purchaseSKUAttr: sku,
+          purchaseTitleAttr: title,
+        });
 
 FileMetadata plainFile({String hash = "z"}) =>
     FileMetadata(1, 0, 10, "", "holiday.jpg", "", hash, const [], "", null);

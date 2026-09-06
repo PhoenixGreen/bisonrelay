@@ -141,7 +141,6 @@ titlebordercolor: #ffffff
     });
   });
 
-
   group('a title too long for its row', () {
     setUp(() => SharedPreferences.setMockInitialValues({}));
 
@@ -202,8 +201,7 @@ titlebordercolor: #ffffff
 
     test('is distinct from the box round the whole title', () {
       // titleborder draws a box; titleoutline draws round the letters.
-      var st = HeaderTextStyle.parse(
-          {"titleoutline": "2", "titleborder": "4"});
+      var st = HeaderTextStyle.parse({"titleoutline": "2", "titleborder": "4"});
       expect(st.outline, 2);
       expect(st.borderWidth, 4);
     });

@@ -63,16 +63,16 @@ class _Pdf {
   /// what a reader does, and is the only way a wrong length is caught.
   Uint8List stream(int number) {
     var body = object(number);
-    var length = int.parse(
-        RegExp(r"/Length (\d+)").firstMatch(body)!.group(1)!);
+    var length =
+        int.parse(RegExp(r"/Length (\d+)").firstMatch(body)!.group(1)!);
     var from = offsets[number]! + body.indexOf("stream\n") + "stream\n".length;
     expect(text.startsWith("\nendstream", from + length), isTrue,
         reason: "the /Length of object $number does not reach its endstream");
     return bytes.sublist(from, from + length);
   }
 
-  int refIn(String body, String key) => int.parse(
-      RegExp("$key (\\d+) 0 R").firstMatch(body)!.group(1)!);
+  int refIn(String body, String key) =>
+      int.parse(RegExp("$key (\\d+) 0 R").firstMatch(body)!.group(1)!);
 }
 
 void main() {
@@ -99,16 +99,16 @@ void main() {
 
     // The path a reader actually takes. Every step asserts the offset in the
     // table really points at the object it says it does.
-    var root = pdf.refIn(
-        pdf.text.substring(pdf.text.lastIndexOf("trailer")), "/Root");
+    var root =
+        pdf.refIn(pdf.text.substring(pdf.text.lastIndexOf("trailer")), "/Root");
     var catalogue = pdf.object(root);
     expect(catalogue, contains("/Type /Catalog"));
 
     var pages = pdf.object(pdf.refIn(catalogue, "/Pages"));
     expect(pages, contains("/Count 1"));
 
-    var page = pdf.object(int.parse(
-        RegExp(r"/Kids \[(\d+) 0 R\]").firstMatch(pages)!.group(1)!));
+    var page = pdf.object(
+        int.parse(RegExp(r"/Kids \[(\d+) 0 R\]").firstMatch(pages)!.group(1)!));
     expect(page, contains("/Type /Page"));
 
     var image = pdf.object(pdf.refIn(page, "/Im0"));
@@ -204,8 +204,8 @@ void main() {
 
   test("a picture that does not match its size is refused", () {
     expect(
-        () => writePdf(Uint8List(10),
-            width: 100, height: 100, page: PdfPage.a4),
+        () =>
+            writePdf(Uint8List(10), width: 100, height: 100, page: PdfPage.a4),
         throwsArgumentError);
   });
 }

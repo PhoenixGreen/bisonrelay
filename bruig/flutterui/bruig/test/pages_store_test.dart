@@ -38,8 +38,8 @@ void main() {
 
   group('ManagedProduct', () {
     test('copyWith keeps the file the product came from', () {
-      var p = ManagedProduct(
-          "Solo", "sku-1", "d", const ["music"], 0.99, false, false, "", "a.toml");
+      var p = ManagedProduct("Solo", "sku-1", "d", const ["music"], 0.99, false,
+          false, "", "a.toml");
       var edited = p.copyWith(price: 1.99);
 
       expect(edited.file, "a.toml");

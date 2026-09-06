@@ -111,7 +111,8 @@ void main() {
       await _pumpTree(tester, [
         _widget("row", items: [_widget("text", text: "in a row")]),
         _widget("column", items: [_widget("text", text: "in a column")]),
-        _widget("card", text: "Card", items: [_widget("text", text: "in a card")]),
+        _widget("card",
+            text: "Card", items: [_widget("text", text: "in a card")]),
       ]);
 
       expect(find.text("in a row"), findsOneWidget);
@@ -161,12 +162,9 @@ void main() {
     // write both, so a bare list of strings is accepted too.
     testWidgets("a dropdown accepts bare string options", (tester) async {
       await _pumpTree(tester, [
-        _widget("dropdown",
-            name: "size",
-            value: "medium",
-            props: {
-              "options": ["small", "medium", "large"]
-            }),
+        _widget("dropdown", name: "size", value: "medium", props: {
+          "options": ["small", "medium", "large"]
+        }),
       ]);
 
       expect(find.text("medium"), findsOneWidget);
@@ -200,7 +198,8 @@ void main() {
       await _pumpTree(tester, [
         _widget("spacer", props: {"size": "24"}),
         _widget("progress", props: {"value": 5}),
-        _widget("icon", props: {"icon": "no-such-icon", "size": "not a number"}),
+        _widget("icon",
+            props: {"icon": "no-such-icon", "size": "not a number"}),
         _widget("text", text: "survived"),
       ]);
 
@@ -286,7 +285,8 @@ void main() {
         PluginInfo(
             manifestWith("zed", {
               PluginSlots.settingsPage: [
-                PluginContribution("prefs", "Zed Settings", "settings", const [])
+                PluginContribution(
+                    "prefs", "Zed Settings", "settings", const [])
               ]
             }),
             true),
@@ -318,7 +318,8 @@ void main() {
                   "citations",
                   {
                     PluginSlots.composerAction: [
-                      PluginContribution("insert", "Insert citation", "", const [])
+                      PluginContribution(
+                          "insert", "Insert citation", "", const [])
                     ]
                   },
                   name: "Citations"),
@@ -362,8 +363,11 @@ void main() {
               true),
         ]);
 
-        expect(slotEntries(plugins, PluginSlots.settingsPage).single
-            .attributedLabel, "Options");
+        expect(
+            slotEntries(plugins, PluginSlots.settingsPage)
+                .single
+                .attributedLabel,
+            "Options");
       });
     });
 

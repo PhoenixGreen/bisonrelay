@@ -8,7 +8,9 @@ import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 List<Widget> shapeSettings(ShapeElement e, SettingsWrite write,
         VoidCallback begin, VoidCallback commit) =>
     [
-      CanvasControlGroup(label: "Shape", children: [
+      // No caption: the panel header says "Shape settings" already, and a
+      // group called Shape directly under it was the word twice.
+      CanvasControlGroup(label: "Shape", hideCaption: true, children: [
         CanvasDropdown<ShapeKind>(
           label: "Shape",
           value: e.shape,
@@ -83,10 +85,13 @@ List<Widget> shapeSettings(ShapeElement e, SettingsWrite write,
         ],
       ]),
       CanvasControlGroup(label: "Label", children: [
+        // The empty field says what it is for, rather than a caption above it
+        // repeating the group's own name in other words.
         CanvasTextField(
-          label: "Text inside",
+          label: "",
+          hint: "Type text on the shape",
           value: e.text,
-          width: 150,
+          width: 180,
           onChanged: (v) => write(e.copyWith(text: v)),
           onCommit: commit,
         ),

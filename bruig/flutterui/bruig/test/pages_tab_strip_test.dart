@@ -42,8 +42,8 @@ void main() {
 
     testWidgets('a tab closes only itself', (tester) async {
       var closed = <int>[];
-      await tester.pumpWidget(
-          _host(PageTabStrip(tabs: _tabs(3, onClose: closed.add))));
+      await tester
+          .pumpWidget(_host(PageTabStrip(tabs: _tabs(3, onClose: closed.add))));
       await tester.pump();
 
       await tester.tap(find.byTooltip("Close page1"));
@@ -87,8 +87,7 @@ void main() {
     testWidgets('many tabs scroll rather than overflowing', (tester) async {
       // A long page name must not be able to push the others off, and eight
       // open pages must not overflow a narrow window.
-      await tester.pumpWidget(_host(
-          PageTabStrip(tabs: _tabs(8)), width: 400));
+      await tester.pumpWidget(_host(PageTabStrip(tabs: _tabs(8)), width: 400));
       await tester.pump();
       expect(tester.takeException(), isNull);
     });

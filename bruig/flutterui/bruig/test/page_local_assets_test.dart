@@ -136,20 +136,20 @@ void main() {
   });
 
   group('the preview', () {
-    Widget wrap(PagesModel pages, Widget child) => ChangeNotifierProvider<
-            ThemeNotifier>(
-        create: (_) => ThemeNotifier(),
-        child: ChangeNotifierProvider<PagesModel>.value(
-          value: pages,
-          child: MaterialApp(home: Scaffold(body: child)),
-        ));
+    Widget wrap(PagesModel pages, Widget child) =>
+        ChangeNotifierProvider<ThemeNotifier>(
+            create: (_) => ThemeNotifier(),
+            child: ChangeNotifierProvider<PagesModel>.value(
+              value: pages,
+              child: MaterialApp(home: Scaffold(body: child)),
+            ));
 
     testWidgets('draws a picture of this site rather than its alt text',
         (tester) async {
       var pages = _FakePages()..files["assets/banner.png"] = banner;
 
-      await tester.pumpWidget(wrap(pages,
-          const PageImage(path: "assets/banner.png", alt: "A banner")));
+      await tester.pumpWidget(wrap(
+          pages, const PageImage(path: "assets/banner.png", alt: "A banner")));
       await tester.pumpAndSettle();
 
       expect(find.byType(Image), findsOneWidget);
@@ -164,8 +164,8 @@ void main() {
         ..files["assets/banner.png"] = banner
         ..hold = Completer<void>();
 
-      await tester.pumpWidget(wrap(pages,
-          const PageImage(path: "assets/banner.png", alt: "A banner")));
+      await tester.pumpWidget(wrap(
+          pages, const PageImage(path: "assets/banner.png", alt: "A banner")));
       await tester.pump();
 
       expect(find.text("A banner"), findsOneWidget);
@@ -200,8 +200,8 @@ void main() {
       await tester.pumpWidget(wrap(
           pages,
           Builder(
-              builder: (context) => headerPicture(context,
-                          "--embed[type=image/png,data=$png]--") ==
+              builder: (context) => headerPicture(
+                          context, "--embed[type=image/png,data=$png]--") ==
                       null
                   ? const Text("nothing")
                   : const Text("drew it"))));

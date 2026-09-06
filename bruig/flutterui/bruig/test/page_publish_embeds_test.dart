@@ -64,9 +64,9 @@ void main() {
     await EmbedStore.save(id, data);
     await EmbedStore.save(other, data);
 
-    var got = await resolveEmbeds(
-        "--embed[type=image/png,data=[content $id]]--\n"
-        "--embed[type=image/svg+xml,data=[content $other]]--");
+    var got =
+        await resolveEmbeds("--embed[type=image/png,data=[content $id]]--\n"
+            "--embed[type=image/svg+xml,data=[content $other]]--");
     expect("data=$data".allMatches(got.text).length, 2);
     expect(got.missing, 0);
   });

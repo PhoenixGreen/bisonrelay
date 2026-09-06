@@ -16,7 +16,9 @@ List<Widget> lineSettings(CanvasController controller, LineElement e,
   }
 
   return [
-    CanvasControlGroup(label: "Line", children: [
+    // No caption: the panel header says "Line settings" already, and a
+    // group called Line directly under it was the word twice.
+    CanvasControlGroup(label: "Line", hideCaption: true, children: [
       CanvasColorButton(
         label: "Colour",
         color: e.color,

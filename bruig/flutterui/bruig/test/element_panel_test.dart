@@ -21,8 +21,7 @@ void main() {
     await tester.pumpWidget(MultiProvider(providers: [
       ChangeNotifierProvider<ThemeNotifier>(
           create: (c) => ThemeNotifier(doLoad: false)),
-    ], child: MaterialApp(
-        home: Scaffold(body: ElementPanel(editor: editor)))));
+    ], child: MaterialApp(home: Scaffold(body: ElementPanel(editor: editor)))));
     await tester.pumpAndSettle();
   }
 
@@ -40,8 +39,7 @@ void main() {
     }
   });
 
-  testWidgets('each setting shows the answer it already gives',
-      (tester) async {
+  testWidgets('each setting shows the answer it already gives', (tester) async {
     // A block told nothing is not a block doing nothing. The panel opens
     // describing what the writer would actually get.
     await pump(tester);
@@ -63,8 +61,7 @@ void main() {
     expect(find.text("Readable (800)"), findsOneWidget);
   });
 
-  testWidgets('choosing several writes one block, not several',
-      (tester) async {
+  testWidgets('choosing several writes one block, not several', (tester) async {
     await pump(tester);
     await tester.tap(find.text("Page setup"));
     await tester.pumpAndSettle();
@@ -90,8 +87,7 @@ void main() {
     expect(editor.text, contains("--/page--"));
   });
 
-  testWidgets('the note goes in with it, on a line of its own',
-      (tester) async {
+  testWidgets('the note goes in with it, on a line of its own', (tester) async {
     // A comment, so a reader never sees it, and one line, so deleting it is
     // one thing to delete.
     await pump(tester);
@@ -141,8 +137,7 @@ void main() {
       expect(find.text("Tracking"), findsNothing);
     });
 
-    testWidgets('shows its settings side by side when opened',
-        (tester) async {
+    testWidgets('shows its settings side by side when opened', (tester) async {
       await pump(tester);
       await tester.tap(find.text("Header"));
       await tester.pumpAndSettle();
@@ -224,8 +219,9 @@ void main() {
       // The group's own None, which is the first chip in the chooser --
       // not one of the several Nones the settings below it also offer.
       await tester.tap(find.descendant(
-          of: find.ancestor(
-              of: find.text("Gradient"), matching: find.byType(Wrap)).first,
+          of: find
+              .ancestor(of: find.text("Gradient"), matching: find.byType(Wrap))
+              .first,
           matching: find.text("None")));
       await tester.pumpAndSettle();
       await tester.tap(find.text("Insert header"));
@@ -284,10 +280,8 @@ void main() {
           home: Scaffold(
               body: Builder(
                   builder: (context) => TextButton(
-                        onPressed: () async => got = await pickGradient(
-                            context,
-                            const Color(0xffff0000),
-                            const Color(0xff0000ff)),
+                        onPressed: () async => got = await pickGradient(context,
+                            const Color(0xffff0000), const Color(0xff0000ff)),
                         child: const Text("open"),
                       )))));
       await tester.tap(find.text("open"));
@@ -322,10 +316,8 @@ void main() {
           home: Scaffold(
               body: Builder(
                   builder: (context) => TextButton(
-                        onPressed: () async => got = await pickGradient(
-                            context,
-                            const Color(0xffff0000),
-                            const Color(0xff0000ff)),
+                        onPressed: () async => got = await pickGradient(context,
+                            const Color(0xffff0000), const Color(0xff0000ff)),
                         child: const Text("open"),
                       )))));
       await tester.tap(find.text("open"));

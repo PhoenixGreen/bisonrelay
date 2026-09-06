@@ -79,9 +79,10 @@ void main() {
         follow: PathFollow(elementId: "t1", playerIndex: 6),
         guide: true,
       );
-      var back = CanvasDocument.decode(
-              CanvasDocument(elements: [path]).encode())!.elements.single
-          as PathElement;
+      var back =
+          CanvasDocument.decode(CanvasDocument(elements: [path]).encode())!
+              .elements
+              .single as PathElement;
 
       expect(back.nodes.length, 2);
       expect(back.nodes.first.outDx, 0.3);
@@ -149,7 +150,8 @@ void main() {
         for (var f = 0; f <= 10; f++) path.positionAtFrame(f)!,
       ];
       var lengths = [
-        for (var i = 1; i < steps.length; i++) (steps[i] - steps[i - 1]).distance,
+        for (var i = 1; i < steps.length; i++)
+          (steps[i] - steps[i - 1]).distance,
       ];
       var shortest = lengths.reduce((a, b) => a < b ? a : b);
       var longest = lengths.reduce((a, b) => a > b ? a : b);
@@ -165,9 +167,8 @@ void main() {
       );
       var path = straight(frames: 10)
           .copyWith(follow: const PathFollow(elementId: "s"));
-      var controller = CanvasController(const CanvasDocument(frames: 24)
-          .addElement(shape)
-          .addElement(path));
+      var controller = CanvasController(
+          const CanvasDocument(frames: 24).addElement(shape).addElement(path));
       addTearDown(controller.dispose);
 
       controller.applyPathFollow(
@@ -188,9 +189,8 @@ void main() {
       ).withFormation(TeamFormation.f442);
       var path = straight(frames: 8)
           .copyWith(follow: const PathFollow(elementId: "t", playerIndex: 9));
-      var controller = CanvasController(const CanvasDocument(frames: 24)
-          .addElement(team)
-          .addElement(path));
+      var controller = CanvasController(
+          const CanvasDocument(frames: 24).addElement(team).addElement(path));
       addTearDown(controller.dispose);
 
       controller.applyPathFollow(
@@ -206,12 +206,12 @@ void main() {
     test("unlinking takes the baked keyframes back off", () {
       // Leaving them would strand the element on a route nothing is attached
       // to, which is worse than either state.
-      var shape = ShapeElement(const ElementBase(id: "s", width: 20, height: 20));
+      var shape =
+          ShapeElement(const ElementBase(id: "s", width: 20, height: 20));
       var path = straight(frames: 6)
           .copyWith(follow: const PathFollow(elementId: "s"));
-      var controller = CanvasController(const CanvasDocument(frames: 24)
-          .addElement(shape)
-          .addElement(path));
+      var controller = CanvasController(
+          const CanvasDocument(frames: 24).addElement(shape).addElement(path));
       addTearDown(controller.dispose);
 
       var live = controller.document.elements.whereType<PathElement>().single;
@@ -240,15 +240,16 @@ void main() {
     });
 
     test("re-baking replaces the route rather than adding to it", () {
-      var shape = ShapeElement(const ElementBase(id: "s", width: 20, height: 20));
-      var controller = CanvasController(
-          const CanvasDocument(frames: 24).addElement(shape));
+      var shape =
+          ShapeElement(const ElementBase(id: "s", width: 20, height: 20));
+      var controller =
+          CanvasController(const CanvasDocument(frames: 24).addElement(shape));
       addTearDown(controller.dispose);
 
-      controller.applyPathFollow(
-          straight(frames: 10).copyWith(follow: const PathFollow(elementId: "s")));
-      controller.applyPathFollow(
-          straight(frames: 4).copyWith(follow: const PathFollow(elementId: "s")));
+      controller.applyPathFollow(straight(frames: 10)
+          .copyWith(follow: const PathFollow(elementId: "s")));
+      controller.applyPathFollow(straight(frames: 4)
+          .copyWith(follow: const PathFollow(elementId: "s")));
 
       expect(controller.document.elementById("s")!.track!.keys.length, 5,
           reason: "the shorter run, not the two runs together");
@@ -354,10 +355,12 @@ void main() {
   group("a path owns its follower's timing", () {
     (CanvasController, TeamElement, PathElement) followed() {
       var team = TeamElement(
-        const ElementBase(id: "t", name: "Home", x: 0, y: 0, width: 400, height: 300),
+        const ElementBase(
+            id: "t", name: "Home", x: 0, y: 0, width: 400, height: 300),
       ).withFormation(TeamFormation.f442);
       var path = PathElement(
-        const ElementBase(id: "p", name: "Run", x: 0, y: 0, width: 400, height: 300),
+        const ElementBase(
+            id: "p", name: "Run", x: 0, y: 0, width: 400, height: 300),
         nodes: const [
           PathNode(x: 0, y: 0, frame: 0),
           PathNode(x: 1, y: 1, frame: 12),

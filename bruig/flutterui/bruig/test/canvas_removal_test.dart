@@ -50,7 +50,9 @@ void main() {
         // A subject in the middle, a bright left half and a dark right half.
         var inSubject = x > 14 && x < 26 && y > 14 && y < 26;
         if (inSubject) return const Color(0xFF20C040);
-        return x < size ~/ 2 ? const Color(0xFFF0E0F0) : const Color(0xFF101014);
+        return x < size ~/ 2
+            ? const Color(0xFFF0E0F0)
+            : const Color(0xFF101014);
       });
 
       applyRemovalForTest(
@@ -143,7 +145,8 @@ void main() {
       // comes into play.
       const size = 60;
       Uint8List ramp() => picture(size, size, (x, y) {
-            var toEdge = math.min(math.min(x, y), math.min(size - 1 - x, size - 1 - y));
+            var toEdge =
+                math.min(math.min(x, y), math.min(size - 1 - x, size - 1 - y));
             var v = (toEdge / (size / 2) * 240).round().clamp(0, 255);
             return Color.fromARGB(255, v, v, v);
           });
@@ -225,7 +228,8 @@ void main() {
             invert: true),
       );
 
-      expect(alphaAt(pixels, size, 1, 1), 255, reason: "the background is kept");
+      expect(alphaAt(pixels, size, 1, 1), 255,
+          reason: "the background is kept");
       expect(alphaAt(pixels, size, 15, 15), 0, reason: "the subject is taken");
       // The subject's own edge, which the flood examined and rejected.
       expect(alphaAt(pixels, size, 11, 11), 0,
@@ -240,9 +244,7 @@ void main() {
       Uint8List run(double softness) {
         var pixels = picture(size, size, (x, y) {
           var inSubject = x > 14 && x < 26 && y > 14 && y < 26;
-          return inSubject
-              ? const Color(0xFF20C040)
-              : const Color(0xFF101010);
+          return inSubject ? const Color(0xFF20C040) : const Color(0xFF101010);
         });
         applyRemovalForTest(
           pixels,
@@ -313,8 +315,7 @@ void main() {
         pixels,
         size,
         size,
-        const BackgroundRemoval(
-            mode: RemovalMode.luminance, threshold: 0.5),
+        const BackgroundRemoval(mode: RemovalMode.luminance, threshold: 0.5),
       );
 
       expect(alphaAt(pixels, size, 2, 2), 0, reason: "the bright half went");
@@ -403,8 +404,7 @@ void main() {
       const removal = BackgroundRemoval(
         mode: RemovalMode.none,
         strokes: [
-          RemovalStroke(
-              points: [Offset(0.5, 0.5)], radius: 0.2, keep: false),
+          RemovalStroke(points: [Offset(0.5, 0.5)], radius: 0.2, keep: false),
         ],
       );
 
@@ -449,9 +449,10 @@ void main() {
           ],
         ),
       );
-      var back = CanvasDocument.decode(
-              CanvasDocument(elements: [element]).encode())!.elements.single
-          as ImageElement;
+      var back =
+          CanvasDocument.decode(CanvasDocument(elements: [element]).encode())!
+              .elements
+              .single as ImageElement;
 
       expect(back.removal.strokes.length, 1);
       expect(back.removal.strokes.single.points.length, 2);
@@ -471,7 +472,8 @@ void main() {
           keep: keep,
         );
 
-    testWidgets("the subject is kept though its colour is in the background too",
+    testWidgets(
+        "the subject is kept though its colour is in the background too",
         (tester) async {
       // The case that defeats every threshold, and the reason this mode
       // exists: the player's white shirt is the same white as a highlight
@@ -540,8 +542,7 @@ void main() {
       // if there is a path to it through background-looking pixels, and a
       // subject mark closes the path.
       const size = 40;
-      var pixels =
-          picture(size, size, (x, y) => const Color(0xFF203040));
+      var pixels = picture(size, size, (x, y) => const Color(0xFF203040));
 
       applyRemovalForTest(
         pixels,
@@ -566,8 +567,7 @@ void main() {
       // There is nothing to compare, and guessing would take something
       // arbitrary the moment the mode was chosen.
       const size = 40;
-      var pixels =
-          picture(size, size, (x, y) => const Color(0xFF203040));
+      var pixels = picture(size, size, (x, y) => const Color(0xFF203040));
 
       applyRemovalForTest(
         pixels,
@@ -653,15 +653,15 @@ void main() {
           ],
         ),
       );
-      var back = CanvasDocument.decode(
-              CanvasDocument(elements: [element]).encode())!.elements.single
-          as ImageElement;
+      var back =
+          CanvasDocument.decode(CanvasDocument(elements: [element]).encode())!
+              .elements
+              .single as ImageElement;
       expect(back.removal.hints.length, 1);
       expect(back.removal.hints.single.keep, isTrue);
 
       const none = BackgroundRemoval(mode: RemovalMode.learn);
-      expect(none.cacheKey("a"),
-          isNot(element.removal.cacheKey("a")));
+      expect(none.cacheKey("a"), isNot(element.removal.cacheKey("a")));
     });
   });
 
@@ -779,8 +779,7 @@ void main() {
           reason: "and it stopped at the coat, though the brush covered it");
     });
 
-    testWidgets("cling holds on to what the stroke started on",
-        (tester) async {
+    testWidgets("cling holds on to what the stroke started on", (tester) async {
       // The reported fault. The reference used to be taken per dab, from
       // whatever was under the pointer at that moment -- so the instant the
       // stroke crossed onto the subject it re-learnt the subject and started
@@ -899,8 +898,7 @@ void main() {
       expect(alphaAt(pixels, size, 40, 30), lessThan(80),
           reason: "and the far end of the ramp, though it is a long way from "
               "the colour the stroke started on");
-      expect(alphaAt(pixels, size, 52, 30), 255,
-          reason: "but not the flesh");
+      expect(alphaAt(pixels, size, 52, 30), 255, reason: "but not the flesh");
     });
 
     testWidgets("strokes build on one another rather than fighting",
@@ -1302,8 +1300,7 @@ void main() {
       expect(gaps, 0, reason: "no bare patches along the swept line");
     });
 
-    testWidgets("a wandering drag covers its whole length too",
-        (tester) async {
+    testWidgets("a wandering drag covers its whole length too", (tester) async {
       // Segments of varying length, which is what a hand actually draws: the
       // carried distance has to survive short and long ones alike.
       const size = 120;
@@ -1312,8 +1309,8 @@ void main() {
       var points = <Offset>[];
       for (var i = 0; i < 120; i++) {
         // Uneven steps, and a wobble across the line.
-        points.add(Offset(0.12 + i * 0.006 + (i % 5) * 0.001,
-            0.5 + (i % 3) * 0.004));
+        points.add(
+            Offset(0.12 + i * 0.006 + (i % 5) * 0.001, 0.5 + (i % 3) * 0.004));
       }
 
       applyRemovalForTest(
@@ -1631,8 +1628,7 @@ void main() {
           reason: "every pixel is either kept or gone, none in between");
     });
 
-    testWidgets("a soft cut is soft on both sides of the line",
-        (tester) async {
+    testWidgets("a soft cut is soft on both sides of the line", (tester) async {
       // The softness belongs to the finished outline rather than to the brush
       // that drew it. Carried in from the brush it only ever reached inwards,
       // hugging the inside of the line, which is what made it read as an
@@ -1678,8 +1674,7 @@ void main() {
       const size = 80;
       var pixels = cut(1, inside: true);
 
-      expect(alphaAt(pixels, size, 40, 40), 0,
-          reason: "the middle goes");
+      expect(alphaAt(pixels, size, 40, 40), 0, reason: "the middle goes");
       expect(alphaAt(pixels, size, 5, 5), 255,
           reason: "and what surrounds it stays");
     });
@@ -1753,9 +1748,10 @@ void main() {
               fill: true),
         ]),
       );
-      var back = CanvasDocument.decode(
-              CanvasDocument(elements: [element]).encode())!.elements.single
-          as ImageElement;
+      var back =
+          CanvasDocument.decode(CanvasDocument(elements: [element]).encode())!
+              .elements
+              .single as ImageElement;
       expect(back.removal.strokes.single.fill, isTrue);
     });
   });

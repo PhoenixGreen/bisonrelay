@@ -35,15 +35,17 @@ void main() {
     tester.view.physicalSize = const Size(800, 1200);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
-    await tester.pumpWidget(MultiProvider(providers: [
-      ChangeNotifierProvider<ThemeNotifier>(
-          create: (c) => ThemeNotifier(doLoad: false)),
-    ], child: MaterialApp(
-        home: Scaffold(
-            body: OrderThread(
-                order: order,
-                onReply: onReply,
-                onSendGoods: onSendGoods ?? () async {})))));
+    await tester.pumpWidget(MultiProvider(
+        providers: [
+          ChangeNotifierProvider<ThemeNotifier>(
+              create: (c) => ThemeNotifier(doLoad: false)),
+        ],
+        child: MaterialApp(
+            home: Scaffold(
+                body: OrderThread(
+                    order: order,
+                    onReply: onReply,
+                    onSendGoods: onSendGoods ?? () async {})))));
     await tester.pumpAndSettle();
   }
 
@@ -141,7 +143,8 @@ void main() {
     // identity on every row, which reads as the same order four times
     // rather than as four orders from the same person.
     test('a short identity is short enough to sit beside the number', () {
-      var full = "f15c0977bdef7bac55dcfad476aa9303f152d27832c847122f15dc252b1bd1bf";
+      var full =
+          "f15c0977bdef7bac55dcfad476aa9303f152d27832c847122f15dc252b1bd1bf";
       expect(shortUID(full), hasLength(16));
       expect(full, startsWith(shortUID(full)));
     });

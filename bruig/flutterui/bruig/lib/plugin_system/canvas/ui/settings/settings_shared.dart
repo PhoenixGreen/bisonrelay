@@ -136,7 +136,7 @@ Widget positionGroup(CanvasController controller, CanvasElement e,
       label: e.kind.label,
       // The settings are already headed with the element's own name, so this
       // caption said "Chart" directly under a heading saying "Chart".
-      bandOnlyLabel: true,
+      hideCaption: true,
       children: [
         CanvasNumberField(
           key: const ValueKey("elementX"),
@@ -238,12 +238,12 @@ List<Widget> typeGroups(
   String label = "Type",
   bool includeCase = true,
 
-  /// bandOnlyLabel drops the first group's caption in a sidebar, for the
+  /// hideCaption drops the first group's caption in a sidebar, for the
   /// callers that have already headed a section with the same word.
-  bool bandOnlyLabel = false,
+  bool hideCaption = false,
 }) =>
     [
-      CanvasControlGroup(label: label, bandOnlyLabel: bandOnlyLabel, children: [
+      CanvasControlGroup(label: label, hideCaption: hideCaption, children: [
         CanvasDropdown<String>(
           label: "Font",
           value: spec.fontFamily,

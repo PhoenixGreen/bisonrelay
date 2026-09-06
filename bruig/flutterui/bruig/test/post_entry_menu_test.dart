@@ -67,8 +67,8 @@ void main() {
     await tester.pump();
     await mount(tester);
 
-    var row = find.ancestor(
-        of: find.text(name), matching: find.byType(InkWell));
+    var row =
+        find.ancestor(of: find.text(name), matching: find.byType(InkWell));
     await tester.tap(
         find.descendant(of: row.first, matching: find.byIcon(Icons.more_vert)));
     await tester.pumpAndSettle();

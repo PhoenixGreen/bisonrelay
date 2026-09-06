@@ -38,7 +38,9 @@ List<Widget> imageSettings(
   }
 
   return [
-    CanvasControlGroup(label: "Picture", children: [
+    // No caption: the panel header says "Picture settings" already, and a
+    // group called Picture directly under it was the word twice.
+    CanvasControlGroup(label: "Picture", hideCaption: true, children: [
       // The one control this element did not have, and without which it does
       // nothing at all: somewhere to put a picture in it.
       CanvasIconButton(

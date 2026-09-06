@@ -100,8 +100,8 @@ Future<ui.Image> _softBlob(int size) {
   var centre = size / 2;
   for (var y = 0; y < size; y++) {
     for (var x = 0; x < size; x++) {
-      var away = math.sqrt(
-          math.pow(x - centre, 2).toDouble() + math.pow(y - centre, 2));
+      var away = math
+          .sqrt(math.pow(x - centre, 2).toDouble() + math.pow(y - centre, 2));
       var alpha = ((size * 0.25 - away) / 4).clamp(0.0, 1.0);
       var i = (y * size + x) * 4;
       pixels[i] = (40 * alpha).round();
@@ -119,7 +119,8 @@ Future<List<int>> _rowOf(CanvasDocument document, CanvasImageSource images,
     int channel, int y) async {
   var image = await renderFrame(document, images: images);
   try {
-    var raw = await image.toByteData(format: ui.ImageByteFormat.rawStraightRgba);
+    var raw =
+        await image.toByteData(format: ui.ImageByteFormat.rawStraightRgba);
     var pixels = raw!.buffer.asUint8List();
     return [
       for (var x = 0; x < image.width; x++)
@@ -135,7 +136,8 @@ Future<List<int>> _renderWith(
     CanvasDocument document, CanvasImageSource images, int x, int y) async {
   var image = await renderFrame(document, images: images);
   try {
-    var raw = await image.toByteData(format: ui.ImageByteFormat.rawStraightRgba);
+    var raw =
+        await image.toByteData(format: ui.ImageByteFormat.rawStraightRgba);
     var pixels = raw!.buffer.asUint8List();
     var i = (y * image.width + x) * 4;
     return [pixels[i], pixels[i + 1], pixels[i + 2], pixels[i + 3]];
@@ -153,9 +155,9 @@ void main() {
     // measuring where "7" sits in Ahem measures nothing about where "7" sits.
     setUpAll(() async {
       var loader = FontLoader("Inter");
-      loader.addFont(
-          File("assets/fonts/Inter-Bold.otf").readAsBytes().then(
-              (bytes) => ByteData.view(Uint8List.fromList(bytes).buffer)));
+      loader.addFont(File("assets/fonts/Inter-Bold.otf")
+          .readAsBytes()
+          .then((bytes) => ByteData.view(Uint8List.fromList(bytes).buffer)));
       await loader.load();
     });
 
@@ -189,8 +191,7 @@ void main() {
       return Rect.fromLTRB(left!, top, right! + 1, bottom! + 1);
     }
 
-    test("sits dead centre in its dot, where its line box would not",
-        () async {
+    test("sits dead centre in its dot, where its line box would not", () async {
       // Centred by its line box, a digit sits visibly high in the circle: the
       // box reserves room for a descender the digit does not have, and that
       // empty strip under the baseline is counted as part of the glyph. At a
@@ -211,7 +212,6 @@ void main() {
       expect(ink!.center.dx, closeTo(centre.dx, 1.5));
       expect(ink.center.dy, closeTo(centre.dy, 1.5),
           reason: "the ink's middle, not the line box's, is on the centre");
-
     });
 
     test("stays centred when the line height changes", () async {
@@ -390,8 +390,8 @@ void main() {
 
     expect((await _pixelAt(document, 10, 50, frame: 0)).sublist(0, 3),
         [255, 0, 0]);
-    expect((await _pixelAt(document, 10, 50, frame: 10)).sublist(0, 3),
-        [0, 0, 0]);
+    expect(
+        (await _pixelAt(document, 10, 50, frame: 10)).sublist(0, 3), [0, 0, 0]);
     // Halfway along at the halfway frame, which is the interpolation itself.
     expect((await _pixelAt(document, 40, 50, frame: 5)).sublist(0, 3),
         [255, 0, 0]);
@@ -537,8 +537,7 @@ void main() {
     }
   });
 
-  test("an animation renders to a decodable GIF of the right length",
-      () async {
+  test("an animation renders to a decodable GIF of the right length", () async {
     var document = footballCanvas().copyWith(frames: 4, frameRate: 8);
     var export = await renderGif(document, scale: 0.15);
     expect(export, isNotNull);
@@ -590,16 +589,15 @@ void main() {
       // midpoint and the control point.
       var mid = (bowed.start + bowed.end) / 2;
       var apex = Offset((mid.dx + control.dx) / 2, (mid.dy + control.dy) / 2);
-      var nearest = curve.reduce(
-          (a, b) => (a - apex).distance < (b - apex).distance ? a : b);
+      var nearest = curve
+          .reduce((a, b) => (a - apex).distance < (b - apex).distance ? a : b);
       expect((nearest - apex).distance, lessThan(1),
           reason: "the walked curve passes through the painter's own apex");
     });
 
     test("a straight line's control point is its own midpoint", () {
       var straight = line();
-      expect(lineControlPoint(straight),
-          (straight.start + straight.end) / 2);
+      expect(lineControlPoint(straight), (straight.start + straight.end) / 2);
     });
 
     test("the selection box leaves room for what is on the ends", () {
@@ -633,9 +631,10 @@ void main() {
     test("each end is its own setting and survives a round trip", () {
       var element = line(start: LineEnd.circle, end: LineEnd.hollowDiamond)
           .copyWith(cap: LineStrokeCap.round);
-      var back = CanvasDocument.decode(
-              CanvasDocument(elements: [element]).encode())!.elements.single
-          as LineElement;
+      var back =
+          CanvasDocument.decode(CanvasDocument(elements: [element]).encode())!
+              .elements
+              .single as LineElement;
 
       expect(back.startEnd, LineEnd.circle);
       expect(back.endEnd, LineEnd.hollowDiamond);
@@ -670,9 +669,10 @@ void main() {
       // The migration keys off the absence of the new fields, so a line that
       // deliberately has no decorations must still say so.
       var plain = line(start: LineEnd.none, end: LineEnd.none);
-      var back = CanvasDocument.decode(
-              CanvasDocument(elements: [plain]).encode())!.elements.single
-          as LineElement;
+      var back =
+          CanvasDocument.decode(CanvasDocument(elements: [plain]).encode())!
+              .elements
+              .single as LineElement;
       expect(back.startEnd, LineEnd.none);
       expect(back.endEnd, LineEnd.none);
     });
@@ -725,7 +725,8 @@ void main() {
 
       var centroid = near.reduce((a, b) => a + b) / near.length.toDouble();
       var back = centroid - tip;
-      expect(back.dx, lessThan(-2), reason: "the head lies back along the line");
+      expect(back.dx, lessThan(-2),
+          reason: "the head lies back along the line");
       expect(back.dy, lessThan(-2));
       // And squarely on the line rather than off to one side: for a 45-degree
       // line the two components of the offset are equal.
@@ -786,7 +787,8 @@ void main() {
             for (var x = 0; x < size; x++)
               if (data!.getUint8((y * size + x) * 4 + 3) > 60 &&
                   data.getUint8((y * size + x) * 4) > 150 &&
-                  (Offset(x.toDouble(), y.toDouble()) - point).distance < radius)
+                  (Offset(x.toDouble(), y.toDouble()) - point).distance <
+                      radius)
                 Offset(x.toDouble(), y.toDouble()),
         ];
       });
@@ -828,7 +830,8 @@ void main() {
 
     testWidgets("a hollow diamond is hollow too", (tester) async {
       const tip = Offset(200, 124);
-      var hollow = await inkNear(tester, withEnd(LineEnd.hollowDiamond), tip, 2);
+      var hollow =
+          await inkNear(tester, withEnd(LineEnd.hollowDiamond), tip, 2);
       var solid = await inkNear(tester, withEnd(LineEnd.diamond), tip, 2);
       expect(hollow.length, lessThan(solid.length / 4));
     });
@@ -847,8 +850,9 @@ void main() {
       // the end, it should reach forward about as far as it reaches back --
       // hung off the back, it reached forward not at all.
       var forward = ink.map((p) => p.dx).reduce(math.max) - tip.dx;
-      var plainForward =
-          plain.isEmpty ? 0.0 : plain.map((p) => p.dx).reduce(math.max) - tip.dx;
+      var plainForward = plain.isEmpty
+          ? 0.0
+          : plain.map((p) => p.dx).reduce(math.max) - tip.dx;
       expect(plainForward, lessThan(4),
           reason: "with no decoration nothing is drawn past the end");
       // long is strokeWidth * 1.7 = 10.2 at this weight.
@@ -875,9 +879,10 @@ void main() {
         endEnd: LineEnd.arrow,
         endSize: 3,
       );
-      var back = CanvasDocument.decode(
-              CanvasDocument(elements: [element]).encode())!.elements.single
-          as LineElement;
+      var back =
+          CanvasDocument.decode(CanvasDocument(elements: [element]).encode())!
+              .elements
+              .single as LineElement;
       expect(back.endSize, 3);
 
       var big = visualBoundsOf(element, null, 0);
@@ -930,16 +935,15 @@ void main() {
     test("a thought tail is deliberately several contours", () {
       // It is a trail of separate circles; unioning them into the body would
       // weld the lot into a sausage.
-      var path = bubblePath(
-          box, spec.copyWith(tail: BubbleTail.thought), 0);
+      var path = bubblePath(box, spec.copyWith(tail: BubbleTail.thought), 0);
       expect(path.computeMetrics().length, greaterThan(1));
     });
 
     test("the tail goes all the way round", () {
       // It used to be nailed to the bottom-left corner.
       Rect tailBox(double angle) {
-        var whole = bubblePath(box, spec.copyWith(tailAngle: angle), 0)
-            .getBounds();
+        var whole =
+            bubblePath(box, spec.copyWith(tailAngle: angle), 0).getBounds();
         return whole;
       }
 
@@ -947,11 +951,12 @@ void main() {
       // pointing left, further left.
       var body = bubbleBodyRect(box, spec.copyWith(tailAngle: 0));
       expect(tailBox(0).right, greaterThan(body.right));
-      expect(tailBox(180).left, lessThan(bubbleBodyRect(
-              box, spec.copyWith(tailAngle: 180))
-          .left));
-      expect(tailBox(90).bottom,
-          greaterThan(bubbleBodyRect(box, spec.copyWith(tailAngle: 90)).bottom));
+      expect(tailBox(180).left,
+          lessThan(bubbleBodyRect(box, spec.copyWith(tailAngle: 180)).left));
+      expect(
+          tailBox(90).bottom,
+          greaterThan(
+              bubbleBodyRect(box, spec.copyWith(tailAngle: 90)).bottom));
       expect(tailBox(270).top,
           lessThan(bubbleBodyRect(box, spec.copyWith(tailAngle: 270)).top));
     });
@@ -981,16 +986,15 @@ void main() {
       expect(bubbleBodyRect(box, longer).width,
           lessThan(bubbleBodyRect(box, normal).width),
           reason: "the body gives way");
-      expect(bubblePath(box, longer, 0).getBounds().right,
-          closeTo(box.right, 1),
+      expect(
+          bubblePath(box, longer, 0).getBounds().right, closeTo(box.right, 1),
           reason: "and the tip still finishes at the edge of the box");
     });
 
     test("every body and tail builds a usable path", () {
       for (var body in BubbleBody.values) {
         for (var tail in BubbleTail.values) {
-          var path = bubblePath(
-              box, spec.copyWith(body: body, tail: tail), 0);
+          var path = bubblePath(box, spec.copyWith(body: body, tail: tail), 0);
           expect(path.getBounds().isEmpty, isFalse,
               reason: "${body.name} with ${tail.name}");
         }
@@ -1010,9 +1014,10 @@ void main() {
           curl: -1.1,
         ),
       );
-      var back = CanvasDocument.decode(
-              CanvasDocument(elements: [element]).encode())!.elements.single
-          as ShapeElement;
+      var back =
+          CanvasDocument.decode(CanvasDocument(elements: [element]).encode())!
+              .elements
+              .single as ShapeElement;
 
       expect(back.bubble.body, BubbleBody.cloud);
       expect(back.bubble.tail, BubbleTail.curved);
@@ -1055,9 +1060,10 @@ void main() {
         overlay: Color(0x8812AAFF),
         blend: OverlayBlend.softLight,
       );
-      var back = CanvasDocument.decode(
-              CanvasDocument(elements: [element]).encode())!.elements.single
-          as ImageElement;
+      var back =
+          CanvasDocument.decode(CanvasDocument(elements: [element]).encode())!
+              .elements
+              .single as ImageElement;
 
       expect(back.crop.left, 0.1);
       expect(back.crop.bottom, 0.9);
@@ -1127,8 +1133,8 @@ void main() {
           ],
         );
         expect(
-            () => paintCanvasDocument(
-                ui.Canvas(ui.PictureRecorder()), document),
+            () =>
+                paintCanvasDocument(ui.Canvas(ui.PictureRecorder()), document),
             returnsNormally,
             reason: shape.name);
       }
@@ -1172,9 +1178,10 @@ void main() {
       var element = ImageElement(
         const ElementBase(id: "i", width: 100, height: 100),
       ).copyWith(lockAspect: false);
-      var back = CanvasDocument.decode(
-              CanvasDocument(elements: [element]).encode())!.elements.single
-          as ImageElement;
+      var back =
+          CanvasDocument.decode(CanvasDocument(elements: [element]).encode())!
+              .elements
+              .single as ImageElement;
       expect(back.lockAspect, isFalse);
     });
   });
@@ -1206,8 +1213,8 @@ void main() {
       // The width is the off switch. There is no separate toggle to get out
       // of step with it.
       expect(const ImageOutline().on, isFalse);
-      expect(const ImageOutline(width: 4, color: ui.Color(0x00FFFFFF)).on,
-          isFalse,
+      expect(
+          const ImageOutline(width: 4, color: ui.Color(0x00FFFFFF)).on, isFalse,
           reason: "nor is an invisible colour an outline");
 
       // The canvas has a background of its own, so "nothing here" is read as
@@ -1218,10 +1225,9 @@ void main() {
           reason: "beside the subject is still the background");
     });
 
-    test("an outside band is drawn beside the subject, not over it",
-        () async {
-      var document = documentWith(const ImageOutline(
-          width: 8, color: ui.Color(0xFF00FF00)));
+    test("an outside band is drawn beside the subject, not over it", () async {
+      var document = documentWith(
+          const ImageOutline(width: 8, color: ui.Color(0xFF00FF00)));
       var images = _Pictures(picture);
 
       var beside = await _renderWith(document, images, 20, 50);
@@ -1259,7 +1265,8 @@ void main() {
       Future<int> greenAt(double feather, int x) async {
         var pixel = await _renderWith(
             documentWith(ImageOutline(
-                width: 12, color: const ui.Color(0xFF00FF00),
+                width: 12,
+                color: const ui.Color(0xFF00FF00),
                 feather: feather)),
             images,
             x,
@@ -1287,9 +1294,10 @@ void main() {
             style: OutlineStyle.glow,
             feather: 0.4),
       );
-      var back = CanvasDocument.decode(
-              CanvasDocument(elements: [element]).encode())!.elements.single
-          as ImageElement;
+      var back =
+          CanvasDocument.decode(CanvasDocument(elements: [element]).encode())!
+              .elements
+              .single as ImageElement;
       expect(back.outline.width, 6);
       expect(back.outline.style, OutlineStyle.glow);
       expect(back.outline.feather, 0.4);
@@ -1305,8 +1313,7 @@ void main() {
     test("every style draws without throwing", () {
       for (var style in OutlineStyle.values) {
         expect(
-            () => paintCanvasDocument(
-                ui.Canvas(ui.PictureRecorder()),
+            () => paintCanvasDocument(ui.Canvas(ui.PictureRecorder()),
                 documentWith(ImageOutline(width: 5, style: style)),
                 images: _Pictures(picture)),
             returnsNormally,
@@ -1408,8 +1415,7 @@ void main() {
       expect(fitted.base.y, 120, reason: "and still centred where it was");
     });
 
-    test("a tall picture shrinks the width rather than growing the height",
-        () {
+    test("a tall picture shrinks the width rather than growing the height", () {
       // The tempting version keeps the width and works out the height, and it
       // puts a tall photograph's bottom half off the bottom of the canvas.
       var fitted = fitToPicture(squareBox(), const Size(100, 200));
@@ -1438,7 +1444,6 @@ void main() {
   _chartTests();
   _tableTests();
 }
-
 
 /// _chartPixels is a chart rendered to raw bytes.
 Future<Uint8List> _chartPixels(ChartElement e,
@@ -1499,7 +1504,8 @@ Future<Set<String>> _chartColours(ChartElement e,
       reveal: reveal);
   var image = await recorder.endRecording().toImage(width, height);
   try {
-    var raw = await image.toByteData(format: ui.ImageByteFormat.rawStraightRgba);
+    var raw =
+        await image.toByteData(format: ui.ImageByteFormat.rawStraightRgba);
     var pixels = raw!.buffer.asUint8List();
     var out = <String>{};
     for (var i = 0; i < width * height; i++) {
@@ -1713,7 +1719,8 @@ void _chartTests() {
       expect(defaultTitlePlacement.y, lessThan(0.05));
 
       var under = defaultDescriptionPlacement(defaultTitlePlacement, true);
-      expect(under.y,
+      expect(
+          under.y,
           greaterThanOrEqualTo(
               defaultTitlePlacement.y + defaultTitlePlacement.height),
           reason: "below the bottom of the title");
@@ -1788,31 +1795,29 @@ void _chartTests() {
     test("the gap decides when the next one starts", () {
       // 1 is strictly one after another; 0 is all together; above 1 leaves a
       // pause between one finishing and the next starting.
-      const together =
-          ChartAnimation(preset: ChartAnimationPreset.grow, gap: 0,
-              ease: ChartEase.linear);
+      const together = ChartAnimation(
+          preset: ChartAnimationPreset.grow, gap: 0, ease: ChartEase.linear);
       expect(together.progressAt(0.5, 0, 4), closeTo(0.5, 0.001));
       expect(together.progressAt(0.5, 3, 4), closeTo(0.5, 0.001),
           reason: "no gap means all four move as one");
 
-      const inTurn = ChartAnimation(preset: ChartAnimationPreset.grow, gap: 1,
-          ease: ChartEase.linear);
+      const inTurn = ChartAnimation(
+          preset: ChartAnimationPreset.grow, gap: 1, ease: ChartEase.linear);
       // Four items strictly in turn take four item-movements, so at a quarter
       // through the first has just finished and the second has not begun.
       expect(inTurn.progressAt(0.25, 0, 4), closeTo(1, 0.001));
       expect(inTurn.progressAt(0.25, 1, 4), closeTo(0, 0.001));
       expect(inTurn.progressAt(0.25, 3, 4), 0);
 
-      const overlapping =
-          ChartAnimation(preset: ChartAnimationPreset.grow, gap: 0.5,
-              ease: ChartEase.linear);
+      const overlapping = ChartAnimation(
+          preset: ChartAnimationPreset.grow, gap: 0.5, ease: ChartEase.linear);
       expect(overlapping.progressAt(0.5, 1, 4), greaterThan(0),
           reason: "the second is under way before the first has finished");
     });
 
     test("a wipe has nothing to stagger, so it ignores the gap", () {
-      const wipe = ChartAnimation(preset: ChartAnimationPreset.wipe, gap: 2,
-          ease: ChartEase.linear);
+      const wipe = ChartAnimation(
+          preset: ChartAnimationPreset.wipe, gap: 2, ease: ChartEase.linear);
       expect(ChartAnimationPreset.wipe.staggers, isFalse);
       expect(wipe.progressAt(0.5, 0, 8), closeTo(0.5, 0.001));
       expect(wipe.progressAt(0.5, 7, 8), closeTo(0.5, 0.001));
@@ -1895,7 +1900,8 @@ void _chartTests() {
           reason: "every place is inside the run");
       expect(order, isNot(orderedEquals([...order]..sort())),
           reason: "and not in the order they were given");
-      expect(order, isNot(orderedEquals([...order]..sort((a, b) => b.compareTo(a)))),
+      expect(order,
+          isNot(orderedEquals([...order]..sort((a, b) => b.compareTo(a)))),
           reason: "nor simply reversed, which is what multiplying by a prime "
               "and taking the remainder actually gave");
       expect(
@@ -1916,17 +1922,16 @@ void _chartTests() {
       expect(ChartAnimationPreset.popIn.scrambles, isFalse);
     });
 
-    test("a scattered cloud fills in across its series, not one at a time",
-        () {
+    test("a scattered cloud fills in across its series, not one at a time", () {
       // Points in a scatter have no order worth animating in -- left to right
       // is a property of how they were typed -- so Random counts them across
       // the series as well as along them, and the two series must interleave.
       //
       // Twelve items: the first six belong to one series and the last six to
       // the other, which is how the painter numbers them.
-      var byPlace = [for (var i = 0; i < 12; i++) i]
-        ..sort((a, b) => ChartAnimation.scrambled(a, 12)
-            .compareTo(ChartAnimation.scrambled(b, 12)));
+      var byPlace = [for (var i = 0; i < 12; i++) i]..sort((a, b) =>
+          ChartAnimation.scrambled(a, 12)
+              .compareTo(ChartAnimation.scrambled(b, 12)));
 
       var firstHalf = byPlace.take(6);
       expect(firstHalf.any((i) => i < 6), isTrue);
@@ -1952,8 +1957,8 @@ void _chartTests() {
     test("every preset draws every chart type without throwing", () {
       for (var type in ChartType.values) {
         for (var preset in ChartAnimationPreset.values) {
-          var e = _two(type).copyWith(
-              animation: ChartAnimation(preset: preset));
+          var e =
+              _two(type).copyWith(animation: ChartAnimation(preset: preset));
           for (var reveal in [0.0, 0.3, 1.0]) {
             expect(
                 () => paintChart(ui.Canvas(ui.PictureRecorder()),
@@ -1966,8 +1971,7 @@ void _chartTests() {
       }
     });
 
-    test("an animation survives a round trip, and costs nothing when off",
-        () {
+    test("an animation survives a round trip, and costs nothing when off", () {
       var element = ChartElement(
         const ElementBase(id: "c", width: 400, height: 300),
         animation: const ChartAnimation(
@@ -1975,9 +1979,10 @@ void _chartTests() {
             gap: 1.25,
             ease: ChartEase.bounce),
       );
-      var back = CanvasDocument.decode(
-              CanvasDocument(elements: [element]).encode())!.elements.single
-          as ChartElement;
+      var back =
+          CanvasDocument.decode(CanvasDocument(elements: [element]).encode())!
+              .elements
+              .single as ChartElement;
       expect(back.animation.preset, ChartAnimationPreset.popIn);
       expect(back.animation.gap, 1.25);
       expect(back.animation.ease, ChartEase.bounce);
@@ -2018,12 +2023,11 @@ void _chartTests() {
         data: ChartData.parse("Cat\tShare\nOne\t10\nTwo\t20"),
       );
 
-      expect(legendEntriesForTest(e, 1).map((k) => k.$2),
-          ["One: 10", "Two: 20"]);
+      expect(
+          legendEntriesForTest(e, 1).map((k) => k.$2), ["One: 10", "Two: 20"]);
       expect(
           legendEntriesForTest(
-                  e.copyWith(
-                      legend: e.legend.copyWith(separator: " - ")), 1)
+                  e.copyWith(legend: e.legend.copyWith(separator: " - ")), 1)
               .map((k) => k.$2),
           ["One - 10", "Two - 20"],
           reason: "which one reads best depends on the names");
@@ -2033,15 +2037,12 @@ void _chartTests() {
       // number except the key -- one switch answering both meant neither could
       // be had on its own.
       expect(
-          legendEntriesForTest(
-                  e.copyWith(legend: const ChartLegend()), 1)
+          legendEntriesForTest(e.copyWith(legend: const ChartLegend()), 1)
               .map((k) => k.$2),
           ["One", "Two"]);
       expect(
           legendEntriesForTest(
-                  e.copyWith(
-                      showValues: true, legend: const ChartLegend()),
-                  1)
+                  e.copyWith(showValues: true, legend: const ChartLegend()), 1)
               .map((k) => k.$2),
           ["One", "Two"],
           reason: "numbers on the chart do not put numbers in the key");
@@ -2082,8 +2083,7 @@ void _chartTests() {
       );
 
       var bare = await _chartPixels(plain.copyWith(
-          title: "", description: "", showLegend: false,
-          floatingLabels: true));
+          title: "", description: "", showLegend: false, floatingLabels: true));
 
       // Everything the labels and the key can be set to, over the top of it.
       plain = plain.copyWith(floatingLabels: true);
@@ -2103,7 +2103,8 @@ void _chartTests() {
           if (bare[i * 4 + 3] < 250) continue;
           var isSeries = bare[i * 4] != bare[i * 4 + 1];
           if (!isSeries) continue;
-          if (ring[i * 4] == bare[i * 4] && ring[i * 4 + 1] == bare[i * 4 + 1]) {
+          if (ring[i * 4] == bare[i * 4] &&
+              ring[i * 4 + 1] == bare[i * 4 + 1]) {
             same++;
           } else {
             differs++;
@@ -2205,8 +2206,8 @@ void _chartTests() {
       const area = Rect.fromLTWH(0, 0, 400, 300);
       var e = _two(ChartType.groupedBar).copyWith(showLegend: true);
 
-      var across = legendLeavesForTest(
-          e.copyWith(legend: const ChartLegend()), area);
+      var across =
+          legendLeavesForTest(e.copyWith(legend: const ChartLegend()), area);
       var down = legendLeavesForTest(
           e.copyWith(legend: const ChartLegend(vertical: true)), area);
 
@@ -2218,8 +2219,8 @@ void _chartTests() {
       const area = Rect.fromLTWH(0, 0, 400, 300);
       var e = _two(ChartType.groupedBar).copyWith(showLegend: true);
 
-      var normal = legendLeavesForTest(
-          e.copyWith(legend: const ChartLegend()), area);
+      var normal =
+          legendLeavesForTest(e.copyWith(legend: const ChartLegend()), area);
       var large = legendLeavesForTest(
           e.copyWith(legend: const ChartLegend(scale: 2.5)), area);
       expect(large.height, lessThan(normal.height));
@@ -2254,9 +2255,10 @@ void _chartTests() {
             spacing: 2.5,
             values: true),
       );
-      var back = CanvasDocument.decode(
-              CanvasDocument(elements: [element]).encode())!.elements.single
-          as ChartElement;
+      var back =
+          CanvasDocument.decode(CanvasDocument(elements: [element]).encode())!
+              .elements
+              .single as ChartElement;
 
       expect(back.legend.placement, LegendPlacement.right);
       expect(back.legend.vertical, isTrue);
@@ -2275,14 +2277,15 @@ void _chartTests() {
       expect(e.descriptionText.fontSize, 12,
           reason: "it follows the labels until it is given a size");
 
-      var sized = e.copyWith(
-          descriptionSpec: e.descriptionText.copyWith(fontSize: 30));
+      var sized =
+          e.copyWith(descriptionSpec: e.descriptionText.copyWith(fontSize: 30));
       expect(sized.descriptionText.fontSize, 30);
       expect(sized.labelSpec.fontSize, 12);
 
-      var back = CanvasDocument.decode(
-              CanvasDocument(elements: [sized]).encode())!.elements.single
-          as ChartElement;
+      var back =
+          CanvasDocument.decode(CanvasDocument(elements: [sized]).encode())!
+              .elements
+              .single as ChartElement;
       expect(back.descriptionText.fontSize, 30);
     });
 
@@ -2294,8 +2297,7 @@ void _chartTests() {
       var e = ChartElement(
         const ElementBase(id: "c", width: 400, height: 300),
         type: ChartType.radar,
-        data: ChartData.parse(
-            "Cat\tA\nOne\t10\nTwo\t20\nThree\t30\nFour\t15"),
+        data: ChartData.parse("Cat\tA\nOne\t10\nTwo\t20\nThree\t30\nFour\t15"),
         labelSpec: const TextSpec(fontSize: 10),
         valueSpec: const TextSpec(fontSize: 16, weight: 700, color: red),
       );
@@ -2328,8 +2330,7 @@ void _chartTests() {
         data: ChartData(
           categories: const ["x"],
           series: [
-            const ChartSeries(
-                name: "A", color: Color(0xFF3D7EFF), values: [1]),
+            const ChartSeries(name: "A", color: Color(0xFF3D7EFF), values: [1]),
             const ChartSeries(
                 name: "B",
                 color: Color(0xFFFFB020),
@@ -2338,9 +2339,10 @@ void _chartTests() {
           ],
         ),
       );
-      var back = CanvasDocument.decode(
-              CanvasDocument(elements: [element]).encode())!.elements.single
-          as ChartElement;
+      var back =
+          CanvasDocument.decode(CanvasDocument(elements: [element]).encode())!
+              .elements
+              .single as ChartElement;
 
       expect(back.titleBox.x, 0.1);
       expect(back.titleBox.height, 0.15);
@@ -2355,8 +2357,8 @@ void _chartTests() {
       // them away -- and changing one number would silently turn the line
       // over the bars back into bars.
       var before = _two(ChartType.bar, secondAs: ChartType.line).data;
-      var after = ChartData.parse(
-          "Cat\tA\tB\nx\t11\t5\ny\t6\t9", keep: before.series);
+      var after =
+          ChartData.parse("Cat\tA\tB\nx\t11\t5\ny\t6\t9", keep: before.series);
 
       expect(after.valueAt(0, 0), 11);
       expect(after.series[1].type, ChartType.line);
@@ -2381,8 +2383,8 @@ void _tableTests() {
                 ["Leeds United", "4"],
               ],
           headerColumn: headerColumn,
-          cellSpec: cell ??
-              const TextSpec(fontSize: 14, align: TextAlignSpec.left),
+          cellSpec:
+              cell ?? const TextSpec(fontSize: 14, align: TextAlignSpec.left),
         );
 
     Future<Uint8List> pixels(TableElement e,
@@ -2407,13 +2409,16 @@ void _tableTests() {
       // nothing anybody could see. The header row has had a fill all along.
       var plain = table();
       var withColumn = table(headerColumn: true);
-      expect(await pixels(plain), isNot(orderedEquals(await pixels(withColumn))));
+      expect(
+          await pixels(plain), isNot(orderedEquals(await pixels(withColumn))));
 
       // Even when the two types are identical, which is the case that used to
       // draw nothing at all.
       var same = plain.copyWith(headerSpec: plain.cellSpec);
-      expect(await pixels(same),
-          isNot(orderedEquals(await pixels(same.copyWith(headerColumn: true)))));
+      expect(
+          await pixels(same),
+          isNot(
+              orderedEquals(await pixels(same.copyWith(headerColumn: true)))));
     });
 
     test("the cell type's vertical alignment is used", () async {
@@ -2466,8 +2471,10 @@ void _tableTests() {
         ["Form"],
         ["Won"],
       ], rules: const [
-        TableRule(column: "Form", match: "W", style: TableCellStyle(
-            background: Color(0xFF2E7D32))),
+        TableRule(
+            column: "Form",
+            match: "W",
+            style: TableCellStyle(background: Color(0xFF2E7D32))),
       ]);
       expect(strict.styleFor(1, 0), isNull);
 
@@ -2532,7 +2539,8 @@ void _tableTests() {
     });
 
     test("a row number saved before the range language still works", () {
-      var back = TableRule.fromJson({"row": 2, "style": const <String, dynamic>{}});
+      var back =
+          TableRule.fromJson({"row": 2, "style": const <String, dynamic>{}});
       expect(back.rows, "2");
       expect(back.matchesRow(1), isTrue);
     });
@@ -2579,7 +2587,8 @@ void _tableTests() {
         return runs;
       }
 
-      const red = TableCellStyle(borderColor: Color(0xFFFF0000), borderWidth: 2);
+      const red =
+          TableCellStyle(borderColor: Color(0xFFFF0000), borderWidth: 2);
       expect(await borderRows(const TableRule(column: "Name", style: red)), 2,
           reason: "a top and a bottom, once");
     });
@@ -2649,8 +2658,7 @@ void _tableTests() {
       );
 
       const right = TableRule(
-          column: "Value",
-          style: TableCellStyle(align: TextAlignSpec.right));
+          column: "Value", style: TableCellStyle(align: TextAlignSpec.right));
       expect(right.style.changesType, isTrue);
       expect(e.copyWith(rules: const [right]).styleFor(1, 1)?.align,
           TextAlignSpec.right);
@@ -2736,23 +2744,21 @@ void _tableTests() {
                 verticalAlign: VerticalAlignSpec.bottom,
                 inset: 11)),
       ]);
-      var back = CanvasDocument.decode(
-              CanvasDocument(elements: [e]).encode())!.elements.single
-          as TableElement;
+      var back = CanvasDocument.decode(CanvasDocument(elements: [e]).encode())!
+          .elements
+          .single as TableElement;
 
       expect(back.rules.single.style.align, TextAlignSpec.right);
       expect(back.rules.single.style.verticalAlign, VerticalAlignSpec.bottom);
       expect(back.rules.single.style.inset, 11);
       expect(
-          TableCellStyle.fromJson(
-                  const TableCellStyle(textPad: 12).toJson())
+          TableCellStyle.fromJson(const TableCellStyle(textPad: 12).toJson())
               .textPad,
           12);
 
       // Left alone, they are not written at all -- "as the cell" is the
       // common case and should cost a saved document nothing.
-      expect(
-          const TableCellStyle().toJson().containsKey("align"), isFalse);
+      expect(const TableCellStyle().toJson().containsKey("align"), isFalse);
     });
 
     test("a whole word is found on its own and nowhere else", () {
@@ -2768,12 +2774,11 @@ void _tableTests() {
 
       // The other two are unchanged by it.
       expect(const TableRule(match: "W").runIn("--- W"), isNull);
-      expect(const TableRule(match: "W", how: TableMatch.anywhere)
-              .runIn("Won"), (0, 1));
+      expect(const TableRule(match: "W", how: TableMatch.anywhere).runIn("Won"),
+          (0, 1));
     });
 
-    test("the chip goes round the word, not round the line it is in",
-        () async {
+    test("the chip goes round the word, not round the line it is in", () async {
       // "--- W" wants a box round the W. The word's own glyph boxes rather
       // than a guess from the character count, since a W and a full stop are
       // not the same width.
@@ -2845,18 +2850,17 @@ void _tableTests() {
               column: "Form",
               match: "W",
               how: TableMatch.word,
-              style: TableCellStyle(
-                  background: Color(0xFF00FF00), inset: 1)),
+              style: TableCellStyle(background: Color(0xFF00FF00), inset: 1)),
         ],
       );
 
       var recorder = ui.PictureRecorder();
       paintTable(ui.Canvas(recorder), const Rect.fromLTWH(0, 0, 400, 120), e);
       var image = await recorder.endRecording().toImage(400, 120);
-      var pixels = (await image.toByteData(
-              format: ui.ImageByteFormat.rawStraightRgba))!
-          .buffer
-          .asUint8List();
+      var pixels =
+          (await image.toByteData(format: ui.ImageByteFormat.rawStraightRgba))!
+              .buffer
+              .asUint8List();
       image.dispose();
 
       // How many separate columns of green there are: one chip is one run of
@@ -2975,24 +2979,22 @@ void _tableTests() {
         ["1", "2", "3", "4"],
       ]);
 
-      bool covers(String column, int col) => e
-          .copyWith(rules: [
+      bool covers(String column, int col) =>
+          e.copyWith(rules: [
             TableRule(column: column, style: const TableCellStyle(fontScale: 2))
-          ])
-          .styleFor(1, col) !=
+          ]).styleFor(1, col) !=
           null;
 
       expect([0, 1, 2, 3].map((c) => covers("2:3", c)),
           [false, true, true, false]);
-      expect([0, 1, 2, 3].map((c) => covers(">2", c)),
-          [false, false, true, true]);
+      expect(
+          [0, 1, 2, 3].map((c) => covers(">2", c)), [false, false, true, true]);
       expect([0, 1, 2, 3].map((c) => covers("<2", c)),
           [true, false, false, false]);
-      expect([0, 1, 2, 3].map((c) => covers("C", c)),
-          [false, false, true, false],
+      expect(
+          [0, 1, 2, 3].map((c) => covers("C", c)), [false, false, true, false],
           reason: "a heading still wins, since that is what is visible");
-      expect([0, 1, 2, 3].map((c) => covers("", c)),
-          [true, true, true, true]);
+      expect([0, 1, 2, 3].map((c) => covers("", c)), [true, true, true, true]);
       expect([0, 1, 2, 3].map((c) => covers("Ponits", c)),
           [false, false, false, false],
           reason: "and a name nothing answers to matches nothing");
@@ -3011,18 +3013,17 @@ void _tableTests() {
         rules: const [
           TableRule(
               column: "2:3",
-              style: TableCellStyle(
-                  background: Color(0xFF00FF00), inset: 0)),
+              style: TableCellStyle(background: Color(0xFF00FF00), inset: 0)),
         ],
       );
 
       var recorder = ui.PictureRecorder();
       paintTable(ui.Canvas(recorder), const Rect.fromLTWH(0, 0, 400, 100), e);
       var image = await recorder.endRecording().toImage(400, 100);
-      var pixels = (await image.toByteData(
-              format: ui.ImageByteFormat.rawStraightRgba))!
-          .buffer
-          .asUint8List();
+      var pixels =
+          (await image.toByteData(format: ui.ImageByteFormat.rawStraightRgba))!
+              .buffer
+              .asUint8List();
       image.dispose();
 
       var minX = 400, maxX = 0;
@@ -3065,14 +3066,14 @@ void _tableTests() {
       ]);
       expect(await pixels(plain), isNot(orderedEquals(await pixels(ruled))));
 
-      var back = CanvasDocument.decode(
-              CanvasDocument(elements: [ruled]).encode())!.elements.single
-          as TableElement;
+      var back =
+          CanvasDocument.decode(CanvasDocument(elements: [ruled]).encode())!
+              .elements
+              .single as TableElement;
       expect(back.rules.single.column, "Points");
       expect(back.rules.single.match, "6");
       expect(back.rules.single.style.background, const Color(0xFF2E7D32));
-      expect(
-          plain.toJson().containsKey("rules"), isFalse,
+      expect(plain.toJson().containsKey("rules"), isFalse,
           reason: "and cost a table with none of them nothing");
     });
 
@@ -3080,8 +3081,8 @@ void _tableTests() {
       // Kept in the cell's own text rather than in a map of positions beside
       // the grid: a map has to be renumbered every time a row is inserted,
       // and one missed renumbering puts a badge against the wrong team.
-      expect(TableElement.pictureIn("img:abcdef1234567890"),
-          "abcdef1234567890");
+      expect(
+          TableElement.pictureIn("img:abcdef1234567890"), "abcdef1234567890");
       expect(TableElement.pictureIn("Hull City"), isNull);
       expect(TableElement.pictureIn("img:"), isNull,
           reason: "the prefix on its own names nothing");
@@ -3128,10 +3129,10 @@ void _tableTests() {
       paintTable(
           ui.Canvas(recorder), const Rect.fromLTWH(0, 0, 400, 200), asWords);
       var image = await recorder.endRecording().toImage(400, 200);
-      var words = (await image.toByteData(
-              format: ui.ImageByteFormat.rawStraightRgba))!
-          .buffer
-          .asUint8List();
+      var words =
+          (await image.toByteData(format: ui.ImageByteFormat.rawStraightRgba))!
+              .buffer
+              .asUint8List();
       image.dispose();
       expect(await drawn(withStore: false), isNot(orderedEquals(words)));
     });
@@ -3143,9 +3144,8 @@ void _tableTests() {
       // one of those in advance. Twenty-two of them is the difference between
       // a squad and twenty-two half-megabyte images.
       var recorder = ui.PictureRecorder();
-      ui.Canvas(recorder)
-          .drawRect(const Rect.fromLTWH(0, 0, 40, 40),
-              ui.Paint()..color = const ui.Color(0xFFFF0000));
+      ui.Canvas(recorder).drawRect(const Rect.fromLTWH(0, 0, 40, 40),
+          ui.Paint()..color = const ui.Color(0xFFFF0000));
       var drawing = recorder.endRecording();
       addTearDown(drawing.dispose);
 
@@ -3206,8 +3206,7 @@ void _tableTests() {
       Future<Uint8List> drawn(TableElement e) async {
         var recorder = ui.PictureRecorder();
         // No store at all, which is what a picture still loading looks like.
-        paintTable(
-            ui.Canvas(recorder), const Rect.fromLTWH(0, 0, 400, 120), e);
+        paintTable(ui.Canvas(recorder), const Rect.fromLTWH(0, 0, 400, 120), e);
         var image = await recorder.endRecording().toImage(400, 120);
         try {
           return (await image.toByteData(
@@ -3297,10 +3296,10 @@ void _tableTests() {
       var recorder = ui.PictureRecorder();
       paintTable(ui.Canvas(recorder), const Rect.fromLTWH(0, 0, 500, 100), e);
       var image = await recorder.endRecording().toImage(500, 100);
-      var pixels = (await image.toByteData(
-              format: ui.ImageByteFormat.rawStraightRgba))!
-          .buffer
-          .asUint8List();
+      var pixels =
+          (await image.toByteData(format: ui.ImageByteFormat.rawStraightRgba))!
+              .buffer
+              .asUint8List();
       image.dispose();
 
       var seen = <String>{};
@@ -3450,10 +3449,10 @@ void _tableTests() {
       var recorder = ui.PictureRecorder();
       paintTable(ui.Canvas(recorder), const Rect.fromLTWH(0, 0, 400, 80), e);
       var image = await recorder.endRecording().toImage(400, 80);
-      var pixels = (await image.toByteData(
-              format: ui.ImageByteFormat.rawStraightRgba))!
-          .buffer
-          .asUint8List();
+      var pixels =
+          (await image.toByteData(format: ui.ImageByteFormat.rawStraightRgba))!
+              .buffer
+              .asUint8List();
       image.dispose();
 
       (int, int) extentOf(bool red) {
@@ -3494,9 +3493,7 @@ void _tableTests() {
         ],
         cellSpec: const TextSpec(fontSize: 16, align: TextAlignSpec.left),
         rules: const [
-          TableRule(
-              column: "Form",
-              style: TableCellStyle(letterWidth: 30)),
+          TableRule(column: "Form", style: TableCellStyle(letterWidth: 30)),
           TableRule(
               column: "Form",
               match: "W",
@@ -3536,8 +3533,8 @@ void _tableTests() {
 
       var taller = await chipHeight(e.copyWith(rules: [
         e.rules.first,
-        e.rules.last.copyWith(
-            style: e.rules.last.style.copyWith(minHeight: 60)),
+        e.rules.last
+            .copyWith(style: e.rules.last.style.copyWith(minHeight: 60)),
       ]));
       expect(taller, greaterThan(natural));
     });
@@ -3663,7 +3660,9 @@ void _tableTests() {
           ["-W"],
         ],
         cellSpec: const TextSpec(
-            fontSize: 16, align: TextAlignSpec.center, color: Color(0xFFFFFFFF)),
+            fontSize: 16,
+            align: TextAlignSpec.center,
+            color: Color(0xFFFFFFFF)),
       );
 
       Future<Uint8List> drawn(List<TableRule> rules) async {
@@ -3740,11 +3739,11 @@ void _tableTests() {
         cellSpec: const TextSpec(fontSize: 18, align: TextAlignSpec.left),
       );
 
-      const spread = TableRule(
-          column: "Form", style: TableCellStyle(letterSpacing: 14));
+      const spread =
+          TableRule(column: "Form", style: TableCellStyle(letterSpacing: 14));
       expect(spread.style.changesType, isTrue);
-      expect(e.copyWith(rules: const [spread]).styleFor(1, 0)?.letterSpacing,
-          14);
+      expect(
+          e.copyWith(rules: const [spread]).styleFor(1, 0)?.letterSpacing, 14);
       expect(e.copyWith(rules: const [spread]).styleFor(1, 1), isNull,
           reason: "and the team beside it is untouched");
 
@@ -3867,12 +3866,10 @@ void _tableTests() {
     test("a pasted spreadsheet still arrives on tabs", () {
       // Tabs first, because a spreadsheet paste always uses them and a cell
       // may well contain a comma.
-      expect(
-          TableElement.parseRows("Team\tNote\nHull, City\t6"),
-          [
-            ["Team", "Note"],
-            ["Hull, City", "6"],
-          ]);
+      expect(TableElement.parseRows("Team\tNote\nHull, City\t6"), [
+        ["Team", "Note"],
+        ["Hull, City", "6"],
+      ]);
     });
   });
 }

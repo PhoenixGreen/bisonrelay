@@ -131,7 +131,7 @@ List<Widget> tableSettings(
           children: [
             for (var i = 0; i < e.rules.length; i++)
               _tableRuleSettings(e, i, write, begin, commit),
-            CanvasControlGroup(label: "Add", bandOnlyLabel: true, children: [
+            CanvasControlGroup(label: "Add", hideCaption: true, children: [
               CanvasIconButton(
                 icon: Icons.add_box_outlined,
                 tooltip: "Add a rule",
@@ -317,7 +317,7 @@ List<Widget> tableSettings(
                     begin,
                     commit,
                     label: "Header type",
-                    bandOnlyLabel: true),
+                    hideCaption: true),
               ),
             ),
             boxed(
@@ -328,7 +328,7 @@ List<Widget> tableSettings(
                 trailing: "${e.cellSpec.fontSize.round()}",
                 children: typeGroups(e.cellSpec,
                     (spec) => write(e.copyWith(cellSpec: spec)), begin, commit,
-                    label: "Cell type", bandOnlyLabel: true),
+                    label: "Cell type", hideCaption: true),
               ),
             ),
           ],

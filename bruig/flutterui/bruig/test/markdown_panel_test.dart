@@ -15,15 +15,18 @@ import 'package:shared_preferences/shared_preferences.dart';
 // --/section--, and every --/section-- is stripped before a page is drawn.
 // A box sharing that closing line would have it taken away from underneath.
 
-Widget wrap(String md) => MultiProvider(providers: [
-      ChangeNotifierProvider<ThemeNotifier>(create: (_) => ThemeNotifier()),
-      ChangeNotifierProvider<PaymentsModel>(create: (_) => PaymentsModel()),
-      ChangeNotifierProvider<MarkdownAreaModel>(
-          create: (_) => MarkdownAreaModel("")),
-    ], child: MaterialApp(
-        home: Scaffold(
-            body: Align(
-                alignment: Alignment.topLeft, child: MarkdownArea(md, false)))));
+Widget wrap(String md) => MultiProvider(
+        providers: [
+          ChangeNotifierProvider<ThemeNotifier>(create: (_) => ThemeNotifier()),
+          ChangeNotifierProvider<PaymentsModel>(create: (_) => PaymentsModel()),
+          ChangeNotifierProvider<MarkdownAreaModel>(
+              create: (_) => MarkdownAreaModel("")),
+        ],
+        child: MaterialApp(
+            home: Scaffold(
+                body: Align(
+                    alignment: Alignment.topLeft,
+                    child: MarkdownArea(md, false)))));
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
@@ -71,7 +74,8 @@ void main() {
       // the same -- somebody putting a border round their own shop's cards
       // has a particular colour in mind, and refusing it only meant the
       // border went unused.
-      expect(PanelRule.parse("color=outline").color?.role, MarkdownRole.outline);
+      expect(
+          PanelRule.parse("color=outline").color?.role, MarkdownRole.outline);
       expect(PanelRule.parse("color=#ff0000").color?.literal, isNotNull);
       expect(PanelRule.parse("color=puce").color, isNull);
     });
@@ -80,7 +84,8 @@ void main() {
       // A picture at the top of a card is rounded at the top and square
       // where the writing meets it. One number for all four cannot draw
       // that, and a card built out of two boxes to get it has a seam.
-      expect(PanelRule.parse("radius=8 8 0 0").radius,
+      expect(
+          PanelRule.parse("radius=8 8 0 0").radius,
           const BorderRadius.only(
               topLeft: Radius.circular(8), topRight: Radius.circular(8)));
       expect(PanelRule.parse("radius=8").radius, BorderRadius.circular(8));
@@ -143,7 +148,8 @@ void main() {
 
   group('drawing one', () {
     testWidgets('the content inside it is rendered', (tester) async {
-      await tester.pumpWidget(wrap("--panel[padding=8]--\n# Inside\n--/panel--"));
+      await tester
+          .pumpWidget(wrap("--panel[padding=8]--\n# Inside\n--/panel--"));
       await tester.pumpAndSettle();
       expect(find.textContaining("Inside", findRichText: true), findsWidgets);
     });

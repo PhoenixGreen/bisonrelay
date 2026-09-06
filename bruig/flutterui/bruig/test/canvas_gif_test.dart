@@ -42,8 +42,7 @@ GifFrame _gradient(int width, int height) {
   return GifFrame(rgba: rgba, width: width, height: height, delayMs: 80);
 }
 
-Future<ui.Codec> _decode(Uint8List bytes) =>
-    ui.instantiateImageCodec(bytes);
+Future<ui.Codec> _decode(Uint8List bytes) => ui.instantiateImageCodec(bytes);
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -65,8 +64,8 @@ void main() {
     expect(frame.image.width, 8);
     expect(frame.image.height, 6);
 
-    var raw =
-        await frame.image.toByteData(format: ui.ImageByteFormat.rawStraightRgba);
+    var raw = await frame.image
+        .toByteData(format: ui.ImageByteFormat.rawStraightRgba);
     var pixels = raw!.buffer.asUint8List();
     // Every pixel is the one colour that went in. Exact, because a palette of
     // 256 has ample room for one.
@@ -111,14 +110,15 @@ void main() {
     var bytes = encodeGif([_gradient(64, 64)]);
     var codec = await _decode(bytes);
     var frame = await codec.getNextFrame();
-    var raw =
-        await frame.image.toByteData(format: ui.ImageByteFormat.rawStraightRgba);
+    var raw = await frame.image
+        .toByteData(format: ui.ImageByteFormat.rawStraightRgba);
     var pixels = raw!.buffer.asUint8List();
 
     for (var (x, y) in [(0, 0), (63, 0), (0, 63), (63, 63), (32, 32)]) {
       var i = (y * 64 + x) * 4;
       expect(pixels[i], closeTo(x * 255 / 63, 24), reason: "red at $x,$y");
-      expect(pixels[i + 1], closeTo(y * 255 / 63, 24), reason: "green at $x,$y");
+      expect(pixels[i + 1], closeTo(y * 255 / 63, 24),
+          reason: "green at $x,$y");
     }
     frame.image.dispose();
     codec.dispose();

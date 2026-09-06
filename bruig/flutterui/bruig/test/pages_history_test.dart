@@ -280,8 +280,7 @@ void main() {
     test('closing one only takes its tab away', () {
       // Where to go next is not this model's to decide: the other tabs may
       // be pages, which belong to ResourcesModel. See nextTabAfterClosing.
-      var m = PagesModel(ResourcesModel(runStream: false))
-        ..tab = pagesTabStore;
+      var m = PagesModel(ResourcesModel(runStream: false))..tab = pagesTabStore;
       m.closeSection(pagesTabStore);
       expect(m.openSections, isEmpty);
     });

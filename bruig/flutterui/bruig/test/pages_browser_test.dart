@@ -26,8 +26,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 // byTooltip finds the Tooltip an IconButton builds, not the button itself,
 // so the button is reached through it.
-IconButton _button(WidgetTester tester, String tooltip) => tester.widget<IconButton>(
-    find.ancestor(
+IconButton _button(WidgetTester tester, String tooltip) =>
+    tester.widget<IconButton>(find.ancestor(
         of: find.byTooltip(tooltip), matching: find.byType(IconButton)));
 
 FetchedResource _page(String uid, List<String> path, String body,
@@ -207,7 +207,8 @@ void main() {
           nick: nick,
           info: SiteInfo(
               status: st,
-              lastSeen: mins == null ? null : t0.subtract(Duration(minutes: mins)))
+              lastSeen:
+                  mins == null ? null : t0.subtract(Duration(minutes: mins)))
         );
 
     List<String> order(List<({String nick, SiteInfo info})> items,

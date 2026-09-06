@@ -22,8 +22,7 @@ List<String> routesOf(MainMenuModel menu, AreaStyle style) =>
 void main() {
   _navBarIndexTests();
 
-  test('an untouched theme carries every destination but the hidden ones',
-      () {
+  test('an untouched theme carries every destination but the hidden ones', () {
     var menu = MainMenuModel();
     var routes = routesOf(menu, const AreaStyle());
     expect(
@@ -116,8 +115,8 @@ void main() {
   });
 
   test('navRoutes round-trips through JSON', () {
-    var style = AreaStyle(
-        navRoutes: [ChatsScreen.routeName, SettingsScreen.routeName]);
+    var style =
+        AreaStyle(navRoutes: [ChatsScreen.routeName, SettingsScreen.routeName]);
     var loaded = AreaStyle.fromJson(style.toJson());
     expect(loaded.navRoutes, [ChatsScreen.routeName, SettingsScreen.routeName]);
 
@@ -156,8 +155,8 @@ void main() {
 
   test('the chat list footer defaults on and round-trips', () {
     expect(const AreaStyle().chatSidebarFooter, isTrue);
-    var off = AreaStyle.fromJson(
-        const AreaStyle(chatSidebarFooter: false).toJson());
+    var off =
+        AreaStyle.fromJson(const AreaStyle(chatSidebarFooter: false).toJson());
     expect(off.chatSidebarFooter, isFalse);
     expect(AreaStyle.fromJson(const AreaStyle().toJson()).chatSidebarFooter,
         isTrue);

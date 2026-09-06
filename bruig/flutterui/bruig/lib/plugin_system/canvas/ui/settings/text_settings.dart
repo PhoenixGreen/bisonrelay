@@ -20,7 +20,9 @@ List<Widget> textSettings(CanvasController controller, TextElement e,
     // will appear in, at the size and face they will appear at -- see
     // CanvasTextEditor. A two-line box in a settings panel could show neither,
     // so writing a headline meant typing it here and looking over there.
-    CanvasControlGroup(label: "Text", children: [
+    // No caption: the panel header says "Text settings" already, and a
+    // group called Text directly under it was the word twice.
+    CanvasControlGroup(label: "Text", hideCaption: true, children: [
       CanvasToggle(
         label: "Fit to box",
         value: e.autoSize,
