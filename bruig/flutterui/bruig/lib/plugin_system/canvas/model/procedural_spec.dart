@@ -87,8 +87,8 @@ enum PitchSport {
   final double aspect;
   const PitchSport(this.label, this.aspect);
 
-  static PitchSport fromName(String? name) =>
-      values.firstWhere((s) => s.name == name, orElse: () => PitchSport.football);
+  static PitchSport fromName(String? name) => values
+      .firstWhere((s) => s.name == name, orElse: () => PitchSport.football);
 }
 
 /// defaultGlyphs is what the rain falls in when nobody has said otherwise.

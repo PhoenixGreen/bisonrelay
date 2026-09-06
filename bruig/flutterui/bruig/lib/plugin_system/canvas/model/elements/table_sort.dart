@@ -74,7 +74,9 @@ class TableSort {
 
   TableSort withLevel(int index, TableSortLevel level) {
     var next = [
-      for (var i = 0; i < (index + 1 > levels.length ? index + 1 : levels.length); i++)
+      for (var i = 0;
+          i < (index + 1 > levels.length ? index + 1 : levels.length);
+          i++)
         i == index ? level : at(i),
     ];
     return TableSort(levels: next, pinFirstColumn: pinFirstColumn);
@@ -114,11 +116,16 @@ List<List<String>> sortTableRows(
   TableSort sort, {
   bool headerRow = false,
 }) {
-  var levels = [for (var l in sort.levels) if (l.on) l];
+  var levels = [
+    for (var l in sort.levels)
+      if (l.on) l
+  ];
   if (levels.isEmpty || rows.length < 2) return rows;
 
   var head = headerRow ? rows.take(1).toList() : const <List<String>>[];
-  var body = [for (var r in rows.skip(head.length)) [...r]];
+  var body = [
+    for (var r in rows.skip(head.length)) [...r]
+  ];
   if (body.length < 2) return rows;
 
   // The first column's values before anything moved, so they can be put back

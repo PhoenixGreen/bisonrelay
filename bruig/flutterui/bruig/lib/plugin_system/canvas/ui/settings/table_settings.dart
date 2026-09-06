@@ -1,14 +1,21 @@
 import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
+import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/table_data_editor.dart';
 import 'package:flutter/material.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/data_source_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 
 // table settings.dart is a table's settings.
 
-List<Widget> tableSettings(BuildContext context, TableElement e,
-        SettingsWrite write, VoidCallback begin, VoidCallback commit) =>
+List<Widget> tableSettings(
+        BuildContext context,
+        CanvasController controller,
+        TableElement e,
+        SettingsWrite write,
+        VoidCallback begin,
+        VoidCallback commit) =>
     [
       // Its own section, like the chart's numbers. The cells are the longest
       // thing in these settings and the least often changed once they are
@@ -32,6 +39,7 @@ List<Widget> tableSettings(BuildContext context, TableElement e,
           ],
         ),
       ),
+      dataSourceSection(context, controller, e, write, begin, commit),
       // Sorting is its own section next to the cells, because it is about the
       // data rather than about how the table looks -- and because three
       // columns and their directions is more than a band's worth of controls.

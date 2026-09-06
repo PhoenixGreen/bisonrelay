@@ -197,8 +197,7 @@ class CanvasImageStore extends ChangeNotifier implements CanvasImageSource {
       _order.remove(key);
       _images.remove(key)?.dispose();
     }
-    _failed.removeWhere((k) => k.startsWith(assetId) ||
-        k == "vector:$assetId");
+    _failed.removeWhere((k) => k.startsWith(assetId) || k == "vector:$assetId");
     _vectors.remove(assetId)?.picture.dispose();
     if (keys.isNotEmpty) notifyListeners();
   }
@@ -282,8 +281,7 @@ Future<ui.Image?> _rasterise(Uint8List bytes) async {
 /// answer is known -- the alternative is discovering a broken colour key by
 /// looking at one.
 @visibleForTesting
-Future<ui.Image?> removeBackground(
-        ui.Image image, BackgroundRemoval removal) =>
+Future<ui.Image?> removeBackground(ui.Image image, BackgroundRemoval removal) =>
     _removeBackground(image, removal);
 
 Future<ui.Image?> _removeBackground(
@@ -464,8 +462,7 @@ Future<_Working?> _workingCopy(ui.Image source) async {
   // One picture at a time is all this is ever asked for, and holding several
   // megabytes for pictures nobody is editing is not worth the lookup it saves.
   _workingPixels.clear();
-  var made = _Working(
-      data.buffer.asUint8List(), working.width, working.height);
+  var made = _Working(data.buffer.asUint8List(), working.width, working.height);
   _workingPixels[source] = made;
   return made;
 }
@@ -493,8 +490,7 @@ Future<ui.Image> _atWorkingSize(ui.Image source) async {
 Future<double?> snapForStroke(ui.Image source, RemovalStroke stroke) async {
   var working = await _workingCopy(source);
   if (working == null) return null;
-  return suggestSnap(
-      working.pixels, working.width, working.height, stroke);
+  return suggestSnap(working.pixels, working.width, working.height, stroke);
 }
 
 Future<ui.Image?> strokePreview(ui.Image source, RemovalStroke stroke) async {
@@ -560,8 +556,7 @@ Future<ui.Image?> strokePreview(ui.Image source, RemovalStroke stroke) async {
 /// stopped it, the edge follows something in the picture -- and being able to
 /// tell which is which is the difference between a setting that can be tuned
 /// and a number that is guessed at.
-void _markClingEdge(
-    Uint8List out, Uint8List cover, int width, int height) {
+void _markClingEdge(Uint8List out, Uint8List cover, int width, int height) {
   for (var y = 1; y < height - 1; y++) {
     for (var x = 1; x < width - 1; x++) {
       var i = y * width + x;
@@ -639,9 +634,11 @@ double? suggestSnap(
         var dx = x - at.dx, dy = y - at.dy;
         if (dx * dx + dy * dy > radius * radius) continue;
         var p = (y * width + x) * 4;
-        var away = _distance(
-            [pixels[p].toDouble(), pixels[p + 1].toDouble(), pixels[p + 2].toDouble()],
-            reference);
+        var away = _distance([
+          pixels[p].toDouble(),
+          pixels[p + 1].toDouble(),
+          pixels[p + 2].toDouble()
+        ], reference);
         var bin = (away / diagonal * 255).round().clamp(0, 255);
         counts[bin]++;
         total++;
@@ -686,8 +683,10 @@ int? _otsu(List<int> counts, int total) {
     belowSum += i * counts[i];
     var belowMean = belowSum / belowWeight;
     var aboveMean = (sum - belowSum) / aboveWeight;
-    var between =
-        belowWeight * aboveWeight * (belowMean - aboveMean) * (belowMean - aboveMean);
+    var between = belowWeight *
+        aboveWeight *
+        (belowMean - aboveMean) *
+        (belowMean - aboveMean);
     if (between > best) {
       best = between;
       first = i;
@@ -918,8 +917,8 @@ Uint8List _blurAxis(
 }
 
 /// _paintStrokes rubs the brush's marks into the alpha channel.
-void _paintStrokes(Uint8List pixels, int width, int height,
-    List<RemovalStroke> strokes) {
+void _paintStrokes(
+    Uint8List pixels, int width, int height, List<RemovalStroke> strokes) {
   for (var stroke in strokes) {
     var effect = strokeEffect(pixels, width, height, stroke);
     var target = stroke.keep ? 255.0 : 0.0;
@@ -1064,8 +1063,9 @@ Uint8List _reachable(
     if (away > tolerance) continue;
 
     seen[local] = 1;
-    out[local] =
-        (away <= solid ? 255 : (255 * (tolerance - away) / fade)).round().clamp(0, 255);
+    out[local] = (away <= solid ? 255 : (255 * (tolerance - away) / fade))
+        .round()
+        .clamp(0, 255);
 
     if (lx > 0) stack.add(local - 1);
     if (lx < boxWidth - 1) stack.add(local + 1);
@@ -1082,8 +1082,15 @@ Uint8List _reachable(
 /// left, and it can be told to spread only through pixels like the one the
 /// stroke started on -- see RemovalStroke.snap -- so brushing along a shoulder
 /// takes the sky and stops at the coat.
-void _dab(Uint8List cover, Uint8List pixels, int width, int height,
-    ui.Offset at, double radius, RemovalStroke stroke, List<double>? reference) {
+void _dab(
+    Uint8List cover,
+    Uint8List pixels,
+    int width,
+    int height,
+    ui.Offset at,
+    double radius,
+    RemovalStroke stroke,
+    List<double>? reference) {
   var left = math.max(0, (at.dx - radius).floor());
   var right = math.min(width - 1, (at.dx + radius).ceil());
   var top = math.max(0, (at.dy - radius).floor());
@@ -1147,8 +1154,9 @@ void _chromaKey(Uint8List pixels, BackgroundRemoval removal) {
 /// threshold.
 void _luminance(Uint8List pixels, BackgroundRemoval removal) {
   for (var i = 0; i < pixels.length; i += 4) {
-    var l = (pixels[i] * 0.2126 + pixels[i + 1] * 0.7152 + pixels[i + 2] * 0.0722) /
-        255;
+    var l =
+        (pixels[i] * 0.2126 + pixels[i + 1] * 0.7152 + pixels[i + 2] * 0.0722) /
+            255;
     // How far past the threshold this pixel is, positive when it should go.
     // Negated into a distance so the same ramp _alphaFor applies to a colour
     // key applies here: at or past the threshold the distance is zero or less
@@ -1209,7 +1217,10 @@ void _cornerFlood(
   // last for the drift budget.
   var stack = <int>[];
   void push(int index, int from, int seed) {
-    stack..add(index)..add(from)..add(seed);
+    stack
+      ..add(index)
+      ..add(from)
+      ..add(seed);
   }
 
   // Seeded from every edge pixel rather than from the four corners, so a
@@ -1368,8 +1379,8 @@ int _bin(Uint8List pixels, int index) {
 }
 
 /// _paletteOf is the set of coarse colours found under [marks].
-Set<int> _paletteOf(Uint8List pixels, int width, int height,
-    Iterable<RemovalStroke> marks) {
+Set<int> _paletteOf(
+    Uint8List pixels, int width, int height, Iterable<RemovalStroke> marks) {
   var found = Uint8List(32768);
   var canvas = Uint8List(width * height);
   _markPixels(canvas, width, height, marks, 1);
@@ -1427,11 +1438,11 @@ void _markPixels(Uint8List into, int width, int height,
   for (var mark in marks) {
     var radius = math.max(1.0, mark.radius * shorter);
     for (var i = 0; i < mark.points.length; i++) {
-      var from = ui.Offset(
-          mark.points[i].dx * width, mark.points[i].dy * height);
+      var from =
+          ui.Offset(mark.points[i].dx * width, mark.points[i].dy * height);
       var to = i + 1 < mark.points.length
-          ? ui.Offset(mark.points[i + 1].dx * width,
-              mark.points[i + 1].dy * height)
+          ? ui.Offset(
+              mark.points[i + 1].dx * width, mark.points[i + 1].dy * height)
           : from;
       var span = (to - from).distance;
       var steps = math.max(1, (span / (radius / 2)).ceil());

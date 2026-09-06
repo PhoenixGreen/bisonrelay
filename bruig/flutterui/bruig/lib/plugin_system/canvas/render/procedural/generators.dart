@@ -105,13 +105,14 @@ void _paintBase(ui.Canvas canvas, Rect rect, ProceduralSpec spec) {
   // inside the frame the way a naive centre-plus-radius one does.
   var half = math.max(rect.width, rect.height);
   var c = rect.center;
-  var from = Offset(c.dx - math.cos(a) * half / 2, c.dy - math.sin(a) * half / 2);
+  var from =
+      Offset(c.dx - math.cos(a) * half / 2, c.dy - math.sin(a) * half / 2);
   var to = Offset(c.dx + math.cos(a) * half / 2, c.dy + math.sin(a) * half / 2);
   canvas.drawRect(
       rect,
       Paint()
-        ..shader = ui.Gradient.linear(
-            from, to, [spec.background, spec.gradientTo]));
+        ..shader =
+            ui.Gradient.linear(from, to, [spec.background, spec.gradientTo]));
 }
 
 /// _vignette darkens the edges, which is what makes most of these read as a
@@ -158,8 +159,12 @@ void _gradientMesh(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
     var px = rnd.next(), py = rnd.next(), pick = rnd.next();
     var drift = rnd.range(0.2, 1.0);
     var c = Offset(
-      rect.left + rect.width * px + math.sin(t * drift + i) * rect.width * 0.05 * spec.variation,
-      rect.top + rect.height * py + math.cos(t * drift * 0.8 + i) * rect.height * 0.05 * spec.variation,
+      rect.left +
+          rect.width * px +
+          math.sin(t * drift + i) * rect.width * 0.05 * spec.variation,
+      rect.top +
+          rect.height * py +
+          math.cos(t * drift * 0.8 + i) * rect.height * 0.05 * spec.variation,
     );
     var r = maxR * rnd.range(0.4, 1.0);
     var color = pick < 0.5 ? spec.foreground : spec.accent;
@@ -202,8 +207,8 @@ void _dotGrid(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
       // dots cluster into drifts of light instead of being uniform static.
       var f = noise.fbm(ix * 0.15 + t * 0.2, iy * 0.15, octaves: 3);
       var alpha = (f * spec.intensity).clamp(0.0, 1.0);
-      paint.color = _fade(
-          h < spec.density * 0.15 ? spec.accent : spec.foreground, alpha);
+      paint.color =
+          _fade(h < spec.density * 0.15 ? spec.accent : spec.foreground, alpha);
       canvas.drawCircle(p, step * 0.12 * (0.5 + f), paint);
     }
   }
@@ -222,14 +227,14 @@ void _lineGrid(ui.Canvas canvas, Rect rect, ProceduralSpec spec) {
   var cols = (rect.width / step).ceil() + 1;
   for (var i = 0; i <= cols; i++) {
     var x = rect.left + i * step;
-    canvas.drawLine(Offset(x, rect.top), Offset(x, rect.bottom),
-        i % 4 == 0 ? thick : thin);
+    canvas.drawLine(
+        Offset(x, rect.top), Offset(x, rect.bottom), i % 4 == 0 ? thick : thin);
   }
   var rows = (rect.height / step).ceil() + 1;
   for (var i = 0; i <= rows; i++) {
     var y = rect.top + i * step;
-    canvas.drawLine(Offset(rect.left, y), Offset(rect.right, y),
-        i % 4 == 0 ? thick : thin);
+    canvas.drawLine(
+        Offset(rect.left, y), Offset(rect.right, y), i % 4 == 0 ? thick : thin);
   }
 }
 
@@ -289,8 +294,10 @@ void _contours(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
   // contours for no benefit.
   var field = List.generate(
     rows + 1,
-    (iy) => List.generate(cols + 1,
-        (ix) => noise.fbm(ix * cell * freq / 10 + t * 0.3, iy * cell * freq / 10)),
+    (iy) => List.generate(
+        cols + 1,
+        (ix) =>
+            noise.fbm(ix * cell * freq / 10 + t * 0.3, iy * cell * freq / 10)),
     growable: false,
   );
 
@@ -299,8 +306,8 @@ void _contours(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
     var path = Path();
     for (var iy = 0; iy < rows; iy++) {
       for (var ix = 0; ix < cols; ix++) {
-        _marchCell(path, field, ix, iy, level, cell,
-            Offset(rect.left, rect.top));
+        _marchCell(
+            path, field, ix, iy, level, cell, Offset(rect.left, rect.top));
       }
     }
     var mid = (l - levels / 2).abs() / (levels / 2);
@@ -309,8 +316,7 @@ void _contours(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
         Paint()
           ..style = PaintingStyle.stroke
           ..strokeWidth = math.max(0.6, cell * 0.05)
-          ..color = _fade(
-              l.isEven ? spec.foreground : spec.accent,
+          ..color = _fade(l.isEven ? spec.foreground : spec.accent,
               spec.intensity * (1 - mid * 0.6)));
   }
 }
@@ -461,7 +467,9 @@ void _bokeh(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
 
     var r = base * sizeF;
     var c = Offset(
-      rect.left + rect.width * px + math.sin(t * 0.4 + i) * r * 0.3 * spec.variation,
+      rect.left +
+          rect.width * px +
+          math.sin(t * 0.4 + i) * r * 0.3 * spec.variation,
       rect.top + rect.height * py + drift * t * 6,
     );
     var color = pick < 0.3 ? spec.accent : spec.foreground;
@@ -499,17 +507,19 @@ void _starfield(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
     var twinkle = rnd.range(0.5, 3.0);
     var p = Offset(rect.left + rect.width * px, rect.top + rect.height * py);
 
-    var d = (p - rect.center).distance /
-        (math.max(rect.width, rect.height) * 0.7);
+    var d =
+        (p - rect.center).distance / (math.max(rect.width, rect.height) * 0.7);
     var falloff = (1 - d * spec.variation).clamp(0.05, 1.0);
-    var flicker = spec.animated
-        ? 0.6 + 0.4 * math.sin(t * twinkle + i.toDouble())
-        : 1.0;
+    var flicker =
+        spec.animated ? 0.6 + 0.4 * math.sin(t * twinkle + i.toDouble()) : 1.0;
     var alpha = spec.intensity * falloff * flicker * (0.2 + mag * 0.8);
     var r = unit * 0.08 * (0.4 + mag * 1.6);
 
-    canvas.drawCircle(p, r,
-        Paint()..color = _fade(mag > 0.93 ? spec.accent : spec.foreground, alpha));
+    canvas.drawCircle(
+        p,
+        r,
+        Paint()
+          ..color = _fade(mag > 0.93 ? spec.accent : spec.foreground, alpha));
     // The brightest few get a cross of light, which is what makes a starfield
     // read as stars rather than as noise.
     if (mag > 0.96) {
@@ -544,7 +554,8 @@ void _ledGrid(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
       var lit = h < region * spec.density * 1.8;
       if (!lit) continue;
 
-      var p = Offset(rect.left + (ix + 0.5) * cell, rect.top + (iy + 0.5) * cell);
+      var p =
+          Offset(rect.left + (ix + 0.5) * cell, rect.top + (iy + 0.5) * cell);
       var hot = hash(spec.seed + 91, ix, iy);
       var color = hot > 0.86 ? spec.accent : spec.foreground;
       var alpha = spec.intensity * (0.25 + region * 0.75);
@@ -603,8 +614,7 @@ void _circuit(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
     var x = rnd.intRange(0, cols);
     var y = rnd.intRange(0, rows);
     var len = 3 + rnd.intRange(0, 6 + (spec.variation * 14).round());
-    var path = Path()
-      ..moveTo(rect.left + x * cell, rect.top + y * cell);
+    var path = Path()..moveTo(rect.left + x * cell, rect.top + y * cell);
     var pads = <Offset>[];
 
     var horizontal = rnd.next() < 0.5;
@@ -650,8 +660,10 @@ void _rain(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
   for (var ix = 0; ix < cols; ix++) {
     if (hash(spec.seed + 5, ix, 0) > spec.density * 1.4) continue;
 
-    var speed = 0.4 + hash(spec.seed + 11, ix, 1) * (0.6 + spec.variation * 2.5);
-    var tail = 4 + (hash(spec.seed + 17, ix, 2) * (6 + spec.variation * 26)).round();
+    var speed =
+        0.4 + hash(spec.seed + 11, ix, 1) * (0.6 + spec.variation * 2.5);
+    var tail =
+        4 + (hash(spec.seed + 17, ix, 2) * (6 + spec.variation * 26)).round();
     // The head is measured in rows and advances with time. Offsetting by the
     // column's own hash is what stops every column starting level, which is
     // the single most obvious giveaway that a rain effect is generated.
@@ -669,7 +681,8 @@ void _rain(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
       // through them -- which is what the film does and what makes it read as
       // falling light rather than as scrolling text.
       var cellRow = row.floor();
-      var gi = (hash(spec.seed + 31, ix, cellRow + (spec.animated ? (t * speed).floor() : 0)) *
+      var gi = (hash(spec.seed + 31, ix,
+                  cellRow + (spec.animated ? (t * speed).floor() : 0)) *
               glyphs.length)
           .floor()
           .clamp(0, glyphs.length - 1);
@@ -699,13 +712,18 @@ void _symbolField(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
 
     var p = Offset(
       rect.left + rect.width * px,
-      rect.top + rect.height * py +
+      rect.top +
+          rect.height * py +
           (spec.animated ? math.sin(t * bob + i) * base * 0.4 : 0),
     );
     canvas.save();
     canvas.translate(p.dx, p.dy);
     canvas.rotate(angle);
-    _drawGlyph(canvas, glyphs[gi], Offset.zero, base * sizeF,
+    _drawGlyph(
+        canvas,
+        glyphs[gi],
+        Offset.zero,
+        base * sizeF,
         _fade(pick < 0.2 ? spec.accent : spec.foreground,
             spec.intensity * rnd.range(0.15, 0.9)));
     canvas.restore();

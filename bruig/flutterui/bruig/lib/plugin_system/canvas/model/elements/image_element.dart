@@ -141,7 +141,9 @@ class RemovalStroke {
         // Flat pairs rather than a list of objects: a stroke is hundreds of
         // points and {"x":..,"y":..} triples the size of a saved canvas for
         // nothing a reader of the file would thank us for.
-        "p": [for (var p in points) ...[p.dx, p.dy]],
+        "p": [
+          for (var p in points) ...[p.dx, p.dy]
+        ],
         "r": radius,
         if (keep) "keep": true,
         if (hardness != 0.35) "hard": hardness,
@@ -247,8 +249,7 @@ class BackgroundRemoval {
   bool get active => mode != RemovalMode.none || strokes.isNotEmpty;
 
   /// backgroundHints and subjectHints are the two sides of the evidence.
-  Iterable<RemovalStroke> get backgroundHints =>
-      hints.where((h) => !h.keep);
+  Iterable<RemovalStroke> get backgroundHints => hints.where((h) => !h.keep);
   Iterable<RemovalStroke> get subjectHints => hints.where((h) => h.keep);
 
   BackgroundRemoval copyWith({
@@ -289,14 +290,14 @@ class BackgroundRemoval {
       "${colorToJson(keyColor)}|$tolerance|$softness|$threshold|$invert|$edge|"
       "${_marksKey(strokes)}|${_marksKey(hints)}";
 
-/// _marksKey summarises a list of brush marks for the cache key: how many
-/// there are, and how far the last one has got. A key holding every point of
-/// every stroke would be longer than the document.
-static String _marksKey(List<RemovalStroke> marks) => marks.isEmpty
-    ? "0"
-    : "${marks.length}:${marks.last.points.length}:"
-        "${marks.last.points.isEmpty ? "" : marks.last.points.last}:"
-        "${marks.last.keep}";
+  /// _marksKey summarises a list of brush marks for the cache key: how many
+  /// there are, and how far the last one has got. A key holding every point of
+  /// every stroke would be longer than the document.
+  static String _marksKey(List<RemovalStroke> marks) => marks.isEmpty
+      ? "0"
+      : "${marks.length}:${marks.last.points.length}:"
+          "${marks.last.points.isEmpty ? "" : marks.last.points.last}:"
+          "${marks.last.keep}";
 
   Map<String, dynamic> toJson() => {
         "mode": mode.name,
@@ -308,8 +309,7 @@ static String _marksKey(List<RemovalStroke> marks) => marks.isEmpty
         "edge": edge,
         if (strokes.isNotEmpty)
           "strokes": [for (var stroke in strokes) stroke.toJson()],
-        if (hints.isNotEmpty)
-          "hints": [for (var hint in hints) hint.toJson()],
+        if (hints.isNotEmpty) "hints": [for (var hint in hints) hint.toJson()],
       };
 
   factory BackgroundRemoval.fromJson(Map<String, dynamic> json) =>
@@ -738,8 +738,8 @@ class ImageElement extends CanvasElement {
       ImageElement(b,
           assetId: jsonString(json["asset"], ""),
           fit: ImageFit.fromName(json["fit"] as String?),
-          box: jsonSpec(json["box"], BoxSpec.fromJson,
-              const BoxSpec(padding: 0)),
+          box: jsonSpec(
+              json["box"], BoxSpec.fromJson, const BoxSpec(padding: 0)),
           removal: jsonSpec(json["removal"], BackgroundRemoval.fromJson,
               const BackgroundRemoval()),
           tint: colorFromJson(json["tint"], const Color(0x00000000)),
@@ -752,8 +752,8 @@ class ImageElement extends CanvasElement {
               ? ShapeKind.fromName(json["frame"] as String?)
               : null,
           filter: ImageFilterPreset.fromName(json["filter"] as String?),
-          outline: jsonSpec(json["outline"], ImageOutline.fromJson,
-              const ImageOutline()),
+          outline: jsonSpec(
+              json["outline"], ImageOutline.fromJson, const ImageOutline()),
           overlay: colorFromJson(json["overlay"], const Color(0x00000000)),
           lockAspect: jsonBool(json["lockAspect"], true),
           blend: OverlayBlend.fromName(json["blend"] as String?));

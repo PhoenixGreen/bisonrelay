@@ -154,8 +154,8 @@ Uint8List writePdf(
 
   var box = _fit(
     Size(width.toDouble(), height.toDouble()),
-    Rect.fromLTWH(page.margin, page.margin,
-        page.width - page.margin * 2, page.height - page.margin * 2),
+    Rect.fromLTWH(page.margin, page.margin, page.width - page.margin * 2,
+        page.height - page.margin * 2),
   );
 
   var out = _PdfBuilder();
@@ -183,10 +183,10 @@ Uint8List writePdf(
   out.stream(
       5,
       "<< /Filter /FlateDecode >>",
-      Uint8List.fromList(deflate.encode(ascii.encode(
-          "q\n${_n(box.width)} 0 0 ${_n(box.height)} "
-          "${_n(box.left)} ${_n(page.height - box.bottom)} cm\n"
-          "/Im0 Do\nQ\n"))));
+      Uint8List.fromList(deflate
+          .encode(ascii.encode("q\n${_n(box.width)} 0 0 ${_n(box.height)} "
+              "${_n(box.left)} ${_n(page.height - box.bottom)} cm\n"
+              "/Im0 Do\nQ\n"))));
 
   if (mask != null) {
     out.stream(

@@ -197,8 +197,7 @@ class ElementBase {
 /// One function rather than the same three-line conditional at every nested
 /// field, and the reason it takes the parser as an argument is that these
 /// specs have nothing in common beyond being maps.
-T jsonSpec<T>(
-        dynamic v, T Function(Map<String, dynamic>) parse, T fallback) =>
+T jsonSpec<T>(dynamic v, T Function(Map<String, dynamic>) parse, T fallback) =>
     v is Map<String, dynamic> ? parse(v) : fallback;
 
 /// CanvasElement is one thing on the canvas.

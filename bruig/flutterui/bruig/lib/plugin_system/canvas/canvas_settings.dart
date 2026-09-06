@@ -7,10 +7,12 @@ import 'package:provider/provider.dart';
 // canvas_settings.dart is Canvas's section of Settings > Plugins: the switch
 // that decides whether the feature exists.
 //
-// One switch and an explanation, because there is only one decision to make
-// about Canvas from outside it. Everything else about a canvas is a property
-// of that canvas and belongs on the canvas's own settings band, not in a
-// settings screen a long way from the thing being changed.
+// Two switches and an explanation. Everything else about a canvas is a
+// property of that canvas and belongs on the canvas's own settings band, not
+// in a settings screen a long way from the thing being changed -- these two
+// are here because neither is about a canvas. One decides whether the feature
+// exists at all; the other is about what this app is allowed to do with the
+// network, which is a decision about the app and not about a design.
 
 class CanvasSettingsSection extends StatelessWidget {
   const CanvasSettingsSection({super.key});
@@ -37,7 +39,7 @@ class CanvasSettingsSection extends StatelessWidget {
           color: TextColor.onSurfaceVariant,
         ),
       ),
-      if (prefs.enabled)
+      if (prefs.enabled) ...[
         Padding(
           padding: const EdgeInsets.only(right: 60, bottom: 8),
           child: Txt.S(
@@ -46,6 +48,27 @@ class CanvasSettingsSection extends StatelessWidget {
             color: TextColor.onSurfaceVariant,
           ),
         ),
+        Row(children: [
+          const Expanded(child: Txt.M("Let a canvas fetch data")),
+          Switch(
+            value: prefs.allowFetching,
+            onChanged: (v) => prefs.allowFetching = v,
+          ),
+        ]),
+        Padding(
+          padding: const EdgeInsets.only(right: 60, bottom: 8),
+          child: Txt.S(
+            "Off by default. A table or a chart can pull its numbers from a "
+            "web address — a league table, a price, a count — but nothing "
+            "else in this app connects out on its own, and a fetch from a "
+            "canvas does not go through the proxy set in Settings > Network. "
+            "The address you fetch from would see your connection. Nothing "
+            "is ever fetched without you pressing Refresh, and a canvas can "
+            "read the same data from a file with this switched off.",
+            color: TextColor.onSurfaceVariant,
+          ),
+        ),
+      ],
       const Divider(),
     ]);
   }

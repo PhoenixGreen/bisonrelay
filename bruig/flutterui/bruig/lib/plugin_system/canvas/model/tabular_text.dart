@@ -114,9 +114,8 @@ List<String> _splitQuoted(String line) {
 /// field is a wide invisible gap that cannot be typed without leaving the
 /// field, so a table written out with tabs could be read and not edited --
 /// and the one thing this box is for is editing.
-String joinTable(List<List<String>> rows) => rows
-    .map((row) => row.map(_quoted).join(","))
-    .join("\n");
+String joinTable(List<List<String>> rows) =>
+    rows.map((row) => row.map(_quoted).join(",")).join("\n");
 
 String _quoted(String cell) {
   if (!cell.contains(",") && !cell.contains('"') && cell.trim() == cell) {

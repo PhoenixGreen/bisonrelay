@@ -2,6 +2,8 @@ import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
+import 'package:bruig/plugin_system/canvas/model/data_source.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 
 // A chart's data, its animation and its key are each large enough to be read
 // on their own, and each is worked on without the others. They are exported
@@ -184,6 +186,16 @@ class ChartElement extends CanvasElement {
   final ChartType type;
   final ChartData data;
 
+  /// fromTable is the table on this canvas the numbers were taken from, if
+  /// they were. See [TableLink].
+  ///
+  /// The data above is still the chart's own: this says where it last came
+  /// from, so that refreshing the table can bring the chart with it. A chart
+  /// that read the table on every frame would be a chart that could not be
+  /// adjusted afterwards, and one that forgot where it came from would have
+  /// to be rebuilt by hand every time the table changed.
+  final TableLink fromTable;
+
   final String title;
   final String description;
 
@@ -280,6 +292,7 @@ class ChartElement extends CanvasElement {
     super.base, {
     this.type = ChartType.bar,
     this.data = const ChartData(),
+    this.fromTable = const TableLink(),
     this.title = "",
     this.description = "",
     this.titleBox = const ChartLabel(),
@@ -342,6 +355,7 @@ class ChartElement extends CanvasElement {
   ChartElement copyWith({
     ChartType? type,
     ChartData? data,
+    TableLink? fromTable,
     String? title,
     String? description,
     ChartLabel? titleBox,
@@ -374,6 +388,7 @@ class ChartElement extends CanvasElement {
       _copy(base,
           type: type,
           data: data,
+          fromTable: fromTable,
           title: title,
           description: description,
           titleBox: titleBox,
@@ -410,6 +425,7 @@ class ChartElement extends CanvasElement {
     ElementBase newBase, {
     ChartType? type,
     ChartData? data,
+    TableLink? fromTable,
     String? title,
     String? description,
     ChartLabel? titleBox,
@@ -442,6 +458,7 @@ class ChartElement extends CanvasElement {
       ChartElement(newBase,
           type: type ?? this.type,
           data: data ?? this.data,
+          fromTable: fromTable ?? this.fromTable,
           title: title ?? this.title,
           description: description ?? this.description,
           titleBox: titleBox ?? this.titleBox,
@@ -475,6 +492,7 @@ class ChartElement extends CanvasElement {
   Map<String, dynamic> props() => {
         "type": type.name,
         "data": data.toJson(),
+        if (fromTable.on) "fromTable": fromTable.toJson(),
         if (title.isNotEmpty) "title": title,
         if (description.isNotEmpty) "desc": description,
         if (titleBox.toJson().isNotEmpty) "titleBox": titleBox.toJson(),
@@ -514,6 +532,8 @@ class ChartElement extends CanvasElement {
       ChartElement(b,
           type: ChartType.fromName(json["type"] as String?),
           data: jsonSpec(json["data"], ChartData.fromJson, const ChartData()),
+          fromTable: jsonSpec(json["fromTable"], TableLink.fromJson,
+              const TableLink()),
           title: jsonString(json["title"], ""),
           description: jsonString(json["desc"], ""),
           titleBox:
@@ -557,4 +577,47 @@ class ChartElement extends CanvasElement {
           innerRadius: jsonDouble(json["inner"], 0.55),
           strokeWidth: jsonDouble(json["sw"], 3),
           smooth: jsonBool(json["smooth"], false));
+}
+
+/// chartDataFromTable is [link] applied to [table]: the chart's numbers taken
+/// from the table's cells.
+///
+/// The table's header row supplies the series names, so a chart of the Points
+/// column is labelled "Points" without anybody typing it. Cells that are not
+/// numbers count as zero rather than stopping the whole thing -- a league
+/// table has a crest column and a form column in it, and picking the wrong one
+/// should give a flat chart that is obviously wrong, not an error.
+ChartData chartDataFromTable(TableElement table, TableLink link) {
+  if (!link.on) return const ChartData();
+  var body = table.headerRow ? table.rows.skip(1).toList() : table.rows;
+  var header = table.header;
+
+  String name(int column) {
+    var text = column < header.length ? header[column].trim() : "";
+    return text.isEmpty ? "Column ${column + 1}" : text;
+  }
+
+  return ChartData(
+    categories: [
+      for (var row in body)
+        link.categoryColumn < row.length ? row[link.categoryColumn] : "",
+    ],
+    series: [
+      for (var (i, column) in link.valueColumns.indexed)
+        ChartSeries(
+          name: name(column),
+          color: chartPalette[i % chartPalette.length],
+          values: [
+            for (var row in body)
+              column < row.length ? _asNumber(row[column]) : 0,
+          ],
+        ),
+    ],
+  );
+}
+
+double _asNumber(String cell) {
+  var text = cell.trim().replaceAll(",", "").replaceAll("%", "");
+  if (text.startsWith("+")) text = text.substring(1);
+  return double.tryParse(text) ?? 0;
 }

@@ -1,4 +1,3 @@
-
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
@@ -257,7 +256,17 @@ CanvasDocument footballCanvas() {
   // formation are all measured in the same metres.
   var halfWidth = metrics.area.width / 2;
   var squadNames = [
-    "GK", "RB", "CB", "CB", "LB", "RM", "CM", "CM", "LM", "ST", "ST",
+    "GK",
+    "RB",
+    "CB",
+    "CB",
+    "LB",
+    "RM",
+    "CM",
+    "CM",
+    "LM",
+    "ST",
+    "ST",
   ];
 
   TeamElement team({
@@ -300,8 +309,8 @@ CanvasDocument footballCanvas() {
   /// named puts the position abbreviations on a freshly laid-out side.
   TeamElement named(TeamElement side) => side.copyWith(players: [
         for (var i = 0; i < side.players.length; i++)
-          side.players[i].copyWith(
-              name: i < squadNames.length ? squadNames[i] : ""),
+          side.players[i]
+              .copyWith(name: i < squadNames.length ? squadNames[i] : ""),
       ]);
 
   // Home attacks left to right; away is the same formation mirrored, so the

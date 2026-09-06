@@ -46,7 +46,7 @@ class BackgroundElement extends CanvasElement {
   factory BackgroundElement.fromJson(
           Map<String, dynamic> json, ElementBase b) =>
       BackgroundElement(b,
-          spec: jsonSpec(json["spec"], ProceduralSpec.fromJson,
-              const ProceduralSpec()),
+          spec: jsonSpec(
+              json["spec"], ProceduralSpec.fromJson, const ProceduralSpec()),
           cornerRadius: jsonDouble(json["cr"], 0));
 }

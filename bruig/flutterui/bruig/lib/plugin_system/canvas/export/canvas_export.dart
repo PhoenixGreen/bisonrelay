@@ -84,8 +84,8 @@ Future<CanvasExport?> renderPng(
 }) async {
   ui.Image? image;
   try {
-    image = await renderFrame(document,
-        frame: frame, scale: scale, images: images);
+    image =
+        await renderFrame(document, frame: frame, scale: scale, images: images);
     var data = await image.toByteData(format: ui.ImageByteFormat.png);
     if (data == null) return null;
     return CanvasExport(data.buffer.asUint8List(), "image/png",
@@ -110,8 +110,8 @@ Future<CanvasExport?> renderImage(
   CanvasImageSource? images,
   EmbedOptions options = const EmbedOptions(),
 }) async {
-  var png = await renderPng(document,
-      frame: frame, scale: scale, images: images);
+  var png =
+      await renderPng(document, frame: frame, scale: scale, images: images);
   if (png == null) return null;
   if (!options.changesAnything && options.format != EmbedFormat.jpeg) {
     return png;
@@ -119,7 +119,8 @@ Future<CanvasExport?> renderImage(
 
   var prepared = await prepareEmbed(png.data, png.mime, options);
   return CanvasExport(prepared.data, prepared.mime,
-      width: prepared.width ?? png.width, height: prepared.height ?? png.height);
+      width: prepared.width ?? png.width,
+      height: prepared.height ?? png.height);
 }
 
 /// renderPdf is one frame as a page.
@@ -139,13 +140,14 @@ Future<CanvasExport?> renderPdf(
 }) async {
   ui.Image? image;
   try {
-    image = await renderFrame(document,
-        frame: frame, scale: scale, images: images);
+    image =
+        await renderFrame(document, frame: frame, scale: scale, images: images);
     // Straight rather than premultiplied: a PDF keeps the colours and the
     // transparency as two separate images, and separating them out of
     // premultiplied pixels means dividing the colour back out of its own
     // alpha, which loses a little of everyhalf-transparent pixel for nothing.
-    var raw = await image.toByteData(format: ui.ImageByteFormat.rawStraightRgba);
+    var raw =
+        await image.toByteData(format: ui.ImageByteFormat.rawStraightRgba);
     if (raw == null) return null;
 
     var page = pageFor(paper, document.size.size, orientation: orientation);
@@ -195,8 +197,8 @@ Future<CanvasExport?> renderGif(
     for (var i = 0; i < document.frames; i++) {
       ui.Image? image;
       try {
-        image = await renderFrame(document,
-            frame: i, scale: scale, images: images);
+        image =
+            await renderFrame(document, frame: i, scale: scale, images: images);
         var raw =
             await image.toByteData(format: ui.ImageByteFormat.rawStraightRgba);
         if (raw == null) return null;
@@ -217,8 +219,8 @@ Future<CanvasExport?> renderGif(
     }
 
     if (frames.isEmpty) return null;
-    var bytes = encodeGif(frames,
-        loop: loop, dither: dither, maxColors: maxColors);
+    var bytes =
+        encodeGif(frames, loop: loop, dither: dither, maxColors: maxColors);
     return CanvasExport(bytes, "image/gif",
         width: frames.first.width, height: frames.first.height);
   } catch (exception) {

@@ -75,7 +75,8 @@ class TextColumns {
         "gap": gap,
         if (ruleStyle != ColumnRuleStyle.none) "ruleStyle": ruleStyle.name,
         if (ruleStyle != ColumnRuleStyle.none) "ruleWidth": ruleWidth,
-        if (ruleStyle != ColumnRuleStyle.none) "ruleColor": colorToJson(ruleColor),
+        if (ruleStyle != ColumnRuleStyle.none)
+          "ruleColor": colorToJson(ruleColor),
       };
 
   factory TextColumns.fromJson(Map<String, dynamic> json) => TextColumns(
@@ -241,12 +242,12 @@ class TextElement extends CanvasElement {
   factory TextElement.fromJson(Map<String, dynamic> json, ElementBase b) =>
       TextElement(b,
           text: jsonString(json["text"], "Text"),
-          textSpec: jsonSpec(json["textSpec"], TextSpec.fromJson,
-              const TextSpec()),
+          textSpec:
+              jsonSpec(json["textSpec"], TextSpec.fromJson, const TextSpec()),
           box: jsonSpec(json["box"], BoxSpec.fromJson, const BoxSpec()),
           autoSize: jsonBool(json["autoSize"], false),
-          columns: jsonSpec(json["columns"], TextColumns.fromJson,
-              const TextColumns()),
+          columns: jsonSpec(
+              json["columns"], TextColumns.fromJson, const TextColumns()),
           curve: json["curve"] is Map<String, dynamic>
               ? TextOnCurve.fromJson(json["curve"] as Map<String, dynamic>)
               : null);

@@ -34,8 +34,8 @@ enum TeamSport {
 
   const TeamSport(this.label, this.squadSize);
 
-  static TeamSport fromName(String? name) =>
-      values.firstWhere((s) => s.name == name, orElse: () => TeamSport.football);
+  static TeamSport fromName(String? name) => values
+      .firstWhere((s) => s.name == name, orElse: () => TeamSport.football);
 
   List<TeamFormation> get formations =>
       TeamFormation.values.where((f) => f.sport == this).toList();
@@ -86,47 +86,94 @@ enum FormationSpread {
 enum TeamFormation {
   f442("4-4-2", TeamSport.football, [
     (5.5, 34),
-    (20, 12), (18, 26), (18, 42), (20, 56),
-    (42, 12), (38, 27), (38, 41), (42, 56),
-    (62, 27), (62, 41),
+    (20, 12),
+    (18, 26),
+    (18, 42),
+    (20, 56),
+    (42, 12),
+    (38, 27),
+    (38, 41),
+    (42, 56),
+    (62, 27),
+    (62, 41),
   ]),
   f433("4-3-3", TeamSport.football, [
     (5.5, 34),
-    (20, 12), (18, 26), (18, 42), (20, 56),
-    (40, 20), (36, 34), (40, 48),
-    (64, 14), (66, 34), (64, 54),
+    (20, 12),
+    (18, 26),
+    (18, 42),
+    (20, 56),
+    (40, 20),
+    (36, 34),
+    (40, 48),
+    (64, 14),
+    (66, 34),
+    (64, 54),
   ]),
   f4231("4-2-3-1", TeamSport.football, [
     (5.5, 34),
-    (20, 12), (18, 26), (18, 42), (20, 56),
-    (34, 26), (34, 42),
-    (52, 13), (50, 34), (52, 55),
+    (20, 12),
+    (18, 26),
+    (18, 42),
+    (20, 56),
+    (34, 26),
+    (34, 42),
+    (52, 13),
+    (50, 34),
+    (52, 55),
     (68, 34),
   ]),
   f352("3-5-2", TeamSport.football, [
     (5.5, 34),
-    (18, 20), (16, 34), (18, 48),
-    (40, 6), (36, 22), (34, 34), (36, 46), (40, 62),
-    (62, 27), (62, 41),
+    (18, 20),
+    (16, 34),
+    (18, 48),
+    (40, 6),
+    (36, 22),
+    (34, 34),
+    (36, 46),
+    (40, 62),
+    (62, 27),
+    (62, 41),
   ]),
   f532("5-3-2", TeamSport.football, [
     (5.5, 34),
-    (20, 8), (16, 21), (14, 34), (16, 47), (20, 60),
-    (38, 22), (36, 34), (38, 46),
-    (60, 27), (60, 41),
+    (20, 8),
+    (16, 21),
+    (14, 34),
+    (16, 47),
+    (20, 60),
+    (38, 22),
+    (36, 34),
+    (38, 46),
+    (60, 27),
+    (60, 41),
   ]),
   f4141("4-1-4-1", TeamSport.football, [
     (5.5, 34),
-    (20, 12), (18, 26), (18, 42), (20, 56),
+    (20, 12),
+    (18, 26),
+    (18, 42),
+    (20, 56),
     (32, 34),
-    (48, 12), (46, 27), (46, 41), (48, 56),
+    (48, 12),
+    (46, 27),
+    (46, 41),
+    (48, 56),
     (66, 34),
   ]),
   f4141Diamond("4-4-2 diamond", TeamSport.football, [
     (5.5, 34),
-    (20, 12), (18, 26), (18, 42), (20, 56),
-    (34, 34), (44, 18), (44, 50), (54, 34),
-    (66, 27), (66, 41),
+    (20, 12),
+    (18, 26),
+    (18, 42),
+    (20, 56),
+    (34, 34),
+    (44, 18),
+    (44, 50),
+    (54, 34),
+    (66, 27),
+    (66, 41),
   ]),
 
   /// custom is what any formation becomes once a player has been moved. It
@@ -164,7 +211,8 @@ enum TeamFormation {
     bool mirrored = false,
     FormationSpread spread = FormationSpread.attacking,
   }) {
-    var along = spread == FormationSpread.ownHalf ? _deepest * 1.06 : _pitchHalfLength;
+    var along =
+        spread == FormationSpread.ownHalf ? _deepest * 1.06 : _pitchHalfLength;
     return [
       for (var (up, across) in metres)
         mirrored
@@ -183,7 +231,17 @@ enum TeamFormation {
 /// defaultSquadNumbers is 1 for the keeper and 2..11 out, which is what a
 /// blank team sheet has on it before anybody has been named.
 const List<String> defaultSquadNumbers = [
-  "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11",
+  "1",
+  "2",
+  "3",
+  "4",
+  "5",
+  "6",
+  "7",
+  "8",
+  "9",
+  "10",
+  "11",
 ];
 
 /// PlayerSpot is one player: who they are, where they stand, and the two
@@ -270,7 +328,8 @@ class PlayerSpot {
       dy: jsonDouble(json["dy"], 0.5),
       locked: jsonBool(json["locked"], false),
       hidden: jsonBool(json["hidden"], false),
-      track: track is Map<String, dynamic> ? ElementTrack.fromJson(track) : null,
+      track:
+          track is Map<String, dynamic> ? ElementTrack.fromJson(track) : null,
     );
   }
 }
@@ -436,7 +495,9 @@ class TeamElement extends CanvasElement {
       spread: how,
       players: [
         for (var i = 0; i < spots.length; i++)
-          (i < players.length ? players[i] : PlayerSpot(number: _defaultNumber(i)))
+          (i < players.length
+                  ? players[i]
+                  : PlayerSpot(number: _defaultNumber(i)))
               .copyWith(dx: spots[i].$1, dy: spots[i].$2, locked: false),
       ],
     );

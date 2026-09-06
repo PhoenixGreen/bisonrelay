@@ -132,7 +132,11 @@ void forgetFfmpegForTest() {
 enum VideoFormat {
   mp4("MP4", "video/mp4", ".mp4", "libx264",
       "Plays everywhere, including Photos on a Mac or an iPhone."),
-  webm("WebM", "video/webm", ".webm", "libvpx-vp9",
+  webm(
+      "WebM",
+      "video/webm",
+      ".webm",
+      "libvpx-vp9",
       "Smaller at the same quality, and plays in browsers and most chat "
           "apps — but not in Photos on a Mac or an iPhone.");
 
@@ -168,8 +172,7 @@ enum VideoQuality {
   final int _vp9;
   const VideoQuality(this.label, this._h264, this._vp9);
 
-  int crfFor(VideoFormat format) =>
-      format == VideoFormat.webm ? _vp9 : _h264;
+  int crfFor(VideoFormat format) => format == VideoFormat.webm ? _vp9 : _h264;
 }
 
 /// renderVideo draws every frame and hands them to ffmpeg.

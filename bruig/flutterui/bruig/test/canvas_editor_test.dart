@@ -1097,13 +1097,42 @@ void main() {
       expect(prefs.enabled, isFalse);
       expect(find.text("Canvas"), findsOneWidget);
 
-      await tester.tap(find.byType(Switch));
+      // The first switch is the feature's own. A second appears under it once
+      // Canvas is on -- see the fetching test below -- so this one is taken by
+      // position rather than by being the only one there is.
+      await tester.tap(find.byType(Switch).first);
       await tester.pumpAndSettle();
       expect(prefs.enabled, isTrue);
 
-      await tester.tap(find.byType(Switch));
+      await tester.tap(find.byType(Switch).first);
       await tester.pumpAndSettle();
       expect(prefs.enabled, isFalse);
+    });
+
+    testWidgets("fetching is off, and is only offered once Canvas is on",
+        (tester) async {
+      // Two decisions, and the second is not about a canvas at all: it is
+      // about whether this app may open a connection of its own, which
+      // nothing else in its interface does. So it is off, it is a switch
+      // rather than a default, and it says what the cost is.
+      var prefs = CanvasPreferences();
+      addTearDown(prefs.dispose);
+      await pump(tester, const CanvasSettingsSection(), prefs: prefs);
+
+      expect(prefs.allowFetching, isFalse);
+      expect(find.text("Let a canvas fetch data"), findsNothing,
+          reason: "nothing to decide while the feature is off");
+
+      prefs.enabled = true;
+      await tester.pumpAndSettle();
+      expect(find.text("Let a canvas fetch data"), findsOneWidget);
+      expect(find.textContaining("does not go through the proxy"),
+          findsOneWidget,
+          reason: "the reason it is off is the reason it is a decision");
+
+      await tester.tap(find.byType(Switch).last);
+      await tester.pumpAndSettle();
+      expect(prefs.allowFetching, isTrue);
     });
   });
 

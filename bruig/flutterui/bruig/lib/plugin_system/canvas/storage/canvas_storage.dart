@@ -193,8 +193,7 @@ class CanvasStorage {
           // inside one. A tree would need a breadcrumb, a move and a recursive
           // delete to be worth having, and this needs none of those.
           if (folder.isEmpty) {
-            folders.add(CanvasEntry(
-                name: base, folder: "", isFolder: true));
+            folders.add(CanvasEntry(name: base, folder: "", isFolder: true));
           }
           continue;
         }
@@ -213,7 +212,8 @@ class CanvasStorage {
       return [];
     }
 
-    folders.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    folders
+        .sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
     documents
         .sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
 
@@ -228,7 +228,10 @@ class CanvasStorage {
         var entry = byName.remove(name);
         if (entry != null) ordered.add(entry);
       }
-      documents = [...ordered, ...documents.where((d) => byName.containsKey(d.name))];
+      documents = [
+        ...ordered,
+        ...documents.where((d) => byName.containsKey(d.name))
+      ];
     }
 
     return [...folders, ...documents];
@@ -317,8 +320,7 @@ class CanvasStorage {
     }
   }
 
-  static Future<bool> rename(
-      String folder, String from, String to) async {
+  static Future<bool> rename(String folder, String from, String to) async {
     var source = await pathFor(folder, from);
     var target = await pathFor(folder, to);
     if (source == null || target == null) return false;

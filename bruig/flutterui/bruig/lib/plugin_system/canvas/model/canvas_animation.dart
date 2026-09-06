@@ -34,8 +34,8 @@ enum KeyframeEasing {
   final String label;
   const KeyframeEasing(this.label);
 
-  static KeyframeEasing fromName(String? name) =>
-      values.firstWhere((e) => e.name == name, orElse: () => KeyframeEasing.linear);
+  static KeyframeEasing fromName(String? name) => values
+      .firstWhere((e) => e.name == name, orElse: () => KeyframeEasing.linear);
 
   /// apply maps a 0..1 position between two keyframes onto an eased one.
   double apply(double t) {
@@ -170,8 +170,13 @@ class Keyframe {
         },
       );
 
-  bool get isRest => values.isEmpty &&
-      dx == 0 && dy == 0 && scale == 1 && rotate == 0 && opacity == 1;
+  bool get isRest =>
+      values.isEmpty &&
+      dx == 0 &&
+      dy == 0 &&
+      scale == 1 &&
+      rotate == 0 &&
+      opacity == 1;
 
   Map<String, dynamic> toJson() => {
         "f": frame,
@@ -195,7 +200,8 @@ class Keyframe {
         values: {
           if (json["v"] case Map<String, dynamic> raw)
             for (var entry in raw.entries)
-              if (entry.value is num) entry.key: (entry.value as num).toDouble(),
+              if (entry.value is num)
+                entry.key: (entry.value as num).toDouble(),
         },
       );
 }
@@ -231,8 +237,7 @@ class ElementTrack {
   /// carry a channel: a chart told how to arrive, a caption told how far along
   /// its line to sit. Those say nothing about position, and treating them as
   /// though they did turned every later drag into a keyframe nobody asked for.
-  bool get posesAnything =>
-      keys.any((k) => k.posesElement || k.values.isEmpty);
+  bool get posesAnything => keys.any((k) => k.posesElement || k.values.isEmpty);
 
   /// at returns the pose for [frame].
   ///
@@ -315,7 +320,8 @@ class ElementTrack {
   /// everything that was drawn.
   int get lastFrame => keys.isEmpty ? 0 : keys.last.frame;
 
-  Map<String, dynamic> toJson() => {"keys": keys.map((k) => k.toJson()).toList()};
+  Map<String, dynamic> toJson() =>
+      {"keys": keys.map((k) => k.toJson()).toList()};
 
   factory ElementTrack.fromJson(Map<String, dynamic> json) {
     var raw = json["keys"];

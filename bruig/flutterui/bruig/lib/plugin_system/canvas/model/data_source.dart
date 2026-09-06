@@ -1,0 +1,275 @@
+import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+
+// data_source.dart is where a table's or a chart's numbers came from, when
+// they came from somewhere rather than being typed.
+//
+// The shape of the problem is that nobody wants to type a league table twice a
+// week, and nobody wants to learn a query language either. So this is two
+// things: a general mapping from JSON to rows, which is a handful of paths,
+// and a small set of presets that fill those paths in for a source somebody is
+// actually likely to use. The general part is what makes it usable with
+// anything; the presets are what make it usable at all.
+//
+// What is deliberately not here is a credential. An API key is kept outside
+// the document -- see storage/canvas_api_keys.dart -- because a canvas is a
+// thing people send each other, and a key in the file would be a key posted to
+// a chat the first time somebody shared their table. The document holds the
+// URL and the paths; the key is the reader's, on their machine.
+
+/// DataKind is where the numbers come from.
+enum DataKind {
+  /// typed is the ordinary case: the cells are the data.
+  typed("Typed in"),
+
+  /// file is a JSON file on this machine, re-read on demand.
+  ///
+  /// The one that costs nothing and answers most of the need: whatever fetches
+  /// the data -- a browser, curl, something on a schedule -- writes a file,
+  /// and the canvas reads it. No network from the app at all.
+  file("A JSON file"),
+
+  /// url is fetched over the internet, and is off unless the reader has turned
+  /// it on. See CanvasPreferences.allowFetching for why that is a decision
+  /// rather than a default.
+  url("A web address");
+
+  final String label;
+  const DataKind(this.label);
+}
+
+/// SourceColumn is one column of the table: what it is called, and where to
+/// find it in each record.
+///
+/// Not DataColumn, which is what it wants to be called and is already the name
+/// of a Material widget -- every file showing one of these in the interface
+/// would have to hide half an import to say it.
+class SourceColumn {
+  final String header;
+
+  /// path is a dotted route into one record -- "team.name", "points",
+  /// "team.crest". Empty means the record itself, which is what a list of
+  /// plain values needs.
+  final String path;
+
+  /// picture marks a column whose value is the address of an image -- a club
+  /// crest, a flag -- rather than something to write in the cell.
+  ///
+  /// Only honoured when fetching is on, because collecting the pictures means
+  /// one request each. Off, the address is written into the cell as text,
+  /// which is ugly but truthful and can be seen to be a URL.
+  final bool picture;
+
+  const SourceColumn({this.header = "", this.path = "", this.picture = false});
+
+  SourceColumn copyWith({String? header, String? path, bool? picture}) =>
+      SourceColumn(
+        header: header ?? this.header,
+        path: path ?? this.path,
+        picture: picture ?? this.picture,
+      );
+
+  Map<String, dynamic> toJson() =>
+      {"h": header, "p": path, if (picture) "pic": true};
+
+  factory SourceColumn.fromJson(Map<String, dynamic> json) => SourceColumn(
+        header: jsonString(json["h"], ""),
+        path: jsonString(json["p"], ""),
+        picture: jsonBool(json["pic"], false),
+      );
+}
+
+/// DataSource is the whole recipe.
+class DataSource {
+  final DataKind kind;
+
+  /// where is the file path or the web address, depending on [kind].
+  final String where;
+
+  /// rowsPath is the route to the list of records inside the document --
+  /// "standings.0.table" for the source below. Empty means the document is
+  /// itself the list.
+  final String rowsPath;
+
+  final List<SourceColumn> columns;
+
+  /// preset is which named recipe filled the paths in, kept so the settings
+  /// panel can show it and offer to fill them in again. Empty for a mapping
+  /// somebody wrote themselves.
+  final String preset;
+
+  /// fetchedAt is when the numbers last arrived, so a table can say how old it
+  /// is rather than looking equally current whether it was refreshed a minute
+  /// or a season ago.
+  final DateTime? fetchedAt;
+
+  const DataSource({
+    this.kind = DataKind.typed,
+    this.where = "",
+    this.rowsPath = "",
+    this.columns = const [],
+    this.preset = "",
+    this.fetchedAt,
+  });
+
+  bool get on => kind != DataKind.typed && where.isNotEmpty;
+
+  /// host is the address's host, which is what an API key is filed under.
+  String get host =>
+      kind == DataKind.url ? (Uri.tryParse(where)?.host ?? "") : "";
+
+  DataSource copyWith({
+    DataKind? kind,
+    String? where,
+    String? rowsPath,
+    List<SourceColumn>? columns,
+    String? preset,
+    DateTime? fetchedAt,
+  }) =>
+      DataSource(
+        kind: kind ?? this.kind,
+        where: where ?? this.where,
+        rowsPath: rowsPath ?? this.rowsPath,
+        columns: columns ?? this.columns,
+        preset: preset ?? this.preset,
+        fetchedAt: fetchedAt ?? this.fetchedAt,
+      );
+
+  Map<String, dynamic> toJson() => {
+        "kind": kind.name,
+        "where": where,
+        if (rowsPath.isNotEmpty) "rows": rowsPath,
+        if (columns.isNotEmpty) "cols": [for (var c in columns) c.toJson()],
+        if (preset.isNotEmpty) "preset": preset,
+        if (fetchedAt != null) "at": fetchedAt!.toIso8601String(),
+      };
+
+  factory DataSource.fromJson(Map<String, dynamic> json) => DataSource(
+        kind: DataKind.values.firstWhere((k) => k.name == json["kind"],
+            orElse: () => DataKind.typed),
+        where: jsonString(json["where"], ""),
+        rowsPath: jsonString(json["rows"], ""),
+        columns: [
+          if (json["cols"] case List raw)
+            for (var c in raw)
+              if (c is Map<String, dynamic>) SourceColumn.fromJson(c),
+        ],
+        preset: jsonString(json["preset"], ""),
+        fetchedAt: DateTime.tryParse(jsonString(json["at"], "")),
+      );
+}
+
+/// valueAtPath walks a dotted path into decoded JSON.
+///
+/// "standings.0.table" is a map, then the first item of a list, then a map
+/// again. Numbers are list indices; everything else is a key. Missing anything
+/// gives null rather than throwing -- an API that has changed shape, or a
+/// record with a field the others have, is a blank cell and not a broken
+/// canvas.
+dynamic valueAtPath(dynamic json, String path) {
+  if (path.isEmpty) return json;
+  dynamic at = json;
+  for (var step in path.split(".")) {
+    if (at == null) return null;
+    var index = int.tryParse(step);
+    if (index != null && at is List) {
+      at = index >= 0 && index < at.length ? at[index] : null;
+    } else if (at is Map) {
+      at = at[step];
+    } else {
+      return null;
+    }
+  }
+  return at;
+}
+
+/// rowsFromJson turns a decoded document into table rows, header first.
+///
+/// Returns an empty list when the path does not lead to a list, which is what
+/// a caller shows as "nothing came back" -- there is nothing useful to do with
+/// half a table, and replacing good rows with rubbish is worse than refusing.
+List<List<String>> rowsFromJson(dynamic json, DataSource source) {
+  var records = valueAtPath(json, source.rowsPath);
+  if (records is! List || source.columns.isEmpty) return const [];
+
+  return [
+    [for (var column in source.columns) column.header],
+    for (var record in records)
+      [
+        for (var column in source.columns)
+          _text(valueAtPath(record, column.path))
+      ],
+  ];
+}
+
+/// _text is a JSON value as a cell.
+///
+/// Whole numbers lose their ".0": a points column that read "6.0" all the way
+/// down would be a table nobody would keep. Anything that is not a scalar
+/// becomes empty rather than the word "Instance of ...", which is what a
+/// default toString would put in the cell.
+String _text(dynamic value) {
+  if (value == null) return "";
+  if (value is num) {
+    return value == value.roundToDouble() && value.abs() < 1e15
+        ? "${value.toInt()}"
+        : "$value";
+  }
+  if (value is String || value is bool) return "$value";
+  return "";
+}
+
+/// TableLink is a chart taking its numbers from a table on the same canvas.
+///
+/// The alternative was giving the chart its own DataSource and letting it
+/// fetch too, which is worse in every way that matters: two requests for one
+/// set of numbers, two things to keep in step, and a chart that could quietly
+/// disagree with the table beside it. A canvas showing a league table and a
+/// chart of the same league should be showing one set of figures, and this is
+/// what makes that structurally true rather than a thing to be careful about.
+class TableLink {
+  /// tableId is the element it reads. Empty when the chart's numbers are its
+  /// own, which is the default.
+  final String tableId;
+
+  /// categoryColumn is the column the labels come from -- the team's name.
+  final int categoryColumn;
+
+  /// valueColumns are the columns that become series, in order. More than one
+  /// is a chart comparing two figures per row.
+  final List<int> valueColumns;
+
+  const TableLink({
+    this.tableId = "",
+    this.categoryColumn = 0,
+    this.valueColumns = const [],
+  });
+
+  bool get on => tableId.isNotEmpty && valueColumns.isNotEmpty;
+
+  TableLink copyWith({
+    String? tableId,
+    int? categoryColumn,
+    List<int>? valueColumns,
+  }) =>
+      TableLink(
+        tableId: tableId ?? this.tableId,
+        categoryColumn: categoryColumn ?? this.categoryColumn,
+        valueColumns: valueColumns ?? this.valueColumns,
+      );
+
+  Map<String, dynamic> toJson() => {
+        "id": tableId,
+        "cat": categoryColumn,
+        "vals": valueColumns,
+      };
+
+  factory TableLink.fromJson(Map<String, dynamic> json) => TableLink(
+        tableId: jsonString(json["id"], ""),
+        categoryColumn: jsonInt(json["cat"], 0),
+        valueColumns: [
+          if (json["vals"] case List raw)
+            for (var v in raw)
+              if (v is num) v.toInt(),
+        ],
+      );
+}

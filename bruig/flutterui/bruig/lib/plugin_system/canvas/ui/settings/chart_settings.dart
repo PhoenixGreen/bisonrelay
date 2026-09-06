@@ -1,4 +1,6 @@
+import 'package:bruig/plugin_system/canvas/model/data_source.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/chart_data_editor.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
@@ -259,6 +261,12 @@ List<Widget> chartSettings(
           onChanged: (v) => now(e.copyWith(smooth: v)),
         ),
     ]),
+    // Taking the numbers from a table on the same canvas. Its own section
+    // beside the chart's own data, because it replaces that data rather than
+    // adding to it -- and because a canvas with a league table and a chart of
+    // the same league should be showing one set of figures.
+    _tableSection(context, controller, e, write, begin, commit),
+
     // The words on the chart, together, in a section of their own. The title,
     // the description and the key are the same kind of thing -- writing laid
     // over a picture -- and they were three separate clusters and an expander
@@ -514,4 +522,113 @@ List<Widget> chartSettings(
       ),
     ),
   ];
+}
+
+/// _tableSection is "take the numbers from a table on this canvas".
+///
+/// Only shown when there is a table to take them from. A section offering to
+/// read something that does not exist is a section that reads as broken.
+Widget _tableSection(
+  BuildContext context,
+  CanvasController controller,
+  ChartElement e,
+  SettingsWrite write,
+  VoidCallback begin,
+  VoidCallback commit,
+) {
+  var tables = [
+    for (var element in controller.document.elements)
+      if (element is TableElement) element,
+  ];
+  if (tables.isEmpty) return const SizedBox();
+
+  var link = e.fromTable;
+  TableElement? chosen;
+  for (var table in tables) {
+    if (table.id == link.tableId) chosen = table;
+  }
+  var columns = chosen?.columnCount ?? 0;
+
+  String columnName(TableElement table, int column) {
+    var header = table.header;
+    var name = column < header.length ? header[column].trim() : "";
+    return name.isEmpty ? "Column ${column + 1}" : name;
+  }
+
+  void set(TableLink next) {
+    begin();
+    write(e.copyWith(fromTable: next));
+    commit();
+  }
+
+  return boxed(
+    context,
+    CanvasExpander(
+      label: "From a table",
+      remember: "chartFromTable",
+      trailing: chosen == null
+          ? "Not linked"
+          : "${link.valueColumns.length} column"
+              "${link.valueColumns.length == 1 ? "" : "s"}",
+      children: [
+        CanvasControlGroup(label: "Table", children: [
+          CanvasDropdown<String>(
+            label: "Read from",
+            value: link.tableId,
+            width: 168,
+            options: [
+              ("", "Not linked"),
+              for (var table in tables)
+                (table.id, table.name.isEmpty ? "Table" : table.name),
+            ],
+            onChanged: (id) => set(link.copyWith(tableId: id)),
+          ),
+        ]),
+        if (chosen case var table?) ...[
+          CanvasControlGroup(label: "Labels", children: [
+            CanvasDropdown<int>(
+              label: "From column",
+              value: link.categoryColumn,
+              width: 148,
+              options: [
+                for (var c = 0; c < columns; c++) (c, columnName(table, c)),
+              ],
+              onChanged: (c) => set(link.copyWith(categoryColumn: c)),
+            ),
+          ]),
+          CanvasControlGroup(label: "Values", children: [
+            for (var c = 0; c < columns; c++)
+              CanvasToggle(
+                label: columnName(table, c),
+                value: link.valueColumns.contains(c),
+                onChanged: (v) => set(link.copyWith(valueColumns: [
+                  for (var i = 0; i < columns; i++)
+                    if (i == c ? v : link.valueColumns.contains(i)) i,
+                ])),
+              ),
+            CanvasHint("Each column you choose becomes a series. The table's "
+                "header names it, so a chart of the Points column is "
+                "labelled Points without typing it."),
+          ]),
+          CanvasControlGroup(label: "Apply", children: [
+            CanvasIconButton(
+              icon: Icons.download_outlined,
+              tooltip: link.on
+                  ? "Take the numbers from the table now"
+                  : "Choose at least one column of values",
+              onPressed: link.on
+                  ? () {
+                      begin();
+                      write(e.copyWith(data: chartDataFromTable(table, link)));
+                      commit();
+                    }
+                  : null,
+            ),
+            CanvasHint("Refreshing the table brings the chart with it, so the "
+                "two cannot drift apart."),
+          ]),
+        ],
+      ],
+    ),
+  );
 }

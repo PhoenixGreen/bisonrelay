@@ -112,6 +112,7 @@ enum LineEnd {
 class LineElement extends CanvasElement {
   final Color color;
   final double strokeWidth;
+
   /// cap is how the stroke finishes, and startEnd/endEnd are what is drawn at
   /// each end. Three settings where there was one; see [LineCapStyle].
   final LineStrokeCap cap;
@@ -213,7 +214,11 @@ class LineElement extends CanvasElement {
       LineCapStyle.round => (LineStrokeCap.round, LineEnd.none, LineEnd.none),
       LineCapStyle.square => (LineStrokeCap.square, LineEnd.none, LineEnd.none),
       LineCapStyle.arrow => (LineStrokeCap.flat, LineEnd.none, LineEnd.arrow),
-      LineCapStyle.arrowBoth => (LineStrokeCap.flat, LineEnd.arrow, LineEnd.arrow),
+      LineCapStyle.arrowBoth => (
+          LineStrokeCap.flat,
+          LineEnd.arrow,
+          LineEnd.arrow
+        ),
       LineCapStyle.dot => (LineStrokeCap.round, LineEnd.circle, LineEnd.circle),
       _ => (LineStrokeCap.flat, LineEnd.none, LineEnd.none),
     };

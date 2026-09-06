@@ -61,8 +61,7 @@ class PublishRecord {
     this.publishedAt,
   });
 
-  bool get isEmpty =>
-      sharedPath.isEmpty && documentName.isEmpty;
+  bool get isEmpty => sharedPath.isEmpty && documentName.isEmpty;
 
   bool get hasShare => sharedPath.isNotEmpty;
   bool get hasDocument => documentName.isNotEmpty;
@@ -90,8 +89,7 @@ class PublishRecord {
         if (documentName.isNotEmpty) "documentName": documentName,
         if (embedId.isNotEmpty) "embedId": embedId,
         if (format.isNotEmpty) "format": format,
-        if (publishedAt != null)
-          "publishedAt": publishedAt!.toIso8601String(),
+        if (publishedAt != null) "publishedAt": publishedAt!.toIso8601String(),
       };
 
   factory PublishRecord.fromJson(Map<String, dynamic> json) => PublishRecord(

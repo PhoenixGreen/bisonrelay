@@ -300,8 +300,8 @@ class CanvasDocument {
                 if (e is Map<String, dynamic>) elementFromJson(e),
             ]
           : const [],
-      frames: jsonInt(json["frames"], defaultFrameCount)
-          .clamp(1, maxFrameCount),
+      frames:
+          jsonInt(json["frames"], defaultFrameCount).clamp(1, maxFrameCount),
       frameRate: jsonInt(json["frameRate"], defaultFrameRate).clamp(1, 60),
       actions: acts is List
           ? [

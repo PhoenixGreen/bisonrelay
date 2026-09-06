@@ -21,6 +21,7 @@ class CanvasPreferences extends ChangeNotifier {
   static const _panelKey = "canvasSidebarPanel";
   static const _lastFolderKey = "canvasLastFolder";
   static const _lastNameKey = "canvasLastName";
+  static const _allowFetchingKey = "canvasAllowFetching";
 
   /// enabled is whether the Canvas section exists.
   bool get enabled => _enabled;
@@ -41,6 +42,30 @@ class CanvasPreferences extends ChangeNotifier {
   String get lastName => _lastName;
   String _lastName = "";
 
+  /// allowFetching is whether a table or a chart may go and get its data over
+  /// the internet.
+  ///
+  /// Off, and a decision rather than a default. Nothing else in this app's
+  /// interface opens a connection of its own: everything goes out through the
+  /// daemon, which is what the proxy setting in Settings applies to. A fetch
+  /// from here does not, so on a machine set up to reach the network only
+  /// through Tor it would be the one connection that did not -- and the
+  /// address it connected to would learn who was asking.
+  ///
+  /// That is a fair trade for somebody who wants a live league table on a
+  /// machine with no proxy set, and it is not a trade anybody should make
+  /// without being told. So the switch says so, and the file source next to it
+  /// does the same job with no connection at all.
+  bool get allowFetching => _allowFetching;
+  bool _allowFetching = false;
+
+  set allowFetching(bool value) {
+    if (_allowFetching == value) return;
+    _allowFetching = value;
+    StorageManager.saveBool(_allowFetchingKey, value);
+    notifyListeners();
+  }
+
   /// load reads what was saved. Called once at startup; until it returns the
   /// defaults are in force, which is the right way round -- a nav item that
   /// appeared a moment after the window opened would be worse than one that
@@ -50,6 +75,8 @@ class CanvasPreferences extends ChangeNotifier {
     _panel = int.tryParse(await StorageManager.readString(_panelKey)) ?? 0;
     _lastFolder = await StorageManager.readString(_lastFolderKey);
     _lastName = await StorageManager.readString(_lastNameKey);
+    _allowFetching =
+        await StorageManager.readBool(_allowFetchingKey, defaultVal: false);
     notifyListeners();
   }
 

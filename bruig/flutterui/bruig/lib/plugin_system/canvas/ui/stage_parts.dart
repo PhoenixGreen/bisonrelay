@@ -80,17 +80,15 @@ ChartElement? chartLabelDragged(
   var y = (at.dy - bounds.top) / bounds.height;
 
   if (grab.part == ChartLabelPart.legend) {
-    return grownFor(
-        e.copyWith(legend: e.legend.copyWith(x: x, y: y)), bounds);
+    return grownFor(e.copyWith(legend: e.legend.copyWith(x: x, y: y)), bounds);
   }
 
   // Where it is drawn now, which is its own place or the chart's idea of one
   // -- a label dragged for the first time must move from where it can be seen
   // rather than from a corner it has never been in.
   var drawn = chartLabelPlaces(e, bounds)[grab.part]!;
-  var box =
-      (grab.part == ChartLabelPart.title ? e.titleBox : e.descriptionBox)
-          .copyWith(
+  var box = (grab.part == ChartLabelPart.title ? e.titleBox : e.descriptionBox)
+      .copyWith(
     x: (drawn.left - bounds.left) / bounds.width,
     y: (drawn.top - bounds.top) / bounds.height,
     width: drawn.width / bounds.width,
@@ -101,9 +99,8 @@ ChartElement? chartLabelDragged(
       ? box.copyWith(
           width: ((doc.dx - grab.grab.dx - bounds.left) / bounds.width - box.x)
               .clamp(0.05, 2.0),
-          height:
-              ((doc.dy - grab.grab.dy - bounds.top) / bounds.height - box.y)
-                  .clamp(0.03, 2.0),
+          height: ((doc.dy - grab.grab.dy - bounds.top) / bounds.height - box.y)
+              .clamp(0.03, 2.0),
         )
       : box.copyWith(x: x, y: y);
 

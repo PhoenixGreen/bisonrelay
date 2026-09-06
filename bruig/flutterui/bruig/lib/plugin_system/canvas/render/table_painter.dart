@@ -55,8 +55,8 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
       fill = e.zebraFill;
     }
     if (fill != null && fill.a > 0) {
-      canvas.drawRect(Rect.fromLTWH(rect.left, y, rect.width, h),
-          Paint()..color = fill);
+      canvas.drawRect(
+          Rect.fromLTWH(rect.left, y, rect.width, h), Paint()..color = fill);
     }
     y += h;
   }
@@ -172,8 +172,8 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
       // one for L, and merging them gave every chip in the cell the last
       // rule's background -- and only that rule's chips were drawn at all, so
       // a row reading "D L W" showed one letter marked and two bare.
-      var slots = _slotsIn(e.cell(r, c), spec, textBox,
-          style?.letterWidth ?? 0, style?.letterSpacing ?? 0);
+      var slots = _slotsIn(e.cell(r, c), spec, textBox, style?.letterWidth ?? 0,
+          style?.letterSpacing ?? 0);
       _paintChips(canvas, look, e.cell(r, c), spec, textBox,
           Rect.fromLTWH(x, y, w, h), slots);
 
@@ -260,9 +260,8 @@ void _paintCellImage(ui.Canvas canvas, ui.Image image, Rect box) {
       center: box.center,
       width: size.width * scale,
       height: size.height * scale);
-  canvas.drawImageRect(
-      image, Offset.zero & size, drawn, Paint()..filterQuality =
-          FilterQuality.high);
+  canvas.drawImageRect(image, Offset.zero & size, drawn,
+      Paint()..filterQuality = FilterQuality.high);
 }
 
 /// _paintMissingPicture is the mark left where a picture has not arrived.
@@ -288,13 +287,13 @@ void _paintMissingPicture(ui.Canvas canvas, Rect box, TableElement e) {
 /// cropped, at whatever size the cell happens to be.
 void _paintCellVector(ui.Canvas canvas, CanvasVector vector, Rect box) {
   if (box.width <= 0 || box.height <= 0 || vector.size.isEmpty) return;
-  var scale = math.min(
-      box.width / vector.size.width, box.height / vector.size.height);
+  var scale =
+      math.min(box.width / vector.size.width, box.height / vector.size.height);
   var drawn = Size(vector.size.width * scale, vector.size.height * scale);
 
   canvas.save();
-  canvas.translate(box.center.dx - drawn.width / 2,
-      box.center.dy - drawn.height / 2);
+  canvas.translate(
+      box.center.dx - drawn.width / 2, box.center.dy - drawn.height / 2);
   canvas.scale(scale);
   canvas.drawPicture(vector.picture);
   canvas.restore();
@@ -371,8 +370,8 @@ void _paintChips(ui.Canvas canvas, TableCellLook look, String text,
 /// A W is wider than an L, so however carefully the spacing is set the boxes
 /// round a row of letters come out at different places -- lining them up by
 /// eye is a job that cannot be finished. A slot each makes it arithmetic.
-List<Rect>? _slotsIn(String text, TextSpec spec, Rect box, double width,
-    double gap) {
+List<Rect>? _slotsIn(
+    String text, TextSpec spec, Rect box, double width, double gap) {
   if (width <= 0 || text.isEmpty) return null;
 
   var pitch = width + gap;
@@ -387,9 +386,8 @@ List<Rect>? _slotsIn(String text, TextSpec spec, Rect box, double width,
   // cell made every chip a full-height bar, so the one number was setting the
   // width and the height at once -- and there was no way to ask for a square
   // one. Min height is what makes a slot taller than its letters.
-  var height = math.min(box.height, layoutText(text, spec,
-          maxWidth: double.infinity)
-      .height);
+  var height = math.min(
+      box.height, layoutText(text, spec, maxWidth: double.infinity).height);
   var top = switch (spec.verticalAlign) {
     VerticalAlignSpec.top => box.top,
     VerticalAlignSpec.bottom => box.bottom - height,
@@ -477,7 +475,6 @@ TableCellStyle? _typeAt(TableCellLook look, int index) {
   return rule != null && rule.style.changesType ? rule.style : null;
 }
 
-
 /// _wordsIn is the box the words actually occupy inside their cell, which is
 /// what a chip is drawn round.
 Rect _wordsIn(String text, TextSpec spec, Rect box) {
@@ -538,8 +535,8 @@ void _paintStyleBox(ui.Canvas canvas, Rect cell, TableCellStyle style,
   // is no honest way to round one when only one of them is drawn.
   if (style.allSides) {
     canvas.drawRRect(
-        RRect.fromRectAndRadius(box.deflate(style.borderWidth / 2),
-            Radius.circular(style.radius)),
+        RRect.fromRectAndRadius(
+            box.deflate(style.borderWidth / 2), Radius.circular(style.radius)),
         paint);
     return;
   }

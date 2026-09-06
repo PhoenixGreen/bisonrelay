@@ -67,7 +67,8 @@ List<Widget> elementSettings(
         imageSettings(context, controller, e, write, begin, commit),
       ChartElement e =>
         chartSettings(context, controller, e, write, begin, commit),
-      TableElement e => tableSettings(context, e, write, begin, commit),
+      TableElement e =>
+        tableSettings(context, controller, e, write, begin, commit),
       ButtonElement e => buttonSettings(controller, e, write, begin, commit),
       BackgroundElement e => [
           ProceduralSettings(

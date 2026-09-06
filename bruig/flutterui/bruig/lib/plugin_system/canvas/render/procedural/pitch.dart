@@ -74,8 +74,8 @@ PitchMetrics pitchRect(Rect rect, PitchSport sport) {
     width = height * aspect;
   }
 
-  var area = Rect.fromCenter(
-      center: available.center, width: width, height: height);
+  var area =
+      Rect.fromCenter(center: available.center, width: width, height: height);
   var length = switch (sport) {
     PitchSport.football || PitchSport.blank => 105.0,
     PitchSport.basketball => 28.0,
@@ -104,8 +104,8 @@ void paintPitch(ui.Canvas canvas, Rect rect, ProceduralSpec spec) {
     ..style = PaintingStyle.stroke
     ..strokeWidth = math.max(1, metrics.m(0.12))
     ..color = spec.foreground.withValues(
-        alpha: (spec.foreground.a * (0.55 + spec.intensity * 0.45))
-            .clamp(0, 1));
+        alpha:
+            (spec.foreground.a * (0.55 + spec.intensity * 0.45)).clamp(0, 1));
 
   switch (spec.sport) {
     case PitchSport.football:
@@ -158,7 +158,8 @@ void _turfTexture(ui.Canvas canvas, Rect area, ProceduralSpec spec) {
       paint.color = Color.fromRGBO(
           0, 0, 0, ((f - 0.5) * 0.12 * spec.variation).clamp(0.0, 0.08));
       canvas.drawRect(
-          Rect.fromLTWH(area.left + ix * cell, area.top + iy * cell, cell, cell),
+          Rect.fromLTWH(
+              area.left + ix * cell, area.top + iy * cell, cell, cell),
           paint);
     }
   }
@@ -214,13 +215,13 @@ void _football(
 
     // Penalty area: 16.5m deep, 40.32m wide, centred.
     canvas.drawRect(
-        Rect.fromPoints(p.at(x(0), (w - 40.32) / 2),
-            p.at(x(16.5), (w + 40.32) / 2)),
+        Rect.fromPoints(
+            p.at(x(0), (w - 40.32) / 2), p.at(x(16.5), (w + 40.32) / 2)),
         line);
     // Goal area: 5.5m deep, 18.32m wide.
     canvas.drawRect(
-        Rect.fromPoints(p.at(x(0), (w - 18.32) / 2),
-            p.at(x(5.5), (w + 18.32) / 2)),
+        Rect.fromPoints(
+            p.at(x(0), (w - 18.32) / 2), p.at(x(5.5), (w + 18.32) / 2)),
         line);
 
     var spot = p.at(x(11), w / 2);
@@ -255,12 +256,8 @@ void _football(
       var start = cx == 0
           ? (cy == 0 ? -math.pi / 2 : 0.0)
           : (cy == 0 ? math.pi : math.pi / 2);
-      canvas.drawArc(
-          Rect.fromCircle(center: p.at(cx, cy), radius: p.m(1)),
-          start,
-          math.pi / 2,
-          false,
-          line);
+      canvas.drawArc(Rect.fromCircle(center: p.at(cx, cy), radius: p.m(1)),
+          start, math.pi / 2, false, line);
     }
   }
 }
@@ -278,8 +275,7 @@ void _basketball(ui.Canvas canvas, PitchMetrics p, Paint line) {
 
     // The key: 4.9m wide, 5.8m deep, with the free-throw circle on its edge.
     canvas.drawRect(
-        Rect.fromPoints(
-            p.at(x(0), (w - 4.9) / 2), p.at(x(5.8), (w + 4.9) / 2)),
+        Rect.fromPoints(p.at(x(0), (w - 4.9) / 2), p.at(x(5.8), (w + 4.9) / 2)),
         line);
     canvas.drawCircle(p.at(x(5.8), w / 2), p.m(1.8), line);
 
@@ -306,7 +302,8 @@ void _tennis(ui.Canvas canvas, PitchMetrics p, Paint line) {
   var singlesInset = (w - 8.23) / 2;
 
   canvas.drawRect(a, line);
-  canvas.drawLine(p.at(0, singlesInset), p.at(p.lengthMetres, singlesInset), line);
+  canvas.drawLine(
+      p.at(0, singlesInset), p.at(p.lengthMetres, singlesInset), line);
   canvas.drawLine(
       p.at(0, w - singlesInset), p.at(p.lengthMetres, w - singlesInset), line);
 
@@ -351,8 +348,8 @@ void _hockey(ui.Canvas canvas, PitchMetrics p, Paint line) {
         line,
       );
     }
-    canvas.drawLine(p.at(x(14.63), (w - 3.66) / 2),
-        p.at(x(14.63), (w + 3.66) / 2), line);
+    canvas.drawLine(
+        p.at(x(14.63), (w - 3.66) / 2), p.at(x(14.63), (w + 3.66) / 2), line);
   }
 }
 
@@ -369,8 +366,8 @@ void _rugby(ui.Canvas canvas, PitchMetrics p, Paint line) {
     _dashedLine(canvas, p.at(x, 0), p.at(x, w), line, p.m(1.5), p.m(1.0));
   }
   for (var y in [5.0, 15.0, w - 15, w - 5]) {
-    _dashedLine(canvas, p.at(0, y), p.at(p.lengthMetres, y), line, p.m(1.0),
-        p.m(2.0));
+    _dashedLine(
+        canvas, p.at(0, y), p.at(p.lengthMetres, y), line, p.m(1.0), p.m(2.0));
   }
 }
 
@@ -394,11 +391,15 @@ void _americanFootball(
   var yard = p.m(0.9144);
   for (var y = 5; y <= 95; y += 5) {
     var x = p.area.left + endZone + y * yard;
-    canvas.drawLine(Offset(x, p.area.top), Offset(x, p.area.bottom),
-        y % 10 == 0 ? line : (Paint()
-          ..color = line.color.withValues(alpha: line.color.a * 0.55)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = line.strokeWidth * 0.7));
+    canvas.drawLine(
+        Offset(x, p.area.top),
+        Offset(x, p.area.bottom),
+        y % 10 == 0
+            ? line
+            : (Paint()
+              ..color = line.color.withValues(alpha: line.color.a * 0.55)
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = line.strokeWidth * 0.7));
   }
   // Hash marks, at the two inbound lines.
   for (var y in [w * 0.36, w * 0.64]) {

@@ -1,4 +1,3 @@
-
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:flutter/painting.dart';
 

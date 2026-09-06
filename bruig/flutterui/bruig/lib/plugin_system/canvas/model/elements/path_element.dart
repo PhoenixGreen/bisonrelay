@@ -138,7 +138,8 @@ class PathFollow {
 
   factory PathFollow.fromJson(Map<String, dynamic> json) => PathFollow(
         elementId: jsonString(json["id"], ""),
-        playerIndex: json["player"] is num ? (json["player"] as num).toInt() : null,
+        playerIndex:
+            json["player"] is num ? (json["player"] as num).toInt() : null,
       );
 }
 
@@ -148,6 +149,7 @@ class PathElement extends CanvasElement {
 
   final Color color;
   final double strokeWidth;
+
   /// cap is how the stroke finishes, and startEnd/endEnd are what is drawn at
   /// each end -- the same three settings a line has, for the same reason: a
   /// route usually wants a dot where it starts and an arrow where it stops.
@@ -313,8 +315,8 @@ class PathElement extends CanvasElement {
     var span = to - from;
     return copyWith(nodes: [
       for (var i = 0; i < nodes.length; i++)
-        nodes[i].copyWith(
-            frame: from + (span * i / (nodes.length - 1)).round()),
+        nodes[i]
+            .copyWith(frame: from + (span * i / (nodes.length - 1)).round()),
     ]);
   }
 
@@ -347,7 +349,8 @@ class PathElement extends CanvasElement {
     var a = nodes[index];
     var b = nodes[index + 1];
 
-    Offset lerp(Offset p, Offset q) => Offset((p.dx + q.dx) / 2, (p.dy + q.dy) / 2);
+    Offset lerp(Offset p, Offset q) =>
+        Offset((p.dx + q.dx) / 2, (p.dy + q.dy) / 2);
 
     // In the element's own fractional space, which is what the nodes store.
     var p0 = a.point;
@@ -579,6 +582,10 @@ class PathElement extends CanvasElement {
             outDy: -0.06,
             frame: math.max(1, frames ~/ 2)),
         PathNode(
-            x: 0.95, y: 0.62, inDx: -0.18, inDy: -0.2, frame: math.max(2, frames - 1)),
+            x: 0.95,
+            y: 0.62,
+            inDx: -0.18,
+            inDy: -0.2,
+            frame: math.max(2, frames - 1)),
       ];
 }

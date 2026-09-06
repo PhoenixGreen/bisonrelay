@@ -106,8 +106,8 @@ class ButtonElement extends CanvasElement {
     super.base, {
     this.label = "Button",
     this.textSpec = const TextSpec(fontSize: 20, weight: 600),
-    this.box = const BoxSpec(
-        fill: Color(0xFF3D7EFF), borderRadius: 8, padding: 12),
+    this.box =
+        const BoxSpec(fill: Color(0xFF3D7EFF), borderRadius: 8, padding: 12),
     this.hoverFill = const Color(0x00000000),
     this.hoverTextColor = const Color(0x00000000),
     this.action = const ButtonAction(),
@@ -156,12 +156,14 @@ class ButtonElement extends CanvasElement {
           label: jsonString(json["label"], "Button"),
           textSpec: jsonSpec(json["textSpec"], TextSpec.fromJson,
               const TextSpec(fontSize: 20, weight: 600)),
-          box: jsonSpec(json["box"], BoxSpec.fromJson,
+          box: jsonSpec(
+              json["box"],
+              BoxSpec.fromJson,
               const BoxSpec(
                   fill: Color(0xFF3D7EFF), borderRadius: 8, padding: 12)),
           hoverFill: colorFromJson(json["hoverFill"], const Color(0x00000000)),
           hoverTextColor:
               colorFromJson(json["hoverText"], const Color(0x00000000)),
-          action: jsonSpec(json["action"], ButtonAction.fromJson,
-              const ButtonAction()));
+          action: jsonSpec(
+              json["action"], ButtonAction.fromJson, const ButtonAction()));
 }

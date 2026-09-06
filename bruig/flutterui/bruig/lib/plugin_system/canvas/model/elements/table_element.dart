@@ -9,6 +9,7 @@ import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 // "import table_element.dart" still brings a whole table.
 export 'package:bruig/plugin_system/canvas/model/elements/table_sort.dart';
 
+import 'package:bruig/plugin_system/canvas/model/data_source.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/table_sort.dart';
 
 /// TableGrid is which rules a table draws between its cells.
@@ -22,8 +23,8 @@ enum TableGrid {
   final String label;
   const TableGrid(this.label);
 
-  static TableGrid fromName(String? name) =>
-      values.firstWhere((g) => g.name == name, orElse: () => TableGrid.horizontal);
+  static TableGrid fromName(String? name) => values
+      .firstWhere((g) => g.name == name, orElse: () => TableGrid.horizontal);
 
   bool get drawsHorizontal => this == all || this == horizontal;
   bool get drawsVertical => this == all || this == vertical;
@@ -168,7 +169,8 @@ class TableCellStyle {
 
   bool get allSides => !sides.contains(false);
 
-  bool get paintsBox => background.a > 0 || (borderColor.a > 0 && borderWidth > 0);
+  bool get paintsBox =>
+      background.a > 0 || (borderColor.a > 0 && borderWidth > 0);
 
   bool get changesType =>
       textColor.a > 0 ||
@@ -423,8 +425,8 @@ class TableRule {
     var spec = column.trim();
     if (spec.isEmpty) return true;
 
-    var byName = header.indexWhere(
-        (h) => h.trim().toLowerCase() == spec.toLowerCase());
+    var byName =
+        header.indexWhere((h) => h.trim().toLowerCase() == spec.toLowerCase());
     if (byName >= 0) return byName == index;
     return spanMatches(spec, index);
   }
@@ -463,7 +465,9 @@ class TableRule {
 
     switch (how) {
       case TableMatch.cell:
-        return cell.trim().toLowerCase() == wanted ? [(0, cell.length)] : const [];
+        return cell.trim().toLowerCase() == wanted
+            ? [(0, cell.length)]
+            : const [];
       case TableMatch.anywhere:
       case TableMatch.word:
         // A whole word is bounded by anything that is not a letter or a
@@ -525,8 +529,8 @@ class TableRule {
             : (jsonBool(json["loose"], false)
                 ? TableMatch.anywhere
                 : TableMatch.cell),
-        style: jsonSpec(json["style"], TableCellStyle.fromJson,
-            const TableCellStyle()),
+        style: jsonSpec(
+            json["style"], TableCellStyle.fromJson, const TableCellStyle()),
       );
 }
 
@@ -601,6 +605,11 @@ class TableElement extends CanvasElement {
   final bool zebra;
   final Color zebraFill;
 
+  /// source is where the rows came from, when they came from somewhere. See
+  /// DataSource; a table whose cells were typed has the default and never
+  /// thinks about it again.
+  final DataSource source;
+
   /// sort is the order the rows were last put in, kept so that the same order
   /// can be applied again after the data underneath changes.
   final TableSort sort;
@@ -642,10 +651,10 @@ class TableElement extends CanvasElement {
     this.headerRow = true,
     this.headerColumn = false,
     this.showOutline = true,
-    this.cellSpec = const TextSpec(
-        fontSize: 18, weight: 400, align: TextAlignSpec.left),
-    this.headerSpec = const TextSpec(
-        fontSize: 18, weight: 700, align: TextAlignSpec.left),
+    this.cellSpec =
+        const TextSpec(fontSize: 18, weight: 400, align: TextAlignSpec.left),
+    this.headerSpec =
+        const TextSpec(fontSize: 18, weight: 700, align: TextAlignSpec.left),
     this.headerFill = const Color(0xFF1D2733),
     this.cellFill = const Color(0x00000000),
     this.zebra = true,
@@ -660,13 +669,13 @@ class TableElement extends CanvasElement {
     this.headerHeightRatio = 1.15,
     this.rules = const [],
     this.sort = const TableSort(),
+    this.source = const DataSource(),
   });
 
   @override
   ElementKind get kind => ElementKind.table;
 
-  int get columnCount =>
-      rows.fold(0, (n, r) => r.length > n ? r.length : n);
+  int get columnCount => rows.fold(0, (n, r) => r.length > n ? r.length : n);
 
   @override
   Set<String> get assetIds => {
@@ -696,7 +705,8 @@ class TableElement extends CanvasElement {
   /// header is the first row when there is one, for resolving a rule's column
   /// by name. Empty otherwise, which makes every name fail to match and every
   /// number still work.
-  List<String> get header => headerRow && rows.isNotEmpty ? rows.first : const [];
+  List<String> get header =>
+      headerRow && rows.isNotEmpty ? rows.first : const [];
 
   /// lookAt is what the rules say about one cell.
   ///
@@ -756,10 +766,8 @@ class TableElement extends CanvasElement {
               minHeight: rule.style.minHeight != 0
                   ? rule.style.minHeight
                   : style.minHeight,
-              nudgeX:
-                  rule.style.nudgeX != 0 ? rule.style.nudgeX : style.nudgeX,
-              nudgeY:
-                  rule.style.nudgeY != 0 ? rule.style.nudgeY : style.nudgeY,
+              nudgeX: rule.style.nudgeX != 0 ? rule.style.nudgeX : style.nudgeX,
+              nudgeY: rule.style.nudgeY != 0 ? rule.style.nudgeY : style.nudgeY,
               align: rule.style.align ?? style.align,
               verticalAlign: rule.style.verticalAlign ?? style.verticalAlign,
               // The type and the pitch only from a rule about the whole cell.
@@ -835,6 +843,7 @@ class TableElement extends CanvasElement {
     double? headerHeightRatio,
     List<TableRule>? rules,
     TableSort? sort,
+    DataSource? source,
   }) =>
       _copy(base,
           rows: rows,
@@ -856,7 +865,8 @@ class TableElement extends CanvasElement {
           columnWidths: columnWidths,
           headerHeightRatio: headerHeightRatio,
           rules: rules,
-          sort: sort);
+          sort: sort,
+          source: source);
 
   TableElement _copy(
     ElementBase newBase, {
@@ -880,6 +890,7 @@ class TableElement extends CanvasElement {
     double? headerHeightRatio,
     List<TableRule>? rules,
     TableSort? sort,
+    DataSource? source,
   }) =>
       TableElement(newBase,
           rows: rows ?? this.rows,
@@ -901,7 +912,8 @@ class TableElement extends CanvasElement {
           columnWidths: columnWidths ?? this.columnWidths,
           headerHeightRatio: headerHeightRatio ?? this.headerHeightRatio,
           rules: rules ?? this.rules,
-          sort: sort ?? this.sort);
+          sort: sort ?? this.sort,
+          source: source ?? this.source);
 
   @override
   Map<String, dynamic> props() => {
@@ -923,9 +935,9 @@ class TableElement extends CanvasElement {
         if (pictureScale != 1) "picScale": pictureScale,
         if (columnWidths.isNotEmpty) "cols": columnWidths,
         "headerRatio": headerHeightRatio,
-        if (rules.isNotEmpty)
-          "rules": [for (var rule in rules) rule.toJson()],
+        if (rules.isNotEmpty) "rules": [for (var rule in rules) rule.toJson()],
         if (sort.on || !sort.pinFirstColumn) "sort": sort.toJson(),
+        if (source.on) "source": source.toJson(),
       };
 
   factory TableElement.fromJson(Map<String, dynamic> json, ElementBase b) {
@@ -941,10 +953,16 @@ class TableElement extends CanvasElement {
         headerRow: jsonBool(json["headerRow"], true),
         headerColumn: jsonBool(json["headerCol"], false),
         showOutline: !jsonBool(json["noOutline"], false),
-        cellSpec: jsonSpec(json["cellSpec"], TextSpec.fromJson,
-            const TextSpec(fontSize: 18, weight: 400, align: TextAlignSpec.left)),
-        headerSpec: jsonSpec(json["headerSpec"], TextSpec.fromJson,
-            const TextSpec(fontSize: 18, weight: 700, align: TextAlignSpec.left)),
+        cellSpec: jsonSpec(
+            json["cellSpec"],
+            TextSpec.fromJson,
+            const TextSpec(
+                fontSize: 18, weight: 400, align: TextAlignSpec.left)),
+        headerSpec: jsonSpec(
+            json["headerSpec"],
+            TextSpec.fromJson,
+            const TextSpec(
+                fontSize: 18, weight: 700, align: TextAlignSpec.left)),
         headerFill: colorFromJson(json["headerFill"], const Color(0xFF1D2733)),
         cellFill: colorFromJson(json["cellFill"], const Color(0x00000000)),
         zebra: jsonBool(json["zebra"], true),
@@ -964,7 +982,9 @@ class TableElement extends CanvasElement {
             for (var rule in raw)
               if (rule is Map<String, dynamic>) TableRule.fromJson(rule),
         ],
-        sort: jsonSpec(json["sort"], TableSort.fromJson, const TableSort()));
+        sort: jsonSpec(json["sort"], TableSort.fromJson, const TableSort()),
+        source:
+            jsonSpec(json["source"], DataSource.fromJson, const DataSource()));
   }
 
   /// sorted is this table with its rows in the order [sort] asks for.
