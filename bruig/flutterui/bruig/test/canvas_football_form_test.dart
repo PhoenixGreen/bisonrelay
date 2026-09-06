@@ -213,4 +213,40 @@ void main() {
       expect(asked, 0, reason: "a request nobody needed is a request not made");
     });
   });
+
+  group("a plan that does send the field", () {
+    // The derived guide is a stand-in for a plan that sends nothing, not a
+    // correction to one that does. What the source said is what the source
+    // should be believed about.
+    var source = const DataSource(
+      kind: DataKind.url,
+      where: "https://api.football-data.org/v4/competitions/PL/standings",
+      matchColumn: 0,
+      columns: [
+        SourceColumn(header: "Team", path: "team.shortName"),
+        SourceColumn(
+            header: "Custom form", path: "form", spread: 6, divider: "|"),
+      ],
+    );
+
+    test("a guide that arrived is left alone", () {
+      var rows = [
+        ["Team", "Custom form"],
+        ["Hull City", "W L D W W | L"],
+      ];
+      expect(
+          fillFootballForm(rows, source, {"hull city": "D,D,D,D,D,D"}), rows);
+    });
+
+    test("a row of dashes is filled in", () {
+      var filled = fillFootballForm(
+          [
+            ["Team", "Custom form"],
+            ["Hull City", "— — — — — | —"],
+          ],
+          source,
+          {"hull city": "W,L"});
+      expect(filled[1][1], "— — — — W | L");
+    });
+  });
 }

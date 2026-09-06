@@ -129,6 +129,13 @@ List<List<String>> fillFootballForm(
   ];
   for (var r = headerRow ? 1 : 0; r < out.length; r++) {
     if (by >= out[r].length || target >= out[r].length) continue;
+
+    // Only where the response said nothing. A subscription that includes the
+    // field has already filled this in, and what the source sent is what the
+    // source should be believed about -- this is the stand-in for a plan that
+    // does not send it, not a correction to one that does.
+    if (RegExp("[A-Za-z]").hasMatch(out[r][target])) continue;
+
     var form = forms[_key(out[r][by])];
     // Laid out by the same code the mapping uses, so a guide worked out here
     // and one that arrived in the response are the same shape.
@@ -162,5 +169,11 @@ Future<List<List<String>>> footballFormFromResults(
       source.where.replaceFirst("/standings", "/matches?status=FINISHED"));
   if (results == null) return rows;
 
-  return fillFootballForm(rows, source, footballForms(results));
+  // As many games as the column has room for, so the guide and the slots
+  // agree without either being told the other's number.
+  var slots = 6;
+  for (var column in source.columns) {
+    if (column.path == "form" && column.spread > 0) slots = column.spread;
+  }
+  return fillFootballForm(rows, source, footballForms(results, count: slots));
 }

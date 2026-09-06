@@ -80,13 +80,13 @@ void main() {
         "Against",
         "GD",
         "Points",
-        "Form"
+        "Custom form"
       ]);
       expect(rows[1][2], "Man City");
       expect(rows[1][10], "6", reason: "points");
       // No form in this sample, so the guide is all dashes -- padded rather
       // than empty, so the column lines up whatever a club has played.
-      expect(rows[1].last, "— — — — | —");
+      expect(rows[1].last, "— — — — — | —");
       expect(rows[2][2], "Arsenal");
       expect(rows.length, 3, reason: "the header and two teams");
     });
@@ -542,7 +542,7 @@ void main() {
 
     test("the preset asks for one, and knows what else the API sends", () {
       expect(footballDataColumns.last.path, "form");
-      expect(footballDataColumns.last.spread, 5);
+      expect(footballDataColumns.last.spread, 6);
       expect(footballDataColumns.last.divider, "|");
 
       // Every field a standings record carries, so the mapping is a list
@@ -666,6 +666,87 @@ void main() {
             SourceColumn(header: "Form", path: "form", spread: 5, divider: "|"),
           ]));
       expect(rows[1].single, "— — — — | —");
+    });
+  });
+
+  group("a custom field", () {
+    // A column that builds its cell instead of taking one. Substitution and
+    // nothing else: a column that needs arithmetic is a column that wants the
+    // figures in it and a rule on the table to say how they look.
+    List<List<String>> rowsWith(String template) => rowsFromJson(
+            [
+              {
+                "position": 1,
+                "points": 6,
+                "goalsFor": 6,
+                "goalsAgainst": 2,
+                "team": {"tla": "MCI", "shortName": "Man City"},
+              },
+            ],
+            DataSource(kind: DataKind.file, where: "x", columns: [
+              SourceColumn(header: "Custom", template: template),
+            ]));
+
+    test("a field in braces is replaced by what is there", () {
+      expect(rowsWith("{team.tla} ({points})")[1].single, "MCI (6)");
+    });
+
+    test("everything outside the braces is written as it stands", () {
+      // Which is how a column gets a dash, a unit or a word.
+      expect(rowsWith("{goalsFor}–{goalsAgainst}")[1].single, "6–2");
+      expect(rowsWith("Played {position} — {points} pts")[1].single,
+          "Played 1 — 6 pts");
+    });
+
+    test("a path that leads nowhere is empty, not braces", () {
+      // A cell reading "{team.nickname}" tells the reader nothing they can
+      // act on; the field list beside the box is where a typo is caught.
+      expect(rowsWith("{team.nickname}")[1].single, "");
+      expect(rowsWith("[{nothing}]")[1].single, "[]");
+    });
+
+    test("a template wins over a path, so the two cannot disagree", () {
+      var rows = rowsFromJson(
+          [
+            {"a": "from the path", "b": "from the template"},
+          ],
+          const DataSource(kind: DataKind.file, where: "x", columns: [
+            SourceColumn(header: "C", path: "a", template: "{b}"),
+          ]));
+      expect(rows[1].single, "from the template");
+    });
+
+    test("it survives a round trip", () {
+      const column = SourceColumn(header: "C", template: "{team.tla}");
+      expect(SourceColumn.fromJson(column.toJson()).template, "{team.tla}");
+    });
+  });
+
+  group("the form guide grows a game at a time", () {
+    // Six slots, the newest always in the last one, so a column of these
+    // lines up down the table whatever each club has played.
+    String guide(String form) => spreadValue(form,
+        const SourceColumn(header: "Custom form", spread: 6, divider: "|"));
+
+    test("it starts empty and fills from the right", () {
+      expect(guide(""), "— — — — — | —");
+      expect(guide("W"), "— — — — — | W");
+      expect(guide("W,L"), "— — — — W | L");
+      expect(guide("W,L,D"), "— — — W L | D");
+    });
+
+    test("a full guide is six games", () {
+      expect(guide("W,L,D,W,W,L"), "W L D W W | L");
+    });
+
+    test("a seventh game pushes the oldest out", () {
+      expect(guide("D,W,L,D,W,W,L"), "W L D W W | L");
+    });
+
+    test("the preset asks for six of them", () {
+      expect(footballDataColumns.last.header, "Custom form");
+      expect(footballDataColumns.last.spread, 6);
+      expect(footballDataColumns.last.divider, "|");
     });
   });
 }

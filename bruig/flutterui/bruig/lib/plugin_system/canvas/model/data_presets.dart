@@ -109,11 +109,17 @@ const List<SourceColumn> footballDataColumns = [
   SourceColumn(header: "Against", path: "goalsAgainst"),
   SourceColumn(header: "GD", path: "goalDifference"),
   SourceColumn(header: "Points", path: "points"),
-  // The form guide, laid out rather than left as "D,W,W,W,W". Five slots
-  // because five is what the API sends, padded on the left so the letters
-  // line up down the table whatever a club has played, and the most recent
-  // game marked off from the ones before it.
-  SourceColumn(header: "Form", path: "form", spread: 5, divider: "|"),
+  // The form guide. Called custom because on the free plan it is: the field
+  // exists in the response and is null unless the subscription covers trend
+  // data, so it is worked out from the results instead -- see
+  // football_form.dart, and the Custom fields section of a table's Data
+  // settings, which says so.
+  //
+  // Six games rather than the five the paid field would have sent, because
+  // the results it is built from have no such limit. Padded on the left so
+  // the most recent game is in the same place in every row whatever a club
+  // has played, and marked off from the ones before it.
+  SourceColumn(header: "Custom form", path: "form", spread: 6, divider: "|"),
 ];
 
 /// footballDataFields is every field a standings record carries, for the

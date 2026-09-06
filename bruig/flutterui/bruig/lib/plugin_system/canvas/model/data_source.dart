@@ -87,6 +87,24 @@ class SourceColumn {
   /// the most recent game off from the ones before it.
   final String divider;
 
+  /// template builds a cell out of other fields instead of taking one.
+  ///
+  /// Anything in braces is a path into the record and is replaced by what is
+  /// there: "{team.tla} ({points})" gives "MCI (6)". Everything outside the
+  /// braces is written as it stands, so a template is also how a column gets a
+  /// unit, a separator, or a word.
+  ///
+  /// This is what a custom field is. There is no arithmetic and no
+  /// conditions -- a column that needs those is a column that wants the
+  /// figures in it and a rule on the table to say how they look -- but
+  /// substitution covers the ones people actually ask for: a club's
+  /// abbreviation beside its position, a score written "2–1", a percentage
+  /// sign after a number.
+  ///
+  /// [path] is ignored when this is set, since the template says where
+  /// everything comes from.
+  final String template;
+
   const SourceColumn({
     this.header = "",
     this.path = "",
@@ -94,6 +112,7 @@ class SourceColumn {
     this.keep = false,
     this.spread = 0,
     this.divider = "",
+    this.template = "",
   });
 
   SourceColumn copyWith({
@@ -103,6 +122,7 @@ class SourceColumn {
     bool? keep,
     int? spread,
     String? divider,
+    String? template,
   }) =>
       SourceColumn(
         header: header ?? this.header,
@@ -111,6 +131,7 @@ class SourceColumn {
         keep: keep ?? this.keep,
         spread: spread ?? this.spread,
         divider: divider ?? this.divider,
+        template: template ?? this.template,
       );
 
   Map<String, dynamic> toJson() => {
@@ -120,6 +141,7 @@ class SourceColumn {
         if (keep) "keep": true,
         if (spread > 0) "spread": spread,
         if (divider.isNotEmpty) "div": divider,
+        if (template.isNotEmpty) "tpl": template,
       };
 
   factory SourceColumn.fromJson(Map<String, dynamic> json) => SourceColumn(
@@ -129,6 +151,7 @@ class SourceColumn {
         keep: jsonBool(json["keep"], false),
         spread: jsonInt(json["spread"], 0),
         divider: jsonString(json["div"], ""),
+        template: jsonString(json["tpl"], ""),
       );
 }
 
@@ -265,10 +288,26 @@ List<List<String>> rowsFromJson(dynamic json, DataSource source) {
     for (var record in records)
       [
         for (var column in source.columns)
-          spreadValue(_text(valueAtPath(record, column.path)), column)
+          spreadValue(_cell(record, column), column)
       ],
   ];
 }
+
+/// _cell is one column's value out of one record: a field, or a template
+/// built from several.
+String _cell(dynamic record, SourceColumn column) => column.template.isEmpty
+    ? _text(valueAtPath(record, column.path))
+    : fillTemplate(column.template, record);
+
+/// fillTemplate replaces every {path} in [template] with what the record has
+/// there. See [SourceColumn.template].
+///
+/// A path that leads nowhere becomes empty rather than being left as braces:
+/// a cell reading "{team.tla}" tells the reader nothing they can act on, and
+/// the field list beside the box is where a mistyped path is caught.
+String fillTemplate(String template, dynamic record) =>
+    template.replaceAllMapped(RegExp(r"\{([^{}]*)\}"),
+        (m) => _text(valueAtPath(record, m.group(1)!.trim())));
 
 /// spreadValue lays a comma-separated value out as a row of results. See
 /// [SourceColumn.spread].

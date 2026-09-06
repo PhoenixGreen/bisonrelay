@@ -356,6 +356,47 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
               "from here would not go through the proxy in Settings."),
       ],
 
+      // Custom fields: the columns that are not simply a field taken from the
+      // record. Their own section because they are the ones somebody has to
+      // be told about -- a column built from a template or laid out as a run
+      // of results looks like magic in the Columns list, and the whole point
+      // of showing the recipe is that it can be copied.
+      CanvasExpander(
+        label: "Custom fields",
+        remember: "tableSourceCustom",
+        trailing: "${_customColumns(source).length}",
+        children: [
+          const CanvasHint(
+              "A custom field builds its cell instead of taking it. Put a "
+              "field's name in braces and it is replaced by what is there — "
+              "\"{team.tla} ({points})\" gives \"MCI (6)\" — and anything "
+              "outside the braces is written as it stands, which is how a "
+              "column gets a dash, a unit or a word. Spread lays a "
+              "comma-separated value out across that many slots, padded on "
+              "the left so the newest is always in the same place."),
+          if (preset?.derive != null)
+            CanvasHint("${preset!.label} also fills the form guide in from "
+                "somewhere the mapping cannot reach: the plan sends the "
+                "field empty, so the last games are worked out from the "
+                "finished results instead — one extra request when you "
+                "refresh. The column is an ordinary custom field otherwise, "
+                "and its slots and divider are yours to change."),
+          for (var i = 0; i < source.columns.length; i++)
+            if (_isCustom(source.columns[i]))
+              _customControls(i, source.columns[i]),
+          CanvasControlGroup(label: "Add", children: [
+            CanvasIconButton(
+              icon: Icons.add,
+              tooltip: "Add a custom field",
+              onPressed: () => _set(source.copyWith(columns: [
+                ...source.columns,
+                const SourceColumn(header: "New field", template: "{position}"),
+              ])),
+            ),
+          ]),
+        ],
+      ),
+
       // The mapping, under everything else. A preset has already filled it in
       // and most readers will never open it; it is here because a source
       // nobody wrote a preset for is otherwise unreachable.
@@ -478,6 +519,52 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
     ];
   }
 
+  /// _customControls is one custom field: what it is called, how it is built,
+  /// and how it is laid out.
+  Widget _customControls(int index, SourceColumn column) => CanvasControlGroup(
+        label: column.header.isEmpty ? "Column ${index + 1}" : column.header,
+        children: [
+          CanvasTextField(
+            label: "Header",
+            value: column.header,
+            width: 110,
+            onChanged: (v) => _setColumn(index, column.copyWith(header: v)),
+          ),
+          CanvasTextField(
+            label: "Built from",
+            value:
+                column.template.isEmpty ? "{${column.path}}" : column.template,
+            width: 168,
+            onChanged: (v) => _setColumn(index, column.copyWith(template: v)),
+          ),
+          CanvasNumberField(
+            label: "Slots",
+            value: column.spread.toDouble(),
+            min: 0,
+            max: 20,
+            decimals: 0,
+            width: 56,
+            onChanged: (v) =>
+                _setColumn(index, column.copyWith(spread: v.round())),
+            onCommit: widget.commit,
+          ),
+          CanvasTextField(
+            label: "Divider",
+            value: column.divider,
+            width: 56,
+            onChanged: (v) => _setColumn(index, column.copyWith(divider: v)),
+          ),
+          CanvasIconButton(
+            icon: Icons.delete_outline,
+            tooltip: "Remove this field",
+            onPressed: () => _set(source.copyWith(columns: [
+              for (var c = 0; c < source.columns.length; c++)
+                if (c != index) source.columns[c],
+            ])),
+          ),
+        ],
+      );
+
   void _setColumn(int index, SourceColumn column) => _set(source.copyWith(
         columns: [
           for (var i = 0; i < source.columns.length; i++)
@@ -584,3 +671,16 @@ class _KeyFieldState extends State<_KeyField> {
     );
   }
 }
+
+/// _isCustom is whether a column builds its cell rather than taking one.
+///
+/// A template or a spread: either is a recipe rather than a field name, and
+/// either is something somebody looking at the Columns list would want
+/// explained.
+bool _isCustom(SourceColumn column) =>
+    column.template.isNotEmpty || column.spread > 0;
+
+List<SourceColumn> _customColumns(DataSource source) => [
+      for (var c in source.columns)
+        if (_isCustom(c)) c
+    ];
