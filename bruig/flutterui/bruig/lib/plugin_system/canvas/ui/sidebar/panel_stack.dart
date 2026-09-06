@@ -297,35 +297,47 @@ class _CanvasPanelStackState extends State<CanvasPanelStack> {
               const SizedBox(width: 10),
               Icon(panel.icon, size: 14, color: theme.colors.onSurfaceVariant),
               const SizedBox(width: 7),
-              Flexible(
-                child: Text(
-                  panel.label.toUpperCase(),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 10,
-                    letterSpacing: 0.8,
-                    fontWeight: FontWeight.w600,
-                    color: theme.colors.onSurfaceVariant.withValues(alpha: 0.9),
-                  ),
-                ),
-              ),
-              if (panel.trailing != null) ...[
-                const SizedBox(width: 6),
-                Flexible(
-                  child: Text(
-                    panel.trailing!,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                        fontSize: 9,
+              // One Expanded holding the whole name, rather than a Flexible
+              // label and a Spacer beside it.
+              //
+              // Those were two flexible children of one Row, and a Flexible
+              // is allotted its share of the leftover width whether it uses
+              // it or not -- so the space after the name was half of what was
+              // going, the handle sat wherever that put it, and the three
+              // headers lined their handles up at three different places.
+              Expanded(
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Flexible(
+                    child: Text(
+                      panel.label.toUpperCase(),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 10,
+                        letterSpacing: 0.8,
+                        fontWeight: FontWeight.w600,
                         color: theme.colors.onSurfaceVariant
-                            .withValues(alpha: 0.55)),
+                            .withValues(alpha: 0.9),
+                      ),
+                    ),
                   ),
-                ),
-              ],
-              if (panel.hint != null) CanvasHint(panel.hint!),
-              const Spacer(),
+                  if (panel.trailing != null) ...[
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: Text(
+                        panel.trailing!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            fontSize: 9,
+                            color: theme.colors.onSurfaceVariant
+                                .withValues(alpha: 0.55)),
+                      ),
+                    ),
+                  ],
+                  if (panel.hint != null) CanvasHint(panel.hint!),
+                ]),
+              ),
               _handle(theme, panel),
             ]),
           ),

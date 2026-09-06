@@ -2716,6 +2716,29 @@ void main() {
           findsNWidgets(2));
     });
 
+    testWidgets("every handle is in the same place, hard right",
+        (tester) async {
+      // They were at three different places, because the label was a Flexible
+      // and the space after it was a Spacer -- two flexible children of one
+      // Row, so the gap was half of whatever was left and the handle sat
+      // wherever the name's length put it.
+      await panel(tester);
+      var handles =
+          tester.widgetList<Widget>(find.byIcon(Icons.drag_indicator)).length;
+      expect(handles, 3);
+
+      var rights = [
+        for (var i = 0; i < 3; i++)
+          tester.getRect(find.byIcon(Icons.drag_indicator).at(i)).right,
+      ];
+      expect(rights.toSet(), hasLength(1),
+          reason: "all three line up: $rights");
+
+      // And hard right, not floating in the middle of the band.
+      var band = tester.getRect(find.byType(CanvasPanelStack)).right;
+      expect(rights.first, closeTo(band, 14));
+    });
+
     testWidgets("a header is a band, and the whole of it is the switch",
         (tester) async {
       // No expander arrow: the whole band opens and closes the panel, and an
