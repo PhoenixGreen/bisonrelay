@@ -52,6 +52,7 @@ String extensionFor(String mime) => switch (mime) {
       "image/gif" => ".gif",
       "video/mp4" => ".mp4",
       "video/webm" => ".webm",
+      "application/pdf" => ".pdf",
       "application/json" => ".bcanvas",
       bundleMime => ".bcanvas",
       _ => ".bin",

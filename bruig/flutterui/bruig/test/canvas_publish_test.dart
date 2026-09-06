@@ -94,6 +94,29 @@ void main() {
     });
   });
 
+  testWidgets("a PDF asks what size of paper, and the others do not",
+      (tester) async {
+    // The page is the one question a PDF raises that a picture does not: a
+    // canvas has a size in pixels and a sheet has one in inches, and nothing
+    // about the canvas answers which sheet it belongs on.
+    // A still canvas, so the sheet opens on Image -- an animated one opens on
+    // Animation, which is its own small piece of behaviour and not this one.
+    await open(tester, document: const CanvasDocument(frames: 1));
+    expect(find.text("Page"), findsNothing);
+
+    await tester.tap(find.text("PNG (lossless)"));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text("PDF (a page)").last);
+    await tester.pumpAndSettle();
+
+    expect(find.text("Page"), findsOneWidget);
+    expect(find.textContaining("inches"), findsOneWidget,
+        reason: "a 1280-pixel canvas is a thirteen-inch page, which surprises "
+            "people");
+    // The JPEG quality slider belongs to a JPEG and nothing else.
+    expect(find.text("Quality"), findsNothing);
+  });
+
   group("with an encoder on the machine", () {
     setUp(() => useFfmpegForTest("/somewhere/ffmpeg"));
     tearDown(forgetFfmpegForTest);

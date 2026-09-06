@@ -6,6 +6,7 @@ import 'package:bruig/models/client.dart';
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/export/canvas_bundle.dart';
 import 'package:bruig/plugin_system/canvas/export/canvas_export.dart';
+import 'package:bruig/plugin_system/canvas/export/pdf_writer.dart';
 import 'package:bruig/plugin_system/canvas/export/publish_record.dart';
 import 'package:bruig/plugin_system/canvas/export/publish_targets.dart';
 import 'package:bruig/plugin_system/canvas/export/video_export.dart';
@@ -36,7 +37,7 @@ import 'package:provider/provider.dart';
 /// reader on the other end to have Bison Relay -- an image is what can be
 /// shown to anyone.
 enum PublishAs {
-  image("Image", "A single frame as a PNG or a JPEG"),
+  image("Image", "A single frame as a PNG, a JPEG or a PDF"),
   animation("Animation", "Every frame as an animated GIF"),
   video("Video", "Every frame as an MP4 or a WebM, at full colour"),
   interactive("Interactive canvas",
@@ -124,6 +125,16 @@ class _PublishSheetState extends State<_PublishSheet> {
   int _quality = 85;
   double _scale = 1;
 
+  /// _pdf is whether the still is a page rather than a picture, and on what
+  /// size of paper.
+  ///
+  /// Its own flag beside the format rather than a fourth EmbedFormat, because
+  /// EmbedFormat is the app's own list of what a *picture attached to a post*
+  /// may be, and a PDF is not one of those. Adding it there would offer PDF
+  /// everywhere a photograph is compressed.
+  bool _pdf = false;
+  PdfPaper _paper = PdfPaper.canvas;
+
   bool _dither = true;
   int _colors = 256;
   bool _loop = true;
@@ -188,6 +199,10 @@ class _PublishSheetState extends State<_PublishSheet> {
       (widget.document.title.isEmpty ? "Canvas" : widget.document.title);
 
   int get _estimate => switch (_as) {
+        // A PDF is the same rendered frame with a page wrapped round it, and
+        // its pixels are deflated rather than PNG-compressed -- close enough
+        // to the same size that a second guess would be a second thing to get
+        // wrong.
         PublishAs.image => estimateStillBytes(widget.document, scale: _scale),
         PublishAs.animation =>
           estimateAnimationBytes(widget.document, scale: _scale),
@@ -235,6 +250,15 @@ class _PublishSheetState extends State<_PublishSheet> {
   Future<CanvasExport?> _render() async {
     switch (_as) {
       case PublishAs.image:
+        if (_pdf) {
+          return renderPdf(
+            widget.document,
+            frame: widget.frame,
+            scale: _scale,
+            images: widget.images,
+            paper: _paper,
+          );
+        }
         return renderImage(
           widget.document,
           frame: widget.frame,
@@ -583,23 +607,58 @@ class _PublishSheetState extends State<_PublishSheet> {
         return [
           Row(children: [
             Expanded(
-              child: _dropdown<EmbedFormat>(
+              // One list rather than a format and a "make it a PDF" switch:
+              // they are three answers to one question, and a reader choosing
+              // what to make should see all three at once.
+              child: _dropdown<String>(
                   theme,
                   "Format",
-                  _format,
+                  _pdf ? "pdf" : _format.name,
                   const [
-                    (EmbedFormat.png, "PNG (lossless)"),
-                    (EmbedFormat.jpeg, "JPEG (smaller)"),
+                    ("png", "PNG (lossless)"),
+                    ("jpeg", "JPEG (smaller)"),
+                    ("pdf", "PDF (a page)"),
                   ],
-                  (v) => setState(() => _format = v)),
+                  (v) => setState(() {
+                        _pdf = v == "pdf";
+                        if (!_pdf) {
+                          _format =
+                              v == "jpeg" ? EmbedFormat.jpeg : EmbedFormat.png;
+                        }
+                      })),
             ),
             const SizedBox(width: 12),
             Expanded(child: _scaleField(theme)),
           ]),
-          if (_format == EmbedFormat.jpeg)
+          if (!_pdf && _format == EmbedFormat.jpeg)
             _slider(theme, "Quality", _quality.toDouble(), 20, 100,
                 (v) => setState(() => _quality = v.round()),
                 suffix: "$_quality"),
+          if (_pdf) ...[
+            const SizedBox(height: 4),
+            Row(children: [
+              Expanded(
+                child: _dropdown<PdfPaper>(
+                    theme,
+                    "Page",
+                    _paper,
+                    [for (var p in PdfPaper.values) (p, p.label)],
+                    (v) => setState(() => _paper = v)),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(child: SizedBox()),
+            ]),
+            _note(
+                theme,
+                _paper == PdfPaper.canvas
+                    ? "A page cut to the canvas: "
+                        "${_pageLabel()}, with the design filling it. Size is "
+                        "the print resolution — 1 is a screen's worth of "
+                        "detail, which is soft on paper."
+                    : "The design is centred on ${_paper.label} with a half "
+                        "inch margin, turned to match the canvas. Size is the "
+                        "print resolution rather than the page size."),
+          ],
         ];
 
       case PublishAs.animation:
@@ -709,6 +768,15 @@ class _PublishSheetState extends State<_PublishSheet> {
                   "move anything you have not locked."),
         ];
     }
+  }
+
+  /// _pageLabel is the sheet's size in inches, which is the only unit a page
+  /// means anything in. Worth saying: a canvas laid out at 1280 pixels is a
+  /// thirteen-inch page, which surprises people.
+  String _pageLabel() {
+    var page = pageFor(_paper, widget.document.size.size);
+    return "${(page.width / 72).toStringAsFixed(1)} × "
+        "${(page.height / 72).toStringAsFixed(1)} inches";
   }
 
   /// _scaleField is shared by the still and the animation, and is multiples of

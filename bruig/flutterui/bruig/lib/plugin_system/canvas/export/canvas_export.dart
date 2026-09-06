@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:bruig/components/feed/embed_options.dart';
 import 'package:bruig/plugin_system/canvas/export/gif_encoder.dart';
+import 'package:bruig/plugin_system/canvas/export/pdf_writer.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
@@ -119,6 +120,48 @@ Future<CanvasExport?> renderImage(
   var prepared = await prepareEmbed(png.data, png.mime, options);
   return CanvasExport(prepared.data, prepared.mime,
       width: prepared.width ?? png.width, height: prepared.height ?? png.height);
+}
+
+/// renderPdf is one frame as a page.
+///
+/// [scale] is the print resolution rather than the page size: the sheet is
+/// decided by [paper], and scaling up puts more pixels on the same page. At 1
+/// a canvas prints at roughly 96 to the inch, which is a screen's worth of
+/// detail and visibly soft on paper; 2 or 3 is what somebody printing a poster
+/// wants.
+Future<CanvasExport?> renderPdf(
+  CanvasDocument document, {
+  int frame = 0,
+  double scale = 1,
+  CanvasImageSource? images,
+  PdfPaper paper = PdfPaper.canvas,
+}) async {
+  ui.Image? image;
+  try {
+    image = await renderFrame(document,
+        frame: frame, scale: scale, images: images);
+    // Straight rather than premultiplied: a PDF keeps the colours and the
+    // transparency as two separate images, and separating them out of
+    // premultiplied pixels means dividing the colour back out of its own
+    // alpha, which loses a little of everyhalf-transparent pixel for nothing.
+    var raw = await image.toByteData(format: ui.ImageByteFormat.rawStraightRgba);
+    if (raw == null) return null;
+
+    var page = pageFor(paper, document.size.size);
+    var bytes = writePdf(
+      raw.buffer.asUint8List(),
+      width: image.width,
+      height: image.height,
+      page: page,
+    );
+    return CanvasExport(bytes, "application/pdf",
+        width: page.width.round(), height: page.height.round());
+  } catch (exception) {
+    debugPrint("Unable to write the canvas as a PDF: $exception");
+    return null;
+  } finally {
+    image?.dispose();
+  }
 }
 
 /// GifProgress reports how far an animation export has got, so a long one can
