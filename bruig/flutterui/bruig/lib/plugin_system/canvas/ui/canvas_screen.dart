@@ -166,9 +166,13 @@ class _CanvasScreenState extends State<CanvasScreen> {
   /// _confirmDiscard asks before throwing away unsaved work.
   ///
   /// Asked before opening a different canvas and before starting from a
-  /// preset, which are the two ways to lose one. There is no autosave: a
-  /// canvas is a design being worked on, and saving over the last good version
-  /// every few seconds is not what somebody experimenting wants.
+  /// preset, which are the two ways to lose one.
+  ///
+  /// Still asked even though a saved canvas writes itself out a few seconds
+  /// after the editing stops -- see CanvasController.scheduleAutosave. Two
+  /// cases are left: a canvas whose autosave has not fired yet, and one that
+  /// has never been saved at all, which has nowhere to be written to and is
+  /// the whole of what somebody loses by walking away from a preset.
   Future<bool> _confirmDiscard() async {
     if (!_controller.dirty) return true;
     return await showDialog<bool>(
@@ -206,6 +210,29 @@ class _CanvasScreenState extends State<CanvasScreen> {
       Provider.of<CanvasPreferences>(context, listen: false)
           .remember(folder, name);
     }
+  }
+
+  /// _newCanvas starts an empty one, already filed under [name].
+  ///
+  /// Saved immediately rather than left in the air, which is what lets the
+  /// Files panel do without a Save button: a canvas with a file behind it
+  /// saves itself from then on -- see CanvasController.scheduleAutosave.
+  Future<void> _newCanvas(String folder, String name) async {
+    var snackbar = SnackBarModel.of(context);
+    if (!await _confirmDiscard()) return;
+
+    _controller.load(CanvasDocument(title: name));
+    var saved = await _controller.saveAs(folder, name);
+    if (!mounted) return;
+    if (!saved) {
+      snackbar.error("Unable to make $name.");
+      return;
+    }
+    Provider.of<CanvasPreferences>(context, listen: false)
+        .remember(folder, name);
+    // Straight to the elements tab, as a preset does: the next thing anybody
+    // does with an empty canvas is put something on it.
+    _setPanel(CanvasPanel.elements);
   }
 
   /// _openPreset starts a new canvas from a preset.
@@ -292,6 +319,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
             controller: _controller,
             onOpen: _open,
             onPublish: _publishSaved,
+            onNew: _newCanvas,
           ),
         CanvasPanel.presets => CanvasPresetsPanel(onChoose: _openPreset),
         CanvasPanel.elements => CanvasElementsPanel(controller: _controller),

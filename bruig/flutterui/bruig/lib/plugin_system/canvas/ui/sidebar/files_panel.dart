@@ -1,5 +1,6 @@
 import 'package:bruig/plugin_system/canvas/storage/canvas_assets.dart';
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:bruig/components/text.dart';
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/export/canvas_bundle.dart';
@@ -20,6 +21,18 @@ import 'package:intl/intl.dart';
 // One level of folders, so there is no breadcrumb and no move operation. The
 // panel is either at the top, showing folders and loose documents, or inside
 // one folder with a way back.
+//
+// It is laid out like the post library's sidebar next door, and deliberately:
+// they are the same thing -- a list of the reader's own documents, with the
+// things you can do to one on the row and the things that make new ones along
+// the bottom. Two lists of files in one app that work differently is two
+// things to learn for no reason.
+//
+// There is no Save button. A canvas that has been saved once saves itself --
+// see CanvasController.scheduleAutosave -- and New canvas names its file
+// immediately, so the ordinary path never needs one. The exception is a canvas
+// started from a preset, which has no name and nowhere to go: for that, and
+// only that, a Save chip appears beside the others.
 
 class CanvasFilesPanel extends StatefulWidget {
   final CanvasController controller;
@@ -32,10 +45,18 @@ class CanvasFilesPanel extends StatefulWidget {
   /// in the editor first, which is what "send this one again" wants.
   final void Function(String folder, String name) onPublish;
 
+  /// onNew starts an empty canvas under a name that has already been checked.
+  ///
+  /// The screen's job rather than the panel's for the same reason opening one
+  /// is: what to do about unsaved work in the editor is a question about the
+  /// editor, and the panel does not own that.
+  final Future<void> Function(String folder, String name) onNew;
+
   const CanvasFilesPanel({
     required this.controller,
     required this.onOpen,
     required this.onPublish,
+    required this.onNew,
     super.key,
   });
 
@@ -126,6 +147,11 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
       ) ??
       false;
 
+  /// _saveAs files a canvas that has none.
+  ///
+  /// Reached only by the Save chip, which appears only for a canvas with no
+  /// file behind it -- one started from a preset. Everything else has a name
+  /// and saves itself.
   Future<void> _saveAs() async {
     var snackbar = SnackBarModel.of(context);
     var wanted = await _ask("Save canvas as", "Name",
@@ -150,20 +176,6 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
     ok
         ? snackbar.success("Saved $clean.")
         : snackbar.error("Unable to save $clean.");
-    await _reload();
-  }
-
-  Future<void> _save() async {
-    var snackbar = SnackBarModel.of(context);
-    if (controller.name == null) {
-      await _saveAs();
-      return;
-    }
-    var ok = await controller.save();
-    if (!mounted) return;
-    ok
-        ? snackbar.success("Saved ${controller.name}.")
-        : snackbar.error("Unable to save ${controller.name}.");
     await _reload();
   }
 
@@ -295,8 +307,6 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
     var theme = ThemeNotifier.of(context);
 
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      _toolbar(theme),
-      const Divider(height: 1),
       if (_folder.isNotEmpty)
         InkWell(
           onTap: () {
@@ -333,91 +343,140 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
                         "No saved canvases here yet. Save the one you are "
                         "working on, or start from a preset."),
                   )
-                : ListView.builder(
+                : ReorderableListView.builder(
                     padding: const EdgeInsets.symmetric(vertical: 4),
                     itemCount: _entries.length,
-                    itemBuilder: (context, i) => _row(theme, _entries[i]),
+                    onReorderItem: _reorder,
+                    // The drag is started by the row's own button, not by the
+                    // row: a row is the thing you tap to open a canvas, and a
+                    // hold that started anywhere on one would take the place
+                    // of that tap for anybody who pauses before releasing.
+                    buildDefaultDragHandles: false,
+                    itemBuilder: (context, i) => _row(theme, _entries[i], i),
                   ),
       ),
+      if (_reorderHint(theme) case var hint?) hint,
+      _actions(theme),
     ]);
   }
 
-  Widget _toolbar(ThemeNotifier theme) => Padding(
-        padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
-        child:
-            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Row(children: [
-            Expanded(
-              child: Text(
-                controller.name ?? "Unsaved canvas",
-                overflow: TextOverflow.ellipsis,
-                style:
-                    const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-              ),
-            ),
-            if (controller.dirty)
-              Tooltip(
-                message: "There are changes that have not been saved",
-                // primary, because this is a mark that has to be seen and
-                // tertiary is a panel background in this app -- an eight-pixel
-                // near-black dot on a near-black sidebar was nothing at all.
-                child: Icon(Icons.circle, size: 8, color: theme.colors.primary),
-              ),
-          ]),
-          const SizedBox(height: 6),
-          Row(children: [
-            Expanded(
-              child: FilledButton.tonalIcon(
-                onPressed: _save,
-                icon: const Icon(Icons.save_outlined, size: 15),
-                label: const Text("Save", style: TextStyle(fontSize: 12)),
-                style: FilledButton.styleFrom(
-                    visualDensity: VisualDensity.compact),
-              ),
-            ),
-            const SizedBox(width: 6),
-            Tooltip(
-              message: "Save as a new canvas",
-              child: IconButton(
-                onPressed: _saveAs,
-                icon: const Icon(Icons.save_as_outlined, size: 17),
-                visualDensity: VisualDensity.compact,
-              ),
-            ),
-            Tooltip(
-              message: "Open a canvas from a file",
-              child: IconButton(
-                onPressed: _import,
-                icon: const Icon(Icons.file_open_outlined, size: 17),
-                visualDensity: VisualDensity.compact,
-              ),
-            ),
-            Tooltip(
-              message: "New folder",
-              child: IconButton(
-                onPressed: _newFolder,
-                icon: const Icon(Icons.create_new_folder_outlined, size: 17),
-                visualDensity: VisualDensity.compact,
-              ),
-            ),
-            Tooltip(
-              message: "Refresh the list",
-              child: IconButton(
-                onPressed: _reload,
-                icon: const Icon(Icons.refresh, size: 17),
-                visualDensity: VisualDensity.compact,
-              ),
-            ),
-          ]),
+  /// _actions is the bar along the bottom: the things that make something new.
+  ///
+  /// At the bottom rather than the top because that is where the post library
+  /// keeps them, and because the list is the thing being read -- controls
+  /// above it push what somebody came here for down the panel.
+  Widget _actions(ThemeNotifier theme) => Container(
+        width: double.infinity,
+        decoration: BoxDecoration(
+          border: Border(top: BorderSide(color: theme.colors.outlineVariant)),
+        ),
+        padding: const EdgeInsets.fromLTRB(8, 8, 8, 10),
+        child: Wrap(spacing: 6, runSpacing: 6, children: [
+          _action(theme, Icons.add_box_outlined, "New canvas", _newCanvas),
+          if (_folder.isEmpty)
+            _action(theme, Icons.create_new_folder_outlined, "New folder",
+                _newFolder),
+          _action(theme, Icons.file_open_outlined, "Open a file", _import),
+          // Only for a canvas that has nowhere to save itself to: one started
+          // from a preset, or from nothing. Everything else is already saving
+          // itself, and a button that says Save next to a canvas that has just
+          // saved is a button that invites a press for no reason.
+          if (controller.name == null && controller.dirty)
+            _action(theme, Icons.save_outlined, "Save this canvas", _saveAs),
         ]),
       );
 
-  Widget _row(ThemeNotifier theme, CanvasEntry entry) {
+  Widget _action(ThemeNotifier theme, IconData icon, String label,
+          VoidCallback onTap) =>
+      ActionChip(
+        visualDensity: VisualDensity.compact,
+        avatar: Icon(icon, size: 15, color: theme.colors.onSurfaceVariant),
+        label: Text(label, style: const TextStyle(fontSize: 11)),
+        onPressed: onTap,
+      );
+
+  /// _reorderHint says once, under the list, what a row cannot say for itself.
+  ///
+  /// Not a tooltip on the button it describes, and that is not a preference:
+  /// a Tooltip inside a reorderable row is an overlay that gets re-attached
+  /// mid-layout when the row moves, and the sidebar is replaced by a red error
+  /// box. See _rowButton, and the post library's own note on the same crash.
+  Widget? _reorderHint(ThemeNotifier theme) {
+    if (_documents().length < 2) return null;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+      child: Text(
+        "Press and hold a row's ⋮ to move it",
+        style: TextStyle(fontSize: 10, color: theme.colors.onSurfaceVariant),
+      ),
+    );
+  }
+
+  /// _documents is the entries that can be reordered.
+  ///
+  /// Folders are not among them. A folder's place in the listing is decided by
+  /// the listing -- they come first, always -- so dragging one would be a
+  /// gesture that appeared to work and then undid itself on the next read.
+  List<CanvasEntry> _documents() => [
+        for (var e in _entries)
+          if (!e.isFolder) e
+      ];
+
+  /// _reorder writes the new order down. See CanvasStorage.saveOrder, which
+  /// is what the listing reads back.
+  Future<void> _reorder(int from, int to) async {
+    var folders = _entries.length - _documents().length;
+    // The indices arrive against the whole list, folders included, and a drop
+    // above the folders is clamped to just below them rather than refused --
+    // a drag that snaps back tells the reader nothing about why.
+    from = math.max(0, from - folders);
+    to = math.max(0, to - folders);
+
+    var documents = _documents();
+    if (from >= documents.length) return;
+    var moved = documents.removeAt(from);
+    documents.insert(math.min(to, documents.length), moved);
+
+    setState(() => _entries = [
+          ..._entries.where((e) => e.isFolder),
+          ...documents,
+        ]);
+    await CanvasStorage.saveOrder(_folder, [for (var d in documents) d.name]);
+  }
+
+  /// _newCanvas starts an empty one and gives it a name straight away.
+  ///
+  /// Named immediately, which is the whole reason there is no Save button: a
+  /// canvas with a file behind it saves itself from then on. Asking for the
+  /// name first is also the moment to find out the name is taken, which is
+  /// better than finding out after the work.
+  Future<void> _newCanvas() async {
+    var snackbar = SnackBarModel.of(context);
+    var wanted = await _ask("New canvas", "Name");
+    if (wanted == null) return;
+
+    var clean = CanvasStorage.sanitizeName(wanted);
+    if (clean == null) {
+      snackbar.error("That name cannot be used for a file.");
+      return;
+    }
+    if (await CanvasStorage.exists(_folder, clean)) {
+      snackbar.error("There is already a canvas called $clean here.");
+      return;
+    }
+    await widget.onNew(_folder, clean);
+    await _reload();
+  }
+
+  Widget _row(ThemeNotifier theme, CanvasEntry entry, int index) {
     var open = !entry.isFolder &&
         controller.name == entry.name &&
         controller.folder == entry.folder;
 
     return InkWell(
+      // A reorderable list needs a key on every child, and the row's own
+      // identity is where it lives.
+      key: ValueKey("${entry.folder}/${entry.name}"),
       onTap: () async {
         if (entry.isFolder) {
           setState(() {
@@ -455,38 +514,101 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
               ],
             ),
           ),
-          PopupMenuButton<String>(
-            tooltip: "More",
-            icon: Icon(Icons.more_horiz,
-                size: 16, color: theme.colors.onSurfaceVariant),
-            padding: EdgeInsets.zero,
-            itemBuilder: (context) => entry.isFolder
-                ? const [
-                    PopupMenuItem(value: "deleteFolder", child: Text("Delete")),
-                  ]
-                : const [
-                    PopupMenuItem(value: "publish", child: Text("Publish…")),
-                    PopupMenuItem(value: "duplicate", child: Text("Duplicate")),
-                    PopupMenuItem(value: "rename", child: Text("Rename…")),
-                    PopupMenuItem(value: "delete", child: Text("Delete")),
-                  ],
-            onSelected: (choice) {
-              switch (choice) {
-                case "publish":
-                  widget.onPublish(entry.folder, entry.name);
-                case "duplicate":
-                  _duplicate(entry);
-                case "rename":
-                  _rename(entry);
-                case "delete":
-                  _delete(entry);
-                case "deleteFolder":
-                  _deleteFolder(entry);
-              }
-            },
-          ),
+          _rowButton(theme, entry, index),
         ]),
       ),
     );
+  }
+
+  /// _rowButton is the one control at the end of a row: tap it for the menu,
+  /// hold it to drag the row.
+  ///
+  /// There is deliberately no Tooltip on this button, and there must not be
+  /// one. A Tooltip is an OverlayPortal: while it is showing it has a child
+  /// parked in the Overlay's render tree. Reordering moves a row's element
+  /// rather than rebuilding it, and reactivating an OverlayPortal that way
+  /// re-attaches its overlay child mid-layout, which the framework refuses --
+  /// the whole sidebar is replaced by a red error box. The tooltip and the
+  /// gesture are the same hover, so they cannot both live here. What it would
+  /// have said is said once under the list, by _reorderHint.
+  ///
+  /// A folder gets the menu but not the drag: folders are listed before
+  /// documents whatever anybody does, so dragging one would appear to work
+  /// and undo itself on the next read.
+  Widget _rowButton(ThemeNotifier theme, CanvasEntry entry, int index) {
+    var button = Builder(
+      // A Builder so the menu is anchored to this button rather than to the
+      // panel: the State's own context is the whole sidebar, and a menu
+      // positioned off that opens at its corner.
+      builder: (buttonContext) => Semantics(
+        button: true,
+        label: entry.isFolder ? "More" : "More — press and hold to move",
+        child: GestureDetector(
+          // Opaque, so the tap stops here rather than reaching the row's own
+          // InkWell and opening the canvas under the menu.
+          behavior: HitTestBehavior.opaque,
+          onTap: () => _openRowMenu(buttonContext, entry),
+          child: SizedBox(
+            width: 28,
+            height: 28,
+            child: Icon(Icons.more_vert,
+                size: 16, color: theme.colors.onSurfaceVariant),
+          ),
+        ),
+      ),
+    );
+
+    if (entry.isFolder) return button;
+    return ReorderableDelayedDragStartListener(
+      index: index,
+      child: MouseRegion(cursor: SystemMouseCursors.grab, child: button),
+    );
+  }
+
+  /// _openRowMenu shows the row's menu under the button that was tapped.
+  ///
+  /// showMenu by hand rather than a PopupMenuButton, which wraps itself in a
+  /// Tooltip -- see _rowButton on why nothing in one of these rows may own an
+  /// overlay.
+  Future<void> _openRowMenu(
+      BuildContext buttonContext, CanvasEntry entry) async {
+    var box = buttonContext.findRenderObject() as RenderBox?;
+    var overlay =
+        Overlay.of(buttonContext).context.findRenderObject() as RenderBox?;
+    if (box == null || overlay == null) return;
+    var topLeft = box.localToGlobal(Offset.zero, ancestor: overlay);
+    var bottomRight =
+        box.localToGlobal(box.size.bottomRight(Offset.zero), ancestor: overlay);
+
+    var choice = await showMenu<String>(
+      context: buttonContext,
+      position: RelativeRect.fromLTRB(
+        topLeft.dx,
+        bottomRight.dy,
+        overlay.size.width - bottomRight.dx,
+        overlay.size.height - bottomRight.dy,
+      ),
+      items: entry.isFolder
+          ? const [PopupMenuItem(value: "deleteFolder", child: Text("Delete"))]
+          : const [
+              PopupMenuItem(value: "publish", child: Text("Publish…")),
+              PopupMenuItem(value: "duplicate", child: Text("Duplicate")),
+              PopupMenuItem(value: "rename", child: Text("Rename…")),
+              PopupMenuItem(value: "delete", child: Text("Delete")),
+            ],
+    );
+    if (!mounted) return;
+    switch (choice) {
+      case "publish":
+        widget.onPublish(entry.folder, entry.name);
+      case "duplicate":
+        await _duplicate(entry);
+      case "rename":
+        await _rename(entry);
+      case "delete":
+        await _delete(entry);
+      case "deleteFolder":
+        await _deleteFolder(entry);
+    }
   }
 }
