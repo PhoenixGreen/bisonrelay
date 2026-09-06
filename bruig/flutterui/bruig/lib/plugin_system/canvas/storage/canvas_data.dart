@@ -25,8 +25,18 @@ class DataResult {
   final List<List<String>>? rows;
   final String? problem;
 
-  const DataResult.ok(this.rows) : problem = null;
-  const DataResult.failed(this.problem) : rows = null;
+  /// fields is every path that led to a value in the first record.
+  ///
+  /// What the settings panel offers as "Available", so a column's path is
+  /// chosen from a list of what is actually there rather than guessed from an
+  /// API's documentation. Worked out on the way past, because this is the one
+  /// moment the answer is known.
+  final List<String> fields;
+
+  const DataResult.ok(this.rows, [this.fields = const []]) : problem = null;
+  const DataResult.failed(this.problem)
+      : rows = null,
+        fields = const [];
 
   bool get worked => rows != null;
 }
@@ -96,7 +106,35 @@ Future<DataResult> loadData(
         ? "No rows were found. Is the document a list?"
         : "No rows were found at ${source.rowsPath}.");
   }
-  return DataResult.ok(rows);
+  return DataResult.ok(rows, _fieldsIn(valueAtPath(json, source.rowsPath)));
+}
+
+/// _fieldsIn is every dotted path that leads to a value in the first record.
+///
+/// The first record only: a hundred identical shapes tell you nothing the
+/// first one did not, and walking them all on a long table is work for no
+/// answer. Lists are described by their first entry, so "standings.0.table"
+/// is offered rather than one path per row.
+List<String> _fieldsIn(dynamic records, {String prefix = "", int depth = 0}) {
+  if (records is List) {
+    return records.isEmpty
+        ? const []
+        : _fieldsIn(records.first, prefix: prefix, depth: depth);
+  }
+  if (records is! Map || depth > 3) return const [];
+
+  var out = <String>[];
+  for (var entry in records.entries) {
+    var path = prefix.isEmpty ? "${entry.key}" : "$prefix.${entry.key}";
+    var value = entry.value;
+    if (value is Map || value is List) {
+      out.addAll(_fieldsIn(value, prefix: path, depth: depth + 1));
+    } else if (value != null) {
+      out.add(path);
+    }
+  }
+  out.sort();
+  return out;
 }
 
 /// _fetch is the request itself.

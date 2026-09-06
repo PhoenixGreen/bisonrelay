@@ -27,6 +27,11 @@ import 'package:provider/provider.dart';
 // in, left visible so anything the presets do not cover is still reachable.
 
 /// dataSourceSection is the Data section of a table's settings.
+///
+/// The whole section is the panel, rather than the panel being its children,
+/// because the Refresh button lives in the section's own heading -- pressing
+/// it must work with the section shut, and it needs the state that knows
+/// whether a refresh is already running.
 Widget dataSourceSection(
         BuildContext context,
         CanvasController controller,
@@ -34,22 +39,12 @@ Widget dataSourceSection(
         SettingsWrite write,
         VoidCallback begin,
         VoidCallback commit) =>
-    boxed(
-      context,
-      CanvasExpander(
-        label: "Data",
-        remember: "tableSource",
-        trailing: _summary(e.source),
-        children: [
-          _DataSourcePanel(
-            controller: controller,
-            element: e,
-            write: write,
-            begin: begin,
-            commit: commit,
-          )
-        ],
-      ),
+    _DataSourcePanel(
+      controller: controller,
+      element: e,
+      write: write,
+      begin: begin,
+      commit: commit,
     );
 
 String _summary(DataSource source) {
@@ -83,6 +78,15 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
   /// _busy is a refresh in progress. A second press would make a second
   /// request and race the first one into the document.
   bool _busy = false;
+
+  /// _fields is what the last refresh turned out to contain: every path that
+  /// led to a value in the first record.
+  ///
+  /// Kept here rather than in the document, because it is a fact about what
+  /// came back this morning and not about the design. It is empty until a
+  /// refresh has happened, which is honest -- there is nothing to know about
+  /// a source nobody has read yet.
+  List<String> _fields = const [];
 
   /// _hasKey is whether a key has been saved for this address's host. The key
   /// itself is never read back into the interface -- there is nothing anybody
@@ -142,6 +146,13 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
           await collectPictures(result.rows!, source, allowFetching: allowed);
       if (!mounted) return;
 
+      // The columns the reader fills in themselves, put back from what was
+      // there before -- matched by name, so a badge follows its team up and
+      // down the table rather than staying at the position it was put in.
+      rows = keepColumns(widget.element.rows, rows, source,
+          headerRow: widget.element.headerRow);
+      setState(() => _fields = result.fields);
+
       // Sorted on the way in, so a refresh puts the rows back in the order the
       // table was already in rather than the order the source happened to send
       // them. A league table that re-sorted itself only when somebody
@@ -192,7 +203,29 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
     var preset = presetById(source.preset);
     var allowed = context.watch<CanvasPreferences>().allowFetching;
 
-    return Column(children: [
+    return boxed(
+      context,
+      CanvasExpander(
+        label: "Data",
+        remember: "tableSource",
+        trailing: _summary(source),
+        // In the heading, so a table is refreshed with one press and without
+        // opening anything. It is the thing this section is for.
+        action: CanvasIconButton(
+          icon: _busy ? Icons.hourglass_empty : Icons.refresh,
+          tooltip: source.on
+              ? "Read the data again and put it in the table"
+              : "Choose where the data comes from first",
+          onPressed: source.on && !_busy ? _refresh : null,
+        ),
+        children: _controls(context, preset, allowed),
+      ),
+    );
+  }
+
+  List<Widget> _controls(
+      BuildContext context, DataPreset? preset, bool allowed) {
+    return [
       CanvasControlGroup(label: "Source", children: [
         CanvasDropdown<String>(
           label: "Preset",
@@ -204,9 +237,20 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
           ],
           onChanged: (id) {
             var chosen = presetById(id);
-            _set(chosen == null
-                ? source.copyWith(preset: "")
-                : chosen.applyTo(source, chosen.choices.first.$1));
+            if (chosen == null) {
+              _set(source.copyWith(preset: ""));
+              return;
+            }
+            // A preset brings its hidden headings with it. Its badge and
+            // position columns are named so the mapping can refer to them and
+            // are not drawn, and making the reader switch those off by hand
+            // after choosing a preset would be a preset that half worked.
+            widget.begin();
+            widget.write(widget.element.copyWith(
+              source: chosen.applyTo(source, chosen.choices.first.$1),
+              hiddenHeaders: chosen.hiddenHeaders,
+            ));
+            widget.commit();
           },
         ),
         if (preset != null)
@@ -255,15 +299,7 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
           ),
         ]),
         CanvasControlGroup(label: "Key", children: [
-          CanvasTextField(
-            label: _hasKey ? "Replace the key" : "Key",
-            value: "",
-            width: 240,
-            onChanged: (v) async {
-              await CanvasApiKeys.write(source.host, v);
-              await _checkKey();
-            },
-          ),
+          _KeyField(host: source.host, onSaved: _checkKey),
           CanvasHint(_hasKey
               ? "A key is saved for ${source.host}. It is kept on this "
                   "machine and never written into the canvas, so a canvas you "
@@ -312,11 +348,36 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
                 onChanged: (v) =>
                     _setColumn(i, source.columns[i].copyWith(path: v)),
               ),
+              // The fields the last refresh actually contained, so a path is
+              // chosen from a list rather than guessed and typed. Only after
+              // a refresh: until then there is nothing to have found out.
+              if (_fields.isNotEmpty)
+                CanvasDropdown<String>(
+                  label: "Available",
+                  value: _fields.contains(source.columns[i].path)
+                      ? source.columns[i].path
+                      : "",
+                  width: 150,
+                  options: [
+                    ("", "—"),
+                    for (var field in _fields) (field, field),
+                  ],
+                  onChanged: (v) {
+                    if (v.isEmpty) return;
+                    _setColumn(i, source.columns[i].copyWith(path: v));
+                  },
+                ),
               CanvasToggle(
                 label: "A picture",
                 value: source.columns[i].picture,
                 onChanged: (v) =>
                     _setColumn(i, source.columns[i].copyWith(picture: v)),
+              ),
+              CanvasToggle(
+                label: "Keep mine",
+                value: source.columns[i].keep,
+                onChanged: (v) =>
+                    _setColumn(i, source.columns[i].copyWith(keep: v)),
               ),
               CanvasIconButton(
                 icon: Icons.delete_outline,
@@ -335,22 +396,38 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
                   columns: [...source.columns, const SourceColumn()])),
             ),
           ]),
+          CanvasControlGroup(label: "Keeping your own", children: [
+            CanvasDropdown<int>(
+              label: "Rows are matched by",
+              value: source.matchColumn,
+              width: 168,
+              options: [
+                (-1, "Their position"),
+                for (var c = 0; c < source.columns.length; c++)
+                  (
+                    c,
+                    source.columns[c].header.isEmpty
+                        ? "Column ${c + 1}"
+                        : source.columns[c].header
+                  ),
+              ],
+              onChanged: (v) => _set(source.copyWith(matchColumn: v)),
+            ),
+            const CanvasHint(
+                "\"Keep mine\" leaves a column exactly as you filled it in "
+                "— club badges you chose yourself, a note against each row — "
+                "while everything else is replaced. Match the rows by the "
+                "team's name rather than by their position, or a club that "
+                "climbs two places will inherit somebody else's badge."),
+          ]),
         ],
       ),
 
-      CanvasControlGroup(label: "Refresh", children: [
-        CanvasIconButton(
-          icon: _busy ? Icons.hourglass_empty : Icons.refresh,
-          tooltip: source.on
-              ? "Read the data again and put it in the table"
-              : "Choose where the data comes from first",
-          onPressed: source.on && !_busy ? _refresh : null,
-        ),
-        if (source.fetchedAt != null)
-          CanvasHint("Last updated "
-              "${DateFormat("d MMM y, HH:mm").format(source.fetchedAt!.toLocal())}."),
-      ]),
-    ]);
+      if (source.fetchedAt != null)
+        CanvasHint("Last updated "
+            "${DateFormat("d MMM y, HH:mm").format(source.fetchedAt!.toLocal())}."
+            " Refresh is the button in this section's heading."),
+    ];
   }
 
   void _setColumn(int index, SourceColumn column) => _set(source.copyWith(
@@ -368,4 +445,65 @@ String _choiceOf(DataPreset preset, DataSource source) {
     if (source.where == preset.address(code)) return code;
   }
   return preset.choices.first.$1;
+}
+
+/// _KeyField takes an API key and saves it, and never shows one back.
+///
+/// Its own widget holding its own text, which is the whole reason it exists.
+/// A CanvasTextField is bound to a value and resets itself to that value
+/// whenever the panel rebuilds -- and this one's value is deliberately empty,
+/// so the key vanished out of the box the moment anything else on the panel
+/// changed. After a refresh that is everything, and it looked exactly as
+/// though the key had been forgotten. It had not; the box had.
+///
+/// Saved on a button rather than as it is typed, so a key half pasted is not
+/// a key half saved.
+class _KeyField extends StatefulWidget {
+  final String host;
+  final VoidCallback onSaved;
+
+  const _KeyField({required this.host, required this.onSaved});
+
+  @override
+  State<_KeyField> createState() => _KeyFieldState();
+}
+
+class _KeyFieldState extends State<_KeyField> {
+  final TextEditingController _text = TextEditingController();
+
+  @override
+  void dispose() {
+    _text.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    await CanvasApiKeys.write(widget.host, _text.text);
+    _text.clear();
+    widget.onSaved();
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      Row(mainAxisSize: MainAxisSize.min, children: [
+        SizedBox(
+          width: 190,
+          child: TextField(
+            controller: _text,
+            obscureText: true,
+            style: const TextStyle(fontSize: 12),
+            decoration: const InputDecoration(
+              labelText: "Key",
+              isDense: true,
+              border: OutlineInputBorder(),
+            ),
+            onSubmitted: (_) => _save(),
+          ),
+        ),
+        CanvasIconButton(
+          icon: Icons.save_outlined,
+          tooltip: "Save this key on this machine",
+          onPressed: _save,
+        ),
+      ]);
 }

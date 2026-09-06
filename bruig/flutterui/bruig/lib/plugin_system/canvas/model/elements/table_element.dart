@@ -586,6 +586,16 @@ class TableElement extends CanvasElement {
   final bool headerRow;
   final bool headerColumn;
 
+  /// hiddenHeaders are the columns whose header is not drawn, by index.
+  ///
+  /// The header cell still holds its text and is still edited in the settings
+  /// -- it is simply not painted, and takes up no width. A column of club
+  /// badges wants a name so that the data mapping and the sort can refer to
+  /// it, and wants nothing written over the badges on the canvas; those two
+  /// are not in conflict. One is what the column is called, the other is what
+  /// the table shows.
+  final List<int> hiddenHeaders;
+
   /// showOutline is the rule round the outside of the table.
   ///
   /// Its own switch rather than another entry in [TableGrid], because it is a
@@ -670,6 +680,7 @@ class TableElement extends CanvasElement {
     this.rules = const [],
     this.sort = const TableSort(),
     this.source = const DataSource(),
+    this.hiddenHeaders = const [],
   });
 
   @override
@@ -805,6 +816,15 @@ class TableElement extends CanvasElement {
     return rule != null && rule.style.changesType ? rule.style : null;
   }
 
+  /// shows is whether a cell's text is drawn.
+  ///
+  /// Only ever false for a header the reader has asked to keep and not show --
+  /// see [hiddenHeaders]. Everything else about the cell still happens: it
+  /// takes its share of the width, its rules apply, and its background is
+  /// painted. It is the writing that is left out.
+  bool shows(int row, int col) =>
+      !(headerRow && row == 0 && hiddenHeaders.contains(col));
+
   /// cell is the string at a position, padding out ragged rows rather than
   /// throwing. See TableElement's note on ragged data.
   String cell(int row, int col) {
@@ -844,6 +864,7 @@ class TableElement extends CanvasElement {
     List<TableRule>? rules,
     TableSort? sort,
     DataSource? source,
+    List<int>? hiddenHeaders,
   }) =>
       _copy(base,
           rows: rows,
@@ -866,7 +887,8 @@ class TableElement extends CanvasElement {
           headerHeightRatio: headerHeightRatio,
           rules: rules,
           sort: sort,
-          source: source);
+          source: source,
+          hiddenHeaders: hiddenHeaders);
 
   TableElement _copy(
     ElementBase newBase, {
@@ -891,6 +913,7 @@ class TableElement extends CanvasElement {
     List<TableRule>? rules,
     TableSort? sort,
     DataSource? source,
+    List<int>? hiddenHeaders,
   }) =>
       TableElement(newBase,
           rows: rows ?? this.rows,
@@ -913,7 +936,8 @@ class TableElement extends CanvasElement {
           headerHeightRatio: headerHeightRatio ?? this.headerHeightRatio,
           rules: rules ?? this.rules,
           sort: sort ?? this.sort,
-          source: source ?? this.source);
+          source: source ?? this.source,
+          hiddenHeaders: hiddenHeaders ?? this.hiddenHeaders);
 
   @override
   Map<String, dynamic> props() => {
@@ -938,6 +962,7 @@ class TableElement extends CanvasElement {
         if (rules.isNotEmpty) "rules": [for (var rule in rules) rule.toJson()],
         if (sort.on || !sort.pinFirstColumn) "sort": sort.toJson(),
         if (source.on) "source": source.toJson(),
+        if (hiddenHeaders.isNotEmpty) "hiddenHeaders": hiddenHeaders,
       };
 
   factory TableElement.fromJson(Map<String, dynamic> json, ElementBase b) {
@@ -984,7 +1009,12 @@ class TableElement extends CanvasElement {
         ],
         sort: jsonSpec(json["sort"], TableSort.fromJson, const TableSort()),
         source:
-            jsonSpec(json["source"], DataSource.fromJson, const DataSource()));
+            jsonSpec(json["source"], DataSource.fromJson, const DataSource()),
+        hiddenHeaders: [
+          if (json["hiddenHeaders"] case List raw)
+            for (var c in raw)
+              if (c is num) c.toInt(),
+        ]);
   }
 
   /// sorted is this table with its rows in the order [sort] asks for.

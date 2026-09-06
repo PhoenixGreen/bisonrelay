@@ -159,6 +159,15 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
       var pad = e.cellPadding + (style?.textPad ?? 0);
       var textBox = Rect.fromLTWH(x + pad, y, math.max(1, w - pad * 2), h);
 
+      // A header kept but not shown -- see TableElement.hiddenHeaders. The
+      // cell's background, its rules and its share of the width all still
+      // happen; it is only the writing that is left out, which is what makes a
+      // column of badges nameable without the name appearing over them.
+      if (!e.shows(r, c)) {
+        x += w;
+        continue;
+      }
+
       // A chip round the word, drawn before the word itself.
       //
       // Fitted to the words rather than to the cell, because the thing
@@ -617,6 +626,9 @@ List<double> _columnWidths(TableElement e, Rect rect, int cols) {
   for (var r = 0; r < e.rows.length; r++) {
     var spec = e.headerRow && r == 0 ? e.headerSpec : e.cellSpec;
     for (var c = 0; c < cols; c++) {
+      // A hidden header is not measured either: a badge column would
+      // otherwise be as wide as the word nobody can see in it.
+      if (!e.shows(r, c)) continue;
       var text = e.cell(r, c);
       if (text.isEmpty) continue;
       var w = layoutText(text, spec, maxWidth: cap).width;

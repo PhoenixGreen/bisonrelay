@@ -59,22 +59,50 @@ class SourceColumn {
   /// which is ugly but truthful and can be seen to be a URL.
   final bool picture;
 
-  const SourceColumn({this.header = "", this.path = "", this.picture = false});
+  /// keep leaves whatever is already in this column alone.
+  ///
+  /// For a column somebody has filled in themselves -- club badges chosen by
+  /// hand, a note against each row -- in a table whose other columns come from
+  /// an API. Without it a refresh is all or nothing: either the numbers stay
+  /// stale or the hand-made column is wiped twice a week.
+  ///
+  /// What is kept is matched by [DataSource.matchColumn] rather than by row
+  /// number, because the rows move: a team that climbs two places must bring
+  /// its badge with it.
+  final bool keep;
 
-  SourceColumn copyWith({String? header, String? path, bool? picture}) =>
+  const SourceColumn({
+    this.header = "",
+    this.path = "",
+    this.picture = false,
+    this.keep = false,
+  });
+
+  SourceColumn copyWith({
+    String? header,
+    String? path,
+    bool? picture,
+    bool? keep,
+  }) =>
       SourceColumn(
         header: header ?? this.header,
         path: path ?? this.path,
         picture: picture ?? this.picture,
+        keep: keep ?? this.keep,
       );
 
-  Map<String, dynamic> toJson() =>
-      {"h": header, "p": path, if (picture) "pic": true};
+  Map<String, dynamic> toJson() => {
+        "h": header,
+        "p": path,
+        if (picture) "pic": true,
+        if (keep) "keep": true,
+      };
 
   factory SourceColumn.fromJson(Map<String, dynamic> json) => SourceColumn(
         header: jsonString(json["h"], ""),
         path: jsonString(json["p"], ""),
         picture: jsonBool(json["pic"], false),
+        keep: jsonBool(json["keep"], false),
       );
 }
 
@@ -92,6 +120,16 @@ class DataSource {
 
   final List<SourceColumn> columns;
 
+  /// matchColumn is the column that says which row is which across a refresh
+  /// -- the team's name, usually.
+  ///
+  /// Needed only by the columns marked [SourceColumn.keep]. Rows arrive in
+  /// whatever order the source sends them and are then sorted, so a badge kept
+  /// by row number would be handed to whoever finished in that position this
+  /// week. Minus one falls back to the row number, which is right for a source
+  /// whose order never changes and wrong for a league table.
+  final int matchColumn;
+
   /// preset is which named recipe filled the paths in, kept so the settings
   /// panel can show it and offer to fill them in again. Empty for a mapping
   /// somebody wrote themselves.
@@ -107,6 +145,7 @@ class DataSource {
     this.where = "",
     this.rowsPath = "",
     this.columns = const [],
+    this.matchColumn = -1,
     this.preset = "",
     this.fetchedAt,
   });
@@ -122,6 +161,7 @@ class DataSource {
     String? where,
     String? rowsPath,
     List<SourceColumn>? columns,
+    int? matchColumn,
     String? preset,
     DateTime? fetchedAt,
   }) =>
@@ -130,6 +170,7 @@ class DataSource {
         where: where ?? this.where,
         rowsPath: rowsPath ?? this.rowsPath,
         columns: columns ?? this.columns,
+        matchColumn: matchColumn ?? this.matchColumn,
         preset: preset ?? this.preset,
         fetchedAt: fetchedAt ?? this.fetchedAt,
       );
@@ -139,6 +180,7 @@ class DataSource {
         "where": where,
         if (rowsPath.isNotEmpty) "rows": rowsPath,
         if (columns.isNotEmpty) "cols": [for (var c in columns) c.toJson()],
+        if (matchColumn >= 0) "match": matchColumn,
         if (preset.isNotEmpty) "preset": preset,
         if (fetchedAt != null) "at": fetchedAt!.toIso8601String(),
       };
@@ -153,6 +195,7 @@ class DataSource {
             for (var c in raw)
               if (c is Map<String, dynamic>) SourceColumn.fromJson(c),
         ],
+        matchColumn: jsonInt(json["match"], -1),
         preset: jsonString(json["preset"], ""),
         fetchedAt: DateTime.tryParse(jsonString(json["at"], "")),
       );
@@ -272,4 +315,56 @@ class TableLink {
               if (v is num) v.toInt(),
         ],
       );
+}
+
+/// keepColumns puts back the columns marked [SourceColumn.keep] from the rows
+/// that were there before.
+///
+/// [before] is the table as it stood, header included; [after] is what has
+/// just arrived. Rows are matched on [DataSource.matchColumn] -- the team's
+/// name -- so a badge follows its team up and down the table rather than
+/// staying at the position it was put in.
+///
+/// A row with no match keeps whatever the source sent for it, which for a
+/// picture column is nothing: a newly promoted club has no badge until
+/// somebody gives it one, and that is the truth rather than another club's
+/// badge inherited by position.
+List<List<String>> keepColumns(
+  List<List<String>> before,
+  List<List<String>> after,
+  DataSource source, {
+  bool headerRow = true,
+}) {
+  var kept = <int>[
+    for (var i = 0; i < source.columns.length; i++)
+      if (source.columns[i].keep) i,
+  ];
+  if (kept.isEmpty || before.length < 2 || after.length < 2) return after;
+
+  var skip = headerRow ? 1 : 0;
+  var match = source.matchColumn;
+  var out = [
+    for (var row in after) [...row]
+  ];
+
+  // What was there, by whatever identifies a row.
+  var was = <String, List<String>>{};
+  for (var i = skip; i < before.length; i++) {
+    var key = match >= 0 && match < before[i].length
+        ? before[i][match].trim().toLowerCase()
+        : "#${i - skip}";
+    if (key.isNotEmpty) was[key] = before[i];
+  }
+
+  for (var i = skip; i < out.length; i++) {
+    var key = match >= 0 && match < out[i].length
+        ? out[i][match].trim().toLowerCase()
+        : "#${i - skip}";
+    var old = was[key];
+    if (old == null) continue;
+    for (var c in kept) {
+      if (c < out[i].length && c < old.length) out[i][c] = old[c];
+    }
+  }
+  return out;
 }

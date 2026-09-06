@@ -14,6 +14,10 @@ class DataPreset {
   final String id;
   final String label;
 
+  /// shortLabel is what a closed section's heading says, where the full label
+  /// does not fit beside a title and a button.
+  final String shortLabel;
+
   /// note says what the reader has to do for themselves, which for every one
   /// of these is "get a key".
   final String note;
@@ -25,17 +29,29 @@ class DataPreset {
 
   final String Function(String choice) address;
   final String rowsPath;
+
+  /// matchColumn identifies a row across a refresh. See DataSource.
+  final int matchColumn;
+
+  /// hiddenHeaders are the columns whose names this preset wants kept but not
+  /// drawn -- the position and the badge on a league table, both of which need
+  /// a name for the mapping and neither of which wants one written over it.
+  final List<int> hiddenHeaders;
+
   final List<SourceColumn> columns;
 
   const DataPreset({
     required this.id,
     required this.label,
+    required this.shortLabel,
     required this.note,
     required this.choices,
     required this.choiceLabel,
     required this.address,
     required this.rowsPath,
     required this.columns,
+    this.matchColumn = -1,
+    this.hiddenHeaders = const [],
   });
 
   /// applyTo is [source] with this recipe written into it.
@@ -44,6 +60,7 @@ class DataPreset {
         where: address(choice),
         rowsPath: rowsPath,
         columns: columns,
+        matchColumn: matchColumn,
         preset: id,
       );
 }
@@ -55,8 +72,12 @@ class DataPreset {
 /// and having it here means a refreshed table already reads 1, 2, 3 without
 /// anybody sorting anything.
 const List<SourceColumn> footballDataColumns = [
-  SourceColumn(header: "", path: "position"),
-  SourceColumn(header: "", path: "team.crest", picture: true),
+  SourceColumn(header: "Pos", path: "position"),
+  // Named, and hidden on the canvas by TableElement.hiddenHeaders. A column
+  // needs a name for the mapping and the order to refer to it; a column of
+  // badges wants nothing written over them. Kept, so badges chosen by hand
+  // survive a refresh -- see SourceColumn.keep.
+  SourceColumn(header: "Badge", path: "team.crest", picture: true, keep: true),
   SourceColumn(header: "Team", path: "team.shortName"),
   SourceColumn(header: "Played", path: "playedGames"),
   SourceColumn(header: "Won", path: "won"),
@@ -80,6 +101,7 @@ const List<SourceColumn> footballDataColumns = [
 final DataPreset footballData = DataPreset(
   id: "football-data.org",
   label: "Football league table (football-data.org)",
+  shortLabel: "Football",
   note: "Needs a free key from football-data.org, which arrives by email. "
       "The key is kept on this machine and never saved into the canvas, so a "
       "canvas you send carries the table and not your key.",
@@ -105,6 +127,11 @@ final DataPreset footballData = DataPreset(
   // The response holds a list of standings -- the whole table, then home and
   // away for some competitions -- and the first is the one anybody means.
   rowsPath: "standings.0.table",
+  // Rows are identified by the team's name across a refresh, so a column the
+  // reader keeps -- their own badges -- follows its club up and down the
+  // table rather than staying where it was put.
+  matchColumn: 2,
+  hiddenHeaders: const [0, 1],
   columns: footballDataColumns,
 );
 

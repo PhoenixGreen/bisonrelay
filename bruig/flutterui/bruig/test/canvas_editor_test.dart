@@ -50,7 +50,14 @@ void main() {
       providers: [
         ChangeNotifierProvider<ThemeNotifier>(
             create: (c) => ThemeNotifier(doLoad: false)),
-        if (prefs != null) ChangeNotifierProvider.value(value: prefs),
+        // Always provided, not only when a test brought its own. A table's
+        // Data section reads whether fetching is allowed, and the app always
+        // has these -- a settings panel that worked in the app and threw in a
+        // test would be a test harness lying about the app.
+        prefs == null
+            ? ChangeNotifierProvider<CanvasPreferences>(
+                create: (c) => CanvasPreferences())
+            : ChangeNotifierProvider<CanvasPreferences>.value(value: prefs),
       ],
       child: MaterialApp(home: Scaffold(body: child)),
     ));
@@ -2382,24 +2389,74 @@ void main() {
       expect(tableIn(controller).rules, isEmpty);
     });
 
+    /// sections is every collapsible section's label, in the order they are
+    /// laid out down the panel.
+    ///
+    /// Read off the widgets rather than off the text, because the pane heads
+    /// itself with the element's own name -- "Table" for a table -- and a
+    /// section called Table is a second one of those.
+    List<String> sections(WidgetTester tester) {
+      var found = [
+        for (var element in find.byType(CanvasExpander).evaluate())
+          (
+            tester.getTopLeft(find.byWidget(element.widget)).dy,
+            (element.widget as CanvasExpander).label,
+          ),
+      ]..sort((a, b) => a.$1.compareTo(b.$1));
+      return [for (var (_, label) in found) label];
+    }
+
     testWidgets("the cells are a section of their own", (tester) async {
       // The longest thing in these settings and the least often changed once
       // it is right, so it was pushing everything else off the bottom.
       await panel(tester);
-      expect(find.text("CELLS"), findsOneWidget);
+      expect(sections(tester), contains("Table"));
       expect(find.text("2 rows, 2 columns"), findsOneWidget);
       expect(find.byType(TableDataEditor), findsOneWidget);
     });
 
-    testWidgets("the two sets of type controls fold away", (tester) async {
+    testWidgets("the panel is ordered by what it is about", (tester) async {
+      // The cells, then where they come from, then their order -- what the
+      // table says -- and only after that how it looks. The look is two sets
+      // of type controls and a dozen colour rows, which is what pushed the
+      // data and the order off the bottom of the panel.
       await panel(tester);
+      expect(sections(tester),
+          ["Table", "Data", "Order", "Special cells", "Style"]);
+    });
+
+    testWidgets("the two sets of type controls fold away inside Style",
+        (tester) async {
+      await panel(tester);
+      // Inside Style, which is shut, so neither is even listed yet.
+      expect(find.text("CELL TYPE"), findsNothing);
+      expect(find.text("Weight"), findsNothing);
+
+      await press(tester, find.text("STYLE"));
       expect(find.text("CELL TYPE"), findsOneWidget);
       expect(find.text("HEADER TYPE"), findsOneWidget);
-      // Closed, so neither is showing a dozen rows of settings.
-      expect(find.text("Weight"), findsNothing);
+      expect(find.text("Weight"), findsNothing,
+          reason: "listed, but still folded away");
 
       await press(tester, find.text("CELL TYPE"));
       expect(find.text("Weight"), findsOneWidget);
+    });
+
+    testWidgets("a table is refreshed and reordered from the headings",
+        (tester) async {
+      // Both without opening anything: pressing a button inside a section
+      // means opening it, finding the button, and closing it again, every
+      // time.
+      var controller = await panel(tester);
+      controller.replaceElement((tableIn(controller)).copyWith(
+        headerRow: true,
+        sort: const TableSort(levels: [TableSortLevel(column: 1)]),
+      ));
+      await tester.pumpAndSettle();
+
+      expect(find.byTooltip("Put the rows back in this order"), findsOneWidget);
+      expect(find.byTooltip("Choose where the data comes from first"),
+          findsOneWidget);
     });
 
     testWidgets("a row and a column can be added and taken away",

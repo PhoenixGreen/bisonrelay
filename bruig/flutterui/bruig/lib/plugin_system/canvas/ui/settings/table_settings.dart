@@ -23,7 +23,7 @@ List<Widget> tableSettings(
       boxed(
         context,
         CanvasExpander(
-          label: "Cells",
+          label: "Table",
           remember: "tableCells",
           trailing: "${e.rows.length} rows, ${e.columnCount} columns",
           initiallyOpen: true,
@@ -49,6 +49,22 @@ List<Widget> tableSettings(
           label: "Order",
           remember: "tableSort",
           trailing: _sortSummary(e),
+          // In the heading, so putting a table back in order is one press
+          // without opening anything. It is the only thing this section does
+          // that anybody wants without reading it.
+          action: CanvasIconButton(
+            icon: Icons.refresh,
+            tooltip: e.sort.on
+                ? "Put the rows back in this order"
+                : "Choose a column to order by first",
+            onPressed: e.sort.on
+                ? () {
+                    begin();
+                    write(e.sorted());
+                    commit();
+                  }
+                : null,
+          ),
           children: [
             CanvasHint("Choose a column to order the rows by. The second and "
                 "third only decide the rows the one before them left equal — "
@@ -99,144 +115,9 @@ List<Widget> tableSettings(
                   "which belongs to the place rather than to the team in it — "
                   "so it stays reading 1, 2, 3 while everything else moves."),
             ]),
-            CanvasControlGroup(label: "Apply", children: [
-              CanvasIconButton(
-                icon: Icons.sort,
-                tooltip: e.sort.on
-                    ? "Put the rows in this order"
-                    : "Choose a column to order by first",
-                onPressed: e.sort.on
-                    ? () {
-                        begin();
-                        write(e.sorted());
-                        commit();
-                      }
-                    : null,
-              ),
-            ]),
           ],
         ),
       ),
-      CanvasControlGroup(label: "Table", children: [
-        CanvasToggle(
-          label: "Header row",
-          value: e.headerRow,
-          onChanged: (v) {
-            begin();
-            write(e.copyWith(headerRow: v));
-            commit();
-          },
-        ),
-        CanvasToggle(
-          label: "Header column",
-          value: e.headerColumn,
-          onChanged: (v) {
-            begin();
-            write(e.copyWith(headerColumn: v));
-            commit();
-          },
-        ),
-      ]),
-      CanvasControlGroup(label: "Look", children: [
-        CanvasDropdown<TableGrid>(
-          label: "Rules",
-          value: e.grid,
-          width: 108,
-          options: [for (var g in TableGrid.values) (g, g.label)],
-          onChanged: (v) {
-            begin();
-            write(e.copyWith(grid: v));
-            commit();
-          },
-        ),
-        CanvasColorButton(
-          label: "Rules",
-          color: e.gridColor,
-          onChanged: (c) {
-            begin();
-            write(e.copyWith(gridColor: c));
-            commit();
-          },
-        ),
-        CanvasColorButton(
-          label: "Header",
-          color: e.headerFill,
-          onChanged: (c) {
-            begin();
-            write(e.copyWith(headerFill: c));
-            commit();
-          },
-        ),
-        CanvasColorButton(
-          label: "Cells",
-          color: e.cellFill,
-          onChanged: (c) {
-            begin();
-            write(e.copyWith(cellFill: c));
-            commit();
-          },
-        ),
-        CanvasToggle(
-          label: "Outline",
-          value: e.showOutline,
-          onChanged: (v) {
-            begin();
-            write(e.copyWith(showOutline: v));
-            commit();
-          },
-        ),
-        CanvasToggle(
-          label: "Zebra",
-          value: e.zebra,
-          onChanged: (v) {
-            begin();
-            write(e.copyWith(zebra: v));
-            commit();
-          },
-        ),
-        CanvasColorButton(
-          label: "Zebra",
-          color: e.zebraFill,
-          onChanged: (c) {
-            begin();
-            write(e.copyWith(zebraFill: c));
-            commit();
-          },
-        ),
-        CanvasNumberField(
-          label: "Padding",
-          value: e.cellPadding,
-          min: 0,
-          max: 120,
-          width: 54,
-          onChanged: (v) => write(e.copyWith(cellPadding: v)),
-          onCommit: commit,
-        ),
-        CanvasNumberField(
-          label: "Radius",
-          value: e.cornerRadius,
-          min: 0,
-          max: 120,
-          width: 54,
-          onChanged: (v) => write(e.copyWith(cornerRadius: v)),
-          onCommit: commit,
-        ),
-        CanvasNumberField(
-          label: "Picture size",
-          value: e.pictureScale,
-          min: 0.05,
-          max: 1,
-          decimals: 2,
-          width: 62,
-          onChanged: (v) => write(e.copyWith(pictureScale: v)),
-          onCommit: commit,
-        ),
-        const CanvasHint(
-            "Picture size is how much of its cell a picture fills, on top of "
-            "the cell padding. Less than one leaves room round the outside, "
-            "which the padding cannot do on its own -- that is the words' "
-            "margin as well."),
-      ]),
       // One mechanism for three things that were asked for separately, and
       // they really are one: a green chip wherever a column says W is a rule
       // about a column and a word, a highlighted row is a rule about a row,
@@ -274,28 +155,183 @@ List<Widget> tableSettings(
           ],
         ),
       ),
-      // Two sets of type controls is a dozen rows of settings that are not
-      // about the table, so they fold away like everything else that is long.
+      // Everything about how the table looks, in one place and below the
+      // things that are about what it says. Two sets of type controls and a
+      // dozen colour rows are what pushed the data and the order off the
+      // bottom of the panel; a reader setting a table up goes to those first
+      // and comes here once.
       boxed(
         context,
         CanvasExpander(
-          label: "Cell type",
-          remember: "tableCellType",
-          trailing: "${e.cellSpec.fontSize.round()}",
-          children: typeGroups(e.cellSpec,
-              (spec) => write(e.copyWith(cellSpec: spec)), begin, commit,
-              label: "Cell type", bandOnlyLabel: true),
-        ),
-      ),
-      boxed(
-        context,
-        CanvasExpander(
-          label: "Header type",
-          remember: "tableHeaderType",
-          trailing: "${e.headerSpec.fontSize.round()}",
-          children: typeGroups(e.headerSpec,
-              (spec) => write(e.copyWith(headerSpec: spec)), begin, commit,
-              label: "Header type", bandOnlyLabel: true),
+          label: "Style",
+          remember: "tableStyle",
+          children: [
+            CanvasControlGroup(label: "Headers", children: [
+              CanvasToggle(
+                label: "Header row",
+                value: e.headerRow,
+                onChanged: (v) {
+                  begin();
+                  write(e.copyWith(headerRow: v));
+                  commit();
+                },
+              ),
+              CanvasToggle(
+                label: "Header column",
+                value: e.headerColumn,
+                onChanged: (v) {
+                  begin();
+                  write(e.copyWith(headerColumn: v));
+                  commit();
+                },
+              ),
+              for (var c = 0; c < e.columnCount; c++)
+                CanvasToggle(
+                  label: _headingName(e, c),
+                  value: !e.hiddenHeaders.contains(c),
+                  onChanged: (v) {
+                    begin();
+                    write(e.copyWith(hiddenHeaders: [
+                      for (var i = 0; i < e.columnCount; i++)
+                        if (i == c ? !v : e.hiddenHeaders.contains(i)) i,
+                    ]));
+                    commit();
+                  },
+                ),
+              const CanvasHint(
+                  "Switch a heading off to keep its name without showing it. "
+                  "A column of badges wants a name so the data mapping and "
+                  "the order can refer to it, and wants nothing written over "
+                  "the badges — the name is still there in the Table section "
+                  "above, it is simply not drawn or measured."),
+            ]),
+            CanvasControlGroup(label: "Look", children: [
+              CanvasDropdown<TableGrid>(
+                label: "Rules",
+                value: e.grid,
+                width: 108,
+                options: [for (var g in TableGrid.values) (g, g.label)],
+                onChanged: (v) {
+                  begin();
+                  write(e.copyWith(grid: v));
+                  commit();
+                },
+              ),
+              CanvasColorButton(
+                label: "Rules",
+                color: e.gridColor,
+                onChanged: (c) {
+                  begin();
+                  write(e.copyWith(gridColor: c));
+                  commit();
+                },
+              ),
+              CanvasColorButton(
+                label: "Header",
+                color: e.headerFill,
+                onChanged: (c) {
+                  begin();
+                  write(e.copyWith(headerFill: c));
+                  commit();
+                },
+              ),
+              CanvasColorButton(
+                label: "Cells",
+                color: e.cellFill,
+                onChanged: (c) {
+                  begin();
+                  write(e.copyWith(cellFill: c));
+                  commit();
+                },
+              ),
+              CanvasToggle(
+                label: "Outline",
+                value: e.showOutline,
+                onChanged: (v) {
+                  begin();
+                  write(e.copyWith(showOutline: v));
+                  commit();
+                },
+              ),
+              CanvasToggle(
+                label: "Zebra",
+                value: e.zebra,
+                onChanged: (v) {
+                  begin();
+                  write(e.copyWith(zebra: v));
+                  commit();
+                },
+              ),
+              CanvasColorButton(
+                label: "Zebra",
+                color: e.zebraFill,
+                onChanged: (c) {
+                  begin();
+                  write(e.copyWith(zebraFill: c));
+                  commit();
+                },
+              ),
+              CanvasNumberField(
+                label: "Padding",
+                value: e.cellPadding,
+                min: 0,
+                max: 120,
+                width: 54,
+                onChanged: (v) => write(e.copyWith(cellPadding: v)),
+                onCommit: commit,
+              ),
+              CanvasNumberField(
+                label: "Radius",
+                value: e.cornerRadius,
+                min: 0,
+                max: 120,
+                width: 54,
+                onChanged: (v) => write(e.copyWith(cornerRadius: v)),
+                onCommit: commit,
+              ),
+              CanvasNumberField(
+                label: "Picture size",
+                value: e.pictureScale,
+                min: 0.05,
+                max: 1,
+                decimals: 2,
+                width: 62,
+                onChanged: (v) => write(e.copyWith(pictureScale: v)),
+                onCommit: commit,
+              ),
+              const CanvasHint(
+                  "Picture size is how much of its cell a picture fills, on top of "
+                  "the cell padding. Less than one leaves room round the outside, "
+                  "which the padding cannot do on its own -- that is the words' "
+                  "margin as well."),
+            ]),
+            boxed(
+              context,
+              CanvasExpander(
+                label: "Header type",
+                remember: "tableHeaderType",
+                trailing: "${e.headerSpec.fontSize.round()}",
+                children: typeGroups(
+                    e.headerSpec,
+                    (spec) => write(e.copyWith(headerSpec: spec)),
+                    begin,
+                    commit,
+                    label: "Header type",
+                    bandOnlyLabel: true),
+              ),
+            ),
+            boxed(
+              context,
+              CanvasExpander(
+                label: "Cell type",
+                remember: "tableCellType",
+                trailing: "${e.cellSpec.fontSize.round()}",
+                children: typeGroups(e.cellSpec,
+                    (spec) => write(e.copyWith(cellSpec: spec)), begin, commit,
+                    label: "Cell type", bandOnlyLabel: true),
+              ),
+            ),
+          ],
         ),
       ),
     ];
@@ -668,4 +704,12 @@ void _setLevel(TableElement e, SettingsWrite write, VoidCallback begin,
   begin();
   write(e.copyWith(sort: e.sort.withLevel(level, value)));
   commit();
+}
+
+/// _headingName is what to call a column in the Headings switches: what its
+/// header says, or its number when it says nothing yet.
+String _headingName(TableElement e, int column) {
+  var header = e.header;
+  var name = column < header.length ? header[column].trim() : "";
+  return name.isEmpty ? "Column ${column + 1}" : name;
 }

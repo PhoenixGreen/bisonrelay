@@ -946,7 +946,20 @@ class CanvasExpander extends StatefulWidget {
 
   /// trailing is shown beside the label when closed -- a count, usually, so
   /// the heading says how much is behind it.
+  ///
+  /// Ellipsised rather than allowed to push the heading wide. It is a summary,
+  /// and a summary that overflowed the panel by a hundred pixels is what a
+  /// preset with a long name did the first time one existed.
   final String? trailing;
+
+  /// action is a button on the right of the heading, which works whether the
+  /// section is open or shut.
+  ///
+  /// For the one thing a section does that somebody wants without reading it:
+  /// refreshing a table's data, putting its rows back in order. Opening a
+  /// section, finding a button, pressing it and closing the section again is
+  /// four actions for one, every time.
+  final Widget? action;
 
   final List<Widget> children;
 
@@ -969,6 +982,7 @@ class CanvasExpander extends StatefulWidget {
     required this.label,
     required this.children,
     this.trailing,
+    this.action,
     this.initiallyOpen = false,
     this.remember,
     super.key,
@@ -1013,37 +1027,58 @@ class _CanvasExpanderState extends State<CanvasExpander> {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        InkWell(
-          onTap: _toggle,
-          borderRadius: BorderRadius.circular(5),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              Icon(_open ? Icons.expand_more : Icons.chevron_right,
-                  size: 16, color: theme.colors.onSurfaceVariant),
-              const SizedBox(width: 3),
-              Text(
-                widget.label.toUpperCase(),
-                style: TextStyle(
-                  fontSize: 9,
-                  letterSpacing: 0.7,
-                  fontWeight: FontWeight.w600,
-                  color: theme.colors.onSurfaceVariant.withValues(alpha: 0.7),
-                ),
-              ),
-              if (widget.trailing != null) ...[
-                const SizedBox(width: 5),
-                Text(
-                  widget.trailing!,
-                  style: TextStyle(
+        // Loose fits throughout, and no Expanded anywhere.
+        //
+        // A section is laid out in two quite different places: down the
+        // sidebar, where the width is fixed, and along the settings band,
+        // which is a horizontal scroller and so offers no width at all. An
+        // Expanded in the second one is not a layout that looks wrong, it is
+        // an assertion -- a child cannot fill a space of unknown size.
+        Row(mainAxisSize: MainAxisSize.min, children: [
+          Flexible(
+            child: InkWell(
+              onTap: _toggle,
+              borderRadius: BorderRadius.circular(5),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(_open ? Icons.expand_more : Icons.chevron_right,
+                      size: 16, color: theme.colors.onSurfaceVariant),
+                  const SizedBox(width: 3),
+                  Text(
+                    widget.label.toUpperCase(),
+                    style: TextStyle(
                       fontSize: 9,
+                      letterSpacing: 0.7,
+                      fontWeight: FontWeight.w600,
                       color:
-                          theme.colors.onSurfaceVariant.withValues(alpha: 0.5)),
-                ),
-              ],
-            ]),
+                          theme.colors.onSurfaceVariant.withValues(alpha: 0.7),
+                    ),
+                  ),
+                  if (widget.trailing != null) ...[
+                    const SizedBox(width: 5),
+                    // Flexible and clipped: the heading is one line whatever
+                    // the summary says.
+                    Flexible(
+                      child: Text(
+                        widget.trailing!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            fontSize: 9,
+                            color: theme.colors.onSurfaceVariant
+                                .withValues(alpha: 0.5)),
+                      ),
+                    ),
+                  ],
+                ]),
+              ),
+            ),
           ),
-        ),
+          // Outside the InkWell, so pressing it does not also open or shut the
+          // section it sits on.
+          if (widget.action != null) widget.action!,
+        ]),
         if (_open)
           Padding(
             padding: const EdgeInsets.only(left: 4, bottom: 6),

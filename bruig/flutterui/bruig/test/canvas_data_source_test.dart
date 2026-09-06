@@ -62,9 +62,11 @@ void main() {
       var source = footballData.applyTo(const DataSource(), "PL");
       var rows = rowsFromJson(standings(), source);
 
+      // Pos and Badge are named -- the mapping and the order refer to them by
+      // name -- and hidden on the canvas. See TableElement.hiddenHeaders.
       expect(rows.first, [
-        "",
-        "",
+        "Pos",
+        "Badge",
         "Team",
         "Played",
         "Won",
@@ -307,5 +309,119 @@ void main() {
       expect(link.categoryColumn, 1);
       expect(link.valueColumns, [2, 3]);
     });
+  });
+
+  group("keeping your own columns", () {
+    // A table whose numbers come from an API and whose badges were chosen by
+    // hand. Without this a refresh is all or nothing: stale numbers, or the
+    // hand-made column wiped twice a week.
+    var source = const DataSource(
+      kind: DataKind.file,
+      where: "x",
+      matchColumn: 1,
+      columns: [
+        SourceColumn(header: "Pos", path: "position"),
+        SourceColumn(header: "Team", path: "team"),
+        SourceColumn(header: "Badge", path: "crest", picture: true, keep: true),
+        SourceColumn(header: "Points", path: "points"),
+      ],
+    );
+
+    List<List<String>> before() => [
+          ["Pos", "Team", "Badge", "Points"],
+          ["1", "Hull City", "img:mine-hull", "6"],
+          ["2", "Arsenal", "img:mine-arsenal", "4"],
+        ];
+
+    test("a kept column survives the refresh", () {
+      var after = [
+        ["Pos", "Team", "Badge", "Points"],
+        ["1", "Hull City", "", "9"],
+        ["2", "Arsenal", "", "7"],
+      ];
+      var merged = keepColumns(before(), after, source);
+      expect(merged[1][2], "img:mine-hull");
+      expect(merged[1][3], "9", reason: "the numbers still came through");
+    });
+
+    test("a badge follows its team up the table", () {
+      // The one that matters. Arsenal has climbed above Hull; kept by row
+      // number, Arsenal would be wearing Hull's badge.
+      var after = [
+        ["Pos", "Team", "Badge", "Points"],
+        ["1", "Arsenal", "", "9"],
+        ["2", "Hull City", "", "7"],
+      ];
+      var merged = keepColumns(before(), after, source);
+      expect(merged[1][1], "Arsenal");
+      expect(merged[1][2], "img:mine-arsenal");
+      expect(merged[2][2], "img:mine-hull");
+    });
+
+    test("a club that was not there before gets nothing, not somebody else's",
+        () {
+      var after = [
+        ["Pos", "Team", "Badge", "Points"],
+        ["1", "Leeds", "", "9"],
+      ];
+      expect(keepColumns(before(), after, source)[1][2], "");
+    });
+
+    test("matching by position is still available for a fixed list", () {
+      var byPosition = source.copyWith(matchColumn: -1);
+      var after = [
+        ["Pos", "Team", "Badge", "Points"],
+        ["1", "Arsenal", "", "9"],
+      ];
+      expect(keepColumns(before(), after, byPosition)[1][2], "img:mine-hull",
+          reason: "the first row keeps the first row's picture");
+    });
+
+    test("nothing marked keep leaves the new rows exactly as they came", () {
+      var plain = source.copyWith(columns: [
+        for (var c in source.columns) c.copyWith(keep: false),
+      ]);
+      var after = [
+        ["Pos", "Team", "Badge", "Points"],
+        ["1", "Hull City", "", "9"],
+      ];
+      expect(identical(keepColumns(before(), after, plain), after), isTrue);
+    });
+  });
+
+  test("a hidden heading keeps its name and is not drawn", () {
+    // A column of badges needs a name for the mapping and the order to refer
+    // to, and wants nothing written over the badges.
+    var table = TableElement(
+      const ElementBase(id: "t"),
+      headerRow: true,
+      rows: const [
+        ["Pos", "Badge", "Team"],
+        ["1", "img:x", "Hull City"],
+      ],
+      hiddenHeaders: const [1],
+    );
+
+    expect(table.header[1], "Badge", reason: "the name is still there");
+    expect(table.shows(0, 1), isFalse, reason: "and is not drawn");
+    expect(table.shows(0, 2), isTrue);
+    expect(table.shows(1, 1), isTrue,
+        reason: "only the header is hidden, not the column");
+
+    var back =
+        CanvasDocument.decode(CanvasDocument(elements: [table]).encode())!
+            .elements
+            .first;
+    expect((back as TableElement).hiddenHeaders, [1]);
+  });
+
+  test("the football preset names its badge column and hides it", () {
+    expect(footballData.hiddenHeaders, [0, 1]);
+    expect(footballDataColumns[1].header, "Badge");
+    expect(footballDataColumns[1].keep, isTrue,
+        reason: "badges chosen by hand survive a refresh");
+    expect(footballData.matchColumn, 2);
+    expect(footballDataColumns[footballData.matchColumn].header, "Team",
+        reason: "rows are matched by the club, not by their position");
   });
 }
