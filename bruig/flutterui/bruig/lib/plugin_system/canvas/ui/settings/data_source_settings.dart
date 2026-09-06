@@ -237,6 +237,12 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
 
   List<Widget> _controls(
       BuildContext context, DataPreset? preset, bool allowed) {
+    // What the last refresh actually contained, or -- before there has been
+    // one -- what the preset says a record carries. The first is the
+    // authority; the second is so that the mapping is a list rather than a
+    // blank box on the day somebody sets a table up.
+    var fields =
+        _fields.isNotEmpty ? _fields : (preset?.fields ?? const <String>[]);
     return [
       CanvasControlGroup(label: "Source", children: [
         CanvasDropdown<String>(
@@ -363,20 +369,20 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
               // whatever the column is set to already in it, even if the
               // source has since stopped sending it, because silently
               // changing a mapping to something else would be worse.
-              if (_fields.isNotEmpty)
+              if (fields.isNotEmpty)
                 CanvasDropdown<String>(
                   label: "Field",
                   value: source.columns[i].path,
                   width: 150,
                   options: [
-                    if (!_fields.contains(source.columns[i].path))
+                    if (!fields.contains(source.columns[i].path))
                       (
                         source.columns[i].path,
                         source.columns[i].path.isEmpty
                             ? "—"
                             : "${source.columns[i].path} (not in the data)"
                       ),
-                    for (var field in _fields) (field, field),
+                    for (var field in fields) (field, field),
                   ],
                   onChanged: (v) =>
                       _setColumn(i, source.columns[i].copyWith(path: v)),

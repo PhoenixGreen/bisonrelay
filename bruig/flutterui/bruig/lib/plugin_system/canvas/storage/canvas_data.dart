@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:bruig/plugin_system/canvas/model/data_source.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_api_keys.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_assets.dart';
+import 'package:bruig/plugin_system/canvas/storage/canvas_picture_cache.dart';
 import 'package:flutter/foundation.dart';
 
 // canvas_data.dart goes and gets what a data source describes.
@@ -206,7 +207,14 @@ Future<List<List<String>>> collectPictures(
       var address = out[r][c].trim();
       if (!address.startsWith("https://")) continue;
 
-      var id = stored[address] ?? await _storePicture(address);
+      // Three places to look before the network: this refresh, this
+      // machine's memory of earlier ones, and only then the address itself.
+      // A league table is twenty crests that have not changed since last
+      // week, and fetching them again every time is most of a free tier's
+      // allowance spent on pictures nobody needed.
+      var id = stored[address] ??
+          await CanvasPictureCache.known(address) ??
+          await _storePicture(address);
       if (id == null) continue;
       stored[address] = id;
       out[r][c] = "img:$id";
@@ -230,7 +238,9 @@ Future<String?> _storePicture(String address) async {
       // one, and the store would refuse it a moment later anyway.
       if (bytes.length > maxAssetBytes) return null;
     }
-    return CanvasAssets.save(bytes);
+    var id = await CanvasAssets.save(bytes);
+    if (id != null) await CanvasPictureCache.remember(address, id);
+    return id;
   } catch (exception) {
     debugPrint("Unable to collect the picture at $address: $exception");
     return null;

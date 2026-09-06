@@ -71,11 +71,29 @@ class SourceColumn {
   /// its badge with it.
   final bool keep;
 
+  /// spread lays a comma-separated value out as a row of results.
+  ///
+  /// Written for a form guide. football-data.org sends "D,W,W,W,W" -- oldest
+  /// first, and fewer than five early in a season -- which as a cell reads
+  /// "D,W,W,W,W" and is not what anybody wants to look at. Set to a number, it
+  /// becomes that many slots wide, padded on the left with an em dash so the
+  /// letters line up down the table whether a club has played five games or
+  /// two.
+  ///
+  /// Zero leaves the value alone, which is every other column.
+  final int spread;
+
+  /// divider goes before the last result, where a form guide usually marks
+  /// the most recent game off from the ones before it.
+  final String divider;
+
   const SourceColumn({
     this.header = "",
     this.path = "",
     this.picture = false,
     this.keep = false,
+    this.spread = 0,
+    this.divider = "",
   });
 
   SourceColumn copyWith({
@@ -83,12 +101,16 @@ class SourceColumn {
     String? path,
     bool? picture,
     bool? keep,
+    int? spread,
+    String? divider,
   }) =>
       SourceColumn(
         header: header ?? this.header,
         path: path ?? this.path,
         picture: picture ?? this.picture,
         keep: keep ?? this.keep,
+        spread: spread ?? this.spread,
+        divider: divider ?? this.divider,
       );
 
   Map<String, dynamic> toJson() => {
@@ -96,6 +118,8 @@ class SourceColumn {
         "p": path,
         if (picture) "pic": true,
         if (keep) "keep": true,
+        if (spread > 0) "spread": spread,
+        if (divider.isNotEmpty) "div": divider,
       };
 
   factory SourceColumn.fromJson(Map<String, dynamic> json) => SourceColumn(
@@ -103,6 +127,8 @@ class SourceColumn {
         path: jsonString(json["p"], ""),
         picture: jsonBool(json["pic"], false),
         keep: jsonBool(json["keep"], false),
+        spread: jsonInt(json["spread"], 0),
+        divider: jsonString(json["div"], ""),
       );
 }
 
@@ -239,9 +265,33 @@ List<List<String>> rowsFromJson(dynamic json, DataSource source) {
     for (var record in records)
       [
         for (var column in source.columns)
-          _text(valueAtPath(record, column.path))
+          _spread(_text(valueAtPath(record, column.path)), column)
       ],
   ];
+}
+
+/// _spread lays a comma-separated value out as a row of results. See
+/// [SourceColumn.spread].
+///
+/// The newest entries are kept when there are more than there is room for,
+/// because a form guide is about how a club is playing now.
+String _spread(String value, SourceColumn column) {
+  if (column.spread <= 0) return value;
+  var results = [for (var part in value.split(",")) part.trim()]
+    ..removeWhere((p) => p.isEmpty);
+
+  if (results.length > column.spread) {
+    results = results.sublist(results.length - column.spread);
+  }
+  // Padded on the left, so the most recent game is in the same place in every
+  // row whatever a club has played.
+  while (results.length < column.spread) {
+    results.insert(0, "\u2014");
+  }
+  if (column.divider.isNotEmpty && results.length > 1) {
+    results.insert(results.length - 1, column.divider);
+  }
+  return results.join(" ");
 }
 
 /// _text is a JSON value as a cell.
@@ -386,7 +436,9 @@ List<List<String>> keepHeaders(
 }) {
   if (!headerRow || before.isEmpty || after.isEmpty) return after;
   var was = before.first;
-  var out = [for (var row in after) [...row]];
+  var out = [
+    for (var row in after) [...row]
+  ];
   for (var c = 0; c < out.first.length && c < was.length; c++) {
     out.first[c] = was[c];
   }

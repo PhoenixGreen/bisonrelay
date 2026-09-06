@@ -251,6 +251,16 @@ class CanvasAssets {
     }
   }
 
+  /// exists is whether a picture is still in the store, without reading it.
+  ///
+  /// For the picture cache, which asks about every crest on every refresh --
+  /// twenty small reads to answer twenty questions about existence is work for
+  /// nothing, and the answer is a stat call.
+  static Future<bool> exists(String id) async {
+    var file = await _pathFor(id);
+    return file != null && await File(file).exists();
+  }
+
   static Future<List<int>?> load(String id) async {
     var file = await _pathFor(id);
     if (file == null) return null;

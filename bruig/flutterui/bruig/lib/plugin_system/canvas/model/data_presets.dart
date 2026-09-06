@@ -40,6 +40,10 @@ class DataPreset {
 
   final List<SourceColumn> columns;
 
+  /// fields is what a record is known to carry, so the mapping can offer a
+  /// list before anything has been fetched.
+  final List<String> fields;
+
   const DataPreset({
     required this.id,
     required this.label,
@@ -52,6 +56,7 @@ class DataPreset {
     required this.columns,
     this.matchColumn = -1,
     this.hiddenHeaders = const [],
+    this.fields = const [],
   });
 
   /// applyTo is [source] with this recipe written into it.
@@ -87,6 +92,36 @@ const List<SourceColumn> footballDataColumns = [
   SourceColumn(header: "Against", path: "goalsAgainst"),
   SourceColumn(header: "GD", path: "goalDifference"),
   SourceColumn(header: "Points", path: "points"),
+  // The form guide, laid out rather than left as "D,W,W,W,W". Five slots
+  // because five is what the API sends, padded on the left so the letters
+  // line up down the table whatever a club has played, and the most recent
+  // game marked off from the ones before it.
+  SourceColumn(header: "Form", path: "form", spread: 5, divider: "|"),
+];
+
+/// footballDataFields is every field a standings record carries, for the
+/// mapping's list before a refresh has discovered them.
+///
+/// Taken from the published response rather than guessed: position, the team
+/// four ways, the games, the form, and the eight numbers. The Field dropdown
+/// shows whatever actually arrived once a refresh has happened, which is the
+/// authority; this is what it can offer before one has.
+const List<String> footballDataFields = [
+  "position",
+  "team.id",
+  "team.name",
+  "team.shortName",
+  "team.tla",
+  "team.crest",
+  "playedGames",
+  "form",
+  "won",
+  "draw",
+  "lost",
+  "points",
+  "goalsFor",
+  "goalsAgainst",
+  "goalDifference",
 ];
 
 /// footballData is football-data.org's standings.
@@ -132,6 +167,7 @@ final DataPreset footballData = DataPreset(
   // table rather than staying where it was put.
   matchColumn: 2,
   hiddenHeaders: const [0, 1],
+  fields: footballDataFields,
   columns: footballDataColumns,
 );
 

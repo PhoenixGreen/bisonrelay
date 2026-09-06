@@ -8,7 +8,11 @@ import 'package:bruig/plugin_system/canvas/model/data_source.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_data.dart';
+import 'package:bruig/plugin_system/canvas/storage/canvas_assets.dart';
+import 'package:bruig/plugin_system/canvas/storage/canvas_picture_cache.dart';
+import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 // canvas_data_source_test.dart is about numbers arriving from somewhere else
 // and becoming a table.
@@ -75,10 +79,14 @@ void main() {
         "For",
         "Against",
         "GD",
-        "Points"
+        "Points",
+        "Form"
       ]);
       expect(rows[1][2], "Man City");
-      expect(rows[1].last, "6");
+      expect(rows[1][10], "6", reason: "points");
+      // No form in this sample, so the guide is all dashes -- padded rather
+      // than empty, so the column lines up whatever a club has played.
+      expect(rows[1].last, "— — — — | —");
       expect(rows[2][2], "Arsenal");
       expect(rows.length, 3, reason: "the header and two teams");
     });
@@ -104,7 +112,7 @@ void main() {
       var rows =
           rowsFromJson(json, footballData.applyTo(const DataSource(), "PL"));
       expect(rows[2][2], "");
-      expect(rows[2].last, "6", reason: "the rest of the row still arrived");
+      expect(rows[2][10], "6", reason: "the rest of the row still arrived");
     });
 
     test("a path that leads nowhere gives no rows at all", () {
@@ -489,6 +497,123 @@ void main() {
       expect(merged[1][1], "img:mine-arsenal",
           reason: "Arsenal has climbed and brought its badge");
       expect(merged[2][1], "img:mine-hull");
+    });
+  });
+
+  group("a form guide", () {
+    // football-data.org sends "D,W,W,W,W" -- oldest first, and fewer than
+    // five early in a season. As a cell that reads "D,W,W,W,W", which is not
+    // what anybody wants to look at.
+    const column =
+        SourceColumn(header: "Form", path: "form", spread: 5, divider: "|");
+
+    List<List<String>> rowsFor(String form) => rowsFromJson(
+            [
+              {"form": form},
+            ],
+            const DataSource(
+                kind: DataKind.file, where: "x", columns: [column]));
+
+    test("five results are laid out with the last marked off", () {
+      expect(rowsFor("D,W,W,W,W")[1].single, "D W W W | W");
+    });
+
+    test("a short season is padded on the left", () {
+      // So the most recent game is in the same place in every row whatever a
+      // club has played, which is the whole reason the column lines up.
+      expect(rowsFor("W,L")[1].single, "— — — W | L");
+      expect(rowsFor("")[1].single, "— — — — | —");
+    });
+
+    test("more than five keeps the newest", () {
+      expect(rowsFor("L,L,W,D,W,W")[1].single, "L W D W | W");
+    });
+
+    test("without a spread the value is left exactly as it came", () {
+      var plain = rowsFromJson(
+          [
+            {"form": "D,W,W"},
+          ],
+          const DataSource(kind: DataKind.file, where: "x", columns: [
+            SourceColumn(header: "Form", path: "form"),
+          ]));
+      expect(plain[1].single, "D,W,W");
+    });
+
+    test("the preset asks for one, and knows what else the API sends", () {
+      expect(footballDataColumns.last.path, "form");
+      expect(footballDataColumns.last.spread, 5);
+      expect(footballDataColumns.last.divider, "|");
+
+      // Every field a standings record carries, so the mapping is a list
+      // before anything has been fetched. Taken from the published response.
+      for (var field in ["form", "team.tla", "team.name", "goalDifference"]) {
+        expect(footballData.fields, contains(field), reason: field);
+      }
+      for (var column in footballDataColumns) {
+        expect(footballData.fields, contains(column.path),
+            reason: "the preset maps ${column.path}");
+      }
+    });
+
+    test("the spread survives a round trip", () {
+      var back = SourceColumn.fromJson(column.toJson());
+      expect(back.spread, 5);
+      expect(back.divider, "|");
+    });
+  });
+
+  group("the picture cache", () {
+    // The store is content-addressed, so a crest fetched twice is one file --
+    // but it is also two requests, and a league table is twenty crests that
+    // have not changed since last week. On a rate-limited free tier that is
+    // most of the allowance spent on pictures nobody needed.
+    late Directory root;
+
+    setUp(() async {
+      SharedPreferences.setMockInitialValues({});
+      root = await Directory.systemTemp.createTemp("canvas_picture_cache");
+      CanvasStorage.rootOverride = root.path;
+    });
+
+    tearDown(() async {
+      CanvasStorage.rootOverride = null;
+      if (await root.exists()) await root.delete(recursive: true);
+    });
+
+    test("a remembered crest is not asked for again", () async {
+      var id = (await CanvasAssets.save(List.filled(64, 3, growable: false)))!;
+      await CanvasPictureCache.remember("https://crests/65.png", id);
+
+      expect(await CanvasPictureCache.known("https://crests/65.png"), id);
+      expect(await CanvasPictureCache.known("https://crests/64.png"), isNull,
+          reason: "a different crest is a different question");
+    });
+
+    test("a swept picture is forgotten rather than handed back", () async {
+      // The store drops pictures no canvas refers to. An entry pointing at
+      // one of those would hand back an id that draws a grey placeholder,
+      // which is worse than fetching again.
+      var id = (await CanvasAssets.save(List.filled(64, 7)))!;
+      await CanvasPictureCache.remember("https://crests/70.png", id);
+      await CanvasAssets.sweepUnused();
+
+      expect(await CanvasAssets.exists(id), isFalse);
+      expect(await CanvasPictureCache.known("https://crests/70.png"), isNull);
+    });
+
+    test("the cache holds no bytes, only the name of a file", () async {
+      // It is an optimisation and nothing else: everything in it is checked
+      // against the store before it is trusted, which is what makes it safe
+      // to throw away.
+      var id = (await CanvasAssets.save(List.filled(64, 9)))!;
+      await CanvasPictureCache.remember("https://crests/1.png", id);
+      var prefs = await SharedPreferences.getInstance();
+      var saved = [
+        for (var key in prefs.getKeys())
+          if (key.startsWith("canvasPicture:")) prefs.getString(key),
+      ];
+      expect(saved, [id]);
     });
   });
 }
