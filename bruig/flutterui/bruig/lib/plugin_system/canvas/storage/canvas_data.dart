@@ -188,6 +188,31 @@ Future<String?> _fetch(DataSource source) async {
   }
 }
 
+/// fetchJsonAt is one more request, for a source that needs a second look.
+///
+/// Its own entry point rather than another branch inside loadData, because
+/// what it answers is not a table -- it is whatever a preset asked for, and
+/// the preset is what knows how to read it. Null on any failure, which the
+/// caller treats as "leave the rows alone".
+///
+/// Behind the same switch as everything else here: no fetching without it, and
+/// nothing at all when a proxy is configured.
+Future<dynamic> fetchJsonAt(
+  String url, {
+  bool allowFetching = false,
+  bool proxied = false,
+}) async {
+  if (!allowFetching || proxied) return null;
+  var text = await _fetch(DataSource(kind: DataKind.url, where: url));
+  if (text == null) return null;
+  try {
+    return jsonDecode(text);
+  } catch (exception) {
+    debugPrint("The second request did not answer with JSON: $exception");
+    return null;
+  }
+}
+
 /// collectPictures replaces the addresses in a table's picture columns with
 /// pictures actually stored on this machine.
 ///

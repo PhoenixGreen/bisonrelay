@@ -143,8 +143,23 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
         return;
       }
 
-      var rows =
-          await collectPictures(result.rows!, source, allowFetching: allowed);
+      var rows = result.rows!;
+
+      // A second look, for a source that cannot say everything in one answer.
+      // The football preset works its form guide out from the fixtures,
+      // because the plan that sends it as a field is a paid one and the
+      // results are free.
+      var preset = presetById(source.preset);
+      if (preset?.derive != null) {
+        rows = await preset!.derive!(
+            rows,
+            source,
+            (url) =>
+                fetchJsonAt(url, allowFetching: allowed, proxied: proxied));
+        if (!mounted) return;
+      }
+
+      rows = await collectPictures(rows, source, allowFetching: allowed);
       if (!mounted) return;
 
       // The columns the reader fills in themselves, put back from what was

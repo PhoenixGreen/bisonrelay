@@ -265,17 +265,22 @@ List<List<String>> rowsFromJson(dynamic json, DataSource source) {
     for (var record in records)
       [
         for (var column in source.columns)
-          _spread(_text(valueAtPath(record, column.path)), column)
+          spreadValue(_text(valueAtPath(record, column.path)), column)
       ],
   ];
 }
 
-/// _spread lays a comma-separated value out as a row of results. See
+/// spreadValue lays a comma-separated value out as a row of results. See
 /// [SourceColumn.spread].
+///
+/// Public because a form guide worked out from the fixtures has to be laid out
+/// exactly as one that arrived in the response -- see football_form.dart. Two
+/// pieces of code doing that separately is two chances for the columns to stop
+/// lining up.
 ///
 /// The newest entries are kept when there are more than there is room for,
 /// because a form guide is about how a club is playing now.
-String _spread(String value, SourceColumn column) {
+String spreadValue(String value, SourceColumn column) {
   if (column.spread <= 0) return value;
   var results = [for (var part in value.split(",")) part.trim()]
     ..removeWhere((p) => p.isEmpty);

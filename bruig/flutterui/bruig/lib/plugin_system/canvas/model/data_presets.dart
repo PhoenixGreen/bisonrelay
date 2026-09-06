@@ -1,4 +1,5 @@
 import 'package:bruig/plugin_system/canvas/model/data_source.dart';
+import 'package:bruig/plugin_system/canvas/model/football_form.dart';
 
 // data_presets.dart is the recipes that fill a DataSource in.
 //
@@ -44,6 +45,21 @@ class DataPreset {
   /// list before anything has been fetched.
   final List<String> fields;
 
+  /// derive fills in what one request cannot answer.
+  ///
+  /// Given the rows as mapped and a way to fetch more JSON, it returns the
+  /// rows again. A preset owns its own quirks this way -- the panel knows
+  /// only that some sources need a second look -- and the one that needs it
+  /// needs it for a good reason: see footballFormFromResults.
+  ///
+  /// Null for a source that says everything it has to say in one answer,
+  /// which is most of them.
+  final Future<List<List<String>>> Function(
+    List<List<String>> rows,
+    DataSource source,
+    Future<dynamic> Function(String url) get,
+  )? derive;
+
   const DataPreset({
     required this.id,
     required this.label,
@@ -57,6 +73,7 @@ class DataPreset {
     this.matchColumn = -1,
     this.hiddenHeaders = const [],
     this.fields = const [],
+    this.derive,
   });
 
   /// applyTo is [source] with this recipe written into it.
@@ -168,6 +185,7 @@ final DataPreset footballData = DataPreset(
   matchColumn: 2,
   hiddenHeaders: const [0, 1],
   fields: footballDataFields,
+  derive: footballFormFromResults,
   columns: footballDataColumns,
 );
 
