@@ -19,6 +19,7 @@ import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/presets/builtin_presets.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_common.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_painter.dart';
+import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:flutter/services.dart';
@@ -1158,31 +1159,47 @@ void main() {
       expect(element.overlay.a, greaterThan(0));
     });
 
-    test("a picture keeps its proportions on resize by default", () {
-      var element = ImageElement(
-        const ElementBase(id: "i", width: 100, height: 100),
-      );
-      expect(element.keepsAspect, isTrue,
-          reason: "a photograph dragged out of its own proportions is wrong");
-      expect(element.copyWith(lockAspect: false).keepsAspect, isFalse);
+    test("a new picture keeps its proportions, and anything can", () {
+      // The lock is every element's now -- a logo, a headline box, a chart
+      // drawn to a shape that suits it -- and a picture is only the one that
+      // starts out wanting it.
+      var picture = newElement(ElementKind.image, const CanvasDocument());
+      expect(picture.keepsAspect, isTrue);
 
-      // Nothing else does: every other element is a shape that can be any
-      // proportion it likes.
-      expect(
-          ShapeElement(const ElementBase(id: "s", width: 10, height: 10))
-              .keepsAspect,
-          isFalse);
+      var shape = newElement(ElementKind.shape, const CanvasDocument());
+      expect(shape.keepsAspect, isFalse);
+      expect(shape.withBase(lockAspect: true).keepsAspect, isTrue,
+          reason: "but any of them can be asked to");
     });
 
-    test("the lock survives a round trip", () {
-      var element = ImageElement(
-        const ElementBase(id: "i", width: 100, height: 100),
-      ).copyWith(lockAspect: false);
-      var back =
-          CanvasDocument.decode(CanvasDocument(elements: [element]).encode())!
-              .elements
-              .single as ImageElement;
-      expect(back.lockAspect, isFalse);
+    test("the lock survives a round trip, either way round", () {
+      for (var locked in [true, false]) {
+        var element = ImageElement(
+            ElementBase(id: "i", width: 100, height: 100, lockAspect: locked));
+        var back =
+            CanvasDocument.decode(CanvasDocument(elements: [element]).encode())!
+                .elements
+                .single;
+        expect(back.keepsAspect, locked, reason: "locked: $locked");
+      }
+    });
+
+    test("a picture saved before the lock moved keeps its proportions", () {
+      // It was a picture's own setting, on unless it said otherwise, so a
+      // document with no "aspect" key at all must not quietly become
+      // stretchable.
+      var old = {
+        "kind": "image",
+        "id": "i",
+        "w": 100.0,
+        "h": 100.0,
+        "asset": "",
+      };
+      expect(elementFromJson(old).keepsAspect, isTrue);
+
+      // And one that did say otherwise is left as it was.
+      expect(
+          elementFromJson({...old, "lockAspect": false}).keepsAspect, isFalse);
     });
   });
 

@@ -89,7 +89,11 @@ CanvasElement newElement(
           autoSize: true);
 
     case ElementKind.image:
-      return ImageElement(base);
+      // Proportions locked to begin with. Every element can hold them now, but
+      // a picture is the one that starts wanting to: a photograph dragged out
+      // of its own shape is a photograph that looks wrong, and putting it back
+      // by hand means finding the original numbers.
+      return ImageElement(base.copyWith(lockAspect: true));
 
     case ElementKind.shape:
       return ShapeElement(base,

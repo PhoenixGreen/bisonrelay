@@ -113,6 +113,9 @@ class _CanvasScreenState extends State<CanvasScreen> {
     _panel = at >= 0 && at < CanvasPanel.values.length
         ? CanvasPanel.values[at]
         : CanvasPanel.files;
+    // Returning to a page that was left on Design counts as having used it:
+    // the reader chose that tab, even if it was last time.
+    _designUsed = _panel == CanvasPanel.design;
     // Only on the very first visit of the session. After that the controller
     // already holds whatever was being worked on, and reopening the last saved
     // file over the top would throw away the unsaved edits this whole
@@ -166,9 +169,16 @@ class _CanvasScreenState extends State<CanvasScreen> {
     //
     // Only when something has actually been chosen: clearing the selection
     // must not drag the reader away from the file list they just came to.
+    //
+    // And only once the reader has been to Design themselves this session.
+    // Somebody arranging their files, or reading through the presets, is
+    // doing something on purpose, and having the sidebar jump elsewhere the
+    // first time they touch the canvas is the page overruling them.
     var chose = next.isNotEmpty && next != _selectionRevision;
     setState(() => _selectionRevision = next);
-    if (chose && _panel != CanvasPanel.design) _setPanel(CanvasPanel.design);
+    if (chose && _designUsed && _panel != CanvasPanel.design) {
+      _setPanel(CanvasPanel.design);
+    }
   }
 
   @override
@@ -180,7 +190,16 @@ class _CanvasScreenState extends State<CanvasScreen> {
     super.dispose();
   }
 
+  /// _designUsed is whether the Design tab has been opened this session.
+  ///
+  /// What gates the automatic switch to it -- see _onSelectionChanged. However
+  /// it was reached counts: choosing the tab, or being taken there by starting
+  /// a canvas, both mean the reader knows the tab is there and is working in
+  /// it.
+  bool _designUsed = false;
+
   void _setPanel(CanvasPanel panel) {
+    if (panel == CanvasPanel.design) _designUsed = true;
     setState(() => _panel = panel);
     Provider.of<CanvasPreferences>(context, listen: false).panel = panel.index;
   }
@@ -243,7 +262,10 @@ class _CanvasScreenState extends State<CanvasScreen> {
     var snackbar = SnackBarModel.of(context);
     if (!await _confirmDiscard()) return;
 
-    _controller.load(CanvasDocument(title: name));
+    // The empty preset rather than a bare CanvasDocument, so that a new
+    // canvas made here and one started from the Presets tab's "Empty canvas"
+    // are the same thing. Two kinds of empty is one too many.
+    _controller.load(emptyCanvas().copyWith(title: name));
     var saved = await _controller.saveAs(folder, name);
     if (!mounted) return;
     if (!saved) {

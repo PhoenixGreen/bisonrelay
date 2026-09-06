@@ -3764,4 +3764,75 @@ void main() {
       expect(back.fit, "width");
     });
   });
+
+  group("locking an element's proportions", () {
+    // The lock is about the shape, not about the size: it must not stop a
+    // resize, only stop one from changing the proportions.
+    Future<CanvasController> panel(WidgetTester tester,
+        {bool locked = false}) async {
+      var document = const CanvasDocument();
+      var element = ShapeElement(
+        ElementBase(
+            id: "s", x: 0, y: 0, width: 200, height: 100, lockAspect: locked),
+      );
+      var controller = CanvasController(document.addElement(element));
+      addTearDown(controller.dispose);
+      controller.selectOnly("s");
+      await pump(tester, CanvasDesignPanel(controller: controller));
+      return controller;
+    }
+
+    ElementBase baseIn(CanvasController c) => c.document.elements.single.base;
+
+    testWidgets("unlocked, the two numbers are free of each other",
+        (tester) async {
+      var controller = await panel(tester);
+      await tester.enterText(find.byKey(const ValueKey("elementW")), "400");
+      await tester.pumpAndSettle();
+
+      expect(baseIn(controller).width, 400);
+      expect(baseIn(controller).height, 100, reason: "the height stayed");
+    });
+
+    testWidgets("locked, the height follows the width", (tester) async {
+      var controller = await panel(tester, locked: true);
+      await tester.enterText(find.byKey(const ValueKey("elementW")), "400");
+      await tester.pumpAndSettle();
+
+      expect(baseIn(controller).width, 400);
+      expect(baseIn(controller).height, 200,
+          reason: "twice as wide, so twice as tall -- 2:1 either way");
+    });
+
+    testWidgets("and the width follows the height", (tester) async {
+      var controller = await panel(tester, locked: true);
+      await tester.enterText(find.byKey(const ValueKey("elementH")), "50");
+      await tester.pumpAndSettle();
+
+      expect(baseIn(controller).height, 50);
+      expect(baseIn(controller).width, 100);
+    });
+
+    testWidgets("the lock is a button beside the two numbers it holds",
+        (tester) async {
+      var controller = await panel(tester);
+      expect(find.byIcon(Icons.link_off), findsOneWidget);
+
+      await tester.tap(find.byIcon(Icons.link_off));
+      await tester.pumpAndSettle();
+      expect(baseIn(controller).lockAspect, isTrue);
+      expect(find.byIcon(Icons.link), findsOneWidget);
+    });
+
+    testWidgets("it does not stop a resize, it only holds the shape",
+        (tester) async {
+      // The whole of what it is for. Refusing the edit would be a lock that
+      // stopped the element being resized at all.
+      var controller = await panel(tester, locked: true);
+      var before = baseIn(controller).width;
+      await tester.enterText(find.byKey(const ValueKey("elementW")), "500");
+      await tester.pumpAndSettle();
+      expect(baseIn(controller).width, isNot(before));
+    });
+  });
 }

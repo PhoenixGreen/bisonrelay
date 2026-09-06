@@ -620,13 +620,6 @@ class ImageElement extends CanvasElement {
   /// with the rest of the design.
   final Color overlay;
 
-  /// lockAspect keeps the frame's proportions while it is resized.
-  ///
-  /// On to begin with, and only for pictures. Every other element is a shape
-  /// that can be any proportion it likes; a photograph dragged out of its own
-  /// is a photograph that looks wrong, and putting it back by hand means
-  /// finding the original numbers.
-  final bool lockAspect;
   final OverlayBlend blend;
 
   const ImageElement(
@@ -644,15 +637,11 @@ class ImageElement extends CanvasElement {
     this.filter = ImageFilterPreset.none,
     this.outline = const ImageOutline(),
     this.overlay = const Color(0x00000000),
-    this.lockAspect = true,
     this.blend = OverlayBlend.none,
   });
 
   @override
   ElementKind get kind => ElementKind.image;
-
-  @override
-  bool get keepsAspect => lockAspect;
 
   @override
   Set<String> get assetIds => assetId.isEmpty ? const {} : {assetId};
@@ -677,7 +666,6 @@ class ImageElement extends CanvasElement {
       filter: filter,
       outline: outline,
       overlay: overlay,
-      lockAspect: lockAspect,
       blend: blend);
 
   ImageElement copyWith({
@@ -695,7 +683,6 @@ class ImageElement extends CanvasElement {
     ImageFilterPreset? filter,
     ImageOutline? outline,
     Color? overlay,
-    bool? lockAspect,
     OverlayBlend? blend,
   }) =>
       ImageElement(base,
@@ -712,7 +699,6 @@ class ImageElement extends CanvasElement {
           filter: filter ?? this.filter,
           outline: outline ?? this.outline,
           overlay: overlay ?? this.overlay,
-          lockAspect: lockAspect ?? this.lockAspect,
           blend: blend ?? this.blend);
 
   @override
@@ -730,12 +716,19 @@ class ImageElement extends CanvasElement {
         if (filter != ImageFilterPreset.none) "filter": filter.name,
         if (outline.on) "outline": outline.toJson(),
         if (blend != OverlayBlend.none) "overlay": colorToJson(overlay),
-        if (!lockAspect) "lockAspect": false,
         if (blend != OverlayBlend.none) "blend": blend.name,
       };
 
   factory ImageElement.fromJson(Map<String, dynamic> json, ElementBase b) =>
-      ImageElement(b,
+      ImageElement(
+          // Proportions used to be a picture's own setting, on by default, and
+          // are now every element's, off by default. A document saved before
+          // that has no "aspect" key at all, and its pictures were locked
+          // unless they said otherwise -- so they are given that back rather
+          // than quietly becoming stretchable.
+          json.containsKey("aspect")
+              ? b
+              : b.copyWith(lockAspect: jsonBool(json["lockAspect"], true)),
           assetId: jsonString(json["asset"], ""),
           fit: ImageFit.fromName(json["fit"] as String?),
           box: jsonSpec(
@@ -755,7 +748,6 @@ class ImageElement extends CanvasElement {
           outline: jsonSpec(
               json["outline"], ImageOutline.fromJson, const ImageOutline()),
           overlay: colorFromJson(json["overlay"], const Color(0x00000000)),
-          lockAspect: jsonBool(json["lockAspect"], true),
           blend: OverlayBlend.fromName(json["blend"] as String?));
 }
 

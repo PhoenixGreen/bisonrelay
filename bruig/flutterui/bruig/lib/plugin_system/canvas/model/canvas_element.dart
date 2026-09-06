@@ -111,6 +111,18 @@ class ElementBase {
   /// by accident every time you click near a player standing on it.
   final bool locked;
 
+  /// lockAspect holds an element's proportions while it is resized.
+  ///
+  /// On the base rather than on the elements that want it, because every
+  /// element can want it: a logo, a headline box, a chart drawn to a shape
+  /// that suits it. It was a picture's own setting, and a picture is only the
+  /// most obvious case of a general one.
+  ///
+  /// It does not stop a resize, which is the whole of what it is for. The
+  /// width and the height move together, so dragging a corner or typing a
+  /// width changes the size without changing the shape.
+  final bool lockAspect;
+
   /// track is this element's animation, or null when it does not move.
   final ElementTrack? track;
 
@@ -125,6 +137,7 @@ class ElementBase {
     this.opacity = 1,
     this.visible = true,
     this.locked = false,
+    this.lockAspect = false,
     this.track,
   });
 
@@ -139,6 +152,7 @@ class ElementBase {
     double? opacity,
     bool? visible,
     bool? locked,
+    bool? lockAspect,
     ElementTrack? track,
     bool clearTrack = false,
   }) =>
@@ -153,6 +167,7 @@ class ElementBase {
         opacity: opacity ?? this.opacity,
         visible: visible ?? this.visible,
         locked: locked ?? this.locked,
+        lockAspect: lockAspect ?? this.lockAspect,
         track: clearTrack ? null : (track ?? this.track),
       );
 
@@ -169,6 +184,7 @@ class ElementBase {
       opacity: _d(json["opacity"], 1).clamp(0.0, 1.0),
       visible: _b(json["visible"], true),
       locked: _b(json["locked"], false),
+      lockAspect: _b(json["aspect"], false),
       track: trackJson is Map<String, dynamic>
           ? ElementTrack.fromJson(trackJson)
           : null,
@@ -186,6 +202,13 @@ class ElementBase {
         if (opacity != 1) "opacity": opacity,
         if (!visible) "visible": false,
         if (locked) "locked": true,
+        // Written even when false, unlike the other switches here. Its
+        // absence has to mean "saved before elements had this", so that a
+        // picture from an older document can be given back the locked
+        // proportions every picture used to have -- see
+        // ImageElement.fromJson. An absent key that could also mean "off"
+        // would make that impossible to tell.
+        "aspect": lockAspect,
         if (track != null && !track!.isEmpty) "track": track!.toJson(),
       };
 }
@@ -272,9 +295,8 @@ abstract class CanvasElement {
       (opacity * poseAt(frame).opacity).clamp(0.0, 1.0);
 
   /// keepsAspect is whether a resize should hold this element's proportions
-  /// even without Shift. False for everything except a picture that has asked
-  /// for it -- see ImageElement.lockAspect.
-  bool get keepsAspect => false;
+  /// even without Shift. See [ElementBase.lockAspect].
+  bool get keepsAspect => base.lockAspect;
 
   /// rotationRadians is what the painter and the hit test both want.
   double get rotationRadians => rotation * math.pi / 180;
@@ -301,6 +323,7 @@ abstract class CanvasElement {
     double? opacity,
     bool? visible,
     bool? locked,
+    bool? lockAspect,
     ElementTrack? track,
     bool clearTrack = false,
   }) =>
@@ -314,6 +337,7 @@ abstract class CanvasElement {
         opacity: opacity,
         visible: visible,
         locked: locked,
+        lockAspect: lockAspect,
         track: track,
         clearTrack: clearTrack,
       ));

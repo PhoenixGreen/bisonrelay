@@ -449,7 +449,17 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
         ),
         padding: const EdgeInsets.fromLTRB(8, 8, 8, 10),
         child: Wrap(spacing: 6, runSpacing: 6, children: [
-          _action(theme, Icons.add_box_outlined, "New canvas", _newCanvas),
+          // One button in this place, and which one depends on what is open.
+          //
+          // A canvas with no file behind it -- started from a preset, or from
+          // nothing -- has one thing that needs doing, and it is not making
+          // another canvas. Everything else is already saving itself, so Save
+          // would be a button inviting a press for no reason, and New canvas
+          // is the useful thing to offer instead.
+          if (controller.name == null)
+            _action(theme, Icons.save_outlined, "Save canvas", _saveAs)
+          else
+            _action(theme, Icons.add_box_outlined, "New canvas", _newCanvas),
           if (_folder.isEmpty)
             _action(theme, Icons.create_new_folder_outlined, "New folder",
                 _newFolder),
@@ -457,12 +467,6 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
           // meaning survives without a word beside it.
           _iconAction(theme, Icons.file_open_outlined,
               "Open a canvas from a file", _import),
-          // Only for a canvas that has nowhere to save itself to: one started
-          // from a preset, or from nothing. Everything else is already saving
-          // itself, and a button that says Save next to a canvas that has just
-          // saved is a button that invites a press for no reason.
-          if (controller.name == null && controller.dirty)
-            _action(theme, Icons.save_outlined, "Save this canvas", _saveAs),
         ]),
       );
 
@@ -526,12 +530,17 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
     await CanvasStorage.saveOrder(_folder, entries);
   }
 
-  /// _newCanvas starts an empty one and gives it a name straight away.
+  /// _newCanvas starts the empty preset and gives it a name straight away.
   ///
-  /// Named immediately, which is the whole reason there is no Save button: a
-  /// canvas with a file behind it saves itself from then on. Asking for the
-  /// name first is also the moment to find out the name is taken, which is
-  /// better than finding out after the work.
+  /// The empty preset rather than a bare document, so that "new canvas" means
+  /// the same thing here as it does on the Presets tab -- one of them being a
+  /// plain background and the other being nothing at all would be two kinds of
+  /// empty.
+  ///
+  /// Named immediately, which is the whole reason there is no permanent Save
+  /// button: a canvas with a file behind it saves itself from then on. Asking
+  /// for the name first is also the moment to find out the name is taken,
+  /// which is better than finding out after the work.
   Future<void> _newCanvas() async {
     var snackbar = SnackBarModel.of(context);
     var wanted = await _ask("New canvas", "Name");

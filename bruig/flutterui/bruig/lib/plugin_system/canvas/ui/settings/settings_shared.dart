@@ -100,6 +100,45 @@ Widget positionGroup(CanvasController controller, CanvasElement e,
     ));
   }
 
+  /// resize writes a new width or height, holding the proportions when the
+  /// element has asked for that -- see ElementBase.lockAspect.
+  ///
+  /// Held by scaling the other side by the same factor, rather than by
+  /// refusing the edit. The lock is about the shape, not about the size: it
+  /// must not stop a resize, only stop a resize from changing the proportions.
+  ///
+  /// Both numbers show what is on screen -- the resting size times the pose's
+  /// scale -- but always edit the resting size. A pose scales evenly, so there
+  /// is no keyframe that could hold a width without also holding a height, and
+  /// pretending otherwise would give two fields one number.
+  void resize({double? width, double? height}) {
+    // The undo step, as moveTo opens one. Typing into a field is an edit like
+    // any other, and without this a resize is not undoable.
+    begin();
+    var scale = pose.scale == 0 ? 1.0 : pose.scale;
+    if (!e.base.lockAspect) {
+      write(e.withBase(
+        width: width == null ? null : width / scale,
+        height: height == null ? null : height / scale,
+      ));
+      return;
+    }
+
+    // The factor the edited side has moved by, applied to both. Guarded
+    // against a zero on either side: an element with no width has no
+    // proportions to keep, and dividing by it would put every element on the
+    // canvas at nothing.
+    var by = width != null
+        ? (box.width <= 0 ? 1 : width / box.width)
+        : (box.height <= 0 ? 1 : height! / box.height);
+    if (!by.isFinite || by <= 0) return;
+
+    write(e.withBase(
+      width: box.width * by / scale,
+      height: box.height * by / scale,
+    ));
+  }
+
   // Text riding a line has no position or angle of its own: where it is and
   // how it is turned are the line's to decide. The fields were still there and
   // still writable, so nudging them moved the words off the line they were
@@ -157,20 +196,36 @@ Widget positionGroup(CanvasController controller, CanvasElement e,
         // so there is no keyframe that could hold a width without also holding a
         // height, and pretending otherwise would give two fields one number.
         CanvasNumberField(
+          key: const ValueKey("elementW"),
           label: "W",
           value: box.width,
           min: 1,
-          onChanged: (v) =>
-              write(e.withBase(width: pose.scale == 0 ? v : v / pose.scale)),
+          onChanged: (v) => resize(width: v),
           onCommit: commit,
         ),
         CanvasNumberField(
+          key: const ValueKey("elementH"),
           label: "H",
           value: box.height,
           min: 1,
-          onChanged: (v) =>
-              write(e.withBase(height: pose.scale == 0 ? v : v / pose.scale)),
+          onChanged: (v) => resize(height: v),
           onCommit: commit,
+        ),
+        // The lock beside the two numbers it holds together, rather than
+        // somewhere else describing them. It was a picture's own setting; a
+        // picture is only the most obvious thing with proportions worth
+        // keeping.
+        CanvasIconButton(
+          icon: e.base.lockAspect ? Icons.link : Icons.link_off,
+          tooltip: e.base.lockAspect
+              ? "Proportions are held — the width and the height move together"
+              : "Width and height are free of each other",
+          active: e.base.lockAspect,
+          onPressed: () {
+            begin();
+            write(e.withBase(lockAspect: !e.base.lockAspect));
+            commit();
+          },
         ),
         // Where it is and how big it is, then how it is turned and how solid.
         // Two different questions, and left to the Wrap the line fell between W

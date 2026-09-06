@@ -2202,8 +2202,14 @@ void main() {
     (CanvasController, ImageElement) withPicture({bool locked = true}) {
       var document = const CanvasDocument();
       var element = ImageElement(
-        const ElementBase(id: "i", x: 100, y: 100, width: 400, height: 200),
-      ).copyWith(lockAspect: locked);
+        ElementBase(
+            id: "i",
+            x: 100,
+            y: 100,
+            width: 400,
+            height: 200,
+            lockAspect: locked),
+      );
       var controller = CanvasController(document.addElement(element));
       controller.selectOnly("i");
       return (controller, element);

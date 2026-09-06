@@ -103,7 +103,11 @@ void main() {
 
   testWidgets("the things that make something new are along the bottom",
       (tester) async {
-    await pump(tester, canvases: ["Match plan"]);
+    // A saved canvas is open, so the first chip is the one that makes another.
+    // With an unsaved one it is Save instead -- see below.
+    var saved = CanvasController(const CanvasDocument());
+    saved.name = "Match plan";
+    await pump(tester, canvases: ["Match plan"], controller: saved);
 
     expect(find.text("New canvas"), findsOneWidget);
     expect(find.text("New folder"), findsOneWidget);
@@ -143,7 +147,10 @@ void main() {
     expect(unsaved.dirty, isTrue);
 
     await pump(tester, controller: unsaved);
-    expect(find.text("Save this canvas"), findsOneWidget);
+    // In place of New canvas, not beside it: a canvas with no file behind it
+    // has one thing that needs doing, and it is not making another canvas.
+    expect(find.text("Save canvas"), findsOneWidget);
+    expect(find.text("New canvas"), findsNothing);
   });
 
   testWidgets("the Save chip is only there when there is no file to save to",
@@ -151,8 +158,9 @@ void main() {
     var saved = CanvasController(const CanvasDocument());
     saved.name = "Match plan";
     await pump(tester, canvases: ["Match plan"], controller: saved);
-    expect(find.text("Save this canvas"), findsNothing,
+    expect(find.text("Save canvas"), findsNothing,
         reason: "a named canvas saves itself");
+    expect(find.text("New canvas"), findsOneWidget);
   });
 
   testWidgets("a row's button is vertical, and owns no overlay",
