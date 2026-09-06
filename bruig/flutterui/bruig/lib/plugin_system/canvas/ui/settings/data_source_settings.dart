@@ -237,12 +237,19 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
 
   List<Widget> _controls(
       BuildContext context, DataPreset? preset, bool allowed) {
-    // What the last refresh actually contained, or -- before there has been
-    // one -- what the preset says a record carries. The first is the
-    // authority; the second is so that the mapping is a list rather than a
-    // blank box on the day somebody sets a table up.
-    var fields =
-        _fields.isNotEmpty ? _fields : (preset?.fields ?? const <String>[]);
+    // What the last refresh contained, and what the preset says a record
+    // carries, together.
+    //
+    // Together rather than one instead of the other. The discovery walks the
+    // first record, so a field only some records have -- or one the whole
+    // competition happens to be null on this week -- is invisible to it, and
+    // dropping the preset's list would mark a column that is mapped perfectly
+    // well as pointing at something that does not exist.
+    var fields = <String>{
+      ...?preset?.fields,
+      ..._fields,
+    }.toList()
+      ..sort();
     return [
       CanvasControlGroup(label: "Source", children: [
         CanvasDropdown<String>(

@@ -616,4 +616,56 @@ void main() {
       expect(saved, [id]);
     });
   });
+
+  group("which fields the mapping offers", () {
+    // Reported: a column mapped to the form guide was marked "not in the
+    // data". The key is in every record football-data.org sends; its value is
+    // null until a club has played, and a null field was being left out of
+    // the list altogether.
+    Future<DataResult> read(Map<String, dynamic> record) async {
+      var dir = await Directory.systemTemp.createTemp("canvas_fields_test");
+      addTearDown(() => dir.delete(recursive: true));
+      var file = File("${dir.path}/one.json");
+      await file.writeAsString(jsonEncode([record]));
+      return loadData(DataSource(
+          kind: DataKind.file,
+          where: file.path,
+          columns: const [SourceColumn(header: "A", path: "position")]));
+    }
+
+    test("a field that is there but empty is still a field", () async {
+      var result = await read({"position": 1, "form": null});
+      expect(result.worked, isTrue, reason: result.problem);
+      expect(result.fields, contains("form"),
+          reason: "the key is there; it is empty, which is a different thing");
+    });
+
+    test("an empty list is a field rather than nothing", () async {
+      var result = await read({"position": 1, "matches": []});
+      expect(result.fields, contains("matches"));
+    });
+
+    test("nested fields still come back by their full path", () async {
+      var result = await read({
+        "position": 1,
+        "team": {"shortName": "Hull City", "crest": null},
+      });
+      expect(result.fields, contains("team.shortName"));
+      expect(result.fields, contains("team.crest"),
+          reason: "a club with no badge on file has not lost the field");
+    });
+
+    test("a null form still lays out as a padded guide", () async {
+      // The other half of the same report: the column has to keep working,
+      // not just stay in the list.
+      var rows = rowsFromJson(
+          [
+            {"form": null},
+          ],
+          const DataSource(kind: DataKind.file, where: "x", columns: [
+            SourceColumn(header: "Form", path: "form", spread: 5, divider: "|"),
+          ]));
+      expect(rows[1].single, "— — — — | —");
+    });
+  });
 }

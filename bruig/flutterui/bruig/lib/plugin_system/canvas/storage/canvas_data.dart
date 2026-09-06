@@ -110,12 +110,24 @@ Future<DataResult> loadData(
   return DataResult.ok(rows, _fieldsIn(valueAtPath(json, source.rowsPath)));
 }
 
-/// _fieldsIn is every dotted path that leads to a value in the first record.
+/// _fieldsIn is every dotted path a record has, whether or not it holds
+/// anything.
+///
+/// Whether or not, and that is the whole of a reported bug: a field that came
+/// back null was left out, so a club with no games played took the form guide
+/// out of the list of fields altogether -- and the column already mapped to it
+/// was marked as pointing at something the data does not have. The key is
+/// there; it is empty, which is a different thing and is what a blank cell is
+/// for.
 ///
 /// The first record only: a hundred identical shapes tell you nothing the
 /// first one did not, and walking them all on a long table is work for no
-/// answer. Lists are described by their first entry, so "standings.0.table"
-/// is offered rather than one path per row.
+/// answer. A list is described by its first entry, so one path is offered
+/// rather than one per row.
+///
+/// A record whose first entry is missing a field the others have is the case
+/// this cannot see, which is why the preset's own list is offered alongside
+/// this one rather than replaced by it.
 List<String> _fieldsIn(dynamic records, {String prefix = "", int depth = 0}) {
   if (records is List) {
     return records.isEmpty
@@ -128,9 +140,9 @@ List<String> _fieldsIn(dynamic records, {String prefix = "", int depth = 0}) {
   for (var entry in records.entries) {
     var path = prefix.isEmpty ? "${entry.key}" : "$prefix.${entry.key}";
     var value = entry.value;
-    if (value is Map || value is List) {
+    if (value is Map || (value is List && value.isNotEmpty)) {
       out.addAll(_fieldsIn(value, prefix: path, depth: depth + 1));
-    } else if (value != null) {
+    } else {
       out.add(path);
     }
   }
