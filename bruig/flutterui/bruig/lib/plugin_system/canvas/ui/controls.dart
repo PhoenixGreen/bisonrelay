@@ -1045,14 +1045,22 @@ class _CanvasExpanderState extends State<CanvasExpander> {
                   Icon(_open ? Icons.expand_more : Icons.chevron_right,
                       size: 16, color: theme.colors.onSurfaceVariant),
                   const SizedBox(width: 3),
-                  Text(
-                    widget.label.toUpperCase(),
-                    style: TextStyle(
-                      fontSize: 9,
-                      letterSpacing: 0.7,
-                      fontWeight: FontWeight.w600,
-                      color:
-                          theme.colors.onSurfaceVariant.withValues(alpha: 0.7),
+                  // The name shrinks too, before the summary does. A
+                  // heading carrying a button as well is wider than a narrow
+                  // sidebar for several of these, and a Text that cannot
+                  // shrink overflows however flexible everything beside it is.
+                  Flexible(
+                    child: Text(
+                      widget.label.toUpperCase(),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 9,
+                        letterSpacing: 0.7,
+                        fontWeight: FontWeight.w600,
+                        color: theme.colors.onSurfaceVariant
+                            .withValues(alpha: 0.7),
+                      ),
                     ),
                   ),
                   if (widget.trailing != null) ...[

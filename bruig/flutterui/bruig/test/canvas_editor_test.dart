@@ -14,6 +14,8 @@ import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/chart_data_editor.dart';
 import 'package:bruig/plugin_system/canvas/ui/table_data_editor.dart';
+import 'package:bruig/plugin_system/canvas/model/data_presets.dart';
+import 'package:bruig/plugin_system/canvas/model/data_source.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_settings_bar.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_timeline.dart';
@@ -69,7 +71,9 @@ void main() {
     /// parameters, and none of them cares what they are, because the panel
     /// those drive is a separate widget the screen floats over the canvas.
     Widget bar(CanvasController controller,
-            {bool open = false, VoidCallback? toggle, VoidCallback? showSidebar}) =>
+            {bool open = false,
+            VoidCallback? toggle,
+            VoidCallback? showSidebar}) =>
         CanvasSettingsBar(
           controller: controller,
           onPublish: () => published++,
@@ -294,7 +298,8 @@ void main() {
       expect(shown, 1);
     });
 
-    testWidgets("publish, undo and redo are pinned to the band", (tester) async {
+    testWidgets("publish, undo and redo are pinned to the band",
+        (tester) async {
       // They used to float over the top-right corner of the canvas, on top of
       // the design. Publish is an icon now, so the tooltip is what names it.
       var controller = CanvasController(const CanvasDocument());
@@ -389,8 +394,7 @@ void main() {
   });
 
   group("the design elements panel", () {
-    testWidgets("offers every kind, and adding one selects it",
-        (tester) async {
+    testWidgets("offers every kind, and adding one selects it", (tester) async {
       var controller = CanvasController(const CanvasDocument());
       addTearDown(controller.dispose);
       await pump(tester, CanvasElementsPanel(controller: controller));
@@ -427,8 +431,8 @@ void main() {
       // It moved to its own tab. Adding is asked once, "what is here" is asked
       // continuously, and sharing a panel buried the second under the first.
       var document = const CanvasDocument();
-      var controller =
-          CanvasController(document.addElement(newElement(ElementKind.text, document)));
+      var controller = CanvasController(
+          document.addElement(newElement(ElementKind.text, document)));
       addTearDown(controller.dispose);
       await pump(tester, CanvasElementsPanel(controller: controller));
 
@@ -460,8 +464,7 @@ void main() {
 
       await tester.tap(find.byTooltip("Hide").first);
       await tester.pumpAndSettle();
-      expect(
-          controller.document.elements.any((e) => !e.visible), isTrue);
+      expect(controller.document.elements.any((e) => !e.visible), isTrue);
 
       await tester.tap(find.byTooltip("Lock").first);
       await tester.pumpAndSettle();
@@ -618,10 +621,9 @@ void main() {
         {TeamElement? team}) async {
       var document = const CanvasDocument(size: CanvasSize(width: 1000));
       var element = (team ??
-              TeamElement(
-                ElementBase(id: newElementId(), width: 400, height: 300),
-              ).withFormation(TeamFormation.f442))
-          as CanvasElement;
+          TeamElement(
+            ElementBase(id: newElementId(), width: 400, height: 300),
+          ).withFormation(TeamFormation.f442)) as CanvasElement;
       var controller = CanvasController(document.addElement(element));
       addTearDown(controller.dispose);
       controller.selectOnly(element.id);
@@ -742,8 +744,7 @@ void main() {
       var controller = await panel(tester);
       expect(teamIn(controller).lockDotAspect, isTrue);
 
-      await tester.enterText(
-          find.byKey(const ValueKey("teamDotWidth")), "60");
+      await tester.enterText(find.byKey(const ValueKey("teamDotWidth")), "60");
       await tester.pump();
       expect(teamIn(controller).dotWidth, 60);
       expect(teamIn(controller).dotHeight, 60);
@@ -755,8 +756,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(lock);
       await tester.pumpAndSettle();
-      await tester.enterText(
-          find.byKey(const ValueKey("teamDotHeight")), "20");
+      await tester.enterText(find.byKey(const ValueKey("teamDotHeight")), "20");
       await tester.pump();
       expect(teamIn(controller).dotWidth, 60, reason: "now independent");
       expect(teamIn(controller).dotHeight, 20);
@@ -773,7 +773,6 @@ void main() {
   });
 
   group("the timeline", () {
-
     testWidgets("adds and removes a keyframe for the selected element",
         (tester) async {
       var document = const CanvasDocument(frames: 20);
@@ -785,8 +784,8 @@ void main() {
 
       await pump(tester, CanvasTimeline(controller: controller));
 
-      await tester.tap(find.byTooltip(
-          "Add a keyframe for ${element.name} here"));
+      await tester
+          .tap(find.byTooltip("Add a keyframe for ${element.name} here"));
       await tester.pumpAndSettle();
 
       var track = controller.document.elements.single.track;
@@ -795,8 +794,8 @@ void main() {
 
       // The tooltip names what it belongs to, since the same button also
       // edits a focused player's keyframes.
-      await tester.tap(
-          find.byTooltip("Remove this keyframe from ${element.name}"));
+      await tester
+          .tap(find.byTooltip("Remove this keyframe from ${element.name}"));
       await tester.pumpAndSettle();
       // The track goes entirely rather than being left empty, so a saved file
       // carries no dead animation.
@@ -825,8 +824,7 @@ void main() {
 
       expect(find.text("Still"), findsOneWidget);
 
-      await tester.enterText(
-          find.byKey(const ValueKey("canvasFrames")), "24");
+      await tester.enterText(find.byKey(const ValueKey("canvasFrames")), "24");
       await tester.pump();
       expect(controller.document.frames, 24);
       expect(find.text("Still"), findsNothing);
@@ -933,7 +931,8 @@ void main() {
       expect(controller.frame, 0);
     });
 
-    testWidgets("the transport row does not move when the playhead lands on a "
+    testWidgets(
+        "the transport row does not move when the playhead lands on a "
         "keyframe", (tester) async {
       // The reported problem: the pose controls sat on the transport row and
       // appeared as the playhead crossed a keyframe, so the row changed width
@@ -997,8 +996,7 @@ void main() {
       await tester.pumpAndSettle();
 
       var closed = tester.getSize(find.byType(CanvasTimeline)).height;
-      await tester.tap(
-          find.byTooltip("Keyframe settings for ${element.name}"));
+      await tester.tap(find.byTooltip("Keyframe settings for ${element.name}"));
       await tester.pumpAndSettle();
 
       expect(open, isTrue);
@@ -1008,8 +1006,7 @@ void main() {
           reason: "the controls are in the floating bar, not in the strip");
     });
 
-    testWidgets("the pose bar carries the keyframe's controls",
-        (tester) async {
+    testWidgets("the pose bar carries the keyframe's controls", (tester) async {
       var document = const CanvasDocument(frames: 20);
       var element = newElement(ElementKind.shape, document);
       var controller = CanvasController(document.addElement(element));
@@ -1053,8 +1050,8 @@ void main() {
       var team = TeamElement(
         ElementBase(id: newElementId(), width: 400, height: 300),
       ).withFormation(TeamFormation.f442);
-      var controller = CanvasController(
-          const CanvasDocument(frames: 24).addElement(team));
+      var controller =
+          CanvasController(const CanvasDocument(frames: 24).addElement(team));
       addTearDown(controller.dispose);
       controller.selectOnly(team.id);
       controller.frame = 6;
@@ -1066,8 +1063,7 @@ void main() {
       await tester.tap(find.byTooltip("Add a keyframe for #5 (Team) here"));
       await tester.pumpAndSettle();
 
-      var after =
-          controller.document.elements.whereType<TeamElement>().single;
+      var after = controller.document.elements.whereType<TeamElement>().single;
       expect(after.players[4].track?.keyAt(6), isNotNull);
       expect(after.track, isNull,
           reason: "the team itself did not get the keyframe");
@@ -1080,8 +1076,8 @@ void main() {
       controller.frame = 12;
       await pump(tester, CanvasTimeline(controller: controller));
 
-      await tester.tap(find.byTooltip(
-          "Loop back — Jump back to the target frame and carry on"));
+      await tester.tap(find
+          .byTooltip("Loop back — Jump back to the target frame and carry on"));
       await tester.pumpAndSettle();
 
       expect(controller.document.actions.single.frame, 12);
@@ -1133,8 +1129,8 @@ void main() {
       prefs.enabled = true;
       await tester.pumpAndSettle();
       expect(find.text("Let a canvas fetch data"), findsOneWidget);
-      expect(find.textContaining("does not go through the proxy"),
-          findsOneWidget,
+      expect(
+          find.textContaining("does not go through the proxy"), findsOneWidget,
           reason: "the reason it is off is the reason it is a decision");
 
       await tester.tap(find.byType(Switch).last);
@@ -1157,7 +1153,8 @@ void main() {
 
       expect(controller.document.elements.length, 2);
       var pasted = controller.document.elements.last;
-      expect(pasted.id, isNot(element.id), reason: "a new element, not an alias");
+      expect(pasted.id, isNot(element.id),
+          reason: "a new element, not an alias");
       // Offset, because a copy landing exactly on its original is
       // indistinguishable from nothing having happened.
       expect(pasted.x, greaterThan(element.x));
@@ -1302,7 +1299,8 @@ void main() {
 
       await tester.tap(find.byTooltip("Remove this keyframe from Path"));
       await tester.pumpAndSettle();
-      expect((controller.document.elements.single as PathElement).nodes.length, 3);
+      expect(
+          (controller.document.elements.single as PathElement).nodes.length, 3);
     });
 
     testWidgets("a point drags along the strip to retime it", (tester) async {
@@ -1315,7 +1313,8 @@ void main() {
       // exercising.
       var ruler = find
           .descendant(
-              of: find.byType(CanvasTimeline), matching: find.byType(CustomPaint))
+              of: find.byType(CanvasTimeline),
+              matching: find.byType(CustomPaint))
           .last;
       var box = tester.getRect(ruler);
       // The same mapping _xFor uses, so the drag starts exactly on the mark.
@@ -1343,7 +1342,8 @@ void main() {
 
       var ruler = find
           .descendant(
-              of: find.byType(CanvasTimeline), matching: find.byType(CustomPaint))
+              of: find.byType(CanvasTimeline),
+              matching: find.byType(CustomPaint))
           .last;
       var box = tester.getRect(ruler);
 
@@ -1359,7 +1359,6 @@ void main() {
       expect(after.nodes.map((n) => n.frame).toList(), [0, 10, 20],
           reason: "nothing was retimed");
     });
-
   });
 
   group("clearing keyframes", () {
@@ -1370,7 +1369,8 @@ void main() {
       var team = TeamElement(
         const ElementBase(id: "t", x: 0, y: 0, width: 400, height: 300),
       ).withFormation(TeamFormation.f442);
-      var shape = ShapeElement(const ElementBase(id: "s", width: 40, height: 40));
+      var shape =
+          ShapeElement(const ElementBase(id: "s", width: 40, height: 40));
       var controller = CanvasController(
           const CanvasDocument(frames: 30).addElement(team).addElement(shape));
 
@@ -1392,8 +1392,8 @@ void main() {
       controller.focusedPlayer = 6;
       await pump(tester, CanvasTimeline(controller: controller));
 
-      await tester.tap(find.byTooltip(
-          "Clear every keyframe on #7 (${team.name})"));
+      await tester
+          .tap(find.byTooltip("Clear every keyframe on #7 (${team.name})"));
       await tester.pumpAndSettle();
 
       expect(teamOf(controller).players[6].track, isNull);
@@ -1422,8 +1422,8 @@ void main() {
       await pump(tester, CanvasTimeline(controller: controller));
 
       expect(controller.document.hasKeyframes, isTrue);
-      await tester.tap(
-          find.byTooltip("Clear every keyframe in the whole canvas"));
+      await tester
+          .tap(find.byTooltip("Clear every keyframe in the whole canvas"));
       await tester.pumpAndSettle();
 
       expect(controller.document.hasKeyframes, isFalse);
@@ -1439,8 +1439,8 @@ void main() {
       addTearDown(controller.dispose);
       await pump(tester, CanvasTimeline(controller: controller));
 
-      await tester.tap(
-          find.byTooltip("Clear every keyframe in the whole canvas"));
+      await tester
+          .tap(find.byTooltip("Clear every keyframe in the whole canvas"));
       await tester.pumpAndSettle();
       controller.undo();
 
@@ -1457,8 +1457,8 @@ void main() {
       expect(
           tester
               .widget<InkWell>(find.descendant(
-                  of: find.byTooltip(
-                      "Clear every keyframe in the whole canvas"),
+                  of: find
+                      .byTooltip("Clear every keyframe in the whole canvas"),
                   matching: find.byType(InkWell)))
               .onTap,
           isNull);
@@ -1487,11 +1487,12 @@ void main() {
       expect(button, findsOneWidget);
       expect(
           tester
-              .widget<InkWell>(find.descendant(
-                  of: button, matching: find.byType(InkWell)))
+              .widget<InkWell>(
+                  find.descendant(of: button, matching: find.byType(InkWell)))
               .onTap,
           isNull);
-      expect((controller.document.elements.single as PathElement).nodes.length, 2);
+      expect(
+          (controller.document.elements.single as PathElement).nodes.length, 2);
     });
 
     test("clearing the whole document leaves paths their points", () {
@@ -1504,7 +1505,8 @@ void main() {
         ],
         follow: const PathFollow(elementId: "s"),
       );
-      var shape = ShapeElement(const ElementBase(id: "s", width: 20, height: 20));
+      var shape =
+          ShapeElement(const ElementBase(id: "s", width: 20, height: 20));
       var controller = CanvasController(
           const CanvasDocument(frames: 30).addElement(shape).addElement(path));
       addTearDown(controller.dispose);
@@ -1516,7 +1518,11 @@ void main() {
       controller.clearAllKeyframes();
       expect(controller.document.hasKeyframes, isFalse);
       expect(
-          controller.document.elements.whereType<PathElement>().single.nodes.length,
+          controller.document.elements
+              .whereType<PathElement>()
+              .single
+              .nodes
+              .length,
           2);
     });
   });
@@ -1552,11 +1558,13 @@ void main() {
       controller.focusedPlayer = 0;
       await pump(tester, CanvasTimeline(controller: controller));
 
-      expect(find.byTooltip("#1 (Home) is following Run — "
-          "its timing is that path's points"), findsOneWidget);
+      expect(
+          find.byTooltip("#1 (Home) is following Run — "
+              "its timing is that path's points"),
+          findsOneWidget);
       expect(find.byTooltip("Add a keyframe for #1 (Home) here"), findsNothing);
-      expect(find.byTooltip("Remove this keyframe from #1 (Home)"),
-          findsNothing);
+      expect(
+          find.byTooltip("Remove this keyframe from #1 (Home)"), findsNothing);
     });
 
     testWidgets("cannot be cleared from the strip either", (tester) async {
@@ -1596,8 +1604,8 @@ void main() {
       controller.focusedPlayer = 5;
       await pump(tester, CanvasTimeline(controller: controller));
 
-      expect(find.byTooltip("Add a keyframe for #6 (Home) here"),
-          findsOneWidget);
+      expect(
+          find.byTooltip("Add a keyframe for #6 (Home) here"), findsOneWidget);
     });
   });
 
@@ -1643,7 +1651,8 @@ void main() {
     Future<void> tapMark(WidgetTester tester, int frame, int frames) async {
       var ruler = find
           .descendant(
-              of: find.byType(CanvasTimeline), matching: find.byType(CustomPaint))
+              of: find.byType(CanvasTimeline),
+              matching: find.byType(CustomPaint))
           .last;
       var box = tester.getRect(ruler);
       await tester.tapAt(Offset(
@@ -1683,7 +1692,8 @@ void main() {
       await tester.sendKeyEvent(LogicalKeyboardKey.delete);
       await tester.pumpAndSettle();
 
-      expect(controller.document.elementById(element.id)!.track!.keys.length, 3);
+      expect(
+          controller.document.elementById(element.id)!.track!.keys.length, 3);
     });
 
     testWidgets("the selection is dropped when the row changes",
@@ -1722,9 +1732,7 @@ void main() {
       addTearDown(controller.dispose);
       controller.selectOnly(element.id);
 
-      await pump(
-          tester,
-          CanvasLayersPanel(controller: controller));
+      await pump(tester, CanvasLayersPanel(controller: controller));
 
       // The layer row has them.
       expect(find.byTooltip("Lock"), findsOneWidget);
@@ -1827,8 +1835,8 @@ void main() {
 
       // One diamond for the group, not one per field: a keyframe here is a
       // whole pose, so six of them lit up and went out in unison.
-      var dot = find
-          .byTooltip("Give the canvas more than one frame to animate this "
+      var dot =
+          find.byTooltip("Give the canvas more than one frame to animate this "
               "element");
       expect(dot, findsOneWidget);
       expect(
@@ -1921,7 +1929,9 @@ void main() {
           find.byKey(const ValueKey("bubbleTailAngle")), "270");
       await tester.pump();
       expect(
-          (controller.document.elements.single as ShapeElement).bubble.tailAngle,
+          (controller.document.elements.single as ShapeElement)
+              .bubble
+              .tailAngle,
           270);
     });
 
@@ -2017,8 +2027,7 @@ void main() {
             of: find.byKey(const ValueKey("canvasFrames")),
             matching: find.text("Length"));
         var box = tester.getRect(caption);
-        await tester.dragFrom(
-            Offset(box.left + box.width * at, box.center.dy),
+        await tester.dragFrom(Offset(box.left + box.width * at, box.center.dy),
             const Offset(30, 0));
         await tester.pumpAndSettle();
         return controller.document.frames;
@@ -2034,8 +2043,7 @@ void main() {
       addTearDown(controller.dispose);
       await pump(tester, CanvasTimeline(controller: controller));
 
-      await tester.enterText(
-          find.byKey(const ValueKey("canvasFrames")), "125");
+      await tester.enterText(find.byKey(const ValueKey("canvasFrames")), "125");
       await tester.pump();
       expect(controller.document.frames, 125);
     });
@@ -2054,9 +2062,9 @@ void main() {
 
     ImageElement empty() =>
         const ImageElement(ElementBase(id: "i", width: 200, height: 200));
-    ImageElement filled() => const ImageElement(
-        ElementBase(id: "i", width: 200, height: 200),
-        assetId: "abcdefghij123456");
+    ImageElement filled() =>
+        const ImageElement(ElementBase(id: "i", width: 200, height: 200),
+            assetId: "abcdefghij123456");
 
     testWidgets("an empty one offers somewhere to put a picture",
         (tester) async {
@@ -2096,10 +2104,8 @@ void main() {
       await panel(tester, filled());
       expect(find.byKey(const ValueKey("imageOverlayColour")), findsNothing);
 
-      await panel(
-          tester, filled().copyWith(blend: OverlayBlend.multiply));
-      expect(
-          find.byKey(const ValueKey("imageOverlayColour")), findsOneWidget);
+      await panel(tester, filled().copyWith(blend: OverlayBlend.multiply));
+      expect(find.byKey(const ValueKey("imageOverlayColour")), findsOneWidget);
     });
 
     testWidgets("a frame can be chosen and cleared", (tester) async {
@@ -2135,7 +2141,8 @@ void main() {
       expect(opacity, findsOneWidget);
 
       await tester.enterText(
-          find.descendant(of: opacity, matching: find.byType(TextField)), "0.4");
+          find.descendant(of: opacity, matching: find.byType(TextField)),
+          "0.4");
       await tester.pump();
       expect(controller.document.elements.single.opacity, closeTo(0.4, 0.001));
     });
@@ -2292,9 +2299,12 @@ void main() {
 
       expect(
           find.ancestor(
-              of: background, matching: find.byType(LongPressDraggable<String>)),
+              of: background,
+              matching: find.byType(LongPressDraggable<String>)),
           findsNothing);
-      expect(find.ancestor(of: background, matching: find.byType(DragTarget<String>)),
+      expect(
+          find.ancestor(
+              of: background, matching: find.byType(DragTarget<String>)),
           findsNothing);
 
       var drag = await tester.startGesture(tester.getCenter(find.text("Top")));
@@ -2361,9 +2371,11 @@ void main() {
       // The first row's "up" and the last row's "down" are there and do
       // nothing, rather than being missing and shuffling the other buttons
       // along by one on every row.
-      var up = tester.widget<CanvasIconButton>(find.ancestor(
-          of: find.byTooltip("Move this row up").first,
-          matching: find.byType(CanvasIconButton)).first);
+      var up = tester.widget<CanvasIconButton>(find
+          .ancestor(
+              of: find.byTooltip("Move this row up").first,
+              matching: find.byType(CanvasIconButton))
+          .first);
       expect(up.onPressed, isNull);
       expect(tableIn(controller).rows.first.first, "Team");
     });
@@ -2440,6 +2452,57 @@ void main() {
 
       await press(tester, find.text("CELL TYPE"));
       expect(find.text("Weight"), findsOneWidget);
+    });
+
+    testWidgets("the data settings fit a narrow sidebar", (tester) async {
+      // Controls ask CanvasControlScope for their width and are clamped to
+      // the column. A raw SizedBox bypasses that, and the key field's did --
+      // 190 pixels plus a save button in a sidebar narrower than either,
+      // which is an overflow stripe across the panel rather than a field
+      // that is merely too wide. It now sizes itself from the room it is
+      // actually given.
+      var element = TableElement(
+        const ElementBase(id: "t", width: 400, height: 200),
+        rows: const [
+          ["Team", "Points"],
+          ["Hull City", "6"],
+        ],
+        source: footballData.applyTo(const DataSource(), "PL"),
+      );
+      var controller =
+          CanvasController(const CanvasDocument().addElement(element));
+      addTearDown(controller.dispose);
+      controller.selectOnly("t");
+
+      // Constrained here rather than by shrinking the view, which the pump
+      // helper sets for itself.
+      await pump(
+          tester,
+          SizedBox(
+              width: 200, child: CanvasLayersPanel(controller: controller)));
+
+      // The panel already overflows by 32 pixels at this width with every
+      // section shut, and has since before any of this existed -- something
+      // in the layers list rather than in these settings. Taken and thrown
+      // away here so that this test is about the sections it opens; it is not
+      // a licence for a new one, which is what the checks below catch.
+      tester.takeException();
+
+      await press(tester, find.text("DATA"));
+      expect(find.text("KEY"), findsOneWidget,
+          reason: "the key field only exists once the source is an address, "
+              "so without it this test is testing nothing");
+      expect(tester.takeException(), isNull);
+
+      await press(tester, find.text("COLUMNS"));
+      expect(tester.takeException(), isNull);
+
+      // Shut again. A section remembers whether it is open in a static map
+      // that outlives one test, so a section left open here is a section open
+      // in every test that runs after this one -- and the panel has more than
+      // one button called Add once this section is showing.
+      await press(tester, find.text("COLUMNS"));
+      await press(tester, find.text("DATA"));
     });
 
     testWidgets("a table is refreshed and reordered from the headings",
@@ -2619,8 +2682,8 @@ void main() {
   });
 
   group("the element settings section", () {
-    Future<CanvasController> panel(WidgetTester tester, Widget Function(
-            CanvasController) build) async {
+    Future<CanvasController> panel(
+        WidgetTester tester, Widget Function(CanvasController) build) async {
       var document = const CanvasDocument();
       var element = newElement(ElementKind.shape, document);
       var controller = CanvasController(document.addElement(element));
@@ -2634,8 +2697,8 @@ void main() {
       // The first thing anybody does after adding an element is change it, and
       // with the settings only on Layers that was a trip to another tab and
       // back for every element on a canvas.
-      var controller = await panel(
-          tester, (c) => CanvasElementsPanel(controller: c));
+      var controller =
+          await panel(tester, (c) => CanvasElementsPanel(controller: c));
 
       expect(find.text("ADD"), findsOneWidget, reason: "still the add grid");
       expect(find.text("Element settings"), findsOneWidget);
@@ -2650,7 +2713,8 @@ void main() {
       ("Design Elements", (c) => CanvasElementsPanel(controller: c)),
       ("Layers", (c) => CanvasLayersPanel(controller: c)),
     ]) {
-      testWidgets("closed on the $name tab, it stays closed when something "
+      testWidgets(
+          "closed on the $name tab, it stays closed when something "
           "is selected", (tester) async {
         // The instruction that makes closing it worth doing. A section that
         // reopens because an element was clicked is a section that has to be
@@ -2666,7 +2730,8 @@ void main() {
         expect(find.text("Opacity"), findsNothing,
             reason: "selecting does not reopen it");
 
-        controller.addElement(newElement(ElementKind.text, controller.document));
+        controller
+            .addElement(newElement(ElementKind.text, controller.document));
         await tester.pumpAndSettle();
         expect(find.text("Opacity"), findsNothing,
             reason: "nor does adding one");
@@ -2785,8 +2850,8 @@ void main() {
       await tester.pumpAndSettle();
       expect(hints(), isNotEmpty);
 
-      controller.replaceElement(chartIn(controller).copyWith(
-          data: ChartData.parse("Cat\tA\tB\nx\t10\t5\ny\t6\t9")));
+      controller.replaceElement(chartIn(controller)
+          .copyWith(data: ChartData.parse("Cat\tA\tB\nx\t10\t5\ny\t6\t9")));
       await tester.pumpAndSettle();
       expect(hints(), isEmpty, reason: "with two series it has its answer");
     });
@@ -2840,8 +2905,8 @@ void main() {
       await press(tester, find.text("Over the chart"));
 
       controller.replaceElement(chartIn(controller).copyWith(
-          titleBox: const ChartLabel(
-              x: 0.4, y: 0.5, width: 0.3, height: 0.12)));
+          titleBox:
+              const ChartLabel(x: 0.4, y: 0.5, width: 0.3, height: 0.12)));
       await tester.pumpAndSettle();
 
       // And the box goes back round the chart, rather than staying as big as
@@ -2904,22 +2969,19 @@ void main() {
           .widgetList<CanvasHint>(find.byType(CanvasHint))
           .map((h) => h.message);
 
-      await panel(
-          tester,
+      await panel(tester,
           shape: (e) =>
               e.copyWith(type: ChartType.radialBar, showLegend: false));
       expect(hints(), contains(hint));
 
       // The legend on but its own values off is still nowhere for them to go:
       // the two switches are separate now.
-      await panel(
-          tester,
+      await panel(tester,
           shape: (e) =>
               e.copyWith(type: ChartType.radialBar, showLegend: true));
       expect(hints(), contains(hint));
 
-      await panel(
-          tester,
+      await panel(tester,
           shape: (e) => e.copyWith(
               type: ChartType.radialBar,
               showLegend: true,
@@ -2973,7 +3035,8 @@ void main() {
         await tester.ensureVisible(heading);
         await tester.pumpAndSettle();
         // The box around the section, which is the widest thing in it.
-        var box = tester.getSize(find.ancestor(
+        var box = tester.getSize(find
+            .ancestor(
                 of: heading,
                 matching: find.byWidgetPredicate(
                     (w) => w is Container && w.decoration is BoxDecoration))
@@ -3035,7 +3098,8 @@ void main() {
           reason: "and the axis labels are where they were");
     });
 
-    testWidgets("a series is added beside the data, not in a section of its "
+    testWidgets(
+        "a series is added beside the data, not in a section of its "
         "own", (tester) async {
       // A series is a column of the table, so it is added where the table is
       // and its name, colour and type sit under the table rather than three
@@ -3078,9 +3142,8 @@ void main() {
       // One rule per group, drawn under it.
       var rules = find.descendant(
           of: find.byType(CanvasControlGroup),
-          matching: find.byWidgetPredicate((w) =>
-              w is Container &&
-              w.constraints?.maxHeight == 1.0));
+          matching: find.byWidgetPredicate(
+              (w) => w is Container && w.constraints?.maxHeight == 1.0));
       expect(rules, findsWidgets);
     });
 
@@ -3326,9 +3389,11 @@ void main() {
 
       // The first row's category, then its value.
       await tester.enterText(
-          find.descendant(
-              of: find.byType(ChartDataEditor),
-              matching: find.byType(TextField)).at(2),
+          find
+              .descendant(
+                  of: find.byType(ChartDataEditor),
+                  matching: find.byType(TextField))
+              .at(2),
           "42");
       await tester.pumpAndSettle();
       expect(dataIn(controller).valueAt(0, 0), 42);
@@ -3448,8 +3513,8 @@ void main() {
       await panel(tester);
 
       expect(find.byTooltip("Rub the background out by hand"), findsOneWidget);
-      expect(find.byTooltip("Put back what was taken by mistake"),
-          findsOneWidget);
+      expect(
+          find.byTooltip("Put back what was taken by mistake"), findsOneWidget);
     });
 
     testWidgets("turning a brush on offers its size, hardness and cling",
@@ -3474,7 +3539,6 @@ void main() {
       const inward = "Taking what is inside the line — press to take what "
           "is outside";
 
-
       expect(find.byTooltip(outward), findsNothing,
           reason: "only the cut has two sides to choose between");
 
@@ -3495,9 +3559,8 @@ void main() {
         (tester) async {
       // A hint is a sample rather than a mark on the picture, so it is taken
       // exactly where it was drawn.
-      var controller =
-          await panel(tester, removal: const BackgroundRemoval(
-              mode: RemovalMode.learn));
+      var controller = await panel(tester,
+          removal: const BackgroundRemoval(mode: RemovalMode.learn));
       controller.retouch = RetouchBrush.markBackground;
       await tester.pumpAndSettle();
 
@@ -3509,15 +3572,21 @@ void main() {
     testWidgets("the marking brushes appear with the method that uses them",
         (tester) async {
       await panel(tester);
-      expect(find.byTooltip("Mark some background — draw over a few parts "
-          "that should go"), findsNothing);
+      expect(
+          find.byTooltip("Mark some background — draw over a few parts "
+              "that should go"),
+          findsNothing);
 
       await panel(tester,
           removal: const BackgroundRemoval(mode: RemovalMode.learn));
-      expect(find.byTooltip("Mark some background — draw over a few parts "
-          "that should go"), findsOneWidget);
-      expect(find.byTooltip("Mark the subject — draw over a few parts that "
-          "should stay"), findsOneWidget);
+      expect(
+          find.byTooltip("Mark some background — draw over a few parts "
+              "that should go"),
+          findsOneWidget);
+      expect(
+          find.byTooltip("Mark the subject — draw over a few parts that "
+              "should stay"),
+          findsOneWidget);
     });
 
     testWidgets("undo and clear appear once something has been painted",
@@ -3527,8 +3596,7 @@ void main() {
 
       await panel(tester,
           removal: const BackgroundRemoval(strokes: [
-            RemovalStroke(
-                points: [Offset(0.5, 0.5)], radius: 0.1, keep: false),
+            RemovalStroke(points: [Offset(0.5, 0.5)], radius: 0.1, keep: false),
           ]));
       expect(find.byTooltip("Undo the last brush stroke"), findsOneWidget);
       expect(find.byTooltip("Clear every brush stroke"), findsOneWidget);
@@ -3541,8 +3609,7 @@ void main() {
       // hand was offered a tolerance and a softness that nothing reads.
       await panel(tester,
           removal: const BackgroundRemoval(strokes: [
-            RemovalStroke(
-                points: [Offset(0.5, 0.5)], radius: 0.1, keep: false),
+            RemovalStroke(points: [Offset(0.5, 0.5)], radius: 0.1, keep: false),
           ]));
 
       expect(find.text("Softness"), findsNothing);

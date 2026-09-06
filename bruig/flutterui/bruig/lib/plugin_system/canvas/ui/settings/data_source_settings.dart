@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/data_presets.dart';
@@ -381,7 +382,7 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
               ),
               CanvasIconButton(
                 icon: Icons.delete_outline,
-                tooltip: "Remove this column",
+                tooltip: "Remove this column from the mapping",
                 onPressed: () => _set(source.copyWith(columns: [
                   for (var c = 0; c < source.columns.length; c++)
                     if (c != i) source.columns[c],
@@ -391,7 +392,7 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
           CanvasControlGroup(label: "Add", children: [
             CanvasIconButton(
               icon: Icons.add,
-              tooltip: "Add a column",
+              tooltip: "Add a column to the mapping",
               onPressed: () => _set(source.copyWith(
                   columns: [...source.columns, const SourceColumn()])),
             ),
@@ -483,27 +484,44 @@ class _KeyFieldState extends State<_KeyField> {
     widget.onSaved();
   }
 
+  /// _buttonRoom is what the save button beside the field takes.
+  static const double _buttonRoom = 40;
+
   @override
-  Widget build(BuildContext context) =>
-      Row(mainAxisSize: MainAxisSize.min, children: [
-        SizedBox(
-          width: 190,
-          child: TextField(
-            controller: _text,
-            obscureText: true,
-            style: const TextStyle(fontSize: 12),
-            decoration: const InputDecoration(
-              labelText: "Key",
-              isDense: true,
-              border: OutlineInputBorder(),
+  Widget build(BuildContext context) => LayoutBuilder(
+        // The width that is actually there, rather than the width the control
+        // scope would like. A raw SizedBox is what overflowed the sidebar in
+        // the first place, and asking the scope only moved the number that was
+        // too big -- the room this row has is what its own parent gives it,
+        // and only a LayoutBuilder knows that.
+        //
+        // Unbounded in the settings band above the canvas, which scrolls
+        // sideways; there the field takes a fixed width like everything else.
+        builder: (context, constraints) {
+          var room = constraints.maxWidth.isFinite
+              ? constraints.maxWidth - _buttonRoom
+              : 190.0;
+          return Row(mainAxisSize: MainAxisSize.min, children: [
+            SizedBox(
+              width: math.max(60, math.min(190, room)),
+              child: TextField(
+                controller: _text,
+                obscureText: true,
+                style: const TextStyle(fontSize: 12),
+                decoration: const InputDecoration(
+                  labelText: "Key",
+                  isDense: true,
+                  border: OutlineInputBorder(),
+                ),
+                onSubmitted: (_) => _save(),
+              ),
             ),
-            onSubmitted: (_) => _save(),
-          ),
-        ),
-        CanvasIconButton(
-          icon: Icons.save_outlined,
-          tooltip: "Save this key on this machine",
-          onPressed: _save,
-        ),
-      ]);
+            CanvasIconButton(
+              icon: Icons.save_outlined,
+              tooltip: "Save this key on this machine",
+              onPressed: _save,
+            ),
+          ]);
+        },
+      );
 }
