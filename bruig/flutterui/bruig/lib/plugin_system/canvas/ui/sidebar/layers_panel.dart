@@ -1,6 +1,5 @@
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/element_settings_pane.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/elements_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
@@ -35,13 +34,9 @@ class CanvasLayersPanel extends StatelessWidget {
   const CanvasLayersPanel({required this.controller, super.key});
 
   @override
-  Widget build(BuildContext context) => CanvasSettingsSplit(
-        controller: controller,
-        storageKey: "canvasLayers",
-        top: ListenableBuilder(
-          listenable: controller,
-          builder: (context, _) => _layerList(),
-        ),
+  Widget build(BuildContext context) => ListenableBuilder(
+        listenable: controller,
+        builder: (context, _) => _layerList(),
       );
 
   Widget _layerList() {
@@ -49,7 +44,6 @@ class CanvasLayersPanel extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
       children: [
-        CanvasSectionHeading("Layers (${elements.length + 1})"),
         // Reversed, so what is on top of the canvas is at the top of the list.
         // The document stores paint order, where the last element is the
         // frontmost; a list showing that order literally reads upside down to

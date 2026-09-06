@@ -13,13 +13,13 @@ import 'package:flutter/material.dart';
 enum CanvasPanel {
   files("Files", Icons.folder_outlined),
   presets("Presets", Icons.grid_view_outlined),
-  elements("Design elements", Icons.category_outlined),
 
-  /// layers is what is already on the canvas, and the settings of whichever
-  /// of it is selected. Last, because it is the tab a document ends up on:
-  /// the first three are all ways of getting something onto the canvas, and
-  /// this is where the rest of the work happens.
-  layers("Layers", Icons.layers_outlined);
+  /// design is what you add, what is already there, and the settings of
+  /// whichever of it is selected -- three panels in one column rather than
+  /// three tabs. Last, because it is the tab a document ends up on: the two
+  /// before it are ways of starting, and this is where the rest of the work
+  /// happens.
+  design("Design", Icons.category_outlined);
 
   final String label;
   final IconData icon;

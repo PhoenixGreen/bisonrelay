@@ -4,8 +4,6 @@ import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/canvas_sidebar.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/element_settings_pane.dart';
-import 'package:bruig/storage_manager.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
@@ -79,51 +77,18 @@ class CanvasSettingsBar extends StatefulWidget {
   State<CanvasSettingsBar> createState() => _CanvasSettingsBarState();
 }
 
-/// _elementSettingsKey remembers whether the second line is out.
-///
-/// Persisted, and separately from the sidebar's two copies, because it is a
-/// decision about the shape of the page rather than a mood -- and because
-/// having the settings in the band is usually a decision to *not* have them in
-/// the sidebar.
-const String _elementSettingsKey = "canvasBarElementSettingsOpen";
-
 class _CanvasSettingsBarState extends State<CanvasSettingsBar> {
   CanvasController get controller => widget.controller;
-
-  /// _elementSettingsOpen is whether the second line is showing. Never turned
-  /// on by anything but the button: a line that appears because an element was
-  /// selected is a line that has to be dismissed again after every selection.
-  bool _elementSettingsOpen = false;
-
-  /// _elementScroll survives the rebuild that every edit causes, which is what
-  /// keeps the row where it was left. Without it, changing a setting scrolled
-  /// the row back to the beginning and the control being used went off the
-  /// side of the screen.
-  final ScrollController _elementScroll = ScrollController();
 
   @override
   void initState() {
     super.initState();
     controller.addListener(_onChanged);
-    _restoreOpen();
-  }
-
-  Future<void> _restoreOpen() async {
-    var saved = await StorageManager.readData(_elementSettingsKey);
-    if (saved is bool && mounted) {
-      setState(() => _elementSettingsOpen = saved);
-    }
-  }
-
-  void _toggleElementSettings() {
-    setState(() => _elementSettingsOpen = !_elementSettingsOpen);
-    StorageManager.saveData(_elementSettingsKey, _elementSettingsOpen);
   }
 
   @override
   void dispose() {
     controller.removeListener(_onChanged);
-    _elementScroll.dispose();
     super.dispose();
   }
 
@@ -155,67 +120,9 @@ class _CanvasSettingsBarState extends State<CanvasSettingsBar> {
         // own margin, so that the line is exactly what it looks like: the rule
         // and what hangs under it.
         const SizedBox(height: 5),
-        if (_elementSettingsOpen) _elementLine(theme),
       ]),
     );
   }
-
-  /// _elementLineHeight is how tall the second line is, always.
-  ///
-  /// Fixed, and that is the whole point of it. The line is as tall as its
-  /// contents otherwise, so it was one height with nothing selected, another
-  /// with a picture, and a third with a chart -- and since it pushes the
-  /// canvas down, every change of selection moved the design and re-fitted the
-  /// zoom under whatever was being looked at. One height means selecting
-  /// things costs nothing after the line is opened.
-  ///
-  /// The number is the height of a captioned control, which is what almost
-  /// everything in here is. The rare control taller than that -- the chart's
-  /// data box -- scrolls rather than growing the line.
-  static const double _elementLineHeight = 44;
-
-  /// _elementLine is the selected element's settings, along a row.
-  ///
-  /// Scrolled sideways rather than wrapped, because a band that grows to three
-  /// and four lines to fit a chart's settings moves the canvas every time the
-  /// selection changes -- which is the fault this line already has to be
-  /// careful about, made continuous.
-  Widget _elementLine(ThemeNotifier theme) => Container(
-        key: const ValueKey("canvasBarElementLine"),
-        // The same gap above the controls as below them. It was four above and
-        // five below, which is close enough to equal to be an accident and far
-        // enough from it to look like one.
-        padding: const EdgeInsets.symmetric(vertical: 6),
-        decoration: BoxDecoration(
-          border: Border(
-              top: BorderSide(color: theme.colors.outlineVariant, width: 1)),
-        ),
-        child: SizedBox(
-          height: _elementLineHeight,
-          child: CanvasControlScope(
-            stacked: false,
-            // Wider than the sidebar allows: the band has the whole window.
-            maxWidth: 260,
-            // Both ways. Sideways is the ordinary case and what the scroll
-            // controller remembers; up and down exists so that a control
-            // taller than the line is reachable instead of overflowing it.
-            child: SingleChildScrollView(
-              child: ConstrainedBox(
-                constraints:
-                    const BoxConstraints(minHeight: _elementLineHeight),
-                child: SingleChildScrollView(
-                  controller: _elementScroll,
-                  scrollDirection: Axis.horizontal,
-                  child: Center(
-                    child: elementSettingsBody(context, controller,
-                        stacked: false),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      );
 
   /// _viewControls is the tools and the zoom: how you are looking at the
   /// canvas, rather than what is on it.
@@ -311,14 +218,6 @@ class _CanvasSettingsBarState extends State<CanvasSettingsBar> {
   Widget _actions(ThemeNotifier theme) => Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          _barButton(theme,
-              icon: Icons.format_paint_outlined,
-              tooltip: _elementSettingsOpen
-                  ? "Hide the element settings"
-                  : "Element settings — the selected element's controls, on a "
-                      "second line",
-              active: _elementSettingsOpen,
-              onPressed: _toggleElementSettings),
           _barButton(theme,
               icon: Icons.tune,
               tooltip: "Canvas settings",

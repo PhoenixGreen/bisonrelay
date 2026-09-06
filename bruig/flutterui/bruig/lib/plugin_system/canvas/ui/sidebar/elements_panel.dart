@@ -1,24 +1,16 @@
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/element_settings_pane.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
-// elements_panel.dart is the Design Elements tab: what you can add, and the
-// settings of whatever is selected.
+// elements_panel.dart is what you can put on a canvas: a grid of chips, and
+// nothing else.
 //
-// The *layer list* is not here and does not come back: it moved to its own tab
-// (see layers_panel.dart) because the two answer different questions -- "what
-// can I add" is asked once at the beginning, "what is already here" is asked
-// continuously -- and sharing a panel meant the list of what was on the canvas
-// was always scrolled below a grid of things the reader had finished with.
-//
-// The settings are a different matter. The first thing anybody does after
-// adding an element is change it, and with the settings only on the Layers tab
-// that was a trip to another tab and back for every element on a canvas. So
-// they are here as well, in the same collapsible section, remembering its own
-// open state and its own height -- see element_settings_pane.dart.
+// It used to carry the settings as well, and before that the layer list, both
+// for the same reason -- the three are used together and were in different
+// tabs, so each one kept a copy of its neighbour. They are one column now (see
+// design_panel.dart), which is what lets this go back to being one thing.
 //
 // An element can be added by clicking it or by dragging it onto the canvas.
 // Both, because the two answer different questions -- a click means "I want
@@ -76,36 +68,20 @@ class CanvasElementsPanel extends StatelessWidget {
   const CanvasElementsPanel({required this.controller, super.key});
 
   @override
-  Widget build(BuildContext context) => CanvasSettingsSplit(
-        controller: controller,
-        storageKey: "canvasElements",
-        // The grid is a fixed size and the settings are not, so the grid gets
-        // the smaller share here -- the opposite of the Layers tab, where the
-        // list is the part that grows.
-        initialSplit: 0.45,
-        top: ListView(
-          padding: const EdgeInsets.fromLTRB(8, 8, 8, 16),
-          children: [
-            // Behind the question mark rather than under the grid. It is a
-            // paragraph read once and then never again, and in a column this
-            // narrow it was taking a fifth of the panel to go on saying it.
-            const CanvasSectionHeading("Add",
-                hint: "Click to add one in the middle of the canvas, or drag "
-                    "it where you want it. What is already on the canvas is "
-                    "in the Layers tab."),
-            Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: [
-                for (var kind in _addable) _AddChip(controller, kind),
-              ],
-            ),
-          ],
-        ),
+  Widget build(BuildContext context) => ListView(
+        padding: const EdgeInsets.fromLTRB(8, 8, 8, 12),
+        children: [
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (var kind in _addable) _AddChip(controller, kind),
+            ],
+          ),
+        ],
       );
 }
 
-/// _AddChip is one element kind: click to add, or drag onto the canvas.
 class _AddChip extends StatelessWidget {
   final CanvasController controller;
   final ElementKind kind;

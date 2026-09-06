@@ -16,8 +16,7 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_timeline.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 import 'package:bruig/plugin_system/canvas/ui/publish_sheet.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/canvas_sidebar.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/elements_panel.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/layers_panel.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/files_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/presets_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
@@ -232,7 +231,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
         .remember(folder, name);
     // Straight to the elements tab, as a preset does: the next thing anybody
     // does with an empty canvas is put something on it.
-    _setPanel(CanvasPanel.elements);
+    _setPanel(CanvasPanel.design);
   }
 
   /// _openPreset starts a new canvas from a preset.
@@ -247,7 +246,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
       Provider.of<CanvasPreferences>(context, listen: false).remember("", "");
       // Straight to the elements tab, because the next thing anybody does
       // after choosing a starting point is add something to it.
-      _setPanel(CanvasPanel.elements);
+      _setPanel(CanvasPanel.design);
     }
   }
 
@@ -322,8 +321,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
             onNew: _newCanvas,
           ),
         CanvasPanel.presets => CanvasPresetsPanel(onChoose: _openPreset),
-        CanvasPanel.elements => CanvasElementsPanel(controller: _controller),
-        CanvasPanel.layers => CanvasLayersPanel(controller: _controller),
+        CanvasPanel.design => CanvasDesignPanel(controller: _controller),
       },
     );
 

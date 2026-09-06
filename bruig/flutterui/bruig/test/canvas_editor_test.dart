@@ -21,7 +21,9 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_settings_bar.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_timeline.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/element_settings_pane.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/elements_panel.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/panel_stack.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/presets_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/canvas_sidebar.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/layers_panel.dart';
@@ -133,8 +135,13 @@ void main() {
           reason: "selecting something does not open the second line");
     });
 
-    testWidgets("the element button opens a second line and keeps it",
+    testWidgets("the band no longer carries the element settings",
         (tester) async {
+      // They were a second line here as well as in both sidebar tabs, because
+      // the things they belong with were in different tabs and each place kept
+      // a copy to shorten the journey. Adding, the layers and the settings are
+      // one column now -- see CanvasDesignPanel -- so the band is back to
+      // being about the canvas rather than about what is on it.
       var document = const CanvasDocument();
       var element = newElement(ElementKind.text, document);
       var controller = CanvasController(document.addElement(element));
@@ -142,79 +149,8 @@ void main() {
       controller.selectOnly(element.id);
 
       await pump(tester, bar(controller));
-      var oneLine = tester.getSize(find.byType(CanvasSettingsBar)).height;
-
-      await tester.tap(find.byTooltip(
-          "Element settings — the selected element's controls, on a second "
-          "line"));
-      await tester.pumpAndSettle();
-
-      expect(tester.getSize(find.byType(CanvasSettingsBar)).height,
-          greaterThan(oneLine),
-          reason: "the settings are a second line, as asked for");
-      // Along a row rather than down a column: the band has a window's width
-      // and no height to spare.
-      expect(find.byType(SingleChildScrollView), findsWidgets);
-      expect(find.text("Opacity"), findsOneWidget);
-
-      await tester.tap(find.byTooltip("Hide the element settings"));
-      await tester.pumpAndSettle();
-      expect(tester.getSize(find.byType(CanvasSettingsBar)).height, oneLine);
-    });
-
-    testWidgets("the second line is one height whatever is selected",
-        (tester) async {
-      // It pushes the canvas down, so a line that were as tall as its contents
-      // would move the design and re-fit the zoom on every change of
-      // selection. Opening it costs a line once; selecting things after that
-      // costs nothing.
-      var document = const CanvasDocument();
-      var text = newElement(ElementKind.text, document);
-      var chart = newElement(ElementKind.chart, document);
-      var controller =
-          CanvasController(document.addElement(text).addElement(chart));
-      addTearDown(controller.dispose);
-
-      await pump(tester, bar(controller));
-      await tester.tap(find.byTooltip(
-          "Element settings — the selected element's controls, on a second "
-          "line"));
-      await tester.pumpAndSettle();
-      var empty = tester.getSize(find.byType(CanvasSettingsBar)).height;
-
-      for (var element in [text, chart]) {
-        controller.selectOnly(element.id);
-        await tester.pumpAndSettle();
-        expect(tester.getSize(find.byType(CanvasSettingsBar)).height, empty,
-            reason: "${element.kind.name} makes the band no taller");
-      }
-      expect(tester.takeException(), isNull,
-          reason: "and a control taller than the line scrolls, not overflows");
-    });
-
-    testWidgets("the second line has the same gap above as below",
-        (tester) async {
-      var controller = CanvasController(const CanvasDocument());
-      addTearDown(controller.dispose);
-      await pump(tester, bar(controller));
-      await tester.tap(find.byTooltip(
-          "Element settings — the selected element's controls, on a second "
-          "line"));
-      await tester.pumpAndSettle();
-
-      // Measured off the rule the line hangs from and the bottom of the band,
-      // because the gap between them is what was actually complained about.
-      var line =
-          tester.getRect(find.byKey(const ValueKey("canvasBarElementLine")));
-      var controls = tester.getRect(find.byType(CanvasControlScope).first);
-      var above = controls.top - line.top;
-      var below = line.bottom - controls.bottom;
-
-      expect(above, closeTo(below, 1.5), reason: "above $above, below $below");
-      // Only the band's own bottom rule below it, and nothing else.
-      expect(line.bottom,
-          closeTo(tester.getRect(find.byType(CanvasSettingsBar)).bottom, 1.5),
-          reason: "the band adds no padding of its own under the line");
+      expect(find.byIcon(Icons.format_paint_outlined), findsNothing);
+      expect(find.text("Opacity"), findsNothing);
     });
 
     testWidgets("offers both frame buttons", (tester) async {
@@ -427,18 +363,18 @@ void main() {
       expect(element.height, greaterThan(0));
     });
 
-    testWidgets("no longer carries the layer list", (tester) async {
-      // It moved to its own tab. Adding is asked once, "what is here" is asked
-      // continuously, and sharing a panel buried the second under the first.
+    testWidgets("is the grid and nothing else", (tester) async {
+      // It carried the layer list once and the settings after that, both
+      // because the three were in different tabs and each kept a copy of its
+      // neighbour. They share a column now, so this is one thing again.
       var document = const CanvasDocument();
       var controller = CanvasController(
           document.addElement(newElement(ElementKind.text, document)));
       addTearDown(controller.dispose);
       await pump(tester, CanvasElementsPanel(controller: controller));
 
-      expect(find.text("ADD"), findsOneWidget);
-      expect(find.text("LAYERS"), findsNothing);
       expect(find.byType(CanvasLayerRow), findsNothing);
+      expect(find.text("Opacity"), findsNothing);
     });
   });
 
@@ -458,7 +394,7 @@ void main() {
       }
       var controller = CanvasController(document);
       addTearDown(controller.dispose);
-      await pump(tester, CanvasLayersPanel(controller: controller));
+      await pump(tester, CanvasDesignPanel(controller: controller));
 
       var first = controller.document.elements.first;
 
@@ -485,7 +421,7 @@ void main() {
       var element = newElement(ElementKind.text, document);
       var controller = CanvasController(document.addElement(element));
       addTearDown(controller.dispose);
-      await pump(tester, CanvasLayersPanel(controller: controller));
+      await pump(tester, CanvasDesignPanel(controller: controller));
 
       // Nothing selected: the list, and no settings under it.
       expect(find.text("TYPE"), findsNothing);
@@ -505,7 +441,7 @@ void main() {
       var element = newElement(ElementKind.text, document);
       var controller = CanvasController(document.addElement(element));
       addTearDown(controller.dispose);
-      await pump(tester, CanvasLayersPanel(controller: controller));
+      await pump(tester, CanvasDesignPanel(controller: controller));
 
       var background = find.byType(CanvasBackgroundLayerRow);
       expect(background, findsOneWidget);
@@ -548,13 +484,15 @@ void main() {
       expect(controller.backgroundSelected, isFalse);
     });
 
-    testWidgets("the divider resizes the settings area", (tester) async {
-      // The list grows without limit -- a football canvas is thirty layers --
-      // and settings pushed off the bottom by it are settings that have to be
-      // scrolled back to after every selection.
-      var controller = CanvasController(footballCanvas());
+    testWidgets("a panel's top edge resizes the one above it", (tester) async {
+      // The grip is the header's own top edge rather than a bar of its own: a
+      // bar between two panels is a row of pixels that does nothing but be
+      // dragged, in a column where every row is wanted for something.
+      var document = const CanvasDocument();
+      var element = newElement(ElementKind.shape, document);
+      var controller = CanvasController(document.addElement(element));
       addTearDown(controller.dispose);
-      controller.selectBackground();
+      controller.selectOnly(element.id);
 
       await tester.pumpWidget(MaterialApp(
         home: Scaffold(
@@ -563,25 +501,23 @@ void main() {
             child: SizedBox(
               width: 280,
               height: 600,
-              child: CanvasLayersPanel(controller: controller),
+              child: CanvasDesignPanel(controller: controller),
             ),
           ),
         ),
       ));
       await tester.pumpAndSettle();
 
-      var top = tester.getTopLeft(find.byType(CanvasLayersPanel)).dy;
-      var listBefore = tester.getSize(find.byType(ListView).first).height;
+      var before = tester.getSize(find.byType(CanvasElementsPanel)).height;
 
-      // The grip sits just under the list. Dragging it up shrinks the list and
-      // gives the settings the room.
-      await tester.dragFrom(
-          Offset(140, top + listBefore + 5), const Offset(0, -120));
+      // The grip on the Layers header, which is the boundary between Add and
+      // Layers. Dragging it down gives Add the room.
+      var grip = find.byIcon(Icons.drag_handle).first;
+      await tester.drag(grip, const Offset(0, 60));
       await tester.pumpAndSettle();
 
-      var listAfter = tester.getSize(find.byType(ListView).first).height;
-      expect(listAfter, lessThan(listBefore));
-      expect(listAfter, closeTo(listBefore - 120, 2));
+      expect(tester.getSize(find.byType(CanvasElementsPanel)).height,
+          greaterThan(before));
     });
 
     testWidgets("the stacked settings fit a narrow sidebar", (tester) async {
@@ -602,7 +538,7 @@ void main() {
             child: SizedBox(
               width: 260,
               height: 800,
-              child: CanvasLayersPanel(controller: controller),
+              child: CanvasDesignPanel(controller: controller),
             ),
           ),
         ),
@@ -627,7 +563,7 @@ void main() {
       var controller = CanvasController(document.addElement(element));
       addTearDown(controller.dispose);
       controller.selectOnly(element.id);
-      await pump(tester, CanvasLayersPanel(controller: controller));
+      await pump(tester, CanvasDesignPanel(controller: controller));
       return controller;
     }
 
@@ -1732,7 +1668,7 @@ void main() {
       addTearDown(controller.dispose);
       controller.selectOnly(element.id);
 
-      await pump(tester, CanvasLayersPanel(controller: controller));
+      await pump(tester, CanvasDesignPanel(controller: controller));
 
       // The layer row has them.
       expect(find.byTooltip("Lock"), findsOneWidget);
@@ -1754,7 +1690,7 @@ void main() {
       addTearDown(controller.dispose);
       controller.selectOnly("t");
 
-      await pump(tester, CanvasLayersPanel(controller: controller));
+      await pump(tester, CanvasDesignPanel(controller: controller));
       await tester.tap(find.text("PLAYERS"));
       await tester.pumpAndSettle();
 
@@ -1782,7 +1718,7 @@ void main() {
       var (controller, _) = moving();
       addTearDown(controller.dispose);
       controller.frame = 10;
-      await pump(tester, CanvasLayersPanel(controller: controller));
+      await pump(tester, CanvasDesignPanel(controller: controller));
 
       var x = find.byKey(const ValueKey("elementX"));
       expect(find.descendant(of: x, matching: find.text("200")), findsOneWidget,
@@ -1794,7 +1730,7 @@ void main() {
       var (controller, _) = moving();
       addTearDown(controller.dispose);
       controller.frame = 10;
-      await pump(tester, CanvasLayersPanel(controller: controller));
+      await pump(tester, CanvasDesignPanel(controller: controller));
 
       await tester.enterText(find.byKey(const ValueKey("elementX")), "500");
       await tester.pumpAndSettle();
@@ -1810,7 +1746,7 @@ void main() {
       var (controller, _) = moving();
       addTearDown(controller.dispose);
       controller.frame = 7;
-      await pump(tester, CanvasLayersPanel(controller: controller));
+      await pump(tester, CanvasDesignPanel(controller: controller));
 
       expect(controller.document.elementById("s")!.track!.keyAt(7), isNull);
       await tester.tap(find.byTooltip("Add a keyframe here for this element's "
@@ -1831,7 +1767,7 @@ void main() {
       var controller = CanvasController(document.addElement(element));
       addTearDown(controller.dispose);
       controller.selectOnly(element.id);
-      await pump(tester, CanvasLayersPanel(controller: controller));
+      await pump(tester, CanvasDesignPanel(controller: controller));
 
       // One diamond for the group, not one per field: a keyframe here is a
       // whole pose, so six of them lit up and went out in unison.
@@ -1853,7 +1789,7 @@ void main() {
       controller.setKeyframe(
           "s", const Keyframe(frame: 20, rotate: 90, opacity: 0.5));
       controller.frame = 20;
-      await pump(tester, CanvasLayersPanel(controller: controller));
+      await pump(tester, CanvasDesignPanel(controller: controller));
 
       expect(
           find.descendant(
@@ -1872,7 +1808,7 @@ void main() {
           CanvasController(const CanvasDocument().addElement(element));
       addTearDown(controller.dispose);
       controller.selectOnly(element.id);
-      await pump(tester, CanvasLayersPanel(controller: controller));
+      await pump(tester, CanvasDesignPanel(controller: controller));
       return controller;
     }
 
@@ -1914,6 +1850,11 @@ void main() {
     testWidgets("changing the tail writes it to the element", (tester) async {
       var controller = await panel(tester, shapeOf(ShapeKind.speechBubble));
 
+      // Scrolled to first: the settings share their column with the add grid
+      // and the layer list now, so a control this far down the panel is below
+      // the fold until it is brought up.
+      await tester.ensureVisible(find.text(BubbleTail.pointer.label).first);
+      await tester.pumpAndSettle();
       await tester.tap(find.text(BubbleTail.pointer.label).first);
       await tester.pumpAndSettle();
       await tester.tap(find.text(BubbleTail.thought.label).last);
@@ -2056,7 +1997,7 @@ void main() {
           CanvasController(const CanvasDocument().addElement(image));
       addTearDown(controller.dispose);
       controller.selectOnly(image.id);
-      await pump(tester, CanvasLayersPanel(controller: controller));
+      await pump(tester, CanvasDesignPanel(controller: controller));
       return controller;
     }
 
@@ -2111,6 +2052,8 @@ void main() {
     testWidgets("a frame can be chosen and cleared", (tester) async {
       var controller = await panel(tester, filled());
 
+      await tester.ensureVisible(find.text("Rectangle").first);
+      await tester.pumpAndSettle();
       await tester.tap(find.text("Rectangle").first);
       await tester.pumpAndSettle();
       await tester.tap(find.text(ShapeKind.circle.label).last);
@@ -2131,7 +2074,7 @@ void main() {
       var controller = CanvasController(document.addElement(element));
       addTearDown(controller.dispose);
       controller.selectOnly(element.id);
-      await pump(tester, CanvasLayersPanel(controller: controller));
+      await pump(tester, CanvasDesignPanel(controller: controller));
 
       expect(find.byType(Slider), findsNothing,
           reason: "no sliders left in an element's settings");
@@ -2153,7 +2096,7 @@ void main() {
       var controller = CanvasController(document.addElement(element));
       addTearDown(controller.dispose);
       controller.selectOnly(element.id);
-      await pump(tester, CanvasLayersPanel(controller: controller));
+      await pump(tester, CanvasDesignPanel(controller: controller));
 
       await tester.drag(find.text("Opacity"), const Offset(-25, 0));
       await tester.pumpAndSettle();
@@ -2173,7 +2116,7 @@ void main() {
       var element = newElement(ElementKind.shape, document);
       var controller = CanvasController(document.addElement(element));
       addTearDown(controller.dispose);
-      await pump(tester, CanvasLayersPanel(controller: controller));
+      await pump(tester, CanvasDesignPanel(controller: controller));
       return controller;
     }
 
@@ -2250,7 +2193,7 @@ void main() {
       }
       var controller = CanvasController(document);
       addTearDown(controller.dispose);
-      await pump(tester, CanvasLayersPanel(controller: controller));
+      await pump(tester, CanvasDesignPanel(controller: controller));
       return controller;
     }
 
@@ -2294,7 +2237,11 @@ void main() {
       // middle of them, so it is not a row that moves. It has no draggable and
       // no target of its own; a layer dropped on it goes nowhere.
       var controller = await panel(tester);
-      var background = find.textContaining("Background");
+      // Scoped to the layer list: with nothing selected the settings panel is
+      // showing the background's own controls, which are also called that.
+      var background = find.descendant(
+          of: find.byType(CanvasBackgroundLayerRow),
+          matching: find.textContaining("Background"));
       expect(background, findsOneWidget);
 
       expect(
@@ -2331,7 +2278,7 @@ void main() {
           CanvasController(const CanvasDocument().addElement(element));
       addTearDown(controller.dispose);
       controller.selectOnly("t");
-      await pump(tester, CanvasLayersPanel(controller: controller));
+      await pump(tester, CanvasDesignPanel(controller: controller));
       return controller;
     }
 
@@ -2479,7 +2426,7 @@ void main() {
       await pump(
           tester,
           SizedBox(
-              width: 200, child: CanvasLayersPanel(controller: controller)));
+              width: 200, child: CanvasDesignPanel(controller: controller)));
 
       // The panel already overflows by 32 pixels at this width with every
       // section shut, and has since before any of this existed -- something
@@ -2560,11 +2507,12 @@ void main() {
         (tester) async {
       var controller = CanvasController(const CanvasDocument());
       addTearDown(controller.dispose);
-      await pump(tester, CanvasElementsPanel(controller: controller));
+      // Through the design panel, because the hint hangs off the Add panel's
+      // own header now rather than off a heading inside the grid.
+      await pump(tester, CanvasDesignPanel(controller: controller));
 
       const hint = "Click to add one in the middle of the canvas, or drag it "
-          "where you want it. What is already on the canvas is in the Layers "
-          "tab.";
+          "where you want it.";
       expect(find.text(hint), findsNothing, reason: "not in the column");
       expect(shown(tester), contains(hint));
 
@@ -2586,30 +2534,15 @@ void main() {
               "and save your own copy."));
     });
 
-    testWidgets("and the element settings, in the sidebar but not the band",
+    testWidgets("and the element settings, on their panel's own header",
         (tester) async {
       var controller = CanvasController(const CanvasDocument());
       addTearDown(controller.dispose);
 
-      await pump(tester, CanvasLayersPanel(controller: controller));
-      expect(find.text(elementSettingsHint), findsNothing);
+      await pump(tester, CanvasDesignPanel(controller: controller));
+      expect(find.text(elementSettingsHint), findsNothing,
+          reason: "not sitting in the column");
       expect(shown(tester), contains(elementSettingsHint));
-
-      // The band keeps the words. Its line is there whether anything is
-      // selected or not, and an empty strip reads as broken.
-      await pump(
-          tester,
-          CanvasSettingsBar(
-            controller: controller,
-            onPublish: () {},
-            canvasSettingsOpen: false,
-            onToggleCanvasSettings: () {},
-          ));
-      await tester.tap(find.byTooltip(
-          "Element settings — the selected element's controls, on a second "
-          "line"));
-      await tester.pumpAndSettle();
-      expect(find.text(elementSettingsHint), findsOneWidget);
     });
   });
 
@@ -2619,7 +2552,7 @@ void main() {
       var element = newElement(ElementKind.shape, document);
       var controller = CanvasController(document.addElement(element));
       addTearDown(controller.dispose);
-      await pump(tester, CanvasLayersPanel(controller: controller));
+      await pump(tester, CanvasDesignPanel(controller: controller));
       return controller;
     }
 
@@ -2681,103 +2614,93 @@ void main() {
     });
   });
 
-  group("the element settings section", () {
-    Future<CanvasController> panel(
-        WidgetTester tester, Widget Function(CanvasController) build) async {
+  group("the design panel", () {
+    // Adding, the layer list and the settings used to be tabs, and two of them
+    // carried copies of the third just to shorten the journey between them.
+    // They are one column of panels now, each opening, closing, resizing and
+    // moving, and all of that remembered.
+    Future<CanvasController> panel(WidgetTester tester) async {
       var document = const CanvasDocument();
       var element = newElement(ElementKind.shape, document);
       var controller = CanvasController(document.addElement(element));
       addTearDown(controller.dispose);
-      await pump(tester, build(controller));
+      await pump(tester, CanvasDesignPanel(controller: controller));
       return controller;
     }
 
-    testWidgets("is on the Design Elements tab as well as Layers",
-        (tester) async {
-      // The first thing anybody does after adding an element is change it, and
-      // with the settings only on Layers that was a trip to another tab and
-      // back for every element on a canvas.
-      var controller =
-          await panel(tester, (c) => CanvasElementsPanel(controller: c));
+    testWidgets("all three are in one column", (tester) async {
+      await panel(tester);
+      for (var name in ["ADD", "LAYERS", "ELEMENT SETTINGS"]) {
+        expect(find.text(name), findsOneWidget, reason: name);
+      }
+      expect(find.byType(CanvasPanelStack), findsOneWidget);
+    });
 
-      expect(find.text("ADD"), findsOneWidget, reason: "still the add grid");
-      expect(find.text("Element settings"), findsOneWidget);
+    testWidgets("the settings are never empty", (tester) async {
+      // Nothing selected is the state a canvas starts in and returns to every
+      // time somebody clicks the page. A panel that empties itself is a panel
+      // that keeps taking its room back and giving it away again -- so with
+      // nothing selected these are the canvas's own background, which is the
+      // one thing always there and always worth changing.
+      var controller = await panel(tester);
+      expect(controller.selected, isNull);
+      expect(find.text("Background"), findsWidgets);
 
       controller.selectOnly(controller.document.elements.single.id);
       await tester.pumpAndSettle();
       expect(find.text("Opacity"), findsOneWidget,
-          reason: "and the selected element's controls under it");
+          reason: "and the element's own controls once there is one");
+
+      controller.clearSelection();
+      await tester.pumpAndSettle();
+      expect(find.text("Background"), findsWidgets,
+          reason: "and back to the background rather than to nothing");
     });
 
-    for (var (name, build) in <(String, Widget Function(CanvasController))>[
-      ("Design Elements", (c) => CanvasElementsPanel(controller: c)),
-      ("Layers", (c) => CanvasLayersPanel(controller: c)),
-    ]) {
-      testWidgets(
-          "closed on the $name tab, it stays closed when something "
-          "is selected", (tester) async {
-        // The instruction that makes closing it worth doing. A section that
-        // reopens because an element was clicked is a section that has to be
-        // closed again after every click.
-        var controller = await panel(tester, build);
-
-        await tester.tap(find.text("Element settings"));
-        await tester.pumpAndSettle();
-        expect(find.text("Opacity"), findsNothing);
-
-        controller.selectOnly(controller.document.elements.single.id);
-        await tester.pumpAndSettle();
-        expect(find.text("Opacity"), findsNothing,
-            reason: "selecting does not reopen it");
-
-        controller
-            .addElement(newElement(ElementKind.text, controller.document));
-        await tester.pumpAndSettle();
-        expect(find.text("Opacity"), findsNothing,
-            reason: "nor does adding one");
-
-        // And the handle is still there, because a section with no way back is
-        // a trap.
-        await tester.tap(find.text("Element settings"));
-        await tester.pumpAndSettle();
-        expect(find.text("Opacity"), findsOneWidget);
-      });
-    }
-
-    testWidgets("the two tabs remember separately", (tester) async {
-      // Three sections, three keys -- the band's is the third. Somebody
-      // working in the band wants the sidebar's copy shut so the layer list
-      // has the room, which does not work if they share one switch.
-      await panel(tester, (c) => CanvasElementsPanel(controller: c));
-      var elements = tester
-          .widget<CanvasSettingsSplit>(find.byType(CanvasSettingsSplit))
-          .storageKey;
-
-      await panel(tester, (c) => CanvasLayersPanel(controller: c));
-      var layers = tester
-          .widget<CanvasSettingsSplit>(find.byType(CanvasSettingsSplit))
-          .storageKey;
-
-      expect(elements, isNot(layers));
-    });
-
-    testWidgets("the height each tab gives the settings is its own",
+    testWidgets("a panel closes and stays closed when something is selected",
         (tester) async {
-      // A grid of ten chips is a fixed height and a layer list is not, so the
-      // two do not want the same share -- and having dragged one there is no
-      // reason to have moved the other.
-      await panel(tester, (c) => CanvasElementsPanel(controller: c));
-      var elements = tester
-          .widget<CanvasSettingsSplit>(find.byType(CanvasSettingsSplit))
-          .initialSplit;
+      // The instruction that makes closing one worth doing. A panel that
+      // reopens because an element was clicked has to be closed again after
+      // every click.
+      var controller = await panel(tester);
 
-      await panel(tester, (c) => CanvasLayersPanel(controller: c));
-      var layers = tester
-          .widget<CanvasSettingsSplit>(find.byType(CanvasSettingsSplit))
-          .initialSplit;
+      await tester.tap(find.text("ELEMENT SETTINGS"));
+      await tester.pumpAndSettle();
+      expect(find.text("Opacity"), findsNothing);
 
-      expect(elements, lessThan(layers),
-          reason: "the add grid needs less room than the layer list");
+      controller.selectOnly(controller.document.elements.single.id);
+      await tester.pumpAndSettle();
+      expect(find.text("Opacity"), findsNothing,
+          reason: "selecting does not reopen it");
+
+      controller.addElement(newElement(ElementKind.text, controller.document));
+      await tester.pumpAndSettle();
+      expect(find.text("Opacity"), findsNothing, reason: "nor does adding one");
+
+      // And the header is still there, because a panel with no way back is a
+      // trap.
+      await tester.tap(find.text("ELEMENT SETTINGS"));
+      await tester.pumpAndSettle();
+      expect(find.text("Opacity"), findsOneWidget);
+    });
+
+    testWidgets("every panel can be carried, and none of them by its name",
+        (tester) async {
+      await panel(tester);
+      // One handle each. The name is the switch, so it cannot also be the
+      // grip -- a panel that moved when you tried to open it would be a panel
+      // you could not open.
+      expect(find.byType(Draggable<PanelDrag>), findsNWidgets(3),
+          reason: "and carried as their own type, not as the plain strings "
+              "the layer list drags -- otherwise a panel could be dropped on "
+              "a layer");
+      expect(find.byIcon(Icons.drag_indicator), findsNWidgets(3));
+    });
+
+    testWidgets("the top panel has no grip above it", (tester) async {
+      // There is nothing above it to take the room from.
+      await panel(tester);
+      expect(find.byIcon(Icons.drag_handle), findsNWidgets(2));
     });
   });
 
@@ -2795,7 +2718,7 @@ void main() {
           CanvasController(const CanvasDocument().addElement(element));
       addTearDown(controller.dispose);
       controller.selectOnly("c");
-      await pump(tester, CanvasLayersPanel(controller: controller));
+      await pump(tester, CanvasDesignPanel(controller: controller));
       return controller;
     }
 
@@ -3136,7 +3059,7 @@ void main() {
       var controller = CanvasController(document.addElement(element));
       addTearDown(controller.dispose);
       controller.selectOnly(element.id);
-      await pump(tester, CanvasLayersPanel(controller: controller));
+      await pump(tester, CanvasDesignPanel(controller: controller));
 
       expect(find.byType(CanvasControlGroup), findsWidgets);
       // One rule per group, drawn under it.
@@ -3156,7 +3079,7 @@ void main() {
       var controller = CanvasController(document.addElement(element));
       addTearDown(controller.dispose);
       controller.selectOnly(element.id);
-      await pump(tester, CanvasLayersPanel(controller: controller));
+      await pump(tester, CanvasDesignPanel(controller: controller));
 
       expect(find.byType(CanvasLineBreak), findsWidgets);
       var x = tester.getRect(find.byKey(const ValueKey("elementX")));
@@ -3176,14 +3099,19 @@ void main() {
       var controller = CanvasController(document.addElement(element));
       addTearDown(controller.dispose);
       controller.selectOnly("c");
-      await pump(tester, CanvasLayersPanel(controller: controller));
+      await pump(tester, CanvasDesignPanel(controller: controller));
 
       // Once: the settings' own heading. The position group's caption was a
       // second one directly under it.
       expect(find.text("CHART"), findsOneWidget);
-      expect(find.text("Chart"), findsOneWidget,
-          reason: "and the layer row that names it, which is not the same "
-              "thing");
+      // Twice in the column as a whole, and neither of them is the caption
+      // this test is about: the layer row that names the element, and the Add
+      // chip that makes one.
+      expect(find.text("Chart"), findsNWidgets(2));
+      expect(
+          find.descendant(
+              of: find.byType(CanvasLayerRow), matching: find.text("Chart")),
+          findsOneWidget);
     });
   });
 
@@ -3291,7 +3219,7 @@ void main() {
       var (controller, _) = build(frames: 24);
       addTearDown(controller.dispose);
       controller.selectOnly("c");
-      await pump(tester, CanvasLayersPanel(controller: controller));
+      await pump(tester, CanvasDesignPanel(controller: controller));
 
       await openAnimation(tester);
 
@@ -3314,7 +3242,7 @@ void main() {
       var (controller, chart) = build(frames: 24);
       addTearDown(controller.dispose);
       controller.selectOnly("c");
-      await pump(tester, CanvasLayersPanel(controller: controller));
+      await pump(tester, CanvasDesignPanel(controller: controller));
 
       await openAnimation(tester);
       expect(find.text("Gap"), findsNothing, reason: "no preset yet");
@@ -3343,7 +3271,7 @@ void main() {
           CanvasController(const CanvasDocument().addElement(element));
       addTearDown(controller.dispose);
       controller.selectOnly("c");
-      await pump(tester, CanvasLayersPanel(controller: controller));
+      await pump(tester, CanvasDesignPanel(controller: controller));
       return controller;
     }
 
@@ -3426,7 +3354,7 @@ void main() {
           CanvasController(const CanvasDocument().addElement(element));
       addTearDown(controller.dispose);
       controller.selectOnly("i");
-      await pump(tester, CanvasLayersPanel(controller: controller));
+      await pump(tester, CanvasDesignPanel(controller: controller));
       return controller;
     }
 
@@ -3499,7 +3427,7 @@ void main() {
           CanvasController(const CanvasDocument().addElement(element));
       addTearDown(controller.dispose);
       controller.selectOnly("i");
-      await pump(tester, CanvasLayersPanel(controller: controller));
+      await pump(tester, CanvasDesignPanel(controller: controller));
       return controller;
     }
 
