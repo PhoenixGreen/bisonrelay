@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 
 // chart_interval.dart is how often a chart takes a reading from a series that
@@ -49,6 +51,59 @@ enum IntervalUnit {
   bool get hasWeekday => this == week;
 }
 
+/// IntervalPick is what a reading is made of: one of the rows in the period,
+/// or all of them combined.
+///
+/// Which of these is right is a fact about the series and not about the
+/// chart, and there is no way to tell from the numbers. Transactions a day
+/// added up over a year is the year's transactions, which is exactly what
+/// somebody charting them wants; the seconds between blocks added up over a
+/// year is a number that means nothing at all. So it is asked rather than
+/// guessed.
+enum IntervalPick {
+  nearest("The reading on that date"),
+  total("Added up"),
+  mean("Averaged"),
+  high("The highest"),
+  low("The lowest");
+
+  final String label;
+  const IntervalPick(this.label);
+
+  /// combines is whether a reading is made of the whole period rather than of
+  /// one row in it, which is the difference between the two ways rows are
+  /// chosen. See [pickAtIntervals] and [groupAtIntervals].
+  bool get combines => this != nearest;
+
+  static IntervalPick fromName(String? name) =>
+      values.firstWhere((p) => p.name == name, orElse: () => nearest);
+
+  /// of combines the values of one period into the one number drawn for it.
+  double of(List<double> values) {
+    if (values.isEmpty) return 0;
+    switch (this) {
+      case IntervalPick.nearest:
+        return values.first;
+      case IntervalPick.total:
+        return values.reduce((a, b) => a + b);
+      case IntervalPick.mean:
+        return values.reduce((a, b) => a + b) / values.length;
+      case IntervalPick.high:
+        return values.reduce(math.max);
+      case IntervalPick.low:
+        return values.reduce(math.min);
+    }
+  }
+}
+
+/// IntervalGroup is one reading's worth of rows: the date it is filed under,
+/// and everything that falls in the period beginning there.
+class IntervalGroup {
+  final DateTime at;
+  final List<int> rows;
+  const IntervalGroup(this.at, this.rows);
+}
+
 /// ChartInterval is the choosing: how often, and measured from when.
 ///
 /// The anchor is the part that is easy to leave out and is the whole point of
@@ -72,12 +127,16 @@ class ChartInterval {
   /// weekday is the anchor for a weekly reading, 1 for Monday.
   final int weekday;
 
+  /// how is what each reading is made of. See [IntervalPick].
+  final IntervalPick how;
+
   const ChartInterval({
     this.unit = IntervalUnit.none,
     this.every = 1,
     this.month = 1,
     this.day = 1,
     this.weekday = DateTime.monday,
+    this.how = IntervalPick.nearest,
   });
 
   bool get on => unit != IntervalUnit.none;
@@ -88,6 +147,7 @@ class ChartInterval {
     int? month,
     int? day,
     int? weekday,
+    IntervalPick? how,
   }) =>
       ChartInterval(
         unit: unit ?? this.unit,
@@ -95,6 +155,7 @@ class ChartInterval {
         month: month ?? this.month,
         day: day ?? this.day,
         weekday: weekday ?? this.weekday,
+        how: how ?? this.how,
       );
 
   /// marks is every reading date between [first] and [last] inclusive.
@@ -150,6 +211,10 @@ class ChartInterval {
     }
   }
 
+  /// next is the mark after [at], which is where one period ends and the
+  /// following one begins.
+  DateTime next(DateTime at) => _step(at, every < 1 ? 1 : every);
+
   /// _step moves a mark on by [by] units, keeping the anchor's day.
   ///
   /// Through the year and month numbers rather than by adding days, because a
@@ -191,6 +256,7 @@ class ChartInterval {
         if (month != 1) "month": month,
         if (day != 1) "day": day,
         if (weekday != DateTime.monday) "weekday": weekday,
+        if (how != IntervalPick.nearest) "how": how.name,
       };
 
   factory ChartInterval.fromJson(Map<String, dynamic> json) => ChartInterval(
@@ -199,7 +265,47 @@ class ChartInterval {
         month: jsonInt(json["month"], 1).clamp(1, 12),
         day: jsonInt(json["day"], 1).clamp(1, 31),
         weekday: jsonInt(json["weekday"], DateTime.monday).clamp(1, 7),
+        how: IntervalPick.fromName(json["how"] as String?),
       );
+}
+
+/// groupAtIntervals is which rows *make up* each reading.
+///
+/// A period runs from its mark to the next one -- the year beginning on the
+/// seventh of February -- which is the only sensible thing to add up. That is
+/// deliberately not the rule [pickAtIntervals] uses: a reading *on* a date is
+/// the row nearest it from either side, and the row three days before the
+/// seventh of February is the answer to "what was it on the seventh", while
+/// belonging to the year before for the purpose of adding one up.
+///
+/// Periods with nothing in them are left out rather than drawn as zero: a
+/// chart with a bar of nothing for a year it has no figures for says the
+/// chain stopped, which is a different claim from having no data.
+List<IntervalGroup> groupAtIntervals(
+    List<DateTime?> when, ChartInterval interval) {
+  if (!interval.on) return const [];
+
+  DateTime? first, last;
+  for (var at in when) {
+    if (at == null) continue;
+    if (first == null || at.isBefore(first)) first = at;
+    if (last == null || at.isAfter(last)) last = at;
+  }
+  if (first == null || last == null) return const [];
+
+  var out = <IntervalGroup>[];
+  for (var mark in interval.marks(first, last)) {
+    var ends = interval.next(mark);
+    var rows = <int>[];
+    for (var i = 0; i < when.length; i++) {
+      var at = when[i];
+      if (at == null) continue;
+      if (at.isBefore(mark) || !at.isBefore(ends)) continue;
+      rows.add(i);
+    }
+    if (rows.isNotEmpty) out.add(IntervalGroup(mark, rows));
+  }
+  return out;
 }
 
 /// pickAtIntervals is which rows stand for the readings.

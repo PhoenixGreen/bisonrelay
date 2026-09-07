@@ -290,4 +290,133 @@ void main() {
       expect(raw[1][1], rows[1][1]);
     });
   });
+
+  group("what a reading is made of", () {
+    /// Two years of one transaction a day, so a yearly total is a number
+    /// anybody can check: 366 and 365.
+    (List<List<String>>, List<List<String>>) perDay() {
+      var rows = <List<String>>[
+        ["Date", "Transactions"]
+      ];
+      var raw = <List<String>>[
+        ["Date", "Transactions"]
+      ];
+      for (var at = DateTime(2020, 1, 1);
+          at.isBefore(DateTime(2022, 1, 1));
+          at = at.add(const Duration(days: 1))) {
+        rows.add(["${at.day}/${at.month}/${at.year}", "1"]);
+        raw.add([at.toIso8601String(), "1"]);
+      }
+      return (rows, raw);
+    }
+
+    test("a year of transactions added up is the year's transactions", () {
+      // The case this exists for. One a day, so the total is the number of
+      // days in the year.
+      var (rows, raw) = perDay();
+      var data = chartDataFromRows(
+        rows,
+        const ChartSourceMap(
+          valueColumns: [1],
+          interval:
+              ChartInterval(unit: IntervalUnit.year, how: IntervalPick.total),
+        ),
+        when: datesIn(raw, 0),
+      );
+
+      expect(data.series.single.values, [366, 365],
+          reason: "2020 was a leap year");
+      expect(data.categories, ["1/1/2020", "1/1/2021"]);
+    });
+
+    test("and the same series averaged is one a day", () {
+      // Which is what the seconds between blocks would want: adding those up
+      // over a year is a number that means nothing.
+      var (rows, raw) = perDay();
+      var data = chartDataFromRows(
+        rows,
+        const ChartSourceMap(
+          valueColumns: [1],
+          interval:
+              ChartInterval(unit: IntervalUnit.year, how: IntervalPick.mean),
+        ),
+        when: datesIn(raw, 0),
+      );
+      expect(data.series.single.values, [1, 1]);
+    });
+
+    test("the highest and the lowest are the period's own", () {
+      var rows = <List<String>>[
+        ["Date", "Rate"],
+        ["1 Jan", "5"],
+        ["2 Jan", "9"],
+        ["3 Jan", "1"],
+      ];
+      var when = <DateTime?>[
+        DateTime(2020, 1, 1),
+        DateTime(2020, 1, 2),
+        DateTime(2020, 1, 3),
+      ];
+      ChartData at(IntervalPick how) => chartDataFromRows(
+            rows,
+            ChartSourceMap(
+                valueColumns: const [1],
+                interval: ChartInterval(unit: IntervalUnit.year, how: how)),
+            when: when,
+          );
+
+      expect(at(IntervalPick.high).series.single.values, [9]);
+      expect(at(IntervalPick.low).series.single.values, [1]);
+      expect(at(IntervalPick.total).series.single.values, [15]);
+    });
+
+    test("a period runs from its own mark, not around it", () {
+      // A reading *on* the seventh of February is the row nearest it from
+      // either side; a year *added up* from the seventh of February is the
+      // rows from that date until the next one. The sixth of February belongs
+      // to the year before.
+      var when = <DateTime?>[
+        DateTime(2020, 2, 6),
+        DateTime(2020, 2, 7),
+        DateTime(2020, 2, 8),
+      ];
+      var groups = groupAtIntervals(
+          when,
+          const ChartInterval(
+              unit: IntervalUnit.year, month: DateTime.february, day: 7));
+
+      expect(groups.length, 2);
+      expect(groups.first.rows, [0], reason: "the sixth is last year's");
+      expect(groups.last.rows, [1, 2]);
+    });
+
+    test("a period with nothing in it is not drawn as zero", () {
+      // A bar of nothing for a year says the chain stopped, which is a
+      // different claim from having no figures.
+      var when = <DateTime?>[
+        DateTime(2020, 6, 1),
+        DateTime(2023, 6, 1),
+      ];
+      var groups = groupAtIntervals(
+          when, const ChartInterval(unit: IntervalUnit.year, month: 6, day: 1));
+      expect(groups.length, 2);
+      expect([for (var g in groups) g.at.year], [2020, 2023]);
+    });
+
+    test("combining nothing is nothing rather than an error", () {
+      expect(IntervalPick.total.of(const []), 0);
+      expect(IntervalPick.mean.of(const []), 0);
+      expect(IntervalPick.nearest.of(const [4, 9]), 4);
+    });
+
+    test("it survives being saved and read back", () {
+      var interval =
+          const ChartInterval(unit: IntervalUnit.year, how: IntervalPick.total);
+      expect(ChartInterval.fromJson(interval.toJson()).how, IntervalPick.total);
+      // An older chart, saved before there was a choice, takes the reading on
+      // the date -- which is what it was doing.
+      expect(ChartInterval.fromJson(const {"unit": "year"}).how,
+          IntervalPick.nearest);
+    });
+  });
 }

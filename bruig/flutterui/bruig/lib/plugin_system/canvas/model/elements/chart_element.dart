@@ -798,33 +798,57 @@ ChartData chartDataFromRows(
   if (map.valueColumns.isEmpty || rows.isEmpty) return const ChartData();
   var body = headerRow ? rows.skip(1).toList() : rows;
 
-  if (map.interval.on && when != null && when.length >= body.length) {
-    var picked = pickAtIntervals(when.sublist(0, body.length), map.interval);
-    if (picked.isNotEmpty) {
-      body = [for (var i in picked) body[i]];
+  // Each point is a label and the rows that make it. One row for most charts;
+  // a whole year of them where a reading is the year's transactions added up.
+  // Building both the same way is what keeps the two paths from drifting --
+  // and a reading of one row is only the simplest case of a reading of
+  // several.
+  var points = <(String, List<List<String>>)>[];
+  String labelOf(List<String> row) =>
+      map.categoryColumn < row.length ? row[map.categoryColumn] : "";
+
+  var dated = map.interval.on && when != null && when.length >= body.length;
+  if (dated && map.interval.how.combines) {
+    for (var group
+        in groupAtIntervals(when.sublist(0, body.length), map.interval)) {
+      // Labelled by the row the period starts on rather than by the mark, so
+      // the axis carries a date out of the data written in the column's own
+      // format -- the same words as every other point on the chart.
+      points.add((
+        labelOf(body[group.rows.first]),
+        [
+          for (var i in group.rows) body[i],
+        ]
+      ));
     }
-  } else {
-    body = thinTo(body, map.maxPoints);
+  } else if (dated) {
+    for (var i in pickAtIntervals(when.sublist(0, body.length), map.interval)) {
+      points.add((labelOf(body[i]), [body[i]]));
+    }
+  }
+  if (points.isEmpty) {
+    for (var row in thinTo(body, map.maxPoints)) {
+      points.add((labelOf(row), [row]));
+    }
   }
 
   String header(int column) =>
       nameOf?.call(column) ??
       (headerRow && column < rows.first.length ? rows.first[column] : "");
 
+  double valueIn(List<List<String>> made, int column) => map.interval.how.of([
+        for (var row in made)
+          if (column < row.length) cellNumber(row[column]) ?? 0 else 0,
+      ]);
+
   return ChartData(
-    categories: [
-      for (var row in body)
-        map.categoryColumn < row.length ? row[map.categoryColumn] : "",
-    ],
+    categories: [for (var (label, _) in points) label],
     series: [
       for (var (i, column) in map.valueColumns.indexed)
         ChartSeries(
           name: header(column),
           color: chartPalette[i % chartPalette.length],
-          values: [
-            for (var row in body)
-              column < row.length ? (cellNumber(row[column]) ?? 0) : 0,
-          ],
+          values: [for (var (_, made) in points) valueIn(made, column)],
         ),
     ],
   );

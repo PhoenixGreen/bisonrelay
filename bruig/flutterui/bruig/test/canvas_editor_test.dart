@@ -4392,6 +4392,9 @@ void main() {
           reason: "two answers to the same question, so only one is offered");
       // The count says what it is counting. On its own the number read as a
       // number of readings, which is not what it is.
+      expect(find.text("Each one is"), findsOneWidget,
+          reason: "adding a year of transactions up is the point of the "
+              "feature, and it cannot be guessed from the numbers");
       expect(find.text("year"), findsOneWidget,
           reason: "a reading every N *years* — one of them, so singular");
       // The hint is a tooltip on a question mark, so what it says is read off

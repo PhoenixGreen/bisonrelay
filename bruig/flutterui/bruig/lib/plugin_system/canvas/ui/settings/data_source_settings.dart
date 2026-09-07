@@ -607,10 +607,29 @@ class _ChartTarget extends _Target {
                     lastRows,
                     lastRaw),
               ),
-            CanvasHint("${_intervalWords(map.interval)}, taken from the row "
-                "nearest each one — real readings, not an average, and "
-                "nothing drawn where the data has a gap. The dates the axis "
-                "is labelled with are the readings themselves."),
+            // What a reading is made of. Which of these is right is a fact
+            // about the series rather than about the chart, and there is no
+            // telling from the numbers: transactions a day added up over a
+            // year is the year's transactions, and the seconds between blocks
+            // added up over a year is a number that means nothing.
+            CanvasDropdown<IntervalPick>(
+              label: "Each one is",
+              value: map.interval.how,
+              width: 168,
+              options: [for (var p in IntervalPick.values) (p, p.label)],
+              onChanged: (p) => _setMap(
+                  map.copyWith(interval: map.interval.copyWith(how: p)),
+                  lastRows,
+                  lastRaw),
+            ),
+            CanvasHint("${_intervalWords(map.interval)}. "
+                "${map.interval.how.combines ? "Every row in the period goes "
+                    "into it — added up suits a count, like transactions in a "
+                    "day; averaged suits a rate or a level, like the time "
+                    "between blocks or a price, where adding them up would "
+                    "mean nothing." : "The row nearest each date is the "
+                    "reading — a real one, not an average."} "
+                "Nothing is drawn where the data has a gap."),
           ] else
             const CanvasHint(
                 "Every point draws them all, thinned to Most points below if "
