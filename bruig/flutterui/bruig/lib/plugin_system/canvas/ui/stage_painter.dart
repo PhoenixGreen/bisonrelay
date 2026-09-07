@@ -2,6 +2,8 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_snap.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
 import 'package:bruig/plugin_system/canvas/render/image_placement.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
@@ -128,6 +130,16 @@ class StagePainter extends CustomPainter {
   /// framing is the picture being repositioned inside its frame, if one is.
   final StageFraming? framing;
 
+  /// guides is the scaffolding: the grid and the lines the reader put down.
+  /// Editing furniture, so it is drawn here and never by the renderer -- a
+  /// published picture with a grid over it is a mistake nobody would ask for.
+  final CanvasGuides guides;
+
+  /// snapped is the line or lines a drag is currently caught on. Drawn bright
+  /// and only while the drag lasts: a snap nobody can see is a mysterious
+  /// jump.
+  final SnapResult? snapped;
+
   /// showHelpers draws the selection box, the handles and the rotation ring.
   ///
   /// Passed in rather than being faked by blanking the selection, which is how
@@ -152,6 +164,8 @@ class StagePainter extends CustomPainter {
     required this.showHandles,
     required this.showHelpers,
     required this.framing,
+    required this.guides,
+    required this.snapped,
     required this.selectedPath,
     required this.chartLabels,
     required this.tableColumns,
@@ -206,6 +220,7 @@ class StagePainter extends CustomPainter {
         editing: true);
     canvas.restore();
 
+    _paintGuides(canvas);
     _paintFraming(canvas);
     _paintSelection(canvas);
 
@@ -523,8 +538,90 @@ class StagePainter extends CustomPainter {
     canvas.restore();
   }
 
+  /// _paintGuides draws the grid, the guides, and whatever a drag is caught
+  /// on.
+  ///
+  /// Under the selection and over the document: the scaffolding belongs behind
+  /// the handles, which have to stay findable, and in front of the design,
+  /// because a guide hidden by a photograph is a guide that cannot be used.
+  void _paintGuides(Canvas canvas) {
+    canvas.save();
+    canvas.translate(origin.dx, origin.dy);
+    canvas.scale(scale);
+    canvas.clipRect(page);
+
+    var size = Size(page.width, page.height);
+    // Hairlines: divided by the zoom so a guide is one pixel on screen at
+    // every magnification, which is what a guide is for.
+    var thin = 1 / scale;
+
+    if (guides.showGrid) {
+      var (majorX, minorX) =
+          gridLines(size.width, guides.gridSize, guides.subdivisions);
+      var (majorY, minorY) =
+          gridLines(size.height, guides.gridSize, guides.subdivisions);
+      var minor = Paint()
+        ..strokeWidth = thin
+        ..color = const Color(0x22FFFFFF);
+      var major = Paint()
+        ..strokeWidth = thin
+        ..color = const Color(0x40FFFFFF);
+
+      for (var x in minorX) {
+        canvas.drawLine(Offset(page.left + x, page.top),
+            Offset(page.left + x, page.bottom), minor);
+      }
+      for (var y in minorY) {
+        canvas.drawLine(Offset(page.left, page.top + y),
+            Offset(page.right, page.top + y), minor);
+      }
+      for (var x in majorX) {
+        canvas.drawLine(Offset(page.left + x, page.top),
+            Offset(page.left + x, page.bottom), major);
+      }
+      for (var y in majorY) {
+        canvas.drawLine(Offset(page.left, page.top + y),
+            Offset(page.right, page.top + y), major);
+      }
+    }
+
+    if (guides.showGuides) {
+      var paint = Paint()
+        ..strokeWidth = thin
+        ..color = const Color(0xAA35C4F0);
+      for (var guide in guides.guides) {
+        if (guide.axis == GuideAxis.vertical) {
+          canvas.drawLine(Offset(page.left + guide.at, page.top),
+              Offset(page.left + guide.at, page.bottom), paint);
+        } else {
+          canvas.drawLine(Offset(page.left, page.top + guide.at),
+              Offset(page.right, page.top + guide.at), paint);
+        }
+      }
+    }
+
+    // What the drag has caught, over everything else and in a colour nothing
+    // else on the canvas uses.
+    if (snapped case var it? when it.caught) {
+      var paint = Paint()
+        ..strokeWidth = thin * 1.5
+        ..color = const Color(0xFFFF4081);
+      if (it.onVertical case var x?) {
+        canvas.drawLine(Offset(page.left + x, page.top),
+            Offset(page.left + x, page.bottom), paint);
+      }
+      if (it.onHorizontal case var y?) {
+        canvas.drawLine(Offset(page.left, page.top + y),
+            Offset(page.right, page.top + y), paint);
+      }
+    }
+    canvas.restore();
+  }
+
   @override
   bool shouldRepaint(StagePainter old) =>
+      old.guides != guides ||
+      !identical(old.snapped, snapped) ||
       !identical(old.framing, framing) ||
       old.document != document ||
       old.frame != frame ||

@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/background_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
@@ -108,6 +109,12 @@ class CanvasDocument {
   final CanvasSize size;
   final CanvasBackground background;
 
+  /// guides is the scaffolding the canvas is laid out against -- the grid, the
+  /// lines the reader put down, the rulers and what snaps to what. See
+  /// [CanvasGuides]; it belongs to the document because it is the reason
+  /// everything on the canvas lines up.
+  final CanvasGuides guides;
+
   /// elements are painted first to last, so the last one in the list is on
   /// top. That is the order the layer list shows reversed, since "on top"
   /// reads better at the top of a list.
@@ -123,6 +130,7 @@ class CanvasDocument {
     this.title = "Untitled canvas",
     this.size = const CanvasSize(),
     this.background = const CanvasBackground(),
+    this.guides = const CanvasGuides(),
     this.elements = const [],
     this.frames = defaultFrameCount,
     this.frameRate = defaultFrameRate,
@@ -215,6 +223,7 @@ class CanvasDocument {
     String? title,
     CanvasSize? size,
     CanvasBackground? background,
+    CanvasGuides? guides,
     List<CanvasElement>? elements,
     int? frames,
     int? frameRate,
@@ -224,6 +233,7 @@ class CanvasDocument {
         title: title ?? this.title,
         size: size ?? this.size,
         background: background ?? this.background,
+        guides: guides ?? this.guides,
         elements: elements ?? this.elements,
         frames: (frames ?? this.frames).clamp(1, maxFrameCount),
         frameRate: (frameRate ?? this.frameRate).clamp(1, 60),
@@ -277,6 +287,7 @@ class CanvasDocument {
         "title": title,
         "size": size.toJson(),
         "background": background.toJson(),
+        if (!guides.isDefault) "guides": guides.toJson(),
         "frames": frames,
         "frameRate": frameRate,
         if (actions.isNotEmpty)
@@ -294,6 +305,8 @@ class CanvasDocument {
       size: jsonSpec(json["size"], CanvasSize.fromJson, const CanvasSize()),
       background: jsonSpec(json["background"], CanvasBackground.fromJson,
           const CanvasBackground()),
+      guides:
+          jsonSpec(json["guides"], CanvasGuides.fromJson, const CanvasGuides()),
       elements: raw is List
           ? [
               for (var e in raw)

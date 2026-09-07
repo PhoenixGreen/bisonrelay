@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_snap.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
@@ -1494,6 +1495,22 @@ class CanvasStageState extends State<CanvasStage> {
     }
   }
 
+  /// _snappedTo is the lines the drag is currently caught on, for drawing.
+  ///
+  /// A snap nobody can see is a mysterious jump; the line lighting up as an
+  /// edge lands on it is the whole of the feedback.
+  SnapResult? _snappedTo;
+
+  /// _startBoxOfSelection is where everything being dragged was when the drag
+  /// began, as one rectangle.
+  Rect? _startBoxOfSelection() {
+    Rect? box;
+    for (var entry in _startPosed.entries) {
+      box = box == null ? entry.value : box.expandToInclude(entry.value);
+    }
+    return box;
+  }
+
   void _applyMove(Offset delta) {
     // Shift constrains to one axis, which is how every editor behaves and is
     // the only way to move something along a line without a grid.
@@ -1502,6 +1519,27 @@ class CanvasStageState extends State<CanvasStage> {
           ? Offset(delta.dx, 0)
           : Offset(0, delta.dy);
     }
+    // Snapped once, against the whole selection's box rather than per
+    // element: moving three things together must keep them together, and
+    // snapping each of them to the nearest line would spread them out.
+    //
+    // Held down, Alt turns it off for the length of the drag -- the usual way
+    // to put something exactly where the grid does not want it.
+    var box = _startBoxOfSelection();
+    if (box != null && !HardwareKeyboard.instance.isAltPressed) {
+      var snapped = snapTopLeft(
+        box.topLeft + delta,
+        box.size,
+        document.guides,
+        document.size.size,
+        within: document.guides.snapWithin / _scale,
+      );
+      delta = snapped.at - box.topLeft;
+      _snappedTo = snapped;
+    } else {
+      _snappedTo = null;
+    }
+
     var next = document;
     for (var entry in _startPosed.entries) {
       var element = next.elementById(entry.key);
@@ -1670,6 +1708,9 @@ class CanvasStageState extends State<CanvasStage> {
     }
     _mode = _DragMode.none;
     _handle = null;
+    // The lines only mean anything while something is being dragged onto
+    // them.
+    if (_snappedTo != null) setState(() => _snappedTo = null);
   }
 
   /// _updateHover keeps the renderer told which button is under the pointer.
@@ -1850,6 +1891,8 @@ class CanvasStageState extends State<CanvasStage> {
                         liveStrokeKeeps: controller.retouch.keeps,
                         selectionBounds: _selectionBounds,
                         framing: _framingView(),
+                        guides: document.guides,
+                        snapped: _snappedTo,
                         showHandles: _selectionHasOwnGeometry,
                         selectionRotation: _rotationOfSelection,
                         handleFor: _handlePosition,
