@@ -223,7 +223,18 @@ class CanvasControlGroup extends StatelessWidget {
                 // Spaced as well as run-spaced. Without it the last control of
                 // one group and the first of the next were touching, which is
                 // what "1280 × 72055.0 KiB" was.
-                Wrap(spacing: 4, runSpacing: 6, children: children),
+                //
+                // Centred against each other, because a line of controls is
+                // not all one height -- a switch, a box with a caption beside
+                // it and a readout are three -- and aligned at the top they
+                // sat at three different heights on a strip whose whole job
+                // is to be one line.
+                Wrap(
+                  spacing: 4,
+                  runSpacing: 6,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: children,
+                ),
               ],
             ),
             Padding(
@@ -754,7 +765,13 @@ class CanvasToggle extends StatelessWidget {
   Widget build(BuildContext context) {
     var theme = ThemeNotifier.of(context);
     return Padding(
-      padding: const EdgeInsets.only(right: 5, top: controlLabelHeight),
+      // The nudge lines a control with no caption up with the ones that have
+      // them. On the band the captions are beside their controls and there is
+      // nothing above to line up under, so the nudge is what pushed this out
+      // of line with its neighbours.
+      padding: EdgeInsets.only(
+          right: 5,
+          top: CanvasControlScope.isInline(context) ? 0 : controlLabelHeight),
       child: InkWell(
         borderRadius: BorderRadius.circular(4),
         onTap: () => onChanged(!value),
@@ -812,7 +829,13 @@ class CanvasIconButton extends StatelessWidget {
     var theme = ThemeNotifier.of(context);
     var enabled = onPressed != null;
     return Padding(
-      padding: const EdgeInsets.only(right: 3, top: controlLabelHeight),
+      // The nudge lines a control with no caption up with the ones that have
+      // them. On the band the captions are beside their controls and there is
+      // nothing above to line up under, so the nudge is what pushed this out
+      // of line with its neighbours.
+      padding: EdgeInsets.only(
+          right: 3,
+          top: CanvasControlScope.isInline(context) ? 0 : controlLabelHeight),
       child: Tooltip(
         message: tooltip,
         child: InkWell(
@@ -1256,7 +1279,13 @@ class CanvasKeyframeDot extends StatelessWidget {
   Widget build(BuildContext context) {
     var theme = ThemeNotifier.of(context);
     return Padding(
-      padding: const EdgeInsets.only(right: 4, top: controlLabelHeight),
+      // The nudge lines a control with no caption up with the ones that have
+      // them. On the band the captions are beside their controls and there is
+      // nothing above to line up under, so the nudge is what pushed this out
+      // of line with its neighbours.
+      padding: EdgeInsets.only(
+          right: 4,
+          top: CanvasControlScope.isInline(context) ? 0 : controlLabelHeight),
       child: Tooltip(
         message: tooltip,
         child: InkWell(

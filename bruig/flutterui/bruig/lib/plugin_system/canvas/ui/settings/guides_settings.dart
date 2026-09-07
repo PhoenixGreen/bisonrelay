@@ -211,7 +211,7 @@ class _CanvasGuidesPanelState extends State<CanvasGuidesPanel> {
         width: double.infinity,
         // The same tight strip the canvas settings are, and for the same
         // reason: it is over the design, so its padding is canvas.
-        padding: const EdgeInsets.fromLTRB(8, 4, 8, 2),
+        padding: const EdgeInsets.fromLTRB(8, 5, 8, 7),
         decoration: BoxDecoration(
           border: Border(
               bottom: BorderSide(color: theme.colors.outlineVariant, width: 1)),
@@ -225,7 +225,7 @@ class _CanvasGuidesPanelState extends State<CanvasGuidesPanel> {
           child: SingleChildScrollView(
             controller: _scroll,
             scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.only(bottom: 4),
+            padding: const EdgeInsets.only(bottom: 5),
             // Captions beside their controls, and the groups spaced and ruled
             // by the group itself -- the same strip as the canvas settings
             // beside it, laid out by the same rules rather than by a padding

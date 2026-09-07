@@ -135,11 +135,26 @@ class _CanvasPanelStackState extends State<CanvasPanelStack> {
   /// one moved.
   final Set<String> _selected = {};
 
+  /// _share is what an open place was given last time the column was laid
+  /// out, for the places that have never been resized.
+  ///
+  /// Kept because the first drag of a boundary has to carry on from what is
+  /// on the screen. Without it that drag started from a guess -- twice the
+  /// minimum -- so a panel filling half the sidebar jumped down to a hundred
+  /// and sixty pixels the moment its edge was touched.
+  double _share = _minBody * 2;
+
   /// _hovering is the drop the pointer is currently over, while a panel is
   /// being dragged: which place, and what would happen there.
   (int, _Drop)? _hovering;
 
-  /// _heights is what each open panel was last given, in pixels.
+  /// _heights is what each open *place* was last given, in pixels, filed
+  /// under the id of the first panel in it.
+  ///
+  /// The place rather than the panel, because a place is what has a height: a
+  /// group of tabs is one box that different panels take turns inside, and
+  /// heights kept per tab made the sidebar jump every time somebody looked at
+  /// the other one.
   ///
   /// Pixels rather than fractions: a sidebar that is made taller should give
   /// the extra room to the last panel rather than stretching every one of them
@@ -321,24 +336,25 @@ class _CanvasPanelStackState extends State<CanvasPanelStack> {
     }
   }
 
-  /// _resize gives [by] pixels to the panel above [id], taking them from the
+  /// _resize gives [by] pixels to the place above [id], taking them from the
   /// space the ones below it share.
   ///
-  /// The panel above rather than this one, because the edge being dragged is
+  /// The place above rather than this one, because the edge being dragged is
   /// the boundary between the two and a boundary belongs to both. Moving it
   /// down makes the one above taller, which is what it looks like it does.
+  ///
+  /// [id] is a place's key: the first panel in it.
   void _resize(String id, double by) {
     var open = [
       for (var group in _groups)
-        if (_isOpen(_activeIn(group))) _activeIn(group),
+        if (_isOpen(_activeIn(group))) group.first,
     ];
     var at = open.indexOf(id);
     if (at <= 0) return;
     var above = open[at - 1];
 
     setState(() {
-      _heights[above] =
-          math.max(_minBody, (_heights[above] ?? _minBody * 2) + by);
+      _heights[above] = math.max(_minBody, (_heights[above] ?? _share) + by);
     });
     StorageManager.saveData(_heightKey(above), _heights[above]);
   }
@@ -376,10 +392,11 @@ class _CanvasPanelStackState extends State<CanvasPanelStack> {
           places.length * _headerHeight -
           math.max(0, places.length - 1) * _dividerHeight;
       var share = open.isEmpty ? 0.0 : math.max(_minBody, room / open.length);
+      _share = share;
 
       return Column(children: [
         for (var (i, place) in places.indexed) ...[
-          if (i > 0) _divider(theme, showing[i]),
+          if (i > 0) _divider(theme, place.first),
           _header(theme, place, showing[i], i),
           if (_isOpen(showing[i].id))
             // The last open panel takes what is left rather than a remembered
@@ -389,8 +406,10 @@ class _CanvasPanelStackState extends State<CanvasPanelStack> {
               Expanded(child: _body(showing[i]))
             else
               SizedBox(
+                // The place's height, not the tab's: a group of tabs is one
+                // box that different panels take turns inside.
                 height: math.min(
-                    math.max(_minBody, _heights[showing[i].id] ?? share),
+                    math.max(_minBody, _heights[place.first.id] ?? share),
                     math.max(_minBody, room)),
                 child: _body(showing[i]),
               ),
@@ -410,6 +429,10 @@ class _CanvasPanelStackState extends State<CanvasPanelStack> {
   /// take hold of -- and an icon in the header was a second small target in a
   /// band that is otherwise one big one.
   Widget _divider(ThemeNotifier theme, CanvasStackPanel below) => MouseRegion(
+        // Named after the place below it, which is the one it belongs to and
+        // is how a test takes hold of a boundary that is otherwise seven
+        // pixels of nothing.
+        key: ValueKey("panelDivider:${below.id}"),
         cursor: SystemMouseCursors.resizeUpDown,
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
@@ -579,9 +602,10 @@ class _CanvasPanelStackState extends State<CanvasPanelStack> {
           CanvasStackPanel showing) =>
       Row(
         children: [
-          for (var panel in place)
+          for (var (i, panel) in place.indexed)
             Flexible(
-              child: _tab(theme, panel, showing: panel.id == showing.id),
+              child: _tab(theme, panel,
+                  showing: panel.id == showing.id, last: i == place.length - 1),
             ),
         ],
       );
@@ -595,11 +619,14 @@ class _CanvasPanelStackState extends State<CanvasPanelStack> {
   /// opens the place if it was shut, because asking for a panel and being
   /// given a closed box is not an answer.
   Widget _tab(ThemeNotifier theme, CanvasStackPanel panel,
-      {required bool showing}) {
+      {required bool showing, required bool last}) {
     var lit = showing && _isOpen(panel.id);
     var body = Container(
       height: _headerHeight,
-      padding: const EdgeInsets.symmetric(horizontal: 8),
+      // More room after the name than before it, so the gap between one tab's
+      // name and the next reads as a gap between tabs rather than as part of
+      // the next one.
+      padding: const EdgeInsets.only(left: 8, right: 12),
       decoration: BoxDecoration(
         color: lit ? theme.colors.surfaceContainerLow : Colors.transparent,
         border: Border(
@@ -607,6 +634,13 @@ class _CanvasPanelStackState extends State<CanvasPanelStack> {
             color: lit ? theme.colors.primary : Colors.transparent,
             width: 2,
           ),
+          // A line between one tab and the next. Shut, no tab is lit and
+          // nothing else says where one ends -- three names in a row read as
+          // one long heading with odd spacing.
+          right: last
+              ? BorderSide.none
+              : BorderSide(
+                  color: theme.colors.outlineVariant.withValues(alpha: 0.7)),
         ),
       ),
       child: Row(mainAxisSize: MainAxisSize.min, children: [

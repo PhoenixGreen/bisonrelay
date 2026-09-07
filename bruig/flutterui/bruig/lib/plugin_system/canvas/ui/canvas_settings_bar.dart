@@ -387,7 +387,7 @@ class _CanvasSettingsPanelState extends State<CanvasSettingsPanel> {
         // Tight. The strip is over the design rather than beside it, so every
         // pixel of padding is a pixel of canvas -- and with the captions
         // beside their controls there is nothing here that needs the room.
-        padding: const EdgeInsets.fromLTRB(8, 4, 8, 2),
+        padding: const EdgeInsets.fromLTRB(8, 5, 8, 7),
         decoration: BoxDecoration(
           border: Border(
               bottom: BorderSide(color: theme.colors.outlineVariant, width: 1)),
@@ -403,7 +403,7 @@ class _CanvasSettingsPanelState extends State<CanvasSettingsPanel> {
           child: SingleChildScrollView(
             controller: _scroll,
             scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.only(bottom: 4),
+            padding: const EdgeInsets.only(bottom: 5),
             // Captions beside their controls, which is what makes this two
             // lines rather than three. See CanvasControlScope.inline.
             child: CanvasControlScope(
@@ -439,11 +439,7 @@ class _CanvasSettingsPanelState extends State<CanvasSettingsPanel> {
 
     return CanvasControlGroup(label: "Estimated size", children: [
       Padding(
-        // No nudge downwards on the band: with the captions beside their
-        // controls there is no caption above this one to line up under.
-        padding: EdgeInsets.only(
-            top: CanvasControlScope.isInline(context) ? 0 : controlLabelHeight,
-            right: 4),
+        padding: const EdgeInsets.only(right: 4),
         child: SizedBox(
           height: controlHeight,
           child: Row(children: [
@@ -533,7 +529,11 @@ class _CanvasSettingsPanelState extends State<CanvasSettingsPanel> {
             onCommit: controller.endInteraction,
           ),
         Padding(
-          padding: const EdgeInsets.only(left: 2, top: controlLabelHeight),
+          // No nudge. These two readouts only ever appear on the band, where
+          // the captions are beside their controls and there is nothing above
+          // this to line it up under -- and the group centres what is on a
+          // line against the rest of it.
+          padding: const EdgeInsets.only(left: 2),
           child: SizedBox(
             height: controlHeight,
             child: Center(

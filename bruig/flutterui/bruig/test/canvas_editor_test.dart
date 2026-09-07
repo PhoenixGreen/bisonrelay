@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:bruig/storage_manager.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_numbers.dart';
 import 'package:bruig/plugin_system/canvas/model/chart_interval.dart';
@@ -4697,6 +4698,46 @@ void main() {
           reason: "the caption should be above the box, not beside it");
     });
 
+    testWidgets("everything on a line is level", (tester) async {
+      // A line of controls is not all one height -- a switch, a box with a
+      // caption beside it, a readout -- and aligned at the top they sat at
+      // three different heights on a strip whose whole job is to be one line.
+      var controller = CanvasController(const CanvasDocument());
+      addTearDown(controller.dispose);
+      await pump(tester, CanvasSettingsPanel(controller: controller));
+
+      var middles = [
+        for (var it in [
+          find.byType(DropdownButton<CanvasRatio>),
+          find.descendant(
+              of: find.byKey(const ValueKey("canvasWidth")),
+              matching: find.byType(TextField)),
+          find.textContaining("×"),
+          find.textContaining("as a PNG"),
+        ])
+          tester.getRect(it).center.dy,
+      ];
+      var spread = middles.reduce(math.max) - middles.reduce(math.min);
+      expect(spread, lessThan(5), reason: "the line sits at $middles");
+    });
+
+    testWidgets("and a switch is level with a field beside it", (tester) async {
+      // The grid line is mostly switches. They carry a nudge that lines a
+      // control with no caption up under ones that have them, which on a band
+      // with the captions beside their controls pushed them out of line.
+      var controller = CanvasController(const CanvasDocument());
+      addTearDown(controller.dispose);
+      await pump(tester, CanvasGuidesPanel(controller: controller));
+
+      var toggle = tester.getRect(find.ancestor(
+          of: find.text("Show a grid"), matching: find.byType(CanvasToggle)));
+      var field = tester.getRect(find.ancestor(
+          of: find.text("Every"), matching: find.byType(CanvasNumberField)));
+      expect((toggle.center.dy - field.center.dy).abs(), lessThan(5),
+          reason: "the switch is at ${toggle.center.dy} and the field at "
+              "${field.center.dy}");
+    });
+
     testWidgets("groups do not run into each other", (tester) async {
       // "1280 × 72055.0 KiB" was two groups with nothing between them.
       var controller = CanvasController(const CanvasDocument());
@@ -4846,6 +4887,45 @@ void main() {
       expect(find.byType(CanvasElementsPanel), findsOneWidget);
     });
 
+    testWidgets("tabs are divided from each other, shut as well as open",
+        (tester) async {
+      // Shut, no tab is lit and nothing else says where one ends: three names
+      // in a row read as one long heading with odd spacing.
+      await stack(tester);
+      await dropOn(tester, grip("LAYERS"), "ADD", 0.5);
+
+      /// edges is the right-hand border of each tab in the place, which is
+      /// the line between it and the next.
+      List<BorderSide> edges() => [
+            for (var it in tester.widgetList<Container>(find.descendant(
+                of: find.ancestor(
+                    of: find.text("LAYERS"),
+                    matching: find.byType(DragTarget<PanelDrag>)),
+                matching: find.byType(Container))))
+              if (it.decoration case BoxDecoration box)
+                if (box.border case Border border) border.right,
+          ];
+
+      var lines = [
+        for (var side in edges())
+          if (side.style != BorderStyle.none) side
+      ];
+      expect(lines.length, 1,
+          reason: "two tabs, so one line between them and none after the last");
+
+      // And the same with the place shut, which is when it matters most.
+      await tester.tap(find.text("LAYERS"));
+      await tester.pumpAndSettle();
+      expect(find.byType(CanvasLayersPanel), findsNothing,
+          reason: "shut, so this is the case being checked");
+      expect(
+          [
+            for (var side in edges())
+              if (side.style != BorderStyle.none) side
+          ].length,
+          1);
+    });
+
     testWidgets("a tab can be dragged back out to a place of its own",
         (tester) async {
       await stack(tester);
@@ -4860,6 +4940,33 @@ void main() {
       expect(find.byType(CanvasElementsPanel), findsOneWidget);
       expect(find.byType(CanvasLayersPanel), findsOneWidget,
           reason: "and the one it left is showing again");
+    });
+
+    testWidgets("a place has one height, whichever tab is showing",
+        (tester) async {
+      // A group of tabs is one box that different panels take turns inside.
+      // Kept per tab, the height changed every time somebody looked at the
+      // other one, and the sidebar jumped under them.
+      await stack(tester);
+      await dropOn(tester, grip("LAYERS"), "ADD", 0.5);
+
+      double bodyHeight(Type panel) =>
+          tester.getRect(find.byType(panel)).height;
+      var before = bodyHeight(CanvasLayersPanel);
+
+      // The boundary under the tabbed place, dragged down to make it taller.
+      await tester.drag(find.byKey(const ValueKey("panelDivider:settings")),
+          const Offset(0, 60));
+      await tester.pumpAndSettle();
+
+      var taller = bodyHeight(CanvasLayersPanel);
+      expect(taller, greaterThan(before + 40),
+          reason: "the drag should have made the place taller");
+
+      await tester.tap(find.text("ADD"));
+      await tester.pumpAndSettle();
+      expect(bodyHeight(CanvasElementsPanel), closeTo(taller, 1),
+          reason: "the other tab should be given the same box");
     });
 
     testWidgets("the arrangement is remembered", (tester) async {
