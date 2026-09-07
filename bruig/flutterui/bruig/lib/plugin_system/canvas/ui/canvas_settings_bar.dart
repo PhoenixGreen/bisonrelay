@@ -63,6 +63,16 @@ class CanvasSettingsBar extends StatefulWidget {
   final bool guidesOpen;
   final VoidCallback onToggleGuides;
 
+  /// timelineOpen and onToggleTimeline show and hide the transport and the
+  /// strip under the canvas.
+  ///
+  /// Beside the other two, because it is the third thing on this bar that
+  /// decides how much of the window the design gets: a still canvas has no
+  /// use for a timeline, and forty pixels of transport under a picture nobody
+  /// is animating is forty pixels of picture.
+  final bool timelineOpen;
+  final VoidCallback onToggleTimeline;
+
   /// onShowSidebar brings a hidden sidebar back, and is null while it is
   /// showing. See CanvasSidebarRestoreButton -- a hidden sidebar with no way
   /// back is a trap, so the control has to be somewhere predictable, and this
@@ -75,6 +85,8 @@ class CanvasSettingsBar extends StatefulWidget {
     required this.canvasSettingsOpen,
     required this.guidesOpen,
     required this.onToggleGuides,
+    required this.timelineOpen,
+    required this.onToggleTimeline,
     required this.onToggleCanvasSettings,
     this.onShowSidebar,
     super.key,
@@ -225,6 +237,15 @@ class _CanvasSettingsBarState extends State<CanvasSettingsBar> {
   Widget _actions(ThemeNotifier theme) => Row(
         mainAxisSize: MainAxisSize.min,
         children: [
+          // The three that decide what the window is showing, together: the
+          // timeline, the grid and the canvas settings.
+          _barButton(theme,
+              icon: Icons.view_timeline_outlined,
+              tooltip: widget.timelineOpen
+                  ? "Hide the timeline"
+                  : "Show the timeline",
+              active: widget.timelineOpen,
+              onPressed: widget.onToggleTimeline),
           // Beside the canvas settings, because they are the same kind of
           // thing: both open a line over the top of the canvas, and both are
           // about the canvas rather than about anything on it.
@@ -363,7 +384,10 @@ class _CanvasSettingsPanelState extends State<CanvasSettingsPanel> {
       elevation: 6,
       child: Container(
         width: double.infinity,
-        padding: const EdgeInsets.fromLTRB(8, 5, 8, 5),
+        // Tight. The strip is over the design rather than beside it, so every
+        // pixel of padding is a pixel of canvas -- and with the captions
+        // beside their controls there is nothing here that needs the room.
+        padding: const EdgeInsets.fromLTRB(8, 4, 8, 2),
         decoration: BoxDecoration(
           border: Border(
               bottom: BorderSide(color: theme.colors.outlineVariant, width: 1)),
@@ -379,10 +403,16 @@ class _CanvasSettingsPanelState extends State<CanvasSettingsPanel> {
           child: SingleChildScrollView(
             controller: _scroll,
             scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.only(bottom: 5),
-            child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: _canvasGroups(theme)),
+            padding: const EdgeInsets.only(bottom: 4),
+            // Captions beside their controls, which is what makes this two
+            // lines rather than three. See CanvasControlScope.inline.
+            child: CanvasControlScope(
+              maxWidth: 400,
+              inline: true,
+              child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: _canvasGroups(context, theme)),
+            ),
           ),
         ),
       ),
@@ -400,7 +430,8 @@ class _CanvasSettingsPanelState extends State<CanvasSettingsPanel> {
   /// An estimate rather than a measurement, and it says so: rendering the real
   /// thing on every edit would make the editor unusable. See
   /// estimateStillBytes.
-  Widget _estimateGroup(ThemeNotifier theme, CanvasDocument document) {
+  Widget _estimateGroup(
+      BuildContext context, ThemeNotifier theme, CanvasDocument document) {
     var bytes = document.isAnimated
         ? estimateAnimationBytes(document)
         : estimateStillBytes(document);
@@ -408,7 +439,11 @@ class _CanvasSettingsPanelState extends State<CanvasSettingsPanel> {
 
     return CanvasControlGroup(label: "Estimated size", children: [
       Padding(
-        padding: const EdgeInsets.only(top: controlLabelHeight, right: 4),
+        // No nudge downwards on the band: with the captions beside their
+        // controls there is no caption above this one to line up under.
+        padding: EdgeInsets.only(
+            top: CanvasControlScope.isInline(context) ? 0 : controlLabelHeight,
+            right: 4),
         child: SizedBox(
           height: controlHeight,
           child: Row(children: [
@@ -443,7 +478,7 @@ class _CanvasSettingsPanelState extends State<CanvasSettingsPanel> {
     ]);
   }
 
-  List<Widget> _canvasGroups(ThemeNotifier theme) {
+  List<Widget> _canvasGroups(BuildContext context, ThemeNotifier theme) {
     var document = controller.document;
 
     /// write is an immediate change -- a dropdown -- which is its own undo
@@ -511,7 +546,7 @@ class _CanvasSettingsPanelState extends State<CanvasSettingsPanel> {
           ),
         ),
       ]),
-      _estimateGroup(theme, document),
+      _estimateGroup(context, theme, document),
     ];
   }
 }

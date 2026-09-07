@@ -209,7 +209,9 @@ class _CanvasGuidesPanelState extends State<CanvasGuidesPanel> {
       elevation: 6,
       child: Container(
         width: double.infinity,
-        padding: const EdgeInsets.fromLTRB(8, 5, 8, 5),
+        // The same tight strip the canvas settings are, and for the same
+        // reason: it is over the design, so its padding is canvas.
+        padding: const EdgeInsets.fromLTRB(8, 4, 8, 2),
         decoration: BoxDecoration(
           border: Border(
               bottom: BorderSide(color: theme.colors.outlineVariant, width: 1)),
@@ -223,14 +225,18 @@ class _CanvasGuidesPanelState extends State<CanvasGuidesPanel> {
           child: SingleChildScrollView(
             controller: _scroll,
             scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.only(bottom: 5),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                for (var group in canvasGuidesSettings(controller))
-                  Padding(
-                      padding: const EdgeInsets.only(right: 14), child: group),
-              ],
+            padding: const EdgeInsets.only(bottom: 4),
+            // Captions beside their controls, and the groups spaced and ruled
+            // by the group itself -- the same strip as the canvas settings
+            // beside it, laid out by the same rules rather than by a padding
+            // of its own that happened to be a different number.
+            child: CanvasControlScope(
+              maxWidth: 400,
+              inline: true,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: canvasGuidesSettings(controller),
+              ),
             ),
           ),
         ),

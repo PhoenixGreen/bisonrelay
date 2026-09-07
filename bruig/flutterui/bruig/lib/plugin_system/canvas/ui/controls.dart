@@ -39,6 +39,10 @@ const double controlLabelGap = 3;
 /// exactly this much so the whole row sits on one baseline.
 const double controlLabelHeight = 11;
 
+/// bandGroupHeight is how tall the line between two groups on the band is:
+/// the caption and one row of controls, which is the whole of the band.
+const double bandGroupHeight = 11 + 5 + controlHeight;
+
 /// controlWithLabelHeight is what a captioned control stands at, all in.
 ///
 /// One place, because three others were adding the same two numbers up for
@@ -63,11 +67,26 @@ class CanvasControlScope extends InheritedWidget {
   /// shrinking.
   final double maxWidth;
 
+  /// inline puts a control's caption beside it rather than above it.
+  ///
+  /// For the band over the canvas, which is two lines high and was three: a
+  /// caption over every control is a whole line of nine-pixel grey text, and
+  /// in a strip that is already only as tall as the settings on it that line
+  /// is the difference between the canvas starting here and starting an inch
+  /// lower. Down a sidebar the captions belong above, where they line the
+  /// controls up with each other.
+  final bool inline;
+
   const CanvasControlScope({
     required this.maxWidth,
+    this.inline = false,
     required super.child,
     super.key,
   });
+
+  /// isInline is whether captions go beside their controls here.
+  static bool isInline(BuildContext context) =>
+      maybeOf(context)?.inline ?? false;
 
   static CanvasControlScope? maybeOf(BuildContext context) =>
       context.dependOnInheritedWidgetOfExactType<CanvasControlScope>();
@@ -79,7 +98,8 @@ class CanvasControlScope extends InheritedWidget {
   }
 
   @override
-  bool updateShouldNotify(CanvasControlScope old) => old.maxWidth != maxWidth;
+  bool updateShouldNotify(CanvasControlScope old) =>
+      old.maxWidth != maxWidth || old.inline != inline;
 }
 
 /// CanvasLineBreak starts a new line inside a group.
@@ -180,6 +200,43 @@ class CanvasControlGroup extends StatelessWidget {
         color: theme.colors.onSurfaceVariant.withValues(alpha: 0.7),
       ),
     );
+
+    // Along the band the groups sit side by side, so what separates them is
+    // room to the right and a line between them -- not a rule underneath,
+    // which in a Row is an underline drawn across the strip and a dozen
+    // pixels of nothing below every group.
+    if (CanvasControlScope.isInline(context)) {
+      return Padding(
+        padding: const EdgeInsets.only(right: 4),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (!hideCaption)
+                  Padding(
+                      padding: const EdgeInsets.only(bottom: 5, left: 1),
+                      child: caption),
+                // Spaced as well as run-spaced. Without it the last control of
+                // one group and the first of the next were touching, which is
+                // what "1280 × 72055.0 KiB" was.
+                Wrap(spacing: 4, runSpacing: 6, children: children),
+              ],
+            ),
+            Padding(
+              padding: const EdgeInsets.only(left: 10, right: 2),
+              child: Container(
+                  width: 1,
+                  height: bandGroupHeight,
+                  color: theme.colors.outlineVariant.withValues(alpha: 0.45)),
+            ),
+          ],
+        ),
+      );
+    }
 
     return Padding(
       // The spacing every group gets, and the reason it is here rather than in
@@ -912,8 +969,44 @@ class _ScrubLabelState extends State<_ScrubLabel> {
 /// [scrub] makes that caption a handle: dragging it sideways runs the number
 /// up and down. See _ScrubLabel.
 Widget _labelled(ThemeNotifier theme, String label, Widget child,
-        {Widget? scrub}) =>
-    Padding(
+    {Widget? scrub}) {
+  return Builder(builder: (context) {
+    var inline = CanvasControlScope.isInline(context);
+    var caption = Text(
+      label,
+      style: TextStyle(
+          fontSize: inline ? 10 : 9,
+          height: 1.1,
+          color: theme.colors.onSurfaceVariant),
+      overflow: TextOverflow.ellipsis,
+    );
+
+    // Beside the control in the band, above it in a sidebar. The caption is
+    // the same words either way; what differs is which direction there is
+    // room in.
+    if (inline) {
+      return Padding(
+        padding: const EdgeInsets.only(right: 14),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            if (label.isNotEmpty) ...[
+              // Capped, so a long caption cannot push the control off the
+              // end of a strip that is already scrolling sideways.
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 96),
+                child: scrub ?? caption,
+              ),
+              const SizedBox(width: 6),
+            ],
+            child,
+          ],
+        ),
+      );
+    }
+
+    return Padding(
       padding: const EdgeInsets.only(right: 5),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -922,22 +1015,14 @@ Widget _labelled(ThemeNotifier theme, String label, Widget child,
           if (scrub != null)
             scrub
           else
-            SizedBox(
-              height: controlLabelHeight,
-              child: Text(
-                label,
-                style: TextStyle(
-                    fontSize: 9,
-                    height: 1.1,
-                    color: theme.colors.onSurfaceVariant),
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
+            SizedBox(height: controlLabelHeight, child: caption),
           const SizedBox(height: controlLabelGap),
           child,
         ],
       ),
     );
+  });
+}
 
 /// CanvasExpander is a control that opens to reveal a list.
 ///

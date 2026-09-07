@@ -104,6 +104,14 @@ class _CanvasScreenState extends State<CanvasScreen> {
   /// at once would be one on top of the other.
   bool _guidesOpen = false;
 
+  /// _timelineOpen is whether the transport and the strip under the canvas
+  /// are showing.
+  ///
+  /// On, because an editor that opens with its transport hidden is one where
+  /// nobody finds the animation. Off, the canvas takes the room -- which is
+  /// what a still design wants and is a press away either way.
+  bool _timelineOpen = true;
+
   /// _keyframesOpen is whether the pose bar is out.
   ///
   /// Held here rather than in the timeline for the same reason the canvas
@@ -442,6 +450,9 @@ class _CanvasScreenState extends State<CanvasScreen> {
               _guidesOpen = !_guidesOpen;
               if (_guidesOpen) _canvasSettingsOpen = false;
             }),
+            timelineOpen: _timelineOpen,
+            onToggleTimeline: () =>
+                setState(() => _timelineOpen = !_timelineOpen),
             // Only while the sidebar is away. The band is where every other
             // control on this page lives, so the one that brings the sidebar
             // back belongs in it rather than floating on the page behind it.
@@ -512,12 +523,16 @@ class _CanvasScreenState extends State<CanvasScreen> {
                 ),
             ]),
           ),
-          CanvasTimeline(
-            controller: _controller,
-            keyframesOpen: _keyframesOpen,
-            onToggleKeyframes: () =>
-                setState(() => _keyframesOpen = !_keyframesOpen),
-          ),
+          // Hidden by taking it out rather than by shrinking it to nothing:
+          // the transport holds a focus node and a ticker, and a strip of no
+          // height that still answers the keyboard is worse than no strip.
+          if (_timelineOpen)
+            CanvasTimeline(
+              controller: _controller,
+              keyframesOpen: _keyframesOpen,
+              onToggleKeyframes: () =>
+                  setState(() => _keyframesOpen = !_keyframesOpen),
+            ),
         ]),
       );
 

@@ -92,6 +92,8 @@ void main() {
           onToggleCanvasSettings: toggle ?? () {},
           guidesOpen: false,
           onToggleGuides: () {},
+          timelineOpen: true,
+          onToggleTimeline: () {},
           onShowSidebar: showSidebar,
         );
 
@@ -1662,6 +1664,8 @@ void main() {
             onToggleCanvasSettings: () {},
             guidesOpen: false,
             onToggleGuides: () {},
+            timelineOpen: true,
+            onToggleTimeline: () {},
           ));
 
       expect(controller.showOverspill, isFalse,
@@ -4162,6 +4166,8 @@ void main() {
             onToggleCanvasSettings: () {},
             guidesOpen: false,
             onToggleGuides: () {},
+            timelineOpen: true,
+            onToggleTimeline: () {},
           ));
 
       var grid = find.byTooltip("Grid, guides, rulers and snapping");
@@ -4189,6 +4195,8 @@ void main() {
             onToggleCanvasSettings: () {},
             guidesOpen: false,
             onToggleGuides: () {},
+            timelineOpen: true,
+            onToggleTimeline: () {},
           ));
       expect(
           find.byTooltip("Grid, guides, rulers and snapping"), findsOneWidget);
@@ -4643,6 +4651,91 @@ void main() {
           find.descendant(
               of: inside.last, matching: find.byType(DropdownButton<int>)),
           findsOneWidget);
+    });
+  });
+
+  group("the band over the canvas", () {
+    // Two lines, not three: the captions sit beside their controls rather
+    // than above them, which is a whole line of nine-pixel grey text saved in
+    // a strip that is only as tall as what is on it.
+
+    testWidgets("captions sit beside their controls", (tester) async {
+      var controller = CanvasController(const CanvasDocument());
+      addTearDown(controller.dispose);
+      await pump(tester, CanvasSettingsPanel(controller: controller));
+
+      var caption = tester.getRect(find.text("Max width"));
+      // The box itself, not the widget around it -- the caption is inside
+      // that, so its rectangle would contain both.
+      var field = tester.getRect(find.descendant(
+          of: find.byKey(const ValueKey("canvasWidth")),
+          matching: find.byType(TextField)));
+      expect(caption.right, lessThanOrEqualTo(field.left + 1),
+          reason: "the caption should be to the left of the field");
+      expect((caption.center.dy - field.center.dy).abs(), lessThan(8),
+          reason: "and level with it, not above");
+    });
+
+    testWidgets("and down a sidebar they stay above", (tester) async {
+      // The band has room sideways and none downwards; a sidebar is the other
+      // way round, and captions above line the controls up with each other.
+      var document = const CanvasDocument();
+      var element = newElement(ElementKind.shape, document);
+      var controller = CanvasController(document.addElement(element));
+      addTearDown(controller.dispose);
+      controller.selectOnly(element.id);
+      await pump(tester, CanvasDesignPanel(controller: controller));
+
+      var caption = find.text("W").first;
+      var field = find.descendant(
+          of: find.ancestor(
+              of: caption, matching: find.byType(CanvasNumberField)),
+          matching: find.byType(TextField));
+      expect(tester.getRect(caption).bottom,
+          lessThanOrEqualTo(tester.getRect(field).top + 1),
+          reason: "the caption should be above the box, not beside it");
+    });
+
+    testWidgets("groups do not run into each other", (tester) async {
+      // "1280 × 72055.0 KiB" was two groups with nothing between them.
+      var controller = CanvasController(const CanvasDocument());
+      addTearDown(controller.dispose);
+      await pump(tester, CanvasSettingsPanel(controller: controller));
+
+      var canvas = tester.getRect(find.text("CANVAS"));
+      var estimate = tester.getRect(find.text("ESTIMATED SIZE"));
+      expect(estimate.left - canvas.left, greaterThan(100),
+          reason: "the second group starts well clear of the first");
+    });
+
+    testWidgets("the timeline can be hidden from the bar", (tester) async {
+      // A still canvas has no use for a transport, and forty pixels of it
+      // under a picture nobody is animating is forty pixels of picture.
+      var open = true;
+      var controller = CanvasController(const CanvasDocument());
+      addTearDown(controller.dispose);
+
+      await pump(
+        tester,
+        StatefulBuilder(
+          builder: (context, setState) => CanvasSettingsBar(
+            controller: controller,
+            onPublish: () {},
+            canvasSettingsOpen: false,
+            onToggleCanvasSettings: () {},
+            guidesOpen: false,
+            onToggleGuides: () {},
+            timelineOpen: open,
+            onToggleTimeline: () => setState(() => open = !open),
+          ),
+        ),
+      );
+
+      await tester.tap(find.byTooltip("Hide the timeline"));
+      await tester.pumpAndSettle();
+      expect(open, isFalse);
+      expect(find.byTooltip("Show the timeline"), findsOneWidget,
+          reason: "and it says how to get it back");
     });
   });
 }
