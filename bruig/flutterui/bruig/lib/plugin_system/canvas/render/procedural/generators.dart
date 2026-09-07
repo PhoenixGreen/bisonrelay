@@ -405,6 +405,15 @@ void _flowWaves(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
     var color = rnd.next() < 0.35 ? spec.accent : spec.foreground;
     var width = math.max(0.7, _unit(rect, spec) * rnd.range(0.03, 0.12));
 
+    // The band's strands are built once and drawn twice: the glow blurs a
+    // layer holding all of them, and the filament goes over the top.
+    //
+    // One blur for the band rather than one for each strand, which is what
+    // this did and is why a banner took the best part of a second to draw.
+    // A blur is the most expensive thing there is on a canvas and there were
+    // a hundred and forty of them; a band shares its width, so its strands
+    // share a blur and the picture is the same picture.
+    var strands = <Path>[];
     for (var s = 0; s < perBand; s++) {
       var frac = perBand == 1 ? 0.5 : s / (perBand - 1);
       var y = rect.top +
@@ -423,26 +432,36 @@ void _flowWaves(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
         if (p.dx > rect.right + stepLen * 4) break;
       }
 
-      // Two passes: a wide soft one for the glow, a thin bright one for the
-      // strand. A single stroke with a blur gives the glow but loses the
-      // filament in the middle, and it is the filament that reads as light.
-      canvas.drawPath(
-          path,
-          Paint()
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = width * 5
-            ..strokeCap = StrokeCap.round
-            ..blendMode = BlendMode.plus
-            ..maskFilter = MaskFilter.blur(BlurStyle.normal, width * 3)
-            ..color = _fade(color, spec.intensity * 0.10));
-      canvas.drawPath(
-          path,
-          Paint()
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = width
-            ..strokeCap = StrokeCap.round
-            ..blendMode = BlendMode.plus
-            ..color = _fade(color, spec.intensity * 0.5));
+      strands.add(path);
+    }
+
+    // Two passes: a wide soft one for the glow, a thin bright one for the
+    // strand. A single stroke with a blur gives the glow but loses the
+    // filament in the middle, and it is the filament that reads as light.
+    canvas.saveLayer(
+        rect,
+        Paint()
+          ..blendMode = BlendMode.plus
+          ..imageFilter = ui.ImageFilter.blur(
+              sigmaX: width * 3, sigmaY: width * 3, tileMode: TileMode.decal));
+    var glow = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = width * 5
+      ..strokeCap = StrokeCap.round
+      ..color = _fade(color, spec.intensity * 0.10);
+    for (var path in strands) {
+      canvas.drawPath(path, glow);
+    }
+    canvas.restore();
+
+    var filament = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = width
+      ..strokeCap = StrokeCap.round
+      ..blendMode = BlendMode.plus
+      ..color = _fade(color, spec.intensity * 0.5);
+    for (var path in strands) {
+      canvas.drawPath(path, filament);
     }
   }
   canvas.restore();

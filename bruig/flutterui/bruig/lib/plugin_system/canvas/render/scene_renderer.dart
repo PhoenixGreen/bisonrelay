@@ -19,6 +19,7 @@ import 'package:bruig/plugin_system/canvas/render/chart_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/image_placement.dart';
 import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:bruig/plugin_system/canvas/render/procedural/generators.dart';
+import 'package:bruig/plugin_system/canvas/render/procedural_cache.dart';
 import 'package:bruig/plugin_system/canvas/render/table_painter.dart';
 import 'package:flutter/painting.dart';
 
@@ -89,11 +90,16 @@ void paintCanvasDocument(
   /// a text element being typed into has a real text field over it, and
   /// painting the words underneath as well shows the sentence twice.
   String? skipElement,
+
+  /// backgrounds is the editor's cache of generated backgrounds. Null for the
+  /// exporter, which renders each frame once and wants exact pixels at a size
+  /// of its own choosing. See ProceduralCache.
+  ProceduralCache? backgrounds,
 }) {
   var rect = doc.size.rect;
   var time = frame / (doc.frameRate <= 0 ? 1 : doc.frameRate);
 
-  _paintDocumentBackground(canvas, rect, doc, time, images);
+  _paintDocumentBackground(canvas, rect, doc, time, images, backgrounds);
 
   // Lines that are only there to carry somebody's text, and have been asked to
   // stay out of the picture. Collected first because the text that hides a line
@@ -119,7 +125,7 @@ void paintCanvasDocument(
 }
 
 void _paintDocumentBackground(ui.Canvas canvas, Rect rect, CanvasDocument doc,
-    double time, CanvasImageSource? images) {
+    double time, CanvasImageSource? images, ProceduralCache? backgrounds) {
   var bg = doc.background;
   if (bg.isImage) {
     var image = images?.resolve(bg.imageAssetId, const BackgroundRemoval());
@@ -130,6 +136,19 @@ void _paintDocumentBackground(ui.Canvas canvas, Rect rect, CanvasDocument doc,
     // Falling through to the generator while the picture decodes means the
     // canvas is never briefly blank, which on a dark document reads as the
     // whole design having disappeared.
+  }
+
+  // The one drawn last time, where it is the same background at the same
+  // size. Generating one is the most expensive thing on a canvas and the
+  // editor repaints for everything -- see ProceduralCache.
+  var ready = backgrounds?.imageFor(bg.spec, rect.size, time);
+  if (ready != null) {
+    canvas.drawImageRect(
+        ready,
+        Rect.fromLTWH(0, 0, ready.width.toDouble(), ready.height.toDouble()),
+        rect,
+        Paint()..filterQuality = FilterQuality.low);
+    return;
   }
   paintProcedural(canvas, rect, bg.spec, time: time);
 }

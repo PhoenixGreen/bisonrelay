@@ -6,6 +6,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_snap.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
 import 'package:bruig/plugin_system/canvas/render/image_placement.dart';
+import 'package:bruig/plugin_system/canvas/render/procedural_cache.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage_geometry.dart';
 import 'package:flutter/material.dart';
@@ -130,6 +131,10 @@ class StagePainter extends CustomPainter {
   /// framing is the picture being repositioned inside its frame, if one is.
   final StageFraming? framing;
 
+  /// backgrounds is the editor's rasterised background, or null in a test
+  /// that does not want one. See ProceduralCache.
+  final ProceduralCache? backgrounds;
+
   /// guides is the scaffolding: the grid and the lines the reader put down.
   /// Editing furniture, so it is drawn here and never by the renderer -- a
   /// published picture with a grid over it is a mistake nobody would ask for.
@@ -159,6 +164,7 @@ class StagePainter extends CustomPainter {
   /// a repaint. The reported version of that was a picture put in a table
   /// cell showing a grey crossed box until another cell was clicked.
   StagePainter({
+    this.backgrounds,
     required this.page,
     required this.view,
     required this.showHandles,
@@ -186,7 +192,13 @@ class StagePainter extends CustomPainter {
     required this.selectionRotation,
     required this.handleFor,
     required this.marquee,
-  }) : super(repaint: images is Listenable ? images as Listenable : null);
+  }) : super(
+            repaint: Listenable.merge([
+          if (images is Listenable) images as Listenable,
+          // The background arrives after the frame that asked for it, the
+          // same way a picture does, and nothing else changes when it does.
+          if (backgrounds != null) backgrounds,
+        ]));
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -214,6 +226,12 @@ class StagePainter extends CustomPainter {
         images: images,
         hoveredButton: hoveredButton,
         skipElement: editingText,
+        // Drawn once and kept while the design and the size hold still. See
+        // ProceduralCache: the editor repaints for a pointer moving over the
+        // stage, and generating the background again to produce exactly the
+        // pixels it produced last time is what made a canvas with one on it
+        // slow to touch.
+        backgrounds: backgrounds,
         // Guide paths show here and nowhere else: the line describing a run is
         // scaffolding, and a published diagram with every run drawn on it is
         // unreadable.

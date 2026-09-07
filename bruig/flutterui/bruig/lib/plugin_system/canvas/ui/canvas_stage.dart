@@ -19,6 +19,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
+import 'package:bruig/plugin_system/canvas/render/procedural_cache.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_text_editor.dart';
@@ -312,6 +313,7 @@ class CanvasStageState extends State<CanvasStage> {
   @override
   void dispose() {
     _previewDebounce?.cancel();
+    _backgrounds.dispose();
     _scroll.dispose();
     controller.removeListener(_onChanged);
     controller.images.removeListener(_onChanged);
@@ -1902,6 +1904,10 @@ class CanvasStageState extends State<CanvasStage> {
     if (_snappedTo != null) setState(() => _snappedTo = null);
   }
 
+  /// _backgrounds is the generated background, rasterised once and kept
+  /// while the design and the size hold still. See ProceduralCache.
+  final ProceduralCache _backgrounds = ProceduralCache();
+
   /// _hoverAt is where the pointer last was, in stage coordinates. Kept so
   /// the cursor can say what is under it -- a ruler, in particular.
   Offset _hoverAt = Offset.zero;
@@ -2064,6 +2070,7 @@ class CanvasStageState extends State<CanvasStage> {
                   child: ClipRect(
                     child: CustomPaint(
                       painter: StagePainter(
+                        backgrounds: _backgrounds,
                         page: _pageRect,
                         view: _viewRect,
                         document: document,
