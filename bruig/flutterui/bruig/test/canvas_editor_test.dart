@@ -1,3 +1,4 @@
+import 'package:bruig/storage_manager.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_numbers.dart';
 import 'package:bruig/plugin_system/canvas/model/chart_interval.dart';
 import 'package:bruig/models/snackbar.dart';
@@ -4736,6 +4737,161 @@ void main() {
       expect(open, isFalse);
       expect(find.byTooltip("Show the timeline"), findsOneWidget,
           reason: "and it says how to get it back");
+    });
+  });
+
+  group("panels that share a place", () {
+    // Two panels can be tabbed together: they take one panel's worth of room
+    // and one shows at a time, which is what somebody with a tall list, a
+    // tall settings panel and a short sidebar actually wants.
+    //
+    // Where a drop lands is decided by which third of a header it is over --
+    // the top moves the panel above, the bottom below, the middle makes a
+    // tab -- so these drag to a particular part of a particular header rather
+    // than to a header.
+
+    Future<CanvasController> stack(WidgetTester tester) async {
+      SharedPreferences.setMockInitialValues({});
+      var document = const CanvasDocument();
+      var element = newElement(ElementKind.shape, document);
+      var controller = CanvasController(document.addElement(element));
+      addTearDown(controller.dispose);
+      await pump(tester, CanvasDesignPanel(controller: controller));
+      return controller;
+    }
+
+    /// grip is the handle a single panel is carried by, in the header whose
+    /// name is [name].
+    Finder grip(String name) => find.descendant(
+        of: find.ancestor(
+            of: find.text(name), matching: find.byType(DragTarget<PanelDrag>)),
+        matching: find.byIcon(Icons.drag_indicator));
+
+    /// dropOn drags [from] onto the given fraction down the header holding
+    /// [onto]: the top third moves it above, the bottom third below, the
+    /// middle tabs the two together.
+    Future<void> dropOn(
+        WidgetTester tester, Finder from, String onto, double at) async {
+      var target = tester.getRect(find.ancestor(
+          of: find.text(onto), matching: find.byType(DragTarget<PanelDrag>)));
+      var gesture = await tester.startGesture(tester.getCenter(from));
+      // Away first, so the drag is recognised before it is aimed.
+      await gesture.moveBy(const Offset(0, 40));
+      await tester.pump();
+      await gesture
+          .moveTo(Offset(target.center.dx, target.top + target.height * at));
+      await tester.pump();
+      await gesture.up();
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets("dropping one on the middle of another tabs them together",
+        (tester) async {
+      await stack(tester);
+      expect(find.text("ADD"), findsOneWidget);
+      expect(find.text("LAYERS"), findsOneWidget);
+
+      await dropOn(tester, grip("LAYERS"), "ADD", 0.5);
+
+      // Both names are still there -- as tabs now, in one band.
+      expect(find.text("ADD"), findsOneWidget);
+      expect(find.text("LAYERS"), findsOneWidget);
+      // One header fewer, which is the room the tabbing bought.
+      expect(find.byType(DragTarget<PanelDrag>).evaluate().length, lessThan(5),
+          reason: "two places, not three, and the tabs are targets too");
+      // And the one dropped is the one showing.
+      expect(find.byType(CanvasElementsPanel), findsNothing);
+      expect(find.byType(CanvasLayersPanel), findsOneWidget);
+    });
+
+    testWidgets("and the top and bottom thirds move it instead",
+        (tester) async {
+      await stack(tester);
+      double topOf(String name) => tester
+          .getRect(find.ancestor(
+              of: find.text(name),
+              matching: find.byType(DragTarget<PanelDrag>)))
+          .top;
+      expect(topOf("ADD"), lessThan(topOf("LAYERS")));
+
+      // Onto the top of the first, which puts it above.
+      await dropOn(tester, grip("LAYERS"), "ADD", 0.1);
+      expect(topOf("LAYERS"), lessThan(topOf("ADD")),
+          reason: "dropped above rather than tabbed");
+      // Still three separate places.
+      expect(find.byType(CanvasElementsPanel), findsOneWidget);
+      expect(find.byType(CanvasLayersPanel), findsOneWidget);
+    });
+
+    testWidgets("a tab shows its panel, and shuts it when pressed again",
+        (tester) async {
+      await stack(tester);
+      await dropOn(tester, grip("LAYERS"), "ADD", 0.5);
+      expect(find.byType(CanvasLayersPanel), findsOneWidget);
+
+      // The other tab.
+      await tester.tap(find.text("ADD"));
+      await tester.pumpAndSettle();
+      expect(find.byType(CanvasElementsPanel), findsOneWidget,
+          reason: "asking for a panel should show it");
+      expect(find.byType(CanvasLayersPanel), findsNothing);
+
+      // The one already showing: shut, then open again.
+      await tester.tap(find.text("ADD"));
+      await tester.pumpAndSettle();
+      expect(find.byType(CanvasElementsPanel), findsNothing,
+          reason: "a tab is the switch for the whole place");
+      await tester.tap(find.text("ADD"));
+      await tester.pumpAndSettle();
+      expect(find.byType(CanvasElementsPanel), findsOneWidget);
+    });
+
+    testWidgets("a tab can be dragged back out to a place of its own",
+        (tester) async {
+      await stack(tester);
+      await dropOn(tester, grip("LAYERS"), "ADD", 0.5);
+      expect(find.byType(CanvasElementsPanel), findsNothing,
+          reason: "tabbed, so only one of the two is showing");
+
+      // Out of the tabs and below the settings, which is a place of its own
+      // again.
+      await dropOn(tester, find.text("ADD"), "BACKGROUND SETTINGS", 0.9);
+      await tester.pumpAndSettle();
+      expect(find.byType(CanvasElementsPanel), findsOneWidget);
+      expect(find.byType(CanvasLayersPanel), findsOneWidget,
+          reason: "and the one it left is showing again");
+    });
+
+    testWidgets("the arrangement is remembered", (tester) async {
+      await stack(tester);
+      await dropOn(tester, grip("LAYERS"), "ADD", 0.5);
+
+      // Saved as one place of two: "elements+layers".
+      var saved = await StorageManager.readString("canvasDesign.order");
+      expect(saved, contains("+"));
+      expect(saved.split(",").length, 2, reason: "two places now: $saved");
+    });
+
+    testWidgets("and an arrangement saved before tabs existed still reads",
+        (tester) async {
+      // "a,b,c" is three places of one, which is exactly what it was.
+      SharedPreferences.setMockInitialValues({});
+      await StorageManager.saveString(
+          "canvasDesign.order", "settings,layers,elements");
+
+      var document = const CanvasDocument();
+      var controller = CanvasController(document);
+      addTearDown(controller.dispose);
+      await pump(tester, CanvasDesignPanel(controller: controller));
+      await tester.pumpAndSettle();
+
+      double topOf(String name) => tester
+          .getRect(find.ancestor(
+              of: find.text(name),
+              matching: find.byType(DragTarget<PanelDrag>)))
+          .top;
+      expect(topOf("BACKGROUND SETTINGS"), lessThan(topOf("LAYERS")));
+      expect(topOf("LAYERS"), lessThan(topOf("ADD")));
     });
   });
 }

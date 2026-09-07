@@ -15,9 +15,17 @@ import 'package:flutter/material.dart';
 // are used together, and a tab is a place you have to leave to reach another.
 //
 // Everything about the arrangement belongs to the reader. Which panels are
-// open, how tall each one is, and what order they come in are all decisions
-// somebody makes once about how they work, so all three are written down and
-// come back next time -- see [CanvasPanelStack.storageKey].
+// open, how tall each one is, what order they come in and which of them share
+// a place as tabs are all decisions somebody makes once about how they work,
+// so all of them are written down and come back next time -- see
+// [CanvasPanelStack.storageKey].
+//
+// Two panels can share a place. Dropping one onto another's header tabs them
+// together: they take one panel's worth of room and one is showing at a time,
+// which is what somebody with a tall list and a tall settings panel and a
+// short sidebar actually wants. It is the same list underneath -- a stack of
+// groups, most of them holding one panel -- so a tab is not a second kind of
+// thing to arrange.
 //
 // A header is a band of its own colour with nothing in it but the panel's
 // name: no expander arrow, because the whole band is the switch and an arrow
@@ -108,11 +116,28 @@ class _CanvasPanelStackState extends State<CanvasPanelStack> {
   /// there is a button for that a few pixels away.
   static const double _minBody = 80;
 
-  /// _order is the panel ids, top to bottom. Ids the stack does not know about
-  /// are ignored and ones it has never seen are appended, so adding a panel in
-  /// a later version does not throw away the order somebody chose.
-  List<String> _order = const [];
+  /// _groups is the arrangement: a list of places down the column, each
+  /// holding one panel or several as tabs.
+  ///
+  /// Ids the stack does not know about are ignored and ones it has never seen
+  /// are appended, so adding a panel in a later version does not throw away
+  /// the arrangement somebody chose.
+  List<List<String>> _groups = const [];
+
   final Map<String, bool> _open = {};
+
+  /// _selected is which tab is showing, for the groups that have more than
+  /// one. At most one id per group is in it; a group with none of its ids
+  /// here shows its first.
+  ///
+  /// A set of ids rather than an index per group, because groups are made and
+  /// unmade by dragging and an index would point at the wrong tab the moment
+  /// one moved.
+  final Set<String> _selected = {};
+
+  /// _hovering is the drop the pointer is currently over, while a panel is
+  /// being dragged: which place, and what would happen there.
+  (int, _Drop)? _hovering;
 
   /// _heights is what each open panel was last given, in pixels.
   ///
@@ -128,16 +153,26 @@ class _CanvasPanelStackState extends State<CanvasPanelStack> {
   @override
   void initState() {
     super.initState();
-    _order = [for (var p in widget.panels) p.id];
+    _groups = [
+      for (var p in widget.panels) [p.id]
+    ];
     _restore();
   }
 
+  /// _order is the ids in order, flattened -- for saving, and for the checks
+  /// that only care which panels exist.
+  List<String> get _order => [
+        for (var group in _groups) ...group,
+      ];
+
   String get _orderKey => "${widget.storageKey}.order";
+  String get _tabKey => "${widget.storageKey}.tab";
   String _openKey(String id) => "${widget.storageKey}.open.$id";
   String _heightKey(String id) => "${widget.storageKey}.height.$id";
 
   Future<void> _restore() async {
     var saved = await StorageManager.readString(_orderKey);
+    var tabs = await StorageManager.readString(_tabKey);
     var open = <String, bool>{};
     var heights = <String, double>{};
     for (var panel in widget.panels) {
@@ -150,17 +185,26 @@ class _CanvasPanelStackState extends State<CanvasPanelStack> {
 
     setState(() {
       if (saved.isNotEmpty) {
+        // "a+b,c" is two places: a and b as tabs, then c. An arrangement
+        // saved before tabs existed is "a,b,c", which reads as three places
+        // of one -- which is exactly what it was.
         var known = {for (var p in widget.panels) p.id};
-        var wanted = [
-          for (var id in saved.split(","))
-            if (known.contains(id)) id,
-        ];
-        _order = [
+        var taken = <String>{};
+        var wanted = <List<String>>[];
+        for (var group in saved.split(",")) {
+          var ids = [
+            for (var id in group.split("+"))
+              if (known.contains(id) && taken.add(id)) id,
+          ];
+          if (ids.isNotEmpty) wanted.add(ids);
+        }
+        _groups = [
           ...wanted,
           for (var p in widget.panels)
-            if (!wanted.contains(p.id)) p.id,
+            if (!taken.contains(p.id)) [p.id],
         ];
       }
+      _selected.addAll(tabs.split(",").where((id) => id.isNotEmpty));
       _open.addAll(open);
       _heights.addAll(heights);
     });
@@ -173,14 +217,108 @@ class _CanvasPanelStackState extends State<CanvasPanelStack> {
     StorageManager.saveData(_openKey(id), _open[id]);
   }
 
-  void _move(String id, String before) {
-    if (id == before) return;
+  /// _groupOf is which place a panel is in.
+  int _groupOf(String id) => _groups.indexWhere((g) => g.contains(id));
+
+  /// _activeIn is the tab a place is showing.
+  String _activeIn(List<String> group) => group.firstWhere(
+        _selected.contains,
+        orElse: () => group.first,
+      );
+
+  void _select(String id) {
+    var group = _groups[_groupOf(id)];
     setState(() {
-      var order = [..._order]..remove(id);
-      order.insert(math.max(0, order.indexOf(before)), id);
-      _order = order;
+      _selected.removeAll(group);
+      _selected.add(id);
     });
-    StorageManager.saveString(_orderKey, _order.join(","));
+    StorageManager.saveString(_tabKey, _selected.join(","));
+  }
+
+  /// _rearrange applies a drop: [id] goes above a place, below it, or into it
+  /// as a tab.
+  ///
+  /// One function for the three, because they are one operation with a
+  /// different destination -- and because taking a panel out of wherever it
+  /// was has to happen exactly once however it lands.
+  void _rearrange(String id, int place, _Drop drop) {
+    if (place < 0 || place >= _groups.length) return;
+    var from = _groupOf(id);
+    if (from < 0) return;
+    // Onto its own place, alone, is nothing at all.
+    if (from == place && _groups[from].length == 1 && drop == _Drop.tab) return;
+
+    setState(() {
+      var groups = [
+        for (var group in _groups) [...group]
+      ];
+      // The place being aimed at, by identity rather than by number: taking
+      // the panel out below may shift every index after it.
+      var target = groups[place];
+      groups[from].remove(id);
+      groups.removeWhere((g) => g.isEmpty);
+
+      var at = groups.indexOf(target);
+      if (at < 0) {
+        // The place it was aimed at was the panel's own, and emptying it took
+        // it away. Landing where it was is doing nothing.
+        _groups = [
+          for (var g in groups) g,
+          if (!groups.any((g) => g.contains(id))) [id],
+        ];
+        return;
+      }
+      switch (drop) {
+        case _Drop.above:
+          groups.insert(at, [id]);
+        case _Drop.below:
+          groups.insert(at + 1, [id]);
+        case _Drop.tab:
+          target.add(id);
+          // Shown straight away: dropping a panel onto another and having
+          // nothing happen, because the one it joined is the one on top, is
+          // indistinguishable from the drop not working.
+          _selected.removeAll(target);
+          _selected.add(id);
+          // And open, or a panel tabbed into a shut place vanishes.
+          _open[id] = true;
+      }
+      _groups = groups;
+    });
+    _saveArrangement();
+  }
+
+  /// _tabTo puts [id] beside [beside] in the same place, before or after it.
+  void _tabTo(String id, String beside, {required bool after}) {
+    if (id == beside) return;
+    var place = _groupOf(beside);
+    var from = _groupOf(id);
+    if (place < 0 || from < 0) return;
+
+    setState(() {
+      var groups = [
+        for (var group in _groups) [...group]
+      ];
+      var target = groups[place];
+      groups[from].remove(id);
+      groups.removeWhere((g) => g.isEmpty);
+      var at = target.indexOf(beside);
+      target.insert(after ? at + 1 : at, id);
+      _selected.removeAll(target);
+      _selected.add(id);
+      _open[id] = true;
+      _groups = groups;
+    });
+    _saveArrangement();
+  }
+
+  void _saveArrangement() {
+    StorageManager.saveString(
+        _orderKey, [for (var g in _groups) g.join("+")].join(","));
+    StorageManager.saveString(_tabKey, _selected.join(","));
+    for (var id in _order) {
+      StorageManager.saveData(_openKey(id), _isOpen(id));
+    }
   }
 
   /// _resize gives [by] pixels to the panel above [id], taking them from the
@@ -191,8 +329,8 @@ class _CanvasPanelStackState extends State<CanvasPanelStack> {
   /// down makes the one above taller, which is what it looks like it does.
   void _resize(String id, double by) {
     var open = [
-      for (var p in _order)
-        if (_isOpen(p)) p
+      for (var group in _groups)
+        if (_isOpen(_activeIn(group))) _activeIn(group),
     ];
     var at = open.indexOf(id);
     if (at <= 0) return;
@@ -209,38 +347,52 @@ class _CanvasPanelStackState extends State<CanvasPanelStack> {
   Widget build(BuildContext context) {
     var theme = ThemeNotifier.of(context);
     var byId = {for (var p in widget.panels) p.id: p};
-    var panels = [
-      for (var id in _order)
-        if (byId[id] case var panel?) panel,
+
+    // The arrangement as panels rather than as ids, with anything the stack
+    // has forgotten about dropped.
+    var places = [
+      for (var group in _groups)
+        [
+          for (var id in group)
+            if (byId[id] case var panel?) panel,
+        ],
+    ]..removeWhere((g) => g.isEmpty);
+    if (places.isEmpty) return const SizedBox();
+
+    var showing = [
+      for (var place in places)
+        place.firstWhere((p) => _selected.contains(p.id),
+            orElse: () => place.first),
     ];
     var open = [
-      for (var p in panels)
-        if (_isOpen(p.id)) p
+      for (var panel in showing)
+        if (_isOpen(panel.id)) panel,
     ];
 
     return LayoutBuilder(builder: (context, constraints) {
-      // What is left for the open panels once every header has had its row.
+      // What is left for the open panels once every header has had its row. A
+      // place costs one header whether it holds one panel or four.
       var room = constraints.maxHeight -
-          panels.length * _headerHeight -
-          math.max(0, panels.length - 1) * _dividerHeight;
+          places.length * _headerHeight -
+          math.max(0, places.length - 1) * _dividerHeight;
       var share = open.isEmpty ? 0.0 : math.max(_minBody, room / open.length);
 
       return Column(children: [
-        for (var (i, panel) in panels.indexed) ...[
-          if (i > 0) _divider(theme, panel),
-          _header(theme, panel),
-          if (_isOpen(panel.id))
+        for (var (i, place) in places.indexed) ...[
+          if (i > 0) _divider(theme, showing[i]),
+          _header(theme, place, showing[i], i),
+          if (_isOpen(showing[i].id))
             // The last open panel takes what is left rather than a remembered
             // height, so the column always fills the sidebar exactly and there
             // is never a strip of nothing at the bottom.
-            if (panel.id == open.last.id)
-              Expanded(child: _body(panel))
+            if (showing[i].id == open.last.id)
+              Expanded(child: _body(showing[i]))
             else
               SizedBox(
                 height: math.min(
-                    math.max(_minBody, _heights[panel.id] ?? share),
+                    math.max(_minBody, _heights[showing[i].id] ?? share),
                     math.max(_minBody, room)),
-                child: _body(panel),
+                child: _body(showing[i]),
               ),
         ],
       ]);
@@ -275,83 +427,274 @@ class _CanvasPanelStackState extends State<CanvasPanelStack> {
         ),
       );
 
-  /// _header is the panel's name, its switch and its handle -- which are two
-  /// things, because the whole band is the switch.
+  /// _header is a place's band: one panel's name, or a row of tabs.
   ///
   /// A DragTarget rather than a reorderable list. A list would move the
   /// panels' elements rather than rebuild them, which is how an overlay inside
   /// one gets re-attached mid-layout and takes the sidebar down with it -- and
   /// these panels are full of tooltips and menus. Dropping one header on
   /// another rebuilds both, which nothing minds.
-  Widget _header(ThemeNotifier theme, CanvasStackPanel panel) {
+  ///
+  /// Three things can happen to a panel dropped on a header, and which one
+  /// depends on where in the band the pointer is: above it, below it, or into
+  /// it as a tab. The band says which as you hover -- a line at the edge it
+  /// would go to, or the whole band lit for a tab -- because a drop that does
+  /// one of three things without saying which is a drop nobody will risk.
+  Widget _header(ThemeNotifier theme, List<CanvasStackPanel> place,
+      CanvasStackPanel showing, int at) {
+    // A Builder, so the callbacks below measure against *this header* rather
+    // than against the whole stack. Handed the stack's own context they
+    // measured the pointer's position down the sidebar and called everything
+    // near the top "above", which turned every drop on the first panel into a
+    // move.
+    return Builder(
+        builder: (context) =>
+            _headerTarget(context, theme, place, showing, at));
+  }
+
+  Widget _headerTarget(BuildContext context, ThemeNotifier theme,
+      List<CanvasStackPanel> place, CanvasStackPanel showing, int at) {
+    return DragTarget<PanelDrag>(
+      onWillAcceptWithDetails: (details) =>
+          !(place.length == 1 && place.first.id == details.data.id),
+      onMove: (details) {
+        var drop = _dropAt(context, details.offset, at);
+        if (_hovering != drop) setState(() => _hovering = drop);
+      },
+      onLeave: (_) => setState(() => _hovering = null),
+      onAcceptWithDetails: (details) {
+        var drop = _hovering?.$1 == at ? _hovering!.$2 : _Drop.tab;
+        setState(() => _hovering = null);
+        _rearrange(details.data.id, at, drop);
+      },
+      builder: (context, candidate, _) {
+        var over = candidate.isNotEmpty && _hovering?.$1 == at;
+        var drop = over ? _hovering!.$2 : null;
+        return Stack(children: [
+          Material(
+            // Its own colour across the whole band, so a header is a header at
+            // a glance rather than a line of small capitals floating above
+            // some controls. A Material rather than a Container, so the ink
+            // the InkWell draws -- the hover, the press -- lands on this
+            // rather than on whatever is behind the sidebar.
+            color: drop == _Drop.tab
+                ? theme.colors.primary.withValues(alpha: 0.18)
+                : theme.colors.surfaceContainerHighest,
+            child: SizedBox(
+              height: _headerHeight,
+              child: place.length == 1
+                  ? _oneName(theme, place.first)
+                  : _tabs(theme, place, showing),
+            ),
+          ),
+          // The edge it would land at. A line rather than a tint, because
+          // "above this" and "into this" have to look like different answers.
+          if (drop == _Drop.above || drop == _Drop.below)
+            Positioned(
+              left: 0,
+              right: 0,
+              top: drop == _Drop.above ? 0 : null,
+              bottom: drop == _Drop.below ? 0 : null,
+              child: Container(height: 3, color: theme.colors.primary),
+            ),
+        ]);
+      },
+    );
+  }
+
+  /// _dropAt works out which of the three a pointer is asking for.
+  ///
+  /// The top and bottom thirds move the panel to that side; the middle makes
+  /// a tab. Thirds rather than halves so the middle -- the one that is a
+  /// different kind of answer -- is the easiest to hit deliberately and the
+  /// hardest to hit by accident.
+  (int, _Drop)? _dropAt(BuildContext context, Offset global, int at) {
+    var box = context.findRenderObject();
+    if (box is! RenderBox || !box.hasSize) return (at, _Drop.tab);
+    var y = box.globalToLocal(global).dy / math.max(1, box.size.height);
+    if (y < 0.33) return (at, _Drop.above);
+    if (y > 0.67) return (at, _Drop.below);
+    return (at, _Drop.tab);
+  }
+
+  /// _oneName is the band of a place holding a single panel: the name, and the
+  /// grip that carries it.
+  Widget _oneName(ThemeNotifier theme, CanvasStackPanel panel) => InkWell(
+        onTap: () => _toggle(panel.id),
+        child: Row(children: [
+          const SizedBox(width: 10),
+          Icon(panel.icon, size: 14, color: theme.colors.onSurfaceVariant),
+          const SizedBox(width: 7),
+          // One Expanded holding the whole name, rather than a Flexible
+          // label and a Spacer beside it.
+          //
+          // Those were two flexible children of one Row, and a Flexible
+          // is allotted its share of the leftover width whether it uses
+          // it or not -- so the space after the name was half of what was
+          // going, the handle sat wherever that put it, and the three
+          // headers lined their handles up at three different places.
+          Expanded(
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Flexible(
+                child: Text(
+                  panel.label.toUpperCase(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 10,
+                    letterSpacing: 0.8,
+                    fontWeight: FontWeight.w600,
+                    color: theme.colors.onSurfaceVariant.withValues(alpha: 0.9),
+                  ),
+                ),
+              ),
+              if (panel.trailing != null) ...[
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    panel.trailing!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: 9,
+                        color: theme.colors.onSurfaceVariant
+                            .withValues(alpha: 0.55)),
+                  ),
+                ),
+              ],
+              if (panel.hint != null) CanvasHint(panel.hint!),
+            ]),
+          ),
+          _handle(theme, panel),
+        ]),
+      );
+
+  /// _tabs is the band of a place holding several: one tab each, and nothing
+  /// else.
+  ///
+  /// The names go small and the counts go, because four tabs in a sidebar two
+  /// hundred pixels wide is all the room there is. What a tab has to say is
+  /// which panel it is.
+  Widget _tabs(ThemeNotifier theme, List<CanvasStackPanel> place,
+          CanvasStackPanel showing) =>
+      Row(
+        children: [
+          for (var panel in place)
+            Flexible(
+              child: _tab(theme, panel, showing: panel.id == showing.id),
+            ),
+        ],
+      );
+
+  /// _tab is one tab: a name that selects it, and a handle that is the tab
+  /// itself.
+  ///
+  /// Pressing the one already showing shuts the place, and pressing it again
+  /// opens it -- so a tab is the switch for the whole panel, the way a single
+  /// panel's band is. Pressing a different one shows that panel instead, and
+  /// opens the place if it was shut, because asking for a panel and being
+  /// given a closed box is not an answer.
+  Widget _tab(ThemeNotifier theme, CanvasStackPanel panel,
+      {required bool showing}) {
+    var lit = showing && _isOpen(panel.id);
+    var body = Container(
+      height: _headerHeight,
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      decoration: BoxDecoration(
+        color: lit ? theme.colors.surfaceContainerLow : Colors.transparent,
+        border: Border(
+          bottom: BorderSide(
+            color: lit ? theme.colors.primary : Colors.transparent,
+            width: 2,
+          ),
+        ),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(panel.icon,
+            size: 13,
+            color: theme.colors.onSurfaceVariant
+                .withValues(alpha: lit ? 0.95 : 0.5)),
+        const SizedBox(width: 5),
+        Flexible(
+          child: Text(
+            panel.label.toUpperCase(),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 9,
+              letterSpacing: 0.6,
+              fontWeight: FontWeight.w600,
+              color: theme.colors.onSurfaceVariant
+                  .withValues(alpha: lit ? 0.95 : 0.55),
+            ),
+          ),
+        ),
+      ]),
+    );
+
+    // A target as well as a handle, so tabs are put in order by dragging one
+    // past another -- left of the tab you drop on, or right of it.
     return DragTarget<PanelDrag>(
       onWillAcceptWithDetails: (details) => details.data.id != panel.id,
-      onAcceptWithDetails: (details) => _move(details.data.id, panel.id),
-      builder: (context, candidate, _) => Material(
-        // Its own colour across the whole band, so a header is a header at a
-        // glance rather than a line of small capitals floating above some
-        // controls. A Material rather than a Container, so the ink the InkWell
-        // draws -- the hover, the press -- lands on this rather than on
-        // whatever is behind the sidebar.
-        color: candidate.isEmpty
-            ? theme.colors.surfaceContainerHighest
-            : theme.colors.primary.withValues(alpha: 0.18),
-        child: InkWell(
-          onTap: () => _toggle(panel.id),
-          child: SizedBox(
-            height: _headerHeight,
-            child: Row(children: [
-              const SizedBox(width: 10),
-              Icon(panel.icon, size: 14, color: theme.colors.onSurfaceVariant),
-              const SizedBox(width: 7),
-              // One Expanded holding the whole name, rather than a Flexible
-              // label and a Spacer beside it.
-              //
-              // Those were two flexible children of one Row, and a Flexible
-              // is allotted its share of the leftover width whether it uses
-              // it or not -- so the space after the name was half of what was
-              // going, the handle sat wherever that put it, and the three
-              // headers lined their handles up at three different places.
-              Expanded(
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Flexible(
-                    child: Text(
-                      panel.label.toUpperCase(),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 10,
-                        letterSpacing: 0.8,
-                        fontWeight: FontWeight.w600,
-                        color: theme.colors.onSurfaceVariant
-                            .withValues(alpha: 0.9),
-                      ),
-                    ),
-                  ),
-                  if (panel.trailing != null) ...[
-                    const SizedBox(width: 6),
-                    Flexible(
-                      child: Text(
-                        panel.trailing!,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                            fontSize: 9,
-                            color: theme.colors.onSurfaceVariant
-                                .withValues(alpha: 0.55)),
-                      ),
-                    ),
-                  ],
-                  if (panel.hint != null) CanvasHint(panel.hint!),
-                ]),
-              ),
-              _handle(theme, panel),
-            ]),
+      onAcceptWithDetails: (details) {
+        var box = context.findRenderObject();
+        var after = false;
+        if (box is RenderBox && box.hasSize) {
+          after = box.globalToLocal(details.offset).dx > box.size.width / 2;
+        }
+        _tabTo(details.data.id, panel.id, after: after);
+      },
+      builder: (context, candidate, _) => MouseRegion(
+        cursor: SystemMouseCursors.grab,
+        child: Draggable<PanelDrag>(
+          data: PanelDrag(panel.id),
+          // The pointer, not the corner of the ghost: where a drop lands is
+          // decided by which third of a header it is over, and a payload
+          // measured from its own top-left answers for a place the pointer is
+          // nowhere near.
+          dragAnchorStrategy: pointerDragAnchorStrategy,
+          onDragStarted: () => setState(() => _dragging = panel.id),
+          onDragEnd: (_) => setState(() {
+            _dragging = null;
+            _hovering = null;
+          }),
+          feedback: _carried(theme, panel),
+          childWhenDragging: Opacity(opacity: 0.3, child: body),
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () {
+              if (showing) {
+                _toggle(panel.id);
+                return;
+              }
+              _select(panel.id);
+              if (!_isOpen(panel.id)) _toggle(panel.id);
+            },
+            child: Container(
+              foregroundDecoration: candidate.isEmpty
+                  ? null
+                  : BoxDecoration(
+                      border: Border(
+                          left: BorderSide(
+                              color: theme.colors.primary, width: 2))),
+              child: body,
+            ),
           ),
         ),
       ),
     );
   }
+
+  /// _carried is what a dragged panel looks like under the pointer.
+  Widget _carried(ThemeNotifier theme, CanvasStackPanel panel) => Material(
+        color: theme.colors.surfaceContainerHighest,
+        elevation: 3,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          child: Text(panel.label.toUpperCase(),
+              style: const TextStyle(fontSize: 10, letterSpacing: 0.8)),
+        ),
+      );
 
   /// _handle is what a panel is carried by.
   Widget _handle(ThemeNotifier theme, CanvasStackPanel panel) {
@@ -368,21 +711,19 @@ class _CanvasPanelStackState extends State<CanvasPanelStack> {
       cursor: SystemMouseCursors.grab,
       child: Draggable<PanelDrag>(
         data: PanelDrag(panel.id),
-        axis: Axis.vertical,
+        dragAnchorStrategy: pointerDragAnchorStrategy,
         onDragStarted: () => setState(() => _dragging = panel.id),
-        onDragEnd: (_) => setState(() => _dragging = null),
-        feedback: Material(
-          color: theme.colors.surfaceContainerHighest,
-          elevation: 3,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            child: Text(panel.label.toUpperCase(),
-                style: const TextStyle(fontSize: 10, letterSpacing: 0.8)),
-          ),
-        ),
+        onDragEnd: (_) => setState(() {
+          _dragging = null;
+          _hovering = null;
+        }),
+        feedback: _carried(theme, panel),
         childWhenDragging: Opacity(opacity: 0.3, child: icon),
         child: icon,
       ),
     );
   }
 }
+
+/// _Drop is what would happen if the panel being carried were let go here.
+enum _Drop { above, below, tab }
