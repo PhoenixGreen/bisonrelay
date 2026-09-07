@@ -4,6 +4,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/chart_data_editor.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/data_source_settings.dart';
 import 'package:flutter/material.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 
@@ -266,6 +267,12 @@ List<Widget> chartSettings(
     // adding to it -- and because a canvas with a league table and a chart of
     // the same league should be showing one set of figures.
     _tableSection(context, controller, e, write, begin, commit),
+    // A source of the chart's own, beside the link to a table. Both are here
+    // because they answer different situations: a table on the same canvas is
+    // the right answer when there is one, and a chain's history has no table
+    // beside it and would not want one four thousand rows long.
+    boxed(context,
+        chartSourceSection(context, controller, e, write, begin, commit)),
 
     // The words on the chart, together, in a section of their own. The title,
     // the description and the key are the same kind of thing -- writing laid

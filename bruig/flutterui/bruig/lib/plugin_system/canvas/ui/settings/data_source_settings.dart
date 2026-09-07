@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/data_presets.dart';
 import 'package:bruig/plugin_system/canvas/model/data_source.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
@@ -42,11 +43,308 @@ Widget dataSourceSection(
         VoidCallback commit) =>
     _DataSourcePanel(
       controller: controller,
-      element: e,
-      write: write,
-      begin: begin,
-      commit: commit,
+      target: _TableTarget(e, controller, write, begin, commit),
+      key: ValueKey("source-${e.id}"),
     );
+
+/// chartSourceSection is the same panel on a chart.
+///
+/// The same panel, deliberately. Choosing a preset, pasting an address,
+/// keeping a key and mapping the columns are the same job whichever element
+/// is asking, and the two answers people gave when this was a table's alone
+/// -- write it twice, or make the chart borrow a table -- are how two things
+/// that ought to agree stop agreeing.
+///
+/// What differs is what happens to what comes back, which is [_Target].
+Widget chartSourceSection(
+        BuildContext context,
+        CanvasController controller,
+        ChartElement e,
+        SettingsWrite write,
+        VoidCallback begin,
+        VoidCallback commit) =>
+    _DataSourcePanel(
+      controller: controller,
+      target: _ChartTarget(e, controller, write, begin, commit),
+      key: ValueKey("source-${e.id}"),
+    );
+
+/// _Target is the element the panel is filling in.
+///
+/// Everything above it -- the presets, the address, the key, the mapping --
+/// is the same for a table and for a chart. What is not the same is what
+/// arriving rows are turned into: a table takes them as they are, keeps the
+/// columns the reader filled in and re-sorts itself; a chart picks two of the
+/// columns out of them and thins four thousand points down to something a
+/// canvas can draw.
+abstract class _Target {
+  final CanvasController controller;
+  final SettingsWrite write;
+  final VoidCallback begin;
+  final VoidCallback commit;
+
+  _Target(this.controller, this.write, this.begin, this.commit);
+
+  CanvasElement get element;
+  DataSource get source;
+
+  /// chart is which presets are offered and which extra controls are shown.
+  bool get chart;
+
+  /// remember prefixes the keys the open/shut sections are stored under, so a
+  /// chart's Columns section is not opened by having opened a table's.
+  String get remember;
+
+  /// noun is what the tooltips call the thing being filled in.
+  String get noun;
+
+  /// label is the section's heading.
+  ///
+  /// A chart already has a Data section -- the numbers themselves, typed or
+  /// pasted -- and two sections called Data on one panel is a panel nobody
+  /// can navigate. This one is where they come from.
+  String get label;
+
+  /// setSource writes the recipe back, with nothing fetched.
+  void setSource(DataSource next) {
+    begin();
+    write(withSource(next));
+    commit();
+  }
+
+  CanvasElement withSource(DataSource next);
+
+  /// choosePreset applies a whole recipe, including whatever else about the
+  /// element it implies.
+  void choosePreset(DataPreset preset, String choice);
+
+  /// receive puts what came back into the element, and says what happened.
+  ///
+  /// Async because a table collects its pictures on the way in, which is one
+  /// request per badge.
+  Future<String> receive(List<List<String>> rows, DataSource next,
+      {required bool allowed, required bool proxied});
+
+  /// extras are the controls this element adds -- which columns a chart
+  /// draws, and how many points it keeps.
+  ///
+  /// [lastRows] is what the last refresh in this sitting returned, empty
+  /// before there has been one. Handed in rather than kept in the document:
+  /// four thousand rows saved into every canvas, so that one dropdown can
+  /// change its mind without asking again, is not a trade worth making.
+  List<Widget> extras(List<List<String>> lastRows) => const [];
+}
+
+/// _TableTarget is a table filling itself in, which is where all of this
+/// started.
+class _TableTarget extends _Target {
+  @override
+  final TableElement element;
+
+  _TableTarget(
+      this.element, super.controller, super.write, super.begin, super.commit);
+
+  @override
+  DataSource get source => element.source;
+
+  @override
+  bool get chart => false;
+
+  @override
+  String get remember => "tableSource";
+
+  @override
+  String get noun => "table";
+
+  @override
+  String get label => "Data";
+
+  @override
+  CanvasElement withSource(DataSource next) => element.copyWith(source: next);
+
+  @override
+  void choosePreset(DataPreset preset, String choice) {
+    // A preset brings its hidden headings with it. Its badge and position
+    // columns are named so the mapping can refer to them and are not drawn,
+    // and making the reader switch those off by hand after choosing a preset
+    // would be a preset that half worked.
+    begin();
+    write(element.copyWith(
+      source: preset.applyTo(source, choice),
+      hiddenHeaders: preset.hiddenHeaders,
+    ));
+    commit();
+  }
+
+  @override
+  Future<String> receive(List<List<String>> rows, DataSource next,
+      {required bool allowed, required bool proxied}) async {
+    rows = await collectPictures(rows, next, allowFetching: allowed);
+
+    // The columns the reader fills in themselves, put back from what was
+    // there before -- matched by name, so a badge follows its team up and
+    // down the table rather than staying at the position it was put in.
+    rows = keepColumns(element.rows, rows, next, headerRow: element.headerRow);
+    // And the column names the reader gave them. Rules pick their cells out
+    // by column name, so a refresh that renamed the headers switched every
+    // rule off -- the crest column's padding among them.
+    rows = keepHeaders(element.rows, rows, headerRow: element.headerRow);
+
+    // Sorted on the way in, so a refresh puts the rows back in the order the
+    // table was already in rather than the order the source happened to send
+    // them. A league table that re-sorted itself only when somebody
+    // remembered to press Sort would be wrong twice a week.
+    begin();
+    var table = element.copyWith(rows: rows, source: next).sorted();
+    write(table);
+
+    // The charts reading this table come with it. Without this the two would
+    // drift the moment anybody refreshed -- a table showing this week and a
+    // chart of last week, side by side on one canvas, with nothing to say
+    // which was which.
+    var followers = 0;
+    for (var other in controller.document.elements) {
+      if (other is ChartElement && other.fromTable.tableId == table.id) {
+        controller.replaceElement(
+            other.copyWith(data: chartDataFromTable(table, other.fromTable)),
+            transient: true);
+        followers++;
+      }
+    }
+    commit();
+    return followers == 0
+        ? "${rows.length - 1} rows."
+        : "${rows.length - 1} rows, and $followers chart"
+            "${followers == 1 ? "" : "s"}.";
+  }
+}
+
+/// _ChartTarget is a chart fetching its own numbers.
+class _ChartTarget extends _Target {
+  @override
+  final ChartElement element;
+
+  _ChartTarget(
+      this.element, super.controller, super.write, super.begin, super.commit);
+
+  @override
+  DataSource get source => element.source;
+
+  @override
+  bool get chart => true;
+
+  @override
+  String get remember => "chartSource";
+
+  @override
+  String get noun => "chart";
+
+  @override
+  String get label => "Data source";
+
+  @override
+  CanvasElement withSource(DataSource next) => element.copyWith(source: next);
+
+  @override
+  void choosePreset(DataPreset preset, String choice) {
+    // A chart preset brings its mapping with it: which column is the axis,
+    // which are the series, and how many points are worth drawing. Without
+    // that, choosing "Coin supply" leaves a chart that has fetched four
+    // thousand rows and drawn none of them.
+    begin();
+    write(element.copyWith(
+      source: preset.applyTo(source, choice),
+      fromSource: ChartSourceMap(
+        categoryColumn: preset.chartCategory,
+        valueColumns: preset.chartValues,
+        maxPoints: preset.chartPoints,
+      ),
+    ));
+    commit();
+  }
+
+  @override
+  Future<String> receive(List<List<String>> rows, DataSource next,
+      {required bool allowed, required bool proxied}) async {
+    var data = chartDataFromRows(rows, element.fromSource);
+    begin();
+    // The numbers land in the chart's own data, which is what every other
+    // setting works on: once fetched they are edited, coloured and animated
+    // exactly like numbers that were typed in.
+    write(element.copyWith(data: data, source: next));
+    commit();
+    return data.isEmpty
+        ? "Nothing to draw — check which columns the chart is using."
+        : "${data.categories.length} points"
+            "${data.series.length > 1 ? " in ${data.series.length} series" : ""}.";
+  }
+
+  @override
+  List<Widget> extras(List<List<String>> lastRows) {
+    var columns = element.source.columns;
+    var map = element.fromSource;
+    (int, String) named(int c) =>
+        (c, columns[c].header.isEmpty ? "Column ${c + 1}" : columns[c].header);
+
+    return [
+      CanvasControlGroup(label: "What is drawn", children: [
+        CanvasDropdown<int>(
+          label: "Along the axis",
+          value: map.categoryColumn,
+          width: 150,
+          options: [for (var c = 0; c < columns.length; c++) named(c)],
+          onChanged: (v) => _setMap(map.copyWith(categoryColumn: v), lastRows),
+        ),
+        for (var c = 0; c < columns.length; c++)
+          if (c != map.categoryColumn)
+            CanvasToggle(
+              label: columns[c].header.isEmpty
+                  ? "Column ${c + 1}"
+                  : columns[c].header,
+              value: map.valueColumns.contains(c),
+              onChanged: (v) => _setMap(
+                  map.copyWith(valueColumns: [
+                    for (var i = 0; i < columns.length; i++)
+                      if (i == c ? v : map.valueColumns.contains(i)) i,
+                  ]),
+                  lastRows),
+            ),
+        CanvasNumberField(
+          label: "Most points",
+          value: map.maxPoints.toDouble(),
+          min: 0,
+          max: 2000,
+          decimals: 0,
+          width: 66,
+          onChanged: (v) =>
+              _setMap(map.copyWith(maxPoints: v.round()), lastRows),
+          onCommit: commit,
+        ),
+        const CanvasHint(
+            "A daily series going back years is thousands of points, and a "
+            "canvas is a few inches wide: drawn in full it is a grey smear. "
+            "Most points keeps that many, evenly spread, ending on the latest "
+            "— they are real readings, not an average. Zero draws every one."),
+      ]),
+    ];
+  }
+
+  /// _setMap changes what is drawn, and redraws it where it can.
+  ///
+  /// With the rows from this sitting's refresh in hand, changing which column
+  /// is the axis is immediate. Without them -- a canvas opened this morning,
+  /// nothing fetched yet -- the mapping is set and the chart keeps what it
+  /// has until Refresh is pressed, which is honest: the column being asked
+  /// for was never in the document to begin with.
+  void _setMap(ChartSourceMap next, List<List<String>> rows) {
+    begin();
+    write(rows.isEmpty
+        ? element.copyWith(fromSource: next)
+        : element.copyWith(
+            fromSource: next, data: chartDataFromRows(rows, next)));
+    commit();
+  }
+}
 
 String _summary(DataSource source) {
   if (!source.on) return "Typed in";
@@ -58,17 +356,12 @@ String _summary(DataSource source) {
 
 class _DataSourcePanel extends StatefulWidget {
   final CanvasController controller;
-  final TableElement element;
-  final SettingsWrite write;
-  final VoidCallback begin;
-  final VoidCallback commit;
+  final _Target target;
 
   const _DataSourcePanel({
     required this.controller,
-    required this.element,
-    required this.write,
-    required this.begin,
-    required this.commit,
+    required this.target,
+    super.key,
   });
 
   @override
@@ -95,7 +388,15 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
   bool _hasKey = false;
   String _forHost = "";
 
-  DataSource get source => widget.element.source;
+  _Target get target => widget.target;
+  DataSource get source => target.source;
+
+  /// _rows is what the last refresh in this sitting returned.
+  ///
+  /// Kept for the same reason [_fields] is: it is a fact about what came back
+  /// a minute ago rather than about the design, and it lets a chart change
+  /// which column it draws without asking the server again.
+  List<List<String>> _rows = const [];
 
   @override
   void initState() {
@@ -120,14 +421,10 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
     }
   }
 
-  void _set(DataSource next) {
-    widget.begin();
-    widget.write(widget.element.copyWith(source: next));
-    widget.commit();
-  }
+  void _set(DataSource next) => target.setSource(next);
 
-  /// _refresh is the whole point of the panel: go and get it, map it, and put
-  /// it in the table in the order the table is already sorted in.
+  /// _refresh is the whole point of the panel: go and get it, map it, and
+  /// hand it to whatever asked for it.
   Future<void> _refresh() async {
     var snackbar = SnackBarModel.of(context);
     var allowed = context.read<CanvasPreferences>().allowFetching;
@@ -159,51 +456,15 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
         if (!mounted) return;
       }
 
-      rows = await collectPictures(rows, source, allowFetching: allowed);
+      var said = await target.receive(
+          rows, source.copyWith(fetchedAt: DateTime.now()),
+          allowed: allowed, proxied: proxied);
       if (!mounted) return;
-
-      // The columns the reader fills in themselves, put back from what was
-      // there before -- matched by name, so a badge follows its team up and
-      // down the table rather than staying at the position it was put in.
-      rows = keepColumns(widget.element.rows, rows, source,
-          headerRow: widget.element.headerRow);
-      // And the column names the reader gave them. Rules pick their cells out
-      // by column name, so a refresh that renamed the headers switched every
-      // rule off -- the crest column's padding among them.
-      rows = keepHeaders(widget.element.rows, rows,
-          headerRow: widget.element.headerRow);
-      setState(() => _fields = result.fields);
-
-      // Sorted on the way in, so a refresh puts the rows back in the order the
-      // table was already in rather than the order the source happened to send
-      // them. A league table that re-sorted itself only when somebody
-      // remembered to press Sort would be wrong twice a week.
-      widget.begin();
-      var table = widget.element
-          .copyWith(
-              rows: rows, source: source.copyWith(fetchedAt: DateTime.now()))
-          .sorted();
-      widget.write(table);
-
-      // The charts reading this table come with it. Without this the two would
-      // drift the moment anybody refreshed -- a table showing this week and a
-      // chart of last week, side by side on one canvas, with nothing to say
-      // which was which.
-      var followers = 0;
-      for (var element in widget.controller.document.elements) {
-        if (element is ChartElement && element.fromTable.tableId == table.id) {
-          widget.controller.replaceElement(
-              element.copyWith(
-                  data: chartDataFromTable(table, element.fromTable)),
-              transient: true);
-          followers++;
-        }
-      }
-      widget.commit();
-      snackbar.success(followers == 0
-          ? "${rows.length - 1} rows."
-          : "${rows.length - 1} rows, and $followers chart"
-              "${followers == 1 ? "" : "s"}.");
+      setState(() {
+        _fields = result.fields;
+        _rows = rows;
+      });
+      snackbar.success(said);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -227,8 +488,8 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
     return boxed(
       context,
       CanvasExpander(
-        label: "Data",
-        remember: "tableSource",
+        label: target.label,
+        remember: target.remember,
         trailing: _summary(source),
         // In the heading, so a table is refreshed with one press and without
         // opening anything. It is the thing this section is for.
@@ -240,7 +501,7 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
           tooltip: !source.on
               ? "Choose where the data comes from first"
               : source.fetchedAt == null
-                  ? "Read the data and put it in the table"
+                  ? "Read the data and put it in the ${target.noun}"
                   : "Read the data again — last updated "
                       "${DateFormat("d MMM y, HH:mm").format(source.fetchedAt!.toLocal())}",
           onPressed: source.on && !_busy ? _refresh : null,
@@ -273,7 +534,7 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
           width: 168,
           options: [
             ("", "None — set it up myself"),
-            for (var p in dataPresets) (p.id, p.label),
+            for (var p in presetsFor(chart: target.chart)) (p.id, p.label),
           ],
           onChanged: (id) {
             var chosen = presetById(id);
@@ -281,16 +542,7 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
               _set(source.copyWith(preset: ""));
               return;
             }
-            // A preset brings its hidden headings with it. Its badge and
-            // position columns are named so the mapping can refer to them and
-            // are not drawn, and making the reader switch those off by hand
-            // after choosing a preset would be a preset that half worked.
-            widget.begin();
-            widget.write(widget.element.copyWith(
-              source: chosen.applyTo(source, chosen.choices.first.$1),
-              hiddenHeaders: chosen.hiddenHeaders,
-            ));
-            widget.commit();
+            target.choosePreset(chosen, chosen.choices.first.$1);
           },
         ),
         if (preset != null)
@@ -299,7 +551,10 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
             value: _choiceOf(preset, source),
             width: 148,
             options: preset.choices,
-            onChanged: (code) => _set(preset.applyTo(source, code)),
+            // Through the preset rather than the source, because the choice
+            // decides the mapping as well as the address: dcrdata keeps every
+            // series in an array named after itself.
+            onChanged: (code) => target.choosePreset(preset, code),
           ),
         CanvasDropdown<DataKind>(
           label: "From",
@@ -310,6 +565,10 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
         ),
       ]),
       if (preset != null) CanvasHint(preset.note),
+
+      // What this element does with what arrives. Empty for a table, which
+      // takes the rows as they are.
+      ...target.extras(_rows),
 
       if (source.kind == DataKind.file)
         CanvasControlGroup(label: "File", children: [
@@ -346,7 +605,7 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
           CanvasHint(_hasKey
               ? "A key is saved for ${source.host}. It is kept on this "
                   "machine and never written into the canvas, so a canvas you "
-                  "send carries the table and not your key."
+                  "send carries the ${target.noun} and not your key."
               : "Kept on this machine, never written into the canvas."),
         ]),
         if (!allowed)
@@ -363,7 +622,7 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
       // of showing the recipe is that it can be copied.
       CanvasExpander(
         label: "Custom fields",
-        remember: "tableSourceCustom",
+        remember: "${target.remember}Custom",
         trailing: "${_customColumns(source, preset).length}",
         children: [
           const CanvasHint(
@@ -402,7 +661,7 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
       // nobody wrote a preset for is otherwise unreachable.
       CanvasExpander(
         label: "Columns",
-        remember: "tableSourceColumns",
+        remember: "${target.remember}Columns",
         trailing: "${source.columns.length}",
         children: [
           CanvasControlGroup(label: "Rows", children: [
@@ -558,7 +817,7 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
             width: 56,
             onChanged: (v) =>
                 _setColumn(index, column.copyWith(spread: v.round())),
-            onCommit: widget.commit,
+            onCommit: target.commit,
           ),
           CanvasTextField(
             label: "Divider",

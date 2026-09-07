@@ -1,3 +1,6 @@
+import 'package:bruig/models/snackbar.dart';
+import 'dart:io';
+import 'dart:convert';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/canvas_settings.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
@@ -56,6 +59,8 @@ void main() {
       providers: [
         ChangeNotifierProvider<ThemeNotifier>(
             create: (c) => ThemeNotifier(doLoad: false)),
+        // Pressing Refresh says what came back, and says it through this.
+        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
         // Always provided, not only when a test brought its own. A table's
         // Data section reads whether fetching is allowed, and the app always
         // has these -- a settings panel that worked in the app and threw in a
@@ -539,8 +544,15 @@ void main() {
 
       await tester.pumpWidget(MaterialApp(
         home: Scaffold(
-          body: ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false),
+          body: MultiProvider(
+            providers: [
+              ChangeNotifierProvider<ThemeNotifier>(
+                  create: (c) => ThemeNotifier(doLoad: false)),
+              // A chart has a data source of its own now, and the panel that
+              // fills it in asks whether fetching is allowed.
+              ChangeNotifierProvider<CanvasPreferences>(
+                  create: (c) => CanvasPreferences()),
+            ],
             child: SizedBox(
               width: 260,
               height: 800,
@@ -4054,6 +4066,196 @@ void main() {
       await tester.tap(find.byTooltip("Remove every guide"));
       await tester.pumpAndSettle();
       expect(controller.document.guides.guides, isEmpty);
+    });
+  });
+
+  group("a chart's own data source", () {
+    // A chart used to have two ways to get numbers: typed in, or read off a
+    // table on the same canvas. Neither covers a chain's history, which has
+    // no table beside it and would not want one four thousand rows long.
+    //
+    // What is tested here is the wiring, since the mapping itself is model
+    // work and is tested against the real responses in
+    // canvas_chart_source_test.dart.
+
+    late Directory dir;
+    setUp(() async {
+      dir = await Directory.systemTemp.createTemp("canvas_chart_source");
+    });
+    tearDown(() => dir.delete(recursive: true));
+
+    /// idle turns the real event loop, because a file is read on it while a
+    /// widget test runs in a fake one. See the note in the notes tests: one
+    /// step of an I/O chain needs one runAsync and one pump.
+    Future<void> idle(WidgetTester tester) async {
+      for (var i = 0; i < 40; i++) {
+        await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 4)));
+        await tester.pump();
+      }
+      await tester.pumpAndSettle();
+    }
+
+    Future<CanvasController> panel(WidgetTester tester,
+        {DataSource source = const DataSource(),
+        ChartSourceMap map = const ChartSourceMap()}) async {
+      var element = ChartElement(
+        const ElementBase(id: "c", width: 400, height: 300),
+        source: source,
+        fromSource: map,
+      );
+      var controller =
+          CanvasController(const CanvasDocument().addElement(element));
+      addTearDown(controller.dispose);
+      controller.selectOnly("c");
+      await pump(tester, CanvasDesignPanel(controller: controller));
+      return controller;
+    }
+
+    ChartElement chartIn(CanvasController c) =>
+        c.document.elements.single as ChartElement;
+
+    /// open opens the section if it is not already open.
+    ///
+    /// Sections remember whether they were open, and the memory outlives one
+    /// test: tapping unconditionally shut the section that the test before
+    /// had left open, and the controls inside it were then nowhere to be
+    /// found.
+    Future<void> open(WidgetTester tester, String section) async {
+      if (find.text("Preset").evaluate().isNotEmpty) return;
+      await tester.ensureVisible(find.text(section));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(section));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets("it is a section of its own, beside the numbers",
+        (tester) async {
+      // Not called "Data": the chart already has a section by that name --
+      // the numbers themselves -- and two of them on one panel is a panel
+      // nobody can navigate.
+      await panel(tester);
+      expect(find.text("DATA SOURCE"), findsOneWidget);
+      expect(find.text("DATA"), findsOneWidget);
+    });
+
+    testWidgets("choosing a preset fills in the address and the mapping",
+        (tester) async {
+      // The choice decides the mapping as well as the address: dcrdata keeps
+      // every series in an array named after itself, so a preset that only
+      // set the URL would fetch four thousand rows and draw none of them.
+      var controller = await panel(tester);
+      await open(tester, "DATA SOURCE");
+
+      await tester.ensureVisible(find.text("None — set it up myself"));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text("None — set it up myself"));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(dcrdataChart.label).last);
+      await tester.pumpAndSettle();
+
+      var source = chartIn(controller).source;
+      expect(source.preset, dcrdataChart.id);
+      expect(source.shape, DataShape.columns);
+      expect(source.where, contains("dcrdata.decred.org"));
+      expect(source.columns.length, 2);
+      expect(chartIn(controller).fromSource.valueColumns, [1]);
+      expect(chartIn(controller).fromSource.maxPoints, greaterThan(0),
+          reason: "a daily series since 2016 has to be thinned to be drawn");
+    });
+
+    testWidgets("a league table is not offered to a chart", (tester) async {
+      // A chart of a league table comes from the table beside it -- one
+      // request, one set of figures, and they cannot disagree.
+      await panel(tester);
+      await open(tester, "DATA SOURCE");
+      await tester.ensureVisible(find.text("None — set it up myself"));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text("None — set it up myself"));
+      await tester.pumpAndSettle();
+
+      expect(find.text(footballData.label), findsNothing);
+      expect(find.text(dcrdataChart.label), findsWidgets);
+    });
+
+    testWidgets("refreshing draws what came back", (tester) async {
+      // End to end through the panel, over a file rather than the network:
+      // the fetching is the same code either way and a test that needed the
+      // internet would be a test that fails on a train.
+      // Written synchronously. A dart:io future completes on the real event
+      // loop and its continuation is a microtask in the fake one, so awaiting
+      // one in the body of a widget test hangs the whole suite with no error
+      // at all -- which is exactly what this did.
+      var file = File("${dir.path}/supply.json");
+      file.writeAsStringSync(jsonEncode({
+        "t": [1454889600, 1454976000, 1455062400],
+        "supply": [168720623595120, 169504574718296, 170288525841472],
+      }));
+
+      var controller = await panel(
+        tester,
+        source: dcrdataChart
+            .applyTo(const DataSource(), "coin-supply")
+            .copyWith(kind: DataKind.file, where: file.path),
+        map: const ChartSourceMap(valueColumns: [1]),
+      );
+      expect(chartIn(controller).data.isEmpty, isTrue);
+
+      await tester.ensureVisible(
+          find.byTooltip("Read the data and put it in the chart"));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip("Read the data and put it in the chart"));
+      await idle(tester);
+
+      var data = chartIn(controller).data;
+      expect(data.categories.length, 3);
+      expect(data.series.single.name, "Coin supply (DCR)");
+      // In DCR rather than in atoms, which is what the chain counts in.
+      expect(data.series.single.values.first, closeTo(1687206.2, 0.1));
+      expect(chartIn(controller).source.fetchedAt, isNotNull,
+          reason: "so the heading can say how old the numbers are");
+    });
+
+    testWidgets("and the columns can be changed without fetching again",
+        (tester) async {
+      var file = File("${dir.path}/two.json");
+      file.writeAsStringSync(jsonEncode({
+        "t": [1454889600, 1454976000],
+        "supply": [100000000, 200000000],
+        "count": [7, 9],
+      }));
+
+      var controller = await panel(
+        tester,
+        source: const DataSource(
+          kind: DataKind.file,
+          columns: [
+            SourceColumn(header: "Date", path: "t", date: "MMM yy"),
+            SourceColumn(header: "Supply", path: "supply", divide: 1e8),
+            SourceColumn(header: "Transactions", path: "count"),
+          ],
+          shape: DataShape.columns,
+        ).copyWith(where: file.path),
+        map: const ChartSourceMap(valueColumns: [1]),
+      );
+
+      await tester.ensureVisible(
+          find.byTooltip("Read the data and put it in the chart"));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip("Read the data and put it in the chart"));
+      await idle(tester);
+      expect(chartIn(controller).data.series.single.name, "Supply");
+
+      // Adding the second column redraws from the rows already in hand.
+      await open(tester, "DATA SOURCE");
+      await tester.ensureVisible(find.text("Transactions").first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text("Transactions").first);
+      await tester.pumpAndSettle();
+
+      var data = chartIn(controller).data;
+      expect([for (var s in data.series) s.name], ["Supply", "Transactions"]);
+      expect(data.series[1].values, [7, 9]);
     });
   });
 }

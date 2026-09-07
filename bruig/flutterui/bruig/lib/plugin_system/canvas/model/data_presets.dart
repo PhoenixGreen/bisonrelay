@@ -41,6 +41,39 @@ class DataPreset {
 
   final List<SourceColumn> columns;
 
+  /// shape is how the response is laid out. See [DataShape]: a league table
+  /// is a list of records, a chain's history is parallel arrays.
+  final DataShape shape;
+
+  /// columnsFor is the mapping when it depends on which choice was made.
+  ///
+  /// A league table is the same columns whichever competition it is. A chain
+  /// chart is not: the array holding the values is called "price" for one and
+  /// "supply" for the next, and the number in it is in atoms for some and in
+  /// blocks for others. So the choice picks the columns rather than only the
+  /// address.
+  final List<SourceColumn> Function(String choice)? columnsFor;
+
+  /// tables and charts are which elements this recipe is offered to.
+  ///
+  /// A daily series going back to 2016 is four thousand rows, which is a
+  /// chart and is not a table anybody wants on a canvas. A league table is a
+  /// table, and a chart of it comes from the table beside it rather than from
+  /// a second request -- see [TableLink].
+  final bool tables;
+  final bool charts;
+
+  /// chartCategory and chartValues are which of the columns a chart uses for
+  /// its axis and its series, so choosing a preset leaves a chart drawn
+  /// rather than mapped and empty.
+  final int chartCategory;
+  final List<int> chartValues;
+
+  /// chartPoints is how many points to keep. See [ChartElement] -- four
+  /// thousand daily figures on a chart eight inches wide is four thousand
+  /// bars a third of a pixel apart.
+  final int chartPoints;
+
   /// fields is what a record is known to carry, so the mapping can offer a
   /// list before anything has been fetched.
   final List<String> fields;
@@ -82,19 +115,31 @@ class DataPreset {
     required this.rowsPath,
     required this.columns,
     this.matchColumn = -1,
+    this.shape = DataShape.records,
+    this.columnsFor,
+    this.tables = true,
+    this.charts = false,
+    this.chartCategory = 0,
+    this.chartValues = const [1],
+    this.chartPoints = 0,
     this.hiddenHeaders = const [],
     this.fields = const [],
     this.derived = const [],
     this.derive,
   });
 
+  /// columnsIn is the mapping for one choice. See [columnsFor].
+  List<SourceColumn> columnsIn(String choice) =>
+      columnsFor?.call(choice) ?? columns;
+
   /// applyTo is [source] with this recipe written into it.
   DataSource applyTo(DataSource source, String choice) => source.copyWith(
         kind: DataKind.url,
         where: address(choice),
         rowsPath: rowsPath,
-        columns: columns,
+        columns: columnsIn(choice),
         matchColumn: matchColumn,
+        shape: shape,
         preset: id,
       );
 }
@@ -208,8 +253,204 @@ final DataPreset footballData = DataPreset(
   columns: footballDataColumns,
 );
 
+// ---------------------------------------------------------------------------
+// The chain and market series.
+//
+// Both of these were checked against the live APIs rather than written from
+// documentation, because the shape is the whole of the mapping and there is
+// nothing to be gained by guessing at it.
+
+/// _DcrChart is one of dcrdata's series: the name in the address, what the
+/// array of values is called, and how to make it readable.
+class _DcrChart {
+  final String name;
+  final String label;
+
+  /// field is the array the values are in. Every one of these responds with a
+  /// "t" of timestamps and one other array, named for what it holds.
+  final String field;
+
+  /// divide brings atoms into DCR. The chain counts money in hundred-
+  /// millionths and a chart of two hundred million ticket-atoms is a chart
+  /// with the wrong story on it.
+  final double divide;
+
+  /// query is what the endpoint needs to answer at all. Most of these bin by
+  /// day when asked to; a few return nothing for bin=day and have to be left
+  /// to the server's own default.
+  final String query;
+
+  const _DcrChart(this.name, this.label, this.field,
+      {this.divide = 1, this.query = "bin=day&axis=time"});
+}
+
+const List<_DcrChart> _dcrCharts = [
+  _DcrChart("coin-supply", "Coin supply (DCR)", "supply",
+      divide: 1e8, query: "axis=time"),
+  _DcrChart("ticket-price", "Ticket price (DCR)", "price", divide: 1e8),
+  _DcrChart("pow-difficulty", "Proof-of-work difficulty", "diff"),
+  _DcrChart("hashrate", "Hashrate", "rate"),
+  _DcrChart("tx-count", "Transactions per day", "count", query: "axis=time"),
+  _DcrChart("fees", "Fees paid (DCR)", "fees", divide: 1e8),
+  _DcrChart("ticket-pool-size", "Tickets in the pool", "count",
+      query: "axis=time"),
+  _DcrChart("block-size", "Block size (bytes)", "size"),
+  _DcrChart("duration-btw-blocks", "Seconds between blocks", "duration"),
+  _DcrChart("missed-votes", "Missed votes", "missed", query: "axis=time"),
+];
+
+_DcrChart _dcrChart(String name) => _dcrCharts.firstWhere((c) => c.name == name,
+    orElse: () => _dcrCharts.first);
+
+/// dcrdataChart is Decred's own chain history.
+///
+/// No key, no account, and the numbers are the chain's rather than an
+/// exchange's opinion of it. The response is parallel arrays -- an array of
+/// timestamps and an array of values -- which is why [DataShape.columns]
+/// exists.
+final DataPreset dcrdataChart = DataPreset(
+  id: "dcrdata.decred.org",
+  label: "Decred chain history (dcrdata)",
+  shortLabel: "dcrdata",
+  note: "No key needed. dcrdata is Decred's own block explorer, so these are "
+      "the chain's figures rather than an exchange's.",
+  choiceLabel: "Series",
+  choices: [for (var c in _dcrCharts) (c.name, c.label)],
+  address: (name) =>
+      "https://dcrdata.decred.org/api/chart/$name?${_dcrChart(name).query}",
+  // The arrays are the document itself, so there is no path to the rows.
+  rowsPath: "",
+  shape: DataShape.columns,
+  tables: false,
+  charts: true,
+  chartCategory: 0,
+  chartValues: const [1],
+  // Daily since 2016 is four thousand points. A chart is read at a glance and
+  // a canvas is eight inches wide.
+  chartPoints: 120,
+  fields: const ["t", "supply", "price", "diff", "rate", "count", "fees"],
+  columns: const [],
+  columnsFor: (name) {
+    var chart = _dcrChart(name);
+    return [
+      const SourceColumn(header: "Date", path: "t", date: "MMM yy"),
+      SourceColumn(
+          header: chart.label, path: chart.field, divide: chart.divide),
+    ];
+  },
+);
+
+/// _geckoCoins is the list offered rather than every coin there is.
+///
+/// CoinGecko has thousands, and a dropdown of thousands is a worse way to
+/// choose one than typing its name into the address. These are the ones
+/// somebody building a canvas in this app is likely to want, Decred first.
+const List<(String, String)> _geckoCoins = [
+  ("decred", "Decred"),
+  ("bitcoin", "Bitcoin"),
+  ("ethereum", "Ethereum"),
+  ("monero", "Monero"),
+  ("litecoin", "Litecoin"),
+  ("zcash", "Zcash"),
+  ("dash", "Dash"),
+  ("solana", "Solana"),
+];
+
+/// coinGeckoPrice is a coin's price history.
+///
+/// Recommended over CoinMarketCap for the reason that decides it: the free
+/// tier here answers with history, and CoinMarketCap's answers with the
+/// latest price only. A chart of one point is not a chart.
+///
+/// The response is a list of two-element arrays -- [when, what] -- so the
+/// paths into a record are "0" and "1". That falls out of the existing walker
+/// rather than needing anything new: a number in a path is a list index.
+final DataPreset coinGeckoPrice = DataPreset(
+  id: "coingecko.price",
+  label: "Coin price history (CoinGecko)",
+  shortLabel: "CoinGecko",
+  note: "No key needed on the free plan, which is rate-limited to a handful "
+      "of requests a minute — plenty for a chart somebody presses refresh on.",
+  choiceLabel: "Coin",
+  choices: _geckoCoins,
+  address: (coin) => "https://api.coingecko.com/api/v3/coins/$coin"
+      "/market_chart?vs_currency=usd&days=365&interval=daily",
+  rowsPath: "prices",
+  tables: false,
+  charts: true,
+  chartCategory: 0,
+  chartValues: const [1],
+  chartPoints: 120,
+  fields: const ["0", "1"],
+  columns: const [
+    SourceColumn(header: "Date", path: "0", date: "MMM yy"),
+    SourceColumn(header: "Price (USD)", path: "1"),
+  ],
+);
+
+/// coinGeckoMarkets is several coins side by side, as they stand now.
+///
+/// A list of records, so it maps the ordinary way, and the one preset here
+/// that suits a table as readily as a chart: eight rows of name, price and
+/// market cap is a table somebody would keep.
+final DataPreset coinGeckoMarkets = DataPreset(
+  id: "coingecko.markets",
+  label: "Coin comparison (CoinGecko)",
+  shortLabel: "CoinGecko",
+  note: "No key needed. One row per coin, as they stand at the moment it is "
+      "refreshed.",
+  choiceLabel: "Coins",
+  choices: const [
+    ("decred,bitcoin,ethereum,monero,litecoin,zcash,dash", "A spread"),
+    ("bitcoin,ethereum,solana,cardano,polkadot,chainlink", "The large ones"),
+    ("decred,monero,zcash,dash,litecoin", "Privacy and proof of work"),
+  ],
+  address: (ids) => "https://api.coingecko.com/api/v3/coins/markets"
+      "?vs_currency=usd&ids=$ids&order=market_cap_desc",
+  rowsPath: "",
+  tables: true,
+  charts: true,
+  matchColumn: 0,
+  chartCategory: 0,
+  chartValues: const [1],
+  fields: const [
+    "id",
+    "symbol",
+    "name",
+    "image",
+    "current_price",
+    "market_cap",
+    "market_cap_rank",
+    "total_volume",
+    "high_24h",
+    "low_24h",
+    "price_change_percentage_24h",
+    "circulating_supply",
+    "total_supply",
+    "ath",
+  ],
+  columns: const [
+    SourceColumn(header: "Coin", path: "name"),
+    SourceColumn(header: "Price (USD)", path: "current_price"),
+    SourceColumn(header: "Market cap (\$m)", path: "market_cap", divide: 1e6),
+    SourceColumn(header: "Volume (\$m)", path: "total_volume", divide: 1e6),
+    SourceColumn(header: "24h %", path: "price_change_percentage_24h"),
+  ],
+);
+
 /// dataPresets is every recipe there is.
-final List<DataPreset> dataPresets = [footballData];
+final List<DataPreset> dataPresets = [
+  footballData,
+  dcrdataChart,
+  coinGeckoPrice,
+  coinGeckoMarkets,
+];
+
+/// presetsFor is the recipes offered to one kind of element.
+List<DataPreset> presetsFor({required bool chart}) => [
+      for (var p in dataPresets)
+        if (chart ? p.charts : p.tables) p
+    ];
 
 DataPreset? presetById(String id) {
   for (var preset in dataPresets) {

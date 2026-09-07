@@ -197,6 +197,22 @@ class ChartElement extends CanvasElement {
   /// to be rebuilt by hand every time the table changed.
   final TableLink fromTable;
 
+  /// source is where the chart fetches its own numbers, when it does.
+  ///
+  /// A chart used to have two ways to get data: typed in, or taken from a
+  /// table on the same canvas. The table is still the right answer when both
+  /// are on the page -- one request, one set of figures, and they cannot
+  /// disagree -- but a chart of a chain's history has no table beside it and
+  /// nobody wants four thousand daily rows in one.
+  ///
+  /// The data above is still the chart's own. This says where it came from, so
+  /// that Refresh can go and get it again.
+  final DataSource source;
+
+  /// fromSource is which of the fetched columns are the axis and the series,
+  /// and how many points to keep. See [ChartSourceMap].
+  final ChartSourceMap fromSource;
+
   final String title;
   final String description;
 
@@ -294,6 +310,8 @@ class ChartElement extends CanvasElement {
     this.type = ChartType.bar,
     this.data = const ChartData(),
     this.fromTable = const TableLink(),
+    this.source = const DataSource(),
+    this.fromSource = const ChartSourceMap(),
     this.title = "",
     this.description = "",
     this.titleBox = const ChartLabel(),
@@ -357,6 +375,8 @@ class ChartElement extends CanvasElement {
     ChartType? type,
     ChartData? data,
     TableLink? fromTable,
+    DataSource? source,
+    ChartSourceMap? fromSource,
     String? title,
     String? description,
     ChartLabel? titleBox,
@@ -390,6 +410,8 @@ class ChartElement extends CanvasElement {
           type: type,
           data: data,
           fromTable: fromTable,
+          source: source,
+          fromSource: fromSource,
           title: title,
           description: description,
           titleBox: titleBox,
@@ -427,6 +449,8 @@ class ChartElement extends CanvasElement {
     ChartType? type,
     ChartData? data,
     TableLink? fromTable,
+    DataSource? source,
+    ChartSourceMap? fromSource,
     String? title,
     String? description,
     ChartLabel? titleBox,
@@ -460,6 +484,8 @@ class ChartElement extends CanvasElement {
           type: type ?? this.type,
           data: data ?? this.data,
           fromTable: fromTable ?? this.fromTable,
+          source: source ?? this.source,
+          fromSource: fromSource ?? this.fromSource,
           title: title ?? this.title,
           description: description ?? this.description,
           titleBox: titleBox ?? this.titleBox,
@@ -494,6 +520,8 @@ class ChartElement extends CanvasElement {
         "type": type.name,
         "data": data.toJson(),
         if (fromTable.on) "fromTable": fromTable.toJson(),
+        if (source.on) "source": source.toJson(),
+        if (source.on) "fromSource": fromSource.toJson(),
         if (title.isNotEmpty) "title": title,
         if (description.isNotEmpty) "desc": description,
         if (titleBox.toJson().isNotEmpty) "titleBox": titleBox.toJson(),
@@ -533,13 +561,16 @@ class ChartElement extends CanvasElement {
       ChartElement(b,
           type: ChartType.fromName(json["type"] as String?),
           data: jsonSpec(json["data"], ChartData.fromJson, const ChartData()),
-          fromTable: jsonSpec(json["fromTable"], TableLink.fromJson,
-              const TableLink()),
+          fromTable: jsonSpec(
+              json["fromTable"], TableLink.fromJson, const TableLink()),
+          source: jsonSpec(
+              json["source"], DataSource.fromJson, const DataSource()),
+          fromSource: jsonSpec(json["fromSource"], ChartSourceMap.fromJson,
+              const ChartSourceMap()),
           title: jsonString(json["title"], ""),
           description: jsonString(json["desc"], ""),
-          titleBox:
-              jsonSpec(json["titleBox"], ChartLabel.fromJson,
-                  const ChartLabel()),
+          titleBox: jsonSpec(json["titleBox"], ChartLabel.fromJson,
+              const ChartLabel()),
           descriptionBox:
               jsonSpec(json["descBox"], ChartLabel.fromJson,
                   const ChartLabel(height: 0.1)),
@@ -580,6 +611,123 @@ class ChartElement extends CanvasElement {
           smooth: jsonBool(json["smooth"], false));
 }
 
+/// ChartSourceMap is which of a fetched source's columns the chart draws.
+///
+/// The same choice [TableLink] makes about a table's columns, made about the
+/// columns a DataSource maps -- and a separate class from it because the two
+/// answer different questions. One is "which table, and which of its
+/// columns"; this is "of what I fetched, what is the axis".
+class ChartSourceMap {
+  /// categoryColumn is the column the labels along the axis come from -- the
+  /// date, usually.
+  final int categoryColumn;
+
+  /// valueColumns are the columns that become series, in order.
+  final List<int> valueColumns;
+
+  /// maxPoints is how many to keep, or zero for all of them.
+  ///
+  /// A daily series going back to 2016 is four thousand points, and a canvas
+  /// is eight inches wide: drawn in full it is four thousand bars a third of
+  /// a pixel apart, and the labels underneath are a grey smear. Thinning is
+  /// not a summary -- the points kept are real ones, evenly spaced, with the
+  /// most recent always among them.
+  final int maxPoints;
+
+  const ChartSourceMap({
+    this.categoryColumn = 0,
+    this.valueColumns = const [1],
+    this.maxPoints = 0,
+  });
+
+  ChartSourceMap copyWith({
+    int? categoryColumn,
+    List<int>? valueColumns,
+    int? maxPoints,
+  }) =>
+      ChartSourceMap(
+        categoryColumn: categoryColumn ?? this.categoryColumn,
+        valueColumns: valueColumns ?? this.valueColumns,
+        maxPoints: maxPoints ?? this.maxPoints,
+      );
+
+  Map<String, dynamic> toJson() => {
+        "cat": categoryColumn,
+        "vals": valueColumns,
+        if (maxPoints > 0) "max": maxPoints,
+      };
+
+  factory ChartSourceMap.fromJson(Map<String, dynamic> json) => ChartSourceMap(
+        categoryColumn: jsonInt(json["cat"], 0),
+        valueColumns: [
+          if (json["vals"] case List raw)
+            for (var v in raw)
+              if (v is num) v.toInt(),
+        ],
+        maxPoints: jsonInt(json["max"], 0),
+      );
+}
+
+/// chartDataFromRows turns mapped rows into a chart's numbers.
+///
+/// Shared by the two ways a chart gets data that it did not have typed into
+/// it -- a table on the canvas, and a source of its own -- because the last
+/// step is the same either way and doing it twice is how two paths that
+/// should agree stop agreeing.
+///
+/// A cell that is not a number counts as zero rather than stopping the whole
+/// thing: a league table has a crest column in it, and picking the wrong one
+/// should give a chart that is obviously wrong rather than an error.
+ChartData chartDataFromRows(
+  List<List<String>> rows,
+  ChartSourceMap map, {
+  bool headerRow = true,
+  String Function(int column)? nameOf,
+}) {
+  if (map.valueColumns.isEmpty || rows.isEmpty) return const ChartData();
+  var body = headerRow ? rows.skip(1).toList() : rows;
+  body = thinTo(body, map.maxPoints);
+
+  String header(int column) =>
+      nameOf?.call(column) ??
+      (headerRow && column < rows.first.length ? rows.first[column] : "");
+
+  return ChartData(
+    categories: [
+      for (var row in body)
+        map.categoryColumn < row.length ? row[map.categoryColumn] : "",
+    ],
+    series: [
+      for (var (i, column) in map.valueColumns.indexed)
+        ChartSeries(
+          name: header(column),
+          color: chartPalette[i % chartPalette.length],
+          values: [
+            for (var row in body)
+              column < row.length ? (cellNumber(row[column]) ?? 0) : 0,
+          ],
+        ),
+    ],
+  );
+}
+
+/// thinTo keeps at most [most] rows, evenly spread, ending on the last one.
+///
+/// Ending on the last one is the part that matters: a price chart whose final
+/// point is three weeks old because the arithmetic happened to stop there is
+/// a chart that is quietly wrong about today. Counted backwards from the end
+/// for exactly that reason.
+List<List<String>> thinTo(List<List<String>> rows, int most) {
+  if (most <= 0 || rows.length <= most) return rows;
+  if (most == 1) return [rows.last];
+  // Spread from the first row to the last inclusive, so the chart still
+  // starts where the history starts and ends where it ends.
+  var step = (rows.length - 1) / (most - 1);
+  return [
+    for (var i = 0; i < most; i++) rows[(i * step).round()],
+  ];
+}
+
 /// chartDataFromTable is [link] applied to [table]: the chart's numbers taken
 /// from the table's cells.
 ///
@@ -590,23 +738,14 @@ class ChartElement extends CanvasElement {
 /// should give a flat chart that is obviously wrong, not an error.
 ChartData chartDataFromTable(TableElement table, TableLink link) {
   if (!link.on) return const ChartData();
-  var body = table.headerRow ? table.rows.skip(1).toList() : table.rows;
-
-  return ChartData(
-    categories: [
-      for (var row in body)
-        link.categoryColumn < row.length ? row[link.categoryColumn] : "",
-    ],
-    series: [
-      for (var (i, column) in link.valueColumns.indexed)
-        ChartSeries(
-          name: table.columnName(column),
-          color: chartPalette[i % chartPalette.length],
-          values: [
-            for (var row in body)
-              column < row.length ? (cellNumber(row[column]) ?? 0) : 0,
-          ],
-        ),
-    ],
+  return chartDataFromRows(
+    table.rows,
+    ChartSourceMap(
+        categoryColumn: link.categoryColumn, valueColumns: link.valueColumns),
+    headerRow: table.headerRow,
+    // The table's own name for the column, which is not always the header
+    // cell: a hidden heading still has a name, and that is what the series
+    // should be called.
+    nameOf: table.columnName,
   );
 }
