@@ -222,10 +222,6 @@ class StagePainter extends CustomPainter {
 
     _paintGuides(canvas);
     _paintFraming(canvas);
-    // Last of the furniture, and drawn in the widget's own pixels rather than
-    // the document's: a ruler is a fixed strip at the edge of the window, and
-    // what moves under it is the canvas.
-    _paintRulers(canvas, size);
     _paintSelection(canvas);
 
     if (marquee != null) {
@@ -325,6 +321,13 @@ class StagePainter extends CustomPainter {
           ),
       );
     }
+
+    // The rulers last of everything, in the widget's own pixels rather than
+    // the document's and outside the page clip -- a ruler is a fixed strip
+    // along the edge of the *window*, and what moves under it is the canvas.
+    // Drawn inside the clip, as they first were, they were clipped away
+    // entirely and no ruler ever appeared.
+    _paintRulers(canvas, size);
   }
 
   /// _paintChartLabels outlines a chart's placed title and description, with a
@@ -552,9 +555,16 @@ class StagePainter extends CustomPainter {
     canvas.save();
     canvas.translate(origin.dx, origin.dy);
     canvas.scale(scale);
-    canvas.clipRect(page);
 
-    var size = Size(page.width, page.height);
+    // In document units, because that is the space the canvas is in after
+    // the transform above. page is the frame *on screen*: adding sheet.left to
+    // a guide's position, as this did, put the grid and every guide a few
+    // hundred units to the right of where they belong -- and moved them
+    // whenever the window was resized, since the frame's position on screen
+    // is what changes when it is.
+    var sheet = Offset.zero & document.size.size;
+    var size = sheet.size;
+    canvas.clipRect(sheet);
     // Hairlines: divided by the zoom so a guide is one pixel on screen at
     // every magnification, which is what a guide is for.
     var thin = 1 / scale;
@@ -572,20 +582,20 @@ class StagePainter extends CustomPainter {
         ..color = const Color(0x40FFFFFF);
 
       for (var x in minorX) {
-        canvas.drawLine(Offset(page.left + x, page.top),
-            Offset(page.left + x, page.bottom), minor);
+        canvas.drawLine(Offset(sheet.left + x, sheet.top),
+            Offset(sheet.left + x, sheet.bottom), minor);
       }
       for (var y in minorY) {
-        canvas.drawLine(Offset(page.left, page.top + y),
-            Offset(page.right, page.top + y), minor);
+        canvas.drawLine(Offset(sheet.left, sheet.top + y),
+            Offset(sheet.right, sheet.top + y), minor);
       }
       for (var x in majorX) {
-        canvas.drawLine(Offset(page.left + x, page.top),
-            Offset(page.left + x, page.bottom), major);
+        canvas.drawLine(Offset(sheet.left + x, sheet.top),
+            Offset(sheet.left + x, sheet.bottom), major);
       }
       for (var y in majorY) {
-        canvas.drawLine(Offset(page.left, page.top + y),
-            Offset(page.right, page.top + y), major);
+        canvas.drawLine(Offset(sheet.left, sheet.top + y),
+            Offset(sheet.right, sheet.top + y), major);
       }
     }
 
@@ -595,11 +605,11 @@ class StagePainter extends CustomPainter {
         ..color = const Color(0xAA35C4F0);
       for (var guide in guides.guides) {
         if (guide.axis == GuideAxis.vertical) {
-          canvas.drawLine(Offset(page.left + guide.at, page.top),
-              Offset(page.left + guide.at, page.bottom), paint);
+          canvas.drawLine(Offset(sheet.left + guide.at, sheet.top),
+              Offset(sheet.left + guide.at, sheet.bottom), paint);
         } else {
-          canvas.drawLine(Offset(page.left, page.top + guide.at),
-              Offset(page.right, page.top + guide.at), paint);
+          canvas.drawLine(Offset(sheet.left, sheet.top + guide.at),
+              Offset(sheet.right, sheet.top + guide.at), paint);
         }
       }
     }
@@ -611,12 +621,12 @@ class StagePainter extends CustomPainter {
         ..strokeWidth = thin * 1.5
         ..color = const Color(0xFFFF4081);
       if (it.onVertical case var x?) {
-        canvas.drawLine(Offset(page.left + x, page.top),
-            Offset(page.left + x, page.bottom), paint);
+        canvas.drawLine(Offset(sheet.left + x, sheet.top),
+            Offset(sheet.left + x, sheet.bottom), paint);
       }
       if (it.onHorizontal case var y?) {
-        canvas.drawLine(Offset(page.left, page.top + y),
-            Offset(page.right, page.top + y), paint);
+        canvas.drawLine(Offset(sheet.left, sheet.top + y),
+            Offset(sheet.right, sheet.top + y), paint);
       }
     }
     canvas.restore();
@@ -646,8 +656,12 @@ class StagePainter extends CustomPainter {
 
     // Where the page's origin sits on screen, which is what every number is
     // measured from.
-    var zero =
-        Offset(page.left * scale + origin.dx, page.top * scale + origin.dy);
+    // The page's top-left in document units is (0, 0), so on screen it is
+    // exactly the origin. (page.left is already a screen number; putting it
+    // through the transform a second time is what pushed every tick off the
+    // canvas it was measuring.)
+    var zero = origin;
+    var sheet = document.size.size;
 
     void number(double at, Offset where, {required bool vertical}) {
       var painter = TextPainter(
@@ -686,7 +700,7 @@ class StagePainter extends CustomPainter {
       // the canvas would be measuring something that is not there.
       for (var i = 0;; i++) {
         var at = i * step;
-        if (at > page.width) break;
+        if (at > sheet.width) break;
         var x = zero.dx + at * scale;
         if (x < -20 || x > size.width + 20) continue;
         canvas.drawLine(Offset(x, top ? band.bottom - 5 : band.top),
@@ -708,7 +722,7 @@ class StagePainter extends CustomPainter {
 
       for (var i = 0;; i++) {
         var at = i * step;
-        if (at > page.height) break;
+        if (at > sheet.height) break;
         var y = zero.dy + at * scale;
         if (y < -20 || y > size.height + 20) continue;
         canvas.drawLine(Offset(left ? band.right - 5 : band.left, y),

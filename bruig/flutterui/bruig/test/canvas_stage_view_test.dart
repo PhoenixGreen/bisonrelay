@@ -2973,4 +2973,125 @@ void main() {
       expect(controller.document.guides.guides.single.at, 400);
     });
   });
+
+  group("where the scaffolding is drawn", () {
+    // Reported against the first version of this: the grid did not cover the
+    // canvas, it sat somewhere near it and moved when the window was resized,
+    // and no ruler appeared at all whichever of the four were switched on.
+    //
+    // Both were one mistake each about which space a number was in. The
+    // painter is handed the page as a rectangle *on screen*; the grid and the
+    // guides are drawn after the canvas has been translated and scaled into
+    // document units, where the page starts at (0, 0). Adding the screen
+    // rectangle's corner to a document position put everything a few hundred
+    // units out -- and by an amount that changed with the window, which is
+    // exactly what was reported. The rulers, meanwhile, were painted inside
+    // the clip that keeps the design on the page, so the strips along the
+    // edges of the window were clipped away entirely.
+    //
+    // Measured by rendering the real painter -- the one the pumped stage
+    // built, with its own page, origin and zoom -- and looking at the pixels,
+    // because the whole question is where a mark lands.
+
+    // A tall document, so the page is a narrow column with editor either side
+    // of it: that leaves somewhere outside the page to look for a ruler.
+    const tall = CanvasSize(
+        width: 600, ratio: CanvasRatio.custom, customRatio: 600 / 1080);
+
+    // The pixels, and the page they were drawn against.
+    Future<(ByteData, Rect)> shotOf(
+        WidgetTester tester, CanvasGuides guides) async {
+      var controller = CanvasController(
+          const CanvasDocument(size: tall).copyWith(guides: guides));
+      addTearDown(controller.dispose);
+      var stage = await pump(tester, controller);
+
+      var painter = tester
+          .widgetList<CustomPaint>(find.byType(CustomPaint))
+          .map((c) => c.painter)
+          .whereType<StagePainter>()
+          .single;
+
+      late ByteData data;
+      await tester.runAsync(() async {
+        var recorder = ui.PictureRecorder();
+        painter.paint(ui.Canvas(recorder), viewport);
+        var image = await recorder
+            .endRecording()
+            .toImage(viewport.width.round(), viewport.height.round());
+        data = (await image.toByteData())!;
+      });
+      return (data, stage.pageRect);
+    }
+
+    int at(ByteData data, int x, int y) =>
+        data.getUint32((y * viewport.width.round() + x) * 4);
+
+    testWidgets("the grid covers the page and stops at its edges",
+        (tester) async {
+      // 120 divides 600 and 1080 exactly, so there is a line on both edges.
+      var (plain, _) = await shotOf(tester, const CanvasGuides());
+      var (gridded, page) = await shotOf(
+          tester, const CanvasGuides(showGrid: true, gridSize: 120));
+
+      var row = viewport.height ~/ 2;
+      var drawn = <int>[
+        for (var x = 0; x < viewport.width; x++)
+          if (at(plain, x, row) != at(gridded, x, row)) x,
+      ];
+      expect(drawn, isNotEmpty, reason: "no grid was drawn at all");
+
+      expect(drawn.first, closeTo(page.left, 2));
+      expect(drawn.last, closeTo(page.right, 2));
+
+      // And it is a grid rather than two lines: 600 wide at 120 is six
+      // uprights, however the window is sized.
+      var runs = 1;
+      for (var i = 1; i < drawn.length; i++) {
+        if (drawn[i] != drawn[i - 1] + 1) runs++;
+      }
+      expect(runs, 6);
+    });
+
+    testWidgets("a guide is drawn where the number says it is", (tester) async {
+      var (plain, _) = await shotOf(tester, const CanvasGuides());
+      var (withOne, page) = await shotOf(
+          tester,
+          const CanvasGuides(
+              guides: [CanvasGuide(axis: GuideAxis.vertical, at: 300)]));
+
+      var row = viewport.height ~/ 2;
+      var drawn = <int>[
+        for (var x = 0; x < viewport.width; x++)
+          if (at(plain, x, row) != at(withOne, x, row)) x,
+      ];
+      expect(drawn, isNotEmpty, reason: "the guide was not drawn");
+
+      // Halfway across a 600-wide canvas is the middle of the page.
+      expect(drawn.first, closeTo(page.center.dx, 2));
+      expect(drawn.last, closeTo(page.center.dx, 2));
+    });
+
+    testWidgets("every ruler that is switched on is drawn", (tester) async {
+      var (plain, _) = await shotOf(tester, const CanvasGuides());
+      var (ruled, _) = await shotOf(
+          tester,
+          const CanvasGuides(
+              rulers: CanvasRulers(
+                  top: true, left: true, right: true, bottom: true)));
+
+      var mid = (x: viewport.width ~/ 2, y: viewport.height ~/ 2);
+      var edges = {
+        "left": (2, mid.y),
+        "right": (viewport.width.round() - 3, mid.y),
+        "top": (mid.x, 2),
+        "bottom": (mid.x, viewport.height.round() - 3),
+      };
+      for (var edge in edges.entries) {
+        var (x, y) = edge.value;
+        expect(at(ruled, x, y), isNot(at(plain, x, y)),
+            reason: "nothing was drawn along the ${edge.key}");
+      }
+    });
+  });
 }
