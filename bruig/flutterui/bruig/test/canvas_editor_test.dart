@@ -4335,6 +4335,31 @@ void main() {
           reason: "and the supply is still the series");
     });
 
+    testWidgets("which end a chart empties from is its own switch",
+        (tester) async {
+      // Not eight more entries in the preset list: "which preset" and "which
+      // end it starts from" are different questions, and the list is long
+      // enough already.
+      var controller = await panel(tester);
+      await open(tester, "ANIMATION", "On the way out");
+      expect(find.text("In the same order"), findsNothing,
+          reason: "there is no way out to order yet");
+
+      var chart = controller.document.elements.single as ChartElement;
+      controller.applyChartExit(chart, ChartAnimationPreset.grow);
+      await tester.pumpAndSettle();
+
+      await tester.ensureVisible(find.text("In the same order"));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text("In the same order"));
+      await tester.pumpAndSettle();
+
+      var after = controller.document.elements.single as ChartElement;
+      expect(after.animation.exitInOrder, isTrue);
+      expect(after.animation.leaving.flipOrder, isTrue,
+          reason: "which is what the painter draws the way out with");
+    });
+
     testWidgets("a date axis can be read at intervals", (tester) async {
       // Thinning evenly gives a readable chart and a meaningless axis: the
       // points land wherever the arithmetic put them. One a year, on a date

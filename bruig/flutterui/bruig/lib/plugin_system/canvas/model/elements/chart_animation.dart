@@ -169,6 +169,27 @@ class ChartAnimation {
   /// on one object, and nobody asked for that.
   final ChartAnimationPreset exit;
 
+  /// exitInOrder empties the chart the way it filled: the first item leaves
+  /// first, then the second, and so on.
+  ///
+  /// A different thing from the exit preset, and the reason it is a switch
+  /// rather than eight more entries in the list. "Grow, reversed" is the
+  /// entrance run backwards, so the *last* bar sinks first and the chart
+  /// unwinds; with this on, the same shrinking runs front to back, so the
+  /// chart empties from the left. Both are wanted -- one reads as rewinding,
+  /// the other as clearing away -- and neither can be had by choosing a
+  /// different preset.
+  final bool exitInOrder;
+
+  /// flipOrder reverses which item is staggered first.
+  ///
+  /// Not saved and never set by hand: it is what [leaving] puts on the copy
+  /// the painter draws the way out with. The order an animation runs in is a
+  /// fact about the direction it is being played, not about the chart, so
+  /// storing it beside [exitInOrder] would be the same answer written down
+  /// twice with a chance of disagreeing.
+  final bool flipOrder;
+
   /// gap is how long after one item starts before the next does, as a
   /// fraction of one item's own movement.
   ///
@@ -182,6 +203,8 @@ class ChartAnimation {
   const ChartAnimation({
     this.preset = ChartAnimationPreset.none,
     this.exit = ChartAnimationPreset.none,
+    this.exitInOrder = false,
+    this.flipOrder = false,
     this.gap = 0.55,
     this.ease = ChartEase.easeOut,
   });
@@ -198,17 +221,21 @@ class ChartAnimation {
   /// the slices, the candles, the legend -- goes on asking the one object how
   /// far along something is and never has to know which half of the timeline
   /// it is drawing.
-  ChartAnimation get leaving => copyWith(preset: exit);
+  ChartAnimation get leaving => copyWith(preset: exit, flipOrder: exitInOrder);
 
   ChartAnimation copyWith({
     ChartAnimationPreset? preset,
     ChartAnimationPreset? exit,
+    bool? exitInOrder,
+    bool? flipOrder,
     double? gap,
     ChartEase? ease,
   }) =>
       ChartAnimation(
         preset: preset ?? this.preset,
         exit: exit ?? this.exit,
+        exitInOrder: exitInOrder ?? this.exitInOrder,
+        flipOrder: flipOrder ?? this.flipOrder,
         gap: gap ?? this.gap,
         ease: ease ?? this.ease,
       );
@@ -231,6 +258,11 @@ class ChartAnimation {
     var step = gap.clamp(0.0, 4.0);
     var total = 1 + step * (count - 1);
     var place = preset.scrambles ? scrambled(index, count) : index.toDouble();
+    // Which end the stagger starts from. On the way out the whole movement
+    // runs backwards, so the item with the *last* place is the first to go --
+    // which is the chart unwinding. Flipping the places instead empties it
+    // from the front. See flipOrder.
+    if (flipOrder) place = (count - 1) - place;
     var local = (reveal * total - step * place).clamp(0.0, 1.0);
     return ease.apply(local);
   }
@@ -270,6 +302,7 @@ class ChartAnimation {
   Map<String, dynamic> toJson() => {
         "preset": preset.name,
         if (closes) "exit": exit.name,
+        if (closes && exitInOrder) "exitOrder": true,
         "gap": gap,
         "ease": ease.name,
       };
@@ -277,6 +310,7 @@ class ChartAnimation {
   factory ChartAnimation.fromJson(Map<String, dynamic> json) => ChartAnimation(
         preset: ChartAnimationPreset.fromName(json["preset"] as String?),
         exit: ChartAnimationPreset.fromName(json["exit"] as String?),
+        exitInOrder: jsonBool(json["exitOrder"], false),
         gap: jsonDouble(json["gap"], 0.55).clamp(0.0, 4.0),
         ease: ChartEase.fromName(json["ease"] as String?),
       );

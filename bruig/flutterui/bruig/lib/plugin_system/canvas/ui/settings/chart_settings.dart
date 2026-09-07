@@ -570,6 +570,24 @@ List<Widget> chartSettings(
               ],
               onChanged: (preset) => controller.applyChartExit(e, preset),
             ),
+            // Which end it starts from, which is a different question from
+            // which preset. Reversed is the entrance run backwards, so the
+            // last bar sinks first and the chart unwinds; in order runs the
+            // same shrinking front to back, so it empties from the left.
+            if (e.animation.closes)
+              CanvasToggle(
+                label: "In the same order",
+                value: e.animation.exitInOrder,
+                onChanged: (v) => now(e.copyWith(
+                    animation: e.animation.copyWith(exitInOrder: v))),
+              ),
+            if (e.animation.closes && e.animation.exit.staggers)
+              CanvasHint(e.animation.exitInOrder
+                  ? "The first bar goes first and the last goes last, so the "
+                      "chart empties the way it filled."
+                  : "The last bar goes first, which is the entrance played "
+                      "backwards — the chart unwinds. Switch it on above to "
+                      "empty it from the front instead."),
           ]),
           if (e.animation.on || e.animation.closes)
             CanvasControlGroup(label: "Timing", children: [

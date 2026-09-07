@@ -681,11 +681,68 @@ void main() {
       expect(await inkAt(close: 1), 0);
     });
 
+    test("which end it empties from is a separate choice", () {
+      // "Grow, reversed" is the entrance run backwards, so the last bar sinks
+      // first and the chart unwinds. The same shrinking front to back -- the
+      // chart emptying from the left -- is a different animation and cannot
+      // be had by choosing a different preset.
+      const unwinds = ChartAnimation(
+        exit: ChartAnimationPreset.grow,
+        gap: 1,
+        ease: ChartEase.linear,
+      );
+      const empties = ChartAnimation(
+        exit: ChartAnimationPreset.grow,
+        exitInOrder: true,
+        gap: 1,
+        ease: ChartEase.linear,
+      );
+
+      // A tenth of the way out, with ten bars.
+      var reveal = 0.9;
+      var first = unwinds.leaving.progressAt(reveal, 0, 10);
+      var last = unwinds.leaving.progressAt(reveal, 9, 10);
+      expect(last, lessThan(first),
+          reason: "unwinding: the last bar is already going and the first has "
+              "not started");
+
+      first = empties.leaving.progressAt(reveal, 0, 10);
+      last = empties.leaving.progressAt(reveal, 9, 10);
+      expect(first, lessThan(last),
+          reason: "emptying: the first bar goes first");
+    });
+
+    test("and it is only about the way out", () {
+      // The entrance is unaffected: the same object is asked how far along an
+      // item is on the way in, and the flip belongs to the copy the painter
+      // draws the exit with.
+      const animation = ChartAnimation(
+        preset: ChartAnimationPreset.grow,
+        exit: ChartAnimationPreset.grow,
+        exitInOrder: true,
+        gap: 1,
+        ease: ChartEase.linear,
+      );
+      expect(animation.flipOrder, isFalse);
+      expect(animation.progressAt(0.1, 0, 10),
+          greaterThan(animation.progressAt(0.1, 9, 10)),
+          reason: "arriving, the first bar is still the first to arrive");
+    });
+
     test("the way out survives being saved and read back", () {
       var animation = const ChartAnimation(
           preset: ChartAnimationPreset.grow, exit: ChartAnimationPreset.wipe);
       var back = ChartAnimation.fromJson(animation.toJson());
       expect(back.exit, ChartAnimationPreset.wipe);
+      expect(
+          ChartAnimation.fromJson(const ChartAnimation(
+                      exit: ChartAnimationPreset.grow, exitInOrder: true)
+                  .toJson())
+              .exitInOrder,
+          isTrue);
+      expect(back.flipOrder, isFalse,
+          reason: "which end it runs from is a fact about the direction it is "
+              "being played, not something saved with the chart");
       expect(back.preset, ChartAnimationPreset.grow);
       expect(back.leaving.preset, ChartAnimationPreset.wipe,
           reason: "which is what the painter draws with on the way out");
