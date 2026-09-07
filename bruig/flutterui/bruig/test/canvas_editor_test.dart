@@ -3016,7 +3016,7 @@ void main() {
       // It sits with the rest of the writing on the chart, which is a section
       // that starts shut.
       await labels(tester);
-      expect(find.text("Decimals"), findsNothing);
+      expect(find.text("Decimal places"), findsNothing);
 
       await press(tester, find.text("Automatic — 1000000, 12.5"));
       await tester.tap(find.text("Millions — 1.0M").last);
@@ -3027,8 +3027,29 @@ void main() {
       expect(chart.numbers.decimals, 1,
           reason: "seeded from what automatic was doing rather than reset to "
               "none");
-      expect(find.text("Decimals"), findsOneWidget);
+      expect(find.text("Decimal places"), findsOneWidget);
       expect(chart.numbers.format(1000000), "1.0M");
+    });
+
+    testWidgets("and the list shows what it is set to do", (tester) async {
+      // Listed with a fixed example, "Millions — 1.0M" reads as the only
+      // thing millions can be, and the places beside it look like something
+      // else's setting -- which is how somebody wanting 1.00M concludes they
+      // cannot have it.
+      await panel(tester,
+          shape: (e) => e.copyWith(
+              numbers: const ChartNumbers(
+                  style: NumberStyle.millions, decimals: 2)));
+      await labels(tester);
+
+      expect(find.text("Millions — 1.00M"), findsOneWidget);
+      expect(find.text("Millions — 1.0M"), findsNothing);
+      // Automatic keeps its own, because what it does is vary: one example
+      // would be a promise it does not make.
+      await press(tester, find.text("Millions — 1.00M"));
+      expect(find.text("Automatic — 1000000, 12.5"), findsWidgets);
+      expect(find.text("In full — 1,000,000.00"), findsWidgets,
+          reason: "the same two places, in the style beside it");
     });
 
     testWidgets("a pie is offered no axes, but still its values",

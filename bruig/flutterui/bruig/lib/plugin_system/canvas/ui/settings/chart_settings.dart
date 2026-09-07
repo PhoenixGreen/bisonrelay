@@ -335,7 +335,22 @@ List<Widget> chartSettings(
               width: 176,
               options: [
                 for (var style in NumberStyle.values)
-                  (style, "${style.label} — ${style.example}")
+                  (
+                    style,
+                    // What a million would actually look like *as this chart
+                    // is set*, rather than a fixed example. Listed as a fixed
+                    // one, "Millions — 1.0M" reads as the only thing millions
+                    // can be, and the places beside it look like something
+                    // else's setting -- which is exactly how somebody with
+                    // 1.00M in mind concludes they cannot have it.
+                    //
+                    // Automatic keeps its own, because what it does is vary:
+                    // one example would be a promise it does not make.
+                    style == NumberStyle.automatic
+                        ? "${style.label} — ${style.example}"
+                        : "${style.label} — "
+                            "${e.numbers.copyWith(style: style).format(1000000)}"
+                  )
               ],
               onChanged: (v) => now(e.copyWith(
                   numbers: e.numbers.copyWith(
@@ -352,7 +367,7 @@ List<Widget> chartSettings(
             // be a control that does nothing.
             if (e.numbers.style != NumberStyle.automatic) ...[
               CanvasNumberField(
-                label: "Decimals",
+                label: "Decimal places",
                 value: e.numbers.decimals.toDouble(),
                 min: 0,
                 max: 6,
