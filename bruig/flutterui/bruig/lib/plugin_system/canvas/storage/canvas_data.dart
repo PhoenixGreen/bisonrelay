@@ -34,10 +34,21 @@ class DataResult {
   /// moment the answer is known.
   final List<String> fields;
 
-  const DataResult.ok(this.rows, [this.fields = const []]) : problem = null;
+  /// raw is the same rows with any date column left as the timestamp it
+  /// arrived as. Empty when no column is a date.
+  ///
+  /// A chart choosing its points by date -- one a year, on the seventh of
+  /// February -- cannot read them off the formatted cells: "Feb 26" has lost
+  /// the day, and a two-digit year does not parse back to anything anybody
+  /// means. See rowsFromJson.
+  final List<List<String>> raw;
+
+  const DataResult.ok(this.rows, [this.fields = const [], this.raw = const []])
+      : problem = null;
   const DataResult.failed(this.problem)
       : rows = null,
-        fields = const [];
+        fields = const [],
+        raw = const [];
 
   bool get worked => rows != null;
 }
@@ -107,7 +118,15 @@ Future<DataResult> loadData(
         ? "No rows were found. Is the document a list?"
         : "No rows were found at ${source.rowsPath}.");
   }
-  return DataResult.ok(rows, _fieldsIn(valueAtPath(json, source.rowsPath)));
+  return DataResult.ok(
+    rows,
+    _fieldsIn(valueAtPath(json, source.rowsPath)),
+    // Only where there is a date to keep, since for everything else these are
+    // the same rows again.
+    source.columns.any((c) => c.date.isNotEmpty)
+        ? rowsFromJson(json, source, raw: true)
+        : const [],
+  );
 }
 
 /// _fieldsIn is every dotted path a record has, whether or not it holds

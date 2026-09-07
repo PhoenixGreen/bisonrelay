@@ -390,8 +390,23 @@ dynamic valueAtPath(dynamic json, String path) {
 /// Returns an empty list when the path does not lead to a list, which is what
 /// a caller shows as "nothing came back" -- there is nothing useful to do with
 /// half a table, and replacing good rows with rubbish is worse than refusing.
-List<List<String>> rowsFromJson(dynamic json, DataSource source) {
+/// [raw] leaves a date column as the timestamp it arrived as, rather than
+/// writing it out in the column's format.
+///
+/// For the one thing a formatted date cannot answer: which rows fall on a
+/// yearly boundary. "Feb 26" has lost the day, and two-digit years do not
+/// parse back to anything anybody means, so a chart choosing points by date
+/// is given the same rows a second time with the times still in them. Kept
+/// nowhere and used immediately -- the cells the reader sees are the
+/// formatted ones.
+List<List<String>> rowsFromJson(dynamic json, DataSource source,
+    {bool raw = false}) {
   if (source.columns.isEmpty) return const [];
+  if (raw) {
+    source = source.copyWith(columns: [
+      for (var c in source.columns) c.copyWith(date: ""),
+    ]);
+  }
   if (source.shape == DataShape.columns) return _rowsFromColumns(json, source);
 
   var records = valueAtPath(json, source.rowsPath);

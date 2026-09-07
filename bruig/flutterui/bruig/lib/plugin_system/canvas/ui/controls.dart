@@ -448,23 +448,40 @@ class CanvasDropdown<T> extends StatelessWidget {
         // bar the value changes from outside constantly -- a different element
         // is selected, an undo lands -- and a form field would go on showing
         // whatever was chosen in it last.
-        child: DropdownButton<T>(
-          value: options.any((o) => o.$1 == value) ? value : null,
-          isDense: true,
-          isExpanded: true,
-          underline: const SizedBox.shrink(),
-          style: TextStyle(fontSize: 12, color: theme.colors.onSurface),
-          iconSize: 16,
-          items: [
-            for (var (v, text) in options)
-              DropdownMenuItem(
-                value: v,
-                child: Text(text, overflow: TextOverflow.ellipsis),
-              ),
-          ],
-          onChanged: (v) {
-            if (v != null) onChanged(v);
-          },
+        //
+        // Its own Material, because ink -- the splash, and the highlight a
+        // focused control keeps -- is painted by the nearest Material
+        // *ancestor*, in that ancestor's coordinates. Without one here the
+        // nearest was the whole sidebar, so the highlight left behind by
+        // choosing a chart type was drawn at the dropdown's position in the
+        // sidebar and stayed there: a grey box floating over the Add panel
+        // while the settings scrolled underneath it. Painted here it is in
+        // the right place and clipped to the control.
+        child: Material(
+          type: MaterialType.transparency,
+          // And no highlight at all once the menu has closed. In a settings
+          // panel the focused control is not a thing anybody is tracking, and
+          // a box that stays lit after a choice reads as something still
+          // open.
+          child: DropdownButton<T>(
+            focusColor: Colors.transparent,
+            value: options.any((o) => o.$1 == value) ? value : null,
+            isDense: true,
+            isExpanded: true,
+            underline: const SizedBox.shrink(),
+            style: TextStyle(fontSize: 12, color: theme.colors.onSurface),
+            iconSize: 16,
+            items: [
+              for (var (v, text) in options)
+                DropdownMenuItem(
+                  value: v,
+                  child: Text(text, overflow: TextOverflow.ellipsis),
+                ),
+            ],
+            onChanged: (v) {
+              if (v != null) onChanged(v);
+            },
+          ),
         ),
       ),
     );

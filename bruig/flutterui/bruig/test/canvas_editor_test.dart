@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/canvas/model/chart_interval.dart';
 import 'package:bruig/models/snackbar.dart';
 import 'dart:io';
 import 'dart:convert';
@@ -4201,6 +4202,19 @@ void main() {
     ChartElement chartIn(CanvasController c) =>
         c.document.elements.single as ChartElement;
 
+    /// openColumn opens one column's line in the Columns list.
+    ///
+    /// A column remembers whether it was open by its *name*, so that the one
+    /// left open stays open when a column is moved past it -- which means the
+    /// memory outlives a test, exactly as a section's does.
+    Future<void> openColumn(WidgetTester tester, String name) async {
+      if (find.text("Header").evaluate().isNotEmpty) return;
+      await tester.ensureVisible(find.text(name).first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(name).first);
+      await tester.pumpAndSettle();
+    }
+
     /// open opens the section if it is not already open.
     ///
     /// Sections remember whether they were open, and the memory outlives one
@@ -4231,9 +4245,11 @@ void main() {
     testWidgets("the sections read in the order the work happens",
         (tester) async {
       // What the chart is, then what it says, then where its numbers come
-      // from and how they are mapped, then how it arrives. The mapping used
-      // to be two more layers inside the source -- open Data, open Columns,
-      // open the column -- which is three deep to change a heading.
+      // from and how they are mapped, then how it arrives.
+      //
+      // Custom fields is not among them: a custom field is an ordinary column
+      // with a recipe instead of a field, and a section of its own listed the
+      // same columns a second time.
       var controller = await panel(tester,
           source: dcrdataChart.applyTo(const DataSource(), "coin-supply"));
       expect(controller.document.elements.single, isA<ChartElement>());
@@ -4248,7 +4264,6 @@ void main() {
         "Labels",
         "Data source",
         "Columns",
-        "Custom fields",
         "Animation",
       ];
       expect([for (var w in wanted) headings.contains(w)], everyElement(isTrue),
@@ -4267,21 +4282,30 @@ void main() {
       expect(find.text("CUSTOM FIELDS"), findsNothing);
     });
 
-    testWidgets("a chart is not offered a table's column switches",
-        (tester) async {
-      // A cell can hold a club badge and a badge chosen by hand has to
-      // survive a refresh. Neither is true of a number on a chart, so on one
-      // they are two switches that do nothing.
+    testWidgets("each column is a line that opens", (tester) async {
+      // Laid out in full, a dozen columns of seven settings each is eighty
+      // rows of controls to change one heading -- and the one being looked
+      // for has to be found by counting.
       var controller = await panel(tester,
           source: dcrdataChart.applyTo(const DataSource(), "coin-supply"));
       expect(controller.document.elements.single, isA<ChartElement>());
       await open(tester, "COLUMNS", "Path to the list");
 
+      // Closed, each says its name and what it is mapped to.
+      expect(find.text("COIN SUPPLY (DCR)"), findsWidgets);
+      expect(find.text("Header"), findsNothing,
+          reason: "the settings are behind the line, not spread down it");
+
+      await openColumn(tester, "COIN SUPPLY (DCR)");
+      expect(find.text("Header"), findsOneWidget);
+      // A cell can hold a club badge and a badge chosen by hand has to
+      // survive a refresh. Neither is true of a number on a chart, so on one
+      // they are two switches that do nothing.
       expect(find.text("A picture"), findsNothing);
       expect(find.text("Keep mine"), findsNothing);
-      // The column is headed with its own name rather than "Column 2", which
-      // is what makes a dozen of them scannable.
-      expect(find.text("COIN SUPPLY (DCR)"), findsWidgets);
+      // And a custom field is an ordinary column with a recipe, edited here
+      // rather than listed a second time in a section of its own.
+      expect(find.text("Built from fields"), findsOneWidget);
     });
 
     testWidgets("a column can be moved, and the drawing follows it",
@@ -4294,6 +4318,7 @@ void main() {
         map: const ChartSourceMap(categoryColumn: 0, valueColumns: [1]),
       );
       await open(tester, "COLUMNS", "Path to the list");
+      await openColumn(tester, "COIN SUPPLY (DCR)");
 
       var earlier = find.byTooltip("Move this column earlier");
       await tester.ensureVisible(earlier.last);
@@ -4308,6 +4333,46 @@ void main() {
           reason: "the date is still the axis, at its new number");
       expect(chart.fromSource.valueColumns, [0],
           reason: "and the supply is still the series");
+    });
+
+    testWidgets("a date axis can be read at intervals", (tester) async {
+      // Thinning evenly gives a readable chart and a meaningless axis: the
+      // points land wherever the arithmetic put them. One a year, on a date
+      // chosen, gives an axis that says 2020, 2021, 2022.
+      var controller = await panel(tester,
+          source: dcrdataChart.applyTo(const DataSource(), "coin-supply"));
+      await open(tester, "DATA SOURCE");
+
+      var reading = find.text("A reading");
+      expect(reading, findsOneWidget,
+          reason: "the axis is the date column, so this can mean something");
+
+      // The anchor only appears once there is an interval to anchor.
+      expect(find.text("On the"), findsNothing);
+      await tester.ensureVisible(find.text("Every point"));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text("Every point"));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text("Yearly").last);
+      await tester.pumpAndSettle();
+
+      var chart = controller.document.elements.single as ChartElement;
+      expect(chart.fromSource.interval.unit, IntervalUnit.year);
+      expect(find.text("On the"), findsOneWidget,
+          reason: "a yearly reading is on a day of a month");
+      expect(find.text("In"), findsOneWidget);
+      expect(find.text("Most points"), findsNothing,
+          reason: "two answers to the same question, so only one is offered");
+    });
+
+    testWidgets("and a column of names cannot be", (tester) async {
+      // On a column of team names an interval is a control that could not do
+      // anything.
+      await panel(tester,
+          source: coinGeckoMarkets.applyTo(const DataSource(), "decred"));
+      await open(tester, "DATA SOURCE");
+      expect(find.text("A reading"), findsNothing);
+      expect(find.text("Most points"), findsOneWidget);
     });
 
     testWidgets("choosing a preset fills in the address and the mapping",
@@ -4427,6 +4492,36 @@ void main() {
       var data = chartIn(controller).data;
       expect([for (var s in data.series) s.name], ["Supply", "Transactions"]);
       expect(data.series[1].values, [7, 9]);
+    });
+  });
+
+  group("a dropdown's ink", () {
+    testWidgets("is painted by a Material of its own", (tester) async {
+      // Ink -- the splash, and the highlight a focused control keeps -- is
+      // painted by the nearest Material *ancestor*, in that ancestor's
+      // coordinates and clipped to it. With the sidebar's Material as the
+      // nearest, the highlight left behind by choosing a chart type was drawn
+      // at the dropdown's place in the sidebar and stayed there: a grey box
+      // floating over the Add panel while the settings scrolled underneath.
+      await pump(
+        tester,
+        CanvasDropdown<int>(
+          label: "Type",
+          value: 1,
+          options: const [(1, "Bars"), (2, "Lines")],
+          onChanged: (_) {},
+        ),
+      );
+
+      var inside = find.descendant(
+          of: find.byType(CanvasDropdown<int>),
+          matching: find.byType(Material));
+      expect(inside, findsWidgets,
+          reason: "without one, the ink is the sidebar's to paint");
+      expect(
+          find.descendant(
+              of: inside.last, matching: find.byType(DropdownButton<int>)),
+          findsOneWidget);
     });
   });
 }

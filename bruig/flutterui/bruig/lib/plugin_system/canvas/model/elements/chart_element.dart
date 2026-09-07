@@ -2,6 +2,7 @@ import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
+import 'package:bruig/plugin_system/canvas/model/chart_interval.dart';
 import 'package:bruig/plugin_system/canvas/model/data_source.dart';
 import 'package:bruig/plugin_system/canvas/model/tabular_text.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
@@ -702,21 +703,33 @@ class ChartSourceMap {
   /// most recent always among them.
   final int maxPoints;
 
+  /// interval takes a reading on the dates asked for rather than one point in
+  /// every so many. See [ChartInterval].
+  ///
+  /// It replaces [maxPoints] rather than joining it: they are two answers to
+  /// the same question, and applying both would thin a set of yearly readings
+  /// down to every third year and label them as though they were still
+  /// yearly.
+  final ChartInterval interval;
+
   const ChartSourceMap({
     this.categoryColumn = 0,
     this.valueColumns = const [1],
     this.maxPoints = 0,
+    this.interval = const ChartInterval(),
   });
 
   ChartSourceMap copyWith({
     int? categoryColumn,
     List<int>? valueColumns,
     int? maxPoints,
+    ChartInterval? interval,
   }) =>
       ChartSourceMap(
         categoryColumn: categoryColumn ?? this.categoryColumn,
         valueColumns: valueColumns ?? this.valueColumns,
         maxPoints: maxPoints ?? this.maxPoints,
+        interval: interval ?? this.interval,
       );
 
   /// afterMove and afterRemoval keep the drawing pointed at the same columns
@@ -745,6 +758,7 @@ class ChartSourceMap {
         "cat": categoryColumn,
         "vals": valueColumns,
         if (maxPoints > 0) "max": maxPoints,
+        if (interval.on) "interval": interval.toJson(),
       };
 
   factory ChartSourceMap.fromJson(Map<String, dynamic> json) => ChartSourceMap(
@@ -755,6 +769,8 @@ class ChartSourceMap {
               if (v is num) v.toInt(),
         ],
         maxPoints: jsonInt(json["max"], 0),
+        interval: jsonSpec(
+            json["interval"], ChartInterval.fromJson, const ChartInterval()),
       );
 }
 
@@ -768,15 +784,28 @@ class ChartSourceMap {
 /// A cell that is not a number counts as zero rather than stopping the whole
 /// thing: a league table has a crest column in it, and picking the wrong one
 /// should give a chart that is obviously wrong rather than an error.
+/// [when] is the date of each body row, for a chart taking a reading on the
+/// dates it was asked for rather than one point in every so many. Null
+/// entries and a missing list both mean "there are no dates here", and the
+/// chart falls back to thinning.
 ChartData chartDataFromRows(
   List<List<String>> rows,
   ChartSourceMap map, {
   bool headerRow = true,
   String Function(int column)? nameOf,
+  List<DateTime?>? when,
 }) {
   if (map.valueColumns.isEmpty || rows.isEmpty) return const ChartData();
   var body = headerRow ? rows.skip(1).toList() : rows;
-  body = thinTo(body, map.maxPoints);
+
+  if (map.interval.on && when != null && when.length >= body.length) {
+    var picked = pickAtIntervals(when.sublist(0, body.length), map.interval);
+    if (picked.isNotEmpty) {
+      body = [for (var i in picked) body[i]];
+    }
+  } else {
+    body = thinTo(body, map.maxPoints);
+  }
 
   String header(int column) =>
       nameOf?.call(column) ??
@@ -799,6 +828,23 @@ ChartData chartDataFromRows(
         ),
     ],
   );
+}
+
+/// datesIn reads the date of each body row out of the unformatted rows.
+///
+/// [raw] is header-first, like everything else here, and empty when the
+/// source has no date column at all -- in which case there are no dates and
+/// a chart asking for one reading a year falls back to thinning.
+List<DateTime?>? datesIn(List<List<String>> raw, int column) {
+  if (raw.length < 2 || column < 0) return null;
+  var out = <DateTime?>[];
+  var any = false;
+  for (var row in raw.skip(1)) {
+    var at = column < row.length ? asDate(row[column]) : null;
+    if (at != null) any = true;
+    out.add(at);
+  }
+  return any ? out : null;
 }
 
 /// thinTo keeps at most [most] rows, evenly spread, ending on the last one.

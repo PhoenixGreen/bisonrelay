@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/chart_interval.dart';
 import 'package:bruig/plugin_system/canvas/model/data_presets.dart';
 import 'package:bruig/plugin_system/canvas/model/data_source.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
@@ -123,7 +124,9 @@ abstract class _Target {
   /// Async because a table collects its pictures on the way in, which is one
   /// request per badge.
   Future<String> receive(List<List<String>> rows, DataSource next,
-      {required bool allowed, required bool proxied});
+      {required bool allowed,
+      required bool proxied,
+      List<List<String>> raw = const []});
 
   /// picturesMatter is whether a column can hold a picture, and whether one
   /// can be kept across a refresh.
@@ -148,7 +151,9 @@ abstract class _Target {
   /// before there has been one. Handed in rather than kept in the document:
   /// four thousand rows saved into every canvas, so that one dropdown can
   /// change its mind without asking again, is not a trade worth making.
-  List<Widget> extras(List<List<String>> lastRows) => const [];
+  List<Widget> extras(List<List<String>> lastRows,
+          [List<List<String>> lastRaw = const []]) =>
+      const [];
 }
 
 /// _TableTarget is a table filling itself in, which is where all of this
@@ -244,7 +249,9 @@ class _TableTarget extends _Target {
 
   @override
   Future<String> receive(List<List<String>> rows, DataSource next,
-      {required bool allowed, required bool proxied}) async {
+      {required bool allowed,
+      required bool proxied,
+      List<List<String>> raw = const []}) async {
     rows = await collectPictures(rows, next, allowFetching: allowed);
 
     // The columns the reader fills in themselves, put back from what was
@@ -358,8 +365,11 @@ class _ChartTarget extends _Target {
 
   @override
   Future<String> receive(List<List<String>> rows, DataSource next,
-      {required bool allowed, required bool proxied}) async {
-    var data = chartDataFromRows(rows, element.fromSource);
+      {required bool allowed,
+      required bool proxied,
+      List<List<String>> raw = const []}) async {
+    var data = chartDataFromRows(rows, element.fromSource,
+        when: datesIn(raw, element.fromSource.categoryColumn));
     begin();
     // The numbers land in the chart's own data, which is what every other
     // setting works on: once fetched they are edited, coloured and animated
@@ -373,7 +383,8 @@ class _ChartTarget extends _Target {
   }
 
   @override
-  List<Widget> extras(List<List<String>> lastRows) {
+  List<Widget> extras(List<List<String>> lastRows,
+      [List<List<String>> lastRaw = const []]) {
     var columns = element.source.columns;
     var link = element.fromTable;
     var tables = [
@@ -395,6 +406,14 @@ class _ChartTarget extends _Target {
     var map = element.fromSource;
     (int, String) named(int c) =>
         (c, columns[c].header.isEmpty ? "Column ${c + 1}" : columns[c].header);
+
+    // Whether the axis is a date, which is what makes an interval mean
+    // anything. Taken from the column's own format rather than from the data,
+    // so the control appears as soon as the mapping says the column is a
+    // date and not only after a refresh.
+    var axisIsDate = map.categoryColumn >= 0 &&
+        map.categoryColumn < columns.length &&
+        columns[map.categoryColumn].date.isNotEmpty;
 
     return [
       // Taking the numbers from a table on this canvas, which is the other
@@ -473,7 +492,8 @@ class _ChartTarget extends _Target {
           value: map.categoryColumn,
           width: 150,
           options: [for (var c = 0; c < columns.length; c++) named(c)],
-          onChanged: (v) => _setMap(map.copyWith(categoryColumn: v), lastRows),
+          onChanged: (v) =>
+              _setMap(map.copyWith(categoryColumn: v), lastRows, lastRaw),
         ),
         for (var c = 0; c < columns.length; c++)
           if (c != map.categoryColumn)
@@ -487,24 +507,131 @@ class _ChartTarget extends _Target {
                     for (var i = 0; i < columns.length; i++)
                       if (i == c ? v : map.valueColumns.contains(i)) i,
                   ]),
-                  lastRows),
+                  lastRows,
+                  lastRaw),
             ),
-        CanvasNumberField(
-          label: "Most points",
-          value: map.maxPoints.toDouble(),
-          min: 0,
-          max: 2000,
-          decimals: 0,
-          width: 66,
-          onChanged: (v) =>
-              _setMap(map.copyWith(maxPoints: v.round()), lastRows),
-          onCommit: commit,
-        ),
-        const CanvasHint(
-            "A daily series going back years is thousands of points, and a "
-            "canvas is a few inches wide: drawn in full it is a grey smear. "
-            "Most points keeps that many, evenly spread, ending on the latest "
-            "— they are real readings, not an average. Zero draws every one."),
+        const CanvasLineBreak(),
+        // Readings on the dates asked for, rather than one point in every so
+        // many. Only where the axis is a date: on a column of team names it
+        // is a control that could not do anything.
+        if (axisIsDate) ...[
+          CanvasDropdown<IntervalUnit>(
+            label: "A reading",
+            value: map.interval.unit,
+            width: 132,
+            options: [for (var u in IntervalUnit.values) (u, u.label)],
+            onChanged: (u) => _setMap(
+                map.copyWith(interval: map.interval.copyWith(unit: u)),
+                lastRows,
+                lastRaw),
+          ),
+          if (map.interval.on) ...[
+            CanvasNumberField(
+              label: "Every",
+              value: map.interval.every.toDouble(),
+              min: 1,
+              max: 99,
+              decimals: 0,
+              width: 52,
+              onChanged: (v) => _setMap(
+                  map.copyWith(
+                      interval: map.interval.copyWith(every: v.round())),
+                  lastRows,
+                  lastRaw),
+              onCommit: commit,
+            ),
+            // The anchor, which is the whole point: a reading a year starting
+            // wherever the data happens to begin lands on no date in
+            // particular, and one on the seventh of February can be compared
+            // with last year's.
+            if (map.interval.unit.hasMonth)
+              CanvasDropdown<int>(
+                label: "In",
+                value: map.interval.month,
+                width: 112,
+                options: const [
+                  (1, "January"),
+                  (2, "February"),
+                  (3, "March"),
+                  (4, "April"),
+                  (5, "May"),
+                  (6, "June"),
+                  (7, "July"),
+                  (8, "August"),
+                  (9, "September"),
+                  (10, "October"),
+                  (11, "November"),
+                  (12, "December"),
+                ],
+                onChanged: (v) => _setMap(
+                    map.copyWith(interval: map.interval.copyWith(month: v)),
+                    lastRows,
+                    lastRaw),
+              ),
+            if (map.interval.unit.hasDay)
+              CanvasNumberField(
+                label: "On the",
+                value: map.interval.day.toDouble(),
+                min: 1,
+                max: 31,
+                decimals: 0,
+                width: 52,
+                onChanged: (v) => _setMap(
+                    map.copyWith(
+                        interval: map.interval.copyWith(day: v.round())),
+                    lastRows,
+                    lastRaw),
+                onCommit: commit,
+              ),
+            if (map.interval.unit.hasWeekday)
+              CanvasDropdown<int>(
+                label: "On",
+                value: map.interval.weekday,
+                width: 112,
+                options: const [
+                  (DateTime.monday, "Monday"),
+                  (DateTime.tuesday, "Tuesday"),
+                  (DateTime.wednesday, "Wednesday"),
+                  (DateTime.thursday, "Thursday"),
+                  (DateTime.friday, "Friday"),
+                  (DateTime.saturday, "Saturday"),
+                  (DateTime.sunday, "Sunday"),
+                ],
+                onChanged: (v) => _setMap(
+                    map.copyWith(interval: map.interval.copyWith(weekday: v)),
+                    lastRows,
+                    lastRaw),
+              ),
+            CanvasHint("One reading ${map.interval.every == 1 ? "" : "every "
+                    "${map.interval.every} "}"
+                "${_intervalWords(map.interval)}, taken from the row nearest "
+                "each one — real readings, not an average, and nothing drawn "
+                "where the data has a gap. The dates the axis is labelled "
+                "with are the readings themselves."),
+          ] else
+            const CanvasHint(
+                "Every point draws them all, thinned to Most points below if "
+                "there are more of them than a canvas can show."),
+        ],
+        if (!map.interval.on)
+          CanvasNumberField(
+            label: "Most points",
+            value: map.maxPoints.toDouble(),
+            min: 0,
+            max: 2000,
+            decimals: 0,
+            width: 66,
+            onChanged: (v) =>
+                _setMap(map.copyWith(maxPoints: v.round()), lastRows, lastRaw),
+            onCommit: commit,
+          ),
+        if (!map.interval.on)
+          const CanvasHint(
+              "A daily series going back years is thousands of points, and a "
+              "canvas is a few inches wide: drawn in full it is a grey smear. "
+              "Most points keeps that many, evenly spread, ending on the "
+              "latest — they are real readings, not an average. Zero draws "
+              "every one."),
       ]),
     ];
   }
@@ -516,12 +643,15 @@ class _ChartTarget extends _Target {
   /// nothing fetched yet -- the mapping is set and the chart keeps what it
   /// has until Refresh is pressed, which is honest: the column being asked
   /// for was never in the document to begin with.
-  void _setMap(ChartSourceMap next, List<List<String>> rows) {
+  void _setMap(ChartSourceMap next, List<List<String>> rows,
+      [List<List<String>> raw = const []]) {
     begin();
     write(rows.isEmpty
         ? element.copyWith(fromSource: next)
         : element.copyWith(
-            fromSource: next, data: chartDataFromRows(rows, next)));
+            fromSource: next,
+            data: chartDataFromRows(rows, next,
+                when: datesIn(raw, next.categoryColumn))));
     commit();
   }
 }
@@ -570,6 +700,10 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
 
   _Target get target => widget.target;
   DataSource get source => target.source;
+
+  /// _rawRows is the same rows with the dates still in them, for a chart
+  /// choosing its points by date. Empty unless a column is a date.
+  List<List<String>> _rawRows = const [];
 
   /// _rows is what the last refresh in this sitting returned.
   ///
@@ -638,11 +772,12 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
 
       var said = await target.receive(
           rows, source.copyWith(fetchedAt: DateTime.now()),
-          allowed: allowed, proxied: proxied);
+          allowed: allowed, proxied: proxied, raw: result.raw);
       if (!mounted) return;
       setState(() {
         _fields = result.fields;
         _rows = rows;
+        _rawRows = result.raw;
       });
       snackbar.success(said);
     } finally {
@@ -714,15 +849,6 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
             children: _columnControls(preset),
           ),
         ),
-        boxed(
-          context,
-          CanvasExpander(
-            label: "Custom fields",
-            remember: "${target.remember}Custom",
-            trailing: "${_customColumns(source, preset).length}",
-            children: _customFieldControls(preset),
-          ),
-        ),
       ],
     );
   }
@@ -787,7 +913,7 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
 
       // What this element does with what arrives. Empty for a table, which
       // takes the rows as they are.
-      ...target.extras(_rows),
+      ...target.extras(_rows, _rawRows),
 
       if (source.kind == DataKind.file)
         CanvasControlGroup(label: "File", children: [
@@ -853,13 +979,26 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
             "the document is itself a list."),
       ]),
       for (var i = 0; i < source.columns.length; i++)
-        _oneColumn(i, source.columns[i], fields),
+        _oneColumn(i, source.columns[i], fields, preset),
       CanvasControlGroup(label: "Add", hideCaption: true, children: [
         CanvasIconButton(
           icon: Icons.add,
           tooltip: "Add a column to the mapping",
           onPressed: () => _set(source
               .copyWith(columns: [...source.columns, const SourceColumn()])),
+        ),
+        // A custom field is an ordinary column with a recipe instead of a
+        // field, so it is added here rather than in a section of its own --
+        // which is where it was, listing the same columns a second time.
+        CanvasIconButton(
+          icon: Icons.functions,
+          tooltip: "Add a column built from other fields",
+          onPressed: () => _set(source.copyWith(columns: [
+            ...source.columns,
+            SourceColumn(
+                header: "New field",
+                template: "{${fields.isEmpty ? "" : fields.first}}"),
+          ])),
         ),
       ]),
       if (target.picturesMatter)
@@ -892,211 +1031,199 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
     return header.isEmpty ? "Column ${i + 1}" : header;
   }
 
-  /// _oneColumn is a single column's mapping.
+  /// _oneColumn is a single column, as a line that opens.
   ///
-  /// Headed with the column's own name rather than "Column 7". A league table
-  /// is a dozen of these, and a list headed by number is one that has to be
-  /// counted through every time to find the one being looked for.
-  Widget _oneColumn(int i, SourceColumn column, List<String> fields) =>
-      CanvasControlGroup(label: _columnName(i), children: [
-        CanvasTextField(
-          label: "Header",
-          value: column.header,
-          width: 110,
-          onChanged: (v) => _setColumn(i, column.copyWith(header: v)),
-        ),
-        // One control, not two. A free-text path beside a list of the
-        // paths that exist is the same answer asked for twice, and the
-        // typed one is the one that can be wrong. So once a refresh has
-        // said what is actually in the data, this is a list -- with
-        // whatever the column is set to already in it, even if the
-        // source has since stopped sending it, because silently
-        // changing a mapping to something else would be worse.
-        if (fields.isNotEmpty)
-          CanvasDropdown<String>(
-            label: "Field",
-            value: column.path,
-            width: 150,
-            options: [
-              if (!fields.contains(column.path))
-                (
-                  column.path,
-                  column.path.isEmpty ? "—" : "${column.path} (not in the data)"
-                ),
-              for (var field in fields) (field, field),
-            ],
-            onChanged: (v) => _setColumn(i, column.copyWith(path: v)),
-          )
-        else
-          // Before the first refresh there is nothing to list, so the
-          // path is typed -- which is also the way in for a source
-          // nobody has written a preset for.
-          CanvasTextField(
-            label: "Path",
-            value: column.path,
-            width: 130,
-            onChanged: (v) => _setColumn(i, column.copyWith(path: v)),
-          ),
-        // The two conversions, next to the field they convert. Both are
-        // about the value that arrives rather than about the design, and
-        // both are the difference between a readable column and a wall of
-        // atoms or a row of epoch seconds.
-        CanvasNumberField(
-          label: "Divide by",
-          value: column.divide,
-          min: 1,
-          max: 1e12,
-          decimals: 0,
-          width: 84,
-          onChanged: (v) =>
-              _setColumn(i, column.copyWith(divide: v <= 0 ? 1 : v)),
-          onCommit: target.commit,
-        ),
-        CanvasTextField(
-          label: "As a date",
-          value: column.date,
-          hint: "MMM yy",
-          width: 84,
-          onChanged: (v) => _setColumn(i, column.copyWith(date: v)),
-          onCommit: target.commit,
-        ),
-        // A column becomes custom by being given a recipe. A toggle
-        // rather than a text box, because the first thing a custom
-        // field is is a copy of the field it replaces -- "{points}" --
-        // and editing it from there is the Custom fields section's job.
-        CanvasToggle(
-          label: "Custom",
-          value: column.template.isNotEmpty,
-          onChanged: (v) => _setColumn(
-              i, column.copyWith(template: v ? "{${column.path}}" : "")),
-        ),
-        if (target.picturesMatter) ...[
-          CanvasToggle(
-            label: "A picture",
-            value: column.picture,
-            onChanged: (v) => _setColumn(i, column.copyWith(picture: v)),
-          ),
-          CanvasToggle(
-            label: "Keep mine",
-            value: column.keep,
-            onChanged: (v) => _setColumn(i, column.copyWith(keep: v)),
-          ),
-        ],
-        // The order of the columns is the order of the table, so moving one
-        // is a thing people want and there was no way to do it: a column in
-        // the wrong place had to be deleted and the rest re-mapped by hand.
-        CanvasIconButton(
-          icon: Icons.west,
-          tooltip: "Move this column earlier",
-          onPressed: i > 0 ? () => target.moveColumn(i, i - 1) : null,
-        ),
-        CanvasIconButton(
-          icon: Icons.east,
-          tooltip: "Move this column later",
-          onPressed: i < source.columns.length - 1
-              ? () => target.moveColumn(i, i + 1)
-              : null,
-        ),
-        CanvasIconButton(
-          icon: Icons.delete_outline,
-          tooltip: "Remove this column from the mapping",
-          onPressed: () => target.removeColumn(i),
-        ),
-      ]);
-
-  /// _customFieldControls is the columns that build their cell instead of
-  /// taking it.
+  /// A line rather than a block. A league table is a dozen columns and each
+  /// of them has six or seven settings, so laid out in full the section was
+  /// eighty rows of controls to change one heading -- and the one being
+  /// looked for had to be found by counting. Closed, each column says its
+  /// name and what it is mapped to, which is what somebody scanning the list
+  /// is reading; open, it is everything about that column, custom fields
+  /// included.
   ///
-  /// Their own section because they are the ones somebody has to be told
-  /// about -- a column built from a template or laid out as a run of results
-  /// looks like magic in the Columns list, and the whole point of showing the
-  /// recipe is that it can be copied.
-  List<Widget> _customFieldControls(DataPreset? preset) {
-    var fields = _fieldNames(preset);
-    return [
-      const CanvasHint(
-          "A custom field builds its cell instead of taking it. Put a "
-          "field's name in braces and it is replaced by what is there — "
-          "\"{team.tla} ({points})\" gives \"MCI (6)\" — and anything "
-          "outside the braces is written as it stands, which is how a "
-          "column gets a dash, a unit or a word. Spread lays a "
-          "comma-separated value out across that many slots, padded on "
-          "the left so the newest is always in the same place."),
-      if (preset?.derive != null)
-        CanvasHint("${preset!.label} also fills the form guide in from "
-            "somewhere the mapping cannot reach: the plan sends the "
-            "field empty, so the last games are worked out from the "
-            "finished results instead — one extra request when you "
-            "refresh. The column is an ordinary custom field otherwise, "
-            "and its slots and divider are yours to change."),
-      for (var i = 0; i < source.columns.length; i++)
-        if (_isCustom(source.columns[i], preset))
-          _customControls(i, source.columns[i]),
-      // The fields there are to build one out of, which is otherwise a list
-      // that only exists inside a dropdown in another section.
-      if (fields.isNotEmpty)
-        CanvasHint("Fields you can put in braces: ${fields.join(", ")}."),
-      CanvasControlGroup(label: "Add", hideCaption: true, children: [
-        CanvasIconButton(
-          icon: Icons.add,
-          tooltip: "Add a custom field",
-          onPressed: () => _set(source.copyWith(columns: [
-            ...source.columns,
-            SourceColumn(
-                header: "New field",
-                template: "{${fields.isEmpty ? "" : fields.first}}"),
-          ])),
-        ),
-      ]),
-    ];
-  }
-
-  /// _customControls is one custom field: what it is called, how it is built,
-  /// and how it is laid out.
-  Widget _customControls(int index, SourceColumn column) => CanvasControlGroup(
-        label: _columnName(index),
-        children: [
+  /// Remembered by name rather than by number, so the one left open stays
+  /// open when a column is moved past it.
+  Widget _oneColumn(
+      int i, SourceColumn column, List<String> fields, DataPreset? preset) {
+    // Two different questions. "builds" is whether the cell is a recipe
+    // instead of a field, which decides whether there is a field to choose.
+    // "custom" is whether it is laid out as one -- which includes a column
+    // the preset fills in itself, carrying a spread and no template: the form
+    // guide is exactly that, and hiding its slots because it has no braces in
+    // it is how its settings went missing once already.
+    var builds = column.template.isNotEmpty;
+    var custom = _isCustom(column, preset);
+    return CanvasExpander(
+      label: _columnName(i),
+      remember: "${target.remember}Col:"
+          "${column.header.isEmpty ? "$i" : column.header}",
+      trailing:
+          custom ? column.template : (column.path.isEmpty ? "—" : column.path),
+      children: [
+        CanvasControlGroup(label: "Field", hideCaption: true, children: [
           CanvasTextField(
             label: "Header",
             value: column.header,
             width: 110,
-            onChanged: (v) => _setColumn(index, column.copyWith(header: v)),
+            onChanged: (v) => _setColumn(i, column.copyWith(header: v)),
+            onCommit: target.commit,
           ),
-          CanvasTextField(
-            label: "Built from",
-            value:
-                column.template.isEmpty ? "{${column.path}}" : column.template,
-            width: 168,
-            onChanged: (v) => _setColumn(index, column.copyWith(template: v)),
+          // One control, not two. A free-text path beside a list of the
+          // paths that exist is the same answer asked for twice, and the
+          // typed one is the one that can be wrong. So once a refresh has
+          // said what is actually in the data, this is a list -- with
+          // whatever the column is set to already in it, even if the
+          // source has since stopped sending it, because silently
+          // changing a mapping to something else would be worse.
+          if (fields.isNotEmpty && !builds)
+            CanvasDropdown<String>(
+              label: "Field",
+              value: column.path,
+              width: 150,
+              options: [
+                if (!fields.contains(column.path))
+                  (
+                    column.path,
+                    column.path.isEmpty
+                        ? "—"
+                        : "${column.path} (not in the data)"
+                  ),
+                for (var field in fields) (field, field),
+              ],
+              onChanged: (v) => _setColumn(i, column.copyWith(path: v)),
+            )
+          else if (!builds)
+            // Before the first refresh there is nothing to list, so the
+            // path is typed -- which is also the way in for a source
+            // nobody has written a preset for.
+            CanvasTextField(
+              label: "Path",
+              value: column.path,
+              width: 130,
+              onChanged: (v) => _setColumn(i, column.copyWith(path: v)),
+              onCommit: target.commit,
+            ),
+          // A column becomes custom by being given a recipe. A toggle
+          // rather than a text box, because the first thing a custom
+          // field is is a copy of the field it replaces -- "{points}".
+          CanvasToggle(
+            label: "Built from fields",
+            value: builds,
+            onChanged: (v) => _setColumn(
+                i,
+                column.copyWith(
+                    template: v
+                        ? "{${column.path.isEmpty && fields.isNotEmpty ? fields.first : column.path}}"
+                        : "")),
           ),
+        ]),
+
+        // What it is built from, where it is built rather than taken. This
+        // was a section of its own listing the same columns again, which is
+        // one column in two places: a custom field *is* a column, and the
+        // recipe belongs with the rest of its settings.
+        if (custom)
+          CanvasControlGroup(label: "Built from", children: [
+            CanvasTextField(
+              label: "",
+              value: column.template,
+              width: 190,
+              onChanged: (v) => _setColumn(i, column.copyWith(template: v)),
+              onCommit: target.commit,
+            ),
+            CanvasNumberField(
+              label: "Slots",
+              value: column.spread.toDouble(),
+              min: 0,
+              max: 20,
+              decimals: 0,
+              width: 56,
+              onChanged: (v) =>
+                  _setColumn(i, column.copyWith(spread: v.round())),
+              onCommit: target.commit,
+            ),
+            CanvasTextField(
+              label: "Divider",
+              value: column.divider,
+              width: 56,
+              onChanged: (v) => _setColumn(i, column.copyWith(divider: v)),
+              onCommit: target.commit,
+            ),
+            CanvasHint(
+                "Put a field's name in braces and it is replaced by what is "
+                "there — \"{team.tla} ({points})\" gives \"MCI (6)\". Slots "
+                "lays a comma-separated value out across that many places, "
+                "padded on the left so the newest is always in the same one."
+                "${fields.isEmpty ? "" : " Fields: ${fields.join(", ")}."}"),
+          ]),
+
+        // The two conversions, next to the field they convert. Both are
+        // about the value that arrives rather than about the design, and
+        // both are the difference between a readable column and a wall of
+        // atoms or a row of epoch seconds.
+        CanvasControlGroup(label: "As it arrives", children: [
           CanvasNumberField(
-            label: "Slots",
-            value: column.spread.toDouble(),
-            min: 0,
-            max: 20,
+            label: "Divide by",
+            value: column.divide,
+            min: 1,
+            max: 1e12,
             decimals: 0,
-            width: 56,
+            width: 84,
             onChanged: (v) =>
-                _setColumn(index, column.copyWith(spread: v.round())),
+                _setColumn(i, column.copyWith(divide: v <= 0 ? 1 : v)),
             onCommit: target.commit,
           ),
           CanvasTextField(
-            label: "Divider",
-            value: column.divider,
-            width: 56,
-            onChanged: (v) => _setColumn(index, column.copyWith(divider: v)),
+            label: "As a date",
+            value: column.date,
+            hint: "MMM yy",
+            width: 84,
+            onChanged: (v) => _setColumn(i, column.copyWith(date: v)),
+            onCommit: target.commit,
+          ),
+          if (target.picturesMatter) ...[
+            CanvasToggle(
+              label: "A picture",
+              value: column.picture,
+              onChanged: (v) => _setColumn(i, column.copyWith(picture: v)),
+            ),
+            CanvasToggle(
+              label: "Keep mine",
+              value: column.keep,
+              onChanged: (v) => _setColumn(i, column.copyWith(keep: v)),
+            ),
+          ],
+          const CanvasHint(
+              "Divide by brings a number into the units the chart is drawn in "
+              "— a chain counts money in hundred-millionths. As a date reads "
+              "the value as a time and writes it out in that format."),
+        ]),
+
+        // The order of the columns is the order of the table, so moving one
+        // is a thing people want and there was no way to do it: a column in
+        // the wrong place had to be deleted and the rest re-mapped by hand.
+        CanvasControlGroup(label: "This column", children: [
+          CanvasIconButton(
+            icon: Icons.west,
+            tooltip: "Move this column earlier",
+            onPressed: i > 0 ? () => target.moveColumn(i, i - 1) : null,
+          ),
+          CanvasIconButton(
+            icon: Icons.east,
+            tooltip: "Move this column later",
+            onPressed: i < source.columns.length - 1
+                ? () => target.moveColumn(i, i + 1)
+                : null,
           ),
           CanvasIconButton(
             icon: Icons.delete_outline,
-            tooltip: "Remove this field",
-            // Through the element rather than straight onto the source, so
-            // that whatever pointed at the columns after this one -- which
-            // chart series are drawn, which headings are hidden -- moves up
-            // behind it instead of pointing at its neighbour.
-            onPressed: () => target.removeColumn(index),
+            tooltip: "Remove this column from the mapping",
+            onPressed: () => target.removeColumn(i),
           ),
-        ],
-      );
+        ]),
+      ],
+    );
+  }
 
   void _setColumn(int index, SourceColumn column) => _set(source.copyWith(
         columns: [
@@ -1104,6 +1231,50 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
             i == index ? column : source.columns[i],
         ],
       ));
+}
+
+/// _intervalWords says an interval the way somebody would: "year, on 7
+/// February" rather than "unit: year, month: 2, day: 7".
+String _intervalWords(ChartInterval interval) {
+  const months = [
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+  ];
+  const days = [
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+    "Sunday",
+  ];
+  var unit = switch (interval.unit) {
+    IntervalUnit.none => "point",
+    IntervalUnit.day => "day",
+    IntervalUnit.week => "week",
+    IntervalUnit.month => "month",
+    IntervalUnit.quarter => "quarter",
+    IntervalUnit.year => "year",
+  };
+  var on = switch (interval.unit) {
+    IntervalUnit.year =>
+      ", on the ${interval.day} of ${months[interval.month - 1]}",
+    IntervalUnit.month || IntervalUnit.quarter => ", on the ${interval.day}",
+    IntervalUnit.week => ", on a ${days[interval.weekday - 1]}",
+    _ => "",
+  };
+  return "$unit$on";
 }
 
 /// _choiceOf works out which of a preset's choices the current address is, so
@@ -1218,8 +1389,3 @@ bool _isCustom(SourceColumn column, DataPreset? preset) =>
     column.template.isNotEmpty ||
     column.spread > 0 ||
     (preset?.derived.contains(column.path) ?? false);
-
-List<SourceColumn> _customColumns(DataSource source, DataPreset? preset) => [
-      for (var c in source.columns)
-        if (_isCustom(c, preset)) c
-    ];
