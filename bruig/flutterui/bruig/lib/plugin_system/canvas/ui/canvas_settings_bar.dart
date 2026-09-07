@@ -578,17 +578,6 @@ class _CanvasSettingsPanelState extends State<CanvasSettingsPanel> {
                   size: document.size.copyWith(exportWidth: v)));
             },
           ),
-        // What changing the width does. On, it is a resolution: the design is
-        // drawn in its own space and scaled on the way out, so publishing at
-        // 4K gives the same picture with four times the pixels. Off, it is a
-        // page: the design keeps its scale and there is more room around it.
-        CanvasToggle(
-          key: const ValueKey("canvasScalesDesign"),
-          label: "Size scales the design",
-          value: document.size.scalesDesign,
-          onChanged: (v) => write(
-              document.copyWith(size: document.size.copyWith(scalesDesign: v))),
-        ),
         CanvasNumberField(
           key: const ValueKey("canvasWidth"),
           label: "Max width",
@@ -636,6 +625,28 @@ class _CanvasSettingsPanelState extends State<CanvasSettingsPanel> {
         ),
       ]),
       _estimateGroup(context, theme, document),
+      // What changing the size does, at the end of the line: it is set once
+      // and left, and it belongs after the size and the cost rather than
+      // between the ratio and the width they are worked out from.
+      //
+      // On, the size is a resolution: the design is drawn in its own space
+      // and scaled on the way out, so publishing at 4K gives the same picture
+      // with four times the pixels. Off, it is a page: the design keeps its
+      // scale and there is more room around it.
+      CanvasControlGroup(label: "Scaling", children: [
+        CanvasToggle(
+          key: const ValueKey("canvasScalesDesign"),
+          label: "Size scales the design",
+          value: document.size.scalesDesign,
+          onChanged: (v) => write(
+              document.copyWith(size: document.size.copyWith(scalesDesign: v))),
+        ),
+        const CanvasHint(
+            "On, the size is a resolution: the design is drawn in its own "
+            "space and scaled on the way out, so publishing larger gives the "
+            "same picture with more pixels in it. Off, the size is a page: "
+            "the design keeps its scale and there is more room around it."),
+      ]),
     ];
   }
 }

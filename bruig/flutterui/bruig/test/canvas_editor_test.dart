@@ -428,7 +428,13 @@ void main() {
       expect(controller.document.size.width, 1280,
           reason: "a resolution: the design is where it was");
 
-      await tester.tap(find.byKey(const ValueKey("canvasScalesDesign")));
+      // At the end of the line, after the size and the cost: it is set once
+      // and left, rather than sitting between the ratio and the width.
+      var scaling = find.byKey(const ValueKey("canvasScalesDesign"));
+      expect(tester.getRect(scaling).left,
+          greaterThan(tester.getRect(find.text("ESTIMATED SIZE")).left));
+
+      await tester.tap(scaling);
       await tester.pumpAndSettle();
       expect(controller.document.size.width, 2560,
           reason: "a page: the design space grew with it");
