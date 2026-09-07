@@ -279,6 +279,18 @@ class ChartElement extends CanvasElement {
   final Color gridColor;
   final Color axisColor;
 
+  /// riseColor and fallColor are a candlestick's two colours: a period that
+  /// closed above where it opened, and one that closed below.
+  ///
+  /// Two colours rather than the series palette, because on this one type the
+  /// colour is not a label for a series -- all four series are one mark -- it
+  /// is the reading. Green up and red down is what every market chart does
+  /// and what everybody looking at one expects; these are settings because
+  /// that convention is reversed in some countries and because a canvas has
+  /// its own palette to sit in.
+  final Color riseColor;
+  final Color fallColor;
+
   /// titleSpec, labelSpec and valueSpec are the three sizes of type on a
   /// chart. Separate so a chart shrunk to fit a corner can keep a readable
   /// title while its tick labels get out of the way.
@@ -330,6 +342,8 @@ class ChartElement extends CanvasElement {
     this.showValues = false,
     this.gridColor = const Color(0x33FFFFFF),
     this.axisColor = const Color(0x99FFFFFF),
+    this.riseColor = const Color(0xFF2FD3A0),
+    this.fallColor = const Color(0xFFE85D75),
     this.titleSpec = const TextSpec(fontSize: 28, weight: 700),
     this.labelSpec = const TextSpec(fontSize: 16, weight: 400),
     this.valueSpec = const TextSpec(fontSize: 14, weight: 600),
@@ -395,6 +409,8 @@ class ChartElement extends CanvasElement {
     bool? showValues,
     Color? gridColor,
     Color? axisColor,
+    Color? riseColor,
+    Color? fallColor,
     TextSpec? titleSpec,
     TextSpec? labelSpec,
     TextSpec? valueSpec,
@@ -430,6 +446,8 @@ class ChartElement extends CanvasElement {
           showValues: showValues,
           gridColor: gridColor,
           axisColor: axisColor,
+          riseColor: riseColor,
+          fallColor: fallColor,
           titleSpec: titleSpec,
           labelSpec: labelSpec,
           valueSpec: valueSpec,
@@ -469,6 +487,8 @@ class ChartElement extends CanvasElement {
     bool? showValues,
     Color? gridColor,
     Color? axisColor,
+    Color? riseColor,
+    Color? fallColor,
     TextSpec? titleSpec,
     TextSpec? labelSpec,
     TextSpec? valueSpec,
@@ -504,6 +524,8 @@ class ChartElement extends CanvasElement {
           showValues: showValues ?? this.showValues,
           gridColor: gridColor ?? this.gridColor,
           axisColor: axisColor ?? this.axisColor,
+          riseColor: riseColor ?? this.riseColor,
+          fallColor: fallColor ?? this.fallColor,
           titleSpec: titleSpec ?? this.titleSpec,
           labelSpec: labelSpec ?? this.labelSpec,
           valueSpec: valueSpec ?? this.valueSpec,
@@ -545,6 +567,8 @@ class ChartElement extends CanvasElement {
         "values": showValues,
         "gridColor": colorToJson(gridColor),
         "axisColor": colorToJson(axisColor),
+        "riseColor": colorToJson(riseColor),
+        "fallColor": colorToJson(fallColor),
         "titleSpec": titleSpec.toJson(),
         "labelSpec": labelSpec.toJson(),
         "valueSpec": valueSpec.toJson(),
@@ -595,6 +619,8 @@ class ChartElement extends CanvasElement {
           showLegend: jsonBool(json["legend"], false),
           showValues: jsonBool(json["values"], false),
           gridColor: colorFromJson(json["gridColor"], const Color(0x33FFFFFF)),
+          riseColor: colorFromJson(json["riseColor"], const Color(0xFF2FD3A0)),
+          fallColor: colorFromJson(json["fallColor"], const Color(0xFFE85D75)),
           axisColor: colorFromJson(json["axisColor"], const Color(0x99FFFFFF)),
           titleSpec: jsonSpec(json["titleSpec"], TextSpec.fromJson,
               const TextSpec(fontSize: 28, weight: 700)),

@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -24,6 +25,7 @@ enum ChartType {
   line("Line", "A line through the values"),
   area("Area", "A line with the space beneath it filled"),
   scatter("Scatter", "A point per value, unconnected"),
+  candlestick("Candlesticks", "Open, high, low and close for each period"),
   pie("Pie", "Shares of a whole"),
   donut("Donut", "Shares of a whole, with the middle open"),
   radialBar("Radial bars", "Bars bent around a circle"),
@@ -41,6 +43,24 @@ enum ChartType {
   bool get isCircular =>
       this == pie || this == donut || this == radialBar || this == radar;
 
+  /// isCandles is the one type that reads four series as a single mark.
+  ///
+  /// Named rather than compared to the constant everywhere, because it is
+  /// asked in half a dozen places -- what the axis does, how many series are
+  /// wanted, what the legend says -- and each of them means "is this the
+  /// four-values-per-period type" rather than "is this that particular
+  /// enum".
+  bool get isCandles => this == candlestick;
+
+  /// startsAtZero is whether the value axis has to include zero.
+  ///
+  /// Bars must: a bar is read as a length, and one drawn from 12 to 16 on an
+  /// axis starting at 12 says four times what it means. A candlestick is read
+  /// as a position, not a length -- a price chart forced down to zero is a
+  /// flat line along the top with the whole month squeezed into a tenth of
+  /// the plot, which is exactly what makes it useless.
+  bool get startsAtZero => !isCandles;
+
   /// isStacked is whether values accumulate, which changes how the axis
   /// maximum is worked out.
   bool get isStacked => this == stackedBar;
@@ -49,6 +69,10 @@ enum ChartType {
   /// useful. A pie of two series is two pies, which this does not draw.
   bool get wantsMultipleSeries =>
       this != pie && this != donut && this != radialBar;
+
+  /// needsFourSeries is the candlestick's requirement, stated so the settings
+  /// can say so rather than drawing nothing and leaving it a mystery.
+  bool get needsFourSeries => isCandles;
 
   /// needsMultipleSeries is whether the type is *only* different from plain
   /// bars once there are two series to group or stack.
@@ -61,6 +85,10 @@ enum ChartType {
   /// usesSmooth is whether curving between the points means anything. Bars
   /// have nothing to curve, and a scatter is unconnected by definition.
   bool get usesSmooth => this == line || this == area || this == radar;
+
+  /// isCartesian is everything drawn against an x and a y axis, which is
+  /// every type that is not circular.
+  bool get isCartesian => !isCircular;
 
   /// isBar and isLinear split the cartesian types by how they are drawn,
   /// which is what an overlay of two kinds on one pair of axes needs to know.
@@ -151,6 +179,26 @@ class ChartSeries {
   }
 }
 
+/// Ohlc is one period of a candlestick chart: where the price opened, the
+/// highest and lowest it reached, and where it closed.
+class Ohlc {
+  final double open;
+  final double high;
+  final double low;
+  final double close;
+
+  const Ohlc(this.open, this.high, this.low, this.close);
+
+  /// rose is whether the period closed above where it opened, which is the
+  /// only thing that decides a candle's colour.
+  bool get rose => close >= open;
+
+  /// top and bottom are the body's ends, which are the open and the close
+  /// whichever way round they came.
+  double get top => math.max(open, close);
+  double get bottom => math.min(open, close);
+}
+
 /// ChartData is the categories and the series together, and the parser that
 /// fills them in from pasted text.
 class ChartData {
@@ -171,6 +219,53 @@ class ChartData {
     if (seriesIndex < 0 || seriesIndex >= series.length) return 0;
     var v = series[seriesIndex].values;
     return row >= 0 && row < v.length ? v[row] : 0;
+  }
+
+  /// ohlcAt is one period of a candlestick chart, or null when there is not
+  /// enough to draw one.
+  ///
+  /// Four series read as one mark. By name where the names say which is
+  /// which -- a source that sends "Open, High, Low, Close" in any order is
+  /// read correctly -- and by position otherwise, which is the order every
+  /// market API sends them in and the order anybody typing them would use.
+  ///
+  /// Reading the names is what makes the ordinary path work without a fifth
+  /// setting to say which column is which: the mapping already named the
+  /// columns, and naming them twice is a thing to get wrong.
+  Ohlc? ohlcAt(int row) {
+    if (series.length < 4) return null;
+    var at = _ohlcOrder ?? const [0, 1, 2, 3];
+    return Ohlc(
+      valueAt(at[0], row),
+      valueAt(at[1], row),
+      valueAt(at[2], row),
+      valueAt(at[3], row),
+    );
+  }
+
+  /// _ohlcOrder is which series is the open, the high, the low and the close,
+  /// worked out from their names -- or null when the names do not say, in
+  /// which case the first four in order are taken.
+  ///
+  /// All four have to be found, and found once each. Half a match is worse
+  /// than none: a chart drawing the high as the open because one column
+  /// happened to be called "Close price" and another "Closing" would be
+  /// wrong in a way nobody could see.
+  List<int>? get _ohlcOrder {
+    var wanted = ["open", "high", "low", "close"];
+    var found = <int>[];
+    for (var word in wanted) {
+      var at = -1;
+      for (var i = 0; i < series.length; i++) {
+        if (series[i].name.toLowerCase().contains(word) && !found.contains(i)) {
+          at = i;
+          break;
+        }
+      }
+      if (at < 0) return null;
+      found.add(at);
+    }
+    return found;
   }
 
   /// asText renders the data back into the format [parse] reads, which is

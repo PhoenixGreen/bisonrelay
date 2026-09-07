@@ -1,4 +1,5 @@
 import 'package:bruig/plugin_system/canvas/model/data_source.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/chart_data.dart';
 import 'package:bruig/plugin_system/canvas/model/football_form.dart';
 
 // data_presets.dart is the recipes that fill a DataSource in.
@@ -69,6 +70,14 @@ class DataPreset {
   final int chartCategory;
   final List<int> chartValues;
 
+  /// chartType is the drawing this recipe wants, when it wants a particular
+  /// one.
+  ///
+  /// An OHLC source is four columns that mean one thing, and a chart of them
+  /// as four lines is not what anybody asking for it wanted. Null for every
+  /// other recipe, which leaves the chart drawn however it already was.
+  final ChartType? chartType;
+
   /// chartPoints is how many points to keep. See [ChartElement] -- four
   /// thousand daily figures on a chart eight inches wide is four thousand
   /// bars a third of a pixel apart.
@@ -121,6 +130,7 @@ class DataPreset {
     this.charts = false,
     this.chartCategory = 0,
     this.chartValues = const [1],
+    this.chartType,
     this.chartPoints = 0,
     this.hiddenHeaders = const [],
     this.fields = const [],
@@ -438,11 +448,81 @@ final DataPreset coinGeckoMarkets = DataPreset(
   ],
 );
 
+/// coinGeckoCandles is a coin's open, high, low and close.
+///
+/// The rows are arrays -- [when, open, high, low, close] -- so the paths are
+/// indices, the same way the price history's are. Thirty days at four-hourly
+/// candles is about a hundred and eighty, which is more than a canvas can
+/// draw legibly, so it is thinned like everything else.
+final DataPreset coinGeckoCandles = DataPreset(
+  id: "coingecko.ohlc",
+  label: "Candlesticks (CoinGecko)",
+  shortLabel: "CoinGecko",
+  note: "No key needed. CoinGecko decides the candle width from the range "
+      "asked for: a month comes back in four-hour candles.",
+  choiceLabel: "Coin",
+  choices: _geckoCoins,
+  address: (coin) =>
+      "https://api.coingecko.com/api/v3/coins/$coin/ohlc?vs_currency=usd&days=30",
+  rowsPath: "",
+  tables: false,
+  charts: true,
+  chartCategory: 0,
+  chartValues: const [1, 2, 3, 4],
+  chartType: ChartType.candlestick,
+  chartPoints: 60,
+  fields: const ["0", "1", "2", "3", "4"],
+  columns: const [
+    SourceColumn(header: "Date", path: "0", date: "d MMM"),
+    SourceColumn(header: "Open", path: "1"),
+    SourceColumn(header: "High", path: "2"),
+    SourceColumn(header: "Low", path: "3"),
+    SourceColumn(header: "Close", path: "4"),
+  ],
+);
+
+/// dcrdexCandles is Decred's own market, through dcrdata.
+///
+/// A list of records rather than arrays this time, with the period's start as
+/// an ISO date. The prices are in BTC, which is what the market trades in --
+/// so this is the chart of the DCR/BTC pair and not of a dollar price.
+final DataPreset dcrdexCandles = DataPreset(
+  id: "dcrdata.candlestick",
+  label: "Decred market candlesticks (dcrdex)",
+  shortLabel: "dcrdex",
+  note: "No key needed. Prices are in BTC, which is the pair the market "
+      "trades — for a dollar price use the CoinGecko candlesticks instead.",
+  choiceLabel: "Candle",
+  choices: const [
+    ("1d", "One day"),
+    ("1h", "One hour"),
+  ],
+  address: (bin) =>
+      "https://dcrdata.decred.org/api/chart/market/dcrdex/candlestick/$bin",
+  rowsPath: "sticks",
+  tables: false,
+  charts: true,
+  chartCategory: 0,
+  chartValues: const [1, 2, 3, 4],
+  chartType: ChartType.candlestick,
+  chartPoints: 60,
+  fields: const ["start", "open", "high", "low", "close", "volume"],
+  columns: const [
+    SourceColumn(header: "Date", path: "start", date: "d MMM"),
+    SourceColumn(header: "Open", path: "open"),
+    SourceColumn(header: "High", path: "high"),
+    SourceColumn(header: "Low", path: "low"),
+    SourceColumn(header: "Close", path: "close"),
+  ],
+);
+
 /// dataPresets is every recipe there is.
 final List<DataPreset> dataPresets = [
   footballData,
   dcrdataChart,
   coinGeckoPrice,
+  coinGeckoCandles,
+  dcrdexCandles,
   coinGeckoMarkets,
 ];
 

@@ -234,6 +234,16 @@ void _placeholder(ui.Canvas canvas, Rect rect, ChartElement e) {
 /// value written here is the only place it can go.
 List<(Color, String)> _legendEntries(ChartElement e, double reveal) {
   var data = e.data;
+  // A candlestick's four series are one mark, so naming them is a key to
+  // four things nobody can point at on the chart. What the colours actually
+  // say is whether the period closed up or down, so that is what the key
+  // says.
+  if (e.type.isCandles && data.series.length >= 4) {
+    return [
+      (e.riseColor, "Closed up"),
+      (e.fallColor, "Closed down"),
+    ];
+  }
   if (!colouredByValue(e.type)) {
     return [for (var s in data.series) (s.color, s.name)];
   }

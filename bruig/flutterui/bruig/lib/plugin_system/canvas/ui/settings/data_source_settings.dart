@@ -259,6 +259,10 @@ class _ChartTarget extends _Target {
         valueColumns: preset.chartValues,
         maxPoints: preset.chartPoints,
       ),
+      // And the drawing, where the recipe wants a particular one. Four
+      // columns of open, high, low and close drawn as four lines is not what
+      // anybody choosing an OHLC source was asking for.
+      type: preset.chartType,
     ));
     commit();
   }

@@ -40,14 +40,29 @@ class _ValueRange {
 /// ends of the axis out to multiples of it. The alternative -- running the
 /// axis from the smallest value to the largest -- gives labels like 3.7, 5.4,
 /// 7.1, which nobody can read a value off.
-_ValueRange _niceRange(double lo, double hi, {int target = 5}) {
+///
+/// [fromZero] is what a bar chart needs and a candlestick chart must not
+/// have: a bar is read as a length and one drawn from 12 to 16 on an axis
+/// starting at 12 says four times what it means, while a price forced down to
+/// zero is a flat line along the top with the whole month in a tenth of the
+/// plot.
+_ValueRange _niceRange(double lo, double hi,
+    {int target = 5, bool fromZero = true}) {
   if (!lo.isFinite || !hi.isFinite || lo == hi) {
     var base = lo.isFinite ? lo : 0.0;
-    lo = math.min(0, base);
+    lo = fromZero ? math.min(0, base) : base * 0.9;
     hi = base == 0 ? 1 : base * 1.2;
   }
-  if (lo > 0) lo = 0; // Bars must start from zero or they lie about ratios.
-  if (hi < 0) hi = 0;
+  if (fromZero) {
+    if (lo > 0) lo = 0; // Bars must start from zero or they lie about ratios.
+    if (hi < 0) hi = 0;
+  } else if (hi > lo) {
+    // A tenth of the range as air above and below, so the highest wick is not
+    // drawn along the top edge of the plot.
+    var air = (hi - lo) * 0.1;
+    lo -= air;
+    hi += air;
+  }
 
   var rough = (hi - lo) / target;
   var mag = math.pow(10, (math.log(rough) / math.ln10).floor()).toDouble();
@@ -79,7 +94,14 @@ void paintCartesian(
   var horizontal = e.type == ChartType.horizontalBar;
 
   // The range covers every series, or their running totals when stacked.
-  var lo = 0.0, hi = 0.0;
+  //
+  // Starting at zero for the types that are read as lengths, and starting
+  // nowhere for the one that is read as a position: seeded with zero, the
+  // smallest price on a candlestick chart could never be above it, and a
+  // month of trading between 12 and 16 was drawn as a smudge along the top of
+  // an axis that began at nothing.
+  var lo = e.type.startsAtZero ? 0.0 : double.infinity;
+  var hi = e.type.startsAtZero ? 0.0 : double.negativeInfinity;
   if (e.type.isStacked) {
     for (var i = 0; i < data.categories.length; i++) {
       var pos = 0.0, neg = 0.0;
@@ -100,7 +122,7 @@ void paintCartesian(
   }
   if (!e.yMin.isNaN) lo = e.yMin;
   if (!e.yMax.isNaN) hi = e.yMax;
-  var range = _niceRange(lo, hi);
+  var range = _niceRange(lo, hi, fromZero: e.type.startsAtZero);
   if (!e.yMin.isNaN || !e.yMax.isNaN) {
     range = _ValueRange(e.yMin.isNaN ? range.min : e.yMin,
         e.yMax.isNaN ? range.max : e.yMax, range.ticks);
@@ -176,6 +198,10 @@ void paintCartesian(
   if (bars.isNotEmpty) {
     _bars(canvas, plot, range, e, horizontal, bars, reveal);
   }
+  // Candles under the lines for the same reason bars are: the point of
+  // putting a moving average over a price chart is to read the line against
+  // the candles.
+  if (e.type.isCandles) _candles(canvas, plot, range, e, reveal);
   if (lines.isNotEmpty) _lines(canvas, plot, range, e, lines, reveal);
 }
 
@@ -315,6 +341,102 @@ void _axisLabels(
         Rect.fromCenter(
             center: Offset.zero, width: plot.height, height: axisTitleGutter));
     canvas.restore();
+  }
+}
+
+/// _candles draws the open, high, low and close of each period as one mark.
+///
+/// A thin wick from the low to the high with a body between the open and the
+/// close over it, coloured by whether the period closed up or down. The four
+/// numbers come from four series -- see ChartData.ohlcAt -- so a candlestick
+/// chart is fed exactly like every other type: four columns mapped, or four
+/// columns pasted.
+///
+/// A period that opened and closed at the same price has a body of no height,
+/// which is drawn as a line rather than as nothing: it is a real reading, and
+/// on a quiet day it is most of them.
+void _candles(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
+    double reveal) {
+  var slots = e.data.categories.length;
+  if (slots == 0 || e.data.series.length < 4) return;
+
+  var slotSize = plot.width / slots;
+  var bodyWidth = math.max(1.0, slotSize * (1 - e.barGap.clamp(0.0, 0.9)));
+  // The wick is a fraction of the body rather than a fixed width, so a chart
+  // of two hundred candles does not become a solid block of wicks.
+  var wickWidth = math.max(1.0, math.min(bodyWidth * 0.18, e.strokeWidth));
+
+  double y(double v) => plot.bottom - plot.height * range.fraction(v);
+
+  for (var i = 0; i < slots; i++) {
+    var ohlc = e.data.ohlcAt(i);
+    if (ohlc == null) continue;
+
+    var centre = plot.left + slotSize * (i + 0.5);
+    var colour = ohlc.rose ? e.riseColor : e.fallColor;
+
+    var arrived = 1.0;
+    if (e.animation.on && reveal < 1) {
+      var p = e.animation.progressAt(reveal, i, slots);
+      if (p <= 0) continue;
+      switch (e.animation.preset) {
+        case ChartAnimationPreset.fadeIn:
+          colour = colour.withValues(alpha: colour.a * p.clamp(0.0, 1.0));
+        case ChartAnimationPreset.grow:
+        case ChartAnimationPreset.popIn:
+        case ChartAnimationPreset.random:
+        case ChartAnimationPreset.drawOn:
+          // About its own middle. A candle growing out of the axis would
+          // travel through prices the period never traded at.
+          arrived = p.clamp(0.0, 1.0);
+        case ChartAnimationPreset.none:
+        case ChartAnimationPreset.wipe:
+        case ChartAnimationPreset.sweep:
+          break;
+      }
+    }
+
+    var paint = Paint()..color = colour;
+    var top = y(ohlc.top);
+    var bottom = y(ohlc.bottom);
+    var middle = (top + bottom) / 2;
+
+    var wickTop = y(ohlc.high);
+    var wickBottom = y(ohlc.low);
+    if (arrived < 1) {
+      var wickMiddle = (wickTop + wickBottom) / 2;
+      wickTop = wickMiddle + (wickTop - wickMiddle) * arrived;
+      wickBottom = wickMiddle + (wickBottom - wickMiddle) * arrived;
+      top = middle + (top - middle) * arrived;
+      bottom = middle + (bottom - middle) * arrived;
+    }
+
+    canvas.drawRect(
+        Rect.fromLTRB(centre - wickWidth / 2, wickTop, centre + wickWidth / 2,
+            wickBottom),
+        paint);
+
+    var body = Rect.fromLTRB(centre - bodyWidth / 2, top,
+        centre + bodyWidth / 2, math.max(bottom, top + wickWidth));
+    var r = math.min(e.barRadius, math.min(body.width, body.height) / 2);
+    canvas.drawRRect(
+        RRect.fromRectAndRadius(body, Radius.circular(math.max(0, r))), paint);
+
+    if (e.showValues) {
+      // The close, and only the close. Four numbers over every candle is a
+      // wall of digits; the close is the one a price chart is read for.
+      paintTextInBox(
+          canvas,
+          formatTick(ohlc.close),
+          e.valueSpec.copyWith(
+              align: TextAlignSpec.center,
+              verticalAlign: VerticalAlignSpec.bottom),
+          Rect.fromLTWH(
+              centre - slotSize / 2,
+              wickTop - e.valueSpec.fontSize * 1.5,
+              slotSize,
+              e.valueSpec.fontSize * 1.4));
+    }
   }
 }
 

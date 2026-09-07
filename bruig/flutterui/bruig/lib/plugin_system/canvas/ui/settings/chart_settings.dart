@@ -154,6 +154,15 @@ List<Widget> chartSettings(
             "Grouped and stacked bars need more than one series -- with one "
             "they draw exactly what plain bars draw. Add a second series "
             "under Series below."),
+      // Four series, not one, and named rather than counted where the names
+      // say which is which. Said here because a candlestick chart with three
+      // series draws nothing at all, which reads as broken.
+      if (e.type.needsFourSeries && e.data.series.length < 4)
+        const CanvasHint(
+            "Candlesticks need four series — the open, the high, the low and "
+            "the close. Name them and the order does not matter; unnamed, "
+            "the first four are taken in that order. CoinGecko's OHLC preset "
+            "under Data source fills all four in."),
     ]),
     // "Axes and values", and the values are in it: they are all the same
     // question -- what does this chart write on itself -- and the switches
@@ -221,6 +230,21 @@ List<Widget> chartSettings(
         color: e.gridColor,
         onChanged: (c) => now(e.copyWith(gridColor: c)),
       ),
+      // On a candlestick the colour is the reading rather than a label for a
+      // series, so the two of them belong with the chart's own style and not
+      // in the series list.
+      if (e.type.isCandles) ...[
+        CanvasColorButton(
+          label: "Up",
+          color: e.riseColor,
+          onChanged: (c) => now(e.copyWith(riseColor: c)),
+        ),
+        CanvasColorButton(
+          label: "Down",
+          color: e.fallColor,
+          onChanged: (c) => now(e.copyWith(fallColor: c)),
+        ),
+      ],
       CanvasNumberField(
         label: "Bar gap",
         min: 0,
