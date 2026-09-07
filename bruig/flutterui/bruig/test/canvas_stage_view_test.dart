@@ -15,6 +15,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
 import 'package:bruig/plugin_system/canvas/render/image_placement.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
@@ -2858,6 +2859,118 @@ void main() {
       var dividers = tableColumnDividers(wide, wide.bounds);
       var on = Offset(dividers.single, wide.bounds.center.dy);
       expect(tableColumnAt(wide, wide.bounds, on.translate(12, 0), 13), 0);
+    });
+  });
+
+  group("rulers and guides", () {
+    // A guide is furniture rather than an element: dragging one moves nothing
+    // on the canvas, it moves the thing the canvas is being lined up against.
+
+    Future<(CanvasController, CanvasStageState)> withRulers(
+      WidgetTester tester, {
+      CanvasGuides guides =
+          const CanvasGuides(rulers: CanvasRulers(top: true, left: true)),
+    }) async {
+      var controller =
+          CanvasController(const CanvasDocument().copyWith(guides: guides));
+      addTearDown(controller.dispose);
+      var stage = await pump(tester, controller);
+      return (controller, stage);
+    }
+
+    testWidgets("dragging out of the left ruler leaves a vertical guide",
+        (tester) async {
+      var (controller, stage) = await withRulers(tester);
+      expect(controller.document.guides.guides, isEmpty);
+
+      // Start inside the left strip -- which runs down the edge of the whole
+      // stage, not of the page -- and pull right onto the canvas.
+      expect(stage.pageRect.left, lessThan(180));
+      await tester.dragFrom(const Offset(6, 200), const Offset(180, 0));
+      await tester.pumpAndSettle();
+
+      var guide = controller.document.guides.guides.single;
+      expect(guide.axis, GuideAxis.vertical,
+          reason: "the side rulers make upright lines");
+    });
+
+    testWidgets("dragging out of the top ruler leaves a horizontal one",
+        (tester) async {
+      var (controller, stage) = await withRulers(tester);
+      expect(stage.pageRect.top, lessThan(180));
+      await tester.dragFrom(const Offset(200, 6), const Offset(0, 180));
+      await tester.pumpAndSettle();
+      expect(
+          controller.document.guides.guides.single.axis, GuideAxis.horizontal);
+    });
+
+    testWidgets("no ruler, no guide", (tester) async {
+      // The strip is only a place to pull from when there is a ruler drawn
+      // there; otherwise it is canvas like any other.
+      var (controller, _) =
+          await withRulers(tester, guides: const CanvasGuides());
+      await tester.dragFrom(const Offset(6, 200), const Offset(180, 0));
+      await tester.pumpAndSettle();
+      expect(controller.document.guides.guides, isEmpty);
+    });
+
+    testWidgets("an existing guide can be picked up and moved", (tester) async {
+      var (controller, stage) = await withRulers(tester,
+          guides: const CanvasGuides(guides: [
+            CanvasGuide(axis: GuideAxis.vertical, at: 400),
+          ]));
+
+      var scale = stage.pageRect.width / controller.document.size.width;
+      var on = stage.pageRect.topLeft + Offset(400 * scale, 120);
+      await tester.dragFrom(on, const Offset(60, 0));
+      await tester.pumpAndSettle();
+
+      expect(controller.document.guides.guides.single.at, greaterThan(400));
+    });
+
+    testWidgets("a locked guide stays where it is", (tester) async {
+      // The commonest thing to do to a line you are working against is move
+      // it by accident.
+      var (controller, stage) = await withRulers(tester,
+          guides: const CanvasGuides(lockGuides: true, guides: [
+            CanvasGuide(axis: GuideAxis.vertical, at: 400),
+          ]));
+
+      var scale = stage.pageRect.width / controller.document.size.width;
+      await tester.dragFrom(stage.pageRect.topLeft + Offset(400 * scale, 120),
+          const Offset(60, 0));
+      await tester.pumpAndSettle();
+      expect(controller.document.guides.guides.single.at, 400);
+    });
+
+    testWidgets("dragging one off the page throws it away", (tester) async {
+      // Which is how every editor removes a guide, and short of clearing them
+      // all it is the only way.
+      var (controller, stage) = await withRulers(tester,
+          guides: const CanvasGuides(guides: [
+            CanvasGuide(axis: GuideAxis.vertical, at: 30),
+          ]));
+
+      var scale = stage.pageRect.width / controller.document.size.width;
+      await tester.dragFrom(stage.pageRect.topLeft + Offset(30 * scale, 120),
+          Offset(-60 - 30 * scale, 0));
+      await tester.pumpAndSettle();
+      expect(controller.document.guides.guides, isEmpty);
+    });
+
+    testWidgets("a hidden guide cannot be grabbed", (tester) async {
+      // What cannot be seen cannot be aimed at, and must not be picked up by
+      // a press that was meant for whatever is underneath it.
+      var (controller, stage) = await withRulers(tester,
+          guides: const CanvasGuides(showGuides: false, guides: [
+            CanvasGuide(axis: GuideAxis.vertical, at: 400),
+          ]));
+
+      var scale = stage.pageRect.width / controller.document.size.width;
+      await tester.dragFrom(stage.pageRect.topLeft + Offset(400 * scale, 120),
+          const Offset(60, 0));
+      await tester.pumpAndSettle();
+      expect(controller.document.guides.guides.single.at, 400);
     });
   });
 }

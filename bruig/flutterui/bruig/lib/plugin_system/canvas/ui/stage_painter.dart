@@ -222,6 +222,10 @@ class StagePainter extends CustomPainter {
 
     _paintGuides(canvas);
     _paintFraming(canvas);
+    // Last of the furniture, and drawn in the widget's own pixels rather than
+    // the document's: a ruler is a fixed strip at the edge of the window, and
+    // what moves under it is the canvas.
+    _paintRulers(canvas, size);
     _paintSelection(canvas);
 
     if (marquee != null) {
@@ -616,6 +620,102 @@ class StagePainter extends CustomPainter {
       }
     }
     canvas.restore();
+  }
+
+  /// _paintRulers draws a strip along each edge that has been asked for.
+  ///
+  /// In screen pixels, with the tick positions worked out by putting document
+  /// coordinates through the same transform everything else uses. A ruler that
+  /// scrolled with the canvas would be a ruler that left the window.
+  ///
+  /// Zero is the top-left of the *page*, not of the window, because that is
+  /// what every number in the settings panel means. An element at x=0 is
+  /// against the left edge of the canvas, and a ruler that disagreed with the
+  /// X field would be worse than no ruler.
+  void _paintRulers(Canvas canvas, Size size) {
+    if (!guides.rulers.any) return;
+    var step = rulerStep(scale);
+
+    var strip = Paint()..color = const Color(0xF01A1A1E);
+    var edge = Paint()
+      ..strokeWidth = 1
+      ..color = const Color(0x33FFFFFF);
+    var tick = Paint()
+      ..strokeWidth = 1
+      ..color = const Color(0x66FFFFFF);
+
+    // Where the page's origin sits on screen, which is what every number is
+    // measured from.
+    var zero =
+        Offset(page.left * scale + origin.dx, page.top * scale + origin.dy);
+
+    void number(double at, Offset where, {required bool vertical}) {
+      var painter = TextPainter(
+        text: TextSpan(
+          text: "${at.round()}",
+          style: const TextStyle(fontSize: 8, color: Color(0xAAFFFFFF)),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      if (vertical) {
+        // Turned on its side, as every vertical ruler does: the numbers read
+        // up the strip rather than sticking out of it.
+        canvas.save();
+        canvas.translate(where.dx, where.dy);
+        canvas.rotate(-math.pi / 2);
+        painter.paint(canvas, Offset(-painter.width - 2, 0));
+        canvas.restore();
+      } else {
+        painter.paint(canvas, where);
+      }
+      painter.dispose();
+    }
+
+    // The horizontal rulers: top and bottom.
+    for (var top in [true, false]) {
+      if (top ? !guides.rulers.top : !guides.rulers.bottom) continue;
+      var band = top
+          ? Rect.fromLTWH(0, 0, size.width, rulerThickness)
+          : Rect.fromLTWH(
+              0, size.height - rulerThickness, size.width, rulerThickness);
+      canvas.drawRect(band, strip);
+      canvas.drawLine(Offset(0, top ? band.bottom : band.top),
+          Offset(size.width, top ? band.bottom : band.top), edge);
+
+      // Only across the page. A ruler that went on numbering the grey around
+      // the canvas would be measuring something that is not there.
+      for (var i = 0;; i++) {
+        var at = i * step;
+        if (at > page.width) break;
+        var x = zero.dx + at * scale;
+        if (x < -20 || x > size.width + 20) continue;
+        canvas.drawLine(Offset(x, top ? band.bottom - 5 : band.top),
+            Offset(x, top ? band.bottom : band.top + 5), tick);
+        number(at, Offset(x + 2, band.top + 3), vertical: false);
+      }
+    }
+
+    // The vertical rulers: left and right.
+    for (var left in [true, false]) {
+      if (left ? !guides.rulers.left : !guides.rulers.right) continue;
+      var band = left
+          ? Rect.fromLTWH(0, 0, rulerThickness, size.height)
+          : Rect.fromLTWH(
+              size.width - rulerThickness, 0, rulerThickness, size.height);
+      canvas.drawRect(band, strip);
+      canvas.drawLine(Offset(left ? band.right : band.left, 0),
+          Offset(left ? band.right : band.left, size.height), edge);
+
+      for (var i = 0;; i++) {
+        var at = i * step;
+        if (at > page.height) break;
+        var y = zero.dy + at * scale;
+        if (y < -20 || y > size.height + 20) continue;
+        canvas.drawLine(Offset(left ? band.right - 5 : band.left, y),
+            Offset(left ? band.right : band.left + 5, y), tick);
+        number(at, Offset(band.right - 3, y - 2), vertical: true);
+      }
+    }
   }
 
   @override

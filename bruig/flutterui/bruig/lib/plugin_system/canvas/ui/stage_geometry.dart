@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 // stage_geometry.dart is how big the things you grab on the stage are, and
 // what the eight of them are called.
 //
@@ -56,4 +58,40 @@ enum StageHandle {
   bool get movesTop => this == topLeft || this == topCenter || this == topRight;
   bool get movesBottom =>
       this == bottomLeft || this == bottomCenter || this == bottomRight;
+}
+
+/// rulerThickness is how deep a ruler strip is, in screen pixels.
+///
+/// Shared, because the painter draws the strip and the stage hit-tests it: a
+/// ruler you can see and cannot drag out of, or drag out of where nothing is
+/// drawn, is the same bug twice.
+const double rulerThickness = 18;
+
+/// guideGrabSlop is how near a guide the pointer has to be to take hold of it.
+///
+/// Tight, and deliberately tighter than a handle's. A guide is drawn as a
+/// hairline over the design, and everything underneath it is something the
+/// reader might have been aiming at instead -- so the line has to be nearly
+/// hit rather than merely approached.
+const double guideGrabSlop = 4;
+
+/// rulerStep picks the gap between numbered ticks so they land on round
+/// numbers and stay about [wanted] pixels apart on screen.
+///
+/// The same "nice numbers" walk a chart's axis uses, and for the same reason:
+/// a ruler ticking every 37 units is a ruler nobody can read a position off.
+double rulerStep(double scale, {double wanted = 80}) {
+  if (!scale.isFinite || scale <= 0) return 100;
+  var rough = wanted / scale;
+  var magnitude =
+      math.pow(10, (math.log(rough) / math.ln10).floor()).toDouble();
+  var norm = rough / magnitude;
+  var step = norm <= 1
+      ? 1
+      : norm <= 2
+          ? 2
+          : norm <= 5
+              ? 5
+              : 10;
+  return step * magnitude;
 }

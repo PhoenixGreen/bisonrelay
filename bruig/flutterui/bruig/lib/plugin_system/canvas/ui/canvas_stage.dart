@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_snap.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
@@ -78,6 +79,11 @@ enum _DragMode {
   /// moves neither the element nor the picture's pixels -- only which part of
   /// them the frame is showing. See ImageFraming.
   imageFrame,
+
+  /// guide is one of the reader's own lines being moved, or a new one being
+  /// pulled out of a ruler. Not an element at all: it moves nothing on the
+  /// canvas, it moves the thing the canvas is being lined up against.
+  guide,
 }
 
 class CanvasStage extends StatefulWidget {
@@ -145,6 +151,9 @@ class CanvasStageState extends State<CanvasStage> {
   /// go on moving the picture *element*, which is what it does nine times out
   /// of ten; asking for the other thing is a second click.
   String? _framing;
+
+  /// _guideIndex is which guide is being dragged, while one is.
+  int _guideIndex = -1;
 
   /// _framingStart is the framing the drag started from, so that a drag is
   /// applied to where the picture was when it was taken hold of rather than
@@ -721,6 +730,12 @@ class CanvasStageState extends State<CanvasStage> {
       setState(() => _framing = null);
     }
 
+    // A guide, before anything on the canvas. It is drawn over the design and
+    // is a hairline, so the reach is tight -- see guideGrabSlop -- but within
+    // that reach it has to win, or a guide laid over a picture could never be
+    // picked up again.
+    if (_startGuideDrag(stage, doc)) return;
+
     // A selected path's points and handles are grabbed before anything
     // else, exactly as a team's players are: they are drawn on top of the
     // curve and are the thing being aimed at.
@@ -1103,6 +1118,119 @@ class CanvasStageState extends State<CanvasStage> {
           e.rotationAt(controller.frame) * math.pi / 180);
     }
     return null;
+  }
+
+  /// _startGuideDrag takes hold of a guide, or pulls a new one out of a
+  /// ruler.
+  ///
+  /// Returns whether it did, so the caller can stop looking. A press inside a
+  /// ruler always means a new guide -- there is nothing else in a ruler to
+  /// press -- and a press near an existing line means that line, unless the
+  /// guides are locked or hidden, in which case there is nothing there to
+  /// take hold of.
+  bool _startGuideDrag(Offset stage, Offset doc) {
+    var guides = document.guides;
+    if (!guides.showGuides) return false;
+
+    // Out of a ruler. Which ruler decides which way the guide runs: pulling
+    // down from the top gives a horizontal line, pulling out of the left gives
+    // a vertical one, which is what every editor with rulers does.
+    var from = _rulerUnder(stage);
+    if (from != null) {
+      var axis = from == GuideAxis.vertical
+          ? GuideAxis.vertical
+          : GuideAxis.horizontal;
+      var at = axis == GuideAxis.vertical ? doc.dx : doc.dy;
+      controller.beginInteraction();
+      var next = guides.withGuide(CanvasGuide(axis: axis, at: at));
+      _guideIndex = next.guides.length - 1;
+      _mode = _DragMode.guide;
+      controller.apply(document.copyWith(guides: next), transient: true);
+      return true;
+    }
+
+    if (guides.lockGuides) return false;
+    var reach = guideGrabSlop / _scale;
+    for (var (i, guide) in guides.guides.indexed) {
+      var gap = guide.axis == GuideAxis.vertical
+          ? (doc.dx - guide.at).abs()
+          : (doc.dy - guide.at).abs();
+      if (gap > reach) continue;
+      _guideIndex = i;
+      _mode = _DragMode.guide;
+      controller.beginInteraction();
+      return true;
+    }
+    return false;
+  }
+
+  /// _rulerUnder is which ruler the pointer is in, expressed as the axis of
+  /// the guide it would produce, or null for anywhere else.
+  GuideAxis? _rulerUnder(Offset stage) {
+    var rulers = document.guides.rulers;
+    if (!rulers.any) return null;
+    // The left and right strips make vertical lines; the top and bottom ones
+    // make horizontal lines.
+    if (rulers.left && stage.dx <= rulerThickness) return GuideAxis.vertical;
+    if (rulers.right && stage.dx >= _viewport.width - rulerThickness) {
+      return GuideAxis.vertical;
+    }
+    if (rulers.top && stage.dy <= rulerThickness) return GuideAxis.horizontal;
+    if (rulers.bottom && stage.dy >= _viewport.height - rulerThickness) {
+      return GuideAxis.horizontal;
+    }
+    return null;
+  }
+
+  /// _applyGuide moves the guide being dragged to where the pointer is.
+  ///
+  /// Snapped to the grid like anything else, so a guide can be put exactly on
+  /// a gridline rather than a pixel beside it -- which is most of what
+  /// somebody dragging one out is trying to do.
+  void _applyGuide(Offset doc) {
+    var guides = document.guides;
+    if (_guideIndex < 0 || _guideIndex >= guides.guides.length) return;
+    var guide = guides.guides[_guideIndex];
+
+    var at = guide.axis == GuideAxis.vertical ? doc.dx : doc.dy;
+    if (!HardwareKeyboard.instance.isAltPressed) {
+      var line = snapEdgeTo(
+        at,
+        guides,
+        document.size.size,
+        vertical: guide.axis == GuideAxis.vertical,
+        within: guides.snapWithin / _scale,
+      );
+      if (line != null) at = line;
+    }
+
+    controller.apply(
+        document.copyWith(guides: guides.movedGuide(_guideIndex, at)),
+        transient: true);
+  }
+
+  /// _finishGuide drops the guide, or throws it away if it was dragged off
+  /// the canvas.
+  ///
+  /// Dragging one back off the page is how every editor removes a guide, and
+  /// it is the only way to remove one at all short of clearing them all.
+  void _finishGuide() {
+    var guides = document.guides;
+    if (_guideIndex < 0 || _guideIndex >= guides.guides.length) {
+      _guideIndex = -1;
+      return;
+    }
+    var guide = guides.guides[_guideIndex];
+    var page = document.size.size;
+    var off = guide.axis == GuideAxis.vertical
+        ? guide.at < 0 || guide.at > page.width
+        : guide.at < 0 || guide.at > page.height;
+
+    if (off) {
+      controller
+          .apply(document.copyWith(guides: guides.withoutGuide(_guideIndex)));
+    }
+    _guideIndex = -1;
   }
 
   /// _applyFraming moves the picture inside its frame by however far the
@@ -1490,6 +1618,8 @@ class CanvasStageState extends State<CanvasStage> {
         _applyPart(doc, chartLabel: false);
       case _DragMode.imageFrame:
         _applyFraming(doc);
+      case _DragMode.guide:
+        _applyGuide(doc);
       default:
         break;
     }
@@ -1698,12 +1828,14 @@ class CanvasStageState extends State<CanvasStage> {
     // already, that did not lose the undo step -- it merged it into whatever
     // gesture came next, so undoing after nudging a chart's title also undid
     // the move that followed it.
+    if (_mode == _DragMode.guide) _finishGuide();
     if (_mode == _DragMode.move ||
         _mode == _DragMode.resize ||
         _mode == _DragMode.rotate ||
         _mode == _DragMode.chartLabel ||
         _mode == _DragMode.tableColumn ||
-        _mode == _DragMode.imageFrame) {
+        _mode == _DragMode.imageFrame ||
+        _mode == _DragMode.guide) {
       controller.endInteraction();
     }
     _mode = _DragMode.none;
@@ -1713,8 +1845,13 @@ class CanvasStageState extends State<CanvasStage> {
     if (_snappedTo != null) setState(() => _snappedTo = null);
   }
 
+  /// _hoverAt is where the pointer last was, in stage coordinates. Kept so
+  /// the cursor can say what is under it -- a ruler, in particular.
+  Offset _hoverAt = Offset.zero;
+
   /// _updateHover keeps the renderer told which button is under the pointer.
   void _updateHover(Offset stage) {
+    _hoverAt = stage;
     var element = _hitElement(_toDocument(stage));
     var id = element is ButtonElement ? element.id : null;
     if (id != controller.hoveredButton) {
@@ -2062,6 +2199,14 @@ class CanvasStageState extends State<CanvasStage> {
     if (controller.tool == CanvasTool.pan) return SystemMouseCursors.grab;
     if (_mode == _DragMode.rotate) return SystemMouseCursors.grabbing;
     if (_mode == _DragMode.move) return SystemMouseCursors.move;
+    // A ruler is a place you pull a guide out of, so it says so on approach
+    // rather than only once something is happening.
+    if (_mode == _DragMode.guide) return SystemMouseCursors.grabbing;
+    if (_rulerUnder(_hoverAt) case var axis?) {
+      return axis == GuideAxis.vertical
+          ? SystemMouseCursors.resizeLeftRight
+          : SystemMouseCursors.resizeUpDown;
+    }
     // A picture being reframed is grabbable everywhere inside it, and saying
     // so is most of what tells the reader they are in a mode at all.
     if (_framing != null) {

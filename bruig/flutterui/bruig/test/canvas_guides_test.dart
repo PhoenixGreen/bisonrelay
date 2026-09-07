@@ -1,8 +1,10 @@
+import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_snap.dart';
+import 'package:bruig/plugin_system/canvas/ui/stage_geometry.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 // canvas_guides_test.dart is about where a dragged element actually lands.
@@ -210,6 +212,38 @@ void main() {
 
       guides = guides.withoutGuide(0);
       expect(guides.guides.single.axis, GuideAxis.horizontal);
+    });
+  });
+
+  group("ruler ticks", () {
+    // A ruler is only worth drawing if a position can be read off it, and
+    // that means the numbers on it have to be round.
+
+    test("the gap is always a round number", () {
+      for (var scale in [0.05, 0.31, 0.5, 1.0, 1.7, 4.0, 13.0]) {
+        var step = rulerStep(scale);
+        var digits = step / math.pow(10, (math.log(step) / math.ln10).floor());
+        expect([1.0, 2.0, 5.0, 10.0], contains(closeTo(digits, 0.0001)),
+            reason: "$step is not 1, 2 or 5 of anything, at scale $scale");
+      }
+    });
+
+    test("ticks stay about as far apart on screen however far it is zoomed",
+        () {
+      // The step is in canvas units, so it has to grow as the view shrinks:
+      // what should stay roughly constant is the gap in pixels.
+      for (var scale in [0.1, 0.25, 1.0, 3.0, 8.0]) {
+        var gap = rulerStep(scale) * scale;
+        expect(gap, greaterThan(20));
+        expect(gap, lessThan(200));
+      }
+    });
+
+    test("a nonsense scale still gives a usable step", () {
+      // Fit runs before the first layout, so a zero or a NaN reaches here.
+      for (var scale in [0.0, -1.0, double.nan, double.infinity]) {
+        expect(rulerStep(scale), greaterThan(0));
+      }
     });
   });
 }
