@@ -1259,3 +1259,68 @@ class CanvasGridCellState extends State<CanvasGridCell> {
         onChanged: widget.onChanged,
       );
 }
+
+/// CanvasWatch rebuilds only when the part of a listenable it cares about
+/// actually changes.
+///
+/// A ListenableBuilder rebuilds on every notification, and the canvas
+/// controller notifies on every pixel of a drag. Most of the sidebar does not
+/// change on most of those: a layer list shows names and order, and neither
+/// moves when an element does. Watching a small value instead means the
+/// difference between a list rebuilt sixty times a second and one rebuilt when
+/// it has something new to say.
+///
+/// [select] must be cheap and must be a *value* -- a string, a number, a
+/// record -- because it runs on every notification and is compared with ==.
+/// Returning a list or a map would compare by identity and never match, which
+/// is a rebuild every time wearing a disguise.
+class CanvasWatch<T> extends StatefulWidget {
+  final Listenable listenable;
+  final T Function() select;
+  final Widget Function(BuildContext context, T value) builder;
+
+  const CanvasWatch({
+    required this.listenable,
+    required this.select,
+    required this.builder,
+    super.key,
+  });
+
+  @override
+  State<CanvasWatch<T>> createState() => _CanvasWatchState<T>();
+}
+
+class _CanvasWatchState<T> extends State<CanvasWatch<T>> {
+  late T _value = widget.select();
+
+  @override
+  void initState() {
+    super.initState();
+    widget.listenable.addListener(_check);
+  }
+
+  @override
+  void didUpdateWidget(CanvasWatch<T> old) {
+    super.didUpdateWidget(old);
+    if (old.listenable != widget.listenable) {
+      old.listenable.removeListener(_check);
+      widget.listenable.addListener(_check);
+    }
+    _value = widget.select();
+  }
+
+  @override
+  void dispose() {
+    widget.listenable.removeListener(_check);
+    super.dispose();
+  }
+
+  void _check() {
+    var next = widget.select();
+    if (next == _value) return;
+    if (mounted) setState(() => _value = next);
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.builder(context, _value);
+}

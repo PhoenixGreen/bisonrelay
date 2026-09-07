@@ -1,5 +1,6 @@
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/elements_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
@@ -34,10 +35,30 @@ class CanvasLayersPanel extends StatelessWidget {
   const CanvasLayersPanel({required this.controller, super.key});
 
   @override
-  Widget build(BuildContext context) => ListenableBuilder(
+  Widget build(BuildContext context) => CanvasWatch<String>(
         listenable: controller,
+        // What this list actually shows. An element moving on the canvas
+        // changes none of it, and the controller notifies on every pixel of
+        // that -- so watching the whole controller meant rebuilding a row per
+        // element sixty times a second to draw exactly what was already there.
+        select: () => _shape(),
         builder: (context, _) => _layerList(),
       );
+
+  /// _shape is everything the list is drawn from, as one string.
+  ///
+  /// A string rather than a list, because it is compared with == on every
+  /// notification -- see CanvasWatch. Cheap to build: a walk of the elements
+  /// touching four fields each, against a rebuild that lays out a row of
+  /// controls for every one of them.
+  String _shape() {
+    var out = StringBuffer("${controller.backgroundSelected}");
+    for (var e in controller.document.elements) {
+      out.write("|${e.id}:${e.name}:${e.visible}:${e.locked}:"
+          "${controller.selection.contains(e.id)}");
+    }
+    return out.toString();
+  }
 
   Widget _layerList() {
     var elements = controller.document.elements;

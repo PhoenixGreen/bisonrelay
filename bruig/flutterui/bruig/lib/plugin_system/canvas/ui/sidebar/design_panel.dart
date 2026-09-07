@@ -20,16 +20,61 @@ import 'package:flutter/material.dart';
 // each panel opens, closes, takes the height it is given and sits where it is
 // put, and all of that is remembered. See panel_stack.dart.
 
-class CanvasDesignPanel extends StatelessWidget {
+class CanvasDesignPanel extends StatefulWidget {
   final CanvasController controller;
   const CanvasDesignPanel({required this.controller, super.key});
 
   @override
+  State<CanvasDesignPanel> createState() => _CanvasDesignPanelState();
+}
+
+class _CanvasDesignPanelState extends State<CanvasDesignPanel> {
+  CanvasController get controller => widget.controller;
+
+  /// The three bodies, built once and handed to the stack unchanged.
+  ///
+  /// This is the whole of what keeps the panel quick. The stack rebuilds
+  /// whenever a heading changes -- the layer count, the name of what is
+  /// selected -- and every notification from the controller is one of those:
+  /// it notifies on every pixel of a drag. Rebuilt with it, all three bodies
+  /// were laid out sixty times a second, and the settings alone are twenty or
+  /// thirty text fields.
+  ///
+  /// Handed the same widget instance twice, Flutter leaves that subtree
+  /// alone. So each body decides for itself when to rebuild -- the layers and
+  /// the settings listen for what they show, and the palette of things to add
+  /// does not listen at all, because nothing about the document changes it.
+  late Widget _add;
+  late Widget _layers;
+  late Widget _settings;
+
+  @override
+  void initState() {
+    super.initState();
+    _makeBodies();
+  }
+
+  @override
+  void didUpdateWidget(CanvasDesignPanel old) {
+    super.didUpdateWidget(old);
+    // Built once, but once *per controller*. Holding the first one's bodies
+    // after being handed a second would leave the whole column bound to a
+    // document nobody is looking at any more -- a panel that is cheap because
+    // it is stale is not cheap, it is broken.
+    if (old.controller != widget.controller) _makeBodies();
+  }
+
+  void _makeBodies() {
+    _add = CanvasElementsPanel(controller: controller);
+    _layers = CanvasLayersPanel(controller: controller);
+    _settings = _SettingsBody(controller: controller);
+  }
+
+  @override
   Widget build(BuildContext context) => ListenableBuilder(
-        // The whole stack, because two of the three headers say something
-        // about the document: how many layers there are, and what is
-        // selected. A panel whose name is out of date is worse than one with
-        // no name.
+        // The headings, and only the headings: two of the three say something
+        // about the document. A panel whose name is out of date is worse than
+        // one with no name.
         listenable: controller,
         builder: (context, _) => _stack(context),
       );
@@ -43,7 +88,7 @@ class CanvasDesignPanel extends StatelessWidget {
             icon: Icons.category_outlined,
             hint: "Click to add one in the middle of the canvas, or drag it "
                 "where you want it.",
-            builder: (context) => CanvasElementsPanel(controller: controller),
+            body: _add,
           ),
           CanvasStackPanel(
             id: "layers",
@@ -53,7 +98,7 @@ class CanvasDesignPanel extends StatelessWidget {
             // panel still says how much is behind it. One more than the
             // elements, because the background is a layer too.
             trailing: "${controller.document.elements.length + 1}",
-            builder: (context) => CanvasLayersPanel(controller: controller),
+            body: _layers,
           ),
           CanvasStackPanel(
             id: "settings",
@@ -64,20 +109,47 @@ class CanvasDesignPanel extends StatelessWidget {
             label: elementSettingsTitle(controller),
             icon: Icons.tune,
             hint: elementSettingsHint,
-            builder: (context) => ListenableBuilder(
-              listenable: controller,
-              builder: (context, _) => SingleChildScrollView(
-                // A clear gap under the header. It is a coloured band now,
-                // so settings starting immediately beneath it read as being
-                // part of it.
-                padding: const EdgeInsets.fromLTRB(8, 12, 8, 12),
-                child: CanvasControlScope(
-                  maxWidth: 240,
-                  child: elementSettingsBody(context, controller),
-                ),
-              ),
-            ),
+            body: _settings,
           ),
         ],
+      );
+}
+
+/// _SettingsBody is the settings of whatever is selected.
+///
+/// Its own widget so that it can be built once and handed to the stack, and
+/// so that its listener is its own: it is by far the most expensive thing in
+/// this column, and it must not be rebuilt because a heading elsewhere
+/// changed.
+class _SettingsBody extends StatelessWidget {
+  final CanvasController controller;
+  const _SettingsBody({required this.controller});
+
+  @override
+  Widget build(BuildContext context) => CanvasWatch<int>(
+        listenable: controller,
+        // Every change except the ones about the view. See
+        // CanvasController.revision, which counts them the safe way round: a
+        // notification moves it unless it has been deliberately marked as
+        // being about the zoom, the pan, the frame's shape or the tool in
+        // hand -- none of which these controls show, and all of which used to
+        // lay out twenty or thirty text fields for nothing.
+        //
+        // Keyed on that alone, rather than on a list of what the settings
+        // happen to read. That list was tried and it was wrong within the
+        // hour: these controls also show the retouching brush, its size, its
+        // hardness, whether a stroke is waiting -- none of it in the document.
+        // A key that has to name everything is a key that goes stale the next
+        // time somebody adds a control.
+        select: () => controller.revision,
+        builder: (context, _) => SingleChildScrollView(
+          // A clear gap under the header. It is a coloured band, so settings
+          // starting immediately beneath it read as being part of it.
+          padding: const EdgeInsets.fromLTRB(8, 12, 8, 12),
+          child: CanvasControlScope(
+            maxWidth: 240,
+            child: elementSettingsBody(context, controller),
+          ),
+        ),
       );
 }

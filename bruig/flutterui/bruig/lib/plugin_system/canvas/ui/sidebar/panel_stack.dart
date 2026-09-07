@@ -53,13 +53,20 @@ class CanvasStackPanel {
   /// so a shut panel still says how much is behind it.
   final String? trailing;
 
-  final WidgetBuilder builder;
+  /// body is the panel's contents, built once by whoever owns the stack.
+  ///
+  /// A widget rather than a builder, and that is the whole point: the stack
+  /// rebuilds whenever a header's name or count changes, and a builder would
+  /// rebuild every panel's contents with it. Handed the same widget instance
+  /// twice, Flutter leaves that subtree alone -- so a panel updates when what
+  /// it shows changes rather than when its neighbour's heading does.
+  final Widget body;
 
   const CanvasStackPanel({
     required this.id,
     required this.label,
     required this.icon,
-    required this.builder,
+    required this.body,
     this.hint,
     this.trailing,
   });
@@ -241,7 +248,7 @@ class _CanvasPanelStackState extends State<CanvasPanelStack> {
   }
 
   Widget _body(CanvasStackPanel panel) => ClipRect(
-        child: Builder(builder: panel.builder),
+        child: panel.body,
       );
 
   /// _divider is the line between two panels, and the grip that moves it.

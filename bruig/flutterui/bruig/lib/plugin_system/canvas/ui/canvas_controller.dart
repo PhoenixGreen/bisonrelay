@@ -206,6 +206,42 @@ class CanvasController extends ChangeNotifier {
   Offset2 _pan = const Offset2(0, 0);
   Offset2 get pan => _pan;
 
+  /// revision counts every change that is about the *document* rather than
+  /// about the view of it.
+  ///
+  /// What the sidebar watches. The controller notifies for everything --
+  /// panning, zooming, hovering a button, every pixel of a drag -- and the
+  /// settings panel is twenty or thirty text fields; laying those out for a
+  /// change they do not show is most of what made clicking around feel slow.
+  ///
+  /// Safe by default, and that is the whole design: every notification moves
+  /// this unless it is one of the handful that deliberately does not, so a
+  /// field added later and forgotten costs a rebuild nobody needed rather
+  /// than leaving a panel showing something that is no longer true.
+  int get revision => _revision;
+  int _revision = 0;
+
+  /// _viewOnly is set only while [_notifyView] is running.
+  bool _viewOnly = false;
+
+  @override
+  void notifyListeners() {
+    if (!_viewOnly) _revision++;
+    super.notifyListeners();
+  }
+
+  /// _notifyView tells everyone that the *view* moved -- the zoom, the pan,
+  /// how the canvas is framed, which tool is in hand -- without claiming the
+  /// document changed.
+  void _notifyView() {
+    _viewOnly = true;
+    try {
+      notifyListeners();
+    } finally {
+      _viewOnly = false;
+    }
+  }
+
   CanvasFit _fit = CanvasFit.whole;
 
   /// fit is how large the frame is drawn. See [CanvasFit].
@@ -219,7 +255,7 @@ class CanvasController extends ChangeNotifier {
     // different amount of magnification once the frame is four times the size.
     _zoom = 1;
     _pan = const Offset2(0, 0);
-    notifyListeners();
+    _notifyView();
   }
 
   bool _autoKeyframe = false;
@@ -282,7 +318,7 @@ class CanvasController extends ChangeNotifier {
   set showHelpers(bool value) {
     if (_showHelpers == value) return;
     _showHelpers = value;
-    notifyListeners();
+    _notifyView();
   }
 
   int? _focusedPlayer;
@@ -539,7 +575,7 @@ class CanvasController extends ChangeNotifier {
   set tool(CanvasTool value) {
     if (_tool == value) return;
     _tool = value;
-    notifyListeners();
+    _notifyView();
   }
 
   /// hoveredButton is the button under the pointer, which the renderer needs
@@ -1127,13 +1163,13 @@ class CanvasController extends ChangeNotifier {
     // while zoomed in would push the fitted canvas off to one side, where it
     // would sit with empty space beside it and no obvious way to say why.
     if ((_zoom - 1).abs() < 0.001) _pan = const Offset2(0, 0);
-    notifyListeners();
+    _notifyView();
   }
 
   void resetZoom() {
     _zoom = 1;
     _pan = const Offset2(0, 0);
-    notifyListeners();
+    _notifyView();
   }
 
   /// showWhole and fitWidth are the two frame buttons on the band. Each also
@@ -1153,7 +1189,7 @@ class CanvasController extends ChangeNotifier {
 
   set pan(Offset2 value) {
     _pan = value;
-    notifyListeners();
+    _notifyView();
   }
 
   // ------------------------------------------------------------------------

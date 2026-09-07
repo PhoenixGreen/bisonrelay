@@ -3835,4 +3835,107 @@ void main() {
       expect(baseIn(controller).width, isNot(before));
     });
   });
+
+  group("what the sidebar rebuilds for", () {
+    // The controller notifies for everything: every pixel of a drag, every
+    // frame of playback, every notch of the zoom. The settings panel is
+    // twenty or thirty text fields, and laying those out for a change it does
+    // not show is the whole of why clicking around felt slow.
+
+    testWidgets("a watch ignores a notification that changes nothing",
+        (tester) async {
+      var source = ValueNotifier<int>(0);
+      addTearDown(source.dispose);
+      var builds = 0;
+
+      await pump(
+          tester,
+          CanvasWatch<String>(
+            listenable: source,
+            // Deliberately blind to the odd numbers.
+            select: () => "${source.value ~/ 2}",
+            builder: (context, value) {
+              builds++;
+              return Text(value);
+            },
+          ));
+      expect(builds, 1);
+
+      source.value = 1;
+      await tester.pumpAndSettle();
+      expect(builds, 1, reason: "the key did not move, so nor did the panel");
+
+      source.value = 2;
+      await tester.pumpAndSettle();
+      expect(builds, 2, reason: "and it does rebuild when the key moves");
+      expect(find.text("1"), findsOneWidget);
+    });
+
+    testWidgets("zooming does not rebuild the settings", (tester) async {
+      // The zoom, the pan, how the canvas is framed, which tool is held: the
+      // settings show none of it.
+      var document = const CanvasDocument();
+      var element = newElement(ElementKind.text, document);
+      var controller = CanvasController(document.addElement(element));
+      addTearDown(controller.dispose);
+      controller.selectOnly(element.id);
+      await pump(tester, CanvasDesignPanel(controller: controller));
+
+      var before = tester.widget<TextField>(find.byType(TextField).first);
+      controller.zoom = 2.5;
+      controller.pan = const Offset2(30, 30);
+      await tester.pumpAndSettle();
+
+      expect(
+          identical(
+              tester.widget<TextField>(find.byType(TextField).first), before),
+          isTrue,
+          reason: "the same widget instance: nothing was rebuilt");
+    });
+
+    testWidgets("a brush is not in the document, and still rebuilds them",
+        (tester) async {
+      // The trap this counts the safe way round for. These controls show the
+      // retouching brush, its size and its hardness, and none of that is in
+      // the document -- so a key naming what the settings read would have
+      // gone stale here. The revision moves for everything except the view.
+      var controller = CanvasController(const CanvasDocument());
+      addTearDown(controller.dispose);
+      var before = controller.revision;
+
+      controller.retouch = RetouchBrush.erase;
+      expect(controller.revision, greaterThan(before),
+          reason: "not a view change, so the settings hear about it");
+
+      before = controller.revision;
+      controller.zoom = 2;
+      controller.pan = const Offset2(10, 10);
+      controller.showHelpers = false;
+      expect(controller.revision, before,
+          reason: "and these are, so they do not");
+    });
+
+    testWidgets("moving an element does rebuild them", (tester) async {
+      // The other half of the rule. A panel that is cheap because it is stale
+      // is not cheap, it is broken.
+      var document = const CanvasDocument();
+      var element = newElement(ElementKind.shape, document);
+      var controller = CanvasController(document.addElement(element));
+      addTearDown(controller.dispose);
+      controller.selectOnly(element.id);
+      await pump(tester, CanvasDesignPanel(controller: controller));
+
+      controller.replaceElement(element.withBase(x: 321), transient: true);
+      await tester.pumpAndSettle();
+
+      expect(
+          tester
+              .widget<TextField>(find.descendant(
+                  of: find.byKey(const ValueKey("elementX")),
+                  matching: find.byType(TextField)))
+              .controller
+              ?.text,
+          "321");
+    });
+  });
 }
