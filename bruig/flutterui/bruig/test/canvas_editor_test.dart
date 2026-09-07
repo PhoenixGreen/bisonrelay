@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/canvas/model/elements/chart_animation.dart';
 import 'package:bruig/models/snackbar.dart';
 import 'dart:io';
 import 'dart:convert';
@@ -1289,6 +1290,88 @@ void main() {
           reason: "clamped by its neighbour rather than reordering the curve");
       expect(after.nodes[0].frame, 0, reason: "the others stayed put");
       expect(after.nodes[2].frame, 20);
+    });
+
+    testWidgets("the bar between a pair drags both ends", (tester) async {
+      // A chart's entrance is two keyframes that mean nothing apart, so they
+      // are joined on the strip and the bar moves both. Dragging either mark
+      // still changes the length -- that is the next test.
+      var document = const CanvasDocument(frames: 30, frameRate: 12);
+      var chart = ChartElement(
+        const ElementBase(id: "c", width: 400, height: 300),
+        data: ChartData.parse("Cat\tA\nx\t10"),
+      );
+      var controller = CanvasController(document.addElement(chart));
+      addTearDown(controller.dispose);
+      controller.selectOnly("c");
+      controller.frame = 4;
+      controller.applyChartAnimation(
+          controller.document.elementById("c") as ChartElement,
+          ChartAnimationPreset.grow);
+
+      await pump(tester, CanvasTimeline(controller: controller));
+      var before = bandsIn(controller.document.elementById("c")!.track).single;
+
+      var ruler = find
+          .descendant(
+              of: find.byType(CanvasTimeline),
+              matching: find.byType(CustomPaint))
+          .last;
+      var box = tester.getRect(ruler);
+      var frames = controller.document.frames;
+      double xFor(int frame) => box.left + (frame + 0.5) / frames * box.width;
+
+      // From the middle of the bar, which is the part that is neither end.
+      var middle = (before.from + before.to) ~/ 2;
+      await tester.dragFrom(
+        Offset(xFor(middle), box.top + 22 + 14),
+        Offset(xFor(middle - 3) - xFor(middle), 0),
+      );
+      await tester.pumpAndSettle();
+
+      var after = bandsIn(controller.document.elementById("c")!.track).single;
+      expect(after.from, lessThan(before.from), reason: "it moved earlier");
+      expect(after.length, before.length,
+          reason: "and kept its length, which is what a pair is for");
+    });
+
+    testWidgets("and an end still drags on its own, to change the length",
+        (tester) async {
+      var document = const CanvasDocument(frames: 30, frameRate: 12);
+      var chart = ChartElement(
+        const ElementBase(id: "c", width: 400, height: 300),
+        data: ChartData.parse("Cat\tA\nx\t10"),
+      );
+      var controller = CanvasController(document.addElement(chart));
+      addTearDown(controller.dispose);
+      controller.selectOnly("c");
+      controller.frame = 0;
+      controller.applyChartAnimation(
+          controller.document.elementById("c") as ChartElement,
+          ChartAnimationPreset.grow);
+
+      await pump(tester, CanvasTimeline(controller: controller));
+      var before = bandsIn(controller.document.elementById("c")!.track).single;
+
+      var ruler = find
+          .descendant(
+              of: find.byType(CanvasTimeline),
+              matching: find.byType(CustomPaint))
+          .last;
+      var box = tester.getRect(ruler);
+      var frames = controller.document.frames;
+      double xFor(int frame) => box.left + (frame + 0.5) / frames * box.width;
+
+      await tester.dragFrom(
+        Offset(xFor(before.to), box.top + 22 + 14),
+        Offset(xFor(before.to - 5) - xFor(before.to), 0),
+      );
+      await tester.pumpAndSettle();
+
+      var after = bandsIn(controller.document.elementById("c")!.track).single;
+      expect(after.from, before.from, reason: "the other end stayed put");
+      expect(after.length, lessThan(before.length),
+          reason: "so the animation is shorter");
     });
 
     testWidgets("a drag away from the marks still scrubs", (tester) async {

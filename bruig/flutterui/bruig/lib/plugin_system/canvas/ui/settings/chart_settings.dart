@@ -506,7 +506,11 @@ List<Widget> chartSettings(
       CanvasExpander(
         label: "Animation",
         remember: "chartAnimation",
-        trailing: e.animation.on ? e.animation.preset.label : null,
+        trailing: e.animation.on
+            ? (e.animation.closes
+                ? "${e.animation.preset.label} · ${e.animation.exit.label}"
+                : e.animation.preset.label)
+            : (e.animation.closes ? e.animation.exit.label : null),
         children: [
           CanvasControlGroup(label: "Preset", children: [
             const CanvasHint(
@@ -527,11 +531,46 @@ List<Widget> chartSettings(
                   onChanged: (_) => controller.applyChartAnimation(e, preset),
                 ),
           ]),
-          if (e.animation.on)
+          // The way out, using the same presets played backwards. A second
+          // list of "fade out, shrink away, unwipe" would be this list
+          // reversed and two lists to keep in step.
+          CanvasControlGroup(label: "Closing", children: [
+            const CanvasHint(
+                "The same presets, in reverse, on a second pair of keyframes "
+                "at the end of the timeline — so the chart arrives, sits "
+                "there, and leaves. The two ends of each pair are joined on "
+                "the strip below: drag the bar to move both, or either mark "
+                "to change how long it takes."),
+            const CanvasLineBreak(),
+            // A list rather than the row of switches above it. The same eight
+            // labels twice on one panel is a panel where "Grow" means two
+            // different things depending on which half of it you are looking
+            // at.
+            CanvasDropdown<ChartAnimationPreset>(
+              label: "On the way out",
+              value: e.animation.exit,
+              width: 148,
+              options: [
+                for (var preset in ChartAnimationPreset.values)
+                  if (preset == ChartAnimationPreset.none ||
+                      (e.type.isCircular
+                          ? preset.suitsCircular
+                          : preset.suitsCartesian))
+                    (
+                      preset,
+                      preset == ChartAnimationPreset.none
+                          ? "None"
+                          : "${preset.label}, reversed"
+                    ),
+              ],
+              onChanged: (preset) => controller.applyChartExit(e, preset),
+            ),
+          ]),
+          if (e.animation.on || e.animation.closes)
             CanvasControlGroup(label: "Timing", children: [
               // Only where there is more than one thing to space out. A wipe
               // and a sweep are one edge crossing everything at once.
-              if (e.animation.preset.staggers)
+              if (e.animation.preset.staggers || e.animation.exit.staggers)
                 CanvasNumberField(
                   label: "Gap",
                   min: 0,
@@ -545,12 +584,13 @@ List<Widget> chartSettings(
                   },
                   onCommit: commit,
                 ),
-              if (e.animation.preset.staggers)
+              if (e.animation.preset.staggers || e.animation.exit.staggers)
                 const CanvasHint(
                     "How long after one starts before the next does, as a "
                     "share of one item's own movement. 1 is strictly one "
                     "after another; below 1 they overlap; above 1 leaves a "
-                    "pause between them."),
+                    "pause between them. It is shared by the way in and the "
+                    "way out."),
               CanvasDropdown<ChartEase>(
                 label: "End curve",
                 value: e.animation.ease,

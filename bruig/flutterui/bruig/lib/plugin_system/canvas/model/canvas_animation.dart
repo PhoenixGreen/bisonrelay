@@ -416,6 +416,48 @@ class TimelineAction {
 /// Constants rather than free strings, because the name is written in one
 /// place and read in another and a typo between the two is an animation that
 /// silently does nothing.
+/// KeyframeBand is two keyframes that belong together: the start and the end
+/// of one movement.
+///
+/// A chart's entrance is a pair, and so is its exit. Naming the pair is what
+/// lets the timeline draw them joined and drag them as one -- two marks that
+/// are meaningless apart, shown as two marks that can be separated by
+/// accident, is a way to lose an animation without noticing.
+class KeyframeBand {
+  final int from;
+  final int to;
+
+  /// channel is what the pair pins -- see [KeyframeChannel]. Kept so the
+  /// timeline can colour an entrance and an exit differently.
+  final String channel;
+
+  const KeyframeBand(this.from, this.to, this.channel);
+
+  int get length => to - from;
+  bool get real => to > from;
+}
+
+/// bandsIn is every pair of keyframes in [track] that belong together.
+///
+/// A channel pinned by two or more keys is one band, running from the first
+/// of them to the last. Only the channels that are actually a movement with
+/// two ends: an element that is simply keyframed in four places is four
+/// poses, not two bands, and joining them up would be inventing a
+/// relationship the reader never asked for.
+List<KeyframeBand> bandsIn(ElementTrack? track) {
+  if (track == null) return const [];
+  var out = <KeyframeBand>[];
+  for (var channel in const [KeyframeChannel.reveal, KeyframeChannel.close]) {
+    var frames = [
+      for (var key in track.keys)
+        if (key.values.containsKey(channel)) key.frame,
+    ]..sort();
+    if (frames.length < 2) continue;
+    out.add(KeyframeBand(frames.first, frames.last, channel));
+  }
+  return out;
+}
+
 class KeyframeChannel {
   KeyframeChannel._();
 
@@ -431,6 +473,15 @@ class KeyframeChannel {
   /// would otherwise be forty channels on one keyframe, and moving the end of
   /// the animation would mean moving forty of them.
   static const String reveal = "reveal";
+
+  /// close is how far through leaving a chart is, 0 to 1.
+  ///
+  /// A channel of its own rather than running [reveal] back down to zero,
+  /// because the two ends of a chart can be different animations -- grow in,
+  /// fade out -- and a single number going up and then down does not say
+  /// which of them is being drawn. With this, the pair of keyframes the
+  /// playhead is between is the answer.
+  static const String close = "close";
 
   /// bow is how far a line element is curved, as LineElement.curvature holds.
   static const String bow = "bow";

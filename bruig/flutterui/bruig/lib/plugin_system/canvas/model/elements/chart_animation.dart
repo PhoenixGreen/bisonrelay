@@ -154,6 +154,21 @@ enum ChartEase {
 class ChartAnimation {
   final ChartAnimationPreset preset;
 
+  /// exit is how the chart leaves, using the same presets played backwards:
+  /// bars sink into the axis, a wipe uncovers in reverse, slices close.
+  ///
+  /// The same enum rather than a second list of "fade out, shrink away,
+  /// unwipe", because that list is this list backwards and having two of them
+  /// is having two of them to keep in step. Which way round it runs is
+  /// decided by which pair of keyframes the playhead is in -- see
+  /// KeyframeChannel.close.
+  ///
+  /// It has its own pair of keyframes, so a chart can arrive at the start, sit
+  /// there, and leave at the end. It shares [gap] and [ease] with the
+  /// entrance: a chart that bounced in and eased out would be two animations
+  /// on one object, and nobody asked for that.
+  final ChartAnimationPreset exit;
+
   /// gap is how long after one item starts before the next does, as a
   /// fraction of one item's own movement.
   ///
@@ -166,19 +181,34 @@ class ChartAnimation {
 
   const ChartAnimation({
     this.preset = ChartAnimationPreset.none,
+    this.exit = ChartAnimationPreset.none,
     this.gap = 0.55,
     this.ease = ChartEase.easeOut,
   });
 
   bool get on => preset != ChartAnimationPreset.none;
 
+  /// closes is whether the chart has a way out as well as a way in.
+  bool get closes => exit != ChartAnimationPreset.none;
+
+  /// leaving is this animation as it is played on the way out: the exit
+  /// preset in the entrance's place.
+  ///
+  /// Returned as a whole animation so that everything downstream -- the bars,
+  /// the slices, the candles, the legend -- goes on asking the one object how
+  /// far along something is and never has to know which half of the timeline
+  /// it is drawing.
+  ChartAnimation get leaving => copyWith(preset: exit);
+
   ChartAnimation copyWith({
     ChartAnimationPreset? preset,
+    ChartAnimationPreset? exit,
     double? gap,
     ChartEase? ease,
   }) =>
       ChartAnimation(
         preset: preset ?? this.preset,
+        exit: exit ?? this.exit,
         gap: gap ?? this.gap,
         ease: ease ?? this.ease,
       );
@@ -239,12 +269,14 @@ class ChartAnimation {
 
   Map<String, dynamic> toJson() => {
         "preset": preset.name,
+        if (closes) "exit": exit.name,
         "gap": gap,
         "ease": ease.name,
       };
 
   factory ChartAnimation.fromJson(Map<String, dynamic> json) => ChartAnimation(
         preset: ChartAnimationPreset.fromName(json["preset"] as String?),
+        exit: ChartAnimationPreset.fromName(json["exit"] as String?),
         gap: jsonDouble(json["gap"], 0.55).clamp(0.0, 4.0),
         ease: ChartEase.fromName(json["ease"] as String?),
       );

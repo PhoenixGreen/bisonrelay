@@ -1,3 +1,8 @@
+import 'package:flutter/material.dart';
+import 'dart:ui' as ui;
+import 'package:bruig/plugin_system/canvas/render/chart_painter.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/chart_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -485,6 +490,208 @@ void main() {
       expect(track.at(0).values[KeyframeChannel.reveal], 0);
       expect(track.at(5).values[KeyframeChannel.reveal], closeTo(0.5, 0.001));
       expect(track.at(10).values[KeyframeChannel.reveal], 1);
+    });
+  });
+
+  group("a chart that leaves as well as arrives", () {
+    // The closing animation is the same presets played backwards, on a second
+    // pair of keyframes. Its own channel rather than running the first one
+    // back down to zero, because the two ends can be different animations --
+    // grow in, fade out -- and one number going up and then down does not say
+    // which of them is being drawn.
+
+    CanvasController withChart() {
+      var chart = ChartElement(
+        const ElementBase(id: "c", width: 400, height: 300),
+        data: ChartData.parse("Cat\tA\nx\t10\ny\t6"),
+      );
+      var controller = CanvasController(
+          const CanvasDocument(frames: 48, frameRate: 12).addElement(chart));
+      controller.selectOnly("c");
+      return controller;
+    }
+
+    ChartElement chartIn(CanvasController c) =>
+        c.document.elementById("c") as ChartElement;
+
+    test("choosing one lays a pair of keyframes at the end", () {
+      var controller = withChart();
+      addTearDown(controller.dispose);
+      controller.applyChartExit(
+          chartIn(controller), ChartAnimationPreset.fadeIn);
+
+      var track = chartIn(controller).track!;
+      var closes = [
+        for (var key in track.keys)
+          if (key.values.containsKey(KeyframeChannel.close)) key,
+      ];
+      expect(closes.length, 2);
+      expect(closes.first.values[KeyframeChannel.close], 0);
+      expect(closes.last.values[KeyframeChannel.close], 1);
+      expect(closes.last.frame, 47,
+          reason: "it is the thing that happens last");
+    });
+
+    test("and it never starts before the entrance has finished", () {
+      // Both at once is a chart arriving and leaving in the same breath,
+      // which draws as a stutter and reads as a bug.
+      var controller = withChart();
+      addTearDown(controller.dispose);
+      controller.frame = 0;
+      controller.applyChartAnimation(
+          chartIn(controller), ChartAnimationPreset.grow);
+      var entranceEnds = 0;
+      for (var key in chartIn(controller).track!.keys) {
+        if (key.values[KeyframeChannel.reveal] == 1) entranceEnds = key.frame;
+      }
+
+      controller.applyChartExit(chartIn(controller), ChartAnimationPreset.grow);
+      var band = bandsIn(chartIn(controller).track!)
+          .firstWhere((b) => b.channel == KeyframeChannel.close);
+      expect(band.from, greaterThan(entranceEnds));
+    });
+
+    test("choosing None takes the keyframes with it", () {
+      // A chart with no closing animation and a pair of close keyframes still
+      // on its track would be pinned at "gone" for the end of the timeline.
+      var controller = withChart();
+      addTearDown(controller.dispose);
+      controller.applyChartExit(chartIn(controller), ChartAnimationPreset.grow);
+      controller.applyChartExit(chartIn(controller), ChartAnimationPreset.none);
+
+      var track = chartIn(controller).track;
+      expect(
+          track?.keys.where((k) => k.values.containsKey(KeyframeChannel.close)),
+          anyOf(isNull, isEmpty));
+      expect(chartIn(controller).animation.closes, isFalse);
+    });
+
+    test("the entrance is left alone by both", () {
+      var controller = withChart();
+      addTearDown(controller.dispose);
+      controller.applyChartAnimation(
+          chartIn(controller), ChartAnimationPreset.grow);
+      var before = bandsIn(chartIn(controller).track!)
+          .firstWhere((b) => b.channel == KeyframeChannel.reveal);
+
+      controller.applyChartExit(
+          chartIn(controller), ChartAnimationPreset.fadeIn);
+      controller.applyChartExit(chartIn(controller), ChartAnimationPreset.none);
+      var after = bandsIn(chartIn(controller).track!)
+          .firstWhere((b) => b.channel == KeyframeChannel.reveal);
+
+      expect([after.from, after.to], [before.from, before.to]);
+      expect(chartIn(controller).animation.preset, ChartAnimationPreset.grow);
+    });
+
+    test("a pair is one band, four separate poses are none", () {
+      var track = ElementTrack(const [
+        Keyframe(frame: 0, values: {KeyframeChannel.reveal: 0}),
+        Keyframe(frame: 10, values: {KeyframeChannel.reveal: 1}),
+        Keyframe(frame: 30, values: {KeyframeChannel.close: 0}),
+        Keyframe(frame: 47, values: {KeyframeChannel.close: 1}),
+      ]);
+      var bands = bandsIn(track);
+      expect(bands.length, 2);
+      expect([bands[0].from, bands[0].to], [0, 10]);
+      expect([bands[1].from, bands[1].to], [30, 47]);
+
+      // Four poses of an element moving about are four poses. Joining them up
+      // would be inventing a relationship nobody asked for.
+      expect(
+          bandsIn(ElementTrack(const [
+            Keyframe(frame: 0, dx: 10),
+            Keyframe(frame: 5, dx: 20),
+            Keyframe(frame: 9, dx: 30),
+          ])),
+          isEmpty);
+      expect(bandsIn(null), isEmpty);
+    });
+
+    test("dragging the band moves both ends and keeps its length", () {
+      var controller = withChart();
+      addTearDown(controller.dispose);
+      controller.applyChartExit(chartIn(controller), ChartAnimationPreset.grow);
+      var before = bandsIn(chartIn(controller).track!).single;
+
+      controller.shiftKeyframes("c", [before.from, before.to], -6);
+      var after = bandsIn(chartIn(controller).track!).single;
+
+      expect(after.from, before.from - 6);
+      expect(after.to, before.to - 6);
+      expect(after.length, before.length);
+    });
+
+    test("and it will not push either end off the timeline", () {
+      // Refused rather than squashed: an animation that quietly lost its
+      // length at the end of the strip is one nobody would notice until they
+      // played it.
+      var controller = withChart();
+      addTearDown(controller.dispose);
+      controller.applyChartExit(chartIn(controller), ChartAnimationPreset.grow);
+      var before = bandsIn(chartIn(controller).track!).single;
+
+      controller.shiftKeyframes("c", [before.from, before.to], 10);
+      var after = bandsIn(chartIn(controller).track!).single;
+      expect([after.from, after.to], [before.from, before.to]);
+    });
+
+    test("it draws with the exit preset, in reverse", () async {
+      // Two presets, one chart: it must fade on the way out even though it
+      // grew on the way in, and it must be going away rather than arriving.
+      var chart = ChartElement(
+        const ElementBase(id: "c", width: 400, height: 300),
+        showAxisLabels: false,
+        showLegend: false,
+        data: ChartData(categories: const [
+          "x"
+        ], series: [
+          ChartSeries(
+              name: "A", color: const Color(0xFF00AAFF), values: const [10]),
+        ]),
+        animation: const ChartAnimation(
+          preset: ChartAnimationPreset.grow,
+          exit: ChartAnimationPreset.fadeIn,
+          ease: ChartEase.linear,
+        ),
+      );
+
+      Future<int> inkAt({double reveal = 1, double close = 0}) async {
+        var recorder = ui.PictureRecorder();
+        var canvas = ui.Canvas(recorder);
+        paintChart(canvas, const Rect.fromLTWH(0, 0, 400, 300), chart,
+            reveal: reveal, close: close);
+        var image = await recorder.endRecording().toImage(400, 300);
+        var bytes = (await image.toByteData())!;
+        var n = 0;
+        for (var i = 0; i < bytes.lengthInBytes; i += 4) {
+          if (bytes.getUint32(i) == 0x00AAFFFF) n++;
+        }
+        return n;
+      }
+
+      var whole = await inkAt();
+      expect(whole, greaterThan(100));
+
+      // Half way out it is fading, so the bar is still its full size and no
+      // longer its full colour: fewer pixels are exactly the series colour.
+      var half = await inkAt(close: 0.5);
+      expect(half, lessThan(whole));
+
+      // And at the end of the closing band there is nothing left.
+      expect(await inkAt(close: 1), 0);
+    });
+
+    test("the way out survives being saved and read back", () {
+      var animation = const ChartAnimation(
+          preset: ChartAnimationPreset.grow, exit: ChartAnimationPreset.wipe);
+      var back = ChartAnimation.fromJson(animation.toJson());
+      expect(back.exit, ChartAnimationPreset.wipe);
+      expect(back.preset, ChartAnimationPreset.grow);
+      expect(back.leaving.preset, ChartAnimationPreset.wipe,
+          reason: "which is what the painter draws with on the way out");
+      // An old document, saved before there was a way out, has none.
+      expect(ChartAnimation.fromJson(const {"preset": "grow"}).closes, isFalse);
     });
   });
 }

@@ -1391,6 +1391,109 @@ class CanvasController extends ChangeNotifier {
     endInteraction();
   }
 
+  /// applyChartExit puts a closing preset on a chart and lays the pair of
+  /// keyframes that runs it.
+  ///
+  /// At the end of the timeline rather than at the playhead, which is where
+  /// the entrance is laid: a closing animation is the thing that happens
+  /// last, and a chart that faded out in the middle and stayed gone is not
+  /// what anybody choosing one is asking for. It is two ordinary keyframes,
+  /// dragged like the others -- see [applyChartAnimation], which lays the
+  /// other pair for the same reasons.
+  ///
+  /// It never starts before the entrance has finished. Overlapping the two
+  /// bands would have a chart arriving and leaving at once, which draws as a
+  /// stutter and reads as a bug.
+  void applyChartExit(ChartElement element, ChartAnimationPreset preset) {
+    beginInteraction();
+
+    var track = element.track ?? ElementTrack.empty;
+    if (preset == ChartAnimationPreset.none) {
+      // The keys go with it. A chart with no closing animation and a pair of
+      // close keyframes still on its track would be pinned at "gone" for the
+      // end of the timeline.
+      var without = track;
+      for (var key in track.keys) {
+        if (key.values.containsKey(KeyframeChannel.close)) {
+          without = without.withoutFrame(key.frame);
+        }
+      }
+      replaceElement(element
+          .copyWith(animation: element.animation.copyWith(exit: preset))
+          .withBase(
+              track: without.keys.isEmpty ? null : without,
+              clearTrack: without.keys.isEmpty));
+      endInteraction();
+      return;
+    }
+
+    var document = _document;
+    if (!document.isAnimated) {
+      document = document.copyWith(
+          frames: math.max(2, document.frameRate * chartAnimationSeconds * 2));
+    }
+
+    var span =
+        math.max(2, (document.frameRate * chartAnimationSeconds).round());
+    var to = document.frames - 1;
+    // Clear of the entrance, which is whatever the reveal channel already
+    // reaches.
+    var entranceEnds = 0;
+    for (var key in track.keys) {
+      if (key.values.containsKey(KeyframeChannel.reveal)) {
+        entranceEnds = math.max(entranceEnds, key.frame);
+      }
+    }
+    var from = math.max(entranceEnds + 1, to - span);
+    if (from >= to) from = math.max(0, to - 1);
+
+    for (var key in track.keys) {
+      if (key.values.containsKey(KeyframeChannel.close)) {
+        track = track.withoutFrame(key.frame);
+      }
+    }
+    track = track
+        .withKey(Keyframe(frame: from).withValue(KeyframeChannel.close, 0))
+        .withKey(Keyframe(frame: to).withValue(KeyframeChannel.close, 1));
+
+    apply(document.withElement(element
+        .copyWith(animation: element.animation.copyWith(exit: preset))
+        .withBase(track: track)));
+    endInteraction();
+  }
+
+  /// shiftKeyframes moves a whole band of keyframes by [delta] frames.
+  ///
+  /// The two ends of an animation are one thing, so the timeline drags them
+  /// as one -- see KeyframeBand. Refused rather than clamped when either end
+  /// would run off the timeline: sliding a band into the end of the canvas
+  /// and having it silently squash is worse than it stopping.
+  void shiftKeyframes(String id, List<int> frames, int delta) {
+    if (delta == 0 || frames.isEmpty) return;
+    var element = _document.elementById(id);
+    var track = element?.track;
+    if (element == null || track == null) return;
+
+    var moving = [
+      for (var frame in frames)
+        if (track.keyAt(frame) != null) track.keyAt(frame)!,
+    ];
+    if (moving.length != frames.length) return;
+    for (var key in moving) {
+      var at = key.frame + delta;
+      if (at < 0 || at > _document.frames - 1) return;
+    }
+
+    var next = track;
+    for (var key in moving) {
+      next = next.withoutFrame(key.frame);
+    }
+    for (var key in moving) {
+      next = next.withKey(key.copyWith(frame: key.frame + delta));
+    }
+    replaceElement(element.withBase(track: next));
+  }
+
   /// removeKeyframe drops the pose at [frame], and drops the track entirely
   /// when it was the last one -- so an element with no animation left carries
   /// no empty track into the saved file.

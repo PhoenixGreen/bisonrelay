@@ -97,6 +97,21 @@ class CanvasTimeline extends StatefulWidget {
 class _CanvasTimelineState extends State<CanvasTimeline> {
   CanvasController get controller => widget.controller;
 
+  /// _dragBand is the pair of frames being dragged as one, or null.
+  ///
+  /// A chart's entrance is two keyframes that are meaningless apart, so the
+  /// bar joining them is draggable and moves both. See KeyframeBand.
+  List<int>? _dragBand;
+
+  /// _pressedBand is the band the pointer went down on, found on the press
+  /// for the same reason _pressedFrame is: a horizontal drag is not
+  /// recognised until the pointer has travelled, by which time its reported
+  /// start is well past what it was aimed at.
+  List<int>? _pressedBand;
+
+  /// _bandAnchor is the frame the band drag last acted from.
+  int _bandAnchor = 0;
+
   /// _dragKey is the frame of the mark being dragged along the ruler, or null
   /// while the drag is an ordinary scrub.
   int? _dragKey;
@@ -667,14 +682,28 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
                 onHorizontalDragDown: (details) {
                   _pressedFrame =
                       _keyframeAt(details.localPosition, constraints.maxWidth);
+                  // The bar between a pair, when the press was not on either
+                  // end of it. A mark wins: dragging one end is how the
+                  // length of an animation is changed, and dragging the
+                  // middle is how it is moved without changing it.
+                  _pressedBand = _pressedFrame != null
+                      ? null
+                      : _bandAt(details.localPosition, constraints.maxWidth);
                 },
-                onHorizontalDragStart: (_) {
+                onHorizontalDragStart: (details) {
                   controller.pause();
                   _dragKey = _pressedFrame;
+                  _dragBand = _pressedBand;
+                  _bandAnchor =
+                      _frameAt(details.localPosition.dx, constraints.maxWidth);
                 },
                 onHorizontalDragUpdate: (details) {
                   var at =
                       _frameAt(details.localPosition.dx, constraints.maxWidth);
+                  if (_dragBand != null) {
+                    _shiftBand(at);
+                    return;
+                  }
                   if (_dragKey == null) {
                     controller.frame = at;
                     return;
@@ -684,11 +713,15 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
                 },
                 onHorizontalDragEnd: (_) {
                   _dragKey = null;
+                  _dragBand = null;
                   _pressedFrame = null;
+                  _pressedBand = null;
                 },
                 onHorizontalDragCancel: () {
                   _dragKey = null;
+                  _dragBand = null;
                   _pressedFrame = null;
+                  _pressedBand = null;
                 },
                 child: CustomPaint(
                   size: Size(constraints.maxWidth, constraints.maxHeight),
@@ -702,6 +735,7 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
                     // strip shows one player's run while the button edits
                     // another's.
                     keyframes: _targetTrack?.keys ?? const [],
+                    bands: _bands,
                     selectedKeyframe: _selectedKey,
                     actions: document.actions,
                     colors: theme.colors,
@@ -784,6 +818,59 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
     return best;
   }
 
+  /// _bands is the pairs of keyframes on the target that belong together.
+  ///
+  /// Only an element's own: a player's track has no channel with two ends,
+  /// and a path's marks are its points.
+  List<KeyframeBand> get _bands {
+    if (controller.focusedPlayer != null) return const [];
+    if (_selectedPath != null) return const [];
+    return bandsIn(controller.selected?.track);
+  }
+
+  /// _bandAt is the band under [local], or null.
+  ///
+  /// The bar is drawn on the keyframe row, so it is grabbed there -- and only
+  /// between the two marks rather than on them, because dragging one end to
+  /// change the length has to stay possible.
+  List<int>? _bandAt(Offset local, double width) {
+    if ((local.dy - (_rulerHeight + 14)).abs() > _markGrabHeight) return null;
+    for (var band in _bands) {
+      if (!band.real) continue;
+      var from = _xFor(band.from, width);
+      var to = _xFor(band.to, width);
+      if (local.dx < from + _markGrabWidth) continue;
+      if (local.dx > to - _markGrabWidth) continue;
+      return [band.from, band.to];
+    }
+    return null;
+  }
+
+  /// _shiftBand moves both ends of the band being dragged.
+  void _shiftBand(int to) {
+    var band = _dragBand;
+    var element = controller.selected;
+    if (band == null || element == null) return;
+
+    var delta = to - _bandAnchor;
+    if (delta == 0) return;
+    // Clamped rather than refused, so a band dragged at the end of the
+    // timeline slides up against it instead of stopping dead half a frame
+    // early.
+    var last = controller.document.frames - 1;
+    var lowest = band.reduce(math.min);
+    var highest = band.reduce(math.max);
+    if (lowest + delta < 0) delta = -lowest;
+    if (highest + delta > last) delta = last - highest;
+    if (delta == 0) return;
+
+    controller.shiftKeyframes(element.id, band, delta);
+    setState(() {
+      _dragBand = [for (var f in band) f + delta];
+      _bandAnchor += delta;
+    });
+  }
+
   void _replaceAction(TimelineAction action) {
     var document = controller.document;
     controller.apply(document.copyWith(actions: [
@@ -800,6 +887,10 @@ class _TimelinePainter extends CustomPainter {
   final int frameRate;
   final List<Keyframe> keyframes;
 
+  /// bands are the pairs that belong together, drawn as a bar joining them.
+  /// See KeyframeBand.
+  final List<KeyframeBand> bands;
+
   /// selectedKeyframe is the frame of the mark that has been clicked, drawn
   /// with a ring so it is obvious which one Delete will take.
   final int? selectedKeyframe;
@@ -811,6 +902,7 @@ class _TimelinePainter extends CustomPainter {
     required this.frames,
     required this.frame,
     required this.frameRate,
+    required this.bands,
     required this.keyframes,
     required this.selectedKeyframe,
     required this.actions,
@@ -847,6 +939,12 @@ class _TimelinePainter extends CustomPainter {
       canvas.drawLine(Offset(x, strong ? 4 : 9), Offset(x, _rulerHeight - 3),
           strong ? strongTick : tick);
     }
+
+    // The bars first, under the marks they join: a chart's entrance and its
+    // exit are each two keyframes that mean nothing apart, and two marks with
+    // nothing between them are two marks somebody will separate by accident.
+    // Dragging the bar moves both -- see _shiftBand.
+    _paintBands(canvas, y: _rulerHeight + 14);
 
     _paintMarks(
       canvas,
@@ -893,6 +991,29 @@ class _TimelinePainter extends CustomPainter {
     );
   }
 
+  /// _paintBands draws the bar between each pair.
+  ///
+  /// Translucent rather than solid, because it lies over the ruler's own ticks
+  /// and the second it hides them it stops being possible to see where the
+  /// animation starts. The entrance and the exit are different colours for
+  /// the same reason the two rows of marks are: they are different things and
+  /// a strip with two identical bars on it says they are the same.
+  void _paintBands(Canvas canvas, {required double y}) {
+    for (var band in bands) {
+      if (!band.real) continue;
+      var from = xFor(band.from);
+      var to = xFor(band.to);
+      var colour = band.channel == KeyframeChannel.close
+          ? colors.secondary
+          : colors.primary;
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+            Rect.fromLTRB(from, y - 5, to, y + 5), const Radius.circular(5)),
+        Paint()..color = colour.withValues(alpha: 0.22),
+      );
+    }
+  }
+
   void _paintMarks(
     Canvas canvas,
     Size size, {
@@ -934,12 +1055,29 @@ class _TimelinePainter extends CustomPainter {
     }
   }
 
+  /// _sameBands compares two lists of pairs by what is in them.
+  ///
+  /// Worked out fresh on every build, so the lists are never the same object
+  /// and identity would repaint the strip sixty times a second.
+  static bool _sameBands(List<KeyframeBand> a, List<KeyframeBand> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i].from != b[i].from ||
+          a[i].to != b[i].to ||
+          a[i].channel != b[i].channel) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   @override
   bool shouldRepaint(_TimelinePainter old) =>
       old.frames != frames ||
       old.frame != frame ||
       old.frameRate != frameRate ||
       old.keyframes != keyframes ||
+      !_sameBands(old.bands, bands) ||
       old.selectedKeyframe != selectedKeyframe ||
       old.actions != actions;
 }

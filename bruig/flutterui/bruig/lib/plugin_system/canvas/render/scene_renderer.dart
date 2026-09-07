@@ -220,7 +220,10 @@ void paintElement(
       // How much of it has arrived. A chart with no animation on it has no
       // keyframe pinning this and gets 1, which is all of it.
       paintChart(canvas, bounds.deflate(bounds.shortestSide * 0.02), e,
-          reveal: pose.values[KeyframeChannel.reveal] ?? 1);
+          reveal: pose.values[KeyframeChannel.reveal] ?? 1,
+          // And how much of it has left again, which is a second pair of
+          // keyframes and is zero for every chart that has none.
+          close: pose.values[KeyframeChannel.close] ?? 0);
     case TableElement e:
       paintTable(canvas, bounds, e, images: images);
     case ButtonElement e:

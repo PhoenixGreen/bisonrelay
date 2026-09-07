@@ -32,9 +32,25 @@ import 'package:flutter/painting.dart';
 /// [reveal] is how much of the chart has arrived, 0 to 1, which comes off the
 /// element's keyframes -- see KeyframeChannel.reveal. One means "all of it",
 /// which is what a chart with no animation on it always gets.
+///
+/// [close] is how far through leaving it is, which is the other pair of
+/// keyframes -- see KeyframeChannel.close. While it is above zero the chart is
+/// drawn with its closing preset, running backwards: the same presets played
+/// in reverse, which is what a chart leaving looks like.
 void paintChart(ui.Canvas canvas, Rect rect, ChartElement e,
-    {double reveal = 1}) {
+    {double reveal = 1, double close = 0}) {
   if (rect.width <= 8 || rect.height <= 8) return;
+
+  // Leaving, once the closing band has started. The exit preset takes the
+  // entrance's place for the rest of the drawing, so that everything
+  // downstream -- bars, slices, candles, the legend -- goes on asking one
+  // object how far along an item is and never learns there are two halves.
+  var leaving = e.animation.closes && close > 0;
+  if (leaving) {
+    e = e.copyWith(animation: e.animation.leaving);
+    reveal = 1 - close.clamp(0.0, 1.0);
+  }
+
   var animation = e.animation;
   var showing = animation.on ? reveal.clamp(0.0, 1.0) : 1.0;
   // Nothing at all yet. Returning rather than drawing zero-height bars,
