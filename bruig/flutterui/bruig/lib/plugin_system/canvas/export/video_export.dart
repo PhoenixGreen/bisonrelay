@@ -307,7 +307,12 @@ int estimateVideoBytes(CanvasDocument document,
     {double scale = 1,
     VideoFormat format = VideoFormat.mp4,
     VideoQuality quality = VideoQuality.balanced}) {
-  var pixels = document.size.width * document.size.height * scale * scale;
+  // The pixels that come out. See CanvasSize.exportSize: the design's own
+  // space and the file's size are two different numbers now.
+  var pixels = document.size.exportSize.width *
+      document.size.exportSize.height *
+      scale *
+      scale;
   var perPixel = switch (quality) {
     VideoQuality.high => 0.12,
     VideoQuality.balanced => 0.05,

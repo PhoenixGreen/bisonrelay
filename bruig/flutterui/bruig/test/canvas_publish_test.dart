@@ -1,3 +1,5 @@
+import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 import 'package:bruig/plugin_system/canvas/export/canvas_export.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_estimate.dart';
@@ -287,6 +289,104 @@ void main() {
           expect(preset.ratio, ratio);
         }
       }
+    });
+  });
+
+  group("the export width is a resolution", () {
+    // The export width and the design's own space used to be one number, and
+    // that made it mean two things at once: raising it gave the design more
+    // room -- every element kept its coordinates and so covered less of a
+    // larger page -- while a newly added element was sized from the canvas
+    // and arrived at the new scale. The same chart was two sizes on one
+    // canvas depending on when it was put there.
+
+    test("raising it does not move anything in the design", () {
+      var small = const CanvasSize(ratio: CanvasRatio.wide, width: 1280);
+      var large = small.copyWith(exportWidth: 3840);
+
+      expect(large.size, small.size, reason: "the design is where it was");
+      expect(large.exportSize, const Size(3840, 2160));
+      expect(large.exportScale, closeTo(3, 0.001));
+    });
+
+    test("and the file is the size it says", () {
+      var canvas = const CanvasDocument(
+              size: CanvasSize(ratio: CanvasRatio.wide, width: 1280))
+          .copyWith(
+              size: const CanvasSize(ratio: CanvasRatio.wide, width: 1280)
+                  .copyWith(exportWidth: 2560));
+
+      // Four times the pixels, so about four times the bytes -- the same
+      // picture, sharper, rather than a small one in the corner of a big one.
+      var once = estimateBytes(
+          const CanvasDocument(
+              size: CanvasSize(ratio: CanvasRatio.wide, width: 1280)),
+          const CanvasEstimate());
+      var twice = estimateBytes(canvas, const CanvasEstimate());
+      expect(twice / once, closeTo(4, 0.5));
+    });
+
+    test("a page that grows keeps the design's scale instead", () {
+      // Which is what this did before there was a choice, and is right when
+      // what somebody wants is a bigger sheet rather than a sharper one.
+      var page = const CanvasSize(
+              ratio: CanvasRatio.wide, width: 1280, scalesDesign: false)
+          .copyWith(exportWidth: 2560);
+
+      expect(page.width, 2560, reason: "the design space grew with it");
+      expect(page.exportScale, 1);
+      expect(page.size, const Size(2560, 1440));
+    });
+
+    test("and switching to a page snaps the two together", () {
+      var scaled = const CanvasSize(ratio: CanvasRatio.wide, width: 1280)
+          .copyWith(exportWidth: 3840);
+      expect(scaled.width, 1280);
+
+      var page = scaled.copyWith(scalesDesign: false);
+      expect(page.width, page.exportWidth,
+          reason: "in page mode the design width is the published width");
+    });
+
+    test("a canvas saved before the two were told apart is unchanged", () {
+      // Every canvas already made was laid out in the space it was published
+      // at, so its design width is its width and nothing has moved.
+      var old = {"ratio": "wide", "width": 1920};
+      var size = CanvasSize.fromJson(old);
+      expect(size.exportWidth, 1920);
+      expect(size.exportScale, 1);
+      expect(size.scalesDesign, isTrue);
+
+      // And a canvas that has never been given a different export width does
+      // not write one down.
+      expect(size.toJson().containsKey("exportWidth"), isFalse);
+    });
+
+    test("the choice and the two widths survive being saved", () {
+      var size = const CanvasSize(ratio: CanvasRatio.wide, width: 1280)
+          .copyWith(exportWidth: 3840);
+      var back = CanvasSize.fromJson(size.toJson());
+      expect(back.exportWidth, 3840);
+      expect(back.width, 1280);
+      expect(back.exportScale, closeTo(3, 0.001));
+
+      var page = size.copyWith(scalesDesign: false);
+      expect(CanvasSize.fromJson(page.toJson()).scalesDesign, isFalse);
+    });
+
+    test("a new element is the same size as one already there", () {
+      // The whole complaint: an element added after the canvas was resized
+      // arrived at a different size from the identical element added before.
+      var canvas = const CanvasDocument(
+          size: CanvasSize(ratio: CanvasRatio.wide, width: 1280));
+      var first = newElement(ElementKind.chart, canvas);
+
+      var bigger =
+          canvas.copyWith(size: canvas.size.copyWith(exportWidth: 3840));
+      var second = newElement(ElementKind.chart, bigger);
+
+      expect(second.width, first.width);
+      expect(second.height, first.height);
     });
   });
 }

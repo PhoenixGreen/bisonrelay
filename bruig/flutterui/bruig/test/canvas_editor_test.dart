@@ -281,9 +281,13 @@ void main() {
 
       await tester.enterText(field, "800");
       await tester.pump();
-      expect(controller.document.size.width, 800);
+      // The width published at. The design keeps the space it was laid out
+      // in and is scaled on the way out -- see CanvasSize.
+      expect(controller.document.size.exportWidth, 800);
       // The height follows the ratio rather than being edited separately.
-      expect(controller.document.size.height, 450);
+      expect(controller.document.size.exportHeight, 450);
+      expect(controller.document.size.width, 1280,
+          reason: "nothing in the design has moved");
     });
 
     testWidgets("changes the ratio", (tester) async {
@@ -365,14 +369,14 @@ void main() {
       await tester.pumpAndSettle();
 
       var size = controller.document.size;
-      expect([size.width, size.height], [1920, 1080],
+      expect([size.exportWidth, size.exportHeight], [1920, 1080],
           reason: "which is what 1080p means");
 
       // A size that is not one of the named ones says so rather than
       // borrowing a name that would be untrue. The pixels are on the readout
       // beside it.
-      controller.apply(controller.document
-          .copyWith(size: controller.document.size.copyWith(width: 1337)));
+      controller.apply(controller.document.copyWith(
+          size: controller.document.size.copyWith(exportWidth: 1337)));
       await tester.pumpAndSettle();
       expect(find.text("Custom"), findsWidgets);
       expect(find.text("1337 × 752"), findsOneWidget,
@@ -408,6 +412,27 @@ void main() {
       expect(find.text("1080p · 1920"), findsNothing);
       await tester.tapAt(const Offset(5, 5));
       await tester.pumpAndSettle();
+    });
+
+    testWidgets("the size can grow the page instead of the resolution",
+        (tester) async {
+      // The other half of the answer: sometimes what somebody wants is a
+      // bigger sheet rather than a sharper one, and that is what this did
+      // before there was a choice.
+      var controller = CanvasController(const CanvasDocument());
+      addTearDown(controller.dispose);
+      await pump(tester, CanvasSettingsPanel(controller: controller));
+
+      await tester.enterText(find.byKey(const ValueKey("canvasWidth")), "2560");
+      await tester.pump();
+      expect(controller.document.size.width, 1280,
+          reason: "a resolution: the design is where it was");
+
+      await tester.tap(find.byKey(const ValueKey("canvasScalesDesign")));
+      await tester.pumpAndSettle();
+      expect(controller.document.size.width, 2560,
+          reason: "a page: the design space grew with it");
+      expect(controller.document.size.exportScale, 1);
     });
 
     testWidgets("a shape with no named sizes shows no list", (tester) async {

@@ -151,11 +151,38 @@ const int defaultCanvasWidth = 1280;
 class CanvasSize {
   final CanvasRatio ratio;
 
-  /// width is the export width in pixels, and also the width of the design
-  /// coordinate space. The two being equal is what makes "1 unit is 1 pixel"
-  /// true at 100% zoom and 100% export scale, which is the only mental model
-  /// worth having.
+  /// width is the width of the space the design is laid out in: where an
+  /// element is, how big it is, what a grid line is spaced at.
+  ///
+  /// Not, on its own, the size of the file that comes out -- see
+  /// [exportWidth], and the difference between the two is what this pair
+  /// exists for. It stays what it is when the export size changes, which is
+  /// what makes publishing at 4K give the same picture with more pixels in it
+  /// rather than the same picture in the corner of a bigger one.
   final int width;
+
+  /// exportWidth is the published width in pixels.
+  ///
+  /// The two used to be one number, and that made it mean two things at once.
+  /// Raising it gave the design *more room* -- every element kept its
+  /// coordinates and so covered less of a larger page -- while a newly added
+  /// element was sized from the canvas and arrived at the new, larger scale.
+  /// So the same chart was two sizes on one canvas depending on when it was
+  /// put there.
+  ///
+  /// Equal to [width] for every canvas saved before this existed, so nothing
+  /// already made has moved.
+  final int exportWidth;
+
+  /// scalesDesign is what changing [exportWidth] does.
+  ///
+  /// On, it is a resolution: the design is drawn in its own space and the
+  /// whole scene is scaled on the way out, so the picture is the same and
+  /// there is more of it. Off, it is a page: the design keeps its scale and
+  /// there is more room around it, which is what this did before there was a
+  /// choice and is right when what somebody wants is a bigger sheet rather
+  /// than a sharper one.
+  final bool scalesDesign;
 
   /// customRatio is width/height when [ratio] is [CanvasRatio.custom], and
   /// ignored otherwise.
@@ -164,50 +191,102 @@ class CanvasSize {
   const CanvasSize({
     this.ratio = CanvasRatio.wide,
     this.width = defaultCanvasWidth,
+    int? exportWidth,
+    this.scalesDesign = true,
     this.customRatio = 16 / 9,
-  });
+  }) : exportWidth = exportWidth ?? width;
 
   double get aspect => ratio == CanvasRatio.custom ? customRatio : ratio.value;
 
-  /// height is rounded, not truncated. A 1281px-wide 16:9 canvas is 720.5px
-  /// tall and truncating it puts a half-pixel of background along the bottom
-  /// edge of every export.
+  /// height is the design height, rounded rather than truncated. A 1281px-wide
+  /// 16:9 canvas is 720.5px tall and truncating it puts a half-pixel of
+  /// background along the bottom edge of every export.
   int get height => (width / aspect).round().clamp(1, 1 << 20);
 
+  /// exportHeight is the same arithmetic on the published width.
+  int get exportHeight => (exportWidth / aspect).round().clamp(1, 1 << 20);
+
+  /// size is the design space, which is what everything in the editor works
+  /// in. Only the exporter and the size on the settings band are in published
+  /// pixels.
   Size get size => Size(width.toDouble(), height.toDouble());
+
+  /// exportSize is what comes out: the design at [exportScale].
+  Size get exportSize => Size(exportWidth.toDouble(), exportHeight.toDouble());
+
+  /// exportScale is how much bigger the file is than the design space. One
+  /// for every canvas that has not been given a different export width.
+  double get exportScale => width <= 0 ? 1 : exportWidth / width.toDouble();
 
   Rect get rect => Offset.zero & size;
 
-  CanvasSize copyWith({CanvasRatio? ratio, int? width, double? customRatio}) =>
-      CanvasSize(
-        ratio: ratio ?? this.ratio,
-        width: (width ?? this.width).clamp(minCanvasWidth, maxCanvasWidth),
-        customRatio: customRatio ?? this.customRatio,
-      );
+  /// copyWith keeps the two widths in step where they are meant to move
+  /// together.
+  ///
+  /// The invariant is the type's rather than the caller's: in page mode the
+  /// design width *is* the export width, and a caller that set one without
+  /// the other would leave a canvas in a state this class says cannot happen.
+  CanvasSize copyWith({
+    CanvasRatio? ratio,
+    int? width,
+    int? exportWidth,
+    bool? scalesDesign,
+    double? customRatio,
+  }) {
+    var scales = scalesDesign ?? this.scalesDesign;
+    var design = (width ?? this.width).clamp(minCanvasWidth, maxCanvasWidth);
+    var out =
+        (exportWidth ?? this.exportWidth).clamp(minCanvasWidth, maxCanvasWidth);
+    // Page mode, or a canvas being put into it: the design follows the file.
+    if (!scales) design = out;
+    return CanvasSize(
+      ratio: ratio ?? this.ratio,
+      width: design,
+      exportWidth: out,
+      scalesDesign: scales,
+      customRatio: customRatio ?? this.customRatio,
+    );
+  }
 
   Map<String, dynamic> toJson() => {
         "ratio": ratio.name,
         "width": width,
+        if (exportWidth != width) "exportWidth": exportWidth,
+        if (!scalesDesign) "pageGrows": true,
         if (ratio == CanvasRatio.custom) "customRatio": customRatio,
       };
 
-  factory CanvasSize.fromJson(Map<String, dynamic> json) => CanvasSize(
-        ratio: CanvasRatio.fromName(json["ratio"] as String?),
-        width: (json["width"] as num?)?.round().clamp(
-                  minCanvasWidth,
-                  maxCanvasWidth,
-                ) ??
-            defaultCanvasWidth,
-        customRatio: (json["customRatio"] as num?)?.toDouble() ?? 16 / 9,
-      );
+  factory CanvasSize.fromJson(Map<String, dynamic> json) {
+    var width = (json["width"] as num?)?.round().clamp(
+              minCanvasWidth,
+              maxCanvasWidth,
+            ) ??
+        defaultCanvasWidth;
+    return CanvasSize(
+      ratio: CanvasRatio.fromName(json["ratio"] as String?),
+      width: width,
+      // The design width itself for anything saved before the two were told
+      // apart, which is every canvas already made: it was laid out in the
+      // space it was published at.
+      exportWidth: (json["exportWidth"] as num?)
+              ?.round()
+              .clamp(minCanvasWidth, maxCanvasWidth) ??
+          width,
+      scalesDesign: !((json["pageGrows"] as bool?) ?? false),
+      customRatio: (json["customRatio"] as num?)?.toDouble() ?? 16 / 9,
+    );
+  }
 
   @override
   bool operator ==(Object other) =>
       other is CanvasSize &&
       other.ratio == ratio &&
       other.width == width &&
+      other.exportWidth == exportWidth &&
+      other.scalesDesign == scalesDesign &&
       other.customRatio == customRatio;
 
   @override
-  int get hashCode => Object.hash(ratio, width, customRatio);
+  int get hashCode =>
+      Object.hash(ratio, width, exportWidth, scalesDesign, customRatio);
 }

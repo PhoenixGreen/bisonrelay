@@ -557,8 +557,8 @@ class _CanvasSettingsPanelState extends State<CanvasSettingsPanel> {
           CanvasDropdown<int>(
             key: const ValueKey("canvasWidthPreset"),
             label: "Size",
-            value: named.any((p) => p.width == document.size.width)
-                ? document.size.width
+            value: named.any((p) => p.width == document.size.exportWidth)
+                ? document.size.exportWidth
                 : 0,
             width: 168,
             options: [
@@ -567,26 +567,38 @@ class _CanvasSettingsPanelState extends State<CanvasSettingsPanel> {
               // something untrue, and the pixels are already on the readout
               // two controls along -- saying them here as well is saying them
               // twice.
-              if (!named.any((p) => p.width == document.size.width))
+              if (!named.any((p) => p.width == document.size.exportWidth))
                 (0, "Custom"),
               for (var preset in named)
                 (preset.width, "${preset.label} · ${preset.width}"),
             ],
             onChanged: (v) {
               if (v == 0) return;
-              write(document.copyWith(size: document.size.copyWith(width: v)));
+              write(document.copyWith(
+                  size: document.size.copyWith(exportWidth: v)));
             },
           ),
+        // What changing the width does. On, it is a resolution: the design is
+        // drawn in its own space and scaled on the way out, so publishing at
+        // 4K gives the same picture with four times the pixels. Off, it is a
+        // page: the design keeps its scale and there is more room around it.
+        CanvasToggle(
+          key: const ValueKey("canvasScalesDesign"),
+          label: "Size scales the design",
+          value: document.size.scalesDesign,
+          onChanged: (v) => write(
+              document.copyWith(size: document.size.copyWith(scalesDesign: v))),
+        ),
         CanvasNumberField(
           key: const ValueKey("canvasWidth"),
           label: "Max width",
-          value: document.size.width.toDouble(),
+          value: document.size.exportWidth.toDouble(),
           min: minCanvasWidth.toDouble(),
           max: maxCanvasWidth.toDouble(),
           width: 66,
           suffix: "px",
           onChanged: (v) => edit(document.copyWith(
-              size: document.size.copyWith(width: v.round()))),
+              size: document.size.copyWith(exportWidth: v.round()))),
           onCommit: controller.endInteraction,
         ),
         if (document.size.ratio == CanvasRatio.custom)
@@ -612,7 +624,10 @@ class _CanvasSettingsPanelState extends State<CanvasSettingsPanel> {
             height: controlHeight,
             child: Center(
               child: Text(
-                "${document.size.width} × ${document.size.height}",
+                // The file's size. Where the design is laid out in a smaller
+                // space and published larger, this is the larger number --
+                // it is what somebody is choosing when they choose a size.
+                "${document.size.exportWidth} × ${document.size.exportHeight}",
                 style: TextStyle(
                     fontSize: 10, color: theme.colors.onSurfaceVariant),
               ),

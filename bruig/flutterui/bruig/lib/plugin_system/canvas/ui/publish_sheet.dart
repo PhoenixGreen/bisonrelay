@@ -309,15 +309,15 @@ class _PublishSheetState extends State<_PublishSheet> {
           return CanvasExport(
             utf8.encode(widget.document.encode()),
             "application/json",
-            width: widget.document.size.width,
-            height: widget.document.size.height,
+            width: widget.document.size.exportWidth,
+            height: widget.document.size.exportHeight,
           );
         }
         return CanvasExport(
           await packCanvas(widget.document),
           bundleMime,
-          width: widget.document.size.width,
-          height: widget.document.size.height,
+          width: widget.document.size.exportWidth,
+          height: widget.document.size.exportHeight,
         );
     }
   }
@@ -556,8 +556,11 @@ class _PublishSheetState extends State<_PublishSheet> {
                 ),
                 const Spacer(),
                 Text(
-                  "${(widget.document.size.width * _scale).round()} × "
-                  "${(widget.document.size.height * _scale).round()}",
+                  // The size of the file, which is the export size and not
+                  // the design's own space.
+                  "${(widget.document.size.exportSize.width * _scale).round()}"
+                  " × "
+                  "${(widget.document.size.exportSize.height * _scale).round()}",
                   style: TextStyle(
                       fontSize: 12, color: theme.colors.onSurfaceVariant),
                 ),

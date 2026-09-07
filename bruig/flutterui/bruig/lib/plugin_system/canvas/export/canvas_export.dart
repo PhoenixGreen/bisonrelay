@@ -46,8 +46,14 @@ class CanvasExport {
   int get bytes => data.length;
 }
 
-/// renderFrame draws one frame into a ui.Image at [scale] times the
-/// document's own size.
+/// renderFrame draws one frame into a ui.Image at [scale] times the size the
+/// canvas is published at.
+///
+/// The published size is the design scaled by CanvasSize.exportScale: the
+/// elements are laid out in the design's own space and the whole scene is
+/// scaled on the way out, so choosing a bigger export width gives the same
+/// picture with more pixels in it rather than the same picture in the corner
+/// of a bigger one.
 ///
 /// The caller owns the image and must dispose it. Made explicit rather than
 /// hidden behind a convenience, because a GIF export holds every frame at once
@@ -59,9 +65,14 @@ Future<ui.Image> renderFrame(
   double scale = 1,
   CanvasImageSource? images,
 }) async {
-  var s = scale.clamp(0.05, maxExportScale);
-  var width = math.max(1, (document.size.width * s).round());
-  var height = math.max(1, (document.size.height * s).round());
+  // The caller's own multiplier is what maxExportScale bounds; the design's
+  // scale is not a request for a bigger file but the arithmetic that makes
+  // the file the size it is already declared to be, and clamping it would
+  // draw a small scene into a large image.
+  var asked = scale.clamp(0.05, maxExportScale);
+  var s = asked * document.size.exportScale;
+  var width = math.max(1, (document.size.exportSize.width * asked).round());
+  var height = math.max(1, (document.size.exportSize.height * asked).round());
 
   var recorder = ui.PictureRecorder();
   var canvas = ui.Canvas(recorder);
@@ -285,7 +296,12 @@ double _quality(int quality) {
 }
 
 int estimateStillBytes(CanvasDocument document, {double scale = 1}) {
-  var pixels = document.size.width * document.size.height * scale * scale;
+  // The pixels that come out, which is the export size rather than the space
+  // the design is laid out in: a 720p design published at 4K is a 4K file.
+  var pixels = document.size.exportSize.width *
+      document.size.exportSize.height *
+      scale *
+      scale;
 
   // Bytes per pixel after PNG compression, by how much is going on. Flat
   // colour and a few shapes pack extremely well; a dense procedural background
