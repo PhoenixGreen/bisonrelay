@@ -3052,6 +3052,40 @@ void main() {
           reason: "the same two places, in the style beside it");
     });
 
+    testWidgets("the axis can be set apart from the values", (tester) async {
+      // An exact reading on the bar, a round number on the scale, which is
+      // the pairing anybody setting these separately is after.
+      var controller = await panel(tester,
+          shape: (e) => e.copyWith(
+              numbers: const ChartNumbers(
+                  style: NumberStyle.millions, decimals: 3)));
+      await labels(tester);
+
+      expect(find.text("Axis numbers"), findsNothing,
+          reason: "it follows the values until told not to");
+      await press(tester, find.text("Axis the same"));
+
+      expect(find.text("Axis numbers"), findsOneWidget);
+      var chart = chartIn(controller);
+      expect(chart.axisNumbers, isNotNull);
+      expect(chart.axisFigures.decimals, 3,
+          reason: "it starts as a copy of the values rather than as nothing");
+
+      // And back again.
+      await press(tester, find.text("Axis the same"));
+      expect(chartIn(controller).axisNumbers, isNull);
+    });
+
+    testWidgets("the axis titles have a size and a distance", (tester) async {
+      var controller = await panel(tester);
+      await labels(tester);
+
+      expect(find.text("Label size"), findsOneWidget);
+      expect(find.text("Label gap"), findsOneWidget);
+      expect(chartIn(controller).axisSpec, isNull,
+          reason: "following the label size, which is where they started");
+    });
+
     testWidgets("a pie is offered no axes, but still its values",
         (tester) async {
       // The switches are all the same question -- what does this chart write

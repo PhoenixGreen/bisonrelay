@@ -67,9 +67,18 @@ bool colouredByValue(ChartType type) =>
     type == ChartType.donut ||
     type == ChartType.radialBar;
 
-/// formatTick prints a number the way the chart it belongs to writes them.
+/// formatTick prints a value the way the chart writes them: on a bar, on a
+/// point, in a legend that carries values.
 ///
 /// Through the element rather than as a bare function, because how a number
-/// is written is now a setting -- and the three places a chart writes one
-/// have to agree. See ChartNumbers.
+/// is written is a setting -- and the places a chart writes one have to
+/// agree with each other. See ChartNumbers.
 String formatTick(ChartElement e, double v) => e.numbers.format(v);
+
+/// formatAxis prints a figure up the side.
+///
+/// Its own function because it is its own setting, or rather it is the same
+/// one until somebody says otherwise: a value is a reading and wants to be
+/// exact, an axis is a scale and wants to be round, so 2.049M on the bar
+/// against 2.0M on the axis is a deliberate pairing.
+String formatAxis(ChartElement e, double v) => e.axisFigures.format(v);

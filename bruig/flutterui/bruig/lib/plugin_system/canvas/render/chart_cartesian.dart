@@ -192,7 +192,7 @@ void paintCartesian(
   var valueGutter = 0.0;
   if (e.showAxisLabels) {
     for (var t in range.ticks) {
-      var p = layoutText(formatTick(e, t), labelSpec, maxWidth: area.width / 3);
+      var p = layoutText(formatAxis(e, t), labelSpec, maxWidth: area.width / 3);
       valueGutter = math.max(valueGutter, p.width);
     }
     valueGutter += labelSpec.fontSize * 0.5;
@@ -201,7 +201,14 @@ void paintCartesian(
   // No writing, no gutters. Switching the labels off and keeping the room
   // they took would be a chart with a margin of nothing down two sides.
   var categoryGutter = e.showAxisLabels ? labelSpec.fontSize * 1.6 : 0.0;
-  var axisTitleGutter = e.showAxisLabels ? labelSpec.fontSize * 1.5 : 0.0;
+  // The axis titles have their own type and their own distance from the plot:
+  // one and a half times their height to sit against it, plus whatever room
+  // has been asked for to push them out. A title an inch clear of the plot is
+  // a layout decision and the chart cannot make it -- how much air a design
+  // wants is not a thing a drawing routine knows.
+  var axisSpec = e.axisText;
+  var axisTitleGutter =
+      e.showAxisLabels ? axisSpec.fontSize * 1.5 + math.max(0, e.axisGap) : 0.0;
 
   var left = area.left +
       (horizontal
@@ -316,7 +323,7 @@ void _axisLabels(
 
   for (var t in range.ticks) {
     var f = range.fraction(t);
-    var text = formatTick(e, t);
+    var text = formatAxis(e, t);
     if (horizontal) {
       var x = plot.left + plot.width * f;
       paintTextInBox(
@@ -372,11 +379,15 @@ void _axisLabels(
     }
   }
 
+  // The titles are set in their own type -- see ChartElement.axisSpec -- so
+  // making the writing on the axes smaller does not shrink the words naming
+  // them with it.
+  var titleSpec = e.axisText;
   if (e.xAxisLabel.isNotEmpty) {
     paintTextInBox(
         canvas,
         e.xAxisLabel,
-        spec.copyWith(
+        titleSpec.copyWith(
             align: TextAlignSpec.center,
             verticalAlign: VerticalAlignSpec.bottom,
             weight: 600),
@@ -392,7 +403,7 @@ void _axisLabels(
     paintTextInBox(
         canvas,
         e.yAxisLabel,
-        spec.copyWith(
+        titleSpec.copyWith(
             align: TextAlignSpec.center,
             verticalAlign: VerticalAlignSpec.middle,
             weight: 600),

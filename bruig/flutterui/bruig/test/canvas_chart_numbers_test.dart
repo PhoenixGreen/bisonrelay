@@ -1,8 +1,13 @@
+import 'dart:ui' as ui;
+
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_numbers.dart';
+import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
+import 'package:bruig/plugin_system/canvas/render/chart_common.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_painter.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 // canvas_chart_numbers_test.dart is how a number is written on a chart.
@@ -175,6 +180,172 @@ void main() {
                   1)
               .map((k) => k.$2),
           ["One: 1.00M", "Two: 2.50M"]);
+    });
+  });
+
+  group("the axis and the values apart", () {
+    ChartElement chart({ChartNumbers? axis}) => ChartElement(
+          const ElementBase(id: "c", width: 400, height: 300),
+          numbers: const ChartNumbers(style: NumberStyle.millions, decimals: 3),
+          axisNumbers: axis,
+        );
+
+    test("the axis follows the values until it is told not to", () {
+      // They are the same numbers, and an axis saying 1,500,000 beside a bar
+      // saying 1.5M is a chart that has changed its mind half way across.
+      var following = chart();
+      expect(following.axisNumbers, isNull);
+      expect(following.axisFigures.format(2049000), "2.049M");
+      expect(following.numbers.format(2049000), "2.049M");
+    });
+
+    test("and then it is a scale rather than a reading", () {
+      // The pairing this exists for: an exact figure on the bar, a round one
+      // up the side.
+      var apart = chart(
+          axis: const ChartNumbers(style: NumberStyle.millions, decimals: 1));
+      expect(apart.numbers.format(2049000), "2.049M");
+      expect(apart.axisFigures.format(2049000), "2.0M");
+    });
+
+    test("saying they are the same again clears the axis's own", () {
+      // copyWith cannot say "back to null" with a null, so the state has its
+      // own flag -- and without it, switching the axis back to following the
+      // values would silently do nothing.
+      var apart = chart(axis: const ChartNumbers(style: NumberStyle.plain));
+      expect(apart.copyWith(axisFollowsValues: true).axisNumbers, isNull);
+      expect(
+          apart.copyWith(numbers: const ChartNumbers()).axisNumbers, isNotNull,
+          reason: "an unrelated change must not clear it");
+    });
+
+    test("both survive being saved and read back", () {
+      var apart = chart(
+          axis: const ChartNumbers(style: NumberStyle.millions, decimals: 1));
+      var back = elementFromJson(apart.toJson()) as ChartElement;
+      expect(back.numbers.decimals, 3);
+      expect(back.axisNumbers?.decimals, 1);
+      // And a chart that never had one still has none.
+      expect((elementFromJson(chart().toJson()) as ChartElement).axisNumbers,
+          isNull);
+    });
+  });
+
+  group("the words naming the axes", () {
+    ChartElement titled({TextSpec? spec, double gap = 0}) => ChartElement(
+          const ElementBase(id: "c", width: 400, height: 300),
+          xAxisLabel: "Month",
+          yAxisLabel: "Transactions",
+          axisSpec: spec,
+          axisGap: gap,
+        );
+
+    test("have their own size, which starts as the label size", () {
+      // Sharing meant that making the figures up the side smaller shrank the
+      // words naming them with it.
+      var chart = titled();
+      expect(chart.axisSpec, isNull);
+      expect(chart.axisText.fontSize, chart.labelSpec.fontSize);
+
+      var bigger = titled(spec: chart.labelSpec.copyWith(fontSize: 40));
+      expect(bigger.axisText.fontSize, 40);
+      expect(bigger.labelSpec.fontSize, isNot(40),
+          reason: "the tick labels are left where they were");
+    });
+
+    test("and their own distance from the plot", () {
+      expect(titled().axisGap, 0, reason: "the layout as it was");
+      expect(titled(gap: 24).axisGap, 24);
+    });
+
+    test("both survive being saved and read back", () {
+      var chart = titled(spec: const TextSpec(fontSize: 30), gap: 18);
+      var back = elementFromJson(chart.toJson()) as ChartElement;
+      expect(back.axisText.fontSize, 30);
+      expect(back.axisGap, 18);
+      // A chart saved before either existed writes neither and reads back
+      // following the labels.
+      var plain = titled().toJson();
+      expect(plain.containsKey("axisSpec"), isFalse);
+      expect(plain.containsKey("axisGap"), isFalse);
+    });
+  });
+
+  group("drawn", () {
+    /// leftmostInk is the first column of the picture the series reaches, as
+    /// a fraction of its width. The plot starts where the writing beside it
+    /// ends, so pushing the axis title out moves this right.
+    Future<double> leftmostInk(ChartElement e,
+        {Size size = const Size(400, 300)}) async {
+      var recorder = ui.PictureRecorder();
+      var canvas = ui.Canvas(recorder);
+      canvas.drawRect(
+          Offset.zero & size, Paint()..color = const Color(0xFF101014));
+      paintChart(canvas, Offset.zero & size, e);
+      var image = await recorder
+          .endRecording()
+          .toImage(size.width.round(), size.height.round());
+      var bytes = (await image.toByteData())!;
+
+      for (var x = 0; x < size.width; x++) {
+        for (var y = 0; y < size.height; y++) {
+          if (bytes.getUint32(((y * size.width.round()) + x) * 4) ==
+              0x00AAFFFF) {
+            return x / size.width;
+          }
+        }
+      }
+      return 1;
+    }
+
+    ChartElement bars({double gap = 0, TextSpec? spec}) => ChartElement(
+          const ElementBase(id: "c", width: 400, height: 300),
+          yAxisLabel: "Transactions",
+          axisGap: gap,
+          axisSpec: spec,
+          showLegend: false,
+          data: ChartData(categories: const [
+            "a",
+            "b"
+          ], series: [
+            ChartSeries(
+                name: "S",
+                color: const Color(0xFF00AAFF),
+                values: const [10, 20]),
+          ]),
+        );
+
+    test("asking for room moves the axis title away from the plot", () async {
+      // Which is what the setting is for: the title sits against the plot by
+      // default, and how much air a design wants is not a thing a drawing
+      // routine knows.
+      var tight = await leftmostInk(bars());
+      var roomy = await leftmostInk(bars(gap: 60));
+      expect(roomy, greaterThan(tight + 0.1),
+          reason: "the plot should start further in: $tight then $roomy");
+    });
+
+    test("and so does setting it in bigger type", () async {
+      var small = await leftmostInk(bars());
+      var large = await leftmostInk(
+          bars(spec: const TextSpec(fontSize: 40, weight: 600)));
+      expect(large, greaterThan(small));
+    });
+  });
+
+  group("which numbers go where", () {
+    test("the axis is asked separately from the values", () {
+      // The two functions the painter calls: one for a reading, one for a
+      // scale. Pinned here because a chart that asked the wrong one would
+      // look right until somebody set them differently.
+      var e = ChartElement(
+        const ElementBase(id: "c", width: 400, height: 300),
+        numbers: const ChartNumbers(style: NumberStyle.millions, decimals: 3),
+        axisNumbers:
+            const ChartNumbers(style: NumberStyle.millions, decimals: 1),
+      );
+      expect(formatTick(e, 2049000), "2.049M");
+      expect(formatAxis(e, 2049000), "2.0M");
     });
   });
 }

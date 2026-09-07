@@ -294,6 +294,38 @@ List<Widget> chartSettings(
                 onChanged: (v) => write(e.copyWith(yAxisLabel: v)),
                 onCommit: commit,
               ),
+              // The two words naming the axes have their own size and their
+              // own distance from the plot. Their own size, because making
+              // the figures up the side smaller used to shrink the words with
+              // them; their own distance, because how much air a design wants
+              // around them is a layout decision and not one a drawing
+              // routine can make.
+              CanvasNumberField(
+                label: "Label size",
+                value: e.axisText.fontSize,
+                min: 4,
+                max: 200,
+                decimals: 0,
+                width: 56,
+                onChanged: (v) {
+                  begin();
+                  write(e.copyWith(axisSpec: e.axisText.copyWith(fontSize: v)));
+                },
+                onCommit: commit,
+              ),
+              CanvasNumberField(
+                label: "Label gap",
+                value: e.axisGap,
+                min: 0,
+                max: 400,
+                decimals: 0,
+                width: 56,
+                onChanged: (v) {
+                  begin();
+                  write(e.copyWith(axisGap: v));
+                },
+                onCommit: commit,
+              ),
               // The two axis titles are text, and the switches below are switches.
               // On one line the first switch sat on the end of the Y label's row
               // and read as part of it.
@@ -380,6 +412,52 @@ List<Widget> chartSettings(
                 },
                 onCommit: commit,
               ),
+              // The axis reads the same as the values until somebody says
+              // otherwise, because they are the same numbers. Said otherwise,
+              // it is the usual pairing: an exact reading on the bar, a round
+              // number on the scale.
+              CanvasToggle(
+                label: "Axis the same",
+                value: e.axisNumbers == null,
+                onChanged: (v) => now(v
+                    ? e.copyWith(axisFollowsValues: true)
+                    : e.copyWith(axisNumbers: e.numbers)),
+              ),
+              if (e.axisNumbers != null) ...[
+                CanvasDropdown<NumberStyle>(
+                  label: "Axis numbers",
+                  value: e.axisFigures.style,
+                  width: 176,
+                  options: [
+                    for (var style in NumberStyle.values)
+                      (
+                        style,
+                        style == NumberStyle.automatic
+                            ? "${style.label} — ${style.example}"
+                            : "${style.label} — "
+                                "${e.axisFigures.copyWith(style: style).format(1000000)}"
+                      )
+                  ],
+                  onChanged: (v) => now(e.copyWith(
+                      axisNumbers: e.axisFigures.copyWith(style: v))),
+                ),
+                if (e.axisFigures.style != NumberStyle.automatic)
+                  CanvasNumberField(
+                    label: "Axis places",
+                    value: e.axisFigures.decimals.toDouble(),
+                    min: 0,
+                    max: 6,
+                    decimals: 0,
+                    width: 56,
+                    onChanged: (v) {
+                      begin();
+                      write(e.copyWith(
+                          axisNumbers:
+                              e.axisFigures.copyWith(decimals: v.round())));
+                    },
+                    onCommit: commit,
+                  ),
+              ],
               CanvasToggle(
                 label: "Separators",
                 value: e.numbers.separators,
@@ -387,9 +465,9 @@ List<Widget> chartSettings(
                     now(e.copyWith(numbers: e.numbers.copyWith(separators: v))),
               ),
               CanvasHint("A million is written "
-                  "\"${e.numbers.format(1000000)}\" — the same way on the "
-                  "axis, on the bars and in the legend, because they are the "
-                  "same numbers. Zero decimals leaves no point at all."),
+                  "\"${e.numbers.format(1000000)}\" on the bars and in the "
+                  "legend, and \"${e.axisFigures.format(1000000)}\" up the "
+                  "side. Zero places leaves no decimal point at all."),
             ],
             if (!e.type.isCircular)
               const CanvasHint(

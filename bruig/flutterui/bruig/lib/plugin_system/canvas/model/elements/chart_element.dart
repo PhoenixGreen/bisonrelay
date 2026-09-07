@@ -300,14 +300,20 @@ class ChartElement extends CanvasElement {
   final TextSpec labelSpec;
   final TextSpec valueSpec;
 
-  /// numbers is how a number is written wherever this chart writes one: up
-  /// the axis, on the bars, in a legend that carries values. See
-  /// [ChartNumbers].
-  ///
-  /// One setting for all three, because they are the same numbers -- an axis
-  /// saying 1,500,000 beside a bar saying 1.5M is a chart that has changed
-  /// its mind half way across.
+  /// numbers is how a value is written: on the bars, on the points, and in a
+  /// legend that carries values. See [ChartNumbers].
   final ChartNumbers numbers;
+
+  /// axisNumbers is how the figures up the side are written, or null for
+  /// "the same as the values".
+  ///
+  /// Null by default, and that is the right default: the two are the same
+  /// numbers and an axis saying 1,500,000 beside a bar saying 1.5M is a chart
+  /// that has changed its mind half way across. But they are read for
+  /// different things -- a value is a reading and wants to be exact, an axis
+  /// is a scale and wants to be round -- so 2.049M on the bar against 2.0M up
+  /// the side is a deliberate and useful pairing rather than a mistake.
+  final ChartNumbers? axisNumbers;
 
   /// logScale draws the value axis by decades rather than evenly.
   ///
@@ -319,6 +325,20 @@ class ChartElement extends CanvasElement {
   ///
   /// Ignored where it cannot mean anything. See [logs].
   final bool logScale;
+
+  /// axisSpec is the type the two axis titles are set in, or null to follow
+  /// the label size -- which is where they started and is what every document
+  /// saved before this had.
+  final TextSpec? axisSpec;
+
+  /// axisGap is extra room between an axis title and the plot, in document
+  /// units.
+  ///
+  /// Nought by default, which is the layout as it was: the title sits one and
+  /// a half times its own height from the plot, which is close enough to read
+  /// as belonging to it and close enough to look cramped when the chart is
+  /// large. This is the room to push it out.
+  final double axisGap;
 
   /// yMin and yMax pin the value axis. NaN means "work it out from the data",
   /// which is the default and is what almost every chart wants.
@@ -368,6 +388,9 @@ class ChartElement extends CanvasElement {
     this.fallColor = const Color(0xFFE85D75),
     this.logScale = false,
     this.numbers = const ChartNumbers(),
+    this.axisNumbers,
+    this.axisSpec,
+    this.axisGap = 0,
     this.titleSpec = const TextSpec(fontSize: 28, weight: 700),
     this.labelSpec = const TextSpec(fontSize: 16, weight: 400),
     this.valueSpec = const TextSpec(fontSize: 14, weight: 600),
@@ -401,6 +424,12 @@ class ChartElement extends CanvasElement {
       height: was.height,
     ) as ChartElement;
   }
+
+  /// axisText is the type the axis titles are actually set in, and
+  /// axisFigures is how the numbers up the side are actually written: their
+  /// own where they have been given one, and the values' otherwise.
+  TextSpec get axisText => axisSpec ?? labelSpec;
+  ChartNumbers get axisFigures => axisNumbers ?? numbers;
 
   /// logs is whether this chart is actually drawn on a log axis.
   ///
@@ -461,6 +490,10 @@ class ChartElement extends CanvasElement {
     Color? fallColor,
     bool? logScale,
     ChartNumbers? numbers,
+    ChartNumbers? axisNumbers,
+    bool axisFollowsValues = false,
+    TextSpec? axisSpec,
+    double? axisGap,
     TextSpec? titleSpec,
     TextSpec? labelSpec,
     TextSpec? valueSpec,
@@ -500,6 +533,10 @@ class ChartElement extends CanvasElement {
           fallColor: fallColor,
           logScale: logScale,
           numbers: numbers,
+          axisNumbers: axisNumbers,
+          axisFollowsValues: axisFollowsValues,
+          axisSpec: axisSpec,
+          axisGap: axisGap,
           titleSpec: titleSpec,
           labelSpec: labelSpec,
           valueSpec: valueSpec,
@@ -543,6 +580,10 @@ class ChartElement extends CanvasElement {
     Color? fallColor,
     bool? logScale,
     ChartNumbers? numbers,
+    ChartNumbers? axisNumbers,
+    bool axisFollowsValues = false,
+    TextSpec? axisSpec,
+    double? axisGap,
     TextSpec? titleSpec,
     TextSpec? labelSpec,
     TextSpec? valueSpec,
@@ -582,6 +623,13 @@ class ChartElement extends CanvasElement {
           fallColor: fallColor ?? this.fallColor,
           logScale: logScale ?? this.logScale,
           numbers: numbers ?? this.numbers,
+          // The flag rather than a null, because null is the value being set:
+          // "the axis follows the values" is a state, and copyWith cannot say
+          // it any other way.
+          axisNumbers:
+              axisFollowsValues ? null : (axisNumbers ?? this.axisNumbers),
+          axisSpec: axisSpec ?? this.axisSpec,
+          axisGap: axisGap ?? this.axisGap,
           titleSpec: titleSpec ?? this.titleSpec,
           labelSpec: labelSpec ?? this.labelSpec,
           valueSpec: valueSpec ?? this.valueSpec,
@@ -625,6 +673,9 @@ class ChartElement extends CanvasElement {
         "axisColor": colorToJson(axisColor),
         if (logScale) "log": true,
         if (numbers.toJson().isNotEmpty) "numbers": numbers.toJson(),
+        if (axisNumbers != null) "axisNumbers": axisNumbers!.toJson(),
+        if (axisSpec != null) "axisSpec": axisSpec!.toJson(),
+        if (axisGap != 0) "axisGap": axisGap,
         "riseColor": colorToJson(riseColor),
         "fallColor": colorToJson(fallColor),
         "titleSpec": titleSpec.toJson(),
@@ -645,30 +696,25 @@ class ChartElement extends CanvasElement {
           data: jsonSpec(json["data"], ChartData.fromJson, const ChartData()),
           fromTable: jsonSpec(
               json["fromTable"], TableLink.fromJson, const TableLink()),
-          source: jsonSpec(
-              json["source"], DataSource.fromJson, const DataSource()),
+          source:
+              jsonSpec(json["source"], DataSource.fromJson, const DataSource()),
           fromSource: jsonSpec(json["fromSource"], ChartSourceMap.fromJson,
               const ChartSourceMap()),
           title: jsonString(json["title"], ""),
           description: jsonString(json["desc"], ""),
-          titleBox: jsonSpec(json["titleBox"], ChartLabel.fromJson,
-              const ChartLabel()),
-          descriptionBox:
-              jsonSpec(json["descBox"], ChartLabel.fromJson,
-                  const ChartLabel(height: 0.1)),
+          titleBox: jsonSpec(
+              json["titleBox"], ChartLabel.fromJson, const ChartLabel()),
+          descriptionBox: jsonSpec(json["descBox"], ChartLabel.fromJson,
+              const ChartLabel(height: 0.1)),
           body: jsonSpec(json["body"], ChartBody.fromJson, const ChartBody()),
-          animation:
-              jsonSpec(json["anim"], ChartAnimation.fromJson,
-                  const ChartAnimation()),
-          legend:
-              jsonSpec(json["legendSpec"], ChartLegend.fromJson,
-                  const ChartLegend()),
+          animation: jsonSpec(
+              json["anim"], ChartAnimation.fromJson, const ChartAnimation()),
+          legend: jsonSpec(
+              json["legendSpec"], ChartLegend.fromJson, const ChartLegend()),
           floatingLabels: jsonBool(json["floatLabels"], false),
-          descriptionSpec:
-              json["descSpec"] is Map<String,
-                      dynamic>
-                  ? TextSpec.fromJson(json["descSpec"] as Map<String, dynamic>)
-                  : null,
+          descriptionSpec: json["descSpec"] is Map<String, dynamic>
+              ? TextSpec.fromJson(json["descSpec"] as Map<String, dynamic>)
+              : null,
           xAxisLabel: jsonString(json["xlabel"], ""),
           yAxisLabel: jsonString(json["ylabel"], ""),
           showGrid: jsonBool(json["grid"], true),
@@ -678,9 +724,19 @@ class ChartElement extends CanvasElement {
           showValues: jsonBool(json["values"], false),
           gridColor: colorFromJson(json["gridColor"], const Color(0x33FFFFFF)),
           logScale: jsonBool(json["log"], false),
-          numbers:
-              jsonSpec(
-                  json["numbers"], ChartNumbers.fromJson, const ChartNumbers()),
+          numbers: jsonSpec(
+              json["numbers"], ChartNumbers.fromJson, const ChartNumbers()),
+          // Null rather than a default when there is nothing saved: null is
+          // the state "the axis follows the values", which is what a chart
+          // saved before either of these existed was doing.
+          axisNumbers: json["axisNumbers"] is Map<String, dynamic>
+              ? ChartNumbers.fromJson(
+                  json["axisNumbers"] as Map<String, dynamic>)
+              : null,
+          axisSpec: json["axisSpec"] is Map<String, dynamic>
+              ? TextSpec.fromJson(json["axisSpec"] as Map<String, dynamic>)
+              : null,
+          axisGap: jsonDouble(json["axisGap"], 0),
           riseColor: colorFromJson(json["riseColor"], const Color(0xFF2FD3A0)),
           fallColor: colorFromJson(json["fallColor"], const Color(0xFFE85D75)),
           axisColor: colorFromJson(json["axisColor"], const Color(0x99FFFFFF)),
