@@ -351,7 +351,7 @@ void main() {
       expect(shown(), isNot(asPng), reason: "a JPEG is not a PNG: $asPng");
     });
 
-    testWidgets("a width can be chosen by the name people use for it",
+    testWidgets("a size can be chosen by the name people use for it",
         (tester) async {
       // Nobody remembers that 1080p is 1920 across, and everybody knows what
       // 1080p is.
@@ -361,16 +361,65 @@ void main() {
 
       await tester.tap(find.byKey(const ValueKey("canvasWidthPreset")));
       await tester.pumpAndSettle();
-      await tester.tap(find.text("A4 at 150dpi · 1240").last);
+      await tester.tap(find.text("1080p · 1920").last);
       await tester.pumpAndSettle();
-      expect(controller.document.size.width, 1240);
 
-      // A width that is not one of the named ones says the number rather
-      // than a name that would be untrue.
+      var size = controller.document.size;
+      expect([size.width, size.height], [1920, 1080],
+          reason: "which is what 1080p means");
+
+      // A size that is not one of the named ones says so rather than
+      // borrowing a name that would be untrue. The pixels are on the readout
+      // beside it.
       controller.apply(controller.document
           .copyWith(size: controller.document.size.copyWith(width: 1337)));
       await tester.pumpAndSettle();
-      expect(find.text("1337 px"), findsOneWidget);
+      expect(find.text("Custom"), findsWidgets);
+      expect(find.text("1337 × 752"), findsOneWidget,
+          reason: "said once, on the readout");
+    });
+
+    testWidgets("and the sizes offered are the ones that shape has",
+        (tester) async {
+      // A width on its own names nothing: 1920 across is 1080p at sixteen by
+      // nine, and on an A4 page it is 1920 by 2716, which is not 1080p and is
+      // not any other name either. Offering every width for every shape was
+      // offering names that were not true.
+      var controller = CanvasController(const CanvasDocument());
+      addTearDown(controller.dispose);
+      await pump(tester, CanvasSettingsPanel(controller: controller));
+
+      await tester.tap(find.byKey(const ValueKey("canvasWidthPreset")));
+      await tester.pumpAndSettle();
+      expect(find.text("1080p · 1920"), findsWidgets);
+      expect(find.text("A4 at 150dpi · 1240"), findsNothing,
+          reason: "a sheet of paper is not sixteen by nine");
+      await tester.tapAt(const Offset(5, 5));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byType(DropdownButton<CanvasRatio>));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text("A4 · A3 · A5").last);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey("canvasWidthPreset")));
+      await tester.pumpAndSettle();
+      expect(find.text("A4 at 150dpi · 1240"), findsWidgets);
+      expect(find.text("1080p · 1920"), findsNothing);
+      await tester.tapAt(const Offset(5, 5));
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets("a shape with no named sizes shows no list", (tester) async {
+      // A custom ratio has nothing to name, and the width box beside the list
+      // is the answer for every shape nobody has a word for.
+      var controller = CanvasController(const CanvasDocument(
+          size: CanvasSize(ratio: CanvasRatio.custom, customRatio: 2.3)));
+      addTearDown(controller.dispose);
+      await pump(tester, CanvasSettingsPanel(controller: controller));
+
+      expect(find.byKey(const ValueKey("canvasWidthPreset")), findsNothing);
+      expect(find.byKey(const ValueKey("canvasWidth")), findsOneWidget);
     });
 
     testWidgets("and paper is a ratio like any other", (tester) async {

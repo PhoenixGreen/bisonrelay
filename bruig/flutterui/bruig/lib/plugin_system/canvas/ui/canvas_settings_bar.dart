@@ -547,29 +547,36 @@ class _CanvasSettingsPanelState extends State<CanvasSettingsPanel> {
           onChanged: (v) =>
               write(document.copyWith(size: document.size.copyWith(ratio: v))),
         ),
-        // The widths worth having a name for, beside the box that takes any
-        // other number. Nobody remembers that 1080p is 1920 across and
-        // everybody knows what 1080p is.
-        CanvasDropdown<int>(
-          key: const ValueKey("canvasWidthPreset"),
-          label: "Size",
-          value: canvasWidthPresets.any((p) => p.$1 == document.size.width)
-              ? document.size.width
-              : 0,
-          width: 150,
-          options: [
-            // The width it is at, when that is not one of the named ones. A
-            // dropdown that shows a name for a canvas that is 1337 across
-            // would be saying something untrue.
-            if (!canvasWidthPresets.any((p) => p.$1 == document.size.width))
-              (0, "${document.size.width} px"),
-            ...canvasWidthPresets,
-          ],
-          onChanged: (v) {
-            if (v == 0) return;
-            write(document.copyWith(size: document.size.copyWith(width: v)));
-          },
-        ),
+        // The sizes that have a name *in this shape*, beside the box that
+        // takes any other number. A width on its own names nothing: 1920
+        // across is 1080p at sixteen by nine and is 1920 by 2716 on an A4
+        // page, so the list follows the ratio and a shape with no named sizes
+        // shows no list at all.
+        if (sizePresetsFor(document.size.ratio) case var named
+            when named.isNotEmpty)
+          CanvasDropdown<int>(
+            key: const ValueKey("canvasWidthPreset"),
+            label: "Size",
+            value: named.any((p) => p.width == document.size.width)
+                ? document.size.width
+                : 0,
+            width: 168,
+            options: [
+              // "Custom" when the width is not one of the named ones. A list
+              // that showed a name for a canvas 1337 across would be saying
+              // something untrue, and the pixels are already on the readout
+              // two controls along -- saying them here as well is saying them
+              // twice.
+              if (!named.any((p) => p.width == document.size.width))
+                (0, "Custom"),
+              for (var preset in named)
+                (preset.width, "${preset.label} · ${preset.width}"),
+            ],
+            onChanged: (v) {
+              if (v == 0) return;
+              write(document.copyWith(size: document.size.copyWith(width: v)));
+            },
+          ),
         CanvasNumberField(
           key: const ValueKey("canvasWidth"),
           label: "Max width",

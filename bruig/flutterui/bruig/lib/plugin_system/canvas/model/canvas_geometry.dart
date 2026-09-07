@@ -54,27 +54,79 @@ enum CanvasRatio {
       );
 }
 
-/// canvasWidthPresets are the widths worth having a name for.
+/// CanvasSizePreset is a named size: a shape and a width together.
+///
+/// Together, because a width on its own does not name anything. "1080p" is
+/// 1920 across *at sixteen by nine*; 1920 across on an A4 page is 1920 by
+/// 2716, which is not 1080p and is not any other name either. Offering every
+/// width for every shape was offering names that were not true.
+class CanvasSizePreset {
+  final CanvasRatio ratio;
+  final int width;
+
+  /// label is what it is called, without the number: the dropdown adds the
+  /// pixels, and the readout beside it says what they come to.
+  final String label;
+
+  const CanvasSizePreset(this.ratio, this.width, this.label);
+
+  /// height is what this preset comes to, which is the other half of the name
+  /// and is worth showing.
+  int get height => (width / ratio.value).round();
+}
+
+/// canvasSizePresets are the sizes worth having a name for, by shape.
 ///
 /// The screen sizes people publish at, and the paper sizes at a print
 /// resolution -- A4 at 150 dots to the inch is 1240 pixels across, which is
 /// what a page looks like on a screen and is small enough to send.
-///
-/// A list of pairs rather than an enum: what these are is numbers, and a
-/// number that is not on the list is typed into the box beside them.
-const List<(int, String)> canvasWidthPresets = [
-  (3840, "4K · 3840"),
-  (2560, "1440p · 2560"),
-  (1920, "1080p · 1920"),
-  (1280, "720p · 1280"),
-  (1080, "Square post · 1080"),
-  (854, "480p · 854"),
-  (3508, "A3 at 300dpi · 3508"),
-  (2480, "A4 at 300dpi · 2480"),
-  (1754, "A3 at 150dpi · 1754"),
-  (1240, "A4 at 150dpi · 1240"),
-  (874, "A5 at 150dpi · 874"),
+const List<CanvasSizePreset> canvasSizePresets = [
+  // Sixteen by nine, which is what "1080p" and the rest of them mean.
+  CanvasSizePreset(CanvasRatio.wide, 3840, "4K"),
+  CanvasSizePreset(CanvasRatio.wide, 2560, "1440p"),
+  CanvasSizePreset(CanvasRatio.wide, 1920, "1080p"),
+  CanvasSizePreset(CanvasRatio.wide, 1280, "720p"),
+  CanvasSizePreset(CanvasRatio.wide, 854, "480p"),
+
+  // The same sizes stood on end, which is what a phone screen is.
+  CanvasSizePreset(CanvasRatio.tall, 1080, "1080p portrait"),
+  CanvasSizePreset(CanvasRatio.tall, 720, "720p portrait"),
+
+  CanvasSizePreset(CanvasRatio.square, 2048, "Large square"),
+  CanvasSizePreset(CanvasRatio.square, 1080, "Square post"),
+
+  CanvasSizePreset(CanvasRatio.classic, 2048, "Large"),
+  CanvasSizePreset(CanvasRatio.classic, 1024, "Standard"),
+  CanvasSizePreset(CanvasRatio.portrait, 1536, "Large"),
+  CanvasSizePreset(CanvasRatio.portrait, 1024, "Standard"),
+
+  CanvasSizePreset(CanvasRatio.banner, 2560, "Wide banner"),
+  CanvasSizePreset(CanvasRatio.banner, 1500, "Header"),
+  CanvasSizePreset(CanvasRatio.wideBanner, 1500, "Header"),
+
+  // Paper, by the width of the sheet. A3 at 300 dots to the inch is the
+  // largest that fits inside maxCanvasWidth, which is why the list stops
+  // there.
+  CanvasSizePreset(CanvasRatio.a4, 3508, "A3 at 300dpi"),
+  CanvasSizePreset(CanvasRatio.a4, 2480, "A4 at 300dpi"),
+  CanvasSizePreset(CanvasRatio.a4, 1754, "A3 at 150dpi"),
+  CanvasSizePreset(CanvasRatio.a4, 1240, "A4 at 150dpi"),
+  CanvasSizePreset(CanvasRatio.a4, 874, "A5 at 150dpi"),
+  // Landscape: the same sheets, turned, so the long edge is the width.
+  CanvasSizePreset(CanvasRatio.a4Wide, 3508, "A4 at 300dpi"),
+  CanvasSizePreset(CanvasRatio.a4Wide, 2480, "A3 at 150dpi"),
+  CanvasSizePreset(CanvasRatio.a4Wide, 1754, "A4 at 150dpi"),
+  CanvasSizePreset(CanvasRatio.a4Wide, 1240, "A5 at 150dpi"),
 ];
+
+/// sizePresetsFor is the named sizes that belong to one shape.
+///
+/// Empty for a custom ratio, where there is nothing to name: the width box
+/// beside the list is the answer for every shape nobody has a word for.
+List<CanvasSizePreset> sizePresetsFor(CanvasRatio ratio) => [
+      for (var p in canvasSizePresets)
+        if (p.ratio == ratio) p
+    ];
 
 /// minCanvasWidth and maxCanvasWidth bound the output width.
 ///

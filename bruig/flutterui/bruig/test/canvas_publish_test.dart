@@ -232,4 +232,61 @@ void main() {
           EstimateAs.png);
     });
   });
+
+  group("a named size names a shape as well as a width", () {
+    test("every preset is the size its name claims", () {
+      // 1080p is 1920 by 1080 and nothing else. The arithmetic is the
+      // canvas's own, so a preset whose width does not come out at the name's
+      // height is a preset in the wrong list.
+      var known = {
+        ("1080p", CanvasRatio.wide): (1920, 1080),
+        ("720p", CanvasRatio.wide): (1280, 720),
+        ("4K", CanvasRatio.wide): (3840, 2160),
+        ("Square post", CanvasRatio.square): (1080, 1080),
+      };
+      for (var preset in canvasSizePresets) {
+        var wanted = known[(preset.label, preset.ratio)];
+        if (wanted == null) continue;
+        expect([preset.width, preset.height], [wanted.$1, wanted.$2],
+            reason: preset.label);
+      }
+    });
+
+    test("A4 at 150dpi is a sheet of A4", () {
+      var a4 = canvasSizePresets.firstWhere(
+          (p) => p.ratio == CanvasRatio.a4 && p.label == "A4 at 150dpi");
+      // 210mm by 297mm at 150 dots to the inch.
+      expect(a4.width, closeTo(210 / 25.4 * 150, 12));
+      expect(a4.height, closeTo(297 / 25.4 * 150, 16));
+    });
+
+    test("and turning the paper turns the size", () {
+      var portrait = canvasSizePresets.firstWhere(
+          (p) => p.ratio == CanvasRatio.a4 && p.label == "A4 at 150dpi");
+      var landscape = canvasSizePresets.firstWhere(
+          (p) => p.ratio == CanvasRatio.a4Wide && p.label == "A4 at 150dpi");
+      expect(landscape.width, portrait.height,
+          reason: "the long edge is the width now");
+      expect(landscape.height, closeTo(portrait.width, 2));
+    });
+
+    test("every preset fits inside what a canvas may be", () {
+      for (var preset in canvasSizePresets) {
+        expect(preset.width, lessThanOrEqualTo(maxCanvasWidth),
+            reason: preset.label);
+        expect(preset.width, greaterThanOrEqualTo(minCanvasWidth));
+      }
+    });
+
+    test("a shape people have no word for has no list", () {
+      expect(sizePresetsFor(CanvasRatio.custom), isEmpty);
+      expect(sizePresetsFor(CanvasRatio.wide), isNotEmpty);
+      // And every preset in a list really belongs to that shape.
+      for (var ratio in CanvasRatio.values) {
+        for (var preset in sizePresetsFor(ratio)) {
+          expect(preset.ratio, ratio);
+        }
+      }
+    });
+  });
 }
