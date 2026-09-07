@@ -1,4 +1,3 @@
-import 'package:bruig/plugin_system/canvas/model/elements/chart_animation.dart';
 import 'package:bruig/models/snackbar.dart';
 import 'dart:io';
 import 'dart:convert';
