@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/canvas/model/canvas_estimate.dart';
 import 'dart:math' as math;
 import 'package:bruig/storage_manager.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_numbers.dart';
@@ -307,11 +308,87 @@ void main() {
       await pump(tester, CanvasSettingsPanel(controller: controller));
 
       expect(find.text("ESTIMATED SIZE"), findsOneWidget);
-      expect(find.text("as a PNG"), findsOneWidget);
+      expect(find.text("PNG"), findsOneWidget,
+          reason: "a size with no format beside it is a number without a "
+              "question");
 
+      // A still is offered the still formats and an animation the moving
+      // ones: a GIF of a still is a still, and a PNG of an animation is one
+      // frame of it.
       controller.apply(controller.document.copyWith(frames: 24));
       await tester.pumpAndSettle();
-      expect(find.text("as a GIF"), findsOneWidget);
+      expect(find.text("GIF"), findsOneWidget);
+      expect(find.text("PNG"), findsNothing);
+    });
+
+    testWidgets("and the estimate is for the file it will be", (tester) async {
+      // The same canvas is four hundred kilobytes as a PNG and forty as a
+      // JPEG at 85, so the format and the quality are settings.
+      var controller = CanvasController(const CanvasDocument());
+      addTearDown(controller.dispose);
+      await pump(tester, CanvasSettingsPanel(controller: controller));
+
+      String shown() => tester
+          .widgetList<Text>(find.descendant(
+              of: find.ancestor(
+                  of: find.text("ESTIMATED SIZE"),
+                  matching: find.byType(CanvasControlGroup)),
+              matching: find.byType(Text)))
+          .map((t) => t.data ?? "")
+          .firstWhere((t) => t.contains("B"), orElse: () => "");
+
+      var asPng = shown();
+      expect(find.text("Quality"), findsNothing,
+          reason: "PNG packs harder or less hard and never looks different");
+
+      await tester.tap(find.byKey(const ValueKey("estimateAs")));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text("JPEG").last);
+      await tester.pumpAndSettle();
+
+      expect(controller.document.estimate.format, EstimateAs.jpeg);
+      expect(find.text("Quality"), findsOneWidget);
+      expect(shown(), isNot(asPng), reason: "a JPEG is not a PNG: $asPng");
+    });
+
+    testWidgets("a width can be chosen by the name people use for it",
+        (tester) async {
+      // Nobody remembers that 1080p is 1920 across, and everybody knows what
+      // 1080p is.
+      var controller = CanvasController(const CanvasDocument());
+      addTearDown(controller.dispose);
+      await pump(tester, CanvasSettingsPanel(controller: controller));
+
+      await tester.tap(find.byKey(const ValueKey("canvasWidthPreset")));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text("A4 at 150dpi · 1240").last);
+      await tester.pumpAndSettle();
+      expect(controller.document.size.width, 1240);
+
+      // A width that is not one of the named ones says the number rather
+      // than a name that would be untrue.
+      controller.apply(controller.document
+          .copyWith(size: controller.document.size.copyWith(width: 1337)));
+      await tester.pumpAndSettle();
+      expect(find.text("1337 px"), findsOneWidget);
+    });
+
+    testWidgets("and paper is a ratio like any other", (tester) async {
+      // A3, A4 and A5 are the same shape -- halving an A-size folds it in
+      // half -- so they are one ratio, and what tells them apart is a width.
+      var controller = CanvasController(const CanvasDocument());
+      addTearDown(controller.dispose);
+      await pump(tester, CanvasSettingsPanel(controller: controller));
+
+      await tester.tap(find.byType(DropdownButton<CanvasRatio>));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text("A4 · A3 · A5").last);
+      await tester.pumpAndSettle();
+
+      var size = controller.document.size;
+      expect(size.ratio, CanvasRatio.a4);
+      expect(size.height / size.width, closeTo(297 / 210, 0.01),
+          reason: "taller than it is wide, in the paper proportion");
     });
 
     testWidgets("does not overflow a narrow window", (tester) async {
@@ -4713,7 +4790,7 @@ void main() {
               of: find.byKey(const ValueKey("canvasWidth")),
               matching: find.byType(TextField)),
           find.textContaining("×"),
-          find.textContaining("as a PNG"),
+          find.byKey(const ValueKey("estimateAs")),
         ])
           tester.getRect(it).center.dy,
       ];

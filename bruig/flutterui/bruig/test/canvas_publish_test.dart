@@ -1,3 +1,6 @@
+import 'package:bruig/plugin_system/canvas/export/canvas_export.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_estimate.dart';
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/export/video_export.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
@@ -148,6 +151,85 @@ void main() {
 
       expect(find.textContaining(VideoFormat.webm.note), findsOneWidget);
       expect(find.textContaining(VideoFormat.mp4.note), findsNothing);
+    });
+  });
+
+  group("what the estimate is for", () {
+    // An estimate that does not name a format is not an estimate of
+    // anything: the same canvas is four hundred kilobytes as a PNG and forty
+    // as a JPEG, and which of those matters depends on what somebody is about
+    // to do with it.
+
+    var canvas = const CanvasDocument(
+        size: CanvasSize(ratio: CanvasRatio.wide, width: 1920));
+
+    test("a lossy file is smaller than a lossless one", () {
+      var png =
+          estimateBytes(canvas, const CanvasEstimate(format: EstimateAs.png));
+      var jpeg = estimateBytes(
+          canvas, const CanvasEstimate(format: EstimateAs.jpeg, quality: 85));
+      var webp = estimateBytes(
+          canvas, const CanvasEstimate(format: EstimateAs.webp, quality: 85));
+
+      expect(jpeg, lessThan(png));
+      expect(webp, lessThan(jpeg), reason: "which is what WebP is for");
+    });
+
+    test("and quality costs what quality costs", () {
+      int at(int quality) => estimateBytes(
+          canvas, CanvasEstimate(format: EstimateAs.jpeg, quality: quality));
+
+      expect(at(100), greaterThan(at(85)));
+      expect(at(85), greaterThan(at(50)));
+      expect(at(50), greaterThan(at(20)));
+      // The curve, not a straight line: the top of the range costs a great
+      // deal and shows almost nothing, and the bottom saves very little more.
+      expect(at(100) - at(85), greaterThan(at(50) - at(35)));
+    });
+
+    test("quality does nothing to a lossless file", () {
+      // PNG packs harder or less hard and never looks different, so a quality
+      // setting on one would change the answer to a question nobody asked.
+      expect(EstimateAs.png.lossy, isFalse);
+      expect(
+          estimateBytes(canvas,
+              const CanvasEstimate(format: EstimateAs.png, quality: 10)),
+          estimateBytes(canvas,
+              const CanvasEstimate(format: EstimateAs.png, quality: 100)));
+    });
+
+    test("an animation is priced by its frames", () {
+      var still = estimateBytes(canvas, const CanvasEstimate());
+      var moving = estimateBytes(canvas.copyWith(frames: 48),
+          const CanvasEstimate(format: EstimateAs.gif));
+      expect(moving, greaterThan(still * 5));
+
+      // A video stores what changed rather than each frame whole, which is
+      // most of why anybody publishes one.
+      var video = estimateBytes(canvas.copyWith(frames: 48),
+          const CanvasEstimate(format: EstimateAs.video, quality: 85));
+      expect(video, lessThan(moving));
+    });
+
+    test("which formats suit what", () {
+      expect(EstimateAs.gif.moving, isTrue);
+      expect(EstimateAs.video.moving, isTrue);
+      for (var format in [EstimateAs.png, EstimateAs.jpeg, EstimateAs.webp]) {
+        expect(format.moving, isFalse, reason: format.name);
+      }
+    });
+
+    test("the choice is saved with the canvas", () {
+      var document = canvas.copyWith(
+          estimate: const CanvasEstimate(format: EstimateAs.jpeg, quality: 60));
+      var back = CanvasDocument.fromJson(document.toJson());
+      expect(back.estimate.format, EstimateAs.jpeg);
+      expect(back.estimate.quality, 60);
+
+      // And a canvas saved before there was a choice is a PNG, which is what
+      // it was being estimated as.
+      expect(CanvasDocument.fromJson(canvas.toJson()).estimate.format,
+          EstimateAs.png);
     });
   });
 }

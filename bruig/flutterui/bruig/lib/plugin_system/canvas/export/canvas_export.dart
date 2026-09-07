@@ -5,6 +5,7 @@ import 'package:bruig/components/feed/embed_options.dart';
 import 'package:bruig/plugin_system/canvas/export/gif_encoder.dart';
 import 'package:bruig/plugin_system/canvas/export/pdf_writer.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_estimate.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
@@ -238,6 +239,51 @@ Future<CanvasExport?> renderGif(
 /// it is for is telling the difference between a canvas that will fit in a
 /// message and one that will not, which is a question about orders of
 /// magnitude.
+/// estimateBytes is what publishing this canvas would cost, in the file it
+/// would be published as.
+///
+/// An estimate rather than a measurement, and it says so in the interface:
+/// rendering and encoding the real thing on every edit would make the editor
+/// unusable.
+int estimateBytes(CanvasDocument document, CanvasEstimate spec,
+    {double scale = 1}) {
+  if (spec.format.moving) {
+    var frames = estimateAnimationBytes(document, scale: scale);
+    // A video is not a stack of pictures: it stores what changed, and what
+    // changes between two frames of a chart drawing itself on is a fraction
+    // of the frame. Measured against the GIFs and MP4s these presets export,
+    // an MP4 lands at about a fifth of the GIF and carries full colour.
+    return spec.format == EstimateAs.video
+        ? math.max(4096, (frames * 0.2 * _quality(spec.quality)).round())
+        : frames;
+  }
+
+  var png = estimateStillBytes(document, scale: scale);
+  return switch (spec.format) {
+    EstimateAs.png => png,
+    // Lossy formats are priced off how much is going on rather than off how
+    // well it packs losslessly, so the PNG estimate is turned back into the
+    // detail it came from and re-priced. WebP is the same picture again,
+    // about a quarter smaller at the same quality, which is what it is for.
+    EstimateAs.jpeg =>
+      math.max(2048, (png * 0.55 * _quality(spec.quality)).round()),
+    EstimateAs.webp =>
+      math.max(2048, (png * 0.42 * _quality(spec.quality)).round()),
+    _ => png,
+  };
+}
+
+/// _quality is how much of the full-quality size a setting keeps.
+///
+/// A curve rather than a straight line, because that is what quality settings
+/// do: everything from 100 down to about 90 costs a great deal and shows
+/// almost nothing, and everything below 50 saves very little more while
+/// looking worse and worse. One at 100, a third at 85, a tenth at 40.
+double _quality(int quality) {
+  var q = quality.clamp(1, 100) / 100;
+  return 0.06 + 0.94 * math.pow(q, 4.5).toDouble();
+}
+
 int estimateStillBytes(CanvasDocument document, {double scale = 1}) {
   var pixels = document.size.width * document.size.height * scale * scale;
 

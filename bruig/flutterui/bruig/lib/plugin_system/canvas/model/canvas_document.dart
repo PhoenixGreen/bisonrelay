@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_estimate.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/background_element.dart';
@@ -120,6 +121,15 @@ class CanvasDocument {
   /// reads better at the top of a list.
   final List<CanvasElement> elements;
 
+  /// estimate is which file this canvas is meant to become, for the size the
+  /// settings band shows. See [CanvasEstimate].
+  ///
+  /// On the document because it is a decision about the canvas rather than
+  /// about the editor: the same design is four hundred kilobytes as a PNG and
+  /// forty as a JPEG, and which of those somebody is watching is a fact about
+  /// what they are making.
+  final CanvasEstimate estimate;
+
   /// frames is the document's length. One means a still.
   final int frames;
   final int frameRate;
@@ -132,6 +142,7 @@ class CanvasDocument {
     this.background = const CanvasBackground(),
     this.guides = const CanvasGuides(),
     this.elements = const [],
+    this.estimate = const CanvasEstimate(),
     this.frames = defaultFrameCount,
     this.frameRate = defaultFrameRate,
     this.actions = const [],
@@ -225,6 +236,7 @@ class CanvasDocument {
     CanvasBackground? background,
     CanvasGuides? guides,
     List<CanvasElement>? elements,
+    CanvasEstimate? estimate,
     int? frames,
     int? frameRate,
     List<TimelineAction>? actions,
@@ -235,6 +247,7 @@ class CanvasDocument {
         background: background ?? this.background,
         guides: guides ?? this.guides,
         elements: elements ?? this.elements,
+        estimate: estimate ?? this.estimate,
         frames: (frames ?? this.frames).clamp(1, maxFrameCount),
         frameRate: (frameRate ?? this.frameRate).clamp(1, 60),
         actions: actions ?? this.actions,
@@ -288,6 +301,7 @@ class CanvasDocument {
         "size": size.toJson(),
         "background": background.toJson(),
         if (!guides.isDefault) "guides": guides.toJson(),
+        if (estimate.toJson().isNotEmpty) "estimate": estimate.toJson(),
         "frames": frames,
         "frameRate": frameRate,
         if (actions.isNotEmpty)
@@ -313,6 +327,8 @@ class CanvasDocument {
                 if (e is Map<String, dynamic>) elementFromJson(e),
             ]
           : const [],
+      estimate: jsonSpec(
+          json["estimate"], CanvasEstimate.fromJson, const CanvasEstimate()),
       frames:
           jsonInt(json["frames"], defaultFrameCount).clamp(1, maxFrameCount),
       frameRate: jsonInt(json["frameRate"], defaultFrameRate).clamp(1, 60),

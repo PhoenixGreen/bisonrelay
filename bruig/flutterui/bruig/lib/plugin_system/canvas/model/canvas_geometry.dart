@@ -30,6 +30,13 @@ enum CanvasRatio {
   square("1:1", 1),
   banner("21:9", 21 / 9),
   wideBanner("3:1", 3),
+
+  // Paper. A3, A4 and A5 are the same shape -- halving an A-size folds it in
+  // half, which is the whole point of the series -- so they are one ratio and
+  // the difference between them is a width. The names are all in the label
+  // because that is what somebody looking for A4 will read.
+  a4("A4 · A3 · A5", 210 / 297),
+  a4Wide("A4 landscape", 297 / 210),
   custom("Custom", 16 / 9);
 
   /// label is what the dropdown shows.
@@ -46,6 +53,28 @@ enum CanvasRatio {
         orElse: () => CanvasRatio.wide,
       );
 }
+
+/// canvasWidthPresets are the widths worth having a name for.
+///
+/// The screen sizes people publish at, and the paper sizes at a print
+/// resolution -- A4 at 150 dots to the inch is 1240 pixels across, which is
+/// what a page looks like on a screen and is small enough to send.
+///
+/// A list of pairs rather than an enum: what these are is numbers, and a
+/// number that is not on the list is typed into the box beside them.
+const List<(int, String)> canvasWidthPresets = [
+  (3840, "4K · 3840"),
+  (2560, "1440p · 2560"),
+  (1920, "1080p · 1920"),
+  (1280, "720p · 1280"),
+  (1080, "Square post · 1080"),
+  (854, "480p · 854"),
+  (3508, "A3 at 300dpi · 3508"),
+  (2480, "A4 at 300dpi · 2480"),
+  (1754, "A3 at 150dpi · 1754"),
+  (1240, "A4 at 150dpi · 1240"),
+  (874, "A5 at 150dpi · 874"),
+];
 
 /// minCanvasWidth and maxCanvasWidth bound the output width.
 ///

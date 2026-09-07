@@ -1,5 +1,6 @@
 import 'package:bruig/plugin_system/canvas/export/canvas_export.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_estimate.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
@@ -396,10 +397,12 @@ class _CanvasSettingsPanelState extends State<CanvasSettingsPanel> {
         // cannot break, so one wider than the window overflows instead of
         // wrapping -- which is what the band used to do at anything under about
         // a thousand pixels.
-        child: Scrollbar(
-          controller: _scroll,
-          thumbVisibility: true,
-          thickness: 3,
+        // No scrollbar. It is a strip two lines tall over the top of the
+        // design, and a bar under the controls is a third line of furniture
+        // saying something the controls already say by being cut off. The
+        // wheel and a trackpad still scroll it.
+        child: ScrollConfiguration(
+          behavior: const _NoScrollbar(),
           child: SingleChildScrollView(
             controller: _scroll,
             scrollDirection: Axis.horizontal,
@@ -432,10 +435,23 @@ class _CanvasSettingsPanelState extends State<CanvasSettingsPanel> {
   /// estimateStillBytes.
   Widget _estimateGroup(
       BuildContext context, ThemeNotifier theme, CanvasDocument document) {
-    var bytes = document.isAnimated
-        ? estimateAnimationBytes(document)
-        : estimateStillBytes(document);
+    var spec = document.estimate;
+    // The formats that mean anything for what this canvas is. A GIF of a
+    // still is a still, and a PNG of an animation is one frame of it -- both
+    // are answers to a question nobody asked.
+    var offered = [
+      for (var format in EstimateAs.values)
+        if (format.moving == document.isAnimated) format,
+    ];
+    if (!offered.contains(spec.format)) {
+      spec = spec.copyWith(format: offered.first);
+    }
+
+    var bytes = estimateBytes(document, spec);
     var behind = document.lastAnimatedFrame >= document.frames;
+
+    void set(CanvasEstimate next) =>
+        controller.apply(document.copyWith(estimate: next));
 
     return CanvasControlGroup(label: "Estimated size", children: [
       Padding(
@@ -449,12 +465,6 @@ class _CanvasSettingsPanelState extends State<CanvasSettingsPanel> {
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
                   color: theme.colors.onSurface),
-            ),
-            const SizedBox(width: 6),
-            Text(
-              "as a ${document.isAnimated ? "GIF" : "PNG"}",
-              style:
-                  TextStyle(fontSize: 10, color: theme.colors.onSurfaceVariant),
             ),
             if (behind) ...[
               const SizedBox(width: 6),
@@ -471,6 +481,40 @@ class _CanvasSettingsPanelState extends State<CanvasSettingsPanel> {
           ]),
         ),
       ),
+      // What it is being estimated as. The same canvas is four hundred
+      // kilobytes as a PNG and forty as a JPEG, so a size with no format
+      // beside it is a number without a question.
+      CanvasDropdown<EstimateAs>(
+        key: const ValueKey("estimateAs"),
+        label: "As a",
+        value: spec.format,
+        width: 118,
+        options: [for (var format in offered) (format, format.label)],
+        onChanged: (v) => set(spec.copyWith(format: v)),
+      ),
+      if (spec.format.lossy)
+        CanvasNumberField(
+          key: const ValueKey("estimateQuality"),
+          label: "Quality",
+          value: spec.quality.toDouble(),
+          min: 1,
+          max: 100,
+          decimals: 0,
+          width: 56,
+          onChanged: (v) {
+            controller.beginInteraction();
+            controller.apply(
+                document.copyWith(estimate: spec.copyWith(quality: v.round())),
+                transient: true);
+          },
+          onCommit: controller.endInteraction,
+        ),
+      CanvasHint("An estimate rather than a measurement: encoding the real "
+          "thing on every edit would make the editor unusable. "
+          "${spec.format.description}."
+          "${spec.format.lossy ? " Quality is what it is squeezed to — "
+              "everything above about 90 costs a great deal and shows almost "
+              "nothing." : ""}"),
     ]);
   }
 
@@ -502,6 +546,29 @@ class _CanvasSettingsPanelState extends State<CanvasSettingsPanel> {
           options: [for (var r in CanvasRatio.values) (r, r.label)],
           onChanged: (v) =>
               write(document.copyWith(size: document.size.copyWith(ratio: v))),
+        ),
+        // The widths worth having a name for, beside the box that takes any
+        // other number. Nobody remembers that 1080p is 1920 across and
+        // everybody knows what 1080p is.
+        CanvasDropdown<int>(
+          key: const ValueKey("canvasWidthPreset"),
+          label: "Size",
+          value: canvasWidthPresets.any((p) => p.$1 == document.size.width)
+              ? document.size.width
+              : 0,
+          width: 150,
+          options: [
+            // The width it is at, when that is not one of the named ones. A
+            // dropdown that shows a name for a canvas that is 1337 across
+            // would be saying something untrue.
+            if (!canvasWidthPresets.any((p) => p.$1 == document.size.width))
+              (0, "${document.size.width} px"),
+            ...canvasWidthPresets,
+          ],
+          onChanged: (v) {
+            if (v == 0) return;
+            write(document.copyWith(size: document.size.copyWith(width: v)));
+          },
         ),
         CanvasNumberField(
           key: const ValueKey("canvasWidth"),
@@ -549,4 +616,18 @@ class _CanvasSettingsPanelState extends State<CanvasSettingsPanel> {
       _estimateGroup(context, theme, document),
     ];
   }
+}
+
+/// _NoScrollbar is a scroll behaviour with no bar on it.
+///
+/// The strip over the canvas is two lines tall and scrolls sideways when the
+/// window is narrow. A bar under the controls is a third line of furniture
+/// saying what being cut off already says.
+class _NoScrollbar extends ScrollBehavior {
+  const _NoScrollbar();
+
+  @override
+  Widget buildScrollbar(
+          BuildContext context, Widget child, ScrollableDetails details) =>
+      child;
 }

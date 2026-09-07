@@ -218,10 +218,12 @@ class _CanvasGuidesPanelState extends State<CanvasGuidesPanel> {
         ),
         // Sideways rather than wrapping, as the canvas settings do. A group is
         // a column of controls and a row of them is wider than most windows.
-        child: Scrollbar(
-          controller: _scroll,
-          thumbVisibility: true,
-          thickness: 3,
+        // No scrollbar. It is a strip two lines tall over the top of the
+        // design, and a bar under the controls is a third line of furniture
+        // saying something the controls already say by being cut off. The
+        // wheel and a trackpad still scroll it.
+        child: ScrollConfiguration(
+          behavior: const _NoScrollbar(),
           child: SingleChildScrollView(
             controller: _scroll,
             scrollDirection: Axis.horizontal,
@@ -243,4 +245,18 @@ class _CanvasGuidesPanelState extends State<CanvasGuidesPanel> {
       ),
     );
   }
+}
+
+/// _NoScrollbar is a scroll behaviour with no bar on it.
+///
+/// The strip over the canvas is two lines tall and scrolls sideways when the
+/// window is narrow. A bar under the controls is a third line of furniture
+/// saying what being cut off already says.
+class _NoScrollbar extends ScrollBehavior {
+  const _NoScrollbar();
+
+  @override
+  Widget buildScrollbar(
+          BuildContext context, Widget child, ScrollableDetails details) =>
+      child;
 }
