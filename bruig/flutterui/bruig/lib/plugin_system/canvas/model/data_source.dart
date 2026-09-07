@@ -281,6 +281,37 @@ class DataSource {
         fetchedAt: fetchedAt ?? this.fetchedAt,
       );
 
+  /// withColumnMoved is this source with one column shifted along the row.
+  ///
+  /// The order of the columns is the order of the table, so this is not a
+  /// tidying-up operation: it is how a column is put where it belongs.
+  DataSource withColumnMoved(int from, int to) {
+    if (from == to || from < 0 || to < 0) return this;
+    if (from >= columns.length || to >= columns.length) return this;
+    var next = [...columns];
+    next.insert(to, next.removeAt(from));
+    return copyWith(
+      columns: next,
+      matchColumn:
+          matchColumn < 0 ? matchColumn : movedIndex(matchColumn, from, to),
+    );
+  }
+
+  /// withoutColumn is this source with one column taken out, and whatever
+  /// referred to the columns by number moved up behind it.
+  DataSource withoutColumn(int at) {
+    if (at < 0 || at >= columns.length) return this;
+    return copyWith(
+      columns: [
+        for (var i = 0; i < columns.length; i++)
+          if (i != at) columns[i],
+      ],
+      matchColumn: matchColumn < 0
+          ? matchColumn
+          : (indexAfterRemoval(matchColumn, at) ?? -1),
+    );
+  }
+
   Map<String, dynamic> toJson() => {
         "kind": kind.name,
         "where": where,
@@ -307,6 +338,27 @@ class DataSource {
         preset: jsonString(json["preset"], ""),
         fetchedAt: DateTime.tryParse(jsonString(json["at"], "")),
       );
+}
+
+/// movedIndex is where the thing at [index] ends up when the column at
+/// [from] is moved to [to].
+///
+/// Anything that refers to a column by number has to be put through this when
+/// the columns move: which column a chart draws, which one identifies a row,
+/// which headings are hidden. Without it, moving a column silently repoints
+/// every one of those at whatever has taken its place -- a chart that was
+/// drawing the price starts drawing the date, and nothing says so.
+int movedIndex(int index, int from, int to) {
+  if (index == from) return to;
+  if (from < to) return index > from && index <= to ? index - 1 : index;
+  return index >= to && index < from ? index + 1 : index;
+}
+
+/// indexAfterRemoval is where the thing at [index] ends up when the column at
+/// [removed] is taken out, or null if it was that column.
+int? indexAfterRemoval(int index, int removed) {
+  if (index == removed) return null;
+  return index > removed ? index - 1 : index;
 }
 
 /// valueAtPath walks a dotted path into decoded JSON.

@@ -237,4 +237,81 @@ void main() {
       expect(back.fromSource.maxPoints, 120);
     });
   });
+
+  group("moving a column", () {
+    // The order of the columns is the order of the table, so moving one is a
+    // thing people want -- and everything that refers to a column by number
+    // has to be carried across with it, or a chart that was drawing the price
+    // starts drawing the date and nothing says so.
+
+    test("an index follows the column it points at", () {
+      // The column being moved goes where it was sent.
+      expect(movedIndex(1, 1, 3), 3);
+      expect(movedIndex(4, 4, 0), 0);
+      // The ones it moves past shuffle up or down by one.
+      expect(movedIndex(2, 1, 3), 1);
+      expect(movedIndex(3, 1, 3), 2);
+      expect(movedIndex(0, 1, 3), 0, reason: "before both, so untouched");
+      expect(movedIndex(4, 1, 3), 4, reason: "after both, so untouched");
+      // And the other way.
+      expect(movedIndex(1, 3, 1), 2);
+      expect(movedIndex(2, 3, 1), 3);
+      expect(movedIndex(0, 3, 1), 0);
+    });
+
+    test("and closes up behind a removed one", () {
+      expect(indexAfterRemoval(0, 2), 0);
+      expect(indexAfterRemoval(3, 2), 2);
+      expect(indexAfterRemoval(2, 2), isNull,
+          reason: "it was the one that went");
+    });
+
+    test("the source carries its own references", () {
+      var source = const DataSource(columns: [
+        SourceColumn(header: "Date", path: "t"),
+        SourceColumn(header: "Team", path: "team"),
+        SourceColumn(header: "Points", path: "points"),
+      ], matchColumn: 1);
+
+      var moved = source.withColumnMoved(1, 2);
+      expect(
+          [for (var c in moved.columns) c.header], ["Date", "Points", "Team"]);
+      expect(moved.matchColumn, 2, reason: "still the team's column");
+
+      var without = source.withoutColumn(0);
+      expect([for (var c in without.columns) c.header], ["Team", "Points"]);
+      expect(without.matchColumn, 0);
+      expect(source.withoutColumn(1).matchColumn, -1,
+          reason: "what identified a row has gone, so nothing does");
+    });
+
+    test("a chart goes on drawing the columns it was drawing", () {
+      var map = const ChartSourceMap(categoryColumn: 0, valueColumns: [1, 3]);
+
+      var moved = map.afterMove(3, 1);
+      expect(moved.categoryColumn, 0);
+      expect(moved.valueColumns, [1, 2],
+          reason: "the same two columns, at their new numbers");
+
+      var gone = map.afterRemoval(1);
+      expect(gone.valueColumns, [2], reason: "one series went with its column");
+
+      var axisGone = const ChartSourceMap(categoryColumn: 2, valueColumns: [3])
+          .afterRemoval(2);
+      expect(axisGone.categoryColumn, 0,
+          reason: "the axis fell back rather than pointing past the end");
+      expect(axisGone.valueColumns, [2]);
+    });
+
+    test("moving nothing anywhere silly is left alone", () {
+      var source = const DataSource(columns: [
+        SourceColumn(header: "A"),
+        SourceColumn(header: "B"),
+      ]);
+      expect(source.withColumnMoved(0, 0).columns.length, 2);
+      expect(source.withColumnMoved(0, 5).columns.first.header, "A");
+      expect(source.withColumnMoved(-1, 1).columns.first.header, "A");
+      expect(source.withoutColumn(7).columns.length, 2);
+    });
+  });
 }

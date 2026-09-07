@@ -3111,7 +3111,7 @@ void main() {
       await panel(tester);
 
       var panelWidth = tester.getSize(find.byType(CanvasLayersPanel)).width;
-      for (var name in ["LABELS", "DATA", "ANIMATION"]) {
+      for (var name in ["LABELS", "TABLE", "ANIMATION"]) {
         var heading = find.text(name);
         await tester.ensureVisible(heading);
         await tester.pumpAndSettle();
@@ -3545,8 +3545,12 @@ void main() {
       // They are the longest thing in a chart's settings and the least often
       // changed once they are right, so they were pushing everything else off
       // the bottom of the panel.
+      //
+      // Called Table, because that is what is in it: the numbers in rows and
+      // columns, with what they are drawn as above them and how that drawing
+      // looks below.
       await panel(tester);
-      expect(find.text("DATA"), findsOneWidget);
+      expect(find.text("TABLE"), findsOneWidget);
       expect(find.text("2 rows, 1 series"), findsOneWidget);
     });
 
@@ -4202,9 +4206,11 @@ void main() {
     /// Sections remember whether they were open, and the memory outlives one
     /// test: tapping unconditionally shut the section that the test before
     /// had left open, and the controls inside it were then nowhere to be
-    /// found.
-    Future<void> open(WidgetTester tester, String section) async {
-      if (find.text("Preset").evaluate().isNotEmpty) return;
+    /// found. [probe] is something only that section has, which is how "is it
+    /// already open" is asked.
+    Future<void> open(WidgetTester tester, String section,
+        [String probe = "Preset"]) async {
+      if (find.text(probe).evaluate().isNotEmpty) return;
       await tester.ensureVisible(find.text(section));
       await tester.pumpAndSettle();
       await tester.tap(find.text(section));
@@ -4218,7 +4224,90 @@ void main() {
       // nobody can navigate.
       await panel(tester);
       expect(find.text("DATA SOURCE"), findsOneWidget);
-      expect(find.text("DATA"), findsOneWidget);
+      expect(find.text("TABLE"), findsOneWidget,
+          reason: "the numbers themselves are still a section of their own");
+    });
+
+    testWidgets("the sections read in the order the work happens",
+        (tester) async {
+      // What the chart is, then what it says, then where its numbers come
+      // from and how they are mapped, then how it arrives. The mapping used
+      // to be two more layers inside the source -- open Data, open Columns,
+      // open the column -- which is three deep to change a heading.
+      var controller = await panel(tester,
+          source: dcrdataChart.applyTo(const DataSource(), "coin-supply"));
+      expect(controller.document.elements.single, isA<ChartElement>());
+
+      var headings = [
+        for (var it
+            in tester.widgetList<CanvasExpander>(find.byType(CanvasExpander)))
+          it.label,
+      ];
+      var wanted = [
+        "Table",
+        "Labels",
+        "Data source",
+        "Columns",
+        "Custom fields",
+        "Animation",
+      ];
+      expect([for (var w in wanted) headings.contains(w)], everyElement(isTrue),
+          reason: "$headings");
+      var places = [for (var w in wanted) headings.indexOf(w)];
+      var sorted = [...places]..sort();
+      expect(places, sorted, reason: "out of order: $headings");
+    });
+
+    testWidgets("and the mapping is hidden while the numbers are typed in",
+        (tester) async {
+      // A mapping with nothing to map is two sections that only ever say
+      // nothing.
+      await panel(tester);
+      expect(find.text("COLUMNS"), findsNothing);
+      expect(find.text("CUSTOM FIELDS"), findsNothing);
+    });
+
+    testWidgets("a chart is not offered a table's column switches",
+        (tester) async {
+      // A cell can hold a club badge and a badge chosen by hand has to
+      // survive a refresh. Neither is true of a number on a chart, so on one
+      // they are two switches that do nothing.
+      var controller = await panel(tester,
+          source: dcrdataChart.applyTo(const DataSource(), "coin-supply"));
+      expect(controller.document.elements.single, isA<ChartElement>());
+      await open(tester, "COLUMNS", "Path to the list");
+
+      expect(find.text("A picture"), findsNothing);
+      expect(find.text("Keep mine"), findsNothing);
+      // The column is headed with its own name rather than "Column 2", which
+      // is what makes a dozen of them scannable.
+      expect(find.text("COIN SUPPLY (DCR)"), findsWidgets);
+    });
+
+    testWidgets("a column can be moved, and the drawing follows it",
+        (tester) async {
+      // There was no way to reorder a mapping at all: a column in the wrong
+      // place had to be deleted and the rest re-done by hand.
+      var controller = await panel(
+        tester,
+        source: dcrdataChart.applyTo(const DataSource(), "coin-supply"),
+        map: const ChartSourceMap(categoryColumn: 0, valueColumns: [1]),
+      );
+      await open(tester, "COLUMNS", "Path to the list");
+
+      var earlier = find.byTooltip("Move this column earlier");
+      await tester.ensureVisible(earlier.last);
+      await tester.pumpAndSettle();
+      await tester.tap(earlier.last);
+      await tester.pumpAndSettle();
+
+      var chart = controller.document.elements.single as ChartElement;
+      expect([for (var c in chart.source.columns) c.header],
+          ["Coin supply (DCR)", "Date"]);
+      expect(chart.fromSource.categoryColumn, 1,
+          reason: "the date is still the axis, at its new number");
+      expect(chart.fromSource.valueColumns, [0],
+          reason: "and the supply is still the series");
     });
 
     testWidgets("choosing a preset fills in the address and the mapping",

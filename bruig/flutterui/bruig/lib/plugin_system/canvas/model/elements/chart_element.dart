@@ -719,6 +719,28 @@ class ChartSourceMap {
         maxPoints: maxPoints ?? this.maxPoints,
       );
 
+  /// afterMove and afterRemoval keep the drawing pointed at the same columns
+  /// when the columns themselves are rearranged.
+  ///
+  /// Which is the whole reason these are indices rather than names: they are
+  /// cheap and stable until somebody moves a column, at which point the
+  /// numbers have to be carried across or the chart quietly starts drawing
+  /// the date.
+  ChartSourceMap afterMove(int from, int to) => copyWith(
+        categoryColumn: movedIndex(categoryColumn, from, to),
+        valueColumns: [
+          for (var c in valueColumns) movedIndex(c, from, to),
+        ]..sort(),
+      );
+
+  ChartSourceMap afterRemoval(int at) => copyWith(
+        categoryColumn: indexAfterRemoval(categoryColumn, at) ?? 0,
+        valueColumns: [
+          for (var c in valueColumns)
+            if (indexAfterRemoval(c, at) case var moved?) moved,
+        ],
+      );
+
   Map<String, dynamic> toJson() => {
         "cat": categoryColumn,
         "vals": valueColumns,

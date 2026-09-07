@@ -1,6 +1,4 @@
-import 'package:bruig/plugin_system/canvas/model/data_source.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/chart_data_editor.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
@@ -134,184 +132,127 @@ List<Widget> chartSettings(
       e.data.series.any((s) => s.typeIn(e.type).usesSmooth);
 
   return [
-    // "Type", not "Chart". The settings are already headed with the element's
-    // own name, so a group called Chart under a heading called Chart said the
-    // word twice and the dropdown under it said a third.
-    CanvasControlGroup(label: "Type", children: [
-      CanvasDropdown<ChartType>(
-        label: "",
-        value: e.type,
-        width: 132,
-        options: [for (var t in ChartType.values) (t, t.label)],
-        onChanged: (v) => now(e.copyWith(type: v)),
+    boxed(
+      context,
+      CanvasExpander(
+        // "Table", because that is what is in it: the numbers, laid out in
+        // rows and columns, with the drawing they are drawn as above them and
+        // the way that drawing looks below.
+        label: "Table",
+        remember: "chartData",
+        trailing: "${e.data.categories.length} rows, "
+            "${e.data.series.length} series",
+        initiallyOpen: true,
+        children: [
+          // The type first. What the numbers are drawn as is the first
+          // decision about them and it was at the top of the panel, three
+          // sections away from the numbers themselves.
+          // "Type", not "Chart". The settings are already headed with the element's
+          // own name, so a group called Chart under a heading called Chart said the
+          // word twice and the dropdown under it said a third.
+          CanvasControlGroup(label: "Type", children: [
+            CanvasDropdown<ChartType>(
+              label: "",
+              value: e.type,
+              width: 132,
+              options: [for (var t in ChartType.values) (t, t.label)],
+              onChanged: (v) => now(e.copyWith(type: v)),
+            ),
+            // Said here rather than left to be discovered. Grouped and stacked bars
+            // draw exactly what plain bars draw until there is a second series to
+            // group or stack, so choosing one on a one-series chart looks like the
+            // setting doing nothing at all.
+            if (e.type.needsMultipleSeries && e.data.series.length < 2)
+              const CanvasHint(
+                  "Grouped and stacked bars need more than one series -- with one "
+                  "they draw exactly what plain bars draw. Add a second series "
+                  "under Series below."),
+            // Four series, not one, and named rather than counted where the names
+            // say which is which. Said here because a candlestick chart with three
+            // series draws nothing at all, which reads as broken.
+            if (e.type.needsFourSeries && e.data.series.length < 4)
+              const CanvasHint(
+                  "Candlesticks need four series — the open, the high, the low and "
+                  "the close. Name them and the order does not matter; unnamed, "
+                  "the first four are taken in that order. CoinGecko's OHLC preset "
+                  "under Data source fills all four in."),
+          ]),
+          ChartDataEditor(
+            data: e.data,
+            onChanged: (data) {
+              begin();
+              writeData(data);
+            },
+            onCommit: commit,
+          ),
+          // And how it looks, at the foot of the section that decides what it
+          // is: the colours and the weights are about this drawing of these
+          // numbers rather than about the words on it.
+          CanvasControlGroup(label: "Style", children: [
+            CanvasColorButton(
+              label: "Grid",
+              color: e.gridColor,
+              onChanged: (c) => now(e.copyWith(gridColor: c)),
+            ),
+            // On a candlestick the colour is the reading rather than a label for a
+            // series, so the two of them belong with the chart's own style and not
+            // in the series list.
+            if (e.type.isCandles) ...[
+              CanvasColorButton(
+                label: "Up",
+                color: e.riseColor,
+                onChanged: (c) => now(e.copyWith(riseColor: c)),
+              ),
+              CanvasColorButton(
+                label: "Down",
+                color: e.fallColor,
+                onChanged: (c) => now(e.copyWith(fallColor: c)),
+              ),
+            ],
+            CanvasNumberField(
+              label: "Bar gap",
+              min: 0,
+              decimals: 2,
+              width: 62,
+              value: e.barGap,
+              max: 0.9,
+              onChanged: (v) {
+                begin();
+                write(e.copyWith(barGap: v));
+              },
+              onCommit: commit,
+            ),
+            CanvasNumberField(
+              label: "Bar radius",
+              value: e.barRadius,
+              min: 0,
+              max: 100,
+              width: 54,
+              onChanged: (v) => write(e.copyWith(barRadius: v)),
+              onCommit: commit,
+            ),
+            CanvasNumberField(
+              label: "Stroke",
+              value: e.strokeWidth,
+              min: 0.5,
+              max: 40,
+              decimals: 1,
+              width: 54,
+              onChanged: (v) => write(e.copyWith(strokeWidth: v)),
+              onCommit: commit,
+            ),
+            // Only where there is a line to curve. Bars have nothing to curve and a
+            // scatter is unconnected by definition.
+            if (smoothable)
+              CanvasToggle(
+                label: "Smooth",
+                value: e.smooth,
+                onChanged: (v) => now(e.copyWith(smooth: v)),
+              ),
+          ]),
+        ],
       ),
-      // Said here rather than left to be discovered. Grouped and stacked bars
-      // draw exactly what plain bars draw until there is a second series to
-      // group or stack, so choosing one on a one-series chart looks like the
-      // setting doing nothing at all.
-      if (e.type.needsMultipleSeries && e.data.series.length < 2)
-        const CanvasHint(
-            "Grouped and stacked bars need more than one series -- with one "
-            "they draw exactly what plain bars draw. Add a second series "
-            "under Series below."),
-      // Four series, not one, and named rather than counted where the names
-      // say which is which. Said here because a candlestick chart with three
-      // series draws nothing at all, which reads as broken.
-      if (e.type.needsFourSeries && e.data.series.length < 4)
-        const CanvasHint(
-            "Candlesticks need four series — the open, the high, the low and "
-            "the close. Name them and the order does not matter; unnamed, "
-            "the first four are taken in that order. CoinGecko's OHLC preset "
-            "under Data source fills all four in."),
-    ]),
-    // "Axes and values", and the values are in it: they are all the same
-    // question -- what does this chart write on itself -- and the switches
-    // were split across two groups with a boxed section between them.
-    CanvasControlGroup(label: "Axes and values", children: [
-      // A pie has no axes, so it is offered none of the axis controls. It
-      // still has values.
-      if (!e.type.isCircular) ...[
-        CanvasTextField(
-          label: "X label",
-          value: e.xAxisLabel,
-          width: 108,
-          onChanged: (v) => write(e.copyWith(xAxisLabel: v)),
-          onCommit: commit,
-        ),
-        CanvasTextField(
-          label: "Y label",
-          value: e.yAxisLabel,
-          width: 108,
-          onChanged: (v) => write(e.copyWith(yAxisLabel: v)),
-          onCommit: commit,
-        ),
-        // The two axis titles are text, and the switches below are switches.
-        // On one line the first switch sat on the end of the Y label's row
-        // and read as part of it.
-        const CanvasLineBreak(),
-        CanvasToggle(
-          label: "Grid",
-          value: e.showGrid,
-          onChanged: (v) => now(e.copyWith(showGrid: v)),
-        ),
-        CanvasToggle(
-          label: "Axes",
-          value: e.showAxes,
-          onChanged: (v) => now(e.copyWith(showAxes: v)),
-        ),
-        CanvasToggle(
-          label: "Axes labels",
-          value: e.showAxisLabels,
-          onChanged: (v) => now(e.copyWith(showAxisLabels: v)),
-        ),
-        CanvasToggle(
-          label: "Log scale",
-          value: e.logScale,
-          onChanged: (v) => now(e.copyWith(logScale: v)),
-        ),
-      ],
-      CanvasToggle(
-        label: "Values",
-        value: e.showValues,
-        onChanged: (v) => now(e.copyWith(showValues: v)),
-      ),
-      if (!e.type.isCircular)
-        const CanvasHint(
-            "Axes labels is everything written along the axes: the numbers, "
-            "the category names and the two titles above. They are read "
-            "together or not at all."),
-      // Switched on over data it cannot describe, a log scale would simply
-      // do nothing -- which reads as a broken switch. Said here instead.
-      if (e.logScale && !e.type.isCircular && !e.positiveOnly)
-        const CanvasHint(
-            "A log scale needs every number above zero — there is no place "
-            "on one for zero or a negative — so this chart is still drawn "
-            "evenly. It rules the axis by decades, each gridline ten times "
-            "the one below, which is what makes something that has grown a "
-            "thousandfold readable at both ends."),
-      // Rings a few pixels thick have nowhere to write a number and no axis
-      // to read one against, so theirs go in the key -- which is no use with
-      // the key switched off.
-      if (e.type == ChartType.radialBar && !(e.showLegend && e.legend.values))
-        const CanvasHint(
-            "A radial bar has no room to write a number on and no axis to "
-            "read one against, so its values go in the legend. Switch the "
-            "legend on, and its values with it, to see them."),
-    ]),
-    CanvasControlGroup(label: "Style", children: [
-      CanvasColorButton(
-        label: "Grid",
-        color: e.gridColor,
-        onChanged: (c) => now(e.copyWith(gridColor: c)),
-      ),
-      // On a candlestick the colour is the reading rather than a label for a
-      // series, so the two of them belong with the chart's own style and not
-      // in the series list.
-      if (e.type.isCandles) ...[
-        CanvasColorButton(
-          label: "Up",
-          color: e.riseColor,
-          onChanged: (c) => now(e.copyWith(riseColor: c)),
-        ),
-        CanvasColorButton(
-          label: "Down",
-          color: e.fallColor,
-          onChanged: (c) => now(e.copyWith(fallColor: c)),
-        ),
-      ],
-      CanvasNumberField(
-        label: "Bar gap",
-        min: 0,
-        decimals: 2,
-        width: 62,
-        value: e.barGap,
-        max: 0.9,
-        onChanged: (v) {
-          begin();
-          write(e.copyWith(barGap: v));
-        },
-        onCommit: commit,
-      ),
-      CanvasNumberField(
-        label: "Bar radius",
-        value: e.barRadius,
-        min: 0,
-        max: 100,
-        width: 54,
-        onChanged: (v) => write(e.copyWith(barRadius: v)),
-        onCommit: commit,
-      ),
-      CanvasNumberField(
-        label: "Stroke",
-        value: e.strokeWidth,
-        min: 0.5,
-        max: 40,
-        decimals: 1,
-        width: 54,
-        onChanged: (v) => write(e.copyWith(strokeWidth: v)),
-        onCommit: commit,
-      ),
-      // Only where there is a line to curve. Bars have nothing to curve and a
-      // scatter is unconnected by definition.
-      if (smoothable)
-        CanvasToggle(
-          label: "Smooth",
-          value: e.smooth,
-          onChanged: (v) => now(e.copyWith(smooth: v)),
-        ),
-    ]),
-    // Taking the numbers from a table on the same canvas. Its own section
-    // beside the chart's own data, because it replaces that data rather than
-    // adding to it -- and because a canvas with a league table and a chart of
-    // the same league should be showing one set of figures.
-    _tableSection(context, controller, e, write, begin, commit),
-    // A source of the chart's own, beside the link to a table. Both are here
-    // because they answer different situations: a table on the same canvas is
-    // the right answer when there is one, and a chain's history has no table
-    // beside it and would not want one four thousand rows long.
-    boxed(context,
-        chartSourceSection(context, controller, e, write, begin, commit)),
-
+    ),
     // The words on the chart, together, in a section of their own. The title,
     // the description and the key are the same kind of thing -- writing laid
     // over a picture -- and they were three separate clusters and an expander
@@ -327,6 +268,85 @@ List<Widget> chartSettings(
           if (e.showLegend) "legend",
         ].join(", "),
         children: [
+          // The writing along the axes belongs with the rest of the writing.
+          // It was a bare group at the top of the panel, above three
+          // sections, which is a strange place for the switch that hides the
+          // category names.
+          // "Axes and values", and the values are in it: they are all the same
+          // question -- what does this chart write on itself -- and the switches
+          // were split across two groups with a boxed section between them.
+          CanvasControlGroup(label: "Axes and values", children: [
+            // A pie has no axes, so it is offered none of the axis controls. It
+            // still has values.
+            if (!e.type.isCircular) ...[
+              CanvasTextField(
+                label: "X label",
+                value: e.xAxisLabel,
+                width: 108,
+                onChanged: (v) => write(e.copyWith(xAxisLabel: v)),
+                onCommit: commit,
+              ),
+              CanvasTextField(
+                label: "Y label",
+                value: e.yAxisLabel,
+                width: 108,
+                onChanged: (v) => write(e.copyWith(yAxisLabel: v)),
+                onCommit: commit,
+              ),
+              // The two axis titles are text, and the switches below are switches.
+              // On one line the first switch sat on the end of the Y label's row
+              // and read as part of it.
+              const CanvasLineBreak(),
+              CanvasToggle(
+                label: "Grid",
+                value: e.showGrid,
+                onChanged: (v) => now(e.copyWith(showGrid: v)),
+              ),
+              CanvasToggle(
+                label: "Axes",
+                value: e.showAxes,
+                onChanged: (v) => now(e.copyWith(showAxes: v)),
+              ),
+              CanvasToggle(
+                label: "Axes labels",
+                value: e.showAxisLabels,
+                onChanged: (v) => now(e.copyWith(showAxisLabels: v)),
+              ),
+              CanvasToggle(
+                label: "Log scale",
+                value: e.logScale,
+                onChanged: (v) => now(e.copyWith(logScale: v)),
+              ),
+            ],
+            CanvasToggle(
+              label: "Values",
+              value: e.showValues,
+              onChanged: (v) => now(e.copyWith(showValues: v)),
+            ),
+            if (!e.type.isCircular)
+              const CanvasHint(
+                  "Axes labels is everything written along the axes: the numbers, "
+                  "the category names and the two titles above. They are read "
+                  "together or not at all."),
+            // Switched on over data it cannot describe, a log scale would simply
+            // do nothing -- which reads as a broken switch. Said here instead.
+            if (e.logScale && !e.type.isCircular && !e.positiveOnly)
+              const CanvasHint(
+                  "A log scale needs every number above zero — there is no place "
+                  "on one for zero or a negative — so this chart is still drawn "
+                  "evenly. It rules the axis by decades, each gridline ten times "
+                  "the one below, which is what makes something that has grown a "
+                  "thousandfold readable at both ends."),
+            // Rings a few pixels thick have nowhere to write a number and no axis
+            // to read one against, so theirs go in the key -- which is no use with
+            // the key switched off.
+            if (e.type == ChartType.radialBar &&
+                !(e.showLegend && e.legend.values))
+              const CanvasHint(
+                  "A radial bar has no room to write a number on and no axis to "
+                  "read one against, so its values go in the legend. Switch the "
+                  "legend on, and its values with it, to see them."),
+          ]),
           // No caption: the field says which it is when it is empty, and
           // what it says when it is not.
           CanvasControlGroup(label: "Title", hideCaption: true, children: [
@@ -478,26 +498,11 @@ List<Widget> chartSettings(
         ],
       ),
     ),
-    boxed(
-      context,
-      CanvasExpander(
-        label: "Data",
-        remember: "chartData",
-        trailing: "${e.data.categories.length} rows, "
-            "${e.data.series.length} series",
-        initiallyOpen: true,
-        children: [
-          ChartDataEditor(
-            data: e.data,
-            onChanged: (data) {
-              begin();
-              writeData(data);
-            },
-            onCommit: commit,
-          ),
-        ],
-      ),
-    ),
+    // Where the numbers come from, which is three sections: the source
+    // itself, the columns it maps, and the fields built out of them. The
+    // link to a table on this canvas is inside the first of them, because it
+    // answers the same question.
+    chartSourceSection(context, controller, e, write, begin, commit),
     // Its own section, like the data. An animation is a handful of choices
     // made once and then left alone, and open by default they were four more
     // rows between the numbers and the axes.
@@ -607,107 +612,4 @@ List<Widget> chartSettings(
       ),
     ),
   ];
-}
-
-/// _tableSection is "take the numbers from a table on this canvas".
-///
-/// Only shown when there is a table to take them from. A section offering to
-/// read something that does not exist is a section that reads as broken.
-Widget _tableSection(
-  BuildContext context,
-  CanvasController controller,
-  ChartElement e,
-  SettingsWrite write,
-  VoidCallback begin,
-  VoidCallback commit,
-) {
-  var tables = [
-    for (var element in controller.document.elements)
-      if (element is TableElement) element,
-  ];
-  if (tables.isEmpty) return const SizedBox();
-
-  var link = e.fromTable;
-  TableElement? chosen;
-  for (var table in tables) {
-    if (table.id == link.tableId) chosen = table;
-  }
-  var columns = chosen?.columnCount ?? 0;
-
-  void set(TableLink next) {
-    begin();
-    write(e.copyWith(fromTable: next));
-    commit();
-  }
-
-  return boxed(
-    context,
-    CanvasExpander(
-      label: "From a table",
-      remember: "chartFromTable",
-      trailing: chosen == null
-          ? "Not linked"
-          : "${link.valueColumns.length} column"
-              "${link.valueColumns.length == 1 ? "" : "s"}",
-      children: [
-        CanvasControlGroup(label: "Table", children: [
-          CanvasDropdown<String>(
-            label: "Read from",
-            value: link.tableId,
-            width: 168,
-            options: [
-              ("", "Not linked"),
-              for (var table in tables)
-                (table.id, table.name.isEmpty ? "Table" : table.name),
-            ],
-            onChanged: (id) => set(link.copyWith(tableId: id)),
-          ),
-        ]),
-        if (chosen case var table?) ...[
-          CanvasControlGroup(label: "Labels", children: [
-            CanvasDropdown<int>(
-              label: "From column",
-              value: link.categoryColumn,
-              width: 148,
-              options: [
-                for (var c = 0; c < columns; c++) (c, table.columnName(c)),
-              ],
-              onChanged: (c) => set(link.copyWith(categoryColumn: c)),
-            ),
-          ]),
-          CanvasControlGroup(label: "Values", children: [
-            for (var c = 0; c < columns; c++)
-              CanvasToggle(
-                label: table.columnName(c),
-                value: link.valueColumns.contains(c),
-                onChanged: (v) => set(link.copyWith(valueColumns: [
-                  for (var i = 0; i < columns; i++)
-                    if (i == c ? v : link.valueColumns.contains(i)) i,
-                ])),
-              ),
-            CanvasHint("Each column you choose becomes a series. The table's "
-                "header names it, so a chart of the Points column is "
-                "labelled Points without typing it."),
-          ]),
-          CanvasControlGroup(label: "Apply", children: [
-            CanvasIconButton(
-              icon: Icons.download_outlined,
-              tooltip: link.on
-                  ? "Take the numbers from the table now"
-                  : "Choose at least one column of values",
-              onPressed: link.on
-                  ? () {
-                      begin();
-                      write(e.copyWith(data: chartDataFromTable(table, link)));
-                      commit();
-                    }
-                  : null,
-            ),
-            CanvasHint("Refreshing the table brings the chart with it, so the "
-                "two cannot drift apart."),
-          ]),
-        ],
-      ],
-    ),
-  );
 }
