@@ -11,6 +11,7 @@ import 'package:bruig/plugin_system/canvas/presets/builtin_presets.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_settings_bar.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/guides_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_stage.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_timeline.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
@@ -96,6 +97,12 @@ class _CanvasScreenState extends State<CanvasScreen> {
   /// as a second row of the band it pushed the canvas down every time it was
   /// opened.
   bool _canvasSettingsOpen = false;
+
+  /// _guidesOpen is whether the grid and guides line is out.
+  ///
+  /// Only one of the two lines at a time: they open in the same place, so both
+  /// at once would be one on top of the other.
+  bool _guidesOpen = false;
 
   /// _keyframesOpen is whether the pose bar is out.
   ///
@@ -426,8 +433,15 @@ class _CanvasScreenState extends State<CanvasScreen> {
             controller: _controller,
             onPublish: _publish,
             canvasSettingsOpen: _canvasSettingsOpen,
-            onToggleCanvasSettings: () =>
-                setState(() => _canvasSettingsOpen = !_canvasSettingsOpen),
+            onToggleCanvasSettings: () => setState(() {
+              _canvasSettingsOpen = !_canvasSettingsOpen;
+              if (_canvasSettingsOpen) _guidesOpen = false;
+            }),
+            guidesOpen: _guidesOpen,
+            onToggleGuides: () => setState(() {
+              _guidesOpen = !_guidesOpen;
+              if (_guidesOpen) _canvasSettingsOpen = false;
+            }),
             // Only while the sidebar is away. The band is where every other
             // control on this page lives, so the one that brings the sidebar
             // back belongs in it rather than floating on the page behind it.
@@ -476,6 +490,15 @@ class _CanvasScreenState extends State<CanvasScreen> {
                   left: 0,
                   right: 0,
                   child: CanvasSettingsPanel(controller: _controller),
+                ),
+              // The same place, for the same reason -- and never both at once,
+              // which the two toggles see to.
+              if (_guidesOpen)
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  child: CanvasGuidesPanel(controller: _controller),
                 ),
               // The pose bar sits against the timeline, at the bottom of the
               // canvas area, for the same reason the settings sit against the

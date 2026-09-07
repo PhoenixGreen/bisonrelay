@@ -15,6 +15,8 @@ import 'package:bruig/plugin_system/canvas/ui/chart_data_editor.dart';
 import 'package:bruig/plugin_system/canvas/ui/table_data_editor.dart';
 import 'package:bruig/plugin_system/canvas/model/data_presets.dart';
 import 'package:bruig/plugin_system/canvas/model/data_source.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/guides_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_settings_bar.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_timeline.dart';
@@ -81,6 +83,8 @@ void main() {
           onPublish: () => published++,
           canvasSettingsOpen: open,
           onToggleCanvasSettings: toggle ?? () {},
+          guidesOpen: false,
+          onToggleGuides: () {},
           onShowSidebar: showSidebar,
         );
 
@@ -1560,6 +1564,8 @@ void main() {
             onPublish: () {},
             canvasSettingsOpen: false,
             onToggleCanvasSettings: () {},
+            guidesOpen: false,
+            onToggleGuides: () {},
           ));
 
       expect(controller.showOverspill, isFalse,
@@ -3958,6 +3964,96 @@ void main() {
               .controller
               ?.text,
           "321");
+    });
+  });
+
+  group("the grid and guides line", () {
+    // It opens where the canvas settings open, and for the same reason: over
+    // the top of the canvas rather than pushing it down, so opening a panel
+    // does not move the design or change the zoom under what is being looked
+    // at.
+    testWidgets("the button sits beside the canvas settings", (tester) async {
+      var controller = CanvasController(const CanvasDocument());
+      addTearDown(controller.dispose);
+
+      await pump(
+          tester,
+          CanvasSettingsBar(
+            controller: controller,
+            onPublish: () {},
+            canvasSettingsOpen: false,
+            onToggleCanvasSettings: () {},
+            guidesOpen: false,
+            onToggleGuides: () {},
+          ));
+
+      var grid = find.byTooltip("Grid, guides, rulers and snapping");
+      var canvas = find.byTooltip("Canvas settings");
+      expect(grid, findsOneWidget);
+      expect(canvas, findsOneWidget);
+      expect(tester.getCenter(grid).dx, lessThan(tester.getCenter(canvas).dx),
+          reason: "to its left, and next to it");
+    });
+
+    testWidgets("the button says whether there is any scaffolding",
+        (tester) async {
+      // Lit when there is a grid or a guide, so a canvas that is snapping to
+      // something invisible says so.
+      var controller = CanvasController(const CanvasDocument()
+          .copyWith(guides: const CanvasGuides(showGrid: true)));
+      addTearDown(controller.dispose);
+
+      await pump(
+          tester,
+          CanvasSettingsBar(
+            controller: controller,
+            onPublish: () {},
+            canvasSettingsOpen: false,
+            onToggleCanvasSettings: () {},
+            guidesOpen: false,
+            onToggleGuides: () {},
+          ));
+      expect(
+          find.byTooltip("Grid, guides, rulers and snapping"), findsOneWidget);
+    });
+
+    testWidgets("the line itself carries the settings", (tester) async {
+      var controller = CanvasController(const CanvasDocument());
+      addTearDown(controller.dispose);
+      await pump(tester, CanvasGuidesPanel(controller: controller));
+
+      for (var group in ["GRID", "GUIDES", "SNAPPING", "RULERS"]) {
+        expect(find.text(group), findsOneWidget, reason: group);
+      }
+      expect(find.text("Show a grid"), findsOneWidget);
+    });
+
+    testWidgets("switching the grid on writes it to the document",
+        (tester) async {
+      var controller = CanvasController(const CanvasDocument());
+      addTearDown(controller.dispose);
+      await pump(tester, CanvasGuidesPanel(controller: controller));
+
+      expect(controller.document.guides.showGrid, isFalse);
+      await tester.tap(find.text("Show a grid"));
+      await tester.pumpAndSettle();
+      expect(controller.document.guides.showGrid, isTrue);
+    });
+
+    testWidgets("a guide can be put down and cleared", (tester) async {
+      var controller = CanvasController(const CanvasDocument());
+      addTearDown(controller.dispose);
+      await pump(tester, CanvasGuidesPanel(controller: controller));
+
+      await tester.tap(find.byTooltip("Add a vertical guide down the middle"));
+      await tester.pumpAndSettle();
+      expect(controller.document.guides.guides.single.axis, GuideAxis.vertical);
+      expect(controller.document.guides.guides.single.at,
+          controller.document.size.size.width / 2);
+
+      await tester.tap(find.byTooltip("Remove every guide"));
+      await tester.pumpAndSettle();
+      expect(controller.document.guides.guides, isEmpty);
     });
   });
 }

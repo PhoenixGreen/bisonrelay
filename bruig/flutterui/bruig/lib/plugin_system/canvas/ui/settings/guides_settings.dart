@@ -1,6 +1,7 @@
 import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
 // guides_settings.dart is the grid, the guides, the rulers and the snapping,
@@ -10,6 +11,11 @@ import 'package:flutter/material.dart';
 // switches here and they are all set up once and then left alone -- the bar is
 // for what gets pressed while working, and this is what gets arranged before
 // the work starts.
+//
+// It opens over the top of the canvas rather than pushing it down, which is
+// what the canvas settings beside it do and for the same reason: opening a
+// panel must not move the design or change the zoom under whatever is being
+// looked at. Closing it gets the strip back.
 
 /// canvasGuidesSettings is the whole panel.
 List<Widget> canvasGuidesSettings(CanvasController controller) {
@@ -146,4 +152,78 @@ List<Widget> canvasGuidesSettings(CanvasController controller) {
       const CanvasHint("Drag out of a ruler to put a guide down."),
     ]),
   ];
+}
+
+/// CanvasGuidesPanel is that panel, laid out like the canvas settings it sits
+/// beside: one line, scrolling sideways, over the top of the canvas.
+class CanvasGuidesPanel extends StatefulWidget {
+  final CanvasController controller;
+  const CanvasGuidesPanel({required this.controller, super.key});
+
+  @override
+  State<CanvasGuidesPanel> createState() => _CanvasGuidesPanelState();
+}
+
+class _CanvasGuidesPanelState extends State<CanvasGuidesPanel> {
+  CanvasController get controller => widget.controller;
+
+  /// _scroll is held rather than left to the scroll view, so the line keeps
+  /// its position across the rebuild that follows every switch on it.
+  final ScrollController _scroll = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    controller.addListener(_onChanged);
+  }
+
+  @override
+  void dispose() {
+    controller.removeListener(_onChanged);
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  void _onChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    var theme = ThemeNotifier.of(context);
+    return Material(
+      // Opaque, and with a shadow: it is sitting on top of the design rather
+      // than above it, so it has to read as a thing in front.
+      color: theme.colors.surfaceContainerLow,
+      elevation: 6,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.fromLTRB(8, 5, 8, 5),
+        decoration: BoxDecoration(
+          border: Border(
+              bottom: BorderSide(color: theme.colors.outlineVariant, width: 1)),
+        ),
+        // Sideways rather than wrapping, as the canvas settings do. A group is
+        // a column of controls and a row of them is wider than most windows.
+        child: Scrollbar(
+          controller: _scroll,
+          thumbVisibility: true,
+          thickness: 3,
+          child: SingleChildScrollView(
+            controller: _scroll,
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.only(bottom: 5),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (var group in canvasGuidesSettings(controller))
+                  Padding(
+                      padding: const EdgeInsets.only(right: 14), child: group),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }

@@ -4,7 +4,6 @@ import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/canvas_sidebar.dart';
-import 'package:bruig/plugin_system/canvas/ui/settings/guides_settings.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
@@ -59,6 +58,11 @@ class CanvasSettingsBar extends StatefulWidget {
   final bool canvasSettingsOpen;
   final VoidCallback onToggleCanvasSettings;
 
+  /// guidesOpen and onToggleGuides drive the grid and guides line, which opens
+  /// in the same place and the same way.
+  final bool guidesOpen;
+  final VoidCallback onToggleGuides;
+
   /// onShowSidebar brings a hidden sidebar back, and is null while it is
   /// showing. See CanvasSidebarRestoreButton -- a hidden sidebar with no way
   /// back is a trap, so the control has to be somewhere predictable, and this
@@ -69,6 +73,8 @@ class CanvasSettingsBar extends StatefulWidget {
     required this.controller,
     required this.onPublish,
     required this.canvasSettingsOpen,
+    required this.guidesOpen,
+    required this.onToggleGuides,
     required this.onToggleCanvasSettings,
     this.onShowSidebar,
     super.key,
@@ -182,15 +188,6 @@ class _CanvasSettingsBarState extends State<CanvasSettingsBar> {
               icon: Icons.zoom_in,
               tooltip: "Zoom in",
               onPressed: () => controller.zoomBy(1.25)),
-          // The scaffolding, behind one button. A dozen switches that are set
-          // up once and then left alone do not belong on a bar that is for
-          // what gets pressed while working.
-          _barButton(theme,
-              icon: Icons.grid_4x4,
-              tooltip: "Grid, guides, rulers and snapping",
-              active: controller.document.guides.showGrid ||
-                  controller.document.guides.guides.isNotEmpty,
-              onPressed: () => _openGuides(context, controller)),
           // The two frame buttons. "All of it" means two different things
           // depending on the document's shape: a wide banner is limited by the
           // height, while a 9:16 story fitted whole is a narrow strip down the
@@ -228,6 +225,14 @@ class _CanvasSettingsBarState extends State<CanvasSettingsBar> {
   Widget _actions(ThemeNotifier theme) => Row(
         mainAxisSize: MainAxisSize.min,
         children: [
+          // Beside the canvas settings, because they are the same kind of
+          // thing: both open a line over the top of the canvas, and both are
+          // about the canvas rather than about anything on it.
+          _barButton(theme,
+              icon: Icons.grid_4x4,
+              tooltip: "Grid, guides, rulers and snapping",
+              active: widget.guidesOpen,
+              onPressed: widget.onToggleGuides),
           _barButton(theme,
               icon: Icons.tune,
               tooltip: "Canvas settings",
@@ -509,43 +514,4 @@ class _CanvasSettingsPanelState extends State<CanvasSettingsPanel> {
       _estimateGroup(theme, document),
     ];
   }
-}
-
-/// _openGuides puts the scaffolding's settings in a sheet.
-///
-/// A sheet rather than a sidebar panel: it is about the canvas rather than
-/// about any element, so it has no place in a column that is otherwise the
-/// selected element's, and it is opened rarely enough that a press to close it
-/// again costs nothing.
-Future<void> _openGuides(
-    BuildContext context, CanvasController controller) async {
-  await showDialog<void>(
-    context: context,
-    builder: (context) => AlertDialog(
-      title: const Text("Grid and guides"),
-      content: SizedBox(
-        width: 460,
-        child: SingleChildScrollView(
-          // The same control scope the sidebar uses, so these look and behave
-          // like every other setting rather than like a dialog's own controls.
-          child: CanvasControlScope(
-            maxWidth: 420,
-            child: ListenableBuilder(
-              listenable: controller,
-              builder: (context, _) => Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: canvasGuidesSettings(controller),
-              ),
-            ),
-          ),
-        ),
-      ),
-      actions: [
-        TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text("Done")),
-      ],
-    ),
-  );
 }
