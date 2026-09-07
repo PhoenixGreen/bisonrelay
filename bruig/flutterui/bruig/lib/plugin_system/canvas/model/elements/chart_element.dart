@@ -298,6 +298,17 @@ class ChartElement extends CanvasElement {
   final TextSpec labelSpec;
   final TextSpec valueSpec;
 
+  /// logScale draws the value axis by decades rather than evenly.
+  ///
+  /// For the charts where the interesting part is the ratio rather than the
+  /// difference: a coin supply or a hashrate that has grown a thousandfold
+  /// spends most of a linear axis flat along the bottom, and the early years
+  /// -- which are the years something interesting was happening -- are
+  /// unreadable.
+  ///
+  /// Ignored where it cannot mean anything. See [logs].
+  final bool logScale;
+
   /// yMin and yMax pin the value axis. NaN means "work it out from the data",
   /// which is the default and is what almost every chart wants.
   final double yMin;
@@ -344,6 +355,7 @@ class ChartElement extends CanvasElement {
     this.axisColor = const Color(0x99FFFFFF),
     this.riseColor = const Color(0xFF2FD3A0),
     this.fallColor = const Color(0xFFE85D75),
+    this.logScale = false,
     this.titleSpec = const TextSpec(fontSize: 28, weight: 700),
     this.labelSpec = const TextSpec(fontSize: 16, weight: 400),
     this.valueSpec = const TextSpec(fontSize: 14, weight: 600),
@@ -376,6 +388,30 @@ class ChartElement extends CanvasElement {
       width: was.width,
       height: was.height,
     ) as ChartElement;
+  }
+
+  /// logs is whether this chart is actually drawn on a log axis.
+  ///
+  /// The setting is a request; this is the answer. A log axis has nowhere to
+  /// put zero or a negative number -- there is no bottom to it -- so a chart
+  /// with either is drawn linearly however the switch is set. Silently, but
+  /// not secretly: the settings say so, in the one place somebody who has
+  /// just switched it on is looking.
+  bool get logs => logScale && type.isCartesian && positiveOnly;
+
+  /// positiveOnly is whether every number in the chart is above zero, which
+  /// is the whole of what a log axis asks of the data.
+  bool get positiveOnly {
+    var any = false;
+    for (var series in data.series) {
+      for (var v in series.values) {
+        if (v <= 0) return false;
+        any = true;
+      }
+    }
+    // A chart with no numbers in it has nothing to scale, and answering yes
+    // would put an empty chart on a log axis ruled from one to ten.
+    return any;
   }
 
   /// descriptionText is the type the description is actually set in: its own
@@ -411,6 +447,7 @@ class ChartElement extends CanvasElement {
     Color? axisColor,
     Color? riseColor,
     Color? fallColor,
+    bool? logScale,
     TextSpec? titleSpec,
     TextSpec? labelSpec,
     TextSpec? valueSpec,
@@ -448,6 +485,7 @@ class ChartElement extends CanvasElement {
           axisColor: axisColor,
           riseColor: riseColor,
           fallColor: fallColor,
+          logScale: logScale,
           titleSpec: titleSpec,
           labelSpec: labelSpec,
           valueSpec: valueSpec,
@@ -489,6 +527,7 @@ class ChartElement extends CanvasElement {
     Color? axisColor,
     Color? riseColor,
     Color? fallColor,
+    bool? logScale,
     TextSpec? titleSpec,
     TextSpec? labelSpec,
     TextSpec? valueSpec,
@@ -526,6 +565,7 @@ class ChartElement extends CanvasElement {
           axisColor: axisColor ?? this.axisColor,
           riseColor: riseColor ?? this.riseColor,
           fallColor: fallColor ?? this.fallColor,
+          logScale: logScale ?? this.logScale,
           titleSpec: titleSpec ?? this.titleSpec,
           labelSpec: labelSpec ?? this.labelSpec,
           valueSpec: valueSpec ?? this.valueSpec,
@@ -567,6 +607,7 @@ class ChartElement extends CanvasElement {
         "values": showValues,
         "gridColor": colorToJson(gridColor),
         "axisColor": colorToJson(axisColor),
+        if (logScale) "log": true,
         "riseColor": colorToJson(riseColor),
         "fallColor": colorToJson(fallColor),
         "titleSpec": titleSpec.toJson(),
@@ -619,6 +660,7 @@ class ChartElement extends CanvasElement {
           showLegend: jsonBool(json["legend"], false),
           showValues: jsonBool(json["values"], false),
           gridColor: colorFromJson(json["gridColor"], const Color(0x33FFFFFF)),
+          logScale: jsonBool(json["log"], false),
           riseColor: colorFromJson(json["riseColor"], const Color(0xFF2FD3A0)),
           fallColor: colorFromJson(json["fallColor"], const Color(0xFFE85D75)),
           axisColor: colorFromJson(json["axisColor"], const Color(0x99FFFFFF)),

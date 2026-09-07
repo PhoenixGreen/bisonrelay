@@ -204,6 +204,11 @@ List<Widget> chartSettings(
           value: e.showAxisLabels,
           onChanged: (v) => now(e.copyWith(showAxisLabels: v)),
         ),
+        CanvasToggle(
+          label: "Log scale",
+          value: e.logScale,
+          onChanged: (v) => now(e.copyWith(logScale: v)),
+        ),
       ],
       CanvasToggle(
         label: "Values",
@@ -215,6 +220,15 @@ List<Widget> chartSettings(
             "Axes labels is everything written along the axes: the numbers, "
             "the category names and the two titles above. They are read "
             "together or not at all."),
+      // Switched on over data it cannot describe, a log scale would simply
+      // do nothing -- which reads as a broken switch. Said here instead.
+      if (e.logScale && !e.type.isCircular && !e.positiveOnly)
+        const CanvasHint(
+            "A log scale needs every number above zero — there is no place "
+            "on one for zero or a negative — so this chart is still drawn "
+            "evenly. It rules the axis by decades, each gridline ten times "
+            "the one below, which is what makes something that has grown a "
+            "thousandfold readable at both ends."),
       // Rings a few pixels thick have nowhere to write a number and no axis
       // to read one against, so theirs go in the key -- which is no use with
       // the key switched off.

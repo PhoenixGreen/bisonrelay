@@ -25,12 +25,64 @@ class _ValueRange {
   final double min;
   final double max;
   final List<double> ticks;
-  const _ValueRange(this.min, this.max, this.ticks);
+
+  /// log is whether the axis is spaced by decades. See [_logRange].
+  final bool log;
+
+  const _ValueRange(this.min, this.max, this.ticks, {this.log = false});
 
   double get span => max - min == 0 ? 1 : max - min;
 
   /// fraction is where [v] sits along the axis, 0 at the bottom.
-  double fraction(double v) => (v - min) / span;
+  ///
+  /// Zero and everything below it sits *at* the bottom of a log axis rather
+  /// than off it: there is no such place, and the alternative is an infinity
+  /// travelling into a rectangle and taking the frame with it. Nothing on a
+  /// log chart is ever zero -- see ChartElement.logs, which is what refuses
+  /// the whole scale when something is -- but a bar's base is asked for as
+  /// fraction(0) whatever the data holds.
+  double fraction(double v) {
+    if (!log) return (v - min) / span;
+    if (v <= 0 || min <= 0 || max <= min) return 0;
+    return (math.log(v) - math.log(min)) / (math.log(max) - math.log(min));
+  }
+}
+
+/// _logRange picks an axis by decades: 1, 10, 100, 1000.
+///
+/// The ends are pushed out to whole powers of ten, which is what makes the
+/// labels readable and the gridlines mean something -- each line is ten times
+/// the one below it. Within a single decade that would be one gridline, so a
+/// narrow range is ruled at 1, 2 and 5 of each instead.
+_ValueRange _logRange(double lo, double hi) {
+  if (!lo.isFinite || !hi.isFinite || lo <= 0 || hi <= 0) {
+    return _niceRange(lo, hi);
+  }
+  var low = math.pow(10, (math.log(lo) / math.ln10).floor()).toDouble();
+  var high = math.pow(10, (math.log(hi) / math.ln10).ceil()).toDouble();
+  if (high <= low) high = low * 10;
+
+  var decades = (math.log(high / low) / math.ln10).round();
+  var ticks = <double>[];
+  // Every decade below four of them; every second, then every fifth, above
+  // that, so a chart spanning eight decades is not a solid band of writing.
+  var every = decades <= 6 ? 1 : (decades <= 12 ? 2 : 5);
+  for (var i = 0; i <= decades; i++) {
+    if (i % every != 0 && i != decades) continue;
+    var at = low * math.pow(10, i);
+    if (decades <= 2) {
+      // Room for the intermediate lines, and a single decade needs them or
+      // the chart has a gridline at each end and nothing between.
+      for (var m in const [1, 2, 5]) {
+        var v = at * m;
+        if (v <= high) ticks.add(v.toDouble());
+      }
+    } else {
+      ticks.add(at.toDouble());
+    }
+  }
+  if (!ticks.contains(high)) ticks.add(high);
+  return _ValueRange(low, high, ticks, log: true);
 }
 
 /// _niceRange picks an axis that ends on round numbers.
@@ -100,8 +152,12 @@ void paintCartesian(
   // smallest price on a candlestick chart could never be above it, and a
   // month of trading between 12 and 16 was drawn as a smudge along the top of
   // an axis that began at nothing.
-  var lo = e.type.startsAtZero ? 0.0 : double.infinity;
-  var hi = e.type.startsAtZero ? 0.0 : double.negativeInfinity;
+  //
+  // A log axis takes its bottom from the data too, whatever the type: there
+  // is no zero on one to start from.
+  var fromZero = e.type.startsAtZero && !e.logs;
+  var lo = fromZero ? 0.0 : double.infinity;
+  var hi = fromZero ? 0.0 : double.negativeInfinity;
   if (e.type.isStacked) {
     for (var i = 0; i < data.categories.length; i++) {
       var pos = 0.0, neg = 0.0;
@@ -122,10 +178,12 @@ void paintCartesian(
   }
   if (!e.yMin.isNaN) lo = e.yMin;
   if (!e.yMax.isNaN) hi = e.yMax;
-  var range = _niceRange(lo, hi, fromZero: e.type.startsAtZero);
+  var range =
+      e.logs ? _logRange(lo, hi) : _niceRange(lo, hi, fromZero: fromZero);
   if (!e.yMin.isNaN || !e.yMax.isNaN) {
     range = _ValueRange(e.yMin.isNaN ? range.min : e.yMin,
-        e.yMax.isNaN ? range.max : e.yMax, range.ticks);
+        e.yMax.isNaN ? range.max : e.yMax, range.ticks,
+        log: range.log);
   }
 
   // Reserve room by measuring, not by guessing. The value labels decide the

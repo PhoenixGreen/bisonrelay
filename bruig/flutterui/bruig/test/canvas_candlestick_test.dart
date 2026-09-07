@@ -278,4 +278,116 @@ void main() {
       expect(back.type, ChartType.candlestick);
     });
   });
+
+  group("a log axis", () {
+    // Scatter rather than a line: the points are what is being measured, and
+    // a line chart joins them, so every column of the picture holds ink from
+    // somewhere between two of them.
+    ChartElement lineOf(List<double> values, {bool log = true}) => ChartElement(
+          const ElementBase(id: "c", width: 400, height: 300),
+          type: ChartType.scatter,
+          logScale: log,
+          showAxisLabels: false,
+          showLegend: false,
+          data: ChartData(
+            categories: [for (var i = 0; i < values.length; i++) "$i"],
+            series: [
+              ChartSeries(
+                  name: "Supply",
+                  color: const Color(0xFF00AAFF),
+                  values: values)
+            ],
+          ),
+        );
+
+    test("it is refused where it cannot mean anything", () {
+      // There is no place on a log axis for zero or a negative number, so
+      // rather than drawing nothing the chart is drawn evenly and the
+      // settings say why.
+      expect(lineOf([1, 10, 100]).logs, isTrue);
+      expect(lineOf([0, 10, 100]).logs, isFalse, reason: "a zero");
+      expect(lineOf([-1, 10]).logs, isFalse, reason: "a negative");
+      expect(lineOf([1, 10], log: false).logs, isFalse);
+      expect(lineOf(const []).logs, isFalse, reason: "nothing to scale");
+    });
+
+    test("a pie is not drawn on one", () {
+      var pie = lineOf([1, 10, 100]).copyWith(type: ChartType.pie);
+      expect(pie.logs, isFalse);
+    });
+
+    test("decades are evenly spaced, which is the whole point", () async {
+      // 1, 10, 100, 1000 on a linear axis is three points along the bottom
+      // and one at the top. On a log axis the four are equally far apart, and
+      // that is what makes something that grew a thousandfold readable at
+      // both ends.
+      var e = lineOf([1, 10, 100, 1000]);
+      var rows = await _pointRows(e);
+      expect(rows.length, 4, reason: "four points, four heights");
+
+      var gaps = [
+        for (var i = 1; i < rows.length; i++) rows[i - 1] - rows[i],
+      ];
+      for (var gap in gaps) {
+        expect(gap, closeTo(gaps.first, gaps.first * 0.12),
+            reason: "the decades should be a fixed distance apart: $gaps");
+      }
+    });
+
+    test("and evenly, without it, they are not", () async {
+      var rows = await _pointRows(lineOf([1, 10, 100, 1000], log: false));
+      var gaps = [
+        for (var i = 1; i < rows.length; i++) rows[i - 1] - rows[i],
+      ];
+      // The last step is ten times the one before it, so nothing like even.
+      expect(gaps.last, greaterThan(gaps.first * 5));
+    });
+
+    test("it survives being saved and read back", () {
+      var back = elementFromJson(lineOf([1, 10]).toJson()) as ChartElement;
+      expect(back.logScale, isTrue);
+    });
+  });
+}
+
+/// _pointRows is the height of each drawn point, as a row in the picture.
+///
+/// Measured off the picture rather than computed, because what is being asked
+/// is where the chart actually put them: an axis that works out the right
+/// fractions and a painter that ignores them is a chart that is wrong in the
+/// only place anybody looks.
+Future<List<double>> _pointRows(ChartElement e,
+    {Size size = const Size(400, 300)}) async {
+  var recorder = ui.PictureRecorder();
+  var canvas = ui.Canvas(recorder);
+  canvas.drawRect(Offset.zero & size, Paint()..color = const Color(0xFF101014));
+  paintChart(canvas, Offset.zero & size, e);
+  var image = await recorder
+      .endRecording()
+      .toImage(size.width.round(), size.height.round());
+  var bytes = (await image.toByteData())!;
+
+  // The series is drawn in a colour nothing else on the chart uses, so its
+  // ink can be picked out of the picture. Gathered per slot rather than per
+  // column, because where a point is drawn within its slot is the painter's
+  // business and not what is being asked.
+  var wanted = 0x00AAFFFF;
+  var slots = e.data.categories.length;
+  var sums = List<double>.filled(slots, 0);
+  var counts = List<int>.filled(slots, 0);
+
+  for (var y = 0; y < size.height; y++) {
+    for (var x = 0; x < size.width; x++) {
+      if (bytes.getUint32(((y * size.width.round()) + x) * 4) != wanted) {
+        continue;
+      }
+      var slot = (x * slots / size.width).floor().clamp(0, slots - 1);
+      sums[slot] += y;
+      counts[slot]++;
+    }
+  }
+  return [
+    for (var i = 0; i < slots; i++)
+      if (counts[i] > 0) sums[i] / counts[i],
+  ];
 }
