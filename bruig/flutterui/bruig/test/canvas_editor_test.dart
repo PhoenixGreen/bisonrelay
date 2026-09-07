@@ -4371,6 +4371,8 @@ void main() {
       var reading = find.text("A reading");
       expect(reading, findsOneWidget,
           reason: "the axis is the date column, so this can mean something");
+      // Which axis, on a chart that has two of them.
+      expect(find.text("Along the x axis"), findsOneWidget);
 
       // The anchor only appears once there is an interval to anchor.
       expect(find.text("On the"), findsNothing);
@@ -4388,6 +4390,19 @@ void main() {
       expect(find.text("In"), findsOneWidget);
       expect(find.text("Most points"), findsNothing,
           reason: "two answers to the same question, so only one is offered");
+      // The count says what it is counting. On its own the number read as a
+      // number of readings, which is not what it is.
+      expect(find.text("year"), findsOneWidget,
+          reason: "a reading every N *years* — one of them, so singular");
+      // The hint is a tooltip on a question mark, so what it says is read off
+      // the widget rather than off the screen.
+      var hints = [
+        for (var it in tester.widgetList<Tooltip>(find.byType(Tooltip)))
+          it.message ?? "",
+      ];
+      expect(hints.any((m) => m.contains("One reading a year, on 1 January")),
+          isTrue,
+          reason: "it should say the interval in words: $hints");
     });
 
     testWidgets("and a column of names cannot be", (tester) async {

@@ -488,7 +488,7 @@ class _ChartTarget extends _Target {
       ],
       CanvasControlGroup(label: "What is drawn", children: [
         CanvasDropdown<int>(
-          label: "Along the axis",
+          label: _axisLabel(element.type),
           value: map.categoryColumn,
           width: 150,
           options: [for (var c = 0; c < columns.length; c++) named(c)],
@@ -528,6 +528,11 @@ class _ChartTarget extends _Target {
           if (map.interval.on) ...[
             CanvasNumberField(
               label: "Every",
+              // The unit, so the pair reads as a sentence: "A reading —
+              // Yearly. Every — 2 years." On its own the number said nothing
+              // about what it was counting, and read as a number of readings,
+              // which is not what it is.
+              suffix: _unitWords(map.interval.unit, map.interval.every),
               value: map.interval.every.toDouble(),
               min: 1,
               max: 99,
@@ -602,12 +607,10 @@ class _ChartTarget extends _Target {
                     lastRows,
                     lastRaw),
               ),
-            CanvasHint("One reading ${map.interval.every == 1 ? "" : "every "
-                    "${map.interval.every} "}"
-                "${_intervalWords(map.interval)}, taken from the row nearest "
-                "each one — real readings, not an average, and nothing drawn "
-                "where the data has a gap. The dates the axis is labelled "
-                "with are the readings themselves."),
+            CanvasHint("${_intervalWords(map.interval)}, taken from the row "
+                "nearest each one — real readings, not an average, and "
+                "nothing drawn where the data has a gap. The dates the axis "
+                "is labelled with are the readings themselves."),
           ] else
             const CanvasHint(
                 "Every point draws them all, thinned to Most points below if "
@@ -1233,33 +1236,25 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
       ));
 }
 
-/// _intervalWords says an interval the way somebody would: "year, on 7
-/// February" rather than "unit: year, month: 2, day: 7".
-String _intervalWords(ChartInterval interval) {
-  const months = [
-    "January",
-    "February",
-    "March",
-    "April",
-    "May",
-    "June",
-    "July",
-    "August",
-    "September",
-    "October",
-    "November",
-    "December",
-  ];
-  const days = [
-    "Monday",
-    "Tuesday",
-    "Wednesday",
-    "Thursday",
-    "Friday",
-    "Saturday",
-    "Sunday",
-  ];
-  var unit = switch (interval.unit) {
+/// _axisLabel says which axis the categories run along, which depends on how
+/// the chart is drawn: along the bottom for most of them, down the side for
+/// horizontal bars, and round the middle for a pie.
+///
+/// "Along the axis" said none of that, on a chart that has two of them.
+String _axisLabel(ChartType type) => switch (type) {
+      ChartType.horizontalBar => "Along the y axis",
+      ChartType.radar => "One per spoke",
+      ChartType.pie ||
+      ChartType.donut ||
+      ChartType.radialBar =>
+        "One per slice",
+      _ => "Along the x axis",
+    };
+
+/// _unitWords is an interval's unit as a word, singular or plural to match
+/// the number in front of it: "year", "2 years".
+String _unitWords(IntervalUnit unit, int many) {
+  var word = switch (unit) {
     IntervalUnit.none => "point",
     IntervalUnit.day => "day",
     IntervalUnit.week => "week",
@@ -1267,14 +1262,44 @@ String _intervalWords(ChartInterval interval) {
     IntervalUnit.quarter => "quarter",
     IntervalUnit.year => "year",
   };
+  return many == 1 ? word : "${word}s";
+}
+
+/// _ordinal is a day of the month as somebody would say it: 1st, 2nd, 7th.
+String _ordinal(int day) {
+  if (day >= 11 && day <= 13) return "${day}th";
+  return switch (day % 10) {
+    1 => "${day}st",
+    2 => "${day}nd",
+    3 => "${day}rd",
+    _ => "${day}th",
+  };
+}
+
+/// _intervalWords says an interval the way somebody would: "One reading a
+/// year, on 7 February" rather than "unit: year, month: 2, day: 7".
+String _intervalWords(ChartInterval interval) {
+  const months = [
+    "January", "February", "March", "April", "May", "June", //
+    "July", "August", "September", "October", "November", "December",
+  ];
+  const days = [
+    "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", //
+    "Saturday", "Sunday",
+  ];
+
+  var how = interval.every == 1
+      ? "a ${_unitWords(interval.unit, 1)}"
+      : "every ${interval.every} ${_unitWords(interval.unit, interval.every)}";
   var on = switch (interval.unit) {
-    IntervalUnit.year =>
-      ", on the ${interval.day} of ${months[interval.month - 1]}",
-    IntervalUnit.month || IntervalUnit.quarter => ", on the ${interval.day}",
+    IntervalUnit.year => ", on ${interval.day} ${months[interval.month - 1]}",
+    IntervalUnit.month ||
+    IntervalUnit.quarter =>
+      ", on the ${_ordinal(interval.day)}",
     IntervalUnit.week => ", on a ${days[interval.weekday - 1]}",
     _ => "",
   };
-  return "$unit$on";
+  return "One reading $how$on";
 }
 
 /// _choiceOf works out which of a preset's choices the current address is, so
