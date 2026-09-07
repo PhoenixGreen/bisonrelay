@@ -638,13 +638,20 @@ class StagePainter extends CustomPainter {
   /// coordinates through the same transform everything else uses. A ruler that
   /// scrolled with the canvas would be a ruler that left the window.
   ///
-  /// Zero is the top-left of the *page*, not of the window, because that is
-  /// what every number in the settings panel means. An element at x=0 is
-  /// against the left edge of the canvas, and a ruler that disagreed with the
-  /// X field would be worse than no ruler.
+  /// Laid against the page rather than the window -- see rulerBandsFor -- and
+  /// numbered from the page's top-left, because that is what every number in
+  /// the settings panel means. An element at x=0 is against the left edge of
+  /// the canvas, and a ruler that disagreed with the X field would be worse
+  /// than no ruler.
+  ///
+  /// The numbers land on the grid: the step is a whole multiple of the grid's
+  /// own spacing, so every figure on the ruler has a line under it and the two
+  /// are read together rather than against each other.
   void _paintRulers(Canvas canvas, Size size) {
     if (!guides.rulers.any) return;
-    var step = rulerStep(scale);
+    var bands = rulerBandsFor(page, size, guides.rulers);
+    var step = rulerStep(scale, guides.gridSize);
+    var sheet = document.size.size;
 
     var strip = Paint()..color = const Color(0xF01A1A1E);
     var edge = Paint()
@@ -653,15 +660,20 @@ class StagePainter extends CustomPainter {
     var tick = Paint()
       ..strokeWidth = 1
       ..color = const Color(0x66FFFFFF);
+    // The unnumbered ticks are the grid itself, drawn fainter: at any zoom
+    // where they are far enough apart to be told from each other, they say
+    // which line is which without another number on the strip.
+    var fine = Paint()
+      ..strokeWidth = 1
+      ..color = const Color(0x33FFFFFF);
+    var minor = guides.gridSize;
+    var showFine = minor > 0 && minor < step && minor * scale >= 6;
 
-    // Where the page's origin sits on screen, which is what every number is
-    // measured from.
-    // The page's top-left in document units is (0, 0), so on screen it is
-    // exactly the origin. (page.left is already a screen number; putting it
-    // through the transform a second time is what pushed every tick off the
-    // canvas it was measuring.)
+    // Where the page's origin sits on screen. In document units the page
+    // starts at (0, 0), so that is exactly the origin -- putting the frame's
+    // screen corner through the transform a second time is what once pushed
+    // every tick off the canvas it was measuring.
     var zero = origin;
-    var sheet = document.size.size;
 
     void number(double at, Offset where, {required bool vertical}) {
       var painter = TextPainter(
@@ -687,48 +699,58 @@ class StagePainter extends CustomPainter {
 
     // The horizontal rulers: top and bottom.
     for (var top in [true, false]) {
-      if (top ? !guides.rulers.top : !guides.rulers.bottom) continue;
-      var band = top
-          ? Rect.fromLTWH(0, 0, size.width, rulerThickness)
-          : Rect.fromLTWH(
-              0, size.height - rulerThickness, size.width, rulerThickness);
+      var band = top ? bands.top : bands.bottom;
+      if (band == null) continue;
       canvas.drawRect(band, strip);
-      canvas.drawLine(Offset(0, top ? band.bottom : band.top),
-          Offset(size.width, top ? band.bottom : band.top), edge);
+      canvas.drawLine(Offset(band.left, top ? band.bottom : band.top),
+          Offset(band.right, top ? band.bottom : band.top), edge);
 
+      canvas.save();
+      canvas.clipRect(band);
       // Only across the page. A ruler that went on numbering the grey around
       // the canvas would be measuring something that is not there.
-      for (var i = 0;; i++) {
+      if (showFine) {
+        for (var i = 0; i * minor <= sheet.width; i++) {
+          var x = zero.dx + i * minor * scale;
+          canvas.drawLine(Offset(x, top ? band.bottom - 3 : band.top),
+              Offset(x, top ? band.bottom : band.top + 3), fine);
+        }
+      }
+      for (var i = 0; i * step <= sheet.width; i++) {
         var at = i * step;
-        if (at > sheet.width) break;
         var x = zero.dx + at * scale;
-        if (x < -20 || x > size.width + 20) continue;
-        canvas.drawLine(Offset(x, top ? band.bottom - 5 : band.top),
-            Offset(x, top ? band.bottom : band.top + 5), tick);
+        canvas.drawLine(Offset(x, top ? band.bottom - 6 : band.top),
+            Offset(x, top ? band.bottom : band.top + 6), tick);
         number(at, Offset(x + 2, band.top + 3), vertical: false);
       }
+      canvas.restore();
     }
 
     // The vertical rulers: left and right.
     for (var left in [true, false]) {
-      if (left ? !guides.rulers.left : !guides.rulers.right) continue;
-      var band = left
-          ? Rect.fromLTWH(0, 0, rulerThickness, size.height)
-          : Rect.fromLTWH(
-              size.width - rulerThickness, 0, rulerThickness, size.height);
+      var band = left ? bands.left : bands.right;
+      if (band == null) continue;
       canvas.drawRect(band, strip);
-      canvas.drawLine(Offset(left ? band.right : band.left, 0),
-          Offset(left ? band.right : band.left, size.height), edge);
+      canvas.drawLine(Offset(left ? band.right : band.left, band.top),
+          Offset(left ? band.right : band.left, band.bottom), edge);
 
-      for (var i = 0;; i++) {
+      canvas.save();
+      canvas.clipRect(band);
+      if (showFine) {
+        for (var i = 0; i * minor <= sheet.height; i++) {
+          var y = zero.dy + i * minor * scale;
+          canvas.drawLine(Offset(left ? band.right - 3 : band.left, y),
+              Offset(left ? band.right : band.left + 3, y), fine);
+        }
+      }
+      for (var i = 0; i * step <= sheet.height; i++) {
         var at = i * step;
-        if (at > sheet.height) break;
         var y = zero.dy + at * scale;
-        if (y < -20 || y > size.height + 20) continue;
-        canvas.drawLine(Offset(left ? band.right - 5 : band.left, y),
-            Offset(left ? band.right : band.left + 5, y), tick);
+        canvas.drawLine(Offset(left ? band.right - 6 : band.left, y),
+            Offset(left ? band.right : band.left + 6, y), tick);
         number(at, Offset(band.right - 3, y - 2), vertical: true);
       }
+      canvas.restore();
     }
   }
 

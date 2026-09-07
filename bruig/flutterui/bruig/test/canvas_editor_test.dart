@@ -4022,7 +4022,7 @@ void main() {
       addTearDown(controller.dispose);
       await pump(tester, CanvasGuidesPanel(controller: controller));
 
-      for (var group in ["GRID", "GUIDES", "SNAPPING", "RULERS"]) {
+      for (var group in ["GRID AND RULERS", "GUIDES", "SNAPPING", "RULERS"]) {
         expect(find.text(group), findsOneWidget, reason: group);
       }
       expect(find.text("Show a grid"), findsOneWidget);

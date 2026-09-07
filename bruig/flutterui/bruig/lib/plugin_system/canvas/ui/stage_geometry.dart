@@ -1,4 +1,7 @@
 import 'dart:math' as math;
+import 'dart:ui';
+
+import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
 
 // stage_geometry.dart is how big the things you grab on the stage are, and
 // what the eight of them are called.
@@ -75,17 +78,28 @@ const double rulerThickness = 18;
 /// hit rather than merely approached.
 const double guideGrabSlop = 4;
 
-/// rulerStep picks the gap between numbered ticks so they land on round
-/// numbers and stay about [wanted] pixels apart on screen.
+/// rulerStep picks the gap between numbered ticks.
 ///
-/// The same "nice numbers" walk a chart's axis uses, and for the same reason:
-/// a ruler ticking every 37 units is a ruler nobody can read a position off.
-double rulerStep(double scale, {double wanted = 80}) {
-  if (!scale.isFinite || scale <= 0) return 100;
-  var rough = wanted / scale;
-  var magnitude =
-      math.pow(10, (math.log(rough) / math.ln10).floor()).toDouble();
-  var norm = rough / magnitude;
+/// Always a whole multiple of [every] -- the grid's own spacing -- so that
+/// every number on the ruler has a grid line under it. A ruler and a grid
+/// that disagree are two rulers, and reading a position off one of them then
+/// means counting squares on the other.
+///
+/// Which multiple is decided by the zoom: the smallest of one, two, five, ten
+/// and so on that leaves the numbers about [wanted] pixels apart, so a fine
+/// grid on a canvas zoomed out is numbered every tenth line rather than every
+/// line.
+double rulerStep(double scale, double every, {double wanted = 80}) {
+  if (!every.isFinite || every <= 0) every = 100;
+  if (!scale.isFinite || scale <= 0) return every;
+
+  var want = wanted / scale / every;
+  if (want <= 1) return every;
+
+  // One, two, five, ten, twenty ... of the grid, which is how anybody counts
+  // squares.
+  var magnitude = math.pow(10, (math.log(want) / math.ln10).floor()).toDouble();
+  var norm = want / magnitude;
   var step = norm <= 1
       ? 1
       : norm <= 2
@@ -93,5 +107,74 @@ double rulerStep(double scale, {double wanted = 80}) {
           : norm <= 5
               ? 5
               : 10;
-  return step * magnitude;
+  return every * step * magnitude;
+}
+
+/// RulerBands is where the four strips are drawn, and hit-tested.
+///
+/// Nullable rather than a flag apiece: an edge that is switched off has no
+/// band, and everything that reads this cares about the rectangle rather than
+/// the switch.
+class RulerBands {
+  final Rect? top;
+  final Rect? left;
+  final Rect? right;
+  final Rect? bottom;
+
+  const RulerBands({this.top, this.left, this.right, this.bottom});
+
+  bool get any =>
+      top != null || left != null || right != null || bottom != null;
+
+  /// axisAt is the guide a press at [at] would make, or null for anywhere
+  /// that is not a ruler. The side strips make upright lines and the top and
+  /// bottom ones make level lines, which is what every editor with rulers
+  /// does.
+  GuideAxis? axisAt(Offset at) {
+    if (left?.contains(at) ?? false) return GuideAxis.vertical;
+    if (right?.contains(at) ?? false) return GuideAxis.vertical;
+    if (top?.contains(at) ?? false) return GuideAxis.horizontal;
+    if (bottom?.contains(at) ?? false) return GuideAxis.horizontal;
+    return null;
+  }
+}
+
+/// rulerBandsFor lays the strips against the edges of the *page* rather than
+/// the edges of the window.
+///
+/// Which is what makes the numbers mean anything: the ruler is measuring the
+/// canvas, so it belongs beside the canvas, at the same place whatever the
+/// size of the window and whatever export width is set. Drawn out at the
+/// window's edges, as they first were, the strips sat an inch away from the
+/// thing they were numbering and moved whenever the window was resized.
+///
+/// Clamped back inside the viewport, because a page zoomed to fill the window
+/// leaves nothing outside it to draw in and a ruler off the screen is no
+/// ruler at all.
+RulerBands rulerBandsFor(Rect page, Size viewport, CanvasRulers rulers) {
+  const t = rulerThickness;
+  double x0 = page.left.clamp(0.0, math.max(0.0, viewport.width));
+  double x1 = page.right.clamp(0.0, math.max(0.0, viewport.width));
+  double y0 = page.top.clamp(0.0, math.max(0.0, viewport.height));
+  double y1 = page.bottom.clamp(0.0, math.max(0.0, viewport.height));
+
+  double down(double at) =>
+      at.clamp(0.0, math.max(0.0, viewport.height - t)).toDouble();
+  double across(double at) =>
+      at.clamp(0.0, math.max(0.0, viewport.width - t)).toDouble();
+
+  return RulerBands(
+    top: rulers.top
+        ? Rect.fromLTWH(x0, down(page.top - t), math.max(0.0, x1 - x0), t)
+        : null,
+    bottom: rulers.bottom
+        ? Rect.fromLTWH(x0, down(page.bottom), math.max(0.0, x1 - x0), t)
+        : null,
+    left: rulers.left
+        ? Rect.fromLTWH(across(page.left - t), y0, t, math.max(0.0, y1 - y0))
+        : null,
+    right: rulers.right
+        ? Rect.fromLTWH(across(page.right), y0, t, math.max(0.0, y1 - y0))
+        : null,
+  );
 }

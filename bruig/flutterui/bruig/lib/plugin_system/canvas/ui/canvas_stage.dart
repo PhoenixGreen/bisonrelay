@@ -1166,20 +1166,15 @@ class CanvasStageState extends State<CanvasStage> {
 
   /// _rulerUnder is which ruler the pointer is in, expressed as the axis of
   /// the guide it would produce, or null for anywhere else.
+  ///
+  /// The strips come from the same function that draws them, so what can be
+  /// dragged out of and what can be seen are the same rectangles. They lie
+  /// against the page rather than the window -- a ruler measures the canvas,
+  /// so it belongs beside the canvas.
   GuideAxis? _rulerUnder(Offset stage) {
     var rulers = document.guides.rulers;
     if (!rulers.any) return null;
-    // The left and right strips make vertical lines; the top and bottom ones
-    // make horizontal lines.
-    if (rulers.left && stage.dx <= rulerThickness) return GuideAxis.vertical;
-    if (rulers.right && stage.dx >= _viewport.width - rulerThickness) {
-      return GuideAxis.vertical;
-    }
-    if (rulers.top && stage.dy <= rulerThickness) return GuideAxis.horizontal;
-    if (rulers.bottom && stage.dy >= _viewport.height - rulerThickness) {
-      return GuideAxis.horizontal;
-    }
-    return null;
+    return rulerBandsFor(_pageRect, _viewport, rulers).axisAt(stage);
   }
 
   /// _applyGuide moves the guide being dragged to where the pointer is.
@@ -1688,6 +1683,17 @@ class CanvasStageState extends State<CanvasStage> {
     var handle = _handle;
     if (handle == null) return;
 
+    // The edge being dragged lands on the same lines a move lands on.
+    //
+    // Only for an upright box: an edge of a tilted element is not a level or
+    // an upright line and has nothing on the grid to land on. Alt turns it
+    // off for the length of the drag, exactly as it does for a move.
+    if (_rotationOfSelection == 0 && !HardwareKeyboard.instance.isAltPressed) {
+      delta = _snapResize(handle, delta);
+    } else {
+      _snappedTo = null;
+    }
+
     // The drag is rotated into the element's own frame, so pulling the right
     // edge of a tilted element makes it wider rather than moving it sideways.
     var a = -_rotationOfSelection;
@@ -1752,6 +1758,57 @@ class CanvasStageState extends State<CanvasStage> {
       ));
     }
     controller.apply(next, transient: true);
+  }
+
+  /// _snapResize moves the dragged edge onto a line, and leaves the opposite
+  /// edge alone.
+  ///
+  /// Which is the whole difference between this and a move: a resize moves one
+  /// side, so it snaps that side only -- snapping the box as a whole would
+  /// drag the edge that is being held still. Against the union of what is
+  /// being resized, for the same reason a move snaps against the whole
+  /// selection: three things resized together have to stay together.
+  Offset _snapResize(StageHandle handle, Offset delta) {
+    Rect? box;
+    for (var start in _startVisual.values) {
+      box = box == null ? start : box.expandToInclude(start);
+    }
+    if (box == null) {
+      _snappedTo = null;
+      return delta;
+    }
+
+    var guides = document.guides;
+    var within = guides.snapWithin / _scale;
+    var canvas = document.size.size;
+    var dx = delta.dx;
+    var dy = delta.dy;
+    double? onVertical;
+    double? onHorizontal;
+
+    if (handle.movesLeft || handle.movesRight) {
+      var at = (handle.movesLeft ? box.left : box.right) + dx;
+      var line = snapEdgeTo(at, guides, canvas, vertical: true, within: within);
+      if (line != null) {
+        dx += line - at;
+        onVertical = line;
+      }
+    }
+    if (handle.movesTop || handle.movesBottom) {
+      var at = (handle.movesTop ? box.top : box.bottom) + dy;
+      var line =
+          snapEdgeTo(at, guides, canvas, vertical: false, within: within);
+      if (line != null) {
+        dy += line - at;
+        onHorizontal = line;
+      }
+    }
+
+    _snappedTo = onVertical == null && onHorizontal == null
+        ? null
+        : SnapResult(box.topLeft,
+            onVertical: onVertical, onHorizontal: onHorizontal);
+    return Offset(dx, dy);
   }
 
   void _applyRotate(Offset doc) {

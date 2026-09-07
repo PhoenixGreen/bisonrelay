@@ -24,7 +24,12 @@ List<Widget> canvasGuidesSettings(CanvasController controller) {
       controller.apply(controller.document.copyWith(guides: next));
 
   return [
-    CanvasControlGroup(label: "Grid", children: [
+    // "Every" sets the spacing for the grid and the ruler together. They are
+    // one measurement of the page shown two ways, and when they disagreed --
+    // a ruler picking its own round numbers by zoom, a grid on its own
+    // spacing -- reading a position off the ruler meant counting squares on
+    // the grid to find it.
+    CanvasControlGroup(label: "Grid and rulers", children: [
       CanvasToggle(
         label: "Show a grid",
         value: guides.showGrid,
@@ -49,9 +54,11 @@ List<Widget> canvasGuidesSettings(CanvasController controller) {
         onChanged: (v) => set(guides.copyWith(subdivisions: v.round())),
       ),
       const CanvasHint(
-          "The strong lines are the grid; dividing it draws fainter ones "
-          "between them. Both can be snapped to, and neither is exported — a "
-          "grid is for building the design, not part of it."),
+          "Every sets the spacing for the grid and for the ruler's numbers "
+          "together, so a figure on the ruler always has a line under it; "
+          "dividing it draws fainter ones between them. Both can be snapped "
+          "to, and neither is exported — a grid is for building the design, "
+          "not part of it."),
     ]),
     CanvasControlGroup(label: "Guides", children: [
       CanvasIconButton(
@@ -149,7 +156,11 @@ List<Widget> canvasGuidesSettings(CanvasController controller) {
           value: on,
           onChanged: (v) => set(guides.copyWith(rulers: apply(v))),
         ),
-      const CanvasHint("Drag out of a ruler to put a guide down."),
+      const CanvasHint(
+          "Rulers sit against the edges of the canvas and are numbered from "
+          "its top-left corner, at the spacing set above — every few of them "
+          "when the canvas is small on screen. Drag out of one to put a guide "
+          "down."),
     ]),
   ];
 }

@@ -219,30 +219,51 @@ void main() {
     // A ruler is only worth drawing if a position can be read off it, and
     // that means the numbers on it have to be round.
 
-    test("the gap is always a round number", () {
-      for (var scale in [0.05, 0.31, 0.5, 1.0, 1.7, 4.0, 13.0]) {
-        var step = rulerStep(scale);
-        var digits = step / math.pow(10, (math.log(step) / math.ln10).floor());
-        expect([1.0, 2.0, 5.0, 10.0], contains(closeTo(digits, 0.0001)),
-            reason: "$step is not 1, 2 or 5 of anything, at scale $scale");
+    test("every number on the ruler has a grid line under it", () {
+      // The two are one measurement of the page shown twice. A ruler that
+      // picked its own round numbers put its figures between the lines, and
+      // reading a position off it meant counting squares to find it.
+      for (var every in [25.0, 40.0, 100.0, 120.0, 250.0]) {
+        for (var scale in [0.05, 0.31, 0.5, 1.0, 1.7, 4.0, 13.0]) {
+          var step = rulerStep(scale, every);
+          expect(step / every, closeTo((step / every).round(), 0.0001),
+              reason: "$step is not a whole number of ${every}s");
+        }
       }
     });
 
-    test("ticks stay about as far apart on screen however far it is zoomed",
-        () {
-      // The step is in canvas units, so it has to grow as the view shrinks:
-      // what should stay roughly constant is the gap in pixels.
-      for (var scale in [0.1, 0.25, 1.0, 3.0, 8.0]) {
-        var gap = rulerStep(scale) * scale;
-        expect(gap, greaterThan(20));
+    test("and it is a countable number of them", () {
+      // One, two, five or ten squares to a number. Seven squares to a number
+      // is a ruler nobody can read a position off.
+      for (var scale in [0.05, 0.31, 0.5, 1.0, 1.7, 4.0, 13.0]) {
+        var multiple = rulerStep(scale, 40) / 40;
+        var digits =
+            multiple / math.pow(10, (math.log(multiple) / math.ln10).floor());
+        expect([1.0, 2.0, 5.0, 10.0], contains(closeTo(digits, 0.0001)),
+            reason: "$multiple squares to a number, at scale $scale");
+      }
+    });
+
+    test("zooming out numbers every few lines rather than every line", () {
+      // The step is in canvas units, so it has to grow as the view shrinks,
+      // or a grid of 40 on a canvas at a tenth would want a number every four
+      // pixels. It cannot fall below the grid, though: the finest a ruler is
+      // numbered is once per square.
+      for (var scale in [0.1, 0.25, 1.0, 3.0]) {
+        var gap = rulerStep(scale, 40) * scale;
+        expect(gap, greaterThanOrEqualTo(math.min(40 * scale, 40.0)));
         expect(gap, lessThan(200));
       }
+      // Zoomed right in, one square is already further apart than the numbers
+      // want to be, and there is nothing finer to fall back to.
+      expect(rulerStep(8, 40), 40);
     });
 
     test("a nonsense scale still gives a usable step", () {
       // Fit runs before the first layout, so a zero or a NaN reaches here.
       for (var scale in [0.0, -1.0, double.nan, double.infinity]) {
-        expect(rulerStep(scale), greaterThan(0));
+        expect(rulerStep(scale, 40), greaterThan(0));
+        expect(rulerStep(1, scale), greaterThan(0));
       }
     });
   });

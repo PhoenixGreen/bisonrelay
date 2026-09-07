@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'dart:async';
 import 'package:bruig/models/snackbar.dart';
@@ -23,6 +24,7 @@ import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_stage.dart';
 import 'package:bruig/plugin_system/canvas/render/table_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage_painter.dart';
+import 'package:bruig/plugin_system/canvas/ui/stage_geometry.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage_parts.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/gestures.dart';
@@ -2866,6 +2868,14 @@ void main() {
     // A guide is furniture rather than an element: dragging one moves nothing
     // on the canvas, it moves the thing the canvas is being lined up against.
 
+    // Where the strips are: against the edges of the page, half a strip in
+    // from it, and never off the screen.
+    Offset leftStrip(CanvasStageState stage) => Offset(
+        math.max(rulerThickness / 2, stage.pageRect.left - rulerThickness / 2),
+        stage.pageRect.center.dy);
+    Offset topStrip(CanvasStageState stage) => Offset(stage.pageRect.center.dx,
+        math.max(rulerThickness / 2, stage.pageRect.top - rulerThickness / 2));
+
     Future<(CanvasController, CanvasStageState)> withRulers(
       WidgetTester tester, {
       CanvasGuides guides =
@@ -2883,10 +2893,9 @@ void main() {
       var (controller, stage) = await withRulers(tester);
       expect(controller.document.guides.guides, isEmpty);
 
-      // Start inside the left strip -- which runs down the edge of the whole
-      // stage, not of the page -- and pull right onto the canvas.
-      expect(stage.pageRect.left, lessThan(180));
-      await tester.dragFrom(const Offset(6, 200), const Offset(180, 0));
+      // Start inside the left strip -- which lies against the left edge of
+      // the page -- and pull right onto the canvas.
+      await tester.dragFrom(leftStrip(stage), const Offset(180, 0));
       await tester.pumpAndSettle();
 
       var guide = controller.document.guides.guides.single;
@@ -2897,8 +2906,7 @@ void main() {
     testWidgets("dragging out of the top ruler leaves a horizontal one",
         (tester) async {
       var (controller, stage) = await withRulers(tester);
-      expect(stage.pageRect.top, lessThan(180));
-      await tester.dragFrom(const Offset(200, 6), const Offset(0, 180));
+      await tester.dragFrom(topStrip(stage), const Offset(0, 180));
       await tester.pumpAndSettle();
       expect(
           controller.document.guides.guides.single.axis, GuideAxis.horizontal);
@@ -2907,9 +2915,9 @@ void main() {
     testWidgets("no ruler, no guide", (tester) async {
       // The strip is only a place to pull from when there is a ruler drawn
       // there; otherwise it is canvas like any other.
-      var (controller, _) =
+      var (controller, stage) =
           await withRulers(tester, guides: const CanvasGuides());
-      await tester.dragFrom(const Offset(6, 200), const Offset(180, 0));
+      await tester.dragFrom(leftStrip(stage), const Offset(180, 0));
       await tester.pumpAndSettle();
       expect(controller.document.guides.guides, isEmpty);
     });
@@ -3074,24 +3082,146 @@ void main() {
 
     testWidgets("every ruler that is switched on is drawn", (tester) async {
       var (plain, _) = await shotOf(tester, const CanvasGuides());
-      var (ruled, _) = await shotOf(
+      var (ruled, page) = await shotOf(
           tester,
           const CanvasGuides(
               rulers: CanvasRulers(
                   top: true, left: true, right: true, bottom: true)));
 
-      var mid = (x: viewport.width ~/ 2, y: viewport.height ~/ 2);
+      var mid = (x: page.center.dx.round(), y: page.center.dy.round());
+      var into = rulerThickness ~/ 2;
       var edges = {
-        "left": (2, mid.y),
-        "right": (viewport.width.round() - 3, mid.y),
-        "top": (mid.x, 2),
-        "bottom": (mid.x, viewport.height.round() - 3),
+        "left": (page.left.round() - into, mid.y),
+        "right": (page.right.round() + into, mid.y),
+        "top": (mid.x, page.top.round() - into),
+        "bottom": (mid.x, page.bottom.round() + into),
       };
       for (var edge in edges.entries) {
         var (x, y) = edge.value;
         expect(at(ruled, x, y), isNot(at(plain, x, y)),
             reason: "nothing was drawn along the ${edge.key}");
       }
+    });
+
+    testWidgets("the rulers lie against the canvas, not the window",
+        (tester) async {
+      // Reported: with a tall canvas in a wide window the strips sat out at
+      // the edges of the window, an inch of empty editor away from the thing
+      // they were numbering, and moved whenever the window was resized. A
+      // ruler measures the canvas, so it belongs beside the canvas -- in the
+      // same place at every window size and every export width.
+      var (plain, _) = await shotOf(tester, const CanvasGuides());
+      var (ruled, page) = await shotOf(tester,
+          const CanvasGuides(rulers: CanvasRulers(left: true, right: true)));
+
+      var row = page.center.dy.round();
+      expect(page.left, greaterThan(rulerThickness),
+          reason: "the point of a tall canvas here is room either side of it");
+
+      // Beside the page.
+      expect(at(ruled, page.left.round() - 4, row),
+          isNot(at(plain, page.left.round() - 4, row)));
+      expect(at(ruled, page.right.round() + 4, row),
+          isNot(at(plain, page.right.round() + 4, row)));
+
+      // And nowhere near the window's own edges, which is where they were.
+      expect(at(ruled, 2, row), at(plain, 2, row));
+      expect(at(ruled, viewport.width.round() - 3, row),
+          at(plain, viewport.width.round() - 3, row));
+    });
+  });
+
+  group("a resize lands on the grid too", () {
+    // Reported: moving an element snapped, and dragging a handle did not --
+    // so a box could be put exactly on a line and then not sized to the next
+    // one. A resize snaps the edge being dragged and only that edge: the side
+    // being held still must not be pulled along by a snap meant for the other
+    // one, which is the whole difference between this and a move.
+
+    const grid = CanvasGuides(showGrid: true, gridSize: 100);
+
+    Future<(CanvasController, CanvasStageState, ShapeElement)> withBox(
+        WidgetTester tester,
+        {CanvasGuides guides = grid}) async {
+      // Deliberately off the grid, so a snap is something that happened
+      // rather than something that was already true.
+      var element = ShapeElement(
+        const ElementBase(id: "s", x: 313, y: 209, width: 274, height: 187),
+        fill: const Color(0xFFCC2200),
+      );
+      var controller = CanvasController(
+          const CanvasDocument().copyWith(guides: guides).addElement(element));
+      addTearDown(controller.dispose);
+      controller.selectOnly("s");
+      var stage = await pump(tester, controller);
+      return (controller, stage, element);
+    }
+
+    testWidgets("dragging a corner puts it on a line", (tester) async {
+      var (controller, stage, element) = await withBox(tester);
+      var scale = stage.pageRect.width / controller.document.size.width;
+
+      // The bottom-right corner is at (587, 396); pulled a little way left
+      // and up, it comes within reach of 500 and 300.
+      var corner = stage.pageRect.topLeft + element.bounds.bottomRight * scale;
+      await tester.dragFrom(corner, Offset(-84 * scale, -94 * scale));
+      await tester.pumpAndSettle();
+
+      var after = controller.document.elementById("s")!;
+      expect(after.x + after.width, closeTo(500, 0.5));
+      expect(after.y + after.height, closeTo(300, 0.5));
+
+      // And the corner that was not being dragged has not moved.
+      expect(after.x, closeTo(element.x, 0.5));
+      expect(after.y, closeTo(element.y, 0.5));
+    });
+
+    testWidgets("a middle handle snaps its own edge and leaves the other axis",
+        (tester) async {
+      var (controller, stage, element) = await withBox(tester);
+      var scale = stage.pageRect.width / controller.document.size.width;
+
+      // The left edge is at 313, so a nudge left brings 300 within reach.
+      var middle = stage.pageRect.topLeft +
+          Offset(element.bounds.left, element.bounds.center.dy) * scale;
+      await tester.dragFrom(middle, Offset(-8 * scale, 0));
+      await tester.pumpAndSettle();
+
+      var after = controller.document.elementById("s")!;
+      expect(after.x, closeTo(300, 0.5));
+      expect(after.y, closeTo(element.y, 0.5), reason: "no vertical handle");
+      expect(after.y + after.height, closeTo(396, 0.5));
+    });
+
+    testWidgets("a guide catches a handle as readily as the grid does",
+        (tester) async {
+      var (controller, stage, element) = await withBox(tester,
+          guides: const CanvasGuides(guides: [
+            CanvasGuide(axis: GuideAxis.vertical, at: 620),
+          ]));
+      var scale = stage.pageRect.width / controller.document.size.width;
+
+      var corner = stage.pageRect.topLeft + element.bounds.bottomRight * scale;
+      await tester.dragFrom(corner, Offset(30 * scale, 0));
+      await tester.pumpAndSettle();
+
+      expect(controller.document.elementById("s")!.bounds.right,
+          closeTo(620, 0.5));
+    });
+
+    testWidgets("switching snapping off leaves the handle where it was put",
+        (tester) async {
+      var (controller, stage, element) = await withBox(tester,
+          guides:
+              const CanvasGuides(showGrid: true, gridSize: 100, snap: false));
+      var scale = stage.pageRect.width / controller.document.size.width;
+
+      var corner = stage.pageRect.topLeft + element.bounds.bottomRight * scale;
+      await tester.dragFrom(corner, Offset(-84 * scale, 0));
+      await tester.pumpAndSettle();
+
+      expect(
+          controller.document.elementById("s")!.bounds.right, closeTo(503, 1));
     });
   });
 }
