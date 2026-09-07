@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/canvas/model/elements/chart_numbers.dart';
 import 'package:bruig/plugin_system/canvas/model/chart_interval.dart';
 import 'package:bruig/models/snackbar.dart';
 import 'dart:io';
@@ -3006,6 +3007,28 @@ void main() {
 
       await press(tester, find.text("Over the chart"));
       expect(chartIn(controller).titleBox.x, 0.4);
+    });
+
+    testWidgets("how a number is written is a setting", (tester) async {
+      // The decimals only appear once there is a style to apply them to:
+      // automatic picks its own, so a box under it would do nothing.
+      var controller = await panel(tester);
+      // It sits with the rest of the writing on the chart, which is a section
+      // that starts shut.
+      await labels(tester);
+      expect(find.text("Decimals"), findsNothing);
+
+      await press(tester, find.text("Automatic — 1000000, 12.5"));
+      await tester.tap(find.text("Millions — 1.0M").last);
+      await tester.pumpAndSettle();
+
+      var chart = chartIn(controller);
+      expect(chart.numbers.style, NumberStyle.millions);
+      expect(chart.numbers.decimals, 1,
+          reason: "seeded from what automatic was doing rather than reset to "
+              "none");
+      expect(find.text("Decimals"), findsOneWidget);
+      expect(chart.numbers.format(1000000), "1.0M");
     });
 
     testWidgets("a pie is offered no axes, but still its values",

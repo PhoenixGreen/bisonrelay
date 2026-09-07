@@ -148,7 +148,7 @@ void paintCircular(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
           var at = spoke(0, ringIndex / 4);
           paintTextInBox(
               canvas,
-              formatTick(maxV * ringIndex / 4),
+              formatTick(e, maxV * ringIndex / 4),
               e.valueSpec.copyWith(
                   align: TextAlignSpec.left,
                   verticalAlign: VerticalAlignSpec.middle),

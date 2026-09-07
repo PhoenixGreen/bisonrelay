@@ -19,6 +19,7 @@ export 'package:bruig/plugin_system/canvas/model/elements/chart_legend.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_data.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_legend.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/chart_numbers.dart';
 
 // chart_element.dart is a chart as data plus a handful of decisions, drawn
 // from scratch by render/chart_painter.dart.
@@ -299,6 +300,15 @@ class ChartElement extends CanvasElement {
   final TextSpec labelSpec;
   final TextSpec valueSpec;
 
+  /// numbers is how a number is written wherever this chart writes one: up
+  /// the axis, on the bars, in a legend that carries values. See
+  /// [ChartNumbers].
+  ///
+  /// One setting for all three, because they are the same numbers -- an axis
+  /// saying 1,500,000 beside a bar saying 1.5M is a chart that has changed
+  /// its mind half way across.
+  final ChartNumbers numbers;
+
   /// logScale draws the value axis by decades rather than evenly.
   ///
   /// For the charts where the interesting part is the ratio rather than the
@@ -357,6 +367,7 @@ class ChartElement extends CanvasElement {
     this.riseColor = const Color(0xFF2FD3A0),
     this.fallColor = const Color(0xFFE85D75),
     this.logScale = false,
+    this.numbers = const ChartNumbers(),
     this.titleSpec = const TextSpec(fontSize: 28, weight: 700),
     this.labelSpec = const TextSpec(fontSize: 16, weight: 400),
     this.valueSpec = const TextSpec(fontSize: 14, weight: 600),
@@ -449,6 +460,7 @@ class ChartElement extends CanvasElement {
     Color? riseColor,
     Color? fallColor,
     bool? logScale,
+    ChartNumbers? numbers,
     TextSpec? titleSpec,
     TextSpec? labelSpec,
     TextSpec? valueSpec,
@@ -487,6 +499,7 @@ class ChartElement extends CanvasElement {
           riseColor: riseColor,
           fallColor: fallColor,
           logScale: logScale,
+          numbers: numbers,
           titleSpec: titleSpec,
           labelSpec: labelSpec,
           valueSpec: valueSpec,
@@ -529,6 +542,7 @@ class ChartElement extends CanvasElement {
     Color? riseColor,
     Color? fallColor,
     bool? logScale,
+    ChartNumbers? numbers,
     TextSpec? titleSpec,
     TextSpec? labelSpec,
     TextSpec? valueSpec,
@@ -567,6 +581,7 @@ class ChartElement extends CanvasElement {
           riseColor: riseColor ?? this.riseColor,
           fallColor: fallColor ?? this.fallColor,
           logScale: logScale ?? this.logScale,
+          numbers: numbers ?? this.numbers,
           titleSpec: titleSpec ?? this.titleSpec,
           labelSpec: labelSpec ?? this.labelSpec,
           valueSpec: valueSpec ?? this.valueSpec,
@@ -609,6 +624,7 @@ class ChartElement extends CanvasElement {
         "gridColor": colorToJson(gridColor),
         "axisColor": colorToJson(axisColor),
         if (logScale) "log": true,
+        if (numbers.toJson().isNotEmpty) "numbers": numbers.toJson(),
         "riseColor": colorToJson(riseColor),
         "fallColor": colorToJson(fallColor),
         "titleSpec": titleSpec.toJson(),
@@ -649,8 +665,8 @@ class ChartElement extends CanvasElement {
                   const ChartLegend()),
           floatingLabels: jsonBool(json["floatLabels"], false),
           descriptionSpec:
-              json["descSpec"]
-                      is Map<String, dynamic>
+              json["descSpec"] is Map<String,
+                      dynamic>
                   ? TextSpec.fromJson(json["descSpec"] as Map<String, dynamic>)
                   : null,
           xAxisLabel: jsonString(json["xlabel"], ""),
@@ -662,6 +678,9 @@ class ChartElement extends CanvasElement {
           showValues: jsonBool(json["values"], false),
           gridColor: colorFromJson(json["gridColor"], const Color(0x33FFFFFF)),
           logScale: jsonBool(json["log"], false),
+          numbers:
+              jsonSpec(
+                  json["numbers"], ChartNumbers.fromJson, const ChartNumbers()),
           riseColor: colorFromJson(json["riseColor"], const Color(0xFF2FD3A0)),
           fallColor: colorFromJson(json["fallColor"], const Color(0xFFE85D75)),
           axisColor: colorFromJson(json["axisColor"], const Color(0x99FFFFFF)),

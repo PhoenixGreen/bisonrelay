@@ -1,4 +1,5 @@
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/chart_numbers.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/chart_data_editor.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
@@ -323,6 +324,58 @@ List<Widget> chartSettings(
               value: e.showValues,
               onChanged: (v) => now(e.copyWith(showValues: v)),
             ),
+            const CanvasLineBreak(),
+            // How a number is written, wherever this chart writes one. The
+            // example beside each name is what a million looks like in it,
+            // because these are far easier to tell apart by their answers
+            // than by their names.
+            CanvasDropdown<NumberStyle>(
+              label: "Numbers",
+              value: e.numbers.style,
+              width: 176,
+              options: [
+                for (var style in NumberStyle.values)
+                  (style, "${style.label} — ${style.example}")
+              ],
+              onChanged: (v) => now(e.copyWith(
+                  numbers: e.numbers.copyWith(
+                style: v,
+                // Seeded from what Automatic was already doing, so choosing a
+                // style does not silently reset the places to none.
+                decimals: e.numbers.style == NumberStyle.automatic &&
+                        v != NumberStyle.automatic
+                    ? (v == NumberStyle.plain ? 0 : 1)
+                    : null,
+              ))),
+            ),
+            // Automatic decides its own, so a box saying "1" under it would
+            // be a control that does nothing.
+            if (e.numbers.style != NumberStyle.automatic) ...[
+              CanvasNumberField(
+                label: "Decimals",
+                value: e.numbers.decimals.toDouble(),
+                min: 0,
+                max: 6,
+                decimals: 0,
+                width: 56,
+                onChanged: (v) {
+                  begin();
+                  write(e.copyWith(
+                      numbers: e.numbers.copyWith(decimals: v.round())));
+                },
+                onCommit: commit,
+              ),
+              CanvasToggle(
+                label: "Separators",
+                value: e.numbers.separators,
+                onChanged: (v) =>
+                    now(e.copyWith(numbers: e.numbers.copyWith(separators: v))),
+              ),
+              CanvasHint("A million is written "
+                  "\"${e.numbers.format(1000000)}\" — the same way on the "
+                  "axis, on the bars and in the legend, because they are the "
+                  "same numbers. Zero decimals leaves no point at all."),
+            ],
             if (!e.type.isCircular)
               const CanvasHint(
                   "Axes labels is everything written along the axes: the numbers, "

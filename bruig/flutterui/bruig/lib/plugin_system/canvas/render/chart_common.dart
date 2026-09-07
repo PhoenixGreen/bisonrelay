@@ -67,13 +67,9 @@ bool colouredByValue(ChartType type) =>
     type == ChartType.donut ||
     type == ChartType.radialBar;
 
-/// formatTick prints an axis value without trailing noise.
-String formatTick(double v) {
-  if (v == v.roundToDouble() && v.abs() < 1e15) {
-    var n = v.round();
-    if (n.abs() >= 1000000) return "${(n / 1000000).toStringAsFixed(1)}M";
-    if (n.abs() >= 10000) return "${(n / 1000).toStringAsFixed(0)}k";
-    return "$n";
-  }
-  return v.toStringAsFixed(v.abs() < 1 ? 2 : 1);
-}
+/// formatTick prints a number the way the chart it belongs to writes them.
+///
+/// Through the element rather than as a bare function, because how a number
+/// is written is now a setting -- and the three places a chart writes one
+/// have to agree. See ChartNumbers.
+String formatTick(ChartElement e, double v) => e.numbers.format(v);

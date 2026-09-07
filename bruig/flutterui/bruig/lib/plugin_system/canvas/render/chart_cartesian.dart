@@ -192,7 +192,7 @@ void paintCartesian(
   var valueGutter = 0.0;
   if (e.showAxisLabels) {
     for (var t in range.ticks) {
-      var p = layoutText(formatTick(t), labelSpec, maxWidth: area.width / 3);
+      var p = layoutText(formatTick(e, t), labelSpec, maxWidth: area.width / 3);
       valueGutter = math.max(valueGutter, p.width);
     }
     valueGutter += labelSpec.fontSize * 0.5;
@@ -316,7 +316,7 @@ void _axisLabels(
 
   for (var t in range.ticks) {
     var f = range.fraction(t);
-    var text = formatTick(t);
+    var text = formatTick(e, t);
     if (horizontal) {
       var x = plot.left + plot.width * f;
       paintTextInBox(
@@ -485,7 +485,7 @@ void _candles(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
       // wall of digits; the close is the one a price chart is read for.
       paintTextInBox(
           canvas,
-          formatTick(ohlc.close),
+          formatTick(e, ohlc.close),
           e.valueSpec.copyWith(
               align: TextAlignSpec.center,
               verticalAlign: VerticalAlignSpec.bottom),
@@ -600,7 +600,7 @@ void _bars(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
         // curve overshoots: a bar may stand a little proud of its mark for a
         // moment and be read as a flourish, and a number that says 21 where
         // the data says 20 is simply wrong.
-        var label = formatTick(v * arrived.clamp(0.0, 1.0));
+        var label = formatTick(e, v * arrived.clamp(0.0, 1.0));
         var box = horizontal
             ? Rect.fromLTWH(
                 bar.right + e.valueSpec.fontSize * 0.3,
@@ -763,7 +763,7 @@ void _lines(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
               : 1.0;
           paintTextInBox(
               canvas,
-              formatTick(data.valueAt(s, i) * shown),
+              formatTick(e, data.valueAt(s, i) * shown),
               e.valueSpec.copyWith(
                   align: TextAlignSpec.center,
                   verticalAlign: VerticalAlignSpec.bottom),
