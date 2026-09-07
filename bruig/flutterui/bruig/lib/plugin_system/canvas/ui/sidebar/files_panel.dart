@@ -52,11 +52,20 @@ class CanvasFilesPanel extends StatefulWidget {
   /// editor, and the panel does not own that.
   final Future<void> Function(String folder, String name) onNew;
 
+  /// showing is whether this tab is the one on display.
+  ///
+  /// The panel is kept alive when it is not -- see the sidebar -- so it no
+  /// longer gets a fresh listing every time it is opened. It reads the
+  /// directory again when it comes back instead, because a canvas may have
+  /// been saved, renamed or deleted while it was away.
+  final bool showing;
+
   const CanvasFilesPanel({
     required this.controller,
     required this.onOpen,
     required this.onPublish,
     required this.onNew,
+    this.showing = true,
     super.key,
   });
 
@@ -76,6 +85,12 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
     super.initState();
     controller.addListener(_onControllerChanged);
     _reload();
+  }
+
+  @override
+  void didUpdateWidget(CanvasFilesPanel old) {
+    super.didUpdateWidget(old);
+    if (widget.showing && !old.showing) _reload();
   }
 
   @override

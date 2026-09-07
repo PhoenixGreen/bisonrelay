@@ -230,6 +230,23 @@ class CanvasController extends ChangeNotifier {
     super.notifyListeners();
   }
 
+  /// restoreFit puts back the frame the reader last chose, without telling
+  /// anybody.
+  ///
+  /// Called from a State's initState, before this screen has built anything,
+  /// which is exactly why it must not notify: the controller is handed round
+  /// by a Provider, and notifying one during a build marks an inherited widget
+  /// dirty while the framework is already building. Flutter catches that and
+  /// throws -- and building the exception captures a stack four hundred frames
+  /// deep, every time the page is opened, which is a visible stutter for a
+  /// setting nobody has to be told about. Nothing has painted yet, so the
+  /// first build reads the new value anyway.
+  void restoreFit(CanvasFit value) {
+    _fit = value;
+    _zoom = 1;
+    _pan = const Offset2(0, 0);
+  }
+
   /// _notifyView tells everyone that the *view* moved -- the zoom, the pan,
   /// how the canvas is framed, which tool is in hand -- without claiming the
   /// document changed.

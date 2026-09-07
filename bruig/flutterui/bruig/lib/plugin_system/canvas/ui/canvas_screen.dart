@@ -123,8 +123,13 @@ class _CanvasScreenState extends State<CanvasScreen> {
     // The frame the reader last chose, before anything is drawn. It belongs
     // to them rather than to the document -- see CanvasPreferences.fit -- so
     // it survives opening a different canvas.
+    //
+    // restoreFit rather than the setter, because the setter notifies and this
+    // runs inside initState: notifying a controller that a Provider is handing
+    // round marks an inherited widget dirty mid-build, and Flutter answers
+    // that with an exception whose stack is four hundred frames long.
     for (var fit in CanvasFit.values) {
-      if (fit.name == prefs.fit) _controller.fit = fit;
+      if (fit.name == prefs.fit) _controller.restoreFit(fit);
     }
     if (!_controller.opened) _reopenLast(prefs);
     _controller.markOpened();
@@ -358,16 +363,43 @@ class _CanvasScreenState extends State<CanvasScreen> {
       panel: _panel,
       onPanelChanged: _setPanel,
       onHide: () => setState(() => _sidebarVisible = false),
-      child: switch (_panel) {
-        CanvasPanel.files => CanvasFilesPanel(
-            controller: _controller,
-            onOpen: _open,
-            onPublish: _publishSaved,
-            onNew: _newCanvas,
-          ),
-        CanvasPanel.presets => CanvasPresetsPanel(onChoose: _openPreset),
-        CanvasPanel.design => CanvasDesignPanel(controller: _controller),
-      },
+      // All three kept, and only the chosen one shown.
+      //
+      // Offstage rather than a switch that builds one and throws the others
+      // away. Building the design column from cold is a hundred and thirty
+      // milliseconds -- three panels of controls, every text field with its
+      // own state, its own focus node, its own editing controller -- and
+      // paying that on every tab press is the delay you feel switching back
+      // and forth. Offstage keeps the state and skips the layout and the
+      // painting, so a hidden panel costs nothing per frame and comes back
+      // instantly.
+      child: Stack(
+        children: [
+          for (var panel in CanvasPanel.values)
+            Offstage(
+              offstage: _panel != panel,
+              child: TickerMode(
+                // Nothing hidden should be animating: an offstage panel with
+                // a spinner in it would go on scheduling frames for something
+                // nobody can see.
+                enabled: _panel == panel,
+                child: switch (panel) {
+                  CanvasPanel.files => CanvasFilesPanel(
+                      controller: _controller,
+                      onOpen: _open,
+                      onPublish: _publishSaved,
+                      onNew: _newCanvas,
+                      showing: _panel == CanvasPanel.files,
+                    ),
+                  CanvasPanel.presets =>
+                    CanvasPresetsPanel(onChoose: _openPreset),
+                  CanvasPanel.design =>
+                    CanvasDesignPanel(controller: _controller),
+                },
+              ),
+            ),
+        ],
+      ),
     );
 
     return ScreenWithChatSideMenu(

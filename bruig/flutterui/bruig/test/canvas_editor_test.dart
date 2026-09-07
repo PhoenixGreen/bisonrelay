@@ -3748,6 +3748,28 @@ void main() {
       expect(controller.pan.dy, 0);
     });
 
+    test("restoring it tells nobody", () async {
+      // It is applied from a State's initState, before the page has built
+      // anything. The controller is handed round by a Provider, and notifying
+      // one mid-build marks an inherited widget dirty while the framework is
+      // already building -- which Flutter answers with an exception whose
+      // stack is four hundred frames deep, on every visit to the page. That
+      // was a visible stutter for a setting nobody has to be told about.
+      var controller = CanvasController(const CanvasDocument());
+      addTearDown(controller.dispose);
+
+      var told = 0;
+      controller.addListener(() => told++);
+
+      controller.restoreFit(CanvasFit.width);
+      expect(controller.fit, CanvasFit.width);
+      expect(told, 0, reason: "nothing has painted yet, so nothing needs it");
+
+      // The ordinary setter still does tell everyone.
+      controller.fit = CanvasFit.whole;
+      expect(told, 1);
+    });
+
     test("the preference is stored by name, not by position", () async {
       // So that adding or reordering the fits later does not silently change
       // what an old preference means.
