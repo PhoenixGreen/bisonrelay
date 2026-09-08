@@ -492,6 +492,16 @@ class TextAnimation {
   /// echo is how the copies are arranged, for the presets that make them.
   final TextEchoSpec echo;
 
+  /// part is which of the element's parts this happens to, or -1 for all of
+  /// the words.
+  ///
+  /// An index into the element's own list rather than a range of its own,
+  /// because "these words, not the others" is already written down once --
+  /// see TextPart -- and a second copy of it here would be the same question
+  /// with two answers. It is what makes the reference possible: a headline
+  /// where one word echoes and the rest of the line sits still.
+  final int part;
+
   /// scale is where a growing preset starts from, as a fraction: 0.6 arrives
   /// from a little small, 0 from nothing, 2 from twice the size.
   ///
@@ -520,6 +530,7 @@ class TextAnimation {
     this.scale = 0,
     this.draw = const TextDrawSpec(),
     this.echo = const TextEchoSpec(),
+    this.part = -1,
     this.ease = ChartEase.easeOut,
     this.flipOrder = false,
   });
@@ -530,6 +541,9 @@ class TextAnimation {
   /// or the preset's own number when nothing has.
   double scaleFor(TextAnimationPreset preset) =>
       scale > 0 ? scale : preset.from;
+
+  /// toSome is whether this happens to some of the words rather than all.
+  bool get toSome => part >= 0;
 
   /// echoes is whether the copy settings mean anything for what is chosen.
   bool get echoes =>
@@ -554,6 +568,7 @@ class TextAnimation {
     double? scale,
     TextDrawSpec? draw,
     TextEchoSpec? echo,
+    int? part,
     ChartEase? ease,
     bool? flipOrder,
   }) =>
@@ -565,6 +580,7 @@ class TextAnimation {
         scale: scale ?? this.scale,
         draw: draw ?? this.draw,
         echo: echo ?? this.echo,
+        part: part ?? this.part,
         ease: ease ?? this.ease,
         flipOrder: flipOrder ?? this.flipOrder,
       );
@@ -599,6 +615,7 @@ class TextAnimation {
         if (scale > 0) "scale": scale,
         if (draw.toJson().isNotEmpty) "draw": draw.toJson(),
         if (echo.toJson().isNotEmpty) "echo": echo.toJson(),
+        if (part >= 0) "part": part,
         "ease": ease.name,
       };
 
@@ -614,6 +631,7 @@ class TextAnimation {
         echo: json["echo"] is Map<String, dynamic>
             ? TextEchoSpec.fromJson(json["echo"] as Map<String, dynamic>)
             : const TextEchoSpec(),
+        part: jsonInt(json["part"], -1),
         ease: ChartEase.fromName(json["ease"] as String?),
       );
 }

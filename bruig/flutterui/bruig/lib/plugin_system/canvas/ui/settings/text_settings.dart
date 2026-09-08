@@ -259,10 +259,26 @@ Widget _partsSection(TextElement e, SettingsWrite write, VoidCallback begin,
           CanvasIconButton(
             icon: Icons.delete_outline,
             tooltip: "Remove this part",
-            onPressed: () => set([
-              for (var j = 0; j < e.parts.length; j++)
-                if (j != i) e.parts[j],
-            ]),
+            onPressed: () {
+              // An animation pointed at a part that has gone would be
+              // pointed at whichever part moved up into its place, which is
+              // a setting quietly changing its own meaning.
+              var at = e.animation.part;
+              var next = at == i
+                  ? -1
+                  : at > i
+                      ? at - 1
+                      : at;
+              begin();
+              write(e.copyWith(
+                parts: [
+                  for (var j = 0; j < e.parts.length; j++)
+                    if (j != i) e.parts[j],
+                ],
+                animation: e.animation.copyWith(part: next),
+              ));
+              commit();
+            },
           ),
         ]),
       CanvasControlGroup(label: "Add", hideCaption: true, children: [
@@ -349,6 +365,24 @@ Widget _animationSection(CanvasController controller, TextElement e,
             onChanged: (v) => controller.applyTextAnimation(e, v),
           ),
       ]),
+      // Which words it happens to. All of them unless one of the parts is
+      // named, which is what makes a headline where one word echoes and the
+      // rest of the line sits still.
+      if (animation.on && e.parts.isNotEmpty)
+        CanvasControlGroup(label: "Applies to", children: [
+          CanvasDropdown<int>(
+            key: const ValueKey("textAnimationPart"),
+            label: "",
+            value: animation.part < e.parts.length ? animation.part : -1,
+            width: 190,
+            options: [
+              (-1, "All the words"),
+              for (var (i, part) in e.parts.indexed) (i, part.says),
+            ],
+            onChanged: (v) =>
+                now(e.copyWith(animation: animation.copyWith(part: v))),
+          ),
+        ]),
       if (animation.on || animation.closes)
         CanvasControlGroup(label: "Leaving", children: [
           CanvasDropdown<TextAnimationFamily?>(

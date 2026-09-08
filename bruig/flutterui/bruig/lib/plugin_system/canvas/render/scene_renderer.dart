@@ -304,7 +304,10 @@ void _paintText(
   if (animation.on &&
       reveal <= 0 &&
       !(animation.preset.motion.keeps &&
-          animation.draw.start == TextDrawStart.showText)) {
+          animation.draw.start == TextDrawStart.showText) &&
+      // And unless it is happening to only some of the words, in which case
+      // the others are there whatever it is doing to those.
+      !animation.toSome) {
     return;
   }
 

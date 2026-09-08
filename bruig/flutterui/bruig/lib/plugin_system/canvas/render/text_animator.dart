@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/text_parts.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:flutter/painting.dart';
@@ -34,21 +35,50 @@ class TextPiece {
 /// where that letter actually is -- including the bit of a line that a
 /// centred paragraph indents by, which is the sort of thing that is wrong by
 /// half a word if it is worked out by counting characters.
+/// [range] restricts it to some of the words -- see TextPart. A block-scoped
+/// animation given one moves that range rather than the whole paragraph,
+/// which is what "echo this word and leave the line alone" needs.
 List<TextPiece> piecesFor(
-    TextPainter painter, String text, TextAnimationScope scope) {
-  if (scope == TextAnimationScope.block || text.isEmpty) {
+    TextPainter painter, String text, TextAnimationScope scope,
+    {(int, int)? range}) {
+  if (text.isEmpty) {
     return [TextPiece(Offset.zero & painter.size, 0, text.length)];
+  }
+
+  if (scope == TextAnimationScope.block) {
+    if (range == null) {
+      return [TextPiece(Offset.zero & painter.size, 0, text.length)];
+    }
+    // The range as one piece: the box round the letters it covers.
+    var boxes = painter.getBoxesForSelection(
+        TextSelection(baseOffset: range.$1, extentOffset: range.$2));
+    if (boxes.isEmpty) {
+      return [TextPiece(Offset.zero & painter.size, 0, text.length)];
+    }
+    var box = boxes.first.toRect();
+    for (var b in boxes.skip(1)) {
+      box = box.expandToInclude(b.toRect());
+    }
+    return [TextPiece(box, range.$1, range.$2)];
   }
 
   if (scope == TextAnimationScope.line) {
     var out = <TextPiece>[];
     for (var line in painter.computeLineMetrics()) {
       var top = line.baseline - line.ascent;
-      out.add(TextPiece(
-        Rect.fromLTWH(line.left, top, math.max(1, line.width), line.height),
-        0,
-        text.length,
-      ));
+      var box =
+          Rect.fromLTWH(line.left, top, math.max(1, line.width), line.height);
+      // Only the lines the range touches, where there is one.
+      if (range != null) {
+        var boxes = painter.getBoxesForSelection(
+            TextSelection(baseOffset: range.$1, extentOffset: range.$2));
+        var touches = boxes.any((b) {
+          var r = b.toRect();
+          return r.center.dy >= box.top && r.center.dy <= box.bottom;
+        });
+        if (!touches) continue;
+      }
+      out.add(TextPiece(box, 0, text.length));
     }
     return out.isEmpty
         ? [TextPiece(Offset.zero & painter.size, 0, text.length)]
@@ -73,6 +103,12 @@ List<TextPiece> piecesFor(
     for (var i = 0; i < text.length; i++) {
       if (!_isSpace(text[i])) ranges.add((i, i + 1));
     }
+  }
+  if (range != null) {
+    ranges = [
+      for (var (from, to) in ranges)
+        if (from >= range.$1 && to <= range.$2) (from, to),
+    ];
   }
 
   var out = <TextPiece>[];
@@ -114,6 +150,10 @@ void paintAnimatedText(
   double reveal, {
   double maxWidth = 0,
   TextPainter? outline,
+
+  /// parts are the element's own, so an animation pointed at one of them can
+  /// find it. See TextAnimation.part.
+  List<TextPart> parts = const [],
 }) {
   var preset = animation.preset;
   if (!animation.on) {
@@ -135,6 +175,23 @@ void paintAnimatedText(
     if (preset.motion.keeps && animation.draw.start == TextDrawStart.showText) {
       outline?.paint(canvas, offset);
       painter.paint(canvas, offset);
+    } else if (animation.toSome) {
+      // The words this is *not* happening to are there whatever it is doing
+      // to the ones it is.
+      var range = animation.part < parts.length
+          ? rangeOf(text, parts[animation.part])
+          : null;
+      if (range != null) {
+        canvas.save();
+        for (var piece
+            in piecesFor(painter, text, preset.scope, range: range)) {
+          canvas.clipRect(piece.box.shift(offset).inflate(1),
+              clipOp: ui.ClipOp.difference);
+        }
+        outline?.paint(canvas, offset);
+        painter.paint(canvas, offset);
+        canvas.restore();
+      }
     }
     return;
   }
@@ -147,7 +204,27 @@ void paintAnimatedText(
     return;
   }
 
-  var pieces = piecesFor(painter, text, preset.scope);
+  // Which words this happens to. Named, the rest of the paragraph is drawn
+  // as it stands and only the part moves -- a headline where one word echoes
+  // and the line it is in sits still.
+  var range = animation.toSome && animation.part < parts.length
+      ? rangeOf(text, parts[animation.part])
+      : null;
+
+  var pieces = piecesFor(painter, text, preset.scope, range: range);
+  if (range != null) {
+    canvas.save();
+    // The rest of the words, at rest: the paragraph with the moving pieces
+    // cut out of it, so nothing is drawn twice.
+    for (var piece in pieces) {
+      canvas.clipRect(piece.box.shift(offset).inflate(1),
+          clipOp: ui.ClipOp.difference);
+    }
+    outline?.paint(canvas, offset);
+    painter.paint(canvas, offset);
+    canvas.restore();
+  }
+
   paintAnimatedPieces(canvas, painter, offset, pieces,
       [for (var i = 0; i < pieces.length; i++) i], spec, animation, reveal,
       outline: outline);

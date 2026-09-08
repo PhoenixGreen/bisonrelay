@@ -1,3 +1,5 @@
+import 'package:bruig/plugin_system/canvas/model/elements/chart_animation.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
@@ -250,6 +252,96 @@ void main() {
       expect(back.echo.fade, 0.4);
       expect(back.echo.shrink, 0.9);
       expect(back.echoes, isTrue);
+    });
+  });
+
+  group("an animation pointed at a part", () {
+    const line = "You come across an idea";
+
+    Future<Map<int, int>> ink(TextElement element, double reveal) async {
+      const size = Size(400, 200);
+      var posed = element.withBase(
+        track: ElementTrack([
+          Keyframe(frame: 0, values: {KeyframeChannel.reveal: reveal}),
+        ]),
+      );
+      var recorder = ui.PictureRecorder();
+      var canvas = ui.Canvas(recorder);
+      canvas.drawRect(
+          Offset.zero & size, Paint()..color = const Color(0xFF000000));
+      paintElement(canvas, posed, 0,
+          document: CanvasDocument(elements: [posed]));
+      var picture = recorder.endRecording();
+      var image = await picture.toImage(400, 200);
+      var bytes = (await image.toByteData())!;
+      var counts = <int, int>{};
+      for (var i = 0; i < bytes.lengthInBytes; i += 4) {
+        var pixel = bytes.getUint32(i);
+        counts[pixel] = (counts[pixel] ?? 0) + 1;
+      }
+      image.dispose();
+      picture.dispose();
+      return counts;
+    }
+
+    TextElement headline({required int part}) => TextElement(
+          const ElementBase(id: "t", x: 0, y: 20, width: 400, height: 80),
+          text: line,
+          textSpec: const TextSpec(fontSize: 26, color: Color(0xFFFFFFFF)),
+          parts: const [TextPart(from: 5, to: 5)],
+          animation: TextAnimation(
+              preset: TextAnimationPreset.fadeIn,
+              part: part,
+              ease: ChartEase.linear),
+        );
+
+    testWidgets("leaves the other words alone", (tester) async {
+      // The reference: one word arrives and the line it is in sits still.
+      late Map<int, int> partly;
+      late Map<int, int> wholly;
+      await tester.runAsync(() async {
+        partly = await ink(headline(part: 0), 0);
+        wholly = await ink(headline(part: -1), 0);
+      });
+
+      expect(wholly[0xFFFFFFFF] ?? 0, 0,
+          reason: "pointed at all the words, none of them has arrived");
+      expect(partly[0xFFFFFFFF] ?? 0, greaterThan(50),
+          reason: "pointed at one word, the rest of the line is already there");
+    });
+
+    testWidgets("and the part itself is the thing that moves", (tester) async {
+      late Map<int, int> atNothing;
+      late Map<int, int> atAll;
+      await tester.runAsync(() async {
+        atNothing = await ink(headline(part: 0), 0);
+        atAll = await ink(headline(part: 0), 1);
+      });
+      expect(atAll[0xFFFFFFFF]!, greaterThan(atNothing[0xFFFFFFFF]! + 30),
+          reason: "the word it points at should arrive on top of the rest");
+    });
+
+    test("removing the part it points at unpoints it", () {
+      // Left alone, the animation would be pointed at whichever part moved up
+      // into the empty place -- a setting quietly changing its own meaning.
+      const animation =
+          TextAnimation(preset: TextAnimationPreset.fadeIn, part: 1);
+      expect(animation.toSome, isTrue);
+      expect(animation.copyWith(part: -1).toSome, isFalse);
+    });
+
+    test("and it survives being saved", () {
+      var back = TextAnimation.fromJson(
+          const TextAnimation(preset: TextAnimationPreset.echoDown, part: 2)
+              .toJson());
+      expect(back.part, 2);
+      expect(
+          TextAnimation.fromJson(
+                  const TextAnimation(preset: TextAnimationPreset.fadeIn)
+                      .toJson())
+              .part,
+          -1,
+          reason: "all the words, which is what nothing written down means");
     });
   });
 }

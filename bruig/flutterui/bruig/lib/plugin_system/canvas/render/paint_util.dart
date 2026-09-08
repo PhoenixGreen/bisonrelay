@@ -216,7 +216,7 @@ double paintTextInBox(
       animation.on &&
       (reveal < 1 || animation.preset.motion.keeps)) {
     paintAnimatedText(canvas, painter, text, spec, offset, animation, reveal,
-        maxWidth: box.width, outline: outline);
+        maxWidth: box.width, outline: outline, parts: parts);
   } else {
     outline?.paint(canvas, offset);
     painter.paint(canvas, offset);
