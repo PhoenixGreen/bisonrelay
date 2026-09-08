@@ -3,7 +3,9 @@ import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
+import 'package:bruig/plugin_system/canvas/render/text_animator.dart';
 import 'package:flutter/painting.dart';
 
 // paint_util.dart is the drawing every element does the same way: laying out
@@ -130,6 +132,8 @@ TextPainter _layoutText(
 ///
 /// Returns the height the text actually took, which the chart and the table
 /// use to decide how much room is left for everything else.
+/// [animation] and [reveal] draw it part way through arriving, which is what
+/// a text element's keyframes ask for. See text_animator.dart.
 double paintTextInBox(
   ui.Canvas canvas,
   String text,
@@ -138,6 +142,8 @@ double paintTextInBox(
   double scale = 1,
   Color? colorOverride,
   bool clip = false,
+  TextAnimation? animation,
+  double reveal = 1,
 }) {
   if (text.isEmpty || box.width <= 0) return 0;
 
@@ -169,7 +175,16 @@ double paintTextInBox(
             maxWidth: box.width, scale: scale, outline: true, fillWidth: true)
         .paint(canvas, offset);
   }
-  painter.paint(canvas, offset);
+
+  // Part way through arriving, if it is arriving. The animator is handed the
+  // paragraph that has already been laid out, so what comes in is exactly
+  // what will be there when it has come in.
+  if (animation != null && animation.on && reveal < 1) {
+    paintAnimatedText(canvas, painter, text, spec, offset, animation, reveal,
+        maxWidth: box.width);
+  } else {
+    painter.paint(canvas, offset);
+  }
 
   if (clip) canvas.restore();
   return painter.height;

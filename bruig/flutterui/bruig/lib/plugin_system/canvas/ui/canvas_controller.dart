@@ -10,6 +10,8 @@ import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/render/image_store.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_assets.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
@@ -1422,6 +1424,120 @@ class CanvasController extends ChangeNotifier {
         .copyWith(animation: element.animation.copyWith(preset: preset))
         .withBase(track: track);
     apply(document.withElement(next));
+    endInteraction();
+  }
+
+  /// applyTextAnimation puts a preset on a text element and lays the two
+  /// keyframes that give it a length.
+  ///
+  /// The chart's function with a different element, and deliberately so: the
+  /// two animations use the same channels, the same stagger and the same
+  /// timeline, so a canvas with a headline and a chart arriving together has
+  /// them arriving together. See applyChartAnimation, which this mirrors line
+  /// for line -- including the reason the keyframes are ordinary ones.
+  void applyTextAnimation(TextElement element, TextAnimationPreset preset) {
+    beginInteraction();
+
+    if (preset == TextAnimationPreset.none) {
+      var track = element.track;
+      var without = track == null
+          ? null
+          : ElementTrack([
+              for (var key in track.keys)
+                if (!key.values.containsKey(KeyframeChannel.reveal)) key,
+            ]);
+      replaceElement(element
+          .copyWith(animation: element.animation.copyWith(preset: preset))
+          .withBase(
+              track: without == null || without.keys.isEmpty ? null : without,
+              clearTrack: without == null || without.keys.isEmpty));
+      endInteraction();
+      return;
+    }
+
+    var document = _document;
+    if (!document.isAnimated) {
+      document = document.copyWith(
+          frames: math.max(2, document.frameRate * chartAnimationSeconds));
+    }
+
+    var from = _frame.clamp(0, document.frames - 2);
+    var span =
+        math.max(2, (document.frameRate * chartAnimationSeconds).round());
+    var to = math.min(document.frames - 1, from + span);
+    if (to <= from) {
+      from = 0;
+      to = document.frames - 1;
+    }
+
+    var track = (element.track ?? ElementTrack.empty);
+    for (var key in track.keys) {
+      if (key.values.containsKey(KeyframeChannel.reveal)) {
+        track = track.withoutFrame(key.frame);
+      }
+    }
+    track = track
+        .withKey(Keyframe(frame: from).withValue(KeyframeChannel.reveal, 0))
+        .withKey(Keyframe(frame: to).withValue(KeyframeChannel.reveal, 1));
+
+    apply(document.withElement(element
+        .copyWith(animation: element.animation.copyWith(preset: preset))
+        .withBase(track: track)));
+    endInteraction();
+  }
+
+  /// applyTextExit is the way out, on its own pair of keyframes at the end of
+  /// the timeline. See applyChartExit.
+  void applyTextExit(TextElement element, TextAnimationPreset preset) {
+    beginInteraction();
+
+    var track = element.track ?? ElementTrack.empty;
+    if (preset == TextAnimationPreset.none) {
+      var without = track;
+      for (var key in track.keys) {
+        if (key.values.containsKey(KeyframeChannel.close)) {
+          without = without.withoutFrame(key.frame);
+        }
+      }
+      replaceElement(element
+          .copyWith(animation: element.animation.copyWith(exit: preset))
+          .withBase(
+              track: without.keys.isEmpty ? null : without,
+              clearTrack: without.keys.isEmpty));
+      endInteraction();
+      return;
+    }
+
+    var document = _document;
+    if (!document.isAnimated) {
+      document = document.copyWith(
+          frames: math.max(2, document.frameRate * chartAnimationSeconds * 2));
+    }
+
+    var span =
+        math.max(2, (document.frameRate * chartAnimationSeconds).round());
+    var to = document.frames - 1;
+    var entranceEnds = 0;
+    for (var key in track.keys) {
+      if (key.values.containsKey(KeyframeChannel.reveal)) {
+        entranceEnds = math.max(entranceEnds, key.frame);
+      }
+    }
+    var from = math.max(entranceEnds + 1, to - span);
+    if (from >= to) from = math.max(0, to - 1);
+
+    for (var key in track.keys) {
+      if (key.values.containsKey(KeyframeChannel.close)) {
+        track = track.withoutFrame(key.frame);
+      }
+    }
+    track = track
+        .withKey(Keyframe(frame: from).withValue(KeyframeChannel.close, 0))
+        .withKey(Keyframe(frame: to).withValue(KeyframeChannel.close, 1));
+
+    apply(document.withElement(element
+        .copyWith(animation: element.animation.copyWith(exit: preset))
+        .withBase(track: track)));
     endInteraction();
   }
 

@@ -1,3 +1,5 @@
+import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_estimate.dart';
 import 'dart:math' as math;
 import 'package:bruig/storage_manager.dart';
@@ -4398,6 +4400,91 @@ void main() {
       await tester.tap(find.byTooltip("Remove every guide"));
       await tester.pumpAndSettle();
       expect(controller.document.guides.guides, isEmpty);
+    });
+  });
+
+  group("a text element's animation", () {
+    /// open scrolls the settings to the animation section and opens it, if it
+    /// is not open already.
+    ///
+    /// A section remembers whether it was open and the memory outlives one
+    /// test, so tapping unconditionally shuts the one the test before left
+    /// open -- and everything inside it is then nowhere to be found.
+    Future<void> open(WidgetTester tester) async {
+      if (find
+          .byKey(const ValueKey("textAnimationPreset"))
+          .evaluate()
+          .isNotEmpty) {
+        return;
+      }
+      await tester.ensureVisible(find.text("ANIMATION"));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text("ANIMATION"));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets("choosing one applies it and lays the keyframes",
+        (tester) async {
+      // The same gesture a chart's animation is chosen with: a preset with
+      // nothing pinning the reveal channel draws exactly what a still element
+      // draws, and asking somebody to key a channel they have never heard of
+      // is asking them to know how this is implemented.
+      var element = TextElement(
+        const ElementBase(id: "t", x: 40, y: 40, width: 300, height: 120),
+        text: "A headline",
+      );
+      var controller = CanvasController(
+          const CanvasDocument(frames: 24, frameRate: 12).addElement(element));
+      addTearDown(controller.dispose);
+      controller.selectOnly("t");
+      await pump(tester, CanvasDesignPanel(controller: controller));
+
+      await open(tester);
+      var list = find.byKey(const ValueKey("textAnimationPreset"));
+      await tester.ensureVisible(list);
+      await tester.pumpAndSettle();
+      await tester.tap(list);
+      await tester.pumpAndSettle();
+      // One near the top of the list: a dropdown builds the items it can see,
+      // and this list is thirty long.
+      await tester.tap(find.text("Fade · Fade up").last);
+      await tester.pumpAndSettle();
+
+      var after = controller.document.elements.single as TextElement;
+      expect(after.animation.preset, TextAnimationPreset.fadeUp);
+      expect(after.track, isNotNull,
+          reason: "and it has a length on the timeline");
+    });
+
+    testWidgets("the list is grouped, because thirty names is a wall",
+        (tester) async {
+      var element = TextElement(
+        const ElementBase(id: "t", x: 40, y: 40, width: 300, height: 120),
+        text: "A headline",
+        animation: const TextAnimation(preset: TextAnimationPreset.fadeIn),
+      );
+      var controller = CanvasController(
+          const CanvasDocument(frames: 24, frameRate: 12).addElement(element));
+      addTearDown(controller.dispose);
+      controller.selectOnly("t");
+      await pump(tester, CanvasDesignPanel(controller: controller));
+
+      await open(tester);
+
+      // Read off the control rather than off the open menu: a dropdown builds
+      // the items it can see, and thirty of them do not fit on a screen.
+      var list = tester.widget<CanvasDropdown<TextAnimationPreset>>(
+          find.byKey(const ValueKey("textAnimationPreset")));
+      var labels = [for (var (_, text) in list.options) text];
+
+      for (var family in TextAnimationFamily.values) {
+        expect(
+            labels.where((l) => l.startsWith("${family.label} · ")), isNotEmpty,
+            reason: "${family.label} should be offered");
+      }
+      expect(labels.first, "None",
+          reason: "and the way to have none of it comes first");
+      expect(labels.length, greaterThan(20));
     });
   });
 

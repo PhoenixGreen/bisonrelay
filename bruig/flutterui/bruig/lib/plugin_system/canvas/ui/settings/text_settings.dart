@@ -1,3 +1,5 @@
+import 'package:bruig/plugin_system/canvas/model/elements/chart_animation.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
@@ -159,7 +161,121 @@ List<Widget> textSettings(CanvasController controller, TextElement e,
       ],
     ]),
     boxGroup(e.box, (box) => write(e.copyWith(box: box)), begin, commit),
+    _animationSection(controller, e, write, begin, commit),
   ];
+}
+
+/// _animationSection is how the words arrive, and how they leave.
+///
+/// Its own section, like a chart's, and for the same reason: it is a handful
+/// of choices made once and then left alone, and open by default it would be
+/// half a screen of names between the type settings and the box.
+///
+/// The presets are grouped by family because the flat list is thirty long.
+/// Grouped, the question is "what kind of arrival" and then "which one",
+/// which is how somebody actually chooses.
+Widget _animationSection(CanvasController controller, TextElement e,
+    SettingsWrite write, VoidCallback begin, VoidCallback commit) {
+  void now(TextElement next) {
+    begin();
+    write(next);
+    commit();
+  }
+
+  var animation = e.animation;
+  return CanvasExpander(
+    label: "Animation",
+    remember: "textAnimation",
+    trailing: animation.on
+        ? (animation.closes
+            ? "${animation.preset.label} · ${animation.exit.label}"
+            : animation.preset.label)
+        : (animation.closes ? animation.exit.label : null),
+    children: [
+      const CanvasHint(
+          "Choosing one draws the words on over two seconds and puts a "
+          "keyframe at each end of it on the timeline. Drag those to decide "
+          "how long it takes and when it happens — the same two keyframes a "
+          "chart's animation uses, so a headline and a chart can arrive "
+          "together."),
+      CanvasControlGroup(label: "Arriving", children: [
+        CanvasDropdown<TextAnimationPreset>(
+          key: const ValueKey("textAnimationPreset"),
+          label: "",
+          value: animation.preset,
+          width: 190,
+          options: [
+            (TextAnimationPreset.none, "None"),
+            for (var family in TextAnimationFamily.values)
+              for (var preset in TextAnimationPreset.values)
+                if (preset != TextAnimationPreset.none &&
+                    preset.family == family)
+                  (preset, "${family.label} · ${preset.label}"),
+          ],
+          onChanged: (v) => controller.applyTextAnimation(e, v),
+        ),
+      ]),
+      if (animation.on || animation.closes)
+        CanvasControlGroup(label: "Leaving", children: [
+          CanvasDropdown<TextAnimationPreset>(
+            key: const ValueKey("textAnimationExit"),
+            label: "",
+            value: animation.exit,
+            width: 190,
+            options: [
+              (TextAnimationPreset.none, "None"),
+              for (var family in TextAnimationFamily.values)
+                for (var preset in TextAnimationPreset.values)
+                  if (preset != TextAnimationPreset.none &&
+                      preset.family == family)
+                    (preset, "${family.label} · ${preset.label}, reversed"),
+            ],
+            onChanged: (v) => controller.applyTextExit(e, v),
+          ),
+          if (animation.closes)
+            CanvasToggle(
+              label: "In the same order",
+              value: animation.exitInOrder,
+              onChanged: (v) => now(
+                  e.copyWith(animation: animation.copyWith(exitInOrder: v))),
+            ),
+        ]),
+      if (animation.on || animation.closes)
+        CanvasControlGroup(label: "Timing", children: [
+          if (animation.preset.staggers || animation.exit.staggers)
+            CanvasNumberField(
+              label: "Gap",
+              min: 0,
+              max: 4,
+              decimals: 2,
+              width: 62,
+              value: animation.gap,
+              onChanged: (v) {
+                begin();
+                write(e.copyWith(animation: animation.copyWith(gap: v)));
+              },
+              onCommit: commit,
+            ),
+          if (animation.preset.staggers || animation.exit.staggers)
+            const CanvasHint(
+                "How long after one letter, word or line starts before the "
+                "next does, as a share of one piece's own movement. 1 is "
+                "strictly one after another; below 1 they overlap; above 1 "
+                "leaves a pause between them."),
+          CanvasDropdown<ChartEase>(
+            label: "End curve",
+            value: animation.ease,
+            width: 118,
+            options: [for (var c in ChartEase.values) (c, c.label)],
+            onChanged: (v) {
+              begin();
+              write(e.copyWith(animation: animation.copyWith(ease: v)));
+              commit();
+            },
+          ),
+        ]),
+    ],
+  );
 }
 
 /// valueDot is the diamond beside one animatable property.

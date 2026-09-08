@@ -287,8 +287,33 @@ void _paintText(
 
   var spec = drawnTextSpec(e, bounds);
 
+  // How much of it has arrived, and how much has left again -- the same two
+  // channels a chart's animation uses, so the timeline treats the two kinds
+  // of element identically. See TextAnimation.
+  var animation = e.animation;
+  var reveal = pose.values[KeyframeChannel.reveal] ?? 1;
+  var close = pose.values[KeyframeChannel.close] ?? 0;
+  if (animation.closes && close > 0) {
+    animation = animation.leaving;
+    reveal = 1 - close.clamp(0.0, 1.0);
+  }
+  if (animation.on && reveal <= 0) return;
+
   if (e.columns.isSingle) {
-    paintTextInBox(canvas, e.displayText, spec, inner);
+    paintTextInBox(canvas, e.displayText, spec, inner,
+        animation: animation, reveal: reveal);
+    return;
+  }
+  // Columns are not animated piece by piece: a paragraph in three columns is
+  // three laid-out blocks and the pieces would have to be gathered across
+  // all of them. The whole thing fades and moves as one instead, which is
+  // honest about what it is doing rather than animating one column and not
+  // the others.
+  if (animation.on && reveal < 1) {
+    canvas.saveLayer(inner.inflate(inner.height),
+        Paint()..color = Color.fromRGBO(0, 0, 0, reveal.clamp(0.0, 1.0)));
+    paintTextInColumns(canvas, e.displayText, spec, inner, e.columns);
+    canvas.restore();
     return;
   }
   paintTextInColumns(canvas, e.displayText, spec, inner, e.columns);

@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 
 /// ColumnRuleStyle is how the line between two columns is drawn.
@@ -181,6 +182,9 @@ class TextElement extends CanvasElement {
   /// columns is how the paragraph is broken up. See [TextColumns].
   final TextColumns columns;
 
+  /// animation is how the words arrive. See [TextAnimation].
+  final TextAnimation animation;
+
   /// curve attaches the text to a line, or is null for a paragraph in its own
   /// box. See [TextOnCurve].
   final TextOnCurve? curve;
@@ -192,6 +196,7 @@ class TextElement extends CanvasElement {
     this.box = const BoxSpec(),
     this.autoSize = false,
     this.columns = const TextColumns(),
+    this.animation = const TextAnimation(),
     this.curve,
   });
 
@@ -210,6 +215,7 @@ class TextElement extends CanvasElement {
       box: box,
       autoSize: autoSize,
       columns: columns,
+      animation: animation,
       curve: curve);
 
   TextElement copyWith({
@@ -218,6 +224,7 @@ class TextElement extends CanvasElement {
     BoxSpec? box,
     bool? autoSize,
     TextColumns? columns,
+    TextAnimation? animation,
     TextOnCurve? curve,
     bool clearCurve = false,
   }) =>
@@ -227,6 +234,7 @@ class TextElement extends CanvasElement {
           box: box ?? this.box,
           autoSize: autoSize ?? this.autoSize,
           columns: columns ?? this.columns,
+          animation: animation ?? this.animation,
           curve: clearCurve ? null : (curve ?? this.curve));
 
   @override
@@ -236,16 +244,20 @@ class TextElement extends CanvasElement {
         "box": box.toJson(),
         if (autoSize) "autoSize": true,
         if (!columns.isSingle) "columns": columns.toJson(),
+        if (animation.on || animation.closes) "animation": animation.toJson(),
         if (curve != null) "curve": curve!.toJson(),
       };
 
   factory TextElement.fromJson(Map<String, dynamic> json, ElementBase b) =>
-      TextElement(b,
+      TextElement(
+          b,
           text: jsonString(json["text"], "Text"),
           textSpec:
               jsonSpec(json["textSpec"], TextSpec.fromJson, const TextSpec()),
           box: jsonSpec(json["box"], BoxSpec.fromJson, const BoxSpec()),
           autoSize: jsonBool(json["autoSize"], false),
+          animation: jsonSpec(
+              json["animation"], TextAnimation.fromJson, const TextAnimation()),
           columns: jsonSpec(
               json["columns"], TextColumns.fromJson, const TextColumns()),
           curve: json["curve"] is Map<String, dynamic>

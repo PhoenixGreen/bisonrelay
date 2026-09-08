@@ -724,7 +724,7 @@ class _ZoomFieldState extends State<_ZoomField> {
         fontSize: 12, color: widget.theme.colors.onSurfaceVariant, height: 1.1);
 
     return SizedBox(
-      width: 58,
+      width: 56,
       height: 26,
       child: Tooltip(
         message: "How large the canvas is drawn, as a percentage of its own "
@@ -732,7 +732,10 @@ class _ZoomFieldState extends State<_ZoomField> {
         child: TextField(
           controller: _text,
           focusNode: _focus,
-          textAlign: TextAlign.center,
+          // Right, so the number always sits the same distance from the per
+          // cent sign after it. Centred, the gap between them was whatever
+          // was left over -- wide at 100 and narrow at 1000.
+          textAlign: TextAlign.right,
           // Centred against the buttons either side of it rather than sitting
           // on the baseline its own box would give it.
           textAlignVertical: TextAlignVertical.center,
