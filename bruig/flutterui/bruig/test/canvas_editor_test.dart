@@ -5041,6 +5041,35 @@ void main() {
       expect(controller.viewScale, closeTo(2.5, 0.001));
     });
 
+    testWidgets("the zoom sits on the same line as the buttons",
+        (tester) async {
+      // Given a box taller than its own text the field sat at the top of it,
+      // which put the number and the per cent sign above the row of buttons.
+      var controller = CanvasController(const CanvasDocument());
+      addTearDown(controller.dispose);
+      await pump(
+          tester,
+          CanvasSettingsBar(
+            controller: controller,
+            onPublish: () {},
+            canvasSettingsOpen: false,
+            onToggleCanvasSettings: () {},
+            guidesOpen: false,
+            onToggleGuides: () {},
+            timelineOpen: true,
+            onToggleTimeline: () {},
+          ));
+
+      var field = tester.getRect(find.byType(TextField));
+      var icon = tester.getRect(find.byIcon(Icons.zoom_in));
+      var suffix = tester.getRect(find.text("%"));
+      expect((field.center.dy - icon.center.dy).abs(), lessThan(2),
+          reason: "the box is at ${field.center.dy} and the buttons at "
+              "${icon.center.dy}");
+      expect((suffix.center.dy - icon.center.dy).abs(), lessThan(2),
+          reason: "and the per cent sign with them");
+    });
+
     testWidgets("the timeline can be hidden from the bar", (tester) async {
       // A still canvas has no use for a transport, and forty pixels of it
       // under a picture nobody is animating is forty pixels of picture.

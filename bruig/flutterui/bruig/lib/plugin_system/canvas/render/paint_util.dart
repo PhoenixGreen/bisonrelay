@@ -518,6 +518,10 @@ List<(int, int)> columnRuns(
   return runs;
 }
 
+/// [animation] and [reveal] draw it part way through arriving. The pieces are
+/// worked out once for the whole paragraph and then drawn column by column,
+/// so a stagger runs from the first word of the first column to the last word
+/// of the last rather than restarting in each.
 void paintTextInColumns(
   ui.Canvas canvas,
   String text,
@@ -525,6 +529,8 @@ void paintTextInColumns(
   Rect box,
   TextColumns columns, {
   double scale = 1,
+  TextAnimation? animation,
+  double reveal = 1,
 }) {
   if (text.isEmpty || box.width <= 0 || box.height <= 0) return;
 
@@ -547,6 +553,11 @@ void paintTextInColumns(
       ? metrics.last.baseline + metrics.last.descent
       : metrics[line].baseline - metrics[line].ascent;
 
+  /// The pieces of the whole paragraph, worked out once and shared by every
+  /// column. Null until something asks for them, since a still paragraph
+  /// never does.
+  List<TextPiece>? pieces;
+
   for (var i = 0; i < runs.length; i++) {
     var (from, to) = runs[i];
     var left = box.left + i * (width + columns.gap);
@@ -566,8 +577,32 @@ void paintTextInColumns(
     canvas.save();
     canvas.clipRect(Rect.fromLTWH(left, box.top + dy, width, used));
     var at = Offset(left, box.top + dy - top(from));
-    outline?.paint(canvas, at);
-    painter.paint(canvas, at);
+
+    var moving = animation != null &&
+        animation.on &&
+        (reveal < 1 || animation.preset.motion.keeps);
+    if (moving) {
+      // The pieces of this column: the ones whose lines fall in its run.
+      // Their indices are their places in the whole paragraph, which is what
+      // makes the stagger carry on from one column into the next.
+      pieces ??= piecesFor(painter, text, animation.preset.scope);
+      var mine = <int>[];
+      for (var (i, piece) in pieces.indexed) {
+        var middle = piece.box.center.dy;
+        if (middle >= top(from) - 0.5 && middle < top(to) + 0.5) mine.add(i);
+      }
+      // A block-scoped animation has one piece covering the paragraph, which
+      // every column shares: it moves or uncovers the same way in each.
+      if (animation.preset.scope == TextAnimationScope.block) {
+        mine = [0];
+      }
+      paintAnimatedPieces(
+          canvas, painter, at, pieces, mine, spec, animation, reveal,
+          outline: outline);
+    } else {
+      outline?.paint(canvas, at);
+      painter.paint(canvas, at);
+    }
     canvas.restore();
   }
 

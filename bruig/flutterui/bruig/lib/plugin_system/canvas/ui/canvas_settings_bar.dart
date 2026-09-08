@@ -729,10 +729,13 @@ class _ZoomFieldState extends State<_ZoomField> {
     // bottom of the box, which put a line through the digits -- so what
     // lines it up with its neighbours is where the box sits, not where the
     // text sits inside it.
+    // No height of its own: the field is as tall as its own text, and the row
+    // centres it against the buttons either side. Given a taller box it sat
+    // at the top of it, which is what put the number and the per cent sign
+    // above the line of buttons.
     return Center(
         child: SizedBox(
       width: 56,
-      height: 24,
       child: Tooltip(
         message: "How large the canvas is drawn, as a percentage of its own "
             "pixels. Type one to go there.",
@@ -745,7 +748,11 @@ class _ZoomFieldState extends State<_ZoomField> {
           textAlign: TextAlign.right,
           style: type,
           decoration: InputDecoration(
-            isDense: true,
+            // Collapsed: no intrinsic padding of its own at all. Dense still
+            // reserves room under the text for a decoration to sit in, which
+            // pushed the digits above the middle of their own box and so
+            // above the buttons beside them.
+            isCollapsed: true,
             // Nothing until it is being typed into. A box on the band that
             // looks like a field all the time is a fourth kind of control on
             // a strip of buttons; a line under it while the cursor is in it
@@ -757,9 +764,7 @@ class _ZoomFieldState extends State<_ZoomField> {
                     BorderSide(color: widget.theme.colors.primary, width: 1)),
             suffixText: "%",
             suffixStyle: type,
-            // Room under the digits for the line to sit in, and the same
-            // above so the text is in the middle of its own box.
-            contentPadding: const EdgeInsets.fromLTRB(2, 3, 2, 3),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 2),
           ),
           onSubmitted: (_) => _commit(),
         ),

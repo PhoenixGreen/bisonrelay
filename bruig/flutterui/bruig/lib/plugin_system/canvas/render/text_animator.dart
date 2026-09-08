@@ -138,19 +138,48 @@ void paintAnimatedText(
   }
 
   var pieces = piecesFor(painter, text, preset.scope);
-  for (var (i, piece) in pieces.indexed) {
-    var p = animation.progressAt(reveal, i, pieces.length);
+  paintAnimatedPieces(canvas, painter, offset, pieces,
+      [for (var i = 0; i < pieces.length; i++) i], spec, animation, reveal,
+      outline: outline);
+}
+
+/// paintAnimatedPieces draws some of a paragraph's pieces.
+///
+/// [which] is which of [all] to draw, and the progress of each is worked out
+/// from its place in *all* of them -- so a paragraph flowed into three
+/// columns staggers from the first word of the first column to the last word
+/// of the last, rather than restarting in each.
+///
+/// Its own entry point because columns cannot go through the one above: each
+/// column is a different slice of the same paragraph at a different offset,
+/// and what it draws is the pieces whose lines belong to it.
+void paintAnimatedPieces(
+  ui.Canvas canvas,
+  TextPainter painter,
+  Offset offset,
+  List<TextPiece> all,
+  Iterable<int> which,
+  TextSpec spec,
+  TextAnimation animation,
+  double reveal, {
+  TextPainter? outline,
+}) {
+  for (var i in which) {
+    if (i < 0 || i >= all.length) continue;
+    var p = animation.progressAt(reveal, i, all.length);
     if (p <= 0) continue;
-    _paintPiece(canvas, painter, offset, piece, preset, p, spec,
-        outline: outline);
+    _paintPiece(canvas, painter, offset, all[i], animation.preset, p, spec,
+        outline: outline, from: animation.scaleFor(animation.preset));
   }
 }
 
 /// _paintPiece draws one piece of the paragraph, part way through its own
 /// movement.
+/// [from] is where a growing piece starts, which is the animation's own
+/// setting where it has one and the preset's number otherwise.
 void _paintPiece(ui.Canvas canvas, TextPainter painter, Offset offset,
     TextPiece piece, TextAnimationPreset preset, double p, TextSpec spec,
-    {TextPainter? outline}) {
+    {TextPainter? outline, double? from}) {
   var box = piece.box.shift(offset);
   var centre = box.center;
   var alpha = p.clamp(0.0, 1.0);
@@ -176,7 +205,8 @@ void _paintPiece(ui.Canvas canvas, TextPainter painter, Offset offset,
       canvas.translate(dx, dy);
 
     case TextMotion.grow:
-      var scale = preset.from + (1 - preset.from) * p;
+      var start = from ?? preset.from;
+      var scale = start + (1 - start) * p;
       canvas.translate(centre.dx, centre.dy);
       canvas.scale(scale, preset.stretch ? 1 / math.max(0.05, scale) : scale);
       canvas.translate(-centre.dx, -centre.dy);

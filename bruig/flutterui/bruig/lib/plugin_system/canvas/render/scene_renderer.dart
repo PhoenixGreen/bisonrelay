@@ -304,19 +304,11 @@ void _paintText(
         animation: animation, reveal: reveal);
     return;
   }
-  // Columns are not animated piece by piece: a paragraph in three columns is
-  // three laid-out blocks and the pieces would have to be gathered across
-  // all of them. The whole thing fades and moves as one instead, which is
-  // honest about what it is doing rather than animating one column and not
-  // the others.
-  if (animation.on && reveal < 1) {
-    canvas.saveLayer(inner.inflate(inner.height),
-        Paint()..color = Color.fromRGBO(0, 0, 0, reveal.clamp(0.0, 1.0)));
-    paintTextInColumns(canvas, e.displayText, spec, inner, e.columns);
-    canvas.restore();
-    return;
-  }
-  paintTextInColumns(canvas, e.displayText, spec, inner, e.columns);
+  // Columns animate piece by piece like anything else: the pieces are worked
+  // out once for the whole paragraph and drawn column by column, so a stagger
+  // carries on from the last word of one column into the first of the next.
+  paintTextInColumns(canvas, e.displayText, spec, inner, e.columns,
+      animation: animation, reveal: reveal);
 }
 
 /// drawnTextSpec is the type a text element is actually drawn in.

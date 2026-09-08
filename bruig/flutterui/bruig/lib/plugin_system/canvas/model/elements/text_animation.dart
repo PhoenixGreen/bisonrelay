@@ -136,9 +136,6 @@ enum TextAnimationPreset {
   scaleIn("Scale in", TextAnimationFamily.scale, TextAnimationScope.block,
       TextMotion.grow,
       from: 0.6),
-  zoomIn("Zoom in", TextAnimationFamily.scale, TextAnimationScope.block,
-      TextMotion.grow,
-      from: 0.1),
   pop("Pop", TextAnimationFamily.scale, TextAnimationScope.word,
       TextMotion.grow,
       from: 0.4),
@@ -290,6 +287,20 @@ class TextAnimation {
   /// fraction of one piece's own movement.
   final double gap;
 
+  /// scale is where a growing preset starts from, as a fraction: 0.6 arrives
+  /// from a little small, 0 from nothing, 2 from twice the size.
+  ///
+  /// A number rather than three presets with three fixed numbers, which is
+  /// what "Scale in" and "Zoom in" were -- the same motion at 0.6 and at 0.1,
+  /// near enough alike to be a puzzle rather than a choice. Above one it
+  /// arrives too large and settles; on the way *out* the same number is where
+  /// it goes, so 2.5 carries the words off the screen and 0 shrinks them to
+  /// nothing.
+  ///
+  /// Zero means "use the preset's own", so a preset chosen and left alone
+  /// looks the way it is named.
+  final double scale;
+
   final ChartEase ease;
 
   /// flipOrder is set on the copy the painter draws the way out with, and is
@@ -301,11 +312,21 @@ class TextAnimation {
     this.exit = TextAnimationPreset.none,
     this.exitInOrder = false,
     this.gap = 0.35,
+    this.scale = 0,
     this.ease = ChartEase.easeOut,
     this.flipOrder = false,
   });
 
   bool get on => preset != TextAnimationPreset.none;
+
+  /// scaleFor is where [preset] actually starts from: whatever has been set,
+  /// or the preset's own number when nothing has.
+  double scaleFor(TextAnimationPreset preset) =>
+      scale > 0 ? scale : preset.from;
+
+  /// scales is whether the size setting means anything for what is chosen.
+  bool get scales =>
+      preset.motion == TextMotion.grow || exit.motion == TextMotion.grow;
   bool get closes => exit != TextAnimationPreset.none;
 
   /// leaving is this animation as it is played on the way out.
@@ -316,6 +337,7 @@ class TextAnimation {
     TextAnimationPreset? exit,
     bool? exitInOrder,
     double? gap,
+    double? scale,
     ChartEase? ease,
     bool? flipOrder,
   }) =>
@@ -324,6 +346,7 @@ class TextAnimation {
         exit: exit ?? this.exit,
         exitInOrder: exitInOrder ?? this.exitInOrder,
         gap: gap ?? this.gap,
+        scale: scale ?? this.scale,
         ease: ease ?? this.ease,
         flipOrder: flipOrder ?? this.flipOrder,
       );
@@ -355,6 +378,7 @@ class TextAnimation {
         if (closes) "exit": exit.name,
         if (closes && exitInOrder) "exitOrder": true,
         "gap": gap,
+        if (scale > 0) "scale": scale,
         "ease": ease.name,
       };
 
@@ -363,6 +387,7 @@ class TextAnimation {
         exit: TextAnimationPreset.fromName(json["exit"] as String?),
         exitInOrder: jsonBool(json["exitOrder"], false),
         gap: jsonDouble(json["gap"], 0.35).clamp(0.0, 4.0),
+        scale: jsonDouble(json["scale"], 0).clamp(0.0, 8.0),
         ease: ChartEase.fromName(json["ease"] as String?),
       );
 }

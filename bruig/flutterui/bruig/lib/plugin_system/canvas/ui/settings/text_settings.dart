@@ -305,6 +305,30 @@ Widget _animationSection(CanvasController controller, TextElement e,
                 "next does, as a share of one piece's own movement. 1 is "
                 "strictly one after another; below 1 they overlap; above 1 "
                 "leaves a pause between them."),
+          // Where a scaling preset starts from, and on the way out where it
+          // goes: above 1 it carries the words off the screen, at 0 it
+          // shrinks them to nothing.
+          if (animation.scales)
+            CanvasNumberField(
+              label: "From size",
+              min: 0,
+              max: 8,
+              decimals: 2,
+              width: 66,
+              value:
+                  animation.scale > 0 ? animation.scale : animation.preset.from,
+              onChanged: (v) {
+                begin();
+                write(e.copyWith(animation: animation.copyWith(scale: v)));
+              },
+              onCommit: commit,
+            ),
+          if (animation.scales)
+            const CanvasHint(
+                "1 is full size. Below it the words grow into place; above it "
+                "they arrive too large and settle. On the way out it is where "
+                "they go — 2 and above carries them off the screen, 0 shrinks "
+                "them to nothing."),
           CanvasDropdown<ChartEase>(
             label: "End curve",
             value: animation.ease,

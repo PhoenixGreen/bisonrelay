@@ -495,4 +495,174 @@ void main() {
               "where they will be");
     });
   });
+
+  group("a paragraph in columns", () {
+    /// bands is how much is drawn in each vertical strip of the picture,
+    /// which is how "has the third column arrived yet" is asked.
+    Future<List<int>> bands(TextAnimationPreset preset, double reveal) async {
+      const size = Size(300, 200);
+      var element = TextElement(
+        const ElementBase(id: "t", x: 0, y: 0, width: 300, height: 200),
+        text: List.filled(24, "words that wrap").join(" "),
+        textSpec: const TextSpec(fontSize: 11, color: Color(0xFFFFFFFF)),
+        columns: const TextColumns(count: 3, gap: 10),
+        animation: TextAnimation(preset: preset, ease: ChartEase.linear),
+      ).withBase(
+        track: ElementTrack([
+          Keyframe(frame: 0, values: {KeyframeChannel.reveal: reveal}),
+        ]),
+      );
+
+      var recorder = ui.PictureRecorder();
+      var canvas = ui.Canvas(recorder);
+      canvas.drawRect(
+          Offset.zero & size, Paint()..color = const Color(0xFF000000));
+      paintElement(canvas, element, 0,
+          document: CanvasDocument(elements: [element]));
+      var picture = recorder.endRecording();
+      var image = await picture.toImage(300, 200);
+      var bytes = (await image.toByteData())!;
+
+      var out = List.filled(3, 0);
+      for (var y = 0; y < 200; y++) {
+        for (var x = 0; x < 300; x++) {
+          if (bytes.getUint32(((y * 300) + x) * 4) != 0x000000FF) {
+            out[(x ~/ 100).clamp(0, 2)]++;
+          }
+        }
+      }
+      image.dispose();
+      picture.dispose();
+      return out;
+    }
+
+    testWidgets("animates column by column rather than fading as one block",
+        (tester) async {
+      // Columns used to fall back to fading the whole thing, so every
+      // sequential and reveal preset looked like a fade in.
+      for (var preset in [
+        TextAnimationPreset.cascade,
+        TextAnimationPreset.words,
+        TextAnimationPreset.wipeLines,
+      ]) {
+        late List<int> early;
+        late List<int> whole;
+        await tester.runAsync(() async {
+          early = await bands(preset, 0.25);
+          whole = await bands(preset, 1);
+        });
+
+        expect(whole.every((b) => b > 0), isTrue,
+            reason: "${preset.name}: all three columns hold text");
+        expect(early.last, lessThan(whole.last * 0.5),
+            reason: "${preset.name}: the last column should still be mostly "
+                "empty a quarter of the way in — $early against $whole");
+      }
+    });
+
+    testWidgets("and the stagger carries on from one column to the next",
+        (tester) async {
+      // Worked out per column, the first word of every column would start at
+      // once and three columns would arrive in parallel.
+      late List<int> early;
+      await tester.runAsync(() async {
+        early = await bands(TextAnimationPreset.words, 0.3);
+      });
+      expect(early.first, greaterThan(0), reason: "the first has started");
+      expect(early.last, 0, reason: "and the last has not: $early");
+    });
+  });
+
+  group("how far a scaling preset scales", () {
+    test("is a number rather than three presets", () {
+      // "Scale in" and "Zoom in" were the same motion at 0.6 and at 0.1 --
+      // near enough alike to be a puzzle rather than a choice. One preset
+      // with a number covers both and everything between.
+      expect(
+          TextAnimationPreset.values
+              .where((p) => p.name.toLowerCase().contains("zoom")),
+          isEmpty);
+
+      const plain = TextAnimation(preset: TextAnimationPreset.scaleIn);
+      expect(plain.scaleFor(plain.preset), TextAnimationPreset.scaleIn.from,
+          reason: "left alone, a preset looks the way it is named");
+
+      const set = TextAnimation(preset: TextAnimationPreset.scaleIn, scale: 3);
+      expect(set.scaleFor(set.preset), 3);
+    });
+
+    test("and it means something only where something scales", () {
+      expect(const TextAnimation(preset: TextAnimationPreset.scaleIn).scales,
+          isTrue);
+      expect(const TextAnimation(preset: TextAnimationPreset.punch).scales,
+          isTrue);
+      expect(const TextAnimation(preset: TextAnimationPreset.fadeIn).scales,
+          isFalse);
+      // Including when it is only the way out that scales.
+      expect(
+          const TextAnimation(
+                  preset: TextAnimationPreset.fadeIn,
+                  exit: TextAnimationPreset.scaleIn)
+              .scales,
+          isTrue);
+    });
+
+    test("it survives being saved, and nothing is written when unset", () {
+      const set = TextAnimation(preset: TextAnimationPreset.punch, scale: 0);
+      expect(set.toJson().containsKey("scale"), isFalse);
+      expect(
+          TextAnimation.fromJson(const TextAnimation(
+                      preset: TextAnimationPreset.punch, scale: 2.5)
+                  .toJson())
+              .scale,
+          2.5);
+    });
+
+    testWidgets("scaling past full size carries the words off", (tester) async {
+      // Which is what it is for on the way out: 2 and above takes them past
+      // the edge of the box rather than shrinking them away.
+      const size = Size(300, 120);
+      Future<int> ink(double from) async {
+        var element = TextElement(
+          const ElementBase(id: "t", x: 50, y: 30, width: 200, height: 60),
+          text: "Away",
+          textSpec: const TextSpec(fontSize: 24, color: Color(0xFFFFFFFF)),
+          animation: TextAnimation(
+              preset: TextAnimationPreset.scaleIn,
+              scale: from,
+              ease: ChartEase.linear),
+        ).withBase(
+          track: ElementTrack([
+            const Keyframe(frame: 0, values: {KeyframeChannel.reveal: 0.35}),
+          ]),
+        );
+        var recorder = ui.PictureRecorder();
+        var canvas = ui.Canvas(recorder);
+        canvas.drawRect(
+            Offset.zero & size, Paint()..color = const Color(0xFF000000));
+        paintElement(canvas, element, 0,
+            document: CanvasDocument(elements: [element]));
+        var picture = recorder.endRecording();
+        var image = await picture.toImage(300, 120);
+        var bytes = (await image.toByteData())!;
+        var lit = 0;
+        for (var i = 0; i < bytes.lengthInBytes; i += 4) {
+          if (bytes.getUint32(i) != 0x000000FF) lit++;
+        }
+        image.dispose();
+        picture.dispose();
+        return lit;
+      }
+
+      late int small;
+      late int large;
+      await tester.runAsync(() async {
+        small = await ink(0.2);
+        large = await ink(4);
+      });
+      expect(large, greaterThan(small * 2),
+          reason: "starting at four times the size covers far more of the "
+              "canvas a third of the way through: $small against $large");
+    });
+  });
 }
