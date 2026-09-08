@@ -13,6 +13,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_painter.dart';
@@ -297,7 +298,15 @@ void _paintText(
     animation = animation.leaving;
     reveal = 1 - close.clamp(0.0, 1.0);
   }
-  if (animation.on && reveal <= 0) return;
+  // Nothing yet -- unless what is being animated is a mark drawn *on* the
+  // words and the words are meant to be there already, which is what an
+  // underline being drawn under a finished sentence looks like.
+  if (animation.on &&
+      reveal <= 0 &&
+      !(animation.preset.motion.keeps &&
+          animation.draw.start == TextDrawStart.showText)) {
+    return;
+  }
 
   if (e.columns.isSingle) {
     paintTextInBox(canvas, e.displayText, spec, inner,

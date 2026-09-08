@@ -283,6 +283,89 @@ Widget _animationSection(CanvasController controller, TextElement e,
             ),
           ],
         ]),
+      // What a drawn mark looks like: an underline's line, a highlight's
+      // band. Only where something is drawn -- on a fade there is no mark to
+      // colour.
+      if (animation.draws)
+        CanvasControlGroup(label: "The mark", children: [
+          CanvasColorButton(
+            label: "Colour",
+            color: animation.draw.color ?? e.textSpec.color,
+            onChanged: (c) => now(e.copyWith(
+                animation: animation.copyWith(
+                    draw: animation.draw.copyWith(color: c)))),
+          ),
+          CanvasDropdown<TextDrawStart>(
+            key: const ValueKey("textDrawStart"),
+            label: "The words are",
+            value: animation.draw.start,
+            width: 148,
+            options: [for (var s in TextDrawStart.values) (s, s.label)],
+            onChanged: (v) => now(e.copyWith(
+                animation: animation.copyWith(
+                    draw: animation.draw.copyWith(start: v)))),
+          ),
+          const CanvasLineBreak(),
+          // One field for all four sides, and the four on their own under it.
+          // A band tight around the letters reads as a mistake; one with a
+          // little air reads as a highlighter.
+          CanvasNumberField(
+            label: "Padding",
+            value: animation.draw.evenPad ?? 0,
+            min: 0,
+            max: 200,
+            decimals: 0,
+            width: 62,
+            onChanged: (v) {
+              begin();
+              write(e.copyWith(
+                  animation:
+                      animation.copyWith(draw: animation.draw.withEvenPad(v))));
+            },
+            onCommit: commit,
+          ),
+          for (var (name, at, set)
+              in <(String, double, TextDrawSpec Function(double))>[
+            (
+              "Left",
+              animation.draw.padLeft,
+              (v) => animation.draw.copyWith(padLeft: v)
+            ),
+            (
+              "Top",
+              animation.draw.padTop,
+              (v) => animation.draw.copyWith(padTop: v)
+            ),
+            (
+              "Right",
+              animation.draw.padRight,
+              (v) => animation.draw.copyWith(padRight: v)
+            ),
+            (
+              "Bottom",
+              animation.draw.padBottom,
+              (v) => animation.draw.copyWith(padBottom: v)
+            ),
+          ])
+            CanvasNumberField(
+              label: name,
+              value: at,
+              min: 0,
+              max: 200,
+              decimals: 0,
+              width: 56,
+              onChanged: (v) {
+                begin();
+                write(e.copyWith(animation: animation.copyWith(draw: set(v))));
+              },
+              onCommit: commit,
+            ),
+          const CanvasHint(
+              "Padding is the room around the words the mark takes in: none "
+              "of it for an underline tight under the letters, a few pixels "
+              "for a highlighter. The one field sets all four sides; the four "
+              "under it set one each."),
+        ]),
       if (animation.on || animation.closes)
         CanvasControlGroup(label: "Timing", children: [
           if (animation.preset.staggers || animation.exit.staggers)

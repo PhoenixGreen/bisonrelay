@@ -1,3 +1,4 @@
+import 'dart:ui' show Color;
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_animation.dart';
 
@@ -269,6 +270,113 @@ enum TextAnimationPreset {
   bool get staggers => this != none && scope != TextAnimationScope.block;
 }
 
+/// TextDrawStart is what the words themselves do while something is being
+/// drawn on them.
+enum TextDrawStart {
+  /// showText leaves the words where they are and draws only the mark, which
+  /// is what an underline being drawn under a finished sentence looks like.
+  ///
+  /// The default, and it was not even an option: a draw preset hid the words
+  /// until the first frame was over, so a highlight sweeping across a
+  /// headline began with no headline.
+  showText("Already there"),
+
+  /// fadeText brings the words in with the mark.
+  fadeText("Fades in with it");
+
+  final String label;
+  const TextDrawStart(this.label);
+
+  static TextDrawStart fromName(String? name) =>
+      values.firstWhere((s) => s.name == name, orElse: () => showText);
+}
+
+/// TextDrawSpec is what a drawn mark looks like: an underline's line, a
+/// highlight's band.
+///
+/// Its own colour, because a highlight in the colour of the words it is
+/// behind is a solid block, and its own padding, because a band tight around
+/// the letters reads as a mistake where one with a little air reads as a
+/// highlighter.
+class TextDrawSpec {
+  /// color is the mark's own, or null to take the text's.
+  final Color? color;
+
+  final TextDrawStart start;
+
+  /// The four sides, kept separately so a band can be given more room above
+  /// and below than at the ends -- which is what a highlighter actually
+  /// looks like. The settings offer one field that writes all four and the
+  /// four on their own.
+  final double padLeft;
+  final double padTop;
+  final double padRight;
+  final double padBottom;
+
+  const TextDrawSpec({
+    this.color,
+    this.start = TextDrawStart.showText,
+    this.padLeft = 0,
+    this.padTop = 0,
+    this.padRight = 0,
+    this.padBottom = 0,
+  });
+
+  /// evenPad is the one number the four sides share, or null where they
+  /// differ -- which is what the "all sides" field shows.
+  double? get evenPad =>
+      padLeft == padTop && padTop == padRight && padRight == padBottom
+          ? padLeft
+          : null;
+
+  TextDrawSpec copyWith({
+    Color? color,
+    bool clearColor = false,
+    TextDrawStart? start,
+    double? padLeft,
+    double? padTop,
+    double? padRight,
+    double? padBottom,
+  }) =>
+      TextDrawSpec(
+        color: clearColor ? null : (color ?? this.color),
+        start: start ?? this.start,
+        padLeft: padLeft ?? this.padLeft,
+        padTop: padTop ?? this.padTop,
+        padRight: padRight ?? this.padRight,
+        padBottom: padBottom ?? this.padBottom,
+      );
+
+  /// withEvenPad sets all four sides at once.
+  TextDrawSpec withEvenPad(double pad) => TextDrawSpec(
+      color: color,
+      start: start,
+      padLeft: pad,
+      padTop: pad,
+      padRight: pad,
+      padBottom: pad);
+
+  Map<String, dynamic> toJson() => {
+        if (color != null) "color": colorToJson(color!),
+        if (start != TextDrawStart.showText) "start": start.name,
+        if (padLeft != 0) "l": padLeft,
+        if (padTop != 0) "t": padTop,
+        if (padRight != 0) "r": padRight,
+        if (padBottom != 0) "b": padBottom,
+      };
+
+  factory TextDrawSpec.fromJson(Map<String, dynamic> json) => TextDrawSpec(
+        color: json["color"] == null
+            ? null
+            : colorFromJson(json["color"], const Color(0xFFFFFFFF)),
+        start: TextDrawStart.fromName(json["start"] as String?),
+        padLeft: jsonDouble(json["l"], 0),
+        padTop: jsonDouble(json["t"], 0),
+        padRight: jsonDouble(json["r"], 0),
+        padBottom: jsonDouble(json["b"], 0),
+      );
+}
+
 /// TextAnimation is the preset, the stagger and the ease -- and, as with a
 /// chart, no duration: the length is the gap between two keyframes on the
 /// timeline.
@@ -286,6 +394,9 @@ class TextAnimation {
   /// gap is how long after one piece starts before the next does, as a
   /// fraction of one piece's own movement.
   final double gap;
+
+  /// draw is what a drawn mark looks like, for the presets that draw one.
+  final TextDrawSpec draw;
 
   /// scale is where a growing preset starts from, as a fraction: 0.6 arrives
   /// from a little small, 0 from nothing, 2 from twice the size.
@@ -313,6 +424,7 @@ class TextAnimation {
     this.exitInOrder = false,
     this.gap = 0.35,
     this.scale = 0,
+    this.draw = const TextDrawSpec(),
     this.ease = ChartEase.easeOut,
     this.flipOrder = false,
   });
@@ -323,6 +435,9 @@ class TextAnimation {
   /// or the preset's own number when nothing has.
   double scaleFor(TextAnimationPreset preset) =>
       scale > 0 ? scale : preset.from;
+
+  /// draws is whether the mark settings mean anything for what is chosen.
+  bool get draws => preset.motion.keeps || exit.motion.keeps;
 
   /// scales is whether the size setting means anything for what is chosen.
   bool get scales =>
@@ -338,6 +453,7 @@ class TextAnimation {
     bool? exitInOrder,
     double? gap,
     double? scale,
+    TextDrawSpec? draw,
     ChartEase? ease,
     bool? flipOrder,
   }) =>
@@ -347,6 +463,7 @@ class TextAnimation {
         exitInOrder: exitInOrder ?? this.exitInOrder,
         gap: gap ?? this.gap,
         scale: scale ?? this.scale,
+        draw: draw ?? this.draw,
         ease: ease ?? this.ease,
         flipOrder: flipOrder ?? this.flipOrder,
       );
@@ -379,6 +496,7 @@ class TextAnimation {
         if (closes && exitInOrder) "exitOrder": true,
         "gap": gap,
         if (scale > 0) "scale": scale,
+        if (draw.toJson().isNotEmpty) "draw": draw.toJson(),
         "ease": ease.name,
       };
 
@@ -388,6 +506,9 @@ class TextAnimation {
         exitInOrder: jsonBool(json["exitOrder"], false),
         gap: jsonDouble(json["gap"], 0.35).clamp(0.0, 4.0),
         scale: jsonDouble(json["scale"], 0).clamp(0.0, 8.0),
+        draw: json["draw"] is Map<String, dynamic>
+            ? TextDrawSpec.fromJson(json["draw"] as Map<String, dynamic>)
+            : const TextDrawSpec(),
         ease: ChartEase.fromName(json["ease"] as String?),
       );
 }

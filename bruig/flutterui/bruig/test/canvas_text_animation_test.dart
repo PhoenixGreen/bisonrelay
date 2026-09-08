@@ -665,4 +665,131 @@ void main() {
               "canvas a third of the way through: $small against $large");
     });
   });
+
+  group("a mark drawn on the words", () {
+    const size = Size(300, 120);
+
+    Future<Map<int, int>> ink(TextAnimation animation, double reveal) async {
+      var element = TextElement(
+        const ElementBase(id: "t", x: 0, y: 0, width: 300, height: 120),
+        text: "Marked",
+        textSpec: const TextSpec(fontSize: 30, color: Color(0xFFFFFFFF)),
+        animation: animation,
+      ).withBase(
+        track: ElementTrack([
+          Keyframe(frame: 0, values: {KeyframeChannel.reveal: reveal}),
+        ]),
+      );
+      var recorder = ui.PictureRecorder();
+      var canvas = ui.Canvas(recorder);
+      canvas.drawRect(
+          Offset.zero & size, Paint()..color = const Color(0xFF000000));
+      paintElement(canvas, element, 0,
+          document: CanvasDocument(elements: [element]));
+      var picture = recorder.endRecording();
+      var image = await picture.toImage(300, 120);
+      var bytes = (await image.toByteData())!;
+      var counts = <int, int>{};
+      for (var i = 0; i < bytes.lengthInBytes; i += 4) {
+        var pixel = bytes.getUint32(i);
+        counts[pixel] = (counts[pixel] ?? 0) + 1;
+      }
+      image.dispose();
+      picture.dispose();
+      return counts;
+    }
+
+    testWidgets("the words are there before the mark is", (tester) async {
+      // A draw preset hid the headline until the first frame was over, so an
+      // underline being drawn under a sentence began with no sentence.
+      late Map<int, int> atNothing;
+      await tester.runAsync(() async {
+        atNothing = await ink(
+            const TextAnimation(preset: TextAnimationPreset.underline), 0);
+      });
+      expect(atNothing[0xFFFFFFFF] ?? 0, greaterThan(50),
+          reason: "the words should already be there");
+    });
+
+    testWidgets("unless they are asked to come in with it", (tester) async {
+      late Map<int, int> atNothing;
+      await tester.runAsync(() async {
+        atNothing = await ink(
+            const TextAnimation(
+                preset: TextAnimationPreset.underline,
+                draw: TextDrawSpec(start: TextDrawStart.fadeText)),
+            0);
+      });
+      expect(atNothing[0xFFFFFFFF] ?? 0, 0);
+    });
+
+    testWidgets("the mark takes its own colour", (tester) async {
+      late Map<int, int> drawn;
+      await tester.runAsync(() async {
+        drawn = await ink(
+            const TextAnimation(
+                preset: TextAnimationPreset.underline,
+                draw: TextDrawSpec(color: Color(0xFFFF0000))),
+            1);
+      });
+      // Red, in the bytes' own order.
+      expect(drawn[0xFF0000FF] ?? 0, greaterThan(50),
+          reason: "a highlight in the colour of the words it sits behind is "
+              "a solid block");
+    });
+
+    testWidgets("and its padding gives it room", (tester) async {
+      late Map<int, int> tight;
+      late Map<int, int> roomy;
+      await tester.runAsync(() async {
+        tight = await ink(
+            const TextAnimation(
+                preset: TextAnimationPreset.highlight,
+                draw: TextDrawSpec(color: Color(0xFF0000FF))),
+            1);
+        roomy = await ink(
+            const TextAnimation(
+                    preset: TextAnimationPreset.highlight,
+                    draw: TextDrawSpec(color: Color(0xFF0000FF)))
+                .copyWith(
+                    draw: const TextDrawSpec(color: Color(0xFF0000FF))
+                        .withEvenPad(10)),
+            1);
+      });
+      var blue = 0x0000FFFF;
+      expect(roomy[blue] ?? 0, greaterThan((tight[blue] ?? 0) + 1000),
+          reason: "ten pixels on every side is a good deal more band");
+    });
+
+    test("the four sides can be set together or one at a time", () {
+      const even = TextDrawSpec();
+      expect(even.evenPad, 0, reason: "all four the same");
+      expect(even.withEvenPad(8).padTop, 8);
+      expect(even.withEvenPad(8).evenPad, 8);
+      expect(even.copyWith(padTop: 4).evenPad, isNull,
+          reason: "they differ, so there is no one number to show");
+    });
+
+    test("the mark's settings survive being saved", () {
+      var animation = const TextAnimation(
+        preset: TextAnimationPreset.highlight,
+        draw: TextDrawSpec(
+            color: Color(0xFF00FF00),
+            start: TextDrawStart.fadeText,
+            padLeft: 3,
+            padBottom: 7),
+      );
+      var back = TextAnimation.fromJson(animation.toJson());
+      expect(back.draw.color, const Color(0xFF00FF00));
+      expect(back.draw.start, TextDrawStart.fadeText);
+      expect(back.draw.padLeft, 3);
+      expect(back.draw.padBottom, 7);
+      // And an animation with nothing set writes nothing down.
+      expect(
+          const TextAnimation(preset: TextAnimationPreset.fadeIn)
+              .toJson()
+              .containsKey("draw"),
+          isFalse);
+    });
+  });
 }

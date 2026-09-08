@@ -127,7 +127,17 @@ void paintAnimatedText(
     painter.paint(canvas, offset);
     return;
   }
-  if (reveal <= 0) return;
+  // Nothing has happened yet -- unless what is being animated is a mark
+  // drawn *on* the words, in which case the words are already there and it
+  // is only the mark that is on its way. A draw preset used to hide the
+  // headline until the first frame was over.
+  if (reveal <= 0) {
+    if (preset.motion.keeps && animation.draw.start == TextDrawStart.showText) {
+      outline?.paint(canvas, offset);
+      painter.paint(canvas, offset);
+    }
+    return;
+  }
 
   // Scramble is the one motion that changes the letters rather than moving
   // them, so it is drawn from its own text rather than from the paragraph.
@@ -169,7 +179,9 @@ void paintAnimatedPieces(
     var p = animation.progressAt(reveal, i, all.length);
     if (p <= 0) continue;
     _paintPiece(canvas, painter, offset, all[i], animation.preset, p, spec,
-        outline: outline, from: animation.scaleFor(animation.preset));
+        outline: outline,
+        from: animation.scaleFor(animation.preset),
+        draw: animation.draw);
   }
 }
 
@@ -179,7 +191,7 @@ void paintAnimatedPieces(
 /// setting where it has one and the preset's number otherwise.
 void _paintPiece(ui.Canvas canvas, TextPainter painter, Offset offset,
     TextPiece piece, TextAnimationPreset preset, double p, TextSpec spec,
-    {TextPainter? outline, double? from}) {
+    {TextPainter? outline, double? from, TextDrawSpec? draw}) {
   var box = piece.box.shift(offset);
   var centre = box.center;
   var alpha = p.clamp(0.0, 1.0);
@@ -286,9 +298,21 @@ void _paintPiece(ui.Canvas canvas, TextPainter painter, Offset offset,
 
   // The two draw-on motions put something behind or under the words rather
   // than moving them.
+  var mark = draw ?? const TextDrawSpec();
+  // Its own colour where it has been given one: a highlight in the colour of
+  // the words it sits behind is a solid block.
+  var markColor = mark.color ?? spec.color.withValues(alpha: 0.25);
+
   if (preset.motion == TextMotion.highlight) {
-    canvas.drawRect(Rect.fromLTWH(box.left, box.top, box.width * p, box.height),
-        Paint()..color = spec.color.withValues(alpha: 0.25));
+    // Padded, because a band tight around the letters reads as a mistake
+    // where one with a little air reads as a highlighter.
+    var band = Rect.fromLTRB(
+      box.left - mark.padLeft,
+      box.top - mark.padTop,
+      box.left - mark.padLeft + (box.width + mark.padLeft + mark.padRight) * p,
+      box.bottom + mark.padBottom,
+    );
+    canvas.drawRect(band, Paint()..color = markColor);
   }
 
   if (alpha >= 1) {
@@ -303,11 +327,16 @@ void _paintPiece(ui.Canvas canvas, TextPainter painter, Offset offset,
   }
 
   if (preset.motion == TextMotion.underline) {
-    var y = box.bottom - box.height * 0.08;
+    // The bottom padding pushes the line away from the letters; the two ends
+    // shorten or lengthen it.
+    var y = box.bottom - box.height * 0.08 + mark.padBottom;
     canvas.drawRect(
         Rect.fromLTWH(
-            box.left, y, box.width * p, math.max(1, box.height * 0.06)),
-        Paint()..color = spec.color);
+            box.left - mark.padLeft,
+            y,
+            (box.width + mark.padLeft + mark.padRight) * p,
+            math.max(1, box.height * 0.06)),
+        Paint()..color = mark.color ?? spec.color);
   }
 
   if (preset.motion == TextMotion.blur) canvas.restore();
