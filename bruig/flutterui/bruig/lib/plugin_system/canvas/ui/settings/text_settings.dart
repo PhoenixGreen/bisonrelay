@@ -198,47 +198,83 @@ Widget _animationSection(CanvasController controller, TextElement e,
           "how long it takes and when it happens — the same two keyframes a "
           "chart's animation uses, so a headline and a chart can arrive "
           "together."),
+      // The family first, then the animation. Thirty names in one list is a
+      // wall of text nobody reads to the end of; asked in two steps the
+      // question is "what kind of arrival" and then "which one", which is how
+      // somebody actually chooses.
+      //
+      // Choosing a family applies the first of its presets rather than
+      // waiting for a second choice, so the canvas shows something
+      // immediately and the second box refines it.
       CanvasControlGroup(label: "Arriving", children: [
-        CanvasDropdown<TextAnimationPreset>(
-          key: const ValueKey("textAnimationPreset"),
-          label: "",
-          value: animation.preset,
-          width: 190,
+        CanvasDropdown<TextAnimationFamily?>(
+          key: const ValueKey("textAnimationFamily"),
+          label: "Kind",
+          value: animation.on ? animation.preset.family : null,
+          width: 132,
           options: [
-            (TextAnimationPreset.none, "None"),
+            (null, "None"),
             for (var family in TextAnimationFamily.values)
-              for (var preset in TextAnimationPreset.values)
-                if (preset != TextAnimationPreset.none &&
-                    preset.family == family)
-                  (preset, "${family.label} · ${preset.label}"),
+              (family, family.label),
           ],
-          onChanged: (v) => controller.applyTextAnimation(e, v),
+          onChanged: (family) => controller.applyTextAnimation(
+              e,
+              family == null
+                  ? TextAnimationPreset.none
+                  : TextAnimationPreset.inFamily(family).first),
         ),
+        if (animation.on)
+          CanvasDropdown<TextAnimationPreset>(
+            key: const ValueKey("textAnimationPreset"),
+            label: "Which",
+            value: animation.preset,
+            width: 168,
+            options: [
+              for (var preset
+                  in TextAnimationPreset.inFamily(animation.preset.family))
+                (preset, preset.label),
+            ],
+            onChanged: (v) => controller.applyTextAnimation(e, v),
+          ),
       ]),
       if (animation.on || animation.closes)
         CanvasControlGroup(label: "Leaving", children: [
-          CanvasDropdown<TextAnimationPreset>(
-            key: const ValueKey("textAnimationExit"),
-            label: "",
-            value: animation.exit,
-            width: 190,
+          CanvasDropdown<TextAnimationFamily?>(
+            key: const ValueKey("textAnimationExitFamily"),
+            label: "Kind",
+            value: animation.closes ? animation.exit.family : null,
+            width: 132,
             options: [
-              (TextAnimationPreset.none, "None"),
+              (null, "None"),
               for (var family in TextAnimationFamily.values)
-                for (var preset in TextAnimationPreset.values)
-                  if (preset != TextAnimationPreset.none &&
-                      preset.family == family)
-                    (preset, "${family.label} · ${preset.label}, reversed"),
+                (family, family.label),
             ],
-            onChanged: (v) => controller.applyTextExit(e, v),
+            onChanged: (family) => controller.applyTextExit(
+                e,
+                family == null
+                    ? TextAnimationPreset.none
+                    : TextAnimationPreset.inFamily(family).first),
           ),
-          if (animation.closes)
+          if (animation.closes) ...[
+            CanvasDropdown<TextAnimationPreset>(
+              key: const ValueKey("textAnimationExit"),
+              label: "Which",
+              value: animation.exit,
+              width: 168,
+              options: [
+                for (var preset
+                    in TextAnimationPreset.inFamily(animation.exit.family))
+                  (preset, "${preset.label}, reversed"),
+              ],
+              onChanged: (v) => controller.applyTextExit(e, v),
+            ),
             CanvasToggle(
               label: "In the same order",
               value: animation.exitInOrder,
               onChanged: (v) => now(
                   e.copyWith(animation: animation.copyWith(exitInOrder: v))),
             ),
+          ],
         ]),
       if (animation.on || animation.closes)
         CanvasControlGroup(label: "Timing", children: [

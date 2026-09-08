@@ -4438,22 +4438,35 @@ void main() {
       addTearDown(controller.dispose);
       controller.selectOnly("t");
       await pump(tester, CanvasDesignPanel(controller: controller));
-
       await open(tester);
-      var list = find.byKey(const ValueKey("textAnimationPreset"));
-      await tester.ensureVisible(list);
+      // The family first. Choosing one applies its first preset, so the
+      // canvas shows something at once rather than waiting for a second
+      // choice.
+      var kind = find.byKey(const ValueKey("textAnimationFamily"));
+      await tester.ensureVisible(kind);
       await tester.pumpAndSettle();
-      await tester.tap(list);
+      await tester.tap(kind);
       await tester.pumpAndSettle();
-      // One near the top of the list: a dropdown builds the items it can see,
-      // and this list is thirty long.
-      await tester.tap(find.text("Fade · Fade up").last);
+      await tester.tap(find.text("Sequential").last);
       await tester.pumpAndSettle();
 
       var after = controller.document.elements.single as TextElement;
-      expect(after.animation.preset, TextAnimationPreset.fadeUp);
+      expect(after.animation.preset.family, TextAnimationFamily.sequential);
       expect(after.track, isNotNull,
           reason: "and it has a length on the timeline");
+
+      // Then which one, out of that family alone.
+      var which = find.byKey(const ValueKey("textAnimationPreset"));
+      await tester.ensureVisible(which);
+      await tester.pumpAndSettle();
+      await tester.tap(which);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text("Word by word").last);
+      await tester.pumpAndSettle();
+
+      expect(
+          (controller.document.elements.single as TextElement).animation.preset,
+          TextAnimationPreset.words);
     });
 
     testWidgets("the list is grouped, because thirty names is a wall",
@@ -4471,20 +4484,24 @@ void main() {
 
       await open(tester);
 
-      // Read off the control rather than off the open menu: a dropdown builds
+      // Read off the controls rather than off an open menu: a dropdown builds
       // the items it can see, and thirty of them do not fit on a screen.
-      var list = tester.widget<CanvasDropdown<TextAnimationPreset>>(
-          find.byKey(const ValueKey("textAnimationPreset")));
-      var labels = [for (var (_, text) in list.options) text];
-
+      var families = tester.widget<CanvasDropdown<TextAnimationFamily?>>(
+          find.byKey(const ValueKey("textAnimationFamily")));
+      var kinds = [for (var (_, text) in families.options) text];
+      expect(kinds.first, "None",
+          reason: "the way to have none of it comes first");
       for (var family in TextAnimationFamily.values) {
-        expect(
-            labels.where((l) => l.startsWith("${family.label} · ")), isNotEmpty,
-            reason: "${family.label} should be offered");
+        expect(kinds, contains(family.label));
       }
-      expect(labels.first, "None",
-          reason: "and the way to have none of it comes first");
-      expect(labels.length, greaterThan(20));
+
+      // And the second box holds that family alone, not all thirty.
+      var which = tester.widget<CanvasDropdown<TextAnimationPreset>>(
+          find.byKey(const ValueKey("textAnimationPreset")));
+      expect(which.options.length,
+          TextAnimationPreset.inFamily(TextAnimationFamily.fade).length);
+      expect(which.options.length, lessThan(8),
+          reason: "a family, not the whole list");
     });
   });
 

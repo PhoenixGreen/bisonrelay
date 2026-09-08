@@ -725,7 +725,11 @@ class _ZoomFieldState extends State<_ZoomField> {
 
     return SizedBox(
       width: 56,
-      height: 26,
+      // The height the field actually wants. Told to be taller than that and
+      // centred inside it, the underline is drawn at the bottom of the input
+      // rather than the bottom of the box -- which put a line through the
+      // middle of the digits.
+      height: 22,
       child: Tooltip(
         message: "How large the canvas is drawn, as a percentage of its own "
             "pixels. Type one to go there.",
@@ -736,9 +740,6 @@ class _ZoomFieldState extends State<_ZoomField> {
           // cent sign after it. Centred, the gap between them was whatever
           // was left over -- wide at 100 and narrow at 1000.
           textAlign: TextAlign.right,
-          // Centred against the buttons either side of it rather than sitting
-          // on the baseline its own box would give it.
-          textAlignVertical: TextAlignVertical.center,
           style: type,
           decoration: InputDecoration(
             isDense: true,
@@ -753,7 +754,8 @@ class _ZoomFieldState extends State<_ZoomField> {
                     BorderSide(color: widget.theme.colors.primary, width: 1)),
             suffixText: "%",
             suffixStyle: type,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 2),
+            // Room under the digits for the line to sit in.
+            contentPadding: const EdgeInsets.fromLTRB(2, 0, 2, 3),
           ),
           onSubmitted: (_) => _commit(),
         ),

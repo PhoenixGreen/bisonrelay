@@ -179,7 +179,11 @@ double paintTextInBox(
   // Part way through arriving, if it is arriving. The animator is handed the
   // paragraph that has already been laid out, so what comes in is exactly
   // what will be there when it has come in.
-  if (animation != null && animation.on && reveal < 1) {
+  // Once it has arrived there is nothing to animate -- unless the motion is
+  // one that leaves something behind, which still has to be drawn.
+  if (animation != null &&
+      animation.on &&
+      (reveal < 1 || animation.preset.motion.keeps)) {
     paintAnimatedText(canvas, painter, text, spec, offset, animation, reveal,
         maxWidth: box.width);
   } else {

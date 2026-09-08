@@ -91,7 +91,16 @@ enum TextMotion {
   highlight,
 
   /// strokeOn draws the outline, then fills it.
-  strokeOn,
+  strokeOn;
+
+  /// keeps is whether the motion leaves something behind when it is over.
+  ///
+  /// The three drawn ones do: an underline that is taken away the moment it
+  /// finishes being drawn is not an underline, it is a flicker. Everything
+  /// else ends with the words exactly as they would have been without any
+  /// animation at all, which is what lets the still drawing take over.
+  bool get keeps =>
+      this == TextMotion.underline || this == TextMotion.highlight;
 }
 
 /// TextAnimationPreset is the list somebody chooses from.
@@ -250,6 +259,12 @@ enum TextAnimationPreset {
         (p) => p.name == name,
         orElse: () => TextAnimationPreset.none,
       );
+
+  /// inFamily is the presets of one family, in the order they are listed.
+  static List<TextAnimationPreset> inFamily(TextAnimationFamily family) => [
+        for (var preset in values)
+          if (preset != none && preset.family == family) preset,
+      ];
 
   /// staggers is whether the pieces arrive one after another, which is what
   /// the gap setting decides. A block is one piece and has nothing to space

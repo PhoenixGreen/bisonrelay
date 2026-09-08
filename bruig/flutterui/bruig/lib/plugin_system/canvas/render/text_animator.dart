@@ -111,7 +111,14 @@ void paintAnimatedText(
   double maxWidth = 0,
 }) {
   var preset = animation.preset;
-  if (!animation.on || reveal >= 1) {
+  if (!animation.on) {
+    painter.paint(canvas, offset);
+    return;
+  }
+  // A drawn decoration stays. An underline taken away the moment it finishes
+  // being drawn is not an underline, it is a flicker -- these motions put
+  // something under or behind the words and leave it there.
+  if (reveal >= 1 && !preset.motion.keeps) {
     painter.paint(canvas, offset);
     return;
   }
@@ -228,7 +235,17 @@ void _paintPiece(ui.Canvas canvas, TextPainter painter, Offset offset,
       break;
   }
 
-  if (clipped) canvas.clipRect(box.inflate(box.height));
+  // The piece and nothing else. Inflated by a line height, as this was, the
+  // clip took in whatever was beside it -- so a letter rising brought its
+  // neighbours up with it, which is why "letter by letter" looked like whole
+  // words moving and left a ghost of the next ones trailing behind it.
+  //
+  // A little room above and below for ascenders and descenders, which a
+  // glyph box does not always take in, and none at all to the sides.
+  if (clipped) {
+    canvas.clipRect(Rect.fromLTRB(box.left, box.top - box.height * 0.3,
+        box.right, box.bottom + box.height * 0.3));
+  }
 
   // The two draw-on motions put something behind or under the words rather
   // than moving them.
