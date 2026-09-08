@@ -183,17 +183,33 @@ double paintTextInBox(
 /// another line -- so there is nothing to solve, only something to search.
 /// Twelve iterations gets within a twentieth of a point over any range worth
 /// having, and it runs once per paint of one element.
-double fitFontSize(String text, TextSpec spec, Size box) {
+/// [columns] is how many columns the text will be flowed into. Fitting
+/// against one column's box when there are three of them is why the type came
+/// out a third of the size it could be -- and since all the text then fitted
+/// in the first column, the other two were empty, which read as columns not
+/// working with Fit to box at all.
+double fitFontSize(String text, TextSpec spec, Size box, {int columns = 1}) {
   if (text.isEmpty || box.width <= 0 || box.height <= 0) return spec.fontSize;
-  var low = 4.0, high = box.height * 2;
-  for (var i = 0; i < 12; i++) {
+  var count = math.max(1, columns);
+  var low = 4.0, high = box.height * 2 * count;
+  for (var i = 0; i < 14; i++) {
     var mid = (low + high) / 2;
     var p = layoutText(text, spec.copyWith(fontSize: mid), maxWidth: box.width);
-    if (p.height <= box.height && p.width <= box.width + 0.5) {
-      low = mid;
-    } else {
+    if (p.width > box.width + 0.5) {
       high = mid;
+      continue;
     }
+    if (count == 1) {
+      p.height <= box.height ? low = mid : high = mid;
+      continue;
+    }
+    // Against the packing rather than against the height times the number of
+    // columns: a line cannot be split between two of them, so the room a
+    // column really holds is a whole number of lines and is always a little
+    // less than its height.
+    var runs = columnRuns(p.computeLineMetrics(), box.height, count);
+    var carried = runs.isEmpty ? 0 : runs.last.$2;
+    carried >= p.computeLineMetrics().length ? low = mid : high = mid;
   }
   return low;
 }
@@ -445,6 +461,44 @@ void paintCentredGlyphs(
 /// Lines are kept whole. A column break falls between two lines, never through
 /// one, which is what a column of text is; the alternative slices letters in
 /// half across the gutter.
+/// columnRuns is which lines of a laid-out paragraph go in which column.
+///
+/// Whole lines only, which is the whole of it: a column that shows fifteen and
+/// three quarters of a line is a column with a row of half-letters along the
+/// bottom, and the quarter that was cut off appears again at the top of the
+/// next one. A line that does not fit in what is left of a column goes to the
+/// next column entire.
+///
+/// Measured from the paragraph's own line metrics rather than from a line
+/// height multiplied out, because lines are not all the same height -- a line
+/// with nothing tall on it is shorter -- and fifteen lines of "about the same"
+/// is a cut line by the bottom of the column.
+List<(int, int)> columnRuns(
+    List<ui.LineMetrics> metrics, double height, int columns) {
+  if (metrics.isEmpty || columns <= 0) return const [];
+
+  /// top is where a line starts, measured from the top of the paragraph.
+  double top(int line) => line >= metrics.length
+      ? metrics.last.baseline + metrics.last.descent
+      : metrics[line].baseline - metrics[line].ascent;
+
+  var runs = <(int, int)>[];
+  var at = 0;
+  for (var c = 0; c < columns && at < metrics.length; c++) {
+    var end = at;
+    // At least one line per column even where it does not fit: a box shorter
+    // than a single line would otherwise take no lines at all and draw
+    // nothing, which reads as the text having been lost.
+    while (end < metrics.length &&
+        (end == at || top(end + 1) - top(at) <= height + 0.5)) {
+      end++;
+    }
+    runs.add((at, end));
+    at = end;
+  }
+  return runs;
+}
+
 void paintTextInColumns(
   ui.Canvas canvas,
   String text,
@@ -463,39 +517,36 @@ void paintTextInColumns(
   var metrics = painter.computeLineMetrics();
   if (metrics.isEmpty) return;
 
-  // How many whole lines fit in a column. At least one, or a box shorter than
-  // a single line would take no lines at all and draw nothing.
-  var lineHeight = metrics.first.height;
-  var perColumn = lineHeight <= 0
-      ? metrics.length
-      : math.max(1, (box.height / lineHeight).floor());
+  var runs = columnRuns(metrics, box.height, columns.count);
 
   var outline = spec.outlineWidth > 0
       ? layoutText(text, spec,
           maxWidth: width, scale: scale, outline: true, fillWidth: true)
       : null;
 
-  for (var i = 0; i < columns.count; i++) {
-    var used = perColumn * i;
-    if (used >= metrics.length) break;
+  double top(int line) => line >= metrics.length
+      ? metrics.last.baseline + metrics.last.descent
+      : metrics[line].baseline - metrics[line].ascent;
 
+  for (var i = 0; i < runs.length; i++) {
+    var (from, to) = runs[i];
     var left = box.left + i * (width + columns.gap);
-    var column = Rect.fromLTWH(left, box.top, width, box.height);
 
-    // Vertical alignment applies to the column that is actually full, so a
-    // short last column sits under the others rather than floating in the
-    // middle of its own.
-    var lines = math.min(perColumn, metrics.length - used);
-    var height = lines * lineHeight;
+    // The lines this column actually holds, which is what it is clipped to.
+    // Clipped to the whole box instead, a sixteenth line three quarters
+    // taller than the room left over showed three quarters of itself along
+    // the bottom -- and the same three quarters appeared again at the top of
+    // the next column, which is what "the columns cut the text" was.
+    var used = top(to) - top(from);
     var dy = switch (spec.verticalAlign) {
       VerticalAlignSpec.top => 0.0,
-      VerticalAlignSpec.middle => (box.height - height) / 2,
-      VerticalAlignSpec.bottom => box.height - height,
+      VerticalAlignSpec.middle => (box.height - used) / 2,
+      VerticalAlignSpec.bottom => box.height - used,
     };
 
     canvas.save();
-    canvas.clipRect(column);
-    var at = Offset(left, box.top + dy - used * lineHeight);
+    canvas.clipRect(Rect.fromLTWH(left, box.top + dy, width, used));
+    var at = Offset(left, box.top + dy - top(from));
     outline?.paint(canvas, at);
     painter.paint(canvas, at);
     canvas.restore();

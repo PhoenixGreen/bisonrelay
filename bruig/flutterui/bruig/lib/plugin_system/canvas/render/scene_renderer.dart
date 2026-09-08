@@ -285,19 +285,41 @@ void _paintText(
   var inner = bounds.deflate(e.box.padding);
   if (inner.width <= 0 || inner.height <= 0) return;
 
-  var spec = e.textSpec;
-  if (e.autoSize) {
-    // Measured against one column rather than the whole box, or a headline set
-    // in two columns is sized to fill a width it will never be given.
-    var column = Size(e.columns.columnWidth(inner.width), inner.height);
-    spec = spec.copyWith(fontSize: fitFontSize(e.displayText, spec, column));
-  }
+  var spec = drawnTextSpec(e, bounds);
 
   if (e.columns.isSingle) {
     paintTextInBox(canvas, e.displayText, spec, inner);
     return;
   }
   paintTextInColumns(canvas, e.displayText, spec, inner, e.columns);
+}
+
+/// drawnTextSpec is the type a text element is actually drawn in.
+///
+/// Which is not always the type it is set in: with Fit to box on, the size
+/// comes from the room rather than from the setting. Public, and asked by the
+/// editor as well as by the painter, because the two have to agree -- clicking
+/// into a fitted paragraph and having the letters change size is the editor
+/// answering a question the canvas has already answered differently.
+///
+/// [bounds] is the element's rectangle, padding included; the fit is measured
+/// inside it.
+TextSpec drawnTextSpec(TextElement e, Rect bounds) {
+  var spec = e.textSpec;
+  if (!e.autoSize) return spec;
+
+  var inner = bounds.deflate(e.box.padding);
+  if (inner.width <= 0 || inner.height <= 0) return spec;
+
+  // Measured against one column's *width*, since that is the width a line
+  // will be given -- but against all the columns' room, since that is where
+  // the text goes. Fitted to one column's box, the type came out a third of
+  // the size it could be and all of it landed in the first column, which read
+  // as columns not working with Fit to box at all.
+  var column = Size(e.columns.columnWidth(inner.width), inner.height);
+  return spec.copyWith(
+      fontSize:
+          fitFontSize(e.displayText, spec, column, columns: e.columns.count));
 }
 
 /// lineWithPose is [e] with whatever its keyframes say about its bow on

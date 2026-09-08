@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
@@ -92,7 +93,12 @@ class _CanvasTextEditorState extends State<CanvasTextEditor> {
   @override
   Widget build(BuildContext context) {
     var e = widget.element;
-    var spec = e.textSpec;
+    // The type it is *drawn* in, which with Fit to box on is not the type it
+    // is set in. Clicking into a fitted paragraph and having the letters
+    // change size is the editor answering a question the canvas has already
+    // answered differently, and it makes the thing hard to edit -- which is
+    // the one job an editor has.
+    var spec = drawnTextSpec(e, e.bounds);
     var scale = widget.scale;
 
     return Positioned(
