@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/writing_tools/writing_tools.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
@@ -59,8 +60,15 @@ class CanvasTextEditor extends StatefulWidget {
 }
 
 class _CanvasTextEditorState extends State<CanvasTextEditor> {
+  /// The writing tools' controller rather than a plain one, which is the
+  /// whole of what it takes to get the marks: it composes the styled text
+  /// itself and reads the capability from the context it is painted in.
+  ///
+  /// With no provider enabled it behaves exactly like a plain controller, so
+  /// there is nothing to switch on here and nothing to check -- a canvas on a
+  /// machine with the writing tools off is the editor it always was.
   late final TextEditingController _text =
-      TextEditingController(text: widget.element.text);
+      WritingTextEditingController(text: widget.element.text);
   final FocusNode _focus = FocusNode();
 
   @override
@@ -160,6 +168,15 @@ class _CanvasTextEditorState extends State<CanvasTextEditor> {
                     border: InputBorder.none,
                     contentPadding: EdgeInsets.zero,
                   ),
+                  // What an enabled capability offers for the text under the
+                  // pointer -- a correction, a word to add to the dictionary,
+                  // a synonym -- falling back to the ordinary menu. Empty
+                  // when nothing is enabled, which is why nothing here names
+                  // a provider.
+                  contextMenuBuilder: (context, editableTextState) =>
+                      writingContextMenu(context, editableTextState,
+                          fallbackItems:
+                              editableTextState.contextMenuButtonItems),
                   onChanged: widget.onChanged,
                 ),
               ),
@@ -214,8 +231,11 @@ class CanvasCellEditor extends StatefulWidget {
 }
 
 class _CanvasCellEditorState extends State<CanvasCellEditor> {
+  /// A table cell gets the marks too. It is text somebody wrote, in the same
+  /// canvas, and a spelling that is flagged in a headline and not in the cell
+  /// under it would be the tools half applied.
   late final TextEditingController _text =
-      TextEditingController(text: widget.value);
+      WritingTextEditingController(text: widget.value);
   final FocusNode _focus = FocusNode();
 
   @override
@@ -290,6 +310,11 @@ class _CanvasCellEditorState extends State<CanvasCellEditor> {
                   contentPadding:
                       EdgeInsets.symmetric(horizontal: 5, vertical: 4),
                 ),
+                // The same menu the headline above it gets.
+                contextMenuBuilder: (context, editableTextState) =>
+                    writingContextMenu(context, editableTextState,
+                        fallbackItems:
+                            editableTextState.contextMenuButtonItems),
                 onChanged: widget.onChanged,
                 onSubmitted: (_) => widget.onDone(),
               ),
