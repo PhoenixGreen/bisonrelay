@@ -4907,6 +4907,36 @@ void main() {
           reason: "the second group starts well clear of the first");
     });
 
+    testWidgets("the zoom can be typed in", (tester) async {
+      // The obvious thing to do with a percentage is type one, and until now
+      // the only way to a particular scale was pressing a button that
+      // multiplies by 1.25 and hoping.
+      var controller = CanvasController(const CanvasDocument());
+      addTearDown(controller.dispose);
+      await pump(
+          tester,
+          CanvasSettingsBar(
+            controller: controller,
+            onPublish: () {},
+            canvasSettingsOpen: false,
+            onToggleCanvasSettings: () {},
+            guidesOpen: false,
+            onToggleGuides: () {},
+            timelineOpen: true,
+            onToggleTimeline: () {},
+          ));
+
+      // The band has no stage under it, so the fitted scale is one and the
+      // percentage is the zoom.
+      var field = find.byType(TextField);
+      expect(field, findsOneWidget);
+      await tester.enterText(field, "250");
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+
+      expect(controller.viewScale, closeTo(2.5, 0.001));
+    });
+
     testWidgets("the timeline can be hidden from the bar", (tester) async {
       // A still canvas has no use for a transport, and forty pixels of it
       // under a picture nobody is animating is forty pixels of picture.

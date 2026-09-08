@@ -3224,4 +3224,89 @@ void main() {
           controller.document.elementById("s")!.bounds.right, closeTo(503, 1));
     });
   });
+
+  group("the percentage on the band", () {
+    // It said 100% whenever the whole canvas was showing, whatever size that
+    // turned out to be -- so a 4096-pixel canvas squeezed into a third of a
+    // window read 100%, and the zoom buttons moved a number that had started
+    // from the wrong place.
+
+    testWidgets("says what is actually on screen", (tester) async {
+      var controller = CanvasController(const CanvasDocument(
+          size: CanvasSize(ratio: CanvasRatio.wide, width: 3840)));
+      addTearDown(controller.dispose);
+      var stage = await pump(tester, controller);
+
+      // The whole canvas in an 800-pixel window: a long way under half size.
+      expect(controller.zoom, 1, reason: "showing all of it");
+      expect(controller.viewScale, lessThan(0.3));
+      expect(controller.viewScale, closeTo(stage.pageRect.width / 3840, 0.001),
+          reason: "the ratio of the frame to the document is the scale");
+    });
+
+    testWidgets("and follows the zoom buttons from there", (tester) async {
+      var controller = CanvasController(const CanvasDocument(
+          size: CanvasSize(ratio: CanvasRatio.wide, width: 3840)));
+      addTearDown(controller.dispose);
+      await pump(tester, controller);
+
+      var fitted = controller.viewScale;
+      controller.zoomBy(2);
+      await tester.pumpAndSettle();
+      expect(controller.viewScale, closeTo(fitted * 2, 0.001));
+    });
+
+    testWidgets("and a percentage can be typed in", (tester) async {
+      // One document pixel to one screen pixel is what 100% ought to mean,
+      // and now typing it gets it.
+      var controller = CanvasController(const CanvasDocument(
+          size: CanvasSize(ratio: CanvasRatio.wide, width: 3840)));
+      addTearDown(controller.dispose);
+      await pump(tester, controller);
+
+      controller.setViewScale(1);
+      await tester.pumpAndSettle();
+      expect(controller.viewScale, closeTo(1, 0.001));
+      expect(controller.zoom, greaterThan(1),
+          reason: "which on a canvas this big is a long way zoomed in");
+
+      controller.setViewScale(0.5);
+      await tester.pumpAndSettle();
+      expect(controller.viewScale, closeTo(0.5, 0.001));
+    });
+
+    testWidgets("fitting to width is not the same scale as fitting whole",
+        (tester) async {
+      // The two buttons cannot both be 100%: one fills the width and the
+      // other fits the height as well.
+      var controller = CanvasController(const CanvasDocument(
+          size: CanvasSize(ratio: CanvasRatio.tall, width: 1080)));
+      addTearDown(controller.dispose);
+      await pump(tester, controller);
+
+      controller.showWhole();
+      await tester.pumpAndSettle();
+      var whole = controller.viewScale;
+
+      controller.fitWidth();
+      await tester.pumpAndSettle();
+      expect(controller.viewScale, isNot(closeTo(whole, 0.01)),
+          reason: "a 9:16 canvas fitted to width is far larger than fitted "
+              "whole");
+    });
+
+    testWidgets("nonsense is refused rather than breaking the view",
+        (tester) async {
+      var controller = CanvasController(const CanvasDocument());
+      addTearDown(controller.dispose);
+      await pump(tester, controller);
+
+      var was = controller.viewScale;
+      controller.setViewScale(0);
+      controller.setViewScale(-1);
+      controller.setViewScale(double.nan);
+      await tester.pumpAndSettle();
+      expect(controller.viewScale, was);
+    });
+  });
 }

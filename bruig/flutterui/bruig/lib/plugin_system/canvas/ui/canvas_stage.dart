@@ -413,6 +413,20 @@ class CanvasStageState extends State<CanvasStage> {
   /// the document's own pixels.
   double get _scale => _fitScale * controller.zoom;
 
+  /// _tellControllerTheScale hands the fitted scale to the controller so the
+  /// band can say what is actually on screen.
+  ///
+  /// After the frame, not during it. Notifying a listener while the tree is
+  /// being laid out is "setState called during build", which is exactly what
+  /// happened the last time something in here reported upwards -- see
+  /// CanvasController.restoreFit.
+  void _tellControllerTheScale() {
+    var found = _fitScale;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) controller.reportFitScale(found);
+    });
+  }
+
   /// _scaledSize is the document as drawn, which at any zoom above 1 is larger
   /// than the frame it is being drawn inside.
   Size get _scaledSize => document.size.size * _scale;
@@ -2045,6 +2059,9 @@ class CanvasStageState extends State<CanvasStage> {
           _visible = Size(constraints.maxWidth, constraints.maxHeight);
           var content = _contentSize(_visible);
           _viewport = content;
+          // How much the canvas had to shrink to fit, which is half of what
+          // the percentage on the band means.
+          _tellControllerTheScale();
 
           Widget painter = SizedBox(
             width: content.width,

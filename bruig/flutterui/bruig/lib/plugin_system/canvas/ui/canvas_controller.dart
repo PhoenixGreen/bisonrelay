@@ -199,6 +199,40 @@ class CanvasController extends ChangeNotifier {
   /// thing that knows how much room there is. See CanvasStage.
   double get zoom => _zoom;
 
+  /// _fitScale is what the stage last reported: how much the canvas is
+  /// shrunk to fill the window before any zoom is applied.
+  ///
+  /// The stage owns this -- it is the only thing that knows how much room
+  /// there is -- and reports it so that the band can say what somebody is
+  /// actually looking at. See [viewScale].
+  double _fitScale = 1;
+
+  /// viewScale is document pixels to screen pixels: what the percentage on
+  /// the band means.
+  ///
+  /// Not [zoom], which is a multiple of the fitted size and is therefore 1
+  /// whenever the whole canvas is showing -- whatever size that turned out to
+  /// be. The band said 100% for a 4096-pixel canvas squeezed into a third of
+  /// a window, which is a claim about the view that is plainly untrue.
+  double get viewScale => _fitScale * _zoom;
+
+  /// reportFitScale is the stage telling the controller how much room it
+  /// found. Notifies only when the answer changes, since it is asked on every
+  /// layout.
+  void reportFitScale(double value) {
+    if (!value.isFinite || value <= 0) return;
+    if ((value - _fitScale).abs() < 0.0001) return;
+    _fitScale = value;
+    _notifyView();
+  }
+
+  /// setViewScale zooms so that one document pixel is [value] screen pixels,
+  /// which is what typing a percentage into the band means.
+  void setViewScale(double value) {
+    if (!value.isFinite || value <= 0 || _fitScale <= 0) return;
+    zoom = value / _fitScale;
+  }
+
   /// atFit is whether the view is showing the whole canvas, untouched -- which
   /// is what the Fit button lights up for.
   bool get atFit => (_zoom - 1).abs() < 0.001 && _pan.dx == 0 && _pan.dy == 0;

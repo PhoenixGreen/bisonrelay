@@ -216,15 +216,16 @@ class _CanvasSettingsBarState extends State<CanvasSettingsBar> {
                   "is taller than the window",
               active: controller.fit == CanvasFit.width && controller.atFit,
               onPressed: controller.fitWidth),
-          SizedBox(
-            width: 38,
-            child: Text(
-              "${(controller.zoom * 100).round()}%",
-              style:
-                  TextStyle(fontSize: 10, color: theme.colors.onSurfaceVariant),
-              textAlign: TextAlign.center,
-            ),
-          ),
+          // What is actually on screen: document pixels to screen pixels,
+          // which is the fitted scale times the zoom. It used to be the zoom
+          // alone, so it read 100% for a 4096-pixel canvas squeezed into a
+          // third of a window -- a claim about the view that is plainly
+          // untrue, and one that made the zoom buttons look broken as well
+          // since they moved a number that had started from the wrong place.
+          //
+          // A field rather than a label, because the obvious thing to do with
+          // a percentage is type one.
+          _ZoomField(controller: controller, theme: theme),
         ],
       );
 
@@ -663,4 +664,85 @@ class _NoScrollbar extends ScrollBehavior {
   Widget buildScrollbar(
           BuildContext context, Widget child, ScrollableDetails details) =>
       child;
+}
+
+/// _ZoomField is the percentage on the band: what is on screen, and a place
+/// to type what you want instead.
+///
+/// Its own small widget rather than a CanvasNumberField, which is built for a
+/// settings panel and is a caption plus a bordered box tall enough to make
+/// this band two lines high. The band is one line and always exactly one.
+class _ZoomField extends StatefulWidget {
+  final CanvasController controller;
+  final ThemeNotifier theme;
+
+  const _ZoomField({required this.controller, required this.theme});
+
+  @override
+  State<_ZoomField> createState() => _ZoomFieldState();
+}
+
+class _ZoomFieldState extends State<_ZoomField> {
+  final TextEditingController _text = TextEditingController();
+  final FocusNode _focus = FocusNode();
+
+  /// _shown is what the box last said, so the text is only replaced when the
+  /// view has actually moved. Replacing it on every rebuild would fight
+  /// somebody typing into it.
+  int _shown = -1;
+
+  @override
+  void initState() {
+    super.initState();
+    _focus.addListener(() {
+      if (!_focus.hasFocus) _commit();
+    });
+  }
+
+  @override
+  void dispose() {
+    _text.dispose();
+    _focus.dispose();
+    super.dispose();
+  }
+
+  void _commit() {
+    var wanted = double.tryParse(_text.text.replaceAll("%", "").trim());
+    if (wanted != null) widget.controller.setViewScale(wanted / 100);
+    setState(() => _shown = -1);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    var at = (widget.controller.viewScale * 100).round();
+    if (!_focus.hasFocus && at != _shown) {
+      _shown = at;
+      _text.text = "$at";
+    }
+
+    return SizedBox(
+      width: 52,
+      height: 22,
+      child: Tooltip(
+        message: "How large the canvas is drawn, as a percentage of its own "
+            "pixels. Type one to go there.",
+        child: TextField(
+          controller: _text,
+          focusNode: _focus,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+              fontSize: 10, color: widget.theme.colors.onSurfaceVariant),
+          decoration: InputDecoration(
+            isDense: true,
+            border: InputBorder.none,
+            suffixText: "%",
+            suffixStyle: TextStyle(
+                fontSize: 10, color: widget.theme.colors.onSurfaceVariant),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 2),
+          ),
+          onSubmitted: (_) => _commit(),
+        ),
+      ),
+    );
+  }
 }
