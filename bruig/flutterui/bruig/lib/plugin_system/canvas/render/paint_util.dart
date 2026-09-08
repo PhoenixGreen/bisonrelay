@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/text_parts.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/text_animator.dart';
@@ -41,7 +42,18 @@ import 'package:flutter/painting.dart';
 // Evicted painters are dropped rather than disposed: a caller may still be
 // holding one from an earlier frame, and letting them be collected is exactly
 // what happened before there was a cache here.
-typedef _LayoutKey = (String, TextSpec, double, double, Color?, bool, bool);
+typedef _LayoutKey = (
+  String,
+  TextSpec,
+  double,
+  double,
+  Color?,
+  bool,
+  bool,
+  // The parts, as the text of their own settings: two paragraphs of the
+  // same words with a different word coloured are two paragraphs.
+  String,
+);
 
 final _layouts = <_LayoutKey, TextPainter>{};
 
@@ -75,8 +87,23 @@ TextPainter layoutText(
   /// still wants the intrinsic width, which is why this is a flag and not the
   /// only behaviour.
   bool fillWidth = false,
+
+  /// parts are the runs of the text that are drawn differently -- a word in
+  /// another colour, a phrase in bold. Empty for almost every paragraph.
+  List<TextPart> parts = const [],
 }) {
-  var key = (text, spec, maxWidth, scale, colorOverride, outline, fillWidth);
+  var key = (
+    text,
+    spec,
+    maxWidth,
+    scale,
+    colorOverride,
+    outline,
+    fillWidth,
+    // The parts are part of what makes a layout what it is: two paragraphs
+    // of the same words with a different word coloured are two paragraphs.
+    parts.isEmpty ? "" : [for (var p in parts) p.toJson()].toString(),
+  );
   var hit = _layouts[key];
   if (hit != null) return hit;
   var painter = _layoutText(text, spec,
@@ -84,7 +111,8 @@ TextPainter layoutText(
       scale: scale,
       colorOverride: colorOverride,
       outline: outline,
-      fillWidth: fillWidth);
+      fillWidth: fillWidth,
+      parts: parts);
   if (_layouts.length >= _layoutCap) {
     _layouts.remove(_layouts.keys.first);
   }
@@ -100,6 +128,7 @@ TextPainter _layoutText(
   Color? colorOverride,
   bool outline = false,
   bool fillWidth = false,
+  List<TextPart> parts = const [],
 }) {
   // The case transform belongs here rather than at every call site.
   //
@@ -111,12 +140,13 @@ TextPainter _layoutText(
   // it does no harm.
   text = spec.textCase.apply(text);
 
+  var style = textStyleOf(spec,
+      scale: scale, colorOverride: colorOverride, outline: outline);
+
   var painter = TextPainter(
-    text: TextSpan(
-      text: text,
-      style: textStyleOf(spec,
-          scale: scale, colorOverride: colorOverride, outline: outline),
-    ),
+    text: parts.isEmpty
+        ? TextSpan(text: text, style: style)
+        : _partedSpan(text, spec, parts, style, colorOverride),
     textAlign: spec.align.flutter,
     textDirection: TextDirection.ltr,
     maxLines: null,
@@ -144,6 +174,7 @@ double paintTextInBox(
   bool clip = false,
   TextAnimation? animation,
   double reveal = 1,
+  List<TextPart> parts = const [],
 }) {
   if (text.isEmpty || box.width <= 0) return 0;
 
@@ -151,7 +182,8 @@ double paintTextInBox(
       maxWidth: box.width,
       scale: scale,
       colorOverride: colorOverride,
-      fillWidth: true);
+      fillWidth: true,
+      parts: parts);
 
   var dy = switch (spec.verticalAlign) {
     VerticalAlignSpec.top => box.top,
@@ -231,6 +263,48 @@ double fitFontSize(String text, TextSpec spec, Size box, {int columns = 1}) {
     carried >= p.computeLineMetrics().length ? low = mid : high = mid;
   }
   return low;
+}
+
+/// _partedSpan builds the paragraph out of runs, so a few words in it can be
+/// a different colour or weight from the rest.
+///
+/// One span per run of characters that share an answer, which is what makes
+/// this cheap: a sentence with one word coloured is three spans, not one per
+/// letter. The runs come from the parts themselves -- see partAt -- so the
+/// same rule decides what is drawn and what a settings panel says is drawn.
+TextSpan _partedSpan(String text, TextSpec spec, List<TextPart> parts,
+    TextStyle style, Color? colorOverride) {
+  var children = <TextSpan>[];
+  var from = 0;
+  TextPart? current = partAt(text, parts, 0);
+
+  TextStyle styleFor(TextPart? part) {
+    if (part == null) return style;
+    return style.copyWith(
+      // colorOverride wins: it is how a preview draws the whole paragraph in
+      // one colour, and a part that ignored it would be a word that stayed
+      // its own colour in a ghost.
+      color: colorOverride ?? part.color ?? style.color,
+      fontWeight: part.weight == null
+          ? style.fontWeight
+          : FontWeight.values[((part.weight! ~/ 100) - 1)
+              .clamp(0, FontWeight.values.length - 1)],
+      fontStyle: part.italic == null
+          ? style.fontStyle
+          : (part.italic! ? FontStyle.italic : FontStyle.normal),
+    );
+  }
+
+  for (var i = 1; i <= text.length; i++) {
+    var here = i == text.length ? null : partAt(text, parts, i);
+    if (i == text.length || !identical(here, current)) {
+      children.add(
+          TextSpan(text: text.substring(from, i), style: styleFor(current)));
+      from = i;
+      current = here;
+    }
+  }
+  return TextSpan(children: children, style: style);
 }
 
 /// paintBox draws a [BoxSpec]: the fill, then the border, both rounded.
@@ -531,14 +605,15 @@ void paintTextInColumns(
   double scale = 1,
   TextAnimation? animation,
   double reveal = 1,
+  List<TextPart> parts = const [],
 }) {
   if (text.isEmpty || box.width <= 0 || box.height <= 0) return;
 
   var width = columns.columnWidth(box.width);
   if (width <= 0) return;
 
-  var painter =
-      layoutText(text, spec, maxWidth: width, scale: scale, fillWidth: true);
+  var painter = layoutText(text, spec,
+      maxWidth: width, scale: scale, fillWidth: true, parts: parts);
   var metrics = painter.computeLineMetrics();
   if (metrics.isEmpty) return;
 

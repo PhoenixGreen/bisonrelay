@@ -310,14 +310,14 @@ void _paintText(
 
   if (e.columns.isSingle) {
     paintTextInBox(canvas, e.displayText, spec, inner,
-        animation: animation, reveal: reveal);
+        animation: animation, reveal: reveal, parts: e.parts);
     return;
   }
   // Columns animate piece by piece like anything else: the pieces are worked
   // out once for the whole paragraph and drawn column by column, so a stagger
   // carries on from the last word of one column into the first of the next.
   paintTextInColumns(canvas, e.displayText, spec, inner, e.columns,
-      animation: animation, reveal: reveal);
+      animation: animation, reveal: reveal, parts: e.parts);
 }
 
 /// drawnTextSpec is the type a text element is actually drawn in.

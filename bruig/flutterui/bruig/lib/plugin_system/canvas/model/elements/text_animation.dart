@@ -37,7 +37,8 @@ enum TextAnimationFamily {
   sequential("Sequential"),
   impact("Impact"),
   transform("Transform"),
-  draw("Draw");
+  draw("Draw"),
+  special("Special");
 
   final String label;
   const TextAnimationFamily(this.label);
@@ -92,7 +93,15 @@ enum TextMotion {
   highlight,
 
   /// strokeOn draws the outline, then fills it.
-  strokeOn;
+  strokeOn,
+
+  /// echo repeats the words, fading, in a direction.
+  ///
+  /// A look as much as an arrival: the copies stay when it is over, which is
+  /// what the reference somebody sent looked like -- a word with four
+  /// quieter copies of itself under it. What it animates is the copies
+  /// fanning out from the words, nearest first.
+  echo;
 
   /// keeps is whether the motion leaves something behind when it is over.
   ///
@@ -101,7 +110,9 @@ enum TextMotion {
   /// else ends with the words exactly as they would have been without any
   /// animation at all, which is what lets the still drawing take over.
   bool get keeps =>
-      this == TextMotion.underline || this == TextMotion.highlight;
+      this == TextMotion.underline ||
+      this == TextMotion.highlight ||
+      this == TextMotion.echo;
 }
 
 /// TextAnimationPreset is the list somebody chooses from.
@@ -209,7 +220,29 @@ enum TextAnimationPreset {
   highlight("Highlight", TextAnimationFamily.draw, TextAnimationScope.line,
       TextMotion.highlight),
   strokeOn("Draw the outline", TextAnimationFamily.draw,
-      TextAnimationScope.block, TextMotion.strokeOn);
+      TextAnimationScope.block, TextMotion.strokeOn),
+
+  // Special: the copies. Every direction, since which one reads best depends
+  // entirely on where the words sit on the page -- a headline at the top of a
+  // canvas echoes downwards and one at the bottom cannot.
+  echoDown("Echo downwards", TextAnimationFamily.special,
+      TextAnimationScope.block, TextMotion.echo),
+  echoUp("Echo upwards", TextAnimationFamily.special, TextAnimationScope.block,
+      TextMotion.echo,
+      dy: -1),
+  echoBoth("Echo both ways", TextAnimationFamily.special,
+      TextAnimationScope.block, TextMotion.echo,
+      turns: 1),
+  echoRight("Echo to the right", TextAnimationFamily.special,
+      TextAnimationScope.block, TextMotion.echo,
+      dx: 1),
+  echoLeft("Echo to the left", TextAnimationFamily.special,
+      TextAnimationScope.block, TextMotion.echo,
+      dx: -1),
+  echoWords("Echo each word", TextAnimationFamily.special,
+      TextAnimationScope.word, TextMotion.echo),
+  echoLetters("Echo each letter", TextAnimationFamily.special,
+      TextAnimationScope.letter, TextMotion.echo);
 
   final String label;
   final TextAnimationFamily family;
@@ -377,6 +410,64 @@ class TextDrawSpec {
       );
 }
 
+/// TextEchoSpec is how the copies of an echo are arranged.
+///
+/// The three numbers that decide what it looks like: how many, how far apart,
+/// and how much quieter each one is than the one before. The reference is
+/// five copies a line apart, each about a third fainter.
+class TextEchoSpec {
+  /// copies is how many there are, not counting the words themselves.
+  final int copies;
+
+  /// spacing is the gap between one copy and the next, as a fraction of the
+  /// line's own height -- so the same setting reads the same on a headline
+  /// and on a caption.
+  final double spacing;
+
+  /// fade is how much of the previous copy's strength each one keeps. 0.6
+  /// means each is a little over half the one before it, which is a trail;
+  /// 1 means they are all as solid as the words, which is a stack.
+  final double fade;
+
+  /// shrink is how much smaller each copy is than the one before, or 1 for
+  /// copies the same size. Below 1 the trail recedes.
+  final double shrink;
+
+  const TextEchoSpec({
+    this.copies = 4,
+    this.spacing = 1,
+    this.fade = 0.55,
+    this.shrink = 1,
+  });
+
+  TextEchoSpec copyWith({
+    int? copies,
+    double? spacing,
+    double? fade,
+    double? shrink,
+  }) =>
+      TextEchoSpec(
+        copies: copies ?? this.copies,
+        spacing: spacing ?? this.spacing,
+        fade: fade ?? this.fade,
+        shrink: shrink ?? this.shrink,
+      );
+
+  Map<String, dynamic> toJson() => {
+        if (copies != 4) "copies": copies,
+        if (spacing != 1) "spacing": spacing,
+        if (fade != 0.55) "fade": fade,
+        if (shrink != 1) "shrink": shrink,
+      };
+
+  factory TextEchoSpec.fromJson(Map<String, dynamic> json) => TextEchoSpec(
+        copies: jsonInt(json["copies"], 4).clamp(1, 24),
+        spacing: jsonDouble(json["spacing"], 1).clamp(0.05, 8),
+        fade: jsonDouble(json["fade"], 0.55).clamp(0.05, 1),
+        shrink: jsonDouble(json["shrink"], 1).clamp(0.2, 1),
+      );
+}
+
 /// TextAnimation is the preset, the stagger and the ease -- and, as with a
 /// chart, no duration: the length is the gap between two keyframes on the
 /// timeline.
@@ -397,6 +488,9 @@ class TextAnimation {
 
   /// draw is what a drawn mark looks like, for the presets that draw one.
   final TextDrawSpec draw;
+
+  /// echo is how the copies are arranged, for the presets that make them.
+  final TextEchoSpec echo;
 
   /// scale is where a growing preset starts from, as a fraction: 0.6 arrives
   /// from a little small, 0 from nothing, 2 from twice the size.
@@ -425,6 +519,7 @@ class TextAnimation {
     this.gap = 0.35,
     this.scale = 0,
     this.draw = const TextDrawSpec(),
+    this.echo = const TextEchoSpec(),
     this.ease = ChartEase.easeOut,
     this.flipOrder = false,
   });
@@ -435,6 +530,10 @@ class TextAnimation {
   /// or the preset's own number when nothing has.
   double scaleFor(TextAnimationPreset preset) =>
       scale > 0 ? scale : preset.from;
+
+  /// echoes is whether the copy settings mean anything for what is chosen.
+  bool get echoes =>
+      preset.motion == TextMotion.echo || exit.motion == TextMotion.echo;
 
   /// draws is whether the mark settings mean anything for what is chosen.
   bool get draws => preset.motion.keeps || exit.motion.keeps;
@@ -454,6 +553,7 @@ class TextAnimation {
     double? gap,
     double? scale,
     TextDrawSpec? draw,
+    TextEchoSpec? echo,
     ChartEase? ease,
     bool? flipOrder,
   }) =>
@@ -464,6 +564,7 @@ class TextAnimation {
         gap: gap ?? this.gap,
         scale: scale ?? this.scale,
         draw: draw ?? this.draw,
+        echo: echo ?? this.echo,
         ease: ease ?? this.ease,
         flipOrder: flipOrder ?? this.flipOrder,
       );
@@ -497,6 +598,7 @@ class TextAnimation {
         "gap": gap,
         if (scale > 0) "scale": scale,
         if (draw.toJson().isNotEmpty) "draw": draw.toJson(),
+        if (echo.toJson().isNotEmpty) "echo": echo.toJson(),
         "ease": ease.name,
       };
 
@@ -509,6 +611,9 @@ class TextAnimation {
         draw: json["draw"] is Map<String, dynamic>
             ? TextDrawSpec.fromJson(json["draw"] as Map<String, dynamic>)
             : const TextDrawSpec(),
+        echo: json["echo"] is Map<String, dynamic>
+            ? TextEchoSpec.fromJson(json["echo"] as Map<String, dynamic>)
+            : const TextEchoSpec(),
         ease: ChartEase.fromName(json["ease"] as String?),
       );
 }

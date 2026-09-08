@@ -181,7 +181,8 @@ void paintAnimatedPieces(
     _paintPiece(canvas, painter, offset, all[i], animation.preset, p, spec,
         outline: outline,
         from: animation.scaleFor(animation.preset),
-        draw: animation.draw);
+        draw: animation.draw,
+        echo: animation.echo);
   }
 }
 
@@ -191,7 +192,10 @@ void paintAnimatedPieces(
 /// setting where it has one and the preset's number otherwise.
 void _paintPiece(ui.Canvas canvas, TextPainter painter, Offset offset,
     TextPiece piece, TextAnimationPreset preset, double p, TextSpec spec,
-    {TextPainter? outline, double? from, TextDrawSpec? draw}) {
+    {TextPainter? outline,
+    double? from,
+    TextDrawSpec? draw,
+    TextEchoSpec? echo}) {
   var box = piece.box.shift(offset);
   var centre = box.center;
   var alpha = p.clamp(0.0, 1.0);
@@ -282,6 +286,11 @@ void _paintPiece(ui.Canvas canvas, TextPainter painter, Offset offset,
 
     case TextMotion.scramble:
       break;
+
+    case TextMotion.echo:
+      // The copies are drawn under the words, below. Nothing happens to the
+      // words themselves.
+      alpha = 1;
   }
 
   // The piece and nothing else. Inflated by a line height, as this was, the
@@ -298,6 +307,53 @@ void _paintPiece(ui.Canvas canvas, TextPainter painter, Offset offset,
 
   // The two draw-on motions put something behind or under the words rather
   // than moving them.
+  // The copies, under everything else: they are behind the words, and the
+  // nearest is drawn last so it sits over the ones further away.
+  if (preset.motion == TextMotion.echo) {
+    var spec2 = echo ?? const TextEchoSpec();
+    var step = Offset(
+      preset.dx * box.height * spec2.spacing,
+      preset.dy == 0
+          ? box.height * spec2.spacing
+          : preset.dy * box.height * spec2.spacing,
+    );
+    // "Both ways" is the one preset that puts copies on either side, which is
+    // what its turns flag says -- there being nothing to turn in an echo.
+    var ways = preset.turns > 0 ? const [1.0, -1.0] : const [1.0];
+
+    for (var way in ways) {
+      for (var c = spec2.copies; c >= 1; c--) {
+        // Each copy arrives after the one before it, so the trail fans out
+        // from the words rather than appearing whole.
+        var arrived = (p * (spec2.copies + 1) - (c - 1)).clamp(0.0, 1.0);
+        if (arrived <= 0) continue;
+
+        var strength = spec2.fade;
+        for (var i = 1; i < c; i++) {
+          strength *= spec2.fade;
+        }
+        var away = step * (c * arrived) * way;
+        var size = math.pow(spec2.shrink, c).toDouble();
+
+        canvas.save();
+        canvas.translate(away.dx, away.dy);
+        if (size != 1) {
+          canvas.translate(centre.dx, centre.dy);
+          canvas.scale(size, size);
+          canvas.translate(-centre.dx, -centre.dy);
+        }
+        canvas.saveLayer(
+            box.inflate(box.height * 4),
+            Paint()
+              ..color = Color.fromRGBO(
+                  0, 0, 0, (strength * arrived).clamp(0.0, 1.0)));
+        painter.paint(canvas, offset);
+        canvas.restore();
+        canvas.restore();
+      }
+    }
+  }
+
   var mark = draw ?? const TextDrawSpec();
   // Its own colour where it has been given one: a highlight in the colour of
   // the words it sits behind is a solid block.

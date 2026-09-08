@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/canvas/model/elements/text_parts.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
@@ -166,10 +167,114 @@ List<Widget> textSettings(
       ],
     ]),
     boxGroup(e.box, (box) => write(e.copyWith(box: box)), begin, commit),
+    boxed(context, _partsSection(e, write, begin, commit)),
     // Boxed like every other section: a bare expander among boxed ones reads
     // as something that has come loose.
     boxed(context, _animationSection(controller, e, write, begin, commit)),
   ];
+}
+
+/// _partsSection is "these words, not the others": a list of ranges, each
+/// with what is different about it.
+///
+/// Its own section because it is not an animation and not type: it is a fact
+/// about some of the words -- the sixth one is white, the first five are
+/// bold -- and the same ranges are what an echo or an animation will be
+/// pointed at.
+Widget _partsSection(TextElement e, SettingsWrite write, VoidCallback begin,
+    VoidCallback commit) {
+  void set(List<TextPart> parts) {
+    begin();
+    write(e.copyWith(parts: parts));
+    commit();
+  }
+
+  List<TextPart> replacing(int index, TextPart part) => [
+        for (var i = 0; i < e.parts.length; i++) i == index ? part : e.parts[i],
+      ];
+
+  return CanvasExpander(
+    label: "Parts of the text",
+    remember: "textParts",
+    trailing: e.parts.isEmpty ? null : "${e.parts.length}",
+    children: [
+      const CanvasHint(
+          "A part is some of the words — the sixth one, the first five, the "
+          "tenth to the end — and what is different about them. Counted from "
+          "one, and \"to\" left at nothing means to the end, so a part still "
+          "means what it said after the words are edited."),
+      for (var (i, part) in e.parts.indexed)
+        CanvasControlGroup(label: part.says, children: [
+          CanvasDropdown<TextUnit>(
+            label: "Counting",
+            value: part.unit,
+            width: 118,
+            options: [for (var u in TextUnit.values) (u, u.label)],
+            onChanged: (v) => set(replacing(i, part.copyWith(unit: v))),
+          ),
+          CanvasNumberField(
+            label: "From",
+            value: part.from.toDouble(),
+            min: 1,
+            max: 9999,
+            decimals: 0,
+            width: 56,
+            onChanged: (v) {
+              begin();
+              write(e.copyWith(
+                  parts: replacing(i, part.copyWith(from: v.round()))));
+            },
+            onCommit: commit,
+          ),
+          CanvasNumberField(
+            label: "To",
+            value: part.to.toDouble(),
+            min: 0,
+            max: 9999,
+            decimals: 0,
+            width: 56,
+            onChanged: (v) {
+              begin();
+              write(e.copyWith(
+                  parts: replacing(i, part.copyWith(to: v.round()))));
+            },
+            onCommit: commit,
+          ),
+          CanvasColorButton(
+            label: "Colour",
+            color: part.color ?? e.textSpec.color,
+            onChanged: (c) => set(replacing(i, part.copyWith(color: c))),
+          ),
+          CanvasToggle(
+            label: "Bold",
+            value: (part.weight ?? e.textSpec.weight) >= 600,
+            onChanged: (v) =>
+                set(replacing(i, part.copyWith(weight: v ? 700 : 400))),
+          ),
+          CanvasToggle(
+            label: "Italic",
+            value: part.italic ?? e.textSpec.italic,
+            onChanged: (v) => set(replacing(i, part.copyWith(italic: v))),
+          ),
+          CanvasIconButton(
+            icon: Icons.delete_outline,
+            tooltip: "Remove this part",
+            onPressed: () => set([
+              for (var j = 0; j < e.parts.length; j++)
+                if (j != i) e.parts[j],
+            ]),
+          ),
+        ]),
+      CanvasControlGroup(label: "Add", hideCaption: true, children: [
+        CanvasIconButton(
+          key: const ValueKey("addTextPart"),
+          icon: Icons.add,
+          tooltip: "Pick out some of the words",
+          onPressed: () => set([...e.parts, const TextPart()]),
+        ),
+      ]),
+    ],
+  );
 }
 
 /// _animationSection is how the words arrive, and how they leave.
@@ -365,6 +470,77 @@ Widget _animationSection(CanvasController controller, TextElement e,
               "of it for an underline tight under the letters, a few pixels "
               "for a highlighter. The one field sets all four sides; the four "
               "under it set one each."),
+        ]),
+      // How the copies of an echo are arranged: how many, how far apart, how
+      // much quieter each one is, and whether they shrink away.
+      if (animation.echoes)
+        CanvasControlGroup(label: "The copies", children: [
+          CanvasNumberField(
+            label: "How many",
+            value: animation.echo.copies.toDouble(),
+            min: 1,
+            max: 24,
+            decimals: 0,
+            width: 56,
+            onChanged: (v) {
+              begin();
+              write(e.copyWith(
+                  animation: animation.copyWith(
+                      echo: animation.echo.copyWith(copies: v.round()))));
+            },
+            onCommit: commit,
+          ),
+          CanvasNumberField(
+            label: "Apart",
+            value: animation.echo.spacing,
+            min: 0.05,
+            max: 8,
+            decimals: 2,
+            width: 62,
+            onChanged: (v) {
+              begin();
+              write(e.copyWith(
+                  animation: animation.copyWith(
+                      echo: animation.echo.copyWith(spacing: v))));
+            },
+            onCommit: commit,
+          ),
+          CanvasNumberField(
+            label: "Fade",
+            value: animation.echo.fade,
+            min: 0.05,
+            max: 1,
+            decimals: 2,
+            width: 62,
+            onChanged: (v) {
+              begin();
+              write(e.copyWith(
+                  animation: animation.copyWith(
+                      echo: animation.echo.copyWith(fade: v))));
+            },
+            onCommit: commit,
+          ),
+          CanvasNumberField(
+            label: "Shrink",
+            value: animation.echo.shrink,
+            min: 0.2,
+            max: 1,
+            decimals: 2,
+            width: 62,
+            onChanged: (v) {
+              begin();
+              write(e.copyWith(
+                  animation: animation.copyWith(
+                      echo: animation.echo.copyWith(shrink: v))));
+            },
+            onCommit: commit,
+          ),
+          const CanvasHint(
+              "Apart is measured in line heights, so the same setting reads "
+              "the same on a headline and on a caption. Fade is how much of "
+              "one copy's strength the next one keeps — a little over half is "
+              "a trail, 1 is a stack. The copies stay when the animation is "
+              "over: it is a look as much as an arrival."),
         ]),
       if (animation.on || animation.closes)
         CanvasControlGroup(label: "Timing", children: [

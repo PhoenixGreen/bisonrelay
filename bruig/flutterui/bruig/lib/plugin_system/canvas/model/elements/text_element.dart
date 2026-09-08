@@ -3,6 +3,7 @@ import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/text_parts.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 
 /// ColumnRuleStyle is how the line between two columns is drawn.
@@ -185,6 +186,14 @@ class TextElement extends CanvasElement {
   /// animation is how the words arrive. See [TextAnimation].
   final TextAnimation animation;
 
+  /// parts are the runs of this text that are drawn differently -- a word in
+  /// another colour, a phrase in bold. See [TextPart].
+  ///
+  /// On the element rather than inside any one feature, because "these words,
+  /// not the others" is the same question a colour, an animation and an echo
+  /// all ask.
+  final List<TextPart> parts;
+
   /// curve attaches the text to a line, or is null for a paragraph in its own
   /// box. See [TextOnCurve].
   final TextOnCurve? curve;
@@ -197,6 +206,7 @@ class TextElement extends CanvasElement {
     this.autoSize = false,
     this.columns = const TextColumns(),
     this.animation = const TextAnimation(),
+    this.parts = const [],
     this.curve,
   });
 
@@ -216,6 +226,7 @@ class TextElement extends CanvasElement {
       autoSize: autoSize,
       columns: columns,
       animation: animation,
+      parts: parts,
       curve: curve);
 
   TextElement copyWith({
@@ -225,6 +236,7 @@ class TextElement extends CanvasElement {
     bool? autoSize,
     TextColumns? columns,
     TextAnimation? animation,
+    List<TextPart>? parts,
     TextOnCurve? curve,
     bool clearCurve = false,
   }) =>
@@ -235,6 +247,7 @@ class TextElement extends CanvasElement {
           autoSize: autoSize ?? this.autoSize,
           columns: columns ?? this.columns,
           animation: animation ?? this.animation,
+          parts: parts ?? this.parts,
           curve: clearCurve ? null : (curve ?? this.curve));
 
   @override
@@ -245,12 +258,13 @@ class TextElement extends CanvasElement {
         if (autoSize) "autoSize": true,
         if (!columns.isSingle) "columns": columns.toJson(),
         if (animation.on || animation.closes) "animation": animation.toJson(),
+        if (parts.isNotEmpty) "parts": [for (var p in parts) p.toJson()],
         if (curve != null) "curve": curve!.toJson(),
       };
 
-  factory TextElement.fromJson(Map<String, dynamic> json, ElementBase b) =>
-      TextElement(
-          b,
+  factory TextElement.fromJson(
+          Map<String, dynamic> json, ElementBase b) =>
+      TextElement(b,
           text: jsonString(json["text"], "Text"),
           textSpec:
               jsonSpec(json["textSpec"], TextSpec.fromJson, const TextSpec()),
@@ -258,6 +272,11 @@ class TextElement extends CanvasElement {
           autoSize: jsonBool(json["autoSize"], false),
           animation: jsonSpec(
               json["animation"], TextAnimation.fromJson, const TextAnimation()),
+          parts: [
+            if (json["parts"] case List raw)
+              for (var p in raw)
+                if (p is Map<String, dynamic>) TextPart.fromJson(p),
+          ],
           columns: jsonSpec(
               json["columns"], TextColumns.fromJson, const TextColumns()),
           curve: json["curve"] is Map<String, dynamic>
