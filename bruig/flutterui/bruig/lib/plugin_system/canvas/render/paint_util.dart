@@ -552,12 +552,31 @@ void paintTextInColumns(
     canvas.restore();
   }
 
-  _paintColumnRules(canvas, box, columns, width);
+  // Down the text rather than down the box. The columns hold a whole number
+  // of lines, so the room left under the last one is not text and a rule
+  // drawn through it is a line beside a row that is not there.
+  var tallest = 0.0;
+  for (var (from, to) in runs) {
+    tallest = math.max(tallest, top(to) - top(from));
+  }
+  // Where that column's text starts, which is where the rule starts: the
+  // alignment moves the whole block, and a rule pinned to the top of the box
+  // beside text sitting at the bottom of it is a line beside nothing.
+  var above = switch (spec.verticalAlign) {
+    VerticalAlignSpec.top => 0.0,
+    VerticalAlignSpec.middle => (box.height - tallest) / 2,
+    VerticalAlignSpec.bottom => box.height - tallest,
+  };
+  _paintColumnRules(canvas, box, columns, width, above, tallest);
 }
 
 /// _paintColumnRules draws the line down the middle of each gutter.
-void _paintColumnRules(
-    ui.Canvas canvas, Rect box, TextColumns columns, double width) {
+/// [textHeight] is how far the text actually reaches, which is what the rule
+/// is drawn beside. The box is taller than that by whatever was left over
+/// after the last whole line, and a rule down all of it is a line beside a row
+/// that is not there.
+void _paintColumnRules(ui.Canvas canvas, Rect box, TextColumns columns,
+    double width, double above, double textHeight) {
   if (columns.ruleStyle == ColumnRuleStyle.none ||
       columns.ruleWidth <= 0 ||
       columns.gap <= 0) {
@@ -572,11 +591,19 @@ void _paintColumnRules(
         : StrokeCap.butt
     ..color = columns.ruleColor;
 
+  // A little past the last line rather than exactly to it: a rule stopping
+  // dead on the baseline of the bottom row reads as too short, and the
+  // descenders hang below it anyway.
+  var from = box.top + (textHeight <= 0 ? 0 : above.clamp(0, box.height));
+  var reach = textHeight <= 0
+      ? box.height
+      : math.min(box.bottom - from, textHeight * 1.02 + columns.ruleWidth * 2);
+
   for (var i = 1; i < columns.count; i++) {
     var x = box.left + i * (width + columns.gap) - columns.gap / 2;
     var line = ui.Path()
-      ..moveTo(x, box.top)
-      ..lineTo(x, box.bottom);
+      ..moveTo(x, from)
+      ..lineTo(x, from + reach);
     canvas.drawPath(
       switch (columns.ruleStyle) {
         ColumnRuleStyle.dashed =>

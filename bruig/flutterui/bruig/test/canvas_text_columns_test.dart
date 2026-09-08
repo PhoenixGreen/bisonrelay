@@ -145,4 +145,72 @@ void main() {
       expect(drawnTextSpec(thin, thin.bounds).fontSize, thin.textSpec.fontSize);
     });
   });
+
+  group("the rule between two columns", () {
+    /// bottoms is how far down the picture the text reaches and how far the
+    /// rule reaches, in pixels. Measured off the drawing, because where a
+    /// line is drawn is the whole question.
+    Future<(double, double)> bottoms(TextElement element, Size size) async {
+      var recorder = ui.PictureRecorder();
+      var canvas = ui.Canvas(recorder);
+      canvas.drawRect(
+          Offset.zero & size, Paint()..color = const Color(0xFF000000));
+      paintElement(canvas, element, 0);
+      var picture = recorder.endRecording();
+      var image =
+          await picture.toImage(size.width.round(), size.height.round());
+      var bytes = (await image.toByteData())!;
+
+      // Read the way the bytes come -- red, green, blue, alpha -- where a
+      // Color is written alpha first.
+      var text = 0.0, rule = 0.0;
+      for (var y = 0; y < size.height; y++) {
+        for (var x = 0; x < size.width; x++) {
+          var pixel = bytes.getUint32(((y * size.width.round()) + x) * 4);
+          if (pixel == 0x00FFFFFF) rule = y.toDouble();
+          if (pixel == 0xFFFFFFFF) text = y.toDouble();
+        }
+      }
+      image.dispose();
+      picture.dispose();
+      return (text, rule);
+    }
+
+    testWidgets("stops with the text rather than with the box", (tester) async {
+      // The columns hold a whole number of lines, so the room under the last
+      // one is not text -- and a rule drawn through it is a line beside a row
+      // that is not there. It reached the bottom of the box, which on the
+      // reported canvas was the best part of another row.
+      const size = Size(400, 300);
+      const fontSize = 14.0;
+      var element = TextElement(
+        const ElementBase(id: "t", x: 0, y: 0, width: 400, height: 300),
+        // Short: it lands in the first column and does not fill it, which is
+        // when the rule ran on furthest.
+        text: "Four short lines, and no more.",
+        textSpec: const TextSpec(fontSize: fontSize, color: Color(0xFFFFFFFF)),
+        columns: const TextColumns(
+          count: 3,
+          gap: 20,
+          ruleStyle: ColumnRuleStyle.solid,
+          ruleWidth: 2,
+          ruleColor: Color(0xFF00FFFF),
+        ),
+      );
+
+      late double text;
+      late double rule;
+      await tester.runAsync(() async {
+        (text, rule) = await bottoms(element, size);
+      });
+
+      expect(rule, greaterThan(10), reason: "it should be drawn at all");
+      expect(text, greaterThan(10), reason: "and so should the text");
+      // A little past the last line is right -- a rule stopping dead on the
+      // bottom baseline reads as too short, and descenders hang below it --
+      // but not another row past it.
+      expect(rule - text, lessThan(fontSize * 1.3),
+          reason: "the rule ended at $rule and the text at $text");
+    });
+  });
 }

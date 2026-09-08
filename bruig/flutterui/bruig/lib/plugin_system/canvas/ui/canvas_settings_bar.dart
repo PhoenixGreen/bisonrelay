@@ -720,9 +720,12 @@ class _ZoomFieldState extends State<_ZoomField> {
       _text.text = "$at";
     }
 
+    var type = TextStyle(
+        fontSize: 12, color: widget.theme.colors.onSurfaceVariant, height: 1.1);
+
     return SizedBox(
-      width: 52,
-      height: 22,
+      width: 58,
+      height: 26,
       child: Tooltip(
         message: "How large the canvas is drawn, as a percentage of its own "
             "pixels. Type one to go there.",
@@ -730,14 +733,23 @@ class _ZoomFieldState extends State<_ZoomField> {
           controller: _text,
           focusNode: _focus,
           textAlign: TextAlign.center,
-          style: TextStyle(
-              fontSize: 10, color: widget.theme.colors.onSurfaceVariant),
+          // Centred against the buttons either side of it rather than sitting
+          // on the baseline its own box would give it.
+          textAlignVertical: TextAlignVertical.center,
+          style: type,
           decoration: InputDecoration(
             isDense: true,
+            // Nothing until it is being typed into. A box on the band that
+            // looks like a field all the time is a fourth kind of control on
+            // a strip of buttons; a line under it while the cursor is in it
+            // is the only moment the difference matters.
             border: InputBorder.none,
+            enabledBorder: InputBorder.none,
+            focusedBorder: UnderlineInputBorder(
+                borderSide:
+                    BorderSide(color: widget.theme.colors.primary, width: 1)),
             suffixText: "%",
-            suffixStyle: TextStyle(
-                fontSize: 10, color: widget.theme.colors.onSurfaceVariant),
+            suffixStyle: type,
             contentPadding: const EdgeInsets.symmetric(horizontal: 2),
           ),
           onSubmitted: (_) => _commit(),
