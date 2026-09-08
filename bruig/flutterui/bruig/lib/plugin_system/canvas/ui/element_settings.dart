@@ -60,7 +60,8 @@ List<Widget> elementSettings(
   return [
     positionGroup(controller, element, write, begin, commit),
     ...switch (element) {
-      TextElement e => textSettings(controller, e, write, begin, commit),
+      TextElement e =>
+        textSettings(context, controller, e, write, begin, commit),
       ShapeElement e => shapeSettings(e, write, begin, commit),
       LineElement e => lineSettings(controller, e, write, begin, commit),
       ImageElement e =>

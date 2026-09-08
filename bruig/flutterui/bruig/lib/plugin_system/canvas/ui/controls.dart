@@ -547,7 +547,12 @@ class CanvasDropdown<T> extends StatelessWidget {
                 ),
             ],
             onChanged: (v) {
-              if (v != null) onChanged(v);
+              // Null is a real answer where the type says it is one -- a
+              // dropdown of "None, Fade, Slide" is a dropdown whose first
+              // entry is null, and refusing it meant None could be chosen and
+              // nothing happened.
+              if (v == null && null is! T) return;
+              onChanged(v as T);
             },
           ),
         ),

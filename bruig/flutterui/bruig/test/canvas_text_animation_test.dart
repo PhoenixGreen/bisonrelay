@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
@@ -418,6 +419,80 @@ void main() {
       expect(done, greaterThan(half), reason: "the line finishes drawing");
       expect(done, plain,
           reason: "and is still there afterwards: $done then $plain");
+    });
+  });
+
+  group("None means none", () {
+    test("a dropdown whose first entry is null can choose it", () {
+      // The control refused a null selection, so "Kind — None" could be
+      // chosen and nothing happened. The type says whether null is an answer.
+      var chosen = <Object?>[];
+      var nullable = CanvasDropdown<TextAnimationFamily?>(
+        label: "Kind",
+        value: TextAnimationFamily.fade,
+        options: const [(null, "None"), (TextAnimationFamily.fade, "Fade")],
+        onChanged: chosen.add,
+      );
+      expect(nullable.options.first.$1, isNull);
+
+      // And the model half: choosing nothing is a preset like any other.
+      expect(TextAnimationPreset.none.family, TextAnimationFamily.fade,
+          reason: "it has to name one, and the first is as good as any");
+      expect(const TextAnimation(preset: TextAnimationPreset.none).on, isFalse);
+    });
+  });
+
+  group("an outlined headline", () {
+    testWidgets("takes its outline with it", (tester) async {
+      // The outline used to be drawn once, before the animation, so the words
+      // slid out from under their own outline and left it behind.
+      const size = Size(400, 120);
+      Future<int> outlineInk(double reveal) async {
+        var element = TextElement(
+          const ElementBase(id: "t", x: 0, y: 0, width: 400, height: 120),
+          text: "Outlined",
+          textSpec: const TextSpec(
+            fontSize: 40,
+            color: Color(0xFF000000),
+            outlineWidth: 3,
+            outlineColor: Color(0xFF00FF00),
+          ),
+          animation: const TextAnimation(
+              preset: TextAnimationPreset.slideRight, ease: ChartEase.linear),
+        ).withBase(
+          track: ElementTrack([
+            Keyframe(frame: 0, values: {KeyframeChannel.reveal: reveal}),
+          ]),
+        );
+        var recorder = ui.PictureRecorder();
+        var canvas = ui.Canvas(recorder);
+        canvas.drawRect(
+            Offset.zero & size, Paint()..color = const Color(0xFF101010));
+        paintElement(canvas, element, 0,
+            document: CanvasDocument(elements: [element]));
+        var picture = recorder.endRecording();
+        var image = await picture.toImage(400, 120);
+        var bytes = (await image.toByteData())!;
+        // The outline's own colour, counted only in the left third -- where
+        // the words have not arrived yet at a fifth of the way through.
+        var left = 0;
+        for (var y = 0; y < 120; y++) {
+          for (var x = 0; x < 130; x++) {
+            if (bytes.getUint32(((y * 400) + x) * 4) == 0x00FF00FF) left++;
+          }
+        }
+        image.dispose();
+        picture.dispose();
+        return left;
+      }
+
+      late int early;
+      await tester.runAsync(() async {
+        early = await outlineInk(0.2);
+      });
+      expect(early, 0,
+          reason: "the outline should have gone with the words, not stayed "
+              "where they will be");
     });
   });
 }

@@ -9,8 +9,13 @@ import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 
 // text settings.dart is a text element's settings.
 
-List<Widget> textSettings(CanvasController controller, TextElement e,
-    SettingsWrite write, VoidCallback begin, VoidCallback commit) {
+List<Widget> textSettings(
+    BuildContext context,
+    CanvasController controller,
+    TextElement e,
+    SettingsWrite write,
+    VoidCallback begin,
+    VoidCallback commit) {
   void now(TextElement next) {
     begin();
     write(next);
@@ -161,7 +166,9 @@ List<Widget> textSettings(CanvasController controller, TextElement e,
       ],
     ]),
     boxGroup(e.box, (box) => write(e.copyWith(box: box)), begin, commit),
-    _animationSection(controller, e, write, begin, commit),
+    // Boxed like every other section: a bare expander among boxed ones reads
+    // as something that has come loose.
+    boxed(context, _animationSection(controller, e, write, begin, commit)),
   ];
 }
 

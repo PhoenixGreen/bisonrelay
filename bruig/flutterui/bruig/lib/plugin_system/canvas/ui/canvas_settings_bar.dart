@@ -723,13 +723,16 @@ class _ZoomFieldState extends State<_ZoomField> {
     var type = TextStyle(
         fontSize: 12, color: widget.theme.colors.onSurfaceVariant, height: 1.1);
 
-    return SizedBox(
+    // Centred against the buttons either side of it. The box is the height
+    // the field actually wants -- told to be taller and centred inside that,
+    // the underline is drawn at the bottom of the input rather than the
+    // bottom of the box, which put a line through the digits -- so what
+    // lines it up with its neighbours is where the box sits, not where the
+    // text sits inside it.
+    return Center(
+        child: SizedBox(
       width: 56,
-      // The height the field actually wants. Told to be taller than that and
-      // centred inside it, the underline is drawn at the bottom of the input
-      // rather than the bottom of the box -- which put a line through the
-      // middle of the digits.
-      height: 22,
+      height: 24,
       child: Tooltip(
         message: "How large the canvas is drawn, as a percentage of its own "
             "pixels. Type one to go there.",
@@ -754,12 +757,13 @@ class _ZoomFieldState extends State<_ZoomField> {
                     BorderSide(color: widget.theme.colors.primary, width: 1)),
             suffixText: "%",
             suffixStyle: type,
-            // Room under the digits for the line to sit in.
-            contentPadding: const EdgeInsets.fromLTRB(2, 0, 2, 3),
+            // Room under the digits for the line to sit in, and the same
+            // above so the text is in the middle of its own box.
+            contentPadding: const EdgeInsets.fromLTRB(2, 3, 2, 3),
           ),
           onSubmitted: (_) => _commit(),
         ),
       ),
-    );
+    ));
   }
 }

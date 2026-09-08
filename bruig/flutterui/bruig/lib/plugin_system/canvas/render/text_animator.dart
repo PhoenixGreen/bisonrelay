@@ -100,6 +100,10 @@ bool _isSpace(String c) => c.trim().isEmpty;
 /// drawing uses -- so what arrives is exactly what will be there when it has
 /// arrived. An animation that laid its own text out would be a second
 /// opinion about where every word goes.
+/// [outline] is the same paragraph laid out as an outline, where the text has
+/// one. It moves with the fill rather than being drawn once and left behind,
+/// which is what an outlined headline sliding out from under its own outline
+/// looked like.
 void paintAnimatedText(
   ui.Canvas canvas,
   TextPainter painter,
@@ -109,6 +113,7 @@ void paintAnimatedText(
   TextAnimation animation,
   double reveal, {
   double maxWidth = 0,
+  TextPainter? outline,
 }) {
   var preset = animation.preset;
   if (!animation.on) {
@@ -136,14 +141,16 @@ void paintAnimatedText(
   for (var (i, piece) in pieces.indexed) {
     var p = animation.progressAt(reveal, i, pieces.length);
     if (p <= 0) continue;
-    _paintPiece(canvas, painter, offset, piece, preset, p, spec);
+    _paintPiece(canvas, painter, offset, piece, preset, p, spec,
+        outline: outline);
   }
 }
 
 /// _paintPiece draws one piece of the paragraph, part way through its own
 /// movement.
 void _paintPiece(ui.Canvas canvas, TextPainter painter, Offset offset,
-    TextPiece piece, TextAnimationPreset preset, double p, TextSpec spec) {
+    TextPiece piece, TextAnimationPreset preset, double p, TextSpec spec,
+    {TextPainter? outline}) {
   var box = piece.box.shift(offset);
   var centre = box.center;
   var alpha = p.clamp(0.0, 1.0);
@@ -255,10 +262,12 @@ void _paintPiece(ui.Canvas canvas, TextPainter painter, Offset offset,
   }
 
   if (alpha >= 1) {
+    outline?.paint(canvas, offset);
     painter.paint(canvas, offset);
   } else {
     canvas.saveLayer(box.inflate(box.height * 2),
         Paint()..color = Color.fromRGBO(0, 0, 0, alpha));
+    outline?.paint(canvas, offset);
     painter.paint(canvas, offset);
     canvas.restore();
   }

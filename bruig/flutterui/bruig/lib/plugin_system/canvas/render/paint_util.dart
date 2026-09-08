@@ -170,23 +170,23 @@ double paintTextInBox(
     canvas.clipRect(box);
   }
 
-  if (spec.outlineWidth > 0) {
-    layoutText(text, spec,
-            maxWidth: box.width, scale: scale, outline: true, fillWidth: true)
-        .paint(canvas, offset);
-  }
+  var outline = spec.outlineWidth > 0
+      ? layoutText(text, spec,
+          maxWidth: box.width, scale: scale, outline: true, fillWidth: true)
+      : null;
 
   // Part way through arriving, if it is arriving. The animator is handed the
-  // paragraph that has already been laid out, so what comes in is exactly
-  // what will be there when it has come in.
+  // paragraph that has already been laid out -- and its outline, which moves
+  // with it rather than being drawn once and left behind.
   // Once it has arrived there is nothing to animate -- unless the motion is
   // one that leaves something behind, which still has to be drawn.
   if (animation != null &&
       animation.on &&
       (reveal < 1 || animation.preset.motion.keeps)) {
     paintAnimatedText(canvas, painter, text, spec, offset, animation, reveal,
-        maxWidth: box.width);
+        maxWidth: box.width, outline: outline);
   } else {
+    outline?.paint(canvas, offset);
     painter.paint(canvas, offset);
   }
 

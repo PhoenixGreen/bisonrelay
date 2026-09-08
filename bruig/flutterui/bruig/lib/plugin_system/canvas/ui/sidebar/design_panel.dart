@@ -121,9 +121,73 @@ class _CanvasDesignPanelState extends State<CanvasDesignPanel> {
 /// so that its listener is its own: it is by far the most expensive thing in
 /// this column, and it must not be rebuilt because a heading elsewhere
 /// changed.
-class _SettingsBody extends StatelessWidget {
+class _SettingsBody extends StatefulWidget {
   final CanvasController controller;
   const _SettingsBody({required this.controller});
+
+  @override
+  State<_SettingsBody> createState() => _SettingsBodyState();
+}
+
+class _SettingsBodyState extends State<_SettingsBody> {
+  CanvasController get controller => widget.controller;
+
+  /// _scroll keeps the column where it was.
+  ///
+  /// Held here rather than left to the scroll view, and remembered *per
+  /// element*: selecting another element and coming back rebuilt this from
+  /// scratch and put the column back at the top, so anybody working on the
+  /// animation section at the bottom of a text element's settings had to
+  /// scroll down to it again every time they clicked on the canvas.
+  final ScrollController _scroll = ScrollController();
+
+  /// _at is where each element's settings were left, by element id.
+  ///
+  /// A map rather than one number: the panels are different lengths, so one
+  /// remembered offset would put a short element's settings somewhere they do
+  /// not reach.
+  static final Map<String, double> _at = {};
+
+  /// _showing is whose settings are on screen, so the offset is filed under
+  /// the right element when the selection changes.
+  String? _showing;
+
+  @override
+  void initState() {
+    super.initState();
+    _showing = controller.selected?.id;
+    controller.addListener(_onSelectionChanged);
+  }
+
+  @override
+  void dispose() {
+    _remember();
+    controller.removeListener(_onSelectionChanged);
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  void _remember() {
+    var id = _showing;
+    if (id != null && _scroll.hasClients) _at[id] = _scroll.offset;
+  }
+
+  /// _onSelectionChanged files the offset under whoever is leaving and
+  /// restores whoever is arriving.
+  void _onSelectionChanged() {
+    var id = controller.selected?.id;
+    if (id == _showing) return;
+    _remember();
+    _showing = id;
+
+    // After the frame: the new element's settings are a different height and
+    // there is nothing to scroll to until they have been laid out.
+    var wanted = id == null ? 0.0 : (_at[id] ?? 0);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scroll.hasClients) return;
+      _scroll.jumpTo(wanted.clamp(0, _scroll.position.maxScrollExtent));
+    });
+  }
 
   @override
   Widget build(BuildContext context) => CanvasWatch<int>(
@@ -143,6 +207,7 @@ class _SettingsBody extends StatelessWidget {
         // time somebody adds a control.
         select: () => controller.revision,
         builder: (context, _) => SingleChildScrollView(
+          controller: _scroll,
           // A clear gap under the header. It is a coloured band, so settings
           // starting immediately beneath it read as being part of it.
           padding: const EdgeInsets.fromLTRB(8, 12, 8, 12),
