@@ -205,8 +205,18 @@ void paintAnimatedText(
   List<TextPart> parts = const [],
   List<PartTiming> timings = const [],
   bool Function(TextPiece)? keep,
+
+  /// asOne draws the paragraph without layers, however many of its parts
+  /// arrive on their own account.
+  ///
+  /// What the way out is: a part has a moment of its own on the way *in* --
+  /// it lands after the line it is in -- and on the way out the whole
+  /// paragraph goes together. A part that sat still while the line it
+  /// belongs to left would be an exit with a word left behind in mid-air.
+  bool asOne = false,
 }) {
-  var layers = _layersFor(painter, text, parts, timings);
+  var layers =
+      asOne ? const <_Layer>[] : _layersFor(painter, text, parts, timings);
   var holes = <Rect>[
     for (var layer in layers) ..._boxesOf(painter, layer.range, offset),
   ];

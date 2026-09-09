@@ -1112,9 +1112,9 @@ class CanvasController extends ChangeNotifier {
     var next = without.isRest && without.frame != 0
         ? track.withoutFrame(_frame)
         : track.withKey(without);
-    replaceElement(next.isEmpty
-        ? element.withBase(clearTrack: true)
-        : element.withBase(track: next));
+    // And with it whatever it was half of: an arrival is a pair, and one of
+    // them on its own is not half an arrival. See withoutHalfAnimations.
+    replaceElement(withoutHalfAnimations(element, next));
   }
 
   /// clearElementKeyframes takes every keyframe off one element.
@@ -1476,9 +1476,16 @@ class CanvasController extends ChangeNotifier {
     // tried the next preset in the list.
     var (was, wasFor) = textAnimationSpan(element);
     var from = was ?? _frame.clamp(0, document.frames - 2);
-    var asked = length ??
-        (element.animation.length > 0 ? element.animation.length : null);
-    var span = asked ?? wasFor ?? defaultAnimationFrames;
+    // Whatever is already on the timeline wins: once an animation has been
+    // laid down, its keyframes are where somebody has put them, and trying
+    // the next preset in the list must not shove them about. The Length
+    // setting is for laying a *new* one down -- which, after the keyframes
+    // have been deleted, is what the next preset is.
+    var span = wasFor ??
+        length ??
+        (element.animation.length > 0
+            ? element.animation.length
+            : defaultAnimationFrames);
     span = math.max(1, span == 0 ? defaultAnimationFrames : span);
     if (document.frames - 1 < from + span) {
       document = document.copyWith(frames: from + span + 1);
@@ -1537,20 +1544,6 @@ class CanvasController extends ChangeNotifier {
   int get defaultAnimationFrames =>
       math.max(2, (_document.frameRate * chartAnimationSeconds).round());
 
-  /// retimeTextAnimation lays [id]'s keyframes out again at whatever its
-  /// Length setting now says.
-  ///
-  /// Looked up by id rather than taken as an element, because it is called
-  /// after the setting itself has been written: the copy the settings panel
-  /// is holding is the one from before that write, and applying it would put
-  /// the old length back.
-  void retimeTextAnimation(String id) {
-    var element = _document.elementById(id);
-    if (element is! TextElement || !element.animation.on) return;
-    applyTextAnimation(element, element.animation.preset,
-        length: element.animation.length);
-  }
-
   /// applyTextExit is the way out, on its own pair of keyframes at the end of
   /// the timeline. See applyChartExit.
   void applyTextExit(TextElement element, TextAnimationPreset preset) {
@@ -1579,17 +1572,30 @@ class CanvasController extends ChangeNotifier {
           frames: math.max(2, document.frameRate * chartAnimationSeconds * 2));
     }
 
+    // Where the exit already is, if it is anywhere -- the same rule the
+    // arrival follows: an exit that has been laid down and dragged stays
+    // where it was put, however many presets are tried in it.
+    int? wasFrom;
+    int? wasTo;
+    for (var key in track.keys) {
+      if (!key.values.containsKey(KeyframeChannel.close)) continue;
+      wasFrom = wasFrom == null ? key.frame : math.min(wasFrom, key.frame);
+      wasTo = wasTo == null ? key.frame : math.max(wasTo, key.frame);
+    }
+
     var span = element.animation.length > 0
         ? element.animation.length
         : defaultAnimationFrames;
-    var to = document.frames - 1;
+    var to = wasTo ?? document.frames - 1;
     var entranceEnds = 0;
     for (var key in track.keys) {
       if (key.values.containsKey(KeyframeChannel.reveal)) {
         entranceEnds = math.max(entranceEnds, key.frame);
       }
     }
-    var from = math.max(entranceEnds + 1, to - span);
+    var from = wasFrom != null && wasTo != null && wasTo > wasFrom
+        ? wasFrom
+        : math.max(entranceEnds + 1, to - span);
     if (from >= to) from = math.max(0, to - 1);
 
     for (var key in track.keys) {
@@ -1717,10 +1723,67 @@ class CanvasController extends ChangeNotifier {
     var element = _document.elementById(id);
     var track = element?.track;
     if (element == null || track == null) return;
-    var next = track.withoutFrame(frame);
-    replaceElement(next.isEmpty
-        ? element.withBase(clearTrack: true)
-        : element.withBase(track: next));
+    var next = withoutHalfAnimations(element, track.withoutFrame(frame));
+    replaceElement(next);
+  }
+
+  /// withoutHalfAnimations takes away any arrival or exit that has lost one
+  /// of its two keyframes, and turns the setting off with it.
+  ///
+  /// An animation is a *pair*: nothing to travel between is not half an
+  /// arrival, it is none of one. Left alone, deleting one keyframe left the
+  /// other sitting on the timeline, the preset still chosen in the panel, and
+  /// nothing to show for either -- and the next preset chosen would then be
+  /// laid out against the orphan. Deleting one of them is how somebody says
+  /// they are done with it, so the setting goes back to None and the whole
+  /// thing is there to be added again.
+  CanvasElement withoutHalfAnimations(
+      CanvasElement element, ElementTrack next) {
+    var lost = <String>{};
+    for (var channel in [KeyframeChannel.reveal, KeyframeChannel.close]) {
+      var count = 0;
+      for (var key in next.keys) {
+        if (key.values.containsKey(channel)) count++;
+      }
+      if (count > 0 && count < 2) lost.add(channel);
+    }
+
+    for (var channel in lost) {
+      for (var key in next.keys) {
+        if (!key.values.containsKey(channel)) continue;
+        var without = key.withoutValue(channel);
+        next = without.isRest && without.frame != 0
+            ? next.withoutFrame(key.frame)
+            : next.withKey(without);
+      }
+    }
+
+    var out = element;
+    if (out is TextElement) {
+      out = out.copyWith(
+          animation: out.animation.copyWith(
+        preset: lost.contains(KeyframeChannel.reveal)
+            ? TextAnimationPreset.none
+            : null,
+        exit: lost.contains(KeyframeChannel.close)
+            ? TextAnimationPreset.none
+            : null,
+      ));
+    } else if (out is ChartElement) {
+      out = out.copyWith(
+          animation: out.animation.copyWith(
+        preset: lost.contains(KeyframeChannel.reveal)
+            ? ChartAnimationPreset.none
+            : null,
+        exit: lost.contains(KeyframeChannel.close)
+            ? ChartAnimationPreset.none
+            : null,
+      ));
+    }
+
+    return next.isEmpty
+        ? out.withBase(clearTrack: true)
+        : out.withBase(track: next);
   }
 
   // ------------------------------------------------------------------------

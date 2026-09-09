@@ -444,7 +444,10 @@ void main() {
       expect(to! - from!, 9);
     });
 
-    test("changing it lays the keyframes out again", () {
+    test("but changing it leaves an animation already laid down alone", () {
+      // Once it is on the timeline the keyframes are where it is. The
+      // setting is for laying a new one down -- which, after the keyframes
+      // have been deleted, is what the next preset is.
       var controller = controllerFor();
       controller.frame = 0;
       controller.applyTextAnimation(
@@ -452,13 +455,51 @@ void main() {
           length: 10);
       expect(spanOf(controller), 10);
 
-      // What the settings panel does: write the setting, then ask for the
-      // keyframes to be laid out again.
       controller.replaceElement(textIn(controller).copyWith(
           animation: textIn(controller).animation.copyWith(length: 30)));
-      controller.retimeTextAnimation("t");
+      controller.applyTextAnimation(
+          textIn(controller), TextAnimationPreset.words);
+      expect(spanOf(controller), 10, reason: "the keyframes have not moved");
+
+      // Delete one of them and the animation is gone, so the next one chosen
+      // is a new one and takes the setting.
+      controller.removeKeyframe("t", 0);
+      expect(textIn(controller).animation.on, isFalse);
+      controller.applyTextAnimation(
+          textIn(controller), TextAnimationPreset.fadeIn);
       expect(spanOf(controller), 30);
-      expect(textIn(controller).animation.length, 30);
+    });
+
+    test("deleting a keyframe takes the animation with it", () {
+      // An animation is a pair: nothing to travel between is not half an
+      // arrival, it is none of one. The orphan used to sit on the timeline
+      // with the preset still chosen and nothing to show for either.
+      var controller = controllerFor();
+      controller.frame = 0;
+      controller.applyTextAnimation(
+          textIn(controller), TextAnimationPreset.fadeIn,
+          length: 10);
+      controller.applyTextExit(textIn(controller), TextAnimationPreset.fadeIn);
+      expect(textIn(controller).animation.closes, isTrue);
+
+      // The far end of the exit.
+      var last = 0;
+      for (var key in textIn(controller).track!.keys) {
+        if (key.values.containsKey(KeyframeChannel.close)) {
+          last = math.max(last, key.frame);
+        }
+      }
+      controller.removeKeyframe("t", last);
+
+      expect(textIn(controller).animation.closes, isFalse,
+          reason: "the leaving setting goes back to None");
+      expect([
+        for (var key in textIn(controller).track?.keys ?? const <Keyframe>[])
+          if (key.values.containsKey(KeyframeChannel.close)) key
+      ], isEmpty, reason: "and its other keyframe goes too");
+      expect(textIn(controller).animation.on, isTrue,
+          reason: "the arrival is untouched");
+      expect(spanOf(controller), 10);
     });
 
     test("but the timeline does not write back to it", () {
@@ -500,20 +541,19 @@ void main() {
     TextElement textIn(CanvasController c) =>
         c.document.elements.single as TextElement;
 
-    test("survives the keyframes being laid out again", () {
-      // Re-laying them for any other reason -- a length being changed -- was
-      // putting the preset's own curve back, so a chosen curve would not
-      // stay chosen.
+    test("survives the same preset being applied again", () {
+      // Re-laying the keyframes for any other reason was putting the preset's
+      // own curve back, so a chosen curve would not stay chosen.
       var controller = controllerFor();
       controller.applyTextAnimation(
           textIn(controller), TextAnimationPreset.bounce);
       expect(textIn(controller).animation.ease, ChartEase.bounce);
 
       controller.replaceElement(textIn(controller).copyWith(
-          animation: textIn(controller)
-              .animation
-              .copyWith(ease: ChartEase.linear, length: 15)));
-      controller.retimeTextAnimation("t");
+          animation:
+              textIn(controller).animation.copyWith(ease: ChartEase.linear)));
+      controller.applyTextAnimation(
+          textIn(controller), TextAnimationPreset.bounce);
       expect(textIn(controller).animation.ease, ChartEase.linear,
           reason: "the curve somebody chose is still the curve");
     });
@@ -534,6 +574,58 @@ void main() {
       controller.applyTextAnimation(
           textIn(controller), TextAnimationPreset.bounce);
       expect(textIn(controller).animation.ease, ChartEase.bounce);
+    });
+  });
+
+  group("the way out", () {
+    // An arrival over frames 0 to 10, and an exit over 20 to 30.
+    TextElement leaving({required bool partly}) => TextElement(
+          const ElementBase(id: "t", x: 0, y: 20, width: 400, height: 90),
+          text: _line,
+          textSpec: const TextSpec(fontSize: 26, color: Color(0xFFFFFFFF)),
+          parts: [
+            TextPart(
+                from: 5,
+                to: 5,
+                animation: partly
+                    ? const TextPartAnimation(
+                        preset: TextAnimationPreset.fadeIn,
+                        ease: ChartEase.linear)
+                    : const TextPartAnimation()),
+          ],
+          animation: const TextAnimation(
+              preset: TextAnimationPreset.fadeIn,
+              exit: TextAnimationPreset.fadeIn,
+              ease: ChartEase.linear),
+        ).withBase(
+            track: ElementTrack([
+          const Keyframe(frame: 0, values: {KeyframeChannel.reveal: 0}),
+          const Keyframe(frame: 10, values: {KeyframeChannel.reveal: 1}),
+          const Keyframe(frame: 20, values: {KeyframeChannel.close: 0}),
+          const Keyframe(frame: 30, values: {KeyframeChannel.close: 1}),
+        ])) as TextElement;
+
+    testWidgets("takes the parts with it", (tester) async {
+      // A part has a moment of its own on the way in. On the way out the
+      // paragraph goes as one -- a word left hanging in mid-air while the
+      // line it belongs to leaves is not an exit.
+      late int plain;
+      late int withPart;
+      await tester.runAsync(() async {
+        plain = _lit(await _ink(leaving(partly: false), 30));
+        withPart = _lit(await _ink(leaving(partly: true), 30));
+      });
+      expect(plain, 0, reason: "the line has gone");
+      expect(withPart, 0,
+          reason: "and so has the word that arrived on its own");
+    });
+
+    testWidgets("and they are all still there half way out", (tester) async {
+      late int lit;
+      await tester.runAsync(() async {
+        lit = _lit(await _ink(leaving(partly: true), 20));
+      });
+      expect(lit, greaterThan(300));
     });
   });
 

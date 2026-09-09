@@ -210,6 +210,7 @@ class TextPartAnimation {
   final double gap;
   final double scale;
   final TextEchoSpec echo;
+  final TextDrawSpec draw;
   final ChartEase ease;
 
   /// marks is whether this part's own highlight and underline are drawn on
@@ -229,6 +230,7 @@ class TextPartAnimation {
     this.gap = 0.35,
     this.scale = 0,
     this.echo = const TextEchoSpec(),
+    this.draw = const TextDrawSpec(),
     this.ease = ChartEase.easeOut,
     this.marks = false,
     this.markOffset = 0,
@@ -244,7 +246,23 @@ class TextPartAnimation {
         gap: gap,
         scale: scale,
         echo: echo,
+        draw: draw,
         ease: ease,
+      );
+
+  /// fromAnimation takes back whatever the settings changed, leaving this
+  /// one's own timing alone.
+  ///
+  /// The pair to asAnimation, and the reason a part offers the same settings
+  /// as the paragraph does: the panel edits one kind of animation, and the
+  /// part keeps its offset and its length either side of that.
+  TextPartAnimation fromAnimation(TextAnimation a) => copyWith(
+        preset: a.preset,
+        gap: a.gap,
+        scale: a.scale,
+        echo: a.echo,
+        draw: a.draw,
+        ease: a.ease,
       );
 
   TextPartAnimation copyWith({
@@ -254,6 +272,7 @@ class TextPartAnimation {
     double? gap,
     double? scale,
     TextEchoSpec? echo,
+    TextDrawSpec? draw,
     ChartEase? ease,
     bool? marks,
     int? markOffset,
@@ -266,6 +285,7 @@ class TextPartAnimation {
         gap: gap ?? this.gap,
         scale: scale ?? this.scale,
         echo: echo ?? this.echo,
+        draw: draw ?? this.draw,
         ease: ease ?? this.ease,
         marks: marks ?? this.marks,
         markOffset: markOffset ?? this.markOffset,
@@ -279,6 +299,7 @@ class TextPartAnimation {
         if (gap != 0.35) "gap": gap,
         if (scale > 0) "scale": scale,
         if (echo.toJson().isNotEmpty) "echo": echo.toJson(),
+        if (draw.toJson().isNotEmpty) "draw": draw.toJson(),
         if (ease != ChartEase.easeOut) "ease": ease.name,
         if (marks) "marks": true,
         if (markOffset != 0) "markOffset": markOffset,
@@ -295,6 +316,9 @@ class TextPartAnimation {
         echo: json["echo"] is Map<String, dynamic>
             ? TextEchoSpec.fromJson(json["echo"] as Map<String, dynamic>)
             : const TextEchoSpec(),
+        draw: json["draw"] is Map<String, dynamic>
+            ? TextDrawSpec.fromJson(json["draw"] as Map<String, dynamic>)
+            : const TextDrawSpec(),
         ease: ChartEase.fromName(json["ease"] as String?),
         marks: jsonBool(json["marks"], false),
         markOffset: jsonInt(json["markOffset"], 0),

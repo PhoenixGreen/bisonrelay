@@ -415,6 +415,10 @@ double paintTextInBox(
   /// timings are where each part has got to, for the parts that arrive on
   /// their own account. See TextPartAnimation.
   List<PartTiming> timings = const [],
+
+  /// asOne leaves the parts to arrive with everything else, which is what the
+  /// way out is. See paintAnimatedText.
+  bool asOne = false,
 }) {
   if (text.isEmpty || box.width <= 0) return 0;
 
@@ -489,9 +493,13 @@ double paintTextInBox(
   // a part's own layer leaves behind it.
   if (animation != null &&
       ((animation.on && (reveal < 1 || animation.keeps)) ||
-          partsAnimate(parts))) {
+          (!asOne && partsAnimate(parts)))) {
     paintAnimatedText(canvas, painter, text, spec, offset, animation, reveal,
-        maxWidth: box.width, outline: outline, parts: parts, timings: timings);
+        maxWidth: box.width,
+        outline: outline,
+        parts: parts,
+        timings: timings,
+        asOne: asOne);
   } else {
     outline?.paint(canvas, offset);
     painter.paint(canvas, offset);
@@ -918,6 +926,7 @@ void paintTextInColumns(
   double reveal = 1,
   List<TextPart> parts = const [],
   List<PartTiming> timings = const [],
+  bool asOne = false,
 }) {
   if (text.isEmpty || box.width <= 0 || box.height <= 0) return;
 
@@ -974,7 +983,7 @@ void paintTextInColumns(
     var moving = (animation != null &&
             animation.on &&
             (reveal < 1 || animation.keeps)) ||
-        partsAnimate(parts);
+        (!asOne && partsAnimate(parts));
     if (moving) {
       // The pieces this column holds: the ones whose lines fall in its run.
       // Their places in the whole paragraph decide their progress, which is
@@ -984,7 +993,8 @@ void paintTextInColumns(
           maxWidth: width,
           outline: outline,
           parts: parts,
-          timings: timings, keep: (piece) {
+          timings: timings,
+          asOne: asOne, keep: (piece) {
         // A block-scoped piece covers the paragraph, which every column
         // shares: it moves or uncovers the same way in each.
         if (piece.box.height >= painter.height - 0.5) return true;
@@ -1255,6 +1265,7 @@ void paintTextOnPath(
   double reveal = 1,
   List<TextPart> parts = const [],
   List<PartTiming> timings = const [],
+  bool asOne = false,
 }) {
   var glyphs =
       placeTextOnPath(text, spec, curve, on, scale: scale, parts: parts);
@@ -1268,7 +1279,7 @@ void paintTextOnPath(
   // blocks to clip, so the layers are simply groups of letters -- which is
   // the one place this is easier than a box.
   var layer = <int>[
-    for (var g in glyphs) _animatedPartAt(text, parts, g.index),
+    for (var g in glyphs) asOne ? -1 : _animatedPartAt(text, parts, g.index),
   ];
 
   /// animationOf is what moves this letter, and revealOf how far through it

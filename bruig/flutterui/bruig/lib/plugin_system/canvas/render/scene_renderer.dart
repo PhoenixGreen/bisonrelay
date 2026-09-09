@@ -287,7 +287,8 @@ void _paintText(
         animation: curveAnimation,
         reveal: curveReveal,
         parts: e.parts,
-        timings: _partTimings(e, frame, pose));
+        timings: _partTimings(e, frame, pose),
+        asOne: (pose.values[KeyframeChannel.close] ?? 0) > 0);
     return;
   }
 
@@ -302,6 +303,9 @@ void _paintText(
   // of element identically. See TextAnimation.
   var (animation, reveal) = _arrival(e, pose);
   var timings = _partTimings(e, frame, pose);
+  // On the way out the paragraph goes as one: a part has a moment of its own
+  // arriving, and there is no second leaving animation for it to have.
+  var leaving = (pose.values[KeyframeChannel.close] ?? 0) > 0;
   // Nothing yet -- unless what is being animated is a mark drawn *on* the
   // words and the words are meant to be there already, which is what an
   // underline being drawn under a finished sentence looks like.
@@ -316,14 +320,22 @@ void _paintText(
 
   if (e.columns.isSingle) {
     paintTextInBox(canvas, e.displayText, spec, inner,
-        animation: animation, reveal: reveal, parts: e.parts, timings: timings);
+        animation: animation,
+        reveal: reveal,
+        parts: e.parts,
+        timings: timings,
+        asOne: leaving);
     return;
   }
   // Columns animate piece by piece like anything else: the pieces are worked
   // out once for the whole paragraph and drawn column by column, so a stagger
   // carries on from the last word of one column into the first of the next.
   paintTextInColumns(canvas, e.displayText, spec, inner, e.columns,
-      animation: animation, reveal: reveal, parts: e.parts, timings: timings);
+      animation: animation,
+      reveal: reveal,
+      parts: e.parts,
+      timings: timings,
+      asOne: leaving);
 }
 
 /// _arrival is the animation a text element is playing on this frame, and how
