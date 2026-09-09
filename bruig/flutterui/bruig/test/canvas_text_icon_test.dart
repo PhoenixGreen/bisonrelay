@@ -19,16 +19,21 @@ import 'package:flutter_test/flutter_test.dart';
 
 /// _Pictures hands the painter one flat square, which is enough to say where
 /// an icon was drawn and in what colour.
+///
+/// [vector] is what resolveVector answers, for the tests about a drawing whose
+/// own size is unusable.
 class _Pictures implements CanvasImageSource {
   final ui.Image image;
-  _Pictures(this.image);
+  final CanvasVector? vector;
+  _Pictures(this.image, {this.vector});
 
   @override
   ui.Image? resolve(String assetId, BackgroundRemoval removal) =>
       assetId.isEmpty ? null : image;
 
   @override
-  CanvasVector? resolveVector(String assetId) => null;
+  CanvasVector? resolveVector(String assetId) =>
+      assetId.isEmpty ? null : vector;
 }
 
 Future<ui.Image> _square(Color color) async {
@@ -138,6 +143,25 @@ void main() {
       });
       expect(tinted[red] ?? 0, 0, reason: "not the colour it was drawn in");
       expect(tinted[green] ?? 0, greaterThan(2000));
+    });
+
+    testWidgets("a drawing with no size of its own still shows",
+        (tester) async {
+      // An .svg with no width, height or viewBox has a size of nothing, and
+      // nothing cannot be scaled to fit anything. Drawn from the rasterised
+      // copy instead of not drawn at all.
+      late Map<int, int> ink;
+      await tester.runAsync(() async {
+        var picture = ui.PictureRecorder();
+        ui.Canvas(picture).drawRect(const Rect.fromLTWH(0, 0, 1, 1),
+            Paint()..color = const Color(0xFF0000FF));
+        var pictures = _Pictures(await _square(const Color(0xFFFF0000)),
+            vector: CanvasVector(picture.endRecording(), Size.zero));
+        ink = await _ink(
+            _headline(icon: const TextIcon(assetId: "a", size: 60)), pictures);
+      });
+      expect(ink[red] ?? 0, greaterThan(2000),
+          reason: "the rasterised copy is drawn");
     });
 
     test("and Fit to box measures against the room that is left", () {

@@ -297,6 +297,13 @@ void _paintFillImage(
   }
 }
 
+/// _usable is whether a picture's own size can be scaled to fit a box.
+bool _usable(Size size) =>
+    size.width.isFinite &&
+    size.height.isFinite &&
+    size.width > 0 &&
+    size.height > 0;
+
 /// iconLayout is where an icon and the words actually sit, once the words'
 /// own alignment is taken into account.
 ///
@@ -366,7 +373,15 @@ void paintTextIcon(ui.Canvas canvas, Rect box, TextIcon icon,
   var inner = box.deflate(icon.box.padding);
   if (inner.width <= 0 || inner.height <= 0) return;
 
+  // The drawing where the asset is one, and the rasterised copy otherwise --
+  // which is also what a drawing with no usable size of its own falls back
+  // to, since a picture that cannot be scaled cannot be placed. See
+  // CanvasImageStore.resolveVector.
   var vector = images?.resolveVector(icon.assetId);
+  // A drawing whose own size is nothing, or is infinite, cannot be scaled to
+  // fit anything -- an .svg with no width, height or viewBox is one. Such a
+  // picture falls back to the rasterised copy rather than being left undrawn.
+  if (vector != null && !_usable(vector.size)) vector = null;
   var bitmap = vector == null
       ? images?.resolve(icon.assetId, const BackgroundRemoval())
       : null;
@@ -374,7 +389,7 @@ void paintTextIcon(ui.Canvas canvas, Rect box, TextIcon icon,
 
   var size =
       vector?.size ?? Size(bitmap!.width.toDouble(), bitmap.height.toDouble());
-  if (size.isEmpty) return;
+  if (!_usable(size)) return;
 
   // Fitted inside its room, never stretched: an icon squashed to a rectangle
   // is a mistake nobody asked for.

@@ -146,7 +146,13 @@ Widget positionGroup(CanvasController controller, CanvasElement e,
   // how it is turned are the line's to decide. The fields were still there and
   // still writable, so nudging them moved the words off the line they were
   // attached to -- which is the one thing attaching them is meant to prevent.
-  if (e is TextElement && e.curve != null) {
+  // The line has to still be there. A text element whose line has been
+  // deleted falls back to its own box on the canvas -- see _curveFor -- so a
+  // panel that went on saying otherwise was describing something that was no
+  // longer true, and hiding the fields for the box it had gone back to.
+  if (e is TextElement &&
+      e.curve != null &&
+      controller.document.elementById(e.curve!.elementId) != null) {
     return CanvasControlGroup(label: e.kind.label, children: [
       Padding(
         padding: const EdgeInsets.only(top: controlLabelHeight, right: 6),

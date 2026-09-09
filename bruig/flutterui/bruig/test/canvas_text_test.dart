@@ -181,6 +181,29 @@ void main() {
       expect(ink.last, lessThan(0.95));
     });
 
+    test("deleting the line lets the words have their own box back", () {
+      // The reported version: the panel went on saying "placed by the line it
+      // follows" after the line had gone, and the fields for moving the words
+      // were not there -- while the canvas had already put them back in their
+      // own box.
+      var document = onALine();
+      var after = document.removeElement("l");
+      var text = after.elementById("t") as TextElement;
+      expect(text.curve, isNull);
+      expect(after.elements.length, 1);
+    });
+
+    test("and so does deleting a box that was being flowed into", () {
+      var a = TextElement(
+        const ElementBase(id: "a", width: 200, height: 40),
+        text: "Words",
+        flowTo: "b",
+      );
+      var b = TextElement(const ElementBase(id: "b", width: 200, height: 40));
+      var document = CanvasDocument(elements: [a, b]).removeElement("b");
+      expect((document.elementById("a") as TextElement).flowTo, "");
+    });
+
     test("a curve pointing at nothing falls back to the box", () {
       // The line may have been deleted since. Falling back is visible and
       // fixable; vanishing is neither.

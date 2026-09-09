@@ -20,7 +20,8 @@ const _lorem =
     "from the window of a small house beside a river in the middle of "
     "somewhere else entirely.";
 
-TextElement _box(String id, {String text = "", String flowTo = "", double height = 40}) =>
+TextElement _box(String id,
+        {String text = "", String flowTo = "", double height = 40}) =>
     TextElement(
       ElementBase(id: id, x: 0, y: 0, width: 300, height: height),
       text: text,
@@ -90,8 +91,8 @@ void main() {
       var fromTall = flowFor(tall.elementById("a") as TextElement, tall,
           const Rect.fromLTWH(0, 0, 300, 120), spec);
 
-      var leftShort = flowFor(short.elementById("b") as TextElement, short,
-          room, spec);
+      var leftShort =
+          flowFor(short.elementById("b") as TextElement, short, room, spec);
       var leftTall =
           flowFor(tall.elementById("b") as TextElement, tall, room, spec);
 
@@ -114,7 +115,8 @@ void main() {
 
       expect(two, isNot(one));
       expect(three, isNot(two));
-      expect(_lorem.indexOf(two.trim()), greaterThan(_lorem.indexOf(one.trim())));
+      expect(
+          _lorem.indexOf(two.trim()), greaterThan(_lorem.indexOf(one.trim())));
       expect(_lorem.indexOf(three.trim()),
           greaterThan(_lorem.indexOf(two.trim())));
     });

@@ -270,8 +270,22 @@ class CanvasDocument {
   CanvasDocument addElement(CanvasElement element) =>
       copyWith(elements: [...elements, element]);
 
-  CanvasDocument removeElement(String id) =>
-      copyWith(elements: elements.where((e) => e.id != id).toList());
+  /// removeElement takes an element out, and takes the references to it with
+  /// it.
+  ///
+  /// A text element attached to a line it names, or flowing its overflow into
+  /// a box it names, is holding an id -- and an id that names nothing is a
+  /// setting that cannot be seen or undone: the words fell back to their own
+  /// box on the canvas while the panel still said they were placed by a line,
+  /// and the fields for moving them were not there.
+  ///
+  /// A button's action is deliberately not cleaned up here: an action
+  /// pointing at something that has gone is a button that does nothing, which
+  /// is exactly what deleting its target should leave behind.
+  CanvasDocument removeElement(String id) => copyWith(elements: [
+        for (var e in elements)
+          if (e.id != id) _withoutLinksTo(e, id),
+      ]);
 
   /// reorder moves the element at [from] to [to] in paint order.
   CanvasDocument reorder(int from, int to) {
@@ -356,6 +370,15 @@ class CanvasDocument {
       return null;
     }
   }
+}
+
+/// _withoutLinksTo is [e] with any reference to the element [id] dropped.
+CanvasElement _withoutLinksTo(CanvasElement e, String id) {
+  if (e is! TextElement) return e;
+  var next = e;
+  if (next.curve?.elementId == id) next = next.copyWith(clearCurve: true);
+  if (next.flowTo == id) next = next.copyWith(flowTo: "");
+  return next;
 }
 
 /// elementFromJson turns one saved element back into the right subclass.

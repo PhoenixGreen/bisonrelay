@@ -218,10 +218,13 @@ class CanvasAssets {
     }
     // A vector, which has no magic number: it is XML, so the only thing to go
     // on is that it says so somewhere near the top. Checked over the first
-    // few hundred bytes rather than the first few, because a file routinely
-    // opens with an XML declaration, a doctype and a comment before it gets
-    // to the tag.
-    var head = String.fromCharCodes(bytes.take(512)).toLowerCase();
+    // few thousand bytes rather than the first few hundred: a file written by
+    // a drawing program opens with an XML declaration, a doctype, a licence
+    // comment and a block of editor metadata, and the tag itself can be most
+    // of a kilobyte in. Sniffed too shallowly, such a file was not a picture
+    // of any kind -- it could not be decoded as a bitmap either -- so it
+    // simply never appeared.
+    var head = String.fromCharCodes(bytes.take(4096)).toLowerCase();
     if (head.contains("<svg")) return ".svg";
 
     // Something else. Left without one rather than guessed at, since a wrong

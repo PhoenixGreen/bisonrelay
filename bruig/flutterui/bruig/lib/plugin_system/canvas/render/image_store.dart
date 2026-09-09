@@ -105,7 +105,18 @@ class CanvasImageStore extends ChangeNotifier implements CanvasImageSource {
   CanvasVector? resolveVector(String assetId) {
     if (assetId.isEmpty) return null;
     var vector = _vectors[assetId];
-    if (vector != null) return vector;
+    // A drawing whose own size is nothing, or is infinite, cannot be scaled
+    // to fit anything -- an .svg with no width, height or viewBox is one.
+    // Refused here rather than in every caller, so they fall back to the
+    // rasterised copy instead of drawing nothing at all.
+    if (vector != null) {
+      var size = vector.size;
+      var usable = size.width.isFinite &&
+          size.height.isFinite &&
+          size.width > 0 &&
+          size.height > 0;
+      return usable ? vector : null;
+    }
     var key = "vector:$assetId";
     if (!_pending.contains(key) && !_failed.contains(key)) {
       _pending.add(key);
@@ -234,15 +245,25 @@ Future<ui.Image?> _decode(Uint8List bytes) async {
     return (await codec.getNextFrame()).image;
   } catch (exception) {
     debugPrint("Unable to decode a canvas picture: $exception");
-    return null;
+    // A sniff is a guess, and the cost of a wrong one used to be a picture
+    // that could not be drawn by either path. Anything the codec refuses is
+    // offered to the vector loader before it is given up on.
+    return _rasterise(bytes);
   }
 }
 
 /// _vectorSize is how large a vector is rasterised on its longest side.
 const int _vectorSize = 512;
 
+/// _looksLikeSvg reads far enough in to find the tag.
+///
+/// A drawing program's export opens with an XML declaration, a doctype, a
+/// licence comment and a block of its own metadata before it gets to the tag,
+/// which can be most of a kilobyte. Sniffed over a few hundred bytes, such a
+/// file was not a vector -- and it is not a bitmap either, so nothing could
+/// draw it at all.
 bool _looksLikeSvg(Uint8List bytes) =>
-    String.fromCharCodes(bytes.take(512)).toLowerCase().contains("<svg");
+    String.fromCharCodes(bytes.take(4096)).toLowerCase().contains("<svg");
 
 Future<ui.Image?> _rasterise(Uint8List bytes) async {
   try {
