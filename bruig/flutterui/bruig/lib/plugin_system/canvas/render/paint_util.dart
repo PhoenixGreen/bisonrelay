@@ -247,6 +247,132 @@ void _paintFillImage(
       Paint()..filterQuality = FilterQuality.medium);
 }
 
+/// iconRoom is the rectangle an icon takes out of a text element's box, and
+/// what is left for the words.
+///
+/// Worked out in one place because two things need the same answer: the
+/// painter, which draws the icon and then the paragraph, and Fit to box,
+/// which sizes the type against the room the words actually have. Fitted
+/// against the whole box with an icon in it, the type would be set to a size
+/// it does not fit at.
+(Rect, Rect) iconRoom(Rect inner, TextIcon icon) {
+  if (!icon.on || inner.width <= 0 || inner.height <= 0) {
+    return (Rect.zero, inner);
+  }
+  var size = math.min(
+      icon.size, icon.place.beside ? inner.width * 0.8 : inner.height * 0.8);
+  var step = size + math.max(0, icon.gap);
+
+  double along(double room, double of) => switch (icon.align) {
+        TextIconAlign.start => 0,
+        TextIconAlign.middle => (room - of) / 2,
+        TextIconAlign.end => room - of,
+      };
+
+  switch (icon.place) {
+    case IconPlace.start:
+      return (
+        Rect.fromLTWH(
+            inner.left, inner.top + along(inner.height, size), size, size),
+        Rect.fromLTRB(inner.left + step, inner.top, inner.right, inner.bottom),
+      );
+    case IconPlace.end:
+      return (
+        Rect.fromLTWH(inner.right - size, inner.top + along(inner.height, size),
+            size, size),
+        Rect.fromLTRB(inner.left, inner.top, inner.right - step, inner.bottom),
+      );
+    case IconPlace.over:
+      return (
+        Rect.fromLTWH(
+            inner.left + along(inner.width, size), inner.top, size, size),
+        Rect.fromLTRB(inner.left, inner.top + step, inner.right, inner.bottom),
+      );
+    case IconPlace.under:
+      return (
+        Rect.fromLTWH(inner.left + along(inner.width, size),
+            inner.bottom - size, size, size),
+        Rect.fromLTRB(inner.left, inner.top, inner.right, inner.bottom - step),
+      );
+  }
+}
+
+/// paintTextIcon draws the picture a text element carries.
+///
+/// A vector where the asset is one -- an .svg stays a drawing all the way to
+/// the screen and to the export, so a logo beside a headline is sharp at any
+/// size rather than a bitmap enlarged.
+void paintTextIcon(ui.Canvas canvas, Rect box, TextIcon icon,
+    CanvasImageSource? images, TextSpec spec) {
+  if (!icon.on || box.width <= 0 || box.height <= 0) return;
+
+  paintBox(canvas, box, icon.box);
+  var inner = box.deflate(icon.box.padding);
+  if (inner.width <= 0 || inner.height <= 0) return;
+
+  var vector = images?.resolveVector(icon.assetId);
+  var bitmap = vector == null
+      ? images?.resolve(icon.assetId, const BackgroundRemoval())
+      : null;
+  if (vector == null && bitmap == null) return;
+
+  var size =
+      vector?.size ?? Size(bitmap!.width.toDouble(), bitmap.height.toDouble());
+  if (size.isEmpty) return;
+
+  // Fitted inside its room, never stretched: an icon squashed to a rectangle
+  // is a mistake nobody asked for.
+  var scale = math.min(inner.width / size.width, inner.height / size.height);
+  var at = Rect.fromCenter(
+      center: inner.center,
+      width: size.width * scale,
+      height: size.height * scale);
+
+  void draw(Color? tint) {
+    if (tint != null) canvas.saveLayer(at.inflate(4), Paint());
+    if (vector != null) {
+      canvas.save();
+      canvas.translate(at.left, at.top);
+      canvas.scale(scale, scale);
+      canvas.drawPicture(vector.picture);
+      canvas.restore();
+    } else {
+      canvas.drawImageRect(bitmap!, Offset.zero & size, at,
+          Paint()..filterQuality = FilterQuality.medium);
+    }
+    if (tint != null) {
+      // Cut to the drawing's own shape and filled, which is the only recolour
+      // an arbitrary picture can be given.
+      canvas.drawRect(
+          at.inflate(4),
+          Paint()
+            ..color = tint
+            ..blendMode = ui.BlendMode.srcIn);
+      canvas.restore();
+    }
+  }
+
+  // The sticker outline: the same shape, in the outline's colour, offset in
+  // eight directions behind the icon. There is nothing else that can be done
+  // to a drawing whose paths nobody here has looked at.
+  if (icon.outlineWidth > 0) {
+    for (var i = 0; i < 8; i++) {
+      var a = i / 8 * 2 * math.pi;
+      canvas.save();
+      canvas.translate(
+          math.cos(a) * icon.outlineWidth, math.sin(a) * icon.outlineWidth);
+      draw(icon.outlineColor);
+      canvas.restore();
+    }
+  }
+
+  draw(icon.color);
+
+  if (icon.underline != null) {
+    _paintPartUnderline(canvas, at, icon.underline!, icon.color ?? spec.color);
+  }
+}
+
 /// paintPartMarks draws the highlights behind, or the underlines under, the
 /// element's parts.
 ///

@@ -1,4 +1,5 @@
 import 'package:bruig/plugin_system/writing_tools/writing_tools.dart';
+import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
@@ -98,6 +99,21 @@ class _CanvasTextEditorState extends State<CanvasTextEditor> {
     if (!_focus.hasFocus) widget.onDone();
   }
 
+  /// _room is the padding that puts the editor where the words are drawn:
+  /// the element's own, plus whatever its icon has taken. See iconRoom.
+  EdgeInsets _room(TextElement e, double scale) {
+    var pad = e.box.padding * scale;
+    if (!e.icon.on) return EdgeInsets.all(pad);
+    var inner = Offset.zero & e.bounds.size;
+    var (icon, left) = iconRoom(inner.deflate(e.box.padding), e.icon);
+    return EdgeInsets.fromLTRB(
+      pad + (left.left - inner.left - e.box.padding) * scale,
+      pad + (left.top - inner.top - e.box.padding) * scale,
+      pad + (inner.right - e.box.padding - left.right) * scale,
+      pad + (inner.bottom - e.box.padding - left.bottom) * scale,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     var e = widget.element;
@@ -117,7 +133,11 @@ class _CanvasTextEditorState extends State<CanvasTextEditor> {
       child: Transform.rotate(
         angle: e.rotationRadians,
         child: Padding(
-          padding: EdgeInsets.all(e.box.padding * scale),
+          // The box's padding, and then the room an icon has taken -- so the
+          // words are typed where they will be drawn. Without the second
+          // part, clicking into a headline with an icon beside it moved the
+          // words on top of it for as long as the editor was open.
+          padding: _room(e, scale),
           child: Align(
             alignment: switch (spec.verticalAlign) {
               VerticalAlignSpec.top => Alignment.topCenter,

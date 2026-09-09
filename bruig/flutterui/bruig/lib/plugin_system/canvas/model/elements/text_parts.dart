@@ -3,6 +3,7 @@ import 'dart:ui' show Color;
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
+import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 
 // text_parts.dart is "these words, not the others".
 //
@@ -595,4 +596,156 @@ TextPart? partAt(String text, List<TextPart> parts, int index) {
     if (index >= range.$1 && index < range.$2) found = part;
   }
   return found;
+}
+
+/// IconPlace is where an icon sits relative to the words.
+enum IconPlace {
+  start("Before the text"),
+  end("After the text"),
+  over("Above the text"),
+  under("Below the text");
+
+  final String label;
+  const IconPlace(this.label);
+
+  /// beside is whether the icon takes room from the side rather than from
+  /// the top or the bottom, which is the one thing the layout needs to know.
+  bool get beside => this == start || this == end;
+
+  static IconPlace fromName(String? name) =>
+      values.firstWhere((p) => p.name == name, orElse: () => start);
+}
+
+/// TextIcon is a picture set beside, above or below a text element's words.
+///
+/// Part of the text element rather than a picture element parked next to one,
+/// because that is what it is *for*: a bullet, a logo, a mark that belongs to
+/// the sentence and should move, resize and animate with it. Two elements
+/// dragged into place beside each other come apart the first time either is
+/// touched.
+///
+/// It reuses what a text element already has -- a box, an underline -- rather
+/// than growing its own: an icon in a rounded box with a line under it is the
+/// same rounded box and the same line, and writing them twice would be two
+/// sets of settings that drift.
+class TextIcon {
+  final String assetId;
+  final IconPlace place;
+
+  /// size is how tall the icon is drawn, in design pixels.
+  final double size;
+
+  /// color tints it, or null to draw it in the colours it was drawn in.
+  ///
+  /// A tint rather than a repaint: the picture is cut to its own shape and
+  /// filled, which is what makes a one-colour glyph take the headline's
+  /// colour and is the only thing that can be done to an arbitrary drawing.
+  final Color? color;
+
+  /// gap is the room between the icon and the words.
+  final double gap;
+
+  /// align is where the icon sits along the edge it is on: the left, the
+  /// middle or the right of an icon above the words; the top, the middle or
+  /// the bottom of one beside them.
+  final TextIconAlign align;
+
+  /// outlineWidth draws the icon's silhouette behind it, in outlineColor --
+  /// the sticker outline, which is the one outline an arbitrary drawing can
+  /// be given without knowing anything about its shape.
+  final double outlineWidth;
+  final Color outlineColor;
+
+  final BoxSpec box;
+
+  /// underline is a line under the icon, the same kind a part of the text
+  /// carries. Null for none.
+  final PartUnderline? underline;
+
+  const TextIcon({
+    this.assetId = "",
+    this.place = IconPlace.start,
+    this.size = 64,
+    this.color,
+    this.gap = 12,
+    this.align = TextIconAlign.middle,
+    this.outlineWidth = 0,
+    this.outlineColor = const Color(0xFF000000),
+    this.box = const BoxSpec(padding: 0),
+    this.underline,
+  });
+
+  bool get on => assetId.isNotEmpty;
+
+  TextIcon copyWith({
+    String? assetId,
+    IconPlace? place,
+    double? size,
+    Color? color,
+    bool clearColor = false,
+    double? gap,
+    TextIconAlign? align,
+    double? outlineWidth,
+    Color? outlineColor,
+    BoxSpec? box,
+    PartUnderline? underline,
+    bool clearUnderline = false,
+  }) =>
+      TextIcon(
+        assetId: assetId ?? this.assetId,
+        place: place ?? this.place,
+        size: size ?? this.size,
+        color: clearColor ? null : (color ?? this.color),
+        gap: gap ?? this.gap,
+        align: align ?? this.align,
+        outlineWidth: outlineWidth ?? this.outlineWidth,
+        outlineColor: outlineColor ?? this.outlineColor,
+        box: box ?? this.box,
+        underline: clearUnderline ? null : (underline ?? this.underline),
+      );
+
+  Map<String, dynamic> toJson() => {
+        "assetId": assetId,
+        if (place != IconPlace.start) "place": place.name,
+        "size": size,
+        if (color != null) "color": colorToJson(color!),
+        "gap": gap,
+        if (align != TextIconAlign.middle) "align": align.name,
+        if (outlineWidth > 0) "ow": outlineWidth,
+        if (outlineWidth > 0) "oc": colorToJson(outlineColor),
+        "box": box.toJson(),
+        if (underline != null) "underline": underline!.toJson(),
+      };
+
+  factory TextIcon.fromJson(Map<String, dynamic> json) => TextIcon(
+        assetId: jsonString(json["assetId"], ""),
+        place: IconPlace.fromName(json["place"] as String?),
+        size: jsonDouble(json["size"], 64).clamp(1, 4000),
+        color: json["color"] == null
+            ? null
+            : colorFromJson(json["color"], const Color(0xFFFFFFFF)),
+        gap: jsonDouble(json["gap"], 12),
+        align: TextIconAlign.fromName(json["align"] as String?),
+        outlineWidth: jsonDouble(json["ow"], 0).clamp(0, 200),
+        outlineColor: colorFromJson(json["oc"], const Color(0xFF000000)),
+        box: json["box"] is Map<String, dynamic>
+            ? BoxSpec.fromJson(json["box"] as Map<String, dynamic>)
+            : const BoxSpec(padding: 0),
+        underline: json["underline"] is Map<String, dynamic>
+            ? PartUnderline.fromJson(json["underline"] as Map<String, dynamic>)
+            : null,
+      );
+}
+
+/// TextIconAlign is where an icon sits along the edge it is on.
+enum TextIconAlign {
+  start("Start"),
+  middle("Middle"),
+  end("End");
+
+  final String label;
+  const TextIconAlign(this.label);
+
+  static TextIconAlign fromName(String? name) =>
+      values.firstWhere((a) => a.name == name, orElse: () => middle);
 }

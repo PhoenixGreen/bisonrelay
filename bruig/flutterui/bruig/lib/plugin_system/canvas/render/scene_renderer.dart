@@ -298,6 +298,13 @@ void _paintText(
   var inner = bounds.deflate(e.box.padding);
   if (inner.width <= 0 || inner.height <= 0) return;
 
+  // An icon takes its room out of the box before the words are laid out in
+  // what is left -- see iconRoom, which Fit to box asks the same question of.
+  var (iconBox, room) = iconRoom(inner, e.icon);
+  paintTextIcon(canvas, iconBox, e.icon, images, e.textSpec);
+  inner = room;
+  if (inner.width <= 0 || inner.height <= 0) return;
+
   var spec = drawnTextSpec(e, bounds);
 
   // How much of it has arrived, and how much has left again -- the same two
@@ -416,7 +423,7 @@ TextSpec drawnTextSpec(TextElement e, Rect bounds) {
   var spec = e.textSpec;
   if (!e.autoSize) return spec;
 
-  var inner = bounds.deflate(e.box.padding);
+  var inner = iconRoom(bounds.deflate(e.box.padding), e.icon).$2;
   if (inner.width <= 0 || inner.height <= 0) return spec;
 
   // Measured against one column's *width*, since that is the width a line

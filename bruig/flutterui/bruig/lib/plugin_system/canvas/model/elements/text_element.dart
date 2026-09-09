@@ -205,6 +205,9 @@ class TextElement extends CanvasElement {
   final PartHighlight? highlight;
   final PartUnderline? underline;
 
+  /// icon is a picture set beside, above or below the words. See TextIcon.
+  final TextIcon icon;
+
   /// curve attaches the text to a line, or is null for a paragraph in its own
   /// box. See [TextOnCurve].
   final TextOnCurve? curve;
@@ -220,6 +223,7 @@ class TextElement extends CanvasElement {
     this.parts = const [],
     this.highlight,
     this.underline,
+    this.icon = const TextIcon(),
     this.curve,
   });
 
@@ -260,6 +264,7 @@ class TextElement extends CanvasElement {
       parts: parts,
       highlight: highlight,
       underline: underline,
+      icon: icon,
       curve: curve);
 
   TextElement copyWith({
@@ -274,6 +279,7 @@ class TextElement extends CanvasElement {
     bool clearHighlight = false,
     PartUnderline? underline,
     bool clearUnderline = false,
+    TextIcon? icon,
     TextOnCurve? curve,
     bool clearCurve = false,
   }) =>
@@ -287,6 +293,7 @@ class TextElement extends CanvasElement {
           parts: parts ?? this.parts,
           highlight: clearHighlight ? null : (highlight ?? this.highlight),
           underline: clearUnderline ? null : (underline ?? this.underline),
+          icon: icon ?? this.icon,
           curve: clearCurve ? null : (curve ?? this.curve));
 
   @override
@@ -300,6 +307,7 @@ class TextElement extends CanvasElement {
         if (parts.isNotEmpty) "parts": [for (var p in parts) p.toJson()],
         if (highlight != null) "highlight": highlight!.toJson(),
         if (underline != null) "underline": underline!.toJson(),
+        if (icon.on) "icon": icon.toJson(),
         if (curve != null) "curve": curve!.toJson(),
       };
 
@@ -321,9 +329,14 @@ class TextElement extends CanvasElement {
           underline:
               json["underline"] is Map<String,
                       dynamic>
-                  ? PartUnderline.fromJson(
-                      json["underline"] as Map<String, dynamic>)
+                  ? PartUnderline.fromJson(json["underline"] as Map<String,
+                      dynamic>)
                   : null,
+          icon:
+              json["icon"]
+                      is Map<String, dynamic>
+                  ? TextIcon.fromJson(json["icon"] as Map<String, dynamic>)
+                  : const TextIcon(),
           columns: jsonSpec(
               json["columns"], TextColumns.fromJson, const TextColumns()),
           curve: json["curve"] is Map<String, dynamic>

@@ -5,6 +5,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
+import 'package:bruig/plugin_system/canvas/ui/image_picking.dart';
 import 'package:flutter/material.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 
@@ -230,6 +231,7 @@ List<Widget> textSettings(
         ],
       ),
     ),
+    boxed(context, _iconSection(context, e, write, begin, commit)),
     boxed(context, _partsSection(e, write, begin, commit)),
     // Boxed like every other section: a bare expander among boxed ones reads
     // as something that has come loose.
@@ -1077,4 +1079,184 @@ List<Widget> _markBits({
           "and Away how far under the letters it sits."),
     ],
   ];
+}
+
+/// _iconSection is the picture a text element carries.
+///
+/// Its own section rather than a row in Type, because an icon is not type: it
+/// has a place, a size, a box and a line of its own, and eight controls for
+/// something most text elements do not have would be eight controls in the
+/// way of the ones every text element does.
+Widget _iconSection(BuildContext context, TextElement e, SettingsWrite write,
+    VoidCallback begin, VoidCallback commit) {
+  var icon = e.icon;
+  void now(TextIcon next) {
+    begin();
+    write(e.copyWith(icon: next));
+    commit();
+  }
+
+  void live(TextIcon next) {
+    begin();
+    write(e.copyWith(icon: next));
+  }
+
+  return CanvasExpander(
+    label: "Icon",
+    remember: "textIcon",
+    trailing: icon.on ? icon.place.label : null,
+    children: [
+      const CanvasHint(
+          "A picture that belongs to the words — a bullet, a logo, a mark "
+          "before a headline. It takes its room out of the element's box, so "
+          "the words are laid out in what is left and Fit to box measures "
+          "against that. An .svg stays a drawing all the way to the export."),
+      CanvasControlGroup(label: "Picture", children: [
+        CanvasIconButton(
+          key: const ValueKey("textIconPicture"),
+          icon: icon.on ? Icons.image_outlined : Icons.add_photo_alternate,
+          tooltip: icon.on ? "Replace this icon" : "Add an icon",
+          onPressed: () async {
+            var id = await pickCanvasImage(context);
+            if (id != null) now(icon.copyWith(assetId: id));
+          },
+        ),
+        if (icon.on)
+          CanvasIconButton(
+            icon: Icons.delete_outline,
+            tooltip: "Take the icon away",
+            onPressed: () => now(icon.copyWith(assetId: "")),
+          ),
+      ]),
+      if (icon.on) ...[
+        CanvasControlGroup(label: "Where", children: [
+          CanvasDropdown<IconPlace>(
+            key: const ValueKey("textIconPlace"),
+            label: "Place",
+            value: icon.place,
+            width: 148,
+            options: [for (var p in IconPlace.values) (p, p.label)],
+            onChanged: (v) => now(icon.copyWith(place: v)),
+          ),
+          CanvasDropdown<TextIconAlign>(
+            label: "Along",
+            value: icon.align,
+            width: 96,
+            options: [for (var a in TextIconAlign.values) (a, a.label)],
+            onChanged: (v) => now(icon.copyWith(align: v)),
+          ),
+          CanvasNumberField(
+            label: "Size",
+            value: icon.size,
+            min: 1,
+            max: 2000,
+            decimals: 0,
+            width: 62,
+            onChanged: (v) => live(icon.copyWith(size: v)),
+            onCommit: commit,
+          ),
+          CanvasNumberField(
+            label: "Gap",
+            value: icon.gap,
+            min: 0,
+            max: 500,
+            decimals: 0,
+            width: 58,
+            onChanged: (v) => live(icon.copyWith(gap: v)),
+            onCommit: commit,
+          ),
+        ]),
+        CanvasControlGroup(label: "Colour", children: [
+          CanvasToggle(
+            label: "Tint",
+            value: icon.color != null,
+            onChanged: (v) => now(v
+                ? icon.copyWith(color: e.textSpec.color)
+                : icon.copyWith(clearColor: true)),
+          ),
+          if (icon.color != null)
+            CanvasColorButton(
+              label: "Icon",
+              color: icon.color!,
+              onChanged: (c) => now(icon.copyWith(color: c)),
+            ),
+          CanvasNumberField(
+            label: "Outline",
+            value: icon.outlineWidth,
+            min: 0,
+            max: 60,
+            decimals: 1,
+            width: 54,
+            onChanged: (v) => live(icon.copyWith(outlineWidth: v)),
+            onCommit: commit,
+          ),
+          if (icon.outlineWidth > 0)
+            CanvasColorButton(
+              label: "Line",
+              color: icon.outlineColor,
+              onChanged: (c) => now(icon.copyWith(outlineColor: c)),
+            ),
+          const CanvasHint(
+              "A tint cuts the picture to its own shape and fills it, so a "
+              "one-colour glyph takes the headline's colour and a photograph "
+              "becomes a silhouette. The outline is the same shape drawn "
+              "behind it — the sticker outline, which is the only one an "
+              "arbitrary drawing can be given."),
+        ]),
+        boxGroup(
+            icon.box,
+            (box) => write(e.copyWith(icon: icon.copyWith(box: box))),
+            begin,
+            commit),
+        CanvasControlGroup(label: "Underline", children: [
+          CanvasToggle(
+            label: "Underline",
+            value: icon.underline != null,
+            onChanged: (v) => now(v
+                ? icon.copyWith(underline: const PartUnderline())
+                : icon.copyWith(clearUnderline: true)),
+          ),
+          if (icon.underline != null) ...[
+            CanvasDropdown<PartLineStyle>(
+              key: const ValueKey("textIconUnderlineStyle"),
+              label: "Line",
+              value: icon.underline!.style,
+              width: 130,
+              options: [for (var v in PartLineStyle.values) (v, v.label)],
+              onChanged: (v) => now(
+                  icon.copyWith(underline: icon.underline!.copyWith(style: v))),
+            ),
+            CanvasColorButton(
+              label: "Line colour",
+              color: icon.underline!.color ?? icon.color ?? e.textSpec.color,
+              onChanged: (c) => now(
+                  icon.copyWith(underline: icon.underline!.copyWith(color: c))),
+            ),
+            CanvasNumberField(
+              label: "Width",
+              value: icon.underline!.width,
+              min: 0.5,
+              max: 60,
+              decimals: 1,
+              width: 58,
+              onChanged: (v) => live(
+                  icon.copyWith(underline: icon.underline!.copyWith(width: v))),
+              onCommit: commit,
+            ),
+            CanvasNumberField(
+              label: "Away",
+              value: icon.underline!.away,
+              min: -40,
+              max: 120,
+              decimals: 0,
+              width: 58,
+              onChanged: (v) => live(
+                  icon.copyWith(underline: icon.underline!.copyWith(away: v))),
+              onCommit: commit,
+            ),
+          ],
+        ]),
+      ],
+    ],
+  );
 }
