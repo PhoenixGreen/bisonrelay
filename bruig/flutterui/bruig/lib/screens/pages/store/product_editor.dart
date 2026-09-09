@@ -224,7 +224,8 @@ class ProductEditorState extends State<ProductEditor> {
           // Nought is a real answer -- sold out -- so an empty box on a
           // product that counts means nought, not "do not count". The
           // switch is the only thing that decides whether to count.
-          available: limited ? (int.tryParse(availableCtrl.text.trim()) ?? 0) : 0,
+          available:
+              limited ? (int.tryParse(availableCtrl.text.trim()) ?? 0) : 0,
           image: draft.image,
         ),
         draft.original.file,

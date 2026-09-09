@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/chart_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_parts.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
@@ -262,9 +263,9 @@ class TextElement extends CanvasElement {
         if (curve != null) "curve": curve!.toJson(),
       };
 
-  factory TextElement.fromJson(
-          Map<String, dynamic> json, ElementBase b) =>
-      TextElement(b,
+  factory TextElement.fromJson(Map<String, dynamic> json, ElementBase b) =>
+      TextElement(
+          b,
           text: jsonString(json["text"], "Text"),
           textSpec:
               jsonSpec(json["textSpec"], TextSpec.fromJson, const TextSpec()),
@@ -272,14 +273,46 @@ class TextElement extends CanvasElement {
           autoSize: jsonBool(json["autoSize"], false),
           animation: jsonSpec(
               json["animation"], TextAnimation.fromJson, const TextAnimation()),
-          parts: [
-            if (json["parts"] case List raw)
-              for (var p in raw)
-                if (p is Map<String, dynamic>) TextPart.fromJson(p),
-          ],
+          parts: _partsFromJson(json),
           columns: jsonSpec(
               json["columns"], TextColumns.fromJson, const TextColumns()),
           curve: json["curve"] is Map<String, dynamic>
               ? TextOnCurve.fromJson(json["curve"] as Map<String, dynamic>)
               : null);
+}
+
+/// _partsFromJson reads the parts, and moves an old document's pointed
+/// animation onto the part it pointed at.
+///
+/// The arrival used to be able to name one part and happen to that instead of
+/// to the whole paragraph. It is the part's own animation now -- so the rest
+/// of the sentence can have an arrival too, and the part can land at its own
+/// moment -- and a document saved before that would otherwise open with the
+/// animation apparently applied to everything.
+List<TextPart> _partsFromJson(Map<String, dynamic> json) {
+  var parts = [
+    if (json["parts"] case List raw)
+      for (var p in raw)
+        if (p is Map<String, dynamic>) TextPart.fromJson(p),
+  ];
+
+  var animation = json["animation"];
+  if (animation is! Map<String, dynamic>) return parts;
+  var at = jsonInt(animation["part"], -1);
+  if (at < 0 || at >= parts.length) return parts;
+  var preset = TextAnimationPreset.fromName(animation["preset"] as String?);
+  if (preset == TextAnimationPreset.none) return parts;
+
+  return [
+    for (var (i, part) in parts.indexed)
+      if (i != at)
+        part
+      else
+        part.copyWith(
+            animation: part.animation.copyWith(
+                preset: preset,
+                gap: jsonDouble(animation["gap"], 0.35),
+                scale: jsonDouble(animation["scale"], 0),
+                ease: ChartEase.fromName(animation["ease"] as String?))),
+  ];
 }

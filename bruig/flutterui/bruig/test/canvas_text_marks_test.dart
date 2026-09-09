@@ -297,14 +297,24 @@ void main() {
     // word, so an echo pointed at it must leave this half exactly as it was.
     const firstHalf = Rect.fromLTWH(0, 0, 200, 200);
 
-    Future<int> lit({required int part}) async => _lit(await _ink(
+    Future<int> lit({required bool onItsOwn}) async => _lit(await _ink(
         _document([
           _headline(
-            parts: const [TextPart(from: 5, to: 5)],
-            animation: TextAnimation(
-                preset: TextAnimationPreset.echoDown,
-                part: part,
-                ease: ChartEase.linear),
+            parts: [
+              TextPart(
+                  from: 5,
+                  to: 5,
+                  animation: onItsOwn
+                      ? const TextPartAnimation(
+                          preset: TextAnimationPreset.echoDown,
+                          ease: ChartEase.linear)
+                      : const TextPartAnimation()),
+            ],
+            animation: onItsOwn
+                ? const TextAnimation()
+                : const TextAnimation(
+                    preset: TextAnimationPreset.echoDown,
+                    ease: ChartEase.linear),
             reveal: 1,
           ),
         ]),
@@ -319,8 +329,8 @@ void main() {
       await tester.runAsync(() async {
         plain = _lit(
             await _ink(_document([_headline(reveal: 1)]), within: firstHalf));
-        one = await lit(part: 0);
-        all = await lit(part: -1);
+        one = await lit(onItsOwn: true);
+        all = await lit(onItsOwn: false);
       });
       // What the echo added over half the canvas the part is nowhere near.
       // The words themselves are drawn either way and are most of the ink,

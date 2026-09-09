@@ -136,8 +136,7 @@ class PostEntry {
   /// isReservedFolder marks any folder the app keeps for itself. The sidebar
   /// draws these differently and offers neither Rename nor Delete on them,
   /// and the listing pins them to the bottom. See [reservedFolderNames].
-  bool get isReservedFolder =>
-      isFolder && reservedFolderNames.contains(name);
+  bool get isReservedFolder => isFolder && reservedFolderNames.contains(name);
 }
 
 /// PostStorage reads and writes the library.
@@ -485,8 +484,7 @@ class PostStorage {
     if (entry.folder == pagesFolderName && isFrontPageName(entry)) return null;
     // ...and nothing else may be renamed onto one either, which would leave
     // two folders claiming the same reserved name.
-    if (entry.isFolder &&
-        reservedFolderNames.contains(sanitizeName(newName))) {
+    if (entry.isFolder && reservedFolderNames.contains(sanitizeName(newName))) {
       return null;
     }
 

@@ -15,6 +15,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/text_parts.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/image_placement.dart';
@@ -283,7 +284,10 @@ void _paintText(
     var (curveAnimation, curveReveal) = _arrival(e, pose);
     paintTextOnPath(canvas, e.displayText, e.textSpec, curve,
         slide == null ? on : on.copyWith(offset: slide),
-        animation: curveAnimation, reveal: curveReveal, parts: e.parts);
+        animation: curveAnimation,
+        reveal: curveReveal,
+        parts: e.parts,
+        timings: _partTimings(e, frame, pose));
     return;
   }
 
@@ -297,29 +301,29 @@ void _paintText(
   // channels a chart's animation uses, so the timeline treats the two kinds
   // of element identically. See TextAnimation.
   var (animation, reveal) = _arrival(e, pose);
+  var timings = _partTimings(e, frame, pose);
   // Nothing yet -- unless what is being animated is a mark drawn *on* the
   // words and the words are meant to be there already, which is what an
   // underline being drawn under a finished sentence looks like.
   if (animation.on &&
       reveal <= 0 &&
-      !(animation.preset.motion.keeps &&
-          animation.draw.start == TextDrawStart.showText) &&
-      // And unless it is happening to only some of the words, in which case
-      // the others are there whatever it is doing to those.
-      !animation.toSome) {
+      !(animation.keeps && animation.draw.start == TextDrawStart.showText) &&
+      // And unless one of the parts is arriving on its own account, in which
+      // case it has a moment of its own and this frame may be it.
+      !partsAnimate(e.parts)) {
     return;
   }
 
   if (e.columns.isSingle) {
     paintTextInBox(canvas, e.displayText, spec, inner,
-        animation: animation, reveal: reveal, parts: e.parts);
+        animation: animation, reveal: reveal, parts: e.parts, timings: timings);
     return;
   }
   // Columns animate piece by piece like anything else: the pieces are worked
   // out once for the whole paragraph and drawn column by column, so a stagger
   // carries on from the last word of one column into the first of the next.
   paintTextInColumns(canvas, e.displayText, spec, inner, e.columns,
-      animation: animation, reveal: reveal, parts: e.parts);
+      animation: animation, reveal: reveal, parts: e.parts, timings: timings);
 }
 
 /// _arrival is the animation a text element is playing on this frame, and how
@@ -337,6 +341,45 @@ void _paintText(
     return (animation.leaving, 1 - close.clamp(0.0, 1.0));
   }
   return (animation, reveal);
+}
+
+/// _partTimings is where each of [e]'s parts has got to on [frame].
+///
+/// Measured from the element's own arrival -- the two keyframes the timeline
+/// shows -- so a part's offset is a nudge against the thing it belongs to
+/// rather than a frame number of its own that goes stale the moment those
+/// keyframes are dragged.
+///
+/// Everything is simply there when the element is leaving: on the way out the
+/// paragraph goes as one, and a part still playing its own arrival underneath
+/// an exit is two animations arguing.
+List<PartTiming> _partTimings(TextElement e, int frame, Keyframe pose) {
+  if (e.parts.isEmpty) return const [];
+  var closing = (pose.values[KeyframeChannel.close] ?? 0) > 0;
+  if (closing) return [for (var _ in e.parts) PartTiming.there];
+
+  int? from;
+  int? to;
+  for (var key in e.track?.keys ?? const <Keyframe>[]) {
+    if (!key.values.containsKey(KeyframeChannel.reveal)) continue;
+    from = from == null ? key.frame : math.min(from, key.frame);
+    to = to == null ? key.frame : math.max(to, key.frame);
+  }
+  // No arrival to measure against -- one keyframe, or none. A part with an
+  // animation of its own has nothing to be early or late for, so it simply
+  // follows the element: an offset needs two keyframes to be an offset from.
+  if (from == null || to == null || to <= from) {
+    var reveal = pose.values[KeyframeChannel.reveal] ?? 1;
+    return [
+      for (var part in e.parts)
+        PartTiming(
+            part.animation.on ? reveal : 1, part.animation.marks ? reveal : 1),
+    ];
+  }
+  return [
+    for (var part in e.parts)
+      timingOf(part, frame: frame, from: from, span: to - from),
+  ];
 }
 
 /// drawnTextSpec is the type a text element is actually drawn in.

@@ -103,8 +103,8 @@ List<SlotEntry> slotEntries(PluginManagerModel plugins, String slot) {
   for (var plugin in plugins.plugins) {
     if (!plugin.enabled) continue;
     for (var contribution in plugin.manifest.contributionsTo(slot)) {
-      out.add(SlotEntry(
-          plugin.manifest.id, plugin.manifest.name, contribution));
+      out.add(
+          SlotEntry(plugin.manifest.id, plugin.manifest.name, contribution));
     }
   }
   out.sort((a, b) => a.pluginId.compareTo(b.pluginId));
@@ -170,7 +170,8 @@ class _PluginContributionViewState extends State<PluginContributionView> {
   void _load() async {
     setState(() => _loading = true);
     try {
-      var ui = await Golib.renderDynPluginScreen(widget.pluginId, widget.screenId);
+      var ui =
+          await Golib.renderDynPluginScreen(widget.pluginId, widget.screenId);
       if (!mounted) return;
       setState(() {
         _ui = ui;
@@ -214,7 +215,9 @@ class _PluginContributionViewState extends State<PluginContributionView> {
         padding: EdgeInsets.symmetric(vertical: 12),
         child: Center(
           child: SizedBox(
-              width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2)),
         ),
       );
     }

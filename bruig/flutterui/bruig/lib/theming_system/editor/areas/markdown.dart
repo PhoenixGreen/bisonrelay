@@ -1060,8 +1060,8 @@ class _MarkdownEditorState extends State<_MarkdownEditor> {
               min: 300,
               max: 1600,
               divisions: 26,
-              onCommit: (v) => edit((g) =>
-                  g.copyWith(header: g.header.copyWith(fullSizeAt: v)))),
+              onCommit: (v) => edit(
+                  (g) => g.copyWith(header: g.header.copyWith(fullSizeAt: v)))),
           ctx.note("Narrower than this and the whole banner scales down "
               "together -- its rows, and the writing and pictures sized from "
               "them. Left to themselves the rows keep the height they were "
@@ -1081,7 +1081,8 @@ class _MarkdownEditorState extends State<_MarkdownEditor> {
               onCommit: (v) => edit(
                   (g) => g.copyWith(header: g.header.copyWith(padding: v)))),
           ctx.slider("md-hdrradius", guide.header.radius,
-              label: (v) => v == 0 ? "Corners: Square" : "Corners: ${v.round()}px",
+              label: (v) =>
+                  v == 0 ? "Corners: Square" : "Corners: ${v.round()}px",
               max: 48,
               divisions: 24,
               onCommit: (v) => edit(
@@ -1114,7 +1115,8 @@ class _MarkdownEditorState extends State<_MarkdownEditor> {
           ctx.note("What gives a pill or a box its size. A plain bar is just "
               "words and ignores it."),
           ctx.slider("md-navradius", guide.nav.radius,
-              label: (v) => v == 0 ? "Corners: Square" : "Corners: ${v.round()}px",
+              label: (v) =>
+                  v == 0 ? "Corners: Square" : "Corners: ${v.round()}px",
               max: 32,
               divisions: 16,
               onCommit: (v) =>
@@ -1123,8 +1125,8 @@ class _MarkdownEditorState extends State<_MarkdownEditor> {
               label: (v) => "Line: ${v.round()}px",
               max: 8,
               divisions: 8,
-              onCommit: (v) => edit(
-                  (g) => g.copyWith(nav: g.nav.copyWith(borderWidth: v)))),
+              onCommit: (v) =>
+                  edit((g) => g.copyWith(nav: g.nav.copyWith(borderWidth: v)))),
           _inkPick(ctx, "Link colour", guide.nav.ink,
               (i) => edit((g) => g.copyWith(nav: g.nav.copyWith(ink: i)))),
           _inkPick(ctx, "Under the pointer", guide.nav.hover,
@@ -1135,12 +1137,16 @@ class _MarkdownEditorState extends State<_MarkdownEditor> {
               "link colour and marks neither."),
           const SizedBox(height: 16),
           const Txt.M("The bar itself"),
-          _inkPick(ctx, "Background", guide.nav.background,
-              (i) => edit((g) => g.copyWith(nav: g.nav.copyWith(background: i)))),
+          _inkPick(
+              ctx,
+              "Background",
+              guide.nav.background,
+              (i) =>
+                  edit((g) => g.copyWith(nav: g.nav.copyWith(background: i)))),
           ctx.toggle("Run the background the whole width",
               value: guide.nav.fullWidth,
-              onChanged: (v) => edit(
-                  (g) => g.copyWith(nav: g.nav.copyWith(fullWidth: v)))),
+              onChanged: (v) =>
+                  edit((g) => g.copyWith(nav: g.nav.copyWith(fullWidth: v)))),
           ctx.note("Which is what makes a bar in a row written --row[44,"
               "flush]-- read as a strip along the top or bottom of a banner "
               "rather than a patch behind the words."),
@@ -1171,7 +1177,8 @@ class _MarkdownEditorState extends State<_MarkdownEditor> {
               onCommit: (v) =>
                   edit((g) => g.copyWith(grid: g.grid.copyWith(gap: v)))),
           ctx.slider("md-gridstack", guide.grid.stackBelow,
-              label: (v) => "Stack when a picture would be under ${v.round()}px",
+              label: (v) =>
+                  "Stack when a picture would be under ${v.round()}px",
               min: 80,
               max: 480,
               divisions: 20,

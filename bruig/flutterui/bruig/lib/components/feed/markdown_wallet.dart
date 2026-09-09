@@ -144,8 +144,8 @@ class _MarkdownWalletState extends State<MarkdownWallet> {
 
     var theme = ThemeNotifier.of(context);
     var colors = theme.colors;
-    var base = Theme.of(context).textTheme.bodyMedium ??
-        const TextStyle(fontSize: 14);
+    var base =
+        Theme.of(context).textTheme.bodyMedium ?? const TextStyle(fontSize: 14);
     var quiet = base.copyWith(color: colors.onSurfaceVariant, fontSize: 12);
 
     var need = widget.rule.need;
@@ -226,8 +226,8 @@ class _MarkdownWalletState extends State<MarkdownWallet> {
   }) {
     var theme = ThemeNotifier.of(context);
     var colors = theme.colors;
-    var base = Theme.of(context).textTheme.bodyMedium ??
-        const TextStyle(fontSize: 14);
+    var base =
+        Theme.of(context).textTheme.bodyMedium ?? const TextStyle(fontSize: 14);
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 2),

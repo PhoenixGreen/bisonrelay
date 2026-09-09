@@ -43,8 +43,8 @@ Future<void> postToPage(
   var parentPageID = pageSource?.pageID ?? 0;
 
   try {
-    await resources.fetchPage(
-        uid, parsed.pathSegments, sessionID, parentPageID, formData, asyncTargetID);
+    await resources.fetchPage(uid, parsed.pathSegments, sessionID, parentPageID,
+        formData, asyncTargetID);
   } catch (exception) {
     snackbar.error("Unable to fetch page: $exception");
   }

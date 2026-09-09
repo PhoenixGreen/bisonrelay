@@ -867,9 +867,8 @@ class _SecondarySideMenuLayoutState extends State<SecondarySideMenuLayout> {
 
         // The sidebar's slot, kept in the layout even when empty so the
         // content beside it stays at the same position in the tree.
-        Widget sidebarSlot(double? width) => widget.collapseSidebar
-            ? const SizedBox.shrink()
-            : _menuList(width);
+        Widget sidebarSlot(double? width) =>
+            widget.collapseSidebar ? const SizedBox.shrink() : _menuList(width);
 
         if (style == SubMenuStyle.resizable) {
           var defaultWidth = sidebarWidth(menuWidth);
@@ -883,28 +882,28 @@ class _SecondarySideMenuLayoutState extends State<SecondarySideMenuLayout> {
                 const SizedBox.shrink()
               else
                 MouseRegion(
-                cursor: SystemMouseCursors.resizeLeftRight,
-                child: GestureDetector(
-                  behavior: HitTestBehavior.translucent,
-                  onHorizontalDragUpdate: (d) => _setResizableWidth(
-                      (currentWidth + d.delta.dx)
-                          .clamp(_resizableMinWidth, _resizableMaxWidth)),
-                  onHorizontalDragEnd: (_) => _saveResizableWidth(),
-                  onDoubleTap: () {
-                    _setResizableWidth(defaultWidth);
-                    _saveResizableWidth();
-                  },
-                  child: SizedBox(
-                    width: 8,
-                    child: Center(
-                      child: SizedBox(
-                        width: sidebarEdgeWidth(theme),
-                        child: ColoredBox(color: sidebarEdgeColor(theme)),
+                  cursor: SystemMouseCursors.resizeLeftRight,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.translucent,
+                    onHorizontalDragUpdate: (d) => _setResizableWidth(
+                        (currentWidth + d.delta.dx)
+                            .clamp(_resizableMinWidth, _resizableMaxWidth)),
+                    onHorizontalDragEnd: (_) => _saveResizableWidth(),
+                    onDoubleTap: () {
+                      _setResizableWidth(defaultWidth);
+                      _saveResizableWidth();
+                    },
+                    child: SizedBox(
+                      width: 8,
+                      child: Center(
+                        child: SizedBox(
+                          width: sidebarEdgeWidth(theme),
+                          child: ColoredBox(color: sidebarEdgeColor(theme)),
+                        ),
                       ),
                     ),
                   ),
                 ),
-              ),
               Expanded(child: contentAreaFrame(theme, widget.content)),
             ],
           );

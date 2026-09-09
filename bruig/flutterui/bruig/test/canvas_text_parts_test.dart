@@ -284,15 +284,26 @@ void main() {
       return counts;
     }
 
-    TextElement headline({required int part}) => TextElement(
+    // The part arrives on its own account -- see TextPartAnimation -- with
+    // the element's own arrival left off, so what is measured is the part.
+    TextElement headline({required bool onItsOwn}) => TextElement(
           const ElementBase(id: "t", x: 0, y: 20, width: 400, height: 80),
           text: line,
           textSpec: const TextSpec(fontSize: 26, color: Color(0xFFFFFFFF)),
-          parts: const [TextPart(from: 5, to: 5)],
-          animation: TextAnimation(
-              preset: TextAnimationPreset.fadeIn,
-              part: part,
-              ease: ChartEase.linear),
+          parts: [
+            TextPart(
+                from: 5,
+                to: 5,
+                animation: onItsOwn
+                    ? const TextPartAnimation(
+                        preset: TextAnimationPreset.fadeIn,
+                        ease: ChartEase.linear)
+                    : const TextPartAnimation()),
+          ],
+          animation: onItsOwn
+              ? const TextAnimation()
+              : const TextAnimation(
+                  preset: TextAnimationPreset.fadeIn, ease: ChartEase.linear),
         );
 
     testWidgets("leaves the other words alone", (tester) async {
@@ -300,8 +311,8 @@ void main() {
       late Map<int, int> partly;
       late Map<int, int> wholly;
       await tester.runAsync(() async {
-        partly = await ink(headline(part: 0), 0);
-        wholly = await ink(headline(part: -1), 0);
+        partly = await ink(headline(onItsOwn: true), 0);
+        wholly = await ink(headline(onItsOwn: false), 0);
       });
 
       expect(wholly[0xFFFFFFFF] ?? 0, 0,
@@ -314,34 +325,22 @@ void main() {
       late Map<int, int> atNothing;
       late Map<int, int> atAll;
       await tester.runAsync(() async {
-        atNothing = await ink(headline(part: 0), 0);
-        atAll = await ink(headline(part: 0), 1);
+        atNothing = await ink(headline(onItsOwn: true), 0);
+        atAll = await ink(headline(onItsOwn: true), 1);
       });
       expect(atAll[0xFFFFFFFF]!, greaterThan(atNothing[0xFFFFFFFF]! + 30),
           reason: "the word it points at should arrive on top of the rest");
     });
 
-    test("removing the part it points at unpoints it", () {
-      // Left alone, the animation would be pointed at whichever part moved up
-      // into the empty place -- a setting quietly changing its own meaning.
-      const animation =
-          TextAnimation(preset: TextAnimationPreset.fadeIn, part: 1);
-      expect(animation.toSome, isTrue);
-      expect(animation.copyWith(part: -1).toSome, isFalse);
-    });
-
     test("and it survives being saved", () {
-      var back = TextAnimation.fromJson(
-          const TextAnimation(preset: TextAnimationPreset.echoDown, part: 2)
-              .toJson());
-      expect(back.part, 2);
-      expect(
-          TextAnimation.fromJson(
-                  const TextAnimation(preset: TextAnimationPreset.fadeIn)
-                      .toJson())
-              .part,
-          -1,
-          reason: "all the words, which is what nothing written down means");
+      var back = TextPartAnimation.fromJson(const TextPartAnimation(
+              preset: TextAnimationPreset.echoDown, offset: 6, length: 12)
+          .toJson());
+      expect(back.preset, TextAnimationPreset.echoDown);
+      expect(back.offset, 6);
+      expect(back.length, 12);
+      expect(const TextPartAnimation().toJson(), isEmpty,
+          reason: "a part that arrives with the rest writes nothing");
     });
   });
 }

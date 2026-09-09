@@ -99,7 +99,8 @@ String slugFileName(String stem) {
 /// own Pictures list, and the Writing sidebar while a page is being written.
 /// Two copies would be two file pickers with slightly different titles and,
 /// in time, two different sets of size choices.
-Future<String?> pickAndAddPicture(BuildContext context, PagesModel pages) async {
+Future<String?> pickAndAddPicture(
+    BuildContext context, PagesModel pages) async {
   // The extensions rather than FileType.image, which is the platform's idea
   // of a picture and does not include SVG on macOS -- so the one format that
   // is always the smallest thing on the page could not be chosen at all.
@@ -139,7 +140,8 @@ class _AddPictureDialogState extends State<_AddPictureDialog> {
   bool _preparing = false;
   String? _error;
 
-  String get _sourceName => widget.sourcePath.split(Platform.pathSeparator).last;
+  String get _sourceName =>
+      widget.sourcePath.split(Platform.pathSeparator).last;
 
   /// _mime is taken from the name, which is all there is to go on before the
   /// file is read and all the pipeline needs: it distinguishes a vector from
@@ -298,8 +300,8 @@ class _AddPictureDialogState extends State<_AddPictureDialog> {
               options: _options,
               onChanged: _setOptions,
               onSliding: (next) => setState(() => _options = next),
-              sizeLine: Align(
-                  alignment: Alignment.centerLeft, child: _sizeLine()),
+              sizeLine:
+                  Align(alignment: Alignment.centerLeft, child: _sizeLine()),
             ),
           const SizedBox(height: 12),
           Align(

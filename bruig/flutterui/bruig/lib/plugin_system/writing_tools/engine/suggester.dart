@@ -90,8 +90,8 @@ class Suggester {
         if (_bitCount(wordMask ^ _masks[candidate]!) > maskLimit) continue;
         var d = _editDistance(word, candidate, maxDistance);
         if (d <= maxDistance) {
-          scored
-              .add(_Candidate(candidate, d, _commonRank[candidate] ?? unranked));
+          scored.add(
+              _Candidate(candidate, d, _commonRank[candidate] ?? unranked));
         }
       }
     }

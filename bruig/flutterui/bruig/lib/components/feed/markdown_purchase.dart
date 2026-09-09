@@ -142,8 +142,8 @@ class MarkdownPurchase extends StatelessWidget {
 
     var theme = ThemeNotifier.of(context);
     var colors = theme.colors;
-    var base = Theme.of(context).textTheme.bodyMedium ??
-        const TextStyle(fontSize: 14);
+    var base =
+        Theme.of(context).textTheme.bodyMedium ?? const TextStyle(fontSize: 14);
 
     var name = rule.title.isEmpty ? "This file" : rule.title;
 
@@ -176,8 +176,8 @@ class MarkdownPurchase extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(name,
-                    style:
-                        base.copyWith(fontSize: 14, fontWeight: FontWeight.w600)),
+                    style: base.copyWith(
+                        fontSize: 14, fontWeight: FontWeight.w600)),
                 Text(
                   readable
                       ? "Delivered. It is in Files > Purchases."

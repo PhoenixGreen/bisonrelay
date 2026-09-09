@@ -82,8 +82,8 @@ ThemePreset displayPreset(ThemeNotifier theme) =>
 // which comes here; this is for the parts of Appearance that edit an area
 // without being one of its editors -- the Menu section, which sets the
 // Navigation Bar's navRoutes beside the same items' order and names.
-void setAreaStyleOn(ThemeNotifier theme, ThemeArea area,
-    AreaStyle Function(AreaStyle) update) {
+void setAreaStyleOn(
+    ThemeNotifier theme, ThemeArea area, AreaStyle Function(AreaStyle) update) {
   var draft = ensureDraftPreset(theme);
   var current = draft.areas[area] ?? const AreaStyle();
   theme.previewPreset(

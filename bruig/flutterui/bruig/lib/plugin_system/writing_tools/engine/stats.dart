@@ -118,7 +118,6 @@ class WritingStats {
     if (score >= 30) return "Difficult";
     return "Very difficult";
   }
-
 }
 
 /// estimateSyllables counts vowel groups in [word], with the adjustments that

@@ -218,8 +218,7 @@ Future<void> runMainApp(Config cfg) async {
       // PagesModel listens to ResourcesModel for replies, so it is built
       // from it rather than beside it.
       ChangeNotifierProxyProvider<ResourcesModel, PagesModel>(
-        create: (c) => PagesModel(
-            Provider.of<ResourcesModel>(c, listen: false))
+        create: (c) => PagesModel(Provider.of<ResourcesModel>(c, listen: false))
           ..loadHost(),
         update: (c, resources, pages) => pages!,
       ),

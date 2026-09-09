@@ -158,10 +158,10 @@ enum TextAnimationPreset {
       from: 0.6),
   pop("Pop", TextAnimationFamily.scale, TextAnimationScope.word,
       TextMotion.grow,
-      from: 0.4),
+      from: 0.4, wants: ChartEase.overshoot),
   punch("Punch", TextAnimationFamily.scale, TextAnimationScope.block,
       TextMotion.grow,
-      from: 2.2),
+      from: 2.2, wants: ChartEase.overshoot),
 
   // Reveal: the words stay where they are and something uncovers them.
   wipe("Wipe across", TextAnimationFamily.reveal, TextAnimationScope.block,
@@ -190,22 +190,24 @@ enum TextAnimationPreset {
       TextMotion.fade,
       scrambled: true),
   scramble("Scramble", TextAnimationFamily.sequential,
-      TextAnimationScope.letter, TextMotion.scramble),
+      TextAnimationScope.letter, TextMotion.scramble,
+      wants: ChartEase.linear),
 
   // Impact.
   slam("Slam", TextAnimationFamily.impact, TextAnimationScope.block,
       TextMotion.grow,
-      from: 3.5),
+      from: 3.5, wants: ChartEase.overshoot),
   snap("Snap", TextAnimationFamily.impact, TextAnimationScope.word,
       TextMotion.snap),
   shake("Shake", TextAnimationFamily.impact, TextAnimationScope.block,
-      TextMotion.shake),
+      TextMotion.shake,
+      wants: ChartEase.linear),
   bounce("Bounce", TextAnimationFamily.impact, TextAnimationScope.word,
       TextMotion.rise,
-      dy: 0.8),
+      dy: 0.8, wants: ChartEase.bounce),
   whip("Whip", TextAnimationFamily.impact, TextAnimationScope.word,
       TextMotion.rise,
-      dx: 0.5),
+      dx: 0.5, wants: ChartEase.overshoot),
 
   // Transform.
   rotateIn("Rotate in", TextAnimationFamily.transform, TextAnimationScope.block,
@@ -301,6 +303,16 @@ enum TextAnimationPreset {
   /// scatter read as a scatter rather than as a row being dealt.
   final bool scrambled;
 
+  /// wants is the easing the preset was designed around, or null where it
+  /// does not care.
+  ///
+  /// A bounce is not a movement, it is a *curve*: the same rise, eased so it
+  /// overshoots and settles. Played with the ordinary ease-out it is a slide
+  /// with a misleading name, which is exactly what it looked like. Chosen,
+  /// the preset sets the End curve to this -- and leaves it alone afterwards,
+  /// so it is a starting point rather than a setting that cannot be changed.
+  final ChartEase? wants;
+
   const TextAnimationPreset(
     this.label,
     this.family,
@@ -313,6 +325,7 @@ enum TextAnimationPreset {
     this.clipped = false,
     this.stretch = false,
     this.scrambled = false,
+    this.wants,
   });
 
   static TextAnimationPreset fromName(String? name) => values.firstWhere(
@@ -462,11 +475,21 @@ class TextEchoSpec {
   /// copies the same size. Below 1 the trail recedes.
   final double shrink;
 
+  /// resolve sends the copies on their way instead of leaving them there.
+  ///
+  /// An echo is a look: the copies fan out and stay, which is the reference
+  /// somebody sent. Resolved, it is an *arrival*: they fan out over the first
+  /// half, carry on in the direction they were headed over the second, and
+  /// are gone by the end -- leaving the words alone on the page. The same
+  /// eight directions, either as a look or as a way in.
+  final bool resolve;
+
   const TextEchoSpec({
     this.copies = 4,
     this.spacing = 1,
     this.fade = 0.55,
     this.shrink = 1,
+    this.resolve = false,
   });
 
   TextEchoSpec copyWith({
@@ -474,12 +497,14 @@ class TextEchoSpec {
     double? spacing,
     double? fade,
     double? shrink,
+    bool? resolve,
   }) =>
       TextEchoSpec(
         copies: copies ?? this.copies,
         spacing: spacing ?? this.spacing,
         fade: fade ?? this.fade,
         shrink: shrink ?? this.shrink,
+        resolve: resolve ?? this.resolve,
       );
 
   Map<String, dynamic> toJson() => {
@@ -487,6 +512,7 @@ class TextEchoSpec {
         if (spacing != 1) "spacing": spacing,
         if (fade != 0.55) "fade": fade,
         if (shrink != 1) "shrink": shrink,
+        if (resolve) "resolve": true,
       };
 
   factory TextEchoSpec.fromJson(Map<String, dynamic> json) => TextEchoSpec(
@@ -494,6 +520,7 @@ class TextEchoSpec {
         spacing: jsonDouble(json["spacing"], 1).clamp(0.05, 8),
         fade: jsonDouble(json["fade"], 0.55).clamp(0.05, 1),
         shrink: jsonDouble(json["shrink"], 1).clamp(0.2, 1),
+        resolve: jsonBool(json["resolve"], false),
       );
 }
 
@@ -520,16 +547,6 @@ class TextAnimation {
 
   /// echo is how the copies are arranged, for the presets that make them.
   final TextEchoSpec echo;
-
-  /// part is which of the element's parts this happens to, or -1 for all of
-  /// the words.
-  ///
-  /// An index into the element's own list rather than a range of its own,
-  /// because "these words, not the others" is already written down once --
-  /// see TextPart -- and a second copy of it here would be the same question
-  /// with two answers. It is what makes the reference possible: a headline
-  /// where one word echoes and the rest of the line sits still.
-  final int part;
 
   /// scale is where a growing preset starts from, as a fraction: 0.6 arrives
   /// from a little small, 0 from nothing, 2 from twice the size.
@@ -559,7 +576,6 @@ class TextAnimation {
     this.scale = 0,
     this.draw = const TextDrawSpec(),
     this.echo = const TextEchoSpec(),
-    this.part = -1,
     this.ease = ChartEase.easeOut,
     this.flipOrder = false,
   });
@@ -571,15 +587,25 @@ class TextAnimation {
   double scaleFor(TextAnimationPreset preset) =>
       scale > 0 ? scale : preset.from;
 
-  /// toSome is whether this happens to some of the words rather than all.
-  bool get toSome => part >= 0;
-
   /// echoes is whether the copy settings mean anything for what is chosen.
   bool get echoes =>
       preset.motion == TextMotion.echo ||
       exit.motion == TextMotion.echo ||
       preset.motion == TextMotion.trail ||
       exit.motion == TextMotion.trail;
+
+  /// keeps is whether this animation leaves something behind when it is over.
+  ///
+  /// The motion's own answer, except for an echo that has been told to
+  /// resolve -- its copies fly off and are gone, so what is left is the words
+  /// and the still drawing can take over. See TextEchoSpec.resolve.
+  bool get keeps {
+    if (echo.resolve &&
+        (preset.motion == TextMotion.echo || exit.motion == TextMotion.echo)) {
+      return false;
+    }
+    return preset.motion.keeps;
+  }
 
   /// draws is whether the mark settings mean anything for what is chosen.
   bool get draws => preset.motion.keeps || exit.motion.keeps;
@@ -600,7 +626,6 @@ class TextAnimation {
     double? scale,
     TextDrawSpec? draw,
     TextEchoSpec? echo,
-    int? part,
     ChartEase? ease,
     bool? flipOrder,
   }) =>
@@ -612,7 +637,6 @@ class TextAnimation {
         scale: scale ?? this.scale,
         draw: draw ?? this.draw,
         echo: echo ?? this.echo,
-        part: part ?? this.part,
         ease: ease ?? this.ease,
         flipOrder: flipOrder ?? this.flipOrder,
       );
@@ -647,7 +671,6 @@ class TextAnimation {
         if (scale > 0) "scale": scale,
         if (draw.toJson().isNotEmpty) "draw": draw.toJson(),
         if (echo.toJson().isNotEmpty) "echo": echo.toJson(),
-        if (part >= 0) "part": part,
         "ease": ease.name,
       };
 
@@ -663,7 +686,6 @@ class TextAnimation {
         echo: json["echo"] is Map<String, dynamic>
             ? TextEchoSpec.fromJson(json["echo"] as Map<String, dynamic>)
             : const TextEchoSpec(),
-        part: jsonInt(json["part"], -1),
         ease: ChartEase.fromName(json["ease"] as String?),
       );
 }

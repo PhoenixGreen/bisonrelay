@@ -168,6 +168,12 @@ TextPainter _layoutText(
 /// The rectangles come from the paragraph's own selection boxes, so a part
 /// spanning a line break is marked as two lines rather than as one box round
 /// both -- which would be a highlighter that had coloured in the margin.
+/// [timings] says how much of each mark has been drawn, where the part has
+/// asked for its mark to be drawn on rather than simply be there. A mark is
+/// drawn from its start to whatever share of it has arrived -- a highlighter
+/// crossing the words, a line being pulled under them -- which is the whole
+/// reason a mark has a timing of its own: a word arrives and *then* gets
+/// underlined.
 void paintPartMarks(
   ui.Canvas canvas,
   TextPainter painter,
@@ -176,26 +182,43 @@ void paintPartMarks(
   TextSpec spec,
   Offset offset, {
   required bool behind,
+  List<PartTiming> timings = const [],
 }) {
   if (parts.isEmpty || text.isEmpty) return;
 
-  for (var part in parts) {
+  for (var (i, part) in parts.indexed) {
     var mark = behind ? part.highlight : part.underline;
     if (mark == null) continue;
     var range = rangeOf(text, part);
     if (range == null) continue;
+    var drawn = i < timings.length ? timings[i].mark : 1.0;
+    if (drawn <= 0) continue;
 
     var boxes = painter.getBoxesForSelection(
         TextSelection(baseOffset: range.$1, extentOffset: range.$2));
+    // Across all of the lines it covers rather than each on its own, so a
+    // mark under two lines is drawn along the first and then along the
+    // second instead of both at once.
+    var total = 0.0;
+    for (var b in boxes) {
+      total += b.toRect().width;
+    }
+    var reached = total * drawn;
     for (var b in boxes) {
       var box = b.toRect().shift(offset);
       if (box.width <= 0) continue;
+      if (reached < box.width) {
+        if (reached <= 0) break;
+        box = Rect.fromLTWH(box.left, box.top, reached, box.height);
+      }
+      reached -= b.toRect().width;
       if (behind) {
         _paintPartHighlight(canvas, box, part.highlight!);
       } else {
         _paintPartUnderline(
             canvas, box, part.underline!, part.color ?? spec.color);
       }
+      if (reached <= 0) break;
     }
   }
 }
@@ -388,6 +411,10 @@ double paintTextInBox(
   TextAnimation? animation,
   double reveal = 1,
   List<TextPart> parts = const [],
+
+  /// timings are where each part has got to, for the parts that arrive on
+  /// their own account. See TextPartAnimation.
+  List<PartTiming> timings = const [],
 }) {
   if (text.isEmpty || box.width <= 0) return 0;
 
@@ -415,32 +442,60 @@ double paintTextInBox(
     canvas.clipRect(box);
   }
 
-  var outline = spec.outlineWidth > 0
-      ? layoutText(text, spec,
-          maxWidth: box.width, scale: scale, outline: true, fillWidth: true)
-      : null;
+  // The outline is laid out with the parts as well: bold and italic change
+  // how wide a word is, so an outline built without them is an outline of a
+  // different paragraph -- which is what "the outline does not work with
+  // bold" looked like.
+  //
+  // And a preset that draws the outline needs one whether or not the type has
+  // any, since it is the whole animation: the words are written in outline
+  // and then filled in.
+  var strokeOn = animation != null &&
+      animation.on &&
+      animation.preset.motion == TextMotion.strokeOn;
+  var outlineSpec = spec.outlineWidth > 0
+      ? spec
+      : (strokeOn
+          ? spec.copyWith(
+              outlineWidth: math.max(1, spec.fontSize * 0.03),
+              outlineColor: spec.color)
+          : null);
+  var outline = outlineSpec == null
+      ? null
+      : layoutText(text, outlineSpec,
+          maxWidth: box.width,
+          scale: scale,
+          outline: true,
+          fillWidth: true,
+          parts: parts);
 
   // A part's own highlight goes behind the words and its own underline under
   // them. Drawn whatever the animation is doing, because they are a fact
   // about the words rather than an arrival -- see TextPart.highlight.
-  paintPartMarks(canvas, painter, text, parts, spec, offset, behind: true);
+  paintPartMarks(canvas, painter, text, parts, spec, offset,
+      behind: true, timings: timings);
 
   // Part way through arriving, if it is arriving. The animator is handed the
   // paragraph that has already been laid out -- and its outline, which moves
   // with it rather than being drawn once and left behind.
   // Once it has arrived there is nothing to animate -- unless the motion is
   // one that leaves something behind, which still has to be drawn.
+  // Through the animator whenever anything at all is moving -- the arrival,
+  // or one of the parts on its own account. It draws a still paragraph too,
+  // so there is one path rather than two that have to agree about the holes
+  // a part's own layer leaves behind it.
   if (animation != null &&
-      animation.on &&
-      (reveal < 1 || animation.preset.motion.keeps)) {
+      ((animation.on && (reveal < 1 || animation.keeps)) ||
+          partsAnimate(parts))) {
     paintAnimatedText(canvas, painter, text, spec, offset, animation, reveal,
-        maxWidth: box.width, outline: outline, parts: parts);
+        maxWidth: box.width, outline: outline, parts: parts, timings: timings);
   } else {
     outline?.paint(canvas, offset);
     painter.paint(canvas, offset);
   }
 
-  paintPartMarks(canvas, painter, text, parts, spec, offset, behind: false);
+  paintPartMarks(canvas, painter, text, parts, spec, offset,
+      behind: false, timings: timings);
 
   if (clip) canvas.restore();
   return painter.height;
@@ -500,6 +555,22 @@ TextSpan _partedSpan(String text, TextSpec spec, List<TextPart> parts,
 
   TextStyle styleFor(TextPart? part) {
     if (part == null) return style;
+    // An outline run is drawn by a stroke paint, and a style cannot carry
+    // both that and a colour -- so an outline takes the part's weight and
+    // slant and leaves its colour alone. Setting both threw, which is why
+    // the outline setting appeared not to work at all on an element with
+    // parts: the paragraph it belongs to could not be built.
+    if (style.foreground != null) {
+      return style.copyWith(
+        fontWeight: part.weight == null
+            ? style.fontWeight
+            : FontWeight.values[((part.weight! ~/ 100) - 1)
+                .clamp(0, FontWeight.values.length - 1)],
+        fontStyle: part.italic == null
+            ? style.fontStyle
+            : (part.italic! ? FontStyle.italic : FontStyle.normal),
+      );
+    }
     return style.copyWith(
       // colorOverride wins: it is how a preview draws the whole paragraph in
       // one colour, and a part that ignored it would be a word that stayed
@@ -826,6 +897,7 @@ void paintTextInColumns(
   TextAnimation? animation,
   double reveal = 1,
   List<TextPart> parts = const [],
+  List<PartTiming> timings = const [],
 }) {
   if (text.isEmpty || box.width <= 0 || box.height <= 0) return;
 
@@ -841,21 +913,16 @@ void paintTextInColumns(
 
   var outline = spec.outlineWidth > 0
       ? layoutText(text, spec,
-          maxWidth: width, scale: scale, outline: true, fillWidth: true)
+          maxWidth: width,
+          scale: scale,
+          outline: true,
+          fillWidth: true,
+          parts: parts)
       : null;
 
   double top(int line) => line >= metrics.length
       ? metrics.last.baseline + metrics.last.descent
       : metrics[line].baseline - metrics[line].ascent;
-
-  /// The pieces of the whole paragraph, worked out once and shared by every
-  /// column. Null until something asks for them, since a still paragraph
-  /// never does.
-  List<TextPiece>? pieces;
-
-  /// The characters an animation pointed at a part covers, worked out with
-  /// the pieces and shared by every column.
-  (int, int)? range;
 
   for (var i = 0; i < runs.length; i++) {
     var (from, to) = runs[i];
@@ -881,54 +948,35 @@ void paintTextInColumns(
     // column's clip keeps each one to its own lines: a part that runs from
     // the bottom of one column into the top of the next is marked in both,
     // which is what it looks like on the page.
-    paintPartMarks(canvas, painter, text, parts, spec, at, behind: true);
+    paintPartMarks(canvas, painter, text, parts, spec, at,
+        behind: true, timings: timings);
 
-    var moving = animation != null &&
-        animation.on &&
-        (reveal < 1 || animation.preset.motion.keeps);
+    var moving = (animation != null &&
+            animation.on &&
+            (reveal < 1 || animation.keeps)) ||
+        partsAnimate(parts);
     if (moving) {
-      // The pieces of this column: the ones whose lines fall in its run.
-      // Their indices are their places in the whole paragraph, which is what
-      // makes the stagger carry on from one column into the next.
-      // Which words it happens to, where it has been pointed at one of the
-      // parts -- the same question the single-column path asks, asked here
-      // too, or an animation aimed at one word moved every column.
-      range ??= animation.toSome && animation.part < parts.length
-          ? rangeOf(text, parts[animation.part])
-          : null;
-      pieces ??= piecesFor(painter, text, animation.preset.scope, range: range);
-      var mine = <int>[];
-      for (var (i, piece) in pieces.indexed) {
+      // The pieces this column holds: the ones whose lines fall in its run.
+      // Their places in the whole paragraph decide their progress, which is
+      // what makes the stagger carry on from one column into the next.
+      paintAnimatedText(canvas, painter, text, spec, at,
+          animation ?? const TextAnimation(), reveal,
+          maxWidth: width,
+          outline: outline,
+          parts: parts,
+          timings: timings, keep: (piece) {
+        // A block-scoped piece covers the paragraph, which every column
+        // shares: it moves or uncovers the same way in each.
+        if (piece.box.height >= painter.height - 0.5) return true;
         var middle = piece.box.center.dy;
-        if (middle >= top(from) - 0.5 && middle < top(to) + 0.5) mine.add(i);
-      }
-      // A block-scoped animation has one piece covering the paragraph, which
-      // every column shares: it moves or uncovers the same way in each. Not
-      // where it has been narrowed to a part, though -- that piece is some
-      // particular words, and they are in one column.
-      if (animation.preset.scope == TextAnimationScope.block && range == null) {
-        mine = [0];
-      }
-      // The words this is not happening to, at rest, with the moving pieces
-      // cut out of them so nothing is drawn twice.
-      if (range != null) {
-        canvas.save();
-        for (var piece in pieces) {
-          canvas.clipRect(piece.box.shift(at).inflate(1),
-              clipOp: ui.ClipOp.difference);
-        }
-        outline?.paint(canvas, at);
-        painter.paint(canvas, at);
-        canvas.restore();
-      }
-      paintAnimatedPieces(
-          canvas, painter, at, pieces, mine, spec, animation, reveal,
-          outline: outline, restricted: range != null);
+        return middle >= top(from) - 0.5 && middle < top(to) + 0.5;
+      });
     } else {
       outline?.paint(canvas, at);
       painter.paint(canvas, at);
     }
-    paintPartMarks(canvas, painter, text, parts, spec, at, behind: false);
+    paintPartMarks(canvas, painter, text, parts, spec, at,
+        behind: false, timings: timings);
     canvas.restore();
   }
 
@@ -1108,6 +1156,19 @@ List<PlacedGlyph> placeTextOnPath(
   return out;
 }
 
+/// _animatedPartAt is which part arriving on its own account covers the
+/// character at [index], or -1 for none.
+int _animatedPartAt(String text, List<TextPart> parts, int index) {
+  var found = -1;
+  for (var (i, part) in parts.indexed) {
+    if (!part.animation.on) continue;
+    var range = rangeOf(text, part);
+    if (range == null) continue;
+    if (index >= range.$1 && index < range.$2) found = i;
+  }
+  return found;
+}
+
 /// _specForPart is [spec] with whatever [part] says about these letters.
 TextSpec _specForPart(TextSpec spec, TextPart? part) {
   if (part == null) return spec;
@@ -1171,45 +1232,63 @@ void paintTextOnPath(
   TextAnimation? animation,
   double reveal = 1,
   List<TextPart> parts = const [],
+  List<PartTiming> timings = const [],
 }) {
   var glyphs =
       placeTextOnPath(text, spec, curve, on, scale: scale, parts: parts);
   if (glyphs.isEmpty) return;
 
-  var moving = animation != null &&
-      animation.on &&
-      (reveal < 1 || animation.preset.motion.keeps);
+  var moving =
+      animation != null && animation.on && (reveal < 1 || animation.keeps);
 
-  // Which letters it happens to, where it has been pointed at one of the
-  // parts. The others are drawn as they stand.
-  (int, int)? range;
-  if (moving && animation.toSome && animation.part < parts.length) {
-    range = rangeOf(text, parts[animation.part]);
-  }
+  // Which layer each letter belongs to: a part that arrives on its own
+  // account, or the paragraph's own arrival. A curve has no lines and no
+  // blocks to clip, so the layers are simply groups of letters -- which is
+  // the one place this is easier than a box.
+  var layer = <int>[
+    for (var g in glyphs) _animatedPartAt(text, parts, g.index),
+  ];
 
-  // Where each letter comes in the order, and how many places there are. A
-  // word-scoped preset counts words, so the letters of one word move
-  // together; anything else counts letters, a whole-block preset having one
-  // place that they all share.
-  var scope = moving ? animation.preset.scope : TextAnimationScope.block;
-  var place = <int>[];
-  var places = 1;
-  if (scope == TextAnimationScope.word) {
-    var word = -1;
-    var inWord = false;
-    for (var g in glyphs) {
-      var space = g.glyph.trim().isEmpty;
-      if (!space && !inWord) word++;
-      inWord = !space;
-      place.add(math.max(0, word));
+  /// animationOf is what moves this letter, and revealOf how far through it
+  /// is -- the part's own where it has one, the paragraph's otherwise.
+  TextAnimation? animationOf(int of) =>
+      of < 0 ? (moving ? animation : null) : parts[of].animation.asAnimation;
+  double revealOf(int of) =>
+      of < 0 ? reveal : (of < timings.length ? timings[of].words : 1);
+
+  // Where each letter comes in the order of its own layer, and how many
+  // places that layer has. A word-scoped preset counts words, so the letters
+  // of one word move together; anything else counts letters, a whole-block
+  // preset having one place that they all share.
+  var place = List<int>.filled(glyphs.length, 0);
+  var places = <int, int>{};
+  for (var of in layer.toSet()) {
+    var mine = [
+      for (var i = 0; i < glyphs.length; i++)
+        if (layer[i] == of) i,
+    ];
+    var scope = animationOf(of)?.preset.scope ?? TextAnimationScope.block;
+    if (scope == TextAnimationScope.word) {
+      var word = -1;
+      var inWord = false;
+      for (var i in mine) {
+        var space = glyphs[i].glyph.trim().isEmpty;
+        if (!space && !inWord) word++;
+        inWord = !space;
+        place[i] = math.max(0, word);
+      }
+      places[of] = math.max(1, word + 1);
+    } else if (scope == TextAnimationScope.letter) {
+      for (var (n, i) in mine.indexed) {
+        place[i] = n;
+      }
+      places[of] = math.max(1, mine.length);
+    } else {
+      for (var i in mine) {
+        place[i] = 0;
+      }
+      places[of] = 1;
     }
-    places = math.max(1, word + 1);
-  } else if (scope == TextAnimationScope.block ||
-      scope == TextAnimationScope.line) {
-    place = [for (var _ in glyphs) 0];
-  } else {
-    place = [for (var i = 0; i < glyphs.length; i++) i];
-    places = glyphs.length;
   }
 
   for (var (i, g) in glyphs.indexed) {
@@ -1219,13 +1298,16 @@ void paintTextOnPath(
     var local = Rect.fromLTWH(
         -g.size.width / 2, dy, g.size.width, math.max(1, g.size.height));
 
-    var still = !moving ||
-        (range != null && (g.index < range.$1 || g.index >= range.$2));
     // Null exactly when this letter is not moving, so the drawing below can
     // ask it things without asking whether it is there.
-    var anim = still ? null : animation;
-    var p = anim == null ? 1.0 : anim.progressAt(reveal, place[i], places);
-    if (p <= 0 && anim != null && !anim.preset.motion.keeps) continue;
+    var mine = layer[i];
+    var anim = animationOf(mine);
+    var over = revealOf(mine);
+    if (anim != null && !anim.on) anim = null;
+    if (anim != null && over >= 1 && !anim.keeps) anim = null;
+    var p =
+        anim == null ? 1.0 : anim.progressAt(over, place[i], places[mine] ?? 1);
+    if (p <= 0 && anim != null && !anim.keeps) continue;
 
     canvas.save();
     canvas.translate(g.at.dx, g.at.dy);
@@ -1334,19 +1416,25 @@ void _paintCurveCopies(ui.Canvas canvas, PlacedGlyph g, double dy, double scale,
         );
   var ways = preset.turns > 0 && !trail ? const [1.0, -1.0] : const [1.0];
 
+  // See the same two halves in _paintPiece: fan out, then go.
+  var resolving = echo.resolve && !trail;
+  var fanning = resolving ? (p * 2).clamp(0.0, 1.0) : p;
+  var going = resolving ? (p * 2 - 1).clamp(0.0, 1.0) : 0.0;
+
   for (var way in ways) {
     for (var c = echo.copies; c >= 1; c--) {
       var arrived =
-          trail ? 1.0 : (p * (echo.copies + 1) - (c - 1)).clamp(0.0, 1.0);
+          trail ? 1.0 : (fanning * (echo.copies + 1) - (c - 1)).clamp(0.0, 1.0);
       if (arrived <= 0) continue;
       var strength = echo.fade;
       for (var i = 1; i < c; i++) {
         strength *= echo.fade;
       }
       if (trail) strength *= (1 - p);
+      if (going > 0) strength *= (1 - going) * (1 - going);
       if (strength <= 0.002) continue;
 
-      var away = step * (c * arrived) * way;
+      var away = step * (c * arrived * (1 + going * 2.5)) * way;
       var size = math.pow(echo.shrink, c).toDouble();
       canvas.save();
       canvas.translate(away.dx, away.dy);

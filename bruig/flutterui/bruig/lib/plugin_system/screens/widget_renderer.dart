@@ -115,7 +115,8 @@ List<Widget> buildPluginWidgets(
 }) =>
     [
       for (var w in widgets)
-        buildPluginWidget(context, w, root: root, state: state, onEvent: onEvent)
+        buildPluginWidget(context, w,
+            root: root, state: state, onEvent: onEvent)
     ];
 
 /// buildPluginWidget renders one node.
@@ -413,8 +414,8 @@ Widget _listItem(
   return ListTile(
     contentPadding: EdgeInsets.zero,
     leading: leading == null ? null : Icon(leading),
-    title: Txt.S(item.text,
-        color: item.muted ? TextColor.onSurfaceVariant : null),
+    title:
+        Txt.S(item.text, color: item.muted ? TextColor.onSurfaceVariant : null),
     subtitle: item.hint.isNotEmpty ? Txt.S(item.hint) : null,
     trailing: trailing.isEmpty
         ? null

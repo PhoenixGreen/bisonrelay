@@ -316,8 +316,7 @@ class PageFrame extends StatelessWidget {
   /// with writing it cannot be read against.
   static Color _colorFor(ThemeNotifier theme, PageBackground background) =>
       switch (background) {
-        PageBackground.raised =>
-          theme.markdownRoleColor(MarkdownRole.raised),
+        PageBackground.raised => theme.markdownRoleColor(MarkdownRole.raised),
         PageBackground.quiet => theme.surfaceColor(SurfaceColor.surfaceDim),
         PageBackground.none => Colors.transparent,
       };

@@ -108,8 +108,8 @@ class _ViewPageScreenState extends State<ViewPageScreen> {
     if (sess == null || page == null) return;
     var snackbar = SnackBarModel.of(context);
     try {
-      await resources
-          .fetchPage(page.uid, ["index.md"], sess.id, page.pageID, null, "");
+      await resources.fetchPage(
+          page.uid, ["index.md"], sess.id, page.pageID, null, "");
     } catch (exception) {
       snackbar.error("Unable to open front page: $exception");
     }
@@ -133,8 +133,6 @@ class _ViewPageScreenState extends State<ViewPageScreen> {
   // the whole section, kept wherever they put it. See PagesModel.sidebarOpen
   // for why it is not reset when a page opens.
   void toggleSidebar() => pages.sidebarOpen = !pages.sidebarOpen;
-
-
 
   /// openTabs is what is open, in the order the strip shows it: the sections
   /// first, then the pages.

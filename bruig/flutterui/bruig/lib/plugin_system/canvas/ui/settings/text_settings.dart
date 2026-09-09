@@ -425,29 +425,144 @@ Widget _partsSection(TextElement e, SettingsWrite write, VoidCallback begin,
                 "and tapered at both ends. Width sets how heavy the line is, "
                 "and Away how far under the letters it sits."),
           ],
+          // This part's own arrival, at its own moment. Not the element's
+          // animation pointed here: the rest of the sentence has an arrival
+          // of its own, and the point of animating one word is that it lands
+          // after the line it is in rather than with it.
+          const CanvasLineBreak(),
+          CanvasDropdown<TextAnimationFamily?>(
+            key: ValueKey("partAnimationFamily$i"),
+            label: "Arrives",
+            value: part.animation.on ? part.animation.preset.family : null,
+            width: 128,
+            options: [
+              (null, "With the rest"),
+              for (var family in TextAnimationFamily.values)
+                (family, family.label),
+            ],
+            onChanged: (family) => set(replacing(
+                i,
+                part.copyWith(
+                    animation: _partPreset(
+                        part.animation,
+                        family == null
+                            ? TextAnimationPreset.none
+                            : TextAnimationPreset.inFamily(family).first)))),
+          ),
+          if (part.animation.on) ...[
+            CanvasDropdown<TextAnimationPreset>(
+              key: ValueKey("partAnimationPreset$i"),
+              label: "Which",
+              value: part.animation.preset,
+              width: 168,
+              options: [
+                for (var preset in TextAnimationPreset.inFamily(
+                    part.animation.preset.family))
+                  (preset, preset.label),
+              ],
+              onChanged: (v) => set(replacing(
+                  i, part.copyWith(animation: _partPreset(part.animation, v)))),
+            ),
+            CanvasNumberField(
+              label: "Offset",
+              value: part.animation.offset.toDouble(),
+              min: -600,
+              max: 600,
+              decimals: 0,
+              width: 62,
+              onChanged: (v) {
+                begin();
+                write(e.copyWith(
+                    parts: replacing(
+                        i,
+                        part.copyWith(
+                            animation:
+                                part.animation.copyWith(offset: v.round())))));
+              },
+              onCommit: commit,
+            ),
+            CanvasNumberField(
+              label: "Length",
+              value: part.animation.length.toDouble(),
+              min: 0,
+              max: 3600,
+              decimals: 0,
+              width: 62,
+              onChanged: (v) {
+                begin();
+                write(e.copyWith(
+                    parts: replacing(
+                        i,
+                        part.copyWith(
+                            animation:
+                                part.animation.copyWith(length: v.round())))));
+              },
+              onCommit: commit,
+            ),
+            const CanvasHint(
+                "Offset is how many frames after the element's own arrival "
+                "this one starts — nothing lands them together, a few frames "
+                "makes the word land after the line it is in, and a negative "
+                "number brings it forward. Length is how long it takes; "
+                "nothing means as long as the arrival."),
+          ],
+          // And whether its mark is drawn on rather than simply being there.
+          // Its own moment as well, because the usual thing is a word that
+          // arrives and *then* gets underlined.
+          if (part.highlight != null || part.underline != null) ...[
+            CanvasToggle(
+              label: "Draw the mark on",
+              value: part.animation.marks,
+              onChanged: (v) => set(replacing(i,
+                  part.copyWith(animation: part.animation.copyWith(marks: v)))),
+            ),
+            if (part.animation.marks) ...[
+              CanvasNumberField(
+                label: "Mark offset",
+                value: part.animation.markOffset.toDouble(),
+                min: -600,
+                max: 600,
+                decimals: 0,
+                width: 62,
+                onChanged: (v) {
+                  begin();
+                  write(e.copyWith(
+                      parts: replacing(
+                          i,
+                          part.copyWith(
+                              animation: part.animation
+                                  .copyWith(markOffset: v.round())))));
+                },
+                onCommit: commit,
+              ),
+              CanvasNumberField(
+                label: "Mark length",
+                value: part.animation.markLength.toDouble(),
+                min: 0,
+                max: 3600,
+                decimals: 0,
+                width: 62,
+                onChanged: (v) {
+                  begin();
+                  write(e.copyWith(
+                      parts: replacing(
+                          i,
+                          part.copyWith(
+                              animation: part.animation
+                                  .copyWith(markLength: v.round())))));
+                },
+                onCommit: commit,
+              ),
+            ],
+          ],
+          const CanvasLineBreak(),
           CanvasIconButton(
             icon: Icons.delete_outline,
             tooltip: "Remove this part",
-            onPressed: () {
-              // An animation pointed at a part that has gone would be
-              // pointed at whichever part moved up into its place, which is
-              // a setting quietly changing its own meaning.
-              var at = e.animation.part;
-              var next = at == i
-                  ? -1
-                  : at > i
-                      ? at - 1
-                      : at;
-              begin();
-              write(e.copyWith(
-                parts: [
-                  for (var j = 0; j < e.parts.length; j++)
-                    if (j != i) e.parts[j],
-                ],
-                animation: e.animation.copyWith(part: next),
-              ));
-              commit();
-            },
+            onPressed: () => set([
+              for (var j = 0; j < e.parts.length; j++)
+                if (j != i) e.parts[j],
+            ]),
           ),
         ]),
       CanvasControlGroup(label: "Add", hideCaption: true, children: [
@@ -461,6 +576,13 @@ Widget _partsSection(TextElement e, SettingsWrite write, VoidCallback begin,
     ],
   );
 }
+
+/// _partPreset chooses a preset for a part, and the curve it was designed
+/// around with it. See TextAnimationPreset.wants: a bounce played with the
+/// ordinary ease-out is a slide with a misleading name.
+TextPartAnimation _partPreset(
+        TextPartAnimation animation, TextAnimationPreset preset) =>
+    animation.copyWith(preset: preset, ease: preset.wants);
 
 /// _animationSection is how the words arrive, and how they leave.
 ///
@@ -534,24 +656,6 @@ Widget _animationSection(CanvasController controller, TextElement e,
             onChanged: (v) => controller.applyTextAnimation(e, v),
           ),
       ]),
-      // Which words it happens to. All of them unless one of the parts is
-      // named, which is what makes a headline where one word echoes and the
-      // rest of the line sits still.
-      if (animation.on && e.parts.isNotEmpty)
-        CanvasControlGroup(label: "Applies to", children: [
-          CanvasDropdown<int>(
-            key: const ValueKey("textAnimationPart"),
-            label: "",
-            value: animation.part < e.parts.length ? animation.part : -1,
-            width: 190,
-            options: [
-              (-1, "All the words"),
-              for (var (i, part) in e.parts.indexed) (i, part.says),
-            ],
-            onChanged: (v) =>
-                now(e.copyWith(animation: animation.copyWith(part: v))),
-          ),
-        ]),
       if (animation.on || animation.closes)
         CanvasControlGroup(label: "Leaving", children: [
           CanvasDropdown<TextAnimationFamily?>(
@@ -738,6 +842,18 @@ Widget _animationSection(CanvasController controller, TextElement e,
             },
             onCommit: commit,
           ),
+          CanvasToggle(
+            label: "Resolves",
+            value: animation.echo.resolve,
+            onChanged: (v) => now(e.copyWith(
+                animation: animation.copyWith(
+                    echo: animation.echo.copyWith(resolve: v)))),
+          ),
+          const CanvasHint(
+              "Resolves sends the copies on their way instead of leaving them "
+              "there: they fan out, carry on in the direction they were "
+              "headed, and are gone by the end — which turns the echo from a "
+              "look into a way in."),
           const CanvasHint(
               "Apart is measured in line heights, so the same setting reads "
               "the same on a headline and on a caption. Fade is how much of "
@@ -747,6 +863,27 @@ Widget _animationSection(CanvasController controller, TextElement e,
         ]),
       if (animation.on || animation.closes)
         CanvasControlGroup(label: "Timing", children: [
+          // How long the arrival takes, in frames. The same number the two
+          // keyframes on the timeline are already saying -- written here as
+          // well because the default is rarely the one wanted, and dragging a
+          // keyframe is a poor way to ask for twelve frames.
+          if (animation.on)
+            CanvasNumberField(
+              key: const ValueKey("textAnimationLength"),
+              label: "Length",
+              min: 1,
+              max: 3600,
+              decimals: 0,
+              width: 62,
+              value: (controller.textAnimationSpan(e).$2 ?? 24).toDouble(),
+              onChanged: (v) => controller.setTextAnimationLength(e, v.round()),
+            ),
+          if (animation.on)
+            const CanvasHint(
+                "How many frames the arrival takes. The two keyframes on the "
+                "timeline say the same thing, and dragging them changes this "
+                "— a part's own offset is measured against it, so the parts "
+                "move with it."),
           if (animation.preset.staggers || animation.exit.staggers)
             CanvasNumberField(
               label: "Gap",

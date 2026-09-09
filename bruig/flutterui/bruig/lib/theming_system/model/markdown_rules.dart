@@ -604,9 +604,8 @@ class HeaderRule {
       );
 
   @override
-  int get hashCode =>
-      Object.hash(height, padding, radius, gap, scrim, fullSizeAt,
-          smallestScale);
+  int get hashCode => Object.hash(
+      height, padding, radius, gap, scrim, fullSizeAt, smallestScale);
 
   @override
   bool operator ==(Object other) =>
@@ -724,9 +723,8 @@ class NavRule {
   static MarkdownInk _ink(Object? v) => MarkdownInk.fromJson(v);
 
   @override
-  int get hashCode => Object.hash(
-      gap, padding, radius, borderWidth, ink, hover, active, background,
-      fullWidth);
+  int get hashCode => Object.hash(gap, padding, radius, borderWidth, ink, hover,
+      active, background, fullWidth);
 
   @override
   bool operator ==(Object other) =>

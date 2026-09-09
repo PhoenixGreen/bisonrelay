@@ -128,7 +128,8 @@ class _AreasSectionState extends State<AreasSection> implements AreaEditorHost {
   late ThemeArea selected = widget.initialArea ?? editableAreas.first;
 
   @override
-  void setAreaStyle(ThemeNotifier theme, AreaStyle Function(AreaStyle) update) =>
+  void setAreaStyle(
+          ThemeNotifier theme, AreaStyle Function(AreaStyle) update) =>
       setAreaStyleOn(theme, selected, update);
 
   // _slider keys each _ValueSlider by area *and* setting, so switching areas

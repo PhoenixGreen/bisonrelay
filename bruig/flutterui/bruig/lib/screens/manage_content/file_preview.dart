@@ -22,6 +22,7 @@ enum FileKind { image, text, markdown, pdf, video, other }
 
 const _imageExts = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp"};
 const _videoExts = {".mp4", ".mov", ".m4v", ".webm", ".mkv"};
+
 /// _markdownExts are read rather than inspected. A document somebody bought
 /// or was sent is something to read, and showing it as its own source is the
 /// same as handing somebody a PDF as a hex dump.
@@ -855,7 +856,8 @@ class _MarkdownPreviewState extends State<_MarkdownPreview> {
         alignment: Alignment.centerRight,
         child: TextButton.icon(
           onPressed: () => setState(() => showSource = !showSource),
-          icon: Icon(showSource ? Icons.article_outlined : Icons.code, size: 16),
+          icon:
+              Icon(showSource ? Icons.article_outlined : Icons.code, size: 16),
           label: Txt.S(showSource ? "Read it" : "Show the source"),
         ),
       ),

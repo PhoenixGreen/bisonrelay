@@ -203,7 +203,9 @@ class SpellcheckCapability extends ChangeNotifier {
 
     var language = preferences.language;
     var signature = _signature(plugins);
-    if (_loadedFor == language && _loadedFrom == signature && _checker.hasData) {
+    if (_loadedFor == language &&
+        _loadedFrom == signature &&
+        _checker.hasData) {
       return;
     }
 

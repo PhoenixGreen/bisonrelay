@@ -137,7 +137,8 @@ String? requiredLiteral(String pattern) {
     // cannot be part of an anchor either.
     if (c == "?" || c == "*") {
       var text = out.toString();
-      out = StringBuffer(text.isEmpty ? "" : text.substring(0, text.length - 1));
+      out =
+          StringBuffer(text.isEmpty ? "" : text.substring(0, text.length - 1));
       out.write(" ");
       continue;
     }
@@ -341,8 +342,8 @@ class WritingChecker {
       // in memory. The cache is never larger than one document.
       fresh[paragraph.text] = found;
       for (var issue in found) {
-        issues.add(
-            paragraph.start == 0 ? issue : issue.shifted(paragraph.start));
+        issues
+            .add(paragraph.start == 0 ? issue : issue.shifted(paragraph.start));
       }
     }
     _paragraphCache = fresh;
@@ -475,8 +476,7 @@ class WritingChecker {
   }
 
   /// _checkSpelling flags every word the dictionary does not have.
-  void _checkSpelling(
-      String text, String original, List<WritingIssue> issues) {
+  void _checkSpelling(String text, String original, List<WritingIssue> issues) {
     for (var m in _wordRegExp.allMatches(text)) {
       // A run of letters welded to a digit is not a word the dictionary can
       // rule on: the "th" in "12th", the "st" in "1st", the "v" in "v1.2.3",

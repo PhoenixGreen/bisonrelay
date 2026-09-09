@@ -350,9 +350,8 @@ class PageDocuments {
       name: doc,
       file: served.isEmpty ? fileNameFor(folder, doc) : served.first.name,
       folder: folder,
-      state: served.isEmpty
-          ? PagePublishState.draft
-          : PagePublishState.published,
+      state:
+          served.isEmpty ? PagePublishState.draft : PagePublishState.published,
     );
   }
 

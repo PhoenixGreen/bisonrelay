@@ -68,15 +68,24 @@ List<TextPiece> piecesFor(
       var top = line.baseline - line.ascent;
       var box =
           Rect.fromLTWH(line.left, top, math.max(1, line.width), line.height);
-      // Only the lines the range touches, where there is one.
+      // Only the lines the range touches, where there is one -- and only the
+      // part of the line the range covers. The whole line, as this was, is
+      // why "rise behind a mask" pointed at one word raised the line it was
+      // in rather than the word.
       if (range != null) {
-        var boxes = painter.getBoxesForSelection(
-            TextSelection(baseOffset: range.$1, extentOffset: range.$2));
-        var touches = boxes.any((b) {
+        Rect? mine;
+        for (var b in painter.getBoxesForSelection(
+            TextSelection(baseOffset: range.$1, extentOffset: range.$2))) {
           var r = b.toRect();
-          return r.center.dy >= box.top && r.center.dy <= box.bottom;
-        });
-        if (!touches) continue;
+          if (r.center.dy < box.top || r.center.dy > box.bottom) continue;
+          mine = mine == null ? r : mine.expandToInclude(r);
+        }
+        if (mine == null) continue;
+        out.add(TextPiece(
+            Rect.fromLTRB(mine.left, box.top, mine.right, box.bottom),
+            range.$1,
+            range.$2));
+        continue;
       }
       out.add(TextPiece(box, 0, text.length));
     }
@@ -129,8 +138,42 @@ List<TextPiece> piecesFor(
 
 bool _isSpace(String c) => c.trim().isEmpty;
 
+/// _Layer is one part of the text arriving on its own account: which
+/// characters, how, and how far through it is.
+class _Layer {
+  final (int, int) range;
+  final TextAnimation animation;
+  final double reveal;
+  const _Layer(this.range, this.animation, this.reveal);
+}
+
+/// layersFor is the parts that are arriving on their own account.
+///
+/// A part without an animation of its own is not a layer: it is drawn with
+/// the rest of the paragraph, in whatever colour and weight it asked for.
+List<_Layer> _layersFor(TextPainter painter, String text, List<TextPart> parts,
+    List<PartTiming> timings) {
+  var out = <_Layer>[];
+  for (var (i, part) in parts.indexed) {
+    if (!part.animation.on) continue;
+    var range = rangeOf(text, part);
+    if (range == null) continue;
+    out.add(_Layer(range, part.animation.asAnimation,
+        i < timings.length ? timings[i].words : 1));
+  }
+  return out;
+}
+
+/// _boxesOf is the rectangles some characters occupy, at [offset].
+List<Rect> _boxesOf(TextPainter painter, (int, int) range, Offset offset) => [
+      for (var b in painter.getBoxesForSelection(
+          TextSelection(baseOffset: range.$1, extentOffset: range.$2)))
+        b.toRect().shift(offset).inflate(1),
+    ];
+
 /// paintAnimatedText draws [painter] at [offset] with [animation] applied,
-/// [reveal] of the way through.
+/// [reveal] of the way through -- and each part that has an animation of its
+/// own at its own moment.
 ///
 /// [painter] is the paragraph already laid out -- the same one the still
 /// drawing uses -- so what arrives is exactly what will be there when it has
@@ -140,6 +183,15 @@ bool _isSpace(String c) => c.trim().isEmpty;
 /// one. It moves with the fill rather than being drawn once and left behind,
 /// which is what an outlined headline sliding out from under its own outline
 /// looked like.
+///
+/// The paragraph is drawn in layers: the words nobody has singled out, with
+/// the singled-out ones cut out of it, and then each of those with its own
+/// preset and its own progress. That is what lets a line arrive and one word
+/// in it land two frames later -- and it is why the cut-out is done with a
+/// clip rather than by drawing the rest of the sentence twice.
+/// [keep] draws only some of the pieces, which is what a column is: the same
+/// paragraph, drawn a few lines at a time at different places, with the
+/// stagger still counted across the whole of it.
 void paintAnimatedText(
   ui.Canvas canvas,
   TextPainter painter,
@@ -150,21 +202,66 @@ void paintAnimatedText(
   double reveal, {
   double maxWidth = 0,
   TextPainter? outline,
-
-  /// parts are the element's own, so an animation pointed at one of them can
-  /// find it. See TextAnimation.part.
   List<TextPart> parts = const [],
+  List<PartTiming> timings = const [],
+  bool Function(TextPiece)? keep,
+}) {
+  var layers = _layersFor(painter, text, parts, timings);
+  var holes = <Rect>[
+    for (var layer in layers) ..._boxesOf(painter, layer.range, offset),
+  ];
+
+  _paintBase(canvas, painter, text, spec, offset, animation, reveal,
+      outline: outline,
+      maxWidth: maxWidth,
+      holes: holes,
+      layers: layers,
+      keep: keep);
+
+  for (var layer in layers) {
+    _paintLayer(canvas, painter, text, spec, offset, layer,
+        outline: outline, maxWidth: maxWidth, keep: keep);
+  }
+}
+
+/// _paintBase draws the words that are not singled out, with the ones that
+/// are cut out of them.
+void _paintBase(
+  ui.Canvas canvas,
+  TextPainter painter,
+  String text,
+  TextSpec spec,
+  Offset offset,
+  TextAnimation animation,
+  double reveal, {
+  TextPainter? outline,
+  double maxWidth = 0,
+  List<Rect> holes = const [],
+  List<_Layer> layers = const [],
+  bool Function(TextPiece)? keep,
 }) {
   var preset = animation.preset;
-  if (!animation.on) {
+
+  /// still draws the paragraph as it stands, minus the holes.
+  void still() {
+    canvas.save();
+    for (var hole in holes) {
+      canvas.clipRect(hole, clipOp: ui.ClipOp.difference);
+    }
+    outline?.paint(canvas, offset);
     painter.paint(canvas, offset);
+    canvas.restore();
+  }
+
+  if (!animation.on) {
+    still();
     return;
   }
   // A drawn decoration stays. An underline taken away the moment it finishes
   // being drawn is not an underline, it is a flicker -- these motions put
   // something under or behind the words and leave it there.
-  if (reveal >= 1 && !preset.motion.keeps) {
-    painter.paint(canvas, offset);
+  if (reveal >= 1 && !animation.keeps) {
+    still();
     return;
   }
   // Nothing has happened yet -- unless what is being animated is a mark
@@ -172,26 +269,8 @@ void paintAnimatedText(
   // is only the mark that is on its way. A draw preset used to hide the
   // headline until the first frame was over.
   if (reveal <= 0) {
-    if (preset.motion.keeps && animation.draw.start == TextDrawStart.showText) {
-      outline?.paint(canvas, offset);
-      painter.paint(canvas, offset);
-    } else if (animation.toSome) {
-      // The words this is *not* happening to are there whatever it is doing
-      // to the ones it is.
-      var range = animation.part < parts.length
-          ? rangeOf(text, parts[animation.part])
-          : null;
-      if (range != null) {
-        canvas.save();
-        for (var piece
-            in piecesFor(painter, text, preset.scope, range: range)) {
-          canvas.clipRect(piece.box.shift(offset).inflate(1),
-              clipOp: ui.ClipOp.difference);
-        }
-        outline?.paint(canvas, offset);
-        painter.paint(canvas, offset);
-        canvas.restore();
-      }
+    if (animation.keeps && animation.draw.start == TextDrawStart.showText) {
+      still();
     }
     return;
   }
@@ -199,35 +278,98 @@ void paintAnimatedText(
   // Scramble is the one motion that changes the letters rather than moving
   // them, so it is drawn from its own text rather than from the paragraph.
   if (preset.motion == TextMotion.scramble) {
+    canvas.save();
+    for (var hole in holes) {
+      canvas.clipRect(hole, clipOp: ui.ClipOp.difference);
+    }
     _paintScramble(canvas, text, spec, offset, animation, reveal,
         maxWidth: maxWidth <= 0 ? painter.width : maxWidth);
+    canvas.restore();
     return;
   }
 
-  // Which words this happens to. Named, the rest of the paragraph is drawn
-  // as it stands and only the part moves -- a headline where one word echoes
-  // and the line it is in sits still.
-  var range = animation.toSome && animation.part < parts.length
-      ? rangeOf(text, parts[animation.part])
-      : null;
-
-  var pieces = piecesFor(painter, text, preset.scope, range: range);
-  if (range != null) {
-    canvas.save();
-    // The rest of the words, at rest: the paragraph with the moving pieces
-    // cut out of it, so nothing is drawn twice.
-    for (var piece in pieces) {
-      canvas.clipRect(piece.box.shift(offset).inflate(1),
-          clipOp: ui.ClipOp.difference);
+  var pieces = piecesFor(painter, text, preset.scope);
+  var mine = <int>[];
+  for (var (i, piece) in pieces.indexed) {
+    // A piece that is one of the singled-out parts belongs to that part's own
+    // layer, not to this one. Anything bigger than a part -- a whole line, a
+    // whole paragraph -- stays here and has the part clipped out of it.
+    var inside = false;
+    for (var layer in layers) {
+      if (piece.start >= layer.range.$1 && piece.end <= layer.range.$2) {
+        inside = true;
+        break;
+      }
     }
-    outline?.paint(canvas, offset);
-    painter.paint(canvas, offset);
+    if (inside) continue;
+    if (keep != null && !keep(piece)) continue;
+    mine.add(i);
+  }
+
+  paintAnimatedPieces(
+      canvas, painter, offset, pieces, mine, spec, animation, reveal,
+      outline: outline, holes: holes);
+}
+
+/// _paintLayer draws one part of the text arriving on its own account.
+void _paintLayer(
+  ui.Canvas canvas,
+  TextPainter painter,
+  String text,
+  TextSpec spec,
+  Offset offset,
+  _Layer layer, {
+  TextPainter? outline,
+  double maxWidth = 0,
+  bool Function(TextPiece)? keep,
+}) {
+  var animation = layer.animation;
+  var preset = animation.preset;
+  var boxes = _boxesOf(painter, layer.range, offset);
+  if (boxes.isEmpty) return;
+
+  /// inside draws [what] clipped to the part's own letters, so nothing it
+  /// does can spill over the words either side of it.
+  void inside(void Function() what) {
+    canvas.save();
+    var clip = boxes.first;
+    for (var b in boxes.skip(1)) {
+      clip = clip.expandToInclude(b);
+    }
+    canvas.clipRect(clip.inflate(clip.height));
+    what();
     canvas.restore();
   }
 
-  paintAnimatedPieces(canvas, painter, offset, pieces,
-      [for (var i = 0; i < pieces.length; i++) i], spec, animation, reveal,
-      outline: outline, restricted: range != null);
+  // Not yet: the part is simply not there. The rest of the line is, which is
+  // the whole point of a part having a moment of its own.
+  if (layer.reveal <= 0 && !animation.keeps) return;
+
+  if (layer.reveal >= 1 && !animation.keeps) {
+    // Arrived: drawn as it stands, in the hole the base left for it.
+    inside(() {
+      outline?.paint(canvas, offset);
+      painter.paint(canvas, offset);
+    });
+    return;
+  }
+
+  if (preset.motion == TextMotion.scramble) {
+    inside(() => _paintScramble(
+        canvas, text, spec, offset, animation, layer.reveal,
+        maxWidth: maxWidth <= 0 ? painter.width : maxWidth,
+        range: layer.range));
+    return;
+  }
+
+  var pieces = piecesFor(painter, text, preset.scope, range: layer.range);
+  var mine = [
+    for (var (i, piece) in pieces.indexed)
+      if (keep == null || keep(piece)) i,
+  ];
+  paintAnimatedPieces(
+      canvas, painter, offset, pieces, mine, spec, animation, layer.reveal,
+      outline: outline, restricted: true);
 }
 
 /// MotionFrame is what applyMotion did: how opaque to draw, how many saves
@@ -351,6 +493,10 @@ MotionFrame applyMotion(
       alpha = 1;
 
     case TextMotion.strokeOn:
+      // The outline arrives and the fill follows it. Drawn by the caller,
+      // which has both paragraphs; here it is only "leave the opacity alone".
+      alpha = 1;
+
     case TextMotion.scramble:
       break;
   }
@@ -383,6 +529,10 @@ void paintAnimatedPieces(
   /// them, so even a whole-paragraph motion has to be clipped to its piece.
   /// Without it, an echo pointed at one word echoed the entire line.
   bool restricted = false,
+
+  /// holes are the words some other layer is drawing, cut out of these so
+  /// nothing is drawn twice.
+  List<Rect> holes = const [],
 }) {
   for (var i in which) {
     if (i < 0 || i >= all.length) continue;
@@ -393,7 +543,8 @@ void paintAnimatedPieces(
         from: animation.scaleFor(animation.preset),
         draw: animation.draw,
         echo: animation.echo,
-        restricted: restricted);
+        restricted: restricted,
+        holes: holes);
   }
 }
 
@@ -407,7 +558,8 @@ void _paintPiece(ui.Canvas canvas, TextPainter painter, Offset offset,
     double? from,
     TextDrawSpec? draw,
     TextEchoSpec? echo,
-    bool restricted = false}) {
+    bool restricted = false,
+    List<Rect> holes = const []}) {
   var box = piece.box.shift(offset);
   var centre = box.center;
 
@@ -424,6 +576,13 @@ void _paintPiece(ui.Canvas canvas, TextPainter painter, Offset offset,
   // is clipped too, or the piece it is meant to be moving is the whole line.
   var clipped = (preset.scope != TextAnimationScope.block || restricted) &&
       !frame.clipped;
+
+  // The words another layer is drawing, cut out of this one. Inside the
+  // motion's own frame, so they travel with it: a line rising with one word
+  // animated separately keeps the gap under that word wherever the line is.
+  for (var hole in holes) {
+    canvas.clipRect(hole, clipOp: ui.ClipOp.difference);
+  }
 
   // The piece and nothing else. Inflated by a line height, as this was, the
   // clip took in whatever was beside it -- so a letter rising brought its
@@ -461,14 +620,23 @@ void _paintPiece(ui.Canvas canvas, TextPainter painter, Offset offset,
     // what its turns flag says -- there being nothing to turn in an echo.
     var ways = preset.turns > 0 && !trail ? const [1.0, -1.0] : const [1.0];
 
+    // A resolved echo happens in two halves: the copies fan out over the
+    // first, then carry on the way they were going and fade out over the
+    // second, so the words are left alone at the end. Unresolved, the fan is
+    // the whole animation and the copies stay.
+    var resolving = spec2.resolve && !trail;
+    var fanning = resolving ? (p * 2).clamp(0.0, 1.0) : p;
+    var going = resolving ? (p * 2 - 1).clamp(0.0, 1.0) : 0.0;
+
     for (var way in ways) {
       for (var c = spec2.copies; c >= 1; c--) {
         // Each copy arrives after the one before it, so the trail fans out
         // from the words rather than appearing whole. A trail behaves the
         // other way round: the copies are already there and thin out as the
         // piece settles, which is what makes it read as speed.
-        var arrived =
-            trail ? 1.0 : (p * (spec2.copies + 1) - (c - 1)).clamp(0.0, 1.0);
+        var arrived = trail
+            ? 1.0
+            : (fanning * (spec2.copies + 1) - (c - 1)).clamp(0.0, 1.0);
         if (arrived <= 0) continue;
 
         var strength = spec2.fade;
@@ -476,9 +644,12 @@ void _paintPiece(ui.Canvas canvas, TextPainter painter, Offset offset,
           strength *= spec2.fade;
         }
         if (trail) strength *= (1 - p);
+        // On the way out: further off with every frame and quieter with it,
+        // so the last thing that happens is the furthest copy disappearing.
+        if (going > 0) strength *= (1 - going) * (1 - going);
         if (strength <= 0.002) continue;
 
-        var away = step * (c * arrived) * way;
+        var away = step * (c * arrived * (1 + going * 2.5)) * way;
         var size = math.pow(spec2.shrink, c).toDouble();
 
         canvas.save();
@@ -524,7 +695,15 @@ void _paintPiece(ui.Canvas canvas, TextPainter painter, Offset offset,
 
   canvas.save();
   if (clipped) canvas.clipRect(pieceClip());
-  if (alpha >= 1) {
+  if (preset.motion == TextMotion.strokeOn && outline != null) {
+    // Written in outline first, then filled in: the outline arrives over the
+    // first half and the fill fades up inside it over the second. Without
+    // this the preset was an ordinary fade with a different name.
+    _fade(canvas, box, (p * 2).clamp(0.0, 1.0),
+        () => outline.paint(canvas, offset));
+    _fade(canvas, box, (p * 2 - 1).clamp(0.0, 1.0),
+        () => painter.paint(canvas, offset));
+  } else if (alpha >= 1) {
     outline?.paint(canvas, offset);
     painter.paint(canvas, offset);
   } else {
@@ -554,6 +733,19 @@ void _paintPiece(ui.Canvas canvas, TextPainter painter, Offset offset,
   }
 }
 
+/// _fade draws [what] at [alpha], through a layer where it has to be.
+void _fade(ui.Canvas canvas, Rect box, double alpha, void Function() what) {
+  if (alpha <= 0) return;
+  if (alpha >= 1) {
+    what();
+    return;
+  }
+  canvas.saveLayer(box.inflate(box.height * 2),
+      Paint()..color = Color.fromRGBO(0, 0, 0, alpha));
+  what();
+  canvas.restore();
+}
+
 /// _paintScramble resolves each letter from a random one.
 ///
 /// The letters it has not resolved yet are drawn as something else, so the
@@ -562,18 +754,30 @@ void _paintPiece(ui.Canvas canvas, TextPainter painter, Offset offset,
 /// the words do not jump about while they settle.
 void _paintScramble(ui.Canvas canvas, String text, TextSpec spec, Offset offset,
     TextAnimation animation, double reveal,
-    {required double maxWidth}) {
+    {required double maxWidth,
+
+    /// range scrambles some of the letters and leaves the rest as they are,
+    /// which is what a part animated on its own account needs -- the letters
+    /// around it belong to another layer and are not this one's to churn.
+    (int, int)? range}) {
   const pool = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789#\$%&@";
   var letters = 0;
   for (var i = 0; i < text.length; i++) {
     if (!_isSpace(text[i])) letters++;
   }
 
+  if (range != null) {
+    letters = 0;
+    for (var i = range.$1; i < range.$2 && i < text.length; i++) {
+      if (!_isSpace(text[i])) letters++;
+    }
+  }
+
   var resolved = 0;
   var buffer = StringBuffer();
   for (var i = 0; i < text.length; i++) {
     var c = text[i];
-    if (_isSpace(c)) {
+    if (_isSpace(c) || (range != null && (i < range.$1 || i >= range.$2))) {
       buffer.write(c);
       continue;
     }

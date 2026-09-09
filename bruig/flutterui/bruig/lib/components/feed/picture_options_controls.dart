@@ -97,9 +97,10 @@ class PictureOptionsControls extends StatelessWidget {
                 // decision to leave the original encoding alone, so it is
                 // labelled as one. With a format chosen it is a quality
                 // again, because the picture is being re-encoded either way.
-                label: options.quality == 100 && options.format == EmbedFormat.keep
-                    ? "Original"
-                    : "${options.quality}",
+                label:
+                    options.quality == 100 && options.format == EmbedFormat.keep
+                        ? "Original"
+                        : "${options.quality}",
                 onChanged: (v) =>
                     onSliding(options.copyWith(quality: v.round())),
                 onChangeEnd: (v) =>

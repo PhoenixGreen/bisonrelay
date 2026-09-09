@@ -1,6 +1,8 @@
 import 'dart:ui' show Color;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/chart_animation.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
 
 // text_parts.dart is "these words, not the others".
 //
@@ -180,6 +182,176 @@ class PartUnderline {
       );
 }
 
+/// TextPartAnimation is how one part of the text arrives, and when.
+///
+/// Its own animation rather than the element's pointed at a part, which is
+/// what this was. Pointing the arrival at some of the words meant the rest of
+/// the sentence could not have an arrival of its own, and there was nowhere
+/// to say *when*: the point of animating one word is that it lands after the
+/// line it is in, not with it.
+///
+/// So a text element now plays up to three things in order -- the arrival,
+/// each part's own animation at its own offset, and the exit -- out of one
+/// pair of keyframes on the timeline. The offset is in frames because that is
+/// what the timeline is counted in and what somebody nudging a landing by two
+/// frames is thinking in; the length is in frames for the same reason, and
+/// nothing means "as long as the arrival takes".
+class TextPartAnimation {
+  final TextAnimationPreset preset;
+
+  /// offset is how many frames after the arrival starts this one does.
+  /// Negative brings it forward, which is how a word lands *before* the line
+  /// it belongs to.
+  final int offset;
+
+  /// length is how many frames it takes, or 0 for as long as the arrival.
+  final int length;
+
+  final double gap;
+  final double scale;
+  final TextEchoSpec echo;
+  final ChartEase ease;
+
+  /// marks is whether this part's own highlight and underline are drawn on
+  /// rather than simply being there.
+  ///
+  /// Their own question, and their own offset, because the usual thing is a
+  /// word that arrives and *then* gets underlined -- a mark that arrived with
+  /// the word it marks is a mark nobody sees being drawn.
+  final bool marks;
+  final int markOffset;
+  final int markLength;
+
+  const TextPartAnimation({
+    this.preset = TextAnimationPreset.none,
+    this.offset = 0,
+    this.length = 0,
+    this.gap = 0.35,
+    this.scale = 0,
+    this.echo = const TextEchoSpec(),
+    this.ease = ChartEase.easeOut,
+    this.marks = false,
+    this.markOffset = 0,
+    this.markLength = 0,
+  });
+
+  bool get on => preset != TextAnimationPreset.none;
+
+  /// asAnimation is this as the painter's own kind, so a part is animated by
+  /// exactly the same code as a paragraph rather than by a second copy of it.
+  TextAnimation get asAnimation => TextAnimation(
+        preset: preset,
+        gap: gap,
+        scale: scale,
+        echo: echo,
+        ease: ease,
+      );
+
+  TextPartAnimation copyWith({
+    TextAnimationPreset? preset,
+    int? offset,
+    int? length,
+    double? gap,
+    double? scale,
+    TextEchoSpec? echo,
+    ChartEase? ease,
+    bool? marks,
+    int? markOffset,
+    int? markLength,
+  }) =>
+      TextPartAnimation(
+        preset: preset ?? this.preset,
+        offset: offset ?? this.offset,
+        length: length ?? this.length,
+        gap: gap ?? this.gap,
+        scale: scale ?? this.scale,
+        echo: echo ?? this.echo,
+        ease: ease ?? this.ease,
+        marks: marks ?? this.marks,
+        markOffset: markOffset ?? this.markOffset,
+        markLength: markLength ?? this.markLength,
+      );
+
+  Map<String, dynamic> toJson() => {
+        if (on) "preset": preset.name,
+        if (offset != 0) "offset": offset,
+        if (length != 0) "length": length,
+        if (gap != 0.35) "gap": gap,
+        if (scale > 0) "scale": scale,
+        if (echo.toJson().isNotEmpty) "echo": echo.toJson(),
+        if (ease != ChartEase.easeOut) "ease": ease.name,
+        if (marks) "marks": true,
+        if (markOffset != 0) "markOffset": markOffset,
+        if (markLength != 0) "markLength": markLength,
+      };
+
+  factory TextPartAnimation.fromJson(Map<String, dynamic> json) =>
+      TextPartAnimation(
+        preset: TextAnimationPreset.fromName(json["preset"] as String?),
+        offset: jsonInt(json["offset"], 0),
+        length: jsonInt(json["length"], 0).clamp(0, 100000),
+        gap: jsonDouble(json["gap"], 0.35).clamp(0.0, 4.0),
+        scale: jsonDouble(json["scale"], 0).clamp(0.0, 8.0),
+        echo: json["echo"] is Map<String, dynamic>
+            ? TextEchoSpec.fromJson(json["echo"] as Map<String, dynamic>)
+            : const TextEchoSpec(),
+        ease: ChartEase.fromName(json["ease"] as String?),
+        marks: jsonBool(json["marks"], false),
+        markOffset: jsonInt(json["markOffset"], 0),
+        markLength: jsonInt(json["markLength"], 0).clamp(0, 100000),
+      );
+}
+
+/// partsAnimate is whether any of [parts] arrives on its own account, or has
+/// a mark that is drawn on rather than simply being there.
+///
+/// Asked before a still paragraph is drawn the quick way: a part with a
+/// moment of its own means the paragraph has to go through the animator even
+/// when the element's own arrival is over.
+bool partsAnimate(List<TextPart> parts) {
+  for (var part in parts) {
+    if (part.animation.on || part.animation.marks) return true;
+  }
+  return false;
+}
+
+/// PartTiming is how far one part has got on this frame: its words, and the
+/// mark drawn on them.
+///
+/// Two numbers rather than one because they are two arrivals -- the word
+/// lands, and then the underline is drawn under it -- and a painter that was
+/// handed one number could only ever have them happen together.
+class PartTiming {
+  final double words;
+  final double mark;
+  const PartTiming(this.words, this.mark);
+
+  static const there = PartTiming(1, 1);
+}
+
+/// timingOf is where [part] has got to on [frame].
+///
+/// [from] is the frame the element's own arrival starts on and [span] how
+/// many frames it takes -- everything a part does is measured from those, so
+/// dragging the arrival's keyframes on the timeline carries the parts with
+/// it rather than leaving them stranded at frame numbers of their own.
+PartTiming timingOf(TextPart part,
+    {required int frame, required int from, required int span}) {
+  var animation = part.animation;
+  if (span <= 0) return PartTiming.there;
+
+  double at(int offset, int length) {
+    var over = length > 0 ? length : span;
+    if (over <= 0) return 1;
+    return ((frame - (from + offset)) / over).clamp(0.0, 1.0);
+  }
+
+  return PartTiming(
+    animation.on ? at(animation.offset, animation.length) : 1,
+    animation.marks ? at(animation.markOffset, animation.markLength) : 1,
+  );
+}
+
 /// TextPart is a range of the words, and what is different about it.
 ///
 /// Counted from one, because "the sixth word" is how somebody says it and
@@ -214,6 +386,11 @@ class TextPart {
   final PartHighlight? highlight;
   final PartUnderline? underline;
 
+  /// animation is how these words arrive, on their own account. See
+  /// TextPartAnimation: none of it happens unless a preset is chosen, and
+  /// then it happens at its own moment rather than with the rest of the line.
+  final TextPartAnimation animation;
+
   const TextPart({
     this.unit = TextUnit.words,
     this.from = 1,
@@ -223,6 +400,7 @@ class TextPart {
     this.italic,
     this.highlight,
     this.underline,
+    this.animation = const TextPartAnimation(),
   });
 
   bool get toTheEnd => to <= 0;
@@ -250,6 +428,7 @@ class TextPart {
     bool clearHighlight = false,
     PartUnderline? underline,
     bool clearUnderline = false,
+    TextPartAnimation? animation,
   }) =>
       TextPart(
         unit: unit ?? this.unit,
@@ -260,6 +439,7 @@ class TextPart {
         italic: italic ?? this.italic,
         highlight: clearHighlight ? null : (highlight ?? this.highlight),
         underline: clearUnderline ? null : (underline ?? this.underline),
+        animation: animation ?? this.animation,
       );
 
   Map<String, dynamic> toJson() => {
@@ -271,6 +451,7 @@ class TextPart {
         if (italic != null) "italic": italic,
         if (highlight != null) "highlight": highlight!.toJson(),
         if (underline != null) "underline": underline!.toJson(),
+        if (animation.toJson().isNotEmpty) "animation": animation.toJson(),
       };
 
   factory TextPart.fromJson(Map<String, dynamic> json) => TextPart(
@@ -288,6 +469,10 @@ class TextPart {
         underline: json["underline"] is Map<String, dynamic>
             ? PartUnderline.fromJson(json["underline"] as Map<String, dynamic>)
             : null,
+        animation: json["animation"] is Map<String, dynamic>
+            ? TextPartAnimation.fromJson(
+                json["animation"] as Map<String, dynamic>)
+            : const TextPartAnimation(),
       );
 }
 

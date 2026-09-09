@@ -1681,7 +1681,8 @@ class AreaStyle {
       feedStripMarkdown: flag("feedStripMarkdown"),
       pagesWidthCap: number("pagesWidthCap") ?? 0,
       pagesBackgroundColor: color("pagesBackgroundColor"),
-      pagesBackgroundColorIndex: (j["pagesBackgroundColorIndex"] as num?)?.toInt(),
+      pagesBackgroundColorIndex:
+          (j["pagesBackgroundColorIndex"] as num?)?.toInt(),
       // Defaults to on, so its absence cannot be read as off: every style
       // saved before this existed has no key here at all.
       pagesHonourBackground: flag("pagesHonourBackground", fallback: true),

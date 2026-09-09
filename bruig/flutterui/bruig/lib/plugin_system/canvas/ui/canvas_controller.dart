@@ -1435,7 +1435,12 @@ class CanvasController extends ChangeNotifier {
   /// timeline, so a canvas with a headline and a chart arriving together has
   /// them arriving together. See applyChartAnimation, which this mirrors line
   /// for line -- including the reason the keyframes are ordinary ones.
-  void applyTextAnimation(TextElement element, TextAnimationPreset preset) {
+  /// [length] is how many frames it takes. Nothing means the usual two
+  /// seconds, and the setting beside the preset writes it -- more often than
+  /// not the length wanted is not the default one, and dragging a keyframe to
+  /// find out is a poor way to ask for twelve frames.
+  void applyTextAnimation(TextElement element, TextAnimationPreset preset,
+      {int? length}) {
     beginInteraction();
 
     if (preset == TextAnimationPreset.none) {
@@ -1461,10 +1466,20 @@ class CanvasController extends ChangeNotifier {
           frames: math.max(2, document.frameRate * chartAnimationSeconds));
     }
 
-    var from = _frame.clamp(0, document.frames - 2);
-    var span =
+    // Where it already is, if it is anywhere: choosing a different preset
+    // keeps the length that has been set rather than resetting it to the
+    // default, which would undo the last thing somebody did every time they
+    // tried the next preset in the list.
+    var (was, wasFor) = textAnimationSpan(element);
+    var from = was ?? _frame.clamp(0, document.frames - 2);
+    var span = length ??
+        wasFor ??
         math.max(2, (document.frameRate * chartAnimationSeconds).round());
-    var to = math.min(document.frames - 1, from + span);
+    span = math.max(1, span);
+    if (document.frames - 1 < from + span) {
+      document = document.copyWith(frames: from + span + 1);
+    }
+    var to = from + span;
     if (to <= from) {
       from = 0;
       to = document.frames - 1;
@@ -1481,9 +1496,40 @@ class CanvasController extends ChangeNotifier {
         .withKey(Keyframe(frame: to).withValue(KeyframeChannel.reveal, 1));
 
     apply(document.withElement(element
-        .copyWith(animation: element.animation.copyWith(preset: preset))
+        .copyWith(
+            animation:
+                element.animation.copyWith(preset: preset, ease: preset.wants))
         .withBase(track: track)));
     endInteraction();
+  }
+
+  /// textAnimationSpan is where [element]'s arrival sits on the timeline: the
+  /// frame it starts on and how many frames it takes, or nulls where it has
+  /// no keyframes yet.
+  ///
+  /// Read from the keyframes rather than kept on the animation, because the
+  /// keyframes are the truth -- they can be dragged on the timeline, and a
+  /// number stored beside them would be a second answer that goes stale the
+  /// first time somebody does.
+  (int?, int?) textAnimationSpan(TextElement element) {
+    int? from;
+    int? to;
+    for (var key in element.track?.keys ?? const <Keyframe>[]) {
+      if (!key.values.containsKey(KeyframeChannel.reveal)) continue;
+      from = from == null ? key.frame : math.min(from, key.frame);
+      to = to == null ? key.frame : math.max(to, key.frame);
+    }
+    if (from == null || to == null || to <= from) return (from, null);
+    return (from, to - from);
+  }
+
+  /// setTextAnimationLength drags the arrival's second keyframe, from the
+  /// settings panel rather than by hand on the timeline.
+  void setTextAnimationLength(TextElement element, int frames) {
+    var (from, _) = textAnimationSpan(element);
+    if (from == null) return;
+    applyTextAnimation(element, element.animation.preset,
+        length: math.max(1, frames));
   }
 
   /// applyTextExit is the way out, on its own pair of keyframes at the end of

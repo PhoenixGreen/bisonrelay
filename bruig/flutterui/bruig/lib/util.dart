@@ -223,8 +223,7 @@ String formatSmallDuration(Duration d) {
 /// DCR" reads as an amount of money.
 String dcrLabel(double dcr) {
   var written = dcr.toStringAsFixed(8);
-  while (written.endsWith("0") &&
-      written.length > written.indexOf(".") + 3) {
+  while (written.endsWith("0") && written.length > written.indexOf(".") + 3) {
     written = written.substring(0, written.length - 1);
   }
   return "$written DCR";
