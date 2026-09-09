@@ -1,6 +1,7 @@
 import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
@@ -81,6 +82,28 @@ void main() {
         expect(edges[i], greaterThan(metrics[i].baseline - metrics[i].ascent),
             reason: "and the edge has still moved down off the box boundary");
       }
+    });
+
+    test("and the setting survives being saved on a one-column box", () {
+      // It is asked of a box with one column too -- a chain of boxes is the
+      // same question asked of boxes -- and the columns were only written out
+      // when there was more than one of them, so it was forgotten every time
+      // the canvas was opened.
+      var element = TextElement(
+        const ElementBase(id: "t", width: 400, height: 200),
+        text: "Words",
+        columns: const TextColumns(noBlankStart: true),
+      );
+      var back = elementFromJson(element.toJson()) as TextElement;
+      expect(back.columns.noBlankStart, isTrue);
+      expect(back.columns.count, 1);
+
+      // And a box with nothing to say still writes nothing.
+      expect(
+          TextElement(const ElementBase(id: "t"), text: "Words")
+              .toJson()
+              .containsKey("columns"),
+          isFalse);
     });
 
     test("a blank line is not left at the top of a column", () {

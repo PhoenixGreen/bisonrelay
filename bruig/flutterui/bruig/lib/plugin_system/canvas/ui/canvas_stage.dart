@@ -1406,6 +1406,7 @@ class CanvasStageState extends State<CanvasStage> {
   /// against the page rather than the window -- a ruler measures the canvas,
   /// so it belongs beside the canvas.
   GuideAxis? _rulerUnder(Offset stage) {
+    if (!document.guides.showRulers) return null;
     var rulers = document.guides.rulers;
     if (!rulers.any) return null;
     return rulerBandsFor(_pageRect, _viewport, rulers).axisAt(stage);

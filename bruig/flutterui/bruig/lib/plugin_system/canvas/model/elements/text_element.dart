@@ -119,6 +119,11 @@ class TextColumns {
 
   bool get isSingle => count <= 1;
 
+  /// says is whether this has anything to record. A single column with
+  /// nothing else set is what every text element starts with, and writing it
+  /// out would be a line of noise in every saved file.
+  bool get says => !isSingle || noBlankStart;
+
   /// columnWidth is how wide each column is inside a box [total] wide.
   double columnWidth(double total) {
     if (count <= 1) return total;
@@ -451,7 +456,12 @@ class TextElement extends CanvasElement {
         "textSpec": textSpec.toJson(),
         "box": box.toJson(),
         if (autoSize) "autoSize": true,
-        if (!columns.isSingle) "columns": columns.toJson(),
+        // Written whenever it says anything, not only when there is more
+        // than one column: No blank first line is asked of a box with one
+        // column too -- a chain of boxes is the same question asked of boxes
+        // -- so a one-column box that had it set saved nothing at all and
+        // opened with it off again.
+        if (columns.says) "columns": columns.toJson(),
         if (animation.on || animation.closes) "animation": animation.toJson(),
         if (parts.isNotEmpty) "parts": [for (var p in parts) p.toJson()],
         if (highlight != null) "highlight": highlight!.toJson(),

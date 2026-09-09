@@ -791,7 +791,7 @@ class StagePainter extends CustomPainter {
   /// own spacing, so every figure on the ruler has a line under it and the two
   /// are read together rather than against each other.
   void _paintRulers(Canvas canvas, Size size) {
-    if (!guides.rulers.any) return;
+    if (!guides.rulers.any || !guides.showRulers) return;
     var bands = rulerBandsFor(page, size, guides.rulers);
     var step = rulerStep(scale, guides.gridSize);
     var sheet = document.size.size;

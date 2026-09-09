@@ -1814,6 +1814,50 @@ void main() {
   });
 
   group("the area outside the canvas", () {
+    testWidgets("the grid, the guides and the rulers each have a switch",
+        (tester) async {
+      // And a switch for a thing that has not been set up is a switch that
+      // does nothing, so each appears only once there is something to show.
+      var controller = CanvasController(const CanvasDocument());
+      addTearDown(controller.dispose);
+      await pump(
+          tester,
+          CanvasSettingsBar(
+            controller: controller,
+            onPublish: () {},
+            canvasSettingsOpen: false,
+            onToggleCanvasSettings: () {},
+            guidesOpen: false,
+            onToggleGuides: () {},
+            timelineOpen: true,
+            onToggleTimeline: () {},
+          ));
+
+      expect(find.byTooltip("Show the grid"), findsOneWidget,
+          reason: "there is always a grid to show");
+      expect(find.byTooltip("Show the guides"), findsNothing);
+      expect(find.byTooltip("Show the rulers"), findsNothing);
+
+      await tester.tap(find.byTooltip("Show the grid"));
+      await tester.pumpAndSettle();
+      expect(controller.document.guides.showGrid, isTrue);
+      expect(find.byTooltip("Hide the grid"), findsOneWidget);
+
+      // Once there are guides and a ruler edge, their switches turn up.
+      controller.apply(controller.document.copyWith(
+          guides: controller.document.guides.copyWith(
+        guides: const [CanvasGuide(axis: GuideAxis.vertical, at: 100)],
+        rulers: const CanvasRulers(top: true),
+      )));
+      await tester.pumpAndSettle();
+      expect(find.byTooltip("Hide the guides"), findsOneWidget);
+      await tester.tap(find.byTooltip("Hide the rulers"));
+      await tester.pumpAndSettle();
+      expect(controller.document.guides.showRulers, isFalse,
+          reason: "hidden without forgetting which edges they were on");
+      expect(controller.document.guides.rulers.top, isTrue);
+    });
+
     testWidgets("is off by default and toggles from the band", (tester) async {
       var controller = CanvasController(const CanvasDocument());
       addTearDown(controller.dispose);

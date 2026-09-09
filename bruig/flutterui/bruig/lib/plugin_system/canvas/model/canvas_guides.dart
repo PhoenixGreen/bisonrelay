@@ -165,6 +165,16 @@ class CanvasGuides {
 
   final CanvasRulers rulers;
 
+  /// showRulers hides the rules along the edges without forgetting which
+  /// edges they were on.
+  ///
+  /// Its own switch, beside showGrid and showGuides, because the four edges
+  /// are the *setting* and this is the *view*: turning the rulers off by
+  /// unticking four boxes means ticking four boxes to get them back, and
+  /// which four is exactly what somebody who wanted them out of the way for a
+  /// moment has stopped thinking about.
+  final bool showRulers;
+
   const CanvasGuides({
     this.showGrid = false,
     this.gridSize = 40,
@@ -176,6 +186,7 @@ class CanvasGuides {
     this.snapTo = const SnapTo(),
     this.snapWithin = 6,
     this.rulers = const CanvasRulers(),
+    this.showRulers = true,
   });
 
   /// isDefault is whether any of this is worth writing down. A canvas nobody
@@ -205,6 +216,7 @@ class CanvasGuides {
     SnapTo? snapTo,
     double? snapWithin,
     CanvasRulers? rulers,
+    bool? showRulers,
   }) =>
       CanvasGuides(
         showGrid: showGrid ?? this.showGrid,
@@ -217,6 +229,7 @@ class CanvasGuides {
         snapTo: snapTo ?? this.snapTo,
         snapWithin: (snapWithin ?? this.snapWithin).clamp(1.0, 40.0),
         rulers: rulers ?? this.rulers,
+        showRulers: showRulers ?? this.showRulers,
       );
 
   /// withGuide adds one, and moved replaces one, because those are the two
@@ -245,6 +258,7 @@ class CanvasGuides {
         "snapTo": snapTo.toJson(),
         if (snapWithin != 6) "within": snapWithin,
         if (rulers.any) "rulers": rulers.toJson(),
+        if (!showRulers) "showRulers": false,
       };
 
   factory CanvasGuides.fromJson(Map<String, dynamic> json) => CanvasGuides(
@@ -263,6 +277,7 @@ class CanvasGuides {
         snapWithin: jsonDouble(json["within"], 6).clamp(1.0, 40.0),
         rulers: jsonSpec(
             json["rulers"], CanvasRulers.fromJson, const CanvasRulers()),
+        showRulers: jsonBool(json["showRulers"], true),
       );
 
   /// linesFor is every line an element could land on, in document units.

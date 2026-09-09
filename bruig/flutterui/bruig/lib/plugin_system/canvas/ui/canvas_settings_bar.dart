@@ -2,6 +2,7 @@ import 'package:bruig/plugin_system/canvas/export/canvas_export.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_estimate.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/canvas_sidebar.dart';
@@ -213,9 +214,29 @@ class _CanvasSettingsBarState extends State<CanvasSettingsBar> {
               active: controller.showHelpers,
               onPressed: () =>
                   controller.showHelpers = !controller.showHelpers),
+          _divider(theme),
+          // What the window is showing, together and before the zoom: fit it
+          // all in, fit the width, and show the room outside the page. The
+          // three are one question -- how much of the canvas is on screen --
+          // and the zoom is the same question asked by hand.
+          //
+          // "All of it" means two different things depending on the
+          // document's shape: a wide banner is limited by the height, while a
+          // 9:16 story fitted whole is a narrow strip down the middle of the
+          // window with most of the screen empty either side.
+          _barButton(theme,
+              icon: Icons.fit_screen_outlined,
+              tooltip: CanvasFit.whole.label,
+              active: controller.fit == CanvasFit.whole && controller.atFit,
+              onPressed: controller.showWhole),
+          _barButton(theme,
+              icon: Icons.width_full,
+              tooltip: "${CanvasFit.width.label} — the canvas scrolls if it "
+                  "is taller than the window",
+              active: controller.fit == CanvasFit.width && controller.atFit,
+              onPressed: controller.fitWidth),
           // The world just outside the canvas, for building entrances and
-          // exits. Beside the helpers toggle because it is the same kind of
-          // thing: something shown while working that is never published.
+          // exits.
           _barButton(theme,
               icon: controller.showOverspill
                   ? Icons.select_all
@@ -236,21 +257,6 @@ class _CanvasSettingsBarState extends State<CanvasSettingsBar> {
               icon: Icons.zoom_in,
               tooltip: "Zoom in",
               onPressed: () => controller.zoomBy(1.25)),
-          // The two frame buttons. "All of it" means two different things
-          // depending on the document's shape: a wide banner is limited by the
-          // height, while a 9:16 story fitted whole is a narrow strip down the
-          // middle of the window with most of the screen empty either side.
-          _barButton(theme,
-              icon: Icons.fit_screen_outlined,
-              tooltip: CanvasFit.whole.label,
-              active: controller.fit == CanvasFit.whole && controller.atFit,
-              onPressed: controller.showWhole),
-          _barButton(theme,
-              icon: Icons.width_full,
-              tooltip: "${CanvasFit.width.label} — the canvas scrolls if it "
-                  "is taller than the window",
-              active: controller.fit == CanvasFit.width && controller.atFit,
-              onPressed: controller.fitWidth),
           // What is actually on screen: document pixels to screen pixels,
           // which is the fitted scale times the zoom. It used to be the zoom
           // alone, so it read 100% for a 4096-pixel canvas squeezed into a
@@ -264,6 +270,44 @@ class _CanvasSettingsBarState extends State<CanvasSettingsBar> {
         ],
       );
 
+  /// _marks are the switches for the grid, the guides and the rulers.
+  ///
+  /// Each appears only when there is something for it to show: no guides have
+  /// been dragged out, no ruler edge has been asked for, and the switch is a
+  /// button that does nothing. The grid is always there to be shown, so its
+  /// switch always is.
+  List<Widget> _marks(ThemeNotifier theme) {
+    var guides = controller.document.guides;
+    void set(CanvasGuides next) =>
+        controller.apply(controller.document.copyWith(guides: next));
+
+    return [
+      _barButton(theme,
+          icon: guides.showGrid ? Icons.grid_on : Icons.grid_off,
+          tooltip: guides.showGrid ? "Hide the grid" : "Show the grid",
+          active: guides.showGrid,
+          onPressed: () => set(guides.copyWith(showGrid: !guides.showGrid))),
+      if (guides.guides.isNotEmpty)
+        _barButton(theme,
+            icon: guides.showGuides
+                ? Icons.straighten
+                : Icons.straighten_outlined,
+            tooltip: guides.showGuides ? "Hide the guides" : "Show the guides",
+            active: guides.showGuides,
+            onPressed: () =>
+                set(guides.copyWith(showGuides: !guides.showGuides))),
+      if (guides.rulers.any)
+        _barButton(theme,
+            icon: guides.showRulers
+                ? Icons.square_foot
+                : Icons.square_foot_outlined,
+            tooltip: guides.showRulers ? "Hide the rulers" : "Show the rulers",
+            active: guides.showRulers,
+            onPressed: () =>
+                set(guides.copyWith(showRulers: !guides.showRulers))),
+    ];
+  }
+
   /// _actions is the canvas settings toggle, undo, redo and Publish, pinned to
   /// the right of the band.
   ///
@@ -274,8 +318,20 @@ class _CanvasSettingsBarState extends State<CanvasSettingsBar> {
   Widget _actions(ThemeNotifier theme) => Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // The three that decide what the window is showing, together: the
-          // timeline, the grid and the canvas settings.
+          // The measuring furniture: each of the three shown or hidden, and
+          // then the line that sets them all up. A switch for a thing that
+          // has not been set up is a switch that does nothing, so the grid,
+          // the guides and the rulers each appear here only once there is
+          // something to show.
+          ..._marks(theme),
+          _barButton(theme,
+              icon: Icons.grid_4x4,
+              tooltip: "Grid, guides, rulers and snapping",
+              active: widget.guidesOpen,
+              onPressed: widget.onToggleGuides),
+          _divider(theme),
+          // The timeline, beside the canvas settings: both open a line across
+          // the window rather than changing anything on the canvas.
           _barButton(theme,
               icon: Icons.view_timeline_outlined,
               tooltip: widget.timelineOpen
@@ -283,14 +339,6 @@ class _CanvasSettingsBarState extends State<CanvasSettingsBar> {
                   : "Show the timeline",
               active: widget.timelineOpen,
               onPressed: widget.onToggleTimeline),
-          // Beside the canvas settings, because they are the same kind of
-          // thing: both open a line over the top of the canvas, and both are
-          // about the canvas rather than about anything on it.
-          _barButton(theme,
-              icon: Icons.grid_4x4,
-              tooltip: "Grid, guides, rulers and snapping",
-              active: widget.guidesOpen,
-              onPressed: widget.onToggleGuides),
           _barButton(theme,
               icon: Icons.tune,
               tooltip: "Canvas settings",
