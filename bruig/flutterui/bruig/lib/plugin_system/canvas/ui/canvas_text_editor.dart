@@ -105,7 +105,12 @@ class _CanvasTextEditorState extends State<CanvasTextEditor> {
     var pad = e.box.padding * scale;
     if (!e.icon.on) return EdgeInsets.all(pad);
     var inner = Offset.zero & e.bounds.size;
-    var (icon, left) = iconRoom(inner.deflate(e.box.padding), e.icon);
+    // The same placement the painter uses, alignment and all -- see
+    // iconLayout. Typing into a centred headline whose editor left the icon's
+    // room at the wrong end would move the words while it was open.
+    var (icon, left) = iconLayout(inner.deflate(e.box.padding), e.icon,
+        e.displayText, drawnTextSpec(e, e.bounds),
+        columns: e.columns.count);
     return EdgeInsets.fromLTRB(
       pad + (left.left - inner.left - e.box.padding) * scale,
       pad + (left.top - inner.top - e.box.padding) * scale,

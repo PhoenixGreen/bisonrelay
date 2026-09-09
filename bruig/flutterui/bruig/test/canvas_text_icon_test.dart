@@ -160,6 +160,58 @@ void main() {
           reason: "above takes height, not width");
     });
 
+    test("and it follows the words' own alignment", () {
+      // The room is the right width and the wrong place for anything but
+      // left-aligned words: centred text centres itself in what is left over,
+      // so the icon sat against the far edge of the box with a hole between
+      // it and the sentence it belongs to.
+      const inner = Rect.fromLTWH(0, 0, 400, 100);
+      const icon = TextIcon(assetId: "a", size: 60, gap: 20);
+      const words = "Headline";
+
+      var left = iconLayout(inner, icon, words,
+          const TextSpec(fontSize: 20, align: TextAlignSpec.left));
+      expect(left.$1.left, 0, reason: "left-aligned words start at the edge");
+      expect(left.$2.left, 80, reason: "the icon and the gap");
+
+      var centre = iconLayout(inner, icon, words,
+          const TextSpec(fontSize: 20, align: TextAlignSpec.center));
+      expect(centre.$2.left, closeTo(centre.$1.right + 20, 0.5),
+          reason: "the gap is the gap, wherever the group is");
+      expect((centre.$1.left + centre.$2.right) / 2, closeTo(200, 1),
+          reason: "and the icon and the words are centred together");
+      expect(centre.$1.left, greaterThan(0),
+          reason: "not against the edge of the box any more");
+
+      var right = iconLayout(inner, icon, words,
+          const TextSpec(fontSize: 20, align: TextAlignSpec.right));
+      expect(right.$2.right, closeTo(400, 1), reason: "against the right edge");
+      expect(right.$2.left, closeTo(right.$1.right + 20, 0.5));
+
+      // An icon after the words follows them the same way.
+      var after = iconLayout(
+          inner,
+          const TextIcon(assetId: "a", size: 60, gap: 20, place: IconPlace.end),
+          words,
+          const TextSpec(fontSize: 20, align: TextAlignSpec.center));
+      expect(after.$1.left, closeTo(after.$2.right + 20, 0.5));
+      expect((after.$2.left + after.$1.right) / 2, closeTo(200, 1));
+    });
+
+    test("except where there is no group to place", () {
+      // Justified text and columns both fill the width they are given.
+      const inner = Rect.fromLTWH(0, 0, 400, 100);
+      const icon = TextIcon(assetId: "a", size: 60, gap: 20);
+      var justified = iconLayout(inner, icon, "Headline",
+          const TextSpec(fontSize: 20, align: TextAlignSpec.justify));
+      expect(justified.$2.width, 320);
+
+      var columned = iconLayout(inner, icon, "Headline",
+          const TextSpec(fontSize: 20, align: TextAlignSpec.center),
+          columns: 3);
+      expect(columned.$2.width, 320);
+    });
+
     test("it survives being saved", () {
       var element = _headline(
           icon: const TextIcon(

@@ -300,13 +300,15 @@ void _paintText(
   if (inner.width <= 0 || inner.height <= 0) return;
 
   // An icon takes its room out of the box before the words are laid out in
-  // what is left -- see iconRoom, which Fit to box asks the same question of.
-  var (iconBox, room) = iconRoom(inner, e.icon);
+  // what is left -- and then the two are placed together, so a centred
+  // sentence has its icon beside it rather than against the edge of the box.
+  // See iconLayout.
+  var spec = drawnTextSpec(e, bounds);
+  var (iconBox, room) = iconLayout(inner, e.icon, e.displayText, spec,
+      columns: e.columns.count);
   paintTextIcon(canvas, iconBox, e.icon, images, e.textSpec);
   inner = room;
   if (inner.width <= 0 || inner.height <= 0) return;
-
-  var spec = drawnTextSpec(e, bounds);
 
   // A box may be one of a line of them, sharing one piece of text -- see
   // flowFor. What it draws is its own share of that, which for a box on its

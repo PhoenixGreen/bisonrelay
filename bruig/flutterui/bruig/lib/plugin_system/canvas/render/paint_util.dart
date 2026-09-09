@@ -297,6 +297,62 @@ void _paintFillImage(
   }
 }
 
+/// iconLayout is where an icon and the words actually sit, once the words'
+/// own alignment is taken into account.
+///
+/// [iconRoom] splits the box: the icon takes a strip from one side and the
+/// words have the rest. That is the right *width*, and the wrong place for
+/// anything but left-aligned words -- centred text centres itself in what is
+/// left over, so the icon sat against the far edge of the box with a hole
+/// between it and the sentence it belongs to.
+///
+/// So for an icon beside the words the two are treated as one group and the
+/// group is aligned: centred text has the icon immediately before it, both of
+/// them centred together, and right-aligned text has them both against the
+/// right edge.
+///
+/// Columns and justified text keep the whole room, and are meant to: both
+/// fill the width they are given, so there is no group to centre.
+(Rect, Rect) iconLayout(Rect inner, TextIcon icon, String text, TextSpec spec,
+    {int columns = 1, double scale = 1}) {
+  var (box, room) = iconRoom(inner, icon);
+  if (!icon.on ||
+      !icon.place.beside ||
+      columns > 1 ||
+      spec.align == TextAlignSpec.justify ||
+      text.isEmpty ||
+      room.width <= 0) {
+    return (box, room);
+  }
+
+  // How wide the words actually are, measured in the room they have -- so the
+  // lines break where they will break, and the group is as wide as what will
+  // be drawn rather than as wide as the box.
+  var painter = layoutText(text, spec, maxWidth: room.width, scale: scale);
+  var wide = math.min(room.width, painter.width + 1);
+  var group = wide + math.max(0, icon.gap) + box.width;
+
+  var left = switch (spec.align) {
+    TextAlignSpec.left => inner.left,
+    TextAlignSpec.center => inner.left + (inner.width - group) / 2,
+    TextAlignSpec.right => inner.right - group,
+    TextAlignSpec.justify => inner.left,
+  };
+
+  if (icon.place == IconPlace.start) {
+    return (
+      Rect.fromLTWH(left, box.top, box.width, box.height),
+      Rect.fromLTWH(left + box.width + math.max(0, icon.gap), room.top, wide,
+          room.height),
+    );
+  }
+  return (
+    Rect.fromLTWH(left + wide + math.max(0, icon.gap), box.top, box.width,
+        box.height),
+    Rect.fromLTWH(left, room.top, wide, room.height),
+  );
+}
+
 /// paintTextIcon draws the picture a text element carries.
 ///
 /// A vector where the asset is one -- an .svg stays a drawing all the way to
