@@ -723,7 +723,7 @@ class CanvasStageState extends State<CanvasStage> {
 
     var inner = iconRoom(e.bounds.deflate(e.box.padding), e.icon).$2;
     var flow = flowFor(e, document, inner, drawnTextSpec(e, e.bounds),
-        frame: controller.frame);
+        frame: controller.frame, images: controller.images);
 
     return TextFlowGrips(
       inAt: _gripPosition(bounds, top: true),

@@ -7,6 +7,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_parts.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
+import 'package:bruig/plugin_system/canvas/render/image_silhouette.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -34,6 +35,10 @@ class _Pictures implements CanvasImageSource {
   @override
   CanvasVector? resolveVector(String assetId) =>
       assetId.isEmpty ? null : vector;
+
+  @override
+  ImageSilhouette? resolveOutline(String assetId, BackgroundRemoval removal) =>
+      null;
 }
 
 Future<ui.Image> _square(Color color) async {

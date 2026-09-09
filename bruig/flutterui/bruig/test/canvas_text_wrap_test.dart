@@ -1,13 +1,16 @@
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/render/text_flow.dart';
+import 'package:bruig/plugin_system/canvas/render/image_silhouette.dart';
 import 'package:bruig/plugin_system/canvas/render/text_wrap.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -265,6 +268,100 @@ void main() {
           freeRuns(text.bounds, blocked, y, y + 19, WrapSide.both).first.$2;
       expect(roomAt(40), closeTo(roomAt(150), 1),
           reason: "a rectangle takes the same room out of every line");
+    });
+  });
+
+  group("a picture", () {
+    // A cut-out -- a badge, a player, anything with its background taken out
+    // -- does not fill its frame, and the difference is most of the picture.
+    // Text set around its box keeps a wide empty margin round nothing.
+
+    /// _Cut is a picture whose ink is a narrow column down the middle: the
+    /// left and right thirds of it are see-through.
+    late ImageSilhouette narrow;
+
+    setUpAll(() {
+      var rows = 64;
+      var left = Float32List(rows)..fillRange(0, rows, 1 / 3);
+      var right = Float32List(rows)..fillRange(0, rows, 2 / 3);
+      narrow = ImageSilhouette(left, right, rows);
+    });
+
+    test("is wrapped by its ink, not by its frame", () {
+      const drawn = Rect.fromLTWH(200, 0, 300, 300);
+      var shape = WrapShape(drawn,
+          silhouette: narrow,
+          drawn: drawn,
+          shown: const Rect.fromLTWH(0, 0, 600, 600),
+          picture: const Size(600, 600));
+
+      var span = shape.spanIn(100, 120)!;
+      expect(span.$1, closeTo(300, 1), reason: "a third across the picture");
+      expect(span.$2, closeTo(400, 1), reason: "two thirds across it");
+    });
+
+    test("and a row with nothing on it takes no room at all", () {
+      var rows = 8;
+      var left = Float32List(rows)..fillRange(0, rows, 2);
+      var right = Float32List(rows)..fillRange(0, rows, -1);
+      // Ink on the bottom half only.
+      for (var row = 4; row < rows; row++) {
+        left[row] = 0.25;
+        right[row] = 0.75;
+      }
+      const drawn = Rect.fromLTWH(0, 0, 400, 400);
+      var shape = WrapShape(drawn,
+          silhouette: ImageSilhouette(left, right, rows),
+          drawn: drawn,
+          shown: const Rect.fromLTWH(0, 0, 100, 100),
+          picture: const Size(100, 100));
+
+      expect(shape.spanIn(20, 40), isNull, reason: "nothing up here");
+      var low = shape.spanIn(300, 320)!;
+      expect(low.$1, closeTo(100, 1));
+      expect(low.$2, closeTo(300, 1));
+    });
+
+    testWidgets("and its ink is read from the picture's own alpha",
+        (tester) async {
+      // The whole point of the profile: a picture with its background taken
+      // out is mostly nothing, and where the nothing is is a fact about the
+      // pixels.
+      late ImageSilhouette read;
+      await tester.runAsync(() async {
+        var recorder = ui.PictureRecorder();
+        var canvas = ui.Canvas(recorder);
+        // A disc in the middle of a transparent square.
+        canvas.drawCircle(
+            const Offset(50, 50), 40, Paint()..color = const Color(0xFFFFFFFF));
+        var image = await recorder.endRecording().toImage(100, 100);
+        read = (await silhouetteOf(image, rows: 10))!;
+        image.dispose();
+      });
+
+      // Across the middle the disc is at its widest; at the top and bottom
+      // rows there is nothing at all.
+      expect(read.left[0] > read.right[0], isTrue,
+          reason: "nothing on the first row");
+      expect(read.left[5], closeTo(0.1, 0.03));
+      expect(read.right[5], closeTo(0.9, 0.03));
+      // And a row near the top of the disc is narrower than the middle one.
+      expect(
+          read.right[1] - read.left[1], lessThan(read.right[5] - read.left[5]));
+    });
+
+    test("keeps its box until its ink has been read", () {
+      // The profile comes from the decoded pixels and a painter cannot wait
+      // for it, so the box is the answer on the first frame and the shape
+      // arrives on a later one.
+      var text = _text(wrap: const TextWrap(on: true, gap: 4));
+      var picture = ImageElement(
+        const ElementBase(id: "i", x: 200, y: 40, width: 200, height: 100),
+      );
+      var doc = CanvasDocument(elements: [text, picture]);
+      var blocked = wrapObstacles(text, doc, 0, text.bounds);
+      expect(blocked.single.silhouette, isNull);
+      expect(blocked.single.spanIn(60, 80), (196.0, 404.0));
     });
   });
 

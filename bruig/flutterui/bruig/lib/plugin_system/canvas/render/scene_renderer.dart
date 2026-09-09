@@ -18,6 +18,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_parts.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_painter.dart';
+import 'package:bruig/plugin_system/canvas/render/image_silhouette.dart';
 import 'package:bruig/plugin_system/canvas/render/image_placement.dart';
 import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:bruig/plugin_system/canvas/render/text_animator.dart';
@@ -75,6 +76,16 @@ abstract class CanvasImageSource {
   /// cannot -- anything that has to look at pixels, which is the background
   /// remover and the whole of the export pipeline -- simply does not ask.
   CanvasVector? resolveVector(String assetId) => null;
+
+  /// resolveOutline is where the picture's ink actually is, for the things
+  /// that have to keep out of its way rather than draw it -- see
+  /// ImageSilhouette, and text wrapping, which is the only caller.
+  ///
+  /// Null until it has been worked out, which is on purpose: it is read from
+  /// the decoded pixels and a painter cannot wait. The box is the answer in
+  /// the meantime, and the shape arrives on a later frame.
+  ImageSilhouette? resolveOutline(String assetId, BackgroundRemoval removal) =>
+      null;
 }
 
 /// paintCanvasDocument draws [doc] at [frame].
@@ -315,7 +326,7 @@ void _paintText(
   // A box may be one of a line of them, sharing one piece of text -- see
   // flowFor. What it draws is its own share of that, which for a box on its
   // own is all of it.
-  var flow = flowFor(e, doc, inner, spec, frame: frame);
+  var flow = flowFor(e, doc, inner, spec, frame: frame, images: images);
   var words = flow.text;
   // The styled runs that apply to *these* words: a box in a chain draws the
   // head's text further along, so the head's runs are counted from its own
@@ -346,7 +357,7 @@ void _paintText(
   // is something in the way. A different way of setting type -- line by line
   // against the elements round it -- so it runs only for an element that
   // wants it. See text_wrap.dart.
-  var blocked = wrapObstacles(e, doc, frame, inner);
+  var blocked = wrapObstacles(e, doc, frame, inner, images: images);
   if (e.wrap.on &&
       blocked.isNotEmpty &&
       wrapFits(words, spec, inner, blocked, e.wrap)) {

@@ -4,6 +4,10 @@ import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
+import 'package:bruig/plugin_system/canvas/render/image_placement.dart';
+import 'package:bruig/plugin_system/canvas/render/image_silhouette.dart';
+import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_parts.dart';
@@ -64,9 +68,29 @@ class WrapShape {
   /// that a shape is not distorted by being outset.
   final Path? path;
 
+  /// silhouette is where a picture's ink actually is, with [drawn] the
+  /// rectangle it is drawn into and [shown] the part of the picture that is
+  /// in it.
+  ///
+  /// A photograph fills its frame and this says the same as the box. A
+  /// cut-out does not, and the difference is most of the picture: text set
+  /// around such a thing's box keeps a wide empty margin round nothing.
+  final ImageSilhouette? silhouette;
+  final Rect drawn;
+  final Rect shown;
+  final Size picture;
+
   final double gap;
 
-  const WrapShape(this.bounds, {this.path, this.gap = 0});
+  const WrapShape(
+    this.bounds, {
+    this.path,
+    this.silhouette,
+    this.drawn = Rect.zero,
+    this.shown = Rect.zero,
+    this.picture = Size.zero,
+    this.gap = 0,
+  });
 
   /// spanIn is the horizontal room this takes out of a line between [top] and
   /// [bottom], or null where it takes none.
@@ -76,6 +100,15 @@ class WrapShape {
   /// one across its middle.
   (double, double)? spanIn(double top, double bottom) {
     if (bounds.bottom <= top || bounds.top >= bottom) return null;
+
+    // A picture's ink, where it has been read. The band is widened by the gap
+    // the same way an outline's is.
+    if (silhouette case var ink?) {
+      var span = ink.spanIn(drawn, shown, picture, top - gap, bottom + gap);
+      if (span == null) return null;
+      return (span.$1 - gap, span.$2 + gap);
+    }
+
     var outline = path;
     if (outline == null) return (bounds.left, bounds.right);
 
@@ -100,8 +133,12 @@ class WrapShape {
 ///
 /// The rectangles come back in document space, already spread by the gap the
 /// element asked for.
+/// [images] is where a picture's ink is read from. Without one -- a model
+/// test, or anything measuring before the picture has been decoded -- a
+/// picture is its box, which is what it was before its ink could be read.
 List<WrapShape> wrapObstacles(
-    TextElement e, CanvasDocument? doc, int frame, Rect inner) {
+    TextElement e, CanvasDocument? doc, int frame, Rect inner,
+    {CanvasImageSource? images}) {
   if (doc == null || !e.wrap.on) return const [];
 
   var out = <WrapShape>[];
@@ -121,10 +158,39 @@ List<WrapShape> wrapObstacles(
     if (!box.overlaps(inner)) continue;
     // A thing that covers the words entirely is not something to go around.
     if (box.top <= inner.top && box.bottom >= inner.bottom) continue;
+    if (other is ImageElement) {
+      out.add(_pictureShape(other, at, box, e.wrap.gap, images));
+      continue;
+    }
     out.add(
         WrapShape(box, path: _outlineOf(other, at, frame), gap: e.wrap.gap));
   }
   return out;
+}
+
+/// _pictureShape is a picture as something to go around.
+///
+/// Its ink where that has been read, and its box until then -- and its box
+/// for good if it is turned, since the profile is rows of the picture as it
+/// stands and a turned picture's rows are not the canvas's.
+WrapShape _pictureShape(
+    ImageElement e, Rect at, Rect box, double gap, CanvasImageSource? images) {
+  var ink = images?.resolveOutline(e.assetId, e.removal);
+  var image = images?.resolve(e.assetId, e.removal);
+  if (ink == null || image == null || e.rotationRadians != 0) {
+    return WrapShape(box, gap: gap);
+  }
+
+  // Where the picture is drawn inside its element, and which part of it that
+  // is: a crop and a cover fit both mean the two are not the same picture.
+  var size = Size(image.width.toDouble(), image.height.toDouble());
+  var placed = placeImage(size, at, e.fit, crop: e.crop, framing: e.framing);
+  return WrapShape(box,
+      silhouette: ink,
+      drawn: placed.dst,
+      shown: placed.src,
+      picture: size,
+      gap: gap);
 }
 
 /// _outlineOf is an element's own shape in document space, or null for the

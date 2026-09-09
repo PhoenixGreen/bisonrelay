@@ -6,6 +6,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_parts.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
+import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/render/text_wrap.dart';
 import 'package:flutter/painting.dart';
 
@@ -75,9 +76,9 @@ class TextFlow {
 /// Both are the *drawn* values, so a box in a chain and the painter agree
 /// about where the words break.
 TextFlow flowFor(TextElement e, CanvasDocument? doc, Rect inner, TextSpec spec,
-    {int frame = 0}) {
+    {int frame = 0, CanvasImageSource? images}) {
   var mine = e.displayText;
-  var blocked = wrapObstacles(e, doc, frame, inner);
+  var blocked = wrapObstacles(e, doc, frame, inner, images: images);
 
   // A box on its own: everything it has, and whether all of it is showing.
   if (doc == null || (e.flowTo.isEmpty && !_isTarget(e, doc))) {
@@ -111,7 +112,8 @@ TextFlow flowFor(TextElement e, CanvasDocument? doc, Rect inner, TextSpec spec,
     if (at >= text.length) break;
     var room = _roomOf(box);
     at += _consumed(text.substring(at), box, room, _specOf(box),
-        tidy: tidy, blocked: wrapObstacles(box, doc, frame, room));
+        tidy: tidy,
+        blocked: wrapObstacles(box, doc, frame, room, images: images));
   }
 
   var receiving = !identical(head, e) && head.id != e.id;

@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
+import 'package:bruig/plugin_system/canvas/render/image_silhouette.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_assets.dart';
 import 'package:flutter/foundation.dart';
@@ -125,6 +126,47 @@ class CanvasImageStore extends ChangeNotifier implements CanvasImageSource {
     return null;
   }
 
+  final Map<String, ImageSilhouette> _outlines = {};
+
+  @override
+  ImageSilhouette? resolveOutline(String assetId, BackgroundRemoval removal) {
+    if (assetId.isEmpty) return null;
+    var key = removal.active ? removal.cacheKey(assetId) : assetId;
+    var outline = _outlines[key];
+    if (outline != null) return outline;
+
+    // The picture has to be decoded before its alpha can be read, and asking
+    // for it starts that. Both answers arrive by notification, so a caller
+    // that draws on every frame gets the box on the first one and the shape
+    // on a later one.
+    var image = resolve(assetId, removal);
+    if (image == null) return null;
+
+    var pending = "outline:$key";
+    if (!_pending.contains(pending) && !_failed.contains(pending)) {
+      _pending.add(pending);
+      _loadOutline(image, key, pending);
+    }
+    return null;
+  }
+
+  Future<void> _loadOutline(ui.Image image, String key, String pending) async {
+    try {
+      var outline = await silhouetteOf(image);
+      if (_disposed || outline == null) {
+        _failed.add(pending);
+        return;
+      }
+      _outlines[key] = outline;
+      notifyListeners();
+    } catch (exception) {
+      debugPrint("Unable to read a canvas picture's outline: $exception");
+      _failed.add(pending);
+    } finally {
+      _pending.remove(pending);
+    }
+  }
+
   Future<void> _loadVector(String assetId, String key) async {
     try {
       var bytes = await CanvasAssets.load(assetId);
@@ -208,7 +250,11 @@ class CanvasImageStore extends ChangeNotifier implements CanvasImageSource {
       _order.remove(key);
       _images.remove(key)?.dispose();
     }
-    _failed.removeWhere((k) => k.startsWith(assetId) || k == "vector:$assetId");
+    _failed.removeWhere((k) =>
+        k.startsWith(assetId) ||
+        k == "vector:$assetId" ||
+        k.startsWith("outline:$assetId"));
+    _outlines.removeWhere((k, _) => k.startsWith(assetId));
     _vectors.remove(assetId)?.picture.dispose();
     if (keys.isNotEmpty) notifyListeners();
   }

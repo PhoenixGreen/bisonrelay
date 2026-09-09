@@ -21,6 +21,7 @@ import 'package:bruig/plugin_system/canvas/render/chart_common.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
+import 'package:bruig/plugin_system/canvas/render/image_silhouette.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -67,6 +68,10 @@ class _Pictures implements CanvasImageSource {
 
   @override
   CanvasVector? resolveVector(String assetId) => vector;
+
+  @override
+  ImageSilhouette? resolveOutline(String assetId, BackgroundRemoval removal) =>
+      null;
 }
 
 /// _cutOut is a picture shaped like a cut-out: a solid square of [colour] in
