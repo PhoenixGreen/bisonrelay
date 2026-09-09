@@ -49,12 +49,16 @@ void main() {
 
     test("is what is left either side of something narrow", () {
       var runs = freeRuns(
-          box, [const Rect.fromLTWH(150, 0, 100, 50)], 0, 20, WrapSide.both);
+          box,
+          [const WrapShape(Rect.fromLTWH(150, 0, 100, 50))],
+          0,
+          20,
+          WrapSide.both);
       expect(runs, [(0.0, 150.0), (250.0, 400.0)]);
     });
 
     test("and one side of it when that is what was asked for", () {
-      var blocked = [const Rect.fromLTWH(150, 0, 100, 50)];
+      var blocked = [const WrapShape(Rect.fromLTWH(150, 0, 100, 50))];
       expect(freeRuns(box, blocked, 0, 20, WrapSide.left), [(0.0, 150.0)]);
       expect(freeRuns(box, blocked, 0, 20, WrapSide.right), [(250.0, 400.0)]);
     });
@@ -63,8 +67,8 @@ void main() {
       var runs = freeRuns(
           box,
           [
-            const Rect.fromLTWH(100, 0, 100, 50),
-            const Rect.fromLTWH(150, 0, 100, 50),
+            const WrapShape(Rect.fromLTWH(100, 0, 100, 50)),
+            const WrapShape(Rect.fromLTWH(150, 0, 100, 50)),
           ],
           0,
           20,
@@ -74,7 +78,11 @@ void main() {
 
     test("and a line below whatever is in the way has all of it back", () {
       var runs = freeRuns(
-          box, [const Rect.fromLTWH(150, 0, 100, 50)], 60, 80, WrapSide.both);
+          box,
+          [const WrapShape(Rect.fromLTWH(150, 0, 100, 50))],
+          60,
+          80,
+          WrapSide.both);
       expect(runs, [(0.0, 400.0)]);
     });
   });
@@ -168,8 +176,12 @@ void main() {
       // words cannot advance past a line break, so a paragraph gap that
       // nothing consumed stalled the layout on it and everything after the
       // first paragraph was lost.
-      var out = layoutWrapped(paragraphs, spec, box,
-          [const Rect.fromLTRB(293, 110, 577, 365)], const TextWrap(on: true));
+      var out = layoutWrapped(
+          paragraphs,
+          spec,
+          box,
+          [const WrapShape(Rect.fromLTRB(293, 110, 577, 365))],
+          const TextWrap(on: true));
       expect(out.consumed, paragraphs.length,
           reason: "all of it, not just the first line");
       expect(out.lines.length, greaterThan(10));
@@ -183,8 +195,12 @@ void main() {
     });
 
     test("and the words still keep out of the way", () {
-      var out = layoutWrapped(paragraphs, spec, box,
-          [const Rect.fromLTRB(293, 110, 577, 365)], const TextWrap(on: true));
+      var out = layoutWrapped(
+          paragraphs,
+          spec,
+          box,
+          [const WrapShape(Rect.fromLTRB(293, 110, 577, 365))],
+          const TextWrap(on: true));
       var beside = out.lines.where((l) => l.box.top > 110 && l.box.top < 340);
       expect(beside, isNotEmpty);
       expect(beside.every((l) => l.box.right <= 293.5), isTrue,
@@ -200,6 +216,55 @@ void main() {
         expect(paragraphs[line.from].trim(), isNotEmpty,
             reason: "a line beginning with a space starts a word's width in");
       }
+    });
+  });
+
+  group("how tightly the words follow", () {
+    test("a round shape, which is not its box", () {
+      // A circle's box is a square: kept to that, the words stayed clear of
+      // the corners as though they were full, most obviously by the top and
+      // bottom of the circle where there is nearly a whole square of room
+      // they would not go into.
+      var text = TextElement(
+        const ElementBase(id: "t", x: 0, y: 0, width: 400, height: 320),
+        text: _words,
+        wrap: const TextWrap(on: true, gap: 8),
+      );
+      var circle = ShapeElement(
+        const ElementBase(id: "s", x: 200, y: 40, width: 240, height: 240),
+        shape: ShapeKind.circle,
+      );
+      var doc = CanvasDocument(elements: [text, circle]);
+      var blocked = wrapObstacles(text, doc, 0, text.bounds);
+
+      double roomAt(double y) =>
+          freeRuns(text.bounds, blocked, y, y + 19, WrapSide.both).first.$2;
+
+      // Across the middle the circle is at its widest, and the words stop at
+      // its left edge less the gap.
+      expect(roomAt(150), closeTo(192, 1));
+      // By its top and bottom edges there is much more room, because there is
+      // much less circle.
+      expect(roomAt(40), greaterThan(roomAt(150) + 30));
+      expect(roomAt(240), greaterThan(roomAt(150) + 15));
+    });
+
+    test("and a square shape, which is", () {
+      var text = TextElement(
+        const ElementBase(id: "t", x: 0, y: 0, width: 400, height: 320),
+        text: _words,
+        wrap: const TextWrap(on: true, gap: 8),
+      );
+      var square = ShapeElement(
+        const ElementBase(id: "s", x: 200, y: 40, width: 240, height: 240),
+      );
+      var doc = CanvasDocument(elements: [text, square]);
+      var blocked = wrapObstacles(text, doc, 0, text.bounds);
+
+      double roomAt(double y) =>
+          freeRuns(text.bounds, blocked, y, y + 19, WrapSide.both).first.$2;
+      expect(roomAt(40), closeTo(roomAt(150), 1),
+          reason: "a rectangle takes the same room out of every line");
     });
   });
 
@@ -224,13 +289,14 @@ void main() {
 
       var blocked = wrapObstacles(tail, doc, 0, tail.bounds);
       expect(blocked.length, 1, reason: "the shape, and not the box in front");
-      expect(blocked.single.left, greaterThan(400));
+      expect(blocked.single.bounds.left, greaterThan(400));
 
       // And the same from the other end of the chain: the box the words are
       // passed *to* is not something to go around either.
       var fromHead = wrapObstacles(
           head.copyWith(wrap: const TextWrap(on: true)), doc, 0, head.bounds);
-      expect(fromHead.any((r) => r.overlaps(tail.bounds.deflate(40))), isFalse,
+      expect(fromHead.any((r) => r.bounds.overlaps(tail.bounds.deflate(40))),
+          isFalse,
           reason: "the tail is not in the way: $fromHead");
     });
 
@@ -240,11 +306,11 @@ void main() {
       // something to act on; silently deleted they are not.
       var text = _text(wrap: const TextWrap(on: true, gap: 8));
       const room = Rect.fromLTWH(0, 0, 400, 200);
-      var across = [const Rect.fromLTRB(-20, -20, 420, 220)];
+      var across = [const WrapShape(Rect.fromLTRB(-20, -20, 420, 220))];
       expect(wrapFits(_words, text.textSpec, room, across, text.wrap), isFalse);
       expect(
           wrapFits(_words, text.textSpec, room,
-              [const Rect.fromLTRB(300, 40, 420, 120)], text.wrap),
+              [const WrapShape(Rect.fromLTRB(300, 40, 420, 120))], text.wrap),
           isTrue);
     });
   });

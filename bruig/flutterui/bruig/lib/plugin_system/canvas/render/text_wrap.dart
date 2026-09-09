@@ -1,8 +1,10 @@
 import 'dart:math' as math;
+import 'dart:typed_data' show Float64List;
 import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_parts.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
@@ -45,6 +47,49 @@ class WrappedText {
   const WrappedText(this.lines, this.consumed, this.height);
 }
 
+/// WrapShape is one thing the words have to go around.
+///
+/// A rectangle *and*, where the element has one, its own outline. The
+/// difference is the whole of how tight a wrap looks: a circle's box is a
+/// square, so words kept clear of the corners as if they were full -- most
+/// obviously at the top and bottom of the circle, where there is nearly a
+/// whole square of empty room the words would not go into.
+class WrapShape {
+  /// bounds is the element's box, spread by the gap. What the outline is
+  /// tested against, and the answer on its own where there is no outline.
+  final Rect bounds;
+
+  /// path is the element's own shape in document space, turned if the element
+  /// is turned, and *not* spread -- the gap is added to the span it gives, so
+  /// that a shape is not distorted by being outset.
+  final Path? path;
+
+  final double gap;
+
+  const WrapShape(this.bounds, {this.path, this.gap = 0});
+
+  /// spanIn is the horizontal room this takes out of a line between [top] and
+  /// [bottom], or null where it takes none.
+  ///
+  /// Asked per line, which is what makes a wrap tight: a circle takes almost
+  /// nothing out of the line by its top edge and its full width out of the
+  /// one across its middle.
+  (double, double)? spanIn(double top, double bottom) {
+    if (bounds.bottom <= top || bounds.top >= bottom) return null;
+    var outline = path;
+    if (outline == null) return (bounds.left, bounds.right);
+
+    // The band this line covers, given the room asked for above and below.
+    var band = Path()
+      ..addRect(Rect.fromLTRB(
+          bounds.left - 1, top - gap, bounds.right + 1, bottom + gap));
+    var hit = Path.combine(PathOperation.intersect, outline, band);
+    var box = hit.getBounds();
+    if (box.width <= 0 || box.height <= 0) return null;
+    return (box.left - gap, box.right + gap);
+  }
+}
+
 /// wrapObstacles is what a text element has to set its words around.
 ///
 /// Everything visible that overlaps its box, less a few things that would
@@ -55,11 +100,11 @@ class WrappedText {
 ///
 /// The rectangles come back in document space, already spread by the gap the
 /// element asked for.
-List<Rect> wrapObstacles(
+List<WrapShape> wrapObstacles(
     TextElement e, CanvasDocument? doc, int frame, Rect inner) {
   if (doc == null || !e.wrap.on) return const [];
 
-  var out = <Rect>[];
+  var out = <WrapShape>[];
   for (var other in doc.elements) {
     if (other.id == e.id || !other.visible) continue;
     if (other.kind == ElementKind.background) continue;
@@ -71,13 +116,46 @@ List<Rect> wrapObstacles(
     // which read as the wrapping having deleted them.
     if (_sameChain(e, other, doc)) continue;
 
-    var box = other.boundsAt(frame).inflate(e.wrap.gap);
+    var at = other.boundsAt(frame);
+    var box = at.inflate(e.wrap.gap);
     if (!box.overlaps(inner)) continue;
     // A thing that covers the words entirely is not something to go around.
     if (box.top <= inner.top && box.bottom >= inner.bottom) continue;
-    out.add(box);
+    out.add(
+        WrapShape(box, path: _outlineOf(other, at, frame), gap: e.wrap.gap));
   }
   return out;
+}
+
+/// _outlineOf is an element's own shape in document space, or null for the
+/// ones whose shape is their box.
+///
+/// A shape element knows its outline exactly -- see shapePath -- and that is
+/// what a wrap should follow. A picture's outline is its alpha, which is a
+/// different question and not one a layout can ask cheaply; it keeps its box
+/// for now.
+Path? _outlineOf(CanvasElement e, Rect at, int frame) {
+  if (e is! ShapeElement) return null;
+  var path = shapePath(e.shape, at,
+      points: e.points, cornerRadius: e.cornerRadius, bubble: e.bubble);
+  if (e.rotationRadians == 0) return path;
+
+  // Turned about its own centre, the way it is drawn. Written out rather
+  // than built from a matrix class: it is one rotation about one point, and
+  // the four numbers are easier to check than the library call that makes
+  // them.
+  var centre = at.center;
+  var cos = math.cos(e.rotationRadians);
+  var sin = math.sin(e.rotationRadians);
+  return path.transform(Float64List.fromList([
+    cos, sin, 0, 0, //
+    -sin, cos, 0, 0, //
+    0, 0, 1, 0, //
+    centre.dx - cos * centre.dx + sin * centre.dy,
+    centre.dy - sin * centre.dx - cos * centre.dy,
+    0,
+    1,
+  ]));
 }
 
 /// _sameChain is whether [other] is one of the boxes [e] shares its words
@@ -107,13 +185,14 @@ bool _sameChain(TextElement e, CanvasElement other, CanvasDocument doc) {
 ///
 /// The box's own width less every obstacle that reaches into that band,
 /// merged so two overlapping pictures are one hole rather than two.
-List<(double, double)> freeRuns(
-    Rect box, List<Rect> blocked, double top, double bottom, WrapSide side) {
+List<(double, double)> freeRuns(Rect box, List<WrapShape> blocked, double top,
+    double bottom, WrapSide side) {
   var holes = <(double, double)>[];
   for (var it in blocked) {
-    if (it.bottom <= top || it.top >= bottom) continue;
-    var from = math.max(box.left, it.left);
-    var to = math.min(box.right, it.right);
+    var span = it.spanIn(top, bottom);
+    if (span == null) continue;
+    var from = math.max(box.left, span.$1);
+    var to = math.min(box.right, span.$2);
     if (to > from) holes.add((from, to));
   }
   if (holes.isEmpty) return [(box.left, box.right)];
@@ -154,7 +233,7 @@ List<(double, double)> freeRuns(
 /// happens the words are laid out the ordinary way and drawn over whatever is
 /// in the way: that is wrong, and it is visibly wrong, which is what somebody
 /// can act on. Silently deleting a page of text is neither.
-bool wrapFits(String text, TextSpec spec, Rect box, List<Rect> blocked,
+bool wrapFits(String text, TextSpec spec, Rect box, List<WrapShape> blocked,
         TextWrap wrap) =>
     text.trim().isEmpty ||
     layoutWrapped(text, spec, box, blocked, wrap).lines.isNotEmpty;
@@ -170,7 +249,7 @@ WrappedText layoutWrapped(
   String text,
   TextSpec spec,
   Rect box,
-  List<Rect> blocked,
+  List<WrapShape> blocked,
   TextWrap wrap, {
   List<TextPart> parts = const [],
   double scale = 1,

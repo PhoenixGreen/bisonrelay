@@ -221,7 +221,7 @@ int _blankRun(String text) {
 
 /// _consumed is how many characters of [text] this box can show.
 int _consumed(String text, TextElement e, Rect inner, TextSpec spec,
-    {bool tidy = false, List<Rect> blocked = const []}) {
+    {bool tidy = false, List<WrapShape> blocked = const []}) {
   if (text.isEmpty || inner.width <= 0 || inner.height <= 0) return 0;
 
   // Wrapped, the room a box has is not its rectangle: it is what is left of
