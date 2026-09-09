@@ -8,6 +8,62 @@ import 'package:bruig/plugin_system/canvas/model/elements/text_parts.dart';
 import 'package:bruig/plugin_system/canvas/model/text_document.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 
+/// WrapSide is which side of an obstacle the words go.
+enum WrapSide {
+  /// both fills every free run on the line, so a narrow obstacle has words on
+  /// either side of it.
+  both("Both sides"),
+
+  /// left keeps the words to the left of whatever is in the way, and right to
+  /// the right of it. What a caption beside a picture wants: one block of
+  /// text, not a line broken in two by something in the middle of it.
+  left("Left of it"),
+  right("Right of it");
+
+  final String label;
+  const WrapSide(this.label);
+
+  static WrapSide fromName(String? name) =>
+      values.firstWhere((s) => s.name == name, orElse: () => both);
+}
+
+/// TextWrap is words flowing around whatever overlaps their box.
+///
+/// Off by default, and deliberately: with it on the words are set line by
+/// line against the elements around them rather than laid out once as a
+/// paragraph, which is a different and slower way of setting type. It earns
+/// that where it is wanted -- a picture in the middle of a column -- and pays
+/// for nothing where it is not.
+class TextWrap {
+  final bool on;
+
+  /// gap is how much room is left between the words and the thing they are
+  /// going round.
+  final double gap;
+
+  final WrapSide side;
+
+  const TextWrap({this.on = false, this.gap = 12, this.side = WrapSide.both});
+
+  TextWrap copyWith({bool? on, double? gap, WrapSide? side}) => TextWrap(
+        on: on ?? this.on,
+        gap: gap ?? this.gap,
+        side: side ?? this.side,
+      );
+
+  Map<String, dynamic> toJson() => {
+        if (on) "on": true,
+        if (gap != 12) "gap": gap,
+        if (side != WrapSide.both) "side": side.name,
+      };
+
+  factory TextWrap.fromJson(Map<String, dynamic> json) => TextWrap(
+        on: jsonBool(json["on"], false),
+        gap: jsonDouble(json["gap"], 12).clamp(0, 400),
+        side: WrapSide.fromName(json["side"] as String?),
+      );
+}
+
 /// ColumnRuleStyle is how the line between two columns is drawn.
 enum ColumnRuleStyle {
   none("None"),
@@ -260,6 +316,9 @@ class TextElement extends CanvasElement {
   /// document is read, and a reader's own part must survive that.
   final List<TextPart> documentParts;
 
+  /// wrap flows the words around whatever overlaps the box. See TextWrap.
+  final TextWrap wrap;
+
   /// lockFlow keeps this box's connector from being changed by a drag.
   ///
   /// The grips are still drawn -- they are how a chain is read -- but they do
@@ -295,6 +354,7 @@ class TextElement extends CanvasElement {
     this.flowTo = "",
     this.document = const TextDocumentRef(),
     this.documentParts = const [],
+    this.wrap = const TextWrap(),
     this.lockFlow = false,
     this.hideFlow = false,
     this.curve,
@@ -363,6 +423,7 @@ class TextElement extends CanvasElement {
       flowTo: flowTo,
       document: document,
       documentParts: documentParts,
+      wrap: wrap,
       lockFlow: lockFlow,
       hideFlow: hideFlow,
       curve: curve);
@@ -383,6 +444,7 @@ class TextElement extends CanvasElement {
     String? flowTo,
     TextDocumentRef? document,
     List<TextPart>? documentParts,
+    TextWrap? wrap,
     bool? lockFlow,
     bool? hideFlow,
     TextOnCurve? curve,
@@ -402,6 +464,7 @@ class TextElement extends CanvasElement {
           flowTo: flowTo ?? this.flowTo,
           document: document ?? this.document,
           documentParts: documentParts ?? this.documentParts,
+          wrap: wrap ?? this.wrap,
           lockFlow: lockFlow ?? this.lockFlow,
           hideFlow: hideFlow ?? this.hideFlow,
           curve: clearCurve ? null : (curve ?? this.curve));
@@ -419,6 +482,7 @@ class TextElement extends CanvasElement {
         if (underline != null) "underline": underline!.toJson(),
         if (icon.on) "icon": icon.toJson(),
         if (flowTo.isNotEmpty) "flowTo": flowTo,
+        if (wrap.toJson().isNotEmpty) "wrap": wrap.toJson(),
         if (lockFlow) "lockFlow": true,
         if (hideFlow) "hideFlow": true,
         if (document.on) "document": document.toJson(),
@@ -456,8 +520,8 @@ class TextElement extends CanvasElement {
           document:
               json["document"] is Map<String,
                       dynamic>
-                  ? TextDocumentRef.fromJson(
-                      json["document"] as Map<String, dynamic>)
+                  ? TextDocumentRef.fromJson(json["document"] as Map<String,
+                      dynamic>)
                   : const TextDocumentRef(),
           documentParts: [
             if (json["documentParts"] case List raw)
@@ -465,6 +529,11 @@ class TextElement extends CanvasElement {
                 if (p is Map<String, dynamic>) TextPart.fromJson(p),
           ],
           flowTo: jsonString(json["flowTo"], ""),
+          wrap:
+              json["wrap"]
+                      is Map<String, dynamic>
+                  ? TextWrap.fromJson(json["wrap"] as Map<String, dynamic>)
+                  : const TextWrap(),
           lockFlow: jsonBool(json["lockFlow"], false),
           hideFlow: jsonBool(json["hideFlow"], false),
           columns: jsonSpec(

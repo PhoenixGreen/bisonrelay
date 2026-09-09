@@ -6,6 +6,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_parts.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
+import 'package:bruig/plugin_system/canvas/render/text_wrap.dart';
 import 'package:flutter/painting.dart';
 
 // text_flow.dart runs one piece of text through a line of boxes.
@@ -73,9 +74,10 @@ class TextFlow {
 /// and whatever an icon has taken -- and [spec] the type they are drawn in.
 /// Both are the *drawn* values, so a box in a chain and the painter agree
 /// about where the words break.
-TextFlow flowFor(
-    TextElement e, CanvasDocument? doc, Rect inner, TextSpec spec) {
+TextFlow flowFor(TextElement e, CanvasDocument? doc, Rect inner, TextSpec spec,
+    {int frame = 0}) {
   var mine = e.displayText;
+  var blocked = wrapObstacles(e, doc, frame, inner);
 
   // A box on its own: everything it has, and whether all of it is showing.
   if (doc == null || (e.flowTo.isEmpty && !_isTarget(e, doc))) {
@@ -108,7 +110,8 @@ TextFlow flowFor(
     if (tidy && box.id != head.id) at += _blankRun(text.substring(at));
     if (at >= text.length) break;
     var room = _roomOf(box);
-    at += _consumed(text.substring(at), box, room, _specOf(box), tidy: tidy);
+    at += _consumed(text.substring(at), box, room, _specOf(box),
+        tidy: tidy, blocked: wrapObstacles(box, doc, frame, room));
   }
 
   var receiving = !identical(head, e) && head.id != e.id;
@@ -117,7 +120,7 @@ TextFlow flowFor(
   }
 
   var rest = at >= text.length ? "" : text.substring(at);
-  var took = _consumed(rest, e, inner, spec, tidy: tidy);
+  var took = _consumed(rest, e, inner, spec, tidy: tidy, blocked: blocked);
   return TextFlow(
     text: rest,
     overflows: took < rest.length,
@@ -218,8 +221,16 @@ int _blankRun(String text) {
 
 /// _consumed is how many characters of [text] this box can show.
 int _consumed(String text, TextElement e, Rect inner, TextSpec spec,
-    {bool tidy = false}) {
+    {bool tidy = false, List<Rect> blocked = const []}) {
   if (text.isEmpty || inner.width <= 0 || inner.height <= 0) return 0;
+
+  // Wrapped, the room a box has is not its rectangle: it is what is left of
+  // it once the things in the way are taken out. Measured the same way it is
+  // drawn -- see layoutWrapped -- so what the grip says and what is on the
+  // canvas cannot disagree.
+  if (e.wrap.on && blocked.isNotEmpty) {
+    return layoutWrapped(text, spec, inner, blocked, e.wrap).consumed;
+  }
 
   var width =
       e.columns.isSingle ? inner.width : e.columns.columnWidth(inner.width);

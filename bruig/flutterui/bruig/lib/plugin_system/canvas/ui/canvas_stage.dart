@@ -722,7 +722,8 @@ class CanvasStageState extends State<CanvasStage> {
     if (bounds == null) return null;
 
     var inner = iconRoom(e.bounds.deflate(e.box.padding), e.icon).$2;
-    var flow = flowFor(e, document, inner, drawnTextSpec(e, e.bounds));
+    var flow = flowFor(e, document, inner, drawnTextSpec(e, e.bounds),
+        frame: controller.frame);
 
     return TextFlowGrips(
       inAt: _gripPosition(bounds, top: true),
@@ -772,7 +773,8 @@ class CanvasStageState extends State<CanvasStage> {
       if (!shown) continue;
 
       var inner = iconRoom(e.bounds.deflate(e.box.padding), e.icon).$2;
-      var flow = flowFor(e, document, inner, drawnTextSpec(e, e.bounds));
+      var flow = flowFor(e, document, inner, drawnTextSpec(e, e.bounds),
+          frame: controller.frame);
       out.add(FlowLine(
         _toStage(_flowPointOf(e.boundsAt(controller.frame), top: false)),
         _toStage(_flowPointOf(into.boundsAt(controller.frame), top: true)),

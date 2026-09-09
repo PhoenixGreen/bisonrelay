@@ -131,6 +131,50 @@ List<Widget> textSettings(
                   "is not markdown being ignored, it is markdown showing."),
             ],
           ]),
+          // Words set around whatever overlaps the box. Its own row rather
+          // than a switch among the type settings, because it comes with two
+          // questions of its own -- how much room to leave, and which side of
+          // the thing in the way the words go.
+          CanvasControlGroup(label: "Wrap", children: [
+            CanvasToggle(
+              key: const ValueKey("textWrap"),
+              label: "Wrap around things",
+              value: e.wrap.on,
+              onChanged: (v) => now(e.copyWith(wrap: e.wrap.copyWith(on: v))),
+            ),
+            if (e.wrap.on) ...[
+              CanvasNumberField(
+                label: "Space",
+                value: e.wrap.gap,
+                min: 0,
+                max: 400,
+                decimals: 0,
+                width: 62,
+                onChanged: (v) {
+                  begin();
+                  write(e.copyWith(wrap: e.wrap.copyWith(gap: v)));
+                },
+                onCommit: commit,
+              ),
+              CanvasDropdown<WrapSide>(
+                key: const ValueKey("textWrapSide"),
+                label: "Words go",
+                value: e.wrap.side,
+                width: 132,
+                options: [for (var s in WrapSide.values) (s, s.label)],
+                onChanged: (v) =>
+                    now(e.copyWith(wrap: e.wrap.copyWith(side: v))),
+              ),
+              const CanvasHint(
+                  "The words are set line by line around every visible "
+                  "element that overlaps this box, leaving Space between "
+                  "them. Both sides fills the room either side of something "
+                  "narrow; Left or Right keeps the words in one block beside "
+                  "it. Anything that covers the box from top to bottom is "
+                  "left out — that is a background, and a paragraph cannot go "
+                  "around it."),
+            ],
+          ]),
           // The section's own heading says Type already, so the first group
           // inside it does not say it again.
           ...typeGroups(e.textSpec, (spec) => write(e.copyWith(textSpec: spec)),

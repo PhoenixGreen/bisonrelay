@@ -20,6 +20,8 @@ import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/image_placement.dart';
 import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
+import 'package:bruig/plugin_system/canvas/render/text_animator.dart';
+import 'package:bruig/plugin_system/canvas/render/text_wrap.dart';
 import 'package:bruig/plugin_system/canvas/render/text_flow.dart';
 import 'package:bruig/plugin_system/canvas/render/procedural/generators.dart';
 import 'package:bruig/plugin_system/canvas/render/procedural_cache.dart';
@@ -313,7 +315,7 @@ void _paintText(
   // A box may be one of a line of them, sharing one piece of text -- see
   // flowFor. What it draws is its own share of that, which for a box on its
   // own is all of it.
-  var flow = flowFor(e, doc, inner, spec);
+  var flow = flowFor(e, doc, inner, spec, frame: frame);
   var words = flow.text;
   // The styled runs that apply to *these* words: a box in a chain draws the
   // head's text further along, so the head's runs are counted from its own
@@ -337,6 +339,36 @@ void _paintText(
       // And unless one of the parts is arriving on its own account, in which
       // case it has a moment of its own and this frame may be it.
       !partsAnimate(drawn)) {
+    return;
+  }
+
+  // Around whatever is in the way, where that has been asked for and there
+  // is something in the way. A different way of setting type -- line by line
+  // against the elements round it -- so it runs only for an element that
+  // wants it. See text_wrap.dart.
+  var blocked = wrapObstacles(e, doc, frame, inner);
+  if (e.wrap.on && blocked.isNotEmpty) {
+    // The marks and the arrival still apply, as a block: the words are set a
+    // line at a time here, so there are no pieces for a per-letter motion to
+    // move. A whole-paragraph preset reads the same either way.
+    var wrapped =
+        layoutWrapped(words, spec, inner, blocked, e.wrap, parts: drawn);
+    var frameOf = animation.on && (reveal < 1 || animation.keeps)
+        ? applyMotion(
+            canvas, inner, animation.preset, animation.progressAt(reveal, 0, 1),
+            from: animation.scaleFor(animation.preset))
+        : const MotionFrame(1, 0, false);
+    if (frameOf.alpha > 0) {
+      if (frameOf.alpha < 1) {
+        canvas.saveLayer(inner.inflate(inner.height),
+            Paint()..color = Color.fromRGBO(0, 0, 0, frameOf.alpha));
+      }
+      paintWrapped(canvas, wrapped, spec);
+      if (frameOf.alpha < 1) canvas.restore();
+    }
+    for (var r = 0; r < frameOf.depth; r++) {
+      canvas.restore();
+    }
     return;
   }
 
