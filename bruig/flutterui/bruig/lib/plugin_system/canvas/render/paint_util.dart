@@ -1224,7 +1224,10 @@ List<PlacedGlyph> placeTextOnPath(
   for (var i = 0; i < glyphs.length; i++) {
     var centre = at + widths[i] / 2;
     at += widths[i];
-    if (centre < 0 || centre > total) continue;
+    // Past the ends of the line the letters carry straight on rather than
+    // being dropped -- see _alongPolyline. Dropped, a caption slid along its
+    // line did not travel off it: the letters disappeared one at a time at
+    // the end of the line and reappeared at the other, which is not a slide.
     var (point, angle) = _alongPolyline(curve, lengths, centre);
     out.add(PlacedGlyph(
         glyphs[i], point, angle, Size(painters[i].width, painters[i].height),
@@ -1526,6 +1529,10 @@ void _paintCurveCopies(ui.Canvas canvas, PlacedGlyph g, double dy, double scale,
 }
 
 /// _alongPolyline is the point and heading at [distance] along [curve].
+/// Before the start and after the end it keeps going, along the heading the
+/// line had there. A caption slid off the end of its line has to be somewhere,
+/// and the somewhere that reads as "off the end" is further along the same
+/// direction -- not piled up on the last point, which is what a clamp does.
 (Offset, double) _alongPolyline(
     List<Offset> curve, List<double> lengths, double distance) {
   for (var i = 1; i < lengths.length; i++) {
@@ -1540,7 +1547,11 @@ void _paintCurveCopies(ui.Canvas canvas, PlacedGlyph g, double dy, double scale,
     );
   }
   var last = curve.last - curve[curve.length - 2];
-  return (curve.last, math.atan2(last.dy, last.dx));
+  var length = last.distance;
+  var beyond = distance - lengths.last;
+  var heading = math.atan2(last.dy, last.dx);
+  if (length <= 0) return (curve.last, heading);
+  return (curve.last + last / length * beyond, heading);
 }
 
 /// bubbleBodyRect is the part of a speech bubble the words go in.

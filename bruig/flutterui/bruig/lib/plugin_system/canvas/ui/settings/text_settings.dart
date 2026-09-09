@@ -173,8 +173,11 @@ List<Widget> textSettings(
                 width: 62,
                 value: controller.valueAt(
                     e, KeyframeChannel.slide, e.curve!.offset),
-                min: -1,
-                max: 1,
+                // Far enough either way to carry the words right off the end
+                // of the line and back on again, which is what a caption
+                // sliding in and out of a shot is.
+                min: -2,
+                max: 2,
                 onChanged: (v) {
                   begin();
                   // Written as a keyframe once this frame has one, so dragging the

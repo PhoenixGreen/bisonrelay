@@ -10,6 +10,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_parts.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
+import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -570,6 +571,29 @@ void main() {
       });
       expect(late_, greaterThan(early + 100),
           reason: "more letters have arrived: $early then $late_");
+    });
+
+    test("and the words can slide right off either end of it", () {
+      // They could not: a letter past the end of the line was dropped, so a
+      // caption slid along its line lost its letters one at a time at the end
+      // and never travelled off it.
+      var line = [const Offset(40, 100), const Offset(360, 100)];
+      const spec = TextSpec(fontSize: 20, align: TextAlignSpec.left);
+
+      var on = placeTextOnPath(
+          "ALONGTHELINE", spec, line, const TextOnCurve(elementId: "l"));
+      expect(on.length, 12);
+
+      var off = placeTextOnPath("ALONGTHELINE", spec, line,
+          const TextOnCurve(elementId: "l", offset: -2));
+      expect(off.length, 12, reason: "every letter is still placed");
+      expect(off.last.at.dx, lessThan(40),
+          reason: "and all of them are past the near end of the line");
+
+      var beyond = placeTextOnPath("ALONGTHELINE", spec, line,
+          const TextOnCurve(elementId: "l", offset: 2));
+      expect(beyond.first.at.dx, greaterThan(360),
+          reason: "and past the far end at the other extreme");
     });
 
     testWidgets("and a part colours the letters it names", (tester) async {

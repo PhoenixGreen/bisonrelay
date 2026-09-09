@@ -500,6 +500,51 @@ void main() {
     });
   });
 
+  test("a renamed canvas stays where it was in the order", () async {
+    // The order is a list of names, so a renamed canvas was a name the order
+    // had never heard of -- and anything the order does not mention follows
+    // everything it does. Renaming a file sent it to the bottom of the list.
+    for (var name in ["A", "B", "C"]) {
+      await CanvasStorage.save("", name, const CanvasDocument());
+    }
+    await CanvasStorage.saveOrder("", [
+      for (var name in ["C", "A", "B"])
+        CanvasEntry(name: name, folder: "", isFolder: false),
+    ]);
+
+    expect(await CanvasStorage.rename("", "A", "Andrew"), isTrue);
+    expect((await CanvasStorage.list("")).map((e) => e.name),
+        ["C", "Andrew", "B"]);
+  });
+
+  test("and a copy lands directly under what it is a copy of", () async {
+    for (var name in ["A", "B", "C"]) {
+      await CanvasStorage.save("", name, const CanvasDocument());
+    }
+    await CanvasStorage.saveOrder("", [
+      for (var name in ["C", "A", "B"])
+        CanvasEntry(name: name, folder: "", isFolder: false),
+    ]);
+
+    await CanvasStorage.save("", "C copy", const CanvasDocument());
+    await CanvasStorage.keepPlace("", was: "C", now: "C copy", after: true);
+    expect((await CanvasStorage.list("")).map((e) => e.name),
+        ["C", "C copy", "A", "B"]);
+  });
+
+  test("a renamed folder keeps its place as well", () async {
+    await CanvasStorage.createFolder("Plans");
+    await CanvasStorage.save("", "Match plan", const CanvasDocument());
+    await CanvasStorage.saveOrder("", [
+      const CanvasEntry(name: "Match plan", folder: "", isFolder: false),
+      const CanvasEntry(name: "Plans", folder: "", isFolder: true),
+    ]);
+
+    expect(await CanvasStorage.renameFolder("Plans", "Ideas"), isTrue);
+    expect((await CanvasStorage.list("")).map((e) => e.name),
+        ["Match plan", "Ideas"]);
+  });
+
   test("a folder keeps its place in the order too", () async {
     // Folders were listed first and left there whatever anybody did. They are
     // listed first only until somebody says otherwise.

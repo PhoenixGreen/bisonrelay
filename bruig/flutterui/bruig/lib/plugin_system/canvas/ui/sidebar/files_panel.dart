@@ -264,6 +264,10 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
         await CanvasStorage.uniqueName(entry.folder, "${entry.name} copy");
     await CanvasStorage.save(
         entry.folder, name, document.copyWith(title: name));
+    // Directly under the one it is a copy of, which is where somebody who
+    // has just duplicated something looks for it.
+    await CanvasStorage.keepPlace(entry.folder,
+        was: CanvasStorage.orderKeyFor(entry), now: name, after: true);
     await _reload();
   }
 

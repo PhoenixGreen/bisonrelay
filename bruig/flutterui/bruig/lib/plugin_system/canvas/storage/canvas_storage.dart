@@ -279,6 +279,41 @@ class CanvasStorage {
     }
   }
 
+  /// keepPlace keeps a renamed or copied entry where its original was.
+  ///
+  /// The order is a list of names -- see [list] -- so a renamed canvas is a
+  /// name the order has never heard of, and anything the order does not
+  /// mention follows everything it does. That is why renaming a file sent it
+  /// to the bottom of the list, and why a duplicate landed there rather than
+  /// beside the thing it was a copy of.
+  ///
+  /// [after] puts the new name directly after the old one and leaves the old
+  /// one where it is, which is a copy; without it the new name takes the old
+  /// one's place, which is a rename. Nothing happens where there is no order
+  /// file: the listing is alphabetical then, and alphabetical already puts a
+  /// renamed file where its name says it goes.
+  static Future<void> keepPlace(String folder,
+      {required String was, required String now, bool after = false}) async {
+    var dir = await _dirFor(folder);
+    if (dir == null) return;
+    var order = await _readOrder(dir);
+    var at = order.indexOf(was);
+    if (at < 0) return;
+
+    var next = [...order];
+    if (after) {
+      next.insert(at + 1, now);
+    } else {
+      next[at] = now;
+    }
+    try {
+      await File(path.join(dir, _orderFile))
+          .writeAsString("${next.join("\n")}\n", flush: true);
+    } catch (exception) {
+      debugPrint("Unable to save the canvas order: $exception");
+    }
+  }
+
   /// load reads one document, or null when it is missing or unreadable.
   ///
   /// Null rather than an exception, because the caller's response is the same
@@ -348,6 +383,8 @@ class CanvasStorage {
     if (await File(target).exists()) return false;
     try {
       await File(source).rename(target);
+      // Under its new name, in the place it was already in.
+      await keepPlace(folder, was: from, now: to);
       return true;
     } catch (_) {
       return false;
@@ -408,6 +445,9 @@ class CanvasStorage {
       var target = Directory(path.join(library, clean));
       if (!await source.exists() || await target.exists()) return false;
       await source.rename(target.path);
+      // A folder is ordered among the documents at the top level, under a
+      // name of its own -- see [orderKeyFor].
+      await keepPlace("", was: "f:$from", now: "f:$clean");
       return true;
     } catch (exception) {
       debugPrint("Unable to rename the folder $from: $exception");
