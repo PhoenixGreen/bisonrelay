@@ -9,6 +9,7 @@ import 'package:bruig/plugin_system/canvas/ui/document_picking.dart';
 import 'package:bruig/plugin_system/canvas/ui/text_documents.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/image_picking.dart';
+import 'package:bruig/plugin_system/canvas/ui/recent_pictures.dart';
 import 'package:flutter/material.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 
@@ -1233,6 +1234,19 @@ Widget _iconSection(BuildContext context, TextElement e, SettingsWrite write,
           tooltip: icon.on ? "Replace this icon" : "Add an icon",
           onPressed: () async {
             var id = await pickCanvasImage(context);
+            if (id != null) now(icon.copyWith(assetId: id));
+          },
+        ),
+        // The other half of a shared picture store: an icon used on one
+        // canvas is usually wanted on the next one, and going back to find
+        // the file again is the long way round to a picture the app already
+        // has. The same button a picture element offers.
+        CanvasIconButton(
+          key: const ValueKey("textIconLibrary"),
+          icon: Icons.photo_library_outlined,
+          tooltip: "Use a picture you have already added",
+          onPressed: () async {
+            var id = await showRecentPictures(context);
             if (id != null) now(icon.copyWith(assetId: id));
           },
         ),

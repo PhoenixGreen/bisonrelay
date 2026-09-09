@@ -8,6 +8,7 @@ import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/image_picking.dart';
+import 'package:bruig/plugin_system/canvas/ui/recent_pictures.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:bruig/components/text.dart';
 import 'package:flutter/material.dart';
@@ -658,6 +659,15 @@ List<Widget> _fillBits(
             : "Replace this picture",
         onPressed: () async {
           var id = await pickCanvasImage(context);
+          if (id != null) now(fill.copyWith(assetId: id));
+        },
+      ),
+      CanvasIconButton(
+        key: const ValueKey("textFillLibrary"),
+        icon: Icons.photo_library_outlined,
+        tooltip: "Use a picture you have already added",
+        onPressed: () async {
+          var id = await showRecentPictures(context);
           if (id != null) now(fill.copyWith(assetId: id));
         },
       ),

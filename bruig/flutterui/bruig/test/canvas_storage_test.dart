@@ -4,6 +4,9 @@ import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'dart:io';
 
+import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/text_parts.dart';
+import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
@@ -229,6 +232,34 @@ void main() {
           reason: "the one a canvas still shows");
       expect(await CanvasAssets.load(dropped), isNull,
           reason: "and the one nothing does");
+    });
+
+    test("a text element's icon and fill are pictures it is using too",
+        () async {
+      // They were not: a text element answered "no pictures" whatever it was
+      // carrying, so the sweep took its icon away and the next time the
+      // canvas was opened there was nothing to draw.
+      var icon = (await CanvasAssets.save(List.filled(64, 5)))!;
+      var fill = (await CanvasAssets.save(List.filled(64, 6)))!;
+
+      await CanvasStorage.save(
+          "",
+          "Headline",
+          CanvasDocument(elements: [
+            TextElement(
+              const ElementBase(id: "t", width: 200, height: 60),
+              text: "With a badge",
+              icon: TextIcon(assetId: icon),
+              textSpec: TextSpec(
+                  fill: TextFill(kind: TextFillKind.image, assetId: fill)),
+            ),
+          ]));
+
+      await CanvasAssets.sweepUnused();
+      expect(await CanvasAssets.load(icon), isNotNull,
+          reason: "the icon the headline carries");
+      expect(await CanvasAssets.load(fill), isNotNull,
+          reason: "and the picture showing through its letters");
     });
 
     test("a picture two canvases share survives either being deleted",

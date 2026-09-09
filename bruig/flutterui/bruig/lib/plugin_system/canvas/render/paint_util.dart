@@ -347,8 +347,8 @@ void _paintFillImage(
     );
   }
   return (
-    Rect.fromLTWH(left + wide + math.max(0, icon.gap), box.top, box.width,
-        box.height),
+    Rect.fromLTWH(
+        left + wide + math.max(0, icon.gap), box.top, box.width, box.height),
     Rect.fromLTWH(left, room.top, wide, room.height),
   );
 }

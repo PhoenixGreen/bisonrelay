@@ -304,8 +304,8 @@ void _paintText(
   // sentence has its icon beside it rather than against the edge of the box.
   // See iconLayout.
   var spec = drawnTextSpec(e, bounds);
-  var (iconBox, room) = iconLayout(inner, e.icon, e.displayText, spec,
-      columns: e.columns.count);
+  var (iconBox, room) =
+      iconLayout(inner, e.icon, e.displayText, spec, columns: e.columns.count);
   paintTextIcon(canvas, iconBox, e.icon, images, e.textSpec);
   inner = room;
   if (inner.width <= 0 || inner.height <= 0) return;

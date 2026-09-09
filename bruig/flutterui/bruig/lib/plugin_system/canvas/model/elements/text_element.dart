@@ -270,6 +270,19 @@ class TextElement extends CanvasElement {
   @override
   ElementKind get kind => ElementKind.text;
 
+  /// assetIds is every stored picture this element refers to: the icon it
+  /// carries, and a picture showing through its letters.
+  ///
+  /// Without this the sweep that clears out pictures nothing is using any
+  /// more could not see them -- so an icon lasted until the next sweep and
+  /// was gone by the next time the canvas was opened. Every element that can
+  /// name a picture has to answer this. See CanvasStorage.liveAssetIds.
+  @override
+  Set<String> get assetIds => {
+        if (icon.assetId.isNotEmpty) icon.assetId,
+        if (textSpec.fill.assetId.isNotEmpty) textSpec.fill.assetId,
+      };
+
   /// drawnParts are the parts the painter works from: the element's own
   /// marks as a part covering every word, and then the parts themselves.
   ///
