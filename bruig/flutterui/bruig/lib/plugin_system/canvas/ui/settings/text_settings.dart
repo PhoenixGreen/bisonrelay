@@ -321,6 +321,13 @@ List<Widget> textSettings(
                     now(e.copyWith(curve: e.curve!.copyWith(away: v))),
               ),
               CanvasToggle(
+                key: const ValueKey("textCurveMask"),
+                label: "Mask",
+                value: e.curve!.mask,
+                onChanged: (v) =>
+                    now(e.copyWith(curve: e.curve!.copyWith(mask: v))),
+              ),
+              CanvasToggle(
                 // Not the line element's own Hide: a hidden element is skipped
                 // everywhere, this one included, so the text would go with it.
                 label: "Hide line",
@@ -328,6 +335,12 @@ List<Widget> textSettings(
                 onChanged: (v) =>
                     now(e.copyWith(curve: e.curve!.copyWith(hideHost: v))),
               ),
+              const CanvasHint(
+                  "Slide carries the words along the line, and past either "
+                  "end of it — far enough to take them right off and back on "
+                  "again. Mask makes the line a window: whatever has slid off "
+                  "an end is cut off there rather than carrying on across the "
+                  "canvas."),
             ],
           ]),
         ],

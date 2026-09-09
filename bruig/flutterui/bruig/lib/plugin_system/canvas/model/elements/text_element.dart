@@ -124,12 +124,22 @@ class TextOnCurve {
   /// would go with it.
   final bool hideHost;
 
+  /// mask hides whatever has slid off the ends of the line.
+  ///
+  /// The words follow the line past its ends -- that is what lets a caption
+  /// travel off and back on -- so without this a slide carries them across
+  /// whatever else is on the canvas. With it the line is a window: a letter
+  /// is cut off at the end rather than continuing beyond it, which is what
+  /// makes the same slide read as words arriving from behind something.
+  final bool mask;
+
   const TextOnCurve({
     required this.elementId,
     this.offset = 0,
     this.away = false,
     this.spacing = 0,
     this.hideHost = false,
+    this.mask = false,
   });
 
   TextOnCurve copyWith({
@@ -138,6 +148,7 @@ class TextOnCurve {
     bool? away,
     double? spacing,
     bool? hideHost,
+    bool? mask,
   }) =>
       TextOnCurve(
         elementId: elementId ?? this.elementId,
@@ -145,6 +156,7 @@ class TextOnCurve {
         away: away ?? this.away,
         spacing: spacing ?? this.spacing,
         hideHost: hideHost ?? this.hideHost,
+        mask: mask ?? this.mask,
       );
 
   Map<String, dynamic> toJson() => {
@@ -153,6 +165,7 @@ class TextOnCurve {
         if (away) "away": true,
         if (spacing != 0) "spacing": spacing,
         if (hideHost) "hideHost": true,
+        if (mask) "mask": true,
       };
 
   factory TextOnCurve.fromJson(Map<String, dynamic> json) => TextOnCurve(
@@ -161,6 +174,7 @@ class TextOnCurve {
         away: jsonBool(json["away"], false),
         spacing: jsonDouble(json["spacing"], 0),
         hideHost: jsonBool(json["hideHost"], false),
+        mask: jsonBool(json["mask"], false),
       );
 }
 

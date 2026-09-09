@@ -596,6 +596,50 @@ void main() {
           reason: "and past the far end at the other extreme");
     });
 
+    testWidgets("and a mask cuts off whatever has slid past the end",
+        (tester) async {
+      // The words follow the line past its ends -- that is what lets a
+      // caption travel off and back on -- so without a mask a slide carries
+      // them across whatever else is on the canvas.
+      late int loose;
+      late int masked;
+      await tester.runAsync(() async {
+        Future<int> at(bool mask) async => _lit(await _ink(_document([
+              LineElement(
+                const ElementBase(
+                    id: "l", x: 150, y: 100, width: 120, height: 4),
+              ),
+              TextElement(
+                const ElementBase(id: "t", x: 0, y: 0, width: 400, height: 200),
+                text: "ALONGTHELINE",
+                textSpec: const TextSpec(
+                    fontSize: 20,
+                    align: TextAlignSpec.left,
+                    color: Color(0xFFFFFFFF)),
+                box: const BoxSpec(padding: 0),
+                curve: TextOnCurve(elementId: "l", mask: mask),
+              ),
+            ])));
+        loose = await at(false);
+        masked = await at(true);
+      });
+      // The run is far longer than the line, so most of it is outside.
+      expect(masked, lessThan(loose * 0.75),
+          reason: "the line is a window: $loose then $masked");
+      expect(masked, greaterThan(0), reason: "and what is on the line shows");
+    });
+
+    test("the mask survives being saved", () {
+      var back = elementFromJson(TextElement(
+        const ElementBase(id: "t", width: 400, height: 200),
+        text: "Hi",
+        curve: const TextOnCurve(elementId: "l", mask: true),
+      ).toJson()) as TextElement;
+      expect(back.curve!.mask, isTrue);
+      expect(const TextOnCurve(elementId: "l").toJson().containsKey("mask"),
+          isFalse);
+    });
+
     testWidgets("and a part colours the letters it names", (tester) async {
       late Map<int, int> plain;
       late Map<int, int> parted;

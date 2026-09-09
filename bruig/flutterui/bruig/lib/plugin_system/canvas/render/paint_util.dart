@@ -1586,6 +1586,30 @@ void paintTextOnPath(
       placeTextOnPath(text, spec, curve, on, scale: scale, parts: parts);
   if (glyphs.isEmpty) return;
 
+  // The line as a window: everything that has slid off its ends is cut off.
+  // A ribbon round the polyline rather than a rectangle, so a caption on a
+  // bend is masked by the bend and not by a box round it.
+  var masked = on.mask;
+  if (masked) {
+    canvas.save();
+    canvas.clipPath(_curveRibbon(curve, spec.fontSize * scale * 3));
+  }
+  if (masked) {
+    // The mask is this call's own; the two passes a fill makes are inside it.
+    paintTextOnPath(canvas, text, spec, curve, on.copyWith(mask: false),
+        scale: scale,
+        animation: animation,
+        reveal: reveal,
+        parts: parts,
+        timings: timings,
+        asOne: asOne,
+        images: images,
+        outlineOnly: outlineOnly,
+        fillOnly: fillOnly);
+    canvas.restore();
+    return;
+  }
+
   if (spec.fill.on && !outlineOnly && !fillOnly) {
     var box = textOnPathBounds(glyphs, on) ?? _boundsOf(curve);
     paintTextOnPath(canvas, text, spec, curve, on,
@@ -1725,6 +1749,45 @@ void paintTextOnPath(
     }
     canvas.restore();
   }
+}
+
+/// _curveRibbon is a band of width [thick] following [curve], used as the mask
+/// that keeps a sliding caption inside its line.
+///
+/// Built from the polyline's own normals rather than by stroking a path,
+/// because a stroke would have to be converted back to a shape to clip with
+/// and this is the shape already. Self-crossing on a tight bend does no harm:
+/// a clip fills by the non-zero rule, so the overlap is still inside.
+Path _curveRibbon(List<Offset> curve, double thick) {
+  var path = Path();
+  if (curve.length < 2) return path;
+  var half = math.max(1.0, thick) / 2;
+
+  Offset normalAt(int i) {
+    var a = curve[i == 0 ? 0 : i - 1];
+    var b = curve[i == curve.length - 1 ? i : i + 1];
+    var d = b - a;
+    var length = d.distance;
+    if (length <= 0) return const Offset(0, -1);
+    return Offset(-d.dy / length, d.dx / length);
+  }
+
+  var left = <Offset>[];
+  var right = <Offset>[];
+  for (var i = 0; i < curve.length; i++) {
+    var n = normalAt(i) * half;
+    left.add(curve[i] + n);
+    right.add(curve[i] - n);
+  }
+
+  path.moveTo(left.first.dx, left.first.dy);
+  for (var p in left.skip(1)) {
+    path.lineTo(p.dx, p.dy);
+  }
+  for (var p in right.reversed) {
+    path.lineTo(p.dx, p.dy);
+  }
+  return path..close();
 }
 
 /// _boundsOf is a box round a polyline, for a run with nothing placed on it.
