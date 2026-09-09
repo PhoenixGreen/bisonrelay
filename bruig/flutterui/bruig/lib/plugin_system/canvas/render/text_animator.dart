@@ -227,75 +227,65 @@ void paintAnimatedText(
 
   paintAnimatedPieces(canvas, painter, offset, pieces,
       [for (var i = 0; i < pieces.length; i++) i], spec, animation, reveal,
-      outline: outline);
+      outline: outline, restricted: range != null);
 }
 
-/// paintAnimatedPieces draws some of a paragraph's pieces.
+/// MotionFrame is what applyMotion did: how opaque to draw, how many saves
+/// it owes the canvas, and whether it has already clipped to its own shape.
+class MotionFrame {
+  final double alpha;
+  final int depth;
+  final bool clipped;
+  const MotionFrame(this.alpha, this.depth, this.clipped);
+}
+
+/// applyMotion sets [canvas] up to draw something [p] of the way through
+/// [preset]'s motion, and says how opaque to draw it.
 ///
-/// [which] is which of [all] to draw, and the progress of each is worked out
-/// from its place in *all* of them -- so a paragraph flowed into three
-/// columns staggers from the first word of the first column to the last word
-/// of the last, rather than restarting in each.
+/// The motions and nothing else -- no text, no paragraph, no glyph. That is
+/// what lets the same eighteen movements drive a paragraph clipped to its
+/// words *and* a letter riding a curve, which have nothing else in common:
+/// one is a rectangle of a laid-out block, the other is a single glyph in a
+/// rotated frame, and both are "move this box".
 ///
-/// Its own entry point because columns cannot go through the one above: each
-/// column is a different slice of the same paragraph at a different offset,
-/// and what it draws is the pieces whose lines belong to it.
-void paintAnimatedPieces(
+/// [box] is the piece's rectangle in whatever frame the caller is drawing in.
+/// [seed] keeps a jitter still from frame to frame -- see the shake.
+///
+/// The caller restores [MotionFrame.depth] times when it has drawn.
+MotionFrame applyMotion(
   ui.Canvas canvas,
-  TextPainter painter,
-  Offset offset,
-  List<TextPiece> all,
-  Iterable<int> which,
-  TextSpec spec,
-  TextAnimation animation,
-  double reveal, {
-  TextPainter? outline,
+  Rect box,
+  TextAnimationPreset preset,
+  double p, {
+  double? from,
+  int seed = 0,
 }) {
-  for (var i in which) {
-    if (i < 0 || i >= all.length) continue;
-    var p = animation.progressAt(reveal, i, all.length);
-    if (p <= 0) continue;
-    _paintPiece(canvas, painter, offset, all[i], animation.preset, p, spec,
-        outline: outline,
-        from: animation.scaleFor(animation.preset),
-        draw: animation.draw,
-        echo: animation.echo);
-  }
-}
-
-/// _paintPiece draws one piece of the paragraph, part way through its own
-/// movement.
-/// [from] is where a growing piece starts, which is the animation's own
-/// setting where it has one and the preset's number otherwise.
-void _paintPiece(ui.Canvas canvas, TextPainter painter, Offset offset,
-    TextPiece piece, TextAnimationPreset preset, double p, TextSpec spec,
-    {TextPainter? outline,
-    double? from,
-    TextDrawSpec? draw,
-    TextEchoSpec? echo}) {
-  var box = piece.box.shift(offset);
   var centre = box.center;
   var alpha = p.clamp(0.0, 1.0);
-
+  var depth = 1;
+  var clipped = false;
   canvas.save();
 
-  // Everything but the block scope is drawn by clipping the whole paragraph
-  // to this piece, which is what lets one layout serve every letter.
-  var clipped = preset.scope != TextAnimationScope.block;
   switch (preset.motion) {
     case TextMotion.fade:
       break;
 
     case TextMotion.rise:
-      var dx = piece.box.width * preset.dx * (1 - p);
-      var dy = piece.box.height * preset.dy * (1 - p);
       // A masked rise is clipped to where the piece will be, so it comes up
       // out of nothing rather than sliding over its neighbour.
       if (preset.clipped) {
         canvas.clipRect(box);
-        clipped = false;
+        clipped = true;
       }
-      canvas.translate(dx, dy);
+      canvas.translate(
+          box.width * preset.dx * (1 - p), box.height * preset.dy * (1 - p));
+
+    case TextMotion.trail:
+      // The piece arrives the way a rise does, and leaves a fading trail of
+      // itself along the way -- the copies are drawn by the caller, at the
+      // places it has already been.
+      canvas.translate(
+          box.width * preset.dx * (1 - p), box.height * preset.dy * (1 - p));
 
     case TextMotion.grow:
       var start = from ?? preset.from;
@@ -325,18 +315,19 @@ void _paintPiece(ui.Canvas canvas, TextPainter painter, Offset offset,
                 sigmaX: box.height * 0.25 * (1 - p),
                 sigmaY: box.height * 0.25 * (1 - p),
                 tileMode: TileMode.decal));
+      depth = 2;
 
     case TextMotion.wipe:
       canvas.clipRect(
           Rect.fromLTWH(box.left, box.top, box.width * p, box.height));
-      clipped = false;
+      clipped = true;
       alpha = 1;
 
     case TextMotion.split:
       var half = box.width / 2 * p;
       canvas.clipRect(Rect.fromLTRB(
           centre.dx - half, box.top, centre.dx + half, box.bottom));
-      clipped = false;
+      clipped = true;
       alpha = 1;
 
     case TextMotion.shake:
@@ -344,8 +335,8 @@ void _paintPiece(ui.Canvas canvas, TextPainter painter, Offset offset,
       // a random number: a drawing routine that consulted one would jitter
       // differently on every frame of an export.
       var away = (1 - p) * box.height * 0.25;
-      canvas.translate(math.sin(p * 40 + piece.start) * away,
-          math.cos(p * 33 + piece.start) * away * 0.5);
+      canvas.translate(
+          math.sin(p * 40 + seed) * away, math.cos(p * 33 + seed) * away * 0.5);
       alpha = 1;
 
     case TextMotion.snap:
@@ -353,22 +344,86 @@ void _paintPiece(ui.Canvas canvas, TextPainter painter, Offset offset,
       alpha = p < 0.5 ? 0 : 1;
 
     case TextMotion.underline:
-      alpha = 1;
-
     case TextMotion.highlight:
+    case TextMotion.echo:
+      // The mark and the copies are the caller's: nothing happens to the
+      // words themselves.
       alpha = 1;
 
     case TextMotion.strokeOn:
-      break;
-
     case TextMotion.scramble:
       break;
-
-    case TextMotion.echo:
-      // The copies are drawn under the words, below. Nothing happens to the
-      // words themselves.
-      alpha = 1;
   }
+
+  return MotionFrame(alpha, depth, clipped);
+}
+
+/// paintAnimatedPieces draws some of a paragraph's pieces.
+///
+/// [which] is which of [all] to draw, and the progress of each is worked out
+/// from its place in *all* of them -- so a paragraph flowed into three
+/// columns staggers from the first word of the first column to the last word
+/// of the last, rather than restarting in each.
+///
+/// Its own entry point because columns cannot go through the one above: each
+/// column is a different slice of the same paragraph at a different offset,
+/// and what it draws is the pieces whose lines belong to it.
+void paintAnimatedPieces(
+  ui.Canvas canvas,
+  TextPainter painter,
+  Offset offset,
+  List<TextPiece> all,
+  Iterable<int> which,
+  TextSpec spec,
+  TextAnimation animation,
+  double reveal, {
+  TextPainter? outline,
+
+  /// restricted says the pieces are some of the words rather than all of
+  /// them, so even a whole-paragraph motion has to be clipped to its piece.
+  /// Without it, an echo pointed at one word echoed the entire line.
+  bool restricted = false,
+}) {
+  for (var i in which) {
+    if (i < 0 || i >= all.length) continue;
+    var p = animation.progressAt(reveal, i, all.length);
+    if (p <= 0) continue;
+    _paintPiece(canvas, painter, offset, all[i], animation.preset, p, spec,
+        outline: outline,
+        from: animation.scaleFor(animation.preset),
+        draw: animation.draw,
+        echo: animation.echo,
+        restricted: restricted);
+  }
+}
+
+/// _paintPiece draws one piece of the paragraph, part way through its own
+/// movement.
+/// [from] is where a growing piece starts, which is the animation's own
+/// setting where it has one and the preset's number otherwise.
+void _paintPiece(ui.Canvas canvas, TextPainter painter, Offset offset,
+    TextPiece piece, TextAnimationPreset preset, double p, TextSpec spec,
+    {TextPainter? outline,
+    double? from,
+    TextDrawSpec? draw,
+    TextEchoSpec? echo,
+    bool restricted = false}) {
+  var box = piece.box.shift(offset);
+  var centre = box.center;
+
+  // The motions themselves are shared with the curve -- see applyMotion --
+  // so a preset moves a paragraph and a letter riding a line the same way,
+  // rather than by two switches that agree until one of them is edited.
+  var frame =
+      applyMotion(canvas, box, preset, p, from: from, seed: piece.start);
+  var alpha = frame.alpha;
+
+  // Everything but a whole-paragraph piece is drawn by clipping the same
+  // paragraph to this piece, which is what lets one layout serve every
+  // letter -- and a whole-paragraph piece that has been narrowed to a part
+  // is clipped too, or the piece it is meant to be moving is the whole line.
+  var clipped = (preset.scope != TextAnimationScope.block || restricted) &&
+      !frame.clipped;
 
   // The piece and nothing else. Inflated by a line height, as this was, the
   // clip took in whatever was beside it -- so a letter rising brought its
@@ -377,38 +432,52 @@ void _paintPiece(ui.Canvas canvas, TextPainter painter, Offset offset,
   //
   // A little room above and below for ascenders and descenders, which a
   // glyph box does not always take in, and none at all to the sides.
-  if (clipped) {
-    canvas.clipRect(Rect.fromLTRB(box.left, box.top - box.height * 0.3,
-        box.right, box.bottom + box.height * 0.3));
-  }
+  Rect pieceClip() => Rect.fromLTRB(box.left, box.top - box.height * 0.3,
+      box.right, box.bottom + box.height * 0.3);
 
-  // The two draw-on motions put something behind or under the words rather
-  // than moving them.
   // The copies, under everything else: they are behind the words, and the
   // nearest is drawn last so it sits over the ones further away.
-  if (preset.motion == TextMotion.echo) {
+  //
+  // Each copy is clipped inside its *own* moved frame rather than by the clip
+  // the words use. Clipped by that one, a copy a line away from the words
+  // fell entirely outside it and nothing was drawn -- which is what "echo
+  // each word" did.
+  if (preset.motion == TextMotion.echo || preset.motion == TextMotion.trail) {
     var spec2 = echo ?? const TextEchoSpec();
-    var step = Offset(
-      preset.dx * box.height * spec2.spacing,
-      preset.dy == 0
-          ? box.height * spec2.spacing
-          : preset.dy * box.height * spec2.spacing,
-    );
+    var trail = preset.motion == TextMotion.trail;
+    // A trail's copies lie back along the way the piece came, so its step is
+    // the distance it is travelling; an echo's is a fixed fan.
+    var step = trail
+        ? Offset(piece.box.width * preset.dx * (1 - p),
+                piece.box.height * preset.dy * (1 - p)) *
+            (spec2.spacing / math.max(1, spec2.copies))
+        : Offset(
+            preset.dx * box.height * spec2.spacing,
+            preset.dy == 0
+                ? box.height * spec2.spacing
+                : preset.dy * box.height * spec2.spacing,
+          );
     // "Both ways" is the one preset that puts copies on either side, which is
     // what its turns flag says -- there being nothing to turn in an echo.
-    var ways = preset.turns > 0 ? const [1.0, -1.0] : const [1.0];
+    var ways = preset.turns > 0 && !trail ? const [1.0, -1.0] : const [1.0];
 
     for (var way in ways) {
       for (var c = spec2.copies; c >= 1; c--) {
         // Each copy arrives after the one before it, so the trail fans out
-        // from the words rather than appearing whole.
-        var arrived = (p * (spec2.copies + 1) - (c - 1)).clamp(0.0, 1.0);
+        // from the words rather than appearing whole. A trail behaves the
+        // other way round: the copies are already there and thin out as the
+        // piece settles, which is what makes it read as speed.
+        var arrived =
+            trail ? 1.0 : (p * (spec2.copies + 1) - (c - 1)).clamp(0.0, 1.0);
         if (arrived <= 0) continue;
 
         var strength = spec2.fade;
         for (var i = 1; i < c; i++) {
           strength *= spec2.fade;
         }
+        if (trail) strength *= (1 - p);
+        if (strength <= 0.002) continue;
+
         var away = step * (c * arrived) * way;
         var size = math.pow(spec2.shrink, c).toDouble();
 
@@ -419,6 +488,7 @@ void _paintPiece(ui.Canvas canvas, TextPainter painter, Offset offset,
           canvas.scale(size, size);
           canvas.translate(-centre.dx, -centre.dy);
         }
+        if (clipped) canvas.clipRect(pieceClip());
         canvas.saveLayer(
             box.inflate(box.height * 4),
             Paint()
@@ -436,6 +506,10 @@ void _paintPiece(ui.Canvas canvas, TextPainter painter, Offset offset,
   // the words it sits behind is a solid block.
   var markColor = mark.color ?? spec.color.withValues(alpha: 0.25);
 
+  // The two drawn marks are painted outside the piece's own clip. Inside it,
+  // the clip is the letters' box and the padding at the two ends was cut
+  // straight off -- which is why the left and right padding appeared to do
+  // nothing while the top and bottom worked.
   if (preset.motion == TextMotion.highlight) {
     // Padded, because a band tight around the letters reads as a mistake
     // where one with a little air reads as a highlighter.
@@ -448,6 +522,8 @@ void _paintPiece(ui.Canvas canvas, TextPainter painter, Offset offset,
     canvas.drawRect(band, Paint()..color = markColor);
   }
 
+  canvas.save();
+  if (clipped) canvas.clipRect(pieceClip());
   if (alpha >= 1) {
     outline?.paint(canvas, offset);
     painter.paint(canvas, offset);
@@ -458,6 +534,7 @@ void _paintPiece(ui.Canvas canvas, TextPainter painter, Offset offset,
     painter.paint(canvas, offset);
     canvas.restore();
   }
+  canvas.restore();
 
   if (preset.motion == TextMotion.underline) {
     // The bottom padding pushes the line away from the letters; the two ends
@@ -472,8 +549,9 @@ void _paintPiece(ui.Canvas canvas, TextPainter painter, Offset offset,
         Paint()..color = mark.color ?? spec.color);
   }
 
-  if (preset.motion == TextMotion.blur) canvas.restore();
-  canvas.restore();
+  for (var i = 0; i < frame.depth; i++) {
+    canvas.restore();
+  }
 }
 
 /// _paintScramble resolves each letter from a random one.

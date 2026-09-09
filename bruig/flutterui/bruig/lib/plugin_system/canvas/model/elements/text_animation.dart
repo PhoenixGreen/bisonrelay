@@ -95,6 +95,14 @@ enum TextMotion {
   /// strokeOn draws the outline, then fills it.
   strokeOn,
 
+  /// trail is an arrival that leaves copies of itself behind it.
+  ///
+  /// The piece comes in from an offset the way a slide does, and the copies
+  /// are strung out along the way it came, thinning as it settles until only
+  /// the words are left. Where an echo *keeps* its copies, a trail spends
+  /// them: what it draws is speed, not a stack.
+  trail,
+
   /// echo repeats the words, fading, in a direction.
   ///
   /// A look as much as an arrival: the copies stay when it is over, which is
@@ -242,7 +250,28 @@ enum TextAnimationPreset {
   echoWords("Echo each word", TextAnimationFamily.special,
       TextAnimationScope.word, TextMotion.echo),
   echoLetters("Echo each letter", TextAnimationFamily.special,
-      TextAnimationScope.letter, TextMotion.echo);
+      TextAnimationScope.letter, TextMotion.echo),
+
+  // The trails: the same copies, spent rather than kept. The words come in
+  // from somewhere and what is behind them catches up and goes out.
+  trailDown("Drops in trailing", TextAnimationFamily.special,
+      TextAnimationScope.block, TextMotion.trail,
+      dy: -0.9),
+  trailUp("Rises trailing", TextAnimationFamily.special,
+      TextAnimationScope.block, TextMotion.trail,
+      dy: 0.9),
+  trailFromLeft("Streaks in from the left", TextAnimationFamily.special,
+      TextAnimationScope.block, TextMotion.trail,
+      dx: -0.9),
+  trailFromRight("Streaks in from the right", TextAnimationFamily.special,
+      TextAnimationScope.block, TextMotion.trail,
+      dx: 0.9),
+  trailWords("Words drop in trailing", TextAnimationFamily.special,
+      TextAnimationScope.word, TextMotion.trail,
+      dy: -0.9),
+  trailLetters("Letters drop in trailing", TextAnimationFamily.special,
+      TextAnimationScope.letter, TextMotion.trail,
+      dy: -0.9);
 
   final String label;
   final TextAnimationFamily family;
@@ -547,7 +576,10 @@ class TextAnimation {
 
   /// echoes is whether the copy settings mean anything for what is chosen.
   bool get echoes =>
-      preset.motion == TextMotion.echo || exit.motion == TextMotion.echo;
+      preset.motion == TextMotion.echo ||
+      exit.motion == TextMotion.echo ||
+      preset.motion == TextMotion.trail ||
+      exit.motion == TextMotion.trail;
 
   /// draws is whether the mark settings mean anything for what is chosen.
   bool get draws => preset.motion.keeps || exit.motion.keeps;

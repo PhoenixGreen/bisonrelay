@@ -157,6 +157,219 @@ TextPainter _layoutText(
   return painter;
 }
 
+/// paintPartMarks draws the highlights behind, or the underlines under, the
+/// element's parts.
+///
+/// Two passes rather than one, because the two marks belong on opposite sides
+/// of the words: a highlight behind them and a line under them, and a line
+/// drawn before the letters is a line with the letters sitting on top of it,
+/// which is not what an underline looks like where a descender crosses it.
+///
+/// The rectangles come from the paragraph's own selection boxes, so a part
+/// spanning a line break is marked as two lines rather than as one box round
+/// both -- which would be a highlighter that had coloured in the margin.
+void paintPartMarks(
+  ui.Canvas canvas,
+  TextPainter painter,
+  String text,
+  List<TextPart> parts,
+  TextSpec spec,
+  Offset offset, {
+  required bool behind,
+}) {
+  if (parts.isEmpty || text.isEmpty) return;
+
+  for (var part in parts) {
+    var mark = behind ? part.highlight : part.underline;
+    if (mark == null) continue;
+    var range = rangeOf(text, part);
+    if (range == null) continue;
+
+    var boxes = painter.getBoxesForSelection(
+        TextSelection(baseOffset: range.$1, extentOffset: range.$2));
+    for (var b in boxes) {
+      var box = b.toRect().shift(offset);
+      if (box.width <= 0) continue;
+      if (behind) {
+        _paintPartHighlight(canvas, box, part.highlight!);
+      } else {
+        _paintPartUnderline(
+            canvas, box, part.underline!, part.color ?? spec.color);
+      }
+    }
+  }
+}
+
+void _paintPartHighlight(ui.Canvas canvas, Rect box, PartHighlight mark) {
+  var band = Rect.fromLTRB(
+    box.left - mark.padLeft,
+    box.top - mark.padTop,
+    box.right + mark.padRight,
+    box.bottom + mark.padBottom,
+  );
+  var paint = Paint()..color = mark.color;
+  if (mark.radius <= 0) {
+    canvas.drawRect(band, paint);
+    return;
+  }
+  canvas.drawRRect(
+      RRect.fromRectAndRadius(band, Radius.circular(mark.radius)), paint);
+}
+
+void _paintPartUnderline(
+    ui.Canvas canvas, Rect box, PartUnderline mark, Color fallback) {
+  var width = math.max(0.1, mark.width);
+  var y = box.bottom + mark.away;
+  var paint = Paint()
+    ..color = mark.color ?? fallback
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = width
+    ..strokeCap = StrokeCap.round
+    ..strokeJoin = StrokeJoin.round;
+
+  // The phase is taken from where the line is, so the same word underlined
+  // twice on one canvas wobbles the same way both times and an exported
+  // frame is the same frame however many times it is drawn.
+  var phase = (box.left * 0.7 + box.top * 1.3) % (2 * math.pi);
+
+  switch (mark.style) {
+    case PartLineStyle.solid:
+      paint.strokeCap = StrokeCap.butt;
+      canvas.drawRect(Rect.fromLTWH(box.left, y - width / 2, box.width, width),
+          paint..style = PaintingStyle.fill);
+
+    case PartLineStyle.dashed:
+      paint.strokeCap = StrokeCap.butt;
+      canvas.drawPath(
+          dashPath(_straight(box.left, box.right, y), width * 4, width * 3),
+          paint);
+
+    case PartLineStyle.dotted:
+      canvas.drawPath(
+          dashPath(_straight(box.left, box.right, y), 0.01, width * 3), paint);
+
+    case PartLineStyle.twin:
+      paint
+        ..strokeWidth = width * 0.55
+        ..strokeCap = StrokeCap.butt;
+      canvas.drawPath(_straight(box.left, box.right, y - width * 0.7), paint);
+      canvas.drawPath(_straight(box.left, box.right, y + width * 0.7), paint);
+
+    case PartLineStyle.wavy:
+      canvas.drawPath(
+          _wobble(box.left, box.right, y,
+              amplitude: width * 1.1, wavelength: width * 7, phase: 0),
+          paint);
+
+    case PartLineStyle.hand:
+      // One pass, barely off straight, and running a little past the last
+      // letter: a rule that stops dead on the final glyph is a rule, and a
+      // hand-drawn line overshoots.
+      canvas.drawPath(
+          _wobble(
+              box.left - width * 0.4, box.right + width * 1.2, y + width * 0.2,
+              amplitude: width * 0.45,
+              wavelength: box.width / 1.7 + width * 8,
+              phase: phase,
+              tilt: -width * 0.5),
+          paint);
+
+    case PartLineStyle.marker:
+      // A brush rather than a stroke: the thickness varies along the line and
+      // the ends taper, which is what a marker pen does and what a stroke of
+      // one width cannot.
+      canvas.drawPath(
+          _brush(box.left - width * 0.5, box.right + width * 1.5,
+              y + width * 0.3, width * 1.6, phase),
+          Paint()..color = mark.color ?? fallback);
+
+    case PartLineStyle.sketch:
+      // Two passes that do not quite agree, which is what makes it read as
+      // drawn rather than as printed.
+      paint.strokeWidth = width * 0.8;
+      canvas.drawPath(
+          _wobble(box.left - width * 0.3, box.right + width, y,
+              amplitude: width * 0.5,
+              wavelength: box.width / 1.4 + width * 6,
+              phase: phase,
+              tilt: -width * 0.6),
+          paint);
+      canvas.drawPath(
+          _wobble(
+              box.left + width * 0.6, box.right + width * 0.4, y + width * 0.9,
+              amplitude: width * 0.6,
+              wavelength: box.width / 2.1 + width * 5,
+              phase: phase + 2.1,
+              tilt: width * 0.7),
+          paint);
+  }
+}
+
+Path _straight(double from, double to, double y) => Path()
+  ..moveTo(from, y)
+  ..lineTo(to, y);
+
+/// _wobble is a line that is not quite straight.
+///
+/// Two sines of different lengths rather than one, so it wanders instead of
+/// waving -- one sine at a long wavelength is a wave, and a wave under a word
+/// is a spellchecker. [tilt] leans the whole line, which is the other half of
+/// looking hand-made: nobody draws a line level.
+Path _wobble(double from, double to, double y,
+    {required double amplitude,
+    required double wavelength,
+    required double phase,
+    double tilt = 0}) {
+  var path = Path();
+  var span = to - from;
+  if (span <= 0) {
+    return path
+      ..moveTo(from, y)
+      ..lineTo(from, y);
+  }
+  var steps = math.max(6, (span / 6).round());
+  var length = math.max(1.0, wavelength);
+  for (var i = 0; i <= steps; i++) {
+    var t = i / steps;
+    var x = from + span * t;
+    var wave = math.sin(phase + t * span / length * 2 * math.pi) +
+        math.sin(phase * 1.7 + t * span / (length * 0.37) * 2 * math.pi) * 0.35;
+    var dy = y + wave * amplitude + tilt * (t - 0.5) * 2;
+    i == 0 ? path.moveTo(x, dy) : path.lineTo(x, dy);
+  }
+  return path;
+}
+
+/// _brush is a marker stroke: a filled shape whose thickness varies and whose
+/// ends taper away to nothing.
+Path _brush(double from, double to, double y, double thick, double phase) {
+  var span = to - from;
+  if (span <= 0) return Path();
+  var steps = math.max(8, (span / 5).round());
+  var top = <Offset>[];
+  var bottom = <Offset>[];
+  for (var i = 0; i <= steps; i++) {
+    var t = i / steps;
+    var x = from + span * t;
+    // Thick in the middle, thin at both ends, and never quite even along the
+    // way -- a pen leaves more ink where it slows down.
+    var taper = math.sin(t * math.pi);
+    var vary = 0.8 + 0.2 * math.sin(phase + t * 9);
+    var half = thick / 2 * math.pow(taper, 0.45).toDouble() * vary;
+    var drift = math.sin(phase * 1.3 + t * 4) * thick * 0.12;
+    top.add(Offset(x, y + drift - half));
+    bottom.add(Offset(x, y + drift + half));
+  }
+  var path = Path()..moveTo(top.first.dx, top.first.dy);
+  for (var p in top.skip(1)) {
+    path.lineTo(p.dx, p.dy);
+  }
+  for (var p in bottom.reversed) {
+    path.lineTo(p.dx, p.dy);
+  }
+  return path..close();
+}
+
 /// paintTextInBox lays [text] out inside [box] and draws it, honouring both
 /// alignments and the outline.
 ///
@@ -207,6 +420,11 @@ double paintTextInBox(
           maxWidth: box.width, scale: scale, outline: true, fillWidth: true)
       : null;
 
+  // A part's own highlight goes behind the words and its own underline under
+  // them. Drawn whatever the animation is doing, because they are a fact
+  // about the words rather than an arrival -- see TextPart.highlight.
+  paintPartMarks(canvas, painter, text, parts, spec, offset, behind: true);
+
   // Part way through arriving, if it is arriving. The animator is handed the
   // paragraph that has already been laid out -- and its outline, which moves
   // with it rather than being drawn once and left behind.
@@ -221,6 +439,8 @@ double paintTextInBox(
     outline?.paint(canvas, offset);
     painter.paint(canvas, offset);
   }
+
+  paintPartMarks(canvas, painter, text, parts, spec, offset, behind: false);
 
   if (clip) canvas.restore();
   return painter.height;
@@ -633,6 +853,10 @@ void paintTextInColumns(
   /// never does.
   List<TextPiece>? pieces;
 
+  /// The characters an animation pointed at a part covers, worked out with
+  /// the pieces and shared by every column.
+  (int, int)? range;
+
   for (var i = 0; i < runs.length; i++) {
     var (from, to) = runs[i];
     var left = box.left + i * (width + columns.gap);
@@ -653,6 +877,12 @@ void paintTextInColumns(
     canvas.clipRect(Rect.fromLTWH(left, box.top + dy, width, used));
     var at = Offset(left, box.top + dy - top(from));
 
+    // The marks are drawn per column against the whole paragraph, and the
+    // column's clip keeps each one to its own lines: a part that runs from
+    // the bottom of one column into the top of the next is marked in both,
+    // which is what it looks like on the page.
+    paintPartMarks(canvas, painter, text, parts, spec, at, behind: true);
+
     var moving = animation != null &&
         animation.on &&
         (reveal < 1 || animation.preset.motion.keeps);
@@ -660,24 +890,45 @@ void paintTextInColumns(
       // The pieces of this column: the ones whose lines fall in its run.
       // Their indices are their places in the whole paragraph, which is what
       // makes the stagger carry on from one column into the next.
-      pieces ??= piecesFor(painter, text, animation.preset.scope);
+      // Which words it happens to, where it has been pointed at one of the
+      // parts -- the same question the single-column path asks, asked here
+      // too, or an animation aimed at one word moved every column.
+      range ??= animation.toSome && animation.part < parts.length
+          ? rangeOf(text, parts[animation.part])
+          : null;
+      pieces ??= piecesFor(painter, text, animation.preset.scope, range: range);
       var mine = <int>[];
       for (var (i, piece) in pieces.indexed) {
         var middle = piece.box.center.dy;
         if (middle >= top(from) - 0.5 && middle < top(to) + 0.5) mine.add(i);
       }
       // A block-scoped animation has one piece covering the paragraph, which
-      // every column shares: it moves or uncovers the same way in each.
-      if (animation.preset.scope == TextAnimationScope.block) {
+      // every column shares: it moves or uncovers the same way in each. Not
+      // where it has been narrowed to a part, though -- that piece is some
+      // particular words, and they are in one column.
+      if (animation.preset.scope == TextAnimationScope.block && range == null) {
         mine = [0];
+      }
+      // The words this is not happening to, at rest, with the moving pieces
+      // cut out of them so nothing is drawn twice.
+      if (range != null) {
+        canvas.save();
+        for (var piece in pieces) {
+          canvas.clipRect(piece.box.shift(at).inflate(1),
+              clipOp: ui.ClipOp.difference);
+        }
+        outline?.paint(canvas, at);
+        painter.paint(canvas, at);
+        canvas.restore();
       }
       paintAnimatedPieces(
           canvas, painter, at, pieces, mine, spec, animation, reveal,
-          outline: outline);
+          outline: outline, restricted: range != null);
     } else {
       outline?.paint(canvas, at);
       painter.paint(canvas, at);
     }
+    paintPartMarks(canvas, painter, text, parts, spec, at, behind: false);
     canvas.restore();
   }
 
@@ -765,7 +1016,20 @@ class PlacedGlyph {
   final double angle;
   final Size size;
 
-  const PlacedGlyph(this.glyph, this.at, this.angle, this.size);
+  /// index is where this glyph starts in the text it came from, so a part --
+  /// "words three to four" -- can be found again once the letters have been
+  /// scattered along a line. Without it there is no way back from a glyph to
+  /// the sentence, and a curve could not be told which of its words to
+  /// colour or to animate.
+  final int index;
+
+  /// spec is what this glyph is drawn in, which is the element's own unless
+  /// a part says otherwise. Carried rather than looked up again at drawing
+  /// time so that the letter that was measured is the letter that is drawn.
+  final TextSpec spec;
+
+  const PlacedGlyph(this.glyph, this.at, this.angle, this.size,
+      {this.index = 0, this.spec = const TextSpec()});
 }
 
 /// placeTextOnPath works out where every letter of [text] goes along [curve].
@@ -784,6 +1048,11 @@ List<PlacedGlyph> placeTextOnPath(
   List<Offset> curve,
   TextOnCurve on, {
   double scale = 1,
+
+  /// parts colour, embolden or italicise some of the letters -- see TextPart.
+  /// A part changes how wide a letter is, so it has to be known here, where
+  /// the letters are measured, and not only where they are drawn.
+  List<TextPart> parts = const [],
 }) {
   if (text.isEmpty || curve.length < 2) return const [];
 
@@ -797,10 +1066,22 @@ List<PlacedGlyph> placeTextOnPath(
   }
   if (total <= 0) return const [];
 
-  var glyphs = [for (var rune in text.runes) String.fromCharCode(rune)];
+  var glyphs = <String>[];
+  var at0 = <int>[];
+  var offset = 0;
+  for (var rune in text.runes) {
+    var g = String.fromCharCode(rune);
+    glyphs.add(g);
+    at0.add(offset);
+    offset += g.length;
+  }
+  var specs = [
+    for (var i = 0; i < glyphs.length; i++)
+      _specForPart(spec, partAt(text, parts, at0[i])),
+  ];
   var painters = [
-    for (var g in glyphs)
-      layoutText(g, spec, maxWidth: double.infinity, scale: scale),
+    for (var i = 0; i < glyphs.length; i++)
+      layoutText(glyphs[i], specs[i], maxWidth: double.infinity, scale: scale),
   ];
   var widths = [for (var p in painters) p.width + on.spacing * scale];
   var runLength = widths.fold(0.0, (sum, w) => sum + w);
@@ -821,9 +1102,20 @@ List<PlacedGlyph> placeTextOnPath(
     if (centre < 0 || centre > total) continue;
     var (point, angle) = _alongPolyline(curve, lengths, centre);
     out.add(PlacedGlyph(
-        glyphs[i], point, angle, Size(painters[i].width, painters[i].height)));
+        glyphs[i], point, angle, Size(painters[i].width, painters[i].height),
+        index: at0[i], spec: specs[i]));
   }
   return out;
+}
+
+/// _specForPart is [spec] with whatever [part] says about these letters.
+TextSpec _specForPart(TextSpec spec, TextPart? part) {
+  if (part == null) return spec;
+  return spec.copyWith(
+    color: part.color ?? spec.color,
+    weight: part.weight ?? spec.weight,
+    italic: part.italic ?? spec.italic,
+  );
 }
 
 /// textOnPathBounds is the rectangle the placed letters occupy.
@@ -862,6 +1154,13 @@ Rect? textOnPathBounds(List<PlacedGlyph> glyphs, TextOnCurve on) {
 /// Glyph by glyph because that is the only way letters can turn with the line:
 /// a paragraph is one rectangle of pixels and rotating it puts the whole
 /// sentence at an angle rather than bending it.
+///
+/// [animation] and [reveal] draw it part way through arriving. The motions
+/// are the same ones a paragraph uses -- see applyMotion -- applied in each
+/// glyph's own turned frame, so a letter on a bend rises along the line
+/// rather than straight up the page. Text on a curve used to ignore the
+/// animation settings entirely: the presets could be chosen and nothing
+/// happened.
 void paintTextOnPath(
   ui.Canvas canvas,
   String text,
@@ -869,23 +1168,192 @@ void paintTextOnPath(
   List<Offset> curve,
   TextOnCurve on, {
   double scale = 1,
+  TextAnimation? animation,
+  double reveal = 1,
+  List<TextPart> parts = const [],
 }) {
-  for (var g in placeTextOnPath(text, spec, curve, on, scale: scale)) {
+  var glyphs =
+      placeTextOnPath(text, spec, curve, on, scale: scale, parts: parts);
+  if (glyphs.isEmpty) return;
+
+  var moving = animation != null &&
+      animation.on &&
+      (reveal < 1 || animation.preset.motion.keeps);
+
+  // Which letters it happens to, where it has been pointed at one of the
+  // parts. The others are drawn as they stand.
+  (int, int)? range;
+  if (moving && animation.toSome && animation.part < parts.length) {
+    range = rangeOf(text, parts[animation.part]);
+  }
+
+  // Where each letter comes in the order, and how many places there are. A
+  // word-scoped preset counts words, so the letters of one word move
+  // together; anything else counts letters, a whole-block preset having one
+  // place that they all share.
+  var scope = moving ? animation.preset.scope : TextAnimationScope.block;
+  var place = <int>[];
+  var places = 1;
+  if (scope == TextAnimationScope.word) {
+    var word = -1;
+    var inWord = false;
+    for (var g in glyphs) {
+      var space = g.glyph.trim().isEmpty;
+      if (!space && !inWord) word++;
+      inWord = !space;
+      place.add(math.max(0, word));
+    }
+    places = math.max(1, word + 1);
+  } else if (scope == TextAnimationScope.block ||
+      scope == TextAnimationScope.line) {
+    place = [for (var _ in glyphs) 0];
+  } else {
+    place = [for (var i = 0; i < glyphs.length; i++) i];
+    places = glyphs.length;
+  }
+
+  for (var (i, g) in glyphs.indexed) {
+    var dy = on.away ? 0.0 : -g.size.height;
+    // The glyph's own rectangle in the frame it is drawn in: its baseline
+    // centre is the origin, so it reaches half its width either side.
+    var local = Rect.fromLTWH(
+        -g.size.width / 2, dy, g.size.width, math.max(1, g.size.height));
+
+    var still = !moving ||
+        (range != null && (g.index < range.$1 || g.index >= range.$2));
+    // Null exactly when this letter is not moving, so the drawing below can
+    // ask it things without asking whether it is there.
+    var anim = still ? null : animation;
+    var p = anim == null ? 1.0 : anim.progressAt(reveal, place[i], places);
+    if (p <= 0 && anim != null && !anim.preset.motion.keeps) continue;
+
     canvas.save();
     canvas.translate(g.at.dx, g.at.dy);
     canvas.rotate(g.angle);
-    // Sat on the line, or hung beneath it. The glyph is drawn from its own
-    // top-left, so it is shifted by half its width and by a whole line height
-    // to put the baseline where the curve is.
-    var dy = on.away ? 0.0 : -g.size.height;
-    if (spec.outlineWidth > 0) {
-      layoutText(g.glyph, spec,
-              maxWidth: double.infinity, scale: scale, outline: true)
-          .paint(canvas, Offset(-g.size.width / 2, dy));
+
+    var frame = anim == null
+        ? const MotionFrame(1, 0, false)
+        : applyMotion(canvas, local, anim.preset, p,
+            from: anim.scaleFor(anim.preset), seed: g.index);
+
+    // A mark drawn along the words follows the curve because it is drawn a
+    // letter at a time, each in its own frame: the band under a bend is a
+    // band under a bend rather than a rectangle across the picture. It
+    // sweeps in letter order whatever the preset's scope, or a whole-block
+    // underline would grow under every letter at once.
+    var sweep =
+        anim == null ? 1.0 : (p * glyphs.length - i).clamp(0.0, 1.0).toDouble();
+    if (anim != null && anim.preset.motion == TextMotion.highlight) {
+      _paintCurveMark(canvas, local, anim.draw, spec, sweep, under: false);
     }
-    layoutText(g.glyph, spec, maxWidth: double.infinity, scale: scale)
-        .paint(canvas, Offset(-g.size.width / 2, dy));
+
+    // The copies of an echo or a trail, drawn in the same turned frame so
+    // they fan out along the line rather than down the page -- and before the
+    // letter, since they belong behind it.
+    if (anim != null &&
+        (anim.preset.motion == TextMotion.echo ||
+            anim.preset.motion == TextMotion.trail)) {
+      _paintCurveCopies(canvas, g, dy, scale, local, anim, p);
+    }
+
+    _paintGlyph(canvas, g, dy, scale, frame.alpha);
+
+    if (anim != null && anim.preset.motion == TextMotion.underline) {
+      _paintCurveMark(canvas, local, anim.draw, spec, sweep, under: true);
+    }
+
+    for (var r = 0; r < frame.depth; r++) {
+      canvas.restore();
+    }
     canvas.restore();
+  }
+}
+
+/// _paintGlyph draws one placed letter, and its outline where it has one.
+void _paintGlyph(
+    ui.Canvas canvas, PlacedGlyph g, double dy, double scale, double alpha) {
+  var at = Offset(-g.size.width / 2, dy);
+  var faded = alpha < 1;
+  if (faded) {
+    if (alpha <= 0) return;
+    canvas.saveLayer(
+        Rect.fromLTWH(at.dx, at.dy, g.size.width, g.size.height)
+            .inflate(g.size.height * 2),
+        Paint()..color = Color.fromRGBO(0, 0, 0, alpha.clamp(0.0, 1.0)));
+  }
+  if (g.spec.outlineWidth > 0) {
+    layoutText(g.glyph, g.spec,
+            maxWidth: double.infinity, scale: scale, outline: true)
+        .paint(canvas, at);
+  }
+  layoutText(g.glyph, g.spec, maxWidth: double.infinity, scale: scale)
+      .paint(canvas, at);
+  if (faded) canvas.restore();
+}
+
+/// _paintCurveMark is an underline or a highlight under one letter of a
+/// curve, [sweep] of the way drawn.
+void _paintCurveMark(ui.Canvas canvas, Rect local, TextDrawSpec mark,
+    TextSpec spec, double sweep,
+    {required bool under}) {
+  if (sweep <= 0) return;
+  // A letter's share of the mark reaches half the gap to its neighbours, or
+  // the marks would be a row of separate tiles with the tracking showing
+  // between them.
+  var left = local.left - mark.padLeft;
+  var right = local.right + mark.padRight;
+  var width = (right - left) * sweep;
+  if (under) {
+    var y = local.bottom + mark.padBottom;
+    canvas.drawRect(
+        Rect.fromLTWH(left, y, width, math.max(1, local.height * 0.06)),
+        Paint()..color = mark.color ?? spec.color);
+    return;
+  }
+  canvas.drawRect(
+      Rect.fromLTWH(left, local.top - mark.padTop, width,
+          local.height + mark.padTop + mark.padBottom),
+      Paint()..color = mark.color ?? spec.color.withValues(alpha: 0.25));
+}
+
+/// _paintCurveCopies draws an echo's or a trail's copies of one letter.
+void _paintCurveCopies(ui.Canvas canvas, PlacedGlyph g, double dy, double scale,
+    Rect local, TextAnimation animation, double p) {
+  var echo = animation.echo;
+  var preset = animation.preset;
+  var trail = preset.motion == TextMotion.trail;
+  var step = trail
+      ? Offset(local.width * preset.dx * (1 - p),
+              local.height * preset.dy * (1 - p)) *
+          (echo.spacing / math.max(1, echo.copies))
+      : Offset(
+          preset.dx * local.height * echo.spacing,
+          preset.dy == 0
+              ? local.height * echo.spacing
+              : preset.dy * local.height * echo.spacing,
+        );
+  var ways = preset.turns > 0 && !trail ? const [1.0, -1.0] : const [1.0];
+
+  for (var way in ways) {
+    for (var c = echo.copies; c >= 1; c--) {
+      var arrived =
+          trail ? 1.0 : (p * (echo.copies + 1) - (c - 1)).clamp(0.0, 1.0);
+      if (arrived <= 0) continue;
+      var strength = echo.fade;
+      for (var i = 1; i < c; i++) {
+        strength *= echo.fade;
+      }
+      if (trail) strength *= (1 - p);
+      if (strength <= 0.002) continue;
+
+      var away = step * (c * arrived) * way;
+      var size = math.pow(echo.shrink, c).toDouble();
+      canvas.save();
+      canvas.translate(away.dx, away.dy);
+      if (size != 1) canvas.scale(size, size);
+      _paintGlyph(canvas, g, dy, scale, (strength * arrived).clamp(0.0, 1.0));
+      canvas.restore();
+    }
   }
 }
 

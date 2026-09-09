@@ -277,8 +277,13 @@ void _paintText(
     // position along a line has no resting value to be measured from.
     var on = e.curve!;
     var slide = pose.values[KeyframeChannel.slide];
+    // Riding a line does not exempt the words from arriving: the same
+    // animation and the same parts, applied a letter at a time in each
+    // letter's own turned frame. See paintTextOnPath.
+    var (curveAnimation, curveReveal) = _arrival(e, pose);
     paintTextOnPath(canvas, e.displayText, e.textSpec, curve,
-        slide == null ? on : on.copyWith(offset: slide));
+        slide == null ? on : on.copyWith(offset: slide),
+        animation: curveAnimation, reveal: curveReveal, parts: e.parts);
     return;
   }
 
@@ -291,13 +296,7 @@ void _paintText(
   // How much of it has arrived, and how much has left again -- the same two
   // channels a chart's animation uses, so the timeline treats the two kinds
   // of element identically. See TextAnimation.
-  var animation = e.animation;
-  var reveal = pose.values[KeyframeChannel.reveal] ?? 1;
-  var close = pose.values[KeyframeChannel.close] ?? 0;
-  if (animation.closes && close > 0) {
-    animation = animation.leaving;
-    reveal = 1 - close.clamp(0.0, 1.0);
-  }
+  var (animation, reveal) = _arrival(e, pose);
   // Nothing yet -- unless what is being animated is a mark drawn *on* the
   // words and the words are meant to be there already, which is what an
   // underline being drawn under a finished sentence looks like.
@@ -321,6 +320,23 @@ void _paintText(
   // carries on from the last word of one column into the first of the next.
   paintTextInColumns(canvas, e.displayText, spec, inner, e.columns,
       animation: animation, reveal: reveal, parts: e.parts);
+}
+
+/// _arrival is the animation a text element is playing on this frame, and how
+/// far through it is.
+///
+/// The two channels a chart's animation uses, read the same way, so the
+/// timeline treats the two kinds of element identically -- and so that text
+/// in a box and text riding a line ask the same question rather than two that
+/// drift apart. See TextAnimation.
+(TextAnimation, double) _arrival(TextElement e, Keyframe pose) {
+  var animation = e.animation;
+  var reveal = pose.values[KeyframeChannel.reveal] ?? 1;
+  var close = pose.values[KeyframeChannel.close] ?? 0;
+  if (animation.closes && close > 0) {
+    return (animation.leaving, 1 - close.clamp(0.0, 1.0));
+  }
+  return (animation, reveal);
 }
 
 /// drawnTextSpec is the type a text element is actually drawn in.

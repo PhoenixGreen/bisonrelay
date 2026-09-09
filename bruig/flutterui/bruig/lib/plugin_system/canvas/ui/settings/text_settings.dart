@@ -256,6 +256,175 @@ Widget _partsSection(TextElement e, SettingsWrite write, VoidCallback begin,
             value: part.italic ?? e.textSpec.italic,
             onChanged: (v) => set(replacing(i, part.copyWith(italic: v))),
           ),
+          // A mark that is simply there, as opposed to one being drawn on by
+          // an animation. Off until it is asked for: most parts are a colour
+          // and nothing else, and two rows of padding fields under every one
+          // of them would bury that.
+          CanvasToggle(
+            label: "Highlight",
+            value: part.highlight != null,
+            onChanged: (v) => set(replacing(
+                i,
+                v
+                    ? part.copyWith(highlight: const PartHighlight())
+                    : part.copyWith(clearHighlight: true))),
+          ),
+          CanvasToggle(
+            label: "Underline",
+            value: part.underline != null,
+            onChanged: (v) => set(replacing(
+                i,
+                v
+                    ? part.copyWith(underline: const PartUnderline())
+                    : part.copyWith(clearUnderline: true))),
+          ),
+          if (part.highlight != null) ...[
+            const CanvasLineBreak(),
+            CanvasColorButton(
+              label: "Highlight",
+              color: part.highlight!.color,
+              onChanged: (c) => set(replacing(
+                  i,
+                  part.copyWith(
+                      highlight: part.highlight!.copyWith(color: c)))),
+            ),
+            // One field for all four sides, and the four on their own under
+            // it -- the same shape the drawn mark's padding takes, because it
+            // is the same question about the same kind of band.
+            CanvasNumberField(
+              label: "Padding",
+              value: part.highlight!.evenPad ?? 0,
+              min: 0,
+              max: 200,
+              decimals: 0,
+              width: 62,
+              onChanged: (v) {
+                begin();
+                write(e.copyWith(
+                    parts: replacing(
+                        i,
+                        part.copyWith(
+                            highlight: part.highlight!.withEvenPad(v)))));
+              },
+              onCommit: commit,
+            ),
+            for (var (name, at, make)
+                in <(String, double, PartHighlight Function(double))>[
+              (
+                "Left",
+                part.highlight!.padLeft,
+                (v) => part.highlight!.copyWith(padLeft: v)
+              ),
+              (
+                "Top",
+                part.highlight!.padTop,
+                (v) => part.highlight!.copyWith(padTop: v)
+              ),
+              (
+                "Right",
+                part.highlight!.padRight,
+                (v) => part.highlight!.copyWith(padRight: v)
+              ),
+              (
+                "Bottom",
+                part.highlight!.padBottom,
+                (v) => part.highlight!.copyWith(padBottom: v)
+              ),
+            ])
+              CanvasNumberField(
+                label: name,
+                value: at,
+                min: 0,
+                max: 200,
+                decimals: 0,
+                width: 56,
+                onChanged: (v) {
+                  begin();
+                  write(e.copyWith(
+                      parts: replacing(i, part.copyWith(highlight: make(v)))));
+                },
+                onCommit: commit,
+              ),
+            CanvasNumberField(
+              label: "Corners",
+              value: part.highlight!.radius,
+              min: 0,
+              max: 200,
+              decimals: 0,
+              width: 62,
+              onChanged: (v) {
+                begin();
+                write(e.copyWith(
+                    parts: replacing(
+                        i,
+                        part.copyWith(
+                            highlight: part.highlight!.copyWith(radius: v)))));
+              },
+              onCommit: commit,
+            ),
+          ],
+          if (part.underline != null) ...[
+            const CanvasLineBreak(),
+            CanvasDropdown<PartLineStyle>(
+              key: ValueKey("partUnderlineStyle$i"),
+              label: "Line",
+              value: part.underline!.style,
+              width: 130,
+              options: [for (var v in PartLineStyle.values) (v, v.label)],
+              onChanged: (v) => set(replacing(
+                  i,
+                  part.copyWith(
+                      underline: part.underline!.copyWith(style: v)))),
+            ),
+            CanvasColorButton(
+              label: "Line colour",
+              color: part.underline!.color ?? part.color ?? e.textSpec.color,
+              onChanged: (c) => set(replacing(
+                  i,
+                  part.copyWith(
+                      underline: part.underline!.copyWith(color: c)))),
+            ),
+            CanvasNumberField(
+              label: "Width",
+              value: part.underline!.width,
+              min: 0.5,
+              max: 60,
+              decimals: 1,
+              width: 58,
+              onChanged: (v) {
+                begin();
+                write(e.copyWith(
+                    parts: replacing(
+                        i,
+                        part.copyWith(
+                            underline: part.underline!.copyWith(width: v)))));
+              },
+              onCommit: commit,
+            ),
+            CanvasNumberField(
+              label: "Away",
+              value: part.underline!.away,
+              min: -40,
+              max: 120,
+              decimals: 0,
+              width: 58,
+              onChanged: (v) {
+                begin();
+                write(e.copyWith(
+                    parts: replacing(
+                        i,
+                        part.copyWith(
+                            underline: part.underline!.copyWith(away: v)))));
+              },
+              onCommit: commit,
+            ),
+            const CanvasHint(
+                "The last four line styles are drawn rather than ruled: they "
+                "wander, lean and overshoot the last letter the way a line "
+                "drawn by hand does. Marker is a brush — thick in the middle "
+                "and tapered at both ends. Width sets how heavy the line is, "
+                "and Away how far under the letters it sits."),
+          ],
           CanvasIconButton(
             icon: Icons.delete_outline,
             tooltip: "Remove this part",
