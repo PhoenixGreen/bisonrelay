@@ -1237,14 +1237,57 @@ void paintCentredGlyphs(
 /// height multiplied out, because lines are not all the same height -- a line
 /// with nothing tall on it is shorter -- and fifteen lines of "about the same"
 /// is a cut line by the bottom of the column.
+/// lineEdges is where one line of a laid-out paragraph gives way to the next,
+/// with an entry for the top of the first and the bottom of the last.
+///
+/// Not the line boxes' own boundaries, because those are not where the ink
+/// stops. A line's ascent and descent are the font's and a line's height is
+/// the type's: set tighter than the font's own -- which is most headlines --
+/// the descenders of one line hang below the box of the next, and a column
+/// cut at the box boundary began with the bottom of a line belonging to the
+/// column before it. That is the sliver along the top of a column.
+///
+/// So the edge is the later of the two: the box boundary, or the bottom of
+/// the ink above it. Nothing of the line above survives it, and the line
+/// below loses a fraction of the empty room over its capitals.
+List<double> lineEdges(List<ui.LineMetrics> metrics) {
+  var edges = <double>[0];
+  var at = 0.0;
+  for (var (i, line) in metrics.indexed) {
+    at += line.height;
+
+    // Half a pixel past the ink above rather than exactly on it: a clip cut
+    // on the very edge of a descender leaves the row it straddles part
+    // covered, and a faint grey line along the top of a column is still a
+    // line along the top of a column. The half pixel comes out of the empty
+    // room over the next line's capitals.
+    var edge = math.max(at, line.baseline + line.descent) + 0.5;
+
+    // But never into the letters below. Set tight enough -- and some
+    // headlines are -- the descenders of one line reach past the capitals of
+    // the next, and then there is no cut that shows all of both. Given that
+    // choice this takes a sliver off the descender above rather than
+    // flattening the capitals below, which is the one people read as damage.
+    //
+    // A capital is around three quarters of the ascent in the faces anybody
+    // sets a headline in; the rest of the ascent is room for accents.
+    if (i + 1 < metrics.length) {
+      var below = metrics[i + 1];
+      edge = math.min(edge, below.baseline - below.ascent * 0.78);
+    }
+    edges.add(math.max(edge, edges.last));
+  }
+  return edges;
+}
+
 List<(int, int)> columnRuns(
     List<ui.LineMetrics> metrics, double height, int columns) {
   if (metrics.isEmpty || columns <= 0) return const [];
 
-  /// top is where a line starts, measured from the top of the paragraph.
-  double top(int line) => line >= metrics.length
-      ? metrics.last.baseline + metrics.last.descent
-      : metrics[line].baseline - metrics[line].ascent;
+  /// top is where a line starts, measured from the top of the paragraph. See
+  /// lineEdges on why it is not simply the line's box.
+  var tops = lineEdges(metrics);
+  double top(int line) => tops[line.clamp(0, tops.length - 1)];
 
   var runs = <(int, int)>[];
   var at = 0;
@@ -1302,9 +1345,8 @@ void paintTextInColumns(
           parts: parts)
       : null;
 
-  double top(int line) => line >= metrics.length
-      ? metrics.last.baseline + metrics.last.descent
-      : metrics[line].baseline - metrics[line].ascent;
+  var tops = lineEdges(metrics);
+  double top(int line) => tops[line.clamp(0, tops.length - 1)];
 
   for (var i = 0; i < runs.length; i++) {
     var (from, to) = runs[i];

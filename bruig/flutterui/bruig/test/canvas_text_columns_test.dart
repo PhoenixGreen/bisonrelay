@@ -17,6 +17,80 @@ import 'package:flutter_test/flutter_test.dart';
 // same three quarters appeared again at the top of the next column.
 
 void main() {
+  group("where one column stops and the next starts", () {
+    /// lines is a paragraph laid out at [height] a line, out of a font whose
+    /// letters want a little more room than that -- which is the ordinary
+    /// case: Inter at a line height of 1.2 asks for 19.2 and is given 19.
+    List<ui.LineMetrics> lines(int count,
+        {double height = 19, double ascent = 15.4, double descent = 3.8}) {
+      return [
+        for (var i = 0; i < count; i++)
+          ui.LineMetrics(
+            hardBreak: false,
+            ascent: ascent,
+            descent: descent,
+            unscaledAscent: ascent,
+            height: height,
+            width: 100,
+            left: 0,
+            baseline: height * i + ascent,
+            lineNumber: i,
+          ),
+      ];
+    }
+
+    test("the edge is below the ink of the line above it", () {
+      // A line's ascent and descent are the font's; a line's height is the
+      // type's. Set tighter than the font wants -- which is most of the
+      // time -- the descenders of one line hang below the box of the next, so
+      // a column cut at the box boundary began with the bottom of a line that
+      // belonged to the column before it.
+      var metrics = lines(4);
+      var edges = lineEdges(metrics);
+      expect(edges.length, 5, reason: "four lines have five boundaries");
+      expect(edges.first, 0);
+
+      for (var i = 0; i < metrics.length; i++) {
+        var ink = metrics[i].baseline + metrics[i].descent;
+        expect(edges[i + 1], greaterThan(ink),
+            reason: "nothing of line $i survives the edge under it");
+      }
+    });
+
+    test("and above the letters of the line below it", () {
+      // The other half: the edge must not eat into the line that starts
+      // there. It takes the empty room over its capitals and nothing more.
+      var metrics = lines(4);
+      var edges = lineEdges(metrics);
+      for (var i = 1; i < metrics.length; i++) {
+        var capitals = metrics[i].baseline - metrics[i].ascent * 0.75;
+        expect(edges[i], lessThan(capitals), reason: "line $i is not cut into");
+      }
+    });
+
+    test("and where the two cannot both be had, the letters win", () {
+      // Set tight enough -- and some headlines are -- the descenders of one
+      // line reach past the capitals of the next, and no cut shows all of
+      // both. Given that choice, a sliver of a descender is better than
+      // flattened capitals.
+      var metrics = lines(4, height: 15);
+      var edges = lineEdges(metrics);
+      for (var i = 1; i < metrics.length; i++) {
+        var capitals = metrics[i].baseline - metrics[i].ascent * 0.75;
+        expect(edges[i], lessThan(capitals), reason: "line $i is not cut into");
+        expect(edges[i], greaterThan(metrics[i].baseline - metrics[i].ascent),
+            reason: "and the edge has still moved down off the box boundary");
+      }
+    });
+
+    test("a paragraph the font is happy with is cut at the line boxes", () {
+      // Nothing to move: with room to spare the boundary is the box's own.
+      var metrics = lines(3, height: 30);
+      var edges = lineEdges(metrics);
+      expect(edges[1], closeTo(30, 0.6));
+      expect(edges[2], closeTo(60, 0.6));
+    });
+  });
   TestWidgetsFlutterBinding.ensureInitialized();
 
   /// lines lays a paragraph out and hands back its line metrics, which is
