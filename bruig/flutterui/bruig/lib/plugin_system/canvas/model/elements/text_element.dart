@@ -319,22 +319,6 @@ class TextElement extends CanvasElement {
   /// wrap flows the words around whatever overlaps the box. See TextWrap.
   final TextWrap wrap;
 
-  /// lockFlow keeps this box's connector from being changed by a drag.
-  ///
-  /// The grips are still drawn -- they are how a chain is read -- but they do
-  /// not answer the pointer. A connector is a structural thing: the words in
-  /// four boxes depend on it, and it is dragged from a dot eight pixels
-  /// across that sits on the same outline as the resize handles.
-  final bool lockFlow;
-
-  /// hideFlow leaves the line between this box and the next undrawn.
-  ///
-  /// The grips stay, and that is the point: the blue and the red dots still
-  /// say there is a chain and whether the words all fit, while the line
-  /// itself stops crossing the design. What it hides is scaffolding; what it
-  /// keeps is the reading.
-  final bool hideFlow;
-
   /// curve attaches the text to a line, or is null for a paragraph in its own
   /// box. See [TextOnCurve].
   final TextOnCurve? curve;
@@ -355,8 +339,6 @@ class TextElement extends CanvasElement {
     this.document = const TextDocumentRef(),
     this.documentParts = const [],
     this.wrap = const TextWrap(),
-    this.lockFlow = false,
-    this.hideFlow = false,
     this.curve,
   });
 
@@ -424,8 +406,6 @@ class TextElement extends CanvasElement {
       document: document,
       documentParts: documentParts,
       wrap: wrap,
-      lockFlow: lockFlow,
-      hideFlow: hideFlow,
       curve: curve);
 
   TextElement copyWith({
@@ -445,8 +425,6 @@ class TextElement extends CanvasElement {
     TextDocumentRef? document,
     List<TextPart>? documentParts,
     TextWrap? wrap,
-    bool? lockFlow,
-    bool? hideFlow,
     TextOnCurve? curve,
     bool clearCurve = false,
   }) =>
@@ -465,8 +443,6 @@ class TextElement extends CanvasElement {
           document: document ?? this.document,
           documentParts: documentParts ?? this.documentParts,
           wrap: wrap ?? this.wrap,
-          lockFlow: lockFlow ?? this.lockFlow,
-          hideFlow: hideFlow ?? this.hideFlow,
           curve: clearCurve ? null : (curve ?? this.curve));
 
   @override
@@ -483,8 +459,6 @@ class TextElement extends CanvasElement {
         if (icon.on) "icon": icon.toJson(),
         if (flowTo.isNotEmpty) "flowTo": flowTo,
         if (wrap.toJson().isNotEmpty) "wrap": wrap.toJson(),
-        if (lockFlow) "lockFlow": true,
-        if (hideFlow) "hideFlow": true,
         if (document.on) "document": document.toJson(),
         if (documentParts.isNotEmpty)
           "documentParts": [for (var p in documentParts) p.toJson()],
@@ -534,8 +508,6 @@ class TextElement extends CanvasElement {
                       is Map<String, dynamic>
                   ? TextWrap.fromJson(json["wrap"] as Map<String, dynamic>)
                   : const TextWrap(),
-          lockFlow: jsonBool(json["lockFlow"], false),
-          hideFlow: jsonBool(json["hideFlow"], false),
           columns: jsonSpec(
               json["columns"], TextColumns.fromJson, const TextColumns()),
           curve: json["curve"] is Map<String, dynamic>

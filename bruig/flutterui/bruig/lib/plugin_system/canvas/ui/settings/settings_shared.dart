@@ -176,7 +176,6 @@ Widget positionGroup(CanvasController controller, CanvasElement e,
         },
         onCommit: commit,
       ),
-      ..._connectorToggles(e, write, begin, commit),
       poseDot,
     ]);
   }
@@ -286,41 +285,8 @@ Widget positionGroup(CanvasController controller, CanvasElement e,
           },
           onCommit: commit,
         ),
-        ..._connectorToggles(e, write, begin, commit),
         poseDot,
       ]);
-}
-
-/// _connectorToggles are the two switches for a text box's connector.
-///
-/// Beside the opacity, and only on a text element, because that is the only
-/// element that has one. Locking it keeps a structural thing -- the words in
-/// four boxes depend on it -- from being changed by a drag that missed a
-/// resize handle; hiding it takes the line off the design and leaves the
-/// grips, which are how the chain is read.
-List<Widget> _connectorToggles(CanvasElement e, SettingsWrite write,
-    VoidCallback begin, VoidCallback commit) {
-  if (e is! TextElement) return const [];
-  void set(TextElement next) {
-    begin();
-    write(next);
-    commit();
-  }
-
-  return [
-    CanvasToggle(
-      key: const ValueKey("textLockFlow"),
-      label: "Lock joins",
-      value: e.lockFlow,
-      onChanged: (v) => set(e.copyWith(lockFlow: v)),
-    ),
-    CanvasToggle(
-      key: const ValueKey("textHideFlow"),
-      label: "Hide joins",
-      value: e.hideFlow,
-      onChanged: (v) => set(e.copyWith(hideFlow: v)),
-    ),
-  ];
 }
 
 /// typeGroups is the shared type controls, used by every element that draws

@@ -168,6 +168,27 @@ class _CanvasSettingsBarState extends State<CanvasSettingsBar> {
               active: controller.tool == CanvasTool.pan,
               onPressed: () => controller.tool = CanvasTool.pan),
           _divider(theme),
+          // The joins between text boxes: locked so a drag cannot change
+          // them, and hidden so the lines stop crossing the design. Beside
+          // the boxes and the handles because all four are the same kind of
+          // thing -- what is drawn while working, and never published.
+          _barButton(theme,
+              icon: controller.lockJoins ? Icons.link_off : Icons.link,
+              tooltip: controller.lockJoins
+                  ? "Let the joins between text boxes be dragged again"
+                  : "Lock the joins between text boxes",
+              active: controller.lockJoins,
+              onPressed: () => controller.lockJoins = !controller.lockJoins),
+          _barButton(theme,
+              icon: controller.hideJoins
+                  ? Icons.timeline
+                  : Icons.polyline_outlined,
+              tooltip: controller.hideJoins
+                  ? "Show the lines between linked text boxes"
+                  : "Hide the lines between linked text boxes, keeping their "
+                      "grips",
+              active: controller.hideJoins,
+              onPressed: () => controller.hideJoins = !controller.hideJoins),
           // Every element's box, or only the selected one's. Beside the
           // handles toggle because it is the same kind of thing -- something
           // drawn while working and never published -- and one switch for the

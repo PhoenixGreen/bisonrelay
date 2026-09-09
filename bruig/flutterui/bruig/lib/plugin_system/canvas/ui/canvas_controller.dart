@@ -396,6 +396,38 @@ class CanvasController extends ChangeNotifier {
     _notifyView();
   }
 
+  bool _lockJoins = false;
+
+  /// lockJoins keeps the connectors between text boxes from being changed by
+  /// a drag.
+  ///
+  /// A connector is structural -- the words in several boxes depend on it --
+  /// and it is dragged from a dot eight pixels across sitting on the same
+  /// outline as the resize handles. Locked, the grips are still drawn, since
+  /// they are how a chain is read; they simply do not answer the pointer.
+  bool get lockJoins => _lockJoins;
+
+  set lockJoins(bool value) {
+    if (_lockJoins == value) return;
+    _lockJoins = value;
+    _notifyView();
+  }
+
+  bool _hideJoins = false;
+
+  /// hideJoins leaves the lines between linked text boxes undrawn.
+  ///
+  /// The grips stay, and that is the point: the blue and the red dots still
+  /// say there is a chain and whether the words all fit, while the lines stop
+  /// crossing the design.
+  bool get hideJoins => _hideJoins;
+
+  set hideJoins(bool value) {
+    if (_hideJoins == value) return;
+    _hideJoins = value;
+    _notifyView();
+  }
+
   int? _focusedPlayer;
 
   /// focusedPlayer is which player of the selected team the timeline is about.

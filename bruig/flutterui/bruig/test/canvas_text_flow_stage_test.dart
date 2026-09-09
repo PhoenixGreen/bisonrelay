@@ -250,8 +250,8 @@ void main() {
     var controller = twoBoxes();
     addTearDown(controller.dispose);
     var stage = await pump(tester, controller);
-    controller.replaceElement(
-        boxIn(controller, "a").copyWith(flowTo: "b", lockFlow: true));
+    controller.replaceElement(boxIn(controller, "a").copyWith(flowTo: "b"));
+    controller.lockJoins = true;
     controller.selectOnly("a");
     await tester.pumpAndSettle();
 
@@ -262,8 +262,8 @@ void main() {
     expect(stage.textFlowLines.length, 1, reason: "and it is still drawn");
 
     // Hidden: the line goes, the grips stay.
-    controller.replaceElement(
-        boxIn(controller, "a").copyWith(hideFlow: true, lockFlow: false));
+    controller.lockJoins = false;
+    controller.hideJoins = true;
     await tester.pumpAndSettle();
     expect(stage.textFlowLines, isEmpty);
     expect(stage.textFlowGrips!.linked, isTrue,

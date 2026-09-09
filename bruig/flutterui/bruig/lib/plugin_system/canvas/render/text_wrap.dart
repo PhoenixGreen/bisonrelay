@@ -64,6 +64,12 @@ List<Rect> wrapObstacles(
     if (other.id == e.id || !other.visible) continue;
     if (other.kind == ElementKind.background) continue;
     if (e.curve?.elementId == other.id) continue;
+    // Never the boxes this one shares its words with. They are one paragraph
+    // in several places, they are routinely laid over each other while a
+    // chain is being arranged, and treating the box the words come *from* as
+    // something to go around squeezed them into whatever strip was left --
+    // which read as the wrapping having deleted them.
+    if (_sameChain(e, other, doc)) continue;
 
     var box = other.boundsAt(frame).inflate(e.wrap.gap);
     if (!box.overlaps(inner)) continue;
@@ -72,6 +78,29 @@ List<Rect> wrapObstacles(
     out.add(box);
   }
   return out;
+}
+
+/// _sameChain is whether [other] is one of the boxes [e] shares its words
+/// with, in either direction.
+///
+/// Walked rather than asked of text_flow, which is the other side of this
+/// question and imports this file to answer it.
+bool _sameChain(TextElement e, CanvasElement other, CanvasDocument doc) {
+  if (other is! TextElement) return false;
+
+  bool reaches(TextElement from, String id) {
+    var at = from;
+    for (var guard = 0; guard < 64; guard++) {
+      if (at.flowTo.isEmpty) return false;
+      var next = doc.elementById(at.flowTo);
+      if (next is! TextElement) return false;
+      if (next.id == id) return true;
+      at = next;
+    }
+    return false;
+  }
+
+  return reaches(e, other.id) || reaches(other, e.id);
 }
 
 /// freeRuns is the room left on a line between [top] and [bottom].
@@ -116,6 +145,19 @@ List<(double, double)> freeRuns(
   if (runs.isEmpty || side == WrapSide.both) return runs;
   return [side == WrapSide.left ? runs.first : runs.last];
 }
+
+/// wrapFits is whether wrapping this text round these obstacles leaves
+/// anywhere to put it.
+///
+/// Something covering the box from side to side leaves no room on any line,
+/// and a paragraph set into no room is a paragraph nobody can see. Where that
+/// happens the words are laid out the ordinary way and drawn over whatever is
+/// in the way: that is wrong, and it is visibly wrong, which is what somebody
+/// can act on. Silently deleting a page of text is neither.
+bool wrapFits(String text, TextSpec spec, Rect box, List<Rect> blocked,
+        TextWrap wrap) =>
+    text.trim().isEmpty ||
+    layoutWrapped(text, spec, box, blocked, wrap).lines.isNotEmpty;
 
 /// layoutWrapped sets [text] inside [box], going around [blocked].
 ///

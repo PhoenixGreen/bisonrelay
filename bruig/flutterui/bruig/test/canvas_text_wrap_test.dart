@@ -147,11 +147,57 @@ void main() {
       late int asked;
       await tester.runAsync(() async {
         alone = lit(await ink(CanvasDocument(elements: [_text()])));
-        asked = lit(await ink(CanvasDocument(
-            elements: [_text(wrap: const TextWrap(on: true))])));
+        asked = lit(await ink(
+            CanvasDocument(elements: [_text(wrap: const TextWrap(on: true))])));
       });
       expect(asked, alone,
           reason: "the same words in the same places: $alone against $asked");
+    });
+  });
+
+  group("what is never treated as an obstacle", () {
+    test("the boxes this one shares its words with", () {
+      // They are one paragraph in several places, and they are routinely laid
+      // over each other while a chain is being arranged. Treated as something
+      // to go around, the box the words come *from* squeezed them into
+      // whatever strip was left -- which reads as the wrapping having deleted
+      // them.
+      var tail = TextElement(
+        const ElementBase(id: "t", x: 100, y: 100, width: 430, height: 400),
+        text: _words,
+        wrap: const TextWrap(on: true, gap: 12),
+      );
+      var head = TextElement(
+        const ElementBase(id: "a", x: 60, y: 130, width: 400, height: 460),
+        text: "Head of the chain",
+        flowTo: "t",
+      );
+      var doc = CanvasDocument(elements: [head, tail, _blocker(x: 460)]);
+
+      var blocked = wrapObstacles(tail, doc, 0, tail.bounds);
+      expect(blocked.length, 1, reason: "the shape, and not the box in front");
+      expect(blocked.single.left, greaterThan(400));
+
+      // And the same from the other end of the chain: the box the words are
+      // passed *to* is not something to go around either.
+      var fromHead = wrapObstacles(
+          head.copyWith(wrap: const TextWrap(on: true)), doc, 0, head.bounds);
+      expect(fromHead.any((r) => r.overlaps(tail.bounds.deflate(40))), isFalse,
+          reason: "the tail is not in the way: $fromHead");
+    });
+
+    test("and nothing at all when going round it would leave no room", () {
+      // Something covering the box from side to side leaves nowhere to put
+      // the words. Drawn over the top of it they are visibly wrong, which is
+      // something to act on; silently deleted they are not.
+      var text = _text(wrap: const TextWrap(on: true, gap: 8));
+      const room = Rect.fromLTWH(0, 0, 400, 200);
+      var across = [const Rect.fromLTRB(-20, -20, 420, 220)];
+      expect(wrapFits(_words, text.textSpec, room, across, text.wrap), isFalse);
+      expect(
+          wrapFits(_words, text.textSpec, room,
+              [const Rect.fromLTRB(300, 40, 420, 120)], text.wrap),
+          isTrue);
     });
   });
 
@@ -170,20 +216,23 @@ void main() {
         _blocker(x: 120, width: 200),
       ]);
 
-      var wideOpen = flowFor(
-          clear.elementById("t") as TextElement, clear, room, spec);
-      var crowded = flowFor(
-          blocked.elementById("t") as TextElement, blocked, room, spec);
+      var wideOpen =
+          flowFor(clear.elementById("t") as TextElement, clear, room, spec);
+      var crowded =
+          flowFor(blocked.elementById("t") as TextElement, blocked, room, spec);
       expect(crowded.overflows, isTrue);
       expect(wideOpen.overflows, isTrue);
 
       // And the crowded box shows less of it.
-      var wrappedText = layoutWrapped(_words, spec, room,
-          wrapObstacles(blocked.elementById("t") as TextElement, blocked, 0,
-              room),
+      var wrappedText = layoutWrapped(
+          _words,
+          spec,
+          room,
+          wrapObstacles(
+              blocked.elementById("t") as TextElement, blocked, 0, room),
           const TextWrap(on: true, gap: 8));
-      var openText = layoutWrapped(
-          _words, spec, room, const [], const TextWrap(on: true));
+      var openText =
+          layoutWrapped(_words, spec, room, const [], const TextWrap(on: true));
       expect(wrappedText.consumed, lessThan(openText.consumed));
     });
   });

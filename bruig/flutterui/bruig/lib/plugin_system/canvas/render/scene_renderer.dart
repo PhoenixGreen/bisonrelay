@@ -347,7 +347,9 @@ void _paintText(
   // against the elements round it -- so it runs only for an element that
   // wants it. See text_wrap.dart.
   var blocked = wrapObstacles(e, doc, frame, inner);
-  if (e.wrap.on && blocked.isNotEmpty) {
+  if (e.wrap.on &&
+      blocked.isNotEmpty &&
+      wrapFits(words, spec, inner, blocked, e.wrap)) {
     // The marks and the arrival still apply, as a block: the words are set a
     // line at a time here, so there are no pieces for a per-letter motion to
     // move. A whole-paragraph preset reads the same either way.

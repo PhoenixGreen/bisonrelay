@@ -753,7 +753,10 @@ class CanvasStageState extends State<CanvasStage> {
   /// they are working on a pair of elements, and a link is a fact about a
   /// pair.
   List<FlowLine> _flowLines() {
-    if (!controller.showHelpers) return const [];
+    // Hidden leaves the grips: they say there is a chain and whether the
+    // words all fit, which is the reading. It is the lines that cross the
+    // design.
+    if (!controller.showHelpers || controller.hideJoins) return const [];
     var out = <FlowLine>[];
 
     for (var e in document.elements) {
@@ -763,9 +766,6 @@ class CanvasStageState extends State<CanvasStage> {
 
       // Not the one in hand: it is being drawn from the pointer instead.
       if (_mode == _DragMode.flow && e.id == _flowFrom) continue;
-      // Hidden by the box the words leave: the grips stay, so the chain can
-      // still be read, and the line stops crossing the design.
-      if (e.hideFlow) continue;
 
       var shown = controller.showAllBounds ||
           controller.selection.contains(e.id) ||
@@ -833,7 +833,7 @@ class CanvasStageState extends State<CanvasStage> {
     var from = _flowFrom == null
         ? null
         : document.elementById(_flowFrom!) as TextElement?;
-    if (from == null || from.lockFlow) return;
+    if (from == null || controller.lockJoins) return;
 
     var doc = _toDocument(stage);
     TextElement? onto;
@@ -988,7 +988,7 @@ class CanvasStageState extends State<CanvasStage> {
       // A locked connector still shows: it is how a chain is read. It simply
       // does not answer the pointer, which is what keeps four boxes' worth of
       // words from being disconnected by a drag that missed a resize handle.
-      if (selected is TextElement && selected.lockFlow) return;
+      if (controller.lockJoins) return;
       // Dragging the incoming grip takes hold of the link that arrives here,
       // which belongs to the box in front of this one. The loose end is what
       // moves; where it is dropped is what it means.
