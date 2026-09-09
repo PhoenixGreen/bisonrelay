@@ -209,6 +209,15 @@ class TextElement extends CanvasElement {
   /// icon is a picture set beside, above or below the words. See TextIcon.
   final TextIcon icon;
 
+  /// flowTo is the text element the words that do not fit run on into, or ""
+  /// for none.
+  ///
+  /// One way, always. A chain is a line of boxes with a head and a tail, and
+  /// the words run from one to the next; a link that could point backwards
+  /// would let somebody make a ring of boxes, and a ring has no first box to
+  /// start reading from. See flowFor, which refuses to make one.
+  final String flowTo;
+
   /// document is the Writing library document these words came from, if any.
   ///
   /// The words themselves are in [text]: read once and copied in, because a
@@ -238,6 +247,7 @@ class TextElement extends CanvasElement {
     this.highlight,
     this.underline,
     this.icon = const TextIcon(),
+    this.flowTo = "",
     this.document = const TextDocumentRef(),
     this.documentParts = const [],
     this.curve,
@@ -285,6 +295,7 @@ class TextElement extends CanvasElement {
       highlight: highlight,
       underline: underline,
       icon: icon,
+      flowTo: flowTo,
       document: document,
       documentParts: documentParts,
       curve: curve);
@@ -302,6 +313,7 @@ class TextElement extends CanvasElement {
     PartUnderline? underline,
     bool clearUnderline = false,
     TextIcon? icon,
+    String? flowTo,
     TextDocumentRef? document,
     List<TextPart>? documentParts,
     TextOnCurve? curve,
@@ -318,6 +330,7 @@ class TextElement extends CanvasElement {
           highlight: clearHighlight ? null : (highlight ?? this.highlight),
           underline: clearUnderline ? null : (underline ?? this.underline),
           icon: icon ?? this.icon,
+          flowTo: flowTo ?? this.flowTo,
           document: document ?? this.document,
           documentParts: documentParts ?? this.documentParts,
           curve: clearCurve ? null : (curve ?? this.curve));
@@ -334,6 +347,7 @@ class TextElement extends CanvasElement {
         if (highlight != null) "highlight": highlight!.toJson(),
         if (underline != null) "underline": underline!.toJson(),
         if (icon.on) "icon": icon.toJson(),
+        if (flowTo.isNotEmpty) "flowTo": flowTo,
         if (document.on) "document": document.toJson(),
         if (documentParts.isNotEmpty)
           "documentParts": [for (var p in documentParts) p.toJson()],
@@ -377,6 +391,7 @@ class TextElement extends CanvasElement {
               for (var p in raw)
                 if (p is Map<String, dynamic>) TextPart.fromJson(p),
           ],
+          flowTo: jsonString(json["flowTo"], ""),
           columns: jsonSpec(
               json["columns"], TextColumns.fromJson, const TextColumns()),
           curve: json["curve"] is Map<String, dynamic>

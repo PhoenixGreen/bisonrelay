@@ -20,7 +20,9 @@ import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/render/procedural_cache.dart';
+import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
+import 'package:bruig/plugin_system/canvas/render/text_flow.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_text_editor.dart';
 import 'package:bruig/plugin_system/canvas/ui/image_picking.dart';
@@ -80,6 +82,12 @@ enum _DragMode {
   /// moves neither the element nor the picture's pixels -- only which part of
   /// them the frame is showing. See ImageFraming.
   imageFrame,
+
+  /// flow is a link being pulled out of a text box's overflow grip and
+  /// dropped on another box, which is how a chain of boxes is made. Its own
+  /// mode because it moves nothing at all: what it changes is which box the
+  /// words that do not fit run on into.
+  flow,
 
   /// guide is one of the reader's own lines being moved, or a new one being
   /// pulled out of a ruler. Not an element at all: it moves nothing on the
@@ -238,6 +246,11 @@ class CanvasStageState extends State<CanvasStage> {
   bool _nodeHandleOut = false;
 
   StageHandle? _handle;
+
+  /// _flowFrom is the text box a link is being dragged out of, and _flowAt
+  /// where the pointer has got to. See TextFlowGrips.
+  String? _flowFrom;
+  Offset? _flowAt;
 
   /// _dragStart is where the gesture began, in document space, and
   /// _startBounds are the selected elements as they were then.
@@ -504,6 +517,17 @@ class CanvasStageState extends State<CanvasStage> {
   @visibleForTesting
   Size get viewportSize => _viewport;
 
+  /// flowGrips is where a selected text box's overflow dots are and what they
+  /// say, for the tests that drag one onto another box. Painted rather than
+  /// laid out, like everything else here, so there is nothing to find.
+  @visibleForTesting
+  TextFlowGrips? get textFlowGrips => _flowGrips();
+
+  /// toStagePoint is where a point of the document is on screen, for the same
+  /// tests: a drag has to start and end somewhere real.
+  @visibleForTesting
+  Offset toStagePoint(Offset doc) => _toStage(doc);
+
   /// _selectionBounds is the axis-aligned box around everything selected, in
   /// document space.
   ///
@@ -674,6 +698,99 @@ class CanvasStageState extends State<CanvasStage> {
     return null;
   }
 
+  /// _selectedText is the one text element selected on its own, which is the
+  /// only time the flow grips are shown: they belong to a box, and two boxes
+  /// selected together have two of everything.
+  TextElement? _selectedText() {
+    if (controller.selection.length != 1) return null;
+    var element = document.elementById(controller.selection.first);
+    return element is TextElement ? element : null;
+  }
+
+  /// _flowGrips is where a selected text box's two dots go, and what they
+  /// have to say. Null when there is nothing to say it about.
+  TextFlowGrips? _flowGrips() {
+    if (!controller.showHelpers) return null;
+    var e = _selectedText();
+    if (e == null || e.curve != null) return null;
+    var bounds = _selectionBounds;
+    if (bounds == null) return null;
+
+    var inner = iconRoom(e.bounds.deflate(e.box.padding), e.icon).$2;
+    var flow = flowFor(e, document, inner, drawnTextSpec(e, e.bounds));
+
+    var into = e.flowTo.isEmpty ? null : document.elementById(e.flowTo);
+    return TextFlowGrips(
+      inAt: _gripPosition(bounds, top: true),
+      outAt: _gripPosition(bounds, top: false),
+      overflowing: flow.overflows,
+      receiving: flow.receiving,
+      linked: into != null,
+      to: into == null
+          ? null
+          : _toStage(into.bounds.topLeft + const Offset(0, flowGripGap)),
+    );
+  }
+
+  /// _gripPosition puts a flow grip inside a corner rather than on it: the
+  /// corner is a resize handle, and two things at one point are two things
+  /// that cannot be aimed at separately.
+  Offset _gripPosition(Rect bounds, {required bool top}) {
+    var centre = _toStage(bounds.center);
+    var half = Offset(bounds.width, bounds.height) * _scale / 2;
+    var local = top
+        ? Offset(-half.dx, -half.dy + flowGripGap)
+        : Offset(half.dx, half.dy - flowGripGap);
+    var a = _rotationOfSelection;
+    if (a == 0) return centre + local;
+    return centre +
+        Offset(local.dx * math.cos(a) - local.dy * math.sin(a),
+            local.dx * math.sin(a) + local.dy * math.cos(a));
+  }
+
+  /// _hitFlowGrip is whether the overflow grip is under the pointer. Only the
+  /// one: words go one way, so there is one grip to pull them from.
+  bool _hitFlowGrip(Offset stage) {
+    var grips = _flowGrips();
+    if (grips == null) return false;
+    return (stage - grips.outAt).distance <= handleSize / 2 + handleHitSlop;
+  }
+
+  /// _dropFlow finishes a link drag: onto another text box it points the
+  /// words there, anywhere else it takes the link away.
+  ///
+  /// Dropping on nothing meaning "no link" rather than "cancel" is
+  /// deliberate: a chain is taken apart by pulling the line off, which is the
+  /// same gesture that made it and needs nothing else on the screen.
+  void _dropFlow(Offset stage) {
+    var from = _flowFrom == null
+        ? null
+        : document.elementById(_flowFrom!) as TextElement?;
+    if (from == null) return;
+
+    var doc = _toDocument(stage);
+    TextElement? onto;
+    for (var element in document.elements.reversed) {
+      if (element is! TextElement || element.id == from.id) continue;
+      if (element.locked || !element.visible) continue;
+      if (_containsPoint(element, doc)) {
+        onto = element;
+        break;
+      }
+    }
+
+    if (onto != null && wouldLoop(from, onto.id, document)) {
+      // A ring of boxes has no first box, so there is nowhere to start
+      // reading. Refused rather than resolved -- and the link that was there
+      // is left alone, since the reader was reaching for something else.
+      return;
+    }
+
+    controller.beginInteraction();
+    controller.replaceElement(from.copyWith(flowTo: onto?.id ?? ""));
+    controller.endInteraction();
+  }
+
   /// _handlePosition is where a grip is drawn, in stage space.
   Offset _handlePosition(StageHandle handle, Rect bounds) {
     var centre = _toStage(bounds.center);
@@ -794,6 +911,17 @@ class CanvasStageState extends State<CanvasStage> {
     if (!_viewRect.contains(stage) && _hitHandle(stage) == null) {
       if (!_shiftHeld) controller.clearSelection();
       _mode = _DragMode.none;
+      return;
+    }
+
+    // The overflow grip, before the resize handles: it sits inside the corner
+    // and is the smaller target of the two.
+    if (_hitFlowGrip(stage)) {
+      setState(() {
+        _flowFrom = controller.selection.first;
+        _flowAt = stage;
+        _mode = _DragMode.flow;
+      });
       return;
     }
 
@@ -1605,6 +1733,13 @@ class CanvasStageState extends State<CanvasStage> {
       return;
     }
 
+    // A link being pulled out of a text box's overflow grip. Nothing on the
+    // canvas moves; the line follows the pointer until it is let go.
+    if (_mode == _DragMode.flow) {
+      setState(() => _flowAt = event.localPosition);
+      return;
+    }
+
     var doc = _toDocument(event.localPosition);
     var delta = doc - _dragStart;
 
@@ -1873,6 +2008,16 @@ class CanvasStageState extends State<CanvasStage> {
       return;
     }
 
+    if (_mode == _DragMode.flow) {
+      _dropFlow(event.localPosition);
+      setState(() {
+        _flowFrom = null;
+        _flowAt = null;
+        _mode = _DragMode.none;
+      });
+      return;
+    }
+
     if (_mode == _DragMode.marquee) {
       var box = _marquee;
       if (box != null && box.width > 3 && box.height > 3) {
@@ -2114,6 +2259,8 @@ class CanvasStageState extends State<CanvasStage> {
                         showHandles: _selectionHasOwnGeometry,
                         selectionRotation: _rotationOfSelection,
                         handleFor: _handlePosition,
+                        flowGrips: _flowGrips(),
+                        flowDrag: _mode == _DragMode.flow ? _flowAt : null,
                         marquee: _marquee,
                       ),
                       size: Size.infinite,

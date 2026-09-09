@@ -20,6 +20,7 @@ import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/image_placement.dart';
 import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
+import 'package:bruig/plugin_system/canvas/render/text_flow.dart';
 import 'package:bruig/plugin_system/canvas/render/procedural/generators.dart';
 import 'package:bruig/plugin_system/canvas/render/procedural_cache.dart';
 import 'package:bruig/plugin_system/canvas/render/table_painter.dart';
@@ -307,6 +308,12 @@ void _paintText(
 
   var spec = drawnTextSpec(e, bounds);
 
+  // A box may be one of a line of them, sharing one piece of text -- see
+  // flowFor. What it draws is its own share of that, which for a box on its
+  // own is all of it.
+  var flow = flowFor(e, doc, inner, spec);
+  var words = flow.text;
+
   // How much of it has arrived, and how much has left again -- the same two
   // channels a chart's animation uses, so the timeline treats the two kinds
   // of element identically. See TextAnimation.
@@ -328,7 +335,7 @@ void _paintText(
   }
 
   if (e.columns.isSingle) {
-    paintTextInBox(canvas, e.displayText, spec, inner,
+    paintTextInBox(canvas, words, spec, inner,
         animation: animation,
         reveal: reveal,
         parts: e.drawnParts,
@@ -340,7 +347,7 @@ void _paintText(
   // Columns animate piece by piece like anything else: the pieces are worked
   // out once for the whole paragraph and drawn column by column, so a stagger
   // carries on from the last word of one column into the first of the next.
-  paintTextInColumns(canvas, e.displayText, spec, inner, e.columns,
+  paintTextInColumns(canvas, words, spec, inner, e.columns,
       animation: animation,
       reveal: reveal,
       parts: e.drawnParts,

@@ -63,6 +63,46 @@ enum StageHandle {
       this == bottomLeft || this == bottomCenter || this == bottomRight;
 }
 
+/// flowGripGap is how far in from the corner a text box's flow grips sit.
+///
+/// Inside the corner rather than on it, because the corner is a resize grip
+/// and the two must never be aimed at with the same click. Below the top-left
+/// one and above the bottom-right one, which is where the words start and
+/// where they run out.
+const double flowGripGap = 18;
+
+/// TextFlowGrips is what a selected text box shows about its overflow: where
+/// the two dots are, and what they have to say.
+class TextFlowGrips {
+  /// inAt is the dot below the top-left corner, which says whether words are
+  /// arriving from another box. outAt is the one above the bottom-right,
+  /// which is dragged to send them on.
+  final Offset inAt;
+  final Offset outAt;
+
+  /// overflowing is whether there are words this box is not showing, which is
+  /// what makes the out grip red. Hidden text with nothing saying it is
+  /// hidden is the thing people lose work to.
+  final bool overflowing;
+
+  /// receiving is whether something flows into this box, and linked whether
+  /// it flows out of it.
+  final bool receiving;
+  final bool linked;
+
+  /// to is where the link lands, for the line drawn between the two boxes.
+  final Offset? to;
+
+  const TextFlowGrips({
+    required this.inAt,
+    required this.outAt,
+    this.overflowing = false,
+    this.receiving = false,
+    this.linked = false,
+    this.to,
+  });
+}
+
 /// rulerThickness is how deep a ruler strip is, in screen pixels.
 ///
 /// Shared, because the painter draws the strip and the stage hit-tests it: a

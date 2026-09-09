@@ -64,6 +64,13 @@ class StagePainter extends CustomPainter {
   final Offset Function(StageHandle, Rect) handleFor;
   final Rect? marquee;
 
+  /// flowGrips are the two dots on a selected text box -- see TextFlowGrips.
+  final TextFlowGrips? flowGrips;
+
+  /// flowDrag is where a link being dragged out of the overflow grip has got
+  /// to, in stage space.
+  final Offset? flowDrag;
+
   /// page is the frame the canvas is drawn inside. Everything the document
   /// contributes is clipped to it; the shadow and the border are drawn outside
   /// the clip, which is what keeps the edge of the canvas visible at every
@@ -169,6 +176,8 @@ class StagePainter extends CustomPainter {
     required this.view,
     required this.showHandles,
     required this.showHelpers,
+    this.flowGrips,
+    this.flowDrag,
     required this.framing,
     required this.guides,
     required this.snapped,
@@ -474,6 +483,58 @@ class StagePainter extends CustomPainter {
       canvas.drawRect(square, fill);
       canvas.drawRect(square, edge);
     }
+
+    _paintFlowGrips(canvas);
+  }
+
+  /// _paintFlowGrips draws the two dots that make a text box a link in a
+  /// chain: where words come in, and where the ones that do not fit go.
+  void _paintFlowGrips(Canvas canvas) {
+    var grips = flowGrips;
+    if (grips == null) return;
+
+    var white = Paint()..color = const Color(0xFFFFFFFF);
+    var blue = const Color(0xFF3D7EFF);
+    // Red is the whole point of the grip: it is the only thing on the canvas
+    // that says there are words the box is not showing.
+    var out = grips.overflowing ? const Color(0xFFE5484D) : blue;
+
+    // The link itself, so a chain can be seen rather than remembered.
+    if (grips.to case var landing?) {
+      var line = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.5
+        ..color = out.withValues(alpha: 0.75);
+      canvas.drawLine(grips.outAt, landing, line);
+      canvas.drawCircle(landing, 3.5, Paint()..color = out);
+    }
+    if (flowDrag case var to?) {
+      canvas.drawLine(
+          grips.outAt,
+          to,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.5
+            ..color = out);
+      canvas.drawCircle(to, 4, Paint()..color = out);
+    }
+
+    void dot(Offset at, Color colour, bool filled) {
+      canvas.drawCircle(
+          at, handleSize / 2 + 1, filled ? (Paint()..color = colour) : white);
+      canvas.drawCircle(
+          at,
+          handleSize / 2 + 1,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.5
+            ..color = colour);
+      // An arrow inside the out grip, pointing the way the words go.
+      if (!filled) return;
+    }
+
+    dot(grips.inAt, blue, grips.receiving);
+    dot(grips.outAt, out, grips.overflowing || grips.linked);
   }
 
   /// _paintPathControls draws a path's points and its handles.
@@ -785,6 +846,8 @@ class StagePainter extends CustomPainter {
       old.view != view ||
       old.showHelpers != showHelpers ||
       old.showHandles != showHandles ||
+      old.flowGrips != flowGrips ||
+      old.flowDrag != flowDrag ||
       !identical(old.selectedPath, selectedPath) ||
       old.editingText != editingText ||
       !identical(old.preview, preview) ||
