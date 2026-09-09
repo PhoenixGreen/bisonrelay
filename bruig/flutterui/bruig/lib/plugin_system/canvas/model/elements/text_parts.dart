@@ -302,6 +302,18 @@ class TextPartAnimation {
       );
 }
 
+/// partsOutline is whether any of [parts] draws its own outline.
+///
+/// Asked before a paragraph is laid out a second time as a stroke: an
+/// element with no outline of its own still needs one built when a part
+/// inside it has asked for one.
+bool partsOutline(List<TextPart> parts) {
+  for (var part in parts) {
+    if ((part.outlineWidth ?? 0) > 0) return true;
+  }
+  return false;
+}
+
 /// partsAnimate is whether any of [parts] arrives on its own account, or has
 /// a mark that is drawn on rather than simply being there.
 ///
@@ -376,6 +388,17 @@ class TextPart {
   final int? weight;
   final bool? italic;
 
+  /// outlineWidth and outlineColor draw these words in outline, or draw a
+  /// heavier or a different-coloured one than the rest of the paragraph has.
+  ///
+  /// Null for both is "whatever the element says", which is what nearly every
+  /// part wants. A width of zero is a real answer and not the same thing: it
+  /// takes the outline *off* these words in a sentence that otherwise has
+  /// one, which is how a single word is left plain inside an outlined
+  /// headline.
+  final double? outlineWidth;
+  final Color? outlineColor;
+
   /// highlight is a band behind these words, and underline a line under
   /// them, or null for neither.
   ///
@@ -398,6 +421,8 @@ class TextPart {
     this.color,
     this.weight,
     this.italic,
+    this.outlineWidth,
+    this.outlineColor,
     this.highlight,
     this.underline,
     this.animation = const TextPartAnimation(),
@@ -424,6 +449,9 @@ class TextPart {
     bool clearColor = false,
     int? weight,
     bool? italic,
+    double? outlineWidth,
+    bool clearOutline = false,
+    Color? outlineColor,
     PartHighlight? highlight,
     bool clearHighlight = false,
     PartUnderline? underline,
@@ -437,6 +465,8 @@ class TextPart {
         color: clearColor ? null : (color ?? this.color),
         weight: weight ?? this.weight,
         italic: italic ?? this.italic,
+        outlineWidth: clearOutline ? null : (outlineWidth ?? this.outlineWidth),
+        outlineColor: clearOutline ? null : (outlineColor ?? this.outlineColor),
         highlight: clearHighlight ? null : (highlight ?? this.highlight),
         underline: clearUnderline ? null : (underline ?? this.underline),
         animation: animation ?? this.animation,
@@ -449,6 +479,8 @@ class TextPart {
         if (color != null) "color": colorToJson(color!),
         if (weight != null) "weight": weight,
         if (italic != null) "italic": italic,
+        if (outlineWidth != null) "outlineWidth": outlineWidth,
+        if (outlineColor != null) "outlineColor": colorToJson(outlineColor!),
         if (highlight != null) "highlight": highlight!.toJson(),
         if (underline != null) "underline": underline!.toJson(),
         if (animation.toJson().isNotEmpty) "animation": animation.toJson(),
@@ -463,6 +495,12 @@ class TextPart {
             : colorFromJson(json["color"], const Color(0xFFFFFFFF)),
         weight: json["weight"] is num ? (json["weight"] as num).toInt() : null,
         italic: json["italic"] is bool ? json["italic"] as bool : null,
+        outlineWidth: json["outlineWidth"] is num
+            ? (json["outlineWidth"] as num).toDouble().clamp(0.0, 80.0)
+            : null,
+        outlineColor: json["outlineColor"] == null
+            ? null
+            : colorFromJson(json["outlineColor"], const Color(0xFFFFFFFF)),
         highlight: json["highlight"] is Map<String, dynamic>
             ? PartHighlight.fromJson(json["highlight"] as Map<String, dynamic>)
             : null,

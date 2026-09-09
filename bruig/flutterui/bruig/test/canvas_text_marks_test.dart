@@ -228,6 +228,59 @@ void main() {
       expect(marker[green] ?? 0, greaterThan(60));
     });
 
+    testWidgets("a part can carry an outline of its own", (tester) async {
+      // In a paragraph that has none: the words nobody asked about are
+      // stroked with nothing, and only the part's own run has a width to
+      // draw. Stroked at zero width instead, every word would have got a
+      // hairline, a zero-width stroke being a hairline.
+      const green = 0x00FF00FF;
+      late Map<int, int> plain;
+      late Map<int, int> outlined;
+      await tester.runAsync(() async {
+        plain = await _ink(_document([_headline()]));
+        outlined = await _ink(_document([
+          _headline(parts: const [
+            TextPart(
+                from: 2,
+                to: 3,
+                outlineWidth: 3,
+                outlineColor: Color(0xFF00FF00))
+          ]),
+        ]));
+      });
+      expect(plain[green] ?? 0, 0);
+      expect(outlined[green] ?? 0, greaterThan(100),
+          reason: "two words are outlined in green");
+    });
+
+    testWidgets("and nothing takes the outline off those words alone",
+        (tester) async {
+      const green = 0x00FF00FF;
+      TextElement at(List<TextPart> parts) => TextElement(
+            const ElementBase(id: "t", x: 0, y: 20, width: 400, height: 90),
+            text: "You come across an idea",
+            textSpec: const TextSpec(
+                fontSize: 26,
+                color: Color(0xFFFFFFFF),
+                outlineWidth: 3,
+                outlineColor: Color(0xFF00FF00)),
+            parts: parts,
+          );
+      late int all;
+      late int fewer;
+      await tester.runAsync(() async {
+        all = (await _ink(_document([at(const [])])))[green] ?? 0;
+        fewer = (await _ink(_document([
+              at(const [TextPart(from: 1, to: 3, outlineWidth: 0)])
+            ])))[green] ??
+            0;
+      });
+      expect(all, greaterThan(200));
+      expect(fewer, lessThan(all * 0.7),
+          reason: "three of the five words lose their outline: $all then "
+              "$fewer");
+    });
+
     test("the marks survive being saved and read back", () {
       var element = _headline(parts: const [
         TextPart(
@@ -257,6 +310,12 @@ void main() {
       expect(part.underline!.width, 2.5);
       expect(part.underline!.away, 9);
       expect(part.underline!.color, const Color(0xFF445566));
+
+      var outlined = elementFromJson(_headline(parts: const [
+        TextPart(from: 1, outlineWidth: 2.5, outlineColor: Color(0xFF00FF00)),
+      ]).toJson()) as TextElement;
+      expect(outlined.parts.single.outlineWidth, 2.5);
+      expect(outlined.parts.single.outlineColor, const Color(0xFF00FF00));
 
       // And a part with neither writes neither.
       expect(

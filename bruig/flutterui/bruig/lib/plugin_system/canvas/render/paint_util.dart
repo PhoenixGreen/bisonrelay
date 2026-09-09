@@ -146,7 +146,7 @@ TextPainter _layoutText(
   var painter = TextPainter(
     text: parts.isEmpty
         ? TextSpan(text: text, style: style)
-        : _partedSpan(text, spec, parts, style, colorOverride),
+        : _partedSpan(text, spec, parts, style, colorOverride, scale),
     textAlign: spec.align.flutter,
     textDirection: TextDirection.ltr,
     maxLines: null,
@@ -459,7 +459,10 @@ double paintTextInBox(
           ? spec.copyWith(
               outlineWidth: math.max(1, spec.fontSize * 0.03),
               outlineColor: spec.color)
-          : null);
+          // A part may want an outline in a paragraph that has none, in
+          // which case the paragraph is stroked with nothing and only the
+          // part's own run has a width to draw.
+          : (partsOutline(parts) ? spec : null));
   var outline = outlineSpec == null
       ? null
       : layoutText(text, outlineSpec,
@@ -548,29 +551,46 @@ double fitFontSize(String text, TextSpec spec, Size box, {int columns = 1}) {
 /// letter. The runs come from the parts themselves -- see partAt -- so the
 /// same rule decides what is drawn and what a settings panel says is drawn.
 TextSpan _partedSpan(String text, TextSpec spec, List<TextPart> parts,
-    TextStyle style, Color? colorOverride) {
+    TextStyle style, Color? colorOverride, double scale) {
   var children = <TextSpan>[];
   var from = 0;
   TextPart? current = partAt(text, parts, 0);
 
   TextStyle styleFor(TextPart? part) {
-    if (part == null) return style;
     // An outline run is drawn by a stroke paint, and a style cannot carry
     // both that and a colour -- so an outline takes the part's weight and
-    // slant and leaves its colour alone. Setting both threw, which is why
-    // the outline setting appeared not to work at all on an element with
-    // parts: the paragraph it belongs to could not be built.
+    // slant, and its own width and colour where it has asked for them, and
+    // leaves the fill colour alone. Setting both threw, which is why the
+    // outline setting appeared not to work at all on an element with parts:
+    // the paragraph it belongs to could not be built.
     if (style.foreground != null) {
-      return style.copyWith(
-        fontWeight: part.weight == null
-            ? style.fontWeight
-            : FontWeight.values[((part.weight! ~/ 100) - 1)
-                .clamp(0, FontWeight.values.length - 1)],
-        fontStyle: part.italic == null
-            ? style.fontStyle
-            : (part.italic! ? FontStyle.italic : FontStyle.normal),
+      var width = part?.outlineWidth ?? spec.outlineWidth;
+      var out = part == null
+          ? style
+          : style.copyWith(
+              fontWeight: part.weight == null
+                  ? style.fontWeight
+                  : FontWeight.values[((part.weight! ~/ 100) - 1)
+                      .clamp(0, FontWeight.values.length - 1)],
+              fontStyle: part.italic == null
+                  ? style.fontStyle
+                  : (part.italic! ? FontStyle.italic : FontStyle.normal),
+            );
+      // Its own stroke paint rather than a second paragraph, so one layout
+      // still serves the lot. A width of nothing is drawn in nothing rather
+      // than left to the stroke: a zero-width stroke is a hairline, so the
+      // words with no outline would have got a thin one.
+      return out.copyWith(
+        foreground: Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeJoin = StrokeJoin.round
+          ..strokeWidth = width * 2 * scale
+          ..color = width <= 0
+              ? const Color(0x00000000)
+              : (part?.outlineColor ?? spec.outlineColor),
       );
     }
+    if (part == null) return style;
     return style.copyWith(
       // colorOverride wins: it is how a preview draws the whole paragraph in
       // one colour, and a part that ignored it would be a word that stayed
@@ -911,7 +931,7 @@ void paintTextInColumns(
 
   var runs = columnRuns(metrics, box.height, columns.count);
 
-  var outline = spec.outlineWidth > 0
+  var outline = spec.outlineWidth > 0 || partsOutline(parts)
       ? layoutText(text, spec,
           maxWidth: width,
           scale: scale,
@@ -1176,6 +1196,8 @@ TextSpec _specForPart(TextSpec spec, TextPart? part) {
     color: part.color ?? spec.color,
     weight: part.weight ?? spec.weight,
     italic: part.italic ?? spec.italic,
+    outlineWidth: part.outlineWidth ?? spec.outlineWidth,
+    outlineColor: part.outlineColor ?? spec.outlineColor,
   );
 }
 

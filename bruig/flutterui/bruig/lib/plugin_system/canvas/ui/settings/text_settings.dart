@@ -256,6 +256,43 @@ Widget _partsSection(TextElement e, SettingsWrite write, VoidCallback begin,
             value: part.italic ?? e.textSpec.italic,
             onChanged: (v) => set(replacing(i, part.copyWith(italic: v))),
           ),
+          // An outline on these words alone: a heavier one than the rest of
+          // the headline has, a different colour, or -- at nothing -- none at
+          // all inside a headline that otherwise has one.
+          CanvasToggle(
+            label: "Outline",
+            value: part.outlineWidth != null,
+            onChanged: (v) => set(replacing(
+                i,
+                v
+                    ? part.copyWith(
+                        outlineWidth: e.textSpec.outlineWidth > 0
+                            ? e.textSpec.outlineWidth
+                            : 2)
+                    : part.copyWith(clearOutline: true))),
+          ),
+          if (part.outlineWidth != null) ...[
+            CanvasNumberField(
+              label: "Amount",
+              value: part.outlineWidth!,
+              min: 0,
+              max: 40,
+              decimals: 1,
+              width: 58,
+              onChanged: (v) {
+                begin();
+                write(e.copyWith(
+                    parts: replacing(i, part.copyWith(outlineWidth: v))));
+              },
+              onCommit: commit,
+            ),
+            CanvasColorButton(
+              label: "Outline colour",
+              color: part.outlineColor ?? e.textSpec.outlineColor,
+              onChanged: (c) =>
+                  set(replacing(i, part.copyWith(outlineColor: c))),
+            ),
+          ],
           // A mark that is simply there, as opposed to one being drawn on by
           // an animation. Off until it is asked for: most parts are a colour
           // and nothing else, and two rows of padding fields under every one
