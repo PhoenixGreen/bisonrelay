@@ -1,11 +1,16 @@
 import 'dart:math' as math;
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_parts.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
+import 'package:bruig/plugin_system/canvas/render/procedural/generators.dart';
+import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart'
+    show CanvasImageSource;
 import 'package:bruig/plugin_system/canvas/render/text_animator.dart';
 import 'package:flutter/painting.dart';
 
@@ -155,6 +160,91 @@ TextPainter _layoutText(
   painter.layout(
       minWidth: fillWidth && width.isFinite ? width : 0, maxWidth: width);
   return painter;
+}
+
+/// paintThroughText draws [fill] and cuts it to the shape of the letters.
+///
+/// Two layers: the words, and then whatever is showing through them composited
+/// into that layer with srcIn, which keeps only the pixels the letters cover.
+/// The alternative -- a shader on the text's own paint -- cannot draw a
+/// pattern that is made of a hundred separate strokes, which is what every
+/// interesting one is.
+///
+/// The fill is drawn across the whole box rather than per letter, so a flame
+/// or a splatter runs through the word instead of restarting inside every
+/// glyph, which is the entire point of the effect.
+void paintThroughText(ui.Canvas canvas, Rect box, TextFill fill,
+    CanvasImageSource? images, void Function() words) {
+  if (!fill.on) {
+    words();
+    return;
+  }
+
+  // Room for what the letters do outside their box -- a shadow, an outline,
+  // a piece part way through arriving -- or the layer would clip them.
+  var area = box.inflate(box.shortestSide * 0.5 + 8);
+  canvas.saveLayer(area, Paint());
+  words();
+  canvas.saveLayer(area, Paint()..blendMode = ui.BlendMode.srcIn);
+
+  // Zoomed about the middle: 1 fits what is drawn across the words, 2 shows a
+  // quarter of it at twice the size.
+  var zoom = fill.zoom <= 0 ? 1.0 : fill.zoom;
+  var frame = Rect.fromCenter(
+      center: box.center, width: box.width * zoom, height: box.height * zoom);
+
+  switch (fill.kind) {
+    case TextFillKind.pattern:
+      paintProcedural(canvas, frame, fill.pattern);
+    case TextFillKind.image:
+      var image = images?.resolve(fill.assetId, const BackgroundRemoval());
+      if (image != null) _paintFillImage(canvas, box, frame, image, fill.tile);
+    case TextFillKind.color:
+      break;
+  }
+
+  canvas.restore();
+  canvas.restore();
+}
+
+/// _paintFillImage covers the words with a picture, or tiles it across them.
+void _paintFillImage(
+    ui.Canvas canvas, Rect box, Rect frame, ui.Image image, bool tile) {
+  var size = Size(image.width.toDouble(), image.height.toDouble());
+  if (size.isEmpty) return;
+
+  if (tile) {
+    // A repeating fill is drawn by a shader rather than in a loop, so the
+    // number of copies costs nothing.
+    var scale = frame.width / size.width;
+    canvas.drawRect(
+        box.inflate(box.shortestSide),
+        Paint()
+          ..shader = ui.ImageShader(
+              image,
+              ui.TileMode.repeated,
+              ui.TileMode.repeated,
+              // Column-major, which is what ImageShader wants: scale, then
+              // put the first copy where the frame starts.
+              Float64List.fromList([
+                scale, 0, 0, 0, //
+                0, scale, 0, 0, //
+                0, 0, 1, 0, //
+                frame.left, frame.top, 0, 1, //
+              ])));
+    return;
+  }
+
+  // Covering, like a background picture: the whole box filled, the overspill
+  // cropped, and nothing stretched out of shape.
+  var scale = math.max(frame.width / size.width, frame.height / size.height);
+  var wide = size.width * scale, tall = size.height * scale;
+  canvas.drawImageRect(
+      image,
+      Offset.zero & size,
+      Rect.fromLTWH(
+          frame.center.dx - wide / 2, frame.center.dy - tall / 2, wide, tall),
+      Paint()..filterQuality = FilterQuality.medium);
 }
 
 /// paintPartMarks draws the highlights behind, or the underlines under, the
@@ -452,6 +542,9 @@ double paintTextInBox(
   /// asOne leaves the parts to arrive with everything else, which is what the
   /// way out is. See paintAnimatedText.
   bool asOne = false,
+
+  /// images is where a picture used as a fill comes from. See TextFill.
+  CanvasImageSource? images,
 }) {
   if (text.isEmpty || box.width <= 0) return 0;
 
@@ -528,18 +621,35 @@ double paintTextInBox(
   // or one of the parts on its own account. It draws a still paragraph too,
   // so there is one path rather than two that have to agree about the holes
   // a part's own layer leaves behind it.
-  if (animation != null &&
-      ((animation.on && (reveal < 1 || animation.keeps)) ||
-          (!asOne && partsAnimate(parts)))) {
-    paintAnimatedText(canvas, painter, text, spec, offset, animation, reveal,
-        maxWidth: box.width,
-        outline: outline,
-        parts: parts,
-        timings: timings,
-        asOne: asOne);
+  /// words draws the paragraph, however it is arriving. Taken as a closure
+  /// because a filled paragraph is drawn twice -- once as its outline in the
+  /// outline's own colour, and once inside a layer the picture or the pattern
+  /// is cut to. Drawn by the same code both times, so the two are in register
+  /// whatever the animation is doing to them.
+  void words(TextPainter which, {TextPainter? under}) {
+    if (animation != null &&
+        ((animation.on && (reveal < 1 || animation.keeps)) ||
+            (!asOne && partsAnimate(parts)))) {
+      paintAnimatedText(canvas, which, text, spec, offset, animation, reveal,
+          maxWidth: box.width,
+          outline: under,
+          parts: parts,
+          timings: timings,
+          asOne: asOne);
+      return;
+    }
+    under?.paint(canvas, offset);
+    which.paint(canvas, offset);
+  }
+
+  if (!spec.fill.on) {
+    words(painter, under: outline);
   } else {
-    outline?.paint(canvas, offset);
-    painter.paint(canvas, offset);
+    // The outline keeps its own colour: drawn first, outside the layer the
+    // fill is cut to. Inside it, the picture would cover the stroke as well
+    // and an outlined headline would have no outline.
+    if (outline != null) words(outline);
+    paintThroughText(canvas, box, spec.fill, images, () => words(painter));
   }
 
   paintPartMarks(canvas, painter, text, parts, spec, offset,
@@ -967,6 +1077,7 @@ void paintTextInColumns(
   List<TextPart> parts = const [],
   List<PartTiming> timings = const [],
   bool asOne = false,
+  CanvasImageSource? images,
 }) {
   if (text.isEmpty || box.width <= 0 || box.height <= 0) return;
 
@@ -1024,31 +1135,46 @@ void paintTextInColumns(
         moving: marksMove ? animation : null,
         at: reveal);
 
-    var moving = (animation != null &&
-            animation.on &&
-            (reveal < 1 || animation.keeps)) ||
-        (!asOne && partsAnimate(parts));
-    if (moving) {
-      // The pieces this column holds: the ones whose lines fall in its run.
-      // Their places in the whole paragraph decide their progress, which is
-      // what makes the stagger carry on from one column into the next.
-      paintAnimatedText(canvas, painter, text, spec, at,
-          animation ?? const TextAnimation(), reveal,
-          maxWidth: width,
-          outline: outline,
-          parts: parts,
-          timings: timings,
-          asOne: asOne, keep: (piece) {
-        // A block-scoped piece covers the paragraph, which every column
-        // shares: it moves or uncovers the same way in each.
-        if (piece.box.height >= painter.height - 0.5) return true;
-        var middle = piece.box.center.dy;
-        return middle >= top(from) - 0.5 && middle < top(to) + 0.5;
-      });
-    } else {
-      outline?.paint(canvas, at);
-      painter.paint(canvas, at);
+    /// words draws this column's share of the paragraph. A closure for the
+    /// same reason it is one in a plain box: a filled paragraph is drawn
+    /// twice, once as its outline and once inside the layer the fill is cut
+    /// to, and both have to be drawn by the same code to stay in register.
+    void words(TextPainter which, {TextPainter? under}) {
+      var moving = (animation != null &&
+              animation.on &&
+              (reveal < 1 || animation.keeps)) ||
+          (!asOne && partsAnimate(parts));
+      if (moving) {
+        // The pieces this column holds: the ones whose lines fall in its run.
+        // Their places in the whole paragraph decide their progress, which is
+        // what makes the stagger carry on from one column into the next.
+        paintAnimatedText(canvas, which, text, spec, at,
+            animation ?? const TextAnimation(), reveal,
+            maxWidth: width,
+            outline: under,
+            parts: parts,
+            timings: timings,
+            asOne: asOne, keep: (piece) {
+          // A block-scoped piece covers the paragraph, which every column
+          // shares: it moves or uncovers the same way in each.
+          if (piece.box.height >= painter.height - 0.5) return true;
+          var middle = piece.box.center.dy;
+          return middle >= top(from) - 0.5 && middle < top(to) + 0.5;
+        });
+        return;
+      }
+      under?.paint(canvas, at);
+      which.paint(canvas, at);
     }
+
+    var column = Rect.fromLTWH(left, box.top + dy, width, used);
+    if (!spec.fill.on) {
+      words(painter, under: outline);
+    } else {
+      if (outline != null) words(outline);
+      paintThroughText(canvas, column, spec.fill, images, () => words(painter));
+    }
+
     paintPartMarks(canvas, painter, text, parts, spec, at,
         behind: false,
         timings: timings,
@@ -1316,10 +1442,44 @@ void paintTextOnPath(
   List<TextPart> parts = const [],
   List<PartTiming> timings = const [],
   bool asOne = false,
+  CanvasImageSource? images,
+
+  /// outlineOnly and fillOnly are the two halves of a run whose letters have
+  /// a picture or a pattern showing through them: the same letters at the
+  /// same moment of the same animation, drawn twice -- the outlines in their
+  /// own colour, and then the letters inside a layer the fill is cut to.
+  bool outlineOnly = false,
+  bool fillOnly = false,
 }) {
   var glyphs =
       placeTextOnPath(text, spec, curve, on, scale: scale, parts: parts);
   if (glyphs.isEmpty) return;
+
+  if (spec.fill.on && !outlineOnly && !fillOnly) {
+    var box = textOnPathBounds(glyphs, on) ?? _boundsOf(curve);
+    paintTextOnPath(canvas, text, spec, curve, on,
+        scale: scale,
+        animation: animation,
+        reveal: reveal,
+        parts: parts,
+        timings: timings,
+        asOne: asOne,
+        outlineOnly: true);
+    paintThroughText(
+        canvas,
+        box,
+        spec.fill,
+        images,
+        () => paintTextOnPath(canvas, text, spec, curve, on,
+            scale: scale,
+            animation: animation,
+            reveal: reveal,
+            parts: parts,
+            timings: timings,
+            asOne: asOne,
+            fillOnly: true));
+    return;
+  }
 
   var moving =
       animation != null && animation.on && (reveal < 1 || animation.keeps);
@@ -1418,10 +1578,12 @@ void paintTextOnPath(
     if (anim != null &&
         (anim.preset.motion == TextMotion.echo ||
             anim.preset.motion == TextMotion.trail)) {
-      _paintCurveCopies(canvas, g, dy, scale, local, anim, p);
+      _paintCurveCopies(canvas, g, dy, scale, local, anim, p,
+          outlineOnly: outlineOnly, fillOnly: fillOnly);
     }
 
-    _paintGlyph(canvas, g, dy, scale, frame.alpha);
+    _paintGlyph(canvas, g, dy, scale, frame.alpha,
+        outlineOnly: outlineOnly, fillOnly: fillOnly);
 
     if (anim != null && anim.preset.motion == TextMotion.underline) {
       _paintCurveMark(canvas, local, anim.draw, spec, sweep, under: true);
@@ -1434,9 +1596,19 @@ void paintTextOnPath(
   }
 }
 
+/// _boundsOf is a box round a polyline, for a run with nothing placed on it.
+Rect _boundsOf(List<Offset> curve) {
+  var box = Rect.fromLTWH(curve.first.dx, curve.first.dy, 1, 1);
+  for (var p in curve.skip(1)) {
+    box = box.expandToInclude(Rect.fromLTWH(p.dx, p.dy, 1, 1));
+  }
+  return box;
+}
+
 /// _paintGlyph draws one placed letter, and its outline where it has one.
 void _paintGlyph(
-    ui.Canvas canvas, PlacedGlyph g, double dy, double scale, double alpha) {
+    ui.Canvas canvas, PlacedGlyph g, double dy, double scale, double alpha,
+    {bool outlineOnly = false, bool fillOnly = false}) {
   var at = Offset(-g.size.width / 2, dy);
   var faded = alpha < 1;
   if (faded) {
@@ -1446,13 +1618,15 @@ void _paintGlyph(
             .inflate(g.size.height * 2),
         Paint()..color = Color.fromRGBO(0, 0, 0, alpha.clamp(0.0, 1.0)));
   }
-  if (g.spec.outlineWidth > 0) {
+  if (g.spec.outlineWidth > 0 && !fillOnly) {
     layoutText(g.glyph, g.spec,
             maxWidth: double.infinity, scale: scale, outline: true)
         .paint(canvas, at);
   }
-  layoutText(g.glyph, g.spec, maxWidth: double.infinity, scale: scale)
-      .paint(canvas, at);
+  if (!outlineOnly) {
+    layoutText(g.glyph, g.spec, maxWidth: double.infinity, scale: scale)
+        .paint(canvas, at);
+  }
   if (faded) canvas.restore();
 }
 
@@ -1483,7 +1657,8 @@ void _paintCurveMark(ui.Canvas canvas, Rect local, TextDrawSpec mark,
 
 /// _paintCurveCopies draws an echo's or a trail's copies of one letter.
 void _paintCurveCopies(ui.Canvas canvas, PlacedGlyph g, double dy, double scale,
-    Rect local, TextAnimation animation, double p) {
+    Rect local, TextAnimation animation, double p,
+    {bool outlineOnly = false, bool fillOnly = false}) {
   var echo = animation.echo;
   var preset = animation.preset;
   var trail = preset.motion == TextMotion.trail;
@@ -1522,7 +1697,8 @@ void _paintCurveCopies(ui.Canvas canvas, PlacedGlyph g, double dy, double scale,
       canvas.save();
       canvas.translate(away.dx, away.dy);
       if (size != 1) canvas.scale(size, size);
-      _paintGlyph(canvas, g, dy, scale, (strength * arrived).clamp(0.0, 1.0));
+      _paintGlyph(canvas, g, dy, scale, (strength * arrived).clamp(0.0, 1.0),
+          outlineOnly: outlineOnly, fillOnly: fillOnly);
       canvas.restore();
     }
   }

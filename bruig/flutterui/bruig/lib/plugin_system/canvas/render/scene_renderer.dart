@@ -230,7 +230,8 @@ void paintElement(
   var time = frame / (frameRate <= 0 ? 1 : frameRate);
   switch (element) {
     case TextElement e:
-      _paintText(canvas, bounds, e, document, pose: pose, frame: frame);
+      _paintText(canvas, bounds, e, document,
+          pose: pose, frame: frame, images: images);
     case ShapeElement e:
       _paintShape(canvas, bounds, e);
     case LineElement e:
@@ -267,7 +268,7 @@ void paintElement(
 
 void _paintText(
     ui.Canvas canvas, Rect bounds, TextElement e, CanvasDocument? doc,
-    {Keyframe pose = Keyframe.rest, int frame = 0}) {
+    {Keyframe pose = Keyframe.rest, int frame = 0, CanvasImageSource? images}) {
   // Text on a curve has no box of its own to fill or frame: it belongs to the
   // line it is riding, and drawing its rectangle behind the line would be a
   // panel nobody asked for sitting across the design.
@@ -288,7 +289,8 @@ void _paintText(
         reveal: curveReveal,
         parts: e.drawnParts,
         timings: _partTimings(e, frame, pose),
-        asOne: (pose.values[KeyframeChannel.close] ?? 0) > 0);
+        asOne: (pose.values[KeyframeChannel.close] ?? 0) > 0,
+        images: images);
     return;
   }
 
@@ -324,7 +326,8 @@ void _paintText(
         reveal: reveal,
         parts: e.drawnParts,
         timings: timings,
-        asOne: leaving);
+        asOne: leaving,
+        images: images);
     return;
   }
   // Columns animate piece by piece like anything else: the pieces are worked
@@ -335,7 +338,8 @@ void _paintText(
       reveal: reveal,
       parts: e.drawnParts,
       timings: timings,
-      asOne: leaving);
+      asOne: leaving,
+      images: images);
 }
 
 /// _arrival is the animation a text element is playing on this frame, and how

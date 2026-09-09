@@ -38,6 +38,15 @@ enum ProceduralStyle {
   rain("Symbol rain", "Columns of falling glyphs, brightest at the head"),
   symbolField("Symbol field", "Scattered glyphs at varying size and angle"),
   rings("Rings", "Concentric rings radiating from a point"),
+  // The drawn ones. Every other style here is a field or a grid -- these are
+  // marks somebody would make with a pen or a brush, which is what a pattern
+  // *inside lettering* wants: a halftone behind a comic caption, rays behind
+  // a headline, ink across a title.
+  halftone("Halftone", "Comic-book dots, bigger where the ink is heavier"),
+  speedLines("Speed lines", "Rays bursting out from a point"),
+  crosshatch("Crosshatch", "Inked hatching, crossed at an angle"),
+  splatter("Paint splatter", "Thrown ink, with droplets and drips"),
+  flames("Flames", "Tongues of fire licking upward"),
   pitch("Sports pitch", "A marked playing surface, drawn to scale");
 
   final String label;

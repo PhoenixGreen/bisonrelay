@@ -3,9 +3,11 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
+import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
+import 'package:bruig/plugin_system/canvas/ui/image_picking.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:bruig/components/text.dart';
 import 'package:flutter/material.dart';
@@ -296,6 +298,15 @@ List<Widget> typeGroups(
   /// hideCaption drops the first group's caption in a sidebar, for the
   /// callers that have already headed a section with the same word.
   bool hideCaption = false,
+
+  /// fill offers a picture or a pattern showing through the letters.
+  ///
+  /// A text element's, and nothing else's: the words on a chart's axis or in
+  /// a table cell are labels, and a flame pattern inside a column heading is
+  /// not a thing anybody is going to want. [context] is what a picture is
+  /// chosen with, so it is required wherever this is on.
+  bool fill = false,
+  BuildContext? context,
 }) =>
     [
       CanvasControlGroup(label: label, hideCaption: hideCaption, children: [
@@ -417,6 +428,22 @@ List<Widget> typeGroups(
           ),
       ]),
       CanvasControlGroup(label: "Colour", children: [
+        // What the letters are painted with. The colour is the usual answer
+        // and stays first; a picture or a pattern replaces it, and the
+        // outline and shadow settings under it go on meaning what they mean.
+        if (fill && context != null)
+          CanvasDropdown<TextFillKind>(
+            key: const ValueKey("textFillKind"),
+            label: "Painted with",
+            value: spec.fill.kind,
+            width: 118,
+            options: [for (var k in TextFillKind.values) (k, k.label)],
+            onChanged: (v) {
+              begin();
+              onChanged(spec.copyWith(fill: spec.fill.copyWith(kind: v)));
+              commit();
+            },
+          ),
         CanvasColorButton(
           label: "Text",
           color: spec.color,
@@ -426,6 +453,8 @@ List<Widget> typeGroups(
             commit();
           },
         ),
+        if (fill && context != null && spec.fill.kind != TextFillKind.color)
+          ..._fillBits(context, spec, onChanged, begin, commit),
         CanvasNumberField(
           label: "Outline",
           value: spec.outlineWidth,
@@ -595,4 +624,137 @@ Widget boxed(BuildContext context, Widget child) {
       ),
     ),
   );
+}
+
+/// _fillBits are the controls for a picture or a pattern inside the letters.
+///
+/// The pattern is an ordinary generated background -- the same styles, the
+/// same colours, the same sliders -- because it is exactly the same thing
+/// drawn in a different shape. Writing a second set of patterns for text
+/// would be two lists of styles to keep level with each other.
+List<Widget> _fillBits(
+  BuildContext context,
+  TextSpec spec,
+  ValueChanged<TextSpec> onChanged,
+  VoidCallback begin,
+  VoidCallback commit,
+) {
+  var fill = spec.fill;
+  void now(TextFill next) {
+    begin();
+    onChanged(spec.copyWith(fill: next));
+    commit();
+  }
+
+  return [
+    if (fill.kind == TextFillKind.image) ...[
+      CanvasIconButton(
+        key: const ValueKey("textFillPicture"),
+        icon: fill.assetId.isEmpty
+            ? Icons.add_photo_alternate
+            : Icons.image_outlined,
+        tooltip: fill.assetId.isEmpty
+            ? "Choose a picture to show through the letters"
+            : "Replace this picture",
+        onPressed: () async {
+          var id = await pickCanvasImage(context);
+          if (id != null) now(fill.copyWith(assetId: id));
+        },
+      ),
+      if (fill.assetId.isNotEmpty)
+        CanvasToggle(
+          label: "Tile",
+          value: fill.tile,
+          onChanged: (v) => now(fill.copyWith(tile: v)),
+        ),
+    ],
+    if (fill.kind == TextFillKind.pattern)
+      CanvasDropdown<ProceduralStyle>(
+        key: const ValueKey("textFillPattern"),
+        label: "Pattern",
+        value: fill.pattern.style,
+        width: 150,
+        options: [for (var s in ProceduralStyle.values) (s, s.label)],
+        onChanged: (v) =>
+            now(fill.copyWith(pattern: fill.pattern.copyWith(style: v))),
+      ),
+    if (fill.kind == TextFillKind.pattern) ...[
+      CanvasColorButton(
+        label: "Behind",
+        color: fill.pattern.background,
+        onChanged: (c) =>
+            now(fill.copyWith(pattern: fill.pattern.copyWith(background: c))),
+      ),
+      CanvasColorButton(
+        label: "Ink",
+        color: fill.pattern.foreground,
+        onChanged: (c) =>
+            now(fill.copyWith(pattern: fill.pattern.copyWith(foreground: c))),
+      ),
+      CanvasColorButton(
+        label: "Second",
+        color: fill.pattern.accent,
+        onChanged: (c) =>
+            now(fill.copyWith(pattern: fill.pattern.copyWith(accent: c))),
+      ),
+      CanvasNumberField(
+        label: "How much",
+        value: fill.pattern.density,
+        min: 0,
+        max: 1,
+        decimals: 2,
+        width: 58,
+        onChanged: (v) => onChanged(spec.copyWith(
+            fill: fill.copyWith(pattern: fill.pattern.copyWith(density: v)))),
+        onCommit: commit,
+      ),
+      CanvasNumberField(
+        label: "Size",
+        value: fill.pattern.scale,
+        min: 0.005,
+        max: 0.4,
+        decimals: 3,
+        width: 62,
+        onChanged: (v) => onChanged(spec.copyWith(
+            fill: fill.copyWith(pattern: fill.pattern.copyWith(scale: v)))),
+        onCommit: commit,
+      ),
+      CanvasNumberField(
+        label: "Turn",
+        value: fill.pattern.rotation,
+        min: -180,
+        max: 180,
+        decimals: 0,
+        width: 58,
+        onChanged: (v) => onChanged(spec.copyWith(
+            fill: fill.copyWith(pattern: fill.pattern.copyWith(rotation: v)))),
+        onCommit: commit,
+      ),
+      CanvasIconButton(
+        icon: Icons.casino_outlined,
+        tooltip: "Another one like it",
+        onPressed: () => now(fill.copyWith(
+            pattern: fill.pattern.copyWith(seed: fill.pattern.seed + 1))),
+      ),
+    ],
+    if (fill.on)
+      CanvasNumberField(
+        label: "Zoom",
+        value: fill.zoom,
+        min: 0.05,
+        max: 20,
+        decimals: 2,
+        width: 58,
+        onChanged: (v) =>
+            onChanged(spec.copyWith(fill: fill.copyWith(zoom: v))),
+        onCommit: commit,
+      ),
+    if (fill.on)
+      const CanvasHint(
+          "Whatever is chosen is drawn across the whole line and then cut to "
+          "the shape of the letters — so a flame or a splatter runs through "
+          "the words rather than restarting inside each one. Zoom sizes it "
+          "against them: 1 fits it across the words, 2 shows a quarter of it "
+          "at twice the size."),
+  ];
 }

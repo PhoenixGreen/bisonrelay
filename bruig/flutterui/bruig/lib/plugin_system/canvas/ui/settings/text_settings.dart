@@ -52,7 +52,7 @@ List<Widget> textSettings(
           // inside it does not say it again.
           ...typeGroups(e.textSpec, (spec) => write(e.copyWith(textSpec: spec)),
               begin, commit,
-              hideCaption: true),
+              hideCaption: true, fill: true, context: context),
           // The element's own marks: a band behind all of the words, a line
           // under all of them. Here rather than only on a part, because
           // highlighting a whole headline should not mean first making a part

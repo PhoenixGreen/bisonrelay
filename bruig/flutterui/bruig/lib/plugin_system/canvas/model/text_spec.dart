@@ -1,6 +1,7 @@
 import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 
 // text_spec.dart is how text looks, wherever it appears.
 //
@@ -99,6 +100,94 @@ const List<String> canvasFonts = [
 ];
 
 /// TextSpec is one set of type decisions.
+/// TextFillKind is what the letters are painted with.
+enum TextFillKind {
+  color("Colour"),
+  image("Picture"),
+  pattern("Pattern");
+
+  final String label;
+  const TextFillKind(this.label);
+
+  static TextFillKind fromName(String? name) =>
+      values.firstWhere((k) => k.name == name, orElse: () => color);
+}
+
+/// TextFill is a picture or a pattern showing through the letters.
+///
+/// The letters are the window, not the paint: whatever is chosen is drawn
+/// across the whole word and then cut to the shape of the type. That is why
+/// this is one setting on the type rather than a property of each glyph --
+/// a flame that restarted inside every letter would be a row of little
+/// flames, and what makes the effect work is that it does not.
+///
+/// The pattern is an ordinary [ProceduralSpec], the same recipe a generated
+/// background is, so every style, colour and slider that exists for one works
+/// here as well and a new style arrives in both places at once.
+class TextFill {
+  final TextFillKind kind;
+
+  /// assetId is the picture, for [TextFillKind.image]. See CanvasAssets.
+  final String assetId;
+
+  final ProceduralSpec pattern;
+
+  /// zoom sizes what is drawn against the words: 1 fits it across them, 2
+  /// shows a quarter of it twice as large. What "it" is depends on the kind --
+  /// the picture, or the pattern's own frame.
+  final double zoom;
+
+  /// tile repeats a picture instead of covering the words with one copy.
+  final bool tile;
+
+  const TextFill({
+    this.kind = TextFillKind.color,
+    this.assetId = "",
+    this.pattern = const ProceduralSpec(),
+    this.zoom = 1,
+    this.tile = false,
+  });
+
+  /// on is whether anything but the plain colour is being used -- and, for a
+  /// picture, whether one has actually been chosen.
+  bool get on =>
+      kind == TextFillKind.pattern ||
+      (kind == TextFillKind.image && assetId.isNotEmpty);
+
+  TextFill copyWith({
+    TextFillKind? kind,
+    String? assetId,
+    ProceduralSpec? pattern,
+    double? zoom,
+    bool? tile,
+  }) =>
+      TextFill(
+        kind: kind ?? this.kind,
+        assetId: assetId ?? this.assetId,
+        pattern: pattern ?? this.pattern,
+        zoom: zoom ?? this.zoom,
+        tile: tile ?? this.tile,
+      );
+
+  Map<String, dynamic> toJson() => {
+        if (kind != TextFillKind.color) "kind": kind.name,
+        if (assetId.isNotEmpty) "assetId": assetId,
+        if (kind == TextFillKind.pattern) "pattern": pattern.toJson(),
+        if (zoom != 1) "zoom": zoom,
+        if (tile) "tile": true,
+      };
+
+  factory TextFill.fromJson(Map<String, dynamic> json) => TextFill(
+        kind: TextFillKind.fromName(json["kind"] as String?),
+        assetId: jsonString(json["assetId"], ""),
+        pattern: json["pattern"] is Map<String, dynamic>
+            ? ProceduralSpec.fromJson(json["pattern"] as Map<String, dynamic>)
+            : const ProceduralSpec(),
+        zoom: jsonDouble(json["zoom"], 1).clamp(0.05, 20),
+        tile: jsonBool(json["tile"], false),
+      );
+}
+
 class TextSpec {
   final String fontFamily;
   final double fontSize;
@@ -121,6 +210,10 @@ class TextSpec {
 
   final Color color;
 
+  /// fill is a picture or a pattern showing through the letters, or nothing
+  /// at all -- which is the usual answer and means [color].
+  final TextFill fill;
+
   /// outlineWidth strokes the glyph outlines. Zero means no outline, which is
   /// why the colour is allowed to be meaningless when it is zero.
   final double outlineWidth;
@@ -142,6 +235,7 @@ class TextSpec {
     this.verticalAlign = VerticalAlignSpec.middle,
     this.textCase = TextCase.none,
     this.color = const Color(0xFFFFFFFF),
+    this.fill = const TextFill(),
     this.outlineWidth = 0,
     this.outlineColor = const Color(0xFF000000),
     this.shadowBlur = 0,
@@ -161,6 +255,7 @@ class TextSpec {
     VerticalAlignSpec? verticalAlign,
     TextCase? textCase,
     Color? color,
+    TextFill? fill,
     double? outlineWidth,
     Color? outlineColor,
     double? shadowBlur,
@@ -179,6 +274,7 @@ class TextSpec {
         verticalAlign: verticalAlign ?? this.verticalAlign,
         textCase: textCase ?? this.textCase,
         color: color ?? this.color,
+        fill: fill ?? this.fill,
         outlineWidth: outlineWidth ?? this.outlineWidth,
         outlineColor: outlineColor ?? this.outlineColor,
         shadowBlur: shadowBlur ?? this.shadowBlur,
@@ -204,6 +300,7 @@ class TextSpec {
         "valign": verticalAlign.name,
         if (textCase != TextCase.none) "case": textCase.name,
         "color": colorToJson(color),
+        if (fill.toJson().isNotEmpty) "fill": fill.toJson(),
         if (outlineWidth > 0) "ow": outlineWidth,
         if (outlineWidth > 0) "oc": colorToJson(outlineColor),
         if (shadowBlur > 0) "sb": shadowBlur,
@@ -224,6 +321,9 @@ class TextSpec {
         verticalAlign: VerticalAlignSpec.fromName(json["valign"] as String?),
         textCase: TextCase.fromName(json["case"] as String?),
         color: colorFromJson(json["color"]),
+        fill: json["fill"] is Map<String, dynamic>
+            ? TextFill.fromJson(json["fill"] as Map<String, dynamic>)
+            : const TextFill(),
         outlineWidth: jsonDouble(json["ow"], 0),
         outlineColor: colorFromJson(json["oc"], const Color(0xFF000000)),
         shadowBlur: jsonDouble(json["sb"], 0),

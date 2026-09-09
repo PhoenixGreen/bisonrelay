@@ -84,6 +84,16 @@ void paintProcedural(ui.Canvas canvas, Rect rect, ProceduralSpec spec,
       _symbolField(canvas, area, spec, t);
     case ProceduralStyle.rings:
       _rings(canvas, area, spec, t);
+    case ProceduralStyle.halftone:
+      _halftone(canvas, area, spec, t);
+    case ProceduralStyle.speedLines:
+      _speedLines(canvas, area, spec, t);
+    case ProceduralStyle.crosshatch:
+      _crosshatch(canvas, area, spec);
+    case ProceduralStyle.splatter:
+      _splatter(canvas, area, spec, t);
+    case ProceduralStyle.flames:
+      _flames(canvas, area, spec, t);
     case ProceduralStyle.pitch:
       paintPitch(canvas, area, spec);
   }
@@ -824,4 +834,245 @@ void _drawGlyph(
     _glyphCache[key] = painter;
   }
   painter.paint(canvas, at - Offset(painter.width / 2, painter.height / 2));
+}
+
+/// _halftone is the comic-book dot screen: a rotated grid of dots whose size
+/// says how much ink is on the page there.
+///
+/// Rotated, because a halftone screen always is -- printed square it reads as
+/// a dot grid, and it is the fifteen-degree tilt that makes the eye see tone
+/// rather than dots. The size comes from a smooth field, so the dots swell
+/// into drifts of shadow instead of being an even stipple: that difference is
+/// the whole look.
+void _halftone(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
+  var step = math.max(3.0, _unit(rect, spec) * 1.2);
+  var noise = ValueNoise(spec.seed);
+  var paint = Paint();
+
+  // The screen angle, tilted a little further by the variation.
+  var angle = (15 + spec.variation * 30) * math.pi / 180;
+  var cos = math.cos(angle), sin = math.sin(angle);
+
+  // Enough of the grid to cover the rectangle once it has been turned.
+  var reach = (rect.width + rect.height);
+  var cols = (reach / step).ceil();
+  var rows = (reach / step).ceil();
+  var centre = rect.center;
+
+  for (var iy = -rows; iy <= rows; iy++) {
+    for (var ix = -cols; ix <= cols; ix++) {
+      var gx = ix * step, gy = iy * step;
+      var p = Offset(
+        centre.dx + gx * cos - gy * sin,
+        centre.dy + gx * sin + gy * cos,
+      );
+      if (!rect.inflate(step).contains(p)) continue;
+
+      // How much ink is here: a smooth field, so the dots grow and shrink in
+      // drifts rather than at random.
+      var ink = noise.fbm(
+          (p.dx / rect.width) * 3 + t * 0.15, (p.dy / rect.height) * 3,
+          octaves: 3);
+      var size = step * 0.62 * ink * (0.35 + spec.density * 1.3);
+      if (size <= 0.15) continue;
+
+      paint.color = _fade(ink > 0.72 ? spec.accent : spec.foreground,
+          spec.intensity.clamp(0.0, 1.0));
+      canvas.drawCircle(p, size, paint);
+    }
+  }
+}
+
+/// _speedLines is the ray burst: tapered wedges thrown out from a point.
+///
+/// Wedges rather than strokes, because the lines a comic artist inks are
+/// thick where they leave the frame and come to nothing at the middle -- a
+/// constant-width ray reads as a starburst clip-art, which is the wrong
+/// decade.
+void _speedLines(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
+  // The vanishing point wanders with the seed, but stays near the middle: a
+  // burst centred on a corner is a fan, not a burst.
+  var from = Offset(
+    rect.center.dx + (hash(spec.seed, 3, 1) - 0.5) * rect.width * 0.4,
+    rect.center.dy + (hash(spec.seed, 5, 2) - 0.5) * rect.height * 0.4,
+  );
+  var reach = (rect.width + rect.height) * 0.9;
+  var count = (12 + spec.density * 90).round();
+  var paint = Paint();
+
+  for (var i = 0; i < count; i++) {
+    // Spread unevenly, or the rays comb into a moiré where they meet.
+    var about = (i / count) * 2 * math.pi +
+        (hash(spec.seed + 11, i, 0) - 0.5) * spec.variation * 0.7 +
+        t * 0.05;
+    var width =
+        (0.004 + hash(spec.seed + 17, i, 1) * 0.03 * (0.4 + spec.variation)) *
+            2 *
+            math.pi;
+    // A gap in the middle, so the burst has an eye to it.
+    var near =
+        reach * (0.03 + hash(spec.seed + 23, i, 2) * 0.35 * spec.variation);
+    var far = reach * (0.7 + hash(spec.seed + 29, i, 3) * 0.5);
+
+    Offset at(double a, double d) =>
+        Offset(from.dx + math.cos(a) * d, from.dy + math.sin(a) * d);
+
+    var path = ui.Path()
+      ..moveTo(at(about, near).dx, at(about, near).dy)
+      ..lineTo(at(about - width, far).dx, at(about - width, far).dy)
+      ..lineTo(at(about + width, far).dx, at(about + width, far).dy)
+      ..close();
+
+    paint.color = _fade(
+        i % 7 == 0 ? spec.accent : spec.foreground,
+        (spec.intensity * (0.55 + hash(spec.seed + 31, i, 4) * 0.45))
+            .clamp(0.0, 1.0));
+    canvas.drawPath(path, paint);
+  }
+}
+
+/// _crosshatch is inked hatching: two sets of lines crossed at an angle, with
+/// a third where it is laid on heavily.
+void _crosshatch(ui.Canvas canvas, Rect rect, ProceduralSpec spec) {
+  var step = math.max(2.0, _unit(rect, spec) * 0.9);
+  var reach = rect.width + rect.height;
+  var passes = spec.density > 0.66 ? 3 : (spec.density > 0.33 ? 2 : 1);
+
+  for (var pass = 0; pass < passes; pass++) {
+    var angle = (30 + pass * 55 + spec.variation * 25) * math.pi / 180;
+    var paint = Paint()
+      ..color = _fade(pass == 2 ? spec.accent : spec.foreground,
+          (spec.intensity * (0.75 - pass * 0.18)).clamp(0.0, 1.0))
+      ..strokeWidth = math.max(0.6, step * 0.1 * (1 + spec.density))
+      ..strokeCap = StrokeCap.round;
+
+    var across = Offset(math.cos(angle), math.sin(angle));
+    var along = Offset(-across.dy, across.dx);
+    var lines = (reach / step).ceil();
+    for (var i = -lines; i <= lines; i++) {
+      // A hand-inked line is not quite straight and does not quite reach.
+      var off =
+          i * step + hashRange(spec.seed + pass, i, 0, -1, 1) * step * 0.3;
+      var mid = rect.center + along * off;
+      var half = reach /
+          2 *
+          (0.75 +
+              hash(spec.seed + pass * 7, i, 3) * 0.5 * (0.3 + spec.variation));
+      canvas.drawLine(mid - across * half, mid + across * half, paint);
+    }
+  }
+}
+
+/// _splatter is thrown ink: heavy blobs, satellite droplets around them, and
+/// a drip or two running off the big ones.
+void _splatter(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
+  var unit = _unit(rect, spec);
+  var blobs = (2 + spec.density * 22).round();
+  var paint = Paint();
+
+  for (var i = 0; i < blobs; i++) {
+    var at = Offset(
+      rect.left + hash(spec.seed + 3, i, 0) * rect.width,
+      rect.top + hash(spec.seed + 5, i, 1) * rect.height,
+    );
+    var size = unit * (0.6 + hash(spec.seed + 7, i, 2) * 2.4);
+    paint.color = _fade(i % 5 == 0 ? spec.accent : spec.foreground,
+        spec.intensity.clamp(0.0, 1.0));
+
+    // The blob itself, as a wobbling closed curve rather than a circle -- a
+    // circle is a dot, and thrown ink has no circles in it.
+    var path = ui.Path();
+    const steps = 18;
+    for (var s = 0; s <= steps; s++) {
+      var a = s / steps * 2 * math.pi;
+      var r = size *
+          (0.6 +
+              0.55 *
+                  hash(spec.seed + 11, i, s % steps) *
+                  (0.5 + spec.variation) +
+              0.12 * math.sin(a * 3 + t));
+      var p = Offset(at.dx + math.cos(a) * r, at.dy + math.sin(a) * r);
+      s == 0 ? path.moveTo(p.dx, p.dy) : path.lineTo(p.dx, p.dy);
+    }
+    canvas.drawPath(path..close(), paint);
+
+    // Satellites: the small stuff that lands around a splash and is most of
+    // what makes it read as one.
+    var drops = (3 + spec.variation * 14).round();
+    for (var d = 0; d < drops; d++) {
+      var away = size * (1.3 + hash(spec.seed + 13, i, d) * 4);
+      var about = hash(spec.seed + 17, i, d + 40) * 2 * math.pi;
+      var r = size * 0.08 * (0.4 + hash(spec.seed + 19, i, d + 80) * 1.8);
+      canvas.drawCircle(
+          Offset(
+              at.dx + math.cos(about) * away, at.dy + math.sin(about) * away),
+          r,
+          paint);
+    }
+
+    // And a drip, on the heavier blobs.
+    if (hash(spec.seed + 23, i, 9) < 0.4) {
+      var run = size * (1 + hash(spec.seed + 29, i, 10) * 3);
+      var wide = size * 0.22;
+      canvas.drawRRect(
+          RRect.fromRectAndRadius(
+              Rect.fromLTWH(at.dx - wide / 2, at.dy, wide, run),
+              Radius.circular(wide / 2)),
+          paint);
+      canvas.drawCircle(Offset(at.dx, at.dy + run), wide * 0.8, paint);
+    }
+  }
+}
+
+/// _flames is fire: tongues rising from the bottom edge, each a teardrop bent
+/// by a slow field so it licks rather than points.
+void _flames(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
+  var noise = ValueNoise(spec.seed);
+  var tongues = (3 + spec.density * 26).round();
+
+  for (var i = 0; i < tongues; i++) {
+    var x = rect.left +
+        (i + 0.5) / tongues * rect.width +
+        hashRange(spec.seed + 3, i, 0, -1, 1) * rect.width / tongues * 0.4;
+    var height = rect.height *
+        (0.25 + hash(spec.seed + 5, i, 1) * 0.85 * (0.4 + spec.density));
+    var wide = rect.width / tongues * (0.45 + hash(spec.seed + 7, i, 2) * 0.7);
+
+    // Up one side and down the other, both bent by the same field so the two
+    // edges of a tongue lean together rather than crossing.
+    var left = ui.Path();
+    var right = <Offset>[];
+    const steps = 14;
+    for (var s = 0; s <= steps; s++) {
+      var up = s / steps;
+      // Narrowing to nothing at the tip, fattest a third of the way up.
+      var w = wide * math.sin((1 - up) * math.pi * 0.85) * (1 - up * 0.15);
+      var sway = noise.fbm(i * 1.7 + up * 2.2, t * 0.6 + up * 1.1, octaves: 2);
+      var lean = (sway - 0.5) * wide * 2.4 * (0.3 + spec.variation) * up;
+      var y = rect.bottom - height * up;
+      var cx = x + lean;
+      var p = Offset(cx - w / 2, y);
+      s == 0 ? left.moveTo(p.dx, p.dy) : left.lineTo(p.dx, p.dy);
+      right.add(Offset(cx + w / 2, y));
+    }
+    for (var p in right.reversed) {
+      left.lineTo(p.dx, p.dy);
+    }
+    left.close();
+
+    // The body, and a brighter heart inside it -- fire is two colours or it
+    // is a leaf.
+    canvas.drawPath(
+        left,
+        Paint()
+          ..color =
+              _fade(spec.foreground, (spec.intensity * 0.85).clamp(0.0, 1.0)));
+    canvas.save();
+    canvas.translate(x, rect.bottom);
+    canvas.scale(0.5, 0.55);
+    canvas.translate(-x, -rect.bottom);
+    canvas.drawPath(left,
+        Paint()..color = _fade(spec.accent, spec.intensity.clamp(0.0, 1.0)));
+    canvas.restore();
+  }
 }

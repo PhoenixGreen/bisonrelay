@@ -339,6 +339,12 @@ double _backgroundWeight(ProceduralStyle style) => switch (style) {
       ProceduralStyle.pitch ||
       ProceduralStyle.rings =>
         0.08,
+      // Ink on a flat ground: big areas of one colour with hard edges, which
+      // is the best case there is for a filter.
+      ProceduralStyle.splatter || ProceduralStyle.flames => 0.10,
+      ProceduralStyle.speedLines => 0.12,
+      // A dot or a stroke every few pixels, everywhere.
+      ProceduralStyle.halftone || ProceduralStyle.crosshatch => 0.34,
       ProceduralStyle.gradientMesh ||
       ProceduralStyle.dotGrid ||
       ProceduralStyle.contours =>
