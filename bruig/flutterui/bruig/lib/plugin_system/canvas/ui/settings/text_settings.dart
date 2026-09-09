@@ -247,6 +247,15 @@ List<Widget> textSettings(
                 },
                 onCommit: commit,
               ),
+              // The gap between two paragraphs is a line like any other, and a
+              // column that starts on one starts with an empty row.
+              CanvasToggle(
+                key: const ValueKey("textColumnsNoBlankStart"),
+                label: "No blank first line",
+                value: e.columns.noBlankStart,
+                onChanged: (v) => now(
+                    e.copyWith(columns: e.columns.copyWith(noBlankStart: v))),
+              ),
               CanvasDropdown<ColumnRuleStyle>(
                 label: "Rule",
                 value: e.columns.ruleStyle,

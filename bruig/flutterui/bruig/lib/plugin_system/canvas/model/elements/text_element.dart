@@ -42,9 +42,20 @@ class TextColumns {
   final double ruleWidth;
   final Color ruleColor;
 
+  /// noBlankStart drops a blank line that would have begun a column.
+  ///
+  /// The gap between two paragraphs is a line like any other, and when the
+  /// break lands on one the next column starts with an empty row and its
+  /// text sits lower than its neighbour's -- which reads as a mistake in the
+  /// setting rather than as a paragraph break. The line is not moved, it is
+  /// dropped: it is a space, and a space at the top of a column is the thing
+  /// being complained about.
+  final bool noBlankStart;
+
   const TextColumns({
     this.count = 1,
     this.gap = 24,
+    this.noBlankStart = false,
     this.ruleStyle = ColumnRuleStyle.none,
     this.ruleWidth = 1,
     this.ruleColor = const Color(0x66FFFFFF),
@@ -65,6 +76,7 @@ class TextColumns {
     ColumnRuleStyle? ruleStyle,
     double? ruleWidth,
     Color? ruleColor,
+    bool? noBlankStart,
   }) =>
       TextColumns(
         count: count ?? this.count,
@@ -72,10 +84,12 @@ class TextColumns {
         ruleStyle: ruleStyle ?? this.ruleStyle,
         ruleWidth: ruleWidth ?? this.ruleWidth,
         ruleColor: ruleColor ?? this.ruleColor,
+        noBlankStart: noBlankStart ?? this.noBlankStart,
       );
 
   Map<String, dynamic> toJson() => {
         "count": count,
+        if (noBlankStart) "noBlankStart": true,
         "gap": gap,
         if (ruleStyle != ColumnRuleStyle.none) "ruleStyle": ruleStyle.name,
         if (ruleStyle != ColumnRuleStyle.none) "ruleWidth": ruleWidth,
@@ -84,6 +98,7 @@ class TextColumns {
       };
 
   factory TextColumns.fromJson(Map<String, dynamic> json) => TextColumns(
+        noBlankStart: jsonBool(json["noBlankStart"], false),
         count: jsonInt(json["count"], 1),
         gap: jsonDouble(json["gap"], 24),
         ruleStyle: ColumnRuleStyle.fromName(json["ruleStyle"] as String?),

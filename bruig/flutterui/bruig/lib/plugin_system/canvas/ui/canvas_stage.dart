@@ -733,6 +733,18 @@ class CanvasStageState extends State<CanvasStage> {
     );
   }
 
+  /// _flowDragLine is the link being dragged, from the box the words leave to
+  /// wherever the pointer is.
+  FlowLine? _flowDragLine() {
+    if (_mode != _DragMode.flow) return null;
+    var at = _flowAt;
+    var from = _flowFrom == null ? null : document.elementById(_flowFrom!);
+    if (at == null || from == null) return null;
+    return FlowLine(
+        _toStage(_flowPointOf(from.boundsAt(controller.frame), top: false)),
+        at);
+  }
+
   /// _flowLines is every link between two text boxes that is worth drawing.
   ///
   /// Either box selected, or either box asked to keep its own box in sight --
@@ -746,6 +758,9 @@ class CanvasStageState extends State<CanvasStage> {
       if (e is! TextElement || e.flowTo.isEmpty) continue;
       var into = document.elementById(e.flowTo);
       if (into == null || !e.visible || !into.visible) continue;
+
+      // Not the one in hand: it is being drawn from the pointer instead.
+      if (_mode == _DragMode.flow && e.id == _flowFrom) continue;
 
       var shown = controller.selection.contains(e.id) ||
           controller.selection.contains(into.id) ||
@@ -785,12 +800,22 @@ class CanvasStageState extends State<CanvasStage> {
             local.dx * math.sin(a) + local.dy * math.cos(a));
   }
 
-  /// _hitFlowGrip is whether the overflow grip is under the pointer. Only the
-  /// one: words go one way, so there is one grip to pull them from.
-  bool _hitFlowGrip(Offset stage) {
+  /// _hitFlowGrip is which flow grip is under the pointer, if either.
+  ///
+  /// Both of them, because a link has two ends and either is a way to take
+  /// hold of it: the outgoing grip starts a link or moves the one that is
+  /// there, and the incoming grip picks up the link that arrives -- which is
+  /// how a box that is being flowed into gets disconnected without going to
+  /// find the box in front of it first.
+  ({bool out}) ? _hitFlowGrip(Offset stage) {
     var grips = _flowGrips();
-    if (grips == null) return false;
-    return (stage - grips.outAt).distance <= flowGripSize / 2 + handleHitSlop;
+    if (grips == null) return null;
+    var reach = flowGripSize / 2 + handleHitSlop;
+    if ((stage - grips.outAt).distance <= reach) return (out: true);
+    if (grips.receiving && (stage - grips.inAt).distance <= reach) {
+      return (out: false);
+    }
+    return null;
   }
 
   /// _dropFlow finishes a link drag: onto another text box it points the
@@ -951,15 +976,26 @@ class CanvasStageState extends State<CanvasStage> {
       return;
     }
 
-    // The overflow grip, before the resize handles: it sits inside the corner
-    // and is the smaller target of the two.
-    if (_hitFlowGrip(stage)) {
-      setState(() {
-        _flowFrom = controller.selection.first;
-        _flowAt = stage;
-        _mode = _DragMode.flow;
-      });
-      return;
+    // A flow grip, before the resize handles: they sit on the same outline
+    // and these are the smaller targets.
+    if (_hitFlowGrip(stage) case var grip?) {
+      var selected = document.elementById(controller.selection.first);
+      // Dragging the incoming grip takes hold of the link that arrives here,
+      // which belongs to the box in front of this one. The loose end is what
+      // moves; where it is dropped is what it means.
+      var from = grip.out
+          ? controller.selection.first
+          : (selected is TextElement
+              ? flowSourceOf(selected, document)?.id
+              : null);
+      if (from != null) {
+        setState(() {
+          _flowFrom = from;
+          _flowAt = stage;
+          _mode = _DragMode.flow;
+        });
+        return;
+      }
     }
 
     var handle = _hitHandle(stage);
@@ -2306,7 +2342,7 @@ class CanvasStageState extends State<CanvasStage> {
                         handleFor: _handlePosition,
                         flowGrips: _flowGrips(),
                         flowLines: _flowLines(),
-                        flowDrag: _mode == _DragMode.flow ? _flowAt : null,
+                        flowDrag: _flowDragLine(),
                         marquee: _marquee,
                       ),
                       size: Size.infinite,

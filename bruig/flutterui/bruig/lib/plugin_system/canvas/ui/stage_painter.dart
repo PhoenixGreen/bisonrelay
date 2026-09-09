@@ -72,9 +72,9 @@ class StagePainter extends CustomPainter {
   /// this frame. See FlowLine.
   final List<FlowLine> flowLines;
 
-  /// flowDrag is where a link being dragged out of the overflow grip has got
-  /// to, in stage space.
-  final Offset? flowDrag;
+  /// flowDrag is the link being dragged, from the box the words leave to
+  /// wherever the pointer has got to.
+  final FlowLine? flowDrag;
 
   /// page is the frame the canvas is drawn inside. Everything the document
   /// contributes is clipped to it; the shadow and the border are drawn outside
@@ -566,15 +566,15 @@ class StagePainter extends CustomPainter {
     // that says there are words the box is not showing.
     var out = grips.overflowing ? const Color(0xFFE5484D) : blue;
 
-    if (flowDrag case var to?) {
+    if (flowDrag case var dragged?) {
       canvas.drawLine(
-          grips.outAt,
-          to,
+          dragged.from,
+          dragged.to,
           Paint()
             ..style = PaintingStyle.stroke
             ..strokeWidth = 1.5
             ..color = out);
-      canvas.drawCircle(to, 4, Paint()..color = out);
+      canvas.drawCircle(dragged.to, 4, Paint()..color = out);
     }
 
     void dot(Offset at, Color colour, bool filled) {

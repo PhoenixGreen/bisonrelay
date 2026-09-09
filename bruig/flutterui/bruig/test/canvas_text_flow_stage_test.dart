@@ -199,6 +199,50 @@ void main() {
         reason: "and it is red, because the words do not all fit");
   });
 
+  testWidgets("the arriving end can be dragged off to disconnect",
+      (tester) async {
+    // A link has two ends and either is a way to take hold of it. Without
+    // this, disconnecting a box meant going to find the box in front of it
+    // first -- which is the one that is somewhere else on the page.
+    var controller = twoBoxes();
+    addTearDown(controller.dispose);
+    var stage = await pump(tester, controller);
+
+    controller.replaceElement(boxIn(controller, "a").copyWith(flowTo: "b"));
+    controller.selectOnly("b");
+    await tester.pumpAndSettle();
+    expect(stage.textFlowGrips!.receiving, isTrue);
+
+    // Off its incoming grip and into empty space.
+    await tester.dragFrom(stage.textFlowGrips!.inAt, const Offset(-260, -30));
+    await tester.pumpAndSettle();
+    expect(boxIn(controller, "a").flowTo, "",
+        reason: "the link the words arrived by is gone");
+  });
+
+  testWidgets("and dragged onto another box to move it", (tester) async {
+    var controller = twoBoxes();
+    addTearDown(controller.dispose);
+    var stage = await pump(tester, controller);
+
+    // A third box to move the link to.
+    controller.addElement(TextElement(
+      const ElementBase(id: "c", x: 420, y: 260, width: 300, height: 200),
+      text: "Somewhere else",
+      box: const BoxSpec(padding: 0),
+      textSpec: const TextSpec(fontSize: 16, align: TextAlignSpec.left),
+    ));
+    controller.replaceElement(boxIn(controller, "a").copyWith(flowTo: "b"));
+    controller.selectOnly("b");
+    await tester.pumpAndSettle();
+
+    var from = stage.textFlowGrips!.inAt;
+    var onto = stage.toStagePoint(const Offset(570, 360));
+    await tester.dragFrom(from, onto - from);
+    await tester.pumpAndSettle();
+    expect(boxIn(controller, "a").flowTo, "c");
+  });
+
   testWidgets("a link that would make a ring is refused", (tester) async {
     var controller = twoBoxes();
     addTearDown(controller.dispose);

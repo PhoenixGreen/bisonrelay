@@ -174,7 +174,8 @@ int _consumed(String text, TextElement e, Rect inner, TextSpec spec) {
   // How many lines fit: the same packing the columns use, so a box with three
   // columns passes on what would not fit in the third rather than what would
   // not fit in one.
-  var runs = columnRuns(metrics, inner.height, math.max(1, e.columns.count));
+  var runs = columnRuns(metrics, inner.height, math.max(1, e.columns.count),
+      noBlankStart: e.columns.noBlankStart);
   var lines = runs.isEmpty ? 0 : runs.last.$2;
   if (lines >= metrics.length) return text.length;
   if (lines <= 0) return 0;

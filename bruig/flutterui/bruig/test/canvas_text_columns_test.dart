@@ -83,6 +83,34 @@ void main() {
       }
     });
 
+    test("a blank line is not left at the top of a column", () {
+      // The gap between two paragraphs is a line like any other, and a column
+      // that starts on one starts with an empty row -- which reads as a
+      // mistake in the setting rather than as a paragraph break.
+      var metrics = [
+        for (var (i, width) in [100.0, 100.0, 0.0, 100.0, 100.0, 100.0].indexed)
+          ui.LineMetrics(
+            hardBreak: false,
+            ascent: 15.4,
+            descent: 3.8,
+            unscaledAscent: 15.4,
+            height: 19,
+            width: width,
+            left: 0,
+            baseline: 19 * i + 15.4,
+            lineNumber: i,
+          ),
+      ];
+
+      // Two lines to a column, so the second one would start on the blank.
+      var left = columnRuns(metrics, 40, 3);
+      expect(left[1].$1, 2, reason: "the blank line begins the second column");
+
+      var tidied = columnRuns(metrics, 40, 3, noBlankStart: true);
+      expect(tidied[1].$1, 3, reason: "passed over rather than drawn");
+      expect(tidied[0], left[0], reason: "and the first column is untouched");
+    });
+
     test("a paragraph the font is happy with is cut at the line boxes", () {
       // Nothing to move: with room to spare the boundary is the box's own.
       var metrics = lines(3, height: 30);

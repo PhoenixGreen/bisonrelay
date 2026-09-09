@@ -1280,9 +1280,15 @@ List<double> lineEdges(List<ui.LineMetrics> metrics) {
   return edges;
 }
 
+/// [noBlankStart] drops a blank line that would have begun a column -- the
+/// gap between two paragraphs, when the break lands on it. A blank line is
+/// one with no letters on it, which is one with no width.
 List<(int, int)> columnRuns(
-    List<ui.LineMetrics> metrics, double height, int columns) {
+    List<ui.LineMetrics> metrics, double height, int columns,
+    {bool noBlankStart = false}) {
   if (metrics.isEmpty || columns <= 0) return const [];
+
+  bool blank(int line) => metrics[line].width <= 0.5;
 
   /// top is where a line starts, measured from the top of the paragraph. See
   /// lineEdges on why it is not simply the line's box.
@@ -1292,6 +1298,15 @@ List<(int, int)> columnRuns(
   var runs = <(int, int)>[];
   var at = 0;
   for (var c = 0; c < columns && at < metrics.length; c++) {
+    // The empty rows a break has landed on are passed over rather than moved:
+    // a space is a space, and a space at the top of a column is the thing
+    // being complained about. Never the first column's first line, which is
+    // the paragraph's own beginning and not a break at all.
+    if (noBlankStart && c > 0) {
+      while (at < metrics.length - 1 && blank(at)) {
+        at++;
+      }
+    }
     var end = at;
     // At least one line per column even where it does not fit: a box shorter
     // than a single line would otherwise take no lines at all and draw
@@ -1334,7 +1349,8 @@ void paintTextInColumns(
   var metrics = painter.computeLineMetrics();
   if (metrics.isEmpty) return;
 
-  var runs = columnRuns(metrics, box.height, columns.count);
+  var runs = columnRuns(metrics, box.height, columns.count,
+      noBlankStart: columns.noBlankStart);
 
   var outline = spec.outlineWidth > 0 || partsOutline(parts)
       ? layoutText(text, spec,
