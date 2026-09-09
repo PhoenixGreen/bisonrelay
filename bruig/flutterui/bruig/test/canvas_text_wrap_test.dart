@@ -365,6 +365,43 @@ void main() {
     });
   });
 
+  group("something taller than the words", () {
+    test("is still something to go around", () {
+      // A picture beside a column usually is taller than the column -- that
+      // is what a picture beside a column looks like. Dropped as a
+      // "background" for reaching past the top and the bottom of the box,
+      // the words ran straight under it.
+      var text = _text(wrap: const TextWrap(on: true, gap: 8));
+      var tall = ShapeElement(
+        const ElementBase(id: "s", x: 240, y: -60, width: 200, height: 400),
+      );
+      var doc = CanvasDocument(elements: [text, tall]);
+      var blocked = wrapObstacles(text, doc, 0, text.bounds);
+      expect(blocked, hasLength(1),
+          reason: "reaching past both edges is not a reason to ignore it");
+
+      var out =
+          layoutWrapped(_words, text.textSpec, text.bounds, blocked, text.wrap);
+      expect(out.lines, isNotEmpty);
+      expect(out.lines.every((l) => l.box.right <= 232.5), isTrue,
+          reason: "every line stops at its edge, the last one included");
+    });
+
+    test("and one that covers the words entirely falls back", () {
+      // Which is what a panel behind a headline is. There is nowhere to put
+      // the words, so they are set the ordinary way and drawn over it.
+      var text = _text(wrap: const TextWrap(on: true, gap: 8));
+      var panel = ShapeElement(
+        const ElementBase(id: "s", x: -20, y: -20, width: 500, height: 300),
+      );
+      var doc = CanvasDocument(elements: [text, panel]);
+      var blocked = wrapObstacles(text, doc, 0, text.bounds);
+      expect(blocked, hasLength(1));
+      expect(wrapFits(_words, text.textSpec, text.bounds, blocked, text.wrap),
+          isFalse);
+    });
+  });
+
   group("what is never treated as an obstacle", () {
     test("the boxes this one shares its words with", () {
       // They are one paragraph in several places, and they are routinely laid

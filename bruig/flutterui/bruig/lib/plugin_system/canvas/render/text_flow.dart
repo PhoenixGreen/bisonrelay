@@ -230,7 +230,9 @@ int _consumed(String text, TextElement e, Rect inner, TextSpec spec,
   // it once the things in the way are taken out. Measured the same way it is
   // drawn -- see layoutWrapped -- so what the grip says and what is on the
   // canvas cannot disagree.
-  if (e.wrap.on && blocked.isNotEmpty) {
+  if (e.wrap.on &&
+      blocked.isNotEmpty &&
+      wrapFits(text, spec, inner, blocked, e.wrap)) {
     return layoutWrapped(text, spec, inner, blocked, e.wrap).consumed;
   }
 

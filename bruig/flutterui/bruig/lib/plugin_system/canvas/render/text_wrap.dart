@@ -133,6 +133,13 @@ class WrapShape {
 ///
 /// The rectangles come back in document space, already spread by the gap the
 /// element asked for.
+///
+/// Nothing is left out for being tall. A picture beside a column of text
+/// usually *is* taller than the column -- that is what a picture beside a
+/// column looks like -- and dropping those as "backgrounds" meant the words
+/// ran straight under them. A thing that really covers the words is caught
+/// where it matters instead: see wrapFits, which sets them the ordinary way
+/// when going round what is in the way would leave nowhere to put them.
 /// [images] is where a picture's ink is read from. Without one -- a model
 /// test, or anything measuring before the picture has been decoded -- a
 /// picture is its box, which is what it was before its ink could be read.
@@ -156,8 +163,6 @@ List<WrapShape> wrapObstacles(
     var at = other.boundsAt(frame);
     var box = at.inflate(e.wrap.gap);
     if (!box.overlaps(inner)) continue;
-    // A thing that covers the words entirely is not something to go around.
-    if (box.top <= inner.top && box.bottom >= inner.bottom) continue;
     if (other is ImageElement) {
       out.add(_pictureShape(other, at, box, e.wrap.gap, images));
       continue;
