@@ -337,7 +337,17 @@ void _paintText(
   }
 
   if (e.columns.isSingle) {
+    // Kept inside its box. A box is a box: words that do not fit are hidden,
+    // which is what makes the overflow grip's red mean anything and what lets
+    // them run on into another box -- see flowFor.
+    //
+    // Not while something is arriving, though. Half the presets bring the
+    // words in from outside the box and an echo leaves its copies there, so a
+    // clip that was always on would cut an animation into a box-shaped hole.
+    // At rest the words are inside; on the way in they are allowed out.
+    var arriving = animation.on && (reveal < 1 || animation.keeps);
     paintTextInBox(canvas, words, spec, inner,
+        clip: !arriving && !partsAnimate(e.drawnParts),
         animation: animation,
         reveal: reveal,
         parts: e.drawnParts,

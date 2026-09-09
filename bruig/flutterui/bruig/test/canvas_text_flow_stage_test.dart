@@ -135,6 +135,38 @@ void main() {
         reason: "pulling the line off is how a chain is taken apart");
   });
 
+  testWidgets("a box being flowed into cannot be typed into", (tester) async {
+    // It does not own the words it is showing: they belong to the box in
+    // front of it, and typing here would be edited away by the next layout
+    // with no sign it ever happened. The same goes for a box reading a
+    // document -- see TextDocumentRef.
+    var controller = twoBoxes();
+    addTearDown(controller.dispose);
+    var stage = await pump(tester, controller);
+
+    controller.replaceElement(boxIn(controller, "a").copyWith(flowTo: "b"));
+    controller.selectOnly("b");
+    await tester.pumpAndSettle();
+
+    // Two clicks on the selected box, which is what opens the editor.
+    var at = stage.toStagePoint(const Offset(190, 360));
+    await tester.tapAt(at);
+    await tester.pump(const Duration(milliseconds: 60));
+    await tester.tapAt(at);
+    await tester.pumpAndSettle();
+    expect(find.byType(EditableText), findsNothing);
+
+    // And the box the words belong to still opens.
+    controller.selectOnly("a");
+    await tester.pumpAndSettle();
+    var head = stage.toStagePoint(const Offset(190, 70));
+    await tester.tapAt(head);
+    await tester.pump(const Duration(milliseconds: 60));
+    await tester.tapAt(head);
+    await tester.pumpAndSettle();
+    expect(find.byType(EditableText), findsOneWidget);
+  });
+
   testWidgets("a link that would make a ring is refused", (tester) async {
     var controller = twoBoxes();
     addTearDown(controller.dispose);

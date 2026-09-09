@@ -360,6 +360,52 @@ void main() {
     });
   });
 
+  group("the words stay in their box", () {
+    // A box is a box: what does not fit is hidden. That is what makes the
+    // overflow grip's red mean anything, and what lets the words that do not
+    // fit run on into another box.
+    TextElement crowded({TextAnimation animation = const TextAnimation()}) =>
+        TextElement(
+          const ElementBase(id: "t", x: 0, y: 20, width: 400, height: 40),
+          text: "One two three four five six seven eight nine ten eleven "
+              "twelve thirteen fourteen fifteen sixteen seventeen",
+          box: const BoxSpec(padding: 0),
+          textSpec: const TextSpec(
+              fontSize: 20,
+              color: Color(0xFFFFFFFF),
+              verticalAlign: VerticalAlignSpec.top),
+          animation: animation,
+        );
+
+    testWidgets("what does not fit is hidden", (tester) async {
+      const below = Rect.fromLTWH(0, 62, 400, 138);
+      late int outside;
+      await tester.runAsync(() async {
+        outside = _lit(await _ink(_document([crowded()]), within: below));
+      });
+      expect(outside, 0, reason: "nothing is drawn under the box");
+    });
+
+    testWidgets("but an arrival is still allowed outside it", (tester) async {
+      // Half the presets bring the words in from outside the box and an echo
+      // leaves its copies there; a clip that was always on would cut every
+      // animation into a box-shaped hole.
+      const below = Rect.fromLTWH(0, 62, 400, 138);
+      late int echoed;
+      await tester.runAsync(() async {
+        echoed = _lit(await _ink(
+            _document([
+              crowded(
+                  animation: const TextAnimation(
+                      preset: TextAnimationPreset.echoDown,
+                      ease: ChartEase.linear)),
+            ]),
+            within: below));
+      });
+      expect(echoed, greaterThan(200), reason: "the copies are drawn");
+    });
+  });
+
   group("a drawn mark's padding", () {
     testWidgets("reaches past the words at both ends", (tester) async {
       // The two ends were clipped straight off by the piece's own clip, so

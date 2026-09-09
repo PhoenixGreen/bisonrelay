@@ -63,13 +63,18 @@ enum StageHandle {
       this == bottomLeft || this == bottomCenter || this == bottomRight;
 }
 
-/// flowGripGap is how far in from the corner a text box's flow grips sit.
+/// flowGripSize is how big a text box's flow grips are drawn.
 ///
-/// Inside the corner rather than on it, because the corner is a resize grip
-/// and the two must never be aimed at with the same click. Below the top-left
-/// one and above the bottom-right one, which is where the words start and
-/// where they run out.
-const double flowGripGap = 18;
+/// Smaller than a resize grip, and deliberately: they are a second row of
+/// controls on the same outline, and the eight that resize the element are
+/// the ones somebody reaches for most.
+const double flowGripSize = 8;
+
+/// The flow grips sit half way between two resize handles rather than beside
+/// one of them: the incoming dot between the top-left and the middle-left,
+/// the outgoing one between the middle-right and the bottom-right. Tucked
+/// under a corner, as they were, a default-sized box had three targets inside
+/// twenty pixels and the corner was the hardest of them to hit.
 
 /// TextFlowGrips is what a selected text box shows about its overflow: where
 /// the two dots are, and what they have to say.
@@ -90,8 +95,14 @@ class TextFlowGrips {
   final bool receiving;
   final bool linked;
 
-  /// to is where the link lands, for the line drawn between the two boxes.
+  /// to is where the link lands, for the line drawn between the two boxes,
+  /// and from is where the words arriving here come from.
+  ///
+  /// Both, because a chain is drawn from whichever end of it is selected: a
+  /// line that appeared only when the box the words come *out* of was
+  /// selected left the other box with no sign it was part of anything.
   final Offset? to;
+  final Offset? from;
 
   const TextFlowGrips({
     required this.inAt,
@@ -100,6 +111,7 @@ class TextFlowGrips {
     this.receiving = false,
     this.linked = false,
     this.to,
+    this.from,
   });
 }
 

@@ -123,6 +123,16 @@ class ElementBase {
   /// width changes the size without changing the shape.
   final bool lockAspect;
 
+  /// showBounds keeps this element's box drawn on the editing canvas even
+  /// when it is not the selected element.
+  ///
+  /// Editing furniture, never published: what it is for is working on two
+  /// elements that have something to do with each other -- a chain of text
+  /// boxes, most of all, where the box being flowed into is somewhere else on
+  /// the page and invisible until it is clicked. Off by default, because a
+  /// canvas covered in outlines is a canvas nobody can see.
+  final bool showBounds;
+
   /// track is this element's animation, or null when it does not move.
   final ElementTrack? track;
 
@@ -138,6 +148,7 @@ class ElementBase {
     this.visible = true,
     this.locked = false,
     this.lockAspect = false,
+    this.showBounds = false,
     this.track,
   });
 
@@ -153,6 +164,7 @@ class ElementBase {
     bool? visible,
     bool? locked,
     bool? lockAspect,
+    bool? showBounds,
     ElementTrack? track,
     bool clearTrack = false,
   }) =>
@@ -168,6 +180,7 @@ class ElementBase {
         visible: visible ?? this.visible,
         locked: locked ?? this.locked,
         lockAspect: lockAspect ?? this.lockAspect,
+        showBounds: showBounds ?? this.showBounds,
         track: clearTrack ? null : (track ?? this.track),
       );
 
@@ -185,6 +198,7 @@ class ElementBase {
       visible: _b(json["visible"], true),
       locked: _b(json["locked"], false),
       lockAspect: _b(json["aspect"], false),
+      showBounds: _b(json["showBounds"], false),
       track: trackJson is Map<String, dynamic>
           ? ElementTrack.fromJson(trackJson)
           : null,
@@ -209,6 +223,7 @@ class ElementBase {
         // ImageElement.fromJson. An absent key that could also mean "off"
         // would make that impossible to tell.
         "aspect": lockAspect,
+        if (showBounds) "showBounds": true,
         if (track != null && !track!.isEmpty) "track": track!.toJson(),
       };
 }
@@ -324,6 +339,7 @@ abstract class CanvasElement {
     bool? visible,
     bool? locked,
     bool? lockAspect,
+    bool? showBounds,
     ElementTrack? track,
     bool clearTrack = false,
   }) =>
@@ -338,9 +354,14 @@ abstract class CanvasElement {
         visible: visible,
         locked: locked,
         lockAspect: lockAspect,
+        showBounds: showBounds,
         track: track,
         clearTrack: clearTrack,
       ));
+
+  /// showBounds is whether this element's box is drawn while something else
+  /// is selected. See ElementBase.showBounds.
+  bool get showBounds => base.showBounds;
 
   /// withId returns a copy under a new id, for duplicating an element.
   CanvasElement withId(String newId) => rebase(base.copyWith(id: newId));

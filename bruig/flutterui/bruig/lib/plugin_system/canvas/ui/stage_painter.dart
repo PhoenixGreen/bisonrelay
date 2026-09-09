@@ -420,6 +420,8 @@ class StagePainter extends CustomPainter {
   void _paintSelection(Canvas canvas) {
     if (!showHelpers) return;
 
+    _paintKeptBoxes(canvas);
+
     _paintChartLabels(canvas);
     _paintTableColumns(canvas);
 
@@ -487,6 +489,40 @@ class StagePainter extends CustomPainter {
     _paintFlowGrips(canvas);
   }
 
+  /// _paintKeptBoxes outlines the elements that have asked to stay visible.
+  ///
+  /// Quieter than the selection's own outline and drawn under it: what these
+  /// say is "this is where that other thing is", not "this is what you are
+  /// working on". Editing furniture, so it is drawn here and never by the
+  /// renderer -- see ElementBase.showBounds.
+  void _paintKeptBoxes(Canvas canvas) {
+    var paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1
+      ..color = const Color(0x803D7EFF);
+
+    for (var element in document.elements) {
+      if (!element.showBounds || !element.visible) continue;
+      if (selection.contains(element.id)) continue;
+
+      var box = element.boundsAt(frame);
+      var at = Rect.fromLTWH(box.left * scale + origin.dx,
+          box.top * scale + origin.dy, box.width * scale, box.height * scale);
+      if (element.rotationRadians == 0) {
+        canvas.drawRect(at, paint);
+        continue;
+      }
+      canvas.save();
+      canvas.translate(at.center.dx, at.center.dy);
+      canvas.rotate(element.rotationRadians);
+      canvas.drawRect(
+          Rect.fromCenter(
+              center: Offset.zero, width: at.width, height: at.height),
+          paint);
+      canvas.restore();
+    }
+  }
+
   /// _paintFlowGrips draws the two dots that make a text box a link in a
   /// chain: where words come in, and where the ones that do not fit go.
   void _paintFlowGrips(Canvas canvas) {
@@ -499,7 +535,18 @@ class StagePainter extends CustomPainter {
     // that says there are words the box is not showing.
     var out = grips.overflowing ? const Color(0xFFE5484D) : blue;
 
-    // The link itself, so a chain can be seen rather than remembered.
+    // The link itself, so a chain can be seen rather than remembered -- from
+    // either end of it.
+    if (grips.from case var source?) {
+      canvas.drawLine(
+          source,
+          grips.inAt,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.5
+            ..color = blue.withValues(alpha: 0.75));
+      canvas.drawCircle(source, 3, Paint()..color = blue);
+    }
     if (grips.to case var landing?) {
       var line = Paint()
         ..style = PaintingStyle.stroke

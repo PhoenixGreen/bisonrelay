@@ -720,27 +720,40 @@ class CanvasStageState extends State<CanvasStage> {
     var flow = flowFor(e, document, inner, drawnTextSpec(e, e.bounds));
 
     var into = e.flowTo.isEmpty ? null : document.elementById(e.flowTo);
+    var outOf = flowSourceOf(e, document);
     return TextFlowGrips(
       inAt: _gripPosition(bounds, top: true),
       outAt: _gripPosition(bounds, top: false),
       overflowing: flow.overflows,
       receiving: flow.receiving,
       linked: into != null,
+      // Where the link lands, and where the words arriving here came from.
+      // Both ends of a chain draw it, so a box knows it is part of one
+      // whichever of them is selected.
       to: into == null
           ? null
-          : _toStage(into.bounds.topLeft + const Offset(0, flowGripGap)),
+          : _toStage(_flowPointOf(into.boundsAt(controller.frame), top: true)),
+      from: outOf == null
+          ? null
+          : _toStage(
+              _flowPointOf(outOf.boundsAt(controller.frame), top: false)),
     );
   }
 
-  /// _gripPosition puts a flow grip inside a corner rather than on it: the
-  /// corner is a resize handle, and two things at one point are two things
-  /// that cannot be aimed at separately.
+  /// _flowPointOf is where a box's flow grip sits, in document space.
+  Offset _flowPointOf(Rect bounds, {required bool top}) => top
+      ? Offset(bounds.left, bounds.top + bounds.height / 4)
+      : Offset(bounds.right, bounds.bottom - bounds.height / 4);
+
+  /// _gripPosition puts a flow grip half way between two resize handles: the
+  /// incoming dot between the top-left and the middle-left, the outgoing one
+  /// between the middle-right and the bottom-right. Tucked under a corner, as
+  /// they were, a default-sized box had three targets inside twenty pixels.
   Offset _gripPosition(Rect bounds, {required bool top}) {
     var centre = _toStage(bounds.center);
     var half = Offset(bounds.width, bounds.height) * _scale / 2;
-    var local = top
-        ? Offset(-half.dx, -half.dy + flowGripGap)
-        : Offset(half.dx, half.dy - flowGripGap);
+    var local =
+        top ? Offset(-half.dx, -half.dy / 2) : Offset(half.dx, half.dy / 2);
     var a = _rotationOfSelection;
     if (a == 0) return centre + local;
     return centre +
@@ -753,7 +766,7 @@ class CanvasStageState extends State<CanvasStage> {
   bool _hitFlowGrip(Offset stage) {
     var grips = _flowGrips();
     if (grips == null) return false;
-    return (stage - grips.outAt).distance <= handleSize / 2 + handleHitSlop;
+    return (stage - grips.outAt).distance <= flowGripSize / 2 + handleHitSlop;
   }
 
   /// _dropFlow finishes a link drag: onto another text box it points the
@@ -1071,7 +1084,15 @@ class CanvasStageState extends State<CanvasStage> {
     // A second click on a text element that is already selected opens it for
     // typing -- the same gesture that renames a file everywhere else. The
     // first click selects, so a text element is still moved by dragging it.
+    //
+    // Not one whose words come from a document, and not one being flowed
+    // into: neither of them owns the words it is showing. Typing into either
+    // would edit something that is about to be written over -- the next read
+    // of the document, the next time the box in front of it is laid out --
+    // and the work would be gone with no sign that it ever happened.
     if (element is TextElement &&
+        !element.document.on &&
+        flowSourceOf(element, document) == null &&
         !_shiftHeld &&
         controller.selection.length == 1 &&
         controller.selection.first == element.id &&
