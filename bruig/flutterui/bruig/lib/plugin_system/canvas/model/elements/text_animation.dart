@@ -564,6 +564,16 @@ class TextAnimation {
 
   final ChartEase ease;
 
+  /// length is how many frames the arrival takes, or 0 for the usual two
+  /// seconds.
+  ///
+  /// A setting rather than a reading: the keyframes on the timeline are where
+  /// the animation actually is, and this is what a new one is laid down with.
+  /// Dragging those keyframes does not write back here -- the number somebody
+  /// typed is what they asked for, and a field that changed itself every time
+  /// the timeline was nudged would be a setting that could not be relied on.
+  final int length;
+
   /// flipOrder is set on the copy the painter draws the way out with, and is
   /// never saved. See ChartAnimation.flipOrder.
   final bool flipOrder;
@@ -577,6 +587,7 @@ class TextAnimation {
     this.draw = const TextDrawSpec(),
     this.echo = const TextEchoSpec(),
     this.ease = ChartEase.easeOut,
+    this.length = 0,
     this.flipOrder = false,
   });
 
@@ -627,6 +638,7 @@ class TextAnimation {
     TextDrawSpec? draw,
     TextEchoSpec? echo,
     ChartEase? ease,
+    int? length,
     bool? flipOrder,
   }) =>
       TextAnimation(
@@ -638,6 +650,7 @@ class TextAnimation {
         draw: draw ?? this.draw,
         echo: echo ?? this.echo,
         ease: ease ?? this.ease,
+        length: length ?? this.length,
         flipOrder: flipOrder ?? this.flipOrder,
       );
 
@@ -672,6 +685,7 @@ class TextAnimation {
         if (draw.toJson().isNotEmpty) "draw": draw.toJson(),
         if (echo.toJson().isNotEmpty) "echo": echo.toJson(),
         "ease": ease.name,
+        if (length > 0) "length": length,
       };
 
   factory TextAnimation.fromJson(Map<String, dynamic> json) => TextAnimation(
@@ -687,5 +701,6 @@ class TextAnimation {
             ? TextEchoSpec.fromJson(json["echo"] as Map<String, dynamic>)
             : const TextEchoSpec(),
         ease: ChartEase.fromName(json["ease"] as String?),
+        length: jsonInt(json["length"], 0).clamp(0, 100000),
       );
 }

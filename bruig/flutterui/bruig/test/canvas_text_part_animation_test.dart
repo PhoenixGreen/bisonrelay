@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
@@ -383,9 +384,113 @@ void main() {
   });
 
   group("the length of an arrival", () {
+    CanvasController controllerFor([TextElement? element]) {
+      var controller = CanvasController(
+          CanvasDocument(frames: 96, frameRate: 12).addElement(element ??
+              TextElement(
+                  const ElementBase(
+                      id: "t", x: 0, y: 0, width: 400, height: 100),
+                  text: _line)));
+      addTearDown(controller.dispose);
+      return controller;
+    }
+
+    TextElement textIn(CanvasController c) =>
+        c.document.elements.single as TextElement;
+
+    int? spanOf(CanvasController c) {
+      int? from;
+      int? to;
+      for (var key in textIn(c).track?.keys ?? const <Keyframe>[]) {
+        if (!key.values.containsKey(KeyframeChannel.reveal)) continue;
+        from = from == null ? key.frame : math.min(from, key.frame);
+        to = to == null ? key.frame : math.max(to, key.frame);
+      }
+      return from == null || to == null ? null : to - from;
+    }
+
+    test("is what a new animation is laid down with", () {
+      // The setting was written and then ignored: an animation added
+      // afterwards came out at the default length regardless.
+      var controller = controllerFor(TextElement(
+        const ElementBase(id: "t", x: 0, y: 0, width: 400, height: 100),
+        text: _line,
+        animation: const TextAnimation(length: 8),
+      ));
+      controller.frame = 0;
+      controller.applyTextAnimation(
+          textIn(controller), TextAnimationPreset.fadeIn);
+      expect(spanOf(controller), 8);
+    });
+
+    test("and the exit is laid down with it too", () {
+      var controller = controllerFor(TextElement(
+        const ElementBase(id: "t", x: 0, y: 0, width: 400, height: 100),
+        text: _line,
+        animation: const TextAnimation(length: 9),
+      ));
+      controller.frame = 0;
+      controller.applyTextAnimation(
+          textIn(controller), TextAnimationPreset.fadeIn);
+      controller.applyTextExit(textIn(controller), TextAnimationPreset.fadeIn);
+
+      int? from;
+      int? to;
+      for (var key in textIn(controller).track!.keys) {
+        if (!key.values.containsKey(KeyframeChannel.close)) continue;
+        from = from == null ? key.frame : math.min(from, key.frame);
+        to = to == null ? key.frame : math.max(to, key.frame);
+      }
+      expect(to! - from!, 9);
+    });
+
+    test("changing it lays the keyframes out again", () {
+      var controller = controllerFor();
+      controller.frame = 0;
+      controller.applyTextAnimation(
+          textIn(controller), TextAnimationPreset.fadeIn,
+          length: 10);
+      expect(spanOf(controller), 10);
+
+      // What the settings panel does: write the setting, then ask for the
+      // keyframes to be laid out again.
+      controller.replaceElement(textIn(controller).copyWith(
+          animation: textIn(controller).animation.copyWith(length: 30)));
+      controller.retimeTextAnimation("t");
+      expect(spanOf(controller), 30);
+      expect(textIn(controller).animation.length, 30);
+    });
+
+    test("but the timeline does not write back to it", () {
+      // It is a setting, not a reading: a field that changed itself every
+      // time the timeline was nudged would be one nobody could rely on.
+      var controller = controllerFor();
+      controller.frame = 0;
+      controller.applyTextAnimation(
+          textIn(controller), TextAnimationPreset.fadeIn,
+          length: 12);
+      expect(textIn(controller).animation.length, 0,
+          reason: "laying keyframes out is not somebody asking for a length");
+    });
+
+    test("and choosing another preset leaves the timing alone", () {
+      // Or trying the next preset in the list would undo the last thing
+      // somebody did, every time.
+      var controller = controllerFor();
+      controller.frame = 4;
+      controller.applyTextAnimation(
+          textIn(controller), TextAnimationPreset.fadeIn,
+          length: 7);
+      controller.applyTextAnimation(
+          textIn(controller), TextAnimationPreset.words);
+      expect(spanOf(controller), 7);
+    });
+  });
+
+  group("the end curve", () {
     CanvasController controllerFor() {
       var controller = CanvasController(
-          CanvasDocument(frames: 48, frameRate: 12).addElement(TextElement(
+          CanvasDocument(frames: 96, frameRate: 12).addElement(TextElement(
               const ElementBase(id: "t", x: 0, y: 0, width: 400, height: 100),
               text: _line)));
       addTearDown(controller.dispose);
@@ -395,31 +500,40 @@ void main() {
     TextElement textIn(CanvasController c) =>
         c.document.elements.single as TextElement;
 
-    test("can be set beside the preset rather than dragged", () {
+    test("survives the keyframes being laid out again", () {
+      // Re-laying them for any other reason -- a length being changed -- was
+      // putting the preset's own curve back, so a chosen curve would not
+      // stay chosen.
       var controller = controllerFor();
-      controller.frame = 0;
       controller.applyTextAnimation(
-          textIn(controller), TextAnimationPreset.fadeIn,
-          length: 8);
-      expect(controller.textAnimationSpan(textIn(controller)).$2, 8);
+          textIn(controller), TextAnimationPreset.bounce);
+      expect(textIn(controller).animation.ease, ChartEase.bounce);
 
-      controller.setTextAnimationLength(textIn(controller), 30);
-      expect(controller.textAnimationSpan(textIn(controller)).$2, 30);
-      expect(controller.textAnimationSpan(textIn(controller)).$1, 0,
-          reason: "it stretches the end, it does not move the start");
+      controller.replaceElement(textIn(controller).copyWith(
+          animation: textIn(controller)
+              .animation
+              .copyWith(ease: ChartEase.linear, length: 15)));
+      controller.retimeTextAnimation("t");
+      expect(textIn(controller).animation.ease, ChartEase.linear,
+          reason: "the curve somebody chose is still the curve");
     });
 
-    test("and choosing another preset keeps it", () {
-      // Or trying the next preset in the list would undo the last thing
-      // somebody did, every time.
+    test("and only a new preset brings its own", () {
       var controller = controllerFor();
-      controller.frame = 0;
       controller.applyTextAnimation(
-          textIn(controller), TextAnimationPreset.fadeIn,
-          length: 7);
+          textIn(controller), TextAnimationPreset.fadeIn);
+      controller.replaceElement(textIn(controller).copyWith(
+          animation:
+              textIn(controller).animation.copyWith(ease: ChartEase.spring)));
+
       controller.applyTextAnimation(
-          textIn(controller), TextAnimationPreset.words);
-      expect(controller.textAnimationSpan(textIn(controller)).$2, 7);
+          textIn(controller), TextAnimationPreset.fadeUp);
+      expect(textIn(controller).animation.ease, ChartEase.spring,
+          reason: "a preset with no curve of its own leaves it alone");
+
+      controller.applyTextAnimation(
+          textIn(controller), TextAnimationPreset.bounce);
+      expect(textIn(controller).animation.ease, ChartEase.bounce);
     });
   });
 

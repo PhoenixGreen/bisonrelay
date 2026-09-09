@@ -900,27 +900,40 @@ Widget _animationSection(CanvasController controller, TextElement e,
         ]),
       if (animation.on || animation.closes)
         CanvasControlGroup(label: "Timing", children: [
-          // How long the arrival takes, in frames. The same number the two
-          // keyframes on the timeline are already saying -- written here as
-          // well because the default is rarely the one wanted, and dragging a
-          // keyframe is a poor way to ask for twelve frames.
-          if (animation.on)
-            CanvasNumberField(
-              key: const ValueKey("textAnimationLength"),
-              label: "Length",
-              min: 1,
-              max: 3600,
-              decimals: 0,
-              width: 62,
-              value: (controller.textAnimationSpan(e).$2 ?? 24).toDouble(),
-              onChanged: (v) => controller.setTextAnimationLength(e, v.round()),
-            ),
-          if (animation.on)
-            const CanvasHint(
-                "How many frames the arrival takes. The two keyframes on the "
-                "timeline say the same thing, and dragging them changes this "
-                "— a part's own offset is measured against it, so the parts "
-                "move with it."),
+          // How long an arrival or an exit is laid down with, in frames. A
+          // setting rather than a reading of the timeline: the default is
+          // rarely the length wanted, and dragging a keyframe is a poor way
+          // to ask for twelve frames.
+          CanvasNumberField(
+            key: const ValueKey("textAnimationLength"),
+            label: "Length",
+            min: 1,
+            max: 3600,
+            decimals: 0,
+            width: 62,
+            value: (animation.length > 0
+                    ? animation.length
+                    : controller.defaultAnimationFrames)
+                .toDouble(),
+            onChanged: (v) {
+              begin();
+              write(
+                  e.copyWith(animation: animation.copyWith(length: v.round())));
+            },
+            // The keyframes are laid out again once the number has stopped
+            // changing rather than on every keystroke -- and from the element
+            // the controller now holds, since the write above has just
+            // replaced the one this panel was handed.
+            onCommit: () {
+              commit();
+              controller.retimeTextAnimation(e.id);
+            },
+          ),
+          const CanvasHint(
+              "How many frames an arrival or an exit is laid down with. It is "
+              "a setting rather than a reading: dragging the keyframes on the "
+              "timeline moves the animation without changing this, so the "
+              "number here stays the one that was asked for."),
           if (animation.preset.staggers || animation.exit.staggers)
             CanvasNumberField(
               label: "Gap",

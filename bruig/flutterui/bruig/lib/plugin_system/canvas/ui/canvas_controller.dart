@@ -1435,10 +1435,14 @@ class CanvasController extends ChangeNotifier {
   /// timeline, so a canvas with a headline and a chart arriving together has
   /// them arriving together. See applyChartAnimation, which this mirrors line
   /// for line -- including the reason the keyframes are ordinary ones.
-  /// [length] is how many frames it takes. Nothing means the usual two
-  /// seconds, and the setting beside the preset writes it -- more often than
-  /// not the length wanted is not the default one, and dragging a keyframe to
-  /// find out is a poor way to ask for twelve frames.
+  /// [length] is how many frames it takes, and overrules everything else:
+  /// zero means the usual two seconds, and it is what the Length setting
+  /// passes.
+  ///
+  /// Left out, the length comes from the animation's own Length setting where
+  /// one has been asked for, and otherwise from wherever the keyframes
+  /// already are -- so trying one preset after another to see how they look
+  /// leaves the timing alone instead of resetting it every time.
   void applyTextAnimation(TextElement element, TextAnimationPreset preset,
       {int? length}) {
     beginInteraction();
@@ -1472,10 +1476,10 @@ class CanvasController extends ChangeNotifier {
     // tried the next preset in the list.
     var (was, wasFor) = textAnimationSpan(element);
     var from = was ?? _frame.clamp(0, document.frames - 2);
-    var span = length ??
-        wasFor ??
-        math.max(2, (document.frameRate * chartAnimationSeconds).round());
-    span = math.max(1, span);
+    var asked = length ??
+        (element.animation.length > 0 ? element.animation.length : null);
+    var span = asked ?? wasFor ?? defaultAnimationFrames;
+    span = math.max(1, span == 0 ? defaultAnimationFrames : span);
     if (document.frames - 1 < from + span) {
       document = document.copyWith(frames: from + span + 1);
     }
@@ -1497,8 +1501,13 @@ class CanvasController extends ChangeNotifier {
 
     apply(document.withElement(element
         .copyWith(
-            animation:
-                element.animation.copyWith(preset: preset, ease: preset.wants))
+            animation: element.animation.copyWith(
+                preset: preset,
+                // The curve the preset was designed around, and only where
+                // the preset is actually changing: re-laying the keyframes
+                // for some other reason must not quietly undo a curve
+                // somebody chose. See TextAnimationPreset.wants.
+                ease: preset == element.animation.preset ? null : preset.wants))
         .withBase(track: track)));
     endInteraction();
   }
@@ -1523,13 +1532,23 @@ class CanvasController extends ChangeNotifier {
     return (from, to - from);
   }
 
-  /// setTextAnimationLength drags the arrival's second keyframe, from the
-  /// settings panel rather than by hand on the timeline.
-  void setTextAnimationLength(TextElement element, int frames) {
-    var (from, _) = textAnimationSpan(element);
-    if (from == null) return;
+  /// defaultAnimationFrames is how long an animation runs for when nobody
+  /// has said: the same two seconds a chart's uses.
+  int get defaultAnimationFrames =>
+      math.max(2, (_document.frameRate * chartAnimationSeconds).round());
+
+  /// retimeTextAnimation lays [id]'s keyframes out again at whatever its
+  /// Length setting now says.
+  ///
+  /// Looked up by id rather than taken as an element, because it is called
+  /// after the setting itself has been written: the copy the settings panel
+  /// is holding is the one from before that write, and applying it would put
+  /// the old length back.
+  void retimeTextAnimation(String id) {
+    var element = _document.elementById(id);
+    if (element is! TextElement || !element.animation.on) return;
     applyTextAnimation(element, element.animation.preset,
-        length: math.max(1, frames));
+        length: element.animation.length);
   }
 
   /// applyTextExit is the way out, on its own pair of keyframes at the end of
@@ -1560,8 +1579,9 @@ class CanvasController extends ChangeNotifier {
           frames: math.max(2, document.frameRate * chartAnimationSeconds * 2));
     }
 
-    var span =
-        math.max(2, (document.frameRate * chartAnimationSeconds).round());
+    var span = element.animation.length > 0
+        ? element.animation.length
+        : defaultAnimationFrames;
     var to = document.frames - 1;
     var entranceEnds = 0;
     for (var key in track.keys) {
