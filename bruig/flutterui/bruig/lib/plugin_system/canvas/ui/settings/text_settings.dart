@@ -24,149 +24,182 @@ List<Widget> textSettings(
   }
 
   return [
-    // No Content field. The words are typed on the canvas, in the box they
-    // will appear in, at the size and face they will appear at -- see
-    // CanvasTextEditor. A two-line box in a settings panel could show neither,
-    // so writing a headline meant typing it here and looking over there.
-    // No caption: the panel header says "Text settings" already, and a
-    // group called Text directly under it was the word twice.
-    CanvasControlGroup(label: "Text", hideCaption: true, children: [
-      CanvasToggle(
-        label: "Fit to box",
-        value: e.autoSize,
-        onChanged: (v) => now(e.copyWith(autoSize: v)),
-      ),
-    ]),
-    ...typeGroups(
-        e.textSpec, (spec) => write(e.copyWith(textSpec: spec)), begin, commit),
-    CanvasControlGroup(label: "Columns", children: [
-      CanvasNumberField(
-        key: const ValueKey("textColumns"),
-        label: "Columns",
-        value: e.columns.count.toDouble(),
-        min: 1,
-        max: 12,
-        width: 54,
-        onChanged: (v) {
-          begin();
-          write(e.copyWith(columns: e.columns.copyWith(count: v.round())));
-        },
-        onCommit: commit,
-      ),
-      // The rest only means something once there is a gutter to put it in.
-      if (!e.columns.isSingle) ...[
-        CanvasNumberField(
-          label: "Gap",
-          value: e.columns.gap,
-          min: 0,
-          max: 400,
-          width: 54,
-          onChanged: (v) {
-            begin();
-            write(e.copyWith(columns: e.columns.copyWith(gap: v)));
-          },
-          onCommit: commit,
-        ),
-        CanvasDropdown<ColumnRuleStyle>(
-          label: "Rule",
-          value: e.columns.ruleStyle,
-          width: 92,
-          options: [for (var v in ColumnRuleStyle.values) (v, v.label)],
-          onChanged: (v) =>
-              now(e.copyWith(columns: e.columns.copyWith(ruleStyle: v))),
-        ),
-        if (e.columns.ruleStyle != ColumnRuleStyle.none) ...[
-          CanvasNumberField(
-            label: "Width",
-            value: e.columns.ruleWidth,
-            min: 0,
-            max: 40,
-            decimals: 1,
-            width: 54,
-            onChanged: (v) {
-              begin();
-              write(e.copyWith(columns: e.columns.copyWith(ruleWidth: v)));
-            },
-            onCommit: commit,
-          ),
-          CanvasColorButton(
-            label: "Colour",
-            color: e.columns.ruleColor,
-            onChanged: (c) =>
-                now(e.copyWith(columns: e.columns.copyWith(ruleColor: c))),
-          ),
+    // Four sections, each of which is one question: what the type looks like,
+    // how it is laid out, which words are different, and how it arrives.
+    // Flat, this was eight groups down one narrow column and the animation
+    // settings were below the fold on any panel narrower than the screen.
+    boxed(
+      context,
+      CanvasExpander(
+        label: "Type",
+        remember: "textType",
+        initiallyOpen: true,
+        trailing: "${e.textSpec.fontSize.round()}",
+        children: [
+          // No Content field. The words are typed on the canvas, in the box
+          // they will appear in, at the size and face they will appear at --
+          // see CanvasTextEditor. A two-line box in a settings panel could
+          // show neither, so writing a headline meant typing it here and
+          // looking over there.
+          CanvasControlGroup(label: "Text", hideCaption: true, children: [
+            CanvasToggle(
+              label: "Fit to box",
+              value: e.autoSize,
+              onChanged: (v) => now(e.copyWith(autoSize: v)),
+            ),
+          ]),
+          // The section's own heading says Type already, so the first group
+          // inside it does not say it again.
+          ...typeGroups(e.textSpec, (spec) => write(e.copyWith(textSpec: spec)),
+              begin, commit,
+              hideCaption: true),
+          boxGroup(e.box, (box) => write(e.copyWith(box: box)), begin, commit),
         ],
-      ],
-    ]),
-    CanvasControlGroup(label: "On a line", children: [
-      CanvasDropdown<String>(
-        label: "Follow",
-        value: e.curve?.elementId ?? "",
-        width: 156,
-        options: curveOptions(controller),
-        onChanged: (v) => now(v.isEmpty
-            ? e.copyWith(clearCurve: true)
-            : e.copyWith(
-                curve: (e.curve ?? const TextOnCurve(elementId: ""))
-                    .copyWith(elementId: v))),
       ),
-      if (e.curve != null) ...[
-        CanvasNumberField(
-          label: "Slide",
-          decimals: 2,
-          width: 62,
-          value: controller.valueAt(e, KeyframeChannel.slide, e.curve!.offset),
-          min: -1,
-          max: 1,
-          onChanged: (v) {
-            begin();
-            // Written as a keyframe once this frame has one, so dragging the
-            // slider while animating retimes the caption's travel rather than
-            // moving the whole run.
-            if (controller.hasValueKey(e, KeyframeChannel.slide)) {
-              controller.setValueKey(e, KeyframeChannel.slide, v);
-              return;
-            }
-            write(e.copyWith(curve: e.curve!.copyWith(offset: v)));
-          },
-          onCommit: commit,
-        ),
-        valueDot(
-            controller,
-            e,
-            KeyframeChannel.slide,
-            "the slide along the "
-            "line",
-            e.curve!.offset),
-        CanvasNumberField(
-          label: "Spacing",
-          value: e.curve!.spacing,
-          min: -20,
-          max: 60,
-          decimals: 1,
-          width: 58,
-          onChanged: (v) {
-            begin();
-            write(e.copyWith(curve: e.curve!.copyWith(spacing: v)));
-          },
-          onCommit: commit,
-        ),
-        CanvasToggle(
-          label: "Below",
-          value: e.curve!.away,
-          onChanged: (v) => now(e.copyWith(curve: e.curve!.copyWith(away: v))),
-        ),
-        CanvasToggle(
-          // Not the line element's own Hide: a hidden element is skipped
-          // everywhere, this one included, so the text would go with it.
-          label: "Hide line",
-          value: e.curve!.hideHost,
-          onChanged: (v) =>
-              now(e.copyWith(curve: e.curve!.copyWith(hideHost: v))),
-        ),
-      ],
-    ]),
-    boxGroup(e.box, (box) => write(e.copyWith(box: box)), begin, commit),
+    ),
+    boxed(
+      context,
+      CanvasExpander(
+        label: "Columns and on a line",
+        remember: "textLayout",
+        trailing: e.curve != null
+            ? "On a line"
+            : (e.columns.isSingle ? null : "${e.columns.count} columns"),
+        children: [
+          CanvasControlGroup(label: "Columns", children: [
+            CanvasNumberField(
+              key: const ValueKey("textColumns"),
+              label: "Columns",
+              value: e.columns.count.toDouble(),
+              min: 1,
+              max: 12,
+              width: 54,
+              onChanged: (v) {
+                begin();
+                write(
+                    e.copyWith(columns: e.columns.copyWith(count: v.round())));
+              },
+              onCommit: commit,
+            ),
+            // The rest only means something once there is a gutter to put it in.
+            if (!e.columns.isSingle) ...[
+              CanvasNumberField(
+                label: "Gap",
+                value: e.columns.gap,
+                min: 0,
+                max: 400,
+                width: 54,
+                onChanged: (v) {
+                  begin();
+                  write(e.copyWith(columns: e.columns.copyWith(gap: v)));
+                },
+                onCommit: commit,
+              ),
+              CanvasDropdown<ColumnRuleStyle>(
+                label: "Rule",
+                value: e.columns.ruleStyle,
+                width: 92,
+                options: [for (var v in ColumnRuleStyle.values) (v, v.label)],
+                onChanged: (v) =>
+                    now(e.copyWith(columns: e.columns.copyWith(ruleStyle: v))),
+              ),
+              if (e.columns.ruleStyle != ColumnRuleStyle.none) ...[
+                CanvasNumberField(
+                  label: "Width",
+                  value: e.columns.ruleWidth,
+                  min: 0,
+                  max: 40,
+                  decimals: 1,
+                  width: 54,
+                  onChanged: (v) {
+                    begin();
+                    write(
+                        e.copyWith(columns: e.columns.copyWith(ruleWidth: v)));
+                  },
+                  onCommit: commit,
+                ),
+                CanvasColorButton(
+                  label: "Colour",
+                  color: e.columns.ruleColor,
+                  onChanged: (c) => now(
+                      e.copyWith(columns: e.columns.copyWith(ruleColor: c))),
+                ),
+              ],
+            ],
+          ]),
+          CanvasControlGroup(label: "On a line", children: [
+            CanvasDropdown<String>(
+              label: "Follow",
+              value: e.curve?.elementId ?? "",
+              width: 156,
+              options: curveOptions(controller),
+              onChanged: (v) => now(v.isEmpty
+                  ? e.copyWith(clearCurve: true)
+                  : e.copyWith(
+                      curve: (e.curve ?? const TextOnCurve(elementId: ""))
+                          .copyWith(elementId: v))),
+            ),
+            if (e.curve != null) ...[
+              CanvasNumberField(
+                label: "Slide",
+                decimals: 2,
+                width: 62,
+                value: controller.valueAt(
+                    e, KeyframeChannel.slide, e.curve!.offset),
+                min: -1,
+                max: 1,
+                onChanged: (v) {
+                  begin();
+                  // Written as a keyframe once this frame has one, so dragging the
+                  // slider while animating retimes the caption's travel rather than
+                  // moving the whole run.
+                  if (controller.hasValueKey(e, KeyframeChannel.slide)) {
+                    controller.setValueKey(e, KeyframeChannel.slide, v);
+                    return;
+                  }
+                  write(e.copyWith(curve: e.curve!.copyWith(offset: v)));
+                },
+                onCommit: commit,
+              ),
+              valueDot(
+                  controller,
+                  e,
+                  KeyframeChannel.slide,
+                  "the slide along the "
+                  "line",
+                  e.curve!.offset),
+              CanvasNumberField(
+                label: "Spacing",
+                value: e.curve!.spacing,
+                min: -20,
+                max: 60,
+                decimals: 1,
+                width: 58,
+                onChanged: (v) {
+                  begin();
+                  write(e.copyWith(curve: e.curve!.copyWith(spacing: v)));
+                },
+                onCommit: commit,
+              ),
+              CanvasToggle(
+                label: "Below",
+                value: e.curve!.away,
+                onChanged: (v) =>
+                    now(e.copyWith(curve: e.curve!.copyWith(away: v))),
+              ),
+              CanvasToggle(
+                // Not the line element's own Hide: a hidden element is skipped
+                // everywhere, this one included, so the text would go with it.
+                label: "Hide line",
+                value: e.curve!.hideHost,
+                onChanged: (v) =>
+                    now(e.copyWith(curve: e.curve!.copyWith(hideHost: v))),
+              ),
+            ],
+          ]),
+        ],
+      ),
+    ),
     boxed(context, _partsSection(e, write, begin, commit)),
     // Boxed like every other section: a bare expander among boxed ones reads
     // as something that has come loose.

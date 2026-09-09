@@ -5321,4 +5321,83 @@ void main() {
       expect(topOf("LAYERS"), lessThan(topOf("ADD")));
     });
   });
+
+  group("the text settings", () {
+    /// panel builds a text element's settings the way the Layers sidebar does.
+    Future<CanvasController> panel(WidgetTester tester,
+        {TextElement? element}) async {
+      var text = element ??
+          TextElement(
+            ElementBase(id: newElementId(), width: 400, height: 200),
+            text: "You come across an idea",
+          );
+      var controller =
+          CanvasController(const CanvasDocument().addElement(text));
+      addTearDown(controller.dispose);
+      controller.selectOnly(text.id);
+      await pump(tester, CanvasDesignPanel(controller: controller));
+      await tester.pumpAndSettle();
+      return controller;
+    }
+
+    TextElement textIn(CanvasController c) =>
+        c.document.elements.whereType<TextElement>().single;
+
+    testWidgets("are four sections, in the order the work happens",
+        (tester) async {
+      // What the type looks like, how it is laid out, which words are
+      // different, and how it arrives. Flat, it was eight groups down one
+      // narrow column with the animation settings below the fold.
+      await panel(tester);
+      var headings = [
+        for (var it
+            in tester.widgetList<CanvasExpander>(find.byType(CanvasExpander)))
+          it.label,
+      ];
+      var wanted = [
+        "Type",
+        "Columns and on a line",
+        "Parts of the text",
+        "Animation",
+      ];
+      expect([for (var w in wanted) headings.contains(w)], everyElement(isTrue),
+          reason: "$headings");
+      var places = [for (var w in wanted) headings.indexOf(w)];
+      var sorted = [...places]..sort();
+      expect(places, sorted, reason: "out of order: $headings");
+    });
+
+    testWidgets("the type section holds the type, the box and Fit to box",
+        (tester) async {
+      // Open to begin with: it is the section somebody is in the settings for.
+      var controller = await panel(tester);
+      expect(find.text("Fit to box"), findsOneWidget);
+      expect(find.text("BOX"), findsOneWidget);
+
+      await tester.tap(find.text("Fit to box"));
+      await tester.pumpAndSettle();
+      expect(textIn(controller).autoSize, isTrue);
+    });
+
+    testWidgets("and the columns section still works once it is opened",
+        (tester) async {
+      // A section that shuts its controls away is a section that can hide a
+      // dead one, which is what a model-only test cannot see.
+      var controller = await panel(tester);
+      expect(find.text("COLUMNS"), findsNothing, reason: "shut to begin with");
+
+      // Scrolled to first: the heading is below the fold in a panel this
+      // tall, and a tap at a point outside the viewport hits nothing.
+      await tester.ensureVisible(find.text("COLUMNS AND ON A LINE"));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text("COLUMNS AND ON A LINE"));
+      await tester.pumpAndSettle();
+      expect(find.text("COLUMNS"), findsOneWidget);
+      expect(find.text("ON A LINE"), findsOneWidget);
+
+      await tester.enterText(find.byKey(const ValueKey("textColumns")), "3");
+      await tester.pumpAndSettle();
+      expect(textIn(controller).columns.count, 3);
+    });
+  });
 }
