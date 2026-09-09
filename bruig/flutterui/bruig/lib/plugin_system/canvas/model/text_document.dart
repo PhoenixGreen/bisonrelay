@@ -13,8 +13,135 @@ import 'package:bruig/plugin_system/canvas/model/elements/text_parts.dart';
 // canvas is open and the text it produced is saved with the element -- and
 // the reference is kept beside it so it can be read again when it changes.
 
+/// MarkdownKind is a piece of markdown a document-backed element honours.
+enum MarkdownKind {
+  heading1("Heading 1", scale: 1.8, weight: 700),
+  heading2("Heading 2", scale: 1.4, weight: 700),
+  bold("Bold", weight: 700),
+  italic("Italic", slanted: true),
+  underline("Underline", underlined: true),
+  link("Link", color: Color(0xFF4C8DFF), underlined: true);
+
+  final String label;
+
+  /// The look each one has until it is given another: a heading is bigger and
+  /// heavier, a link is blue and underlined. Chosen to be what somebody would
+  /// have set by hand, so the switch on its own is already useful.
+  final double scale;
+  final int? weight;
+
+  /// slanted rather than italic, because a value of this enum is called
+  /// italic and the two cannot share a name.
+  final bool slanted;
+  final bool underlined;
+  final Color? color;
+
+  const MarkdownKind(this.label,
+      {this.scale = 1,
+      this.weight,
+      this.slanted = false,
+      this.underlined = false,
+      this.color});
+}
+
+/// MarkdownLook is how one piece of markdown is drawn.
+///
+/// Its own type rather than a switch, because "honour the headings" is only
+/// half the question: a poster's heading is a different size, weight, face
+/// and colour from a report's, and the alternative to saying so here is a
+/// document whose headings can only ever look like the one thing this code
+/// happened to choose.
+///
+/// Everything but [on] is an override: null means the element's own, so a
+/// look that has been switched on and left alone follows the type settings
+/// and picks up a change to them.
+class MarkdownLook {
+  final bool on;
+
+  /// scale is the size against the element's own, or null for the kind's own
+  /// idea of it -- 1.8 for a first-level heading, 1 for bold.
+  final double? scale;
+  final Color? color;
+  final int? weight;
+  final bool? italic;
+  final bool? underline;
+  final String? family;
+
+  const MarkdownLook({
+    this.on = true,
+    this.scale,
+    this.color,
+    this.weight,
+    this.italic,
+    this.underline,
+    this.family,
+  });
+
+  /// partFor is this look as a run of styled words -- see TextPart, which is
+  /// the one way anything in a text element says "these words, not those".
+  TextPart partFor(MarkdownKind kind, int from, int to) => TextPart(
+        from: from,
+        to: to,
+        scale: (scale ?? kind.scale) == 1 ? null : (scale ?? kind.scale),
+        color: color ?? kind.color,
+        weight: weight ?? kind.weight,
+        italic: (italic ?? kind.slanted) ? true : null,
+        family: family,
+        underline: (underline ?? kind.underlined)
+            ? const PartUnderline(style: PartLineStyle.solid)
+            : null,
+      );
+
+  MarkdownLook copyWith({
+    bool? on,
+    double? scale,
+    bool clearScale = false,
+    Color? color,
+    bool clearColor = false,
+    int? weight,
+    bool clearWeight = false,
+    bool? italic,
+    bool? underline,
+    String? family,
+    bool clearFamily = false,
+  }) =>
+      MarkdownLook(
+        on: on ?? this.on,
+        scale: clearScale ? null : (scale ?? this.scale),
+        color: clearColor ? null : (color ?? this.color),
+        weight: clearWeight ? null : (weight ?? this.weight),
+        italic: italic ?? this.italic,
+        underline: underline ?? this.underline,
+        family: clearFamily ? null : (family ?? this.family),
+      );
+
+  Map<String, dynamic> toJson() => {
+        if (!on) "off": true,
+        if (scale != null) "scale": scale,
+        if (color != null) "color": colorToJson(color!),
+        if (weight != null) "weight": weight,
+        if (italic != null) "italic": italic,
+        if (underline != null) "underline": underline,
+        if (family != null) "family": family,
+      };
+
+  factory MarkdownLook.fromJson(Map<String, dynamic> json) => MarkdownLook(
+        on: !jsonBool(json["off"], false),
+        scale: json["scale"] is num
+            ? (json["scale"] as num).toDouble().clamp(0.05, 20.0)
+            : null,
+        color: json["color"] == null
+            ? null
+            : colorFromJson(json["color"], const Color(0xFFFFFFFF)),
+        weight: json["weight"] is num ? (json["weight"] as num).toInt() : null,
+        italic: json["italic"] is bool ? json["italic"] as bool : null,
+        underline: json["underline"] is bool ? json["underline"] as bool : null,
+        family: json["family"] is String ? json["family"] as String : null,
+      );
+}
+
 /// MarkdownAllow is which pieces of markdown a document-backed element
-/// honours.
+/// honours, and how each of them is drawn.
 ///
 /// Each on its own, because the answer really is per piece: a poster wants
 /// the bold and none of the headings, and a report wants the headings and
@@ -22,56 +149,54 @@ import 'package:bruig/plugin_system/canvas/model/elements/text_parts.dart';
 /// as written -- a headline reading "## Title" is not markdown being ignored,
 /// it is markdown showing.
 class MarkdownAllow {
-  final bool heading1;
-  final bool heading2;
-  final bool bold;
-  final bool italic;
-  final bool underline;
-  final bool link;
+  final Map<MarkdownKind, MarkdownLook> looks;
 
-  const MarkdownAllow({
-    this.heading1 = true,
-    this.heading2 = true,
-    this.bold = true,
-    this.italic = true,
-    this.underline = true,
-    this.link = true,
-  });
+  const MarkdownAllow({this.looks = const {}});
 
-  MarkdownAllow copyWith({
-    bool? heading1,
-    bool? heading2,
-    bool? bold,
-    bool? italic,
-    bool? underline,
-    bool? link,
-  }) =>
-      MarkdownAllow(
-        heading1: heading1 ?? this.heading1,
-        heading2: heading2 ?? this.heading2,
-        bold: bold ?? this.bold,
-        italic: italic ?? this.italic,
-        underline: underline ?? this.underline,
-        link: link ?? this.link,
-      );
+  /// lookFor is how [kind] is drawn, which is its own default until something
+  /// has been said about it.
+  MarkdownLook lookFor(MarkdownKind kind) =>
+      looks[kind] ?? const MarkdownLook();
 
-  Map<String, dynamic> toJson() => {
-        if (!heading1) "h1": false,
-        if (!heading2) "h2": false,
-        if (!bold) "b": false,
-        if (!italic) "i": false,
-        if (!underline) "u": false,
-        if (!link) "a": false,
-      };
+  bool allows(MarkdownKind kind) => lookFor(kind).on;
 
-  factory MarkdownAllow.fromJson(Map<String, dynamic> json) => MarkdownAllow(
-        heading1: jsonBool(json["h1"], true),
-        heading2: jsonBool(json["h2"], true),
-        bold: jsonBool(json["b"], true),
-        italic: jsonBool(json["i"], true),
-        underline: jsonBool(json["u"], true),
-        link: jsonBool(json["a"], true),
-      );
+  MarkdownAllow withLook(MarkdownKind kind, MarkdownLook look) =>
+      MarkdownAllow(looks: {...looks, kind: look});
+
+  Map<String, dynamic> toJson() {
+    var out = <String, dynamic>{};
+    for (var entry in looks.entries) {
+      var json = entry.value.toJson();
+      if (json.isNotEmpty) out[entry.key.name] = json;
+    }
+    return out;
+  }
+
+  factory MarkdownAllow.fromJson(Map<String, dynamic> json) {
+    var looks = <MarkdownKind, MarkdownLook>{};
+    for (var kind in MarkdownKind.values) {
+      var mine = json[kind.name];
+      if (mine is Map<String, dynamic>) {
+        looks[kind] = MarkdownLook.fromJson(mine);
+      }
+    }
+    // Read what the switches used to be, so a canvas saved when this was six
+    // booleans opens with those switches where they were left.
+    const was = {
+      "h1": MarkdownKind.heading1,
+      "h2": MarkdownKind.heading2,
+      "b": MarkdownKind.bold,
+      "i": MarkdownKind.italic,
+      "u": MarkdownKind.underline,
+      "a": MarkdownKind.link,
+    };
+    for (var entry in was.entries) {
+      if (json[entry.key] == false) {
+        looks[entry.value] = const MarkdownLook(on: false);
+      }
+    }
+    return MarkdownAllow(looks: looks);
+  }
 }
 
 /// TextDocumentRef says which document in the Writing library a text element
@@ -208,7 +333,9 @@ class TextDocumentRef {
       continue;
     }
 
-    var wants = heading == 1 ? allow.heading1 : allow.heading2;
+    var headingKind =
+        heading == 1 ? MarkdownKind.heading1 : MarkdownKind.heading2;
+    var wants = allow.allows(headingKind);
     var headingFrom = words + 1;
 
     // The inline marks. One pass over the line, longest marker first, so
@@ -228,14 +355,12 @@ class TextDocumentRef {
       if (link != null) {
         flush();
         var shown = link.group(1) ?? "";
-        if (markdown && allow.link) {
+        if (markdown && allow.allows(MarkdownKind.link)) {
           styled(
               shown,
-              (from, to) => TextPart(
-                  from: from,
-                  to: to,
-                  color: const Color(0xFF4C8DFF),
-                  underline: const PartUnderline(style: PartLineStyle.solid)));
+              (from, to) => allow
+                  .lookFor(MarkdownKind.link)
+                  .partFor(MarkdownKind.link, from, to));
         } else {
           write(shown);
         }
@@ -256,9 +381,12 @@ class TextDocumentRef {
       var bold = paired("**");
       if (bold != null) {
         flush();
-        if (markdown && allow.bold) {
+        if (markdown && allow.allows(MarkdownKind.bold)) {
           styled(
-              bold.$1, (from, to) => TextPart(from: from, to: to, weight: 700));
+              bold.$1,
+              (from, to) => allow
+                  .lookFor(MarkdownKind.bold)
+                  .partFor(MarkdownKind.bold, from, to));
         } else {
           write(bold.$1);
         }
@@ -269,11 +397,12 @@ class TextDocumentRef {
       var under = paired("__");
       if (under != null) {
         flush();
-        if (markdown && allow.underline) {
+        if (markdown && allow.allows(MarkdownKind.underline)) {
           styled(
               under.$1,
-              (from, to) => TextPart(
-                  from: from, to: to, underline: const PartUnderline()));
+              (from, to) => allow
+                  .lookFor(MarkdownKind.underline)
+                  .partFor(MarkdownKind.underline, from, to));
         } else {
           write(under.$1);
         }
@@ -284,9 +413,12 @@ class TextDocumentRef {
       var italic = paired("*") ?? paired("_");
       if (italic != null) {
         flush();
-        if (markdown && allow.italic) {
-          styled(italic.$1,
-              (from, to) => TextPart(from: from, to: to, italic: true));
+        if (markdown && allow.allows(MarkdownKind.italic)) {
+          styled(
+              italic.$1,
+              (from, to) => allow
+                  .lookFor(MarkdownKind.italic)
+                  .partFor(MarkdownKind.italic, from, to));
         } else {
           write(italic.$1);
         }
@@ -300,12 +432,8 @@ class TextDocumentRef {
     flush();
 
     if (heading > 0 && markdown && wants && words >= headingFrom) {
-      parts.add(TextPart(
-        from: headingFrom,
-        to: words,
-        weight: 700,
-        scale: heading == 1 ? 1.6 : 1.3,
-      ));
+      parts.add(
+          allow.lookFor(headingKind).partFor(headingKind, headingFrom, words));
     }
   }
 

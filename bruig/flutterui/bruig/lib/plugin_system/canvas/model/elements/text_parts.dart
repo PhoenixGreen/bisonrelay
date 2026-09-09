@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui' show Color;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -339,6 +340,46 @@ bool partsOutline(List<TextPart> parts) {
   return false;
 }
 
+/// partsFrom is [parts] as they apply to a slice of the text that begins
+/// [words] words in.
+///
+/// A part counts words from one -- see TextPart -- so a box that draws the
+/// tail of a longer text needs them counted from *its* first word instead.
+/// Anything that ends before the slice begins is dropped; anything that
+/// straddles the start is trimmed to it.
+///
+/// This is what carries a document's markdown through a chain of boxes: the
+/// parts belong to the head's words, and the second box in the chain is
+/// drawing the same words further along.
+List<TextPart> partsFrom(List<TextPart> parts, int words) {
+  if (words <= 0 || parts.isEmpty) return parts;
+  var out = <TextPart>[];
+  for (var part in parts) {
+    // Only word ranges shift. A part counted in letters cannot be moved by a
+    // number of words, and one is never made by a document.
+    if (part.unit != TextUnit.words) continue;
+    if (!part.toTheEnd && part.to <= words) continue;
+    out.add(part.copyWith(
+      from: math.max(1, part.from - words),
+      to: part.toTheEnd ? 0 : part.to - words,
+    ));
+  }
+  return out;
+}
+
+/// wordsIn counts the words of [text], which is what a slice has to know to
+/// move the parts that belong to it.
+int wordsIn(String text) {
+  var words = 0;
+  var inWord = false;
+  for (var i = 0; i < text.length; i++) {
+    var space = text[i].trim().isEmpty;
+    if (!space && !inWord) words++;
+    inWord = !space;
+  }
+  return words;
+}
+
 /// partsAnimate is whether any of [parts] arrives on its own account, or has
 /// a mark that is drawn on rather than simply being there.
 ///
@@ -418,6 +459,9 @@ class TextPart {
   /// element's own size.
   final double? scale;
 
+  /// family is the face these words are set in, or null for the element's.
+  final String? family;
+
   /// outlineWidth and outlineColor draw these words in outline, or draw a
   /// heavier or a different-coloured one than the rest of the paragraph has.
   ///
@@ -452,6 +496,7 @@ class TextPart {
     this.weight,
     this.italic,
     this.scale,
+    this.family,
     this.outlineWidth,
     this.outlineColor,
     this.highlight,
@@ -481,6 +526,7 @@ class TextPart {
     int? weight,
     bool? italic,
     double? scale,
+    String? family,
     double? outlineWidth,
     bool clearOutline = false,
     Color? outlineColor,
@@ -498,6 +544,7 @@ class TextPart {
         weight: weight ?? this.weight,
         italic: italic ?? this.italic,
         scale: scale ?? this.scale,
+        family: family ?? this.family,
         outlineWidth: clearOutline ? null : (outlineWidth ?? this.outlineWidth),
         outlineColor: clearOutline ? null : (outlineColor ?? this.outlineColor),
         highlight: clearHighlight ? null : (highlight ?? this.highlight),
@@ -512,6 +559,8 @@ class TextPart {
         if (color != null) "color": colorToJson(color!),
         if (weight != null) "weight": weight,
         if (italic != null) "italic": italic,
+        if (scale != null) "scale": scale,
+        if (family != null) "family": family,
         if (scale != null) "scale": scale,
         if (outlineWidth != null) "outlineWidth": outlineWidth,
         if (outlineColor != null) "outlineColor": colorToJson(outlineColor!),
@@ -532,6 +581,7 @@ class TextPart {
         scale: json["scale"] is num
             ? (json["scale"] as num).toDouble().clamp(0.05, 20.0)
             : null,
+        family: json["family"] is String ? json["family"] as String : null,
         outlineWidth: json["outlineWidth"] is num
             ? (json["outlineWidth"] as num).toDouble().clamp(0.0, 80.0)
             : null,

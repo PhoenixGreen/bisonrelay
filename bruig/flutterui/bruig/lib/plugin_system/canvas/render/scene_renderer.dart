@@ -315,6 +315,10 @@ void _paintText(
   // own is all of it.
   var flow = flowFor(e, doc, inner, spec);
   var words = flow.text;
+  // The styled runs that apply to *these* words: a box in a chain draws the
+  // head's text further along, so the head's runs are counted from its own
+  // first word. See TextFlow.parts.
+  var drawn = e.drawnPartsWith(flow.parts);
 
   // How much of it has arrived, and how much has left again -- the same two
   // channels a chart's animation uses, so the timeline treats the two kinds
@@ -332,7 +336,7 @@ void _paintText(
       !(animation.keeps && animation.draw.start == TextDrawStart.showText) &&
       // And unless one of the parts is arriving on its own account, in which
       // case it has a moment of its own and this frame may be it.
-      !partsAnimate(e.drawnParts)) {
+      !partsAnimate(drawn)) {
     return;
   }
 
@@ -347,10 +351,10 @@ void _paintText(
     // At rest the words are inside; on the way in they are allowed out.
     var arriving = animation.on && (reveal < 1 || animation.keeps);
     paintTextInBox(canvas, words, spec, inner,
-        clip: !arriving && !partsAnimate(e.drawnParts),
+        clip: !arriving && !partsAnimate(drawn),
         animation: animation,
         reveal: reveal,
-        parts: e.drawnParts,
+        parts: drawn,
         timings: timings,
         asOne: leaving,
         images: images);
@@ -366,7 +370,7 @@ void _paintText(
       e.columns.copyWith(noBlankStart: flow.tidyStart),
       animation: animation,
       reveal: reveal,
-      parts: e.drawnParts,
+      parts: drawn,
       timings: timings,
       asOne: leaving,
       images: images);

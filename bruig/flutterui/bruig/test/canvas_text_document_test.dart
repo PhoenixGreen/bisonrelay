@@ -1,3 +1,4 @@
+import 'dart:ui' show Color;
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
@@ -53,9 +54,11 @@ Some **bold** and *italic* and a [link](https://example.com).
       expect(all.length, 5, reason: "a heading and four inline marks");
 
       var some = readDocument(source,
-              markdown: true,
-              allow: const MarkdownAllow(bold: false, link: false))
-          .$2;
+          markdown: true,
+          allow: const MarkdownAllow(looks: {
+            MarkdownKind.bold: MarkdownLook(on: false),
+            MarkdownKind.link: MarkdownLook(on: false),
+          })).$2;
       expect(some.length, 3);
       expect([for (var p in some) p.scale != null], contains(true),
           reason: "the heading is still there");
@@ -65,8 +68,9 @@ Some **bold** and *italic* and a [link](https://example.com).
 
       // Turned off, the mark is still stripped: the words are what is left.
       var text = readDocument(source,
-              markdown: true, allow: const MarkdownAllow(bold: false))
-          .$1;
+          markdown: true,
+          allow: const MarkdownAllow(
+              looks: {MarkdownKind.bold: MarkdownLook(on: false)})).$1;
       expect(text, isNot(contains("*")));
       expect(text, contains("bold"));
     });
@@ -122,6 +126,57 @@ Some **bold** and *italic* and a [link](https://example.com).
               .toJson()
               .containsKey("document"),
           isFalse);
+    });
+
+    test("each piece of markdown is drawn the way it was set", () {
+      // A switch on its own could only ever make headings look like the one
+      // thing this code happened to choose. Everything is an override: left
+      // alone, a piece follows the element's own type settings.
+      var allow = const MarkdownAllow().withLook(
+          MarkdownKind.heading1,
+          const MarkdownLook(
+              scale: 3,
+              color: Color(0xFFFF0000),
+              weight: 900,
+              family: "Inter"));
+      var (_, parts) =
+          readDocument("# Title\n\nWords", markdown: true, allow: allow);
+      var heading = parts.first;
+      expect(heading.scale, 3);
+      expect(heading.color, const Color(0xFFFF0000));
+      expect(heading.weight, 900);
+      expect(heading.family, "Inter");
+
+      // And the default look is the kind's own, so the switch alone is
+      // already useful.
+      var (_, plain) =
+          readDocument("# Title", markdown: true, allow: const MarkdownAllow());
+      expect(plain.single.scale, MarkdownKind.heading1.scale);
+      expect(plain.single.weight, 700);
+
+      // Switched off, the mark is stripped and there is no part at all.
+      var (text, none) = readDocument("# Title",
+          markdown: true,
+          allow: const MarkdownAllow()
+              .withLook(MarkdownKind.heading1, const MarkdownLook(on: false)));
+      expect(none, isEmpty);
+      expect(text, "Title", reason: "stripped, not shown");
+    });
+
+    test("the looks survive being saved, and an old file still reads", () {
+      var allow = const MarkdownAllow()
+          .withLook(MarkdownKind.bold, const MarkdownLook(scale: 1.2))
+          .withLook(MarkdownKind.link, const MarkdownLook(on: false));
+      var back = MarkdownAllow.fromJson(allow.toJson());
+      expect(back.lookFor(MarkdownKind.bold).scale, 1.2);
+      expect(back.allows(MarkdownKind.link), isFalse);
+      expect(back.allows(MarkdownKind.bold), isTrue);
+
+      // Saved when this was six switches.
+      var old = MarkdownAllow.fromJson({"b": false, "h2": false});
+      expect(old.allows(MarkdownKind.bold), isFalse);
+      expect(old.allows(MarkdownKind.heading2), isFalse);
+      expect(old.allows(MarkdownKind.heading1), isTrue);
     });
 
     test("it remembers the words the document took over", () {

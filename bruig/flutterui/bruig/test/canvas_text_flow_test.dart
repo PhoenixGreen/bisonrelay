@@ -1,6 +1,8 @@
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
+import 'package:bruig/plugin_system/canvas/model/text_document.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/text_parts.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/text_flow.dart';
 import 'package:flutter/material.dart';
@@ -81,6 +83,35 @@ void main() {
       var shown = first.text.trimRight() + " " + second.text.trimLeft();
       expect(shown.replaceAll(RegExp(r"\s+"), " ").trim(),
           startsWith(_lorem.substring(0, 60)));
+    });
+
+    test("a document's markdown carries through the chain", () {
+      // The parts belong to the head's words and the second box draws those
+      // words further along, so they have to be counted from its own first
+      // word. Left as they were, a chain showed the headings and the bold of
+      // the first box only and the rest arrived as plain words.
+      var (text, parts) = readDocument(
+          "# A heading here\n\nSome words and **bold ones** after them, "
+          "with more words to push the rest into the second box entirely.",
+          markdown: true);
+      var a = _box("a", text: text, flowTo: "b", height: 22)
+          .copyWith(documentParts: parts);
+      var b = _box("b");
+      var doc = CanvasDocument(elements: [a, b]);
+
+      var second = flowFor(b, doc, room, spec);
+      expect(second.receiving, isTrue);
+      expect(second.parts, isNotEmpty,
+          reason: "the runs that fall in this box came with the words");
+
+      // The bold run names the words it actually covers here.
+      var bold = second.parts.firstWhere((p) => p.weight == 700);
+      var range = rangeOf(second.text, bold)!;
+      expect(second.text.substring(range.$1, range.$2), contains("bold"));
+
+      // And what the first box drew is the head's own list, unmoved.
+      expect(flowFor(a, doc, const Rect.fromLTWH(0, 0, 300, 22), spec).parts,
+          parts);
     });
 
     test("the head decides whether a box starts on a blank line", () {

@@ -3,6 +3,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/chart_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
+import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/text_flow.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/model/text_document.dart';
@@ -120,49 +121,6 @@ List<Widget> textSettings(
                   await refreshTextDocuments(controller);
                 },
               ),
-              if (e.document.markdown)
-                for (var (name, value, set)
-                    in <(String, bool, MarkdownAllow Function(bool))>[
-                  (
-                    "#",
-                    e.document.allow.heading1,
-                    (v) => e.document.allow.copyWith(heading1: v)
-                  ),
-                  (
-                    "##",
-                    e.document.allow.heading2,
-                    (v) => e.document.allow.copyWith(heading2: v)
-                  ),
-                  (
-                    "Bold",
-                    e.document.allow.bold,
-                    (v) => e.document.allow.copyWith(bold: v)
-                  ),
-                  (
-                    "Italic",
-                    e.document.allow.italic,
-                    (v) => e.document.allow.copyWith(italic: v)
-                  ),
-                  (
-                    "Underline",
-                    e.document.allow.underline,
-                    (v) => e.document.allow.copyWith(underline: v)
-                  ),
-                  (
-                    "Links",
-                    e.document.allow.link,
-                    (v) => e.document.allow.copyWith(link: v)
-                  ),
-                ])
-                  CanvasToggle(
-                    label: name,
-                    value: value,
-                    onChanged: (v) async {
-                      now(e.copyWith(
-                          document: e.document.copyWith(allow: set(v))));
-                      await refreshTextDocuments(controller);
-                    },
-                  ),
               const CanvasHint(
                   "The words come from the library and are read again every "
                   "few seconds, so editing the document changes the canvas. "
@@ -209,16 +167,20 @@ List<Widget> textSettings(
         ],
       ),
     ),
+    // Markdown's own section, with a look per piece. It only exists while
+    // the words come from a document and the marks are being honoured: a
+    // section of settings for something switched off is a section that says
+    // nothing.
+    if (e.document.on && e.document.markdown)
+      boxed(context, _markdownSection(controller, e, write, begin, commit)),
     boxed(
       context,
       CanvasExpander(
-        label: "Columns and on a line",
-        remember: "textLayout",
-        trailing: e.curve != null
-            ? "On a line"
-            : (e.columns.isSingle ? null : "${e.columns.count} columns"),
+        label: "Columns",
+        remember: "textColumns",
+        trailing: e.columns.isSingle ? null : "${e.columns.count}",
         children: [
-          CanvasControlGroup(label: "Columns", children: [
+          CanvasControlGroup(label: "Columns", hideCaption: true, children: [
             CanvasNumberField(
               key: const ValueKey("textColumns"),
               label: "Columns",
@@ -294,7 +256,20 @@ List<Widget> textSettings(
               ],
             ],
           ]),
-          CanvasControlGroup(label: "On a line", children: [
+        ],
+      ),
+    ),
+    // Its own section rather than sharing one with the columns: a text
+    // element is either riding a line or it is not, and the two questions
+    // have nothing to say to each other.
+    boxed(
+      context,
+      CanvasExpander(
+        label: "On a line",
+        remember: "textOnALine",
+        trailing: e.curve == null ? null : "Following a line",
+        children: [
+          CanvasControlGroup(label: "On a line", hideCaption: true, children: [
             CanvasDropdown<String>(
               label: "Follow",
               value: e.curve?.elementId ?? "",
@@ -389,6 +364,135 @@ List<Widget> textSettings(
     // as something that has come loose.
     boxed(context, _animationSection(controller, e, write, begin, commit)),
   ];
+}
+
+/// _markdownSection is how each piece of a document's markdown is drawn.
+///
+/// A look per piece rather than a switch per piece: a poster's heading is a
+/// different size, weight, face and colour from a report's, and with only a
+/// switch they could only ever look like the one thing this code happened to
+/// choose. Everything is an override -- left alone, a piece follows the
+/// element's own type settings and picks up a change to them.
+Widget _markdownSection(CanvasController controller, TextElement e,
+    SettingsWrite write, VoidCallback begin, VoidCallback commit) {
+  var allow = e.document.allow;
+
+  Future<void> set(MarkdownKind kind, MarkdownLook look) async {
+    begin();
+    write(e.copyWith(
+        document: e.document.copyWith(allow: allow.withLook(kind, look))));
+    commit();
+    // The document is read again, because what the marks mean has changed.
+    await refreshTextDocuments(controller);
+  }
+
+  var on = [
+    for (var k in MarkdownKind.values)
+      if (allow.allows(k)) k.label
+  ];
+
+  return CanvasExpander(
+    label: "Markdown",
+    remember: "textMarkdown",
+    trailing: on.isEmpty ? "None" : "${on.length}",
+    children: [
+      const CanvasHint(
+          "Each piece of markdown the document uses, and how it is drawn "
+          "here. Switched on and left alone, a piece follows the type "
+          "settings above — so changing the face or the colour of the "
+          "element changes its headings with it. Anything switched off is "
+          "stripped rather than shown: a headline reading \"## Title\" is not "
+          "markdown being ignored, it is markdown showing."),
+      for (var kind in MarkdownKind.values)
+        CanvasControlGroup(label: kind.label, children: [
+          CanvasToggle(
+            key: ValueKey("markdown${kind.name}"),
+            label: "Honour it",
+            value: allow.allows(kind),
+            onChanged: (v) => set(kind, allow.lookFor(kind).copyWith(on: v)),
+          ),
+          if (allow.allows(kind)) ...[
+            CanvasNumberField(
+              label: "Size",
+              value: allow.lookFor(kind).scale ?? kind.scale,
+              min: 0.1,
+              max: 8,
+              decimals: 2,
+              width: 62,
+              onChanged: (v) {
+                begin();
+                write(e.copyWith(
+                    document: e.document.copyWith(
+                        allow: allow.withLook(
+                            kind, allow.lookFor(kind).copyWith(scale: v)))));
+              },
+              onCommit: () {
+                commit();
+                refreshTextDocuments(controller);
+              },
+            ),
+            CanvasColorButton(
+              label: "Colour",
+              color:
+                  allow.lookFor(kind).color ?? kind.color ?? e.textSpec.color,
+              onChanged: (c) =>
+                  set(kind, allow.lookFor(kind).copyWith(color: c)),
+            ),
+            CanvasNumberField(
+              label: "Weight",
+              value: (allow.lookFor(kind).weight ??
+                      kind.weight ??
+                      e.textSpec.weight)
+                  .toDouble(),
+              min: 100,
+              max: 900,
+              decimals: 0,
+              width: 62,
+              onChanged: (v) {
+                begin();
+                write(e.copyWith(
+                    document: e.document.copyWith(
+                        allow: allow.withLook(
+                            kind,
+                            allow
+                                .lookFor(kind)
+                                .copyWith(weight: (v / 100).round() * 100)))));
+              },
+              onCommit: () {
+                commit();
+                refreshTextDocuments(controller);
+              },
+            ),
+            CanvasToggle(
+              label: "Italic",
+              value: allow.lookFor(kind).italic ?? kind.slanted,
+              onChanged: (v) =>
+                  set(kind, allow.lookFor(kind).copyWith(italic: v)),
+            ),
+            CanvasToggle(
+              label: "Underline",
+              value: allow.lookFor(kind).underline ?? kind.underlined,
+              onChanged: (v) =>
+                  set(kind, allow.lookFor(kind).copyWith(underline: v)),
+            ),
+            CanvasDropdown<String>(
+              label: "Face",
+              value: allow.lookFor(kind).family ?? "",
+              width: 132,
+              options: [
+                ("", "Same as the text"),
+                for (var f in canvasFonts) (f, f),
+              ],
+              onChanged: (v) => set(
+                  kind,
+                  v.isEmpty
+                      ? allow.lookFor(kind).copyWith(clearFamily: true)
+                      : allow.lookFor(kind).copyWith(family: v)),
+            ),
+          ],
+        ]),
+    ],
+  );
 }
 
 /// _partsSection is "these words, not the others": a list of ranges, each

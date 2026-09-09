@@ -5344,7 +5344,7 @@ void main() {
     TextElement textIn(CanvasController c) =>
         c.document.elements.whereType<TextElement>().single;
 
-    testWidgets("are four sections, in the order the work happens",
+    testWidgets("are five sections, in the order the work happens",
         (tester) async {
       // What the type looks like, how it is laid out, which words are
       // different, and how it arrives. Flat, it was eight groups down one
@@ -5357,7 +5357,8 @@ void main() {
       ];
       var wanted = [
         "Type",
-        "Columns and on a line",
+        "Columns",
+        "On a line",
         "Parts of the text",
         "Animation",
       ];
@@ -5401,9 +5402,9 @@ void main() {
       controller.selectOnly("head");
       await pump(tester, CanvasDesignPanel(controller: controller));
       await tester.pumpAndSettle();
-      await tester.ensureVisible(find.text("COLUMNS AND ON A LINE"));
+      await tester.ensureVisible(find.text("COLUMNS"));
       await tester.pumpAndSettle();
-      await tester.tap(find.text("COLUMNS AND ON A LINE"));
+      await tester.tap(find.text("COLUMNS"));
       await tester.pumpAndSettle();
 
       expect(find.text("No blank first line"), findsOneWidget,
@@ -5422,9 +5423,9 @@ void main() {
 
       // Shut again: whether a section is open is remembered, and a test that
       // left one open would open it for the next test as well.
-      await tester.ensureVisible(find.text("COLUMNS AND ON A LINE"));
+      await tester.ensureVisible(find.text("COLUMNS"));
       await tester.pumpAndSettle();
-      await tester.tap(find.text("COLUMNS AND ON A LINE"));
+      await tester.tap(find.text("COLUMNS"));
       await tester.pumpAndSettle();
     });
 
@@ -5483,20 +5484,24 @@ void main() {
       // A section that shuts its controls away is a section that can hide a
       // dead one, which is what a model-only test cannot see.
       var controller = await panel(tester);
-      expect(find.text("COLUMNS"), findsNothing, reason: "shut to begin with");
+      expect(find.byKey(const ValueKey("textColumns")), findsNothing,
+          reason: "shut to begin with");
 
       // Scrolled to first: the heading is below the fold in a panel this
       // tall, and a tap at a point outside the viewport hits nothing.
-      await tester.ensureVisible(find.text("COLUMNS AND ON A LINE"));
+      await tester.ensureVisible(find.text("COLUMNS"));
       await tester.pumpAndSettle();
-      await tester.tap(find.text("COLUMNS AND ON A LINE"));
+      await tester.tap(find.text("COLUMNS"));
       await tester.pumpAndSettle();
-      expect(find.text("COLUMNS"), findsOneWidget);
-      expect(find.text("ON A LINE"), findsOneWidget);
 
       await tester.enterText(find.byKey(const ValueKey("textColumns")), "3");
       await tester.pumpAndSettle();
       expect(textIn(controller).columns.count, 3);
+
+      // Shut again: whether a section is open is remembered, and a test that
+      // left one open would open it for the next test as well.
+      await tester.tap(find.text("COLUMNS"));
+      await tester.pumpAndSettle();
     });
   });
 }

@@ -242,6 +242,34 @@ void main() {
     expect(boxIn(controller, "a").flowTo, "c");
   });
 
+  testWidgets("a locked join cannot be dragged, and a hidden one is not drawn",
+      (tester) async {
+    // A connector is structural -- the words in several boxes depend on it --
+    // and it is dragged from a dot eight pixels across sitting on the same
+    // outline as the resize handles.
+    var controller = twoBoxes();
+    addTearDown(controller.dispose);
+    var stage = await pump(tester, controller);
+    controller.replaceElement(
+        boxIn(controller, "a").copyWith(flowTo: "b", lockFlow: true));
+    controller.selectOnly("a");
+    await tester.pumpAndSettle();
+
+    await tester.dragFrom(stage.textFlowGrips!.outAt, const Offset(0, 260));
+    await tester.pumpAndSettle();
+    expect(boxIn(controller, "a").flowTo, "b",
+        reason: "locked, the drag does not take the link away");
+    expect(stage.textFlowLines.length, 1, reason: "and it is still drawn");
+
+    // Hidden: the line goes, the grips stay.
+    controller.replaceElement(
+        boxIn(controller, "a").copyWith(hideFlow: true, lockFlow: false));
+    await tester.pumpAndSettle();
+    expect(stage.textFlowLines, isEmpty);
+    expect(stage.textFlowGrips!.linked, isTrue,
+        reason: "the grips still say there is a chain");
+  });
+
   testWidgets("a link that would make a ring is refused", (tester) async {
     var controller = twoBoxes();
     addTearDown(controller.dispose);

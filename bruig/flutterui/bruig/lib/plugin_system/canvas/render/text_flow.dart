@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/text_parts.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:flutter/painting.dart';
@@ -38,6 +39,15 @@ class TextFlow {
   /// the start of a chain or on its own.
   final String head;
 
+  /// parts are the styled runs that apply to the words this box draws,
+  /// counted from its own first word.
+  ///
+  /// The head's, moved: a document's markdown belongs to the whole text, and
+  /// the second box in a chain is drawing that text further along. Without
+  /// this a chain showed the headings and the bold of the first box only, and
+  /// the rest arrived as plain words.
+  final List<TextPart> parts;
+
   /// tidyStart is whether a blank line at the top of this box -- or of one of
   /// its columns -- is passed over.
   ///
@@ -53,6 +63,7 @@ class TextFlow {
     this.receiving = false,
     this.head = "",
     this.tidyStart = false,
+    this.parts = const [],
   });
 }
 
@@ -74,6 +85,7 @@ TextFlow flowFor(
           mine.length,
       head: e.id,
       tidyStart: e.columns.noBlankStart,
+      parts: e.documentParts,
     );
   }
 
@@ -112,6 +124,10 @@ TextFlow flowFor(
     receiving: receiving,
     head: head.id,
     tidyStart: tidy,
+    // The head's styled runs, counted from this box's own first word.
+    parts: receiving
+        ? partsFrom(head.documentParts, wordsIn(text.substring(0, at)))
+        : head.documentParts,
   );
 }
 

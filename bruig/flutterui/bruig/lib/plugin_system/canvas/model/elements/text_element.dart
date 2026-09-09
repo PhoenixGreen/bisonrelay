@@ -260,6 +260,22 @@ class TextElement extends CanvasElement {
   /// document is read, and a reader's own part must survive that.
   final List<TextPart> documentParts;
 
+  /// lockFlow keeps this box's connector from being changed by a drag.
+  ///
+  /// The grips are still drawn -- they are how a chain is read -- but they do
+  /// not answer the pointer. A connector is a structural thing: the words in
+  /// four boxes depend on it, and it is dragged from a dot eight pixels
+  /// across that sits on the same outline as the resize handles.
+  final bool lockFlow;
+
+  /// hideFlow leaves the line between this box and the next undrawn.
+  ///
+  /// The grips stay, and that is the point: the blue and the red dots still
+  /// say there is a chain and whether the words all fit, while the line
+  /// itself stops crossing the design. What it hides is scaffolding; what it
+  /// keeps is the reading.
+  final bool hideFlow;
+
   /// curve attaches the text to a line, or is null for a paragraph in its own
   /// box. See [TextOnCurve].
   final TextOnCurve? curve;
@@ -279,6 +295,8 @@ class TextElement extends CanvasElement {
     this.flowTo = "",
     this.document = const TextDocumentRef(),
     this.documentParts = const [],
+    this.lockFlow = false,
+    this.hideFlow = false,
     this.curve,
   });
 
@@ -309,14 +327,19 @@ class TextElement extends CanvasElement {
   /// First in the list, so a part's own highlight is drawn over the
   /// element's rather than under it, and so a part still decides the colour
   /// and weight of the words it covers.
-  List<TextPart> get drawnParts => [
+  List<TextPart> get drawnParts => drawnPartsWith(documentParts);
+
+  /// drawnPartsWith is drawnParts with the document's runs given rather than
+  /// taken from the element -- which is what a box in a chain needs, since
+  /// the runs it draws are the head's, moved. See TextFlow.parts.
+  List<TextPart> drawnPartsWith(List<TextPart> fromDocument) => [
         // The element's own marks, as a part covering every word.
         if (highlight != null || underline != null)
           TextPart(highlight: highlight, underline: underline),
         // Then what a document's markdown asked for, and then the reader's
         // own parts -- which are last so that they win where they overlap.
         // See partAt: the later part is the one that decides.
-        ...documentParts,
+        ...fromDocument,
         ...parts,
       ];
 
@@ -340,6 +363,8 @@ class TextElement extends CanvasElement {
       flowTo: flowTo,
       document: document,
       documentParts: documentParts,
+      lockFlow: lockFlow,
+      hideFlow: hideFlow,
       curve: curve);
 
   TextElement copyWith({
@@ -358,6 +383,8 @@ class TextElement extends CanvasElement {
     String? flowTo,
     TextDocumentRef? document,
     List<TextPart>? documentParts,
+    bool? lockFlow,
+    bool? hideFlow,
     TextOnCurve? curve,
     bool clearCurve = false,
   }) =>
@@ -375,6 +402,8 @@ class TextElement extends CanvasElement {
           flowTo: flowTo ?? this.flowTo,
           document: document ?? this.document,
           documentParts: documentParts ?? this.documentParts,
+          lockFlow: lockFlow ?? this.lockFlow,
+          hideFlow: hideFlow ?? this.hideFlow,
           curve: clearCurve ? null : (curve ?? this.curve));
 
   @override
@@ -390,6 +419,8 @@ class TextElement extends CanvasElement {
         if (underline != null) "underline": underline!.toJson(),
         if (icon.on) "icon": icon.toJson(),
         if (flowTo.isNotEmpty) "flowTo": flowTo,
+        if (lockFlow) "lockFlow": true,
+        if (hideFlow) "hideFlow": true,
         if (document.on) "document": document.toJson(),
         if (documentParts.isNotEmpty)
           "documentParts": [for (var p in documentParts) p.toJson()],
@@ -434,6 +465,8 @@ class TextElement extends CanvasElement {
                 if (p is Map<String, dynamic>) TextPart.fromJson(p),
           ],
           flowTo: jsonString(json["flowTo"], ""),
+          lockFlow: jsonBool(json["lockFlow"], false),
+          hideFlow: jsonBool(json["hideFlow"], false),
           columns: jsonSpec(
               json["columns"], TextColumns.fromJson, const TextColumns()),
           curve: json["curve"] is Map<String, dynamic>

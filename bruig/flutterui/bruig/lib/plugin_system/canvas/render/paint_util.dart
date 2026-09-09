@@ -923,6 +923,10 @@ TextSpan _partedSpan(String text, TextSpec spec, List<TextPart> parts,
       var out = part == null
           ? style
           : style.copyWith(
+              fontSize: part.scale == null
+                  ? style.fontSize
+                  : (style.fontSize ?? spec.fontSize) * part.scale!,
+              fontFamily: part.family ?? style.fontFamily,
               fontWeight: part.weight == null
                   ? style.fontWeight
                   : FontWeight.values[((part.weight! ~/ 100) - 1)
@@ -951,6 +955,7 @@ TextSpan _partedSpan(String text, TextSpec spec, List<TextPart> parts,
       // one colour, and a part that ignored it would be a word that stayed
       // its own colour in a ghost.
       color: colorOverride ?? part.color ?? style.color,
+      fontFamily: part.family ?? style.fontFamily,
       // A part can be bigger than what is around it, which is what a heading
       // read out of a document is.
       fontSize: part.scale == null
