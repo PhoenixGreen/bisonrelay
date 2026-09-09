@@ -1,4 +1,5 @@
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
+import 'package:bruig/plugin_system/canvas/model/text_document.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_estimate.dart';
 import 'dart:math' as math;
@@ -5377,6 +5378,56 @@ void main() {
       await tester.tap(find.text("Fit to box"));
       await tester.pumpAndSettle();
       expect(textIn(controller).autoSize, isTrue);
+    });
+
+    testWidgets("turning off From a document gives back what was typed",
+        (tester) async {
+      // Left showing the document's words, the switch would be off and the
+      // element would still say what the document says, with nothing on
+      // screen to say what was there before.
+      var reading = TextElement(
+        ElementBase(id: newElementId(), width: 400, height: 200),
+        text: "Whatever the document said",
+        document: const TextDocumentRef(
+            name: "Launch", wasText: "A headline of my own"),
+      );
+      var controller = await panel(tester, element: reading);
+
+      expect(find.text("From a document"), findsOneWidget);
+      await tester.tap(find.text("From a document"));
+      await tester.pumpAndSettle();
+
+      expect(textIn(controller).document.on, isFalse);
+      expect(textIn(controller).text, "A headline of my own");
+    });
+
+    testWidgets("and a box being flowed into is not offered one",
+        (tester) async {
+      // Its words belong to the box in front of it, so a document chosen here
+      // would be read, stored and never seen -- and the most confusing
+      // version of that is a chain already carrying a document, where every
+      // box in it looks like somewhere to attach another.
+      var head = TextElement(
+        const ElementBase(id: "head", width: 400, height: 60),
+        text: "A long paragraph",
+        flowTo: "tail",
+      );
+      var tail = TextElement(
+        const ElementBase(id: "tail", width: 400, height: 200),
+      );
+      var controller = CanvasController(
+          const CanvasDocument().addElement(head).addElement(tail));
+      addTearDown(controller.dispose);
+
+      controller.selectOnly("head");
+      await pump(tester, CanvasDesignPanel(controller: controller));
+      await tester.pumpAndSettle();
+      expect(find.text("From a document"), findsOneWidget,
+          reason: "the box the words belong to still chooses");
+
+      controller.selectOnly("tail");
+      await tester.pumpAndSettle();
+      expect(find.text("From a document"), findsNothing);
     });
 
     testWidgets("and the columns section still works once it is opened",

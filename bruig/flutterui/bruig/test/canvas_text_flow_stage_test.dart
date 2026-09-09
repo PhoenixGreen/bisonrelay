@@ -167,6 +167,38 @@ void main() {
     expect(find.byType(EditableText), findsOneWidget);
   });
 
+  testWidgets("the link is drawn from either end, and for a kept box",
+      (tester) async {
+    // A link belongs to two boxes. Drawn only from the one the words leave,
+    // a chain vanished as soon as the box they arrive in was the one being
+    // worked on -- and vanished entirely while something else was selected,
+    // which is exactly when somebody is lining the two up.
+    var controller = twoBoxes();
+    addTearDown(controller.dispose);
+    var stage = await pump(tester, controller);
+    controller.replaceElement(boxIn(controller, "a").copyWith(flowTo: "b"));
+
+    controller.selectOnly("a");
+    await tester.pumpAndSettle();
+    expect(stage.textFlowLines.length, 1, reason: "the box they leave");
+
+    controller.selectOnly("b");
+    await tester.pumpAndSettle();
+    expect(stage.textFlowLines.length, 1, reason: "and the box they arrive in");
+
+    controller.clearSelection();
+    await tester.pumpAndSettle();
+    expect(stage.textFlowLines, isEmpty, reason: "neither, and nothing kept");
+
+    controller
+        .replaceElement(boxIn(controller, "b").withBase(showBounds: true));
+    await tester.pumpAndSettle();
+    expect(stage.textFlowLines.length, 1,
+        reason: "a box asked to stay in sight keeps its link in sight too");
+    expect(stage.textFlowLines.single.overflowing, isTrue,
+        reason: "and it is red, because the words do not all fit");
+  });
+
   testWidgets("a link that would make a ring is refused", (tester) async {
     var controller = twoBoxes();
     addTearDown(controller.dispose);

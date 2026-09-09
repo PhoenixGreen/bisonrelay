@@ -124,6 +124,34 @@ Some **bold** and *italic* and a [link](https://example.com).
           isFalse);
     });
 
+    test("it remembers the words the document took over", () {
+      // Turning the switch off has to give them back: left showing the
+      // document's words, the switch would be off and the element would still
+      // say what the document says, with nothing to say what was there.
+      var typed = TextElement(
+        const ElementBase(id: "t", width: 400, height: 200),
+        text: "A headline of my own",
+      );
+
+      // What the settings do when the switch goes on, and then what the
+      // reader of the library does to it.
+      var reading = typed.copyWith(
+          document: const TextDocumentRef(name: "Launch")
+              .copyWith(wasText: typed.text));
+      var read = reading.copyWith(text: "Whatever the document says");
+      expect(read.text, "Whatever the document says");
+
+      // And off again.
+      var back = read.copyWith(
+          text: read.document.wasText, document: const TextDocumentRef());
+      expect(back.text, "A headline of my own");
+      expect(back.document.on, isFalse);
+
+      // It survives being saved, or a canvas reopened would have lost them.
+      var reloaded = elementFromJson(read.toJson()) as TextElement;
+      expect(reloaded.document.wasText, "A headline of my own");
+    });
+
     test("the document's own runs are kept apart from the reader's", () {
       // They are rewritten from scratch every time the document is read, and
       // a part somebody added by hand has to survive that.

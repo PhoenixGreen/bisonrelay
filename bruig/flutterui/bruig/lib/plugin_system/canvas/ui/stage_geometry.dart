@@ -95,24 +95,41 @@ class TextFlowGrips {
   final bool receiving;
   final bool linked;
 
-  /// to is where the link lands, for the line drawn between the two boxes,
-  /// and from is where the words arriving here come from.
-  ///
-  /// Both, because a chain is drawn from whichever end of it is selected: a
-  /// line that appeared only when the box the words come *out* of was
-  /// selected left the other box with no sign it was part of anything.
-  final Offset? to;
-  final Offset? from;
-
   const TextFlowGrips({
     required this.inAt,
     required this.outAt,
     this.overflowing = false,
     this.receiving = false,
     this.linked = false,
-    this.to,
-    this.from,
   });
+}
+
+/// FlowLine is one link between two text boxes, as drawn.
+///
+/// Its own thing rather than part of the selected box's grips, because a link
+/// has two ends and either of them can be the reason it is on screen: either
+/// box selected, or either box asked to keep its own box in sight. Drawn from
+/// one end only, a chain disappeared as soon as the box the words arrive in
+/// was the one being worked on.
+class FlowLine {
+  final Offset from;
+  final Offset to;
+
+  /// overflowing is whether the box the words leave has more than it can
+  /// show, which is what the line is drawn in red for.
+  final bool overflowing;
+
+  const FlowLine(this.from, this.to, {this.overflowing = false});
+
+  @override
+  bool operator ==(Object other) =>
+      other is FlowLine &&
+      other.from == from &&
+      other.to == to &&
+      other.overflowing == overflowing;
+
+  @override
+  int get hashCode => Object.hash(from, to, overflowing);
 }
 
 /// rulerThickness is how deep a ruler strip is, in screen pixels.

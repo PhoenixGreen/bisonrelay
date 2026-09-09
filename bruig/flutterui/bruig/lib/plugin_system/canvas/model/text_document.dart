@@ -88,11 +88,22 @@ class TextDocumentRef {
 
   final MarkdownAllow allow;
 
+  /// wasText is what the element said before the document took the words
+  /// over, and what it says again when the document is taken away.
+  ///
+  /// Kept here rather than on the element because it exists only while a
+  /// document does: it is part of what "reading a document" means, and it
+  /// goes when the reference goes. Without it, turning the switch off left
+  /// somebody's headline reading a paragraph of their own document with no
+  /// way back to what they had typed.
+  final String wasText;
+
   const TextDocumentRef({
     this.folder = "",
     this.name = "",
     this.markdown = false,
     this.allow = const MarkdownAllow(),
+    this.wasText = "",
   });
 
   bool get on => name.isNotEmpty;
@@ -105,12 +116,14 @@ class TextDocumentRef {
     String? name,
     bool? markdown,
     MarkdownAllow? allow,
+    String? wasText,
   }) =>
       TextDocumentRef(
         folder: folder ?? this.folder,
         name: name ?? this.name,
         markdown: markdown ?? this.markdown,
         allow: allow ?? this.allow,
+        wasText: wasText ?? this.wasText,
       );
 
   Map<String, dynamic> toJson() => {
@@ -118,6 +131,7 @@ class TextDocumentRef {
         "name": name,
         if (markdown) "markdown": true,
         if (allow.toJson().isNotEmpty) "allow": allow.toJson(),
+        if (wasText.isNotEmpty) "wasText": wasText,
       };
 
   factory TextDocumentRef.fromJson(Map<String, dynamic> json) =>
@@ -128,6 +142,7 @@ class TextDocumentRef {
         allow: json["allow"] is Map<String, dynamic>
             ? MarkdownAllow.fromJson(json["allow"] as Map<String, dynamic>)
             : const MarkdownAllow(),
+        wasText: jsonString(json["wasText"], ""),
       );
 }
 

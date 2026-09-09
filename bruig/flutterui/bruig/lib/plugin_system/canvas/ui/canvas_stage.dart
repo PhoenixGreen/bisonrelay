@@ -523,6 +523,11 @@ class CanvasStageState extends State<CanvasStage> {
   @visibleForTesting
   TextFlowGrips? get textFlowGrips => _flowGrips();
 
+  /// textFlowLines is the links being drawn, for the tests about when a chain
+  /// is visible.
+  @visibleForTesting
+  List<FlowLine> get textFlowLines => _flowLines();
+
   /// toStagePoint is where a point of the document is on screen, for the same
   /// tests: a drag has to start and end somewhere real.
   @visibleForTesting
@@ -719,25 +724,44 @@ class CanvasStageState extends State<CanvasStage> {
     var inner = iconRoom(e.bounds.deflate(e.box.padding), e.icon).$2;
     var flow = flowFor(e, document, inner, drawnTextSpec(e, e.bounds));
 
-    var into = e.flowTo.isEmpty ? null : document.elementById(e.flowTo);
-    var outOf = flowSourceOf(e, document);
     return TextFlowGrips(
       inAt: _gripPosition(bounds, top: true),
       outAt: _gripPosition(bounds, top: false),
       overflowing: flow.overflows,
       receiving: flow.receiving,
-      linked: into != null,
-      // Where the link lands, and where the words arriving here came from.
-      // Both ends of a chain draw it, so a box knows it is part of one
-      // whichever of them is selected.
-      to: into == null
-          ? null
-          : _toStage(_flowPointOf(into.boundsAt(controller.frame), top: true)),
-      from: outOf == null
-          ? null
-          : _toStage(
-              _flowPointOf(outOf.boundsAt(controller.frame), top: false)),
+      linked: e.flowTo.isNotEmpty && document.elementById(e.flowTo) != null,
     );
+  }
+
+  /// _flowLines is every link between two text boxes that is worth drawing.
+  ///
+  /// Either box selected, or either box asked to keep its own box in sight --
+  /// see ElementBase.showBounds. Those are the two ways somebody says they
+  /// are working on a pair of elements, and a link is a fact about a pair.
+  List<FlowLine> _flowLines() {
+    if (!controller.showHelpers) return const [];
+    var out = <FlowLine>[];
+
+    for (var e in document.elements) {
+      if (e is! TextElement || e.flowTo.isEmpty) continue;
+      var into = document.elementById(e.flowTo);
+      if (into == null || !e.visible || !into.visible) continue;
+
+      var shown = controller.selection.contains(e.id) ||
+          controller.selection.contains(into.id) ||
+          e.showBounds ||
+          into.showBounds;
+      if (!shown) continue;
+
+      var inner = iconRoom(e.bounds.deflate(e.box.padding), e.icon).$2;
+      var flow = flowFor(e, document, inner, drawnTextSpec(e, e.bounds));
+      out.add(FlowLine(
+        _toStage(_flowPointOf(e.boundsAt(controller.frame), top: false)),
+        _toStage(_flowPointOf(into.boundsAt(controller.frame), top: true)),
+        overflowing: flow.overflows,
+      ));
+    }
+    return out;
   }
 
   /// _flowPointOf is where a box's flow grip sits, in document space.
@@ -2281,6 +2305,7 @@ class CanvasStageState extends State<CanvasStage> {
                         selectionRotation: _rotationOfSelection,
                         handleFor: _handlePosition,
                         flowGrips: _flowGrips(),
+                        flowLines: _flowLines(),
                         flowDrag: _mode == _DragMode.flow ? _flowAt : null,
                         marquee: _marquee,
                       ),

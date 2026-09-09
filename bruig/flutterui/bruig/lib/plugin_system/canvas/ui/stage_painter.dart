@@ -9,6 +9,7 @@ import 'package:bruig/plugin_system/canvas/render/image_placement.dart';
 import 'package:bruig/plugin_system/canvas/render/procedural_cache.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage_geometry.dart';
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 
 // stage_painter.dart is everything the stage draws: the document itself, the
@@ -66,6 +67,10 @@ class StagePainter extends CustomPainter {
 
   /// flowGrips are the two dots on a selected text box -- see TextFlowGrips.
   final TextFlowGrips? flowGrips;
+
+  /// flowLines are the links between text boxes that are worth drawing on
+  /// this frame. See FlowLine.
+  final List<FlowLine> flowLines;
 
   /// flowDrag is where a link being dragged out of the overflow grip has got
   /// to, in stage space.
@@ -177,6 +182,7 @@ class StagePainter extends CustomPainter {
     required this.showHandles,
     required this.showHelpers,
     this.flowGrips,
+    this.flowLines = const [],
     this.flowDrag,
     required this.framing,
     required this.guides,
@@ -421,6 +427,7 @@ class StagePainter extends CustomPainter {
     if (!showHelpers) return;
 
     _paintKeptBoxes(canvas);
+    _paintFlowLines(canvas);
 
     _paintChartLabels(canvas);
     _paintTableColumns(canvas);
@@ -523,38 +530,42 @@ class StagePainter extends CustomPainter {
     }
   }
 
+  /// _paintFlowLines draws the links between text boxes.
+  ///
+  /// Drawn from a list rather than from the selected box, and drawn before
+  /// anything can return early: a link belongs to two boxes, either of them
+  /// can be the reason it is showing, and one of those reasons -- a box asked
+  /// to stay visible -- has nothing to do with what is selected.
+  void _paintFlowLines(Canvas canvas) {
+    for (var line in flowLines) {
+      // Red says the box the words leave has more than it can show, which is
+      // the same thing its own grip says.
+      var colour =
+          line.overflowing ? const Color(0xFFE5484D) : const Color(0xFF3D7EFF);
+      canvas.drawLine(
+          line.from,
+          line.to,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.5
+            ..color = colour.withValues(alpha: 0.75));
+      canvas.drawCircle(line.to, 3.5, Paint()..color = colour);
+    }
+  }
+
   /// _paintFlowGrips draws the two dots that make a text box a link in a
   /// chain: where words come in, and where the ones that do not fit go.
   void _paintFlowGrips(Canvas canvas) {
+    var white = Paint()..color = const Color(0xFFFFFFFF);
+    var blue = const Color(0xFF3D7EFF);
+
     var grips = flowGrips;
     if (grips == null) return;
 
-    var white = Paint()..color = const Color(0xFFFFFFFF);
-    var blue = const Color(0xFF3D7EFF);
     // Red is the whole point of the grip: it is the only thing on the canvas
     // that says there are words the box is not showing.
     var out = grips.overflowing ? const Color(0xFFE5484D) : blue;
 
-    // The link itself, so a chain can be seen rather than remembered -- from
-    // either end of it.
-    if (grips.from case var source?) {
-      canvas.drawLine(
-          source,
-          grips.inAt,
-          Paint()
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = 1.5
-            ..color = blue.withValues(alpha: 0.75));
-      canvas.drawCircle(source, 3, Paint()..color = blue);
-    }
-    if (grips.to case var landing?) {
-      var line = Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.5
-        ..color = out.withValues(alpha: 0.75);
-      canvas.drawLine(grips.outAt, landing, line);
-      canvas.drawCircle(landing, 3.5, Paint()..color = out);
-    }
     if (flowDrag case var to?) {
       canvas.drawLine(
           grips.outAt,
@@ -894,6 +905,7 @@ class StagePainter extends CustomPainter {
       old.showHelpers != showHelpers ||
       old.showHandles != showHandles ||
       old.flowGrips != flowGrips ||
+      !listEquals(old.flowLines, flowLines) ||
       old.flowDrag != flowDrag ||
       !identical(old.selectedPath, selectedPath) ||
       old.editingText != editingText ||

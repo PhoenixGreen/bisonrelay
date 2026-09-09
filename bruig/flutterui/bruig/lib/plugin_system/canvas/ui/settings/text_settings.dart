@@ -3,6 +3,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/chart_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
+import 'package:bruig/plugin_system/canvas/render/text_flow.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/model/text_document.dart';
 import 'package:bruig/plugin_system/canvas/ui/document_picking.dart';
@@ -57,23 +58,40 @@ List<Widget> textSettings(
             // where the words and their size come from -- and because it is
             // the first thing to decide about a text element that is a
             // document.
-            CanvasToggle(
-              key: const ValueKey("textFromDocument"),
-              label: "From a document",
-              value: e.document.on,
-              onChanged: (v) async {
-                if (!v) {
+            //
+            // Not offered at all on a box that is being flowed into: its
+            // words belong to the box in front of it, so a document chosen
+            // here would be read, stored and never seen -- and the most
+            // confusing version of that is a chain that is already carrying a
+            // document, where every box in it looks like somewhere to attach
+            // another one.
+            if (flowSourceOf(e, controller.document) == null)
+              CanvasToggle(
+                key: const ValueKey("textFromDocument"),
+                label: "From a document",
+                value: e.document.on,
+                onChanged: (v) async {
+                  if (!v) {
+                    // Back to what was typed here before the document took the
+                    // words over. Left showing the document's words, the switch
+                    // would be off and the element would still say what the
+                    // document says, with no way back to what was there.
+                    now(e.copyWith(
+                        text: e.document.wasText.isEmpty
+                            ? e.text
+                            : e.document.wasText,
+                        document: const TextDocumentRef(),
+                        documentParts: const []));
+                    return;
+                  }
+                  var picked = await pickLibraryDocument(context);
+                  if (picked == null) return;
                   now(e.copyWith(
-                      document: const TextDocumentRef(),
+                      document: picked.copyWith(wasText: e.text),
                       documentParts: const []));
-                  return;
-                }
-                var picked = await pickLibraryDocument(context);
-                if (picked == null) return;
-                now(e.copyWith(document: picked, documentParts: const []));
-                await refreshTextDocuments(controller);
-              },
-            ),
+                  await refreshTextDocuments(controller);
+                },
+              ),
             if (e.document.on) ...[
               CanvasIconButton(
                 key: const ValueKey("textDocumentPick"),
@@ -82,6 +100,9 @@ List<Widget> textSettings(
                 onPressed: () async {
                   var picked = await pickLibraryDocument(context);
                   if (picked == null) return;
+                  // The remembered words are the element's own, not the last
+                  // document's, so changing which document is read leaves
+                  // them alone.
                   now(e.copyWith(
                       document: e.document
                           .copyWith(folder: picked.folder, name: picked.name),
