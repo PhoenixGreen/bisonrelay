@@ -191,6 +191,23 @@ WrappedText layoutWrapped(
   var words = 0;
 
   while (at < text.length && y + lineHeight <= box.bottom + 0.5) {
+    // A line of its own that has nothing on it: the gap between two
+    // paragraphs. Taken here, because the word-fitting below cannot advance
+    // past a break -- and a paragraph gap that nothing consumed stalled the
+    // whole layout on it, so a document set this way lost everything after
+    // its first paragraph.
+    if (text[at] == "\n") {
+      at++;
+      y += lineHeight;
+      continue;
+    }
+    // The space a line broke on belongs to the line that broke, not to this
+    // one. A line that began with it started a word's width in from the edge.
+    while (at < text.length && text[at] != "\n" && text[at].trim().isEmpty) {
+      at++;
+    }
+    if (at >= text.length) break;
+
     var runs = freeRuns(box, blocked, y, y + lineHeight, wrap.side);
     if (runs.isEmpty) {
       y += lineHeight;

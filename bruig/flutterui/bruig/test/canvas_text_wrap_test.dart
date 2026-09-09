@@ -155,6 +155,54 @@ void main() {
     });
   });
 
+  group("a paragraph break", () {
+    const paragraphs = "unpredictable.\n\nNow, I've applied the mobile theme "
+        "settings to remove the back and three-dot buttons, creating a much "
+        "cleaner and more consistent experience.\n\nThe navigation now uses "
+        "the same first-, second- and third-click behaviour.";
+    const spec = TextSpec(fontSize: 16, align: TextAlignSpec.left);
+    const box = Rect.fromLTWH(35, 35, 280, 420);
+
+    test("does not stop the rest of the words being set", () {
+      // The reported fault, and it had nothing to do with the shape: fitting
+      // words cannot advance past a line break, so a paragraph gap that
+      // nothing consumed stalled the layout on it and everything after the
+      // first paragraph was lost.
+      var out = layoutWrapped(paragraphs, spec, box,
+          [const Rect.fromLTRB(293, 110, 577, 365)], const TextWrap(on: true));
+      expect(out.consumed, paragraphs.length,
+          reason: "all of it, not just the first line");
+      expect(out.lines.length, greaterThan(10));
+
+      // And it is a line of its own, so the paragraphs are still apart.
+      var first = out.lines.first;
+      var second = out.lines[1];
+      expect(
+          second.box.top - first.box.top, greaterThan(first.box.height * 1.5),
+          reason: "an empty line between them");
+    });
+
+    test("and the words still keep out of the way", () {
+      var out = layoutWrapped(paragraphs, spec, box,
+          [const Rect.fromLTRB(293, 110, 577, 365)], const TextWrap(on: true));
+      var beside = out.lines.where((l) => l.box.top > 110 && l.box.top < 340);
+      expect(beside, isNotEmpty);
+      expect(beside.every((l) => l.box.right <= 293.5), isTrue,
+          reason: "narrowed while the shape is beside them");
+      expect(out.lines.last.box.right, box.right,
+          reason: "and the full width again below it");
+    });
+
+    test("and no line starts with the space it broke on", () {
+      var out = layoutWrapped(
+          paragraphs, spec, box, const [], const TextWrap(on: true));
+      for (var line in out.lines) {
+        expect(paragraphs[line.from].trim(), isNotEmpty,
+            reason: "a line beginning with a space starts a word's width in");
+      }
+    });
+  });
+
   group("what is never treated as an obstacle", () {
     test("the boxes this one shares its words with", () {
       // They are one paragraph in several places, and they are routinely laid
