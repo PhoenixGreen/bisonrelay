@@ -38,11 +38,21 @@ class TextFlow {
   /// the start of a chain or on its own.
   final String head;
 
+  /// tidyStart is whether a blank line at the top of this box -- or of one of
+  /// its columns -- is passed over.
+  ///
+  /// The head of the chain's answer, for every box in it. The words are one
+  /// paragraph flowing through several boxes, and how it is broken is a fact
+  /// about the words rather than about each box it lands in: two boxes that
+  /// disagreed would tidy the top of one column and not the next.
+  final bool tidyStart;
+
   const TextFlow({
     required this.text,
     this.overflows = false,
     this.receiving = false,
     this.head = "",
+    this.tidyStart = false,
   });
 }
 
@@ -60,8 +70,10 @@ TextFlow flowFor(
   if (doc == null || (e.flowTo.isEmpty && !_isTarget(e, doc))) {
     return TextFlow(
       text: mine,
-      overflows: _consumed(mine, e, inner, spec) < mine.length,
+      overflows: _consumed(mine, e, inner, spec, tidy: e.columns.noBlankStart) <
+          mine.length,
       head: e.id,
+      tidyStart: e.columns.noBlankStart,
     );
   }
 
@@ -72,21 +84,34 @@ TextFlow flowFor(
   // Walk the chain from the head, each box taking what fits and passing the
   // rest on. The boxes are different widths and different types, so there is
   // nothing to do but lay each one out in turn.
+  // How the words are broken is the head's business, for every box the chain
+  // passes through.
+  var tidy = head.columns.noBlankStart;
+
   var at = 0;
   for (var box in chain) {
     if (box.id == e.id) break;
     if (at >= text.length) break;
+    // A blank line the box before it broke on belongs to neither of them.
+    if (tidy && box.id != head.id) at += _blankRun(text.substring(at));
+    if (at >= text.length) break;
     var room = _roomOf(box);
-    at += _consumed(text.substring(at), box, room, _specOf(box));
+    at += _consumed(text.substring(at), box, room, _specOf(box), tidy: tidy);
+  }
+
+  var receiving = !identical(head, e) && head.id != e.id;
+  if (tidy && receiving && at < text.length) {
+    at += _blankRun(text.substring(at));
   }
 
   var rest = at >= text.length ? "" : text.substring(at);
-  var took = _consumed(rest, e, inner, spec);
+  var took = _consumed(rest, e, inner, spec, tidy: tidy);
   return TextFlow(
     text: rest,
     overflows: took < rest.length,
-    receiving: !identical(head, e) && head.id != e.id,
+    receiving: receiving,
     head: head.id,
+    tidyStart: tidy,
   );
 }
 
@@ -159,8 +184,25 @@ Rect _roomOf(TextElement e) {
 /// overflow on is for.
 TextSpec _specOf(TextElement e) => e.textSpec;
 
+/// _blankRun is how many characters of empty lines [text] opens with.
+///
+/// What a box that must not start on a blank line skips: the gap between two
+/// paragraphs is a line like any other, and a box that begins with one begins
+/// with an empty row and its words sitting lower than the box beside it.
+int _blankRun(String text) {
+  var at = 0;
+  while (at < text.length) {
+    var end = text.indexOf("\n", at);
+    if (end < 0) break;
+    if (text.substring(at, end).trim().isNotEmpty) break;
+    at = end + 1;
+  }
+  return at;
+}
+
 /// _consumed is how many characters of [text] this box can show.
-int _consumed(String text, TextElement e, Rect inner, TextSpec spec) {
+int _consumed(String text, TextElement e, Rect inner, TextSpec spec,
+    {bool tidy = false}) {
   if (text.isEmpty || inner.width <= 0 || inner.height <= 0) return 0;
 
   var width =
@@ -175,7 +217,7 @@ int _consumed(String text, TextElement e, Rect inner, TextSpec spec) {
   // columns passes on what would not fit in the third rather than what would
   // not fit in one.
   var runs = columnRuns(metrics, inner.height, math.max(1, e.columns.count),
-      noBlankStart: e.columns.noBlankStart);
+      noBlankStart: tidy);
   var lines = runs.isEmpty ? 0 : runs.last.$2;
   if (lines >= metrics.length) return text.length;
   if (lines <= 0) return 0;

@@ -168,6 +168,20 @@ class _CanvasSettingsBarState extends State<CanvasSettingsBar> {
               active: controller.tool == CanvasTool.pan,
               onPressed: () => controller.tool = CanvasTool.pan),
           _divider(theme),
+          // Every element's box, or only the selected one's. Beside the
+          // handles toggle because it is the same kind of thing -- something
+          // drawn while working and never published -- and one switch for the
+          // canvas rather than one per element.
+          _barButton(theme,
+              icon: controller.showAllBounds
+                  ? Icons.select_all
+                  : Icons.check_box_outline_blank,
+              tooltip: controller.showAllBounds
+                  ? "Hide the boxes around the elements that are not selected"
+                  : "Keep every element's box in sight",
+              active: controller.showAllBounds,
+              onPressed: () =>
+                  controller.showAllBounds = !controller.showAllBounds),
           _barButton(theme,
               icon: controller.showHelpers
                   ? Icons.highlight_alt

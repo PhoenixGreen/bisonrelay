@@ -374,6 +374,28 @@ class CanvasController extends ChangeNotifier {
     _notifyView();
   }
 
+  bool _showAllBounds = false;
+
+  /// showAllBounds outlines every element on the canvas, not only the selected
+  /// one.
+  ///
+  /// Editing furniture like the handles, and off by default: a canvas covered
+  /// in outlines is a canvas nobody can see. What it is for is working on
+  /// elements that have something to do with each other -- a chain of text
+  /// boxes above all, where the box being flowed into is somewhere else on
+  /// the page and invisible until it is clicked.
+  ///
+  /// One switch for the whole canvas rather than one per element, which is
+  /// what this was: turning them on to line two boxes up meant turning them
+  /// off again afterwards, one element at a time.
+  bool get showAllBounds => _showAllBounds;
+
+  set showAllBounds(bool value) {
+    if (_showAllBounds == value) return;
+    _showAllBounds = value;
+    _notifyView();
+  }
+
   int? _focusedPlayer;
 
   /// focusedPlayer is which player of the selected team the timeline is about.

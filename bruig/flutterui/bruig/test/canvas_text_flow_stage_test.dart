@@ -190,11 +190,10 @@ void main() {
     await tester.pumpAndSettle();
     expect(stage.textFlowLines, isEmpty, reason: "neither, and nothing kept");
 
-    controller
-        .replaceElement(boxIn(controller, "b").withBase(showBounds: true));
+    controller.showAllBounds = true;
     await tester.pumpAndSettle();
     expect(stage.textFlowLines.length, 1,
-        reason: "a box asked to stay in sight keeps its link in sight too");
+        reason: "every box in sight keeps every link in sight with it");
     expect(stage.textFlowLines.single.overflowing, isTrue,
         reason: "and it is red, because the words do not all fit");
   });

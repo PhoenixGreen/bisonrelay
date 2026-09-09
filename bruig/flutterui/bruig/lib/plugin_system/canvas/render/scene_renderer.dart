@@ -359,7 +359,11 @@ void _paintText(
   // Columns animate piece by piece like anything else: the pieces are worked
   // out once for the whole paragraph and drawn column by column, so a stagger
   // carries on from the last word of one column into the first of the next.
-  paintTextInColumns(canvas, words, spec, inner, e.columns,
+  // How the words are broken is the chain's, not this box's: every box in one
+  // tidies its column tops the same way or none of them does. See
+  // TextFlow.tidyStart.
+  paintTextInColumns(canvas, words, spec, inner,
+      e.columns.copyWith(noBlankStart: flow.tidyStart),
       animation: animation,
       reveal: reveal,
       parts: e.drawnParts,

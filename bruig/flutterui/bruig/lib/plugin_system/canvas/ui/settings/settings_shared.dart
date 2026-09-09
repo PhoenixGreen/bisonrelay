@@ -176,7 +176,6 @@ Widget positionGroup(CanvasController controller, CanvasElement e,
         },
         onCommit: commit,
       ),
-      _keepBoxToggle(e, write, begin, commit),
       poseDot,
     ]);
   }
@@ -286,32 +285,9 @@ Widget positionGroup(CanvasController controller, CanvasElement e,
           },
           onCommit: commit,
         ),
-        _keepBoxToggle(e, write, begin, commit),
         poseDot,
       ]);
 }
-
-/// _keepBoxToggle keeps an element's box drawn while something else is
-/// selected.
-///
-/// Beside the opacity because it is the same kind of switch -- how the
-/// element is shown while it is being worked on -- and next to nothing else
-/// in the panel is. What it is for is a pair of elements that have something
-/// to do with each other: a chain of text boxes above all, where the box being
-/// flowed into is somewhere else on the page and invisible until it is
-/// clicked, so lining the two up meant clicking back and forth between them.
-Widget _keepBoxToggle(CanvasElement e, SettingsWrite write, VoidCallback begin,
-        VoidCallback commit) =>
-    CanvasToggle(
-      key: const ValueKey("elementShowBounds"),
-      label: "Keep box",
-      value: e.showBounds,
-      onChanged: (v) {
-        begin();
-        write(e.withBase(showBounds: v));
-        commit();
-      },
-    );
 
 /// typeGroups is the shared type controls, used by every element that draws
 /// words.

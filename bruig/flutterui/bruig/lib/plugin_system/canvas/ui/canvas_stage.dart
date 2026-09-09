@@ -747,9 +747,10 @@ class CanvasStageState extends State<CanvasStage> {
 
   /// _flowLines is every link between two text boxes that is worth drawing.
   ///
-  /// Either box selected, or either box asked to keep its own box in sight --
-  /// see ElementBase.showBounds. Those are the two ways somebody says they
-  /// are working on a pair of elements, and a link is a fact about a pair.
+  /// Either box selected, or every box being shown at once -- see
+  /// CanvasController.showAllBounds. Those are the two ways somebody says
+  /// they are working on a pair of elements, and a link is a fact about a
+  /// pair.
   List<FlowLine> _flowLines() {
     if (!controller.showHelpers) return const [];
     var out = <FlowLine>[];
@@ -762,10 +763,9 @@ class CanvasStageState extends State<CanvasStage> {
       // Not the one in hand: it is being drawn from the pointer instead.
       if (_mode == _DragMode.flow && e.id == _flowFrom) continue;
 
-      var shown = controller.selection.contains(e.id) ||
-          controller.selection.contains(into.id) ||
-          e.showBounds ||
-          into.showBounds;
+      var shown = controller.showAllBounds ||
+          controller.selection.contains(e.id) ||
+          controller.selection.contains(into.id);
       if (!shown) continue;
 
       var inner = iconRoom(e.bounds.deflate(e.box.padding), e.icon).$2;
@@ -807,7 +807,7 @@ class CanvasStageState extends State<CanvasStage> {
   /// there, and the incoming grip picks up the link that arrives -- which is
   /// how a box that is being flowed into gets disconnected without going to
   /// find the box in front of it first.
-  ({bool out}) ? _hitFlowGrip(Offset stage) {
+  ({bool out})? _hitFlowGrip(Offset stage) {
     var grips = _flowGrips();
     if (grips == null) return null;
     var reach = flowGripSize / 2 + handleHitSlop;
@@ -2342,6 +2342,7 @@ class CanvasStageState extends State<CanvasStage> {
                         handleFor: _handlePosition,
                         flowGrips: _flowGrips(),
                         flowLines: _flowLines(),
+                        showAllBounds: controller.showAllBounds,
                         flowDrag: _flowDragLine(),
                         marquee: _marquee,
                       ),

@@ -72,6 +72,10 @@ class StagePainter extends CustomPainter {
   /// this frame. See FlowLine.
   final List<FlowLine> flowLines;
 
+  /// showAllBounds outlines every element rather than only the selected one.
+  /// See CanvasController.showAllBounds.
+  final bool showAllBounds;
+
   /// flowDrag is the link being dragged, from the box the words leave to
   /// wherever the pointer has got to.
   final FlowLine? flowDrag;
@@ -183,6 +187,7 @@ class StagePainter extends CustomPainter {
     required this.showHelpers,
     this.flowGrips,
     this.flowLines = const [],
+    this.showAllBounds = false,
     this.flowDrag,
     required this.framing,
     required this.guides,
@@ -496,20 +501,21 @@ class StagePainter extends CustomPainter {
     _paintFlowGrips(canvas);
   }
 
-  /// _paintKeptBoxes outlines the elements that have asked to stay visible.
+  /// _paintKeptBoxes outlines every element while that is asked for.
   ///
   /// Quieter than the selection's own outline and drawn under it: what these
   /// say is "this is where that other thing is", not "this is what you are
   /// working on". Editing furniture, so it is drawn here and never by the
-  /// renderer -- see ElementBase.showBounds.
+  /// renderer -- see CanvasController.showAllBounds.
   void _paintKeptBoxes(Canvas canvas) {
+    if (!showAllBounds) return;
     var paint = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1
       ..color = const Color(0x803D7EFF);
 
     for (var element in document.elements) {
-      if (!element.showBounds || !element.visible) continue;
+      if (!element.visible) continue;
       if (selection.contains(element.id)) continue;
 
       var box = element.boundsAt(frame);
@@ -906,6 +912,7 @@ class StagePainter extends CustomPainter {
       old.showHandles != showHandles ||
       old.flowGrips != flowGrips ||
       !listEquals(old.flowLines, flowLines) ||
+      old.showAllBounds != showAllBounds ||
       old.flowDrag != flowDrag ||
       !identical(old.selectedPath, selectedPath) ||
       old.editingText != editingText ||

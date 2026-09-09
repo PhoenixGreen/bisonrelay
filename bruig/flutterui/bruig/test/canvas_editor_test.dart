@@ -5380,6 +5380,54 @@ void main() {
       expect(textIn(controller).autoSize, isTrue);
     });
 
+    testWidgets(
+        "No blank first line is offered without columns, and only "
+        "on the box the words belong to", (tester) async {
+      // A chain of boxes asks the same question of boxes that columns ask of
+      // columns, so it is not a columns-only setting -- and every box in a
+      // chain follows what the head says, so there is nowhere else to ask it.
+      var head = TextElement(
+        const ElementBase(id: "head", width: 400, height: 60),
+        text: "A long paragraph",
+        flowTo: "tail",
+      );
+      var tail = TextElement(
+        const ElementBase(id: "tail", width: 400, height: 200),
+      );
+      var controller = CanvasController(
+          const CanvasDocument().addElement(head).addElement(tail));
+      addTearDown(controller.dispose);
+
+      controller.selectOnly("head");
+      await pump(tester, CanvasDesignPanel(controller: controller));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text("COLUMNS AND ON A LINE"));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text("COLUMNS AND ON A LINE"));
+      await tester.pumpAndSettle();
+
+      expect(find.text("No blank first line"), findsOneWidget,
+          reason: "one column, and still the box the words belong to");
+      await tester.tap(find.text("No blank first line"));
+      await tester.pumpAndSettle();
+      expect(
+          (controller.document.elementById("head") as TextElement)
+              .columns
+              .noBlankStart,
+          isTrue);
+
+      controller.selectOnly("tail");
+      await tester.pumpAndSettle();
+      expect(find.text("No blank first line"), findsNothing);
+
+      // Shut again: whether a section is open is remembered, and a test that
+      // left one open would open it for the next test as well.
+      await tester.ensureVisible(find.text("COLUMNS AND ON A LINE"));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text("COLUMNS AND ON A LINE"));
+      await tester.pumpAndSettle();
+    });
+
     testWidgets("turning off From a document gives back what was typed",
         (tester) async {
       // Left showing the document's words, the switch would be off and the

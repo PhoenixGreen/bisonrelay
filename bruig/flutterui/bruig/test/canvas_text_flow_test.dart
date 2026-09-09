@@ -83,6 +83,34 @@ void main() {
           startsWith(_lorem.substring(0, 60)));
     });
 
+    test("the head decides whether a box starts on a blank line", () {
+      // A chain is one paragraph flowing through several boxes: how it is
+      // broken is a fact about the words, not about each box it lands in, so
+      // two boxes cannot disagree about it. And the setting is only on the
+      // head, so there is nowhere for them to.
+      // One line in the first box, so the break lands exactly on the empty
+      // line between the two paragraphs.
+      var paragraphs = "First\n\nSecond paragraph, and more of it";
+      TextFlow second({required bool tidy}) {
+        var a = _box("a", text: paragraphs, flowTo: "b", height: 18)
+            .copyWith(columns: TextColumns(noBlankStart: tidy));
+        var b = _box("b");
+        var doc = CanvasDocument(elements: [a, b]);
+        return flowFor(b, doc, room, spec);
+      }
+
+      var loose = second(tidy: false);
+      var tidied = second(tidy: true);
+      expect(loose.tidyStart, isFalse);
+      expect(tidied.tidyStart, isTrue,
+          reason: "the head's answer, on the box that is receiving");
+      expect(loose.text.startsWith("\n"), isTrue,
+          reason: "the break landed on the blank line: "
+              "${loose.text.substring(0, 12).replaceAll("\n", "|")}");
+      expect(tidied.text.startsWith("\n"), isFalse,
+          reason: "which is passed over rather than drawn");
+    });
+
     test("and a taller first box keeps more of it", () {
       var short = twoBoxes(first: 40);
       var tall = twoBoxes(first: 120);

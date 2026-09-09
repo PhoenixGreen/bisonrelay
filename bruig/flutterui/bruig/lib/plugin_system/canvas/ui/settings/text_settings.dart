@@ -233,6 +233,21 @@ List<Widget> textSettings(
               },
               onCommit: commit,
             ),
+            // The gap between two paragraphs is a line like any other, and
+            // whatever starts on one -- a column, or the next box in a chain --
+            // starts with an empty row and its words sitting lower than its
+            // neighbour's. Offered whether or not this box has columns of its
+            // own, because a chain of boxes asks the same question of boxes;
+            // and only on the box the words belong to, since the rest of a
+            // chain follows what it says.
+            if (flowSourceOf(e, controller.document) == null)
+              CanvasToggle(
+                key: const ValueKey("textColumnsNoBlankStart"),
+                label: "No blank first line",
+                value: e.columns.noBlankStart,
+                onChanged: (v) => now(
+                    e.copyWith(columns: e.columns.copyWith(noBlankStart: v))),
+              ),
             // The rest only means something once there is a gutter to put it in.
             if (!e.columns.isSingle) ...[
               CanvasNumberField(
@@ -246,15 +261,6 @@ List<Widget> textSettings(
                   write(e.copyWith(columns: e.columns.copyWith(gap: v)));
                 },
                 onCommit: commit,
-              ),
-              // The gap between two paragraphs is a line like any other, and a
-              // column that starts on one starts with an empty row.
-              CanvasToggle(
-                key: const ValueKey("textColumnsNoBlankStart"),
-                label: "No blank first line",
-                value: e.columns.noBlankStart,
-                onChanged: (v) => now(
-                    e.copyWith(columns: e.columns.copyWith(noBlankStart: v))),
               ),
               CanvasDropdown<ColumnRuleStyle>(
                 label: "Rule",
