@@ -53,6 +53,33 @@ List<Widget> textSettings(
           ...typeGroups(e.textSpec, (spec) => write(e.copyWith(textSpec: spec)),
               begin, commit,
               hideCaption: true),
+          // The element's own marks: a band behind all of the words, a line
+          // under all of them. Here rather than only on a part, because
+          // highlighting a whole headline should not mean first making a part
+          // that covers it.
+          CanvasControlGroup(label: "Marks", children: [
+            ..._markBits(
+              highlight: e.highlight,
+              underline: e.underline,
+              textColor: e.textSpec.color,
+              keyPrefix: "text",
+              setHighlight: (h) => now(h == null
+                  ? e.copyWith(clearHighlight: true)
+                  : e.copyWith(highlight: h)),
+              setUnderline: (u) => now(u == null
+                  ? e.copyWith(clearUnderline: true)
+                  : e.copyWith(underline: u)),
+              liveHighlight: (h) {
+                begin();
+                write(e.copyWith(highlight: h));
+              },
+              liveUnderline: (u) {
+                begin();
+                write(e.copyWith(underline: u));
+              },
+              done: commit,
+            ),
+          ]),
           boxGroup(e.box, (box) => write(e.copyWith(box: box)), begin, commit),
         ],
       ),
@@ -326,175 +353,35 @@ Widget _partsSection(TextElement e, SettingsWrite write, VoidCallback begin,
                   set(replacing(i, part.copyWith(outlineColor: c))),
             ),
           ],
-          // A mark that is simply there, as opposed to one being drawn on by
-          // an animation. Off until it is asked for: most parts are a colour
-          // and nothing else, and two rows of padding fields under every one
-          // of them would bury that.
-          CanvasToggle(
-            label: "Highlight",
-            value: part.highlight != null,
-            onChanged: (v) => set(replacing(
+          // The two marks, which a part has and the element has as well --
+          // written once, in _markBits, so they cannot drift apart.
+          ..._markBits(
+            highlight: part.highlight,
+            underline: part.underline,
+            textColor: part.color ?? e.textSpec.color,
+            keyPrefix: "part$i",
+            setHighlight: (h) => set(replacing(
                 i,
-                v
-                    ? part.copyWith(highlight: const PartHighlight())
-                    : part.copyWith(clearHighlight: true))),
-          ),
-          CanvasToggle(
-            label: "Underline",
-            value: part.underline != null,
-            onChanged: (v) => set(replacing(
+                h == null
+                    ? part.copyWith(clearHighlight: true)
+                    : part.copyWith(highlight: h))),
+            setUnderline: (u) => set(replacing(
                 i,
-                v
-                    ? part.copyWith(underline: const PartUnderline())
-                    : part.copyWith(clearUnderline: true))),
+                u == null
+                    ? part.copyWith(clearUnderline: true)
+                    : part.copyWith(underline: u))),
+            liveHighlight: (h) {
+              begin();
+              write(
+                  e.copyWith(parts: replacing(i, part.copyWith(highlight: h))));
+            },
+            liveUnderline: (u) {
+              begin();
+              write(
+                  e.copyWith(parts: replacing(i, part.copyWith(underline: u))));
+            },
+            done: commit,
           ),
-          if (part.highlight != null) ...[
-            const CanvasLineBreak(),
-            CanvasColorButton(
-              label: "Highlight",
-              color: part.highlight!.color,
-              onChanged: (c) => set(replacing(
-                  i,
-                  part.copyWith(
-                      highlight: part.highlight!.copyWith(color: c)))),
-            ),
-            // One field for all four sides, and the four on their own under
-            // it -- the same shape the drawn mark's padding takes, because it
-            // is the same question about the same kind of band.
-            CanvasNumberField(
-              label: "Padding",
-              value: part.highlight!.evenPad ?? 0,
-              min: 0,
-              max: 200,
-              decimals: 0,
-              width: 62,
-              onChanged: (v) {
-                begin();
-                write(e.copyWith(
-                    parts: replacing(
-                        i,
-                        part.copyWith(
-                            highlight: part.highlight!.withEvenPad(v)))));
-              },
-              onCommit: commit,
-            ),
-            for (var (name, at, make)
-                in <(String, double, PartHighlight Function(double))>[
-              (
-                "Left",
-                part.highlight!.padLeft,
-                (v) => part.highlight!.copyWith(padLeft: v)
-              ),
-              (
-                "Top",
-                part.highlight!.padTop,
-                (v) => part.highlight!.copyWith(padTop: v)
-              ),
-              (
-                "Right",
-                part.highlight!.padRight,
-                (v) => part.highlight!.copyWith(padRight: v)
-              ),
-              (
-                "Bottom",
-                part.highlight!.padBottom,
-                (v) => part.highlight!.copyWith(padBottom: v)
-              ),
-            ])
-              CanvasNumberField(
-                label: name,
-                value: at,
-                min: 0,
-                max: 200,
-                decimals: 0,
-                width: 56,
-                onChanged: (v) {
-                  begin();
-                  write(e.copyWith(
-                      parts: replacing(i, part.copyWith(highlight: make(v)))));
-                },
-                onCommit: commit,
-              ),
-            CanvasNumberField(
-              label: "Corners",
-              value: part.highlight!.radius,
-              min: 0,
-              max: 200,
-              decimals: 0,
-              width: 62,
-              onChanged: (v) {
-                begin();
-                write(e.copyWith(
-                    parts: replacing(
-                        i,
-                        part.copyWith(
-                            highlight: part.highlight!.copyWith(radius: v)))));
-              },
-              onCommit: commit,
-            ),
-          ],
-          if (part.underline != null) ...[
-            const CanvasLineBreak(),
-            CanvasDropdown<PartLineStyle>(
-              key: ValueKey("partUnderlineStyle$i"),
-              label: "Line",
-              value: part.underline!.style,
-              width: 130,
-              options: [for (var v in PartLineStyle.values) (v, v.label)],
-              onChanged: (v) => set(replacing(
-                  i,
-                  part.copyWith(
-                      underline: part.underline!.copyWith(style: v)))),
-            ),
-            CanvasColorButton(
-              label: "Line colour",
-              color: part.underline!.color ?? part.color ?? e.textSpec.color,
-              onChanged: (c) => set(replacing(
-                  i,
-                  part.copyWith(
-                      underline: part.underline!.copyWith(color: c)))),
-            ),
-            CanvasNumberField(
-              label: "Width",
-              value: part.underline!.width,
-              min: 0.5,
-              max: 60,
-              decimals: 1,
-              width: 58,
-              onChanged: (v) {
-                begin();
-                write(e.copyWith(
-                    parts: replacing(
-                        i,
-                        part.copyWith(
-                            underline: part.underline!.copyWith(width: v)))));
-              },
-              onCommit: commit,
-            ),
-            CanvasNumberField(
-              label: "Away",
-              value: part.underline!.away,
-              min: -40,
-              max: 120,
-              decimals: 0,
-              width: 58,
-              onChanged: (v) {
-                begin();
-                write(e.copyWith(
-                    parts: replacing(
-                        i,
-                        part.copyWith(
-                            underline: part.underline!.copyWith(away: v)))));
-              },
-              onCommit: commit,
-            ),
-            const CanvasHint(
-                "The last four line styles are drawn rather than ruled: they "
-                "wander, lean and overshoot the last letter the way a line "
-                "drawn by hand does. Marker is a brush — thick in the middle "
-                "and tapered at both ends. Width sets how heavy the line is, "
-                "and Away how far under the letters it sits."),
-          ],
           // This part's own arrival, at its own moment. Not the element's
           // animation pointed here: the rest of the sentence has an arrival
           // of its own, and the point of animating one word is that it lands
@@ -1046,5 +933,145 @@ List<Widget> _animationBits(
           },
         ),
       ]),
+  ];
+}
+
+/// _markBits are a highlight and an underline: the two marks that are simply
+/// *there* on some words, as opposed to one an animation draws on.
+///
+/// Written once and shown twice -- for the element, where they apply to every
+/// word, and for a part, where they apply to a few. They were the part's
+/// alone, so highlighting a whole headline meant first making a part that
+/// covered it.
+List<Widget> _markBits({
+  required PartHighlight? highlight,
+  required PartUnderline? underline,
+  required Color textColor,
+  required String keyPrefix,
+  required void Function(PartHighlight?) setHighlight,
+  required void Function(PartUnderline?) setUnderline,
+  required void Function(PartHighlight) liveHighlight,
+  required void Function(PartUnderline) liveUnderline,
+  required VoidCallback done,
+}) {
+  return [
+    // A mark that is simply there, as opposed to one being drawn on by
+    // an animation. Off until it is asked for: most parts are a colour
+    // and nothing else, and two rows of padding fields under every one
+    // of them would bury that.
+    CanvasToggle(
+      label: "Highlight",
+      value: highlight != null,
+      onChanged: (v) => setHighlight(v ? const PartHighlight() : null),
+    ),
+    CanvasToggle(
+      label: "Underline",
+      value: underline != null,
+      onChanged: (v) => setUnderline(v ? const PartUnderline() : null),
+    ),
+    if (highlight != null) ...[
+      const CanvasLineBreak(),
+      CanvasColorButton(
+        label: "Highlight",
+        color: highlight.color,
+        onChanged: (c) => setHighlight(highlight.copyWith(color: c)),
+      ),
+      // One field for all four sides, and the four on their own under
+      // it -- the same shape the drawn mark's padding takes, because it
+      // is the same question about the same kind of band.
+      CanvasNumberField(
+        label: "Padding",
+        value: highlight.evenPad ?? 0,
+        min: 0,
+        max: 200,
+        decimals: 0,
+        width: 62,
+        onChanged: (v) {
+          liveHighlight(highlight.withEvenPad(v));
+        },
+        onCommit: done,
+      ),
+      for (var (name, at, make)
+          in <(String, double, PartHighlight Function(double))>[
+        ("Left", highlight.padLeft, (v) => highlight.copyWith(padLeft: v)),
+        ("Top", highlight.padTop, (v) => highlight.copyWith(padTop: v)),
+        ("Right", highlight.padRight, (v) => highlight.copyWith(padRight: v)),
+        (
+          "Bottom",
+          highlight.padBottom,
+          (v) => highlight.copyWith(padBottom: v)
+        ),
+      ])
+        CanvasNumberField(
+          label: name,
+          value: at,
+          min: 0,
+          max: 200,
+          decimals: 0,
+          width: 56,
+          onChanged: (v) {
+            liveHighlight(make(v));
+          },
+          onCommit: done,
+        ),
+      CanvasNumberField(
+        label: "Corners",
+        value: highlight.radius,
+        min: 0,
+        max: 200,
+        decimals: 0,
+        width: 62,
+        onChanged: (v) {
+          liveHighlight(highlight.copyWith(radius: v));
+        },
+        onCommit: done,
+      ),
+    ],
+    if (underline != null) ...[
+      const CanvasLineBreak(),
+      CanvasDropdown<PartLineStyle>(
+        key: ValueKey("${keyPrefix}UnderlineStyle"),
+        label: "Line",
+        value: underline.style,
+        width: 130,
+        options: [for (var v in PartLineStyle.values) (v, v.label)],
+        onChanged: (v) => setUnderline(underline.copyWith(style: v)),
+      ),
+      CanvasColorButton(
+        label: "Line colour",
+        color: underline.color ?? textColor,
+        onChanged: (c) => setUnderline(underline.copyWith(color: c)),
+      ),
+      CanvasNumberField(
+        label: "Width",
+        value: underline.width,
+        min: 0.5,
+        max: 60,
+        decimals: 1,
+        width: 58,
+        onChanged: (v) {
+          liveUnderline(underline.copyWith(width: v));
+        },
+        onCommit: done,
+      ),
+      CanvasNumberField(
+        label: "Away",
+        value: underline.away,
+        min: -40,
+        max: 120,
+        decimals: 0,
+        width: 58,
+        onChanged: (v) {
+          liveUnderline(underline.copyWith(away: v));
+        },
+        onCommit: done,
+      ),
+      const CanvasHint(
+          "The last four line styles are drawn rather than ruled: they "
+          "wander, lean and overshoot the last letter the way a line "
+          "drawn by hand does. Marker is a brush — thick in the middle "
+          "and tapered at both ends. Width sets how heavy the line is, "
+          "and Away how far under the letters it sits."),
+    ],
   ];
 }

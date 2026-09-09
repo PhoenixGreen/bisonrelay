@@ -195,6 +195,16 @@ class TextElement extends CanvasElement {
   /// all ask.
   final List<TextPart> parts;
 
+  /// highlight and underline are the element's own marks: a band behind all
+  /// of the words, a line under all of them.
+  ///
+  /// The same two a part carries, because they are the same question asked of
+  /// everything rather than of a few words -- and asked far more often. A
+  /// highlighted headline should not need a part covering the whole sentence
+  /// before it can be highlighted.
+  final PartHighlight? highlight;
+  final PartUnderline? underline;
+
   /// curve attaches the text to a line, or is null for a paragraph in its own
   /// box. See [TextOnCurve].
   final TextOnCurve? curve;
@@ -208,11 +218,31 @@ class TextElement extends CanvasElement {
     this.columns = const TextColumns(),
     this.animation = const TextAnimation(),
     this.parts = const [],
+    this.highlight,
+    this.underline,
     this.curve,
   });
 
   @override
   ElementKind get kind => ElementKind.text;
+
+  /// drawnParts are the parts the painter works from: the element's own
+  /// marks as a part covering every word, and then the parts themselves.
+  ///
+  /// A part rather than a second mechanism, because "a line under all of it"
+  /// is "a line under words one to the end" -- and written that way the
+  /// marks, their timing and their drawing on are one piece of code instead
+  /// of two that would have to agree.
+  ///
+  /// First in the list, so a part's own highlight is drawn over the
+  /// element's rather than under it, and so a part still decides the colour
+  /// and weight of the words it covers.
+  List<TextPart> get drawnParts => highlight == null && underline == null
+      ? parts
+      : [
+          TextPart(highlight: highlight, underline: underline),
+          ...parts,
+        ];
 
   /// displayText is what actually goes on the canvas -- the typed string with
   /// the case transform applied. See TextCase on why the transform is not
@@ -228,6 +258,8 @@ class TextElement extends CanvasElement {
       columns: columns,
       animation: animation,
       parts: parts,
+      highlight: highlight,
+      underline: underline,
       curve: curve);
 
   TextElement copyWith({
@@ -238,6 +270,10 @@ class TextElement extends CanvasElement {
     TextColumns? columns,
     TextAnimation? animation,
     List<TextPart>? parts,
+    PartHighlight? highlight,
+    bool clearHighlight = false,
+    PartUnderline? underline,
+    bool clearUnderline = false,
     TextOnCurve? curve,
     bool clearCurve = false,
   }) =>
@@ -249,6 +285,8 @@ class TextElement extends CanvasElement {
           columns: columns ?? this.columns,
           animation: animation ?? this.animation,
           parts: parts ?? this.parts,
+          highlight: clearHighlight ? null : (highlight ?? this.highlight),
+          underline: clearUnderline ? null : (underline ?? this.underline),
           curve: clearCurve ? null : (curve ?? this.curve));
 
   @override
@@ -260,20 +298,32 @@ class TextElement extends CanvasElement {
         if (!columns.isSingle) "columns": columns.toJson(),
         if (animation.on || animation.closes) "animation": animation.toJson(),
         if (parts.isNotEmpty) "parts": [for (var p in parts) p.toJson()],
+        if (highlight != null) "highlight": highlight!.toJson(),
+        if (underline != null) "underline": underline!.toJson(),
         if (curve != null) "curve": curve!.toJson(),
       };
 
   factory TextElement.fromJson(Map<String, dynamic> json, ElementBase b) =>
-      TextElement(
-          b,
+      TextElement(b,
           text: jsonString(json["text"], "Text"),
-          textSpec:
-              jsonSpec(json["textSpec"], TextSpec.fromJson, const TextSpec()),
+          textSpec: jsonSpec(
+              json["textSpec"], TextSpec.fromJson, const TextSpec()),
           box: jsonSpec(json["box"], BoxSpec.fromJson, const BoxSpec()),
           autoSize: jsonBool(json["autoSize"], false),
-          animation: jsonSpec(
-              json["animation"], TextAnimation.fromJson, const TextAnimation()),
+          animation: jsonSpec(json["animation"], TextAnimation.fromJson,
+              const TextAnimation()),
           parts: _partsFromJson(json),
+          highlight: json["highlight"] is Map<String,
+                  dynamic>
+              ? PartHighlight.fromJson(json["highlight"] as Map<String,
+                  dynamic>)
+              : null,
+          underline:
+              json["underline"] is Map<String,
+                      dynamic>
+                  ? PartUnderline.fromJson(
+                      json["underline"] as Map<String, dynamic>)
+                  : null,
           columns: jsonSpec(
               json["columns"], TextColumns.fromJson, const TextColumns()),
           curve: json["curve"] is Map<String, dynamic>

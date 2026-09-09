@@ -221,21 +221,66 @@ void main() {
             ),
           ]);
 
+      // Measured once the words have arrived, so what is being compared is
+      // how much of the mark has been drawn and not how far the paragraph's
+      // own fade has got -- a mark belongs to the words it is on, so it
+      // arrives and leaves with them.
       late int always;
       late int early;
       late int late_;
       await tester.runAsync(() async {
-        always = (await _ink(at(false, 0), 2))[green] ?? 0;
-        early = (await _ink(at(true, 0), 2))[green] ?? 0;
+        always = (await _ink(at(false, 0), 10))[green] ?? 0;
+        early = (await _ink(at(true, 5), 7))[green] ?? 0;
         late_ = (await _ink(at(true, 8), 2))[green] ?? 0;
       });
 
       expect(always, greaterThan(40), reason: "a mark that is simply there");
       expect(early, lessThan(always),
-          reason: "being drawn on, it is only part way across at frame 2: "
+          reason: "being drawn on, it is only part way across: "
               "$always against $early");
       expect(late_, 0,
           reason: "offset by eight frames it has not started at frame 2");
+    });
+
+    testWidgets("and it arrives and leaves with the words it is on",
+        (tester) async {
+      // Drawn outside the animation, as it was, an underline stayed behind on
+      // an empty canvas after the sentence it belonged to had left.
+      const green = 0x00FF00FF;
+      var marked = TextElement(
+        const ElementBase(id: "t", x: 0, y: 20, width: 400, height: 90),
+        text: _line,
+        textSpec: const TextSpec(fontSize: 26, color: Color(0xFFFFFFFF)),
+        parts: const [
+          TextPart(
+              from: 2,
+              to: 4,
+              underline: PartUnderline(color: Color(0xFF00FF00), width: 4)),
+        ],
+        animation: const TextAnimation(
+            preset: TextAnimationPreset.fadeIn,
+            exit: TextAnimationPreset.fadeIn,
+            ease: ChartEase.linear),
+      ).withBase(
+          track: ElementTrack([
+        const Keyframe(frame: 0, values: {KeyframeChannel.reveal: 0}),
+        const Keyframe(frame: 10, values: {KeyframeChannel.reveal: 1}),
+        const Keyframe(frame: 20, values: {KeyframeChannel.close: 0}),
+        const Keyframe(frame: 30, values: {KeyframeChannel.close: 1}),
+      ])) as TextElement;
+
+      late int there;
+      late int arriving;
+      late int gone;
+      await tester.runAsync(() async {
+        there = (await _ink(marked, 20))[green] ?? 0;
+        arriving = (await _ink(marked, 2))[green] ?? 0;
+        gone = _lit(await _ink(marked, 30));
+      });
+      expect(there, greaterThan(40), reason: "the line is under the words");
+      expect(arriving, 0,
+          reason: "and is as faint as they are while they arrive");
+      expect(gone, 0, reason: "and it goes with them");
     });
 
     testWidgets("and it is drawn to the end by the time it is over",

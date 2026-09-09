@@ -281,6 +281,42 @@ void main() {
               "$fewer");
     });
 
+    testWidgets("the element has a pair of its own, on all of the words",
+        (tester) async {
+      // Highlighting a whole headline used to mean first making a part that
+      // covered it.
+      const green = 0x00FF00FF;
+      late Map<int, int> plain;
+      late Map<int, int> marked;
+      await tester.runAsync(() async {
+        plain = await _ink(_document([_headline()]));
+        marked = await _ink(_document([
+          TextElement(
+            const ElementBase(id: "t", x: 0, y: 20, width: 400, height: 90),
+            text: "You come across an idea",
+            textSpec: const TextSpec(fontSize: 26, color: Color(0xFFFFFFFF)),
+            highlight: const PartHighlight(color: Color(0xFF00FF00)),
+          ),
+        ]));
+      });
+      expect(plain[green] ?? 0, 0);
+      expect(marked[green] ?? 0, greaterThan(800),
+          reason: "a band behind the whole sentence");
+
+      // And they survive being saved.
+      var back = elementFromJson(TextElement(
+        const ElementBase(id: "t", width: 400, height: 90),
+        text: "Hi",
+        highlight: const PartHighlight(color: Color(0xFF112233)),
+        underline: const PartUnderline(style: PartLineStyle.marker),
+      ).toJson()) as TextElement;
+      expect(back.highlight!.color, const Color(0xFF112233));
+      expect(back.underline!.style, PartLineStyle.marker);
+      expect(back.drawnParts.length, 1,
+          reason: "drawn as a part covering every word");
+      expect(back.drawnParts.single.highlight, isNotNull);
+    });
+
     test("the marks survive being saved and read back", () {
       var element = _headline(parts: const [
         TextPart(

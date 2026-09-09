@@ -174,6 +174,11 @@ TextPainter _layoutText(
 /// crossing the words, a line being pulled under them -- which is the whole
 /// reason a mark has a timing of its own: a word arrives and *then* gets
 /// underlined.
+/// [moving] and [at] are the element's own animation and how far through it
+/// is, where it is running. A mark belongs to the words it is on: if they are
+/// arriving it arrives with them, and if they are leaving it goes with them.
+/// Drawn outside all that, as it was, an underline stayed behind on an empty
+/// canvas after the sentence it belonged to had left.
 void paintPartMarks(
   ui.Canvas canvas,
   TextPainter painter,
@@ -183,6 +188,8 @@ void paintPartMarks(
   Offset offset, {
   required bool behind,
   List<PartTiming> timings = const [],
+  TextAnimation? moving,
+  double at = 1,
 }) {
   if (parts.isEmpty || text.isEmpty) return;
 
@@ -212,15 +219,41 @@ void paintPartMarks(
         box = Rect.fromLTWH(box.left, box.top, reached, box.height);
       }
       reached -= b.toRect().width;
-      if (behind) {
-        _paintPartHighlight(canvas, box, part.highlight!);
-      } else {
-        _paintPartUnderline(
-            canvas, box, part.underline!, part.color ?? spec.color);
+
+      // Carried by whatever the words are doing. One piece rather than one
+      // per letter: a highlight is a band behind a phrase, and a band that
+      // came apart into a letter's worth of stripes would not be one.
+      var frame = moving == null || !moving.on
+          ? const MotionFrame(1, 0, false)
+          : applyMotion(canvas, box, moving.preset, moving.progressAt(at, 0, 1),
+              from: moving.scaleFor(moving.preset));
+      _fadeInto(canvas, box, frame.alpha, () {
+        if (behind) {
+          _paintPartHighlight(canvas, box, part.highlight!);
+        } else {
+          _paintPartUnderline(
+              canvas, box, part.underline!, part.color ?? spec.color);
+        }
+      });
+      for (var r = 0; r < frame.depth; r++) {
+        canvas.restore();
       }
       if (reached <= 0) break;
     }
   }
+}
+
+/// _fadeInto draws [what] at [alpha], through a layer where it has to be.
+void _fadeInto(ui.Canvas canvas, Rect box, double alpha, void Function() what) {
+  if (alpha <= 0) return;
+  if (alpha >= 1) {
+    what();
+    return;
+  }
+  canvas.saveLayer(box.inflate(box.height * 2),
+      Paint()..color = Color.fromRGBO(0, 0, 0, alpha.clamp(0.0, 1.0)));
+  what();
+  canvas.restore();
 }
 
 void _paintPartHighlight(ui.Canvas canvas, Rect box, PartHighlight mark) {
@@ -479,8 +512,12 @@ double paintTextInBox(
   // A part's own highlight goes behind the words and its own underline under
   // them. Drawn whatever the animation is doing, because they are a fact
   // about the words rather than an arrival -- see TextPart.highlight.
+  var marksMove = animation != null && animation.on && reveal < 1;
   paintPartMarks(canvas, painter, text, parts, spec, offset,
-      behind: true, timings: timings);
+      behind: true,
+      timings: timings,
+      moving: marksMove ? animation : null,
+      at: reveal);
 
   // Part way through arriving, if it is arriving. The animator is handed the
   // paragraph that has already been laid out -- and its outline, which moves
@@ -506,7 +543,10 @@ double paintTextInBox(
   }
 
   paintPartMarks(canvas, painter, text, parts, spec, offset,
-      behind: false, timings: timings);
+      behind: false,
+      timings: timings,
+      moving: marksMove ? animation : null,
+      at: reveal);
 
   if (clip) canvas.restore();
   return painter.height;
@@ -977,8 +1017,12 @@ void paintTextInColumns(
     // column's clip keeps each one to its own lines: a part that runs from
     // the bottom of one column into the top of the next is marked in both,
     // which is what it looks like on the page.
+    var marksMove = animation != null && animation.on && reveal < 1;
     paintPartMarks(canvas, painter, text, parts, spec, at,
-        behind: true, timings: timings);
+        behind: true,
+        timings: timings,
+        moving: marksMove ? animation : null,
+        at: reveal);
 
     var moving = (animation != null &&
             animation.on &&
@@ -1006,7 +1050,10 @@ void paintTextInColumns(
       painter.paint(canvas, at);
     }
     paintPartMarks(canvas, painter, text, parts, spec, at,
-        behind: false, timings: timings);
+        behind: false,
+        timings: timings,
+        moving: marksMove ? animation : null,
+        at: reveal);
     canvas.restore();
   }
 

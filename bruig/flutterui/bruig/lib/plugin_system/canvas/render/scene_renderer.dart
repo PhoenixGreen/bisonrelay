@@ -286,7 +286,7 @@ void _paintText(
         slide == null ? on : on.copyWith(offset: slide),
         animation: curveAnimation,
         reveal: curveReveal,
-        parts: e.parts,
+        parts: e.drawnParts,
         timings: _partTimings(e, frame, pose),
         asOne: (pose.values[KeyframeChannel.close] ?? 0) > 0);
     return;
@@ -314,7 +314,7 @@ void _paintText(
       !(animation.keeps && animation.draw.start == TextDrawStart.showText) &&
       // And unless one of the parts is arriving on its own account, in which
       // case it has a moment of its own and this frame may be it.
-      !partsAnimate(e.parts)) {
+      !partsAnimate(e.drawnParts)) {
     return;
   }
 
@@ -322,7 +322,7 @@ void _paintText(
     paintTextInBox(canvas, e.displayText, spec, inner,
         animation: animation,
         reveal: reveal,
-        parts: e.parts,
+        parts: e.drawnParts,
         timings: timings,
         asOne: leaving);
     return;
@@ -333,7 +333,7 @@ void _paintText(
   paintTextInColumns(canvas, e.displayText, spec, inner, e.columns,
       animation: animation,
       reveal: reveal,
-      parts: e.parts,
+      parts: e.drawnParts,
       timings: timings,
       asOne: leaving);
 }
@@ -366,9 +366,13 @@ void _paintText(
 /// paragraph goes as one, and a part still playing its own arrival underneath
 /// an exit is two animations arguing.
 List<PartTiming> _partTimings(TextElement e, int frame, Keyframe pose) {
-  if (e.parts.isEmpty) return const [];
+  // Against drawnParts rather than the parts themselves: the element's own
+  // marks are one of them, and a timing list that did not line up with the
+  // list the painter uses would give every part the one before its own.
+  var parts = e.drawnParts;
+  if (parts.isEmpty) return const [];
   var closing = (pose.values[KeyframeChannel.close] ?? 0) > 0;
-  if (closing) return [for (var _ in e.parts) PartTiming.there];
+  if (closing) return [for (var _ in parts) PartTiming.there];
 
   int? from;
   int? to;
@@ -383,13 +387,13 @@ List<PartTiming> _partTimings(TextElement e, int frame, Keyframe pose) {
   if (from == null || to == null || to <= from) {
     var reveal = pose.values[KeyframeChannel.reveal] ?? 1;
     return [
-      for (var part in e.parts)
+      for (var part in parts)
         PartTiming(
             part.animation.on ? reveal : 1, part.animation.marks ? reveal : 1),
     ];
   }
   return [
-    for (var part in e.parts)
+    for (var part in parts)
       timingOf(part, frame: frame, from: from, span: to - from),
   ];
 }
