@@ -10,6 +10,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/presets/builtin_presets.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/text_documents.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_settings_bar.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/guides_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_stage.dart';
@@ -149,6 +150,11 @@ class _CanvasScreenState extends State<CanvasScreen> {
     if (!_controller.opened) _reopenLast(prefs);
     _controller.markOpened();
     _controller.addListener(_onSelectionChanged);
+    // A text element can take its words from the Writing library, and the
+    // library is edited somewhere else entirely -- so while this page is open
+    // the documents behind those elements are read every few seconds. A
+    // canvas with none does no work. See TextDocumentWatch.
+    _documents = TextDocumentWatch(_controller)..start();
   }
 
   /// _reopenLast puts back whatever was open when the page was last left.
@@ -203,12 +209,16 @@ class _CanvasScreenState extends State<CanvasScreen> {
 
   @override
   void dispose() {
+    _documents?.stop();
     _controller.removeListener(_onSelectionChanged);
     // Not disposed: the session outlives this page. The provider owns it, and
     // disposing it here would leave a dead controller behind for the next
     // visit to read.
     super.dispose();
   }
+
+  /// _documents re-reads the Writing library documents this canvas draws.
+  TextDocumentWatch? _documents;
 
   /// _designUsed is whether the Design tab has been opened this session.
   ///

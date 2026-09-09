@@ -4,6 +4,9 @@ import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/model/text_document.dart';
+import 'package:bruig/plugin_system/canvas/ui/document_picking.dart';
+import 'package:bruig/plugin_system/canvas/ui/text_documents.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/image_picking.dart';
 import 'package:flutter/material.dart';
@@ -48,6 +51,105 @@ List<Widget> textSettings(
               value: e.autoSize,
               onChanged: (v) => now(e.copyWith(autoSize: v)),
             ),
+            // Words from the Writing library rather than typed on the canvas.
+            // Beside Fit to box because it is the same kind of question --
+            // where the words and their size come from -- and because it is
+            // the first thing to decide about a text element that is a
+            // document.
+            CanvasToggle(
+              key: const ValueKey("textFromDocument"),
+              label: "From a document",
+              value: e.document.on,
+              onChanged: (v) async {
+                if (!v) {
+                  now(e.copyWith(
+                      document: const TextDocumentRef(),
+                      documentParts: const []));
+                  return;
+                }
+                var picked = await pickLibraryDocument(context);
+                if (picked == null) return;
+                now(e.copyWith(document: picked, documentParts: const []));
+                await refreshTextDocuments(controller);
+              },
+            ),
+            if (e.document.on) ...[
+              CanvasIconButton(
+                key: const ValueKey("textDocumentPick"),
+                icon: Icons.description_outlined,
+                tooltip: "Choose another document",
+                onPressed: () async {
+                  var picked = await pickLibraryDocument(context);
+                  if (picked == null) return;
+                  now(e.copyWith(
+                      document: e.document
+                          .copyWith(folder: picked.folder, name: picked.name),
+                      documentParts: const []));
+                  await refreshTextDocuments(controller);
+                },
+              ),
+              CanvasReadout(label: "Document", value: e.document.says),
+              CanvasToggle(
+                key: const ValueKey("textDocumentMarkdown"),
+                label: "Markdown",
+                value: e.document.markdown,
+                onChanged: (v) async {
+                  now(e.copyWith(document: e.document.copyWith(markdown: v)));
+                  await refreshTextDocuments(controller);
+                },
+              ),
+              if (e.document.markdown)
+                for (var (name, value, set)
+                    in <(String, bool, MarkdownAllow Function(bool))>[
+                  (
+                    "#",
+                    e.document.allow.heading1,
+                    (v) => e.document.allow.copyWith(heading1: v)
+                  ),
+                  (
+                    "##",
+                    e.document.allow.heading2,
+                    (v) => e.document.allow.copyWith(heading2: v)
+                  ),
+                  (
+                    "Bold",
+                    e.document.allow.bold,
+                    (v) => e.document.allow.copyWith(bold: v)
+                  ),
+                  (
+                    "Italic",
+                    e.document.allow.italic,
+                    (v) => e.document.allow.copyWith(italic: v)
+                  ),
+                  (
+                    "Underline",
+                    e.document.allow.underline,
+                    (v) => e.document.allow.copyWith(underline: v)
+                  ),
+                  (
+                    "Links",
+                    e.document.allow.link,
+                    (v) => e.document.allow.copyWith(link: v)
+                  ),
+                ])
+                  CanvasToggle(
+                    label: name,
+                    value: value,
+                    onChanged: (v) async {
+                      now(e.copyWith(
+                          document: e.document.copyWith(allow: set(v))));
+                      await refreshTextDocuments(controller);
+                    },
+                  ),
+              const CanvasHint(
+                  "The words come from the library and are read again every "
+                  "few seconds, so editing the document changes the canvas. "
+                  "With Markdown off they arrive as plain text — every mark "
+                  "stripped, all of the styling from the settings here. With "
+                  "it on, only the pieces switched on are honoured; the rest "
+                  "are still stripped, because a headline reading \"## Title\" "
+                  "is not markdown being ignored, it is markdown showing."),
+            ],
           ]),
           // The section's own heading says Type already, so the first group
           // inside it does not say it again.

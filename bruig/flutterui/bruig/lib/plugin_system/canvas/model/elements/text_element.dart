@@ -5,6 +5,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_parts.dart';
+import 'package:bruig/plugin_system/canvas/model/text_document.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 
 /// ColumnRuleStyle is how the line between two columns is drawn.
@@ -208,6 +209,19 @@ class TextElement extends CanvasElement {
   /// icon is a picture set beside, above or below the words. See TextIcon.
   final TextIcon icon;
 
+  /// document is the Writing library document these words came from, if any.
+  ///
+  /// The words themselves are in [text]: read once and copied in, because a
+  /// canvas has to draw the same on a machine that has never seen the
+  /// library and an export has no disk to wait on. See TextDocumentRef.
+  final TextDocumentRef document;
+
+  /// documentParts are the runs the document's own markdown asked for -- a
+  /// heading, a bold phrase, a link. Kept apart from [parts] because they are
+  /// not the reader's: they are rewritten from scratch every time the
+  /// document is read, and a reader's own part must survive that.
+  final List<TextPart> documentParts;
+
   /// curve attaches the text to a line, or is null for a paragraph in its own
   /// box. See [TextOnCurve].
   final TextOnCurve? curve;
@@ -224,6 +238,8 @@ class TextElement extends CanvasElement {
     this.highlight,
     this.underline,
     this.icon = const TextIcon(),
+    this.document = const TextDocumentRef(),
+    this.documentParts = const [],
     this.curve,
   });
 
@@ -241,12 +257,16 @@ class TextElement extends CanvasElement {
   /// First in the list, so a part's own highlight is drawn over the
   /// element's rather than under it, and so a part still decides the colour
   /// and weight of the words it covers.
-  List<TextPart> get drawnParts => highlight == null && underline == null
-      ? parts
-      : [
+  List<TextPart> get drawnParts => [
+        // The element's own marks, as a part covering every word.
+        if (highlight != null || underline != null)
           TextPart(highlight: highlight, underline: underline),
-          ...parts,
-        ];
+        // Then what a document's markdown asked for, and then the reader's
+        // own parts -- which are last so that they win where they overlap.
+        // See partAt: the later part is the one that decides.
+        ...documentParts,
+        ...parts,
+      ];
 
   /// displayText is what actually goes on the canvas -- the typed string with
   /// the case transform applied. See TextCase on why the transform is not
@@ -265,6 +285,8 @@ class TextElement extends CanvasElement {
       highlight: highlight,
       underline: underline,
       icon: icon,
+      document: document,
+      documentParts: documentParts,
       curve: curve);
 
   TextElement copyWith({
@@ -280,6 +302,8 @@ class TextElement extends CanvasElement {
     PartUnderline? underline,
     bool clearUnderline = false,
     TextIcon? icon,
+    TextDocumentRef? document,
+    List<TextPart>? documentParts,
     TextOnCurve? curve,
     bool clearCurve = false,
   }) =>
@@ -294,6 +318,8 @@ class TextElement extends CanvasElement {
           highlight: clearHighlight ? null : (highlight ?? this.highlight),
           underline: clearUnderline ? null : (underline ?? this.underline),
           icon: icon ?? this.icon,
+          document: document ?? this.document,
+          documentParts: documentParts ?? this.documentParts,
           curve: clearCurve ? null : (curve ?? this.curve));
 
   @override
@@ -308,6 +334,9 @@ class TextElement extends CanvasElement {
         if (highlight != null) "highlight": highlight!.toJson(),
         if (underline != null) "underline": underline!.toJson(),
         if (icon.on) "icon": icon.toJson(),
+        if (document.on) "document": document.toJson(),
+        if (documentParts.isNotEmpty)
+          "documentParts": [for (var p in documentParts) p.toJson()],
         if (curve != null) "curve": curve!.toJson(),
       };
 
@@ -333,10 +362,21 @@ class TextElement extends CanvasElement {
                       dynamic>)
                   : null,
           icon:
-              json["icon"]
-                      is Map<String, dynamic>
+              json["icon"] is Map<String,
+                      dynamic>
                   ? TextIcon.fromJson(json["icon"] as Map<String, dynamic>)
                   : const TextIcon(),
+          document:
+              json["document"] is Map<String,
+                      dynamic>
+                  ? TextDocumentRef.fromJson(
+                      json["document"] as Map<String, dynamic>)
+                  : const TextDocumentRef(),
+          documentParts: [
+            if (json["documentParts"] case List raw)
+              for (var p in raw)
+                if (p is Map<String, dynamic>) TextPart.fromJson(p),
+          ],
           columns: jsonSpec(
               json["columns"], TextColumns.fromJson, const TextColumns()),
           curve: json["curve"] is Map<String, dynamic>

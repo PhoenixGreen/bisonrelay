@@ -413,6 +413,11 @@ class TextPart {
   final int? weight;
   final bool? italic;
 
+  /// scale sizes these words against the rest, as a multiplier: 1.6 is a
+  /// heading in a paragraph, 0.7 a piece of small print. Null leaves them the
+  /// element's own size.
+  final double? scale;
+
   /// outlineWidth and outlineColor draw these words in outline, or draw a
   /// heavier or a different-coloured one than the rest of the paragraph has.
   ///
@@ -446,6 +451,7 @@ class TextPart {
     this.color,
     this.weight,
     this.italic,
+    this.scale,
     this.outlineWidth,
     this.outlineColor,
     this.highlight,
@@ -474,6 +480,7 @@ class TextPart {
     bool clearColor = false,
     int? weight,
     bool? italic,
+    double? scale,
     double? outlineWidth,
     bool clearOutline = false,
     Color? outlineColor,
@@ -490,6 +497,7 @@ class TextPart {
         color: clearColor ? null : (color ?? this.color),
         weight: weight ?? this.weight,
         italic: italic ?? this.italic,
+        scale: scale ?? this.scale,
         outlineWidth: clearOutline ? null : (outlineWidth ?? this.outlineWidth),
         outlineColor: clearOutline ? null : (outlineColor ?? this.outlineColor),
         highlight: clearHighlight ? null : (highlight ?? this.highlight),
@@ -504,6 +512,7 @@ class TextPart {
         if (color != null) "color": colorToJson(color!),
         if (weight != null) "weight": weight,
         if (italic != null) "italic": italic,
+        if (scale != null) "scale": scale,
         if (outlineWidth != null) "outlineWidth": outlineWidth,
         if (outlineColor != null) "outlineColor": colorToJson(outlineColor!),
         if (highlight != null) "highlight": highlight!.toJson(),
@@ -520,6 +529,9 @@ class TextPart {
             : colorFromJson(json["color"], const Color(0xFFFFFFFF)),
         weight: json["weight"] is num ? (json["weight"] as num).toInt() : null,
         italic: json["italic"] is bool ? json["italic"] as bool : null,
+        scale: json["scale"] is num
+            ? (json["scale"] as num).toDouble().clamp(0.05, 20.0)
+            : null,
         outlineWidth: json["outlineWidth"] is num
             ? (json["outlineWidth"] as num).toDouble().clamp(0.0, 80.0)
             : null,

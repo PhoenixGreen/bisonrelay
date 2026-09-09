@@ -813,6 +813,42 @@ class CanvasToggle extends StatelessWidget {
   }
 }
 
+/// CanvasReadout is a caption over something the panel can only tell you.
+///
+/// For the answers that are not settings: which document a text element is
+/// reading, what a chain of boxes is flowing into. A disabled field would say
+/// the same thing while inviting somebody to type in it.
+class CanvasReadout extends StatelessWidget {
+  final String label;
+  final String value;
+  final double width;
+
+  const CanvasReadout(
+      {required this.label, required this.value, this.width = 168, super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    var theme = ThemeNotifier.of(context);
+    return _labelled(
+      theme,
+      label,
+      SizedBox(
+        width: width,
+        height: controlHeight,
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 11, color: theme.colors.onSurface),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// CanvasIconButton is a small square action, for the buttons that sit between
 /// the fields -- shuffle a seed, delete a keyframe, bring to front.
 class CanvasIconButton extends StatelessWidget {
