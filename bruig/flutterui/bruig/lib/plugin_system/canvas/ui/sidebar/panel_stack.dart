@@ -61,6 +61,15 @@ class CanvasStackPanel {
   /// so a shut panel still says how much is behind it.
   final String? trailing;
 
+  /// startsOpen is whether this panel is open the first time it is seen.
+  ///
+  /// Open, for the ones somebody is always in. A panel that is mostly empty
+  /// until it is wanted -- the scene list of a document with one scene --
+  /// starts shut instead, so it costs a heading rather than a hole in the
+  /// column. Once it has been opened or shut by hand that is what is
+  /// remembered, and this stops mattering.
+  final bool startsOpen;
+
   /// body is the panel's contents, built once by whoever owns the stack.
   ///
   /// A widget rather than a builder, and that is the whole point: the stack
@@ -77,6 +86,7 @@ class CanvasStackPanel {
     required this.body,
     this.hint,
     this.trailing,
+    this.startsOpen = true,
   });
 }
 
@@ -225,7 +235,11 @@ class _CanvasPanelStackState extends State<CanvasPanelStack> {
     });
   }
 
-  bool _isOpen(String id) => _open[id] ?? true;
+  bool _isOpen(String id) =>
+      _open[id] ??
+      widget.panels
+          .firstWhere((p) => p.id == id, orElse: () => widget.panels.first)
+          .startsOpen;
 
   void _toggle(String id) {
     setState(() => _open[id] = !_isOpen(id));

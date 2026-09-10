@@ -117,15 +117,54 @@ void paintCanvasDocument(
 
   _paintDocumentBackground(canvas, rect, doc, time, images, backgrounds);
 
+  // The shared canvas, under every scene. Under rather than over: what goes
+  // on a master is a backdrop, a frame, a watermark -- the things a scene is
+  // laid on top of. Something that has to sit over the scenes is a thing to
+  // put on each of them, and there is no way to have both without asking the
+  // question twice on every element.
+  //
+  // Not while the master is the canvas being edited, or it would be drawn
+  // twice: once as itself and once as the thing behind itself.
+  var master = doc.masterScene;
+  if (master != null && !doc.editingMaster) {
+    _paintScene(canvas, doc, master.elements, frame,
+        images: images,
+        editing: editing,
+        hoveredButton: hoveredButton,
+        skipElement: skipElement);
+  }
+
+  _paintScene(canvas, doc, doc.elements, frame,
+      images: images,
+      editing: editing,
+      hoveredButton: hoveredButton,
+      skipElement: skipElement);
+}
+
+/// _paintScene draws one canvas's worth of elements.
+///
+/// Its own function because a document draws two of them now -- the shared
+/// canvas and the scene on top of it -- and the rules for what is skipped are
+/// the same for both.
+void _paintScene(
+  ui.Canvas canvas,
+  CanvasDocument doc,
+  List<CanvasElement> elements,
+  int frame, {
+  CanvasImageSource? images,
+  bool editing = false,
+  String? hoveredButton,
+  String? skipElement,
+}) {
   // Lines that are only there to carry somebody's text, and have been asked to
   // stay out of the picture. Collected first because the text that hides a line
   // may be drawn after it.
   var hidden = <String>{
-    for (var e in doc.elements)
+    for (var e in elements)
       if (e is TextElement && e.curve?.hideHost == true) e.curve!.elementId,
   };
 
-  for (var element in doc.elements) {
+  for (var element in elements) {
     if (!element.visible ||
         element.id == skipElement ||
         hidden.contains(element.id)) {

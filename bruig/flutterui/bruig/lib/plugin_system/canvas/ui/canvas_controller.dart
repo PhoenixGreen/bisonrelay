@@ -4,6 +4,7 @@ import 'dart:ui' show Offset;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
@@ -1238,6 +1239,120 @@ class CanvasController extends ChangeNotifier {
     _backgroundSelected = false;
     _selection = {..._selection};
     _selection.contains(id) ? _selection.remove(id) : _selection.add(id);
+    notifyListeners();
+  }
+
+  // ---- scenes -------------------------------------------------------------
+
+  /// scenes are the canvases this document plays, in order.
+  List<CanvasScene> get scenes => _document.allScenes;
+
+  /// sceneAt is which one is being edited, and onMaster whether the shared
+  /// canvas is showing instead of any of them.
+  int get sceneAt => _document.at;
+  bool get onMaster => _document.editingMaster;
+
+  /// goToScene shows another canvas.
+  ///
+  /// Not an undo step: which scene you are looking at is where you are, not
+  /// something you did to the document -- undo after moving about should take
+  /// back the last edit, not walk backwards through the scenes it was made
+  /// in. The selection goes with it, because the elements it names are on the
+  /// canvas being left.
+  void goToScene(int index) {
+    var next = _document.goToScene(index).copyWith(onMaster: false);
+    if (identical(next, _document)) return;
+    apply(next, transient: true);
+    _afterSceneChange();
+  }
+
+  /// showMaster puts the shared canvas in front of the reader, making one if
+  /// there is none and switching it on if it is off: asking to edit the
+  /// master is asking for a master.
+  void showMaster() {
+    var next = _document;
+    if (next.master == null) {
+      next =
+          next.copyWith(master: CanvasScene(id: newSceneId(), name: "Master"));
+    }
+    apply(next.copyWith(masterOn: true, onMaster: true), transient: true);
+    _afterSceneChange();
+  }
+
+  /// masterOn switches the shared canvas on and off. Off, it is kept: turning
+  /// it off is not the same as throwing away what is on it.
+  set masterOn(bool value) {
+    if (_document.masterOn == value) return;
+    var next = _document.copyWith(masterOn: value);
+    if (!value && next.onMaster) next = next.copyWith(onMaster: false);
+    apply(next);
+    _afterSceneChange();
+  }
+
+  /// addScene puts a new canvas after the one being edited and goes to it.
+  void addScene() {
+    apply(_document.copyWith(onMaster: false).addScene(after: _document.at));
+    _afterSceneChange();
+  }
+
+  void duplicateScene(int index) {
+    apply(_document.copyWith(onMaster: false).duplicateScene(index));
+    _afterSceneChange();
+  }
+
+  void removeScene(int index) {
+    apply(_document.copyWith(onMaster: false).removeScene(index));
+    _afterSceneChange();
+  }
+
+  void moveScene(int from, int to) {
+    apply(_document.moveScene(from, to));
+    _afterSceneChange();
+  }
+
+  void renameScene(int index, String name) {
+    var list = _document.allScenes;
+    if (index < 0 || index >= list.length) return;
+    apply(_document.withScene(index, list[index].copyWith(name: name.trim())));
+  }
+
+  /// setSceneHolds decides whether playback runs on into the next scene.
+  void setSceneHolds(int index, bool holds) {
+    var list = _document.allScenes;
+    if (index < 0 || index >= list.length) return;
+    apply(_document.withScene(index, list[index].copyWith(holds: holds)));
+  }
+
+  /// setSceneTransition gives a scene its own way of giving way to the next,
+  /// or takes it back to the document's default.
+  void setSceneTransition(int index, SceneTransition? transition) {
+    var list = _document.allScenes;
+    if (index < 0 || index >= list.length) return;
+    apply(_document.withScene(
+        index,
+        transition == null
+            ? list[index].copyWith(clearTransition: true)
+            : list[index].copyWith(transition: transition)));
+  }
+
+  /// setDefaultTransition changes what every scene without one of its own
+  /// uses. It lives on the master canvas, which is where the things shared by
+  /// every scene live.
+  void setDefaultTransition(SceneTransition transition) {
+    var master =
+        _document.master ?? CanvasScene(id: newSceneId(), name: "Master");
+    apply(_document.copyWith(master: master.copyWith(transition: transition)));
+  }
+
+  /// _afterSceneChange puts the editor back on solid ground: a selection
+  /// naming elements of the canvas that has just been left is a selection of
+  /// nothing, and a frame past the end of the new one is a frame that does
+  /// not exist.
+  void _afterSceneChange() {
+    _selection = {};
+    _backgroundSelected = false;
+    _focusedPlayer = null;
+    _frame = _frame.clamp(0, math.max(0, _document.frames - 1)).toInt();
     notifyListeners();
   }
 

@@ -137,6 +137,15 @@ class CanvasDocument {
   final CanvasScene? master;
   final bool masterOn;
 
+  /// onMaster is whether the master canvas is the one being edited.
+  ///
+  /// A document-level fact rather than a flag in the editor, and that is what
+  /// makes the master canvas cost almost nothing: with it set, a document
+  /// answers for the master when it is asked for its elements, so every
+  /// panel, the stage, the layer list and the settings edit the master
+  /// without knowing there is such a thing.
+  final bool onMaster;
+
   /// _elements, _frames and _actions hold the single scene of a document that
   /// has no scene list. Read through [elements], [frames] and [actions],
   /// which answer for the scene being edited whichever way the document is
@@ -175,6 +184,7 @@ class CanvasDocument {
     this.sceneAt = 0,
     this.master,
     this.masterOn = false,
+    this.onMaster = false,
   })  : _elements = elements,
         _frames = frames,
         _actions = actions;
@@ -182,21 +192,71 @@ class CanvasDocument {
   /// at is the scene being edited, always a real place in the list.
   int get at => scenes.isEmpty ? 0 : sceneAt.clamp(0, scenes.length - 1);
 
+  /// editingMaster is whether the master canvas is what the editor is
+  /// showing: switched on, and asked for.
+  bool get editingMaster => onMaster && masterOn && master != null;
+
   /// elements, frames and actions are the scene being edited. See [scenes].
-  List<CanvasElement> get elements =>
-      scenes.isEmpty ? _elements : scenes[at].elements;
+  List<CanvasElement> get elements => editingMaster
+      ? master!.elements
+      : (scenes.isEmpty ? _elements : scenes[at].elements);
 
   /// frames is the length of the scene being edited. One means a still.
-  int get frames => scenes.isEmpty ? _frames : scenes[at].frames;
+  ///
+  /// The master canvas is as long as the whole sequence, worked out rather
+  /// than stored: it is the thing every scene plays under, so its length is
+  /// not its own to keep and has to follow scenes being added, removed and
+  /// made longer.
+  int get frames => editingMaster
+      ? sequenceFrames
+      : (scenes.isEmpty ? _frames : scenes[at].frames);
 
-  List<TimelineAction> get actions =>
-      scenes.isEmpty ? _actions : scenes[at].actions;
+  List<TimelineAction> get actions => editingMaster
+      ? master!.actions
+      : (scenes.isEmpty ? _actions : scenes[at].actions);
 
-  /// scene is the one being edited, as a scene.
+  /// scene is the scene being edited -- never the master, which is not one
+  /// of the scenes however much of the editor it is standing in for. Asked
+  /// for the master while it was showing, allScenes answered with it and the
+  /// scene it was covering disappeared out of the list.
   CanvasScene get scene => scenes.isEmpty
       ? CanvasScene(
           id: "scene1", elements: _elements, frames: _frames, actions: _actions)
       : scenes[at];
+
+  /// editing is the canvas in front of the reader: the master where that is
+  /// showing, and the scene otherwise.
+  CanvasScene get editing => editingMaster ? master! : scene;
+
+  /// sequenceFrames is how long the whole document runs for: every scene, and
+  /// the frames a transition takes off where two of them overlap.
+  int get sequenceFrames {
+    var list = allScenes;
+    var total = 0;
+    for (var (i, s) in list.indexed) {
+      total += s.frames;
+      if (i >= list.length - 1) continue;
+      var over = transitionAfter(i);
+      if (!over.on) continue;
+      // Two scenes playing at once are one stretch of time, not two.
+      total -= math.min(over.overlap, math.min(s.frames, list[i + 1].frames));
+    }
+    return total.clamp(1, maxFrameCount).toInt();
+  }
+
+  /// startOfScene is the frame the sequence reaches [index] on.
+  int startOfScene(int index) {
+    var list = allScenes;
+    var reached = 0;
+    for (var i = 0; i < index && i < list.length; i++) {
+      reached += list[i].frames;
+      var over = transitionAfter(i);
+      if (!over.on) continue;
+      reached -=
+          math.min(over.overlap, math.min(list[i].frames, list[i + 1].frames));
+    }
+    return reached;
+  }
 
   /// allScenes is every scene in order, whichever way the document is
   /// arranged. What the Scenes panel lists and what a whole-document export
@@ -343,14 +403,28 @@ class CanvasDocument {
     CanvasScene? master,
     bool clearMaster = false,
     bool? masterOn,
+    bool? onMaster,
   }) {
     var list = scenes ?? this.scenes;
     var index = (sceneAt ?? this.sceneAt)
         .clamp(0, math.max(0, list.length - 1))
         .toInt();
 
+    // Into the master canvas, when that is the one being edited. Its length
+    // is not its own -- see frames -- so a length written here is dropped
+    // rather than kept and quietly ignored.
+    var onIt = onMaster ?? this.onMaster;
+    var shared = clearMaster ? null : (master ?? this.master);
+    if (onIt &&
+        shared != null &&
+        master == null &&
+        (elements != null || actions != null)) {
+      shared = shared.copyWith(elements: elements, actions: actions);
+    }
+
     // Into the scene being edited, where there is a list of them.
-    if (list.isNotEmpty &&
+    if (!onIt &&
+        list.isNotEmpty &&
         (elements != null || frames != null || actions != null)) {
       var at = list[index];
       list = [...list];
@@ -366,17 +440,27 @@ class CanvasDocument {
       size: size ?? this.size,
       background: background ?? this.background,
       guides: guides ?? this.guides,
-      elements: list.isEmpty ? (elements ?? _elements) : const [],
+      // An edit meant for the master must not also land on the one scene a
+      // document with no scene list has. It did: the two are held in
+      // different places and both were being written.
+      elements: list.isEmpty
+          ? (onIt && shared != null ? _elements : (elements ?? _elements))
+          : const [],
       estimate: estimate ?? this.estimate,
       frames: list.isEmpty
-          ? (frames ?? _frames).clamp(1, maxFrameCount).toInt()
+          ? (onIt && shared != null
+              ? _frames
+              : (frames ?? _frames).clamp(1, maxFrameCount).toInt())
           : 1,
       frameRate: (frameRate ?? this.frameRate).clamp(1, 60),
-      actions: list.isEmpty ? (actions ?? _actions) : const [],
+      actions: list.isEmpty
+          ? (onIt && shared != null ? _actions : (actions ?? _actions))
+          : const [],
       scenes: list,
       sceneAt: index,
-      master: clearMaster ? null : (master ?? this.master),
+      master: shared,
       masterOn: masterOn ?? this.masterOn,
+      onMaster: onIt,
     );
   }
 
@@ -400,6 +484,7 @@ class CanvasDocument {
       sceneAt: (at ?? sceneAt).clamp(0, next.length - 1).toInt(),
       master: master,
       masterOn: masterOn,
+      onMaster: onMaster,
     );
   }
 
@@ -548,6 +633,7 @@ class CanvasDocument {
         if (sceneAt != 0) "sceneAt": at,
         if (master != null) "master": master!.toJson(),
         if (masterOn) "masterOn": true,
+        if (onMaster) "onMaster": true,
       },
       // The one scene's own name and settings, which the top-level fields
       // cannot carry. Written for a single scene as well, so naming the first
@@ -644,6 +730,7 @@ class CanvasDocument {
           ? CanvasScene.fromJson(json["master"] as Map<String, dynamic>)
           : null,
       masterOn: jsonBool(json["masterOn"], false),
+      onMaster: jsonBool(json["onMaster"], false),
     );
   }
 

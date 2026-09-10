@@ -683,17 +683,19 @@ void main() {
       ));
       await tester.pumpAndSettle();
 
-      var before = tester.getSize(find.byType(CanvasElementsPanel)).height;
+      var before = tester.getSize(find.byType(CanvasLayersPanel)).height;
 
-      // The line between Add and Layers. Dragging it down gives Add the room.
+      // The line between Layers and the settings. Dragging it down gives
+      // Layers the room. Taken between two panels that are both open: a shut
+      // one is its own header and has no room to give.
       var grip = find
           .byWidgetPredicate((w) =>
               w is MouseRegion && w.cursor == SystemMouseCursors.resizeUpDown)
-          .first;
+          .last;
       await tester.drag(grip, const Offset(0, 60));
       await tester.pumpAndSettle();
 
-      expect(tester.getSize(find.byType(CanvasElementsPanel)).height,
+      expect(tester.getSize(find.byType(CanvasLayersPanel)).height,
           greaterThan(before));
     });
 
@@ -3085,11 +3087,12 @@ void main() {
       // One handle each. The name is the switch, so it cannot also be the
       // grip -- a panel that moved when you tried to open it would be a panel
       // you could not open.
-      expect(find.byType(Draggable<PanelDrag>), findsNWidgets(3),
+      // One per panel: Add, Scenes, Layers and the settings.
+      expect(find.byType(Draggable<PanelDrag>), findsNWidgets(4),
           reason: "and carried as their own type, not as the plain strings "
               "the layer list drags -- otherwise a panel could be dropped on "
               "a layer");
-      expect(find.byIcon(Icons.drag_indicator), findsNWidgets(3));
+      expect(find.byIcon(Icons.drag_indicator), findsNWidgets(4));
     });
 
     testWidgets("the boundaries are the grips, and the top has none",
@@ -3107,7 +3110,9 @@ void main() {
               matching: find.byWidgetPredicate((w) =>
                   w is MouseRegion &&
                   w.cursor == SystemMouseCursors.resizeUpDown)),
-          findsNWidgets(2));
+          findsNWidgets(3),
+          reason: "four panels have three boundaries, and the top of the "
+              "first is not one of them");
     });
 
     testWidgets("every handle is in the same place, hard right",
@@ -3119,14 +3124,14 @@ void main() {
       await panel(tester);
       var handles =
           tester.widgetList<Widget>(find.byIcon(Icons.drag_indicator)).length;
-      expect(handles, 3);
+      expect(handles, 4);
 
       var rights = [
-        for (var i = 0; i < 3; i++)
+        for (var i = 0; i < handles; i++)
           tester.getRect(find.byIcon(Icons.drag_indicator).at(i)).right,
       ];
       expect(rights.toSet(), hasLength(1),
-          reason: "all three line up: $rights");
+          reason: "all of them line up: $rights");
 
       // And hard right, not floating in the middle of the band.
       var band = tester.getRect(find.byType(CanvasPanelStack)).right;
@@ -5426,8 +5431,9 @@ void main() {
       expect(find.text("ADD"), findsOneWidget);
       expect(find.text("LAYERS"), findsOneWidget);
       // One header fewer, which is the room the tabbing bought.
-      expect(find.byType(DragTarget<PanelDrag>).evaluate().length, lessThan(5),
-          reason: "two places, not three, and the tabs are targets too");
+      expect(find.byType(DragTarget<PanelDrag>).evaluate().length, lessThan(7),
+          reason: "one place fewer than there are panels, and the tabs are "
+              "targets too");
       // And the one dropped is the one showing.
       expect(find.byType(CanvasElementsPanel), findsNothing);
       expect(find.byType(CanvasLayersPanel), findsOneWidget);
@@ -5561,10 +5567,11 @@ void main() {
       await stack(tester);
       await dropOn(tester, grip("LAYERS"), "ADD", 0.5);
 
-      // Saved as one place of two: "elements+layers".
+      // Saved with those two as one place: "add+layers".
       var saved = await StorageManager.readString("canvasDesign.order");
       expect(saved, contains("+"));
-      expect(saved.split(",").length, 2, reason: "two places now: $saved");
+      expect(saved.split(",").length, 3,
+          reason: "one place fewer than there are panels: $saved");
     });
 
     testWidgets("and an arrangement saved before tabs existed still reads",
@@ -5643,6 +5650,10 @@ void main() {
       expect(find.text("Fit to box"), findsOneWidget);
       expect(find.text("BOX"), findsOneWidget);
 
+      // Scrolled to first: with four panels in the column the settings can
+      // start below the fold, and a tap outside the viewport hits nothing.
+      await tester.ensureVisible(find.text("Fit to box"));
+      await tester.pumpAndSettle();
       await tester.tap(find.text("Fit to box"));
       await tester.pumpAndSettle();
       expect(textIn(controller).autoSize, isTrue);

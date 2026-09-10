@@ -3,6 +3,7 @@ import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/element_settings_pane.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/elements_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/layers_panel.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/scenes_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/panel_stack.dart';
 import 'package:flutter/material.dart';
 
@@ -45,6 +46,7 @@ class _CanvasDesignPanelState extends State<CanvasDesignPanel> {
   /// the settings listen for what they show, and the palette of things to add
   /// does not listen at all, because nothing about the document changes it.
   late Widget _add;
+  late Widget _scenes;
   late Widget _layers;
   late Widget _settings;
 
@@ -66,6 +68,7 @@ class _CanvasDesignPanelState extends State<CanvasDesignPanel> {
 
   void _makeBodies() {
     _add = CanvasElementsPanel(controller: controller);
+    _scenes = CanvasScenesPanel(controller: controller);
     _layers = CanvasLayersPanel(controller: controller);
     _settings = _SettingsBody(controller: controller);
   }
@@ -89,6 +92,25 @@ class _CanvasDesignPanelState extends State<CanvasDesignPanel> {
             hint: "Click to add one in the middle of the canvas, or drag it "
                 "where you want it.",
             body: _add,
+          ),
+          // Between what can be added and what is on this canvas, because
+          // that is the order the questions come in: which canvas am I on,
+          // then what is on it.
+          CanvasStackPanel(
+            id: "scenes",
+            label: "Scenes",
+            icon: Icons.movie_outlined,
+            trailing: controller.document.hasScenes
+                ? "${controller.document.at + 1}/"
+                    "${controller.document.allScenes.length}"
+                : null,
+            hint: "The canvases this document plays through, in order. Drag "
+                "one up or down to change when it plays.",
+            // Shut to begin with: most documents are one canvas, and a list
+            // with one row in it is a hole in a column that has three other
+            // panels wanting the room.
+            startsOpen: false,
+            body: _scenes,
           ),
           CanvasStackPanel(
             id: "layers",

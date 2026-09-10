@@ -166,6 +166,28 @@ class _CanvasSettingsBarState extends State<CanvasSettingsBar> {
             CanvasSidebarRestoreButton(onShow: widget.onShowSidebar!),
             _divider(theme),
           ],
+          // Which canvas of several is showing, first of all: it is the
+          // largest thing this bar can say, and everything to the right of it
+          // is about that canvas. Hidden for a document of one scene, where a
+          // counter reading 1/1 and two dead arrows are three controls for a
+          // thing that does not exist yet.
+          if (controller.document.hasScenes) ...[
+            _barButton(theme,
+                icon: Icons.skip_previous_outlined,
+                tooltip: "The scene before this one",
+                onPressed: controller.document.at <= 0
+                    ? null
+                    : () => controller.goToScene(controller.document.at - 1)),
+            _SceneField(controller: controller, theme: theme),
+            _barButton(theme,
+                icon: Icons.skip_next_outlined,
+                tooltip: "The scene after this one",
+                onPressed: controller.document.at >=
+                        controller.document.allScenes.length - 1
+                    ? null
+                    : () => controller.goToScene(controller.document.at + 1)),
+            _divider(theme),
+          ],
           // The two tools first, because which one is active changes what
           // every other gesture on the page does.
           _barButton(theme,
@@ -798,6 +820,112 @@ class _NoScrollbar extends ScrollBehavior {
   Widget buildScrollbar(
           BuildContext context, Widget child, ScrollableDetails details) =>
       child;
+}
+
+/// _SceneField is which canvas of how many, and a way to type a number and go
+/// there.
+///
+/// A field rather than a label for the reason the zoom is one: the obvious
+/// thing to do with "3/10" is to type 7 into it. It says Master while the
+/// shared canvas is being edited, because a counter reading 3/10 with
+/// something else on screen would be describing the wrong thing.
+class _SceneField extends StatefulWidget {
+  final CanvasController controller;
+  final ThemeNotifier theme;
+
+  const _SceneField({required this.controller, required this.theme});
+
+  @override
+  State<_SceneField> createState() => _SceneFieldState();
+}
+
+class _SceneFieldState extends State<_SceneField> {
+  final TextEditingController _text = TextEditingController();
+  final FocusNode _focus = FocusNode();
+
+  /// _shown is what the box last said, so the text is only replaced when the
+  /// scene has actually changed.
+  String _shown = "";
+
+  @override
+  void initState() {
+    super.initState();
+    _focus.addListener(() {
+      if (_focus.hasFocus) {
+        // The number alone while it is being typed into.
+        _text.text = "${widget.controller.document.at + 1}";
+        _text.selection =
+            TextSelection(baseOffset: 0, extentOffset: _text.text.length);
+        return;
+      }
+      _commit();
+    });
+  }
+
+  @override
+  void dispose() {
+    _text.dispose();
+    _focus.dispose();
+    super.dispose();
+  }
+
+  void _commit() {
+    var wanted = int.tryParse(_text.text.split("/").first.trim());
+    if (wanted != null) widget.controller.goToScene(wanted - 1);
+    setState(() => _shown = "");
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    var document = widget.controller.document;
+    var reading = document.editingMaster
+        ? "Master"
+        : "${document.at + 1}/${document.allScenes.length}";
+    if (!_focus.hasFocus && reading != _shown) {
+      _shown = reading;
+      _text.text = reading;
+    }
+
+    var type = TextStyle(
+        fontSize: 12, color: widget.theme.colors.onSurfaceVariant, height: 1.1);
+
+    return Center(
+      child: SizedBox(
+        // Room for the longest thing it says, which is the word Master rather
+        // than any number: sized to a number it would cut that off, the same
+        // way the zoom box cut off its own sign.
+        width: _widest(type),
+        child: Tooltip(
+          message: "Which scene is showing. Type a number to go to one.",
+          child: TextField(
+            key: const ValueKey("sceneField"),
+            controller: _text,
+            focusNode: _focus,
+            textAlign: TextAlign.left,
+            style: type,
+            decoration: InputDecoration(
+              isCollapsed: true,
+              border: InputBorder.none,
+              enabledBorder: InputBorder.none,
+              focusedBorder: UnderlineInputBorder(
+                  borderSide:
+                      BorderSide(color: widget.theme.colors.primary, width: 1)),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 2),
+            ),
+            onSubmitted: (_) => _commit(),
+          ),
+        ),
+      ),
+    );
+  }
+
+  double _widest(TextStyle style) {
+    var painter = TextPainter(
+      text: TextSpan(text: "Master", style: style),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    return painter.width + 4 + 6;
+  }
 }
 
 /// _ZoomField is the percentage on the band: what is on screen, and a place
