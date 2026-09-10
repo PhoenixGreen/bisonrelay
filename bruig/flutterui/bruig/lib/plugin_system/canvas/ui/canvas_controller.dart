@@ -5,6 +5,7 @@ import 'dart:ui' show Offset;
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
+import 'package:bruig/plugin_system/canvas/render/scene_sequence.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
@@ -1244,6 +1245,24 @@ class CanvasController extends ChangeNotifier {
 
   // ---- scenes -------------------------------------------------------------
 
+  /// playAll is whether Play runs the whole document or the scene in front of
+  /// the reader.
+  ///
+  /// A mode rather than a second button, because it is the same act -- press
+  /// play, watch it -- asked of two different things, and the answer is
+  /// usually the same for a whole sitting: somebody building a scene plays
+  /// the scene, somebody checking the sequence plays the sequence.
+  bool get playAll => _playAll;
+  bool _playAll = false;
+
+  set playAll(bool value) {
+    if (_playAll == value) return;
+    _playAll = value;
+    pause();
+    stopPreview();
+    notifyListeners();
+  }
+
   /// previewAt is the frame of the *whole run* the canvas is showing, or null
   /// when it is showing the scene being edited.
   ///
@@ -1474,7 +1493,23 @@ class CanvasController extends ChangeNotifier {
   }
 
   void play() {
-    if (playing || _document.frames <= 1) return;
+    if (playing) return;
+
+    // The whole document: the playhead runs through the sequence, and the
+    // editor follows it -- the scene showing changes as it reaches each one,
+    // so the panel, the timeline and the canvas all say the same thing about
+    // where the playback has got to.
+    if (_playAll && _document.hasScenes) {
+      if (_document.playFrames <= 1) return;
+      _previewAt ??= _document.startOfScene(_document.at);
+      _previewEnd = _document.playFrames - 1;
+      _loopCounts.clear();
+      _startTimer();
+      notifyListeners();
+      return;
+    }
+
+    if (_document.frames <= 1) return;
     _loopCounts.clear();
     _startTimer();
     notifyListeners();
@@ -1498,8 +1533,16 @@ class CanvasController extends ChangeNotifier {
 
   void stop() {
     pause();
+    stopPreview();
     frame = 0;
   }
+
+  /// tickForTest advances the playhead one frame, the way the timer does.
+  ///
+  /// Playback is a real timer, and a test that waited on one would be a test
+  /// that takes seconds to say something about arithmetic.
+  @visibleForTesting
+  void tickForTest() => _tick();
 
   /// _tick advances one frame and obeys whatever marker is on the new one.
   ///
@@ -1518,6 +1561,23 @@ class CanvasController extends ChangeNotifier {
         return;
       }
       _previewAt = next;
+
+      // Playing the document rather than watching one join: the editor is
+      // walked along with the playhead, and a scene that has been told to
+      // hold stops it there.
+      if (_playAll) {
+        var place = placeInSequence(_document, next);
+        if (place.scene != _document.at) {
+          var last = _document.allScenes[_document.at];
+          if (last.holds) {
+            stopPreview();
+            return;
+          }
+          _document = _document.goToScene(place.scene);
+        }
+        _frame =
+            place.frame.clamp(0, math.max(0, _document.frames - 1)).toInt();
+      }
       notifyListeners();
       return;
     }

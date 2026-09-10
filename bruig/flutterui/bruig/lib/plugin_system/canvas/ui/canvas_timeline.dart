@@ -451,10 +451,35 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
                 ),
                 CanvasIconButton(
                   icon: controller.playing ? Icons.pause : Icons.play_arrow,
-                  tooltip: controller.playing ? "Pause" : "Play",
+                  tooltip: controller.playing
+                      ? "Pause"
+                      : (controller.playAll && document.hasScenes
+                          ? "Play the whole document"
+                          : "Play this scene"),
                   active: controller.playing,
-                  onPressed: document.frames > 1 ? controller.togglePlay : null,
+                  onPressed: (controller.playAll && document.hasScenes
+                              ? document.playFrames
+                              : document.frames) >
+                          1
+                      ? controller.togglePlay
+                      : null,
                 ),
+                // Which of the two Play means. Only where there is more than
+                // one canvas: on a single scene the two are the same thing.
+                if (document.hasScenes)
+                  CanvasIconButton(
+                    key: const ValueKey("playAll"),
+                    icon: controller.playAll
+                        ? Icons.playlist_play
+                        : Icons.filter_1,
+                    tooltip: controller.playAll
+                        ? "Playing the whole document — press to play this "
+                            "scene instead"
+                        : "Playing this scene — press to play the whole "
+                            "document",
+                    active: controller.playAll,
+                    onPressed: () => controller.playAll = !controller.playAll,
+                  ),
                 CanvasIconButton(
                   icon: Icons.chevron_left,
                   tooltip: "Previous frame",

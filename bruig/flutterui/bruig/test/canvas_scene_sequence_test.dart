@@ -6,6 +6,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/export/canvas_export.dart';
+import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_sequence.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -108,6 +109,8 @@ void main() {
       expect(after.frame, 9);
     });
   });
+
+  _playModes();
 
   group("what gets published", () {
     testWidgets("is the whole run, not the canvas being edited",
@@ -240,6 +243,68 @@ void main() {
       });
       expect(mid[red] ?? 0, greaterThan(500), reason: "the old one, going");
       expect(mid[blue] ?? 0, greaterThan(500), reason: "the new one, coming");
+    });
+  });
+}
+
+// Playing the document rather than the canvas in front of you.
+void _playModes() {
+  group("play scene, or play all", () {
+    test("play runs the scene until it is told to run the document", () {
+      var controller = CanvasController(const CanvasDocument().withScenes([
+        const CanvasScene(id: "a", frames: 10),
+        const CanvasScene(id: "b", frames: 10),
+      ]));
+      addTearDown(controller.dispose);
+
+      expect(controller.playAll, isFalse, reason: "the scene, to begin with");
+      controller.play();
+      expect(controller.playing, isTrue);
+      expect(controller.previewAt, isNull,
+          reason: "the canvas is showing the scene, not the run");
+      controller.pause();
+
+      controller.playAll = true;
+      controller.play();
+      expect(controller.previewAt, isNotNull,
+          reason: "the canvas is showing the run");
+    });
+
+    test("and playing the document walks the editor through the scenes", () {
+      // The panel, the timeline and the canvas all say the same thing about
+      // where the playback has got to.
+      var controller = CanvasController(const CanvasDocument().withScenes([
+        const CanvasScene(id: "a", frames: 3),
+        const CanvasScene(id: "b", frames: 3),
+      ]));
+      addTearDown(controller.dispose);
+      controller.playAll = true;
+      controller.play();
+      expect(controller.document.at, 0);
+
+      for (var i = 0; i < 4; i++) {
+        controller.tickForTest();
+      }
+      expect(controller.document.at, 1,
+          reason: "the second scene, reached by playing into it");
+      expect(controller.playing, isTrue);
+    });
+
+    test("a scene that holds stops the run at its end", () {
+      var controller = CanvasController(const CanvasDocument().withScenes([
+        const CanvasScene(id: "a", frames: 3, holds: true),
+        const CanvasScene(id: "b", frames: 3),
+      ]));
+      addTearDown(controller.dispose);
+      controller.playAll = true;
+      controller.play();
+
+      for (var i = 0; i < 6; i++) {
+        controller.tickForTest();
+      }
+      expect(controller.document.at, 0, reason: "it never reached the second");
+      expect(controller.playing, isFalse);
+      expect(controller.previewAt, isNull);
     });
   });
 }

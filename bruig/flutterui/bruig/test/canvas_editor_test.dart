@@ -1068,11 +1068,11 @@ void main() {
       controller.selectOnly(element.id);
       await pump(tester, CanvasTimeline(controller: controller));
 
-      var playAt = tester.getTopLeft(find.byTooltip("Play"));
+      var playAt = tester.getTopLeft(find.byTooltip("Play this scene"));
       controller.setKeyframe(element.id, const Keyframe(frame: 0));
       await tester.pumpAndSettle();
 
-      expect(tester.getTopLeft(find.byTooltip("Play")), playAt,
+      expect(tester.getTopLeft(find.byTooltip("Play this scene")), playAt,
           reason: "landing on a keyframe must not move the transport");
       expect(find.text("Easing"), findsNothing,
           reason: "the pose controls are behind the disclosure");
