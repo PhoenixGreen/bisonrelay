@@ -1,9 +1,11 @@
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_estimate.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/background_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
@@ -116,10 +118,30 @@ class CanvasDocument {
   /// everything on the canvas lines up.
   final CanvasGuides guides;
 
-  /// elements are painted first to last, so the last one in the list is on
-  /// top. That is the order the layer list shows reversed, since "on top"
-  /// reads better at the top of a list.
-  final List<CanvasElement> elements;
+  /// scenes are the canvases this document plays, in order.
+  ///
+  /// Empty means the one scene held in the fields below, which is what a
+  /// document written before scenes existed is and what a new one still is.
+  /// That is the whole trick of this change: everything above this file goes
+  /// on asking a document for its elements, its length and its actions, and
+  /// gets the scene being edited -- so a document with one scene behaves
+  /// exactly as it did, and nothing had to learn a new word to keep working.
+  final List<CanvasScene> scenes;
+
+  /// sceneAt is which scene is being edited and played.
+  final int sceneAt;
+
+  /// master is the scene whose elements appear on every other one, or null
+  /// where there is none. See masterOn: it is kept when switched off, so
+  /// turning it off is not the same as throwing it away.
+  final CanvasScene? master;
+  final bool masterOn;
+
+  /// _elements, _frames and _actions hold the single scene of a document that
+  /// has no scene list. Read through [elements], [frames] and [actions],
+  /// which answer for the scene being edited whichever way the document is
+  /// arranged.
+  final List<CanvasElement> _elements;
 
   /// estimate is which file this canvas is meant to become, for the size the
   /// settings band shows. See [CanvasEstimate].
@@ -130,23 +152,93 @@ class CanvasDocument {
   /// what they are making.
   final CanvasEstimate estimate;
 
-  /// frames is the document's length. One means a still.
-  final int frames;
+  final int _frames;
+
+  /// frameRate belongs to the document rather than to a scene: it is how fast
+  /// the whole thing plays, and two scenes running at different speeds would
+  /// be two films.
   final int frameRate;
 
-  final List<TimelineAction> actions;
+  final List<TimelineAction> _actions;
 
   const CanvasDocument({
     this.title = "Untitled canvas",
     this.size = const CanvasSize(),
     this.background = const CanvasBackground(),
     this.guides = const CanvasGuides(),
-    this.elements = const [],
+    List<CanvasElement> elements = const [],
     this.estimate = const CanvasEstimate(),
-    this.frames = defaultFrameCount,
+    int frames = defaultFrameCount,
     this.frameRate = defaultFrameRate,
-    this.actions = const [],
-  });
+    List<TimelineAction> actions = const [],
+    this.scenes = const [],
+    this.sceneAt = 0,
+    this.master,
+    this.masterOn = false,
+  })  : _elements = elements,
+        _frames = frames,
+        _actions = actions;
+
+  /// at is the scene being edited, always a real place in the list.
+  int get at => scenes.isEmpty ? 0 : sceneAt.clamp(0, scenes.length - 1);
+
+  /// elements, frames and actions are the scene being edited. See [scenes].
+  List<CanvasElement> get elements =>
+      scenes.isEmpty ? _elements : scenes[at].elements;
+
+  /// frames is the length of the scene being edited. One means a still.
+  int get frames => scenes.isEmpty ? _frames : scenes[at].frames;
+
+  List<TimelineAction> get actions =>
+      scenes.isEmpty ? _actions : scenes[at].actions;
+
+  /// scene is the one being edited, as a scene.
+  CanvasScene get scene => scenes.isEmpty
+      ? CanvasScene(
+          id: "scene1", elements: _elements, frames: _frames, actions: _actions)
+      : scenes[at];
+
+  /// allScenes is every scene in order, whichever way the document is
+  /// arranged. What the Scenes panel lists and what a whole-document export
+  /// plays through.
+  List<CanvasScene> get allScenes => scenes.isEmpty ? [scene] : scenes;
+
+  /// hasScenes is whether this document is more than one canvas. The parts of
+  /// the editor that only exist for scenes -- the counter in the bar, the
+  /// transitions on the timeline -- ask this rather than counting.
+  bool get hasScenes => scenes.length > 1;
+
+  /// masterScene is the shared canvas when it is switched on, and null
+  /// otherwise. Asked by the painter, which must not draw a master that has
+  /// been turned off.
+  CanvasScene? get masterScene => masterOn ? master : null;
+
+  /// defaultTransition is what a scene with no transition of its own uses:
+  /// the master scene's, or a cut.
+  SceneTransition get defaultTransition =>
+      master?.transition ?? SceneTransition.cut;
+
+  /// transitionAfter is how scene [index] gives way to the next one.
+  SceneTransition transitionAfter(int index) {
+    var list = allScenes;
+    if (index < 0 || index >= list.length) return SceneTransition.cut;
+    return list[index].transition ?? defaultTransition;
+  }
+
+  /// sceneNamed finds a scene by id or by name, for a button that goes to
+  /// one. By id first: a name can be changed and can be shared by two
+  /// scenes, and an action that quietly went somewhere else after a rename
+  /// would be worse than one that stopped working.
+  int sceneIndexNamed(String idOrName) {
+    var list = allScenes;
+    for (var (i, s) in list.indexed) {
+      if (s.id == idOrName) return i;
+    }
+    for (var (i, s) in list.indexed) {
+      if (s.name.isNotEmpty && s.name == idOrName) return i;
+    }
+    return -1;
+  }
 
   bool get isAnimated => frames > 1;
 
@@ -230,6 +322,12 @@ class CanvasDocument {
 
   int indexOf(String id) => elements.indexWhere((e) => e.id == id);
 
+  /// copyWith changes the document, and where it is given elements, a length
+  /// or actions those go to the scene being edited.
+  ///
+  /// That is what keeps every caller working. An edit is still "a document
+  /// with this element replaced"; which canvas it lands on is this file's
+  /// business rather than every panel's.
   CanvasDocument copyWith({
     String? title,
     CanvasSize? size,
@@ -240,18 +338,133 @@ class CanvasDocument {
     int? frames,
     int? frameRate,
     List<TimelineAction>? actions,
-  }) =>
-      CanvasDocument(
-        title: title ?? this.title,
-        size: size ?? this.size,
-        background: background ?? this.background,
-        guides: guides ?? this.guides,
-        elements: elements ?? this.elements,
-        estimate: estimate ?? this.estimate,
-        frames: (frames ?? this.frames).clamp(1, maxFrameCount),
-        frameRate: (frameRate ?? this.frameRate).clamp(1, 60),
-        actions: actions ?? this.actions,
+    List<CanvasScene>? scenes,
+    int? sceneAt,
+    CanvasScene? master,
+    bool clearMaster = false,
+    bool? masterOn,
+  }) {
+    var list = scenes ?? this.scenes;
+    var index = (sceneAt ?? this.sceneAt)
+        .clamp(0, math.max(0, list.length - 1))
+        .toInt();
+
+    // Into the scene being edited, where there is a list of them.
+    if (list.isNotEmpty &&
+        (elements != null || frames != null || actions != null)) {
+      var at = list[index];
+      list = [...list];
+      list[index] = at.copyWith(
+        elements: elements,
+        frames: frames,
+        actions: actions,
       );
+    }
+
+    return CanvasDocument(
+      title: title ?? this.title,
+      size: size ?? this.size,
+      background: background ?? this.background,
+      guides: guides ?? this.guides,
+      elements: list.isEmpty ? (elements ?? _elements) : const [],
+      estimate: estimate ?? this.estimate,
+      frames: list.isEmpty
+          ? (frames ?? _frames).clamp(1, maxFrameCount).toInt()
+          : 1,
+      frameRate: (frameRate ?? this.frameRate).clamp(1, 60),
+      actions: list.isEmpty ? (actions ?? _actions) : const [],
+      scenes: list,
+      sceneAt: index,
+      master: clearMaster ? null : (master ?? this.master),
+      masterOn: masterOn ?? this.masterOn,
+    );
+  }
+
+  /// withScenes is this document as a list of scenes, whichever way it was
+  /// arranged before.
+  ///
+  /// Everything that adds, removes or reorders scenes goes through here, so
+  /// that a document with one scene in its old shape becomes a list the
+  /// moment a second one is wanted -- and nowhere else has to know there were
+  /// two shapes.
+  CanvasDocument withScenes(List<CanvasScene> next, {int? at}) {
+    if (next.isEmpty) return this;
+    return CanvasDocument(
+      title: title,
+      size: size,
+      background: background,
+      guides: guides,
+      estimate: estimate,
+      frameRate: frameRate,
+      scenes: next,
+      sceneAt: (at ?? sceneAt).clamp(0, next.length - 1).toInt(),
+      master: master,
+      masterOn: masterOn,
+    );
+  }
+
+  /// withScene replaces one scene.
+  CanvasDocument withScene(int index, CanvasScene next) {
+    var list = [...allScenes];
+    if (index < 0 || index >= list.length) return this;
+    list[index] = next;
+    return withScenes(list);
+  }
+
+  /// addScene puts a new empty canvas after [after], or at the end.
+  CanvasDocument addScene({int? after, String name = ""}) {
+    var list = [...allScenes];
+    var to =
+        after == null ? list.length : (after + 1).clamp(0, list.length).toInt();
+    list.insert(to, CanvasScene(id: newSceneId(), name: name, frames: frames));
+    return withScenes(list, at: to);
+  }
+
+  /// duplicateScene copies one, elements and all, under new ids.
+  ///
+  /// New ids for the elements as well as for the scene: two scenes holding
+  /// the same element id would be one element in two places, and editing it
+  /// in one would edit it in the other.
+  CanvasDocument duplicateScene(int index) {
+    var list = [...allScenes];
+    if (index < 0 || index >= list.length) return this;
+    var from = list[index];
+    var copy = from.copyWith(
+      id: newSceneId(),
+      name: from.name.isEmpty ? "" : "${from.name} copy",
+      elements: [for (var e in from.elements) e.withId(newElementId())],
+    );
+    list.insert(index + 1, copy);
+    return withScenes(list, at: index + 1);
+  }
+
+  /// removeScene takes one out. The last one left stays: a document with no
+  /// canvas in it is not a document.
+  CanvasDocument removeScene(int index) {
+    var list = [...allScenes];
+    if (list.length <= 1 || index < 0 || index >= list.length) return this;
+    list.removeAt(index);
+    return withScenes(list, at: math.min(sceneAt, list.length - 1));
+  }
+
+  /// moveScene reorders, which is the order they play in.
+  CanvasDocument moveScene(int from, int to) {
+    var list = [...allScenes];
+    if (from < 0 || from >= list.length) return this;
+    var moved = list.removeAt(from);
+    list.insert(to.clamp(0, list.length).toInt(), moved);
+    return withScenes(list, at: to.clamp(0, list.length - 1).toInt());
+  }
+
+  /// goToScene is which one is being edited and played.
+  CanvasDocument goToScene(int index) {
+    if (scenes.isEmpty) return this;
+    return copyWith(sceneAt: index.clamp(0, scenes.length - 1).toInt());
+  }
+
+  /// withMaster changes the shared canvas, making one if there is none.
+  CanvasDocument withMaster(CanvasScene next) =>
+      copyWith(master: next, masterOn: masterOn);
 
   /// withElement replaces the element sharing [element]'s id, or does nothing
   /// if it has since been deleted.
@@ -309,25 +522,109 @@ class CanvasDocument {
     return i < 0 ? this : reorder(i, 0);
   }
 
-  Map<String, dynamic> toJson() => {
-        "version": canvasFormatVersion,
-        "title": title,
-        "size": size.toJson(),
-        "background": background.toJson(),
-        if (!guides.isDefault) "guides": guides.toJson(),
-        if (estimate.toJson().isNotEmpty) "estimate": estimate.toJson(),
-        "frames": frames,
-        "frameRate": frameRate,
-        if (actions.isNotEmpty)
-          "actions": actions.map((a) => a.toJson()).toList(),
-        "elements": elements.map((e) => e.toJson()).toList(),
-      };
+  /// toJson writes the file.
+  ///
+  /// A document of one scene with no master is written exactly as it was
+  /// before scenes existed: elements, frames and actions at the top level. So
+  /// a canvas made in this build opens in an older one, and -- more to the
+  /// point -- every canvas already saved opens here unchanged. The scene list
+  /// appears only once there is something a single scene cannot say.
+  Map<String, dynamic> toJson() {
+    var one = scenes.length <= 1 && master == null;
+    return {
+      "version": canvasFormatVersion,
+      "title": title,
+      "size": size.toJson(),
+      "background": background.toJson(),
+      if (!guides.isDefault) "guides": guides.toJson(),
+      if (estimate.toJson().isNotEmpty) "estimate": estimate.toJson(),
+      "frames": frames,
+      "frameRate": frameRate,
+      if (actions.isNotEmpty)
+        "actions": actions.map((a) => a.toJson()).toList(),
+      "elements": elements.map((e) => e.toJson()).toList(),
+      if (!one) ...{
+        "scenes": [for (var s in allScenes) s.toJson()],
+        if (sceneAt != 0) "sceneAt": at,
+        if (master != null) "master": master!.toJson(),
+        if (masterOn) "masterOn": true,
+      },
+      // The one scene's own name and settings, which the top-level fields
+      // cannot carry. Written for a single scene as well, so naming the first
+      // scene of a document is not what turns it into a scene list.
+      if (one && (scene.name.isNotEmpty || scene.holds || scene.custom))
+        "scene": {
+          if (scene.name.isNotEmpty) "name": scene.name,
+          "id": scene.id,
+          if (scene.holds) "holds": true,
+          if (scene.custom) "transition": scene.transition!.toJson(),
+        },
+    };
+  }
 
   String encode() => const JsonEncoder.withIndent("  ").convert(toJson());
 
   factory CanvasDocument.fromJson(Map<String, dynamic> json) {
     var raw = json["elements"];
     var acts = json["actions"];
+
+    // A scene list, where there is one. Everything else -- the page, the
+    // guides, what it will be published as -- belongs to the document and is
+    // read the same way either way.
+    var sceneList = json["scenes"];
+    var scenes = <CanvasScene>[
+      if (sceneList is List)
+        for (var it in sceneList)
+          if (it is Map<String, dynamic>) CanvasScene.fromJson(it),
+    ];
+
+    // The single scene's own settings, for a document that is one canvas.
+    var only = json["scene"];
+    var name = "";
+    var id = "scene1";
+    var holds = false;
+    SceneTransition? transition;
+    if (only is Map<String, dynamic>) {
+      name = jsonString(only["name"], "");
+      id = jsonString(only["id"], "scene1");
+      holds = jsonBool(only["holds"], false);
+      if (only["transition"] is Map<String, dynamic>) {
+        transition = SceneTransition.fromJson(
+            only["transition"] as Map<String, dynamic>);
+      }
+    }
+
+    var elements = raw is List
+        ? [
+            for (var e in raw)
+              if (e is Map<String, dynamic>) elementFromJson(e),
+          ]
+        : const <CanvasElement>[];
+    var actions = acts is List
+        ? [
+            for (var a in acts)
+              if (a is Map<String, dynamic>) TimelineAction.fromJson(a),
+          ]
+        : const <TimelineAction>[];
+    var frames =
+        jsonInt(json["frames"], defaultFrameCount).clamp(1, maxFrameCount);
+
+    if (scenes.isEmpty && (name.isNotEmpty || holds || transition != null)) {
+      // One scene with something to say for itself: held as a list of one, so
+      // there is somewhere to keep it.
+      scenes = [
+        CanvasScene(
+          id: id,
+          name: name,
+          elements: elements,
+          frames: frames,
+          actions: actions,
+          holds: holds,
+          transition: transition,
+        ),
+      ];
+    }
+
     return CanvasDocument(
       title: jsonString(json["title"], "Untitled canvas"),
       size: jsonSpec(json["size"], CanvasSize.fromJson, const CanvasSize()),
@@ -335,23 +632,18 @@ class CanvasDocument {
           const CanvasBackground()),
       guides:
           jsonSpec(json["guides"], CanvasGuides.fromJson, const CanvasGuides()),
-      elements: raw is List
-          ? [
-              for (var e in raw)
-                if (e is Map<String, dynamic>) elementFromJson(e),
-            ]
-          : const [],
+      elements: scenes.isEmpty ? elements : const [],
       estimate: jsonSpec(
           json["estimate"], CanvasEstimate.fromJson, const CanvasEstimate()),
-      frames:
-          jsonInt(json["frames"], defaultFrameCount).clamp(1, maxFrameCount),
+      frames: scenes.isEmpty ? frames : 1,
       frameRate: jsonInt(json["frameRate"], defaultFrameRate).clamp(1, 60),
-      actions: acts is List
-          ? [
-              for (var a in acts)
-                if (a is Map<String, dynamic>) TimelineAction.fromJson(a),
-            ]
-          : const [],
+      actions: scenes.isEmpty ? actions : const [],
+      scenes: scenes,
+      sceneAt: jsonInt(json["sceneAt"], 0),
+      master: json["master"] is Map<String, dynamic>
+          ? CanvasScene.fromJson(json["master"] as Map<String, dynamic>)
+          : null,
+      masterOn: jsonBool(json["masterOn"], false),
     );
   }
 
