@@ -145,6 +145,37 @@ void main() {
     expect(find.byTooltip("Show a plain list"), findsOneWidget);
   });
 
+  testWidgets("the menu opens under the button that was pressed",
+      (tester) async {
+    // Placed from the panel rather than from the button, it appeared beside
+    // the panel -- which for a row half way down a list is nowhere near what
+    // was pressed.
+    // Enough of them that the bottom of the list is a long way from the
+    // middle of the panel, which is where the menu used to appear.
+    var controller = await panel(tester,
+        document: const CanvasDocument().withScenes([
+          for (var i = 0; i < 8; i++) CanvasScene(id: "s$i"),
+        ]));
+    expect(controller.document.allScenes.length, 8);
+
+    var buttons = find.byTooltip("What can be done with this scene");
+    expect(buttons, findsNWidgets(8));
+
+    // The first row's button, which is a long way from the middle of the
+    // panel -- where the menu used to appear whichever row was pressed.
+    var at = tester.getRect(buttons.first);
+    await tester.tap(buttons.first);
+    await tester.pumpAndSettle();
+
+    // Under it, which is where a menu opens from a button, rather than
+    // somewhere else down the column.
+    var menu = tester.getRect(find.text("Duplicate"));
+    expect(menu.top - at.top, greaterThan(0));
+    expect(menu.top - at.top, lessThan(90),
+        reason: "the menu belongs to its button: button at ${at.top}, menu at "
+            "${menu.top}");
+  });
+
   testWidgets("a scene that holds says so in the list", (tester) async {
     var controller = await panel(tester,
         document: const CanvasDocument().withScenes([

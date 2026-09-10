@@ -210,12 +210,16 @@ class _CanvasScenesPanelState extends State<CanvasScenesPanel> {
                       size: 13, color: theme.colors.onSurfaceVariant),
                 ),
               if (index < all.length - 1) _transitionMark(theme, index),
-              _rowButton(
-                  theme,
-                  Icons.more_horiz,
-                  "What can be done with "
-                  "this scene",
-                  () => _menu(context, index, all.length)),
+              // The button's own context, not the panel's: a menu placed
+              // from the panel appeared beside the panel, which for a row
+              // half way down a list is nowhere near what was pressed.
+              Builder(
+                builder: (context) => _rowButton(
+                    theme,
+                    Icons.more_horiz,
+                    "What can be done with this scene",
+                    () => _menu(context, index, all.length)),
+              ),
             ]),
             if (_previews)
               Padding(
@@ -321,15 +325,26 @@ class _CanvasScenesPanelState extends State<CanvasScenesPanel> {
   }
 
   Future<void> _menu(BuildContext context, int index, int count) async {
-    var box = context.findRenderObject() as RenderBox?;
-    var at = box == null
-        ? Offset.zero
-        : box.localToGlobal(box.size.centerRight(Offset.zero));
     var scene = document.allScenes[index];
+
+    // Under the button that was pressed. A menu takes its place from the
+    // overlay it opens in rather than from the screen, so the button's
+    // rectangle has to be measured against that overlay -- handed plain
+    // global coordinates it lands wherever the overlay happens to begin.
+    var box = context.findRenderObject() as RenderBox?;
+    var overlay = Overlay.of(context).context.findRenderObject() as RenderBox?;
+    if (box == null || overlay == null) return;
+    var where = RelativeRect.fromRect(
+      Rect.fromPoints(
+        box.localToGlobal(Offset.zero, ancestor: overlay),
+        box.localToGlobal(box.size.bottomRight(Offset.zero), ancestor: overlay),
+      ),
+      Offset.zero & overlay.size,
+    );
 
     var chose = await showMenu<String>(
       context: context,
-      position: RelativeRect.fromLTRB(at.dx, at.dy, at.dx, at.dy),
+      position: where,
       items: [
         const PopupMenuItem(value: "rename", child: Text("Rename…")),
         const PopupMenuItem(value: "duplicate", child: Text("Duplicate")),
