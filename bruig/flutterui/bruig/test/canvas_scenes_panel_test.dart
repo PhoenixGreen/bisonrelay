@@ -3,6 +3,7 @@ import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
+import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/procedural_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
@@ -496,6 +497,55 @@ void main() {
     await tester.tap(find.byKey(const ValueKey("masterBackgroundOff")));
     await tester.pumpAndSettle();
     expect(find.byIcon(Icons.visibility), findsOneWidget);
+  });
+
+  testWidgets("the background row says which canvas it is on", (tester) async {
+    // Leaving the shared canvas, the row went on naming the master's backdrop
+    // until something else rebuilt the column.
+    var controller = CanvasController(const CanvasDocument().withScenes([
+      const CanvasScene(
+          id: "a",
+          background: CanvasBackground(
+              spec: ProceduralSpec(style: ProceduralStyle.dotGrid))),
+      const CanvasScene(id: "b"),
+    ]).copyWith(
+        master: const CanvasScene(
+            id: "master",
+            background: CanvasBackground(
+                spec: ProceduralSpec(style: ProceduralStyle.hexGrid))),
+        masterOn: true));
+    addTearDown(controller.dispose);
+
+    tester.view.physicalSize = const Size(900, 1200);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(MultiProvider(
+      providers: [
+        ChangeNotifierProvider<ThemeNotifier>(
+            create: (c) => ThemeNotifier(doLoad: false)),
+        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+        ChangeNotifierProvider<CanvasPreferences>(
+            create: (c) => CanvasPreferences()),
+      ],
+      child: MaterialApp(
+        home: Scaffold(
+            body: SizedBox(
+                width: 320, child: CanvasDesignPanel(controller: controller))),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    expect(find.text("Background — Dot grid"), findsOneWidget);
+
+    controller.showMaster();
+    await tester.pumpAndSettle();
+    expect(find.text("Background — Hex grid"), findsOneWidget,
+        reason: "the shared canvas's own");
+
+    controller.goToScene(0);
+    await tester.pumpAndSettle();
+    expect(find.text("Background — Dot grid"), findsOneWidget,
+        reason: "and the scene's again the moment it is showing");
   });
 
   testWidgets("a scene with its own transition is marked", (tester) async {
