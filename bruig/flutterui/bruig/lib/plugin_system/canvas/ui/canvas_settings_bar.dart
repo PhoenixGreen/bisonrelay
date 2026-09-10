@@ -146,13 +146,30 @@ class _CanvasSettingsBarState extends State<CanvasSettingsBar> {
           // to spare, and scrolled the last of the tools out of sight when
           // there was not, because the tools were only ever offered half of
           // what was going.
+          // The tools and the zoom in one stretch, and that stretch takes
+          // all the room the buttons on the right do not want.
+          //
+          // Two levels rather than one because the row has two jobs it cannot
+          // do with a single list of children: the zoom has to sit against
+          // the tools -- it is the end of that group, not the start of the
+          // empty space -- and the buttons on the right have to be hard
+          // right. A flexible strip and a spacer side by side split the
+          // leftover between them and did neither.
           Expanded(
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: _viewControls(theme),
-            ),
+            child: Row(children: [
+              Flexible(
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: _viewControls(theme),
+                ),
+              ),
+              _zoomGroup(theme),
+              // The rule that closes the group, so the percentage reads as
+              // the end of the view controls rather than as something
+              // floating between them and the buttons on the right.
+              _divider(theme),
+            ]),
           ),
-          _zoomGroup(theme),
           _actions(theme),
         ]),
         // The gap between the two lines is here rather than being the line's

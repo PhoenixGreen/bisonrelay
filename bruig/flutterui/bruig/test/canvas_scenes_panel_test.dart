@@ -355,6 +355,15 @@ void main() {
     expect(bar.right - publish.right, lessThan(14),
         reason: "hard right with one scene: ${bar.right - publish.right}");
 
+    // And the percentage stays with the tools it belongs to rather than
+    // drifting across to the buttons on the right.
+    var zoom = tester.getRect(find.byType(TextField).last);
+    var zoomIn = tester.getRect(find.byIcon(Icons.zoom_in));
+    expect(zoom.left - zoomIn.right, lessThan(12),
+        reason: "the reading sits against the zoom buttons");
+    expect(zoom.right, lessThan(bar.width * 0.6),
+        reason: "on the left half of the bar, not beside Publish");
+
     // The margin button is the last of the tools, and it is still there once
     // the scene section has appeared in front of them.
     var margin = find.byTooltip("Show a margin outside the canvas, for "
