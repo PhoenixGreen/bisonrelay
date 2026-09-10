@@ -1820,6 +1820,8 @@ void main() {
       // does nothing, so each appears only once there is something to show.
       var controller = CanvasController(const CanvasDocument());
       addTearDown(controller.dispose);
+      var quiet = CanvasPreferences();
+      addTearDown(quiet.dispose);
       await pump(
           tester,
           CanvasSettingsBar(
@@ -1831,22 +1833,22 @@ void main() {
             onToggleGuides: () {},
             timelineOpen: true,
             onToggleTimeline: () {},
-          ));
+          ),
+          prefs: quiet);
 
       expect(find.byTooltip("Show the grid"), findsOneWidget,
           reason: "there is always a grid to show");
 
-      // The switch for the switches: the row goes, the setting does not, and
-      // the way back is the button that hid them.
-      await tester
-          .tap(find.byTooltip("Hide the grid, guides and ruler switches"));
+      // Whether they are offered at all is a preference, set on the line that
+      // sets the three tools up: somebody who does not use a grid should not
+      // have to press anything in the bar to be rid of the switches for it.
+      quiet.markSwitches = false;
       await tester.pumpAndSettle();
       expect(find.byTooltip("Show the grid"), findsNothing);
       expect(
           find.byTooltip("Grid, guides, rulers and snapping"), findsOneWidget,
           reason: "the line that sets them up is still a button away");
-      await tester
-          .tap(find.byTooltip("Show the grid, guides and ruler switches"));
+      quiet.markSwitches = true;
       await tester.pumpAndSettle();
       expect(find.byTooltip("Show the guides"), findsNothing);
       expect(find.byTooltip("Show the rulers"), findsNothing);
@@ -2741,8 +2743,10 @@ void main() {
       // of type controls and a dozen colour rows, which is what pushed the
       // data and the order off the bottom of the panel.
       await panel(tester);
+      // Presets first of all: start from a design somebody already made, or
+      // start from nothing.
       expect(sections(tester),
-          ["Table", "Data", "Order", "Special cells", "Style"]);
+          ["Presets", "Table", "Data", "Order", "Special cells", "Style"]);
     });
 
     testWidgets("the two sets of type controls fold away inside Style",
@@ -5518,6 +5522,21 @@ void main() {
       await tester.pumpAndSettle();
     });
 
+    testWidgets("the presets section puts one on the canvas", (tester) async {
+      // A section that lists things and does nothing when they are pressed is
+      // what a model-only test cannot see.
+      var controller = await panel(tester);
+      expect(controller.document.elements.length, 1);
+
+      await tester.ensureVisible(find.text("PRESETS"));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text("PRESETS"));
+      await tester.pumpAndSettle();
+
+      // Nothing saved yet, so the only button is the one that saves.
+      expect(find.byKey(const ValueKey("savePreset")), findsOneWidget);
+    });
+
     testWidgets("turning off From a document gives back what was typed",
         (tester) async {
       // Left showing the document's words, the switch would be off and the
@@ -5532,6 +5551,10 @@ void main() {
       var controller = await panel(tester, element: reading);
 
       expect(find.text("From a document"), findsOneWidget);
+      // Below the fold now that the presets are above it, and a tap at a
+      // point outside the viewport hits nothing.
+      await tester.ensureVisible(find.text("From a document"));
+      await tester.pumpAndSettle();
       await tester.tap(find.text("From a document"));
       await tester.pumpAndSettle();
 

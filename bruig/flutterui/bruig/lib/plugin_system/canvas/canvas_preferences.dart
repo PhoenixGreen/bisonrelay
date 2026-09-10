@@ -23,6 +23,7 @@ class CanvasPreferences extends ChangeNotifier {
   static const _lastNameKey = "canvasLastName";
   static const _allowFetchingKey = "canvasAllowFetching";
   static const _fitKey = "canvasFit";
+  static const _markSwitchesKey = "canvasMarkSwitches";
 
   /// enabled is whether the Canvas section exists.
   bool get enabled => _enabled;
@@ -87,6 +88,24 @@ class CanvasPreferences extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// markSwitches is whether the bar offers the grid, the guides and the
+  /// rulers as switches.
+  ///
+  /// Remembered, unlike the other things the bar can be told to hide. Those
+  /// are about the canvas in front of you -- whether these handles are in the
+  /// way this minute; this one is about which tools you use at all, and being
+  /// asked that again at every launch is the distraction it was turned off to
+  /// avoid.
+  bool get markSwitches => _markSwitches;
+  bool _markSwitches = true;
+
+  set markSwitches(bool value) {
+    if (_markSwitches == value) return;
+    _markSwitches = value;
+    StorageManager.saveBool(_markSwitchesKey, value);
+    notifyListeners();
+  }
+
   /// load reads what was saved. Called once at startup; until it returns the
   /// defaults are in force, which is the right way round -- a nav item that
   /// appeared a moment after the window opened would be worse than one that
@@ -99,6 +118,8 @@ class CanvasPreferences extends ChangeNotifier {
     _allowFetching =
         await StorageManager.readBool(_allowFetchingKey, defaultVal: false);
     _fit = await StorageManager.readString(_fitKey);
+    _markSwitches =
+        await StorageManager.readBool(_markSwitchesKey, defaultVal: true);
     notifyListeners();
   }
 

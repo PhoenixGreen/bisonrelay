@@ -2,6 +2,7 @@ import 'package:bruig/plugin_system/canvas/export/canvas_export.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_estimate.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
+import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
@@ -9,6 +10,7 @@ import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/canvas_sidebar.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 // canvas_settings_bar.dart is the band of controls above the canvas, and the
 // panel of canvas settings that drops out of it.
@@ -288,17 +290,12 @@ class _CanvasSettingsBarState extends State<CanvasSettingsBar> {
     void set(CanvasGuides next) =>
         controller.apply(controller.document.copyWith(guides: next));
 
-    // The switch for the switches, first in the group and always there. What
-    // it hides is the row, not the settings.
-    var shown = controller.showMarkSwitches;
+    // Whether these are offered at all is a preference, set on the line that
+    // sets the three tools up -- see canvasGuidesSettings. Somebody who does
+    // not use a grid should not have to press anything here to be rid of the
+    // switches for it.
+    var shown = Provider.of<CanvasPreferences>(context).markSwitches;
     return [
-      _barButton(theme,
-          icon: shown ? Icons.more_horiz : Icons.more_vert,
-          tooltip: shown
-              ? "Hide the grid, guides and ruler switches"
-              : "Show the grid, guides and ruler switches",
-          active: shown,
-          onPressed: () => controller.showMarkSwitches = !shown),
       if (shown) ...[
         _barButton(theme,
             icon: guides.showGrid ? Icons.grid_on : Icons.grid_off,

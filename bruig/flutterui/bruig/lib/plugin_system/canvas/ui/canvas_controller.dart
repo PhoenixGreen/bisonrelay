@@ -413,24 +413,6 @@ class CanvasController extends ChangeNotifier {
     _notifyView();
   }
 
-  bool _showMarkSwitches = true;
-
-  /// showMarkSwitches is whether the bar offers the grid, the guides and the
-  /// rulers as switches at all.
-  ///
-  /// Three buttons for three things somebody may never use, sitting in a
-  /// crowded strip. The one that turns them off stays, so they can be got
-  /// back -- what it hides is the row, not the setting: the grid, the guides
-  /// and the rulers go on being whatever they were, and the line that sets
-  /// them up is still a button away.
-  bool get showMarkSwitches => _showMarkSwitches;
-
-  set showMarkSwitches(bool value) {
-    if (_showMarkSwitches == value) return;
-    _showMarkSwitches = value;
-    _notifyView();
-  }
-
   bool _hideJoins = false;
 
   /// hideJoins leaves the lines between linked text boxes undrawn.

@@ -18,6 +18,7 @@ import 'package:bruig/plugin_system/canvas/ui/settings/chart_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/image_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/line_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/path_settings.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/presets_section.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/shape_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/table_settings.dart';
@@ -59,6 +60,15 @@ List<Widget> elementSettings(
 
   return [
     positionGroup(controller, element, write, begin, commit),
+    // The designs somebody has saved, at the top of the three kinds of
+    // element that are worth saving: start from something, or start from
+    // nothing. Below the type and the colours it would be a thing to find
+    // after the work of setting them by hand had already been done.
+    if (element is TextElement ||
+        element is ChartElement ||
+        element is TableElement)
+      boxed(context,
+          presetsSection(context, controller, element.kind, selected: element)),
     ...switch (element) {
       TextElement e =>
         textSettings(context, controller, e, write, begin, commit),

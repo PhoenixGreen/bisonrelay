@@ -1,8 +1,10 @@
 import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
+import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 // guides_settings.dart is the grid, the guides, the rulers and the snapping,
 // as a panel that opens off the settings bar.
@@ -18,12 +20,27 @@ import 'package:flutter/material.dart';
 // looked at. Closing it gets the strip back.
 
 /// canvasGuidesSettings is the whole panel.
-List<Widget> canvasGuidesSettings(CanvasController controller) {
+List<Widget> canvasGuidesSettings(CanvasController controller,
+    {CanvasPreferences? prefs}) {
   var guides = controller.document.guides;
   void set(CanvasGuides next) =>
       controller.apply(controller.document.copyWith(guides: next));
 
   return [
+    // Whether the bar carries switches for these three at all. Here rather
+    // than in the bar, because it is a question about the tools -- do you use
+    // a grid, do you use guides -- and this line is where those tools are
+    // set up. Somebody who does not use them should not have to find the
+    // switches in order to be rid of them.
+    if (prefs != null)
+      CanvasControlGroup(label: "In the bar", children: [
+        CanvasToggle(
+          key: const ValueKey("guidesInTheBar"),
+          label: "Switches in the bar",
+          value: prefs.markSwitches,
+          onChanged: (v) => prefs.markSwitches = v,
+        ),
+      ]),
     // "Every" sets the spacing for the grid and the ruler together. They are
     // one measurement of the page shown two ways, and when they disagreed --
     // a ruler picking its own round numbers by zoom, a grid on its own
@@ -237,7 +254,8 @@ class _CanvasGuidesPanelState extends State<CanvasGuidesPanel> {
               inline: true,
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                children: canvasGuidesSettings(controller),
+                children: canvasGuidesSettings(controller,
+                    prefs: Provider.of<CanvasPreferences>(context)),
               ),
             ),
           ),
