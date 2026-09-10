@@ -5283,6 +5283,49 @@ void main() {
           lessThanOrEqualTo(field.right + 0.5));
     });
 
+    testWidgets("the number stays on screen in a narrow window",
+        (tester) async {
+      // The reported fault: with a sidebar open or the nav bar showing, the
+      // end of the row of tools ran under the buttons on the right -- and the
+      // end of that row is the number, so the bigger the number the sooner it
+      // went, which is exactly backwards.
+      var controller = CanvasController(const CanvasDocument());
+      addTearDown(controller.dispose);
+      await pump(
+          tester,
+          CanvasSettingsBar(
+            controller: controller,
+            onPublish: () {},
+            canvasSettingsOpen: false,
+            onToggleCanvasSettings: () {},
+            guidesOpen: false,
+            onToggleGuides: () {},
+            timelineOpen: true,
+            onToggleTimeline: () {},
+          ));
+
+      controller.zoom = 8.88;
+      await tester.pumpAndSettle();
+      expect(find.text("888"), findsOneWidget);
+
+      // A window narrow enough that the tools cannot all fit.
+      tester.view.physicalSize = const Size(430, 900);
+      await tester.pumpAndSettle();
+
+      var number = tester.getRect(find.text("888"));
+      var sign = tester.getRect(find.text("%"));
+      var bar = tester.getRect(find.byType(CanvasSettingsBar));
+      expect(number.left, greaterThanOrEqualTo(bar.left),
+          reason: "the number is inside the bar");
+      expect(sign.right, lessThanOrEqualTo(bar.right),
+          reason: "and so is the per cent sign");
+
+      // Not under the buttons on the right either, which is where it went.
+      var undo = tester.getRect(find.byIcon(Icons.undo));
+      expect(sign.right, lessThanOrEqualTo(undo.left),
+          reason: "the number is at ${sign.right} and Undo at ${undo.left}");
+    });
+
     testWidgets("the timeline can be hidden from the bar", (tester) async {
       // A still canvas has no use for a transport, and forty pixels of it
       // under a picture nobody is animating is forty pixels of picture.

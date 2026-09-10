@@ -137,7 +137,16 @@ class _CanvasSettingsBarState extends State<CanvasSettingsBar> {
       ),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         Row(children: [
-          _viewControls(theme),
+          // The tools take what room they need and give way when there is
+          // not enough: a narrow window scrolls them rather than pushing the
+          // end of the row under the buttons on the right.
+          Flexible(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: _viewControls(theme),
+            ),
+          ),
+          _zoomGroup(theme),
           const Spacer(),
           _actions(theme),
         ]),
@@ -258,6 +267,20 @@ class _CanvasSettingsBarState extends State<CanvasSettingsBar> {
               active: controller.showOverspill,
               onPressed: () =>
                   controller.showOverspill = !controller.showOverspill),
+        ],
+      );
+
+  /// _zoomGroup is the two zoom buttons and the reading, kept out of the
+  /// scrolling part of the bar.
+  ///
+  /// It is pinned because it is the one thing here that has to be *read*
+  /// rather than pressed. Inside the row with everything else, a narrow
+  /// window -- a sidebar opened, a nav bar shown -- pushed the end of that
+  /// row under the buttons on the right, and the end of that row is the
+  /// number. Bigger numbers went first, which is exactly backwards.
+  Widget _zoomGroup(ThemeNotifier theme) => Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
           _divider(theme),
           _barButton(theme,
               icon: Icons.zoom_out,
