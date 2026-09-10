@@ -306,6 +306,69 @@ void main() {
     expect(find.text("Master"), findsOneWidget);
   });
 
+  testWidgets("the bar's two ends stay put whether or not there are scenes",
+      (tester) async {
+    // The tools and the space before the buttons on the right were two
+    // flexible children of one row, so the leftover width was split between
+    // them: a hole before the buttons when there was room to spare, and the
+    // last of the tools scrolled out of sight when there was not.
+    var controller = CanvasController(const CanvasDocument());
+    addTearDown(controller.dispose);
+
+    tester.view.physicalSize = const Size(1400, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(MultiProvider(
+      providers: [
+        ChangeNotifierProvider<ThemeNotifier>(
+            create: (c) => ThemeNotifier(doLoad: false)),
+        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+        ChangeNotifierProvider<CanvasPreferences>(
+            create: (c) => CanvasPreferences()),
+      ],
+      child: MaterialApp(
+        home: Scaffold(
+          body: CanvasSettingsBar(
+            controller: controller,
+            onPublish: () {},
+            canvasSettingsOpen: false,
+            onToggleCanvasSettings: () {},
+            guidesOpen: false,
+            onToggleGuides: () {},
+            timelineOpen: false,
+            onToggleTimeline: () {},
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    var bar = tester.getRect(find.byType(CanvasSettingsBar));
+    var publish = tester.getRect(find.byTooltip("Publish this canvas"));
+    expect(bar.right - publish.right, lessThan(14),
+        reason: "hard right with one scene: ${bar.right - publish.right}");
+
+    // The margin button is the last of the tools, and it is still there once
+    // the scene section has appeared in front of them.
+    var margin = find.byTooltip("Show a margin outside the canvas, for "
+        "animating things on and off");
+    expect(margin, findsOneWidget);
+    var before = tester.getRect(margin);
+    expect(before.right, lessThan(bar.right));
+
+    controller.addScene();
+    controller.addScene();
+    await tester.pumpAndSettle();
+
+    expect(find.text("3/3"), findsOneWidget);
+    expect(margin, findsOneWidget, reason: "not scrolled out of the row");
+    expect(tester.getRect(margin).right, lessThan(bar.right));
+    var after = tester.getRect(find.byTooltip("Publish this canvas"));
+    expect(bar.right - after.right, lessThan(14),
+        reason: "and the right-hand end has not moved");
+  });
+
   testWidgets("a scene with its own transition is marked", (tester) async {
     // Plain for the document's default, and its own mark for a scene that has
     // been given something particular -- which is the question somebody

@@ -136,17 +136,23 @@ class _CanvasSettingsBarState extends State<CanvasSettingsBar> {
       ),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         Row(children: [
-          // The tools take what room they need and give way when there is
-          // not enough: a narrow window scrolls them rather than pushing the
-          // end of the row under the buttons on the right.
-          Flexible(
+          // The tools take what room they need and give way when there is not
+          // enough: a narrow window scrolls them rather than pushing the end
+          // of the row under the buttons on the right.
+          //
+          // Expanded, and no Spacer after it. Both are flexible children of
+          // one Row, so the leftover width was split between them -- which
+          // left a hole before the buttons on the right when there was room
+          // to spare, and scrolled the last of the tools out of sight when
+          // there was not, because the tools were only ever offered half of
+          // what was going.
+          Expanded(
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: _viewControls(theme),
             ),
           ),
           _zoomGroup(theme),
-          const Spacer(),
           _actions(theme),
         ]),
         // The gap between the two lines is here rather than being the line's
