@@ -709,8 +709,11 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
                         document.at, !document.scene.holds),
                   ),
                 ],
+                // Only where there is another scene to give way to. On the
+                // master canvas it sets the default every scene starts from,
+                // which is worth having as soon as there is more than one.
                 if (widget.onToggleTransitions != null &&
-                    (document.editingMaster || document.hasScenes)) ...[
+                    document.hasScenes) ...[
                   SizedBox(width: document.editingMaster ? 24 : 3),
                   CanvasIconButton(
                     key: const ValueKey("transitionsToggle"),

@@ -23,6 +23,10 @@ class ProceduralSettings extends StatelessWidget {
   final VoidCallback onBegin;
   final VoidCallback onCommit;
 
+  /// onReset puts the whole thing back to its default, where the caller has
+  /// something for that to mean. Null leaves the button out.
+  final VoidCallback? onReset;
+
   /// label names the group.
   ///
   /// Empty by default, and empty is what both callers want: the panel's own
@@ -36,6 +40,7 @@ class ProceduralSettings extends StatelessWidget {
     required this.onChanged,
     required this.onBegin,
     required this.onCommit,
+    this.onReset,
     this.label = "",
     super.key,
   });
@@ -87,6 +92,17 @@ class ProceduralSettings extends StatelessWidget {
             tooltip: "Try the next variation",
             onPressed: () => _setNow(spec.shuffled()),
           ),
+          // Back to the beginning. Beside the shuffle because they are the
+          // two ways out of a pattern that has been fiddled with past the
+          // point of remembering what it was -- one goes somewhere new, this
+          // one goes back.
+          if (onReset != null)
+            CanvasIconButton(
+              key: const ValueKey("resetBackground"),
+              icon: Icons.restart_alt,
+              tooltip: "Put every setting here back to its default",
+              onPressed: onReset,
+            ),
           if (spec.style == ProceduralStyle.pitch)
             CanvasDropdown<PitchSport>(
               label: "Sport",

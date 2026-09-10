@@ -1,4 +1,5 @@
 import 'package:bruig/components/text.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_settings.dart';
@@ -37,20 +38,24 @@ Widget elementSettingsBody(BuildContext context, CanvasController controller) {
   }
 
   if (selected == null) {
+    var document = controller.document;
+    // On the shared canvas, the background being edited is the shared one.
+    // Written to the document's instead, turning the master off left every
+    // scene wearing it -- see CanvasScene.background.
+    var onMaster = document.editingMaster;
+    var showing = onMaster ? document.drawnBackground : document.background;
+
     return ProceduralSettings(
       // No caption: the panel's header already says these are the
       // background's, and this is what it shows whenever nothing is selected
       // -- so the repetition would be the commonest thing on the panel.
-      spec: controller.document.background.spec,
+      spec: showing.spec,
       onBegin: controller.beginInteraction,
       onCommit: controller.endInteraction,
+      onReset: () => controller.setBackground(const CanvasBackground()),
       onChanged: (spec) {
         controller.beginInteraction();
-        controller.apply(
-            controller.document.copyWith(
-                background:
-                    controller.document.background.copyWith(spec: spec)),
-            transient: true);
+        controller.setBackground(showing.copyWith(spec: spec), transient: true);
       },
     );
   }

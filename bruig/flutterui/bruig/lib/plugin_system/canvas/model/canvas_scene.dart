@@ -192,6 +192,15 @@ class CanvasScene {
   /// meant to sit on its last frame rather than loop away from it.
   final bool holds;
 
+  /// background is this canvas's own backdrop, or null to use the
+  /// document's.
+  ///
+  /// Only the master scene uses it, and that is the point: a background put
+  /// on the shared canvas belongs to the shared canvas. Written to the
+  /// document's own background instead, as it was, turning the master off
+  /// left every scene wearing it with nothing to say where it came from.
+  final CanvasBackground? background;
+
   /// transition is how this scene gives way to the next, or null for whatever
   /// the document's default is -- see CanvasDocument.defaultTransition, which
   /// is the master scene's.
@@ -208,6 +217,7 @@ class CanvasScene {
     this.frames = defaultFrameCount,
     this.actions = const [],
     this.holds = false,
+    this.background,
     this.transition,
   });
 
@@ -226,6 +236,8 @@ class CanvasScene {
     int? frames,
     List<TimelineAction>? actions,
     bool? holds,
+    CanvasBackground? background,
+    bool clearBackground = false,
     SceneTransition? transition,
     bool clearTransition = false,
   }) =>
@@ -236,6 +248,7 @@ class CanvasScene {
         frames: (frames ?? this.frames).clamp(1, maxFrameCount),
         actions: actions ?? this.actions,
         holds: holds ?? this.holds,
+        background: clearBackground ? null : (background ?? this.background),
         transition: clearTransition ? null : (transition ?? this.transition),
       );
 
@@ -246,6 +259,7 @@ class CanvasScene {
         "frames": frames,
         if (actions.isNotEmpty) "actions": [for (var a in actions) a.toJson()],
         if (holds) "holds": true,
+        if (background != null) "background": background!.toJson(),
         if (transition != null) "transition": transition!.toJson(),
       };
 
@@ -270,6 +284,10 @@ class CanvasScene {
             ]
           : const [],
       holds: jsonBool(json["holds"], false),
+      background: json["background"] is Map<String, dynamic>
+          ? CanvasBackground.fromJson(
+              json["background"] as Map<String, dynamic>)
+          : null,
       transition: json["transition"] is Map<String, dynamic>
           ? SceneTransition.fromJson(json["transition"] as Map<String, dynamic>)
           : null,

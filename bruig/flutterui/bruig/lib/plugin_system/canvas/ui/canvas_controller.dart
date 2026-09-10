@@ -1388,6 +1388,22 @@ class CanvasController extends ChangeNotifier {
     apply(_document.withScene(index, list[index].copyWith(name: name.trim())));
   }
 
+  /// setBackground writes the backdrop being edited.
+  ///
+  /// The shared canvas's own while that is the one open, and the document's
+  /// otherwise. Which of the two an edit lands on is this file's business
+  /// rather than the settings panel's: the panel edits "the background", and
+  /// there is only ever one of those in front of the reader.
+  void setBackground(CanvasBackground next, {bool transient = false}) {
+    var document = _document;
+    if (document.editingMaster) {
+      apply(document.withMaster(document.master!.copyWith(background: next)),
+          transient: transient);
+      return;
+    }
+    apply(document.copyWith(background: next), transient: transient);
+  }
+
   /// setSceneHolds decides whether playback runs on into the next scene.
   void setSceneHolds(int index, bool holds) {
     var list = _document.allScenes;

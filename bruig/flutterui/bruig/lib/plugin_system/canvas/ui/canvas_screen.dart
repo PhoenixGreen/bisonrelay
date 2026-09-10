@@ -543,7 +543,14 @@ class _CanvasScreenState extends State<CanvasScreen> {
                   right: 0,
                   child: CanvasKeyframeBar(controller: _controller),
                 ),
-              if (_transitionsOpen && !_controller.playing)
+              // Not with one scene: there is nothing for it to give way to,
+              // so the line would be a page of settings about an event that
+              // cannot happen. The button that opens it is hidden then too --
+              // see CanvasTimeline -- and this closes the line for the case
+              // where the second scene is deleted while it is open.
+              if (_transitionsOpen &&
+                  _controller.document.hasScenes &&
+                  !_controller.playing)
                 Positioned(
                   bottom: 0,
                   left: 0,

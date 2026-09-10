@@ -148,6 +148,43 @@ void main() {
     expect(controller.playing, isFalse);
   });
 
+  testWidgets("with one scene there is nothing to give way to", (tester) async {
+    // A page of settings about an event that cannot happen. The button that
+    // opens it is not offered either.
+    var controller = CanvasController(const CanvasDocument());
+    addTearDown(controller.dispose);
+
+    tester.view.physicalSize = const Size(1400, 400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(MultiProvider(
+      providers: [
+        ChangeNotifierProvider<ThemeNotifier>(
+            create: (c) => ThemeNotifier(doLoad: false)),
+        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+        ChangeNotifierProvider<CanvasPreferences>(
+            create: (c) => CanvasPreferences()),
+      ],
+      child: MaterialApp(
+        home: Scaffold(
+          body: CanvasTimeline(
+            controller: controller,
+            onToggleTransitions: () {},
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey("transitionsToggle")), findsNothing);
+
+    controller.addScene();
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey("transitionsToggle")), findsOneWidget,
+        reason: "and it is there as soon as there is a scene after this one");
+  });
+
   testWidgets("the timeline says whether the run stops here", (tester) async {
     // Beside the transition, because they are the two things that happen when
     // a scene ends.

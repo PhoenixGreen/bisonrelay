@@ -1,6 +1,7 @@
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
+import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:flutter/material.dart';
@@ -193,6 +194,45 @@ void main() {
       expect(off.masterScene, isNull);
       expect(off.master!.elements.single.id, "logo",
           reason: "switching it off is not the same as emptying it");
+    });
+  });
+
+  group("the shared canvas's own backdrop", () {
+    test("comes and goes with the master", () {
+      // Written to the document's background instead, turning the master off
+      // left every scene wearing it with nothing to say where it came from.
+      var it = _twoScenes()
+          .copyWith(
+              background: const CanvasBackground(
+                  spec: ProceduralSpec(style: ProceduralStyle.dotGrid)))
+          .withMaster(CanvasScene(
+            id: "master",
+            background: const CanvasBackground(
+                spec: ProceduralSpec(style: ProceduralStyle.flowWaves)),
+          ));
+
+      expect(it.drawnBackground.spec.style, ProceduralStyle.dotGrid,
+          reason: "the master is off, so it is the document's");
+
+      var on = it.copyWith(masterOn: true);
+      expect(on.drawnBackground.spec.style, ProceduralStyle.flowWaves);
+
+      var off = on.copyWith(masterOn: false);
+      expect(off.drawnBackground.spec.style, ProceduralStyle.dotGrid,
+          reason: "every scene gets its own back the moment it is switched "
+              "off");
+      expect(off.master!.background, isNotNull,
+          reason: "and the shared one is kept, not thrown away");
+    });
+
+    test("and survives being saved", () {
+      var it = _twoScenes().withMaster(CanvasScene(
+        id: "master",
+        background: const CanvasBackground(
+            spec: ProceduralSpec(style: ProceduralStyle.flowWaves)),
+      ));
+      var back = CanvasDocument.fromJson(it.toJson());
+      expect(back.master!.background!.spec.style, ProceduralStyle.flowWaves);
     });
   });
 

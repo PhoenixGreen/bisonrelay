@@ -181,7 +181,9 @@ void _paintScene(
 
 void _paintDocumentBackground(ui.Canvas canvas, Rect rect, CanvasDocument doc,
     double time, CanvasImageSource? images, ProceduralCache? backgrounds) {
-  var bg = doc.background;
+  // The master's own where the shared canvas is switched on and has one.
+  // See CanvasDocument.drawnBackground.
+  var bg = doc.drawnBackground;
   if (bg.isImage) {
     var image = images?.resolve(bg.imageAssetId, const BackgroundRemoval());
     if (image != null) {

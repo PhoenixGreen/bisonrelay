@@ -291,6 +291,14 @@ class CanvasDocument {
   /// been turned off.
   CanvasScene? get masterScene => masterOn ? master : null;
 
+  /// drawnBackground is what is actually behind the canvas: the master's own
+  /// where the master is switched on and has one, and the document's
+  /// otherwise.
+  ///
+  /// So a backdrop put on the shared canvas comes and goes with it, and every
+  /// scene gets its own back the moment the master is switched off.
+  CanvasBackground get drawnBackground => masterScene?.background ?? background;
+
   /// defaultTransition is what a scene with no transition of its own uses:
   /// the master scene's, or a cut.
   SceneTransition get defaultTransition =>
